@@ -54,6 +54,13 @@ SWEPT = ("cratekit", "tests", "pyrekordbox")
 _REAL_DATETIME = datetime_module.datetime
 _REAL_DATE = datetime_module.date
 
+#: Whether the pins are on. Every pinned name asks this each time it is
+#: called and answers as the real one when they are off, so a reference that
+#: outlives the scenario, a default argument bound at an import made while the
+#: pins were on, a closure, a dataclass's default factory, is the real clock
+#: and the real id source again from the moment the pins come off.
+_PINS = {"on": False}
+
 
 class _Pinned(type):
     """Makes a pinned class stand for the real one in ``isinstance`` and ``issubclass``.
@@ -80,13 +87,15 @@ class PinnedDatetime(_REAL_DATETIME, metaclass=_Pinned):
 
     @classmethod
     def now(cls, tz=None):
+        if not _PINS["on"]:
+            return _REAL_DATETIME.now(tz)
         if tz is None:
             return INSTANT.astimezone().replace(tzinfo=None)
         return INSTANT.astimezone(tz)
 
     @classmethod
     def utcnow(cls):
-        return INSTANT.replace(tzinfo=None)
+        return cls.now(datetime_module.timezone.utc).replace(tzinfo=None)
 
     @classmethod
     def today(cls):
@@ -103,7 +112,7 @@ class PinnedDate(_REAL_DATE, metaclass=_Pinned):
 
     @classmethod
     def today(cls):
-        return INSTANT.astimezone().date()
+        return PinnedDatetime.now().date()
 
 
 class Counted:
@@ -154,20 +163,31 @@ def pin(patch):
     process id and each file's inode are the capture's own, which ``compare``
     knows by name.
     """
+    if _PINS["on"]:
+        raise RuntimeError("the pins are already on, and one scenario runs at a time")
     counted = Counted()
     stamp = INSTANT.timestamp()
+
+    def held(real, pinned):
+        """``pinned`` while the pins are on, and ``real`` itself once they are off."""
+
+        def answer(*args, **kwargs):
+            return pinned(*args, **kwargs) if _PINS["on"] else real(*args, **kwargs)
+
+        return answer
+
     pairs = (
         (datetime_module, "datetime", PinnedDatetime),
         (datetime_module, "date", PinnedDate),
-        (time, "time", lambda: stamp),
-        (time, "time_ns", lambda: int(stamp) * 1_000_000_000),
-        (time, "monotonic", lambda: 0.0),
-        (time, "monotonic_ns", lambda: 0),
-        (time, "perf_counter", lambda: 0.0),
-        (time, "perf_counter_ns", lambda: 0),
-        (uuid, "uuid4", counted.uuid4),
-        (secrets, "token_hex", counted.token_hex),
-        (secrets, "token_bytes", counted.token_bytes),
+        (time, "time", held(time.time, lambda: stamp)),
+        (time, "time_ns", held(time.time_ns, lambda: int(stamp) * 1_000_000_000)),
+        (time, "monotonic", held(time.monotonic, lambda: 0.0)),
+        (time, "monotonic_ns", held(time.monotonic_ns, lambda: 0)),
+        (time, "perf_counter", held(time.perf_counter, lambda: 0.0)),
+        (time, "perf_counter_ns", held(time.perf_counter_ns, lambda: 0)),
+        (uuid, "uuid4", held(uuid.uuid4, counted.uuid4)),
+        (secrets, "token_hex", held(secrets.token_hex, counted.token_hex)),
+        (secrets, "token_bytes", held(secrets.token_bytes, counted.token_bytes)),
     )
     pinned = {id(getattr(module, name)): replacement for module, name, replacement in pairs}
     for module_name, module in list(sys.modules.items()):
@@ -185,17 +205,18 @@ def pin(patch):
     pin_binding_stamps(patch)
     state = random.getstate()
     random.seed(0)
+    _PINS["on"] = True
 
     def unpin() -> None:
-        """Put the real name back wherever a pinned one is held, in any module.
+        """Turn the pins off, and put the real name back wherever a pinned one is held.
 
-        Undoing the patch is not enough. A module first imported while the
-        pins were on took a pinned name as its own, ``from datetime import
-        datetime`` or ``from uuid import uuid4``, and the patch never set
-        that, so it would not put it back. Left there it would hold every
-        later test in this process at the scenario's instant, and hand the
-        next scenario ids counted on from this one's.
+        Off first, which makes every pinned name answer as the real one
+        wherever it is still referenced. Then the names: a module first
+        imported while the pins were on took a pinned name as its own, ``from
+        datetime import datetime`` or ``from uuid import uuid4``, and the
+        patch never set that, so undoing the patch would not put it back.
         """
+        _PINS["on"] = False
         random.setstate(state)
         for module in list(sys.modules.values()):
             if not isinstance(module, types.ModuleType) or module.__name__ == __name__:
@@ -227,6 +248,8 @@ def pin_binding_stamps(patch) -> None:
                 if default is not None and getattr(default, "is_callable", False):
                     if getattr(default.arg, "__name__", "") == "now":
                         patch.setattr(default, "arg", lambda _context: PinnedDatetime.now())
+                        # PinnedDatetime.now is the real clock once the pins are
+                        # off, so this is right even before the patch is undone.
 
 
 @dataclass(frozen=True)

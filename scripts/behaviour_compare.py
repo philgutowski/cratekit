@@ -42,24 +42,39 @@ even when the branch changed a test helper a scenario uses.
 WHAT IT REFUSES
 ---------------
 `capture` refuses a `--root` that is not inside the system's temporary
-directory, before anything runs, and a root another capture holds. Inside the
-run, before every command, the scenario refuses unless the configuration and
-state directories the product itself resolves are inside the scenario's own
-temporary directory. A scenario that fails fails the capture, which then
-writes no manifest, and `compare` refuses a directory with none.
+directory, before anything runs; a root another capture holds; and a root
+that holds files no capture left there, since the run empties its root.
+Inside the run, before every command, the scenario refuses unless the
+configuration and state directories the product itself resolves are inside
+the scenario's own temporary directory. The run lists every scenario it
+collected, and the capture is closed with a manifest only when the run
+passed and every one of them left a record: a scenario that failed, was
+skipped, was expected to fail or ran past the stage leaves none, and
+`compare` refuses a directory with no manifest.
 
 
 WHAT COMPARE READS AS A DIFFERENCE
 ----------------------------------
 A scenario or a command in one capture only; an exit code, standard output or
-standard error that differs by one character; a file in one capture only; a
-file whose bytes differ; a table or a row in one capture's dump only.
+standard error that differs by one character; a file or directory in one
+capture only; a file whose bytes differ; a file or directory whose permission
+bits differ; a link that points elsewhere; and in a database, a table, an
+index, a view or a trigger whose declaration differs, a setting that differs,
+and a row in one capture's dump only.
 
-A SQLite database is compared by its dump, every table, every row and every
-column, and not by its bytes: the file also holds its free pages, a change
-counter and whichever layout the page allocator chose, and the WAL beside it
-is salted at random, so two runs that wrote the same rows do not write the
-same bytes. Every other file is compared byte for byte.
+A SQLite database is compared by its dump and not by its bytes: its schema,
+every declaration as SQLite keeps it; its user version, application id and
+journal mode; and every row of every table, by column. The file also holds
+its free pages, a change counter and whichever layout the page allocator
+chose, and the WAL beside it is salted at random, so two runs that wrote the
+same rows do not write the same bytes. A database that cannot be dumped is
+compared by its bytes instead, never passed over. Every other file is
+compared byte for byte.
+
+What is not compared: a file's times, its owner, the order of the rows in a
+table, which SQLite does not promise, and the order of a table's constraints
+in its declaration, which means nothing to SQLite and which the suite's own
+database builder does not hold still from one process to the next.
 
 ONE EQUIVALENCE IS DECLARED, and it is the only one: a capture's own words
 for what the operating system gave it. The scenario run is one process, and
@@ -68,15 +83,19 @@ a lock file and the job queue; and it writes a landed file's inode into the
 row rekordbox loads it by. Each capture records its process's two words and
 every file's inode by path, and `compare` reads a text or a row as the same
 when the two differ only where the first holds one of its own words and the
-second holds its own word for the same thing, at the same place. Nothing is
-scrubbed out of a capture to arrange this: what a capture holds is what the
-commands printed and wrote. What is not covered is a file's own times read
-back within the command that wrote it, which no scenario here records.
+second holds its own word for the same thing, at the same place. A word is
+read only where it stands whole, with no letter, digit or underscore against
+either end, so a process id inside a longer number is that number and nothing
+else. Nothing is scrubbed out of a capture to arrange this: what a capture
+holds is what the commands printed and wrote. What is not covered is a file's
+own times read back within the command that wrote it, which no scenario here
+records.
 
 Exit codes
 ----------
-    0  capture: every scenario ran and was recorded; compare: no difference
-    1  capture: a scenario failed; compare: at least one difference
+    0  capture: every scenario collected ran, passed and was recorded;
+       compare: no difference
+    1  capture: a scenario failed or left no record; compare: a difference
     2  a refusal, decided before anything was compared or run
 """
 
@@ -90,6 +109,7 @@ import os
 import re
 import shutil
 import sqlite3
+import stat
 import subprocess
 import sys
 import tarfile
@@ -104,6 +124,12 @@ FORMAT = 1
 MANIFEST = "capture.json"
 COMMANDS = "commands.json"
 PROCESS = "process.json"
+#: Written by the scenario run as it finishes collecting: every scenario it
+#: is about to run, so one that leaves no record is seen to be missing.
+EXPECTED = "expected.json"
+#: Left in a root by a capture whose run failed, so the next capture knows the
+#: directory is a capture's to empty.
+LEFT_BY_A_CAPTURE = ".left-by-a-behaviour-capture"
 LISTING = "files.json"
 DATABASES = "databases.json"
 TREE = "tree"
@@ -206,6 +232,11 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def permission_bits(path: Path) -> str:
+    """A file's or a directory's permission bits, as the four octal digits chmod takes."""
+    return f"{stat.S_IMODE(path.stat().st_mode):04o}"
+
+
 def is_database(path: Path) -> bool:
     try:
         with path.open("rb") as handle:
@@ -219,8 +250,10 @@ def list_tree(root: Path) -> dict[str, dict]:
 
     A directory is an entry of its own, so an empty one a verb created is
     seen. A link is recorded as a link with its target and never followed. A
-    file's inode is kept beside its digest: it is this capture's word for the
-    file, never compared, and read past where the product wrote it down.
+    file and a directory carry their permission bits, since a verb that writes
+    a private file world readable has changed what it writes. A file's inode
+    is kept beside its digest: it is this capture's word for the file, never
+    compared, and read past where the product wrote it down.
     """
     entries: dict[str, dict] = {}
     for current, directories, files in os.walk(root, followlinks=False):
@@ -232,11 +265,12 @@ def list_tree(root: Path) -> dict[str, dict]:
             if path.is_symlink():
                 entries[relative] = {"kind": LINK, "target": os.readlink(path)}
             elif path.is_dir():
-                entries[relative] = {"kind": DIRECTORY}
+                entries[relative] = {"kind": DIRECTORY, "mode": permission_bits(path)}
             else:
                 status = path.stat()
                 entries[relative] = {
                     "kind": DATABASE if is_database(path) else FILE,
+                    "mode": permission_bits(path),
                     "size": status.st_size,
                     "sha256": sha256(path),
                     "inode": status.st_ino,
@@ -256,8 +290,81 @@ def _cell(value: object) -> object:
     return value
 
 
-def dump_database(path: Path) -> dict[str, list[str]]:
-    """Every table of one SQLite database, each row as JSON text by column, the rows sorted.
+#: The settings a database file carries for itself that a reader depends on.
+SETTINGS = ("user_version", "application_id", "journal_mode")
+
+#: How a table constraint opens, as against a column, in a CREATE TABLE.
+TABLE_CONSTRAINTS = ("CONSTRAINT", "PRIMARY KEY", "UNIQUE", "CHECK", "FOREIGN KEY")
+_QUOTES = {"'": "'", '"': '"', "`": "`", "[": "]"}
+
+
+def split_declaration(sql: str) -> tuple[str, list[str], str] | None:
+    """A CREATE statement as what precedes its list, the list's items, and what follows.
+
+    The list is the first parenthesised one, split at its own commas: a comma
+    inside a nested parenthesis or a quoted name belongs to its item. None
+    when the statement has no list or its parentheses do not balance, which
+    the caller reads as a statement to leave exactly as it is.
+    """
+    start = sql.find("(")
+    if start < 0:
+        return None
+    items: list[str] = []
+    depth, quote, begun = 0, "", start + 1
+    for index in range(start, len(sql)):
+        char = sql[index]
+        if quote:
+            quote = "" if char == quote else quote
+        elif char in _QUOTES:
+            quote = _QUOTES[char]
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                items.append(sql[begun:index])
+                return sql[: start + 1], items, sql[index:]
+        elif char == "," and depth == 1:
+            items.append(sql[begun:index])
+            begun = index + 1
+    return None
+
+
+def canonical_declaration(kind: str, sql: str | None) -> str | None:
+    """A table's declaration with its table constraints in one order.
+
+    SQLite keeps a declaration as it was written, and the order of a table's
+    constraints means nothing to it. It is not still, either: the suite's own
+    database is built from a copy of the binding's schema whose foreign keys
+    come out in an order that changes from one process to the next. So the
+    constraints, each stripped, are put in sorted order after the columns,
+    which stay exactly as written and in their order. Anything that is not a
+    table, or cannot be split, is returned as it is.
+    """
+    if kind != "table" or not sql:
+        return sql
+    split = split_declaration(sql)
+    if split is None:
+        return sql
+    head, items, tail = split
+    constraints = [
+        one.strip() for one in items if one.strip().upper().startswith(TABLE_CONSTRAINTS)
+    ]
+    if len(constraints) < 2:
+        return sql
+    columns = [one for one in items if not one.strip().upper().startswith(TABLE_CONSTRAINTS)]
+    return head + ",".join([*columns, *(f" {one}" for one in sorted(constraints))]) + tail
+
+
+def dump_database(path: Path) -> dict:
+    """One SQLite database as what it declares, what it is set to and what it holds.
+
+    ``schema`` is every table, index, view and trigger as SQLite keeps its
+    declaration, a table's with its constraints in one order
+    (``canonical_declaration``), so a dropped key, constraint or index is seen
+    though no row changed. ``settings`` is the file's own user version, application id and
+    journal mode. ``tables`` is every row of every table as JSON text by
+    column, the rows sorted.
 
     Read from a copy, so the capture never opens a scenario's own file, and
     the copy takes the WAL with it, so rows not yet checkpointed are read. The
@@ -289,7 +396,24 @@ def dump_database(path: Path) -> dict[str, list[str]]:
                     )
                     for row in cursor.fetchall()
                 )
-            return tables
+            schema = sorted(
+                json.dumps(
+                    {
+                        "type": kind,
+                        "name": name,
+                        "table": table,
+                        "sql": canonical_declaration(kind, sql),
+                    },
+                    ensure_ascii=False,
+                )
+                for kind, name, table, sql in connection.execute(
+                    "SELECT type, name, tbl_name, sql FROM sqlite_master"
+                )
+            )
+            settings = {
+                name: connection.execute(f"PRAGMA {name}").fetchone()[0] for name in SETTINGS
+            }
+            return {"schema": schema, "settings": settings, "tables": tables}
         finally:
             connection.close()
 
@@ -301,8 +425,8 @@ def dump_databases(root: Path, listing: dict[str, dict]) -> dict[str, dict]:
         if entry["kind"] != DATABASE:
             continue
         try:
-            dumps[relative] = {"tables": dump_database(root / relative)}
-        except sqlite3.Error as unread:
+            dumps[relative] = dump_database(root / relative)
+        except (sqlite3.Error, UnicodeDecodeError) as unread:
             dumps[relative] = {"unreadable": f"{type(unread).__name__}: {unread}"}
     return dumps
 
@@ -411,10 +535,24 @@ def take_root(root: Path) -> Path:
     The holder is a file beside the root, since the run empties the root
     itself, and it is created exclusively, so of two captures started together
     one is refused. A holder whose process is gone is a capture that died, and
-    its root is taken over.
+    its root is taken over. A root that holds files and carries neither that
+    holder nor a failed capture's marker is refused, never emptied.
     """
     holder = root.with_name(root.name + HOLDER_SUFFIX)
     holder.parent.mkdir(parents=True, exist_ok=True)
+    # The run empties its root. What is in one already is a capture's to
+    # empty only if a capture left it: a failed run's marker is in it, or a
+    # holder beside it says a capture died there. Anything else is somebody's.
+    if (
+        root.is_dir()
+        and any(root.iterdir())
+        and not (root / LEFT_BY_A_CAPTURE).exists()
+        and not holder.exists()
+    ):
+        raise Refusal(
+            f"{root} holds files no capture left there, and a capture empties its root; "
+            f"remove it yourself or pass another --root"
+        )
     for _ in range(2):
         try:
             descriptor = os.open(holder, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
@@ -468,6 +606,24 @@ def capture_command(files: list[str], root: Path, source: Path, only: str | None
 def recorded_scenarios(out: Path) -> list[str]:
     """The scenarios a run wrote a record for, by name."""
     return sorted(path.parent.relative_to(out).as_posix() for path in out.glob(f"*/*/{COMMANDS}"))
+
+
+def unrecorded(out: Path, recorded: list[str]) -> list[str]:
+    """What the run collected and did not record, or what stands in for that.
+
+    The run writes the list of scenarios it collected. One of them with no
+    record was skipped, was expected to fail, or ran past the stage: it did
+    not fail the run, and without this the capture would close short and say
+    nothing. A run that wrote no list at all is read the same way, as a run
+    whose scenarios cannot be counted.
+    """
+    try:
+        expected = json.loads((out / EXPECTED).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return ["every scenario (the run listed none it collected)"]
+    if not isinstance(expected, list):
+        return ["every scenario (the run's list of what it collected is not a list)"]
+    return sorted(set(map(str, expected)) - set(recorded))
 
 
 def write_manifest(out: Path, *, root: Path, source: str, checkout: str, only: str) -> None:
@@ -531,13 +687,17 @@ def run_capture(args, repo_root: Path, root: Path, source: Path, out: Path, file
         if not args.keep:
             shutil.rmtree(source, ignore_errors=True)
     recorded = recorded_scenarios(out)
-    if done.returncode != 0 or not recorded:
+    missing = unrecorded(out, recorded)
+    if done.returncode != 0 or not recorded or missing:
+        if root.is_dir():
+            (root / LEFT_BY_A_CAPTURE).write_text("", encoding="utf-8")
         print(done.stdout[-6000:])
         print(done.stderr[-2000:], file=sys.stderr)
+        without = f"; {', '.join(missing)} ran and left no record" if missing else ""
         print(
             f"capture: the scenario run exited {done.returncode} with {len(recorded)} "
-            f"scenarios recorded, so {out} is not a capture and holds no manifest; what "
-            f"the scenarios wrote is left under {root} for reading"
+            f"scenarios recorded{without}, so {out} is not a capture and holds no "
+            f"manifest; what the scenarios wrote is left under {root} for reading"
         )
         return 1
     if not args.keep:
@@ -604,7 +764,10 @@ def same_but_for(first: str, second: str, words: list[tuple[str, str]]) -> bool:
     of its words, the second holds that word or its own, and they agree
     everywhere else. So a number that merely happens to equal a process id
     still has to be the same number in both, and a real change can hide only
-    if it turned exactly one capture's word into the other's.
+    if it turned exactly one capture's word into the other's. A word is read
+    only where it stands whole, with no letter, digit or underscore against
+    either end: 7115 inside 171154 is part of that number, and a byte count
+    that went from 171154 to 171724 is a difference.
     """
     if first == second:
         return True
@@ -616,7 +779,10 @@ def same_but_for(first: str, second: str, words: list[tuple[str, str]]) -> bool:
             others.setdefault(one, set()).add(two)
     if not others:
         return False
-    splitter = re.compile("|".join(re.escape(one) for one in sorted(others, key=len, reverse=True)))
+    longest_first = sorted(others, key=len, reverse=True)
+    splitter = re.compile(
+        r"(?<![0-9A-Za-z_])(?:" + "|".join(re.escape(one) for one in longest_first) + r")(?![0-9A-Za-z_])"
+    )
     pattern: list[str] = []
     position = 0
     for match in splitter.finditer(first):
@@ -689,9 +855,17 @@ def compare_commands(
 
 
 def compare_files(
-    name: str, first: Path, second: Path, before: dict, after: dict, words: list, limit: int
+    name: str,
+    first: Path,
+    second: Path,
+    before: dict,
+    after: dict,
+    words: list,
+    limit: int,
+    undumped: dict[str, str],
 ) -> list[str]:
-    """Paths, kinds and links for every entry; bytes for a file that is not a database."""
+    """Paths, kinds, modes and links for every entry; bytes for a file that is not a
+    database, and for a database in ``undumped``, whose rows could not be read."""
     found: list[str] = []
     for relative in sorted(set(before) | set(after)):
         where = f"{name}: file {relative}"
@@ -704,6 +878,16 @@ def compare_files(
             continue
         if one["kind"] == LINK and one["target"] != other["target"]:
             found.append(f"{where}: the link to {one['target']} now points to {other['target']}")
+        if one.get("mode") != other.get("mode"):
+            found.append(f"{where}: mode {one.get('mode')} became {other.get('mode')}")
+        if one["kind"] == DATABASE and relative in undumped:
+            # Its rows could not be read on one side at least, so its bytes are.
+            if one["sha256"] != other["sha256"]:
+                found.append(
+                    f"{where}: the database could not be dumped ({undumped[relative]}) "
+                    f"and its bytes differ ({one['size']} bytes and {other['size']})"
+                )
+            continue
         if one["kind"] != FILE or one["sha256"] == other["sha256"]:
             continue
         old = (first / name / TREE / relative).read_bytes()
@@ -737,18 +921,49 @@ def unmatched_rows(old: list[str], new: list[str], words: list) -> tuple[list[st
     return left, come
 
 
+def undumped_databases(before: dict, after: dict) -> dict[str, str]:
+    """The databases either capture could not dump, each with what stopped it."""
+    found: dict[str, str] = {}
+    for dumps in (before, after):
+        for relative, dump in dumps.items():
+            if "tables" not in dump:
+                found.setdefault(relative, str(dump.get("unreadable", "no dump was written")))
+    return found
+
+
+def only_in_one(
+    old: list[str], new: list[str], words: list, limit: int, what: str, noun: str
+) -> list[str]:
+    """The lines for the entries of two sorted lists that only one of them holds."""
+    found: list[str] = []
+    gone, come = unmatched_rows(old, new, words)
+    for rows, which in ((gone, "first"), (come, "second")):
+        if not rows:
+            continue
+        found.append(f"{what}: {len(rows)} {noun} only in the {which} capture")
+        kept = rows if limit <= 0 else rows[:limit]
+        found += [f"    {row}" for row in kept]
+        if len(rows) > len(kept):
+            found.append(f"    ... {len(rows) - len(kept)} more")
+    return found
+
+
 def compare_databases(name: str, before: dict, after: dict, words: list, limit: int) -> list[str]:
+    """Schema, settings and rows of every database both captures dumped."""
     found: list[str] = []
     for relative in sorted(set(before) & set(after)):
         where = f"{name}: database {relative}"
         one, other = before[relative], after[relative]
         if "tables" not in one or "tables" not in other:
-            if one != other:
-                found.append(
-                    f"{where}: could not be dumped alike: {one.get('unreadable', 'read')} "
-                    f"and {other.get('unreadable', 'read')}"
-                )
-            continue
+            continue  # compared by its bytes, in compare_files
+        found += only_in_one(
+            one.get("schema", []), other.get("schema", []), words, limit,
+            f"{where}: schema", "declaration(s)",
+        )
+        for setting in sorted(set(one.get("settings", {})) | set(other.get("settings", {}))):
+            was, now = one.get("settings", {}).get(setting), other.get("settings", {}).get(setting)
+            if was != now:
+                found.append(f"{where}: {setting} {was!r} became {now!r}")
         for table in sorted(set(one["tables"]) | set(other["tables"])):
             old, new = one["tables"].get(table), other["tables"].get(table)
             if old is None or new is None:
@@ -757,17 +972,7 @@ def compare_databases(name: str, before: dict, after: dict, words: list, limit: 
                     f"{'second' if old is None else 'first'} capture"
                 )
                 continue
-            gone, come = unmatched_rows(old, new, words)
-            for rows, which in ((gone, "first"), (come, "second")):
-                if not rows:
-                    continue
-                found.append(
-                    f"{where}: table {table}: {len(rows)} row(s) only in the {which} capture"
-                )
-                kept = rows if limit <= 0 else rows[:limit]
-                found += [f"    {row}" for row in kept]
-                if len(rows) > len(kept):
-                    found.append(f"    ... {len(rows) - len(kept)} more rows")
+            found += only_in_one(old, new, words, limit, f"{where}: table {table}", "row(s)")
     return found
 
 
@@ -797,12 +1002,17 @@ def compare_captures(first: Path, second: Path, *, limit: int = SHOWN_LINES) -> 
         files += len(listed[0])
         databases += len(dumped[0])
         found += compare_commands(name, *ran, words, limit)
-        found += compare_files(name, first, second, *listed, words, limit)
+        found += compare_files(
+            name, first, second, *listed, words, limit, undumped_databases(*dumped)
+        )
         found += compare_databases(name, *dumped, words, limit)
     summary = (
         f"{len(ours & theirs)} scenarios, {commands} commands, {files} files and "
         f"{databases} databases compared: {before['source']} against {after['source']}"
     )
+    for which, manifest in (("first", before), ("second", after)):
+        if manifest.get("only"):
+            summary += f"; the {which} capture is partial, taken with --only {manifest['only']}"
     if before.get("python") != after.get("python"):
         summary += (
             f"; taken with Python {before.get('python')} and {after.get('python')}, and "

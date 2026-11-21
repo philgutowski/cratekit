@@ -213,6 +213,28 @@ def test_one_extra_file_is_reported_and_so_is_one_that_is_gone(tmp_path):
     ]
 
 
+def test_a_private_file_written_world_readable_is_reported(tmp_path, capsys):
+    """The review's finding: 64 files went from 0600 to 0644 and nothing was said."""
+
+    def private(mode: int):
+        def change(world: Path) -> None:
+            (world / "state" / "lock.json").chmod(mode)
+            (world / "state" / "empty").chmod(0o700 if mode == 0o600 else 0o755)
+
+        return change
+
+    first = _capture(tmp_path / "first", change=private(0o600))
+    second = _capture(tmp_path / "second", process=SECOND_PROCESS, change=private(0o644))
+    assert _differences(first, second) == [
+        "write/route: file state/empty: mode 0700 became 0755",
+        "write/route: file state/lock.json: mode 0600 became 0644",
+    ]
+    assert _compare(first, second) == 1
+    assert capsys.readouterr().out.rstrip().endswith("2 difference(s)")
+    again = _capture(tmp_path / "third", process=SECOND_PROCESS, change=private(0o600))
+    assert _differences(first, again) == []
+
+
 def test_an_empty_directory_a_verb_made_is_an_entry_of_its_own(tmp_path):
     first, second = _pair(tmp_path, change=lambda world: (world / "state" / "empty").rmdir())
     assert _differences(first, second) == [
@@ -284,9 +306,164 @@ def test_a_table_in_one_dump_only_is_reported(tmp_path):
 
     first, second = _pair(tmp_path, change=more)
     assert _differences(first, second) == [
+        "write/route: database library/db/master.db: schema: 1 declaration(s) only in the "
+        "second capture",
         "write/route: database library/db/master.db: table playlists is only in the "
-        "second capture"
+        "second capture",
     ]
+
+
+def _rebuilt(statements: list[str]):
+    """A change that builds the world's database again from these statements, same rows."""
+
+    def change(world: Path) -> None:
+        path = world / "library" / "db" / "master.db"
+        path.unlink()
+        connection = sqlite3.connect(path)
+        for statement in statements:
+            connection.execute(statement)
+        connection.executemany(
+            "INSERT INTO tracks VALUES (?, ?)", [(1, "a track"), (2, "another track")]
+        )
+        connection.commit()
+        connection.close()
+
+    return change
+
+
+KEYED = "CREATE TABLE tracks (id INTEGER NOT NULL, title TEXT, PRIMARY KEY (id))"
+INDEXED = "CREATE INDEX tracks_by_title ON tracks (title)"
+
+
+@pytest.mark.parametrize(
+    "base, changed, said",
+    [
+        # A primary key and a NOT NULL dropped: the same rows, another table.
+        (
+            [KEYED],
+            ["CREATE TABLE tracks (id INTEGER, title TEXT)"],
+            ["schema: 1 declaration(s) only in the first capture",
+             "schema: 1 declaration(s) only in the second capture"],
+        ),
+        # An index dropped.
+        ([KEYED, INDEXED], [KEYED], ["schema: 1 declaration(s) only in the first capture"]),
+        # A view and a trigger added.
+        (
+            [KEYED],
+            [KEYED, "CREATE VIEW titles AS SELECT title FROM tracks",
+             "CREATE TRIGGER seen AFTER INSERT ON tracks BEGIN SELECT 1; END"],
+            ["schema: 2 declaration(s) only in the second capture"],
+        ),
+        # A column added to a table: its rows read the same until one is written.
+        (
+            [KEYED],
+            ["CREATE TABLE tracks (id INTEGER NOT NULL, title TEXT, PRIMARY KEY (id))",
+             "CREATE TABLE empty (a INTEGER, b TEXT)"],
+            ["schema: 1 declaration(s) only in the second capture",
+             "table empty is only in the second capture"],
+        ),
+        ([KEYED], [KEYED, "PRAGMA user_version = 3"], ["user_version 0 became 3"]),
+        ([KEYED], [KEYED, "PRAGMA application_id = 7"], ["application_id 0 became 7"]),
+        ([KEYED], ["PRAGMA journal_mode = WAL", KEYED], ["journal_mode 'delete' became 'wal'"]),
+    ],
+)
+def test_a_database_that_holds_the_same_rows_another_way_is_reported(
+    tmp_path, base, changed, said
+):
+    """The review's finding: a dropped key, constraint and index compared as no difference."""
+    first = _capture(tmp_path / "first", change=_rebuilt(base))
+    second = _capture(tmp_path / "second", process=SECOND_PROCESS, change=_rebuilt(changed))
+    assert _differences(first, second) == [
+        f"write/route: database library/db/master.db: {line}" for line in said
+    ]
+    assert _differences(first, _capture(tmp_path / "third", change=_rebuilt(base))) == []
+
+
+TABLE = (
+    'CREATE TABLE "t" (\n\t"ID" VARCHAR(255) NOT NULL, \n\t"Name" VARCHAR(255) DEFAULT \'a, b\','
+    ' \n\tPRIMARY KEY ("ID"), \n\tFOREIGN KEY("Name") REFERENCES "u" ("ID", "Other"),'
+    ' \n\tFOREIGN KEY("ID") REFERENCES "v" ("ID")\n)'
+)
+
+
+def test_a_tables_constraints_are_read_in_one_order_and_its_columns_as_written():
+    """The suite's own database builder writes its foreign keys in an order that changes."""
+    other = TABLE.replace(
+        'FOREIGN KEY("Name") REFERENCES "u" ("ID", "Other"), \n\tFOREIGN KEY("ID") REFERENCES "v" ("ID")',
+        'FOREIGN KEY("ID") REFERENCES "v" ("ID"), \n\tFOREIGN KEY("Name") REFERENCES "u" ("ID", "Other")',
+    )
+    assert other != TABLE
+    canonical = compare.canonical_declaration("table", TABLE)
+    assert canonical == compare.canonical_declaration("table", other)
+    assert canonical == (
+        'CREATE TABLE "t" (\n\t"ID" VARCHAR(255) NOT NULL, \n\t"Name" VARCHAR(255) DEFAULT \'a, b\','
+        ' FOREIGN KEY("ID") REFERENCES "v" ("ID"), FOREIGN KEY("Name") REFERENCES "u" ("ID", "Other"),'
+        ' PRIMARY KEY ("ID"))'
+    )
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        # A constraint dropped, a column's constraint dropped, the columns in another order.
+        TABLE.replace(' \n\tPRIMARY KEY ("ID"),', ""),
+        TABLE.replace(" NOT NULL", ""),
+        TABLE.replace(
+            '"ID" VARCHAR(255) NOT NULL, \n\t"Name" VARCHAR(255) DEFAULT \'a, b\'',
+            '"Name" VARCHAR(255) DEFAULT \'a, b\', \n\t"ID" VARCHAR(255) NOT NULL',
+        ),
+        TABLE.replace('REFERENCES "v" ("ID")', 'REFERENCES "w" ("ID")'),
+    ],
+)
+def test_one_order_for_the_constraints_hides_nothing_else(changed):
+    assert changed != TABLE
+    assert compare.canonical_declaration("table", changed) != compare.canonical_declaration(
+        "table", TABLE
+    )
+
+
+@pytest.mark.parametrize(
+    "kind, sql",
+    [
+        ("index", "CREATE INDEX i ON t (a, b)"),
+        ("table", None),
+        ("table", "CREATE TABLE t (a INTEGER, PRIMARY KEY (a))"),
+        ("table", "CREATE TABLE t (a INTEGER, CHECK (a > 0), UNIQUE (a"),
+        ("table", "CREATE VIRTUAL TABLE t USING fts5"),
+    ],
+)
+def test_a_declaration_that_is_no_table_or_has_one_constraint_or_none_is_left_as_written(
+    kind, sql
+):
+    assert compare.canonical_declaration(kind, sql) == sql
+
+
+def _broken(junk: bytes):
+    def change(world: Path) -> None:
+        (world / "library" / "db" / "master.db").write_bytes(compare.SQLITE_HEADER + junk)
+
+    return change
+
+
+def test_a_database_neither_capture_can_dump_is_compared_by_its_bytes(tmp_path, capsys):
+    """The review's finding: two unreadable databases with one error text compared clean."""
+    first = _capture(tmp_path / "first", change=_broken(b"not pages at all"))
+    same = _capture(tmp_path / "second", process=SECOND_PROCESS, change=_broken(b"not pages at all"))
+    other = _capture(tmp_path / "third", process=SECOND_PROCESS, change=_broken(b"other bytes here"))
+    dump = json.loads((first / "write/route/databases.json").read_text())
+    assert "unreadable" in dump["library/db/master.db"]
+    assert _differences(first, same) == []
+    [found] = _differences(first, other)
+    assert found.startswith(
+        "write/route: file library/db/master.db: the database could not be dumped ("
+    )
+    assert found.endswith("and its bytes differ (32 bytes and 32)")
+    # One side readable and the other not: the bytes differ, and that is said.
+    readable = _capture(tmp_path / "fourth", process=SECOND_PROCESS)
+    [found] = _differences(first, readable)
+    assert "could not be dumped" in found and "its bytes differ" in found
+    assert _compare(first, other) == 1
+    assert capsys.readouterr().out.rstrip().endswith("1 difference(s)")
 
 
 def test_a_database_is_compared_by_its_rows_and_not_by_its_bytes(tmp_path):
@@ -331,12 +508,23 @@ def test_the_dump_reads_rows_still_in_the_wal_and_a_sidecars_bytes_are_not_compa
 
 
 def test_a_file_that_only_ends_like_a_sidecar_is_compared_as_a_file(tmp_path):
-    def stray(world: Path) -> None:
-        (world / "state" / "notes-wal").write_text("x", encoding="utf-8")
+    """Beside nothing, and beside a file that is not a database: its bytes are compared."""
 
-    first = _capture(tmp_path / "first", change=stray)
+    def stray(text: str):
+        def change(world: Path) -> None:
+            (world / "state" / "notes-wal").write_text("x", encoding="utf-8")
+            (world / "state" / "plain").write_text("not a database", encoding="utf-8")
+            (world / "state" / "plain-wal").write_text(text, encoding="utf-8")
+
+        return change
+
+    first = _capture(tmp_path / "first", change=stray("one"))
+    second = _capture(tmp_path / "second", process=SECOND_PROCESS, change=stray("two"))
     listing = json.loads((first / "write/route/files.json").read_text())
     assert listing["state/notes-wal"]["kind"] == "file"
+    assert listing["state/plain-wal"]["kind"] == "file"
+    [found] = _differences(first, second)
+    assert found.startswith("write/route: file state/plain-wal: bytes differ")
 
 
 def test_a_scenario_in_one_capture_only_is_reported(tmp_path):
@@ -395,6 +583,15 @@ WORDS = [("3409", "3467"), ("1795265299.040", "1795265311.350")]
         ("started 1795265299.040", "started 3467", False),
         ("pid 3409\n", "pid 3467", False),
         ("", "", True),
+        # The review's finding: a word inside a longer token is that token.
+        ("wrote 134091 bytes", "wrote 134671 bytes", False),
+        ("sha 9f3409c", "sha 9f3467c", False),
+        ("lock_3409", "lock_3467", False),
+        # Whole, against punctuation, a path or the end of a sentence, it is the word.
+        ("process 3409.", "process 3467.", True),
+        ("/proc/3409/stat", "/proc/3467/stat", True),
+        ('{"pid": 3409, "started": "1795265299.040"}', '{"pid": 3467, "started": "1795265311.350"}', True),
+        ("3409", "3467", True),
     ],
 )
 def test_two_texts_are_the_same_only_where_each_holds_its_own_word(first, second, same):
@@ -492,6 +689,16 @@ def test_two_scenarios_of_one_name_are_refused_rather_than_merged(tmp_path):
         compare.record_scenario(out, "write/route", [], tmp_path / "first" / "world", [])
 
 
+def test_a_partial_capture_says_so_in_what_was_compared(tmp_path):
+    first, second = _pair(tmp_path)
+    manifest = json.loads((second / compare.MANIFEST).read_text())
+    manifest["only"] = "help"
+    (second / compare.MANIFEST).write_text(json.dumps(manifest), encoding="utf-8")
+    _, summary = compare.compare_captures(first, second)
+    assert "the second capture is partial, taken with --only help" in summary
+    assert "first capture is partial" not in summary
+
+
 def test_a_capture_taken_with_another_python_says_so(tmp_path):
     first, second = _pair(tmp_path)
     manifest = json.loads((second / compare.MANIFEST).read_text())
@@ -577,6 +784,53 @@ def test_a_root_a_running_capture_holds_is_refused_and_a_dead_ones_is_taken(tmp_
     assert holder.read_text(encoding="utf-8") == f"{os.getpid()}\n"
 
 
+def test_a_root_that_holds_somebodys_files_is_refused_and_left_alone(tmp_path, capsys, no_run):
+    """The review's finding: a directory named as the root was emptied without a word."""
+    root = tmp_path / "somebodys"
+    root.mkdir()
+    (root / "notes.txt").write_text("kept", encoding="utf-8")
+    assert _capture_main("--out", str(tmp_path / "out"), "--root", str(root)) == 2
+    assert "holds files no capture left there" in capsys.readouterr().err
+    assert (root / "notes.txt").read_text(encoding="utf-8") == "kept"
+    assert not root.with_name("somebodys-holder").exists()
+
+
+def test_a_root_a_capture_left_is_taken_again(tmp_path):
+    """A failed run's marker, or the holder of a capture that died, says whose it is."""
+    marked = tmp_path / "marked"
+    marked.mkdir()
+    (marked / "leftover").write_text("x", encoding="utf-8")
+    (marked / compare.LEFT_BY_A_CAPTURE).write_text("", encoding="utf-8")
+    assert compare.take_root(marked).name == "marked-holder"
+
+    died = tmp_path / "died"
+    died.mkdir()
+    (died / "leftover").write_text("x", encoding="utf-8")
+    gone = subprocess.Popen([sys.executable, "-c", "pass"])
+    gone.wait()
+    died.with_name("died-holder").write_text(f"{gone.pid}\n", encoding="utf-8")
+    assert compare.take_root(died).read_text(encoding="utf-8") == f"{os.getpid()}\n"
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert compare.take_root(empty).name == "empty-holder"
+
+
+def test_a_failed_run_marks_the_root_it_leaves_behind(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "root"
+
+    def failed(command, **_):
+        (root / "test_a_scenario0").mkdir(parents=True)
+        return subprocess.CompletedProcess(command, 1, "1 failed", "")
+
+    monkeypatch.setattr(compare.subprocess, "run", failed)
+    assert _capture_main("--out", str(tmp_path / "out"), "--root", str(root)) == 1
+    assert (root / compare.LEFT_BY_A_CAPTURE).is_file()
+    assert f"is left under {root} for reading" in capsys.readouterr().out
+    # So the next capture may empty it.
+    assert compare.take_root(root).name == "root-holder"
+
+
 def test_a_holder_that_names_no_process_is_taken_over(tmp_path):
     root = tmp_path / "root"
     root.with_name("root-holder").write_text("not a pid", encoding="utf-8")
@@ -615,6 +869,104 @@ def test_a_run_that_failed_after_recording_a_scenario_is_not_a_capture(
     assert "exited 1 with 1 scenarios recorded" in capsys.readouterr().out
     assert not (out / compare.MANIFEST).exists()
     assert _compare(out, out) == 2
+
+
+def _passing_run(out: Path, tmp_path: Path, expected):
+    """A scenario run that exits 0, records one scenario and lists ``expected``."""
+
+    def run(command, **_):
+        if command[0] == "git":  # the manifest's reading of the checkout's commit
+            return subprocess.CompletedProcess(command, 0, b"", b"")
+        compare.record_scenario(out, "write/route", _commands(), _world(tmp_path / "w"), [])
+        if expected is not None:
+            compare.write_json(out / compare.EXPECTED, expected)
+        return subprocess.CompletedProcess(command, 0, "1 passed, 1 skipped", "")
+
+    return run
+
+
+def test_a_scenario_that_ran_and_left_no_record_keeps_the_capture_open(
+    tmp_path, monkeypatch, capsys
+):
+    """The review's finding: a skipped scenario passed the run and the capture closed short."""
+    out = tmp_path / "out"
+    monkeypatch.setattr(
+        compare.subprocess, "run", _passing_run(out, tmp_path, ["write/route", "write/skipped"])
+    )
+    assert _capture_main("--out", str(out), "--root", str(tmp_path / "root")) == 1
+    said = capsys.readouterr().out
+    assert "exited 0 with 1 scenarios recorded; write/skipped ran and left no record" in said
+    assert not (out / compare.MANIFEST).exists()
+
+
+@pytest.mark.parametrize("expected", [None, {"write/route": True}])
+def test_a_run_that_did_not_list_what_it_collected_is_not_a_capture(
+    tmp_path, monkeypatch, capsys, expected
+):
+    """No list, or one that is not a list: the scenarios cannot be counted, which is not all."""
+    out = tmp_path / "out"
+    monkeypatch.setattr(compare.subprocess, "run", _passing_run(out, tmp_path, expected))
+    assert _capture_main("--out", str(out), "--root", str(tmp_path / "root")) == 1
+    assert "every scenario (the run" in capsys.readouterr().out
+    assert not (out / compare.MANIFEST).exists()
+
+
+def test_a_run_that_recorded_everything_it_collected_is_closed(tmp_path, monkeypatch, capsys):
+    out = tmp_path / "out"
+    monkeypatch.setattr(compare.subprocess, "run", _passing_run(out, tmp_path, ["write/route"]))
+    assert _capture_main("--out", str(out), "--root", str(tmp_path / "root")) == 0
+    assert "captured 1 scenarios and 2 commands from the working tree" in capsys.readouterr().out
+    assert json.loads((out / compare.MANIFEST).read_text())["scenarios"] == ["write/route"]
+
+
+def test_the_scenario_run_is_handed_a_clean_environment_and_one_hash_seed(
+    tmp_path, monkeypatch
+):
+    """A capture started inside a parallel worker must not hand its child that worker."""
+    seen = {}
+
+    def run(command, *, env, timeout, **_):
+        seen.update(env=env, timeout=timeout)
+        return subprocess.CompletedProcess(command, 1, "", "")
+
+    monkeypatch.setattr(compare.subprocess, "run", run)
+    monkeypatch.setenv("PYTEST_ADDOPTS", "-x")
+    monkeypatch.setenv("PYTEST_XDIST_WORKER", "gw0")
+    root, out = tmp_path / "root", tmp_path / "out"
+    assert _capture_main("--out", str(out), "--root", str(root), "--timeout", "77") == 1
+    env = seen["env"]
+    assert not {"PYTEST_ADDOPTS", "PYTEST_XDIST_WORKER", "PYTEST_CURRENT_TEST"} & set(env)
+    assert env["PYTHONHASHSEED"] == "0" and env["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert env[compare.ENV_OUT] == str(out)
+    assert env[compare.ENV_SOURCE] == str(compare.source_directory(root.resolve()) / "src")
+    assert seen["timeout"] == 77
+
+
+def test_a_scenario_run_that_never_ends_is_stopped_and_is_no_capture(
+    tmp_path, monkeypatch, capsys
+):
+    """The duration clocks stand still while a scenario runs, so a wait cannot time out alone."""
+
+    def run(command, *, timeout, **_):
+        raise subprocess.TimeoutExpired(command, timeout)
+
+    monkeypatch.setattr(compare.subprocess, "run", run)
+    out = tmp_path / "out"
+    assert _capture_main("--out", str(out), "--root", str(tmp_path / "root"), "--timeout", "5") == 1
+    assert "passed 5 seconds and was stopped" in capsys.readouterr().out
+    assert not (out / compare.MANIFEST).exists()
+    assert not (tmp_path / "root-holder").exists()
+
+
+def test_a_checkout_with_no_scenario_files_is_refused(tmp_path, capsys, no_run):
+    (tmp_path / "checkout" / "tests" / "behaviour").mkdir(parents=True)
+    (tmp_path / "checkout" / "tests" / "behaviour" / "conftest.py").write_text("", encoding="utf-8")
+    code = compare.main(
+        ["behaviour_compare.py", "--repo-root", str(tmp_path / "checkout"), "capture",
+         "--out", str(tmp_path / "out"), "--root", str(tmp_path / "root")]
+    )
+    assert code == 2
+    assert "no scenario files under" in capsys.readouterr().err
 
 
 def test_a_run_that_passes_and_records_nothing_is_not_a_capture(tmp_path, monkeypatch, capsys):
@@ -754,6 +1106,97 @@ def test_a_scenario_that_does_not_take_the_stage_is_refused():
         stage_fixtures.refuse_a_scenario_without_a_stage(["tmp_path", "machine"])
 
 
+WIRED_SCENARIOS = '''
+import pytest
+
+
+def test_takes_the_stage(stage):
+    assert stage.crate("--version").code == 0
+
+
+def test_takes_no_stage():
+    pass
+
+
+@pytest.mark.skip(reason="not today")
+def test_is_skipped(stage):
+    stage.crate("--version")
+
+
+@pytest.mark.xfail(strict=False)
+def test_is_expected_to_fail(stage):
+    stage.crate("--version")
+    assert False
+
+
+def test_fails_after_a_command(stage):
+    stage.crate("--version")
+    assert False
+'''
+
+
+def _wired_run(tmp_path: Path, **env: str) -> subprocess.CompletedProcess:
+    """The stage's fixtures around a scratch scenario file, in a run of their own.
+
+    The file lives outside the repository, so the suite's conftest and the
+    stage's are loaded as plugins by name: the same fixtures, set up in the
+    same order, around scenarios written to trip each refusal.
+    """
+    scenarios = tmp_path / "scenarios"
+    scenarios.mkdir(exist_ok=True)
+    (scenarios / "wired.py").write_text(WIRED_SCENARIOS, encoding="utf-8")
+    environment = {
+        name: value for name, value in os.environ.items() if name not in compare.SCRUBBED_ENV
+    }
+    environment.update({compare.ENV_OUT: str(tmp_path / "out"), **env})
+    return subprocess.run(
+        [sys.executable, "-m", "pytest", str(scenarios / "wired.py"), "-p", "tests.conftest",
+         "-p", "tests.behaviour.conftest", "--basetemp", str(tmp_path / "root"),
+         "-p", "no:cacheprovider", "--tb=line", "-o", "addopts="],
+        capture_output=True, text=True, check=False, cwd=REPO_ROOT, env=environment,
+    )
+
+
+def test_in_a_real_run_only_a_scenario_that_took_the_stage_and_passed_is_recorded(tmp_path):
+    """Each refusal is a function with a test of its own; this holds that the fixtures call them.
+
+    Five scenarios, one of which should record. The one with no stage is
+    refused at set up, the skipped one and the two that fail leave nothing,
+    and the run still lists all five as collected, which is what lets the
+    capture see the four are missing.
+    """
+    done = _wired_run(tmp_path)
+    assert done.returncode == 1, done.stdout[-2000:]
+    assert "would pass and leave no record" in done.stdout
+    out = tmp_path / "out"
+    assert compare.recorded_scenarios(out) == ["wired/takes_the_stage"]
+    assert json.loads((out / compare.EXPECTED).read_text()) == [
+        "wired/takes_the_stage",
+        "wired/takes_no_stage",
+        "wired/is_skipped",
+        "wired/is_expected_to_fail",
+        "wired/fails_after_a_command",
+    ]
+    assert compare.unrecorded(out, compare.recorded_scenarios(out)) == [
+        "wired/fails_after_a_command",
+        "wired/is_expected_to_fail",
+        "wired/is_skipped",
+        "wired/takes_no_stage",
+    ]
+    ran = json.loads((out / "wired/takes_the_stage/commands.json").read_text())
+    assert [one["argv"] for one in ran] == [["--version"]]
+    # The roots it ran under were its own directory's, moved there by the fixture.
+    listed = json.loads((out / "wired/takes_the_stage/files.json").read_text())
+    assert {"home", "config", "state", "library"} <= set(listed)
+
+
+def test_in_a_real_run_a_product_imported_from_elsewhere_stops_every_scenario(tmp_path):
+    done = _wired_run(tmp_path, **{compare.ENV_SOURCE: str(tmp_path / "placed" / "src")})
+    assert done.returncode == 1, done.stdout[-2000:]
+    assert "not from the source the capture placed" in done.stdout
+    assert compare.recorded_scenarios(tmp_path / "out") == []
+
+
 def test_a_stage_refuses_before_it_runs_a_command(tmp_path):
     def refuse() -> None:
         raise compare.Refusal("outside")
@@ -830,6 +1273,44 @@ def test_the_pins_hold_the_clock_and_count_the_ids_and_come_off_again():
     assert again == first, "the nth id of a scenario is not the nth id of the next"
     assert datetime.datetime.now == real_now and uuid.uuid4 is real_uuid4
     assert time.time is real_time
+
+
+def test_a_reference_that_outlives_the_pins_is_the_real_thing_again():
+    """The review's finding: a default argument bound while pinned kept the pinned clock.
+
+    Nothing can reach such a reference to put the real name back, so each
+    pinned name asks whether the pins are on every time it is called.
+    """
+    with pytest.MonkeyPatch.context() as patch:
+        unpin = behaviour.pin(patch)
+
+        def gate(clock=time.time, mint=uuid.uuid4, token=secrets.token_hex):
+            return clock(), mint(), token(4)
+
+        kept_class = datetime.datetime
+        assert gate()[0] == behaviour.INSTANT.timestamp()
+        pinned_ids = gate()[1:]
+        unpin()
+    assert kept_class is behaviour.PinnedDatetime
+    now, minted, token = gate()
+    assert abs(now - time.time()) < 60 and abs(now - behaviour.INSTANT.timestamp()) > 1
+    assert (minted, token) != pinned_ids and gate()[1] != minted
+    real = kept_class.now(datetime.timezone.utc)
+    assert abs((real - datetime.datetime.now(datetime.timezone.utc)).total_seconds()) < 60
+    assert abs((kept_class.utcnow() - real.replace(tzinfo=None)).total_seconds()) < 60
+    assert behaviour.PinnedDate.today() == datetime.date.today()
+
+
+def test_the_pins_go_on_once_at_a_time():
+    with pytest.MonkeyPatch.context() as patch:
+        unpin = behaviour.pin(patch)
+        try:
+            with pytest.raises(RuntimeError, match="already on"):
+                behaviour.pin(patch)
+        finally:
+            unpin()
+    with pytest.MonkeyPatch.context() as patch:
+        behaviour.pin(patch)()
 
 
 def test_the_binding_stamps_a_row_with_the_pinned_instant_and_then_with_the_real_one():
@@ -935,6 +1416,13 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
     assert written["state/cratekit/jobs/queue.db"]["kind"] == "database"
     assert written["library/db/master.db"]["kind"] == "database"
     assert written["config/config.toml"]["kind"] == "file"
+    assert written["state/cratekit/jobs/queue.db"]["mode"] == "0600"
+    queue = json.loads(
+        (captures[0] / "write/guarded_tree_write/databases.json").read_text()
+    )["state/cratekit/jobs/queue.db"]
+    assert queue["settings"]["journal_mode"] == "wal"
+    assert any('"type": "index"' in one for one in queue["schema"])
+    assert sorted(json.loads((captures[0] / compare.EXPECTED).read_text())) == manifest["scenarios"]
     words = [
         json.loads((one / "write/guarded_tree_write/process.json").read_text()) for one in captures
     ]

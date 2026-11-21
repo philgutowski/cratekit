@@ -59,6 +59,21 @@ compare = _load_script()
 _PASSED = pytest.StashKey[bool]()
 
 
+def pytest_collection_finish(session):
+    """Tell the capture which scenarios this run is about to run.
+
+    The capture closes only when each of them left a record, so a scenario
+    that was skipped or expected to fail, neither of which fails a run, is
+    seen to be missing. Written only when a capture asked.
+    """
+    out = os.environ.get(compare.ENV_OUT)
+    if out:
+        compare.write_json(
+            Path(out) / compare.EXPECTED,
+            [behaviour.scenario_name(item.path, item.originalname) for item in session.items],
+        )
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     """Remember whether a scenario's own body passed, for the stage's teardown."""
