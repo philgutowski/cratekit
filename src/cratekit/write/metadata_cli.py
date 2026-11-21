@@ -513,7 +513,7 @@ def mytags_vocals(ctx) -> Envelope:
             # took a capture and opened no record, so after a real apply the
             # only trace of the write was a snapshot directory ``restore list``
             # could not show and the pruning scan did not protect. Attached
-            # before it is judged, for the reason the membership writer gives.
+            # before it is judged, for the reason ``trees.attached_capture`` gives.
             record, capture = trees.attached_capture(gates, cfg, db)
             counts = {"written": 0, "already": 0}
             try:

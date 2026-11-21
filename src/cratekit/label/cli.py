@@ -635,9 +635,9 @@ def queue_warnings() -> tuple[dict[str, str], ...]:
     THE NAME IS SHARED WITH ``cratekit.modules.outbound.shell.queue_warnings``
     ON PURPOSE, and ``docs/METHOD.md`` warns about exactly one symbol meaning two
     things in two modules, so this is the line that says which of the two this
-    is. It is the SAME thing on a second seam, the way ``_load`` and ``_reported``
-    are already spelled once per queueing shell, rather than a second meaning for
-    one word. What differs is only what each one has to look at: the outbound
+    is. It is the SAME thing on a second seam, the way the config load and the
+    job report each have one home every queueing shell calls (U298), rather than a
+    second meaning for one word. What differs is only what each one has to look at: the outbound
     shell also reports the export rows it could not resolve, and a label sweep
     resolves nothing at enqueue by construction (KTD2), so this one asks a single
     question and takes no arguments at all.
