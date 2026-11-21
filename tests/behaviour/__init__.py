@@ -36,6 +36,7 @@ import random
 import secrets
 import sys
 import time
+import types
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -138,9 +139,9 @@ class Counted:
 def pin(patch):
     """Hold the clock at ``INSTANT`` and draw ids from a fresh count, through ``patch``.
 
-    ``patch`` is a ``pytest.MonkeyPatch``, so everything set here is put back
-    when it is undone; the shared ``random`` generator is seeded, and what is
-    returned puts its state back. What is pinned is what Python code reads:
+    ``patch`` is a ``pytest.MonkeyPatch`` of the caller's own, and what is
+    returned takes the pins off again, the seed of the shared ``random``
+    generator included. What is pinned is what Python code reads:
     ``datetime`` and ``date``; ``time.time`` and ``time.time_ns``; the two
     clocks a duration is measured on, ``time.monotonic`` and
     ``time.perf_counter``, which stand still, so every measured duration is
@@ -178,12 +179,33 @@ def pin(patch):
             replacement = pinned.get(id(value))
             if replacement is not None:
                 patch.setattr(module, name, replacement)
+    real = {id(replacement): getattr(module, name) for module, name, replacement in pairs}
     for module, name, replacement in pairs:
         patch.setattr(module, name, replacement)
     pin_binding_stamps(patch)
     state = random.getstate()
     random.seed(0)
-    return lambda: random.setstate(state)
+
+    def unpin() -> None:
+        """Put the real name back wherever a pinned one is held, in any module.
+
+        Undoing the patch is not enough. A module first imported while the
+        pins were on took a pinned name as its own, ``from datetime import
+        datetime`` or ``from uuid import uuid4``, and the patch never set
+        that, so it would not put it back. Left there it would hold every
+        later test in this process at the scenario's instant, and hand the
+        next scenario ids counted on from this one's.
+        """
+        random.setstate(state)
+        for module in list(sys.modules.values()):
+            if not isinstance(module, types.ModuleType) or module.__name__ == __name__:
+                continue
+            for name, value in list(vars(module).items()):
+                original = real.get(id(value))
+                if original is not None:
+                    setattr(module, name, original)
+
+    return unpin
 
 
 def pin_binding_stamps(patch) -> None:
@@ -205,24 +227,6 @@ def pin_binding_stamps(patch) -> None:
                 if default is not None and getattr(default, "is_callable", False):
                     if getattr(default.arg, "__name__", "") == "now":
                         patch.setattr(default, "arg", lambda _context: PinnedDatetime.now())
-
-
-def unpin() -> None:
-    """Put the real clock classes back in any module that imported a pinned one.
-
-    A module first imported while the clock was pinned took the pinned class
-    as its own ``datetime``, and undoing the patch does not reach it, since
-    the patch never set it. Left there it would hold every later test in this
-    process at the scenario's instant.
-    """
-    real = {id(PinnedDatetime): _REAL_DATETIME, id(PinnedDate): _REAL_DATE}
-    for module in list(sys.modules.values()):
-        if module is None or module is sys.modules[__name__]:
-            continue
-        for name, value in list(getattr(module, "__dict__", {}).items()):
-            replacement = real.get(id(value))
-            if replacement is not None:
-                setattr(module, name, replacement)
 
 
 @dataclass(frozen=True)

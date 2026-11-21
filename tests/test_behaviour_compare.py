@@ -401,6 +401,13 @@ def test_two_texts_are_the_same_only_where_each_holds_its_own_word(first, second
     assert compare.same_but_for(first, second, WORDS) is same
 
 
+def test_a_word_that_stands_for_two_things_keeps_both_counterparts():
+    """A process id that is also some file's inode, in the first capture only."""
+    words = [("3409", "3467"), ("3409", "650001")]
+    assert compare.same_but_for("pid 3409, inode 3409", "pid 3467, inode 650001", words) is True
+    assert compare.same_but_for("pid 3409", "pid 3468", words) is False
+
+
 def test_with_no_words_only_equal_texts_are_the_same():
     assert compare.same_but_for("pid 3409", "pid 3409", []) is True
     assert compare.same_but_for("pid 3409", "pid 3467", []) is False
@@ -593,6 +600,23 @@ def test_a_capture_releases_its_root_when_its_run_fails(tmp_path, monkeypatch, c
     assert not compare.source_directory(root).exists()
 
 
+def test_a_run_that_failed_after_recording_a_scenario_is_not_a_capture(
+    tmp_path, monkeypatch, capsys
+):
+    """One scenario recorded, the next failed: what is there must not read as finished."""
+    out = tmp_path / "out"
+
+    def half(command, **_):
+        compare.record_scenario(out, "write/route", _commands(), _world(tmp_path / "w"), [])
+        return subprocess.CompletedProcess(command, 1, "1 failed, 1 passed", "")
+
+    monkeypatch.setattr(compare.subprocess, "run", half)
+    assert _capture_main("--out", str(out), "--root", str(tmp_path / "root")) == 1
+    assert "exited 1 with 1 scenarios recorded" in capsys.readouterr().out
+    assert not (out / compare.MANIFEST).exists()
+    assert _compare(out, out) == 2
+
+
 def test_a_run_that_passes_and_records_nothing_is_not_a_capture(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(
         compare.subprocess,
@@ -724,6 +748,12 @@ def test_a_root_in_another_tests_temporary_directory_is_refused(monkeypatch, tmp
         stage_fixtures.refuse_a_root_outside(scenario)
 
 
+def test_a_scenario_that_does_not_take_the_stage_is_refused():
+    stage_fixtures.refuse_a_scenario_without_a_stage(["tmp_path", "stage"])
+    with pytest.raises(compare.Refusal, match="would pass and leave no record"):
+        stage_fixtures.refuse_a_scenario_without_a_stage(["tmp_path", "machine"])
+
+
 def test_a_stage_refuses_before_it_runs_a_command(tmp_path):
     def refuse() -> None:
         raise compare.Refusal("outside")
@@ -770,7 +800,7 @@ def test_settling_gives_every_file_and_directory_the_pinned_instant(tmp_path):
 def test_the_pins_hold_the_clock_and_count_the_ids_and_come_off_again():
     real_now, real_uuid4, real_time = datetime.datetime.now, uuid.uuid4, time.time
     with pytest.MonkeyPatch.context() as patch:
-        unseed = behaviour.pin(patch)
+        unpin = behaviour.pin(patch)
         try:
             # Read through this module's own name for the class, which the sweep re-pointed.
             now = datetime.datetime.now(datetime.timezone.utc)
@@ -791,12 +821,12 @@ def test_the_pins_hold_the_clock_and_count_the_ids_and_come_off_again():
             assert len(set(ids)) == 5 and ids[0].version == 4
             assert len(secrets.token_hex(8)) == 16 and len(secrets.token_bytes(4)) == 4
         finally:
-            unseed()
+            unpin()
         first = ids
     with pytest.MonkeyPatch.context() as patch:
-        behaviour.pin(patch)()
+        unpin = behaviour.pin(patch)
         again = [uuid.uuid4() for _ in range(3)] + [secrets.token_hex(8), secrets.token_hex(8)]
-    behaviour.unpin()
+        unpin()
     assert again == first, "the nth id of a scenario is not the nth id of the next"
     assert datetime.datetime.now == real_now and uuid.uuid4 is real_uuid4
     assert time.time is real_time
@@ -807,26 +837,30 @@ def test_the_binding_stamps_a_row_with_the_pinned_instant_and_then_with_the_real
 
     column = tables.DjmdContent.__table__.c.updated_at
     with pytest.MonkeyPatch.context() as patch:
-        behaviour.pin(patch)()
+        unpin = behaviour.pin(patch)
         pinned = behaviour.INSTANT.astimezone().replace(tzinfo=None)
         assert column.default.arg(None) == pinned
         assert column.onupdate.arg(None) == pinned
-    behaviour.unpin()
+        unpin()
     assert abs((column.default.arg(None) - datetime.datetime.now()).total_seconds()) < 60
 
 
 def test_a_module_imported_while_pinned_gets_the_real_clock_back(tmp_path, monkeypatch):
     """Undoing the patch does not reach a name a module took while it was set."""
     (tmp_path / "late_import_probe.py").write_text(
-        "from datetime import date, datetime\n", encoding="utf-8"
+        "from datetime import date, datetime\nfrom uuid import uuid4\n", encoding="utf-8"
     )
     monkeypatch.syspath_prepend(str(tmp_path))
+    real_uuid4 = uuid.uuid4
     with pytest.MonkeyPatch.context() as patch:
-        behaviour.pin(patch)()
+        unpin = behaviour.pin(patch)
         probe = importlib.import_module("late_import_probe")
-        assert probe.datetime is behaviour.PinnedDatetime
-    behaviour.unpin()
+        assert probe.datetime is behaviour.PinnedDatetime and probe.uuid4 is not real_uuid4
+        # Left pinned on purpose: the patch is undone here and the probe is not.
+    assert probe.datetime is behaviour.PinnedDatetime
+    unpin()
     assert probe.datetime is behaviour._REAL_DATETIME and probe.date is behaviour._REAL_DATE
+    assert probe.uuid4 is real_uuid4 is uuid.uuid4
     sys.modules.pop("late_import_probe", None)
 
 
@@ -895,6 +929,12 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
     )
     rows = landed["library/db/master.db"]["tables"]["djmdContent"]
     assert sum("One.flac" in row or "Two.flac" in row for row in rows) == 2
+    # The roots moved into the scenario's own directory: the job queue the
+    # verb wrote is in the capture, not in a directory the suite numbered.
+    written = json.loads((captures[0] / "write/guarded_tree_write/files.json").read_text())
+    assert written["state/cratekit/jobs/queue.db"]["kind"] == "database"
+    assert written["library/db/master.db"]["kind"] == "database"
+    assert written["config/config.toml"]["kind"] == "file"
     words = [
         json.loads((one / "write/guarded_tree_write/process.json").read_text()) for one in captures
     ]

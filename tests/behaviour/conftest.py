@@ -89,6 +89,19 @@ def refuse_a_root_outside(scenario_root: Path) -> None:
             )
 
 
+def refuse_a_scenario_without_a_stage(fixturenames) -> None:
+    """Raise for a scenario that does not take the stage.
+
+    Its commands would run past the record, it would pass, and the capture
+    would close without it and say nothing.
+    """
+    if "stage" not in fixturenames:
+        raise compare.Refusal(
+            "a scenario takes the stage fixture and runs its commands through it; one "
+            "that does not would pass and leave no record"
+        )
+
+
 def refuse_another_source() -> None:
     """Raise unless the product was imported from the source the capture placed."""
     import cratekit
@@ -107,12 +120,7 @@ def _scenario_world(request, tmp_path):
     """The roots, the pins and the fixed terminal, for the life of one scenario."""
     from cratekit.core import config
 
-    if "stage" not in request.fixturenames:
-        pytest.fail(
-            "a scenario takes the stage fixture and runs its commands through it; "
-            "one that does not would pass and leave no record",
-            pytrace=False,
-        )
+    refuse_a_scenario_without_a_stage(request.fixturenames)
     refuse_another_source()
     moved = {
         request.getfixturevalue("_isolate_state_roots"): tmp_path,
@@ -134,12 +142,11 @@ def _scenario_world(request, tmp_path):
         patch.setenv("TZ", "UTC")
         time.tzset()
         config.reset_cache()
-        unseed = behaviour.pin(patch)
+        unpin = behaviour.pin(patch)
         try:
             yield
         finally:
-            unseed()
-    behaviour.unpin()
+            unpin()
     time.tzset()
     config.reset_cache()
 

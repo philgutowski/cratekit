@@ -608,16 +608,22 @@ def same_but_for(first: str, second: str, words: list[tuple[str, str]]) -> bool:
     """
     if first == second:
         return True
-    other = {one: two for one, two in words if one and two and one != two}
-    if not other:
+    # One word can stand for two things, a process id that is also some
+    # file's inode, so a word keeps every counterpart it was paired with.
+    others: dict[str, set[str]] = {}
+    for one, two in words:
+        if one and two and one != two:
+            others.setdefault(one, set()).add(two)
+    if not others:
         return False
-    splitter = re.compile("|".join(re.escape(one) for one in sorted(other, key=len, reverse=True)))
+    splitter = re.compile("|".join(re.escape(one) for one in sorted(others, key=len, reverse=True)))
     pattern: list[str] = []
     position = 0
     for match in splitter.finditer(first):
         word = match.group(0)
+        either = "|".join(re.escape(one) for one in (word, *sorted(others[word])))
         pattern.append(re.escape(first[position : match.start()]))
-        pattern.append(f"(?:{re.escape(word)}|{re.escape(other[word])})")
+        pattern.append(f"(?:{either})")
         position = match.end()
     pattern.append(re.escape(first[position:]))
     return re.fullmatch("".join(pattern), second, flags=re.DOTALL) is not None
