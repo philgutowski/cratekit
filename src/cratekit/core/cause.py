@@ -1530,6 +1530,9 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         "remote-not-configured": ExitCode.PRECONDITION,
         "destination-not-configured": ExitCode.PRECONDITION,
         "library-root-absent": ExitCode.LIBRARY_UNAVAILABLE,
+        # R-1761. A root that is there and not proven to be the library.
+        "library-root-foreign": ExitCode.LIBRARY_UNAVAILABLE,
+        "library-root-unproven": ExitCode.LIBRARY_UNAVAILABLE,
         "database-absent": ExitCode.LIBRARY_UNAVAILABLE,
         # DECISION_REQUIRED rather than a failure code, which is the reservation
         # table's own judgement: a restore that has not been confirmed is

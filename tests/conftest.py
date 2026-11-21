@@ -464,6 +464,15 @@ def _block_real_library_paths(request, tmp_path_factory):
         ):
             monkeypatch.setattr(preflight, "assert_library_mounted", lambda *a, **k: None)
 
+        # The backup's identity proof (#893) reads the real volume through the
+        # same gate, so on a machine whose platform reads identities every
+        # fixture library's made up identity would read as a foreign volume. It
+        # answers "proven" here for the reason the assertion above does, and
+        # the tests of the proof itself take the real one back.
+        backup = _module_if_present("cratekit.modules.tools.backup")
+        if backup is not None and hasattr(backup, "_not_the_recorded_volume"):
+            monkeypatch.setattr(backup, "_not_the_recorded_volume", lambda *a, **k: "")
+
         yield library
 
 @pytest.fixture(autouse=True)

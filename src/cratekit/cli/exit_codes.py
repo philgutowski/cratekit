@@ -327,6 +327,34 @@ RESERVATIONS: tuple[Reservation, ...] = (
         ),
     ),
     Reservation(
+        cause="library-root-foreign",
+        code=ExitCode.LIBRARY_UNAVAILABLE,
+        remedy=Remedy.MOUNT_LIBRARY_VOLUME,
+        note=(
+            "The root is a directory on a volume other than the one "
+            "recorded for this library, so mirroring it would empty the remote "
+            "into the archive to match. The same class and fix as the absent "
+            "root above, and its own slug because the root is there"
+        ),
+    ),
+    Reservation(
+        cause="library-root-unproven",
+        code=ExitCode.LIBRARY_UNAVAILABLE,
+        steps=(
+            "mount the library's volume and run the backup again: the folder at "
+            "the library root holds none of the library's files, or under a "
+            "tenth of what the last backup held, which is what an unmounted "
+            "volume leaves",
+            "if the library was emptied on purpose, back it up with "
+            "crate backup run --library-emptied",
+        ),
+        note=(
+            "Steps rather than the mount token, because a library its "
+            "owner emptied has a second way out the token cannot say, and "
+            "nothing in the vocabulary says it"
+        ),
+    ),
+    Reservation(
         cause="rekordbox-running",
         code=ExitCode.REKORDBOX_OPEN,
         remedy=Remedy.QUIT_REKORDBOX,

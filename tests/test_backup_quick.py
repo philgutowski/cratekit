@@ -1028,10 +1028,11 @@ def test_doctor_names_the_last_run_and_the_next_full_check(cfg, real_rclone):
     assert (MOMENT + timedelta(days=7)).date().isoformat() in check.detail, check.detail
 
 
-def test_the_record_module_reads_files_and_writes_only_its_two_records():
+def test_the_record_module_reads_files_and_writes_only_its_three_records():
     """Read off the source, as ``tests/test_analysis_store.py`` reads the backup
     module's: the walk hashes files, analysis files among them, and this module
-    may author nothing but the two records, through the shared atomic writer.
+    may author nothing but its records, through the shared atomic writer: the
+    manifest, the fingerprint and, since R-1761, the census.
 
     Every ``open`` is a binary read, and no call can create, copy, move or
     rename a file under the library.
@@ -1057,7 +1058,7 @@ def test_the_record_module_reads_files_and_writes_only_its_two_records():
             ast.unparse(call)
         )
     writes = [ast.unparse(c) for c in called.get("atomic_write_bytes", [])]
-    assert len(writes) == 2 and all(w.endswith(", path)") for w in writes), writes
+    assert len(writes) == 3 and all(w.endswith(", path)") for w in writes), writes
     assert [ast.unparse(c) for c in called.get("unlink", [])] == ["path.unlink(missing_ok=True)"]
 
 

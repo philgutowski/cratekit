@@ -47,7 +47,11 @@ Every one of these holds, or the pass does not start.
    run `crate backup run` first and read the ages again, as CLAUDE.md's backup
    rule says. Under five days, no backup. A backup over a library that barely
    changed is quick or skipped, and both reset the ages as a full one does;
-   one that fails resets nothing, and the next is a full check.
+   one that fails resets nothing, and the next is a full check. One refused
+   `library-root-unproven` or `library-root-foreign` found no library at the
+   root, most often the volume not mounted, and resets nothing: mount the
+   library's volume and run it again. Never pass `--library-emptied` unless
+   Phillip says he emptied the library on purpose.
 4. **rekordbox is closed.** `crate doctor` reads `rekordbox.closed` as ok.
 
 ## 2. The pass, to its landing gate

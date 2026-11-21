@@ -142,6 +142,8 @@ KEBAB_LITERALS = {
         'library-fingerprint-unreadable',
         'library-paths-majority-unresolved',
         'library-root-absent',
+        'library-root-foreign',  # 2026-11-21, #893
+        'library-root-unproven',  # 2026-11-21, #893
         'library-root-unreachable',
         'library-volume-mismatch',
         'library-volume-unmounted',
