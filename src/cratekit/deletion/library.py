@@ -6,9 +6,12 @@ persists with its path intact, so removals are identified exactly without this
 unit ever creating, editing, or deleting a database row. rekordbox 7.2 deletes
 a row OUTRIGHT on Remove from Collection (A178, A185), which leaves no marker,
 so a row ``crate sync removed`` takes out is read from the session record that
-names it instead, :func:`recorded_removals` (U288); a row a person removes by
-hand in rekordbox is still invisible here (R-1037), though a recorded removal
-of the same row can still stand when a restore put it back in between. Nothing in this module
+names it instead, :func:`recorded_removals` (U288), and a row a person removes
+by hand in rekordbox is read from the native landing's record of the rows it
+made, :func:`landed_absences` (R-1037): a landed row the database no longer
+holds, live or marked. A recorded removal of a row a restore put back can still
+stand. A row no Cratekit record names, a hand import or a row landed before the
+landing named its rows, is invisible here. Nothing in this module
 writes. Nothing in this module can write: it reads mapped rows into frozen values
 and hands those on, so every later stage in the pass operates on data rather than
 on live objects that could be mutated by accident.
@@ -33,7 +36,7 @@ no verb.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
@@ -567,6 +570,91 @@ def _recorded_row(columns: Mapping[str, Any], sequence: int) -> RemovedRow:
     )
 
 
+#: The key a native landing names the rows it made under (R-1037), the
+#: landing's own (``intake.native``), spelled here for the reason the key above
+#: gives and held equal by ``tests/test_delete_landed_removed.py``. Its rows
+#: keep :data:`RECORDED_COLUMNS`, read back after the landing's commit.
+LANDED_ROWS_KEY = "collection_landed"
+
+
+@dataclass(frozen=True, slots=True)
+class LandedAbsence:
+    """One row a landing made that the database no longer holds, before it is numbered.
+
+    ``landed`` is the update count the landing's commit left; of two landings
+    naming one row, the later one's is kept.
+    """
+
+    columns: Mapping[str, Any]
+    landed: int
+
+    def row(self, sequence: int) -> RemovedRow:
+        """The removal, at the sequence its first sighting was given."""
+        return _recorded_row(self.columns, sequence)
+
+
+def landed_absences(
+    details: Iterable[Mapping[str, Any]],
+    *,
+    database_identity: str,
+    present: Iterable[str],
+    playlist_held: Callable[[str], bool],
+) -> dict[str, LandedAbsence]:
+    """Every row a native landing made in THIS database that it holds no longer, by content id.
+
+    ``details`` is each session record's ``detail``. A record of another
+    database offers nothing, as a recorded removal of one does not. ``present``
+    is every content id the database holds, live or marked, and every one a
+    recorded removal already answers for, so one row is one removal. A record
+    with no update count offers nothing, and one row named by two landings
+    keeps the later one.
+
+    A LANDING ROLLED BACK IS NO REMOVAL. Its rows are absent and nobody took
+    them out: the database is from before it, put back by ``restore run``, by
+    a bare metal recovery from an older snapshot, or by a hand copy, the last
+    two leaving no record of their own. The landing's record names the
+    playlists it MADE, and no database from before the landing holds one,
+    while rekordbox's Remove from Collection leaves every playlist row (A178,
+    A185) and Cratekit's own rotation soft deletes one. So a record offers its
+    rows only while the database holds every playlist it made, asked through
+    ``playlist_held``, and a record naming none, a landing into a playlist
+    that was already there, offers nothing: nothing tells its removal from
+    its rollback, and keeping a file is the answer that costs nothing.
+    """
+    held = {str(one) for one in present}
+    found: dict[str, LandedAbsence] = {}
+    for detail in details:
+        landed = detail.get(LANDED_ROWS_KEY) if isinstance(detail, Mapping) else None
+        if not isinstance(landed, Mapping):
+            continue
+        if str(landed.get("database_identity") or "") != str(database_identity):
+            continue
+        sequence = landed.get("sequence")
+        if not isinstance(sequence, int) or isinstance(sequence, bool):
+            continue
+        playlists = landed.get("playlists") or ()
+        if not isinstance(playlists, (list, tuple)) or not playlists:
+            continue
+        if not all(playlist_held(str(one)) for one in playlists):
+            continue
+        for entry in landed.get("rows") or ():
+            columns = entry.get("columns") if isinstance(entry, Mapping) else None
+            if not isinstance(columns, Mapping):
+                continue
+            content_id = _identifier(_Recorded(columns), "ID")
+            if not content_id or content_id in held:
+                continue
+            seen = found.get(content_id)
+            if seen is None or seen.landed < sequence:
+                found[content_id] = LandedAbsence(columns=dict(columns), landed=sequence)
+    return {key: found[key] for key in sorted(found)}
+
+
+def playlist_ids(playlists: Iterable[Any]) -> frozenset[str]:
+    """Every playlist row's id, live or marked: what a landing's record is checked against."""
+    return frozenset(str(getattr(row, "ID", "")) for row in playlists if getattr(row, "ID", None))
+
+
 def recorded_removals(
     details: Iterable[Mapping[str, Any]],
     *,
@@ -616,11 +704,15 @@ __all__ = [
     "VERSION_IS_AN_ARTIST",
     "VERSION_IS_A_DESIGNATION",
     "CollectionRead",
+    "LANDED_ROWS_KEY",
+    "LandedAbsence",
     "RECORDED_COLUMNS",
     "RECORDED_REMOVALS_KEY",
     "RemovedRow",
     "current_sequence",
     "database_identity",
+    "landed_absences",
+    "playlist_ids",
     "playlist_referenced",
     "read_collection",
     "recorded_removals",
