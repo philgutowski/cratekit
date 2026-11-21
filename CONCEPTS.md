@@ -577,7 +577,8 @@ lands; `restore list` reads only the session log.
 exception follows it, since the binding can raise after rows are durable.
 
 ### Rotation floor
-The stamp of the last completed mirror to a destination. Archive folders newer
+The stamp of the last completed files backup to a destination, a skip
+included. Archive folders newer
 than it are **held** (one keep slot); ones at or before it are **settled** and
 rotate out. No floor holds everything.
 
@@ -598,7 +599,8 @@ compares every file, in either listing mode; it is due weekly and on
 (installation state: what the last completed mirror left, path, size, mtime,
 and a hash where the time is racy) and sends only the difference with no
 remote listing. A **skip** found no difference. The database's counterpart is
-a **snapshot** or **unchanged**, by content fingerprint. A record is removed
+a **snapshot** or **unchanged**, by a fingerprint of the database set's content
+and the settings and share folders' sizes and times. A record is removed
 before a transfer and written only after it completes, from two walks that
 agree; an entry they disagree on is a **doubt** that matches nothing.
 

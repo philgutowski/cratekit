@@ -2448,12 +2448,7 @@ def _by_kind(answer) -> str:
     than a kind the record does not hold.
     """
     summary = answer.summary or {}
-    seconds = summary.get("seconds")
-    took = (
-        f" in {seconds:.0f} seconds"
-        if isinstance(seconds, (int, float)) and not isinstance(seconds, bool)
-        else ""
-    )
+    took = backup_facts.took(summary.get("seconds"))
     if answer.kind == backup_facts.KIND_QUICK:
         found = ", ".join(
             f"{summary.get(name, 0)} {name}"

@@ -448,6 +448,18 @@ def full_check_age(cfg: config.Config, *, now: datetime | None = None) -> Portio
     )
 
 
+def took(seconds: object) -> str:
+    """How long a recorded run took, as the words after a verb, or nothing.
+
+    One spelling for the verb's report and doctor, so the two say one thing.
+    """
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
+        return ""
+    if seconds < 1:
+        return " in under a second"
+    return f" in {seconds:.0f} seconds"
+
+
 def full_check_due(answer: PortionAge) -> datetime | None:
     """When the next full check is due, or None when one is due at once.
 
@@ -701,6 +713,7 @@ __all__ = [
     "encode_outcome",
     "full_check_age",
     "full_check_due",
+    "took",
     "full_comparison_age",
     "oldest_usable_age",
     "outcome_path",

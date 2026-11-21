@@ -424,6 +424,9 @@ class PortionPlan:
     #: What a completed run settles its record from: the walk before the
     #: transfer, or the fingerprint before the snapshot. None keeps no record.
     basis: object = field(default=None, compare=False, repr=False)
+    #: The token of the record a skip was proved against, carried onto the
+    #: fact it publishes.
+    record_token: str = ""
 
     @property
     def will_run(self) -> bool:
@@ -883,6 +886,35 @@ def _full_reason(cfg: config.Config, *, now: datetime) -> str:
     return ""
 
 
+#: The summary key under which a files fact carries its record's token (U317).
+RECORD_TOKEN = "record"
+
+
+def _record_unpublished(cfg: config.Config, manifest: backup_record.Manifest) -> str:
+    """Why the library's files fact says another writer reached the mirror.
+
+    THE RECORD IS THIS INSTALLATION'S AND THE MIRROR IS NOT. A second
+    installation of this library, or a build before U317 on this state, mirrors
+    without reading or removing this record, so a run of either that sent or
+    archived files would leave it describing a remote it no longer matches.
+    Each of them publishes a files fact without this record's token, so the
+    fact the library carries is asked: unless it is the one this record was
+    published with, the run is full.
+    """
+    try:
+        fact = backup_facts.read_facts(cfg).get(backup_facts.Portion.FILES)
+    except backup_facts.BackupFactsUnreadable as exc:
+        return f"the record of the last backup's age could not be read: {exc}"
+    held = (fact.summary or {}).get(RECORD_TOKEN) if fact is not None else None
+    if fact is None or not manifest.token or held != manifest.token:
+        return (
+            "the library's backup age was published by a run that did not keep "
+            "this record, another installation or an older build, so the mirror "
+            "may have changed since it was kept"
+        )
+    return ""
+
+
 def _self_written(cfg: config.Config) -> frozenset[str]:
     """The files under the library root the backup itself rewrites after a run.
 
@@ -927,6 +959,8 @@ def _plan_files(
         manifest, why = backup_record.read_manifest()
     if manifest is not None and not why:
         why = backup_record.manifest_mismatch(manifest, cfg, excludes)
+    if manifest is not None and not why:
+        why = _record_unpublished(cfg, manifest)
     trusted = manifest.entries if manifest is not None and not why else {}
     try:
         before = backup_record.walk(
@@ -948,6 +982,7 @@ def _plan_files(
                 detail="nothing changed since the last completed backup",
                 changes=found.counts(),
                 basis=before,
+                record_token=manifest.token if manifest is not None else "",
             )
         uncomposed = backup_record.first_uncomposed(found.paths)
         if len(found.paths) > backup_record.QUICK_LIMIT:
@@ -1018,10 +1053,12 @@ def _quick_commands(
                 feed=backup_record.paths_list(send),
             )
         )
-    if found.rewritten:
+    resend = tuple(sorted((*found.rewritten, *found.doubted)))
+    if resend:
         # THE ONE PLACE A TIME IS IGNORED, and only for files whose size and
-        # time held while their content hash moved. rclone compares size and
-        # time, so without this it would find each one current and send none.
+        # time held while their content hash moved, or whose record was a
+        # doubt. rclone compares size and time, so without this it would find
+        # each one current and send none.
         commands.append(
             Command(
                 label=QUICK_RESEND,
@@ -1030,7 +1067,7 @@ def _quick_commands(
                     "--backup-dir", archive, "--transfers", "8", "--checkers", "16",
                     *MIRROR_STATS_ARGS,
                 ),
-                feed=backup_record.paths_list(found.rewritten),
+                feed=backup_record.paths_list(resend),
             )
         )
     if found.removed:
@@ -1222,7 +1259,9 @@ def _plan_database(
                 ),
                 warnings=tuple(warnings),
             )
-    basis = None if fingerprint is None else (key, fingerprint, fileset, folders)
+    basis = (
+        None if fingerprint is None else (key, fingerprint, fileset, folders, process_lister)
+    )
     for directory in resolved_settings:
         commands.append(
             Command(
@@ -1564,6 +1603,7 @@ def run_backup(
         executed: list[Command] = []
         comparison: Mapping[str, object] | None = None
         quick: list[tuple[Command, CommandResult]] = []
+        marker_failed = False
 
         def recorded(command: Command, _executed: list[Command] = executed) -> CommandResult:
             _executed.append(command)
@@ -1601,6 +1641,20 @@ def run_backup(
                 command = Command(
                     label=command.label, argv=dry_run_argv(command), feed=command.feed
                 )
+            elif command.label == QUICK_ARCHIVE and isinstance(entry.basis, backup_record.Walk):
+                # THE PLAN'S WALK CAN BE MINUTES OLD BY NOW. What it found
+                # removed is archived off the mirror only while the root is
+                # still the volume it walked and every path is still absent,
+                # so a volume unmounted after the plan fails the portion here
+                # rather than emptying the mirror.
+                stale = backup_record.still_removed(
+                    cfg.library.root, entry.basis.root_dev, (command.feed or "").splitlines()
+                )
+                if stale:
+                    failed = CommandResult(
+                        returncode=1, stderr=f"nothing was archived: {stale}"
+                    )
+                    break
             result = recorded(command)
             results.append(result)
             if command.label == MIRROR:
@@ -1611,6 +1665,7 @@ def run_backup(
                 quick.append((command, result))
                 comparison = quick_report(quick)
             if result.returncode != 0 and command.label == SNAPSHOT_IDENTITY:
+                marker_failed = True
                 # THE SECOND CLASS THIS LOOP DOES NOT FAIL ON. By the time the
                 # marker is attempted the whole database set has copied, and
                 # that copy is what the portion is for. Failing here would skip
@@ -1654,9 +1709,15 @@ def run_backup(
             # ONLY AFTER EVERY COMMAND RETURNED ZERO, and only where a record
             # was removed above, so a skip keeps the record it was proved
             # against and a rehearsal touches neither.
-            kept = _settle_record(cfg, entry, at=moment)
+            kept, token = _settle_record(
+                cfg, entry, at=moment, marker_failed=marker_failed
+            )
             if kept is not None:
                 warnings.append(kept)
+        else:
+            # A skip keeps the record it was proved against, and its fact
+            # carries that record's token on, so the next run trusts it still.
+            token = entry.record_token
         seconds = time.monotonic() - started + _walk_seconds(entry)
         if publish:
             backup_facts.record(
@@ -1678,7 +1739,7 @@ def run_backup(
                     and comparison["mode"] in (COMPARISON_FAST, COMPARISON_FULL)
                 ),
                 kind=entry.kind or None,
-                summary=_summary(entry, comparison, seconds),
+                summary=_summary(entry, comparison, seconds, token=token),
             )
         outcomes.append(
             PortionOutcome(
@@ -1713,8 +1774,8 @@ def _walk_seconds(entry: PortionPlan) -> float:
 
 
 def _settle_record(
-    cfg: config.Config, entry: PortionPlan, *, at: datetime
-) -> Mapping[str, str] | None:
+    cfg: config.Config, entry: PortionPlan, *, at: datetime, marker_failed: bool = False
+) -> tuple[Mapping[str, str] | None, str]:
     """Keep the record a completed portion leaves, or say why it was not kept.
 
     THE FILES RECORD IS SETTLED FROM TWO WALKS. The one before the transfer is
@@ -1727,6 +1788,15 @@ def _settle_record(
     Nothing kept is not a failure: the backup exists and its age is true, and
     the next run is full. Each reason is said, so a person whose runs stay slow
     is told why.
+
+    THE SECOND READING OF THE DATABASE IS HELD TO THE RULE THE FIRST WAS: the
+    processes are scanned again first, and with either running or unconfirmed
+    the database is not read and no fingerprint is kept. A snapshot whose
+    identity marker failed keeps none either, so the next run takes a fresh,
+    marked one rather than calling the unmarked one current.
+
+    Returns the warning, or None, and the token the files record was kept
+    under, or an empty string.
     """
     basis = entry.basis
     try:
@@ -1738,16 +1808,22 @@ def _settle_record(
                 hash_paths=[rel for rel, e in basis.entries.items() if e.sha256 is not None],
                 racy_after_ns=basis.racy_after_ns,
             )
+            token = backup_record.new_token()
             backup_record.write_manifest(
-                cfg, excludes, backup_record.settled(basis, after), at=at
+                cfg, excludes, backup_record.settled(basis, after), at=at, token=token
             )
-            return None
+            return None, token
         if isinstance(basis, tuple):
-            key, fingerprint, fileset, folders = basis
-            if backup_record.database_fingerprint(fileset, folders) == fingerprint:
+            key, fingerprint, fileset, folders, lister = basis
+            if marker_failed:
+                why = "the snapshot's identity marker could not be written"
+            elif _not_confirmed_gone(lister):
+                why = "rekordbox was not confirmed gone after the copy"
+            elif backup_record.database_fingerprint(fileset, folders) == fingerprint:
                 backup_record.write_fingerprint(key, fingerprint, at=at)
-                return None
-            why = "the database or a folder beside it changed while it was copied"
+                return None, ""
+            else:
+                why = "the database or a folder beside it changed while it was copied"
         else:
             why = "what it held before the transfer could not be read"
     except (backup_record.WalkRefused, OSError) as exc:
@@ -1759,14 +1835,32 @@ def _settle_record(
             f"run compares against was not kept: {why}. The next backup of it "
             f"is a full one"
         ),
-    }
+    }, ""
+
+
+def _not_confirmed_gone(lister: ProcessLister | None) -> bool:
+    try:
+        return bool(rekordbox_processes_running(lister=lister))
+    except AbsenceUnconfirmed:
+        return True
 
 
 def _summary(
-    entry: PortionPlan, comparison: Mapping[str, object] | None, seconds: float
+    entry: PortionPlan,
+    comparison: Mapping[str, object] | None,
+    seconds: float,
+    *,
+    token: str = "",
 ) -> dict[str, object]:
-    """What a fact records about the run that completed it (U317)."""
+    """What a fact records about the run that completed it (U317).
+
+    ``record`` is the token of the files record this run left, the one thing
+    here a run decides on: a quick run or a skip trusts the record only while
+    the library's files fact still carries it.
+    """
     out: dict[str, object] = {"seconds": round(seconds, 1)}
+    if token:
+        out[RECORD_TOKEN] = token
     if entry.why:
         out["why"] = entry.why
     if entry.changes is not None:
@@ -1808,7 +1902,9 @@ def quick_report(ran: Sequence[tuple[Command, CommandResult]]) -> dict[str, obje
         "sent": total(sending, "sent"),
         "sent_bytes": total(sending, "sent_bytes"),
         "checked": total(sending, "checked"),
-        "archived": total(frozenset({QUICK_ARCHIVE}), "renames"),
+        # A copy's --backup-dir moves what it overwrites into the archive, and
+        # rclone counts each such move as a rename, as it does the archive's.
+        "archived": total(QUICK_LABELS, "renames"),
     }
 
 

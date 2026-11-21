@@ -315,11 +315,7 @@ def _files_sentence(row: dict, rehearsed: bool) -> str:
         for name in ("added", "changed", "rewritten", "removed")
     )
     seconds = row.get("seconds")
-    took = (
-        f" in {seconds:.0f} seconds"
-        if isinstance(seconds, (int, float)) and not isinstance(seconds, bool)
-        else ""
-    )
+    took = backup_facts.took(seconds)
     if kind == backup_facts.KIND_SKIPPED:
         return (
             f"the files are what the last completed backup left, checked{took} "
@@ -396,7 +392,7 @@ def comparison_warning(outcomes) -> tuple[dict[str, str], ...]:
     other = (
         "The full mode is: crate backup run --full"
         if mode == backup.COMPARISON_FAST
-        else "The fast mode is: crate backup run"
+        else "The fast mode is: crate backup run --check"
     )
     return (
         {
@@ -584,9 +580,11 @@ def build(parser, entry) -> None:
         dest="check",
         help=(
             "run the full check now: list the remote, compare every file, and "
-            "snapshot the database. Without it a backup runs one when the last "
-            "is a week old, and otherwise sends only what changed since the last "
-            "backup, or is skipped when nothing did"
+            "snapshot the database whether or not it changed. Without it a "
+            "backup lists the remote only when the last full check is a week "
+            "old, and otherwise sends only what changed since the last backup, "
+            "snapshots the database only if it changed, or is skipped when "
+            "nothing did"
         ),
     )
     parser.add_argument(
@@ -802,8 +800,9 @@ def _already_queued(
             else (backup.COMPARISON_FULL, backup.COMPARISON_FAST)
         )
         where += (
-            f". It will run the {held} comparison and this ask was for the "
-            f"{asked} one, so cancel it first if that is the one wanted"
+            f". It will run the {held} comparison if it runs a full check, and "
+            f"this ask was for the {asked} one, so cancel it first if that is "
+            f"the one wanted"
         )
     elif asked_check and not _is_check(job):
         # U317. The open job runs a full check only if one is due, so a person

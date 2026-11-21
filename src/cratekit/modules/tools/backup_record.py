@@ -58,6 +58,8 @@ import re
 import stat
 import time
 import unicodedata
+import uuid
+import zlib
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -129,6 +131,10 @@ class Walk:
     #: Files modified at or after this instant were hashed.
     racy_after_ns: int
     seconds: float
+    #: The device the library root was on throughout the walk. A quick run's
+    #: archive is held to it, so a volume unmounted after the plan is not read
+    #: as every file on it removed.
+    root_dev: int = -1
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +148,12 @@ class Manifest:
     excludes: tuple[str, ...]
     written_at: str
     entries: Mapping[str, Entry]
+    #: A token this record was kept under, which the files fact published with
+    #: it carries too. The mirror has other writers, a second installation or a
+    #: build before U317 on the same state, and each publishes a files fact
+    #: without this token, so a record whose token the library's fact no longer
+    #: carries is not trusted.
+    token: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,10 +174,14 @@ class Difference:
     rewritten: tuple[str, ...] = ()
     removed: tuple[str, ...] = ()
     self_written: frozenset[str] = field(default_factory=frozenset)
+    #: Present paths the record held as a DOUBT. They are sent with the times
+    #: ignored, because what made them a doubt may be a rewrite that kept its
+    #: size and time, which a comparison of size and time would never send.
+    doubted: tuple[str, ...] = ()
 
     @property
     def paths(self) -> tuple[str, ...]:
-        return (*self.added, *self.changed, *self.rewritten, *self.removed)
+        return (*self.added, *self.changed, *self.doubted, *self.rewritten, *self.removed)
 
     @property
     def anything(self) -> bool:
@@ -185,7 +201,7 @@ class Difference:
 
         return {
             "added": counted(self.added),
-            "changed": counted(self.changed),
+            "changed": counted(self.changed) + counted(self.doubted),
             "rewritten": counted(self.rewritten),
             "removed": counted(self.removed),
         }
@@ -319,6 +335,7 @@ def walk(
     started = time.monotonic()
     if racy_after_ns is None:
         racy_after_ns = clock_ns() - RACY_SECONDS * 1_000_000_000
+    root_dev = _device(root)
     matcher = _excludes(excludes)
     must_hash = frozenset(hash_paths)
     entries: dict[str, Entry] = {}
@@ -328,9 +345,15 @@ def walk(
         try:
             listing = list(os.scandir(directory))
         except FileNotFoundError:
-            if not prefix:
-                raise WalkRefused(f"the library root {root} is not there") from None
-            continue
+            # NOT ABSENCE. A folder listed a moment ago and gone now is a folder
+            # renamed under the walk or a volume unmounted under it, and read as
+            # absence its files would be archived off the mirror. The full run
+            # this refusal makes meets the same state through rclone, which
+            # refuses to delete over a directory it cannot read.
+            raise WalkRefused(
+                f"{directory} was listed and then was not there, so the walk did "
+                f"not see the whole library"
+            ) from None
         except OSError as exc:
             raise WalkRefused(f"{directory} could not be listed: {exc}") from exc
         for item in listing:
@@ -359,7 +382,48 @@ def walk(
                 except OSError as exc:
                     raise WalkRefused(f"{item.path} could not be read: {exc}") from exc
             entries[rel] = Entry(size=status.st_size, mtime_ns=status.st_mtime_ns, sha256=digest)
-    return Walk(entries=entries, racy_after_ns=racy_after_ns, seconds=time.monotonic() - started)
+    if _device(root) != root_dev:
+        raise WalkRefused(f"the library root {root} changed volume while it was walked")
+    return Walk(
+        entries=entries,
+        racy_after_ns=racy_after_ns,
+        seconds=time.monotonic() - started,
+        root_dev=root_dev,
+    )
+
+
+def _device(root: Path) -> int:
+    try:
+        return os.stat(root).st_dev
+    except FileNotFoundError:
+        raise WalkRefused(f"the library root {root} is not there") from None
+    except OSError as exc:
+        raise WalkRefused(f"the library root {root} could not be read: {exc}") from exc
+
+
+def still_removed(root: Path, root_dev: int, paths: Sequence[str]) -> str:
+    """Why a quick run must not archive ``paths`` now, or an empty string.
+
+    Asked just before the archive runs, because the plan's walk can be minutes
+    old by then: the root must still be the volume the walk read, and every
+    path the walk found removed must still be absent. A path that came back is
+    not to be archived off the mirror, and a root on another volume, or gone,
+    is a library nobody walked.
+    """
+    try:
+        if os.stat(root).st_dev != root_dev:
+            return f"the library root {root} is on another volume than the one walked"
+    except OSError as exc:
+        return f"the library root {root} could not be read before the archive: {exc}"
+    for rel in paths:
+        try:
+            os.lstat(root / rel)
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            return f"{rel} could not be read before the archive: {exc}"
+        return f"{rel} was found removed by the walk and is there again"
+    return ""
 
 
 def difference(
@@ -369,10 +433,13 @@ def difference(
     added: list[str] = []
     changed: list[str] = []
     rewritten: list[str] = []
+    doubted: list[str] = []
     for rel, now in walked.items():
         was = recorded.get(rel)
         if was is None:
             added.append(rel)
+        elif was == DOUBT:
+            doubted.append(rel)
         elif was.size != now.size or was.mtime_ns != now.mtime_ns:
             changed.append(rel)
         elif was.sha256 is not None and was.sha256 != now.sha256:
@@ -384,6 +451,7 @@ def difference(
         rewritten=tuple(sorted(rewritten)),
         removed=tuple(sorted(removed)),
         self_written=frozenset(self_written),
+        doubted=tuple(sorted(doubted)),
     )
 
 
@@ -464,8 +532,14 @@ def read_manifest() -> tuple[Manifest | None, str]:
             excludes=tuple(str(p) for p in data["excludes"]),
             written_at=str(data["written_at"]),
             entries=entries,
+            token=str(data["token"]),
         )
-    except (OSError, EOFError, ValueError, KeyError, TypeError, IndexError) as exc:
+    except (
+        OSError, EOFError, ValueError, KeyError, TypeError, IndexError,
+        AttributeError, zlib.error,
+    ) as exc:
+        # Every way a damaged file fails to parse, the compressed stream's own
+        # error included: whatever is wrong, the answer is a full run.
         return None, f"the record of the last backup is damaged: {exc}"
     return manifest, ""
 
@@ -485,10 +559,20 @@ def manifest_mismatch(manifest: Manifest, cfg: config.Config, excludes: Sequence
     return ""
 
 
+def new_token() -> str:
+    return uuid.uuid4().hex
+
+
 def write_manifest(
-    cfg: config.Config, excludes: Sequence[str], entries: Mapping[str, Entry], *, at: datetime
+    cfg: config.Config,
+    excludes: Sequence[str],
+    entries: Mapping[str, Entry],
+    *,
+    at: datetime,
+    token: str,
 ) -> Path:
     payload = {
+        "token": token,
         "schema_version": SCHEMA_VERSION,
         "library_root": str(cfg.library.root),
         "volume_id": cfg.library.volume_id,
@@ -611,10 +695,12 @@ __all__ = [
     "invalidate",
     "manifest_mismatch",
     "manifest_path",
+    "new_token",
     "paths_list",
     "read_fingerprint",
     "read_manifest",
     "settled",
+    "still_removed",
     "walk",
     "write_fingerprint",
     "write_manifest",

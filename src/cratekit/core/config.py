@@ -1106,10 +1106,12 @@ STATE_FILES: tuple[StateFile, ...] = (
             "library state: the library's state folder is inside the mirrored "
             "tree, so a record kept there would change the tree each time it was "
             "written and no run could skip. It names the library, the mirror and "
-            "the exclude set it was kept for, and a record for any other is not "
-            "trusted, so a second installation or a reconfigured remote costs "
-            "one full run and never a wrong skip. NEVER_RESTORED: it describes "
-            "the remote, which a restore does not roll back."
+            "the exclude set it was kept for, and carries a token the library's "
+            "files fact is published with, so a record for any other library or "
+            "remote, or one a second installation or an older build has since "
+            "backed up past, is not trusted: either costs one full run and never "
+            "a wrong skip. NEVER_RESTORED: it describes the remote, which a "
+            "restore does not roll back."
         ),
     ),
     StateFile(

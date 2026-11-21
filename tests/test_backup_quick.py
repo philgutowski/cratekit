@@ -355,6 +355,45 @@ def test_a_database_change_only_takes_a_snapshot_and_skips_the_files(
     assert _portion(again, DATABASE).kind == backup_facts.KIND_UNCHANGED
 
 
+def test_a_snapshot_whose_marker_failed_is_taken_again_next_time(cfg, real_rclone):
+    """Round one's R2: an unmarked snapshot is not the one a restore takes."""
+    _seed(cfg)
+    _backup(cfg, at=MOMENT, runner=Counting(fail=backup.SNAPSHOT_IDENTITY))
+    assert not backup_record.fingerprint_path().exists()
+    plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=1), only=DATABASE, settings_dirs=())
+    assert plan.portion(DATABASE).kind == backup_facts.KIND_SNAPSHOT
+
+
+def test_the_second_reading_of_the_database_waits_on_a_second_scan(cfg, real_rclone):
+    """Round one's R4: rekordbox started while the snapshot copied."""
+    _seed(cfg)
+    started = {"yes": False}
+
+    class Starting(Counting):
+        def __call__(self, command):
+            if command.label == backup.SNAPSHOT_DATABASE:
+                started["yes"] = True
+            return super().__call__(command)
+
+    hashed: list[Path] = []
+    real_hash = backup_record._hash  # noqa: SLF001
+    plan = backup.plan_backup(
+        cfg, now=MOMENT, only=DATABASE, settings_dirs=(),
+        process_lister=lambda: ("rekordboxAgent",) if started["yes"] else (),
+    )
+    import unittest.mock
+
+    with unittest.mock.patch.object(
+        backup_record, "_hash", lambda path: hashed.append(path) or real_hash(path)
+    ):
+        outcome = backup.run_backup(cfg, plan, runner=Starting(), now=MOMENT)
+    database = _portion(outcome, DATABASE)
+    assert database.ran
+    assert hashed == [], "the database was read again with rekordbox running"
+    assert not backup_record.fingerprint_path().exists()
+    assert any(w["code"] == backup.BACKUP_RECORD_NOT_KEPT for w in database.warnings)
+
+
 def test_a_sidecar_that_appeared_is_a_changed_database(cfg, real_rclone):
     _seed(cfg)
     _backup(cfg, at=MOMENT)
@@ -425,13 +464,26 @@ def _damage(how: str, cfg) -> None:
             data["excludes"] = data["excludes"][1:]
         elif how == "a damaged entry":
             data["entries"]["Music/kept.flac"] = ["big", 0, None]
+        elif how == "another library root":
+            data["library_root"] = "/elsewhere"
+        elif how == "another archive root":
+            data["archive_root"] = "elsewhere:archive"
+        elif how == "entries not a table":
+            data["entries"] = [1]
+        elif how == "no token":
+            del data["token"]
         path.write_bytes(gzip.compress(json.dumps(data).encode()))
+        if how == "a flipped byte":
+            raw = bytearray(path.read_bytes())
+            raw[len(raw) // 2] ^= 0xFF
+            path.write_bytes(bytes(raw))
 
 
 @pytest.mark.parametrize(
     "how",
     ["missing", "corrupt", "older", "another remote", "another volume", "other excludes",
-     "a damaged entry"],
+     "a damaged entry", "another library root", "another archive root",
+     "entries not a table", "no token", "a flipped byte"],
 )
 def test_a_record_missing_damaged_or_kept_for_another_backup_makes_a_full_run(
     cfg, real_rclone, how
@@ -446,6 +498,49 @@ def test_a_record_missing_damaged_or_kept_for_another_backup_makes_a_full_run(
     assert files.kind == backup_facts.KIND_FULL and files.why, files
     assert backup.MIRROR in runner.labels()
     assert backup_record.read_manifest()[0] is not None, "the full run kept no record"
+
+
+def test_a_run_by_another_installation_makes_the_next_run_full(cfg, real_rclone, tmp_path, monkeypatch):
+    """Round one's B1: the mirror has writers that do not keep this record.
+
+    A second installation backs up after a file was removed, archiving it off
+    the mirror, and the file is then put back. This installation's record still
+    holds it, so trusting the record would skip over a remote that lacks it.
+    """
+    music = _seed(cfg)
+    _backup(cfg, at=MOMENT)
+    mine = os.environ["CRATEKIT_STATE_DIR"]
+
+    (music / "removed.flac").unlink()
+    monkeypatch.setenv("CRATEKIT_STATE_DIR", str(tmp_path / "second-installation"))
+    _backup(cfg, at=MOMENT + timedelta(hours=1))
+    monkeypatch.setenv("CRATEKIT_STATE_DIR", mine)
+    _write(music / "removed.flac", b"removed, generation one")
+
+    _, outcome = _backup(cfg, at=MOMENT + timedelta(hours=2))
+    files = _portion(outcome, FILES)
+    assert files.kind == backup_facts.KIND_FULL and "another installation" in files.why
+    assert _mirrored(cfg, tmp_path) == _library_as_mirrored(cfg)
+
+
+def test_a_fact_published_by_a_build_before_u317_makes_the_next_run_full(cfg, real_rclone):
+    _seed(cfg)
+    _backup(cfg, at=MOMENT)
+    backup_facts.record(
+        cfg, FILES, completed_at=MOMENT + timedelta(hours=1), destination=str(cfg.backup.dest)
+    )
+    plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=2), only=FILES, settings_dirs=())
+    assert plan.portion(FILES).kind == backup_facts.KIND_FULL
+
+
+def test_a_skip_carries_the_record_on_so_the_run_after_it_trusts_it(cfg, real_rclone):
+    music = _seed(cfg)
+    _backup(cfg, at=MOMENT)
+    _, skipped = _backup(cfg, at=MOMENT + timedelta(hours=1))
+    assert _portion(skipped, FILES).kind == backup_facts.KIND_SKIPPED
+    _write(music / "added.flac", b"added")
+    plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=2), only=FILES, settings_dirs=())
+    assert plan.portion(FILES).kind == backup_facts.KIND_QUICK
 
 
 def test_the_last_full_check_eight_days_old_makes_a_full_run(cfg, real_rclone):
@@ -564,8 +659,36 @@ def test_a_file_changed_while_the_transfer_ran_is_sent_again(cfg, real_rclone, t
 
     runner = Counting()
     _backup(cfg, at=MOMENT + timedelta(hours=2), runner=runner)
-    assert runner.fed(backup.QUICK_SEND) == ["Music/kept.flac"]
+    assert runner.fed(backup.QUICK_RESEND) == ["Music/kept.flac"], (
+        "a doubt is resent with the times ignored, since a rewrite that kept its "
+        "size and time would otherwise never be sent"
+    )
     assert _mirrored(cfg, tmp_path)["Music/kept.flac"] == b"kept, rewritten mid run"
+
+
+def test_a_doubt_rewritten_keeping_its_size_and_time_is_still_sent(cfg, real_rclone, tmp_path):
+    """Round one's R1: the rewrite during the transfer put its time back.
+
+    The file was just added, so its time is inside the racy window and both
+    walks hash it; the hashes disagree, and the doubt that leaves must be sent
+    with the times ignored. A file outside the window rewritten this way is
+    invisible to any comparison of size and time, the full sync's included.
+    """
+    music = _seed(cfg)
+    _backup(cfg, at=MOMENT)
+    fresh = datetime.fromtimestamp(time.time(), tz=timezone.utc)
+    _write(music / "added.flac", b"take one", at=fresh)
+
+    class Meddling(Counting):
+        def __call__(self, command):
+            result = super().__call__(command)
+            if command.label == backup.QUICK_SEND:
+                _write(music / "added.flac", b"take two", at=fresh)
+            return result
+
+    _backup(cfg, at=MOMENT + timedelta(hours=1), runner=Meddling())
+    _backup(cfg, at=MOMENT + timedelta(hours=2))
+    assert _mirrored(cfg, tmp_path)["Music/added.flac"] == b"take two"
 
 
 # ---------------------------------------------------------------------------
@@ -596,6 +719,54 @@ def test_a_folder_that_cannot_be_listed_makes_a_full_run_and_never_an_archive(
     files = plan.portion(FILES)
     assert files.kind == backup_facts.KIND_FULL and "could not be listed" in files.why
     assert backup.QUICK_ARCHIVE not in [c.label for c in files.commands]
+
+
+def test_a_folder_gone_between_being_listed_and_being_read_makes_a_full_run(
+    cfg, real_rclone, monkeypatch
+):
+    """Round one's B2: a volume unmounted under the walk is not every file on it removed."""
+    music = _seed(cfg)
+    _write(music / "Crate" / "deep.flac", b"deep")
+    _backup(cfg, at=MOMENT)
+    real = os.scandir
+
+    def scandir(path):
+        if Path(path).name == "Crate":
+            raise FileNotFoundError(path)
+        return real(path)
+
+    monkeypatch.setattr(backup_record.os, "scandir", scandir)
+    plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=1), only=FILES, settings_dirs=())
+    files = plan.portion(FILES)
+    assert files.kind == backup_facts.KIND_FULL and "was listed and then was not there" in files.why
+
+
+@pytest.mark.parametrize("after_the_plan", ["the path came back", "the root went away"])
+def test_a_removal_is_archived_only_while_the_walk_still_holds(
+    cfg, real_rclone, tmp_path, after_the_plan
+):
+    """Round one's B2, the plan to run half: the archive is asked again first."""
+    music = _seed(cfg)
+    _backup(cfg, at=MOMENT)
+    (music / "removed.flac").unlink()
+    later = MOMENT + timedelta(hours=1)
+    plan = backup.plan_backup(cfg, now=later, only=FILES, settings_dirs=())
+    assert plan.portion(FILES).kind == backup_facts.KIND_QUICK
+    root = cfg.library.root
+    if after_the_plan == "the path came back":
+        _write(music / "removed.flac", b"removed, generation one")
+    else:
+        root.rename(root.with_name("library-unmounted"))
+
+    runner = Counting()
+    outcome = backup.run_backup(cfg, plan, runner=runner, now=later)
+    files = _portion(outcome, FILES)
+    assert files.ran is False and "nothing was archived" in files.detail, files
+    assert backup.QUICK_ARCHIVE not in runner.labels()
+    assert "Music/removed.flac" in _mirrored(cfg, tmp_path)
+    if after_the_plan == "the root went away":
+        root.with_name("library-unmounted").rename(root)
+    assert _ages(cfg, later)["files"] == timedelta(hours=1)
 
 
 def test_an_excluded_system_folder_that_cannot_be_listed_is_never_entered(
@@ -778,7 +949,9 @@ def test_the_record_module_reads_files_and_writes_only_its_two_records():
     source = Path(backup_record.__file__).read_text()
     authoring = {
         "write_bytes", "write_text", "touch", "copy", "copy2", "copyfile",
-        "copytree", "move", "replace", "rename", "mkdir", "rmtree",
+        "copytree", "move", "replace", "rename", "mkdir", "rmtree", "chmod",
+        "chown", "remove", "rmdir", "removedirs", "symlink_to", "hardlink_to",
+        "link", "symlink", "utime", "truncate", "makedirs",
     }
     called: dict[str, list[ast.Call]] = {}
     for node in ast.walk(ast.parse(source)):

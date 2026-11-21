@@ -1229,7 +1229,10 @@ long it took and when the next full check is due:
   modification time, as every backup did before. It runs when the last one is
   seven days old, when Cratekit has no trustworthy record of what the last
   backup left (the first run, after a failed or interrupted one, or after the
-  library, mirror or excludes changed), when a folder cannot be read, or when
+  library, mirror or excludes changed, or another installation or an older
+  Cratekit backed the library up since), when a folder cannot be read or
+  vanishes while it is read, when more than 10,000 paths changed, when a
+  changed name is in decomposed Unicode form or holds a line break, or when
   asked with `--check`. `--full` is a full check that lists the remote folder
   by folder (most of an hour, independent of the recursive listing), and
   doctor's `backup.full_comparison` asks for one every thirty days.

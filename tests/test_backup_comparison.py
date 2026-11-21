@@ -818,7 +818,7 @@ def test_the_sentence_never_prints_an_unread_number_as_zero():
     assert unread["message"].count("an unread number of files") == 2, unread
     assert "an unread number of seconds" in unread["message"], unread
     assert " 0 " not in unread["message"], unread
-    assert unread["message"].endswith("crate backup run"), unread
+    assert unread["message"].endswith("crate backup run --check"), unread
 
     for unknown in (None, "quick", 7):
         assert backup_cli.comparison_warning(outcomes({"mode": unknown, "sent": 1})) == (), (
