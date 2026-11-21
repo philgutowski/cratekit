@@ -616,7 +616,7 @@ def _install(crate: Path, at: tuple[int, int]) -> tuple[Path, Path, dict[str, st
     env = environment(crate)
     payload = plistlib.dumps(agent(crate, at, log, env), sort_keys=True)
     try:
-        config._mkdir_private(log.parent)
+        config.mkdir_private(log.parent)
         target.parent.mkdir(parents=True, exist_ok=True)
         config.atomic_write_bytes(payload, target, mode=PLIST_MODE)
     except OSError as exc:

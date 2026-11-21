@@ -433,7 +433,7 @@ class Ledger:
     corrupt counter must not lock recognition out; a ledger that cannot be
     LOCKED or WRITTEN raises, because a call that was made and not counted is
     exactly the drift the counter exists to prevent. The lock is
-    ``config._exclusive_lock``, which refuses rather than proceeding unlocked,
+    ``config.exclusive_lock``, which refuses rather than proceeding unlocked,
     and the write is ``config.atomic_write_bytes``, which fsyncs before the
     rename; both are the properties the outbound ledger already stands on.
 
@@ -471,9 +471,9 @@ class Ledger:
         if calls <= 0:
             return self.used(month)
         key = month or current_month()
-        config._mkdir_private(self.lock_path.parent)
-        config._mkdir_private(self.path.parent)
-        with config._exclusive_lock(self.lock_path):
+        config.mkdir_private(self.lock_path.parent)
+        config.mkdir_private(self.path.parent)
+        with config.exclusive_lock(self.lock_path):
             counts = self._read()
             counts[key] = counts.get(key, 0) + calls
             payload = json.dumps(counts, indent=2, sort_keys=True) + "\n"
@@ -807,7 +807,7 @@ class RecognitionCache:
     def write(self, plan: ChunkPlan, answers: Mapping[int, Mapping[str, Any]]) -> None:
         """Lay ``answers`` over what is already kept for ``plan``, under its lock."""
         path = self.path_for(plan)
-        with config._exclusive_lock(path.with_suffix(".lock")):
+        with config.exclusive_lock(path.with_suffix(".lock")):
             merged = {**self.read(plan), **answers}
             document = {
                 "version": CACHE_VERSION,

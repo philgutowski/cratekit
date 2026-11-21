@@ -294,7 +294,7 @@ def fetched(cfg: config.Config) -> dict[str, dict[str, Any]]:
 def record_fetched(cfg: config.Config, item_id: str, entry: Mapping[str, Any]) -> None:
     """Add one purchase to the record, under its lock, read again inside it."""
     path = config.state_path("bandcamp_fetched", cfg)
-    lock = config._exclusive_lock(config.state_path("bandcamp_fetched_lock", cfg))
+    lock = config.exclusive_lock(config.state_path("bandcamp_fetched_lock", cfg))
     try:
         lock.__enter__()
     except config.ConfigLockUnavailable as exc:
@@ -1148,7 +1148,7 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
     }
     marker = cfg.naming.lossy_marker or ""
     target = root / batch
-    config._mkdir_private(target)
+    config.mkdir_private(target)
     staged: list[str] = []
     held: list[str] = []
     refused: dict[str, Path] = {}

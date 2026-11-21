@@ -353,7 +353,7 @@ def test_update_reads_the_document_after_it_holds_the_lock(configured, monkeypat
     elsewhere = str(tmp_path / "elsewhere")
     moved = dict(document_for(configured.library.root))
     moved["paths"] = {"download_staging": elsewhere}
-    original_enter = config._exclusive_lock.__enter__
+    original_enter = config.exclusive_lock.__enter__
 
     def another_process_finished_while_we_waited(self):
         acquired = original_enter(self)
@@ -363,7 +363,7 @@ def test_update_reads_the_document_after_it_holds_the_lock(configured, monkeypat
         return acquired
 
     monkeypatch.setattr(
-        config._exclusive_lock, "__enter__", another_process_finished_while_we_waited
+        config.exclusive_lock, "__enter__", another_process_finished_while_we_waited
     )
     seen: list[str] = []
 

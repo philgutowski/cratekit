@@ -392,7 +392,7 @@ def staging_dir(final: Path, job_id: str, ordinal: int) -> Path:
     directory = final.parent / MASTER_STAGING_DIRNAME / job_id / str(ordinal)
     if directory.exists():
         shutil.rmtree(directory)
-    config._mkdir_private(directory)
+    config.mkdir_private(directory)
     return directory
 
 

@@ -770,7 +770,7 @@ def apply(cfg: config.Config, declared: Any, approved: ParityPlan) -> Applied:
             except BaseException:
                 from cratekit.write import trees
 
-                trees._rollback_quietly(db)
+                trees.rollback_quietly(db)
                 if witness.landed and wrote:
                     _record_parity_commit(record, wrote, approved, cfg)
                 raise

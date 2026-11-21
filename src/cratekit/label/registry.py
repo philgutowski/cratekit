@@ -624,7 +624,7 @@ class RegistryStore:
         not free even when the entries are equal: ``recognize`` drops a record it
         cannot read, so saving what it loaded discards that record from the file.
         """
-        lock = config._exclusive_lock(self.lock_path)
+        lock = config.exclusive_lock(self.lock_path)
         try:
             lock.__enter__()
         except config.ConfigLockUnavailable as exc:

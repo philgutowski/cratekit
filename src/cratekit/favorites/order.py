@@ -425,7 +425,7 @@ def apply(
                 if moved:
                     rb_writer.commit_guarded(db)
             except BaseException:
-                trees._rollback_quietly(db)
+                trees.rollback_quietly(db)
                 if witness.landed:
                     _record_order_commit(record, moved=len(moved), cfg=cfg)
                 raise

@@ -385,11 +385,11 @@ def open_store(path: Path | None = None) -> JobStore:
     rather than through ``Path.mkdir``. That is deliberate reuse, not convenience:
     a 0600 file inside a 0777 directory is not private, because unlink and rename
     are governed by the DIRECTORY's mode, and a second careful implementation here
-    is the copy that later drifts. See ``config._mkdir_private`` for why the
+    is the copy that later drifts. See ``config.mkdir_private`` for why the
     obvious ``mode=`` argument does not fix it.
     """
     resolved = path or queue_path()
-    config._mkdir_private(resolved.parent)
+    config.mkdir_private(resolved.parent)
     store = JobStore(resolved)
     _initialize(store)
     return store
@@ -1133,7 +1133,7 @@ def commit_artifact(staged: Path, final: Path) -> Path:
     does not exist, and that is a false success no later run can detect, because
     "done" is exactly what a resume trusts.
     """
-    config._mkdir_private(final.parent)
+    config.mkdir_private(final.parent)
     with open(staged, "rb+") as handle:
         handle.flush()
         os.fsync(handle.fileno())
@@ -1234,7 +1234,7 @@ class Artifacts:
         wearing a report.
         """
         directory = self.final_dir(cfg, job_id)
-        config._mkdir_private(directory)
+        config.mkdir_private(directory)
         return directory / f"{ordinal:04d}.json"
 
     def staged_path(self, cfg: config.Config, job_id: str, ordinal: int) -> Path:
@@ -1247,7 +1247,7 @@ class Artifacts:
         directory = self.staging_dir(cfg, job_id) / str(ordinal)
         if directory.exists():
             shutil.rmtree(directory)
-        config._mkdir_private(directory)
+        config.mkdir_private(directory)
         return directory / f"{ordinal:04d}.json"
 
     def produced(self, cfg: config.Config, job, item, report: dict[str, Any]) -> Produced:
@@ -1430,7 +1430,7 @@ def driver_lock(job_id: str, *, root: Path | None = None) -> Iterator[Path]:
     refusal message; it is never the liveness test.
     """
     path = lock_path(job_id, root=root)
-    config._mkdir_private(path.parent)
+    config.mkdir_private(path.parent)
     # os.open with an explicit mode rather than the builtin open(), which creates
     # at 0666 masked by the umask and would leave a world-writable lock any local
     # account could hold, making every future drive of this job refuse.
@@ -2179,7 +2179,7 @@ def spawn(
     lock, because a pid is reused and a lock is not.
     """
     target = log_path(job.job_id, root=root)
-    config._mkdir_private(target.parent)
+    config.mkdir_private(target.parent)
     with open(target, "ab") as sink:
         _own_only(target)
         child = subprocess.Popen(

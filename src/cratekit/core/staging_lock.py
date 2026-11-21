@@ -119,7 +119,7 @@ def held(verb: str, *, run_id: str | None = None, what: str | None = None) -> It
             _DEPTH -= 1
         return
     path = lock_path()
-    config._mkdir_private(path.parent)
+    config.mkdir_private(path.parent)
     # os.open with an explicit mode, for the driver lock's reason: a lock any
     # local account could hold would refuse every pass.
     handle = os.fdopen(os.open(path, os.O_CREAT | os.O_RDWR, config.PRIVATE_FILE_MODE), "r+")

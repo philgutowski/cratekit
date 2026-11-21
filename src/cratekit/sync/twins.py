@@ -857,7 +857,7 @@ def write(
                 assert_confined(db, before, folders=folders_made, playlists=planned_rows)
                 rb_writer.commit_guarded(db)
             except BaseException:
-                trees._rollback_quietly(db)
+                trees.rollback_quietly(db)
                 if witness.landed:
                     _record_twins_commit(record, created=added + len(created), cfg=cfg)
                 raise

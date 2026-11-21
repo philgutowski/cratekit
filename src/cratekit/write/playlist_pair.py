@@ -437,7 +437,7 @@ def apply(
             moved = renumber(db, change.playlist_id, change.order)
             rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))
         except BaseException:
-            trees._rollback_quietly(db)
+            trees.rollback_quietly(db)
             if witness.landed:
                 _record_pair_commit(
                     record, source, added=len(added), changed=len(removed) + moved, cfg=cfg

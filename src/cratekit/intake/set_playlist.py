@@ -1495,7 +1495,7 @@ def apply_alone(
             assert written.playlist_id, "a plan with members writes"
             rb_writer.commit_guarded(db)
         except BaseException:
-            trees._rollback_quietly(db)
+            trees.rollback_quietly(db)
             if witness.landed and written is not None:
                 _record_set_commit(record, written, plan, cfg)
             raise

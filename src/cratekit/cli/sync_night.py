@@ -186,7 +186,7 @@ def _write_status(record: Mapping[str, Any]) -> str | None:
     """Write the record; answer why it could not be, or None."""
     target = status_path()
     try:
-        config._mkdir_private(target.parent)
+        config.mkdir_private(target.parent)
         payload = json.dumps(dict(record), indent=2, sort_keys=True) + "\n"
         config.atomic_write_bytes(payload.encode("utf-8"), target)
     except OSError as exc:

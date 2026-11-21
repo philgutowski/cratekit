@@ -1293,7 +1293,7 @@ def test_a_restore_refuses_without_each_of_the_three_gates(cfg):
 
     acknowledge(cfg)
     lock = session.lock_path(cfg)
-    config._mkdir_private(lock.parent)
+    config.mkdir_private(lock.parent)
     lock.touch()
     with _holding(lock):
         held_lock = refuse_with(**gate_seams(cfg))
@@ -1697,7 +1697,7 @@ def test_a_wrong_document_is_never_read_as_an_empty_one(cfg, document, why):
     one further record deletes every prior marker from the disk.
     """
     path = reconcile.path_for(cfg)
-    config._mkdir_private(path.parent)
+    config.mkdir_private(path.parent)
     path.write_text(document)
 
     with pytest.raises(CratekitError) as excinfo:
@@ -4062,7 +4062,7 @@ def _shm_path(cfg) -> Path:
 def test_round5_a_staged_companion_is_never_written_over(cfg, held):
     """The staging side had a probabilistic answer where the capture side has a rule.
 
-    ``_stage_companion_aside`` called ``_mkdir_private``, which RETURNS SILENTLY on
+    ``_stage_companion_aside`` called ``mkdir_private``, which RETURNS SILENTLY on
     a directory that already exists, and then ``os.replace``, which overwrites. The
     only thing standing between two attempts and one destroyed log was the 64 bits
     of random in the stamp. ``snapshot.capture`` refuses an occupied stamp outright

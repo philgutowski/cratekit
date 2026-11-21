@@ -241,7 +241,7 @@ def _write_record(cfg: config.Config, document: Mapping[str, Any]) -> None:
 
 @contextmanager
 def _locked(cfg: config.Config, doing: str) -> Iterator[None]:
-    lock = config._exclusive_lock(config.state_path("label_sync_lock", cfg))
+    lock = config.exclusive_lock(config.state_path("label_sync_lock", cfg))
     try:
         lock.__enter__()
     except config.ConfigLockUnavailable as exc:

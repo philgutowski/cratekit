@@ -380,7 +380,7 @@ def _locked(cfg: config.Config) -> Iterator[None]:
     # library will ever see it.
     _assert_library_is_writable(cfg)
     target = lock_path(cfg)
-    config._mkdir_private(target.parent)
+    config.mkdir_private(target.parent)
     handle = None
     try:
         import fcntl

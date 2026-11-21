@@ -890,7 +890,7 @@ def record_fingerprint(
     the regression it hides is a real one.
     """
     taken = replace(probe(db), taken=output.timestamp(now))
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         write(cfg, read(cfg).with_fingerprint(taken))
     return taken
 
@@ -909,7 +909,7 @@ def mark_unconverged(
     not keep moving the date the damage was first seen forward to now.
     """
     stamp = output.timestamp(now)
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         state = read(cfg)
         for tree_id in tree_ids:
             current = state.tree(tree_id) or TreeConvergence(tree_id=tree_id)
@@ -955,7 +955,7 @@ def record_nodes(
     for two destinations, which is the shape :func:`assert_injective` refuses.
     Every other caller merges, because it has only looked at part of the tree.
     """
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         state = read(cfg)
         current = state.tree(tree_id) or TreeConvergence(tree_id=tree_id)
         updated = (
@@ -1013,7 +1013,7 @@ def clear_unconverged(
         )
 
     stamp = output.timestamp(now)
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         state = read(cfg)
         current = state.tree(tree_id) or TreeConvergence(tree_id=tree_id)
         if disposition is not None:

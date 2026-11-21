@@ -678,7 +678,7 @@ def apply_rows(
             written = len(report.written)
             rb_writer.commit_guarded(db)
         except BaseException:
-            trees._rollback_quietly(db)
+            trees.rollback_quietly(db)
             # AN EXCEPTION IS NOT PROOF NOTHING LANDED. The witness is the
             # engine's own answer, for the reason the membership writer gives.
             if witness.landed:

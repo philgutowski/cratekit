@@ -2249,7 +2249,7 @@ def apply_rows(
                 db, creations=(rb_writer.CONTENT_TABLE, *mints.tables())
             )
         except BaseException:
-            trees._rollback_quietly(db)
+            trees.rollback_quietly(db)
             if witness.landed:
                 _record_landing_commit(
                     record,

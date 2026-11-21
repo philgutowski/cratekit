@@ -719,7 +719,7 @@ def record_cutover(
             f"underneath this registry cannot be detected"
         )
     assert_rebuildable(tree_id, source)
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         current = read(cfg)
         standing = current.record(tree_id)
         if standing is not None and standing.mode == Mode.DATABASE:
@@ -1186,7 +1186,7 @@ def revert_cutover(cfg: config.Config, tree_id: str) -> Registry:
     caller, so this may not be called from inside a destructive session:
     sessions do not nest.
     """
-    with session.session_lock(cfg), config._exclusive_lock(lock_path(cfg)):
+    with session.session_lock(cfg), config.exclusive_lock(lock_path(cfg)):
         assert_revertible(cfg, tree_id)
         updated = read(cfg).without_record(tree_id)
         write(cfg, updated)

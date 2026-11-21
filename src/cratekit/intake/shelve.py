@@ -634,7 +634,7 @@ def apply(
                 _assert_confined(db, plan)
                 rb_writer.commit_guarded(db)
         except BaseException as exc:
-            trees._rollback_quietly(db)
+            trees.rollback_quietly(db)
             if witness.landed:
                 _record_shelve_commit(record, plan, cfg)
                 raise

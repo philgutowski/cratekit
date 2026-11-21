@@ -943,7 +943,7 @@ def apply_rotation(
             )
             rb_writer.commit_guarded(db, removals=REMOVALS)
         except BaseException:
-            trees._rollback_quietly(db)
+            trees.rollback_quietly(db)
             if witness.landed:
                 _record_rotation_commit(record, plan, len(created), changed, cfg)
             raise

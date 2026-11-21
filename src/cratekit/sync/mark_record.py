@@ -171,7 +171,7 @@ class MarkRecord:
 
     @contextmanager
     def _locked(self) -> Iterator[None]:
-        lock = config._exclusive_lock(self.lock_path)
+        lock = config.exclusive_lock(self.lock_path)
         try:
             lock.__enter__()
         except config.ConfigLockUnavailable as exc:

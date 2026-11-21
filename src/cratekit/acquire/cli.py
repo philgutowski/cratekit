@@ -262,7 +262,7 @@ def _same_list_or_refuse(named: str | None, job, handler_key: str) -> None:
 
     SAME AS THE FILESYSTEM SEES IT, not as two strings. The named path goes
     through the ``expanduser().absolute()`` the queue froze it with, and then
-    through :func:`cratekit.core.preflight._names_one_path`, because a string
+    through :func:`cratekit.core.preflight.names_one_path`, because a string
     comparison refuses the frozen list whenever it is spelled another way:
     ``/tmp`` against ``/private/tmp`` on macOS, a case variant on a case
     insensitive volume, a symlinked directory. A home directory that cannot be
@@ -284,7 +284,7 @@ def _same_list_or_refuse(named: str | None, job, handler_key: str) -> None:
         given = Path(named).expanduser().absolute()
     except RuntimeError:
         given = Path(named).absolute()
-    if preflight._names_one_path(given, Path(frozen)):
+    if preflight.names_one_path(given, Path(frozen)):
         return
     raise _unusable(
         f"job {job.job_id} acquires the list it froze, {frozen}, and this command "
@@ -455,7 +455,7 @@ def staging_dir(root: Path, job_id: str, ordinal: int) -> Path:
     directory = root / ACQUIRE_STAGING_DIRNAME / job_id / str(ordinal)
     if directory.exists():
         shutil.rmtree(directory)
-    config._mkdir_private(directory)
+    config.mkdir_private(directory)
     return directory
 
 

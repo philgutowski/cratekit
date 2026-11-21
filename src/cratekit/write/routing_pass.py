@@ -588,7 +588,7 @@ def record_intents(cfg: config.Config, intents: Iterable[RoutingIntent]) -> Ledg
     reader, and the same ``fcntl`` primitive the config migration takes is used
     rather than a third implementation of one idea.
     """
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         updated = read(cfg).with_intents(intents)
         write(cfg, updated)
     return updated
@@ -612,7 +612,7 @@ def mark(
 
     ``session_id`` is required. See :meth:`Ledger.marked`.
     """
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         updated = read(cfg).marked(
             tracks,
             state,

@@ -100,7 +100,7 @@ def _follow(records: dict[str, str]) -> bool:
 
 @contextmanager
 def _locked(cfg: config.Config, doing: str) -> Iterator[None]:
-    lock = config._exclusive_lock(config.state_path("label_watermarks_lock", cfg))
+    lock = config.exclusive_lock(config.state_path("label_watermarks_lock", cfg))
     try:
         lock.__enter__()
     except config.ConfigLockUnavailable as exc:

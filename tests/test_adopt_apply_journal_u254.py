@@ -405,7 +405,7 @@ def test_a_record_another_process_appended_is_kept(cfg):
 
 def test_every_ledger_write_happens_under_the_exclusive_lock(cfg, monkeypatch):
     held = {"now": False}
-    real_lock = config._exclusive_lock
+    real_lock = config.exclusive_lock
 
     @contextlib.contextmanager
     def watched(path):
@@ -430,7 +430,7 @@ def test_every_ledger_write_happens_under_the_exclusive_lock(cfg, monkeypatch):
             outside.append("append")
         return real_append(payload, path, *args, **kwargs)
 
-    monkeypatch.setattr(config, "_exclusive_lock", watched)
+    monkeypatch.setattr(config, "exclusive_lock", watched)
     monkeypatch.setattr(config, "atomic_write_bytes", rewrite)
     monkeypatch.setattr(config, "append_durable_bytes", append)
     for n in range(3):

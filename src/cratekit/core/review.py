@@ -916,7 +916,7 @@ def open_store(cfg: config.Config | None = None, *, path: Path | None = None) ->
     given and creates intermediate levels at 0777 regardless.
     """
     resolved = path or queue_path(cfg or config.load())
-    config._mkdir_private(resolved.parent)
+    config.mkdir_private(resolved.parent)
     store = ReviewStore(resolved)
     _initialize(store)
     return store
@@ -2620,7 +2620,7 @@ class DecisionStore:
         fixed, so degrading to it on the platform where the fix cannot be applied
         would leave exactly the defect, reachable by anybody on that platform.
         """
-        config._mkdir_private(self.lock_path.parent)
+        config.mkdir_private(self.lock_path.parent)
         handle = None
         try:
             import fcntl

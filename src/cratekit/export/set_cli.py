@@ -567,7 +567,7 @@ def _set_shown(planned: sets.SetPlan) -> dict[str, Any]:
     return shown
 
 
-def _unmatched_warnings(planned: sets.SetPlan) -> list[dict[str, str]]:
+def unmatched_warnings(planned: sets.SetPlan) -> list[dict[str, str]]:
     """The warning ``export playlist`` gives over a track it left out (R-850)."""
     if not planned.unmatched:
         return []
@@ -671,7 +671,7 @@ def plan_from_wanted(
 def apply_planned(cfg, built: SetPlanned) -> tuple[dict[str, Any], list[dict[str, str]], bool]:
     """Write what the plan names after the gate said apply. Returns payload, warnings, wrote."""
     planned = built.planned
-    warnings = _unmatched_warnings(planned)
+    warnings = unmatched_warnings(planned)
     if not planned.writes:
         return built.payload, warnings, False
     done = sets.SetApplied()
@@ -718,7 +718,7 @@ def export_set(ctx) -> Envelope:
     option = ctx.gate.require(
         ctx.entry.gates[0], plan=built.payload, context=built.shown
     )
-    warnings = _unmatched_warnings(built.planned)
+    warnings = unmatched_warnings(built.planned)
     if option != "apply" or not built.writes:
         return ctx.envelope(data=built.payload, outcome=Outcome.NO_OP, warnings=warnings)
     data, warnings, wrote = apply_planned(cfg, built)
@@ -1891,4 +1891,5 @@ __all__ = [
     "plan_from_wanted",
     "plan_rename",
     "set_name",
+    "unmatched_warnings",
 ]

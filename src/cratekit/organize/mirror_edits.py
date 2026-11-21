@@ -925,7 +925,7 @@ def write(
             db.session.flush()
             rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))
         except BaseException:
-            trees._rollback_quietly(db)
+            trees.rollback_quietly(db)
             if witness.landed:
                 _record_commit(record, cfg, done)
             raise

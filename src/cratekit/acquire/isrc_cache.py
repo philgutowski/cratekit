@@ -469,7 +469,7 @@ class Cache:
         at it is how two processes each hold "the" lock.
         """
         try:
-            config._mkdir_private(self.lock_path.parent)
+            config.mkdir_private(self.lock_path.parent)
             fd = os.open(self.lock_path, os.O_CREAT | os.O_RDWR, config.PRIVATE_FILE_MODE)
         except OSError:
             yield False
@@ -559,7 +559,7 @@ class Cache:
                 {"schema": SCHEMA, "entries": merged}, indent=1, sort_keys=True
             ) + "\n"
             try:
-                config._mkdir_private(self.path.parent)
+                config.mkdir_private(self.path.parent)
                 config.atomic_write_bytes(payload.encode("utf-8"), self.path)
                 written = self._signature()
             except OSError:

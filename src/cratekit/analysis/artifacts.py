@@ -73,7 +73,7 @@ def staged_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
         # ``rmtree`` refuses a link and a plain file, loudly, rather than this
         # call deciding to remove or follow one.
         shutil.rmtree(directory)
-    config._mkdir_private(directory)
+    config.mkdir_private(directory)
     return directory / _report_name(ordinal)
 
 
@@ -101,7 +101,7 @@ def intent_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
 
 def record_rename_intent(cfg: config.Config, job, item, target: Path) -> Path:
     path = intent_path(cfg, job.job_id, item.ordinal)
-    config._mkdir_private(path.parent)
+    config.mkdir_private(path.parent)
     return write(path, {"item": item.item_id, "target": str(target)})
 
 
@@ -193,7 +193,7 @@ def record_pool(cfg: config.Config, job_id: str, record: dict[str, Any]) -> Path
     place, so a reader never meets half of it.
     """
     directory = _REPORTS.final_dir(cfg, job_id)
-    config._mkdir_private(directory)
+    config.mkdir_private(directory)
     target = directory / POOL_FILENAME
     staged = directory / f".{POOL_FILENAME}.writing"
     write(staged, record)

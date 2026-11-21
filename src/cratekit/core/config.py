@@ -4610,7 +4610,7 @@ def load_from_path(
     return config
 
 
-def _write_lock(path: Path) -> _exclusive_lock:
+def _write_lock(path: Path) -> exclusive_lock:
     """The ONE lock every writer of the configuration document takes.
 
     It is the lock the migration has always taken, under the name it has always
@@ -4629,7 +4629,7 @@ def _write_lock(path: Path) -> _exclusive_lock:
     (R-926), before the lock file exists, because every writer comes here first.
     """
     _refuse_write_outside_test_root(path)
-    return _exclusive_lock(path.with_name(path.name + ".migrate.lock"))
+    return exclusive_lock(path.with_name(path.name + ".migrate.lock"))
 
 
 #: Where a state write may land while this process runs under pytest.
@@ -4662,7 +4662,7 @@ def _refuse_write_outside_test_root(path: Path, *, system_temporary: bool = Fals
     Called from the four primitives every state writer in the package goes
     through, ``_write_lock`` for the configuration document, then
     ``atomic_write_bytes``, ``append_durable_bytes`` (U254) and
-    ``_exclusive_lock``, so a ledger, a watermark or a session lock written by
+    ``exclusive_lock``, so a ledger, a watermark or a session lock written by
     an unisolated test is refused the same way, and a link swapped in after the
     configuration check is caught again at the write.
 
@@ -4752,8 +4752,8 @@ def save(config: Config, path: Path | None = None) -> Path:
     them at once, and costs one pure function call on a path that runs at setup.
 
     DIRECTORY CREATION. This is one of three places in the module that creates a
-    directory (the others are ``atomic_write_bytes`` and ``_exclusive_lock``),
-    and all three go through ``_mkdir_private`` so no state directory's
+    directory (the others are ``atomic_write_bytes`` and ``exclusive_lock``),
+    and all three go through ``mkdir_private`` so no state directory's
     permissions depend on the user's umask. Each creates immediately before a
     write, never at import (Rule 1).
 
@@ -4773,7 +4773,7 @@ def save(config: Config, path: Path | None = None) -> Path:
     # Created under the lock rather than before it, so a write the test root
     # refuses (see ``_write_lock``) leaves no directory behind either.
     with _write_lock(target):
-        _mkdir_private(target.parent)
+        mkdir_private(target.parent)
         atomic_write_bytes(config.to_toml_bytes(), target)
     reset_cache()
     return target
@@ -4931,7 +4931,7 @@ PRIVATE_DIR_MODE = 0o700
 _CAN_SET_MODE = hasattr(os, "chmod")
 
 
-def _mkdir_private(path: Path) -> None:
+def mkdir_private(path: Path) -> None:
     """Create ``path`` and any missing parent, owner-only, on any umask.
 
     NOT ``Path.mkdir(mode=...)``, and the difference is the whole reason this
@@ -4993,12 +4993,12 @@ def atomic_write_bytes(payload: bytes, path: Path, *, mode: int = PRIVATE_FILE_M
     world-writable directory is not private: unlink and rename are governed by
     the DIRECTORY's permissions, so anyone who can write the directory can
     replace the file whatever its own mode says. The mkdir here therefore goes
-    through ``_mkdir_private`` rather than through ``Path.mkdir``, which would
+    through ``mkdir_private`` rather than through ``Path.mkdir``, which would
     take its mode from the umask (see that function for why the obvious
     ``mode=`` argument does not fix it).
     """
     _refuse_write_outside_test_root(path, system_temporary=True)
-    _mkdir_private(path.parent)
+    mkdir_private(path.parent)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as handle:
@@ -5121,7 +5121,7 @@ def _flush_descriptor(fd: int) -> None:
     os.fsync(fd)
 
 
-class _exclusive_lock:
+class exclusive_lock:
     """An exclusive advisory lock that REFUSES rather than proceeding unlocked.
 
     The source system's equivalent tolerates a failed ``flock`` and carries on,
@@ -5152,7 +5152,7 @@ class _exclusive_lock:
 
     def __enter__(self):
         _refuse_write_outside_test_root(self.path, system_temporary=True)
-        _mkdir_private(self.path.parent)
+        mkdir_private(self.path.parent)
         try:
             import fcntl
 
@@ -5252,6 +5252,8 @@ __all__ = [
     "load_from_path",
     "merge_changes",
     "migrate",
+    "exclusive_lock",
+    "mkdir_private",
     "out_of_band_effects",
     "provider_gate_dir",
     "rekey_records",

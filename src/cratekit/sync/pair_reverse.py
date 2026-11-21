@@ -154,7 +154,7 @@ def create(
                 if on_commit is not None:
                     on_commit(playlist_id)
             except BaseException:
-                trees._rollback_quietly(db)
+                trees.rollback_quietly(db)
                 if witness.landed:
                     _record_commit(record, source, created=len(added) + 1, cfg=cfg)
                     # A COMMIT THAT LANDED AND THEN RAISED still made the

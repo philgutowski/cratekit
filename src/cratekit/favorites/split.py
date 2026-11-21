@@ -803,7 +803,7 @@ def apply(
                 if added or made:
                     rb_writer.commit_guarded(db)
             except BaseException:
-                trees._rollback_quietly(db)
+                trees.rollback_quietly(db)
                 if witness.landed:
                     _record_split_commit(record, added=added, retired=0, cfg=cfg)
                 raise
@@ -835,7 +835,7 @@ def apply(
                 )
                 rb_writer.commit_guarded(db, removals=REMOVALS)
             except BaseException:
-                trees._rollback_quietly(db)
+                trees.rollback_quietly(db)
                 if witness.landed:
                     _record_split_commit(record, added=0, retired=len(retired), cfg=cfg)
                 raise

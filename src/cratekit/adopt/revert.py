@@ -1726,7 +1726,7 @@ def snapshot_before_write(
     that is still held when the write happens.
     """
     resolved = Path(path)
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         _ledger, record = _record_locked(
             cfg,
             resolved,
@@ -1791,7 +1791,7 @@ def write_tag_with_record(
     reaches back into this module hangs forever rather than raising.
     """
     resolved = Path(path)
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         ledger, record = _record_locked(
             cfg,
             resolved,
@@ -2339,7 +2339,7 @@ def revert_tags(
     failed: dict[tuple[str, str], str] = {}
     forced = {(str(path), str(field)) for path, field in force}
     _bring_the_bytes_within_reach(cfg, entry_id=entry_id, forced=forced)
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         ledger = read(cfg)
         selected = tuple(
             record

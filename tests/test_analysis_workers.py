@@ -1376,7 +1376,7 @@ def test_a_calibration_with_the_wrong_number_of_cuts_is_refused():
 
 def test_a_corrupt_calibration_raises_rather_than_reading_as_absent(cfg):
     path = energy.calibration_path(cfg)
-    config._mkdir_private(path.parent)
+    config.mkdir_private(path.parent)
     path.write_text("{not json", encoding="utf-8")
     with pytest.raises(CratekitError) as caught:
         energy.load_calibration(cfg)
@@ -1393,7 +1393,7 @@ def test_every_corrupt_calibration_shape_is_the_same_named_refusal(cfg, text):
     """The fourth shape raised ``AttributeError`` through the promise the
     loader's docstring makes, and reached the queue as a traceback."""
     path = energy.calibration_path(cfg)
-    config._mkdir_private(path.parent)
+    config.mkdir_private(path.parent)
     path.write_text(text, encoding="utf-8")
     with pytest.raises(CratekitError) as caught:
         energy.load_calibration(cfg)
@@ -1406,7 +1406,7 @@ def test_a_corrupt_calibration_reaches_the_person_as_a_remedy_not_a_defect(
     """Driven through both verbs: the queue path and the worker path."""
     place(folder, silence, "a")
     path = energy.calibration_path(cfg)
-    config._mkdir_private(path.parent)
+    config.mkdir_private(path.parent)
     path.write_text("{not json", encoding="utf-8")
 
     code, refused = drive(["analyze", "restamp", "--queue-only", str(folder)])
@@ -1731,7 +1731,7 @@ def test_a_folder_and_a_hand_cut_together_are_refused_by_the_parser(cfg, folder)
 
 def test_a_hand_cut_replaces_an_unreadable_calibration_and_says_it_could_not_be_read(cfg):
     path = analysis_cli.vocal_calibration_path(cfg)
-    config._mkdir_private(path.parent)
+    config.mkdir_private(path.parent)
     path.write_text("{not json", encoding="utf-8")
     code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "5"])
     assert code == int(ExitCode.OK), envelope
@@ -1744,7 +1744,7 @@ def test_a_threshold_written_as_text_comes_back_from_the_one_reader_as_a_float(c
     the record it returns carries the converted number, not the text, so the
     calibrate report and every tagging comparison meet a float."""
     path = analysis_cli.vocal_calibration_path(cfg)
-    config._mkdir_private(path.parent)
+    config.mkdir_private(path.parent)
     path.write_text('{"threshold": "5.0", "method": "hand"}', encoding="utf-8")
     assert metadata_cli.load_vocal_calibration(cfg)["threshold"] == 5.0
     assert isinstance(metadata_cli.load_vocal_threshold(cfg), float)
@@ -1757,7 +1757,7 @@ def test_a_threshold_written_as_text_comes_back_from_the_one_reader_as_a_float(c
 def test_a_calibration_the_account_cannot_read_refuses_and_is_not_replaced(cfg):
     """Not the unreadable slug the hand cut writes over: a permission refusal."""
     path = analysis_cli.vocal_calibration_path(cfg)
-    config._mkdir_private(path.parent)
+    config.mkdir_private(path.parent)
     path.write_text('{"threshold": 9.0, "method": "otsu"}', encoding="utf-8")
     path.chmod(0)
     try:
@@ -1779,7 +1779,7 @@ def test_a_fit_over_a_cut_it_cannot_open_reports_the_energy_it_wrote(
         place(folder, silence, name, voxlevel=2 if index < 8 else 40)
     bind_measuring(monkeypatch, {name: index for index, name in enumerate(names)})
     path = analysis_cli.vocal_calibration_path(cfg)
-    config._mkdir_private(path.parent)
+    config.mkdir_private(path.parent)
     path.write_text('{"threshold": 9.0, "method": "hand"}', encoding="utf-8")
     path.chmod(0)
     try:
@@ -1952,7 +1952,7 @@ def test_a_corrupt_undo_log_refuses_by_name_rather_than_failing_every_item_as_a_
     path = place(folder, silence, "a", energylevel=4)
     energy.save_calibration(cfg, calibration_over())
     log = energy.undo_log_path(cfg)
-    config._mkdir_private(log.parent)
+    config.mkdir_private(log.parent)
     log.write_text("[]", encoding="utf-8")
     bind_measuring(monkeypatch, {"a": 9})
     drive(["analyze", "restamp", "--queue-only", str(folder)])
@@ -2064,7 +2064,7 @@ def test_the_feature_vector_measures_its_own_tempo_on_every_path():
 def test_an_unreadable_calibration_refuses_a_run_at_the_queue(cfg, folder, silence, monkeypatch):
     place(folder, silence, "a")
     path = energy.calibration_path(cfg)
-    config._mkdir_private(path.parent)
+    config.mkdir_private(path.parent)
     path.write_text("{not json", encoding="utf-8")
     bind_scoring(monkeypatch)
     code, queued = drive(["analyze", "run", "--queue-only", str(folder)])

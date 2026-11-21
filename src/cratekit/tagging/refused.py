@@ -136,7 +136,7 @@ def _locked(lock: Path, sleep: Callable[[float], None]) -> Iterator[bool]:
     processes each hold "the" lock.
     """
     try:
-        config._mkdir_private(lock.parent)
+        config.mkdir_private(lock.parent)
         fd = os.open(lock, os.O_CREAT | os.O_RDWR, config.PRIVATE_FILE_MODE)
     except OSError:
         yield False

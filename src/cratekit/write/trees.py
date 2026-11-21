@@ -904,7 +904,7 @@ def _root_row(db: Any, root_id: str) -> Any:
     return row
 
 
-def _rollback_quietly(db: Any) -> None:
+def rollback_quietly(db: Any) -> None:
     """Undo pending work on the caller's handle. Never masks the original failure.
 
     A rollback that raises on the way out of an except block would replace the
@@ -1130,7 +1130,7 @@ def write_tree_membership(
             # operation's name, which is the hazard the writer's own docstring
             # describes. Rolled back here, and re-raised unchanged: this is a
             # cleanup, never a place that decides an error is survivable.
-            _rollback_quietly(db)
+            rollback_quietly(db)
             # AN EXCEPTION IS NOT PROOF NOTHING LANDED. The binding commits the
             # transaction and THEN saves rekordbox's playlist file, so a failure
             # there arrives here over durable rows. The witness is the engine's
@@ -1423,7 +1423,7 @@ def move_tree_membership(
                     already_present += len(content_ids) - len(inserted)
                 rb_writer.commit_guarded(db)
             except BaseException:
-                _rollback_quietly(db)
+                rollback_quietly(db)
                 if witness.landed:
                     _record_membership_commit(record, tree_id, added, cfg)
                 raise
@@ -1470,7 +1470,7 @@ def move_tree_membership(
                 # a membership move removes no node.
                 rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))
             except Exception as exc:
-                _rollback_quietly(db)
+                rollback_quietly(db)
                 if witness.landed:
                     _record_removal_commit(record, tree_id, removed, cfg)
                     convergence.record_fingerprint(cfg, db)
@@ -1479,7 +1479,7 @@ def move_tree_membership(
                     raise
                 raise MoveInterrupted(report(held_back=tuple(held_back))) from exc
             except BaseException:
-                _rollback_quietly(db)
+                rollback_quietly(db)
                 raise
         _record_removal_commit(record, tree_id, removed, cfg)
         if removed:
@@ -1537,6 +1537,7 @@ __all__ = [
     "insert_record_labels_trees",
     "match_active_rows",
     "match_indexed_rows",
+    "rollback_quietly",
     "root_playlist_members",
     "soft_delete_marker",
     "write_tree_membership",

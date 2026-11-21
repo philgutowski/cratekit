@@ -646,7 +646,7 @@ def apply_refill(
                 )
             rb_writer.commit_guarded(db)
         except BaseException:
-            trees._rollback_quietly(db)
+            trees.rollback_quietly(db)
             if witness.landed:
                 _record_refill_commit(record, plan, added, cfg)
             raise

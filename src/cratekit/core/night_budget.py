@@ -155,7 +155,7 @@ def read(path: Path | None = None) -> Ledger:
 
 
 def _write(ledger: Ledger, path: Path) -> None:
-    config._mkdir_private(path.parent)
+    config.mkdir_private(path.parent)
     payload = json.dumps(ledger.to_json(), indent=2, sort_keys=True) + "\n"
     config.atomic_write_bytes(payload.encode("utf-8"), path)
 

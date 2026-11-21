@@ -174,7 +174,7 @@ class WatermarkStore:
         into this module's own refusal; a failure raised by the body keeps its
         own identity.
         """
-        lock = config._exclusive_lock(self.lock_path)
+        lock = config.exclusive_lock(self.lock_path)
         try:
             lock.__enter__()
         except config.ConfigLockUnavailable as exc:

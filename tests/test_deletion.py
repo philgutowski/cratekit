@@ -483,7 +483,7 @@ def test_a_volume_with_no_usable_trash_refuses_rather_than_deleting(tmp_path, mo
     def refuse_to_create(path):
         raise OSError("read-only file system")
 
-    monkeypatch.setattr(config, "_mkdir_private", refuse_to_create)
+    monkeypatch.setattr(config, "mkdir_private", refuse_to_create)
     with pytest.raises(CratekitError) as excinfo:
         trash.assert_usable(source, home=home, platform="darwin")
     assert excinfo.value.cause.reason == "trash-unavailable"

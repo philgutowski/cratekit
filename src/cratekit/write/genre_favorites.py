@@ -726,7 +726,7 @@ def apply_refresh(
                     )
                 rb_writer.commit_guarded(db)
             except BaseException:
-                trees._rollback_quietly(db)
+                trees.rollback_quietly(db)
                 if witness.landed:
                     _record_favorites_commit(record, plan.tree_id, added=added, removed=0, cfg=cfg)
                 raise
@@ -767,7 +767,7 @@ def apply_refresh(
                         # THE MEMBERSHIP TABLE ALONE, never the whole removable set.
                         rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))
                     except BaseException:
-                        trees._rollback_quietly(db)
+                        trees.rollback_quietly(db)
                         if witness.landed:
                             _record_favorites_commit(
                                 record, plan.tree_id, added=0, removed=removed, cfg=cfg

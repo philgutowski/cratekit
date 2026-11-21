@@ -778,7 +778,7 @@ def apply(
             )
             rb_writer.commit_guarded(db)
         except BaseException:
-            trees._rollback_quietly(db)
+            trees.rollback_quietly(db)
             if witness.landed and placed is not None:
                 _record_backfill_commit(record, placed, cfg)
             raise

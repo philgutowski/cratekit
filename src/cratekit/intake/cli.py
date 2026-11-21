@@ -892,7 +892,7 @@ def _plan_account_playlist(cfg, *, name: str, rows):
             ),
             None,
         )
-    notes = tuple(set_cli._unmatched_warnings(built.planned))
+    notes = tuple(set_cli.unmatched_warnings(built.planned))
     return notes, built
 
 

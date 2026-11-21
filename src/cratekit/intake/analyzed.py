@@ -261,7 +261,7 @@ def apply_clear(
             )
             rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))
         except BaseException:
-            trees._rollback_quietly(db)
+            trees.rollback_quietly(db)
             if witness.landed:
                 _record_clear_commit(record, plan, removed, cfg)
             raise

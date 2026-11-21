@@ -530,7 +530,7 @@ def mark_applied(cfg: config.Config, entry: AppliedEntry) -> Path:
         where=f"was refused a record for the entry {entry.entry_id!r}, one",
     )
     key = str(path)
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         known = _LEFT.pop(key, None)
         if known is not None and known == _as_left(path):
             config.append_durable_bytes(line, path)

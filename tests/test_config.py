@@ -2578,7 +2578,7 @@ def _bare_mkdir_calls(source: str) -> list[str]:
     tree = ast.parse(source)
     inside_helper: set[int] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == "_mkdir_private":
+        if isinstance(node, ast.FunctionDef) and node.name == "mkdir_private":
             for child in ast.walk(node):
                 inside_helper.add(id(child))
 
@@ -2609,7 +2609,7 @@ def test_every_directory_the_config_module_creates_goes_through_the_private_help
     source = (SRC_ROOT / "cratekit" / "core" / "config.py").read_text()
     offenders = _bare_mkdir_calls(source)
     assert not offenders, (
-        "directories created outside _mkdir_private:\n"
+        "directories created outside mkdir_private:\n"
         + "\n".join(offenders)
         + "\nPath.mkdir takes its mode from the umask, and with parents=True it "
         "creates intermediate levels at 0o777 regardless of the mode given."
