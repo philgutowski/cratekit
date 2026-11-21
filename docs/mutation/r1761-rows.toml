@@ -18,16 +18,14 @@ new = '''    if False:
 
 [[rows]]
 id = "P2_identity_at_read_strength_tolerates_mismatch"
-description = "_not_the_recorded_volume: catch the volume error as unread, so a foreign volume is left to the census"
+description = "_not_the_recorded_volume: read every refusal of the gate as an unread identity, so a foreign volume is left to the census"
 file = "src/cratekit/modules/tools/backup.py"
 surface = "user"
 tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
-old = '''    except preflight.LibraryVolumeError as exc:
-        return (
-            f"{exc.detail}, so the folder at the library root is not proven to be "'''
-new = '''    except preflight.LibraryVolumeError as exc:
-        return "" and (
-            f"{exc.detail}, so the folder at the library root is not proven to be "'''
+old = '''        if recorded is None or observed is None:
+            return ""'''
+new = '''        if True:
+            return ""'''
 
 [[rows]]
 id = "P3_identity_raise_refuses"

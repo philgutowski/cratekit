@@ -317,6 +317,22 @@ def _carriable(rel: str) -> None:
         raise WalkRefused(f"a file name is not valid UTF-8: {rel!r}") from exc
 
 
+def _passed_or_queued(
+    item: os.DirEntry, rel: str, matcher: _Excludes, pending: list[tuple[Path, str]]
+) -> bool:
+    """Whether a walk is done with one entry: a symbolic link passed over, as
+    rclone passes one without ``--links``, or a folder queued unless excluded.
+    The walk and the probe read a tree by this one rule. Raises what reading
+    the entry raises, for each caller's own handling."""
+    if item.is_symlink():
+        return True
+    if item.is_dir(follow_symlinks=False):
+        if not matcher.directory(rel):
+            pending.append((Path(item.path), rel + "/"))
+        return True
+    return False
+
+
 def walk(
     root: Path,
     excludes: Sequence[str],
@@ -371,11 +387,7 @@ def walk(
         for item in listing:
             rel = f"{prefix}{item.name}"
             try:
-                if item.is_symlink():
-                    continue
-                if item.is_dir(follow_symlinks=False):
-                    if not matcher.directory(rel):
-                        pending.append((Path(item.path), rel + "/"))
+                if _passed_or_queued(item, rel, matcher, pending):
                     continue
                 status = item.stat(follow_symlinks=False)
             except FileNotFoundError:
@@ -758,11 +770,7 @@ def probe(
         for item in listing:
             rel = f"{prefix}{item.name}"
             try:
-                if item.is_symlink():
-                    continue
-                if item.is_dir(follow_symlinks=False):
-                    if not matcher.directory(rel):
-                        pending.append((Path(item.path), rel + "/"))
+                if _passed_or_queued(item, rel, matcher, pending):
                     continue
                 regular = item.is_file(follow_symlinks=False)
             except OSError:

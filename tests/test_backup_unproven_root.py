@@ -31,7 +31,7 @@ from pathlib import Path
 import pytest
 
 from cratekit.backup import cli as backup_cli
-from cratekit.core import backup_facts, binaries, config, preflight
+from cratekit.core import backup_facts, binaries, config
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.tools import backup, backup_record
@@ -43,9 +43,9 @@ DATABASE = backup_facts.Portion.DATABASE
 #: Every command that sends to, rewrites or moves off the mirror.
 MOVERS = frozenset({backup.MIRROR, *backup.QUICK_LABELS})
 
-#: The real assertion, taken before ``tests/conftest.py`` neutralizes it for
-#: the test. The identity layer's own tests put it back.
-REAL_ASSERT_LIBRARY_MOUNTED = preflight.assert_library_mounted
+#: The real identity proof, taken before ``tests/conftest.py`` neutralizes it
+#: for the test. The identity layer's own tests put it back.
+REAL_IDENTITY_PROOF = backup._not_the_recorded_volume  # noqa: SLF001
 
 
 def _remote(tmp_path: Path) -> Path:
@@ -396,7 +396,7 @@ def test_one_file_under_the_floor_refuses_and_one_at_it_runs(cfg, real_rclone, t
 @pytest.fixture
 def real_identity(monkeypatch):
     """The identity assertion as shipped, which the suite neutralizes elsewhere."""
-    monkeypatch.setattr(preflight, "assert_library_mounted", REAL_ASSERT_LIBRARY_MOUNTED)
+    monkeypatch.setattr(backup, "_not_the_recorded_volume", REAL_IDENTITY_PROOF)
 
 
 def test_a_root_on_another_volume_refuses_before_the_walk(

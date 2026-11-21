@@ -80,6 +80,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from cratekit.core import analysis_store, backup_facts, binaries, config, preflight, session
+from cratekit.core.cause import CratekitError
 from cratekit.core.processes import (
     REKORDBOX_PROCESSES,
     AbsenceUnconfirmed,
@@ -1156,29 +1157,31 @@ def _not_the_recorded_volume(
 ) -> str:
     """Why the root is on a volume other than the library's, or an empty string.
 
-    The first proof (R-1761), through ``preflight``'s one precondition at the
-    strength that tolerates an identity the platform cannot read or one never
-    recorded: neither is an answer, every Linux volume reads as the first, and
-    the census below holds on every platform. A recorded identity read and
-    found elsewhere, or not at all, refuses whatever else the root holds.
+    The first proof (R-1761), through the volume gate destructive sessions
+    pass, read for what it found: a recorded identity read and found elsewhere,
+    or not at all, refuses whatever else the root holds. An identity the
+    platform cannot read, or one never recorded, is no answer and is left to
+    the census, which holds on every platform: every Linux volume reads as the
+    first, and refusing it would stop every backup there.
 
     An identity read that raises is the same unread identity, left to the
     census, and never a refusal: a flaky probe of the volume should not stop
     every backup when the second proof stands on its own.
     """
     try:
-        preflight.assert_library_mounted(
-            root=cfg.library.root,
-            recorded_identity=cfg.library.volume_id,
-            destructive=False,
-            identity_provider=identity_provider,
-            mount_enumerator=mount_enumerator,
+        session.assert_volume_identity(
+            cfg, identity_provider=identity_provider, mount_enumerator=mount_enumerator
         )
-    except preflight.LibraryVolumeError as exc:
+    except CratekitError as exc:
+        found = exc.cause.detail or {}
+        recorded, observed = found.get("recorded_identity"), found.get("observed_identity")
+        if recorded is None or observed is None:
+            return ""
         return (
-            f"{exc.detail}, so the folder at the library root is not proven to be "
-            f"this library and nothing was sent or archived; mount the library's "
-            f"own volume and back up again"
+            f"the volume at the library root {cfg.library.root} is not the one "
+            f"recorded for this library (recorded {recorded}, observed {observed}), "
+            f"so the folder there is not proven to be this library and nothing "
+            f"was sent or archived; mount the library's own volume and back up again"
         )
     except Exception:  # noqa: BLE001 - an unread identity is left to the census
         return ""
