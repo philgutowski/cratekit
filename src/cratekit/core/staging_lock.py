@@ -10,7 +10,9 @@ their downloads. Once a pass runs with nobody watching, the night pass,
 
 So ``sync.land``, ``label.sync`` with its go and ``sync.night`` each
 hold this lock for the whole of a run, and a second refuses ``staging-held``
-naming the holder's verb, process, run and start.
+naming the holder's verb, process, run and start. ``schedule.install`` and
+``schedule.remove`` hold it around their bootout of the night's agent (U295),
+so a schedule change never ends a night pass in progress.
 
 THE DRIVER LOCK'S RULES, FOR THE DRIVER LOCK'S REASONS
 (:func:`cratekit.core.jobs.driver_lock`). Liveness is the kernel's: an
