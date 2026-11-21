@@ -76,6 +76,9 @@ def library(tmp_path, monkeypatch):
     """A synthetic library root, aligned with the suite's isolation fixture."""
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
+    # A library holds its music: an empty folder at the root is what an
+    # unmounted volume leaves, and a backup now refuses it.
+    (root / "Music" / "fixture.flac").write_bytes(b"one track")
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
     return root
 

@@ -64,6 +64,8 @@ KEBAB_LITERALS = {
         'install-binary',
         'install-binary-source-unknown',
         'library-root-absent',
+        'library-root-foreign',  # 2026-11-21, #893
+        'library-root-unproven',  # 2026-11-21, #893
         'no-snapshot-available',
         'output-exists',
         'rclone-missing',

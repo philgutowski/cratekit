@@ -1172,6 +1172,24 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="backup_census",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="backup_census.json",
+        why=(
+            "How many files outside the library's own state folder the last "
+            "completed file mirror walked, for this library root and mirror "
+            "(R-1761). It is what lets a backup refuse an empty folder left "
+            "where an unmounted volume was, which a full sync would otherwise "
+            "empty the mirror to match. INSTALLATION for the manifest's reason, "
+            "and also because the library's own state goes with the volume it "
+            "would be guarding. Unlike the manifest it is NEVER removed before a "
+            "transfer, so a failed run still leaves it saying what the library "
+            "held. NEVER_RESTORED: it describes the remote."
+        ),
+    ),
+    StateFile(
         key="run_state",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.INSTALLATION,

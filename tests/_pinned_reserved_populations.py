@@ -266,7 +266,8 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
 
 # Reserved table size. Moves only when a reservation is added or removed.
 # 2026-11-05, U211: rekordbox-absence-unconfirmed joined the backup reservations.
-PINNED_RESERVED_CAUSE_COUNT = 29
+# 2026-11-21, #893: library-root-foreign and library-root-unproven joined them.
+PINNED_RESERVED_CAUSE_COUNT = 31
 
 #: What a package's file may define, and the table each one feeds.
 #:

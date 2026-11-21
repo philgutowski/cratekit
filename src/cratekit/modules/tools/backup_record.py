@@ -71,6 +71,8 @@ from cratekit.core import config
 #: and the invalidation cannot disagree about which file is meant.
 MANIFEST_KEY = "backup_manifest"
 FINGERPRINT_KEY = "backup_database_fingerprint"
+#: R-1761. How many files the last completed mirror walked, the third record.
+CENSUS_KEY = "backup_census"
 
 #: Bumped whenever the shape of either record changes. A record of any other
 #: version is not read and the run is full, which costs one slow run and never
@@ -87,6 +89,13 @@ RACY_SECONDS = 10
 #: the run is full. A choice of speed and never of safety: both kinds send
 #: every change.
 QUICK_LIMIT = 10_000
+
+#: R-1761. A library root holding fewer than one file in this many of the
+#: files the last completed backup walked is not proven to be the library: a
+#: mount point a stray file landed in, where ``rclone sync`` would empty the
+#: mirror to match. A person who removed that much is asked for
+#: ``--library-emptied``, and the archive would have kept what went either way.
+LIBRARY_FLOOR = 10
 
 #: Characters a pattern may carry that :func:`_pattern` does not translate. A
 #: pattern holding one is refused rather than guessed at, because an exclude
@@ -689,34 +698,187 @@ def paths_list(paths: Iterable[str]) -> str:
     return "".join(f"{path}\n" for path in paths)
 
 
+# ---------------------------------------------------------------------------
+# The census: what proves the root is the library (R-1761)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class Census:
+    """How many files outside the library's own state folder the last completed
+    files portion walked, for this library root and mirror.
+
+    ``files`` is None where a backup was kept and its count cannot be read: a
+    damaged census, or a run whose walk refused and whose probe found files.
+    A count nobody can read still says a backup happened here.
+    """
+
+    files: int | None
+
+
+def census_path() -> Path:
+    return config.state_path(CENSUS_KEY)
+
+
+def held(rel: str, state_dirname: str) -> bool:
+    """Whether a walked path is the library's own, rather than its state folder."""
+    return not (rel == state_dirname or rel.startswith(f"{state_dirname}/"))
+
+
+def count_held(entries: Iterable[str], state_dirname: str) -> int:
+    """How many walked paths lie outside the library's own state folder."""
+    return sum(1 for rel in entries if held(rel, state_dirname))
+
+
+def probe(root: Path, excludes: Sequence[str], state_dirname: str) -> tuple[bool, bool]:
+    """Whether the root holds any file the mirror carries, and any outside the
+    state folder, stopping at the first of the second kind.
+
+    THE STAND IN FOR A WALK THAT REFUSED, and the check just before the mirror.
+    Best effort by design and failing closed: a folder it cannot list is passed
+    over, so what it cannot read is never counted as a file, and a root it can
+    read nothing of reads as empty and is refused.
+    """
+    matcher = _excludes(excludes)
+    anything = False
+    pending: list[tuple[Path, str]] = [(root, "")]
+    while pending:
+        directory, prefix = pending.pop()
+        try:
+            listing = list(os.scandir(directory))
+        except OSError:
+            continue
+        for item in listing:
+            rel = f"{prefix}{item.name}"
+            try:
+                if item.is_symlink():
+                    continue
+                if item.is_dir(follow_symlinks=False):
+                    if not matcher.directory(rel):
+                        pending.append((Path(item.path), rel + "/"))
+                    continue
+                regular = item.is_file(follow_symlinks=False)
+            except OSError:
+                continue
+            if not regular or matcher.file(rel):
+                continue
+            anything = True
+            if held(rel, state_dirname):
+                return True, True
+    return anything, False
+
+
+def root_still_holds(
+    root: Path,
+    root_dev: int,
+    excludes: Sequence[str],
+    state_dirname: str,
+    *,
+    files: bool,
+) -> str:
+    """Why the full mirror must not run now, or an empty string (R-1761).
+
+    Asked just before ``rclone sync``, because the plan's walk can be minutes
+    old: the root must still be the volume the plan read, and, where the plan
+    found the library's files, must still hold one. A volume lost in between
+    leaves a folder that ``rclone sync`` would empty the mirror to match.
+    """
+    try:
+        if os.stat(root).st_dev != root_dev:
+            return f"the library root {root} is on another volume than the one the plan read"
+    except OSError as exc:
+        return f"the library root {root} could not be read before the mirror: {exc}"
+    if files and not probe(root, excludes, state_dirname)[1]:
+        return (
+            f"the library root {root} held the library's files when the backup "
+            f"was planned and holds none now"
+        )
+    return ""
+
+
+def read_census(cfg: config.Config) -> Census | None:
+    """The census kept for this root and mirror, or None when there is none.
+
+    FAILING CLOSED: a census that is there and cannot be read is a backup that
+    happened, with its count unknown, never no census. One kept for another
+    root or mirror says nothing about this one.
+    """
+    try:
+        raw = census_path().read_bytes()
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return Census(files=None)
+    try:
+        data = json.loads(raw.decode("utf-8"))
+        if not isinstance(data, dict) or data.get("schema_version") != SCHEMA_VERSION:
+            raise ValueError("not this schema")
+        if data["library_root"] != str(cfg.library.root) or data["dest"] != str(cfg.backup.dest):
+            return None
+        files = data["files"]
+        if files is not None and (not isinstance(files, int) or isinstance(files, bool) or files < 0):
+            raise ValueError("not a count")
+    except (ValueError, KeyError, TypeError, UnicodeDecodeError):
+        return Census(files=None)
+    return Census(files=files)
+
+
+def write_census(cfg: config.Config, files: int | None, *, at: datetime) -> Path:
+    """Keep the census a completed files portion leaves. NEVER removed before a
+    transfer, unlike the record, so a failed run still leaves it saying what
+    the library held."""
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "library_root": str(cfg.library.root),
+        "dest": str(cfg.backup.dest),
+        "files": files,
+        "written_at": at.isoformat(),
+    }
+    path = census_path()
+    config.atomic_write_bytes(
+        json.dumps(payload, indent=2, sort_keys=True).encode("utf-8") + b"\n", path
+    )
+    return path
+
+
 __all__ = [
+    "CENSUS_KEY",
     "DOUBT",
+    "LIBRARY_FLOOR",
     "FINGERPRINT_KEY",
     "MANIFEST_KEY",
     "QUICK_LIMIT",
     "RACY_SECONDS",
     "SCHEMA_VERSION",
+    "Census",
     "Difference",
     "Entry",
     "Manifest",
     "Walk",
     "WalkRefused",
+    "census_path",
+    "count_held",
     "database_fingerprint",
     "difference",
     "fingerprint_key",
     "fingerprint_path",
     "first_uncomposed",
+    "held",
     "invalidate",
     "manifest_mismatch",
     "manifest_path",
     "new_token",
     "paths_from",
     "paths_list",
+    "probe",
+    "read_census",
     "read_fingerprint",
     "read_manifest",
+    "root_still_holds",
     "settled",
     "still_removed",
     "walk",
+    "write_census",
     "write_fingerprint",
     "write_manifest",
 ]
