@@ -228,7 +228,7 @@ def _written(plan: rows.RowsPlan, written: rows.Written) -> dict[str, str]:
     }
 
 
-def _plan(cfg: config.Config, declared, leave: list[str]) -> rows.RowsPlan:
+def read_plan(cfg: config.Config, declared, leave: list[str]) -> rows.RowsPlan:
     """The plan over the library as it stands, through a handle opened to read.
 
     ``require_closed`` is the opener's write intent flag and it is left False,
@@ -257,13 +257,21 @@ def _plan(cfg: config.Config, declared, leave: list[str]) -> rows.RowsPlan:
         rb_writer.close_db(db)
 
 
-def _write(cfg: config.Config, plan: rows.RowsPlan) -> rows.Written:
-    """Apply the plan through a handle of this function's own, opened to write."""
+def apply_plan(cfg: config.Config, plan: rows.RowsPlan) -> rows.Written:
+    """Apply the plan through a handle of this function's own, opened to write,
+    and refuse over what does not read back.
+
+    THE ONE APPLY PATH, the verb's and ``tag campaign``'s (U294), so a row
+    written by the campaign is written, guarded and read back exactly as one
+    this verb writes.
+    """
     db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
     try:
-        return rows.apply_rows(cfg, db, plan, analysis_roots=analysis_store.watch_roots(cfg))
+        written = rows.apply_rows(cfg, db, plan, analysis_roots=analysis_store.watch_roots(cfg))
     finally:
         rb_writer.close_db(db)
+    rows.assert_read_back(written)
+    return written
 
 
 def tag_rows(ctx) -> Envelope:
@@ -274,7 +282,7 @@ def tag_rows(ctx) -> Envelope:
     # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
     session.assert_backup_acknowledged(cfg)
 
-    plan = _plan(cfg, declared, list(getattr(ctx.args, "leave", None) or ()))
+    plan = read_plan(cfg, declared, list(getattr(ctx.args, "leave", None) or ()))
     data = _payload(plan)
     if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "apply":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=_advisories(plan))
@@ -285,8 +293,7 @@ def tag_rows(ctx) -> Envelope:
             warnings=[_nothing(plan), *_advisories(plan)],
         )
 
-    written = _write(cfg, plan)
-    rows.assert_read_back(written)
+    written = apply_plan(cfg, plan)
     data["totals"] = {
         **data["totals"],
         "written": written.written,
@@ -302,6 +309,8 @@ __all__ = [
     "LEAVE_UNMATCHED",
     "NOTHING_TO_WRITE",
     "ROWS_LEFT",
+    "apply_plan",
     "build",
+    "read_plan",
     "tag_rows",
 ]

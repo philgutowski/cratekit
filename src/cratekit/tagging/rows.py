@@ -440,6 +440,43 @@ def plan_rows(
     )
 
 
+def narrowed(plan: RowsPlan, keep: Iterable[str]) -> RowsPlan:
+    """The plan with every write not named in ``keep`` held out, as ``--leave`` holds it.
+
+    FOR A COMPOSER THAT MAY WRITE ONLY WHAT IT SHOWED (U294). ``tag campaign``
+    writes the rows the backlog named and no other, and a row this plan would
+    write that the backlog did not name, a routed row whose file carries
+    another genre or one ``tag rows`` would move into needs genre, is held out
+    here rather than by a second walk of every file. A held write becomes the
+    item ``--leave`` makes, counted under :data:`HELD_OUT`, and its change
+    leaves the write, so :func:`apply_rows` cannot reach it. Pure.
+    """
+    kept = frozenset(str(content_id) for content_id in keep)
+    held = {item.content_id for item in plan.writes if item.content_id not in kept}
+    if not held:
+        return plan
+    items = tuple(
+        Item(item.content_id, item.path, item.row, item.file, LEAVE, reason=HELD_OUT)
+        if item.content_id in held
+        else item
+        for item in plan.items
+    )
+    counts = dict(plan.counts)
+    counts[WRITE] -= len(held)
+    counts[HELD_OUT] += len(held)
+    changes = metadata.Plan(
+        owner=plan.changes.owner,
+        changes=tuple(change for change in plan.changes.changes if change.content_id not in held),
+        skipped=plan.changes.skipped,
+    )
+    return RowsPlan(
+        items=items,
+        counts=MappingProxyType(counts),
+        changes=changes,
+        leave_unmatched=plan.leave_unmatched,
+    )
+
+
 # ---------------------------------------------------------------------------
 # The apply and the read back
 # ---------------------------------------------------------------------------
@@ -766,5 +803,6 @@ __all__ = [
     "assert_read_back",
     "assert_rows_as_planned",
     "judge",
+    "narrowed",
     "plan_rows",
 ]

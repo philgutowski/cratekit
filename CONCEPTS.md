@@ -88,7 +88,10 @@ picture asks Beatport for its cover only. Every source is asked one question
 per file, the artist and the title read past the naming verb's head and marker
 (`titles.question`, U289), and matches its rows against the file's own text,
 for a file with no title tag its name past the older naming's `_PN` tail
-(`titles.name_title`, R-1724).
+(`titles.name_title`, R-1724); Discogs also takes a release only when it
+writes a mix the file's title names by its maker (`titles.named_versions`,
+U318), a maker being the mix's words that are neither version words nor
+`titles.MIX_DESCRIPTIONS`.
 Traxsource and Bandcamp are kept off the walk, since both answer
 a bot check, and still counted in old records. Each source answers one of
 `matched`, `miss`, `unreachable`, `blocked` (bot check, block page, spent rate
@@ -235,7 +238,8 @@ question per word, folded on case) or `file-unread`. The **floor** is the high
 reason. A word already saved as an alias has one answer and is **settled**. A
 row whose file is not here is in no cause and counted as **unread**; a routed
 row `tag rows` would give a word no folder takes is **joining**. The report
-writes nothing; U294 applies it.
+writes nothing; `crate tag campaign` (U294) applies it under one gate, each
+step through its own verb, writing only the rows the backlog showed.
 
 *Avoid:* adoption's **withheld**, which is a routed row the plan will not place.
 
