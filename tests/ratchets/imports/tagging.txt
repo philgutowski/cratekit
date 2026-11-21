@@ -1,0 +1,17 @@
+# Seam crossings tagging may still hold (U296), one line each:
+#   private NAME           a private name of another package
+#   off-interface MODULE   a core module off the named interface list
+#   top-level NAME         a toggleable package imported at module top level
+#   dangling TOGGLE MODULE an import that stops a verb building with TOGGLE off
+# Lines are only ever removed, by hand or with: scripts/refactor_measure.py prune tagging
+# A line whose crossing is gone fails nothing.
+dangling labels cratekit.label.harvest
+dangling labels cratekit.label.registry
+dangling labels cratekit.label.verify
+off-interface cratekit.core.art
+off-interface cratekit.core.taxonomy_word
+private cratekit.core.config._mkdir_private
+private cratekit.write.trees._rollback_quietly
+top-level cratekit.label.harvest
+top-level cratekit.label.registry
+top-level cratekit.label.verify
