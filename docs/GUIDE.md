@@ -722,7 +722,8 @@ crate sync removed
 again, and lists each track its pass recorded that the account no longer
 lists, with what it would do about the track's row in the collection. The
 database is read on a copy, so rekordbox must be closed. A run that offers
-nothing ends there and writes nothing.
+nothing ends there, and writes nothing but Cratekit's own record of synced
+playlists the account answered not found for (below).
 
 When a track is offered, the run reads your backup acknowledgment and stops
 at the explicit gate `sync.removed.confirm`, which lists every offered track
@@ -769,6 +770,36 @@ it in a playlist or history list that keeps others.
   id finds is named as gone: it offers none of its own tracks, and is read as
   still holding what its finished jobs recorded; one nothing readable records
   stops every offer.
+- **Hearts the provider withholds.** The streaming service counts hearts it
+  will not serve, so the hearts often list short of the count the account
+  declares ("349 declared, 340 listed, 9 withheld by the provider"). Short
+  only by that, with hearts served, they are read whole for this question,
+  since a heart the service will not serve is not one you see either, and the
+  plan names them with both counts. With no heart served at all they still
+  stop every offer.
+- **A playlist gone for good.** A synced playlist the account no longer lists
+  whose id answers not found is recorded, with the date, in the library's
+  `sync_unavailable.json`. When it answers not found again at least a day
+  after it first did, it is **retired**: from then on it holds nothing and
+  stops nothing, and the plan names it with its id and both dates. Once, or
+  twice the same day, it still stops every offer, as does a playlist whose id
+  failed any other way (an outage, a refused session), which is never
+  retired. A retired playlist that opens again, or that the account lists
+  again, is dropped from the record and read as any other. Nothing is written
+  on the account.
+- **Retiring them sooner.** The run names each playlist seen unavailable and
+  the one command that retires them now:
+
+  ```bash
+  crate sync removed --retire
+  ```
+
+  It reads every synced playlist and stops at the explicit gate
+  `sync.removed.retire`, which lists each one the account no longer lists
+  whose id answered not found on this read, with its id and the dates. Answer
+  it with `crate run decide RUN_ID sync.removed.retire retire --actor NAME`,
+  then run `crate --run RUN_ID sync removed --retire` again; then run `crate
+  sync removed` to plan without them. `abort` writes nothing.
 - A run that finds a removal reads every synced playlist, about two calls
   each, so on an account with hundreds of them it stops at the call ceiling
   with nothing offered; run it again as `crate --calls N --calls-per-hour M
@@ -1551,6 +1582,7 @@ without one.
 | `inbox.rotate.approve` | approve | `inbox rotate` |
 | `inbox.refill.approve` | apply | `inbox refill` |
 | `sync.removed.confirm` | apply | `sync removed` |
+| `sync.removed.retire` | retire | `sync removed --retire` |
 | `inbox.analyzed.approve` | apply | `inbox analyzed` |
 | `favorites.backfill.approve` | approve | `favorites backfill` |
 | `favorites.refresh.approve` | approve | `favorites refresh` |
