@@ -22,8 +22,9 @@ in a row read as a copy.
 windows in `analysis`. The remedy the rule allows is to keep the order the
 lines had or to give them one home, which for that family is three other
 packages' files. Reach on the tree: 23 of 219,748 ordered pairs of functions
-in 8 files would form such a window if set side by side; of 7,733 single
-deletions tried in memory (143 blocks and 7,590 functions) none forms one;
+in 8 files would form such a window if set side by side, by round one's
+count, which round two did not recount; of the single deletions round one
+tried in memory, each of the 143 blocks and each function, none forms one;
 and none of the 190 repeated windows today is two overlapping places.
 Maintainer facing: an area card meets it during a split and reorders.
 

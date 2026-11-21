@@ -18,9 +18,10 @@ suite.
 **Measured cost.** On `ff8e5ec` the two readings agree on every toggle, 159
 dangling verbs in all, and the one verb the first static reading missed
 (`intake.set`, whose builder imports `intake.set_playlist`) is what the
-builder's own imports are followed for. The driven reading took 9 to 12
-seconds on the four core container, against a budget of ten seconds for every
-new check together, which is why the suite does not run it. So a verb can
+builder's own imports are followed for. The driven reading took 12 seconds
+by the author's clock and 15 to 16 by the review's on the four core
+container, the whole command 18 to 19, against a budget of ten seconds for
+every new check together, which is why the suite does not run it. So a verb can
 come to dangle through a builder's helper with the suite green: the review
 drove it, a helper called by `session.ack`'s builder importing `skills`, and
 the real tree test passed while the driven reading named the verb. None of

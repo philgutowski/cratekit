@@ -89,11 +89,11 @@ interface, seam crossing, toggle home and dangling verb.
 
 | Command | Prints |
 |---|---|
-| `lines [PATH ...]` | lines, code, docstring, comment and blank per package, every file over 1,500 lines, and with `--files` every file; `src/cratekit` and `tests` by default |
+| `lines [PATH ...]` | lines, code, docstring, comment and blank per package, every file over 1,500 lines, and with `--files` every file; `src/cratekit` and `tests` by default; exit 2 for a path that names no Python file it reads |
 | `duplicates [PATH ...]` | exact copied blocks of six logical lines or more, per package; `--min N` for another size, `--list N` for the longest, `--renamed` for the reading with names normalised, `--where DIGEST` for where one allowed window stands |
 | `imports` | the seam counts the import rules hold; `--names` lists every core name a feature package uses, `--drive` also drives each toggle off in a fresh interpreter and sets it beside the static reading |
 | `outside FILE ...` | every name of those files that code or tests outside them use, private ones marked, `--where` for each file and line; read it before moving a name |
-| `table` | points 2 to 5 of U290 in one print, exit 1 when something stands beyond an allowance |
+| `table` | points 2 to 5 of U290 in one print, exit 1 when something stands beyond an allowance or the core names are over their ceiling |
 | `prune PACKAGE ...` | lowers those packages' allowance files to what is still found; it can add no line |
 
 - `tests/test_duplication.py` fails when a package holds a copied block beyond
@@ -112,6 +112,10 @@ interface, seam crossing, toggle home and dangling verb.
   `tests/_pinned_reserved_populations.py`), the allowances above, which a
   split does not edit, and `_PLACED` in `tests/test_layering.py`, where a part
   split from a module placed by name gets one line of its own.
+- A part split from a module is a new module to the import rules. While every
+  name stays importable from where it was, nothing changes; a package that
+  imports the part itself can cross a seam it had not, a core part off the
+  named interface or a private name of it, and add a core name to the count.
 - A copied block is read across function boundaries, so a split that sets two
   functions side by side, or a deletion between two stretches of lines, can
   form a window that stands elsewhere already. That is a new copy and fails:
