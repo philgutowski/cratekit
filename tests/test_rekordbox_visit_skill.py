@@ -225,3 +225,110 @@ def test_the_acknowledgment_it_mints_is_the_sessions_one_command(flat):
     assert named and named.group(1) == core_session.SESSION_ACTOR
     args = build_parser().parse_args(["session", "ack", "--as", named.group(1)])
     assert args.as_actor == core_session.SESSION_ACTOR
+
+
+# ---------------------------------------------------------------------------
+# U319: the Auto Analysis path, first, and the Analyze Tracks path behind it
+# ---------------------------------------------------------------------------
+
+
+def _step(text: str, number: int) -> str:
+    """The text of one numbered step, from its heading to the next step's."""
+    return text.split(f"\n## {number}.", 1)[1].split("\n## ", 1)[0]
+
+
+def test_the_auto_analysis_path_comes_before_the_analyze_tracks_path(text):
+    """The brief's first path is step 2's first part, and today's path follows it."""
+    two = _step(text, 2)
+    assert two.startswith(" Open rekordbox: the Auto Analysis path first\n")
+    auto, tracks = two.split("\n### The Analyze Tracks path\n", 1)
+    assert "Auto Analysis is starting." in re.sub(r"\s+", " ", auto)
+    assert "Analyze Track" not in auto.replace("Analyze Tracks path", ""), "no selection on it"
+    assert "Command A" in tracks and "Analyze Track)" in tracks
+    head = text.split("\n## 1.", 1)[0]
+    assert "**Two paths, the short one first** (U319)" in head
+    description = next(line for line in text.split("---", 2)[1].splitlines() if line.startswith("description:"))
+    assert "Auto Analysis dialog" in description.split("Analyze Tracks", 1)[0]
+
+
+def test_its_numbered_steps_read_in_order(text):
+    """Each part's steps numbered from one with none skipped, so none is missed."""
+    auto, tracks = _step(text, 2).split("\n### The Analyze Tracks path\n", 1)
+    for part, count in ((auto, 5), (tracks, 3)):
+        numbers = [int(n) for n in re.findall(r"^(\d+)\. ", part, re.M)]
+        assert numbers == list(range(1, count + 1)), numbers
+
+
+def test_the_visit_never_changes_the_setting(flat):
+    """Auto Analysis is Phillip's: the visit reads it through the dialog and nothing else."""
+    assert (
+        "It never turns Auto Analysis on or off and never changes a field of "
+        "rekordbox's Analysis preference; it reads them only through the dialog below."
+    ) in flat
+    assert "press Cancel, never OK, and touch no field of the dialog" in flat
+    for verb in ("tick Auto Analysis", "turn Auto Analysis on", "untick"):
+        assert verb not in flat, verb
+
+
+def test_the_dialog_is_read_against_the_one_table_with_no_field_left_unread(text, flat):
+    """Every field of step 3's table, and a field the dialog does not show stops it."""
+    two = _step(text, 2)
+    flat_two = re.sub(r"\s+", " ", two)
+    assert "read back every field of the table in step 3 from the dialog's screenshot" in flat_two
+    assert "A table field the dialog does not show is unread, and unread is not equal." in flat_two
+    assert "The Auto Analysis dialog of step 2 is only read against it, never set." in flat
+    # The table both paths read is still Phillip's standard, whole.
+    assert _settings(text) == STANDARD
+
+
+def test_ok_only_on_every_field_equal_and_a_waiting_check(flat):
+    """A 27 has rows to analyse again, which Auto Analysis leaves alone."""
+    waiting = int(ExitCode.PENDING_HUMAN)
+    suspect = int(cause.REASONS["analysis-suspect"])
+    assert f"**Every field equal, and the check in step 1.5 exited {waiting}**" in flat
+    assert f"**Any field differs or is unread**, or the check exited {suspect}: press Cancel" in flat
+    assert f"A check that exited {suspect} has rows to analyse again" in flat
+
+
+def test_no_dialog_and_a_cancel_each_take_the_analyze_tracks_path(flat):
+    assert "bring it to the front, and take a screenshot" in flat
+    assert "**No dialog on either screenshot**" in flat
+    assert "Take the Analyze Tracks path below." in flat
+    assert "Zero: Cancel held; take the Analyze Tracks path below." in flat
+    assert "then take the Analyze Tracks path below, whose run on the table's fields" in flat
+    assert "**A dialog that appears after the Analyze Tracks path has begun** is answered Cancel" in flat
+
+
+def test_the_auto_analysis_wait_counts_the_rows_not_analysed(flat):
+    """Auto Analysis leaves an analysed row alone, so the batch would stall the wait."""
+    row = rc.Row(content_id="1", title="t", state=rc.NOT_ANALYSED, dyn=False)
+    done = rc.Row(content_id="2", title="u", state=rc.ANALYSED, dyn=False)
+    found = rc.Check(
+        scope=rc.Scope(kind=rc.SCOPE_ANALYZE, name=sync_land.ANALYZE_PLAYLIST, content_ids=("1", "2")),
+        rows=(row, done),
+    )
+    summary = check_cli.payload(found)["summary"]
+    assert summary["not_analysed"] == 1 and summary["analysed"] + summary["not_analysed"] == 2
+    assert "with `expected` the `data.summary.not_analysed` count from step 1.5, not the batch" in flat
+    assert "On the Auto Analysis path `expected` is `data.summary.not_analysed`" in flat
+    assert "the count can pass `expected`; the quiet still ends the wait" in flat
+
+
+def test_a_cancel_rekordbox_ignores_is_counted_from_before_the_launch(text, flat):
+    """The launch marker is written before rekordbox opens, and the count reads it."""
+    assert "opened=$(mktemp -t rekordbox-visit.XXXXXX)" in flat
+    two = _step(text, 2)
+    assert two.index("opened=$(mktemp") < two.index("Open rekordbox through desktop control")
+    assert '-name ANLZ0000.DAT -newer "<the path step 2.1 printed>"' in flat
+    assert "Wait as step 4 says with `marker` the path step 2.1 printed" in flat
+
+
+def test_the_dynamic_run_follows_either_path(text):
+    five = re.sub(r"\s+", " ", _step(text, 5))
+    assert "On the Auto Analysis path nothing is open yet" in five
+    assert "**Dynamic**" in five
+
+
+def test_what_to_record_names_the_path_and_the_dialog(flat):
+    assert "which path ran and why (no dialog, a dialog whose fields were equal, or one cancelled" in flat
+    assert "whether rekordbox wrote after Cancel" in flat
