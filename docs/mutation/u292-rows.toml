@@ -1,0 +1,160 @@
+name = "u292"
+pass_kind = "light"
+
+[[rows]]
+id = "M01_floor"
+description = "FLOOR: propose at medium rather than high"
+file = "src/cratekit/tagging/backlog.py"
+surface = "user"
+tests = ["tests/test_tag_backlog.py", "tests/test_cli_contract.py"]
+old = '''FLOOR = suggest.HIGH'''
+new = '''FLOOR = suggest.MEDIUM'''
+
+[[rows]]
+id = "M02_proposed_needs_a_write"
+description = "a row with no genre is proposed whatever tag suggest's action, a row below the floor included"
+file = "src/cratekit/tagging/backlog.py"
+surface = "user"
+tests = ["tests/test_tag_backlog.py", "tests/test_cli_contract.py"]
+old = '''            if offered is not None and offered.action == suggest.WRITE:'''
+new = '''            if offered is not None:'''
+
+[[rows]]
+id = "M03_served_needs_a_write"
+description = "a row lagging its file is served whatever tag rows' action, a left row included"
+file = "src/cratekit/tagging/backlog.py"
+surface = "user"
+tests = ["tests/test_tag_backlog.py", "tests/test_cli_contract.py"]
+old = '''            if item is not None and item.action == rows.WRITE:'''
+new = '''            if item is not None:'''
+
+[[rows]]
+id = "M04_file_word_routes_first"
+description = "cause_of: drop the test that a routing file word is the row lagging its file"
+file = "src/cratekit/tagging/backlog.py"
+surface = "user"
+tests = ["tests/test_tag_backlog.py", "tests/test_cli_contract.py"]
+old = '''        if disposition is adopt_scan.Disposition.ROUTE:
+            return ROW_LAGS_FILE, file_word'''
+new = '''        if False:
+            return ROW_LAGS_FILE, file_word'''
+
+[[rows]]
+id = "M05_coarse_never_hides_specific"
+description = "cause_of: a catch all can be the word over a specific word"
+file = "src/cratekit/tagging/backlog.py"
+surface = "user"
+tests = ["tests/test_tag_backlog.py", "tests/test_cli_contract.py"]
+old = '''    specific = [word for word in present if not declared.is_too_coarse_as_source(word)]'''
+new = '''    specific = list(present)'''
+
+[[rows]]
+id = "M06_source_names_the_genre_voted"
+description = "proposal_of: a catalogue match for another genre is named the source"
+file = "src/cratekit/tagging/backlog.py"
+surface = "user"
+tests = ["tests/test_tag_backlog.py", "tests/test_cli_contract.py"]
+old = '''        and asked.genre == item.genre
+'''
+new = '''        and True
+'''
+
+[[rows]]
+id = "M07_alias_needs_agreement"
+description = "word_of: an alias offered at any band, low included"
+file = "src/cratekit/tagging/backlog.py"
+surface = "user"
+tests = ["tests/test_tag_backlog.py", "tests/test_cli_contract.py"]
+old = '''        if band in _NEIGHBOURS_AGREE
+'''
+new = '''        if band != suggest.NONE
+'''
+
+[[rows]]
+id = "M08_alias_rows_need_an_entry"
+description = "word_of: an alias's rows follow with no genre entry for its genre"
+file = "src/cratekit/tagging/backlog.py"
+surface = "user"
+tests = ["tests/test_tag_backlog.py", "tests/test_cli_contract.py"]
+old = '''        return frozenset(row.content_id for row in alone) if known(genre) else frozenset()'''
+new = '''        return frozenset(row.content_id for row in alone)'''
+
+[[rows]]
+id = "M09_folder_counts_by_the_row"
+description = "word_of: a folder counts the rows whose FILE carries the spelling, round one's defect"
+file = "src/cratekit/tagging/backlog.py"
+surface = "user"
+tests = ["tests/test_tag_backlog.py", "tests/test_cli_contract.py"]
+old = '''        if row.row_word == spelling or writes.get(row.content_id) == spelling
+'''
+new = '''        if row.file_word == spelling
+'''
+
+[[rows]]
+id = "M10_unread_counted"
+description = "plan_backlog: a row whose file is not here is dropped uncounted, round one's defect"
+file = "src/cratekit/tagging/backlog.py"
+surface = "user"
+tests = ["tests/test_tag_backlog.py", "tests/test_cli_contract.py"]
+old = '''            unread[rows._PROBED.get(track.readability, rows.FILE_UNREADABLE)] += 1
+'''
+new = '''            pass
+'''
+
+[[rows]]
+id = "M11_joining_files_nowhere"
+description = "plan_backlog: joining names rows tag rows gives a genre adoption files, the opposite"
+file = "src/cratekit/tagging/backlog.py"
+surface = "user"
+tests = ["tests/test_tag_backlog.py", "tests/test_cli_contract.py"]
+old = '''            is not adopt_scan.Disposition.ROUTE
+'''
+new = '''            is adopt_scan.Disposition.ROUTE
+'''
+
+[[rows]]
+id = "M12_folder_threshold"
+description = "word_of: the folder recommended one row above the threshold"
+file = "src/cratekit/tagging/backlog.py"
+surface = "user"
+tests = ["tests/test_tag_backlog.py", "tests/test_cli_contract.py"]
+old = '''    if folder is not None and folder.rows >= genres_report.FOLDER_WORTH:'''
+new = '''    if folder is not None and folder.rows > genres_report.FOLDER_WORTH:'''
+
+[[rows]]
+id = "M13_neighbours_declared_only"
+description = "neighbour_votes: a neighbour carrying an undeclared word votes"
+file = "src/cratekit/tagging/backlog.py"
+surface = "user"
+tests = ["tests/test_tag_backlog.py", "tests/test_cli_contract.py"]
+old = '''        if other.content_id in ids or not suggest.suggestable(declared, other.genre):'''
+new = '''        if other.content_id in ids:'''
+
+[[rows]]
+id = "M14_alias_moving_nothing"
+description = "word_of: an alias moving no row recommended, round two's finding"
+file = "src/cratekit/tagging/backlog.py"
+surface = "user"
+tests = ["tests/test_tag_backlog.py", "tests/test_cli_contract.py"]
+old = '''    elif alias is not None and alias.rows:'''
+new = '''    elif alias is not None:'''
+
+[[rows]]
+id = "M15_settled_rows_reached"
+description = "plan_backlog: every row of a settled word read as settled, reached or not"
+file = "src/cratekit/tagging/backlog.py"
+surface = "user"
+tests = ["tests/test_tag_backlog.py", "tests/test_cli_contract.py"]
+old = '''                    if row.content_id in word.reached
+'''
+new = '''                    if True
+'''
+
+[[rows]]
+id = "M16_outcome_over_unread"
+description = "the verb: a backlog of unread rows alone ends no_op, round one's clean report"
+file = "src/cratekit/tagging/backlog_cli.py"
+surface = "user"
+tests = ["tests/test_tag_backlog.py", "tests/test_cli_contract.py"]
+old = '''        outcome=Outcome.OK if plan.rows or plan.unread or plan.joining else Outcome.NO_OP,'''
+new = '''        outcome=Outcome.OK if plan.rows else Outcome.NO_OP,'''

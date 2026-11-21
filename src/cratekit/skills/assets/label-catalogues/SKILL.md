@@ -276,7 +276,10 @@ names the landing its tail reached, or refuses naming the tail by hand while
 the folder holds anything else; a sync pass's through `crate sync land
 --pass-run RUN`; anything else by moving it out of the folder and landing it
 on its own.
-`crate sync land` refuses the same way beside a go's download.
+`crate sync land` refuses the same way beside a go's download. One pass
+downloads at a time: a go holds the staging lock for its whole run, as `crate
+sync land` and the night pass, `crate sync night`, do, and refuses
+`staging-held`, naming the holder, while another holds it.
 
 `crate sync all` does not touch labels. It makes no provider call for them and
 queues nothing for them, whatever the profile enables, and its report names
