@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from cratekit.core import config, naming, review
-from cratekit.core.naming import AUDIO_EXTS, MarkerRule, NameBudget, NameTemplate
+from cratekit.core.naming import AUDIO_EXTS, NameBudget, NameTemplate
 from cratekit.core.review import Option, Queue, Verdict
 
 #: The kind every item this module offers carries, and the only kind it reads.
@@ -28,15 +28,7 @@ KEEP = "keep"
 
 
 def _template_for(cfg: config.Config) -> NameTemplate:
-    marker = cfg.naming.lossy_marker
-    return NameTemplate(markers=(MarkerRule(field="lossy", literal=marker),))
-
-
-def _budget_for(cfg: config.Config) -> NameBudget:
-    return NameBudget(
-        path_budget_bytes=cfg.naming.path_budget_bytes,
-        filename_max_bytes=cfg.naming.filename_max_bytes,
-    )
+    return NameTemplate.lossy(cfg.naming.lossy_marker)
 
 
 def propose_name(path: Path, *, cfg: config.Config) -> tuple[str, str]:
@@ -46,7 +38,7 @@ def propose_name(path: Path, *, cfg: config.Config) -> tuple[str, str]:
     later pad cannot push a fitted name over the ceiling.
     """
     template = _template_for(cfg)
-    budget = _budget_for(cfg)
+    budget = NameBudget.of(cfg.naming)
     head, tail = naming.split_head(path.stem, template=template)
     parsed = naming.parse_head(path.stem, template=template) or {}
     bpm_raw = parsed.get("bpm")

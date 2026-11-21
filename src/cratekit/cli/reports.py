@@ -51,7 +51,7 @@ from cratekit.cli.output import Envelope, load_config
 from cratekit.core import active_taxonomy, config, review
 from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.core.naming import MarkerRule, NameTemplate
+from cratekit.core.naming import NameTemplate
 from cratekit.modules.reports import aging, coverage, duplicates, export
 from cratekit.modules.reports import library as library_report
 
@@ -65,23 +65,10 @@ DEFAULT_COVERAGE_LIMIT = 200
 def _template(cfg: config.Config) -> NameTemplate:
     """The declared naming shape, with the marker text config owns (S3).
 
-    Same rule as ``acquire.match_cli.library_template`` and for the same reason:
-    a configuration with no marker text is a configuration where no file carries
-    one, and a marker rule with an empty literal is refused at construction.
-
-    THE CITATION IS CHECKED RATHER THAN REMEMBERED. It first read
-    ``match_cli._template``, which is not a symbol that module has, and a
-    citation nothing verifies is how a reader is sent to a function that was
-    renamed two units ago. ``write/naming_cli._template`` is the third copy of
-    this shape and does NOT carry the empty-marker guard, so it raises at
-    ``MarkerRule`` construction on a configuration with an empty marker. That is
-    recorded here rather than fixed from this unit, because it is that unit's
-    verb and its own suite's business.
+    ``acquire.match_cli.library_template``'s rule: a configuration with no
+    marker text is one where no file carries a marker, so the plain shape.
     """
-    marker = (cfg.naming.lossy_marker or "").strip()
-    if not marker:
-        return NameTemplate()
-    return NameTemplate(markers=(MarkerRule(field="lossy", literal=marker),))
+    return NameTemplate.lossy_if_marked(cfg.naming.lossy_marker)
 
 
 def _view(ctx) -> export.LibraryView:

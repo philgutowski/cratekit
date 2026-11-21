@@ -101,15 +101,6 @@ def _bind_defaults() -> None:
     scoring.bind_loader(vocal.default_loader)
 
 
-def _as_level(text: str | None) -> int | None:
-    if text is None:
-        return None
-    try:
-        return int(text)
-    except ValueError:
-        return None
-
-
 def _write_or_refuse(path: Path, fields: dict[str, Any]) -> None:
     try:
         written = tags.write_tags(path, fields)
@@ -158,19 +149,6 @@ def _item_path(job, item) -> Path:
             detail={"item": item.item_id, "folder": str(folder)},
         )
     return path
-
-
-def _summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
-    reports = artifacts.committed(cfg, job_id)
-    statuses: dict[str, int] = {}
-    reasons: dict[str, int] = {}
-    for report in reports:
-        status = str(report.get("status", "unknown"))
-        statuses[status] = statuses.get(status, 0) + 1
-        reason = report.get("vocal_reason")
-        if reason is not None:
-            reasons[str(reason)] = reasons.get(str(reason), 0) + 1
-    return {"reports": len(reports), "by_status": statuses, "by_vocal_reason": reasons}
 
 
 def _unscored_warning(summary: Mapping[str, Any]) -> dict[str, str] | None:
@@ -264,7 +242,7 @@ def _advance(ctx, store, job):
 def _resume(ctx, cfg: config.Config) -> Envelope:
     with jobs.open_store() as store:
         job, warnings = _advance(ctx, store, jobs.get(store, ctx.args.job))
-        summary = _summary(cfg, job.job_id)
+        summary = analysis_cli.committed_summary(cfg, job.job_id)
         # THE RESUME CARRIES THE WALK'S OMISSIONS TOO, off the frozen payload.
         # This is the report a person keeps, and the queue envelope is the one
         # they scroll past.
@@ -326,7 +304,7 @@ def handle(job, item, cfg) -> jobs.Produced:
     _bind_defaults()
     previous_level = tags.read_vox_from_file(path)
     previous_gender = tags.read_voxgender_from_file(path)
-    previous_conf = _as_level(tags.read_tag(path, "voxgenderconf"))
+    previous_conf = analysis_cli.as_level(tags.read_tag(path, "voxgenderconf"))
     scored = scoring.analyse({"path": str(path)})
     if not scored.get("vocal_active"):
         return artifacts.produced(

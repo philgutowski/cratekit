@@ -63,7 +63,7 @@ from cratekit.core import config, discovery, jobs, naming, pool, tags
 from cratekit.core import drift as drift_words
 from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.core.naming import MarkerRule, NameBudget, NameSpec, NameTemplate
+from cratekit.core.naming import NameBudget, NameSpec, NameTemplate
 from cratekit.modules import extras, foreground
 
 _ORIGIN = ("analysis", "cli")
@@ -169,7 +169,7 @@ def _nothing_to_queue(ctx, folder: Path, extra: tuple[dict[str, str], ...] = ())
     )
 
 
-def _summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
+def committed_summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
     """What the committed reports say the job did, read back off disk."""
     reports = artifacts.committed(cfg, job_id)
     statuses: dict[str, int] = {}
@@ -488,7 +488,7 @@ def _resume(ctx, cfg: config.Config, job_id: str) -> Envelope:
                 if pooled is None:
                     raise
                 raise _with_pool(failed, pooled) from failed
-        summary = _summary(cfg, job.job_id)
+        summary = committed_summary(cfg, job.job_id)
         # THE RESUME IS THE REPORT THAT SAYS THE PASS FINISHED, so what the walk
         # left out rides it too, read back off the frozen payload rather than
         # re-measured. A queue envelope alone would put the omission on the
@@ -555,9 +555,7 @@ def analyze_run(ctx) -> Envelope:
 
 
 def _template(cfg: config.Config) -> NameTemplate:
-    return NameTemplate(
-        markers=(MarkerRule(field="lossy", literal=cfg.naming.lossy_marker),)
-    )
+    return NameTemplate.lossy(cfg.naming.lossy_marker)
 
 
 def carries_head(path: Path, cfg: config.Config) -> bool:
@@ -568,13 +566,6 @@ def carries_head(path: Path, cfg: config.Config) -> bool:
     again (U181, R-277).
     """
     return naming.has_head(path.name, template=_template(cfg))
-
-
-def _budget(cfg: config.Config) -> NameBudget:
-    return NameBudget(
-        path_budget_bytes=cfg.naming.path_budget_bytes,
-        filename_max_bytes=cfg.naming.filename_max_bytes,
-    )
 
 
 def _refuse_missing(item, folder: Path, path: Path, what: str) -> CratekitError:
@@ -807,7 +798,7 @@ def _finalize(cfg: config.Config, job, item, path: Path, scored: Mapping[str, An
         lossy=bool(marker) and (marker in path.stem or marker in title),
     )
     rendered = naming.build(
-        spec, template=template, budget=_budget(cfg), parent_dir=str(path.parent)
+        spec, template=template, budget=NameBudget.of(cfg.naming), parent_dir=str(path.parent)
     )
     fields = {
         "initialkey": key,
@@ -933,7 +924,7 @@ def handle_run(job, item, cfg) -> jobs.Produced:
 # ---------------------------------------------------------------------------
 
 
-def _as_level(text: str | None) -> int | None:
+def as_level(text: str | None) -> int | None:
     """The integer a tag text carries, or None, ``tags._read_int``'s reading."""
     if text is None:
         return None
@@ -1019,7 +1010,7 @@ def handle_restamp(job, item, cfg) -> jobs.Produced:
     # integer is what the comparison uses, and they come from one open so
     # the two cannot disagree about what the file carried.
     previous_text = tags.read_tag(path, "energylevel")
-    previous = _as_level(previous_text)
+    previous = as_level(previous_text)
     if features is None:
         return artifacts.produced(
             cfg,

@@ -897,25 +897,8 @@ def _pending(result: match.MatchResult, *, run_id: str) -> PendingHumanAction | 
 
 
 def library_template(cfg: config.Config) -> naming.NameTemplate:
-    """The shape the library's own filenames are written in.
-
-    THE MARKER IS THE POINT. R21 makes a lossy copy carry a marker inside its
-    name, and a template that does not declare the marker cannot strip it, so
-    the marked copy and its lossless twin fold to two different recordings. The
-    source system's two strippers disagreed about exactly this and the result
-    was a pair of duplicates sitting in one playlist. Config owns the marker
-    text (S3) and this is where it is handed to the engine.
-    """
-    marker = (cfg.naming.lossy_marker or "").strip()
-    if not marker:
-        # A marker rule with an empty literal is refused at construction, and a
-        # configuration with no marker text is a configuration where no file
-        # carries one. Refusing the whole run over it would turn a naming policy
-        # into a reason the match cannot happen at all.
-        return naming.NameTemplate()
-    return naming.NameTemplate(
-        markers=(naming.MarkerRule(field="lossy", literal=marker),)
-    )
+    """The shape the library's own filenames are written in, the marker with it."""
+    return naming.NameTemplate.lossy_if_marked(cfg.naming.lossy_marker)
 
 
 def library_view(cfg: config.Config) -> tuple[match.LibraryIndex, Callable[..., bool], Callable[..., str]]:

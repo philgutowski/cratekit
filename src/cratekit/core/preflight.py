@@ -499,6 +499,22 @@ def slot_holds_a_volume(slot: Path) -> bool:
     return behind != Path(slot) and is_mount_point(behind)
 
 
+def device_of(path: Path) -> int | None:
+    """The device ``path`` is on, read off its nearest ancestor that exists.
+
+    None when nothing up to the root can be read, so a caller comparing two
+    devices never takes two unreadable paths for one volume.
+    """
+    probe = path
+    while True:
+        try:
+            return probe.stat().st_dev
+        except OSError:
+            if probe.parent == probe:
+                return None
+            probe = probe.parent
+
+
 def names_one_path(left: Path, right: Path) -> bool:
     """Whether two paths name ONE thing on this filesystem, as the filesystem sees it.
 

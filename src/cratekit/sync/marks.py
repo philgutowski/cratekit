@@ -15,6 +15,7 @@ import stat
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from cratekit.core.cause import CratekitError, Scope, refuse
 
@@ -25,6 +26,18 @@ class PendingMark:
 
     target_id: str
     kind: str
+
+
+def blocked(origin: Sequence[str], message: str, /, *steps: str, **detail: Any) -> CratekitError:
+    """The refusal a verb over the account's marks ends on, with the verb's own origin."""
+    return refuse(
+        "sync-marks-blocked",
+        message,
+        steps=steps,
+        scope=Scope.SOURCE,
+        origin=origin,
+        detail=detail,
+    )
 
 
 def _blocked(local_output: Path, because: str) -> CratekitError:

@@ -478,17 +478,9 @@ def heart_candidates(
 def _template(cfg: config.Config) -> naming.NameTemplate:
     """The declared naming shape, on ``acquire.match_cli.library_template``'s rule.
 
-    A configuration with no marker text is one where no file carries a marker,
-    and a marker rule with an empty literal is refused at construction, so the
-    rule is left out rather than the whole item refused over a naming policy.
-    Built here rather than imported because that module is a verb's shell.
+    Built here and not imported, because that module is a verb's shell.
     """
-    marker = (cfg.naming.lossy_marker or "").strip()
-    if not marker:
-        return naming.NameTemplate()
-    return naming.NameTemplate(
-        markers=(naming.MarkerRule(field="lossy", literal=marker),)
-    )
+    return naming.NameTemplate.lossy_if_marked(cfg.naming.lossy_marker)
 
 
 def name_template(cfg: config.Config) -> naming.NameTemplate:

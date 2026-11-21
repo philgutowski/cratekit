@@ -70,7 +70,7 @@ from pathlib import Path
 from cratekit.cli.output import Envelope, digest_of, load_config
 from cratekit.core import active_taxonomy, config, taxonomy
 from cratekit.core.cause import Outcome, refuse
-from cratekit.core.naming import MarkerRule, NameTemplate
+from cratekit.core.naming import NameTemplate
 from cratekit.modules.tools import setbuilder
 
 #: The sides of the anchor a person may narrow the answer to. Taken from the
@@ -80,14 +80,8 @@ ROLES: tuple[str, ...] = ("before", "after")
 
 
 def _template(cfg: config.Config) -> NameTemplate:
-    """The declared name shape, built from config the way five other sites do.
-
-    ``core.naming`` takes configuration as parameters and imports none, so every
-    caller constructs this itself. Following the house pattern rather than
-    inventing a sixth answer; that there are now six copies is filed as a
-    residual rather than fixed here.
-    """
-    return NameTemplate(markers=(MarkerRule(field="lossy", literal=cfg.naming.lossy_marker),))
+    """The declared name shape, with configuration's lossy marker."""
+    return NameTemplate.lossy(cfg.naming.lossy_marker)
 
 
 def positive_count(text: str) -> int:

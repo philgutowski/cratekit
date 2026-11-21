@@ -232,16 +232,6 @@ def _unusable(path: Path, what: str) -> CratekitError:
     )
 
 
-def _instant(raw: Any) -> datetime | None:
-    if not isinstance(raw, str):
-        return None
-    try:
-        moment = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    return moment if moment.tzinfo is not None else None
-
-
 def _strings(raw: Any) -> bool:
     return isinstance(raw, list) and all(isinstance(one, str) for one in raw)
 
@@ -371,7 +361,7 @@ class KeptListing:
             for key, value in answers.items():
                 if not isinstance(value, Mapping):
                     raise _unusable(path, f"the {section} answer {key!r} is not a map")
-                read_at = _instant(value.get("read_at"))
+                read_at = kept_reads._instant(value.get("read_at"))
                 if read_at is None:
                     raise _unusable(path, f"the {section} answer {key!r} carries no instant")
                 if not _valid(section, value.get("value")):

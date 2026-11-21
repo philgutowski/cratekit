@@ -321,22 +321,6 @@ def _arrived(
         return exc
 
 
-def _changed_said(changed: CratekitError) -> str:
-    """What made the folder unsafe to keep, said as a clause (review round two, D1)."""
-    detail = changed.cause.detail or {}
-    if "arrived" not in detail:
-        return f"whether anything arrived while the tail ran cannot be read: {changed.cause.message}"
-    parts = []
-    if detail.get("arrived"):
-        parts.append(f"download job(s) {', '.join(map(str, detail['arrived']))} finished track(s) into it")
-    if detail.get("before") != detail.get("after"):
-        parts.append(
-            f"it held {detail.get('before')} file(s) a landing would take as the tail started "
-            f"and {detail.get('after')} after"
-        )
-    return "the staging folder changed while the tail ran: " + "; ".join(parts)
-
-
 def _unkept(folder: Path, job: str, why: str) -> dict[str, str]:
     return {
         "code": UNRECORDED_WARNING,
@@ -392,7 +376,7 @@ def _kept(
     except Exception as exc:  # noqa: BLE001 - a queue that fails here is the record lost
         return [_unkept(folder, job, f"the queue could not be read ({type(exc).__name__}: {exc})")]
     if changed is not None:
-        return [_unkept(folder, job, _changed_said(changed))]
+        return [_unkept(folder, job, tail.changed_said(changed))]
     try:
         with jobs.open_store() as store:
             go.keep_tail(cfg, store, job, folder)

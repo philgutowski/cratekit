@@ -52,7 +52,7 @@ from cratekit.cli.output import Envelope, digest_of
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.intake import land_cli
 from cratekit.sync import cli as sync_cli
-from cratekit.sync import mark_cli, mark_record, playlists
+from cratekit.sync import mark_cli, mark_record, marks, playlists
 
 _ORIGIN = ("sync.unmark",)
 
@@ -105,14 +105,7 @@ def build_unmark(parser, entry) -> None:
 
 
 def _blocked(message: str, *steps: str, **detail: Any) -> CratekitError:
-    return refuse(
-        "sync-marks-blocked",
-        message,
-        steps=steps,
-        scope=Scope.SOURCE,
-        origin=_ORIGIN,
-        detail=detail,
-    )
+    return marks.blocked(_ORIGIN, message, *steps, **detail)
 
 
 def _pass_name(given: str) -> str:

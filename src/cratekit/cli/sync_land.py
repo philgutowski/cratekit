@@ -257,12 +257,6 @@ def _report(progress: Callable[[str], None] | None) -> tail.Chain:
     )
 
 
-def _summary_of(envelope: dict[str, Any]) -> dict[str, Any]:
-    data = envelope.get("data") or {}
-    summary = data.get("summary") if isinstance(data, dict) else None
-    return summary if isinstance(summary, dict) else {}
-
-
 # ---------------------------------------------------------------------------
 # Step 0: nothing is written while rekordbox or a backup is running
 # ---------------------------------------------------------------------------
@@ -541,7 +535,7 @@ def _lift_failed_checks(report: _Pass, envelope: dict[str, Any]) -> None:
     the row beside it, the withheld hearts. It is said once, as a note.
     """
     data = envelope.get("data") or {}
-    not_queued = _summary_of(envelope).get("not_queued") or {}
+    not_queued = tail.summary_of(envelope).get("not_queued") or {}
     held = {
         f"sync.{source}"
         for source, reason in not_queued.items()
@@ -700,7 +694,7 @@ def _sync(report: _Pass, cfg: config.Config) -> str | None:
     """
     envelope = tail.required(report, SYNC, ["sync", "all"])
     _lift_failed_checks(report, envelope)
-    summary = _summary_of(envelope)
+    summary = tail.summary_of(envelope)
     run_id = str(summary.get("run_id") or envelope.get("run_id") or "")
     report.summary["pass_run"] = run_id
     report.summary["sync_run"] = run_id
@@ -863,7 +857,7 @@ def _missing(report: _Pass, run_id: str, *, without_cancelled: bool = False) -> 
     # cannot name exactly above all: it is in no download list, and the pass
     # would otherwise say nothing of it.
     _lift_failed_checks(report, envelope)
-    summary = _summary_of(envelope)
+    summary = tail.summary_of(envelope)
     listed = summary.get("list")
     land_name = str(summary.get("land_name") or "")
     staged = int(summary.get("staged") or 0)
@@ -1223,22 +1217,6 @@ def _arrived(
         return exc
 
 
-def _changed_said(changed: CratekitError) -> str:
-    """What made the folder unsafe to keep, said as a clause (review round two, D1)."""
-    detail = changed.cause.detail or {}
-    if "arrived" not in detail:
-        return f"whether anything arrived while the tail ran cannot be read: {changed.cause.message}"
-    parts = []
-    if detail.get("arrived"):
-        parts.append(f"download job(s) {', '.join(map(str, detail['arrived']))} finished track(s) into it")
-    if detail.get("before") != detail.get("after"):
-        parts.append(
-            f"it held {detail.get('before')} file(s) a landing would take as the tail started "
-            f"and {detail.get('after')} after"
-        )
-    return "the staging folder changed while the tail ran: " + "; ".join(parts)
-
-
 def _planned_over(changed: CratekitError, stop: _Attend) -> CratekitError:
     """The arrival refusal for a landing already planned over what arrived (round two).
 
@@ -1281,7 +1259,7 @@ def _keep(
 
     try:
         changed = _arrived(cfg, staging, name, before)
-        why = _changed_said(changed) if changed is not None else None
+        why = tail.changed_said(changed) if changed is not None else None
     except Exception as exc:  # noqa: BLE001 - a queue that fails here is the record lost
         why = f"the queue could not be read ({type(exc).__name__}: {exc})"
     if why is not None:

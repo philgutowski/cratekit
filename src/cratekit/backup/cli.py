@@ -221,20 +221,6 @@ def _outcome_row(outcomes, portion: backup_facts.Portion) -> tuple[dict | None, 
     return found, bool(recorded.get("dry_run"))
 
 
-def _took(seconds: object) -> str:
-    """How long a recorded run took, as the words after a verb, or nothing.
-
-    Spelled as doctor's ``backup_facts.took`` spells it, and a test holds the
-    two equal: this layer reaches the fact file through the names it already
-    uses, the ages among them.
-    """
-    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
-        return ""
-    if seconds < 1:
-        return " in under a second"
-    return f" in {seconds:.0f} seconds"
-
-
 def kind_warning(outcomes, ages: list[dict] | None) -> tuple[dict[str, str], ...]:
     """Which kind of run this backup was, as one sentence, or nothing (U317).
 
@@ -317,7 +303,7 @@ def _files_sentence(row: dict, rehearsed: bool) -> str:
         for name in ("added", "changed", "rewritten", "removed")
     )
     seconds = row.get("seconds")
-    took = _took(seconds)
+    took = backup_facts.took(seconds)
     if kind == backup.KIND_SKIPPED:
         return (
             f"the files are what the last completed backup left, checked{took} "

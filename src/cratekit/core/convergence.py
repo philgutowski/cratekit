@@ -678,10 +678,7 @@ class ConvergenceState:
     trees: tuple[TreeConvergence, ...] = ()
 
     def tree(self, tree_id: str) -> TreeConvergence | None:
-        for entry in self.trees:
-            if entry.tree_id == tree_id:
-                return entry
-        return None
+        return tree_registry.by_tree_id(self.trees, tree_id)
 
     def blocking_trees(self) -> tuple[str, ...]:
         return tuple(entry.tree_id for entry in self.trees if entry.blocking)

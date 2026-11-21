@@ -3468,7 +3468,7 @@ class Config:
         ago is reminded that their snapshots are copies rather than atomic
         commits.
         """
-        return _is_inside(self.library.db_path, self.library.root)
+        return is_inside(self.library.db_path, self.library.root)
 
     # -- preconditions -----------------------------------------------------
 
@@ -3586,7 +3586,7 @@ def _apply_env_overrides(data: Mapping) -> dict:
             if (
                 isinstance(db_path, str)
                 and db_path.strip()
-                and _is_inside(Path(db_path), Path(configured_root))
+                and is_inside(Path(db_path), Path(configured_root))
             ):
                 relative = os.path.relpath(
                     os.path.normpath(db_path), os.path.normpath(configured_root)
@@ -4093,7 +4093,7 @@ def _validate_recognition(data: Mapping) -> list[str]:
     return problems
 
 
-def _is_inside(child: Path, parent: Path) -> bool:
+def is_inside(child: Path, parent: Path) -> bool:
     """True when ``child`` is ``parent`` or sits under it. PURELY TEXTUAL.
 
     No ``resolve()`` and no ``exists()``: Rule 1 forbids this module from touching
@@ -4175,7 +4175,7 @@ def _validate_db_containment(data: Mapping) -> list[str]:
         return problems  # a missing required key is already reported by the caller
     if not root.strip() or not db_path.strip():
         return problems
-    if _is_inside(Path(db_path), Path(root)):
+    if is_inside(Path(db_path), Path(root)):
         return problems
     if accepted:
         return problems
@@ -4655,7 +4655,7 @@ def _refuse_write_outside_test_root(path: Path, *, system_temporary: bool = Fals
     that skips the conftest, a test that undoes its patches, or a mutant of the
     path resolution all fail loudly here instead of writing the user's file.
 
-    Resolved on both sides, unlike ``_is_inside`` alone, because the temporary
+    Resolved on both sides, unlike ``is_inside`` alone, because the temporary
     folder is reached through a symlink on macOS and a link inside the root can
     point anywhere. A process without pytest loaded is never checked.
 
@@ -4682,7 +4682,7 @@ def _refuse_write_outside_test_root(path: Path, *, system_temporary: bool = Fals
     if system_temporary:
         allowed.append(Path(tempfile.gettempdir()).resolve())
     target = path.resolve()
-    if any(_is_inside(target, each) for each in allowed):
+    if any(is_inside(target, each) for each in allowed):
         return
     if root is None:
         raise WriteOutsideTestRoot(
@@ -5253,6 +5253,7 @@ __all__ = [
     "merge_changes",
     "migrate",
     "exclusive_lock",
+    "is_inside",
     "mkdir_private",
     "out_of_band_effects",
     "provider_gate_dir",

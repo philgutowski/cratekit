@@ -115,6 +115,7 @@ from cratekit.label import catalogue, sweep
 from cratekit.label import cli as label_cli
 from cratekit.label import gate as genre_gate
 from cratekit.label import registry as labels
+from cratekit.label.harvest import _text
 
 #: What the provenance sidecar says a listed row came from. ``intake land``
 #: reads exactly this word to find the rows it files under the labels tree.
@@ -260,13 +261,6 @@ class _OutOfKind:
             "kind": self.judged.kind,
             "reason": self.judged.reason,
         }
-
-
-def _text(value: Any) -> str | None:
-    """A payload value as text, or ``None``. Only a string is believed."""
-    if not isinstance(value, str) or not value.strip():
-        return None
-    return value.strip()
 
 
 def _genre_of(rows: tuple[Any, ...]) -> tuple[str | None, str | None]:

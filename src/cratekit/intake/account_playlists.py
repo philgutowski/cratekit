@@ -77,6 +77,10 @@ from cratekit.favorites import placeholders
 from cratekit.intake import batch_name, ingest, native
 from cratekit.intake import cli as intake_cli
 
+#: One row of an account playlist its INBOX playlist does not hold, and why:
+#: the row a set's playlist leaves out, which is the same five fields.
+from cratekit.intake.set_playlist import Left
+
 #: The report states a landing's files were downloaded for. ``owned`` and
 #: ``suppressed`` rows were never downloaded, so no file of the landing is theirs.
 CARRIED_STATES = frozenset({"missing", "offered"})
@@ -158,26 +162,6 @@ class Member:
     def left(self, why: str) -> Left:
         """This member as a row its playlist does not hold, because ``why``."""
         return Left(self.position, self.artist, self.title, self.state, why)
-
-
-@dataclass(frozen=True, slots=True)
-class Left:
-    """One row of an account playlist its INBOX playlist does not hold, and why."""
-
-    position: int
-    artist: str
-    title: str
-    state: str
-    why: str
-
-    def identity(self) -> dict[str, Any]:
-        return {
-            "position": self.position,
-            "artist": self.artist,
-            "title": self.title,
-            "state": self.state,
-            "why": self.why,
-        }
 
 
 @dataclass(frozen=True, slots=True)

@@ -189,7 +189,7 @@ def source_playlist(db: Any, name: str) -> Any:
     # whatever it is called, for the reason the Favorites home gives.
     live = foreign_tree.outside(live, list(db.get_playlist()))
     if len(live) == 1:
-        if not _live_members(db, str(live[0].ID)):
+        if not live_members(db, str(live[0].ID)):
             raise refuse(
                 SOURCE_MISSING,
                 f"the playlist {name!r} holds no live track, so there is nothing for the "
@@ -229,7 +229,7 @@ def source_playlist(db: Any, name: str) -> Any:
     )
 
 
-def _live_members(db: Any, playlist_id: str) -> frozenset[str]:
+def live_members(db: Any, playlist_id: str) -> frozenset[str]:
     """The content ids a playlist holds live, the soft deleted rows left out (R-758)."""
     return frozenset(
         str(song.ContentID)
@@ -358,7 +358,7 @@ def plan_refresh(
     tree_id = declared.tree.id
     root_id = tree_registry.anchored_root(tree_id, registry, root_exists=_root_exists(db))
     source = source_playlist(db, sub.signal_playlist)
-    favourites = _live_members(db, str(source.ID))
+    favourites = live_members(db, str(source.ID))
     nodes = tuple(node for node in tree_read.read_tree(db, root_id) if not node.removed)
     record = convergence.read(cfg).tree(tree_id)
 
@@ -959,6 +959,7 @@ __all__ = [
     "facts",
     "favorites_class",
     "identity",
+    "live_members",
     "payload",
     "placements",
     "plan_refresh",

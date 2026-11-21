@@ -2291,20 +2291,9 @@ def shares_the_database_volume(cfg: config.Config, *, root: Path | None = None) 
     """
     store = root if root is not None else snapshot.store_root(cfg)
     database = config.state_path(snapshot.DATABASE_KEY, cfg)
-    left = _device_of(store)
-    right = _device_of(database)
+    left = preflight.device_of(store)
+    right = preflight.device_of(database)
     return left is not None and left == right
-
-
-def _device_of(path: Path) -> int | None:
-    probe = path
-    while True:
-        try:
-            return probe.stat().st_dev
-        except OSError:
-            if probe.parent == probe:
-                return None
-            probe = probe.parent
 
 
 def retention_plan(

@@ -32,7 +32,7 @@ from cratekit.cli.output import Envelope, PendingHumanAction, load_config
 from cratekit.core import active_taxonomy, config
 from cratekit.core.cause import Cause, Outcome, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.core.naming import MarkerRule, NameTemplate
+from cratekit.core.naming import NameTemplate
 
 _ORIGIN = ("analysis.check_cli",)
 
@@ -67,7 +67,7 @@ def build(parser, entry) -> None:
 
 def template_of(cfg: config.Config) -> NameTemplate:
     """The name template the heads were written with, the analysis run's own."""
-    return NameTemplate(markers=(MarkerRule(field="lossy", literal=cfg.naming.lossy_marker),))
+    return NameTemplate.lossy(cfg.naming.lossy_marker)
 
 
 def _named(rows: list[rc.Row], say) -> str:

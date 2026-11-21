@@ -360,6 +360,19 @@ class TreeRecord:
                 )
 
 
+def by_tree_id(entries, tree_id: str):
+    """The one of ``entries`` recorded for ``tree_id``, or None.
+
+    A scan and never a dict keyed on the identifier, so no reader is handed a
+    mapping to be tempted to key on a name. The convergence record reads its
+    own entries through this as well.
+    """
+    for entry in entries:
+        if entry.tree_id == tree_id:
+            return entry
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class Registry:
     """Every record the registry holds. A tree with no record is on the bridge.
@@ -373,10 +386,7 @@ class Registry:
     trees: tuple[TreeRecord, ...] = ()
 
     def record(self, tree_id: str) -> TreeRecord | None:
-        for entry in self.trees:
-            if entry.tree_id == tree_id:
-                return entry
-        return None
+        return by_tree_id(self.trees, tree_id)
 
     def mode(self, tree_id: str) -> str:
         """The medium that owns ``tree_id``. Unrecorded means the bridge."""
@@ -1344,6 +1354,7 @@ __all__ = [
     "assert_cutover_ready",
     "assert_rebuildable",
     "assert_revertible",
+    "by_tree_id",
     "cutover_precheck",
     "cutover_trees",
     "flip",

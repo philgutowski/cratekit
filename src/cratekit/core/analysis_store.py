@@ -32,7 +32,6 @@ configuration and touches no file.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path, PurePosixPath
 
 from cratekit.core import config
@@ -95,7 +94,7 @@ def watch_roots(cfg: config.Config) -> tuple[Path, ...]:
     """
     root = Path(cfg.library.root)
     share = share_root(cfg)
-    if _is_within(share, root):
+    if config.is_inside(share, root):
         return (root,)
     return (root, share)
 
@@ -108,18 +107,7 @@ def is_watched(cfg: config.Config, path: Path) -> bool:
     file under them appeared or changed, whoever moved it and however good the
     reason (R-338).
     """
-    return any(_is_within(Path(path), root) for root in watch_roots(cfg))
-
-
-def _is_within(child: Path, parent: Path) -> bool:
-    """True when ``child`` is ``parent`` or sits under it, compared textually.
-
-    ``normpath`` rather than ``resolve``, so the answer does not depend on the
-    volume being mounted when the question is asked.
-    """
-    child_parts = Path(os.path.normpath(str(child))).parts
-    parent_parts = Path(os.path.normpath(str(parent))).parts
-    return child_parts[: len(parent_parts)] == parent_parts
+    return any(config.is_inside(Path(path), root) for root in watch_roots(cfg))
 
 
 __all__ = ["SHARE_DIRNAME", "analysis_file", "is_watched", "share_root", "watch_roots"]

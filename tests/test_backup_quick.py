@@ -1061,13 +1061,21 @@ def test_the_record_module_reads_files_and_writes_only_its_two_records():
     assert [ast.unparse(c) for c in called.get("unlink", [])] == ["path.unlink(missing_ok=True)"]
 
 
-def test_the_kind_words_and_the_seconds_are_spelled_once_on_each_side():
-    """The backup module and the fact file each hold the kind words, and the
-    shell and doctor each spell a run's seconds, so a word added on one side
-    cannot silently fail the other."""
+def test_the_kind_words_are_spelled_once_on_each_side_and_the_seconds_once():
+    """The backup module and the fact file each hold the kind words, so a word
+    added on one side cannot silently fail the other. A run's seconds are
+    spelled by the fact file alone, for the shell and doctor both (U298)."""
     assert backup.KINDS == backup_facts.KINDS
-    for seconds in (None, True, 0, 0.4, 1, 41.6, 600):
-        assert backup_cli._took(seconds) == backup_facts.took(seconds)  # noqa: SLF001
+    assert [backup_facts.took(seconds) for seconds in (None, True, 0, 0.4, 1, 41.6, 600)] == [
+        "",
+        "",
+        " in under a second",
+        " in under a second",
+        " in 1 seconds",
+        " in 42 seconds",
+        " in 600 seconds",
+    ]
+    assert not hasattr(backup_cli, "_took")
 
 
 def test_a_damaged_full_check_entry_never_refuses_the_ages(cfg, real_rclone):
