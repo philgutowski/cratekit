@@ -54645,3 +54645,238 @@ finish.
 **Closes when:** Phillip answers on #890 and a docs unit writes his answer into
 CLAUDE.md's rekordbox constraint and the `rekordbox-visit` skill's stop, or the
 record says why the wording stands. Ledger only.
+
+---
+
+## R-1786. A replay resumed from a sidecar that was measured while a tracked file was changed reuses its rows once the file is put back
+
+**Found:** at the review of #854, U297, round two, 2026-11-21.
+
+**The mechanism.** `scripts/mutate.py` lets a replay pass reuse a row from a
+prior sidecar only when the sidecar's `head` is this commit and no tracked
+file differs from the commit now (`replay_resume_refusal`). The sidecar does
+not record whether a tracked file differed while it was being measured. So a
+replay measured with a test edited and uncommitted, then resumed after the
+edit was reverted, reuses rows that were measured against the edited suite.
+The same holds for a light or a full pass, which resume across commits as
+they always did, and for `--allow-dirty`.
+
+**Measured cost.** Not driven. The review drove the other half, a test
+deleted and not committed after the measurement, where `killset.py check`
+passed a lost kill, and that half is closed. This half takes a replay run on
+a tree the procedure says is committed, which it is not. Maintainer facing.
+
+**Closes when:** the replay's sidecar records that the tree was clean when
+each row was measured and a resume reads it, or the driver refuses a replay
+on a tree with a tracked change. Ledger only.
+
+---
+
+## R-1787. Guards in killset.py, behaviour_compare.py and the stage that kill no test when reverted alone, as the two reviews of U297 left them
+
+**Found:** at the review of #854, U297, rounds one and two, 2026-11-21.
+
+**The mechanism.** The reviewer reverted 56 guards at round one and 60 fix
+round guards at round two, one at a time in a copy of the tree, and ran each
+one's test file. 22 and 12 killed nothing. The two fix rounds gave a test to
+the ones with a named cost. These stayed at zero, each a line the suite does
+not notice when it is reverted alone:
+
+- `scripts/killset.py`: the `isinstance(..., bool)` half of `killed`; the
+  suffix filter and the skipped directories in `Tree.holders`; the reading of
+  a before table's `head` only when it is a string; the `^{commit}` peel that
+  tells a commit from another object in `Commit._read`.
+- `scripts/mutate.py`: that the line `main` prints when a resume reuses
+  nothing is printed for a replay alone.
+- `scripts/behaviour_compare.py`: that only a table's declaration is put in
+  one order (an index's or a trigger's with two parenthesised items is
+  returned as written, and no test hands it one); the `UnicodeDecodeError`
+  arm in `dump_databases`; the longest word first order in `same_but_for`,
+  which matters only when one word of a capture is the prefix of another.
+- `tests/behaviour/`: the check against the system's temporary directory
+  inside `refuse_a_root_outside`, which the check against the scenario's own
+  directory covers; the stage fixture's refusal at set up, which the refusal
+  before each command covers; the reseeding of the shared `random` generator
+  and its restoring.
+
+**Measured cost.** None to a person using the shipped verbs: all three are
+maintainer tools, and each guard was seen to work when driven by hand. The
+cost is that a later edit can remove one of them with the suite green. The
+card's own mutation table, `docs/mutation/u297.md`, measures 25 other rows.
+
+**Closes when:** each has a test that fails with it reverted, or is shown
+equivalent and removed. Ledger only.
+
+---
+
+## R-1788. The test that captures every behaviour scenario twice takes about sixteen seconds, and grows with every scenario an area card adds
+
+**Found:** at the build of #854, U297, 2026-11-21.
+
+**The mechanism.**
+`tests/test_behaviour_compare.py::test_two_captures_of_one_commit_are_equal`
+runs `scripts/behaviour_compare.py capture` twice as two real processes over
+every file under `tests/behaviour/` and compares the two. It is the one test
+that goes red when a scenario prints or writes something the stage did not
+pin. One capture of the six shipped scenarios is about eight seconds, most of
+it the scenario run's own start up and the 152 help screens.
+
+**Measured cost.** 15.5 and 16.5 seconds in two runs on the four core cloud
+container, of a suite that sums to about 1,870 seconds of test time, so under
+one percent, and real work: two child runs of pytest. It is over METHOD's ten
+second line for a slow test, and each area card under U290 adds its verbs'
+scenarios to it, while U312 has to make the suite 30 percent faster.
+
+**Closes when:** U312 decides it: the equality is held over a fixed sample
+of scenarios in the suite and over all of them by each card's own capture,
+or the two captures share one scenario run. Ledger only.
+
+---
+
+## R-1789. A behaviour capture cannot hold still a file's own times read back in the command that wrote it, or its change time, and no shipped scenario records one
+
+**Found:** at the build of #854, U297, 2026-11-21.
+
+**The mechanism.** The stage pins what Python reads: the clock, the two
+duration clocks, the id sources and the rekordbox binding's row stamps. It
+sets every file's access and modification time to the pinned instant between
+commands (`Stage.settle`). It cannot set a change time at all, and a file
+written and then read back for its times inside one command carries the real
+time. A process id, a process start and a file's inode are read past by
+`compare` where each capture holds its own. Product code that persists a
+file's `st_mtime_ns` or `st_ctime_ns` taken in the same command (the library
+index's cache key in `acquire/match.py`, the ISRC cache in
+`acquire/isrc_cache.py`, the adoption fingerprint in `adopt/apply.py`) would
+make two captures of one commit differ.
+
+**Measured cost.** None today: the six shipped scenarios compare with no
+difference, run after run. The first area card whose scenario reaches such a
+write will see the equality test fail with the differing value shown, which
+is loud, and will have to pair that value as a capture's own word or pin it.
+
+**Closes when:** a scenario records such a value and the stage or `compare`
+is taught it. Ledger only.
+
+---
+
+## R-1790. The suite's disposable rekordbox database is built with its foreign keys in an order that changes from one process to the next
+
+**Found:** at the review of #854, U297, fix round one, 2026-11-21.
+
+**The mechanism.** `tests/test_rb_writer_db.py::_relaxed_schema` copies the
+binding's tables into a fresh `MetaData` with `Table.to_metadata`, which
+walks each table's constraints as a set of objects. The copies take their
+creation order from that walk, the order follows the objects' addresses, and
+`create_all` writes the FOREIGN KEY clauses of each CREATE TABLE in it. A
+fixed hash seed does not hold it still.
+
+**Measured cost.** Found by the schema comparison the review asked for, on
+its first run: two captures of one commit differed in five table
+declarations. The review then built the schema in ten processes and read ten
+distinct digests. `scripts/behaviour_compare.py` reads a table's declaration
+with its table constraints in one order, which the review checked changes
+nothing but that order over the 40 declarations of a real capture. No test
+of the suite reads the declaration's text, so nothing else pays.
+
+**Closes when:** the builder orders the copied constraints, at which point
+`canonical_declaration` could go; the file is on U300's list. Ledger only.
+
+---
+
+## R-1791. killset.py list counts a row that broke collection and recorded a death as a recorded kill, 24 of 8,541, while check ranks it under one
+
+**Found:** at the review of #854, U297, round one, 2026-11-21.
+
+**The mechanism.** The reader calls a row killed when its table recorded at
+least one death, which is the rule the survey of U290 used and what
+reproduces its 8,541 and its 7,093 live rows. 24 of those rows have the
+status `collect-error`: the mutation broke an import, the collected count
+moved, and the driver says of such a row that it is neither a zero nor a
+clean kill. `rows` writes the 20 of them that are live into a replay, and
+`check` ranks one under a kill: it holds it to no less after than before,
+and reports a clean kill that became one.
+
+**Measured cost.** An area card's replay holds up to 20 rows across the tree
+whose before measurement is a collection error, each held only to staying
+one. Counted, never driven on a card.
+
+**Closes when:** U315's audit says which the definition of done means, or
+the 20 are measured and those that break collection for a reason of the
+row's own making are dropped from the set. Ledger only.
+
+---
+
+## R-1792. A new row can still pass as a replay by naming a recorded source and writing a moved reason
+
+**Found:** at the review of #854, U297, round two, 2026-11-21.
+
+**The mechanism.** A replay pass has no row cap because every row names a
+recorded kill. `scripts/mutate.py` reads each source before anything runs:
+the table exists under `docs/mutation/`, holds that row, the row recorded a
+death, and a row whose file or text is not its source's must carry a `moved`
+reason. A row anchored again by hand is exactly that, so the reason cannot be
+refused, and nothing ties the new text to the old guard but the author's
+word, which is committed in the table.
+
+**Measured cost.** The review drove 26 new rows under real sources with no
+reason, which is now refused. With a reason on each they would be measured.
+Maintainer facing, and it takes an author writing 26 false reasons into a
+committed table.
+
+**Closes when:** it is accepted as the limit of a text based check, or
+`killset.py check` is made the only reader of a replay table and holds a row
+at new text to a test in common whoever wrote its reason. Ledger only.
+
+---
+
+## R-1793. killset.py list piped into head ends in a BrokenPipeError traceback after the lines asked for
+
+**Found:** at the last battery of #854, U297, 2026-11-21, after both review rounds were spent.
+
+**The mechanism.** `scripts/killset.py list` prints its counts and then one
+line per source file, 326 of them on the merged tree, with plain `print`.
+When the reader closes the pipe early, `list | head -12`, the next `print`
+raises `BrokenPipeError`, nothing in `main` catches it, and Python prints a
+traceback on standard error and exits 1. `list --rows`, which prints every
+row, does the same. The lines that were asked for are printed whole and
+correct before it.
+
+**Measured cost.** Driven once: `scripts/killset.py list | head -12` printed
+its count lines and the head of the per file table, then the traceback. Maintainer facing and cosmetic: no count is wrong and no file is
+written. A reader who sees the traceback may take the counts for
+unreliable, and a shell running under `pipefail` reads the pipeline as
+failed. `rows` and `check` print a handful of lines and were not seen to do
+it.
+
+**Closes when:** `main` in `scripts/killset.py` ends quietly when its output
+is closed, as a filter does, with a test that closes the pipe after one
+line. Ledger only.
+
+---
+
+## R-1794. behaviour_compare.py capture of a revision that lacks a module the tree's test fixtures import fails every scenario
+
+**Found:** at the last merge of main into #854, U297, 2026-11-21, after both review rounds were spent.
+
+**The mechanism.** `capture --rev REV` runs the working tree's scenarios,
+fixtures and `tests/conftest.py` against a copy of that revision's `src/`.
+U295 landed while this unit was built and added an autouse fixture to
+`tests/conftest.py` that imports `cratekit.cli.schedule`. A revision from
+before U295 has no such module, so every scenario errors as its fixtures are
+set up. The same holds for any revision that lacks a product module, or a
+name in one, that the tree's conftest or a fixture a scenario imports reads.
+
+**Measured cost.** Driven once on the final tree: `capture --rev 0f0f1032`,
+the commit before U295's merge, ended `6 errors`, exit 1, with no scenario
+recorded and no manifest, so `compare` refuses the directory. It is loud and
+nothing is compared wrongly. A card that compares its branch with
+`origin/main` after merging it is not touched, since that base holds
+everything the tree's fixtures import, unless the card's own branch adds a
+module and makes the suite's fixtures import it: then its base cannot be
+captured with the branch's tests, and the comparison the card owes has to be
+taken before that fixture is added.
+
+**Closes when:** the script's docstring says a revision must hold everything
+the tree's fixtures import and what to do when it does not, or `capture`
+names the missing module in its own words instead of six errors. Ledger
+only.
