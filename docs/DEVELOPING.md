@@ -121,6 +121,44 @@ interface, seam crossing, toggle home and dangling verb.
   form a window that stands elsewhere already. That is a new copy and fails:
   keep the order the lines had, or give the lines their one home.
 
+## The refactor's proof: recorded kills and compared behaviour
+
+Two scripts hold a card that restructures code to what the suite caught and
+the verbs did before it (U297), both standard library only. METHOD's mutation
+table section says when a card owes them, and the cloud-unit skill has the
+commands in order. [`CONCEPTS.md`](../CONCEPTS.md) defines kill set, replay
+pass, scenario and capture.
+
+| Command | Does |
+|---|---|
+| `killset.py list [PATH ...]` | reads every table under `docs/mutation/` and counts, per source file, the recorded kills that are live, stale, ambiguous or gone; `--rows` lists each row and its state |
+| `killset.py rows PATH ... --out FILE` | writes the live recorded kills of those files or directories as a row file for the driver's `replay` pass, each row naming the table and id it came from |
+| `killset.py rows --after BEFORE.json --out FILE` | writes the same kills after a refactor, each anchored where its text stands now, and lists the ones it could not place |
+| `killset.py check BEFORE.json AFTER.json` | exit 1 unless every row killed before is killed after, or is mapped there, with a reason, to a row that is; exit 2 for a table it cannot read |
+| `behaviour_compare.py capture --out DIR` | runs the scenarios under `tests/behaviour/` on a disposable library and keeps what each command printed and wrote; `--rev REV` runs them against that revision's `src/`, `--only EXPR` runs a selection |
+| `behaviour_compare.py compare A B` | prints each difference between two captures, exit 1 on any and 2 for a capture it cannot read; `--full` prints each difference whole |
+
+- A replay is a pass kind of `scripts/mutate.py`, `pass_kind = "replay"`, with
+  no row cap. The driver refuses a replay row that names no source, or one
+  whose source no table under `docs/mutation/` recorded as killed, and a
+  replay resumes only from a sidecar of the same commit. It is never a unit's
+  own table, whose cap stands.
+- A replay table committed under `docs/mutation/` is read by `killset.py` as
+  where its sources live now and counted as no table of its own, so a guard
+  one card moves stays in the kill set for the next.
+- A scenario file is `tests/behaviour/<package>.py`. It is not named
+  `test_*.py`, so the suite does not collect it, and `capture` runs the files
+  as a pytest run of its own under the suite's isolation. A scenario takes
+  the `stage` fixture and runs every command through it; a card adds one for
+  any verb it touches that has none.
+- A capture's root is one fixed directory inside the system's temporary
+  directory. `capture` refuses a root outside it, and a root holding files no
+  capture left.
+- `tests/test_behaviour_compare.py::test_two_captures_of_one_commit_are_equal`
+  captures every scenario twice and fails on any difference, so a scenario
+  that prints or writes a value nothing pinned fails there, with the value
+  shown. `tests/behaviour/__init__.py` holds the pins.
+
 ## CI
 
 `.github/workflows/ci.yml` proves packaging and portability, not the suite:
