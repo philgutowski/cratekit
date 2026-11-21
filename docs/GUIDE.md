@@ -777,8 +777,8 @@ it in a playlist or history list that keeps others.
   only by that, with hearts served, they are read whole for this question,
   since a heart the service will not serve is not one you see either, and the
   plan names them with both counts. With no heart served at all, or short by
-  more than a tenth of their count, which a page the service dropped looks
-  like, they still stop every offer. The service publishes no count of what
+  more than a tenth of their count or by more than 49 hearts, which a page of
+  a hundred the service dropped looks like, they still stop every offer. The service publishes no count of what
   it withholds, so a shortfall inside that tenth is read as withheld.
 - **A playlist gone for good.** A synced playlist the account no longer lists
   whose id answers not found is recorded, with the date, in the library's
@@ -789,7 +789,8 @@ it in a playlist or history list that keeps others.
   finished jobs recorded, or stopping every offer when nothing readable
   records it. A playlist whose id failed any other way (an outage, a refused
   session) records nothing and is never retired; a retired one whose id
-  fails that way stops every offer for that run and stays retired. A retired
+  fails that way is read for that run as before it was retired (gone, or
+  stopping every offer), and stays retired. A retired
   playlist that opens again, or that the account lists again, is dropped from
   the record and read as any other. Nothing is written on the account.
 - **Retiring them sooner.** The run names each playlist seen unavailable and
@@ -807,7 +808,8 @@ it in a playlist or history list that keeps others.
   it with `crate run decide RUN_ID sync.removed.retire retire --actor NAME`,
   then run `crate --run RUN_ID sync removed --retire` again; then run `crate
   sync removed` to plan without them. `abort` writes nothing. A synced
-  playlist it could not read is named and never offered for retirement.
+  playlist it could not read, or whose id failed other than not found, is
+  named and never offered for retirement.
 - A run that finds a removal reads every synced playlist, about two calls
   each, so on an account with hundreds of them it stops at the call ceiling
   with nothing offered; run it again as `crate --calls N --calls-per-hour M

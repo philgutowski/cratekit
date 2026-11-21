@@ -268,13 +268,10 @@ def _read_synced(
     account = catalogue.resolve(cfg)
     listed = removed.account_listing(account)
     recorded = removed.recorded_contents(cfg)
-    paired = pairs.PairStore(cfg).all()
     # WHAT CRATEKIT CALLS EACH ONE (round one), so a playlist the account's
     # list no longer names is still named on the screen and in the record.
-    names = {
-        **{key: one.name for key, one in paired.items() if one.name},
-        **{one.account: one.name for one in found if one.name},
-    }
+    # The pair store's names join only once it is read, below (round two).
+    names = {one.account: one.name for one in found if one.name}
     asked = {
         "sightings": sightings,
         "moment": moment,
@@ -284,6 +281,10 @@ def _read_synced(
     }
     reads = removed.read_account(account, [one.account for one in found], **asked)
     if every or removed.removals(found, reads):
+        paired = pairs.PairStore(cfg).all()
+        names.update(
+            {key: one.name for key, one in paired.items() if one.name and key not in names}
+        )
         others = [
             one
             for one in removed.synced(
@@ -358,14 +359,18 @@ def retire(ctx, cfg) -> Envelope:
     }
     # A PLAYLIST THIS READ COULD NOT ASK IS SAID (round one), so an outage
     # that answered nothing is not read as a clean list with nothing to retire.
-    unasked = [one for one in reads.values() if one.state in removed.NOT_WHOLE and not one.not_found]
+    unasked = [
+        one
+        for one in reads.values()
+        if (one.state in removed.NOT_WHOLE or one.state == removed.GONE) and not one.not_found
+    ]
     warnings = (
         [
             {
                 "code": PARTIAL,
                 "message": (
-                    f"{len(unasked)} synced playlist(s) could not be read whole and are not "
-                    f"offered for retirement, since only a not found is: "
+                    f"{len(unasked)} synced playlist(s) could not be read whole, or whose id "
+                    f"failed other than not found, are not offered for retirement: "
                     + "; ".join(f"{one.name or one.account} ({one.why})" for one in unasked)
                 ),
             }

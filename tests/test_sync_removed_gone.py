@@ -919,3 +919,70 @@ def test_a_record_that_cannot_be_opened_refuses(native_library):
         record.read()
 
     assert refused.value.cause.reason == "sync-unavailable-record-unusable"
+
+
+# ---------------------------------------------------------------------------
+# Round two
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("served", "declared", "state"),
+    [(920, 1020, removed.SHORT), (951, 1000, removed.WITHHELD), (950, 1000, removed.SHORT)],
+    ids=["a-dropped-window", "forty-nine", "fifty"],
+)
+def test_hearts_short_by_half_a_page_or_more_stay_partial_on_any_account(served, declared, state):
+    """Round two: 1,020 declared and a window of a hundred lost was within a tenth."""
+    fake = FakeCatalogue(
+        hearts=[track(f"Heart {number}", track_id=f"tid-{number}") for number in range(served)]
+    )
+
+    def short():
+        raise catalogue.HeartsShortfall(tuple(fake.hearts), declared)
+
+    fake.favourite_tracks = short
+
+    assert _hearts_of(fake).state == state
+
+
+def test_a_run_with_no_removal_never_reads_the_pair_store(
+    native_library, silence, monkeypatch, offline
+):
+    """Round two: the store read moved ahead of the removal, so a damaged one refused a quiet run."""
+    from cratekit.modules.outbound import pairs
+
+    cfg, _root = native_library
+    _five(cfg, silence)
+    account = Account(monkeypatch)
+    account.lists("pl-a", SUNSET, [track("Held1"), track("New1"), track("New2"), track("Held2"), track("Held3")])
+
+    def refused(_self):
+        raise AssertionError("the pair store was read")
+
+    monkeypatch.setattr(pairs.PairStore, "all", refused)
+
+    code, out = drive(VERB)
+
+    assert code == int(ExitCode.OK), out
+    assert out["outcome"] == "no_op"
+
+
+def test_retire_names_a_gone_playlist_whose_id_now_fails_another_way(
+    native_library, silence, monkeypatch, offline
+):
+    """Round two: a recorded gone playlist reads GONE, not short, and was silent."""
+    cfg, _root = native_library
+    _five(cfg, silence, also={"pl-b": (DEEP, ("New3",))})
+    account = Account(monkeypatch)
+    account.lists("pl-a", SUNSET, [track("Held1")])
+    answering(account, 404, "pl-b")
+    Clock(monkeypatch)
+    _run()
+    answering(account, 503, "pl-b")
+
+    code, out = drive(RETIRE)
+
+    assert code == int(ExitCode.OK), out
+    assert out["data"]["items"] == []
+    (said,) = [one for one in out["warnings"] if one["code"] == removed_cli.PARTIAL]
+    assert DEEP in said["message"]

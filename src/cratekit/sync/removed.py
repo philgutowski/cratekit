@@ -45,14 +45,15 @@ short only by what the provider withholds, R-504's shortfall over a walk that
 reached the declared count and served hearts, are WITHHELD: they hold every
 heart served, since a heart the provider will not serve is not one the account
 shows, and are named with both counts; no heart served at all, or a shortfall
-over a tenth of the count, which a dropped window looks like, stays short. And
+over a tenth of the count or of 49 hearts, which a dropped window looks like,
+stays short. And
 a playlist the account no longer lists whose id answers the provider's NOT
 FOUND, a 404 and nothing else, is a sighting in
 :mod:`cratekit.sync.unavailable`'s record; a sighting a day after the first,
 or a person at the explicit gate ``sync.removed.retire``, RETIRES it, and a
 retired playlist holds nothing and stops nothing until it opens again or the
-account lists it again. Every other failure leaves it not read whole, a
-retired one for that run alone, its retirement kept.
+account lists it again. Every other failure reads it as before U320, gone or
+not read whole, a retired one for that run alone, its retirement kept.
 
 A TRACK IS REMOVED when its playlist's listing holds no row of its provider
 id, and no read row of it carries its ISRC or its artist and title as the
@@ -155,9 +156,14 @@ RETIRED = "retired"
 SERVED_UNREADABLE = "intake-list-unusable"
 
 #: The most of its declared count the hearts may be short by and still read whole
-#: (U320), as a fraction: a provider measured withholding 12 of 197 and 9 of 349,
-#: and a fault that drops a whole window of a hundred stays short.
+#: (U320), as a fraction: a provider measured withholding 12 of 197 and 9 of 349.
 WITHHELD_AT_MOST = 0.10
+
+#: And the most hearts, whatever the count (round two): under half of the
+#: hundred a hearts page holds (``acquire.listing``'s page size), so a window
+#: the provider dropped, or cut by more than half, stays short on an account of
+#: any size.
+WITHHELD_AT_MOST_HEARTS = 49
 
 #: Every state a listing holds tracks in.
 HOLDING = frozenset({READ, GONE, WITHHELD})
@@ -514,8 +520,8 @@ def read_one(
                 ""
                 if noted is None
                 else (
-                    f"; retired on {unavailable.day(noted.retired)}, and read not whole "
-                    f"while its id fails another way"
+                    f"; retired on {unavailable.day(noted.retired)}, and read as before "
+                    f"its retirement while its id fails another way"
                 )
                 if noted.is_retired
                 else f"; its id answered not found, first on {unavailable.day(noted.first)}"
@@ -618,7 +624,8 @@ def read_hearts(found: catalogue.Catalogue) -> Listing:
             raise
         return Listing(account=HEARTS, name=HEARTS_NAME, state=UNREADABLE, why=exc.cause.message)
     if short is not None and not (
-        frozen and 0 < short.withheld <= short.declared * WITHHELD_AT_MOST
+        frozen
+        and 0 < short.withheld <= min(short.declared * WITHHELD_AT_MOST, WITHHELD_AT_MOST_HEARTS)
     ):
         # SHORT BY MORE THAN THE PROVIDER WITHHOLDS, or by nothing a walk
         # could reach: no heart served at all, which a provider serving nothing

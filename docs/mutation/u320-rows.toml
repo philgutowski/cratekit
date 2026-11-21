@@ -7,11 +7,11 @@ description = "read_hearts: drop the withheld count from the hearts rule, so a s
 file = "src/cratekit/sync/removed.py"
 surface = "user"
 tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
-old = '''    if short is not None and not (
-        frozen and 0 < short.withheld <= short.declared * WITHHELD_AT_MOST
+old = '''        frozen
+        and 0 < short.withheld <= min(short.declared * WITHHELD_AT_MOST, WITHHELD_AT_MOST_HEARTS)
     ):'''
-new = '''    if short is not None and not (
-        frozen and short.withheld <= short.declared * WITHHELD_AT_MOST
+new = '''        frozen
+        and short.withheld <= min(short.declared * WITHHELD_AT_MOST, WITHHELD_AT_MOST_HEARTS)
     ):'''
 
 [[rows]]
@@ -20,11 +20,10 @@ description = "read_hearts: drop the served hearts from the hearts rule, so a li
 file = "src/cratekit/sync/removed.py"
 surface = "user"
 tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
-old = '''    if short is not None and not (
-        frozen and 0 < short.withheld <= short.declared * WITHHELD_AT_MOST
+old = '''        frozen
+        and 0 < short.withheld <= min(short.declared * WITHHELD_AT_MOST, WITHHELD_AT_MOST_HEARTS)
     ):'''
-new = '''    if short is not None and not (
-        0 < short.withheld <= short.declared * WITHHELD_AT_MOST
+new = '''        0 < short.withheld <= min(short.declared * WITHHELD_AT_MOST, WITHHELD_AT_MOST_HEARTS)
     ):'''
 
 [[rows]]
