@@ -230,7 +230,10 @@ sorts it (`tagging/backlog.py`) into one **cause**: `row-lags-file` (the file
 carries a genre the row lacks), `no-genre`, `too-coarse`, `off-taxonomy` (one
 question per word, folded on case) or `file-unread`. The **floor** is the high
 **suggestion band**; a row below it is the **remainder**, left by hand with its
-reason. The report writes nothing; U294 applies it.
+reason. A word already saved as an alias has one answer and is **settled**. A
+row whose file is not here is in no cause and counted as **unread**; a routed
+row `tag rows` would give a word no folder takes is **joining**. The report
+writes nothing; U294 applies it.
 
 *Avoid:* adoption's **withheld**, which is a routed row the plan will not place.
 
