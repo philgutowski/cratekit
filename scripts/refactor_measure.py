@@ -101,16 +101,18 @@ REGISTRY = f"{SOURCE}/cli/registry.py"
 def python_files(root: Path, scope: str) -> list[str]:
     """Repository relative paths of the Python files under ``scope``, sorted.
 
-    Git's own list where there is one, since a tracked file is the definition;
-    a walk of the directory otherwise, so the readings still work on an
-    unpacked archive. ``_vendor`` and bytecode directories are never read.
+    Git's own list where there is one: the files it tracks, and the ones it
+    would track, so a module written a minute ago is measured before it is
+    committed and an ignored scratch file never is. A walk of the directory
+    otherwise, so the readings still work on an unpacked archive. ``_vendor``
+    and bytecode directories are never read.
     """
     target = root / scope
     if target.is_file():
         return [scope] if scope.endswith(".py") else []
     try:
         listed = subprocess.run(
-            ["git", "ls-files", "-z", "--", scope],
+            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", scope],
             cwd=root,
             capture_output=True,
             text=True,
@@ -179,12 +181,7 @@ class LineCount:
         return self.code + self.docstring + self.comment + self.blank
 
     def __add__(self, other: LineCount) -> LineCount:
-        return LineCount(
-            self.code + other.code,
-            self.docstring + other.docstring,
-            self.comment + other.comment,
-            self.blank + other.blank,
-        )
+        return LineCount(*(mine + theirs for mine, theirs in zip(_kinds(self), _kinds(other))))
 
 
 def count_lines(source: str) -> LineCount:
@@ -405,10 +402,7 @@ def read_allowances(root: Path, directory: str) -> Found:
     return out
 
 
-def over_allowance(
-    found: Mapping[str, Lines],
-    allowed: Mapping[str, Lines],
-) -> Found:
+def over_allowance(found: Mapping[str, Lines], allowed: Mapping[str, Lines]) -> Found:
     """What each package holds beyond its allowance. Empty means the rule holds.
 
     Only an excess is reported. An allowance line with nothing found against
@@ -422,9 +416,7 @@ def over_allowance(
     return out
 
 
-def pruned(
-    found: Lines, allowed: Lines
-) -> Lines:
+def pruned(found: Lines, allowed: Lines) -> Lines:
     """The allowance lowered to what is still found. It can never gain a line."""
     return found & allowed
 
@@ -481,6 +473,45 @@ def _is_type_checking(test: ast.expr) -> bool:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _FileReading:
+    """What one parse of one file yields. ``defined`` is None when it cannot be listed."""
+
+    uses: list[Use]
+    functions: dict[str, tuple[int, int]]
+    aliases: dict[str, str]
+    defined: frozenset[str] | None
+
+
+def _defined_names(tree: ast.Module) -> frozenset[str] | None:
+    """The names a module binds at its top level, branches of ``if`` and ``try`` included.
+
+    None when the module can answer for any name, by a ``__getattr__`` of its
+    own or a star import, so that nothing is ruled out on a list that is not
+    the whole of it.
+    """
+    names: set[str] = set()
+    pending: list[ast.AST] = list(tree.body)
+    while pending:
+        node = pending.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            names.update((alias.asname or alias.name).split(".")[0] for alias in node.names)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                names.update(n.id for n in ast.walk(target) if isinstance(n, ast.Name))
+        else:
+            pending.extend(
+                child for child in ast.iter_child_nodes(node) if isinstance(child, ast.stmt)
+            )
+            pending.extend(
+                inner for handler in getattr(node, "handlers", ()) for inner in handler.body
+            )
+    return None if names & {"__getattr__", "*"} else frozenset(names)
+
+
 class Tree:
     """The package's modules as source text, and what each one reaches for.
 
@@ -490,10 +521,11 @@ class Tree:
     once, read, and its syntax tree dropped: holding every tree of this
     package at once is hundreds of megabytes (``tests/_parse_memo.py``).
 
-    One limit, shared with the survey's instrument so that its counts are
-    reproduced: a name is followed through a module alias anywhere in the
-    file, so a local variable that shadows an imported module's name reads as
-    a use of that module.
+    A name reached through an imported module, ``config.load``, is a use only
+    when that module defines the name at its top level. A module's alias is
+    followed anywhere in the file, and a local variable named as
+    an imported module is would otherwise read as a use of it: ``source.name`` beside
+    ``from cratekit.modules.outbound import source`` is the tree's own case.
     """
 
     def __init__(self, sources: Mapping[str, str], *, root_package: str = "cratekit") -> None:
@@ -521,17 +553,27 @@ class Tree:
         return package_of_path("src/" + module.replace(".", "/") + ".py")
 
     @cached_property
-    def _read(self) -> dict[str, tuple[list[Use], dict[str, tuple[int, int]], dict[str, str]]]:
+    def _read(self) -> dict[str, _FileReading]:
         return {path: self._read_file(path) for path in self.sources}
 
     @cached_property
     def uses(self) -> dict[str, list[Use]]:
         """``{path: every use in that file}``, imports first."""
-        return {path: read[0] for path, read in self._read.items()}
+        defined = {module_name(path): read.defined for path, read in self._read.items()}
+        return {
+            path: [
+                use
+                for use in read.uses
+                if use.kind == "import"
+                or defined[use.target] is None
+                or use.name in defined[use.target]
+            ]
+            for path, read in self._read.items()
+        }
 
     def aliases(self, path: str) -> dict[str, str]:
         """``{local name: module}`` for the modules one file imports under a name."""
-        return self._read[path][2]
+        return self._read[path].aliases
 
     def _base_of(self, path: str, level: int) -> str | None:
         """The package a relative import of ``level`` dots starts from."""
@@ -541,10 +583,8 @@ class Tree:
         cut = len(parts) - (level - 1)
         return ".".join(parts[:cut]) if cut >= 1 else None
 
-    def _read_file(
-        self, path: str
-    ) -> tuple[list[Use], dict[str, tuple[int, int]], dict[str, str]]:
-        """One file's uses, its top level functions' line spans, and its module aliases.
+    def _read_file(self, path: str) -> _FileReading:
+        """One file's uses, top level functions, module aliases and defined names.
 
         An import is lazy when it stands on a line inside any function, and
         typing only when it stands inside the body of ``if TYPE_CHECKING``,
@@ -621,7 +661,7 @@ class Tree:
             for node in tree.body
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
-        return found, top_level, aliases
+        return _FileReading(found, top_level, aliases, _defined_names(tree))
 
     # -- the import graph at import time, for rule four --------------------
 
@@ -642,7 +682,7 @@ class Tree:
     def function_loads(self, module: str, function: str) -> frozenset[str]:
         """The modules named by imports written in one top level function's body."""
         path = self.modules.get(module)
-        span = self._read[path][1].get(function) if path is not None else None
+        span = self._read[path].functions.get(function) if path is not None else None
         if span is None:
             return frozenset()
         return frozenset(
@@ -654,9 +694,7 @@ class Tree:
             and span[0] <= use.line <= span[1]
         )
 
-    def loaded_from(
-        self, starts: Iterable[str], blocked: Sequence[str] = ()
-    ) -> frozenset[str]:
+    def loaded_from(self, starts: Iterable[str], blocked: Sequence[str] = ()) -> frozenset[str]:
         """Every module importing ``starts`` runs, never passing a blocked one.
 
         Importing ``a.b.c`` imports ``a`` and ``a.b`` first, so each module's
@@ -860,9 +898,7 @@ def core_names(tree: Tree) -> dict[str, set[str]]:
     return dict(out)
 
 
-def import_findings(
-    tree: Tree, rules: Rules, verbs: Iterable[Verb]
-) -> Found:
+def import_findings(tree: Tree, rules: Rules, verbs: Iterable[Verb]) -> Found:
     """Every allowance line the four rules find, per importing package."""
     out: Found = collections.defaultdict(collections.Counter)
     for found in (
@@ -905,7 +941,7 @@ def _literal_assignments(source: str) -> dict[str, object]:
             continue
         try:
             out[target.id] = ast.literal_eval(value)
-        except ValueError:
+        except (ValueError, TypeError, SyntaxError):
             continue
     return out
 
@@ -936,12 +972,14 @@ def verbs_from(registry_source: str) -> list[Verb]:
     tree = ast.parse(registry_source)
     constants = _literal_assignments(registry_source)
 
-    def value(node: ast.expr, verb: str, field: str) -> object:
+    def value(given: Mapping[str, ast.expr], field: str, verb: str) -> object:
+        node = given.get(field)
         if isinstance(node, ast.Constant):
             return node.value
         if isinstance(node, ast.Name) and node.id in constants:
             return constants[node.id]
-        raise ValueError(f"the registry entry {verb!r} gives {field} in a form this cannot read")
+        state = "does not give" if node is None else "gives"
+        raise ValueError(f"the registry entry {verb!r} {state} {field} in a form this can read")
 
     entries: ast.expr | None = None
     for node in tree.body:
@@ -957,19 +995,12 @@ def verbs_from(registry_source: str) -> list[Verb]:
         if not isinstance(call, ast.Call) or call.args:
             raise ValueError("an ENTRIES member is not an Entry(...) call of keywords")
         given = {keyword_.arg: keyword_.value for keyword_ in call.keywords}
-        name = str(value(given["name"], "?", "name"))
-        planned = value(given["planned_in"], name, "planned_in") if "planned_in" in given else None
-        if planned is not None:
+        name = str(value(given, "name", "?"))
+        if "planned_in" in given and value(given, "planned_in", name) is not None:
             continue
-        toggle = value(given["module_id"], name, "module_id") if "module_id" in given else None
-        out.append(
-            Verb(
-                name=name,
-                module=str(value(given["module"], name, "module")),
-                builder=str(value(given["builder"], name, "builder")),
-                toggle=None if toggle is None else str(toggle),
-            )
-        )
+        toggle = value(given, "module_id", name) if "module_id" in given else None
+        module, builder = value(given, "module", name), value(given, "builder", name)
+        out.append(Verb(name, str(module), str(builder), None if toggle is None else str(toggle)))
     return out
 
 

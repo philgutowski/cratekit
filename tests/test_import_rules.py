@@ -485,7 +485,7 @@ def test_nothing_is_followed_through_a_module_that_cannot_be_imported():
 
 def test_core_names_are_counted_across_feature_packages_and_only_there():
     tree = _tree(
-        core__config="def load(): ...\ndef save(): ...\n",
+        core__config="def load(): ...\ndef save(): ...\nlocate = load\n",
         core__jobs="from cratekit.core.config import save\n",
         cli__doctor="from cratekit.core.config import save\n",
         intake__landing="from cratekit.core.config import load\n",
@@ -494,6 +494,40 @@ def test_core_names_are_counted_across_feature_packages_and_only_there():
     assert measure.core_names(tree) == {
         "intake": {"cratekit.core.config.load"},
         "sync": {"cratekit.core.config.load", "cratekit.core.config.locate"},
+    }
+
+
+def test_a_local_variable_named_as_an_imported_module_is_not_a_use_of_it():
+    """The tree's own case: ``source.name`` beside an imported module ``source``.
+
+    A module's alias is followed anywhere in the file, so what keeps a local
+    variable's attributes out of the count, and out of the private rule, is
+    that the module does not define them.
+    """
+    tree = _tree(
+        core__config="def load(): ...\n",
+        sync__run=(
+            "from cratekit.core import config\n\n"
+            "def run(config):\n"
+            "    return config.library, config._cache, config.load\n"
+        ),
+    )
+    assert measure.core_names(tree) == {"sync": {"cratekit.core.config.load"}}
+    assert measure.private_crossings(tree) == {}
+
+
+def test_a_module_that_answers_for_any_name_has_every_attribute_counted():
+    """A ``__getattr__`` or a star import means the listed names are not all of them."""
+    tree = _tree(
+        core__config="def __getattr__(name): ...\n",
+        core__naming="from os.path import *\n",
+        sync__run=(
+            "from cratekit.core import config, naming\n\n"
+            "config.anything()\nnaming.join()\n"
+        ),
+    )
+    assert measure.core_names(tree) == {
+        "sync": {"cratekit.core.config.anything", "cratekit.core.naming.join"}
     }
 
 
@@ -549,6 +583,8 @@ def test_a_registry_entry_the_script_cannot_read_is_refused_not_skipped():
     source = 'ENTRIES = (Entry(name="a.b", module=make_module(), builder="build"),)\n'
     with pytest.raises(ValueError, match="'a.b' gives module"):
         measure.verbs_from(source)
+    with pytest.raises(ValueError, match="'a.c' does not give builder"):
+        measure.verbs_from('ENTRIES = (Entry(name="a.c", module="cratekit.a.cli"),)\n')
 
 
 def test_a_planned_entry_is_not_a_landed_verb():

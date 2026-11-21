@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import io
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -172,14 +173,17 @@ def test_the_vendored_tree_is_never_read(repo):
     assert not [path for path in files if "_vendor" in path]
 
 
-def test_in_a_checkout_the_files_are_the_ones_git_tracks(repo):
-    """An untracked scratch file beside the source is not the package."""
-    for command in (["init", "-q"], ["add", "src"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x"]):
-        subprocess.run(["git", *command], cwd=repo, check=True, capture_output=True)
+def test_in_a_checkout_the_files_are_the_ones_git_tracks_or_would(repo):
+    """A module not yet committed is measured, and a file git ignores never is."""
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "add", "src"], cwd=repo, check=True, capture_output=True)
+    (repo / ".gitignore").write_text("scratch.py\n")
     (repo / SOURCE / "core" / "scratch.py").write_text("x = 1\n")
+    (repo / SOURCE / "core" / "fresh.py").write_text("x = 1\n")
     files = measure.python_files(repo, SOURCE)
-    assert f"{SOURCE}/core/config.py" in files
+    assert f"{SOURCE}/core/config.py" in files and f"{SOURCE}/core/fresh.py" in files
     assert f"{SOURCE}/core/scratch.py" not in files
+    assert not [path for path in files if "_vendor" in path]
 
 
 def test_one_file_can_be_named_as_a_scope(repo):
@@ -393,7 +397,7 @@ def test_the_script_runs_as_a_command_with_the_standard_library_alone(repo):
     """``-S -I`` leaves no site packages, so a third party import would fail here."""
     script = Path(measure.__file__)
     finished = subprocess.run(
-        ["python3", "-S", "-I", str(script), "lines", "scripts/refactor_measure.py"],
+        [sys.executable, "-S", "-I", str(script), "lines", "scripts/refactor_measure.py"],
         capture_output=True,
         text=True,
         cwd=script.parent.parent,
