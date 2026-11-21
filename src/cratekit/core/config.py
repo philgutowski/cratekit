@@ -916,7 +916,8 @@ STATE_FILES: tuple[StateFile, ...] = (
             "One pass stages at a time (U293): crate sync land, crate label "
             "sync --go and crate sync night hold it for the whole of a run, so "
             "the night pass and a pass by hand never download into the one "
-            "staging folder together. The kernel releases it when its holder "
+            "staging folder together; crate schedule install and remove hold "
+            "it around their bootout (U295), so they never end a night pass. The kernel releases it when its holder "
             "dies; the holder written inside is for the refusal's words."
         ),
     ),

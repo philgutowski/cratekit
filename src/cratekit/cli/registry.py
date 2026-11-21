@@ -1907,7 +1907,8 @@ ENTRIES: tuple[Entry, ...] = (
     # NO LIBRARY WRITE SURFACE AND NOT DESTRUCTIVE, on ``skills.install``'s
     # argument: what install writes is the agent's plist in the person's own
     # LaunchAgents directory and the directory of its log, the declared state
-    # entry ``schedule_log``; what remove deletes is that plist. Nothing a
+    # entry ``schedule_log``; what remove deletes is that plist. Both leave the
+    # staging lock's file, held around the bootout. Nothing a
     # library knows about is touched, so the destructive session's gates would
     # be gates over the wrong thing. No gate either: installing a schedule
     # approves nothing, since every limit the night keeps is the night verb's.

@@ -243,6 +243,8 @@ the two commands that answer and apply it and the rekordbox visit after.
 - One pass stages at a time: `sync land`, `label sync --go` and the night pass
   below each hold one staging lock for the whole of a run, and a second
   refuses `staging-held`, naming the holder's verb, process, run and start.
+  `crate schedule install` and `remove` hold it too while they boot the night's
+  agent out, so they wait for any pass, never ending a night in progress.
 
 Then, in order:
 
@@ -338,8 +340,11 @@ on launchd, so it runs overnight without being typed:
   `schedule/sync-night.log` under the installation's state directory, the
   place to look when a night left no line of its own.
 - The three verbs run as you and refuse as root. Install and remove refuse
-  `staging-held` while a pass holds the staging lock, so a night pass in
-  progress is never ended by its own bootout.
+  `staging-held` while any pass holds the staging lock, so a night pass in
+  progress is never ended by its own bootout, as long as the shell reads the
+  installation the agent carries (a shell pointed at another
+  `CRATEKIT_STATE_DIR` holds another lock). The lock's file, `staging.lock`,
+  is left in the installation's state.
 - A launchctl that fails is refused in its own words (`schedule-launchctl-failed`)
   and the plist written for it is removed once launchd reads it gone, so
   nothing is left half installed; when a replace fails at the load, the
@@ -354,9 +359,11 @@ on launchd, so it runs overnight without being typed:
   (`schedule-agent-unusable`) on an agent it cannot read, one whose `crate` is
   gone, one launchd holds with no plist, and one that is anything but the
   agent install writes (another program or argument, a run at load, another
-  calendar, an environment name Cratekit never carries); `crate schedule
-  install` replaces it.
-- `remove` with nothing installed changes nothing. A bootout launchd does not
+  calendar, an environment name Cratekit never carries, a carried directory
+  missing or relative, a log outside the state it carries); `crate schedule
+  install` replaces it. A value changed by hand to another absolute directory
+  is not something it can tell from one install wrote.
+- `remove` with nothing installed changes no schedule. A bootout launchd does not
   confirm keeps the plist, so `show` still reads what launchd holds.
 - launchd fires a night the Mac slept through when it wakes. On any platform
   but macOS the three verbs refuse naming it (`schedule-platform-unsupported`);
@@ -1524,11 +1531,11 @@ Read the refusal's reason and remedy before retrying, then `crate doctor`.
 | `provider-call-ceiling` | The command hit the provider call ceiling (`[provider] calls_per_command`, 500). Run the printed command; `--calls N` raises it for one run, as `crate --calls N job resume JOB_ID`, with `--calls-per-hour` beside it when N is above the hour's budget, 1,500. |
 | `provider-budget` | The account, or the app credentials, has made as many provider calls in the last hour as this command may (`[provider] calls_per_hour`, 1,500, reads stopping at 1,125), counted across every command and copy. Wait until the time it names, then run it again or `crate job resume JOB_ID`; `crate --calls-per-hour N` raises the hour for one run. A `--calls` above the whole hour is refused the same way: lower it, or raise the hour with it. A `label sync` walk over every label refuses first when its estimate will not fit; ask one label with `--next --label NAME`. |
 | `provider-night-budget` | The night pass has made as many provider calls as its line allows, the lower of what is left of `[provider] night_calls` (1,200, noon to noon, counted across every process) and one command's ceiling (500), or what it spent cannot be read. A stop at the line needs nothing: the night pass's next firing continues it, or continue it at the Mac with `crate sync land --pass-run RUN`. A spend that cannot be read refuses every firing of that night and names the ledger and the gate's state file to look at; the next night starts afresh. |
-| `staging-held` | Another pass is downloading into the staging folder (`sync land`, `label sync --go` or `sync night`), named in the message. Wait for it to end, then run this again. |
-| `schedule-launchctl-failed` | launchctl refused to load or unload the night pass's agent; its own words are in the message. An install that failed leaves nothing installed. Read `crate schedule show`, then run the verb again. |
+| `staging-held` | Another pass is downloading into the staging folder (`sync land`, `label sync --go` or `sync night`), named in the message, or `crate schedule install` or `remove` is changing the night's schedule. Wait for it to end, then run this again. |
+| `schedule-launchctl-failed` | launchctl refused to load or unload the night pass's agent; its own words are in the message. An install that failed at the load leaves nothing installed, unless launchd may still hold the agent, when its plist is kept and the message says so; a bootout of the earlier agent that failed leaves it installed as it was. Read `crate schedule show`, then run the verb again. |
 | `schedule-agent-unusable` | The agent `crate schedule show` read cannot be read, its `crate` is gone, launchd holds it with no plist, or it is anything but the agent install writes; the message names each difference. `crate schedule install` replaces it; `crate schedule remove` takes it away. |
 | `schedule-agent-unwritten` | The night pass's plist could not be written or removed, the reason in the message. On a replace, the earlier schedule is booted out and its plist kept until the next login. Make your `Library/LaunchAgents` writable and install again. |
-| `schedule-platform-unsupported` | `crate schedule` needs launchd, which is macOS's. Run `crate sync night` from this platform's own scheduler, or by hand. |
+| `schedule-platform-unsupported` | `crate schedule install`, `show` and `remove` need launchd, which is macOS's. Run `crate sync night` from this platform's own scheduler, or by hand. |
 | `schedule-crate-unresolved` | The `crate` an install would schedule is not an executable file. Run `crate schedule install` from the `crate` you installed. |
 | `rekordbox-absence-unconfirmed` | A process the check could not read, usually one still exiting. Wait, then continue with the printed `crate --run RUN_ID ...`. Inspect with `ps -p PID -o pid,stat,comm`. |
 | `backup-acknowledgment-missing` | [The backup acknowledgment](#the-backup-acknowledgment). |

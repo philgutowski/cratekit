@@ -161,6 +161,16 @@ ALLOWED_IMPORTS = frozenset({
     "cratekit.core.cause", "cratekit.core.exit_codes",
 })
 
+#: Attribute names that start a process, refused through any module.
+LAUNCHER_ATTRS = frozenset({
+    "system", "popen", "Popen", "fork", "forkpty", "startfile", "check_output",
+    "check_call", "getoutput", "getstatusoutput", "create_subprocess_exec",
+    "create_subprocess_shell", "subprocess", "execv", "execve", "execl", "execle",
+    "execlp", "execlpe", "execvp", "execvpe", "spawnv", "spawnve", "spawnvp",
+    "spawnvpe", "spawnl", "spawnle", "spawnlp", "spawnlpe", "posix_spawn",
+    "posix_spawnp", "spawn",
+})
+
 #: Every attribute of ``os`` the schedule may name.
 ALLOWED_OS = frozenset({"path", "environ", "access", "X_OK", "getuid", "pathsep", "abspath"})
 
@@ -187,6 +197,18 @@ def test_only_the_one_seam_starts_a_process():
     assert imported <= ALLOWED_IMPORTS, f"the schedule imports {sorted(imported - ALLOWED_IMPORTS)}"
     for node in rest:
         for child in ast.walk(node):
+            # No name imported from os, and os under no other name (review
+            # round two, finding 8): ``from os import system``, ``import os as
+            # _os``.
+            if isinstance(child, ast.ImportFrom):
+                assert child.module != "os", "the schedule imports a name from os"
+            if isinstance(child, ast.Import):
+                for alias in child.names:
+                    assert alias.asname is None, f"the schedule imports {alias.name} as {alias.asname}"
+            # No launcher reached through any module, ``config.os.system``
+            # included.
+            if isinstance(child, ast.Attribute):
+                assert child.attr not in LAUNCHER_ATTRS, f"the schedule names .{child.attr}"
             if isinstance(child, ast.Name):
                 assert child.id not in {"__import__", "importlib", "getattr", "eval", "exec"}, child.id
             if (
@@ -518,18 +540,33 @@ def test_an_agent_launchd_will_not_let_go_of_is_not_replaced(mac, agents):
     assert mac.verbs().count("bootstrap") == 1
 
 
+def _roots(tmp_path: Path) -> tuple[Path, ...]:
+    """Every root a verb could write under: the test's own directory, and the
+    installation's state and configuration, which the suite puts beside it."""
+    return (tmp_path, config.installation_state_dir(), config.config_dir())
+
+
 def test_install_writes_only_the_plist_and_the_logs_directory(mac, agents, tmp_path):
     state = config.installation_state_dir()
-    before = _tree(tmp_path)
+    before = _tree(*_roots(tmp_path))
 
     drive(["schedule", "install"])
 
-    after = _tree(tmp_path)
+    after = _tree(*_roots(tmp_path))
     added = sorted(set(after) - set(before))
     plist = str(agents / schedule.PLIST_NAME)
     assert plist in added
+    assert any(Path(path).is_relative_to(state) for path in added), "the walk saw the state"
     for path in added:
-        assert path == plist or Path(path).is_relative_to(state), path
+        if path == plist:
+            continue
+        relative = Path(path).relative_to(state)
+        # The staging lock, held around the bootout, and the dispatcher's own
+        # record of the run, which every verb leaves.
+        assert relative == Path("staging.lock") or (
+            relative.parent == Path("runs") and relative.suffix == ".json"
+        ), path
+    assert config.state_path(schedule.LOG_KEY).parent.is_dir()
 
 
 # ---------------------------------------------------------------------------
@@ -646,12 +683,16 @@ def test_show_says_a_night_record_it_cannot_read(mac):
 
 def test_show_writes_nothing_and_asks_launchd_only_to_print(mac, tmp_path):
     drive(["schedule", "install"])
-    before = _tree(tmp_path)
+    lock = config.state_path("staging_lock")
+    lock.unlink(missing_ok=True)
+    before = {k: v for k, v in _tree(*_roots(tmp_path)).items() if "/runs/" not in k}
     mac.calls.clear()
 
     _show()
 
-    assert _tree(tmp_path) == before
+    after = {k: v for k, v in _tree(*_roots(tmp_path)).items() if "/runs/" not in k}
+    assert after == before
+    assert not lock.exists(), "show took the staging lock"
     assert set(mac.verbs()) == {"print"}
 
 
@@ -754,7 +795,7 @@ def test_show_fails_over_an_agent_whose_crate_is_gone(mac, crate):
     assert envelope["data"]["summary"]["schedule"]["runs_the_night"] is False
 
 
-@pytest.mark.parametrize("verb", ["install", "remove"])
+@pytest.mark.parametrize("verb", ["install", "show", "remove"])
 def test_root_is_refused_and_launchd_is_never_asked(mac, agents, monkeypatch, verb):
     """Finding 5: ``gui/0`` is nobody's login."""
     monkeypatch.setattr(schedule, "uid", lambda: 0)
@@ -931,3 +972,78 @@ def test_show_fails_over_an_agent_launchd_holds_with_no_plist(mac, agents):
 
     assert "no plist is at" in envelope["cause"]["message"]
     assert envelope["data"]["summary"]["schedule"]["loaded"] == schedule.LOADED
+
+
+# ---------------------------------------------------------------------------
+# Review round two
+# ---------------------------------------------------------------------------
+
+
+def test_a_binary_the_install_finds_on_its_path_alone_is_on_the_agents_path(
+    mac, agents, monkeypatch, tmp_path
+):
+    """Finding 3: the agent's PATH carries the directory the install found it in."""
+    own = tmp_path / "own-tools"
+    own.mkdir()
+    tool = own / "keyfinder-cli"
+    tool.write_text("#!/bin/sh\n")
+    tool.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{own}{os.pathsep}/usr/bin{os.pathsep}/bin")
+    monkeypatch.delenv(binaries.env_var("keyfinder-cli"), raising=False)
+
+    drive(["schedule", "install"])
+
+    path = _plist(agents)["EnvironmentVariables"]["PATH"].split(os.pathsep)
+    assert str(own) in path
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        pytest.param(lambda d: d["ProgramArguments"].extend(["-d", "intake.land.native=go"]), id="an answer"),
+        pytest.param(lambda d: d["ProgramArguments"].append(""), id="an empty word"),
+        pytest.param(lambda d: d["EnvironmentVariables"].pop(config.ENV_STATE_DIR), id="no state"),
+        pytest.param(lambda d: d["EnvironmentVariables"].pop(config.ENV_CONFIG_DIR), id="no config"),
+        pytest.param(lambda d: d["EnvironmentVariables"].pop("PATH"), id="no path"),
+        pytest.param(lambda d: d["EnvironmentVariables"].update({config.ENV_STATE_DIR: "state"}), id="relative state"),
+        pytest.param(
+            lambda d: d.update(StandardOutPath="/tmp/elsewhere.log", StandardErrorPath="/tmp/elsewhere.log"),
+            id="log outside its state",
+        ),
+        pytest.param(lambda d: d.update(StandardOutPath="x.log", StandardErrorPath="x.log"), id="relative log"),
+        pytest.param(lambda d: d.update(StartCalendarInterval={"Hour": 3, "Minute": 99}), id="minute 99"),
+        pytest.param(lambda d: d.update(StartCalendarInterval={"Hour": True, "Minute": 0}), id="a true hour"),
+    ],
+)
+def test_show_fails_over_an_agent_that_reads_another_installation_or_more_words(mac, agents, edit):
+    drive(["schedule", "install"])
+    document = _plist(agents)
+    edit(document)
+    (agents / schedule.PLIST_NAME).write_bytes(plistlib.dumps(document))
+
+    envelope = _show(FAILED_SHOW)
+
+    assert envelope["data"]["summary"]["schedule"]["problems"]
+
+
+def test_show_never_prints_a_value_this_build_would_not_carry(mac, agents):
+    """Finding 10: the name is a problem; its value is not echoed."""
+    drive(["schedule", "install"])
+    document = _plist(agents)
+    document["EnvironmentVariables"]["CRATEKIT_CREDENTIAL_PROVIDER_SESSION"] = "a-session-secret"
+    (agents / schedule.PLIST_NAME).write_bytes(plistlib.dumps(document))
+
+    code, envelope = drive(["schedule", "show"])
+
+    assert code == FAILED_SHOW
+    assert "a-session-secret" not in str(envelope)
+    assert any("CRATEKIT_CREDENTIAL_PROVIDER_SESSION" in p for p in envelope["data"]["summary"]["schedule"]["problems"])
+
+
+def test_install_and_show_agree_on_the_environment_shape(mac):
+    _code, installed = drive(["schedule", "install"])
+    shown = _show()
+
+    assert installed["data"]["summary"]["schedule"]["environment"] == (
+        shown["data"]["summary"]["schedule"]["environment"]
+    )

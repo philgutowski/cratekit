@@ -23,13 +23,15 @@ back and says so when they are anything else.
 ONLY THE PERSON'S OWN LAUNCHAGENTS. The plist goes in ``Library/LaunchAgents``
 under the home directory, resolved by :func:`launch_agents_dir` alone, and the
 agent is loaded into ``gui/<uid>``, the logged in person's own domain. Never a
-system domain and never a system directory; and the verbs refuse to run as
-root, whose ``gui/0`` is nobody's login.
+system domain and never a system directory; and all three verbs refuse to run
+as root, whose ``gui/0`` is nobody's login.
 
-IT NEVER CUTS A NIGHT SHORT. Install and remove hold the staging lock while
-they boot the agent out, so a night pass in progress, which holds it for its
-whole run, is never ended by launchd under it: the verb refuses ``staging-held``
-and the night runs on.
+IT NEVER CUTS A NIGHT SHORT, from a shell reading the installation the agent
+carries. Install and remove hold the staging lock while they boot the agent
+out, so a night pass in progress, which holds it for its whole run, is never
+ended by launchd under it: the verb refuses ``staging-held`` and the night runs
+on. The lock is the shell's installation's; a shell pointed at another state
+directory holds another lock (a residual of review round two).
 
 ONE PLACE STARTS A PROCESS. :func:`launchctl` is the only call into the
 operating system that runs anything, by its absolute path, and the suite
@@ -46,16 +48,18 @@ so ``show`` still reads what launchd holds.
 
 NO ENVIRONMENT OF THE PERSON'S BEYOND WHAT THE RUN NEEDS. launchd starts the
 agent with almost no environment. The plist carries a fixed ``PATH`` (the
-directory of the ``crate`` it runs, the directories the binaries are looked for
-in, and the system's own); the configuration, state and provider gate
+directory of the ``crate`` it runs, the directories the install found each
+binary in, the directories the binaries are looked for in, and the system's
+own); the configuration, state and provider gate
 directories AS THE INSTALL RESOLVED THEM, absolute, whether an override, an XDG
 variable or the platform's default found them (review round one, finding 1),
 so the night reads the installation the install read; and the library, staging,
 ISRC cache and binary overrides set at the install, each made absolute. Never a
 credential, and nothing else.
 
-WHAT IT WRITES. The plist in the LaunchAgents directory and the directory of
-the agent's log, the declared state entry ``schedule_log``. Nothing a library
+WHAT IT WRITES. The plist in the LaunchAgents directory, the directory of the
+agent's log, the declared state entry ``schedule_log``, and, for install and
+remove, the staging lock's file under the installation's state. Nothing a library
 knows about, which is why the registry entry declares no library surface, on
 ``crate skills install``'s argument.
 """
@@ -308,7 +312,13 @@ def environment(crate: Path) -> dict[str, str]:
     """
     source = os.environ
     path: list[str] = []
-    for directory in (str(crate.parent), *(str(d) for d in binaries.fallback_dirs()), *SYSTEM_PATH):
+    # THE DIRECTORIES THE INSTALL FOUND EACH BINARY IN (review round two,
+    # finding 3), so a binary on the person's PATH alone is found at night.
+    found = (binaries.find(name) for name in binaries.INSTALLABLE_BINARIES)
+    found_in = [str(_absolute(Path(hit).parent)) for hit in found if hit]
+    for directory in (
+        str(crate.parent), *found_in, *(str(d) for d in binaries.fallback_dirs()), *SYSTEM_PATH
+    ):
         if directory not in path:
             path.append(directory)
     carried = {"PATH": os.pathsep.join(path)}
@@ -369,10 +379,13 @@ def read_agent(path: Path | None = None) -> Installed | None:
     why when a file is there and cannot be read as this agent.
 
     WHAT LAUNCHD WILL DO, NOT ONLY WHAT THE FILE SAYS (review round one,
-    findings 2 and 7). Every way the plist differs from the one this build
-    writes is a problem: another key, another program, a crate that cannot
-    run, a run at load, another calendar, a name in its environment this
-    build never carries. Any problem and ``show`` fails.
+    findings 2 and 7, and round two, finding 6). Every difference this can
+    read from the plist this build writes is a problem: another key, another
+    program or word, a crate that cannot run, a run at load, another calendar,
+    a name in its environment this build never carries, a carried directory
+    missing or relative, a log outside the state it carries. Any problem and
+    ``show`` fails. A directory changed by hand to another absolute one is not
+    told apart from one install wrote.
     """
     target = path if path is not None else plist_path()
     try:
@@ -426,6 +439,22 @@ def read_agent(path: Path | None = None) -> Installed | None:
     unknown = sorted(set(env) - allowed_names())
     if unknown:
         problems.append(f"its environment carries {', '.join(unknown)}, which this build never does")
+    # THE INSTALLATION IT READS (review round two, finding 6): the directories
+    # install always carries, each absolute, and its log in the state it names.
+    absent = [name for name in ("PATH", *resolved_names()) if not env.get(name)]
+    if absent:
+        problems.append(f"its environment is missing {', '.join(absent)}")
+    relative = sorted(
+        name for name, value in env.items()
+        if name != "PATH" and name in allowed_names() and not Path(value).is_absolute()
+    )
+    if relative:
+        problems.append(f"its environment names {', '.join(relative)} relative to nowhere")
+    state = env.get(config.ENV_STATE_DIR)
+    if state and isinstance(log, str):
+        expected = Path(state) / config.state_file(LOG_KEY).relative
+        if Path(log) != expected:
+            problems.append(f"its log is {log}, not {expected} in the state it carries")
     return Installed(
         at=at,
         crate=crate,
@@ -664,7 +693,7 @@ def install(ctx: Context) -> Envelope:
                     "crate": str(crate),
                     "argv": [str(crate), *NIGHT_ARGV],
                     "log": str(log),
-                    "environment": sorted(env),
+                    "environment": dict(env),
                     "loaded": True,
                     "replaced": replaced,
                 }
@@ -694,6 +723,7 @@ def _night_line(found: Installed | None) -> tuple[str, str]:
 def show(ctx: Context) -> Envelope:
     """Read the schedule back, and write nothing. See the module docstring."""
     _macos_only("show")
+    _as_the_person("show")
     target = plist_path()
     rows: list[dict[str, Any]] = []
     try:
@@ -753,7 +783,12 @@ def show(ctx: Context) -> Envelope:
                 "argv": [] if found is None else list(found.program),
                 "runs_the_night": None if found is None else found.runs_the_night,
                 "problems": problems,
-                "environment": {} if found is None else dict(found.environment),
+                # NEVER A VALUE THIS BUILD WOULD NOT CARRY (review round two,
+                # finding 10): a name it never carries is named in problems.
+                "environment": {} if found is None else {
+                    name: value for name, value in found.environment.items()
+                    if name in allowed_names()
+                },
                 "loaded": state,
                 "last": line,
             }
