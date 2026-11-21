@@ -1110,10 +1110,12 @@ an answer `taxonomy alias` or `taxonomy folder` would refuse is refused
 before anything is written, and an unanswered word is left for hand tagging.
 An answer the taxonomy copy already holds, given again on a later run, is
 taken as given. Every word is planned before the gate by `taxonomy alias`
-and `taxonomy folder` themselves, and the gate shows every row, proposal and
-answer, every file an alias retags (each audio file under the library root
-whose one genre is the word, a file no row names included), the files it
-leaves or could not read, and the rows the backlog could not read. Its digest
+and `taxonomy folder` themselves, and the gate shows every row `tag rows`
+writes from its file, every proposal and answer, every file an alias retags
+(each audio file under the library root whose one genre is the word, a file
+no row names included), the files it leaves or could not read, and the rows
+the backlog could not read. The rows that then follow their retagged files
+are bound by the backlog's digest and counted in the campaign's steps. Its digest
 covers the backlog, the answers and those files, by their path under the
 root, and names no copy, so a library, an answer or a file that moved
 between the plan and the approval refuses as stale, and a rehearsal on

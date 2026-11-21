@@ -969,3 +969,31 @@ def test_needing_counts_only_live_rows_with_a_readable_file(machine, silence):
         rb_writer.close_db(db)
     assert found == {"51"}
     assert len(_planned(machine).rows) == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. Round two of the review
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_same_folder_answer_once_the_word_has_left_the_backlog_is_taken_as_given(
+    acknowledged, silence
+):
+    """Round two: the row and the file both carry the word, so once its folder
+    lands the backlog no longer holds it, and the same command still runs."""
+    cfg = acknowledged
+    build(cfg, silence, *_backlog_suite._eight(), Track("15", INDIE, INDIE, artist="X", folder="w"))
+    code, acted, _refused = _two_acts(["--folder", INDIE])
+    assert code == int(ExitCode.OK), acted
+    assert "15" not in _census_needing(cfg)
+    assert not [word for word in _planned(cfg).words if word.spelling == INDIE]
+    code, again = drive([*VERB, "--folder", INDIE])
+    assert code == int(ExitCode.DECISION_REQUIRED), again
+    assert again["cause"]["detail"]["shown"]["answers"] == []
+
+
+def test_the_joining_rows_are_said_in_the_campaigns_own_words(acknowledged, silence):
+    build(acknowledged, silence, *_library(), Track("80", MELODIC, GRIME, artist="Y", folder="y"))
+    _run, refused = _first_act([])
+    (note,) = [n for n in refused["cause"]["detail"]["shown"]["notes"] if "80" in n]
+    assert "the campaign holds each of them out" in note and "--leave" not in note

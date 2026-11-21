@@ -257,7 +257,12 @@ def _held_by_copy(declared, spelling: str, kind: str, genre: str) -> bool:
     if declared is None:
         return False
     if kind == backlog.FOLDER:
-        return word_edit.own_folder(declared, spelling) is not None
+        # ITS OWN NAME EXACTLY, the folder the answer made (round two), or in
+        # another case, which ``own_folder`` alone answers.
+        return (
+            declared.bucket_for_display(spelling) is not None
+            or word_edit.own_folder(declared, spelling) is not None
+        )
     if kind != backlog.ALIAS:
         return False
     saved = declared.tagging_alias(spelling.lower())
@@ -544,7 +549,26 @@ def _notes(plan: backlog.Backlog, words: tuple[WordPlan, ...]) -> list[dict[str,
     standing for those verbs shows what each would show at its own, so a clean
     screen is never put over state a verb could not read.
     """
-    found = [note for note in backlog_cli.advisories(plan) if note["code"] in _CARRIED]
+    found = [
+        note
+        for note in backlog_cli.advisories(plan)
+        if note["code"] in _CARRIED and note["code"] != backlog_cli.ROWS_JOINING
+    ]
+    if plan.joining:
+        # IN THE CAMPAIGN'S OWN WORDS (round two): the backlog's names the
+        # flag that holds such a row out of ``tag rows``, which this verb does
+        # for it, and which this verb's parser would read as another flag.
+        found.append(
+            {
+                "code": backlog_cli.ROWS_JOINING,
+                "message": (
+                    f"{backlog.ROWS_VERB} would write a genre no folder takes onto "
+                    f"{len(plan.joining)} row(s) adoption files today, "
+                    f"{_named(list(plan.joining))}, moving them into needs genre; the "
+                    f"campaign holds each of them out and writes them nothing"
+                ),
+            }
+        )
     for word in words:
         found.extend(
             {"code": note["code"], "message": f"{word.word}: {note['message']}"} for note in word.notes
