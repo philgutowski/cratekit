@@ -77,12 +77,12 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from cratekit.cli import gates, output, registry
+from cratekit.cli import gates, output, registry, tail
 from cratekit.cli.output import Envelope
 from cratekit.cli.verbs import taxonomy_word
 from cratekit.core import active_taxonomy, config, rb_writer, session
 from cratekit.core import taxonomy_word as word_edit
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
+from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.tagging import backlog, backlog_cli, rows, rows_cli, suggest, suggest_cli
 
@@ -135,22 +135,6 @@ ROWS_LEFT = "campaign-rows-left"
 _NAMED = 5
 
 _ORIGIN = ("cli", "verbs", "tag_campaign")
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=_ORIGIN,
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
@@ -986,7 +970,7 @@ def _warnings(
 
 def tag_campaign(ctx: "Context") -> Envelope:
     """Plan the backlog, check the answers, ask once, then run each step in order."""
-    cfg = _load()
+    cfg = tail.load_config(_ORIGIN)
     declared = active_taxonomy.load(cfg)
     spec = _confirm_gate(ctx.entry)
     # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
