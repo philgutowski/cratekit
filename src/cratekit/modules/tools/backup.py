@@ -146,12 +146,8 @@ QUICK_LABELS: frozenset[str] = frozenset({QUICK_SEND, QUICK_RESEND, QUICK_ARCHIV
 #: database portion is ``snapshot`` or ``unchanged``. ``backup_facts.KINDS``
 #: holds the same words, which it accepts and doctor reads, and a test holds
 #: the two equal.
-KIND_FULL = "full"
-KIND_QUICK = "quick"
-KIND_SKIPPED = "skipped"
-KIND_SNAPSHOT = "snapshot"
-KIND_UNCHANGED = "unchanged"
-KINDS = (KIND_FULL, KIND_QUICK, KIND_SKIPPED, KIND_SNAPSHOT, KIND_UNCHANGED)
+KINDS = ("full", "quick", "skipped", "snapshot", "unchanged")
+KIND_FULL, KIND_QUICK, KIND_SKIPPED, KIND_SNAPSHOT, KIND_UNCHANGED = KINDS
 
 #: What a portion says about a rotation that did not happen, as codes rather
 #: than as sentences, for the same reason the labels above are constants: a
