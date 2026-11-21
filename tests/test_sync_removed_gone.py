@@ -639,3 +639,12 @@ def test_the_record_reads_back_what_it_wrote_and_drops_an_entry_given_none(nativ
     assert record.update({"pl": None}) == {}
     assert record.read() == {}
 
+
+
+def test_a_sighting_keeps_the_latest_instant_and_a_clock_set_back_moves_nothing():
+    with_fraction = FIRST + timedelta(hours=1, microseconds=500)
+    once = unavailable.sighted(None, "pl", "P", with_fraction)
+    later = with_fraction + timedelta(microseconds=999_500)
+    assert unavailable.sighted(once, "pl", "P", later).last == unavailable.stamp(later)
+    # An earlier moment, a clock set back, moves nothing.
+    assert unavailable.sighted(once, "pl", "P", FIRST).last == once.last

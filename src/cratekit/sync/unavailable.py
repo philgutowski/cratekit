@@ -146,8 +146,9 @@ def sighted(prior: Sighting | None, playlist_id: str, name: str, moment: datetim
         return Sighting(playlist_id=playlist_id, name=name, first=when, last=when)
     if prior.is_retired:
         return prior
-    held = replace(prior, name=name or prior.name, last=max(prior.last, when))
-    if datetime.fromisoformat(held.last) - datetime.fromisoformat(held.first) >= APART:
+    latest = max(datetime.fromisoformat(prior.last), datetime.fromisoformat(when))
+    held = replace(prior, name=name or prior.name, last=stamp(latest))
+    if latest - datetime.fromisoformat(held.first) >= APART:
         return replace(held, retired=held.last, by=BY_SIGHTINGS)
     return held
 
