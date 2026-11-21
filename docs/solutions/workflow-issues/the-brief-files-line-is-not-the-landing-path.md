@@ -136,8 +136,10 @@ green, and `planned_in` never expires.
 Before you change `module=`, walk the layering rules in
 `tests/test_layering.py`. Two questions, in order:
 
-1. What layer does the current `module=` string rank as? First match
-   in `_LAYER_RULES` wins (`tests/test_layering.py:69-112`).
+1. What layer does the current `module=` string rank as? A module
+   `_PLACED` names takes the layer on its own line (one line per module
+   since U296); for every other module the first match in `_LAYER_RULES`
+   wins, both in `tests/test_layering.py`.
    `cratekit.label.cli` matches `^cratekit\.[a-z_]+\.` and ranks
    `modules`. `cratekit.reports.cli` ranks the same way.
    `cratekit.cli.jobs` matches `^cratekit\.cli\.` and ranks `cli`.

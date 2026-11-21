@@ -28,7 +28,7 @@ The trail it leaves is visible in the file itself: the comment above each pinned
 
 ## Guidance
 
-**Lasting fix (built by U125): do not pin totals.** `tests/_pinned_reserved_populations.py` pins per module (kebab literals, named holders, literal holders) and one slug per line for the non-reserved cause set. Totals are derived from those pins. A new cause then adds a line to its own module's pin, or one slug line, and two cards that add causes in different modules touch different lines and merge cleanly. This is the same shape as U124: the shared register was one file every unit edited, and the fix was one file per unit (here, one pin entry per module).
+**Lasting fix (built by U125): do not pin totals.** `tests/_pinned_reserved_populations.py` pins per module (kebab literals, named holders, literal holders) and one slug per line for the non-reserved cause set. Since U296 the per module pins are held one file per package under `tests/ratchets/reserved_causes/`, which that module reads, so a card that splits a module edits only its own package's file. Totals are derived from those pins. A new cause then adds a line to its own module's pin, or one slug line, and two cards that add causes in different modules touch different lines and merge cleanly. This is the same shape as U124: the shared register was one file every unit edited, and the fix was one file per unit (here, one pin entry per module).
 
 **Interim fix (what to do if a total pin is reintroduced, or for an older branch still carrying one):**
 
