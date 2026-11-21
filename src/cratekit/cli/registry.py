@@ -3183,6 +3183,36 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── The needs genre backlog (U292) ──────────────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives.
+    Entry(
+        name="tag.backlog",
+        summary="sort every row adoption leaves under needs genre by cause, with "
+        "each verb that settles it and one question per genre word no folder "
+        "takes; writes nothing",
+        module="cratekit.tagging.backlog_cli",
+        builder="build",
+        handler_key="tag.backlog",
+        # NO FEATURE ROW AND NO SOURCE SCRIPT, for the reason ``tag.suggest``
+        # gives: the source system left a track with no genre to a person.
+        #
+        # CORE, as ``tag.suggest`` is, whose plan it reads. DOCTOR'S SURFACE,
+        # as ``report.genres`` is, since a person reads a report as check rows.
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        # THE DATABASE IS ONLY READ, as ``report.genres`` argues for itself:
+        # no surface is declared, the verb is not destructive, and it asks
+        # nothing. The catalogue answers ``--catalogue`` keeps are
+        # ``tag.suggest``'s own state entry, which no surface names there
+        # either.
+        taxonomy_terms=("genre_energy",),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.pins",
+            "library.paths_resolved",
+        ),
+    ),
     # ── The INBOX rotation (U111) ───────────────────────────────────────────
     #
     # Appended, for the reason the deferred routing block above gives. The
