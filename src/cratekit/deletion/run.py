@@ -288,10 +288,13 @@ def plan(
     """Read the library and answer every removal since the watermark. Writes no file.
 
     Read-only against the database and against the music volume. The one thing it
-    can write is the watermark, and only on the run that BASELINES: R35 says a
+    can write is the watermark's document, on the run that BASELINES: R35 says a
     first run on an existing library accepts the prior removals as history rather
     than presenting them, and accepting them is a decision that has to be
-    recorded or the next run makes it again.
+    recorded or the next run makes it again. And on a run that first sees a
+    landed row gone, or sees one live again, for the same reason (R-1037): the
+    number such a removal is given is a decision the next run must read back,
+    not make again at a later count.
     """
     rules = _rules(cfg, prefix_map)
     _assert_library_is_still(
