@@ -163,6 +163,18 @@ ACK_STOP = "backup-acknowledgment-missing"
 #: folder.
 ANALYZE_PLAYLIST = "INBOX / Analyze"
 
+#: The visit's short path with Auto Analysis on (U319), the wording
+#: :data:`cratekit.intake.land_cli.AUTO_ANALYSIS_STEP` owns. Spelled here
+#: rather than imported, as the playlist above is, and a test holds the two
+#: equal.
+AUTO_ANALYSIS_STEP = (
+    "or, with Auto Analysis on, open rekordbox with its window in front and press OK "
+    "on its Auto Analysis dialog only when it shows every one of those Normal "
+    "settings with Vocal and CUE off and no field set otherwise, else Cancel it and "
+    "select as above; Auto Analysis runs on its preference's own mode, so the rows "
+    f"carrying the dyn My Tag still take Analyze Tracks with {drift.DYNAMIC_SETTINGS}"
+)
+
 #: The rekordbox visit an attended session makes once the landing is applied,
 #: on Phillip's standard since 2026-10-27, over the one playlist every landing
 #: fills (U166), which holds every row still waiting and only those, then the
@@ -170,12 +182,15 @@ ANALYZE_PLAYLIST = "INBOX / Analyze"
 #: carries its artist, album, genre and year from the commit that made it.
 #: TWO SELECTIONS SINCE U157, the settings ``core.drift`` names for both: the
 #: rows a landing marked ``dyn`` because their tempo moves take Dynamic, and
-#: every other row Normal.
+#: every other row Normal. TWO PATHS SINCE U319: those selections, or with
+#: Auto Analysis on the one dialog a launch in front raises, in the wording
+#: below.
 REKORDBOX_STEPS: tuple[str, ...] = (
     f"in rekordbox, select the {ANALYZE_PLAYLIST} playlist, which holds every "
     f"landed row waiting for analysis, and run Analyze Tracks on its rows "
     f"without the dyn My Tag: {drift.NORMAL_SETTINGS}; then on its rows "
-    f"carrying the dyn My Tag, if any: {drift.DYNAMIC_SETTINGS}",
+    f"carrying the dyn My Tag, if any: {drift.DYNAMIC_SETTINGS}; "
+    f"{AUTO_ANALYSIS_STEP}",
     "quit rekordbox and confirm rekordbox and rekordboxAgent are both gone "
     "before any other verb runs",
     "then take the analysed rows out of it: crate inbox analyzed",
