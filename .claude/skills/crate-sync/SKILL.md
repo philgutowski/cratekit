@@ -45,7 +45,9 @@ Every one of these holds, or the pass does not start.
 3. **The backups are fresh enough.** `crate doctor` shows `backup.age.files`
    and `backup.age.database`. At five days or more, or with either unknown,
    run `crate backup run` first and read the ages again, as CLAUDE.md's backup
-   rule says. Under five days, no backup.
+   rule says. Under five days, no backup. A backup over a library that barely
+   changed is quick or skipped, and both reset the ages as a full one does;
+   one that fails resets nothing, and the next is a full check.
 4. **rekordbox is closed.** `crate doctor` reads `rekordbox.closed` as ok.
 
 ## 2. The pass, to its landing gate
@@ -168,9 +170,10 @@ Tag, and every warning.
 ## 4. The rekordbox visit and its check
 
 Follow the project's `rekordbox-visit` skill step by step: its preflight, the
-analysis of INBOX / Analyze on Phillip's standard settings, the wait counted
-in analysis files, the second run for rows marked `dyn`, the quit, `crate
-analyze check`, and the clear with `crate inbox analyzed`. It is the one
+analysis of INBOX / Analyze on Phillip's standard settings, by its Auto
+Analysis path when the launch dialog shows them or else by Analyze Tracks,
+the wait counted in analysis files, the second run for rows marked `dyn`,
+the quit, `crate analyze check`, and the clear with `crate inbox analyzed`. It is the one
 procedure for the visit, and nothing it says is repeated here. Its verdict is
 this pass's: a check that ends waiting or suspect stops the pass there, and
 the report says what it named.
