@@ -82,8 +82,11 @@ def build(parser, entry) -> None:
     parser.set_defaults(_handler=tag_backlog)
 
 
-def _plan(cfg: config.Config, declared, catalogue: bool, progress) -> backlog.Backlog:
+def plan_library(cfg: config.Config, declared, catalogue: bool, progress) -> backlog.Backlog:
     """The backlog over the library as it stands, through a handle opened to read.
+
+    THE ONE PLAN, this report's and ``tag campaign``'s (U294), so the campaign
+    applies the backlog this verb shows.
 
     THE COPY'S TEXT IS READ HERE, the way ``taxonomy alias`` reads it, so each
     word's answers are planned on the copy those verbs would edit.
@@ -346,7 +349,7 @@ def tag_backlog(ctx) -> Envelope:
     """Sort the needs genre backlog by cause and name the campaign. Writes nothing."""
     cfg = _load()
     declared = active_taxonomy.load(cfg)
-    plan = _plan(
+    plan = plan_library(
         cfg, declared, bool(getattr(ctx.args, "catalogue", False)), getattr(ctx, "progress", None)
     )
     return ctx.envelope(
@@ -365,5 +368,6 @@ __all__ = [
     "WORDS_ASKED",
     "build",
     "checks",
+    "plan_library",
     "tag_backlog",
 ]

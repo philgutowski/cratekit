@@ -373,69 +373,60 @@ def _retag(items: tuple[FileItem, ...], display: str) -> _Written:
     return done
 
 
-def taxonomy_alias_verb(ctx: "Context") -> Envelope:
-    """Plan the alias and the files, ask, write the copy, then the files."""
-    cfg = upgrade_cli._load()
-    args = ctx.args
-    root = _root(cfg, getattr(args, "folder", None))
+def edit_alias(text: str, word: str, genre: str) -> word_edit.Edit:
+    """The alias's edit of the copy's text, or the verb's own refusal of it."""
+    try:
+        return word_edit.alias(text, word, genre)
+    except word_edit.Refused as exc:
+        raise _refused(exc, word) from exc
 
-    def plan_it(text: str) -> word_edit.Edit:
-        try:
-            return word_edit.alias(text, args.word, args.genre)
-        except word_edit.Refused as exc:
-            raise _refused(exc, args.word) from exc
 
-    path, edit = _edit(cfg, plan_it)
-    files = carrying(root, edit.word, edit.display)
-    data = _alias_payload(edit, files)
-    notes = _file_notes(files)
-    if not edit.writes and not files.of(WRITE):
-        return ctx.envelope(
-            data=data,
-            outcome=Outcome.NO_OP,
-            warnings=[
-                *notes,
-                {
-                    "code": NOTHING_TO_DO,
-                    "message": (
-                        (
-                            f"{edit.word!r} is the name of the genre folder {edit.display} in "
-                            f"another case, which needs no alias, and no file read under "
-                            f"{root} carries it alone"
-                        )
-                        if edit.own_name
-                        else (
-                            f"{edit.word!r} is already a tagging alias of {edit.display} in the "
-                            f"copy at {path}, and no file read under {root} carries it alone"
-                        )
-                    )
-                    + (", past the files named above that could not be read" if files.of(UNREAD) else ""),
-                },
-            ],
-        )
-    spec = _gate(ctx.entry, ALIAS_GATE)
-    context = {
-        "copy": str(path),
-        "word": edit.word,
-        "genre": edit.display,
-        "bucket": edit.bucket_id,
-        "folder": str(root),
-    }
-    if ctx.gate.require(spec, plan=data, context=context) != "approve":
-        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=notes)
+@dataclass(frozen=True, slots=True)
+class AliasPlan:
+    """An alias planned: the copy, the edit of it, and every file carrying the word."""
 
-    # TAKEN AGAIN AFTER THE ANSWER, the copy and the files both, so an answer
-    # given to the first plan is refused as stale rather than written over an
-    # edit or a file retagged since.
-    _, fresh = _edit(cfg, plan_it)
-    fresh_files = carrying(root, fresh.word, fresh.display)
-    if _alias_payload(fresh, fresh_files)["digest"] != data["digest"]:
-        raise gates.DecisionStale(spec, ctx.run.run_id, data["digest"], _alias_payload(fresh, fresh_files)["digest"])
+    path: Path
+    root: Path
+    edit: word_edit.Edit
+    files: Files
 
+    @property
+    def data(self) -> dict[str, Any]:
+        return _alias_payload(self.edit, self.files)
+
+    @property
+    def writes(self) -> bool:
+        """Whether applying it saves an alias or retags a file."""
+        return self.edit.writes or bool(self.files.of(WRITE))
+
+
+def plan_alias(cfg: config.Config, word: str, genre: str, folder: str | None = None) -> AliasPlan:
+    """The alias of ``word`` to ``genre`` and the files it retags, writing nothing.
+
+    THE ONE PLAN, the verb's and ``tag campaign``'s (U294), so an answer the
+    campaign applies is planned exactly as this verb plans it.
+    """
+    root = _root(cfg, folder)
+    path, edit = _edit(cfg, lambda text: edit_alias(text, word, genre))
+    return AliasPlan(path=path, root=root, edit=edit, files=carrying(root, edit.word, edit.display))
+
+
+def apply_alias(
+    cfg: config.Config, spec: registry.GateSpec, run_id: str, planned: AliasPlan
+) -> list[dict[str, str]]:
+    """Save the alias, then retag its files, each read back; the sentences it says.
+
+    THE ONE APPLY PATH, the verb's and ``tag campaign``'s (U294). The copy is
+    written by :func:`cratekit.cli.verbs.taxonomy.write_copy`, which refuses
+    stale under ``spec`` when the copy's bytes moved since ``planned`` read
+    them. A file that did not take the genre refuses once the rest are
+    written, naming every file by what happened to it.
+    """
+    path, root, fresh = planned.path, planned.root, planned.edit
     sentences: list[dict[str, str]] = []
     if fresh.writes:
         kept, _ending, _raw = upgrade_cli.write_copy(
-            cfg, spec, ctx.run.run_id, path, fresh.before, fresh.after, data["digest"], what="answered"
+            cfg, spec, run_id, path, fresh.before, fresh.after, planned.data["digest"], what="answered"
         )
         sentences.append(
             {
@@ -449,7 +440,7 @@ def taxonomy_alias_verb(ctx: "Context") -> Envelope:
             }
         )
 
-    done = _retag(fresh_files.of(WRITE), fresh.display)
+    done = _retag(planned.files.of(WRITE), fresh.display)
     if done.moved or done.failed or done.wrong:
         parts = []
         if done.moved:
@@ -489,6 +480,60 @@ def taxonomy_alias_verb(ctx: "Context") -> Envelope:
                 ),
             }
         )
+    return sentences
+
+
+def taxonomy_alias_verb(ctx: "Context") -> Envelope:
+    """Plan the alias and the files, ask, write the copy, then the files."""
+    cfg = upgrade_cli._load()
+    args = ctx.args
+    folder = getattr(args, "folder", None)
+    planned = plan_alias(cfg, args.word, args.genre, folder)
+    path, root, edit, files = planned.path, planned.root, planned.edit, planned.files
+    data = planned.data
+    notes = _file_notes(files)
+    if not planned.writes:
+        return ctx.envelope(
+            data=data,
+            outcome=Outcome.NO_OP,
+            warnings=[
+                *notes,
+                {
+                    "code": NOTHING_TO_DO,
+                    "message": (
+                        (
+                            f"{edit.word!r} is the name of the genre folder {edit.display} in "
+                            f"another case, which needs no alias, and no file read under "
+                            f"{root} carries it alone"
+                        )
+                        if edit.own_name
+                        else (
+                            f"{edit.word!r} is already a tagging alias of {edit.display} in the "
+                            f"copy at {path}, and no file read under {root} carries it alone"
+                        )
+                    )
+                    + (", past the files named above that could not be read" if files.of(UNREAD) else ""),
+                },
+            ],
+        )
+    spec = _gate(ctx.entry, ALIAS_GATE)
+    context = {
+        "copy": str(path),
+        "word": edit.word,
+        "genre": edit.display,
+        "bucket": edit.bucket_id,
+        "folder": str(root),
+    }
+    if ctx.gate.require(spec, plan=data, context=context) != "approve":
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=notes)
+
+    # TAKEN AGAIN AFTER THE ANSWER, the copy and the files both, so an answer
+    # given to the first plan is refused as stale rather than written over an
+    # edit or a file retagged since.
+    fresh = plan_alias(cfg, args.word, args.genre, folder)
+    if fresh.data["digest"] != data["digest"]:
+        raise gates.DecisionStale(spec, ctx.run.run_id, data["digest"], fresh.data["digest"])
+    sentences = apply_alias(cfg, spec, ctx.run.run_id, fresh)
     return ctx.envelope(data=data, warnings=[*notes, *sentences])
 
 
@@ -525,19 +570,65 @@ def _folder_payload(edit: word_edit.Edit) -> dict[str, Any]:
     }
 
 
+def edit_folder(text: str, word: str, like: str | None = None) -> word_edit.Edit:
+    """The genre folder's edit of the copy's text, or the verb's own refusal of it."""
+    try:
+        return word_edit.folder(text, word, like)
+    except word_edit.Refused as exc:
+        raise _refused(exc, word) from exc
+
+
+@dataclass(frozen=True, slots=True)
+class FolderPlan:
+    """A genre folder planned: the copy and the edit of it."""
+
+    path: Path
+    edit: word_edit.Edit
+
+    @property
+    def data(self) -> dict[str, Any]:
+        return _folder_payload(self.edit)
+
+
+def plan_folder(cfg: config.Config, word: str, like: str | None = None) -> FolderPlan:
+    """The genre folder named ``word``, writing nothing. The verb's plan and the campaign's."""
+    path, edit = _edit(cfg, lambda text: edit_folder(text, word, like))
+    return FolderPlan(path=path, edit=edit)
+
+
+def apply_folder(
+    cfg: config.Config, spec: registry.GateSpec, run_id: str, planned: FolderPlan
+) -> list[dict[str, str]]:
+    """Write the copy declaring the folder and read it back; the sentence it says.
+
+    THE ONE APPLY PATH, the verb's and ``tag campaign``'s (U294).
+    """
+    path, fresh = planned.path, planned.edit
+    kept, _ending, _raw = upgrade_cli.write_copy(
+        cfg, spec, run_id, path, fresh.before, fresh.after, planned.data["digest"], what="answered"
+    )
+    return [
+        {
+            "code": FOLDER_MADE,
+            "message": (
+                f"the copy at {path} now declares the genre folder {fresh.display} "
+                f"({fresh.bucket_id}), with the {fresh.like} bucket's family, tempo window "
+                f"and rating, and a file whose genre is {fresh.word!r} routes there; run "
+                f"{TREE_FOLLOWS} to file the tracks already carrying it. Nothing else the "
+                f"copy declares was changed, and the copy as it was is at {kept}"
+            ),
+        }
+    ]
+
+
 def taxonomy_folder_verb(ctx: "Context") -> Envelope:
     """Plan the genre folder, ask, write the copy, read it back."""
     cfg = upgrade_cli._load()
     args = ctx.args
-
-    def plan_it(text: str) -> word_edit.Edit:
-        try:
-            return word_edit.folder(text, args.word, getattr(args, "like", None))
-        except word_edit.Refused as exc:
-            raise _refused(exc, args.word) from exc
-
-    path, edit = _edit(cfg, plan_it)
-    data = _folder_payload(edit)
+    like = getattr(args, "like", None)
+    planned = plan_folder(cfg, args.word, like)
+    path, edit = planned.path, planned.edit
+    data = planned.data
     if not edit.writes:
         return ctx.envelope(
             data=data,
@@ -557,28 +648,10 @@ def taxonomy_folder_verb(ctx: "Context") -> Envelope:
     if ctx.gate.require(spec, plan=data, context=context) != "approve":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP)
 
-    _, fresh = _edit(cfg, plan_it)
-    moved = _folder_payload(fresh)
-    if moved["digest"] != data["digest"]:
-        raise gates.DecisionStale(spec, ctx.run.run_id, data["digest"], moved["digest"])
-    kept, _ending, _raw = upgrade_cli.write_copy(
-        cfg, spec, ctx.run.run_id, path, fresh.before, fresh.after, data["digest"], what="answered"
-    )
-    return ctx.envelope(
-        data=data,
-        warnings=[
-            {
-                "code": FOLDER_MADE,
-                "message": (
-                    f"the copy at {path} now declares the genre folder {fresh.display} "
-                    f"({fresh.bucket_id}), with the {fresh.like} bucket's family, tempo window "
-                    f"and rating, and a file whose genre is {fresh.word!r} routes there; run "
-                    f"{TREE_FOLLOWS} to file the tracks already carrying it. Nothing else the "
-                    f"copy declares was changed, and the copy as it was is at {kept}"
-                ),
-            }
-        ],
-    )
+    fresh = plan_folder(cfg, args.word, like)
+    if fresh.data["digest"] != data["digest"]:
+        raise gates.DecisionStale(spec, ctx.run.run_id, data["digest"], fresh.data["digest"])
+    return ctx.envelope(data=data, warnings=apply_folder(cfg, spec, ctx.run.run_id, fresh))
 
 
 __all__ = [
@@ -591,9 +664,17 @@ __all__ = [
     "FOLDER_GATE",
     "FOLDER_MADE",
     "NOTHING_TO_DO",
+    "AliasPlan",
+    "FolderPlan",
+    "apply_alias",
+    "apply_folder",
     "build_alias",
     "build_folder",
     "carrying",
+    "edit_alias",
+    "edit_folder",
+    "plan_alias",
+    "plan_folder",
     "taxonomy_alias_verb",
     "taxonomy_folder_verb",
 ]
