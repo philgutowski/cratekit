@@ -1056,6 +1056,7 @@ writes their genre tags.
 | Verb | Does |
 |---|---|
 | `tag backlog [--catalogue]` | Sorts every row adoption leaves under needs genre by cause, names the verb that settles each and one question per genre word no folder takes; writes nothing. |
+| `tag campaign [--alias WORD=GENRE] [--folder WORD] [--leave-word WORD] [--catalogue]` | Applies the backlog under one gate: `tag rows`, `tag suggest` at the floor, the answered words, then `tag rows` again; writes file and row, and names `route resort`. |
 | `tag rows [--leave ID]` | Writes each row's genre from its file where they disagree. |
 | `tag suggest [--band] [--set ID=GENRE] [--catalogue]` | Suggests a genre for rows with none, from artist, folder and optionally the catalogues; writes file and row. |
 | `tag retag FOLDER` | Replaces a genre too coarse to be final. |
@@ -1099,6 +1100,31 @@ order that settles the backlog with the rows each moves, the rows left by
 hand with what would settle them, any row `tag rows` would move into needs
 genre, and needs genre now and after. It opens the database only to read and
 writes nothing.
+
+**The campaign.** `tag campaign` applies that backlog under one gate,
+`tag.campaign.approve`, in place of five verbs and five gates. Answer each
+word the backlog asks about on the command line, `--alias WORD=GENRE`,
+`--folder WORD` or `--leave-word WORD`, and give the same answers on the run
+that applies; a word the backlog does not ask about, one answered twice, or
+an answer `taxonomy alias` or `taxonomy folder` would refuse is refused
+before anything is written, and an unanswered word is left for hand tagging.
+The gate shows every row, proposal and answer, and its digest covers the
+backlog and the answers and names no copy, so a library or an answer that
+moved between the plan and the approval refuses as stale, and a rehearsal on
+a disposable copy digests equal to the live plan (`--rehearsed DIGEST` sets
+the rehearsal's digest beside the live one at the gate). Then each step runs
+through its own verb, planned on the library the steps before it left: `tag
+rows` for the rows the backlog served, `tag suggest` at the floor for the
+proposals it showed with the genre it showed, each settled word's one answer
+and each answered word, then `tag rows` again for the rows that follow. A row
+the backlog did not show, a routed row `tag rows` would move into needs genre
+above all, is never written, and a proposal that appeared or moved once the
+earlier steps wrote is left for the next run. A step that refuses stops the
+campaign there, naming what landed and what did not run; what landed stays,
+and a second run plans only what is left. The report gives needs genre before
+the campaign and after each step, as measured. Filing the tracks into BY
+GENRE + ENERGY is left to `route resort`, which shows every add and asks its
+own gate.
 
 **Removing tracks.** `crate delete review` offers the files behind rows you
 removed in rekordbox; confirmed ones go to the system Trash only. It refuses

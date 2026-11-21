@@ -233,7 +233,8 @@ question per word, folded on case) or `file-unread`. The **floor** is the high
 reason. A word already saved as an alias has one answer and is **settled**. A
 row whose file is not here is in no cause and counted as **unread**; a routed
 row `tag rows` would give a word no folder takes is **joining**. The report
-writes nothing; U294 applies it.
+writes nothing; `crate tag campaign` (U294) applies it under one gate, each
+step through its own verb, writing only the rows the backlog showed.
 
 *Avoid:* adoption's **withheld**, which is a routed row the plan will not place.
 
