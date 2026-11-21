@@ -150,7 +150,14 @@ pass, scenario and capture.
   `test_*.py`, so the suite does not collect it, and `capture` runs the files
   as a pytest run of its own under the suite's isolation. A scenario takes
   the `stage` fixture and runs every command through it; a card adds one for
-  any verb it touches that has none.
+  any verb it touches that has none. A file can hold one fixture of a name,
+  so a package whose scenarios borrow from two suites that each call their
+  machine `machine` keeps the second suite's in `<package>_<verb>.py`, as
+  `tagging_rows.py` is.
+- `--rev` runs the branch's scenarios and the branch's test helpers against
+  the other revision's `src/`, so a scenario file names nothing the base
+  does not have: a module, a function or a constant the branch added is read
+  through a verb, never imported.
 - A capture's root is one fixed directory inside the system's temporary
   directory. `capture` refuses a root outside it, and a root holding files no
   capture left.
@@ -158,6 +165,32 @@ pass, scenario and capture.
   captures every scenario twice and fails on any difference, so a scenario
   that prints or writes a value nothing pinned fails there, with the value
   shown. `tests/behaviour/__init__.py` holds the pins.
+
+## Where the shared plumbing lives
+
+What every package once wrote for itself has one home (U298), each in the
+lowest layer that can host it. A feature package may import `cli.output`,
+`cli.exit_codes` and `cli.prompt` from the shell and nothing else of it, and
+the core modules on `CORE_INTERFACE`. Before writing a helper in a feature
+package, look here first; `tests/test_shared_homes.py` holds each of them.
+
+| Need | Home |
+|---|---|
+| load the configuration and refuse `config-unusable` with the verb's own origin | `cli.output.load_config(origin)` |
+| find a verb's gate by name on its registry entry | `cli.output.declared_gate` (raises `RuntimeError` when absent) and `cli.output.confirm_gate` (refuses `internal-error`); the two answers differ, so a verb keeps the one it had |
+| who approved a gate | `cli.output.approving_actor(ctx, spec)` |
+| the `job_state` payload of a run that queued nothing | `cli.output.no_job(state, **progress)` |
+| a count read off a stored document | `cli.output.count_of` |
+| a job's report for an envelope, and the reconcile, drive and raise of a resume | `core.jobs.reported`, `core.jobs.advance`, `core.jobs.resumed` |
+| where one item's report is staged and where it lands | `core.jobs.Artifacts(final=..., staging=...)`, bound once per feature |
+| a private SQLite store opened on the queue's pragmas | `core.private_store.PrivateStore` |
+| a lock held across one read then write cycle of a state document | `core.config.held(lock_path, refused)` |
+| a lock a writer would rather skip than wait for | `core.config.lock_within(...)` yields whether it was had |
+| a lock taken without waiting, the holder's words left readable | `core.config.lock_now(path)` |
+| a state document read as JSON, refused rather than read as empty | `core.config.read_json`, `read_json_map`, `read_bytes_if_present` |
+| the lossy name template and the name budget from configuration | `core.naming.NameTemplate.lossy`, `.lossy_if_marked`, `core.naming.NameBudget.of` |
+| the capture a guarded database write opens with | `write.trees.attached_capture(gates, cfg, db)` |
+| the commit a content row write records | `write.row_defaults.record_commit` |
 
 ## CI
 

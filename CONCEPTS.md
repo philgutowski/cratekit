@@ -786,7 +786,9 @@ name, or to a reason a person wrote.
 ### Scenario
 One function in a file under `tests/behaviour/`, one file per package, that
 runs verbs through the `stage` fixture on a disposable library with the clock
-and every generated id pinned. The suite does not collect it.
+and every generated id pinned. The suite does not collect it. A package whose
+scenarios borrow two suites' fixtures of one name keeps the second suite's in
+a file named for the package and the verb.
 
 ### Capture
 What one run of the scenarios left, written by `scripts/behaviour_compare.py
@@ -865,7 +867,7 @@ The `"module:function"` that does one item's work, resolved lazily, run against
 the job's frozen configuration (never a fresh load).
 
 ### Item report
-The one file a handler may return, staged by `core.artifacts` and committed
+The one file a handler may return, staged by `jobs.Artifacts` and committed
 before the item's row flips to done; durable across kills and refusals.
 
 ### Left behind

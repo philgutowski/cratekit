@@ -7,8 +7,11 @@ does not collect them: they are run when a branch has to show it prints and
 writes what its base does, and at no other time.
 
 ONE FILE PER PACKAGE, named for the package whose verbs it drives, so two
-cards never edit the same one. A scenario is a test function that takes the
-``stage`` fixture and drives commands through it:
+cards never edit the same one. A file can hold one fixture of a name, so a
+package whose scenarios borrow from two suites that each call their machine
+``machine`` keeps the second suite's in a file named for the package and the
+verb, as ``tagging_rows.py`` is (U298). A scenario is a test function that
+takes the ``stage`` fixture and drives commands through it:
 
     def test_a_tag_is_written(stage, machine, silence):
         ...

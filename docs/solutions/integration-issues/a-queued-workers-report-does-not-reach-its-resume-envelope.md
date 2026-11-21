@@ -55,10 +55,11 @@ cost the R-312 fix a whole first version.
 
 The channel is the item report. `Produced` IS described above as "the durability
 channel for an artifact and nothing else", and an artifact is any JSON a worker
-cares to write: `core.artifacts.produced(where, cfg, job, item, report)` stages
-it, the driver commits it before the item flips to done, and
-`core.artifacts.committed(where, cfg, job_id)` reads every item's report back in
-order. The tagging, adoption, outbound, analysis and intake workers all report
+cares to write: a feature binds its two directories once, `where =
+jobs.Artifacts(final=..., staging=...)` (in `core.jobs` since U298, which
+folded `core.artifacts` into it), `where.produced(cfg, job, item, report)`
+stages it, the driver commits it before the item flips to done, and
+`where.committed(cfg, job_id)` reads every item's report back in order. The tagging, adoption, outbound, analysis and intake workers all report
 this way already. Returning one changes neither the worker contract nor
 `jobs.drive`.
 

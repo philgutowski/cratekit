@@ -1153,9 +1153,9 @@ def test_a_review_question_is_addressed_by_the_three_fields_the_exact_test_compa
     typed = match.Wanted(artist="Beyoncé", title="Halo (Remastered)", version="Extended Mix")
 
     assert typed.folded_row() == {
-        "artist": match.fold("Beyoncé"),
-        "title": match.title_identity("Halo (Remastered)"),
-        "version": typed.version_key,
+        "artist": "beyonce",
+        "title": "halo remastered",
+        "version": "extended mix",
     }
 
 
