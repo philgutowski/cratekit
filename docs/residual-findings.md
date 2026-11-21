@@ -54415,3 +54415,158 @@ pins, or a card decides sentence pins are the guard. Ledger only.
 **Measured cost.** Driven with launchd stood in: no agent afterwards, and the refusal says so. The person installs again.
 
 **Closes when:** Phillip rules that a failed replace should restore the earlier agent, or the ledger keeps this as decided.
+
+---
+
+## R-1776. The naming suffixes DJ_tools once wrote beside _PN were not read, since DJ_tools is not in a cloud container
+
+**Found:** at the build of #883, R-1724, 2026-11-21.
+
+**The mechanism.** The brief asks that any other suffix the naming verb or
+DJ_tools once wrote be checked against DJ_tools' naming docs, read only,
+and handled as `_PN` is only if it is the same kind of marker. DJ_tools is
+not cloned into a cloud container, so its docs could not be read. Cratekit's
+own code, docs and ledger name only `_PN` (R-168's and R-1192's samples,
+sitting 101's count), and Cratekit's naming verb writes no suffix of its
+own (`_mastered.flac` and `_set` are the mastering tool's output names, not
+a library name's tail). So `titles.name_title` reads `_PN` only, exactly
+and case sensitively.
+
+**Measured cost.** Not driven. A library name ending in another such marker
+is asked and matched with it, as on main.
+
+**Closes when:** a local session greps DJ_tools' naming docs and code, read
+only, for every suffix it wrote after a title, and either finds none other
+or a card adds each to `titles.NAME_TAIL`'s reading. Ledger only.
+
+---
+
+## R-1777. A name whose last part is _PN alone is asked as written, the bare tail as its title, where the brief said it asks nothing
+
+**Found:** at the review of #883, R-1724, 2026-11-21.
+
+**The mechanism.** The brief's fifth scenario says a name whose title is
+only `_PN` reads nothing and asks nothing. Round one of the review drove
+that build through `tag folder` with the shipped ISRC seam: three tagless
+files of that shape with an ISRC took their genre by ISRC on main and none
+on the branch, because `published.second_opinion` asks the general catalogue
+only once Beatport has answered, and a file asked nothing has no answer.
+So `titles.name_title` returns such a name unchanged and it is asked
+exactly as on main, `8A - 124 - Sean Doron - _PN` as `Sean Doron` / `_PN`.
+The choice is put to Phillip on the card (#883) as a Question for Phillip.
+
+**Measured cost.** One question that will miss per such file, main's
+question byte for byte. No such name is known in the library.
+
+**Closes when:** Phillip answers the question on #883: as built, ledger
+only; asking nothing with the ISRC lookup freed from Beatport's answer, its
+own card.
+
+---
+
+## R-1778. The tail is read off when the last dash part keeps a title, though the title past the head and marker may be the tail alone
+
+**Found:** at the review of #883, R-1724, round two, 2026-11-21.
+
+**The mechanism.** `titles.name_title` keeps a name unchanged only when its
+last dash part is the tail alone. In `8A - 124 - [MP3] _PN`, `8A - 124 -
+[MP3]_PN`, `8A - 124_PN` and `8A_PN` the last part keeps a letter or digit
+once the tail is off (`[MP3]`, `124`, `8A`), so the name is read past the
+tail, and the question is a head alone, `8A - 124 - [MP3]` (`head-alone`),
+where main asked `_PN`. The guard reads the last dash part; the question
+reads past the head and the marker.
+
+**Measured cost.** Driven at round two through `tag_one`, the `tag folder`
+verb and `tag retag`: every such file took the same genre by ISRC on both
+sides, and only the record's `asked` text differs. A main match was lost
+only against a contrived row titled `PN`. No producer writes such a name in
+this container.
+
+**Closes when:** the tail alone test reads the title past the head and the
+marker, or the shape is measured absent from the library. Ledger only.
+
+---
+
+## R-1779. A file named with a title that truly ends in _PN loses it, and a doubled or numbered tail is read only once or not at all
+
+**Found:** at the review of #883, R-1724, 2026-11-21.
+
+**The mechanism.** `titles.name_title` drops a trailing `_PN` from any name
+with no title tag, as the brief asks. A title that is truly spelled with it,
+`8A - 124 - Artist - Vitamin_PN`, is asked and matched as `Vitamin`, so a
+release titled `Vitamin PN` or `Vitamin_PN` is no longer read as the file's
+own. `Track_PN_PN` is read as `Track_PN`, and `Track_PN (1)`, a copy's
+numbered name, keeps its tail.
+
+**Measured cost.** Driven at round one: the `Vitamin PN` rows matched on
+main and miss on the branch, 4 runs, through Discogs and Beatport. No real
+title of this kind is known; the doubled and numbered names are main's
+reading, unchanged.
+
+**Closes when:** the library is counted for names whose tail is doubled or
+followed by a copy number, and for titles a catalogue spells with `PN`.
+Ledger only.
+
+---
+
+## R-1780. tag suggest and tag backlog ask by the library row's title, which this unit does not read past a _PN tail
+
+**Found:** at the review of #883, R-1724, 2026-11-21.
+
+**The mechanism.** `tag folder` and `tag retag` read a file with no title
+tag by its name through `titles.name_title`. `tag suggest --catalogue` and
+`tag backlog --catalogue` ask by the rekordbox row's Title column
+(`suggest.catalogue_lookup`), so a row whose Title carries `_PN` is asked
+with it: handed `06A - 126 - Sean Doron - Sunshine Hotel_PN`, the shipped
+searcher asks Discogs `Sunshine Hotel_PN`. Whether rekordbox writes a file's
+name into Title for a file with no title tag was not driven.
+
+**Measured cost.** Driven to the question only, at round one; the library's
+Title column was not read.
+
+**Closes when:** an attended sitting counts library rows whose Title ends in
+`_PN`; none closes it, any earns a card reading the column through
+`name_title`. Ledger only.
+
+---
+
+## R-1781. The 5,637 names ending in _PN are not the files this reading changes, which are only those with no title tag
+
+**Found:** at the review of #883, R-1724, 2026-11-21.
+
+**The mechanism.** Sitting 101 counted 5,637 of 10,997 library names ending
+in `_PN`. The tail is read off a name only for a file with no title tag, so
+the files whose question changes are the tagless ones among them, and the
+three misses the brief cites came from copies whose tags were cleared. How
+many library files carry the tail and no title tag, and whether library
+title tags carry the tail themselves, was not counted.
+
+**Measured cost.** Not measured; the unit's reach on the live library is
+unknown.
+
+**Closes when:** the attended sweep owed at landing counts both. Ledger
+only.
+
+---
+
+## R-1782. The tail alone guard's choice of the stem over the stripped text, and the ISRC test's hold on the reading, are pinned loosely
+
+**Found:** at the review of #883, R-1724, round two, 2026-11-21.
+
+**The mechanism.** Two of round two's mutations on a scratch copy. The tail
+alone guard in `titles.name_title` returning the stripped text rather than
+the stem survives, 0 kills of 1,285 collected: a file named `_PN  .flac`
+would be asked `_PN` rather than `_PN  `, and no test lists a tail alone
+name with trailing whitespace. Round one's reading restored alone, a tail
+alone name reading to the empty string with `tag_one` still asking, is
+killed by 9 tests but not by
+`test_a_name_with_no_title_past_its_tail_still_takes_its_genre_by_isrc`,
+since an empty title is still asked and the ISRC lookup still runs; that
+test fails 3 of 3 against round one's whole source, the defect it was
+written for.
+
+**Measured cost.** None driven: both inputs ask a question that misses and
+reach the ISRC lookup either way.
+
+**Closes when:** a test names a tail alone stem with trailing whitespace,
+and the ISRC test asserts what Discogs was asked. Ledger only.

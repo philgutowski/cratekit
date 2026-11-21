@@ -505,7 +505,11 @@ crate route pending
   alone is asked as written too. A file with no tags is asked by its name: a
   headed name of two parts, `Artist - Title`, is asked as that artist and
   that title, and any other headed name with no artist, as before, and its
-  name past the head. Each file's record names the artist and the title read
+  name past the head. A file with no title tag, in `tag folder` and `tag
+  retag` alike, is asked and matched by its name with the `_PN` an older
+  naming wrote after the title left off, so `Sunshine Hotel_PN` is asked as
+  `Sunshine Hotel`; a title tag ending in `_PN` is asked as written, and so
+  is a name whose last part is `_PN` alone, as before. Each file's record names the artist and the title read
   past the head, and how they were read, under `asked`; Discogs is sent that
   title with a round bracketed group it ends with set aside, as before. A Discogs style no folder holds is written nowhere and is
   the file's unmapped word only if Beatport writes no genre either. A catalogue's row counts only when its title names the file's own
