@@ -6,16 +6,9 @@ so they are all measured the same way, and the two battery checks
 (``tests/test_duplication.py`` and ``tests/test_import_rules.py``) call these
 same functions, so the suite and the audit can never read two different things.
 
-Six commands, the first five of them readings that write nothing:
-
-    lines [PATH ...]      lines, code, docstring, comment and blank, per package
-                          and per file, and every file over 1,500 lines
-    duplicates [PATH ...] exact repeated blocks of six logical lines or more,
-                          and with --renamed the reading with names normalised
-    imports               the seam counts the import rules hold
-    outside FILE ...      every name code or tests outside those files use
-    table                 what the final audit needs for points 2 to 5
-    prune PACKAGE ...     lower those packages' allowance files to what is left
+Six commands, listed by ``--help``. Five are readings that write nothing:
+``lines``, ``duplicates``, ``imports``, ``outside`` and ``table``. ``prune``
+lowers the allowance files of the packages it is given, and can add no line.
 
 THE DEFINITIONS, each fixed here and nowhere else.
 
@@ -223,10 +216,8 @@ def count_lines(source: str) -> LineCount:
 def count_test_functions(source: str) -> int:
     """Functions named ``test_...`` at module level or in a class."""
     found = 0
-    tree = ast.parse(source)
-    for node in tree.body:
-        members = node.body if isinstance(node, ast.ClassDef) else [node]
-        for member in members:
+    for node in ast.parse(source).body:
+        for member in node.body if isinstance(node, ast.ClassDef) else [node]:
             if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 found += member.name.startswith("test_")
     return found
@@ -1301,15 +1292,12 @@ def _drive_report(root: Path, rules: Rules, found: Sequence[Dangling], out) -> i
     differing = 0
     for item in found:
         static, real = set(item.verbs), set(driven.get(item.toggle, ()))
-        if static == real:
-            print(f"  {item.toggle:<11} {len(real):3d} verbs, the same", file=out)
-            continue
-        differing += 1
-        print(
-            f"  {item.toggle:<11} {len(real):3d} driven, {len(static):3d} static; "
-            f"driven only: {sorted(real - static)}; static only: {sorted(static - real)}",
-            file=out,
+        differing += static != real
+        said = "the same" if static == real else (
+            f"{len(static)} static; driven only: {sorted(real - static)}; "
+            f"static only: {sorted(static - real)}"
         )
+        print(f"  {item.toggle:<11} {len(real):3d} verbs driven, {said}", file=out)
     return 1 if differing else 0
 
 
@@ -1361,37 +1349,43 @@ def _allowance_line(
     return beyond > 0
 
 
+def _lines_line(scope: str, texts: Mapping[str, str], out) -> None:
+    total = sum((count_lines(text) for text in texts.values()), LineCount())
+    code, docstring, comment, blank = _kinds(total)
+    print(
+        f"  {total.lines} lines in {len(texts)} files under {scope} (code {code}, "
+        f"docstring {docstring}, comment {comment}, blank {blank})",
+        file=out,
+    )
+
+
 def table_report(root: Path, out) -> int:
     """Points 2 to 5 of U290 in one print. Exit 1 when an allowance is exceeded."""
     source, tree, rules, verbs = _load(root)
-    for point, scope, texts in (("2, size", SOURCE, source), ("5, tests", "tests", None)):
-        if texts is None:
-            copies = Copies(source)
-            print("point 3, duplication", file=out)
-            print(
-                f"  exact blocks of {BLOCK_LINES} logical lines or more: {duplicates_line(copies)}",
-                file=out,
-            )
-            exceeded = _allowance_line(root, DUPLICATION_ALLOWANCES, copies.held(), out)
-            print("point 4, seams", file=out)
-            for label, count in seam_counts(tree, rules, verbs).items():
-                print(f"  {count:6d}  {label}", file=out)
-            found = import_findings(tree, rules, verbs)
-            exceeded = _allowance_line(root, IMPORT_ALLOWANCES, found, out) or exceeded
-            texts = read_sources(root, [scope])
-        total = sum((count_lines(text) for text in texts.values()), LineCount())
-        code, docstring, comment, blank = _kinds(total)
-        print(f"point {point}", file=out)
-        print(
-            f"  {total.lines} lines in {len(texts)} files under {scope} (code {code}, "
-            f"docstring {docstring}, comment {comment}, blank {blank})",
-            file=out,
-        )
-        if scope == SOURCE:
-            over = sum(len(text.splitlines()) > LARGE_FILE for text in texts.values())
-            print(f"  outside {VENDOR}; {over} files over {LARGE_FILE} lines", file=out)
+    print("point 2, size", file=out)
+    _lines_line(SOURCE, source, out)
+    over = sum(len(text.splitlines()) > LARGE_FILE for text in source.values())
+    print(f"  outside {VENDOR}; {over} files over {LARGE_FILE} lines", file=out)
+
+    copies = Copies(source)
+    print("point 3, duplication", file=out)
     print(
-        f"  {sum(count_test_functions(text) for text in texts.values())} test functions; the "
+        f"  exact blocks of {BLOCK_LINES} logical lines or more: {duplicates_line(copies)}",
+        file=out,
+    )
+    exceeded = _allowance_line(root, DUPLICATION_ALLOWANCES, copies.held(), out)
+
+    print("point 4, seams", file=out)
+    for label, count in seam_counts(tree, rules, verbs).items():
+        print(f"  {count:6d}  {label}", file=out)
+    found = import_findings(tree, rules, verbs)
+    exceeded = _allowance_line(root, IMPORT_ALLOWANCES, found, out) or exceeded
+
+    tests = read_sources(root, ["tests"])
+    print("point 5, tests", file=out)
+    _lines_line("tests", tests, out)
+    print(
+        f"  {sum(count_test_functions(text) for text in tests.values())} test functions; the "
         "suite's time is read from cloud_battery.py's own summary line and the kill set "
         "by the reader of U297, neither of them here",
         file=out,
@@ -1451,11 +1445,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     imports = commands.add_parser("imports", help="the seam counts the import rules hold")
     imports.add_argument("--names", action="store_true", help="list every core name used")
-    imports.add_argument(
-        "--drive",
-        action="store_true",
-        help="also drive rule four in a fresh interpreter; needs Cratekit importable",
-    )
+    drive = "also drive rule four in a fresh interpreter; needs Cratekit importable"
+    imports.add_argument("--drive", action="store_true", help=drive)
 
     outside = commands.add_parser("outside", help="names of these files used outside them")
     outside.add_argument("files", nargs="+")
