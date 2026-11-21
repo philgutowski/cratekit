@@ -105,7 +105,9 @@ a green suite cannot see, as METHOD lists.
   gone before any verb runs. The analysis visit after a landing follows the
   project's `rekordbox-visit` skill step by step (U173), and a whole sync pass,
   from the account's new music to filed and analysed, follows the project's
-  `crate-sync` skill (U174).
+  `crate-sync` skill (U174). A whole attended sitting, every open attended
+  card driven with worker sessions, follows the project's
+  `attended-orchestrator` skill (U316).
 - **A backup is needed only when the library is more than five days out of
   date, or when Phillip asks for one**, decided by Phillip on 2026-10-10,
   relaxing the one day rule of 2026-09-29. Below five days a session opens

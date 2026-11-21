@@ -43,7 +43,8 @@ was last protected.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from pathlib import Path
@@ -72,6 +73,29 @@ FUTURE_TOLERANCE = timedelta(hours=1)
 #: a portion's entry, because it is not a backup: it is how the last backup of
 #: the files looked at the remote.
 FULL_COMPARISON_KEY = "full_comparison"
+
+#: The top level key holding when the file mirror last ran a FULL CHECK (U317),
+#: the backup that lists the remote and compares every file on both sides, in
+#: either listing mode. Beside ``portions`` for the reason the key above is: it
+#: is how a backup looked at the remote, not a backup.
+FULL_CHECK_KEY = "full_check"
+
+#: How old the last full check may be before the next backup runs one rather
+#: than a quick one, decided by Phillip on 2026-11-21. Between full checks a
+#: backup compares the library with Cratekit's own record of what the last one
+#: left and never lists the remote, so this is how often the remote itself is
+#: read again.
+FULL_CHECK_DAYS = 7
+
+#: What a completed portion's run was, the word a fact records under ``kind``.
+#: The files portion is ``full``, ``quick`` or ``skipped``; the database portion
+#: is ``snapshot`` or ``unchanged``.
+KIND_FULL = "full"
+KIND_QUICK = "quick"
+KIND_SKIPPED = "skipped"
+KIND_SNAPSHOT = "snapshot"
+KIND_UNCHANGED = "unchanged"
+KINDS = (KIND_FULL, KIND_QUICK, KIND_SKIPPED, KIND_SNAPSHOT, KIND_UNCHANGED)
 
 
 class Portion(StrEnum):
@@ -143,6 +167,13 @@ class BackupFact:
     portion: Portion
     completed_at: datetime
     destination: str
+    #: Which kind of run completed the portion (U317), one of :data:`KINDS`, or
+    #: None for a fact a build before U317 wrote, every one of which was a full
+    #: run or a snapshot.
+    kind: str | None = None
+    #: What that run changed and how long it took, as the run reported it, or
+    #: None where it was not recorded.
+    summary: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,6 +185,14 @@ class PortionAge:
     age: timedelta | None = None
     completed_at: datetime | None = None
     destination: str | None = None
+    kind: str | None = None
+    summary: Mapping[str, object] | None = None
+    #: For the files portion only (U317): when the next full check is due, or
+    #: None when the next backup runs one at once, and why it does, or an empty
+    #: string when it does not. Carried here so a reader of the ages learns the
+    #: full check from the same reading.
+    full_check_due: datetime | None = None
+    full_check_overdue: str = ""
 
     @property
     def usable(self) -> bool:
@@ -183,9 +222,17 @@ def read_facts(cfg: config.Config) -> dict[Portion, BackupFact]:
 #: carry the key at all, which is a different answer from carrying it as null.
 _ABSENT = object()
 
+#: The top level keys held beside the portions, each read unparsed by
+#: :func:`_read` and parsed by its own reader.
+_HELD_KEYS = (FULL_COMPARISON_KEY, FULL_CHECK_KEY)
 
-def _read(cfg: config.Config) -> tuple[dict[Portion, BackupFact], object]:
-    """The file, read once: every portion's fact, and the full comparison AS HELD.
+
+def _read(cfg: config.Config) -> tuple[dict[Portion, BackupFact], dict[str, object]]:
+    """The file, read once: every portion's fact, and the held keys AS HELD.
+
+    THE FULL CHECK (U317) IS HELD THE SAME WAY, for the same reason, and an
+    absent key means the same thing: a build before U317 ran a full check every
+    time, so its files fact is the last full check.
 
     ONE READER OF THE FILE, so a document the portions reader refuses cannot
     answer a question about the full comparison.
@@ -213,7 +260,7 @@ def _read(cfg: config.Config) -> tuple[dict[Portion, BackupFact], object]:
     try:
         raw = path.read_bytes()
     except FileNotFoundError:
-        return {}, _ABSENT
+        return {}, {key: _ABSENT for key in _HELD_KEYS}
     except OSError as exc:
         # TWO CONDITIONS, TWO SENTENCES, TWO ACTS. A permission is not a
         # corruption, and it does not establish that the file is there either: an
@@ -281,7 +328,7 @@ def _read(cfg: config.Config) -> tuple[dict[Portion, BackupFact], object]:
             continue
         facts[Portion(name)] = _fact(Portion(name), entry, named=name, path=path)
 
-    return facts, data.get(FULL_COMPARISON_KEY, _ABSENT)
+    return facts, {key: data.get(key, _ABSENT) for key in _HELD_KEYS}
 
 
 def _as_held(fact: BackupFact | None) -> dict | None:
@@ -295,7 +342,10 @@ def _as_held(fact: BackupFact | None) -> dict | None:
 
 
 def _full_comparison(
-    cfg: config.Config, facts: dict[Portion, BackupFact], held: object
+    cfg: config.Config,
+    facts: dict[Portion, BackupFact],
+    held: object,
+    key: str = FULL_COMPARISON_KEY,
 ) -> BackupFact | None:
     """The last full comparison, parsed, or a refusal naming what cannot be read.
 
@@ -312,11 +362,11 @@ def _full_comparison(
     if not isinstance(held, dict):
         raise BackupFactsUnreadable(
             f"{path} holds something other than an object or null under "
-            f"{FULL_COMPARISON_KEY!r}",
+            f"{key!r}",
             path=path,
             remedy=Remedy.REPAIR_BACKUP_FACTS,
         )
-    return _fact(Portion.FILES, held, named=FULL_COMPARISON_KEY, path=path)
+    return _fact(Portion.FILES, held, named=key, path=path)
 
 
 def _fact(portion: Portion, entry: dict, *, named: str, path: Path) -> BackupFact:
@@ -341,10 +391,17 @@ def _fact(portion: Portion, entry: dict, *, named: str, path: Path) -> BackupFac
             path=path,
             remedy=Remedy.REPAIR_BACKUP_FACTS,
         )
+    kind = entry.get("kind")
+    summary = entry.get("summary")
     return BackupFact(
         portion=portion,
         completed_at=completed,
         destination=str(entry.get("destination") or ""),
+        # Read loosely: an unknown word or a damaged summary is no kind and no
+        # summary. The one key a run decides on, the files record's token, is
+        # then absent, and its absence sends the next run full.
+        kind=kind if kind in KINDS else None,
+        summary=dict(summary) if isinstance(summary, dict) else None,
     )
 
 
@@ -364,6 +421,8 @@ def _age_of(portion: Portion, fact: BackupFact | None, moment: datetime) -> Port
         age=delta if state is AgeState.KNOWN else None,
         completed_at=fact.completed_at,
         destination=fact.destination,
+        kind=fact.kind,
+        summary=fact.summary,
     )
 
 
@@ -375,7 +434,48 @@ def full_comparison_age(cfg: config.Config, *, now: datetime | None = None) -> P
     """
     moment = now or datetime.now(timezone.utc)
     facts, held = _read(cfg)
-    return _age_of(Portion.FILES, _full_comparison(cfg, facts, held), moment)
+    return _age_of(
+        Portion.FILES, _full_comparison(cfg, facts, held[FULL_COMPARISON_KEY]), moment
+    )
+
+
+def full_check_age(cfg: config.Config, *, now: datetime | None = None) -> PortionAge:
+    """How long ago the file mirror last ran a full check (U317).
+
+    The same three answers a portion's age has. An absent key is a file from a
+    build before U317, every run of which was a full check, so its files fact
+    answers; a null is a file this build wrote before any full check.
+    """
+    moment = now or datetime.now(timezone.utc)
+    facts, held = _read(cfg)
+    return _age_of(
+        Portion.FILES,
+        _full_comparison(cfg, facts, held[FULL_CHECK_KEY], key=FULL_CHECK_KEY),
+        moment,
+    )
+
+
+def took(seconds: object) -> str:
+    """How long a recorded run took, as the words after a verb, or nothing.
+
+    One spelling for the verb's report and doctor, so the two say one thing.
+    """
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
+        return ""
+    if seconds < 1:
+        return " in under a second"
+    return f" in {seconds:.0f} seconds"
+
+
+def full_check_due(answer: PortionAge) -> datetime | None:
+    """When the next full check is due, or None when one is due at once.
+
+    None for every answer that is not a known age: with no full check on
+    record, or one recorded in the future, the next backup runs one.
+    """
+    if answer.state is not AgeState.KNOWN or answer.completed_at is None:
+        return None
+    return answer.completed_at + timedelta(days=FULL_CHECK_DAYS)
 
 
 def ages(cfg: config.Config, *, now: datetime | None = None) -> tuple[PortionAge, ...]:
@@ -386,8 +486,44 @@ def ages(cfg: config.Config, *, now: datetime | None = None) -> tuple[PortionAge
     whether a user is warned (P3).
     """
     moment = now or datetime.now(timezone.utc)
-    facts = read_facts(cfg)
-    return tuple(_age_of(portion, facts.get(portion), moment) for portion in Portion)
+    facts, held = _read(cfg)
+    out = [_age_of(portion, facts.get(portion), moment) for portion in Portion]
+    due, overdue = _full_check_schedule(cfg, facts, held, moment)
+    return tuple(
+        replace(entry, full_check_due=due, full_check_overdue=overdue)
+        if entry.portion is Portion.FILES
+        else entry
+        for entry in out
+    )
+
+
+def _full_check_schedule(
+    cfg: config.Config, facts: dict[Portion, BackupFact], held: dict[str, object], moment: datetime
+) -> tuple[datetime | None, str]:
+    """When the next full check is due and why the next backup runs one (U317).
+
+    A DAMAGED FULL CHECK ENTRY IS A REASON, NEVER A REFUSAL, for the reason
+    :func:`_read` gives: ``ages`` feeds the age a destructive session reads, and
+    one damaged informational key must not refuse it. Every doubt is a reason:
+    no full check on record, one recorded in the future, one of another mirror,
+    and one :data:`FULL_CHECK_DAYS` old or more.
+    """
+    try:
+        fact = _full_comparison(cfg, facts, held[FULL_CHECK_KEY], key=FULL_CHECK_KEY)
+    except BackupFactsUnreadable as exc:
+        return None, f"the record of the last full check could not be read: {exc}"
+    answer = _age_of(Portion.FILES, fact, moment)
+    if answer.state is AgeState.NEVER_RECORDED:
+        return None, "no full check is on record"
+    if answer.state is AgeState.RECORDED_IN_THE_FUTURE:
+        return None, "the last full check is recorded ahead of now"
+    due = full_check_due(answer)
+    if answer.destination != str(cfg.backup.dest or ""):
+        return None, "the last full check was of another mirror"
+    if answer.age is None or answer.age >= timedelta(days=FULL_CHECK_DAYS):
+        days = answer.age.days if answer.age is not None else "an unknown number of"
+        return None, f"the last full check was {days} days ago"
+    return due, ""
 
 
 def oldest_usable_age(
@@ -413,11 +549,16 @@ def record(
     completed_at: datetime,
     destination: str,
     full_comparison: bool = False,
+    full_check: bool = False,
+    kind: str | None = None,
+    summary: Mapping[str, object] | None = None,
 ) -> Path:
     """Record one portion's successful completion, leaving the others alone.
 
     ``full_comparison`` says this completion compared the library with the
-    remote folder by folder, and moves that fact to this instant. Without it
+    remote folder by folder, and moves that fact to this instant. ``full_check``
+    does the same for the last full check (U317), and ``kind`` and ``summary``
+    say which kind of run this was and what it changed. Without it
     the fact is carried through as it was read, INCLUDING the one a file from
     an earlier build implies, so the first fast run after an upgrade does not
     erase the date of the last full one.
@@ -437,17 +578,30 @@ def record(
             "a different instant to every reader, and two installations of one "
             "library legitimately sit in different zones"
         )
-    read, held = _read(cfg)
+    if kind is not None and kind not in KINDS:
+        raise ValueError(f"{kind!r} is not a kind of backup run; the kinds are {KINDS}")
+    read, held_keys = _read(cfg)
     facts = dict(read)
+    held = held_keys[FULL_COMPARISON_KEY]
+    checked = held_keys[FULL_CHECK_KEY]
     if held is _ABSENT:
         # BEFORE THE NEW FACT REPLACES THE OLD ONE, because what an earlier
         # build's file implies is the files fact it wrote, not this one.
         held = _as_held(read.get(Portion.FILES))
+    if checked is _ABSENT:
+        # The same reading for the full check, for the same reason.
+        checked = _as_held(read.get(Portion.FILES))
     facts[portion] = BackupFact(
-        portion=portion, completed_at=completed_at, destination=destination
+        portion=portion,
+        completed_at=completed_at,
+        destination=destination,
+        kind=kind,
+        summary=dict(summary) if summary is not None else None,
     )
     if full_comparison:
         held = _as_held(facts[portion])
+    if full_check:
+        checked = _as_held(facts[portion])
     payload = {
         "schema_version": SCHEMA_VERSION,
         # ALWAYS WRITTEN, null included. Its absence is how a file from a build
@@ -458,10 +612,14 @@ def record(
         # comparison, damaged or not. Replacing an entry nobody could read
         # with null would turn "cannot be read" into "never ran".
         FULL_COMPARISON_KEY: held,
+        # Always written, null included, for the reason the key above is.
+        FULL_CHECK_KEY: checked,
         "portions": {
             fact.portion.value: {
                 "completed_at": fact.completed_at.isoformat(),
                 "destination": fact.destination,
+                **({"kind": fact.kind} if fact.kind is not None else {}),
+                **({"summary": dict(fact.summary)} if fact.summary is not None else {}),
             }
             # Sorted so the bytes are a function of the content alone. An
             # unordered dump makes every write a diff even when nothing changed,
@@ -571,7 +729,15 @@ def read_outcomes(job_id: str) -> dict[str, dict] | None:
 
 
 __all__ = [
+    "FULL_CHECK_DAYS",
+    "FULL_CHECK_KEY",
     "FULL_COMPARISON_KEY",
+    "KINDS",
+    "KIND_FULL",
+    "KIND_QUICK",
+    "KIND_SKIPPED",
+    "KIND_SNAPSHOT",
+    "KIND_UNCHANGED",
     "FUTURE_TOLERANCE",
     "OUTCOMES_FIELD",
     "OUTCOMES_KEY",
@@ -588,6 +754,9 @@ __all__ = [
     "ages",
     "clear_outcome",
     "encode_outcome",
+    "full_check_age",
+    "full_check_due",
+    "took",
     "full_comparison_age",
     "oldest_usable_age",
     "outcome_path",
