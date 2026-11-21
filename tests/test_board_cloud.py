@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -401,10 +402,48 @@ def test_every_lane_held_offers_nothing(board, monkeypatch, capsys):
 
 def test_the_default_is_the_configured_lane_count(board, monkeypatch, capsys):
     issues = [_issue(n, f"U{n}: card {n}") for n in range(1, board.CLOUD_LANES + 2)]
-    held = {n: [_mine("Started", n)] for n in range(1, board.CLOUD_LANES)}
+    # Each hold is minutes old, so none of them passes the eight hour mark
+    # that reads a hold as a dead session, whatever the lane count is.
+    held = {n: [_mine("Started", n / 10)] for n in range(1, board.CLOUD_LANES)}
     _wire(board, monkeypatch, issues, held)
     assert board.cmd_cloud(None) == 0
     assert f"Take #{board.CLOUD_LANES}" in capsys.readouterr().out
+
+
+def test_the_cloud_runs_ten_lanes(board):
+    # Phillip's cap of 2026-11-21 (U291), raised from five; METHOD's cloud
+    # lane section and the cloud-unit skill say the same number.
+    assert board.CLOUD_LANES == 10
+
+
+def test_the_default_offers_a_card_with_nine_held(board, monkeypatch, capsys):
+    issues = [_issue(n, f"U{n}: card {n}") for n in range(1, 13)]
+    held = {n: [_mine("Started", n / 10)] for n in range(1, 10)}
+    _wire(board, monkeypatch, issues, held)
+    assert board.cmd_cloud(None) == 0
+    out = capsys.readouterr().out
+    assert "Held, 9 of 10 lane(s): " in out
+    assert "Take #10 (ready)" in out
+
+
+def test_the_default_offers_nothing_with_ten_held(board, monkeypatch, capsys):
+    issues = [_issue(n, f"U{n}: card {n}") for n in range(1, 13)]
+    held = {n: [_mine("Started", n / 10)] for n in range(1, 11)}
+    _wire(board, monkeypatch, issues, held)
+    assert board.cmd_cloud(None) == 0
+    out = capsys.readouterr().out
+    assert "Held, 10 of 10 lane(s): " in out
+    assert "Every lane is held" in out
+    assert "Take #" not in out
+
+
+def test_the_lanes_help_names_the_default_of_ten(board, monkeypatch, capsys):
+    monkeypatch.setattr(board.sys, "argv", ["board.py", "cloud", "--help"])
+    with pytest.raises(SystemExit) as stop:
+        board.main()
+    assert stop.value.code == 0
+    out = capsys.readouterr().out
+    assert re.search(r"\(default\s+10\)", out), out
 
 
 def test_cloud_says_so_when_every_card_waits(board, monkeypatch, capsys):

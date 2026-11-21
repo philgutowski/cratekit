@@ -1785,8 +1785,9 @@ def cloud_branch(node: dict) -> str:
 # before it merges, and the repository lands parallel units in either order
 # (restart fragments, residuals numbered at landing, per module pins), so
 # lanes are a throughput setting rather than a correctness one. Raised to
-# five by Phillip on 2026-10-31, in the project chat, by U188.
-CLOUD_LANES = 5
+# five by Phillip on 2026-10-31, in the project chat, by U188, and to ten,
+# his cap of 2026-11-21, by U291.
+CLOUD_LANES = 10
 
 
 def cmd_cloud(args) -> int:
