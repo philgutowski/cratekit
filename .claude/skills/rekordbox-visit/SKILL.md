@@ -1,6 +1,6 @@
 ---
 name: rekordbox-visit
-description: The one attended step Cratekit may not do itself. Open rekordbox and answer its Auto Analysis dialog when every field it shows is Phillip's standard, or else analyse INBOX / Analyze with Analyze Tracks on those settings, wait for the analysis files, quit, check the result with crate analyze check, and clear the analysed rows. Use in an attended session when a landing has left rows waiting for analysis, when Phillip asks for the rekordbox visit, or when a sync pass stops at the visit.
+description: The one attended step Cratekit may not do itself. Open rekordbox and answer its Auto Analysis dialog when it shows every field of Phillip's standard and nothing else, or else analyse INBOX / Analyze with Analyze Tracks on those settings, wait for the analysis files, quit, check the result with crate analyze check, and clear the analysed rows. Use in an attended session when a landing has left rows waiting for analysis, when Phillip asks for the rekordbox visit, or when a sync pass stops at the visit.
 ---
 
 # The rekordbox visit
@@ -20,11 +20,17 @@ present for, stop here.
 **Two paths, the short one first** (U319). With Auto Analysis on in
 rekordbox's preferences, a launch brought to the front raises one dialog and
 its OK analyses the waiting rows with no selection: the Auto Analysis path,
-in step 2. With Auto Analysis off, or with that dialog showing any field
-other than Phillip's standard, the visit is the Analyze Tracks path: select
-INBOX / Analyze and set every field by hand. Both wait the same way, run the
-same second run for rows marked `dyn`, quit the same way and end on the same
-check and clear.
+in step 2. With Auto Analysis off, or with that dialog not showing every
+field of Phillip's standard, or showing any field set otherwise, the visit is
+the Analyze Tracks path: select INBOX / Analyze and set every field by hand.
+Both wait the same way, run the same second run for rows marked `dyn`, quit
+the same way and end on the same check and clear.
+
+**Phillip has not yet chosen to keep Auto Analysis on** (asked 2026-11-21),
+and sitting 101 put it back to off, so today the launch raises no dialog
+and the visit is the Analyze Tracks path. The Auto Analysis path is for the
+visits after he turns it on, or after an attended session does on his
+answer; the visit itself never does.
 
 The steps say what to do, not which tool does it. Desktop control is the
 tool that drives rekordbox; the shell runs every `crate` verb and every
@@ -102,8 +108,11 @@ What sitting 101 measured (A33): with Auto Analysis on, a launch whose
 window stayed in the background analysed nothing in two minutes; brought to
 the front, it raised one dialog, "Analysis Setting ... Auto Analysis is
 starting.", showing the analysis fields with OK and Cancel, and OK analysed
-every row waiting, before anything was selected, with the preference's own
-fields and Analysis Mode Normal.
+every row waiting, before anything was selected, on the preference's own
+fields, its mode Normal among them. The preference itself was read back as
+nine fields: high precision off, Normal, BPM range 78 to 155, BPM / Grid, KEY
+and Phrase on, Vocal off, Cloud Analysis off, Radar Analysis on. It holds no
+CUE field. The launch dialog's own field list was not recorded.
 
 1. Write the marker the launch is measured from, before rekordbox opens:
 
@@ -116,7 +125,12 @@ fields and Analysis Mode Normal.
    Phillip turned it on. Take the Analyze Tracks path below.
 4. **The dialog is showing**: read back every field of the table in step 3
    from the dialog's screenshot, one by one. A table field the dialog does
-   not show is unread, and unread is not equal.
+   not show is unread, and unread is not equal, CUE included: until a visit
+   has recorded the dialog's fields and that an Auto Analysis run sets no
+   cue, a dialog that shows no CUE field is cancelled. A field it shows that
+   the table has no row for must read as the preference read back above
+   (BPM range 78 to 155, Cloud Analysis off, Radar Analysis on); any other
+   field it shows, or another value, is not equal.
    - **Every field equal, and the check in step 1.5 exited 12**: write the
      marker the wait counts from, as step 3 gives it, then press OK. Wait as
      step 4 says, with `expected` the `data.summary.not_analysed` count from
@@ -190,8 +204,10 @@ On the Auto Analysis path the same line is run just before that dialog's OK.
 
 **A run started on the wrong settings has no cancel that works.** Quit
 rekordbox from its application menu (step 6), confirm both processes gone,
-and start again from step 2. The rows it analysed are analysed again by the
-second run, which overwrites what the first wrote.
+and start again from step 1.5, so the check is read again before step 2:
+the rows the wrong run analysed are no longer waiting, which Auto Analysis
+would leave alone, and a grid it made wrong reads 27, which takes the
+Analyze Tracks path. Their second run overwrites what the first wrote.
 
 ## 4. Wait by counting analysis files, never by sleeping on a guess
 
@@ -220,21 +236,21 @@ twenty seconds. Auto Analysis also analyses any other row rekordbox finds not
 analysed, so on that path the count can pass `expected`; the quiet still ends
 the wait, and the check in step 7 reads the batch's own rows. Roughly five seconds a track. `-newer` reads the modification
 time, so a file rewritten by the run counts as well as a new one. **A stall**,
-five minutes with no file written short of the batch, means look at the
+five minutes with no file written short of `expected`, means look at the
 screen: a dialog rekordbox raised, or a run that stopped. Report what it shows
 and do not quit until the screen has been read.
 
 ## 5. A second run with Dynamic, only for rows marked dyn
 
 Only when step 1.5 counted rows whose `dyn` is true. A row is marked by a My
-Tag value named `dyn`, which U157 writes for a track whose tempo moves; until
-U157 lands nothing writes one and this step does not run.
+Tag value named `dyn`, which a native landing writes for a track whose tempo
+moves (U157).
 
 1. In INBOX / Analyze, show only the rows carrying the My Tag `dyn` (the
-   track list's My Tag filter), and select all. On the Auto Analysis path
-   nothing is open yet: open the playlist as the Analyze Tracks path's first
-   step says. The count equals the `dyn`
-   count from step 1.5, or stop and report both.
+   track list's My Tag filter), and select all; a click and Command clicks
+   on each such row serve as well. On the Auto Analysis path nothing is open
+   yet: open the playlist as the Analyze Tracks path's first step says. The
+   count equals the `dyn` count from step 1.5, or stop and report both.
 2. Analyze Tracks with every field as the table in step 3 says except
    Analysis Mode, which is **Dynamic**, set with the same held press and read
    back.
@@ -242,8 +258,7 @@ U157 lands nothing writes one and this step does not run.
    the `dyn` count.
 4. Clear the filter.
 
-The first visit that runs this step records in the sitting record how the
-selection was made, since no visit has yet.
+Record in the sitting record how the selection was made.
 
 ## 6. Quit and confirm both processes gone
 
@@ -267,8 +282,13 @@ nobody here ran, so its verdict is over other rows: stop and report it.
 Otherwise the exit status is the verdict:
 
 - **0, done.** Every row analysed, every grid one tempo (or moving on a row
-  marked `dyn`), the Key column filled, and the title keys agreeing with
-  rekordbox's at the recorded rate. Go on to the clear below.
+  marked `dyn`), and the title keys agreeing with rekordbox's at the
+  recorded rate. The check reports the Key column and does not judge it, so
+  read it here: `data.summary.key_filled` must equal
+  `data.summary.analysed`. A row with the Key column empty was analysed with
+  KEY off, by an Auto Analysis on other fields or a run before this visit:
+  stop and report the rows its message names, and clear nothing. Otherwise
+  go on to the clear below.
 - **12, waiting.** Rows are still not analysed. Stop and report the rows it
   names. Nothing is cleared, and the playlist keeps them for the next visit.
 - **27, suspect.** What rekordbox wrote looks wrong: a variable grid on a row

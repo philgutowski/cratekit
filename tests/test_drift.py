@@ -117,13 +117,16 @@ def test_the_sync_stop_offers_the_auto_analysis_path_after_the_selections_it_sta
 
 def test_the_auto_analysis_step_cancels_on_any_other_field_and_leaves_dyn_to_dynamic():
     step = drift.AUTO_ANALYSIS_STEP
-    assert step.startswith("or, with Auto Analysis on, open rekordbox with its window in front")
-    assert "press OK on its Auto Analysis dialog only when every field it shows" in step
-    assert "those Normal settings with Vocal and CUE off, else Cancel it and select as above" in step
-    assert step.endswith(f"still take Analyze Tracks with {drift.DYNAMIC_SETTINGS}")
-    for word in ("turn", "tick", "enable"):
-        assert word not in step.lower(), word
-
+    assert step == (
+        "or, with Auto Analysis on, open rekordbox with its window in front and press OK on "
+        "its Auto Analysis dialog only when it shows every one of those Normal settings "
+        "with Vocal and CUE off and no field set otherwise, else Cancel it and select as "
+        "above; Auto Analysis runs on its preference's own mode, so the rows carrying the "
+        f"dyn My Tag still take Analyze Tracks with {drift.DYNAMIC_SETTINGS}"
+    )
+    assert drift.NORMAL_SETTINGS == (
+        "Analysis Mode Normal, high precision off, BPM/Grid, Phrase and KEY on"
+    ), "the standard is unchanged"
 
 # ---------------------------------------------------------------------------
 # The cut is configuration

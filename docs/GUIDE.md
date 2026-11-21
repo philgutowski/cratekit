@@ -261,13 +261,13 @@ other setting the same.
 
 With Auto Analysis on in rekordbox's preferences the visit is shorter. Open
 rekordbox and bring its window to the front: it raises one dialog saying Auto
-Analysis is starting, with the fields it will use. Press OK only when every
-field it shows reads as the Normal settings above with Vocal and CUE off, and
-it analyses every row waiting with no selection; on any other field, Cancel it
-and select as above. Auto Analysis analyses Normal only, so rows with `dyn`
-still take Analyze Tracks with Dynamic. Cratekit never turns Auto Analysis on
-or off: it analyses every track rekordbox finds unanalysed, however it came in,
-so whether it is on is yours to choose.
+Analysis is starting, with the fields it will use. Press OK only when it shows
+every one of the Normal settings above with Vocal and CUE off and no field set
+otherwise, and it analyses every row waiting with no selection; otherwise,
+Cancel it and select as above. Auto Analysis runs on its preference's own mode,
+so rows with `dyn` still take Analyze Tracks with Dynamic. Cratekit never turns
+Auto Analysis on or off. rekordbox's Auto Analysis analyses every track it
+finds unanalysed, however it came in, so whether it is on is yours to choose.
 
 Quit rekordbox and confirm `rekordbox` and `rekordboxAgent` are gone. Then:
 
