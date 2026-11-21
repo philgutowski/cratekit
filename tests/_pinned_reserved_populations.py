@@ -646,6 +646,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     # 2026-11-21, U295: the night pass's schedule joined.
     'cli/schedule.py': [
+        'refused-by-policy',  # 2026-11-21, U295 review round one: root is refused.
         'schedule-agent-unusable',
         'schedule-agent-unwritten',
         'schedule-crate-unresolved',
@@ -2885,6 +2886,7 @@ PINNED_LITERAL_HOLDERS = {
     'cli/review.py': ['review-file-unusable', 'review-selection-invalid'],
     # 2026-11-21, U295: the night pass's schedule joined.
     'cli/schedule.py': [
+        'refused-by-policy',  # 2026-11-21, U295 review round one: root is refused.
         'schedule-agent-unusable',
         'schedule-agent-unwritten',
         'schedule-crate-unresolved',

@@ -787,8 +787,11 @@ its native landing's record, reads `settled`.
 night pass on launchd, one user agent, `cratekit.sync-night`, in the person's
 own LaunchAgents, loaded into `gui/<uid>`, running the absolute `crate` with
 `sync night` and nothing else at `--at` (03:17 local by default), its output
-in the state entry `schedule_log`. launchctl is reached through one seam the
-suite replaces in every test; nothing half installed is left by a failure.
+in the state entry `schedule_log`, carrying the configuration, state and gate
+directories as the install resolved them. launchctl is reached through one
+seam the suite replaces in every test; a failed load removes its plist once
+launchd reads it gone, and the verbs refuse as root and beside a pass holding
+the staging lock.
 
 ### Staging lock
 `core/staging_lock.py` (U293): one advisory lock, held by `sync land`,

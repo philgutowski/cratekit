@@ -23,7 +23,13 @@ back and says so when they are anything else.
 ONLY THE PERSON'S OWN LAUNCHAGENTS. The plist goes in ``Library/LaunchAgents``
 under the home directory, resolved by :func:`launch_agents_dir` alone, and the
 agent is loaded into ``gui/<uid>``, the logged in person's own domain. Never a
-system domain, never ``/Library``, never root.
+system domain and never a system directory; and the verbs refuse to run as
+root, whose ``gui/0`` is nobody's login.
+
+IT NEVER CUTS A NIGHT SHORT. Install and remove hold the staging lock while
+they boot the agent out, so a night pass in progress, which holds it for its
+whole run, is never ended by launchd under it: the verb refuses ``staging-held``
+and the night runs on.
 
 ONE PLACE STARTS A PROCESS. :func:`launchctl` is the only call into the
 operating system that runs anything, by its absolute path, and the suite
@@ -41,9 +47,12 @@ so ``show`` still reads what launchd holds.
 NO ENVIRONMENT OF THE PERSON'S BEYOND WHAT THE RUN NEEDS. launchd starts the
 agent with almost no environment. The plist carries a fixed ``PATH`` (the
 directory of the ``crate`` it runs, the directories the binaries are looked for
-in, and the system's own), and the Cratekit location overrides that were set at
-the install, so the night reads the same configuration, state and library the
-install did. Never a credential, and nothing else.
+in, and the system's own); the configuration, state and provider gate
+directories AS THE INSTALL RESOLVED THEM, absolute, whether an override, an XDG
+variable or the platform's default found them (review round one, finding 1),
+so the night reads the installation the install read; and the library, staging,
+ISRC cache and binary overrides set at the install, each made absolute. Never a
+credential, and nothing else.
 
 WHAT IT WRITES. The plist in the LaunchAgents directory and the directory of
 the agent's log, the declared state entry ``schedule_log``. Nothing a library
@@ -64,7 +73,7 @@ from typing import TYPE_CHECKING, Any
 
 from cratekit.cli import output, registry, sync_night
 from cratekit.cli.output import Envelope
-from cratekit.core import binaries, config, secrets
+from cratekit.core import binaries, config, staging_lock
 from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import Remedy
 
@@ -102,18 +111,32 @@ NOT_LOADED_CODE = 113
 #: The system's own directories, last on the agent's PATH.
 SYSTEM_PATH: tuple[str, ...] = ("/usr/bin", "/bin", "/usr/sbin", "/sbin")
 
+def resolved_names() -> tuple[str, ...]:
+    """The directories an agent always carries, as the install resolved them.
+    Read from the configuration module when asked, never bound at import."""
+    return (config.ENV_CONFIG_DIR, config.ENV_STATE_DIR, config.ENV_PROVIDER_GATE_DIR)
+
+
+def override_names() -> tuple[str, ...]:
+    """The location overrides an agent carries only when set at the install."""
+    return (config.ENV_LIBRARY_ROOT, config.ENV_DOWNLOAD_STAGING, config.ENV_ISRC_CACHE_DIR)
+
+
 def carried_names() -> tuple[str, ...]:
-    """The Cratekit location overrides an agent carries when they were set at
-    the install, so the night resolves what the install resolved. Read from
-    the configuration module when asked, never bound at import."""
-    return (
-        config.ENV_CONFIG_DIR,
-        config.ENV_STATE_DIR,
-        config.ENV_LIBRARY_ROOT,
-        config.ENV_ISRC_CACHE_DIR,
-        config.ENV_PROVIDER_GATE_DIR,
-        config.ENV_DOWNLOAD_STAGING,
-    )
+    """Every location name an agent may carry."""
+    return (*resolved_names(), *override_names())
+
+
+def binary_names() -> tuple[str, ...]:
+    """The per binary overrides an agent carries when set: one per binary this
+    build knows, never a name merely starting with the prefix."""
+    known = (*binaries.INSTALLABLE_BINARIES, *sorted(binaries.PLATFORM_BINARIES))
+    return tuple(sorted({binaries.env_var(name) for name in known}))
+
+
+def allowed_names() -> frozenset[str]:
+    """Every environment name an agent's plist may hold."""
+    return frozenset({"PATH", *carried_names(), *binary_names()})
 
 
 #: Every key the agent's plist holds, and nothing else.
@@ -162,7 +185,13 @@ def plist_path() -> Path:
 
 
 def log_path() -> Path:
-    return config.state_path(LOG_KEY)
+    return _absolute(config.state_path(LOG_KEY))
+
+
+def _absolute(path: Path | str) -> Path:
+    """Made absolute against the install's directory, never resolved through
+    links, so a relative override names the place the install meant."""
+    return Path(os.path.abspath(path))
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,9 +279,15 @@ def crate_path() -> Path:
     return Path(os.path.abspath(Path(sys.executable).parent / "crate"))
 
 
+def crate_runs(path: Path | str) -> bool:
+    """Whether ``path`` is an absolute executable file launchd can start."""
+    found = Path(path)
+    return found.is_absolute() and found.is_file() and os.access(found, os.X_OK)
+
+
 def _resolved_crate() -> Path:
     found = crate_path()
-    if not (found.is_absolute() and found.is_file() and os.access(found, os.X_OK)):
+    if not crate_runs(found):
         raise refuse(
             "schedule-crate-unresolved",
             f"the crate this install would schedule, {found}, is not an executable "
@@ -264,27 +299,26 @@ def _resolved_crate() -> Path:
     return found
 
 
-def environment(crate: Path, env: Mapping[str, str] | None = None) -> dict[str, str]:
-    """The agent's whole environment: a fixed PATH and the carried overrides.
+def environment(crate: Path) -> dict[str, str]:
+    """The agent's whole environment, every value absolute.
 
-    The overrides are the location variables :func:`carried_names` names and the
-    per binary overrides, taken from the install's environment when set. A
-    credential is never carried, whatever its name.
+    A fixed PATH; the configuration, state and provider gate directories as
+    the install resolved them, always; and the location and binary overrides
+    set at the install. A credential is never carried: no carried name is one.
     """
-    source = os.environ if env is None else env
-    named = carried_names()
+    source = os.environ
     path: list[str] = []
     for directory in (str(crate.parent), *(str(d) for d in binaries.fallback_dirs()), *SYSTEM_PATH):
         if directory not in path:
             path.append(directory)
     carried = {"PATH": os.pathsep.join(path)}
-    for name in sorted(source):
-        if name.startswith(secrets.ENV_CREDENTIAL_PREFIX):
-            continue
-        if name in named or name.startswith(binaries.ENV_PREFIX):
-            value = source[name]
-            if value:
-                carried[name] = value
+    resolved = (config.config_dir(), config.installation_state_dir(), config.provider_gate_dir())
+    for name, directory in zip(resolved_names(), resolved, strict=True):
+        carried[name] = str(_absolute(directory))
+    for name in (*override_names(), *binary_names()):
+        value = source.get(name)
+        if value:
+            carried[name] = str(_absolute(value))
     return carried
 
 
@@ -304,18 +338,42 @@ def agent(crate: Path, at: tuple[int, int], log: Path, env: Mapping[str, str]) -
 
 @dataclass(frozen=True, slots=True)
 class Installed:
-    """An installed plist, read back."""
+    """An installed plist, read back, and everything in it that is not the
+    agent this build writes."""
 
     at: tuple[int, int] | None
     crate: str | None
-    runs_the_night: bool
+    program: tuple[str, ...]
     log: str | None
-    environment: tuple[str, ...]
+    environment: dict[str, str]
+    problems: tuple[str, ...]
+
+    @property
+    def runs_the_night(self) -> bool:
+        return not self.problems
+
+
+def _interval(value: Any) -> tuple[int, int] | None:
+    if not isinstance(value, dict) or set(value) != {"Hour", "Minute"}:
+        return None
+    hour, minute = value["Hour"], value["Minute"]
+    if type(hour) is not int or type(minute) is not int:
+        return None
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return None
+    return hour, minute
 
 
 def read_agent(path: Path | None = None) -> Installed | None:
     """The installed plist, None when there is none, and ``ValueError`` naming
-    why when a file is there and cannot be read as this agent."""
+    why when a file is there and cannot be read as this agent.
+
+    WHAT LAUNCHD WILL DO, NOT ONLY WHAT THE FILE SAYS (review round one,
+    findings 2 and 7). Every way the plist differs from the one this build
+    writes is a problem: another key, another program, a crate that cannot
+    run, a run at load, another calendar, a name in its environment this
+    build never carries. Any problem and ``show`` fails.
+    """
     target = path if path is not None else plist_path()
     try:
         data = target.read_bytes()
@@ -329,30 +387,52 @@ def read_agent(path: Path | None = None) -> Installed | None:
         raise ValueError(f"{target} is not a property list") from None
     if not isinstance(document, dict) or document.get("Label") != LABEL:
         raise ValueError(f"{target} is not the night pass's agent")
-    program = document.get("ProgramArguments")
-    crate = program[0] if isinstance(program, list) and program and isinstance(program[0], str) else None
-    runs_the_night = (
-        isinstance(program, list)
-        and len(program) == 1 + len(NIGHT_ARGV)
+    problems: list[str] = []
+    keys = set(document)
+    if keys != PLIST_KEYS:
+        extra, missing = sorted(keys - PLIST_KEYS), sorted(PLIST_KEYS - keys)
+        problems.append(
+            "its keys differ from the agent this build writes"
+            + (f", adding {', '.join(extra)}" if extra else "")
+            + (f", missing {', '.join(missing)}" if missing else "")
+        )
+    raw = document.get("ProgramArguments")
+    program = tuple(str(part) for part in raw) if isinstance(raw, list) else ()
+    crate = program[0] if program else None
+    if not (
+        isinstance(raw, list)
+        and all(isinstance(part, str) for part in raw)
+        and program[1:] == NIGHT_ARGV
         and crate is not None
-        and Path(crate).is_absolute()
-        and tuple(program[1:]) == NIGHT_ARGV
-        and set(document) <= PLIST_KEYS
-    )
-    interval = document.get("StartCalendarInterval")
-    at = None
-    if isinstance(interval, dict):
-        hour, minute = interval.get("Hour"), interval.get("Minute")
-        if isinstance(hour, int) and isinstance(minute, int):
-            at = (hour, minute)
-    env = document.get("EnvironmentVariables")
+        and Path(crate).name == "crate"
+    ):
+        problems.append(f"it runs {' '.join(program) or 'nothing'}, not crate sync night")
+    if crate is not None and not crate_runs(crate):
+        problems.append(f"the crate it runs, {crate}, is not an executable file")
+    if document.get("RunAtLoad") is not False:
+        problems.append("it runs when it is loaded, not only at night")
+    at = _interval(document.get("StartCalendarInterval"))
+    if at is None:
+        problems.append("its calendar is not one time each night")
     log = document.get("StandardOutPath")
+    if not (isinstance(log, str) and Path(log).is_absolute() and document.get("StandardErrorPath") == log):
+        problems.append("its output does not go to one absolute log")
+    raw_env = document.get("EnvironmentVariables")
+    env = (
+        {str(k): str(v) for k, v in raw_env.items()} if isinstance(raw_env, dict) else {}
+    )
+    if not isinstance(raw_env, dict) or not all(isinstance(v, str) for v in raw_env.values()):
+        problems.append("its environment is not a set of names and values")
+    unknown = sorted(set(env) - allowed_names())
+    if unknown:
+        problems.append(f"its environment carries {', '.join(unknown)}, which this build never does")
     return Installed(
         at=at,
         crate=crate,
-        runs_the_night=runs_the_night,
+        program=program,
         log=log if isinstance(log, str) else None,
-        environment=tuple(sorted(env)) if isinstance(env, dict) else (),
+        environment=env,
+        problems=tuple(problems),
     )
 
 
@@ -426,11 +506,29 @@ def _macos_only(verb: str) -> None:
         )
 
 
-def _launchctl_failed(what: str, answer: Answer, **detail: Any) -> Exception:
-    said = answer.words or "nothing"
+def _as_the_person(verb: str) -> None:
+    """Refuse root: ``gui/0`` is nobody's login, and a root owned plist or log
+    directory would be one the person's own install could not replace."""
+    if uid() == 0:
+        raise refuse(
+            "refused-by-policy",
+            f"crate schedule {verb} runs as you, never as root, so the agent is "
+            "yours and loads with your login",
+            steps=(f"run crate schedule {verb} again as yourself, not as root",),
+            origin=_ORIGIN,
+            detail={"uid": 0},
+        )
+
+
+def _launchctl_failed(what: str, answer: Answer | None, **detail: Any) -> Exception:
+    if answer is None:
+        said = "launchd still holds the agent after launchctl answered its bootout"
+        answer = Answer(code=0, words="")
+    else:
+        said = f"launchctl answered {answer.code}, {answer.words or 'nothing'}"
     return refuse(
         "schedule-launchctl-failed",
-        f"{what}: launchctl answered {answer.code}, {said}",
+        f"{what}: {said}",
         steps=("read crate schedule show, then run the verb again",),
         origin=_ORIGIN,
         detail={"launchctl_code": answer.code, "launchctl_words": answer.words, **detail},
@@ -454,8 +552,16 @@ def _boot_out(what: str) -> bool:
     out = launchctl("bootout", _service())
     after, check = loaded()
     if after != NOT_LOADED:
-        raise _launchctl_failed(what, out if not out.ok else check, state=after)
-    return True
+        if not out.ok:
+            said: Answer | None = out
+        elif after == LOADED:
+            said = None
+        else:
+            said = check
+        raise _launchctl_failed(what, said, state=after)
+    # ONE WAS BOOTED OUT only when launchd held it or the bootout took: a
+    # bootout refused over an agent launchd then reads absent booted nothing.
+    return state == LOADED or out.ok
 
 
 def _remove_plist(path: Path) -> None:
@@ -471,15 +577,13 @@ def _remove_plist(path: Path) -> None:
         ) from None
 
 
-def install(ctx: Context) -> Envelope:
-    """Write the night pass's agent and load it. See the module docstring."""
-    _macos_only("install")
-    at: tuple[int, int] = ctx.args.at
-    crate = _resolved_crate()
+def _install(crate: Path, at: tuple[int, int]) -> tuple[Path, Path, dict[str, str], bool]:
+    """The install under the staging lock: boot out, write, bootstrap, read back."""
     target = plist_path()
     log = log_path()
     had_plist = target.exists()
-    replaced = _boot_out("the schedule already installed could not be booted out") or had_plist
+    booted = _boot_out("the schedule already installed could not be booted out")
+    replaced = booted or had_plist
     env = environment(crate)
     payload = plistlib.dumps(agent(crate, at, log, env), sort_keys=True)
     try:
@@ -487,27 +591,59 @@ def install(ctx: Context) -> Envelope:
         target.parent.mkdir(parents=True, exist_ok=True)
         config.atomic_write_bytes(payload, target, mode=PLIST_MODE)
     except OSError as exc:
+        # SAID, NOT LEFT TO BE FOUND (review round one, finding 3): the agent
+        # installed before is booted out by now, and its plist is unchanged.
+        earlier = (
+            "; the schedule installed before is booted out and its plist kept, so it is "
+            "off until the next login or an install that succeeds"
+            if booted
+            else ""
+        )
         raise refuse(
             "schedule-agent-unwritten",
-            f"the night pass's agent could not be written to {target} ({exc})",
+            f"the night pass's agent could not be written to {target} ({exc}){earlier}",
             remedy=Remedy.GRANT_PATH_ACCESS,
             origin=_ORIGIN,
-            detail={"plist": str(target), "log": str(log)},
+            detail={"plist": str(target), "log": str(log), "booted_out": booted},
         ) from None
     answer = launchctl("bootstrap", _domain(), str(target))
     state, check = loaded() if answer.ok else (UNKNOWN, answer)
     if state != LOADED:
-        # NOTHING HALF INSTALLED: whatever launchd took is booted out again and
-        # the plist written for it is removed.
+        # NOTHING HALF INSTALLED: whatever launchd took is booted out again, and
+        # the plist written for it is removed only once launchd reads it absent
+        # (review round one, finding 4); otherwise it is kept, so show and
+        # remove still find what launchd may hold.
         launchctl("bootout", _service())
+        after, _after_answer = loaded()
+        failed = answer if not answer.ok else check
+        if after != NOT_LOADED:
+            raise _launchctl_failed(
+                "the night pass's agent could not be loaded, and launchd may still hold "
+                "it, so its plist is kept; crate schedule remove takes it away",
+                failed,
+                plist=str(target),
+                replaced=replaced,
+                state=after,
+            )
         _remove_plist(target)
         earlier = "; the schedule installed before it was removed too" if replaced else ""
         raise _launchctl_failed(
             f"the night pass's agent could not be loaded, so nothing is installed{earlier}",
-            answer if not answer.ok else check,
+            failed,
             plist=str(target),
             replaced=replaced,
         )
+    return target, log, env, replaced
+
+
+def install(ctx: Context) -> Envelope:
+    """Write the night pass's agent and load it. See the module docstring."""
+    _macos_only("install")
+    _as_the_person("install")
+    at: tuple[int, int] = ctx.args.at
+    crate = _resolved_crate()
+    with staging_lock.held("crate schedule install", run_id=ctx.run.run_id):
+        target, log, env, replaced = _install(crate, at)
     when = _clock_words(at)
     rows = [
         _row("schedule.agent", "agent", f"{target}, loaded into {_domain()}", "ok"),
@@ -538,9 +674,16 @@ def install(ctx: Context) -> Envelope:
     )
 
 
-def _night_line() -> tuple[str, str]:
+def _night_line(found: Installed | None) -> tuple[str, str]:
+    """The last night's line, read from the state the AGENT carries when one is
+    installed (review round one, finding 7), so a shell pointed elsewhere
+    still reads the night the agent writes."""
+    path = None
+    if found is not None and found.environment.get(config.ENV_STATE_DIR):
+        relative = config.state_file(sync_night.STATUS_KEY).relative
+        path = Path(found.environment[config.ENV_STATE_DIR]) / relative
     try:
-        record = sync_night.settle(sync_night.read_status())
+        record = sync_night.settle(sync_night.read_status(path))
     except ValueError as exc:
         return f"the night pass's record cannot be read: {exc}", "warn"
     if record is None:
@@ -559,36 +702,43 @@ def show(ctx: Context) -> Envelope:
     except ValueError as exc:
         found, unreadable = None, str(exc)
     state, answer = loaded()
+    problems: list[str] = []
     if unreadable is not None:
+        problems.append(unreadable)
         rows.append(_row("schedule.agent", "agent", f"the plist cannot be read: {unreadable}", "fail"))
     elif found is None:
         rows.append(_row("schedule.agent", "agent", f"not installed, no plist at {target}"))
     else:
         rows.append(_row("schedule.agent", "agent", f"installed at {target}", "ok"))
         rows.append(_row("schedule.at", "runs at", f"{_clock_words(found.at)} each night, local time"))
-        if found.runs_the_night:
-            rows.append(_row("schedule.crate", "runs", " ".join([str(found.crate), *NIGHT_ARGV])))
-        else:
-            rows.append(
-                _row(
-                    "schedule.crate",
-                    "runs",
-                    "the installed agent runs something other than crate sync night; "
-                    "run crate schedule install to replace it",
-                    "fail",
-                )
+        rows.append(
+            _row(
+                "schedule.crate",
+                "runs",
+                " ".join(found.program) or "nothing",
+                "info" if found.runs_the_night else "fail",
             )
+        )
+        for problem in found.problems:
+            problems.append(problem)
+            rows.append(_row("schedule.problem", "not the night's agent", problem, "fail"))
         if found.log:
             rows.append(_row("schedule.log", "log", found.log))
     if state == LOADED:
-        loaded_words, loaded_status = f"loaded into {_domain()}", "ok" if found else "warn"
+        loaded_words, loaded_status = f"loaded into {_domain()}", "ok"
+        if found is None and unreadable is None:
+            # LAUNCHD HOLDS AN AGENT NO PLIST DESCRIBES: what it runs cannot be
+            # read here, so the report is not clean.
+            problem = f"launchd holds {LABEL} but no plist is at {target}; crate schedule remove unloads it"
+            problems.append(problem)
+            loaded_words, loaded_status = problem, "fail"
     elif state == NOT_LOADED:
         loaded_words, loaded_status = "not loaded", "warn" if found else "info"
     else:
         loaded_words = f"launchd could not be read ({answer.code}, {answer.words or 'nothing said'})"
         loaded_status = "warn"
     rows.append(_row("schedule.loaded", "launchd", loaded_words, loaded_status))
-    line, line_status = _night_line()
+    line, line_status = _night_line(found)
     rows.append(_row("schedule.last", "last night", line, line_status))
     data = {
         "checks": rows,
@@ -600,27 +750,25 @@ def show(ctx: Context) -> Envelope:
                 "unreadable": unreadable,
                 "at": None if found is None or found.at is None else _clock_words(found.at),
                 "crate": None if found is None else found.crate,
+                "argv": [] if found is None else list(found.program),
                 "runs_the_night": None if found is None else found.runs_the_night,
-                "environment": [] if found is None else list(found.environment),
+                "problems": problems,
+                "environment": {} if found is None else dict(found.environment),
                 "loaded": state,
                 "last": line,
             }
         },
     }
-    problem = unreadable or (
-        None if found is None or found.runs_the_night
-        else f"the agent at {target} runs something other than crate sync night"
-    )
-    if problem is None:
+    if not problems:
         return ctx.envelope(data=data, outcome=Outcome.NO_OP)
-    # AN AGENT THAT CANNOT BE READ, OR THAT RUNS ANYTHING BUT THE NIGHT, IS NOT
+    # AN AGENT THAT CANNOT BE READ, OR THAT IS ANYTHING BUT THE NIGHT'S, IS NOT
     # A CLEAN REPORT: the rows say what was read, and the exit says it failed.
     cause = refuse(
         "schedule-agent-unusable",
-        problem,
+        "; ".join(problems),
         steps=("run crate schedule install to replace it, or crate schedule remove",),
         origin=_ORIGIN,
-        detail={"plist": str(target)},
+        detail={"plist": str(target), "problems": problems},
     ).cause
     return output.build(
         verb=ctx.entry.name,
@@ -637,11 +785,13 @@ def show(ctx: Context) -> Envelope:
 def remove(ctx: Context) -> Envelope:
     """Boot the agent out and delete its plist. See the module docstring."""
     _macos_only("remove")
+    _as_the_person("remove")
     target = plist_path()
-    had_plist = target.exists()
-    booted = _boot_out("the schedule could not be booted out, so its plist is kept")
-    if had_plist:
-        _remove_plist(target)
+    with staging_lock.held("crate schedule remove", run_id=ctx.run.run_id):
+        had_plist = target.exists()
+        booted = _boot_out("the schedule could not be booted out, so its plist is kept")
+        if had_plist:
+            _remove_plist(target)
     if not (booted or had_plist):
         return ctx.envelope(
             data={
@@ -678,17 +828,22 @@ __all__: Sequence[str] = (
     "agent",
     "build_install",
     "build_remove",
+    "allowed_names",
+    "binary_names",
     "build_show",
     "carried_names",
+    "crate_runs",
     "crate_path",
     "environment",
     "install",
     "launch_agents_dir",
     "launchctl",
     "loaded",
+    "override_names",
     "platform",
     "plist_path",
     "read_agent",
     "remove",
+    "resolved_names",
     "show",
 )

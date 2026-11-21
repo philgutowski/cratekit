@@ -28,7 +28,7 @@ from typing import Any
 import pytest
 
 from cratekit.cli import registry, schedule, sync_night
-from cratekit.core import config
+from cratekit.core import binaries, config
 from cratekit.core.exit_codes import ExitCode
 from tests.cli_drive import drive
 
@@ -50,12 +50,15 @@ class Launchd:
         self.calls: list[tuple[str, ...]] = []
         self.fail: dict[str, schedule.Answer] = {}
         self.stuck = False
+        self.stuck_absent = False
 
     def __call__(self, *args: str) -> schedule.Answer:
         self.calls.append(args)
         verb = args[0]
         if verb in self.fail:
             return self.fail[verb]
+        if verb in ("print", "bootout"):
+            assert args[1] == SERVICE, f"launchctl {verb} asked {args[1]}, not the person's agent"
         if verb == "print":
             label = args[1].rsplit("/", 1)[-1]
             if label in self.loaded:
@@ -71,6 +74,8 @@ class Launchd:
             return schedule.Answer(0, "")
         if verb == "bootout":
             label = args[1].rsplit("/", 1)[-1]
+            if label not in self.loaded and self.stuck_absent:
+                return schedule.Answer(3, "Boot-out failed: 3: No such process")
             if label not in self.loaded:
                 return schedule.Answer(3, "Boot-out failed: 3: No such process")
             if not self.stuck:
@@ -148,45 +153,95 @@ def test_the_suite_stands_launchd_in_for_every_test(_no_live_launchd):
     assert schedule.platform() != schedule.MACOS
 
 
-def _calls_in(node: ast.AST) -> set[str]:
-    named: set[str] = set()
+#: Every module the schedule may import, at the top of the file. An allowlist,
+#: so a launcher this list never thought of is still refused (review round one).
+ALLOWED_IMPORTS = frozenset({
+    "__future__", "argparse", "os", "plistlib", "sys", "collections.abc", "dataclasses",
+    "pathlib", "typing", "cratekit.cli", "cratekit.cli.output", "cratekit.core",
+    "cratekit.core.cause", "cratekit.core.exit_codes",
+})
+
+#: Every attribute of ``os`` the schedule may name.
+ALLOWED_OS = frozenset({"path", "environ", "access", "X_OK", "getuid", "pathsep", "abspath"})
+
+
+def _imported(node: ast.AST) -> set[str]:
+    names: set[str] = set()
     for child in ast.walk(node):
-        if isinstance(child, ast.Attribute):
-            named.add(child.attr)
-        elif isinstance(child, ast.Name):
-            named.add(child.id)
-    return named
+        if isinstance(child, ast.Import):
+            names.update(alias.name for alias in child.names)
+        elif isinstance(child, ast.ImportFrom):
+            names.add(child.module or "")
+    return names
 
 
 def test_only_the_one_seam_starts_a_process():
     tree = ast.parse(SOURCE.read_text(encoding="utf-8"))
-    launchers = {"subprocess", "Popen", "system", "popen", "execv", "execvp", "execl",
-                 "spawnv", "spawnl", "posix_spawn", "startfile", "fork"}
     seam = next(
         node for node in tree.body
         if isinstance(node, ast.FunctionDef) and node.name == "launchctl"
     )
-    assert "subprocess" in _calls_in(seam)
-    for node in tree.body:
-        if node is seam:
-            continue
-        reached = _calls_in(node) & launchers
-        assert not reached, f"{getattr(node, 'name', type(node).__name__)} names {reached}"
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            modules = [alias.name for alias in node.names] + [getattr(node, "module", None) or ""]
-            assert "subprocess" not in modules or node in list(ast.walk(seam)), (
-                "subprocess is imported outside the launchctl seam"
-            )
+    assert _imported(seam) == {"subprocess"}
+    rest = [node for node in tree.body if node is not seam]
+    imported = set().union(*(_imported(node) for node in rest))
+    assert imported <= ALLOWED_IMPORTS, f"the schedule imports {sorted(imported - ALLOWED_IMPORTS)}"
+    for node in rest:
+        for child in ast.walk(node):
+            if isinstance(child, ast.Name):
+                assert child.id not in {"__import__", "importlib", "getattr", "eval", "exec"}, child.id
+            if (
+                isinstance(child, ast.Attribute)
+                and isinstance(child.value, ast.Name)
+                and child.value.id == "os"
+            ):
+                assert child.attr in ALLOWED_OS, f"the schedule names os.{child.attr}"
     assert schedule.LAUNCHCTL == "/bin/launchctl"
+
+
+def _shipped_seam(monkeypatch):
+    """The module's own launchctl, from a fresh copy: the suite's guard has
+    replaced the one on the imported module."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("schedule_shipped_copy", SOURCE)
+    copy = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, spec.name, copy)
+    spec.loader.exec_module(copy)
+    return copy
+
+
+def test_the_seam_runs_launchctl_by_its_path_and_answers_its_words(tmp_path, monkeypatch):
+    copy = _shipped_seam(monkeypatch)
+    fake = tmp_path / "launchctl"
+    fake.write_text("#!/bin/sh\necho \"said $*\"\necho oops >&2\nexit 7\n")
+    fake.chmod(0o755)
+    copy.LAUNCHCTL = str(fake)
+
+    answer = copy.launchctl("print", SERVICE)
+
+    assert answer.code == 7
+    assert answer.words == f"oops said print {SERVICE}"
+
+
+def test_the_seam_answers_a_launchctl_it_cannot_run_or_that_hangs(tmp_path, monkeypatch):
+    copy = _shipped_seam(monkeypatch)
+    copy.LAUNCHCTL = str(tmp_path / "absent")
+    assert copy.launchctl("print", SERVICE).code == -1
+
+    sleeper = tmp_path / "sleeper"
+    sleeper.write_text("#!/bin/sh\nsleep 5\n")
+    sleeper.chmod(0o755)
+    copy.LAUNCHCTL, copy.LAUNCHCTL_TIMEOUT = str(sleeper), 1
+    answer = copy.launchctl("print", SERVICE)
+    assert answer.code == -1 and "could not be run" in answer.words
 
 
 def test_the_module_names_no_system_domain_and_no_system_directory():
     text = SOURCE.read_text(encoding="utf-8")
     for spelled in ("LaunchDaemons", '"/Library', "'/Library", "system/", "sudo"):
         assert spelled not in text, f"the schedule module spells {spelled!r}"
-    assert schedule.launch_agents_dir.__code__ is not None
     assert schedule.NIGHT_ARGV == ("sync", "night")
+    assert schedule.LABEL == "cratekit.sync-night", "the guide names the agent by this label"
 
 
 def test_the_default_directory_is_the_persons_own_launch_agents():
@@ -204,13 +259,19 @@ def test_install_writes_one_agent_that_runs_the_night_alone_and_loads_it(mac, ag
     assert code == 0, envelope
     assert sorted(p.name for p in agents.iterdir()) == [schedule.PLIST_NAME]
     document = _plist(agents)
-    assert set(document) == schedule.PLIST_KEYS
-    assert document["Label"] == schedule.LABEL
-    assert document["ProgramArguments"] == [str(crate), "sync", "night"]
-    assert document["StartCalendarInterval"] == {"Hour": 3, "Minute": 17}
-    assert document["RunAtLoad"] is False
     log = config.state_path(schedule.LOG_KEY)
-    assert document["StandardOutPath"] == document["StandardErrorPath"] == str(log)
+    # WRITTEN OUT BY HAND, never read off the module (review round one): a key
+    # added to the template and its key set together is still caught here.
+    assert document == {
+        "Label": "cratekit.sync-night",
+        "ProgramArguments": [str(crate), "sync", "night"],
+        "StartCalendarInterval": {"Hour": 3, "Minute": 17},
+        "StandardOutPath": str(log),
+        "StandardErrorPath": str(log),
+        "EnvironmentVariables": document["EnvironmentVariables"],
+        "RunAtLoad": False,
+    }
+    assert (agents / schedule.PLIST_NAME).stat().st_mode & 0o777 == 0o600
     assert log.parent.is_dir(), "launchd cannot open a log in a directory that is not there"
     assert ("bootstrap", DOMAIN, str(agents / schedule.PLIST_NAME)) in mac.calls
     assert schedule.LABEL in mac.loaded
@@ -226,12 +287,16 @@ def test_the_agent_names_an_absolute_crate(mac, agents):
     assert Path(program[0]).is_absolute() and Path(program[0]).name == "crate"
 
 
-@pytest.mark.parametrize("state", ["relative", "missing", "not executable"])
+@pytest.mark.parametrize("state", ["relative", "missing", "not executable", "a directory"])
 def test_a_crate_that_cannot_run_is_refused_and_nothing_is_written(
     mac, agents, crate, monkeypatch, state
 ):
     if state == "relative":
+        # A relative path that is there from here, so only absoluteness refuses it.
+        monkeypatch.chdir(crate.parent.parent)
         found = Path("bin") / "crate"
+    elif state == "a directory":
+        found = crate.parent
     elif state == "missing":
         found = crate.parent / "gone" / "crate"
     else:
@@ -295,7 +360,9 @@ def test_at_sets_the_time(mac, agents, text, at):
     assert _plist(agents)["StartCalendarInterval"] == {"Hour": at[0], "Minute": at[1]}
 
 
-@pytest.mark.parametrize("text", ["24:00", "12:60", "3:7", "noon", "0300", "-1:30", "03:15:00", ""])
+@pytest.mark.parametrize(
+    "text", ["24:00", "12:60", "3:7", "noon", "0300", "-1:30", "03:15:00", "", "003:15"]
+)
 def test_a_time_that_is_not_hh_mm_is_a_usage_error_and_writes_nothing(mac, agents, text):
     code, _envelope = drive(["schedule", "install", "--at", text])
 
@@ -304,11 +371,13 @@ def test_a_time_that_is_not_hh_mm_is_a_usage_error_and_writes_nothing(mac, agent
     assert mac.calls == []
 
 
-def test_the_agent_carries_a_fixed_path_and_the_overrides_and_nothing_else(
+def test_the_agent_carries_a_fixed_path_the_resolved_directories_and_nothing_else(
     mac, agents, crate, monkeypatch
 ):
     monkeypatch.setenv("CRATEKIT_CREDENTIAL_PROVIDER_TOKEN", "a-secret-value")
     monkeypatch.setenv("CRATEKIT_BIN_FFMPEG", "/opt/tools/ffmpeg")
+    monkeypatch.setenv("CRATEKIT_BIN_SH", "/bin/sh")
+    monkeypatch.setenv("CRATEKIT_PROVIDER_CALLS", "99999")
     monkeypatch.setenv("A_PERSONAL_SETTING", "kept-at-home")
     monkeypatch.setenv("PATH", "/a/persons/own/path")
     monkeypatch.setenv(config.ENV_DOWNLOAD_STAGING, "")
@@ -316,18 +385,79 @@ def test_the_agent_carries_a_fixed_path_and_the_overrides_and_nothing_else(
     drive(["schedule", "install"])
 
     env = _plist(agents)["EnvironmentVariables"]
-    allowed = {"PATH", *schedule.carried_names()}
-    assert {name for name in env if not name.startswith("CRATEKIT_BIN_")} <= allowed
+    set_here = {name for name in schedule.override_names() if os.environ.get(name)}
+    assert set(env) == {
+        "PATH", config.ENV_CONFIG_DIR, config.ENV_STATE_DIR, config.ENV_PROVIDER_GATE_DIR,
+        "CRATEKIT_BIN_FFMPEG", *set_here,
+    }
+    assert set(env) <= schedule.allowed_names()
     assert env["CRATEKIT_BIN_FFMPEG"] == "/opt/tools/ffmpeg"
-    assert env[config.ENV_STATE_DIR] == os.environ[config.ENV_STATE_DIR]
+    assert "CRATEKIT_BIN_SH" not in env, "an override for a binary this build never runs"
+    assert "CRATEKIT_PROVIDER_CALLS" not in env, "a raised limit is never carried"
+    assert env[config.ENV_STATE_DIR] == str(config.installation_state_dir())
+    assert env[config.ENV_CONFIG_DIR] == str(config.config_dir())
+    assert env[config.ENV_PROVIDER_GATE_DIR] == str(config.provider_gate_dir())
     assert config.ENV_DOWNLOAD_STAGING not in env, "an empty override is not carried"
     assert "A_PERSONAL_SETTING" not in env
     assert not any("CREDENTIAL" in name for name in env)
-    assert "a-secret-value" not in plistlib.dumps(_plist(agents)).decode()
+    assert "a-secret-value" not in (agents / schedule.PLIST_NAME).read_text()
     path = env["PATH"].split(os.pathsep)
     assert path[0] == str(crate.parent)
+    for fallback in binaries.fallback_dirs():
+        assert str(fallback) in path, "the binaries' own directories are on the agent's PATH"
     assert "/a/persons/own/path" not in path
-    assert path[-4:] == list(schedule.SYSTEM_PATH)
+    assert path[-4:] == ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+
+
+def test_an_installation_found_through_xdg_alone_is_the_one_the_agent_reads(
+    mac, agents, monkeypatch, tmp_path
+):
+    """Review round one, finding 1: with no Cratekit override set, the night
+    must still resolve the configuration and state the install resolved."""
+    for name in schedule.carried_names():
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg-state"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
+    state, conf, gate = config.installation_state_dir(), config.config_dir(), config.provider_gate_dir()
+
+    code, envelope = drive(["schedule", "install"])
+
+    assert code == 0, envelope
+    document = _plist(agents)
+    env = document["EnvironmentVariables"]
+    assert env[config.ENV_STATE_DIR] == str(state)
+    assert env[config.ENV_CONFIG_DIR] == str(conf)
+    assert env[config.ENV_PROVIDER_GATE_DIR] == str(gate)
+    assert Path(document["StandardOutPath"]).is_relative_to(state)
+    # The agent's own environment, with no XDG variable and another HOME,
+    # resolves to the same directories.
+    for name in ("XDG_STATE_HOME", "XDG_CONFIG_HOME"):
+        monkeypatch.delenv(name)
+    monkeypatch.setenv("HOME", str(tmp_path / "elsewhere"))
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    assert (config.installation_state_dir(), config.config_dir(), config.provider_gate_dir()) == (
+        state, conf, gate,
+    )
+
+
+def test_a_relative_override_is_carried_absolute(mac, agents, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv(config.ENV_STATE_DIR, os.path.join("scratch", "state"))
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, "library")
+    monkeypatch.setenv("CRATEKIT_BIN_FFMPEG", os.path.join("tools", "ffmpeg"))
+
+    code, envelope = drive(["schedule", "install"])
+
+    assert code == 0, envelope
+    document = _plist(agents)
+    env = document["EnvironmentVariables"]
+    assert env[config.ENV_STATE_DIR] == str(tmp_path / "scratch" / "state")
+    assert env[config.ENV_LIBRARY_ROOT] == str(tmp_path / "library")
+    assert env["CRATEKIT_BIN_FFMPEG"] == str(tmp_path / "tools" / "ffmpeg")
+    assert document["StandardOutPath"] == str(
+        tmp_path / "scratch" / "state" / "schedule" / "sync-night.log"
+    )
 
 
 def test_a_bootstrap_that_fails_is_refused_in_its_words_and_leaves_nothing(mac, agents):
@@ -605,3 +735,199 @@ def test_any_platform_but_macos_refuses_naming_it(mac, agents, monkeypatch, verb
     assert running in envelope["cause"]["message"]
     assert mac.calls == []
     assert not agents.exists()
+
+
+# ---------------------------------------------------------------------------
+# Review round one
+# ---------------------------------------------------------------------------
+
+
+def test_show_fails_over_an_agent_whose_crate_is_gone(mac, crate):
+    """Finding 2: launchd cannot start a program that is not there."""
+    drive(["schedule", "install"])
+    crate.unlink()
+
+    envelope = _show(FAILED_SHOW)
+
+    assert envelope["cause"]["reason"] == "schedule-agent-unusable"
+    assert "is not an executable file" in envelope["cause"]["message"]
+    assert envelope["data"]["summary"]["schedule"]["runs_the_night"] is False
+
+
+@pytest.mark.parametrize("verb", ["install", "remove"])
+def test_root_is_refused_and_launchd_is_never_asked(mac, agents, monkeypatch, verb):
+    """Finding 5: ``gui/0`` is nobody's login."""
+    monkeypatch.setattr(schedule, "uid", lambda: 0)
+
+    code, envelope = drive(["schedule", verb])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert "never as root" in envelope["cause"]["message"]
+    assert mac.calls == []
+    assert not agents.exists()
+
+
+@pytest.mark.parametrize("verb", ["install", "remove"])
+def test_a_night_in_progress_is_never_booted_out(mac, agents, verb, tmp_path):
+    """Finding 6: a night pass holds the staging lock for its whole run, and
+    launchd's bootout would end it."""
+    import subprocess
+
+    drive(["schedule", "install"])
+    mac.calls.clear()
+    holder = subprocess.Popen(
+        [sys.executable, "-c",
+         "import sys, time\n"
+         "from cratekit.core import staging_lock\n"
+         "with staging_lock.held('crate sync night'):\n"
+         "    print('held', flush=True); time.sleep(30)\n"],
+        stdout=subprocess.PIPE, text=True, env=dict(os.environ),
+    )
+    try:
+        assert holder.stdout.readline().strip() == "held"
+        code, envelope = drive(["schedule", verb])
+    finally:
+        holder.kill()
+        holder.wait()
+
+    assert code == int(ExitCode.LIBRARY_BUSY), envelope
+    assert envelope["cause"]["reason"] == "staging-held"
+    assert "bootout" not in mac.verbs()
+    assert schedule.LABEL in mac.loaded and (agents / schedule.PLIST_NAME).exists()
+
+
+def test_a_replace_whose_write_fails_says_the_earlier_schedule_is_off(mac, agents, monkeypatch):
+    """Finding 3: by the write, the earlier agent is booted out."""
+    drive(["schedule", "install"])
+    before = (agents / schedule.PLIST_NAME).read_bytes()
+
+    def refused(payload, path, *, mode=0o600):
+        raise PermissionError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr(config, "atomic_write_bytes", refused)
+
+    code, envelope = drive(["schedule", "install", "--at", "01:00"])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "schedule-agent-unwritten"
+    assert "booted out and its plist kept" in envelope["cause"]["message"]
+    assert (agents / schedule.PLIST_NAME).read_bytes() == before
+    assert schedule.LABEL not in mac.loaded
+
+
+def test_a_failed_load_launchd_may_still_hold_keeps_its_plist(mac, agents, monkeypatch):
+    """Finding 4: the cleanup reads its own bootout before deleting."""
+    def half(*args):
+        if args[0] == "bootstrap":
+            mac(*args)
+            return schedule.Answer(5, "Bootstrap failed: 5: Input/output error")
+        if args[0] == "bootout":
+            mac.calls.append(args)
+            return schedule.Answer(37, "Boot-out failed: 37: Operation already in progress")
+        return mac(*args)
+
+    monkeypatch.setattr(schedule, "launchctl", half)
+
+    code, envelope = drive(["schedule", "install"])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert "launchd may still hold it, so its plist is kept" in envelope["cause"]["message"]
+    assert (agents / schedule.PLIST_NAME).exists()
+    assert schedule.LABEL in mac.loaded
+
+
+def test_a_bootout_launchd_ignores_is_said_in_words_a_person_reads(mac):
+    """Finding 8: never "launchctl answered 0" followed by the print dump."""
+    drive(["schedule", "install"])
+    mac.stuck = True
+
+    code, envelope = drive(["schedule", "remove"])
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    message = envelope["cause"]["message"]
+    assert "launchd still holds the agent after launchctl answered its bootout" in message
+    assert "answered 0" not in message and "state =" not in message
+
+
+def test_a_bootout_refused_over_an_agent_then_absent_boots_out_nothing(mac, agents, monkeypatch):
+    """Finding 8: the first print unreadable, the bootout refused, the second
+    print absent, with nothing installed: nothing was removed."""
+    answers = iter([schedule.Answer(1, "launchctl: no such domain")])
+
+    def flaky(*args):
+        if args[0] == "print":
+            nxt = next(answers, None)
+            if nxt is not None:
+                mac.calls.append(args)
+                return nxt
+        return mac(*args)
+
+    monkeypatch.setattr(schedule, "launchctl", flaky)
+
+    code, envelope = drive(["schedule", "remove"])
+
+    assert code == 0, envelope
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["summary"]["schedule"]["removed"] is False
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        pytest.param(lambda d: d.update(RunAtLoad=True), id="run at load"),
+        pytest.param(lambda d: d.pop("StartCalendarInterval"), id="no calendar"),
+        pytest.param(lambda d: d.update(StartCalendarInterval={"Minute": 5}), id="every hour"),
+        pytest.param(lambda d: d.update(StartCalendarInterval={"Hour": 99, "Minute": 0}), id="hour 99"),
+        pytest.param(
+            lambda d: d.update(StartCalendarInterval=[{"Hour": 3, "Minute": 0}, {"Hour": 4, "Minute": 0}]),
+            id="two times",
+        ),
+        pytest.param(
+            lambda d: d.update(StartCalendarInterval={"Hour": 3, "Minute": 0, "Weekday": 1}),
+            id="one weekday",
+        ),
+        pytest.param(lambda d: d.update(Program="/bin/sh"), id="a program key"),
+        pytest.param(
+            lambda d: d.update(ProgramArguments=["/bin/sh", "sync", "night"]), id="another program"
+        ),
+        pytest.param(
+            lambda d: d["EnvironmentVariables"].update(CRATEKIT_PROVIDER_CALLS="99999"),
+            id="a raised limit",
+        ),
+        pytest.param(lambda d: d.update(StandardErrorPath="/tmp/elsewhere.log"), id="split log"),
+    ],
+)
+def test_show_fails_over_an_agent_edited_to_be_anything_but_the_nights(mac, agents, edit):
+    """Finding 7: show judges what launchd will do, not only the arguments."""
+    drive(["schedule", "install"])
+    document = _plist(agents)
+    edit(document)
+    (agents / schedule.PLIST_NAME).write_bytes(plistlib.dumps(document))
+
+    envelope = _show(FAILED_SHOW)
+
+    assert envelope["cause"]["reason"] == "schedule-agent-unusable"
+    assert envelope["data"]["summary"]["schedule"]["runs_the_night"] is False
+    assert envelope["data"]["summary"]["schedule"]["problems"]
+
+
+def test_show_reads_the_night_line_from_the_state_the_agent_carries(mac, monkeypatch, tmp_path):
+    """Finding 7: a shell pointed at another state still reads the agent's night."""
+    drive(["schedule", "install"])
+    firing = sync_night._Firing(night="2026-11-21", started=sync_night._clock(), run_id="r1")
+    assert sync_night._write_status(firing.record(sync_night.NOTHING, "the agent's own night")) is None
+    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "another-state"))
+
+    envelope = _show()
+
+    assert envelope["data"]["summary"]["schedule"]["last"] == "the agent's own night"
+
+
+def test_show_fails_over_an_agent_launchd_holds_with_no_plist(mac, agents):
+    drive(["schedule", "install"])
+    (agents / schedule.PLIST_NAME).unlink()
+
+    envelope = _show(FAILED_SHOW)
+
+    assert "no plist is at" in envelope["cause"]["message"]
+    assert envelope["data"]["summary"]["schedule"]["loaded"] == schedule.LOADED
