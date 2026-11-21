@@ -966,7 +966,7 @@ def test_the_catalogue_is_asked_once_across_the_two_acts(acknowledged, silence, 
         return SearchHit(genre=DEEP, source="beatport")
 
     monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: search)
-    monkeypatch.setattr(published, "for_taxonomy", lambda declared: lambda hit, isrc: hit)
+    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
     code, acted, _ = _two_acts([*VERB, "--catalogue"])
     assert code == int(ExitCode.OK), acted
     assert calls == [("", "track 10")]
@@ -982,3 +982,32 @@ def test_the_verb_declares_the_file_and_the_row():
     assert entry.writes == frozenset({"files", "db_metadata"}) and entry.destructive
     assert [gate.name for gate in entry.gates][0] == GATE
     assert entry.gates[0].explicit
+
+
+def test_tag_suggest_asks_deezer_past_a_refusing_beatport_by_each_files_isrc(
+    acknowledged, silence, monkeypatch
+):
+    """U322: the verb's general catalogue is the suggest binder's, so a row
+    Discogs missed and Beatport refused is still asked of it by ISRC."""
+    from cratekit.tagging import published, searchers
+    from tests.test_beatport_refusal import REFUSED, _over_the_wire
+    from tests.test_discogs_searcher import SENT
+
+    paths = build(acknowledged, silence, *(Track(str(10 + n)) for n in range(4)))
+    for n, path in enumerate(sorted(paths.values())):
+        assert tags.write_tags(path, {"isrc": f"GBAYE00000{n:02d}"})
+    fetch = _over_the_wire(REFUSED)
+    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
+    search = searchers.catalogue_searcher(
+        DECLARED, fetch=fetch, sleep=lambda _s: None, discogs=asker
+    )
+    asked: list[object] = []
+
+    def general(isrc):
+        asked.append(isrc)
+        return published.Published(published.SOURCE, "miss")
+
+    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: search)
+    monkeypatch.setattr(published, "for_lookup", lambda: general)
+    _first_act([*VERB, "--catalogue"])
+    assert sorted(asked) == [f"GBAYE00000{n:02d}" for n in range(4)]

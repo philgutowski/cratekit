@@ -104,7 +104,7 @@ def read_plan(cfg: config.Config, declared, catalogue: bool, progress) -> backlo
         if not catalogue:
             return backlog.plan_backlog(cfg, db, declared, text=text, progress=progress)
         lookup = suggest.catalogue_lookup(
-            searchers.for_taxonomy(declared), published.for_taxonomy(declared)
+            searchers.for_taxonomy(declared), published.for_suggestions(declared)
         )
         # WHAT THIS RUN CANNOT ASK, as ``tag suggest`` reads it (U244), so a
         # row kept as passed over is asked again once a token is recorded.
@@ -153,22 +153,38 @@ def advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
                 ),
             }
         )
-    unread = [row for row in plan.rows if row.asked is not None and row.asked.said == suggest.UNREAD]
     # A ROW LEFT UNREAD ONLY BY A CATALOGUE NOBODY ASKED is said as that, with
-    # how to have it asked, as ``tag suggest`` says it (U244).
-    refused = [row.content_id for row in unread if not row.asked.passed_over]
-    passed = [row.content_id for row in unread if row.asked.passed_over]
+    # how to have it asked, as ``tag suggest`` says it (U244). A ROW ANOTHER
+    # CATALOGUE ANSWERED is said apart, naming the one that could not be read,
+    # whatever was then proposed for it (U322).
+    unread = suggest.sort_unread(
+        (row.content_id, row.asked) for row in plan.rows if row.asked is not None
+    )
     parts = []
-    if refused:
+    if unread.refused:
         parts.append(
-            f"the catalogues could not be read for {len(refused)} row(s), "
-            f"{_named(refused)}, so those were weighed from the library alone"
+            f"the catalogues could not be read for {len(unread.refused)} row(s), "
+            f"{_named(list(unread.refused))}, so those were weighed from the library alone"
         )
-    if passed:
+    if unread.partly:
         parts.append(
-            f"Discogs was not asked about {len(passed)} row(s), {_named(passed)}, "
-            f"because no Discogs token is recorded, so those were weighed from the "
-            f"library alone; to record one: {searchers.DISCOGS_LOGIN_STEPS}"
+            f"{unread.partly_by} could not be read for {len(unread.partly)} row(s) "
+            f"another catalogue answered, {_named(list(unread.partly))}, so those were "
+            f"weighed without it"
+        )
+    if unread.no_token:
+        parts.append(
+            f"Discogs was not asked about {len(unread.no_token)} row(s), "
+            f"{_named(list(unread.no_token))}, because no Discogs token is recorded, so "
+            f"those were weighed from the library alone; to record one: "
+            f"{searchers.DISCOGS_LOGIN_STEPS}"
+        )
+    if unread.token_unusable:
+        parts.append(
+            f"Discogs was not read for {len(unread.token_unusable)} row(s), "
+            f"{_named(list(unread.token_unusable))}, because the recorded Discogs token "
+            f"could not be used, so those were weighed without it; to record a new one: "
+            f"{searchers.DISCOGS_LOGIN_STEPS}"
         )
     if parts:
         found.append({"code": CATALOGUE_UNREAD, "message": "; ".join(parts)})
@@ -258,6 +274,33 @@ def _proposed_detail(plan: backlog.Backlog) -> str:
     )
 
 
+def _asked_rows(plan: backlog.Backlog) -> list[suggest.Asked]:
+    return [row.asked for row in plan.rows if row.asked is not None]
+
+
+def _catalogue_detail(plan: backlog.Backlog) -> str:
+    """Each catalogue's answers across the rows asked about, as a person reads them (U322)."""
+    counted = suggest.catalogue_counts(_asked_rows(plan))
+    parts = []
+    for source, entry in counted["catalogues"].items():
+        said = (
+            f"{source} asked about {entry['asked']}, matched {entry['matched']}, "
+            f"missed {entry['missed']}, could not be read for {entry['unread']}, "
+            f"not asked about {entry['not_asked']}"
+        )
+        if entry["not_sent"]:
+            said += f" ({entry['not_sent']} of them once it had refused this client)"
+        parts.append(said)
+    detail = f"{counted['rows']} row(s) with no genre were weighed with the catalogues"
+    detail += (": " + "; ".join(parts)) if parts else ", and no catalogue's answer is recorded"
+    if counted["stopped"]:
+        detail += (
+            f"; the walk asked nothing about {counted['stopped']} row(s) once no "
+            f"catalogue could be read for {suggest.STOP_AFTER_UNREAD} rows in a row"
+        )
+    return detail
+
+
 def checks(plan: backlog.Backlog) -> list[dict[str, Any]]:
     """The backlog as rows a person reads: causes, proposals, words, steps, remainder."""
     found: list[dict[str, Any]] = []
@@ -268,6 +311,8 @@ def checks(plan: backlog.Backlog) -> list[dict[str, Any]]:
             )
     if plan.proposals:
         found.append(_check("backlog.proposed", "proposed", _proposed_detail(plan)))
+    if plan.catalogue:
+        found.append(_check("backlog.catalogue", "catalogue", _catalogue_detail(plan)))
     for word in plan.words:
         found.append(_check(f"backlog.word.{word.spelling}", word.spelling, _word_detail(word)))
     for number, step in enumerate(plan.campaign(), start=1):
@@ -332,6 +377,9 @@ def _payload(plan: backlog.Backlog) -> dict[str, Any]:
             "tracks": plan.tracks,
             "floor": backlog.FLOOR,
             "catalogue": plan.catalogue,
+            "catalogue_answers": (
+                suggest.catalogue_counts(_asked_rows(plan)) if plan.catalogue else None
+            ),
             "causes": plan.counts,
             "statuses": plan.statuses,
             "words": [word.to_json() for word in plan.words],
