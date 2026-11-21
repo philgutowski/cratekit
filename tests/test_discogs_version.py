@@ -446,6 +446,9 @@ def test_a_files_named_versions(title, named):
         ("Two Months Off - Tim Green Remix", True, False),
         ("Two Months Off - Tim Green Remix - Part 2", True, False),
         ("Two Months Off (Tim Green Remix) - 2014 Remaster", True, False),
+        # A group ending a dash part before a tail that is no version, which
+        # only the reading of each dash prefix finds (the table's T19).
+        ("Two Months Off (Tim Green Remix) - Part 2", True, False),
         ("Two Months Off (Tim Green Remix) (Extended)", True, False),
         ("Two Months Off (Tim Green Dub)", True, False),
         ("Two Months Off (Tim Green's Remix)", True, False),
