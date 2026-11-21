@@ -8,9 +8,10 @@ INBOX by design, and the INBOX refill (U134) reads the pass's recorded reports,
 never the account. This module is the noticing. It reads every downloaded
 playlist again, finds each track its pass recorded that the account no longer
 lists, resolves it to its collection row, and answers each row as OFFERED for
-removal from the collection or KEPT, with why. It writes nothing anywhere: no
-row, no file, no account write, no record. U288's gate shows this plan and
-binds to its digest.
+removal from the collection or KEPT, with why. The plan writes nothing
+anywhere: no row, no file, no account write, no record. U288's gate shows it
+and binds to its digest, and :func:`apply_removed` takes the offered rows out
+of the collection behind that gate, as rekordbox's Remove from Collection does.
 
 WHAT IS DOWNLOADED. An account playlist an ``intake.playlist`` job with a
 recorded name succeeded for, whose pass has a standing landing record naming
@@ -57,8 +58,9 @@ EACH ROW GETS ONE ANSWER, the first that holds of these:
 * ``kept, on another synced playlist``;
 * ``kept, in a playlist of yours``: a live membership anywhere but the intake
   tree, the routing tree, or the custom playlist twin a landing recorded for a
-  playlist it left. A label year playlist keeps the row, the brief's rule,
-  until Phillip answers whether Cratekit's own filing does;
+  playlist it left. A label year playlist keeps the row: Phillip answered
+  on 2026-11-21 that Cratekit's own filing keeps nothing, and the label
+  year playlists are not yet told apart from a person's here (a residual);
 * ``offered``.
 
 One collection row reached from two playlists, or two passes, is one answer

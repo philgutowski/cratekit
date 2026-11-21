@@ -3,7 +3,11 @@
 Deletion is driven by rekordbox's own soft-delete marker, which is the decision
 that keeps the writer's unconditional delete prohibition closed: a removed row
 persists with its path intact, so removals are identified exactly without this
-unit ever creating, editing, or deleting a database row. Nothing in this module
+unit ever creating, editing, or deleting a database row. rekordbox 7.2 deletes
+a row OUTRIGHT on Remove from Collection (A178, A185), which leaves no marker,
+so a row ``crate sync removed`` takes out is read from the session record that
+names it instead, :func:`recorded_removals` (U288); a row a person removes by
+hand in rekordbox is still invisible here (R-1037). Nothing in this module
 writes. Nothing in this module can write: it reads mapped rows into frozen values
 and hands those on, so every later stage in the pass operates on data rather than
 on live objects that could be mutated by accident.

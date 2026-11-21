@@ -353,7 +353,10 @@ a recording. `crate sync removed` answers each one's row **offered** for
 removal from the collection or **kept** (held before the pass, not this pass's
 file, on another synced playlist, in a playlist of yours), or **left** when no
 single row holds it. Nothing is offered while a synced playlist is not read
-whole. Only listed; the removal is a later card's.
+whole. Behind the explicit gate `sync.removed.confirm`, the offered rows leave
+the collection as rekordbox's Remove from Collection takes them out (U288): the
+row and every row naming it deleted, the lists left; the session record names
+each one, and `crate delete review` then offers its file.
 
 *Avoid:* a pair removal, which takes a membership and never a track.
 

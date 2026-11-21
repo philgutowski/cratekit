@@ -100,6 +100,11 @@ it in djmdSongPlaylist, djmdCue, contentCue, contentFile, djmdSongHistory and
 djmdMixerParam, deletes the artist and album rows the removal leaves named by
 nothing, deletes the track's analysis folder and files (a write outside the
 database, which needs its own guard), leaves playlist and history list rows
-alone, and advances `localUpdateCount`. **Still unmeasured:** a track whose
+alone, and advances `localUpdateCount`. U288 does exactly this through
+`rb_writer.collection_removal`, refuses a track any other table names, and
+leaves the analysis files and the orphan artist and album rows; since the row
+leaves no soft delete marker, its session record names every row it removed,
+and `crate delete review` reads that record to offer the file (R-1037).
+**Still unmeasured:** a track whose
 history list or playlist holds other tracks (whether `TrackNo` is renumbered),
 genre and label rows, and My Tag and sampler rows.

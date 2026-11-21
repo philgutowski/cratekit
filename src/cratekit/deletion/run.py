@@ -34,7 +34,9 @@ has a reason it is where it is:
 
 **NOTHING HERE WRITES A DATABASE ROW (KTD15).** Deletion is driven by rekordbox's
 own soft-delete marker precisely so the guarded writer's unconditional delete
-prohibition never has to be reopened. The database is opened, read, and closed.
+prohibition never has to be reopened, and by the session records of ``crate
+sync removed``, which deletes a row outright as rekordbox does (U288) and names
+each one it took out, since such a row carries no marker. The database is opened, read, and closed.
 That is also why there is no capture: a snapshot protects database rows, this
 run creates, edits and deletes none, and the thing that is actually at risk is
 files, which a database snapshot does not hold. What protects those is the
