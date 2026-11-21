@@ -57,40 +57,55 @@ SRC_ROOT = REPO_ROOT / "src"
 LAYERS = ("foundation", "domain", "infrastructure", "write", "modules", "cli")
 RANK = {name: index for index, name in enumerate(LAYERS)}
 
-# Module-to-layer assignment, first match wins. Explicit overrides come first so
-# that a module's DIRECTORY never silently overrules its role. Two of those
-# overrides matter:
+# Module-to-layer assignment. A module the ladder places BY NAME is looked up
+# first, so that a module's DIRECTORY never silently overrules its role; every
+# other module takes its directory's layer from the patterns below it.
+#
+# ONE LINE PER PLACED MODULE, SORTED (U296). The placements were alternations
+# inside three patterns, so every card that split a part from ``core.config``,
+# ``core.routing`` or ``core.tombstone`` rewrote the same line. A part split
+# from a placed module is placed by adding its own line beside its parent, and
+# no line another package's card edits changes. A part split from a module the
+# patterns place needs no line at all.
+#
+# Two kinds of placement matter:
 #
 #   * the output envelope and the exit-code vocabulary live under cli/ for
 #     packaging reasons but are foundation concepts, reserved globally before any
 #     verb ships (KTD25). Ranking them as CLI would forbid every layer from using
 #     the one output contract they are all required to use.
 #   * the tree registry lives under core/ but is a WRITE concern.
-_LAYER_RULES: tuple[tuple[str, str], ...] = (
+_PLACED: dict[str, str] = {
+    "cratekit.cli.envelope": "foundation",
+    "cratekit.cli.exit_codes": "foundation",
+    "cratekit.cli.output": "foundation",
     # ``prompt`` joins the foundation list with U107. It is the ONE module
     # allowed to read standard input and it imports nothing of this package,
     # so ranking it as CLI would forbid a verb that lives beside its domain,
     # ``label.sync_cli``, from asking a question through the one allowlisted
     # reader, and the alternative was a second reader in a second file.
-    (r"^cratekit\.cli\.(output|exit_codes|envelope|prompt)$", "foundation"),
+    "cratekit.cli.prompt": "foundation",
     # ``cause`` joins the foundation list for the same reason ``exit_codes``
     # does: KTD25 reserves the failure vocabulary globally, before any verb
     # ships, and every layer from the adapter upwards has to be able to build one.
     # Ranking it as infrastructure would forbid the output envelope, which is
     # foundation, from naming the type it carries.
-    (
-        r"^cratekit\.core\."
-        r"(config|secrets|types|locations|naming|profiles|output|exit_codes|cause)$",
-        "foundation",
-    ),
-    (r"^cratekit\.core\.(taxonomy|routing|match|identity|tombstone)$", "domain"),
-    #     * the convergence record joins it for the same reason and by the same
-    #       argument the registry's own docstring makes: it is a WRITE concern
-    #       living under core/ so that the assertion every database tree writer
-    #       is required to make ships below the writers that make it. A check
-    #       that lived with each writer would be several implementations of one
-    #       rule, which is how they come to disagree.
-    (r"^cratekit\.core\.(tree_registry|convergence)$", "write"),
+    "cratekit.core.cause": "foundation",
+    "cratekit.core.config": "foundation",
+    #     * the convergence record joins the write list for the same reason and
+    #       by the same argument the registry's own docstring makes: it is a
+    #       WRITE concern living under core/ so that the assertion every
+    #       database tree writer is required to make ships below the writers
+    #       that make it. A check that lived with each writer would be several
+    #       implementations of one rule, which is how they come to disagree.
+    "cratekit.core.convergence": "write",
+    "cratekit.core.exit_codes": "foundation",
+    "cratekit.core.identity": "domain",
+    "cratekit.core.locations": "foundation",
+    "cratekit.core.match": "domain",
+    "cratekit.core.naming": "foundation",
+    "cratekit.core.output": "foundation",
+    "cratekit.core.profiles": "foundation",
     # The restore takes the SAME exception, for the same reason and with the same
     # cost. It lives under core/ because the pending register and the state
     # inventory both name it there, and it is a WRITE concern: it reads the tree
@@ -99,7 +114,17 @@ _LAYER_RULES: tuple[tuple[str, str], ...] = (
     # layer imports it, which is what keeps the exception free: the session
     # boundary underneath reaches ``core.reconcile``, which is infrastructure and
     # deliberately does not touch the registry at all.
-    (r"^cratekit\.core\.restore$", "write"),
+    "cratekit.core.restore": "write",
+    "cratekit.core.routing": "domain",
+    "cratekit.core.secrets": "foundation",
+    "cratekit.core.taxonomy": "domain",
+    "cratekit.core.tombstone": "domain",
+    "cratekit.core.tree_registry": "write",
+    "cratekit.core.types": "foundation",
+}
+
+# Every module not placed by name, first match wins.
+_LAYER_RULES: tuple[tuple[str, str], ...] = (
     (r"^cratekit\.core\.", "infrastructure"),
     (r"^cratekit\.write\.", "write"),
     (r"^cratekit\.cli\.", "cli"),
@@ -226,6 +251,9 @@ _CLI_INVOCATION = re.compile(
 
 def layer_of(module: str) -> str:
     """Return the layer name for a dotted module path."""
+    placed = _PLACED.get(module)
+    if placed is not None:
+        return placed
     for pattern, layer in _LAYER_RULES:
         if re.match(pattern, module):
             return layer
@@ -474,6 +502,37 @@ def test_every_planned_module_has_a_layer(module, layer):
     whichever directory it happens to land in when somebody is in a hurry.
     """
     assert layer_of(module) == layer
+
+
+def test_a_part_split_from_a_placed_module_is_placed_by_one_line_of_its_own(monkeypatch):
+    """U296: the scenario the per line table exists for, both halves of it.
+
+    A part split from ``core.config`` falls to the directory's layer until it
+    is placed, which is infrastructure, and the foundation module importing it
+    is then an upward import: the ladder says so. One line for the part, and
+    no other line, makes both hold.
+    """
+    source = "from cratekit.core.config_locks import exclusive_lock\n"
+    assert layer_of("cratekit.core.config_locks") == "infrastructure"
+    assert len(import_direction_violations(source, "cratekit.core.config")) == 1
+
+    monkeypatch.setitem(_PLACED, "cratekit.core.config_locks", "foundation")
+    assert layer_of("cratekit.core.config_locks") == "foundation"
+    assert import_direction_violations(source, "cratekit.core.config") == []
+    assert layer_of("cratekit.core.config") == "foundation"
+
+
+def test_the_placement_table_is_sorted_and_names_only_layers_of_the_ladder():
+    """Sorted, so two cards adding parts add lines in different places."""
+    assert list(_PLACED) == sorted(_PLACED)
+    assert set(_PLACED.values()) <= set(LAYERS)
+    # A module placed where its directory already puts it is a line that says
+    # nothing, and the next reader takes it for an exception.
+    for module, layer in _PLACED.items():
+        by_directory = next(
+            ranked for pattern, ranked in _LAYER_RULES if re.match(pattern, module)
+        )
+        assert by_directory != layer, f"{module} is placed where its directory already puts it"
 
 
 def test_downward_and_same_layer_imports_pass():
