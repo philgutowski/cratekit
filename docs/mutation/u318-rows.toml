@@ -1,0 +1,247 @@
+name = "u318"
+pass_kind = "light"
+
+# Every row targets code U318 added: the version readers in titles.py and the
+# Discogs seam in searchers.py. The subset is every test file importing the
+# tagging searcher or the title reader.
+
+[[rows]]
+id = "T01_outcome_guard"
+description = "named_versions: read a version off an ambiguous name too, not only a titled one"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    if file.outcome is not Outcome.TITLED:
+        return frozenset()
+    named: set[Words] = set()'''
+new = '''    if file.outcome is Outcome.UNREADABLE:
+        return frozenset()
+    named: set[Words] = set()'''
+
+[[rows]]
+id = "T02_empty_title_part"
+description = "named_versions: read a version after a title part that names nothing, so 08A - 124 -  - Sunrise Mood Extended Mix names sunrise mood"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        if part.role is not Role.TITLE or not identifies(part.text):'''
+new = '''        if part.role is not Role.TITLE:'''
+
+[[rows]]
+id = "T03_title_of_brackets"
+description = "named_versions: read the title part's groups without the title rule, so (Sunrise Mood Extended Mix) names its own title as a mix"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        named |= _group_versions(part.text, title=True)'''
+new = '''        named |= _group_versions(part.text)'''
+
+[[rows]]
+id = "T04_after_is_later"
+description = "named_versions: read the part after the title as its version whatever its role, an artist's credit included"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        if after is not None and after.role is Role.LATER:'''
+new = '''        if after is not None:'''
+
+[[rows]]
+id = "T05_later_groups"
+description = "named_versions: drop the bracket groups of the dash part after the title"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''            named |= _group_versions(after.text)
+            if own := _stretch_version(after.text):'''
+new = '''            if own := _stretch_version(after.text):'''
+
+[[rows]]
+id = "T06_later_stretch"
+description = "named_versions: drop the dash tail version, so Two Months Off - Tim Green Remix names nothing"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''            if own := _stretch_version(after.text):'''
+new = '''            if own := tuple():'''
+
+[[rows]]
+id = "T07_track_number_before"
+description = "_a_title_before: a lone track number counts as a title, so 02 (Sunrise Mood Extended Mix) names a mix"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    return identifies(rest) and not _a_track_number(rest)'''
+new = '''    return identifies(rest)'''
+
+[[rows]]
+id = "T08_marker_before"
+description = "_a_title_before: the naming verb's marker counts as a title, so [MP3] (Sunrise Mood Extended Mix) names a mix"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    rest = _MARKER.sub("", before, count=1).strip()'''
+new = '''    rest = before.strip()'''
+
+[[rows]]
+id = "T09_ends_in_version_word"
+description = "_naming_words: drop the last word test, so (Part 1) or (Tim Green Vocal) is a version"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    if not found or not _a_kind_word(found, len(found) - 1) or found[0] in _CREDITS:'''
+new = '''    if not found or found[0] in _CREDITS:'''
+
+[[rows]]
+id = "T10_credit_group"
+description = "_naming_words: drop the credit test, so (feat. Tom Tom Club) is read as a mix (fix round two)"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    if not found or not _a_kind_word(found, len(found) - 1) or found[0] in _CREDITS:'''
+new = '''    if not found or not _a_kind_word(found, len(found) - 1):'''
+
+[[rows]]
+id = "T11_trailing_descriptions"
+description = "_naming_words: fold only version words off the end, never a description, so LP Version names lp (round one's BLOCKING)"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    while end and _a_mix_word(found, end - 1):'''
+new = '''    while end and _a_kind_word(found, end - 1):'''
+
+[[rows]]
+id = "T12_leading_fold"
+description = "_naming_words: fold nothing off the front, so Extended Tim Green Remix names extended tim green"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    while start < end and _a_mix_word(found, start):'''
+new = '''    while start < end and False:'''
+
+[[rows]]
+id = "T13_name_joins"
+description = "_naming_words: keep and, the and a possessive s in a maker's name"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    return tuple(_folded(word) for word in found[start:end] if word not in _NAME_JOINS)'''
+new = '''    return tuple(_folded(word) for word in found[start:end])'''
+
+[[rows]]
+id = "T14_accents"
+description = "_naming_words: keep a maker's accents, so Ame and Âme are two makers"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    return tuple(_folded(word) for word in found[start:end] if word not in _NAME_JOINS)'''
+new = '''    return tuple(word for word in found[start:end] if word not in _NAME_JOINS)'''
+
+[[rows]]
+id = "T15_rmx"
+description = "_VERSION_SPELLINGS: drop rmx, so Tim Green Rmx is no version"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''_VERSION_SPELLINGS = frozenset({"rmx", "remixed"})'''
+new = '''_VERSION_SPELLINGS = frozenset({"remixed"})'''
+
+[[rows]]
+id = "T16_remaster_year"
+description = "_a_mix_word: fold no year away from a remaster, so 2009 Digital Remaster names 2009"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    return _YEAR.fullmatch(found[index]) is not None and not _REMASTER.isdisjoint(found)'''
+new = '''    return False'''
+
+[[rows]]
+id = "T17_alone_strict"
+description = "writes_version untitled: read any group of the row too, so a single's other title's remix Sun Path (Tide Remix) counts (round one's finding 6)"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        return bool(named & alone)'''
+new = '''        return bool(named & (alone | _group_versions(text)))'''
+
+[[rows]]
+id = "T19_group_per_dash_prefix"
+description = "writes_version titled: read only the groups the whole row ends with, so X (A Remix) - 2014 Remaster writes nothing"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    for last in range(1, len(parts) + 1):
+        written |= _group_versions(DASH.join(parts[:last]))'''
+new = '''    for last in range(len(parts), len(parts) + 1):
+        written |= _group_versions(DASH.join(parts[:last]))'''
+
+[[rows]]
+id = "T20_middle_dash_part"
+description = "writes_version titled: read dash suffixes only, so a three part row written as the file is refused (round one's finding 9)"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        written |= {_stretch_version(DASH.join(parts[first:])), _stretch_version(parts[first])}'''
+new = '''        written |= {_stretch_version(DASH.join(parts[first:]))}'''
+
+[[rows]]
+id = "T21_unbracketed_suffix"
+description = "writes_version titled: drop the suffix rule, so a track Two Months Off Tim Green Remix writes nothing"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    return any(len(whole) > len(name) and whole[-len(name) :] == name for name in named)'''
+new = '''    return False'''
+
+[[rows]]
+id = "S01_track_needs_the_mix"
+description = "_release_carries: a track matching title and artist counts whatever its mix, the sitting's defect"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''                if not named or titles.writes_version(track_title, named, titled=True):'''
+new = '''                if True:'''
+
+[[rows]]
+id = "S02_single_needs_the_mix"
+description = "_release_carries: the single fallback counts whatever the release writes"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        if (
+            not named
+            or titles.writes_version(release.title, named, titled=True)'''
+new = '''        if (
+            True
+            or titles.writes_version(release.title, named, titled=True)'''
+
+[[rows]]
+id = "S03_single_track_alone"
+description = "_release_carries: the single fallback reads no track that is the mix alone, so a single titled X with a track A Remix refuses X (A Remix)"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''            or any(titles.writes_version(track, named, titled=False) for track, _ in release.tracks)'''
+new = '''            or False'''
+
+[[rows]]
+id = "S04_miss_names_the_release"
+description = "_search: never record a release refused for its version, so the miss carries no note"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''            if carries is _Carries.ANOTHER_VERSION:
+                refused_version.append(number)'''
+new = '''            if carries is _Carries.NO:
+                refused_version.append(number)'''
+
+[[rows]]
+id = "S05_fallback_found"
+description = "_release_carries: a single refused on its title alone is no version refusal, so its miss names nothing"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''            return _Carries.YES
+        found = True
+    return _Carries.ANOTHER_VERSION if found else _Carries.NO'''
+new = '''            return _Carries.YES
+    return _Carries.ANOTHER_VERSION if found else _Carries.NO'''
