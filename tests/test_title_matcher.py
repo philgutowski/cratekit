@@ -1703,3 +1703,44 @@ def test_beatport_ranks_no_row_by_brackets_shed_across_a_dash(title):
 @pytest.mark.parametrize(("artist", "title", "row"), WHOLE_NAME_STILL)
 def test_what_the_whole_name_found_the_parse_still_reads(artist, title, row):
     assert searchers._title_matches(title, row, artist=artist)
+
+
+# ---------------------------------------------------------------------------
+# U324. A credit spelled with a letter accent stripping leaves alone
+# ---------------------------------------------------------------------------
+
+#: (artist tag, file title, the credit as a row would write it): the
+#: artist's part is the tag's artist spelled with a letter NFKD leaves whole,
+#: "ø", "æ", "ß", "ł" or "þ", written plain on one side, as "Âme" and "Ame"
+#: always were; and an initial the fold spells with two letters, "Þ." of
+#: "Þórður" or "Æ." of "Æsop", still stands for the word it opens.
+FOLDED_CREDITS = (
+    ("Trentemøller", "08A - 124 - Trentemoller - Sun Path", "Trentemoller"),
+    ("Trentemoller", "08A - 124 - Trentemøller - Sun Path", "Trentemøller"),
+    ("Łukasz Bloom", "08A - 124 - Lukasz Bloom & Tide - Sun Path", "Lukasz Bloom & Tide"),
+    ("Straße Bloom", "08A - 124 - Strasse Bloom - Sun Path", "Strasse Bloom"),
+    ("Æther", "08A - 124 - [MP3] Aether - Sun Path", "Aether"),
+    ("Þórður Badie", "08A - 124 - Þ. Badie - Sun Path", "Þ Badie"),
+    ("Æsop Badie", "08A - 124 - Æ. Badie - Sun Path", "Æ Badie"),
+)
+
+
+@pytest.mark.parametrize(("artist", "title", "credit"), FOLDED_CREDITS)
+def test_a_credit_spelled_with_a_letter_nfkd_leaves_is_the_artists(artist, title, credit):
+    assert searchers._title_matches(title, "Sun Path", artist=artist)
+    assert not searchers._title_matches(title, credit, artist=artist)
+    assert titles.question(title, artist).title == "Sun Path"
+
+
+@pytest.mark.parametrize(
+    ("artist", "title", "other"),
+    [
+        # "o" is not "oe": a fold reads a letter one way only.
+        ("Trentemøller", "08A - 124 - Trentemoeller - Sun Path", "Sun Path"),
+        ("Straße Bloom", "08A - 124 - Strase Bloom - Sun Path", "Sun Path"),
+        # A title holding the folded name is still a title.
+        ("Trentemøller", "08A - 124 - Trentemoller Theme - Sun Path", "Sun Path"),
+    ],
+)
+def test_a_folded_name_is_no_wider_than_its_letters(artist, title, other):
+    assert not searchers._title_matches(title, other, artist=artist)
