@@ -40,11 +40,24 @@ only from the dash part that carries it, and a stretch is read across a dash onl
 structure lets the title run on, into its own version or a part that may be
 its own.
 
+A NAMED MIX, FOR DISCOGS (U318). :func:`matches` reads a title past its
+version, so "Two Months Off (Tim Green Remix)" and "Two Months Off" are one
+recording to it. Discogs lists a release's mixes as its tracks, and a remix
+took a release of four other mixes that way, so Discogs also asks
+:func:`named_versions` of the file and :func:`writes_version` of the row: a
+mix that names its maker must be written on the release. The other sources
+are unchanged.
+
 WHERE A LIST STILL DECIDES, and which way it fails. :data:`VERSION_WORDS`
 sheds a trailing version from a title and tells a dash tail that is a
 version from one that is not. A word it lacks makes a title longer than its
 row writes it, a miss. It never decides that a part is the title: that is
-position, and where position cannot tell, the outcome is ambiguous.
+position, and where position cannot tell, the outcome is ambiguous. For a
+named mix, :data:`VERSION_WORDS` and :data:`MIX_DESCRIPTIONS` say which
+words name no one, and it fails both ways: a word both lack is read as a
+name, which costs a Discogs miss, and a maker named by their words alone,
+"(DJ Deep Remix)", is read as no one, matched as before, another mix's
+release included.
 """
 
 from __future__ import annotations
@@ -1076,6 +1089,202 @@ def matches(file: FileName, row: Row) -> bool:
     if file.outcome is Outcome.AMBIGUOUS:
         return bool(file.splits & row.splits) or _any_same(whole, row.titles)
     return _any_same((*file.titles, *whole), row.titles)
+
+
+
+# ---------------------------------------------------------------------------
+# The version a file's title names, and whether a catalogue title writes it (U318)
+# ---------------------------------------------------------------------------
+
+
+#: Words that describe a mix of the recording without naming who made it,
+#: read as noise beside :data:`VERSION_WORDS` when a version is compared
+#: (U318) and nowhere else: its kind, length, format, medium, edition,
+#: language or style, "Main Mix", "Vocal Mix", "LP Version", "2009 Digital
+#: Remaster", "UK Radio Edit", "12 Inch Version", "Deep Mix". Such a mix is
+#: the plain title's own recording, so a file so titled still takes the
+#: release of its plain title, as it did before. A word missing here reads
+#: as a maker's name, which costs a Discogs miss; a maker named by these
+#: words alone, "DJ Deep" or "Digital", reads as no one and is matched as
+#: before, another mix's release included.
+#: Pinned word for word by ``tests/test_discogs_version.py``.
+MIX_DESCRIPTIONS = frozenset(
+    {
+        # What part of the recording, and how long.
+        "album", "bonus", "beats", "beatless", "full", "length", "long", "main", "short",
+        "single", "track", "intro", "outro", "part", "pt", "maxi", "ep", "lp", "inch",
+        "7", "12", "1", "2", "3",
+        # Its edition, medium and mastering.
+        "alternative", "clean", "dirty", "explicit", "censored", "digital", "digitally",
+        "hi", "res", "mono", "stereo", "master", "mixed", "unmixed", "continuous", "new",
+        "early", "first", "second", "final", "rough", "special", "unreleased", "promo",
+        "re", "video", "tv", "film", "movie", "soundtrack", "dj", "tool", "uk", "us",
+        "english", "spanish", "german", "french", "italian", "japanese",
+        # Its arrangement and style.
+        "vocal", "piano", "orchestral", "stripped", "ambient", "classic", "deep", "disco",
+        "dance", "house",
+    }
+)
+
+#: Spellings of a version word the domain's list lacks, read as one when a
+#: version is compared: "Tide Rmx" is Tide's remix.
+_VERSION_SPELLINGS = frozenset({"rmx", "remixed"})
+
+#: Words a maker's name is written with or without: "Tide & Sun" and "Tide And
+#: Sun" are one maker, "Tim Green's Remix" is Tim Green's, and "The Original
+#: Mix" names no one. "A" stays a name: "A Remix" may be A's.
+_NAME_JOINS = frozenset({"and", "s", "the"})
+
+#: The words that open a credit to someone who is not the mix's maker: a
+#: group "(feat. Tom Tom Club)" or "(with Bombay Bicycle Club)" is a credit,
+#: never a version, whatever word it ends with.
+_CREDITS = _FEATURING | {"with"}
+
+
+def _a_kind_word(found: Words, index: int) -> bool:
+    return found[index] in _VERSION_SPELLINGS or _a_version_word(found, index)
+
+
+def _a_mix_word(found: Words, index: int) -> bool:
+    """A version word, a description, or a year anywhere in a remaster's
+    version, "2009" of "2009 Digital Remaster"."""
+    if found[index] in MIX_DESCRIPTIONS or _a_kind_word(found, index):
+        return True
+    return _YEAR.fullmatch(found[index]) is not None and not _REMASTER.isdisjoint(found)
+
+
+def _naming_words(found: Words) -> Words:
+    """What a version names beside its version words, or nothing.
+
+    "tim green" of "Tim Green Remix" and of "Extended Tim Green Remix",
+    "mita gami" of "Mita Gami Extended Mix": the words of a stretch that ends
+    in a version word or a spelling of one ("Rmx"), with the words it ends
+    and opens with that are the reader's own fold (:data:`VERSION_WORDS` and
+    a remaster's year, :func:`_a_version_word`, a year anywhere in a
+    remaster's stretch), a mix's description (:data:`MIX_DESCRIPTIONS`) or a
+    spelling left out, and folded as a name is (accents off, "and", "the"
+    and a possessive "s" dropped). A version of those alone, "Extended
+    Mix", "Original Mix", "Radio Edit", "Vocal Mix" or "2014 Remaster",
+    names no other mix, and a stretch that does not end in a version word,
+    "Part 1", or that opens with a credit, "feat. Tom Tom Club", is no
+    version at all; both name nothing.
+    """
+    if not found or not _a_kind_word(found, len(found) - 1) or found[0] in _CREDITS:
+        return ()
+    end = len(found)
+    while end and _a_mix_word(found, end - 1):
+        end -= 1
+    start = 0
+    while start < end and _a_mix_word(found, start):
+        start += 1
+    return tuple(_folded(word) for word in found[start:end] if word not in _NAME_JOINS)
+
+
+def _trailing_groups(text: str) -> list[tuple[str, str]]:
+    """Each bracket group a text ends with, the last first, as the text
+    before it and the group's inside, read as :func:`without_trailing_groups`
+    reads them."""
+    current = text.strip()
+    groups: list[tuple[str, str]] = []
+    start = _trailing_group_start(current)
+    while start is not None:
+        inside = current[start + 1 : -1]
+        current = current[:start].rstrip()
+        groups.append((current, inside))
+        start = _trailing_group_start(current)
+    return groups
+
+
+def _group_versions(text: str, *, title: bool = False) -> set[Words]:
+    """What each bracket group a text ends with names as a version.
+
+    With ``title``, for a file's title, a group with nothing before it that
+    names anything is the title itself, as :func:`title_core` reads a title
+    of brackets alone, never its version, and so is one after only the
+    naming verb's marker or a lone track number, which the reader reads past:
+    "(Sunrise Mood Extended Mix)" and "02 (Sunrise Mood Extended Mix)" name
+    no mix, and "(Intro) (Tide Remix)" names Tide's."""
+    return {
+        named
+        for before, inside in _trailing_groups(text)
+        if not title or _a_title_before(before)
+        if (named := _naming_words(words(inside)))
+    }
+
+
+def _a_title_before(before: str) -> bool:
+    rest = _MARKER.sub("", before, count=1).strip()
+    return identifies(rest) and not _a_track_number(rest)
+
+
+def _stretch_version(text: str) -> Words:
+    """What a stretch names as a version written with no bracket, "Tim Green
+    Remix" or "Tim Green Remix (Extended)", read before its bracket groups."""
+    return _naming_words(words(without_trailing_groups(text)))
+
+
+def named_versions(file: FileName) -> frozenset[Words]:
+    """The versions a file's title names, each by its naming words (U318).
+
+    Read off the parse, never a second one: each bracket group the title
+    part ends with that is a version, "Two Months Off (Tim Green Remix)",
+    and the dash part right after the title when it is one, "Two Months Off
+    - Tim Green Remix" (:func:`_naming_words`), never a part that credits the
+    artist or one past it, "Title - Culture Club - Album". A version that
+    names no one, "Extended Mix", "LP Version", names nothing, so the file is
+    matched as it always was. Only a titled name names one: an ambiguous
+    name matches only a row writing its split, its version included, and an
+    unreadable one names nothing. A version written into the title with no
+    bracket or dash, "Sunrise Mood Tim Green Remix", is one only a list
+    could cut from its title, so it names nothing here either.
+    """
+    if file.outcome is not Outcome.TITLED:
+        return frozenset()
+    named: set[Words] = set()
+    for index, part in enumerate(file.parts):
+        # A title part that names nothing is no title for a version to follow.
+        if part.role is not Role.TITLE or not identifies(part.text):
+            continue
+        named |= _group_versions(part.text, title=True)
+        after = file.parts[index + 1] if index + 1 < len(file.parts) else None
+        if after is not None and after.role is Role.LATER:
+            named |= _group_versions(after.text)
+            if own := _stretch_version(after.text):
+                named.add(own)
+    return frozenset(named)
+
+
+def writes_version(value: str, named: frozenset[Words], *, titled: bool) -> bool:
+    """Whether a catalogue title writes one of a file's named versions (U318).
+
+    With ``titled``, for a row whose title is already the file's, read by
+    the row's own structure, as :func:`read_row` reads it: a bracket group
+    ending the row or one of its dash parts, any dash part after the first,
+    or the row whole, each naming exactly one of ``named``; and a version
+    written on with no bracket or dash, "Two Months Off Tim Green Remix",
+    whose whole names "two months off tim green", ending in "tim green".
+
+    Without it, for a track matched on nothing else, a single's other track,
+    the row must be the mix alone, "Tim Green Remix" or "(Tim Green
+    Remix)", so "Sun Path (Tide Remix)" never says a single of "Sunrise
+    Mood" holds Tide's remix of it, and "Lost And Found Dub" never writes
+    "found".
+    """
+    text = normalized(value)
+    core = without_trailing_groups(text)
+    alone = {_stretch_version(text)} if identifies(core) else _group_versions(text)
+    if not titled:
+        return bool(named & alone)
+    parts = text.split(DASH)
+    written = set(alone)
+    for last in range(1, len(parts) + 1):
+        written |= _group_versions(DASH.join(parts[:last]))
+    for first in range(1, len(parts)):
+        written |= {_stretch_version(DASH.join(parts[first:])), _stretch_version(parts[first])}
+    if named & written:
+        return True
+    whole = _stretch_version(text)
+    return any(len(whole) > len(name) and whole[-len(name) :] == name for name in named)
 
 
 # ---------------------------------------------------------------------------
