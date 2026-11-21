@@ -188,8 +188,10 @@ def open_night(budget: int, *, now: datetime, path: Path | None = None) -> Opene
     """Charge this firing's place in its night and return it, or refuse when
     the night's budget is spent.
 
-    A mark left by a firing of the same night that never closed is charged in
-    full first, so the next firing starts from what it really spent.
+    A mark left by a firing that never closed is charged to tonight in full
+    first, whichever night it began in, so the next firing starts from what it
+    really spent; a mark of tonight's above the gate's total refuses, and one
+    of an earlier night's is dropped.
     """
     target = path if path is not None else ledger_path()
     ledger = read(target)
@@ -202,13 +204,17 @@ def open_night(budget: int, *, now: datetime, path: Path | None = None) -> Opene
         # after it spent calls nobody can place, so they are tonight's, early
         # and never late.
         moved = total - ledger.open_start
-        if moved < 0:
+        if moved < 0 and ledger.night == night:
             raise _unreadable(
                 "the provider gate's running total is below the mark an earlier "
-                "firing left",
+                "firing of tonight left",
                 target,
             )
-        spent += moved
+        # A MARK OF AN EARLIER NIGHT ABOVE THE TOTAL is dropped at the new
+        # night, as it was before the dead mark was charged (review round two):
+        # what it spent cannot be read, and refusing over it would refuse every
+        # night after until the ledger was edited by hand.
+        spent += max(0, moved)
     if spent >= budget:
         # CHARGED BEFORE THE REFUSAL: a dead firing's mark is folded in, so
         # the ledger says what tonight spent and no mark is left to charge twice.

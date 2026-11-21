@@ -575,7 +575,12 @@ def night(
     scope = _COMMAND
     if scope is None:
         raise RuntimeError("the night's line is opened inside a command's scope only")
-    left_of_ceiling = max(0, ceiling(settings) - scope.spent())
+    # THE CONFIGURED CEILING TOO (review round two): one raised through the
+    # environment, which the night's ``--calls`` refusal cannot see, never
+    # widens a firing.
+    left_of_ceiling = max(
+        0, min(ceiling(settings), settings.calls_per_command) - scope.spent()
+    )
     held = Night(
         start=max(0, int(start)), budget=max(0, min(int(calls), left_of_ceiling)), night=label
     )
@@ -1247,9 +1252,10 @@ class Gate:
             remediation=Remediation(
                 remedy=Remedy.RETRY_LATER,
                 steps=(
-                    "the next night's pass continues it, or continue it by hand at the "
-                    "Mac with crate sync land --pass-run and the pass's run",
-                    "or raise [provider] night_calls for every night",
+                    "the night pass's next firing continues it, or continue it by hand "
+                    "at the Mac with crate sync land --pass-run and the pass's run",
+                    "or raise [provider] night_calls, or [provider] calls_per_command "
+                    "when one command's ceiling set the line",
                 ),
             ),
             scope=Scope.RUN,

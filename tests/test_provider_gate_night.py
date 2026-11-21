@@ -126,6 +126,28 @@ def test_the_nights_line_is_held_to_what_is_left_of_the_command_ceiling(tmp_path
     assert "[provider] calls_per_command" in caught.value.cause.message
 
 
+def test_the_line_is_held_to_what_the_command_has_left_of_its_ceiling(tmp_path, clock):
+    """Review round two's zero row: calls the command made before the night
+    opened come off the line."""
+    gate = _gate(tmp_path, clock, calls_per_command=5)
+    transport = Transport()
+    with provider_gate.command():
+        _send(gate, transport)
+        _send(gate, transport)
+        with provider_gate.night(0, 100, "n", calls_per_hour=600, settings=gate.settings) as held:
+            assert held.budget == 3
+
+
+def test_a_ceiling_raised_through_the_environment_never_widens_a_firing(monkeypatch):
+    """Review round two, finding 6: the night refuses --calls, and the variable
+    it cannot see is held to the configured ceiling."""
+    monkeypatch.setenv(provider_gate.CALLS_ENV, "600")
+    settings = GateSettings(calls_per_command=500)
+    with provider_gate.command():
+        with provider_gate.night(0, 1200, "n", calls_per_hour=600, settings=settings) as held:
+            assert held.budget == 500
+
+
 def test_the_ceiling_still_holds_beside_a_line_above_it(tmp_path, clock):
     """Asked beside the night's line, so even a line handed past the ceiling
     by a parent's environment cannot widen a command."""
@@ -388,6 +410,17 @@ def test_a_gate_that_cannot_be_read_refuses_the_night():
         night_budget.open_night(100, now=AT_THREE)
 
     assert "provider gate's state file could not be read" in caught.value.cause.message
+
+
+def test_an_earlier_nights_mark_above_the_total_is_dropped_at_the_new_night():
+    """Review round two, finding 3: it once refused every night after."""
+    _set_total(900)
+    night_budget.open_night(1200, now=AT_THREE - timedelta(days=1))  # never closed
+    _set_total(1)
+
+    opened = night_budget.open_night(1200, now=AT_THREE)
+
+    assert opened.spent_before == 0 and opened.start == 1
 
 
 def test_a_total_below_an_earlier_firings_mark_refuses():

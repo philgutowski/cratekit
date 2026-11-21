@@ -70,8 +70,8 @@ and branch on `data.summary.night.outcome`:
   PASS_RUN`, the run in `data.summary.night.pass_run`, and read it as below.
 - **Anything else**, or no record: run the pass below. A night that stopped
   or was refused says why in `data.summary.night.line`; carry it into the
-  report. `settled` means the session already answered the night's gate or
-  landed its tracks.
+  report. `settled` means the night's pass has landed since, by its native
+  landing's record.
 
     crate --output json sync land
 

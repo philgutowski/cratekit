@@ -766,7 +766,8 @@ firing's line is the lower of what is left and one command's ceiling, and its
 hour is lowered to `[provider] night_calls_per_hour`, 600; a call past it parks
 as `provider-night-budget`), continues its own pass a wait would mend, and
 leaves one line, doctor's `sync.night`, that `--last` prints with its fields. A
-refused firing keeps a pass still owed; a wait since ended reads `settled`.
+refused firing keeps a pass still owed; a wait whose pass has landed since, by
+its native landing's record, reads `settled`.
 
 ### Staging lock
 `core/staging_lock.py` (U293): one advisory lock, held by `sync land`,

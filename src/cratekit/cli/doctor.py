@@ -3941,7 +3941,7 @@ def _check_night_pass(inputs: _Inputs) -> Finding:
     try:
         # AS THINGS STAND NOW (review round one): a wait answered or landed
         # since its firing reads as settled, never as still waiting.
-        record = sync_night.settle(sync_night.read_status())
+        record = sync_night.settle(sync_night.read_status(), inputs.cfg)
     except ValueError as exc:
         return Finding(
             key=NIGHT_CHECK,
@@ -3955,7 +3955,10 @@ def _check_night_pass(inputs: _Inputs) -> Finding:
     if record is None:
         detail = "no night pass has run on this installation; crate sync night runs one"
     else:
-        detail = f"{record['line']} (ended {record.get('ended')})"
+        # THE LATEST FIRING'S TIME (review round two): a record kept over a
+        # refusal carries the refusal's own under ``firing``.
+        firing = record.get("firing") if isinstance(record.get("firing"), dict) else {}
+        detail = f"{record['line']} (ended {firing.get('ended') or record.get('ended')})"
     return Finding(key=NIGHT_CHECK, title=title, status=Status.INFO, detail=detail)
 
 

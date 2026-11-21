@@ -49,9 +49,8 @@ THE RECORD IS WHAT IS OWED, NOT THE LAST SNAPSHOT (review round one). A
 firing that refuses keeps a pass still waiting for the session or still to be
 continued, with every field its landing or its continue needs, and says only
 that it was refused; and every reader, ``--last``, doctor and the next firing,
-reads the record through :func:`settle`, so a wait the session has since
-ended, its gate answered or its staging folder emptied, is never shown as
-still waiting.
+reads the record through :func:`settle`, so a wait whose pass has landed
+since, by its own native landing's proof, reads as settled.
 
 ONE LINE OF STATUS, WHATEVER THE ENDING. The last firing's record is written
 to ``night_status``, with one line a person reads and the fields the next step
@@ -329,7 +328,7 @@ def _nothing_waits(cfg: config.Config, last: Mapping[str, Any] | None) -> None:
     if waiting and last is not None:
         steps.append(
             f"the night pass of {last.get('night')} waits for the session: "
-            f"{last.get('line')}"
+            f"{last.get('pass_line') or last.get('line')}"
         )
     steps.append(
         "land what is there at the Mac with the crate-sync skill, which reads "
@@ -355,52 +354,73 @@ def _gate_open(run_id: str) -> bool | None:
     return state.open_gate == tail.LAND_GATE
 
 
-def _holds(folder: str | None) -> bool | None:
-    """Whether ``folder`` holds anything a landing would take; None when unread."""
-    from cratekit.intake.landing import listing  # noqa: PLC0415 - one module's reading
-
-    if not folder:
+def _landed(cfg: config.Config | None, name: str | None) -> bool | None:
+    """Whether a native landing of the pass named ``name`` has committed;
+    None when that cannot be read."""
+    if cfg is None or not name:
         return None
-    path = Path(folder)
+    from cratekit.intake import native  # noqa: PLC0415 - the landing's own proof
+
     try:
-        if not path.exists():
-            return False
-        return bool(listing(path))
-    except OSError:
+        return bool(native.landings_of_pass(cfg, str(name)))
+    except (CratekitError, OSError):
         return None
 
 
-def settle(record: dict[str, Any] | None) -> dict[str, Any] | None:
+def _config_or_none() -> config.Config | None:
+    try:
+        return config.load()
+    except Exception:  # noqa: BLE001 - a reader without a configuration settles nothing
+        return None
+
+
+def settle(
+    record: dict[str, Any] | None, cfg: config.Config | None = None
+) -> dict[str, Any] | None:
     """The record as things stand now, not as the firing that wrote it left them.
 
     A record names the last firing's ending, and a wait it names may have ended
-    since: the session answered the landing's gate, or landed the pass and the
-    staging folder emptied (review round one, finding 3). Such a record reads as
-    :data:`SETTLED`, its line saying what ended it. A wait whose gate or folder
-    cannot be read is left as written, since what it names may still wait.
+    since (review round one, finding 3). ONE SIGNAL ENDS A WAIT: the pass's own
+    native landing, proven the way ``sync mark`` proves it. An answered gate
+    is not one, since an apply refused beside rekordbox or an abort leaves the
+    tracks staged; and an empty staging folder is not one, since it is no
+    pass's own and fills again with the next (review round two, findings 1 and
+    2). Such a record reads as :data:`SETTLED`, its line saying what ended it.
+    A wait whose landing cannot be read is left as written, since what it names
+    may still wait, and an answered gate over it is said in its line.
     """
     if not record or record.get("outcome") not in WAITS:
         return record
-    ended = None
+    if cfg is None:
+        cfg = _config_or_none()
+    if _landed(cfg, record.get("land_name")):
+        settled = dict(record)
+        settled["was"] = record.get("outcome")
+        settled["outcome"] = SETTLED
+        settled["next"] = None
+        settled["line"] = (
+            f"{record.get('pass_line') or record.get('line')}; since then pass "
+            f"{record.get('land_name')} has landed, so nothing waits"
+        )
+        return settled
     if record.get("outcome") == WAITING_GATE and record.get("gate_run"):
         if _gate_open(str(record["gate_run"])) is False:
-            ended = f"its gate run {record['gate_run']} has been answered"
-    if ended is None and _holds(record.get("staging")) is False:
-        ended = f"the staging folder {record.get('staging')} no longer holds its tracks"
-    if ended is None:
-        return record
-    settled = dict(record)
-    settled["was"] = record.get("outcome")
-    settled["outcome"] = SETTLED
-    settled["line"] = f"{record.get('line')}; since then {ended}, so nothing waits"
-    return settled
+            kept = dict(record)
+            kept["line"] = (
+                f"{record.get('line')}; its gate run {record['gate_run']} has been "
+                f"answered and no landing of pass {record.get('land_name')} is recorded, "
+                f"so its tracks may still be staged"
+            )
+            return kept
+    return record
 
 
 def _owed(record: Mapping[str, Any] | None) -> bool:
-    """Whether a settled record names a pass a later firing must not lose."""
+    """Whether a settled record names a pass a later firing must not lose: one
+    waiting for a person, at any gate, or one the next firing continues."""
     if not record:
         return False
-    return record.get("outcome") in WAITS or bool(_continued(record))
+    return record.get("outcome") in (*WAITS, WAITING) or bool(_continued(record))
 
 
 def _continued(last: Mapping[str, Any] | None) -> str | None:
@@ -587,6 +607,13 @@ def sync_night(ctx: Context) -> Envelope:
         _no_answer(ctx)
         cfg = tail.load_config(_ORIGIN)
         with staging_lock.held("crate sync night", run_id=ctx.run.run_id):
+            # READ AGAIN UNDER THE LOCK (review round two, finding 9): the
+            # reading above serves a refusal before the lock, and this one the
+            # pass, so no other firing rewrites it in between.
+            try:
+                last = settle(read_status(), cfg)
+            except ValueError:
+                last = None
             rb_writer.assert_rekordbox_closed("crate sync night")
             _no_live_job()
             pass_run = _continued(last)
@@ -717,7 +744,7 @@ def _ended(
     pass_run = firing.fields.get("pass_run")
     again = pass_run if cause.reason in CONTINUES and pass_run else None
     if again:
-        then = f"the next night continues pass {again}, or at the Mac: crate sync land --pass-run {again}"
+        then = f"the next firing continues pass {again}, or at the Mac: crate sync land --pass-run {again}"
     else:
         then = cause.remediation.steps[0] if cause.remediation.steps else "read crate sync night --last"
     line = f"{head}: stopped, {cause.reason}: {cause.message}; {spend}; {then}"

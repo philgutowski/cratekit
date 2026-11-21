@@ -518,7 +518,7 @@ def test_a_pass_the_nights_budget_stopped_is_continued_by_the_next_firing(plain,
     record = _status()
     assert record["outcome"] == sync_night.STOPPED
     assert record["continue_pass"] == "pass-1"
-    assert "the next night continues pass pass-1" in record["line"]
+    assert "the next firing continues pass pass-1" in record["line"]
     # ITS OWN FILES ARE STAGED, which a new pass would refuse beside; the
     # continue does not ask the folder, and sync land's own reading guards it.
     staging = _staging(plain)
@@ -772,41 +772,91 @@ def _run_with_gate(run_id: str, *, open_: bool) -> None:
     gates.save(state)
 
 
-def test_a_wait_whose_gate_was_answered_reads_settled_everywhere(plain, one_pass):
-    """Finding 3: after the landing the record still said the pass waited."""
+def _landed_passes(monkeypatch, *names: str) -> None:
+    from cratekit.intake import native
+
+    monkeypatch.setattr(
+        native, "landings_of_pass", lambda cfg, name: ("session-1",) if name in names else ()
+    )
+
+
+def _waiting_at(staging: Path, gate_run: str = "2026-11-22T030000Z-land") -> None:
+    _write_status(
+        outcome=sync_night.WAITING_GATE, gate_run=gate_run, staging=str(staging),
+        land_name="P", pass_run="R", next="land it",
+        line=f"night of 2026-11-21: waits at the landing gate under run {gate_run}",
+    )
+
+
+def test_an_answered_gate_over_tracks_still_staged_stays_owed(plain, one_pass, monkeypatch):
+    """Round two, finding 1: an apply refused beside rekordbox, or an abort,
+    answers the gate and leaves every track staged."""
     staging = _staging(plain)
     staging.mkdir(parents=True, exist_ok=True)
     (staging / "101.wav").write_bytes(b"x")
-    _write_status(
-        outcome=sync_night.WAITING_GATE, gate_run="2026-11-22T030000Z-land",
-        staging=str(staging), land_name="P", pass_run="R",
-        line="night of 2026-11-21: waits at the landing gate under run 2026-11-22T030000Z-land",
-    )
-    _run_with_gate("2026-11-22T030000Z-land", open_=True)
-    assert sync_night.settle(sync_night.read_status())["outcome"] == sync_night.WAITING_GATE
-
+    _waiting_at(staging)
+    _landed_passes(monkeypatch)
     _run_with_gate("2026-11-22T030000Z-land", open_=False)
 
-    settled = sync_night.settle(sync_night.read_status())
+    view = sync_night.settle(sync_night.read_status(), plain)
+
+    assert view["outcome"] == sync_night.WAITING_GATE
+    assert "has been answered and no landing of pass P is recorded" in view["line"]
+    drive(["sync", "night"])
+    kept = _status()
+    assert kept["outcome"] == sync_night.WAITING_GATE and kept["gate_run"]
+    assert "still owed" in kept["line"]
+
+
+def test_a_landed_pass_reads_settled_everywhere_whatever_is_staged_since(
+    plain, one_pass, monkeypatch
+):
+    """Round one, finding 3, and round two, finding 2: the landing's own proof
+    ends the wait, and another pass's tracks staged later do not revive it."""
+    staging = _staging(plain)
+    staging.mkdir(parents=True, exist_ok=True)
+    _waiting_at(staging)
+    _landed_passes(monkeypatch, "P")
+    (staging / "103.wav").write_bytes(b"x")  # another pass's, staged since
+
+    settled = sync_night.settle(sync_night.read_status(), plain)
     assert settled["outcome"] == sync_night.SETTLED and settled["was"] == sync_night.WAITING_GATE
-    assert "has been answered" in settled["line"]
+    assert "since then pass P has landed" in settled["line"]
+    assert settled["next"] is None
     code, envelope = drive(["sync", "night", "--last"])
     assert envelope["data"]["summary"]["night"]["outcome"] == sync_night.SETTLED
     assert "nothing waits" in _doctor_row(plain).detail
+    # THE NEXT FIRING READS IT SETTLED TOO, so its refusal beside 103.wav is a
+    # fresh record and keeps no pass that has landed.
+    code, envelope = drive(["sync", "night"])
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    fresh = _status()
+    assert fresh["outcome"] == sync_night.REFUSED and fresh["gate_run"] is None
 
 
-def test_a_wait_whose_staging_emptied_reads_settled_and_the_night_runs(plain, one_pass):
+def test_an_emptied_staging_folder_alone_never_settles_a_wait(plain, one_pass, monkeypatch):
     staging = _staging(plain)
     staging.mkdir(parents=True, exist_ok=True)
-    _write_status(
-        outcome=sync_night.WAITING_ACK, staging=str(staging), land_name="P", pass_run="R",
-        line="night of 2026-11-21: the landing waits for the backup acknowledgment",
-    )
+    _waiting_at(staging)
+    _landed_passes(monkeypatch)
 
+    assert sync_night.settle(sync_night.read_status(), plain)["outcome"] == sync_night.WAITING_GATE
+    # AND THE NIGHT STILL RUNS over an empty folder.
     code, envelope = drive(["sync", "night"])
-
     assert code == int(ExitCode.OK), envelope
     assert one_pass.calls == [["sync", "land"]]
+
+
+def test_a_landing_that_cannot_be_read_settles_nothing(plain, monkeypatch):
+    from cratekit.intake import native
+
+    def unreadable(cfg, name):
+        raise refuse("refused-by-policy", "the log cannot be listed", origin=("test",))
+
+    _waiting_at(_staging(plain))
+    monkeypatch.setattr(native, "landings_of_pass", unreadable)
+
+    assert sync_night.settle(sync_night.read_status(), plain)["outcome"] == sync_night.WAITING_GATE
 
 
 def test_a_wait_whose_gate_and_folder_cannot_be_read_stays_as_written(plain):
