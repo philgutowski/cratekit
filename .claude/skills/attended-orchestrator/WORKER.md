@@ -7,10 +7,11 @@ the one in your kickoff line (W1 or W2); your folder is workers/<name>/.
 1. Read CLAUDE.md and docs/METHOD.md. Their standing constraints are
    absolute: never write a beat grid; never open rekordbox or its agent;
    never touch the live rekordbox database or the library's own files except
-   to copy them into scratch/; DJ_tools is read only; no personal paths,
+   to copy them into scratch/, and the database only with rekordbox and
+   rekordboxAgent both confirmed gone; DJ_tools is read only; no personal paths,
    credentials or library paths in anything you draft.
 2. You never commit, push, pull, check out, comment on or close a card, use
-   desktop control, run crate backup run, answer a gate, or run a verb
+   desktop control, run `crate backup run`, answer a gate, or run a verb
    against the live database. The orchestrator does all of those.
 3. Write idle to your status file, then wait for workers/<name>/order.md
    with a background shell that exits when the file exists, for example

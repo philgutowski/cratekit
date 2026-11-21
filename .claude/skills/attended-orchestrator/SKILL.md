@@ -26,7 +26,10 @@ most conservative one when none is named, write the decision and why into
 the sitting record, STATE.md and a Progress comment on the card, and carry
 on. Leave for him only the steps that physically need him (hardware he must
 plug in or carry) or that the permission system refuses; those go in the
-closing report, never as a wait.
+closing report, never as a wait. This is the one place the skill departs
+from CLAUDE.md, whose stop takes the conservative call: here the
+recommendation wins, by that instruction, and the record says which was
+taken.
 
 ## 1. Orientation, before anything else
 
@@ -36,11 +39,13 @@ closing report, never as a wait.
    `file-card` skills before their first step. Grep `docs/solutions/` by
    module before touching an area.
 2. **CLAUDE.md's standing constraints are absolute**, every one of them:
-   the beat grid, the live database written only through a gate whose
-   rehearsal matched, answered as `session`, the backup rule, the conditions
-   for opening rekordbox and the check after quitting it, DJ_tools read only
-   for code, METHOD's do not touch list, no personal data or paths in any
-   committed file, and METHOD's commit forms with no model name, no co
+   the beat grid, the live database written only through a gate answered as
+   `session` once its rehearsal is read (a difference in a path read,
+   recorded and approved; a failed rehearsal or a difference in what is
+   written a stop), the backup rule, the conditions for opening rekordbox and
+   the check after quitting it, and DJ_tools read only for code. Beside them
+   METHOD's do not touch list, no personal data, credentials, library paths
+   or absolute home paths in any committed file, and METHOD's commit forms with no model name, no co
    author, session or "Generated with" line and no dashes. Records name a
    track by artist and title and a folder by its role ("a copy of twenty
    library files in a temporary folder"), never by a path. Beside them, this
@@ -48,7 +53,9 @@ closing report, never as a wait.
    **never writes the decisions page**; **never retires, moves, disables or
    changes anything of DJ_tools**, its files or its schedules; and **never
    starts a restore onto a drive**, since a bare metal restore erases the
-   drive it restores onto, even one that appears mounted and spare.
+   drive it restores onto, even one that appears mounted and spare. A card
+   that asks for a release cut is left open and named in the closing report
+   as Phillip's to ask for, by the `release` skill.
 3. `git checkout main && git pull --ff-only`, then
    `.venv/bin/python scripts/board.py local` and
    `.venv/bin/python scripts/board.py cloud`. The open attended cards are the
@@ -57,7 +64,8 @@ closing report, never as a wait.
    dependency line and whether each card it names is closed.
 4. **Which `crate` runs each card.** Read `crate --version` and the latest
    tag. For each card, find the merge commit of the unit it proves
-   (`git log --grep="^merge(uN)" origin/main`) and check
+   (`git log --grep="^merge(uN)" origin/main`, or `merge(rN)` for a residual)
+   and check
    `git merge-base --is-ancestor <that commit> v<installed version>`. A card
    whose unit is in the installed copy runs on it. A card whose unit landed
    after it runs on the development checkout's own `.venv/bin/crate` at the
@@ -72,7 +80,8 @@ closing report, never as a wait.
 
 All coordination lives in one folder inside the checkout's ignored `.local/`
 directory, so nothing in it is ever committed: `.local/attended/<DATE>/`,
-with `<DATE>` today's date in the form 2026-11-21. Create it at the start,
+with `<DATE>` the sitting's start date in the form 2026-11-21, kept for the
+whole sitting across midnight. Create it at the start,
 and write the real date wherever `<DATE>` appears, in the copy of
 `WORKER.md` and the kickoff line too. Its layout:
 
@@ -101,13 +110,18 @@ file.
 
 **A report** is the worker's answer, in the form `WORKER.md` gives. Long
 output stays in `scratch/` and the report names the file. Read reports, not
-logs.
+logs. Once a report is read, move it into the worker's `done/` beside its
+order, so the next wait does not return on it.
 
 **Waiting without polling inside a turn.** To wait for a report, start a
-background shell that exits when it appears, run in the background so it
-wakes this session when it exits, and get on with other work meanwhile:
+background shell that exits when it appears with the worker idle or
+retiring, run in the background so it wakes this session when it exits, and
+get on with other work meanwhile:
 
-    until [ -f .local/attended/<DATE>/workers/W1/report.md ] && [ "$(cat .local/attended/<DATE>/workers/W1/status)" = idle ]; do sleep 30; done
+    until [ -f .local/attended/<DATE>/workers/W1/report.md ] && grep -qxE 'idle|retiring' .local/attended/<DATE>/workers/W1/status; do sleep 30; done
+
+A worker that reads `retiring` has stopped: read its report, then ask
+Phillip for a fresh one, as Keeping context small below says.
 
 **Starting the workers.** Right after orientation, copy this skill's
 `WORKER.md` into the state folder with the date written in, create
@@ -123,8 +137,9 @@ terminal tabs in this checkout, run `claude` in each, and paste:
 
 That is the only thing asked of him at the start. Do not wait on it: begin
 the live work in section 4 at once. If a worker has not written `idle`
-within thirty minutes, do its orders through a subagent (the Agent tool), so
-that only its report enters this context.
+within thirty minutes, move its waiting `order.md` into its `done/` so a late
+worker never runs it twice, and do the order through a subagent (the Agent
+tool), so that only its report enters this context.
 
 **Who does what.** The orchestrator alone: desktop control, rekordbox, the
 streaming app, every live gated verb and its approval, `crate backup run`,
@@ -133,9 +148,12 @@ Workers: the macOS battery, sweeps and reads on copies in `scratch/`,
 database diffs on disposable copies, reading the code and docs, drafting
 records and card briefs. `WORKER.md` lists what a worker never does.
 
-**The checkout holds still while the battery runs.** The battery runs in
-this checkout, so no commit, pull or checkout happens in it until the
-battery's report is in: a record drafted meanwhile waits in `scratch/`.
+**The checkout holds still while a worker runs from it.** The battery, a
+sweep and a database diff all run from this checkout's editable install, so no
+commit, pull or checkout happens in it until the order's report is in: a
+record drafted meanwhile waits in `scratch/`. A worker's sweep is a Cratekit
+job, so rekordbox opens only between sweeps, when `rekordbox-visit`'s
+preflight finds no job running.
 
 **Keeping context small.** Give each order one job. A worker near half its
 context finishes its order, writes `retiring` and stops; notify Phillip to
@@ -197,7 +215,7 @@ calibration.
 that reads a `tag folder` run, a matcher or anything else off files runs on
 copies in `scratch/`, never on the library's own files: the worker copies
 the shape the card describes, clears what it says to clear, runs the verb
-with `--output json`, and reports each number the card's "Done when" asks
+under `crate --output json`, and reports each number the card's "Done when" asks
 for. One sweep shaped for several cards serves them all, and the order says
 which card reads which count. A card whose unit is still open records what
 this run read and closes only if its own "Done when" is met whole.
@@ -261,8 +279,9 @@ purchase or a seller he has not registered.
 2. `.venv/bin/python scripts/board.py audit`: repair drift with `sync`, and
    report a contradiction rather than repair it.
 3. `git fetch --prune`, and list each `cloud/` branch with no open pull
-   request and no held card as stale for Phillip to prune, as METHOD's
-   Sharing the board section says. Never touch a `grok/` branch.
+   request and no held card as stale, as METHOD's Sharing the board section
+   says. Delete none but a plainly finished `cloud/` branch merged into
+   `main`, list the rest for Phillip, and never touch a `grok/` branch.
 4. rekordbox and rekordboxAgent both gone, no Cratekit job running, desktop
    control released, and the scratch copies deleted.
 5. Tell each worker it is done with an order that says only "The sitting is
