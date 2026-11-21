@@ -55779,3 +55779,101 @@ platform would pass there through the other.
 
 **Closes when:** the test passes the identity it means and asserts the
 reason it expects. Ledger only.
+
+---
+
+## R-1838. A 404 on a later page of a playlist whose id opened is read as a sighting, and sync removed calls it a playlist whose id does not open
+
+**Found:** at the review of #889, U320, round two, 2026-11-21.
+
+**The mechanism.** `sync.removed.read_one` reads any per playlist failure of
+`intake_cli.list_playlist_readable` on a playlist the account's list omits as
+"its id does not open", and `unavailable.answered_unavailable` reads its chain.
+A playlist whose id opens and whose first page is served, and whose later page
+answers 404 through the whole retry ladder, is recorded as a sighting and
+retired a day later, its why saying the id does not open.
+
+**Measured cost.** Driven by review round two on fixtures: recorded, then
+retired, the why untrue; the track it served was kept by its rekordbox twin,
+so no wrong offer was produced in the shape driven. Without a twin, a track
+on that playlist removed from another would be offered. A real 404 on a later
+page of a playlist that exists is unmeasured.
+
+**Closes when:** a sighting is read only off a failure of `playlist_for`
+itself, with the listing's later pages read as any other failure. Ledger only.
+
+---
+
+## R-1839. A sync removed run in flight writes over a retirement a person recorded while it read the account
+
+**Found:** at the review of #889, U320, round one, 2026-11-21.
+
+**The mechanism.** `removed_cli._read_synced` reads the record of not found
+answers before it asks the account and writes each read's answer, under the
+record's lock, after. A `--retire` answered while that run was reading is
+overwritten by the run's own answer for the same playlist, computed from the
+record as it stood before.
+
+**Measured cost.** Driven by review round one with a retirement written into
+the record mid read: the retirement was lost. The side it errs on keeps rows:
+the playlist answers not found again and is retired a day later, or is
+retired again. Not driven as two processes.
+
+**Closes when:** the write merges each read's answer over the entry as it
+stands under the lock, keeping a retirement made since the read. Ledger only.
+
+---
+
+## R-1840. Only a 404 or the client's not found class is a sighting, and what the account's thirteen vanished playlists answer is unmeasured
+
+**Found:** at the build of #889, U320, 2026-11-21.
+
+**The mechanism.** `sync.unavailable.answered_unavailable` counts a failure as
+a sighting only when the nearest status along its chain is 404, or, with no
+status, a declared cause of the client's class `ObjectNotFound` by its exact
+name. tidalapi 0.8.11 raises that class for a 404. A playlist deleted, made
+private or another user's may answer 401 or 403 rather than 404; such a
+playlist is never recorded, never retired, and still stops every offer, and
+`crate sync removed --retire` names it as not read whole rather than offering
+it.
+
+**Measured cost.** Not driven against the account. A179's run named 13 synced
+playlists the account no longer lists whose ids do not open, without their
+status. If they answer 404 the next two runs a day apart, or one
+`--retire`, release them; if not, nothing offered changes on that account.
+
+**Closes when:** the attended run of A179 (#842) records what those playlists
+answer and whether the second run offers the track. Ledger only: it closes at
+a sitting.
+
+---
+
+## R-1841. The provider publishes no withheld count, so a heart lost to a fault inside the hearts bound reads as withheld and sync removed can offer past it
+
+**Found:** at the build of #889, U320, and its review round one, 2026-11-21.
+
+**The mechanism.** The card asked for the hearts to be read whole when short
+"only by the count the provider declares it withholds". The provider declares
+one count, the total; `HeartsShortfall.withheld` is that total less the rows
+served by a walk that reached it. So nothing tells a heart the provider will
+not serve from one a fault dropped inside a window, or one skipped at a page
+boundary by a heart removed while the walk ran. `sync.removed.read_hearts`
+reads the hearts whole (`withheld`) when at least one heart was served and the
+shortfall is at most a tenth of the declared count (`WITHHELD_AT_MOST`) and at
+most 49 hearts (`WITHHELD_AT_MOST_HEARTS`, under half a page of a hundred,
+round two); a larger shortfall, or none served, stays short and stops every
+offer.
+
+**Measured cost.** Driven on fixtures by review round one with no bound: 349
+declared and 100 listed read whole, and a hearted track on the lost page was
+offered. With the bound that shape stays short, and so does round two's 1,020
+declared with a window of a hundred lost, which a tenth alone let through
+(both tested). Inside the bound, a window cut by fewer than half its rows, or a
+lost heart that is also a removed downloaded track would be offered at the
+gate; unmeasured live, and the provider has not been seen serving an empty
+window with a success status. The bound is the build's call on a question
+posted on the card under its question heading.
+
+**Closes when:** Phillip answers the question on #889 and the bound matches
+his answer, or the provider is found to publish which hearts it withholds.
+Ledger only.
