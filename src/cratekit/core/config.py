@@ -1891,7 +1891,8 @@ STATE_FILES: tuple[StateFile, ...] = (
         relative="deletion_watermark.json",
         why=(
             "R35. It marks how far the deletion pass has read THIS library's "
-            "soft-delete markers. New state."
+            "soft-delete markers, and the number each absent landed row was "
+            "given when a pass first saw it gone (R-1037). New state."
             " COUPLED, named by R30: a deletion watermark that survives a "
             "rollback skips markers the restore put back."
         ),

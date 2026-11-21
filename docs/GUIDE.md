@@ -1313,10 +1313,15 @@ the `library.location_prefix_map` rule that would resolve it; rows that are no
 local file, rekordbox's streaming rows and `soundcloud:` locations among them,
 are left out and counted on the gate. A row rekordbox deletes outright on
 Remove from Collection leaves no mark for it to read, so its file is offered
-when `crate sync removed` took the row out and recorded it; a track you remove
-by hand in rekordbox is not offered, so you trash its file yourself (it can be
-offered when `sync removed` had taken that same track out before and a restore
-put it back). `crate
+when a Cratekit record names the row: `crate sync removed` took it out and
+recorded it, or a native landing made it, since every landing names the rows
+it makes on its session record. Such a removal is numbered the first time a
+review sees the row gone, so it is offered once, and a library's first review
+takes the ones already gone as history. A track no record names, a hand
+import or a track landed before landings named their rows, is not offered when
+you remove it by hand in rekordbox, so you trash its file yourself. A landing
+a restore rolled back is not offered either: its rows are gone because the
+database is from before it, not because you removed them. `crate
 sync removed` lists the downloaded tracks you took off their playlist on the
 account and, behind its gate, takes them out of the collection first. `crate
 tombstone list` shows what was
