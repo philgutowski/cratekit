@@ -36,8 +36,8 @@ them.
 
 An ALLOWANCE is a file of lines, one per place a package may still hold
 something the rule forbids. Lines are only ever removed. A line whose finding
-is gone never fails anything, so one card's cleanup cannot redden another
-card's package; ``prune`` removes such lines and can add none.
+is gone never fails anything, so removing a copy or a crossing cannot fail
+another card's package; ``prune`` removes such lines and can add none.
 
 Standard library only, and it imports nothing of Cratekit: the verb registry
 and the rules' own lists are read from source text. Every reading is of what
@@ -1366,8 +1366,10 @@ def table_report(root: Path, out) -> int:
         print(f"  {count:6d}  {label}", file=out)
     found = import_findings(tree, rules, verbs)
     exceeded = _allowance_line(root, IMPORT_ALLOWANCES, found, out) or exceeded
-    names = {name for used in core_names(tree).values() for name in used}
-    exceeded = exceeded or len(names) > rules.names_ceiling
+    over = len({name for used in core_names(tree).values() for name in used})
+    over = max(0, over - rules.names_ceiling)
+    print(f"  core names over the ceiling: {over}", file=out)
+    exceeded = exceeded or over > 0
 
     tests = read_sources(root, ["tests"])
     print("point 5, tests", file=out)
@@ -1389,10 +1391,12 @@ def prune_report(root: Path, packages: Sequence[str], out) -> int:
         (IMPORT_ALLOWANCES, import_findings(tree, rules, verbs)),
     )
     status = 0
-    known = {package_of_path(path) for path in source}
+    # A package is named by an allowance file's own stem, so one that left the
+    # tree can still be pruned and a path to another directory's file cannot.
+    known = {path.stem for directory, _ in readings for path in (root / directory).glob("*.txt")}
     for package in packages:
         paths = [(root / directory / f"{package}.txt", found) for directory, found in readings]
-        if package not in known or not any(path.is_file() for path, _ in paths):
+        if package not in known:
             print(f"{package}: no allowance file by that name", file=out)
             status = 2
             continue
@@ -1454,7 +1458,7 @@ def main(argv: Sequence[str] | None = None, *, root: Path = REPO_ROOT, out=None)
     args = build_parser().parse_args(argv)
     empty = [scope for scope in getattr(args, "paths", ()) if not python_files(root, scope)]
     if empty:
-        print("no Python file is at or under: " + ", ".join(empty), file=out)
+        print("no Python file this reads is at or under: " + ", ".join(empty), file=out)
         return 2
     if args.command == "lines":
         scopes = args.paths or [SOURCE, "tests"]

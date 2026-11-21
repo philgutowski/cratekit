@@ -29,8 +29,8 @@ not grow.
 
 AN ALLOWANCE LINE IS A CROSSING, NOT A COUNT OF ITS USES. One line per package
 and name, however many files hold it, so a module that is split in two adds
-no line, and a line whose crossing is gone fails nothing: one card's cleanup
-cannot redden another card's package.
+no line, and a line whose crossing is gone fails nothing: removing a crossing
+cannot fail another card's package.
 
 The lists live here, where the layer ladder's own lists live, and the script
 reads them from this file as literals so there is one copy. The checkers are

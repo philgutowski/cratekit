@@ -339,6 +339,7 @@ def test_table_prints_points_two_to_five_and_is_clean_on_a_full_allowance(repo):
     assert "exact blocks of 6 logical lines or more: 2 blocks over 14 logical lines in 2 files" in out
     assert "allowance: 4 lines in 2 files, 4 still found; beyond the allowance: 0" in out
     assert "allowance: 4 lines in 1 files, 4 still found; beyond the allowance: 0" in out
+    assert "  core names over the ceiling: 0\n" in out
     assert "in 2 files under tests (code" in out and "  1 test functions; the suite's time" in out
 
 
@@ -350,6 +351,7 @@ def test_table_fails_when_the_ceiling_on_core_names_is_exceeded(repo):
     code, out = _run(repo, "table")
     assert code == 1
     assert "beyond the allowance: 0" in out and "beyond the allowance: 3" not in out
+    assert "  core names over the ceiling: 1\n" in out
     assert "     3  distinct core names feature packages use" in out
     assert "     2  the ceiling on distinct core names" in out
 
@@ -405,6 +407,14 @@ def test_prune_says_when_a_package_has_no_allowance_file(repo):
     assert code == 2 and "nowhere: no allowance file by that name" in out
 
 
+def test_prune_still_lowers_the_file_of_a_package_that_left_the_tree(repo):
+    """The stale lines of a deleted package are removed by the same command."""
+    gone = _allow(repo, measure.DUPLICATION_ALLOWANCES, "departed", ["0123456789abcdef"])
+    code, out = _run(repo, "prune", "departed")
+    assert code == 0 and f"{measure.DUPLICATION_ALLOWANCES}/departed.txt: 1 lines removed, 0 left" in out
+    assert measure.parse_allowance(gone.read_text()) == {}
+
+
 def test_prune_takes_a_package_and_never_a_path_to_another_directorys_file(repo):
     """``../imports/sync`` names a real file from the duplication directory."""
     _allow_everything(repo)
@@ -420,7 +430,7 @@ def test_a_path_that_names_no_python_file_is_refused_not_read_as_empty(repo, com
     """A mistyped path must not print "0 blocks in 0 files" into a record."""
     code, out = _run(repo, command, f"{SOURCE}/core", f"{SOURCE}/lable")
     assert code == 2
-    assert out == f"no Python file is at or under: {SOURCE}/lable\n"
+    assert out == f"no Python file this reads is at or under: {SOURCE}/lable\n"
 
 
 def test_the_script_runs_as_a_command_with_the_standard_library_alone(repo):
