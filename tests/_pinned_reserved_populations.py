@@ -2148,7 +2148,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     # 2026-11-21, U292: the needs genre backlog's causes and its verb's notes.
     'tagging/backlog.py': [
+        'answer-does-not-reach',
         'file-unread',
+        'no-copy',
         'no-genre',
         'not-planned',
         'off-taxonomy',
@@ -2159,8 +2161,10 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'tagging/backlog_cli.py': [
         'backlog-catalogue-unread',
+        'backlog-files-unread',
         'backlog-library-alone',
         'backlog-remainder',
+        'backlog-rows-joining',
         'backlog-words-asked',
         'config-unusable',
     ],

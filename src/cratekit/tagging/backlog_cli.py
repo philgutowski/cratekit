@@ -36,7 +36,7 @@ from cratekit.cli.output import Envelope
 from cratekit.core import active_taxonomy, config, rb_writer
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
 from cratekit.core.exit_codes import Remedy
-from cratekit.tagging import backlog, published, searchers, suggest
+from cratekit.tagging import backlog, published, rows, searchers, suggest
 from cratekit.write import metadata_cli
 
 #: The notes the verb carries on its warnings channel.
@@ -44,6 +44,8 @@ WORDS_ASKED = "backlog-words-asked"
 LIBRARY_ALONE = "backlog-library-alone"
 CATALOGUE_UNREAD = "backlog-catalogue-unread"
 REMAINDER = "backlog-remainder"
+FILES_UNREAD = "backlog-files-unread"
+ROWS_JOINING = "backlog-rows-joining"
 
 #: What the majority refusal says cannot be done until a prefix rule exists.
 _BLOCKED = "the needs genre backlog cannot be read"
@@ -81,7 +83,12 @@ def build(parser, entry) -> None:
 
 
 def _plan(cfg: config.Config, declared, catalogue: bool, progress) -> backlog.Backlog:
-    """The backlog over the library as it stands, through a handle opened to read."""
+    """The backlog over the library as it stands, through a handle opened to read.
+
+    THE COPY'S TEXT IS READ HERE, the way ``taxonomy alias`` reads it, so each
+    word's answers are planned on the copy those verbs would edit.
+    """
+    _path, text = active_taxonomy.read_text(cfg)
     db = rb_writer.open_db(
         rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
     )
@@ -92,7 +99,7 @@ def _plan(cfg: config.Config, declared, catalogue: bool, progress) -> backlog.Ba
                 metadata_cli.majority_unmapped_cause(cfg, totals, blocked=_BLOCKED)
             )
         if not catalogue:
-            return backlog.plan_backlog(cfg, db, declared, progress=progress)
+            return backlog.plan_backlog(cfg, db, declared, text=text, progress=progress)
         lookup = suggest.catalogue_lookup(
             searchers.for_taxonomy(declared), published.for_taxonomy(declared)
         )
@@ -102,7 +109,9 @@ def _plan(cfg: config.Config, declared, catalogue: bool, progress) -> backlog.Ba
             {searchers.DISCOGS} if searchers.for_discogs().token is None else ()
         )
         with suggest.KeptCatalogue(cfg, lookup, unasked=unasked) as kept:
-            return backlog.plan_backlog(cfg, db, declared, catalogue=kept, progress=progress)
+            return backlog.plan_backlog(
+                cfg, db, declared, text=text, catalogue=kept, progress=progress
+            )
     finally:
         rb_writer.close_db(db)
 
@@ -160,6 +169,31 @@ def _advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
         )
     if parts:
         found.append({"code": CATALOGUE_UNREAD, "message": "; ".join(parts)})
+    excluded = sum(plan.unread.values())
+    if excluded:
+        found.append(
+            {
+                "code": FILES_UNREAD,
+                "message": (
+                    f"{excluded} row(s) are in no cause, because their file is not "
+                    f"here or could not be read ({_counts(plan.unread)}), so adoption "
+                    f"excludes them and whether they need a genre is unknown; a volume "
+                    f"that is not mounted reads as {rows.FILE_MISSING}"
+                ),
+            }
+        )
+    if plan.joining:
+        found.append(
+            {
+                "code": ROWS_JOINING,
+                "message": (
+                    f"{backlog.ROWS_VERB} would also write a genre no folder takes onto "
+                    f"{len(plan.joining)} row(s) adoption files today, "
+                    f"{_named(list(plan.joining))}, moving them into needs genre; the "
+                    f"projection counts them, and --leave holds a row out"
+                ),
+            }
+        )
     left = plan.statuses[backlog.LEFT]
     if left:
         found.append(
@@ -193,6 +227,11 @@ def _check(key: str, title: str, detail: str) -> dict[str, Any]:
 
 
 def _word_detail(word: backlog.Word) -> str:
+    if word.settled:
+        return (
+            f"{word.rows} row(s); one answer, asking nothing: {word.settled} retags "
+            f"the files, moving {len(word.reached)} row(s)"
+        )
     if word.unanswerable is not None:
         _why, message, step = word.unanswerable
         return f"{word.rows} row(s); asks nothing: {message}; {step}"
@@ -244,6 +283,24 @@ def checks(plan: backlog.Backlog) -> list[dict[str, Any]]:
                 f"{entry['rows']} row(s) left by hand: {entry['settle']}",
             )
         )
+    if plan.unread:
+        found.append(
+            _check(
+                "backlog.unread",
+                "in no cause",
+                f"{sum(plan.unread.values())} row(s) whose file is not here or could "
+                f"not be read: {_counts(plan.unread)}",
+            )
+        )
+    if plan.joining:
+        found.append(
+            _check(
+                "backlog.joining",
+                "moved into needs genre",
+                f"{len(plan.joining)} row(s) adoption files today that {backlog.ROWS_VERB} "
+                f"would give a genre no folder takes",
+            )
+        )
     projected = plan.projected()
     found.append(
         _check(
@@ -256,6 +313,10 @@ def checks(plan: backlog.Backlog) -> list[dict[str, Any]]:
         )
     )
     return found
+
+
+def _counts(counted) -> str:
+    return ", ".join(f"{count} {name}" for name, count in counted.items() if count)
 
 
 def _payload(plan: backlog.Backlog) -> dict[str, Any]:
@@ -274,6 +335,8 @@ def _payload(plan: backlog.Backlog) -> dict[str, Any]:
             "campaign": plan.campaign(),
             "remainder": plan.remainder(),
             "projected": plan.projected(),
+            "unread": dict(plan.unread),
+            "joining": list(plan.joining),
             "items": [row.to_json() for row in plan.rows],
         },
     }
@@ -288,15 +351,17 @@ def tag_backlog(ctx) -> Envelope:
     )
     return ctx.envelope(
         data=_payload(plan),
-        outcome=Outcome.OK if plan.rows else Outcome.NO_OP,
+        outcome=Outcome.OK if plan.rows or plan.unread or plan.joining else Outcome.NO_OP,
         warnings=_advisories(plan),
     )
 
 
 __all__ = [
     "CATALOGUE_UNREAD",
+    "FILES_UNREAD",
     "LIBRARY_ALONE",
     "REMAINDER",
+    "ROWS_JOINING",
     "WORDS_ASKED",
     "build",
     "checks",

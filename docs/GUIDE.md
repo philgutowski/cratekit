@@ -54,7 +54,7 @@ crate login NAME --from-file PATH
 | `identify-key`, `identify-signing-key` | The recognition service's key and signing value, for `intake set` and `intake identify`. |
 | `catalogue-app-id`, `catalogue-app-key` | Optional. Cratekit's own app on the provider's developer platform. With both recorded, catalogue lookups go under the app rather than your account; doctor says where lookups go and how many calls each side made. |
 | `cyanite-key` | Optional. An integration access token from your Cyanite account's integrations section, for the Cyanite trial below and nothing else. Doctor reports it and never fails on it; setup does not offer it. |
-| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag` and `tag suggest --catalogue` ask Discogs first, and Beatport only when Discogs gives no genre; without it Discogs is recorded as not asked on every file that needs a genre and Beatport is asked as before, a file Beatport misses stays askable rather than `no-hit`, and the sweep's summary and a warning say how many files Discogs was not asked about. A token Discogs refuses does not stop Beatport being asked: a file Beatport settles is tagged as before, a file it cannot settle fails with the token's refusal while the sweep goes on, and the sweep warns how many files Discogs was not read for because it refused the token. Setup links it as its own step, checking the token with Discogs before storing it (above); doctor reports it and never fails on it. |
+| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag`, `tag suggest --catalogue` and `tag backlog --catalogue` ask Discogs first, and Beatport only when Discogs gives no genre; without it Discogs is recorded as not asked on every file that needs a genre and Beatport is asked as before, a file Beatport misses stays askable rather than `no-hit`, and the sweep's summary and a warning say how many files Discogs was not asked about. A token Discogs refuses does not stop Beatport being asked: a file Beatport settles is tagged as before, a file it cannot settle fails with the token's refusal while the sweep goes on, and the sweep warns how many files Discogs was not read for because it refused the token. Setup links it as its own step, checking the token with Discogs before storing it (above); doctor reports it and never fails on it. |
 
 A provider that rejects the stored session is reported as rejected, with the
 sign in step. A provider that fails or cannot be reached is reported as an
@@ -435,7 +435,7 @@ crate route pending
   refusal naming them and since when, and, when Discogs went unasked for want
   of a token, how to record one; with `--output json` the summary lists such
   files under `refusal_stop`, and lists under `refused` the files Discogs
-  searched and could not tag while every other catalogue refused. `tag suggest --catalogue` stops the
+  searched and could not tag while every other catalogue refused. `tag suggest --catalogue` and `tag backlog --catalogue` stop the
   same way within one run; `tag retag` asks afresh for each file. The sweep's warning names such a catalogue as having
   refused this client, and a Cloudflare challenge as one, and keeps
   `unreachable` for a catalogue that is down. A file no catalogue knows keeps
@@ -1076,20 +1076,29 @@ nowhere for want of a genre and puts each in one cause: its file carries a
 genre the row lacks (`tag rows` writes it), no genre on the row or the file
 (`tag suggest` weighs it), a word too coarse to be a genre (`tag retag`), a
 genre word no folder takes, or a file whose genre could not be read. A row
+whose file is not here is in no cause and is counted apart, by why. A row
 with no genre is proposed a genre only at `tag suggest`'s `high` band, the
 floor, and each proposal names its source (the catalogue that matched and
 its own word, or the neighbours) and its share of the votes; with
 `--catalogue` the catalogues are asked as `tag suggest --catalogue` asks
 them and the answers are kept a week, so `tag suggest --catalogue` reads the
 same ones. The words no folder takes are grouped across spellings and ranked
-by rows, each with one question: an alias of the genre the rows' artist and
-folder neighbours agree on, its own folder (recommended at 50 rows or more),
-or left for hand tagging (recommended when nothing agrees), with how many
-rows each answer would move. A word neither `taxonomy alias` nor `taxonomy
-folder` takes is named with why. The report ends with the campaign, the
-existing verbs in the order that settles the backlog with the rows each
-moves, the rows left by hand with what would settle them, and needs genre
-now and after. It opens the database only to read and writes nothing.
+by rows. Each answer is planned by `taxonomy alias` and `taxonomy folder`
+themselves on your active copy, so a word is offered only answers those
+verbs take: an alias of the genre folder the rows' artist and folder
+neighbours agree on at `medium` or better, its own folder, or left for hand
+tagging. Its own folder is recommended when it would file 50 rows or more,
+otherwise the alias, otherwise leaving it. Each answer says how many rows it
+would move: a folder files a row whose row carries that spelling, or whose
+file does and `tag rows` would write it; an alias moves a row whose file
+holds the word alone, and only when the library has a genre entry for the
+alias's genre. A word already saved as an alias, or another case of a genre
+folder's name, has one answer and asks nothing; a word neither verb takes is
+named with why. The report ends with the campaign, the existing verbs in the
+order that settles the backlog with the rows each moves, the rows left by
+hand with what would settle them, any row `tag rows` would move into needs
+genre, and needs genre now and after. It opens the database only to read and
+writes nothing.
 
 **Removing tracks.** `crate delete review` offers the files behind rows you
 removed in rekordbox; confirmed ones go to the system Trash only. It refuses

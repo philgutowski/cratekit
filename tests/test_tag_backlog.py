@@ -8,9 +8,12 @@ Then the verb through the real dispatcher, its envelope validated, with a
 recorded catalogue and never the network.
 
 The genre words are the shipped taxonomy's. ``Indie Tech`` and ``Grime`` are
-words no folder takes; ``amapiano`` is one tagging writes as a genre and
-routing files nowhere, so neither ``taxonomy alias`` nor ``taxonomy folder``
-takes it.
+words no folder takes. ``amapiano`` and ``mpb`` are tagging aliases of a genre
+folder already saved, which routing files nowhere, so each has one answer:
+``taxonomy alias`` retagging its files with no change to the copy.
+``alternative`` is a tagging alias of a style sub, which neither ``taxonomy
+alias`` nor ``taxonomy folder`` takes. Every answer is planned on the shipped
+template, written as the library's active copy.
 
 D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
 """
@@ -53,16 +56,38 @@ AFRO = _suggest_suite.AFRO
 COARSE = _suggest_suite.COARSE
 INDIE = "Indie Tech"
 GRIME = "Grime"
-#: Tagging writes it as a genre; routing files it nowhere.
+#: Tagging aliases of a genre folder; routing files them nowhere.
 AMAPIANO = "amapiano"
+MPB = "mpb"
+RNB = "R&B"
+#: A tagging alias of a style sub, which neither verb takes.
+ALTERNATIVE = "alternative"
+#: A genre adoption files by that ``taxonomy alias`` refuses as a GENRE.
+SUB_GENRE = "House"
+
+SHIPPED = taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME)
 
 
 @pytest.fixture(autouse=True)
 def _lookups(monkeypatch):
-    """The off taxonomy words get lookup rows too, so a row can carry one."""
+    """The off taxonomy words get lookup rows too, so a row can carry one, and
+    R&B does, so an alias to it can be followed by ``tag rows``."""
     monkeypatch.setattr(
-        _suggest_suite, "LOOKUPS", (*_suggest_suite.LOOKUPS, INDIE, GRIME, AMAPIANO)
+        _suggest_suite,
+        "LOOKUPS",
+        (*_suggest_suite.LOOKUPS, INDIE, GRIME, AMAPIANO, MPB, ALTERNATIVE, RNB, SUB_GENRE),
     )
+
+
+@pytest.fixture(autouse=True)
+def _active_copy(request):
+    """A machine's library holds the shipped template as its active copy."""
+    if "machine" not in request.fixturenames:
+        return
+    cfg = request.getfixturevalue("machine")
+    path = config.state_path("taxonomy_active", cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(SHIPPED, encoding="utf-8")
 
 
 def build(cfg, silence, *tracks):
@@ -72,7 +97,8 @@ def build(cfg, silence, *tracks):
 def _planned(cfg: config.Config, **kwargs) -> backlog.Backlog:
     db = rb_writer.open_db(cfg.library.db_path, unlock=False, cfg=cfg)
     try:
-        return backlog.plan_backlog(cfg, db, active_taxonomy.load(cfg), **kwargs)
+        _path, text = active_taxonomy.read_text(cfg)
+        return backlog.plan_backlog(cfg, db, active_taxonomy.load(cfg), text=text, **kwargs)
     finally:
         rb_writer.close_db(db)
 
@@ -202,29 +228,78 @@ def _members(count, spelling=INDIE, file=None, start=0):
     ]
 
 
+def _word_of(members, votes, **kwargs):
+    return backlog.word_of(DECLARED, SHIPPED, members, votes, **kwargs)
+
+
 def test_a_word_whose_neighbours_agree_recommends_their_genre_as_its_alias():
-    word = backlog.word_of(DECLARED, _members(3), {MELODIC: 8}, 0)
+    word = _word_of(_members(3), {MELODIC: 8})
     first = word.options[0]
     assert first.answer == backlog.ALIAS and first.command == f"{word_edit.ALIAS_VERB} 'Indie Tech' 'Melodic House'"
     assert [option.answer for option in word.options] == [backlog.ALIAS, backlog.FOLDER, backlog.LEAVE]
-    assert first.rows == 3 and word.neighbour_band == suggest.HIGH
+    assert first.rows == 3 and word.neighbours == ((MELODIC, 8),)
 
 
-def test_a_word_at_the_folder_threshold_recommends_its_own_folder():
-    word = backlog.word_of(DECLARED, _members(genres_report.FOLDER_WORTH), {MELODIC: 8}, 0)
+def _on_row(members, spelling=INDIE):
+    """What tag rows would write onto each member: its file's word."""
+    return {row.content_id: spelling for row in members}
+
+
+def test_a_folder_that_would_file_the_threshold_is_recommended_first():
+    members = _members(genres_report.FOLDER_WORTH)
+    word = _word_of(members, {MELODIC: 8}, rows_write=_on_row(members))
     assert [option.answer for option in word.options] == [backlog.FOLDER, backlog.ALIAS, backlog.LEAVE]
     assert word.options[0].command == f"{word_edit.FOLDER_VERB} 'Indie Tech'"
+    assert word.options[0].rows == genres_report.FOLDER_WORTH
+
+
+def test_the_threshold_is_what_the_folder_files_not_every_spelling():
+    """Round one: 30 rows carry the spelling and 25 another case, and the
+    folder was recommended on 55."""
+    members = [*_members(30), *_members(25, "indie tech", start=100)]
+    word = _word_of(members, {MELODIC: 8}, rows_write=_on_row(members[:30]))
+    assert word.options[0].answer == backlog.ALIAS
+    folder = next(option for option in word.options if option.answer == backlog.FOLDER)
+    assert folder.rows == 30
 
 
 def test_a_word_one_short_of_the_threshold_with_no_agreement_is_left_first():
-    word = backlog.word_of(DECLARED, _members(genres_report.FOLDER_WORTH - 1), {MELODIC: 2, DEEP: 2}, 0)
+    members = _members(genres_report.FOLDER_WORTH - 1)
+    word = _word_of(members, {MELODIC: 2, DEEP: 2}, rows_write=_on_row(members))
     assert [option.answer for option in word.options] == [backlog.LEAVE, backlog.FOLDER]
 
 
 def test_neighbours_agreeing_only_at_low_do_not_recommend_an_alias():
-    word = backlog.word_of(DECLARED, _members(2), {MELODIC: 2}, 0)
-    assert word.neighbour_band == suggest.LOW
+    word = _word_of(_members(2), {MELODIC: 2})
     assert backlog.ALIAS not in [option.answer for option in word.options]
+
+
+def test_neighbours_agreeing_at_medium_recommend_their_alias():
+    word = _word_of(_members(2), {MELODIC: 4, DEEP: 2})
+    assert word.options[0].answer == backlog.ALIAS
+
+
+def test_an_alias_the_verb_refuses_is_never_offered_and_the_next_genre_is_tried():
+    """Round one: House is a genre adoption files by, and taxonomy alias
+    refuses it as a GENRE, so a recommendation naming it was a refused command."""
+    with pytest.raises(word_edit.Refused):
+        word_edit.alias(SHIPPED, INDIE, SUB_GENRE)
+    refused = _word_of(_members(3), {SUB_GENRE: 16})
+    assert backlog.ALIAS not in [option.answer for option in refused.options]
+    assert refused.options[0].answer == backlog.LEAVE
+    taken = _word_of(_members(3), {MELODIC: 16, SUB_GENRE: 2})
+    assert taken.options[0].label == f"An alias of {MELODIC}"
+
+
+def test_an_alias_to_a_genre_the_library_has_no_entry_for_moves_nothing():
+    word = _word_of(_members(3), {MELODIC: 8}, known=lambda genre: False)
+    alias = next(option for option in word.options if option.answer == backlog.ALIAS)
+    assert alias.rows == 0 and "no genre entry for Melodic House" in alias.detail
+
+
+def test_with_no_active_copy_no_word_is_answered():
+    word = backlog.word_of(DECLARED, None, _members(3), {MELODIC: 8})
+    assert word.options == () and word.unanswerable[0] == backlog.NO_COPY
 
 
 def test_a_word_counts_its_spellings_files_and_rows_apart():
@@ -234,20 +309,41 @@ def test_a_word_counts_its_spellings_files_and_rows_apart():
         *_members(2, INDIE, file="", start=20),
     ]
     members = [replace(row, row_word=INDIE) if not row.file_word else row for row in members]
-    word = backlog.word_of(DECLARED, members, {}, 1)
+    word = _word_of(members, {}, several=frozenset({"0"}), rows_write={"1": INDIE})
     assert word.spelling == INDIE and word.rows == 6
     assert word.spellings == ((INDIE, 5), ("indie tech", 1))
-    assert (word.files_carry, word.several, word.row_only, word.exact) == (3, 1, 2, 5)
+    assert (word.files_carry, word.several, word.elsewhere, word.on_row) == (3, 1, 2, 3)
     folder = next(option for option in word.options if option.answer == backlog.FOLDER)
-    assert folder.rows == 5
+    assert folder.rows == 3
+
+
+def test_a_row_whose_file_holds_another_word_is_counted_elsewhere():
+    """Round one: a row carrying the word over a file carrying a catch all was
+    in none of the three counts."""
+    members = [replace(row, row_word=INDIE, file_word=COARSE) for row in _members(1)]
+    word = _word_of(members, {})
+    assert (word.files_carry, word.several, word.elsewhere) == (0, 0, 1)
 
 
 def test_a_word_neither_answer_takes_asks_nothing_and_says_why():
-    word = backlog.word_of(DECLARED, _members(2, AMAPIANO), {MELODIC: 8}, 0)
-    assert word.options == ()
+    for answer in (lambda: word_edit.folder(SHIPPED, ALTERNATIVE), lambda: word_edit.alias(SHIPPED, ALTERNATIVE, MELODIC)):
+        with pytest.raises(word_edit.Refused):
+            answer()
+    word = _word_of(_members(2, ALTERNATIVE), {MELODIC: 8})
+    assert word.options == () and not word.settled
     why, message, step = word.unanswerable
     assert why == word_edit.ALREADY_FILED and "already has a place" in message and step
     assert word.to_json()["question"] is None
+
+
+def test_a_word_already_saved_as_an_alias_has_one_answer_the_verb_takes():
+    """Round one: such a word was called unanswerable, and taxonomy alias
+    reaches its gate with its files as writes."""
+    edit = word_edit.alias(SHIPPED, AMAPIANO, AFRO)
+    assert not edit.writes
+    word = _word_of(_members(2, AMAPIANO), {MELODIC: 8})
+    assert word.settled == f"{word_edit.ALIAS_VERB} amapiano 'Afro House'"
+    assert word.options == () and word.unanswerable is None and word.reached == {"0", "1"}
 
 
 def test_a_neighbour_votes_once_for_a_whole_word_at_its_higher_weight():
@@ -303,7 +399,11 @@ def _library():
         Track("16", "", "indie tech", artist="The Artist", folder="four"),
         Track("17", INDIE, "", artist="The Artist", folder="four"),
         # A word neither answer takes.
-        Track("18", "", AMAPIANO, artist="Nobody", folder="three"),
+        Track("18", "", ALTERNATIVE, artist="Nobody", folder="three"),
+        # Two words with one answer each, an alias already saved: R&B has a
+        # genre entry, so its row follows; Afro House has none.
+        Track("41", "", MPB, artist="Nobody", folder="three"),
+        Track("42", "", AMAPIANO, artist="Nobody", folder="three"),
         # A tombstone carrying no genre, which nobody reads.
         Track("19", "", "", deleted=True),
     ]
@@ -322,7 +422,7 @@ def test_every_needs_genre_row_lands_in_exactly_one_cause_and_a_routed_row_in_no
         backlog.ROW_LAGS_FILE: 2,
         backlog.NO_GENRE: 2,
         backlog.TOO_COARSE: 1,
-        backlog.OFF_TAXONOMY: 4,
+        backlog.OFF_TAXONOMY: 6,
     }
 
 
@@ -393,12 +493,19 @@ def test_a_catch_all_is_left_to_tag_retag(machine, silence):
 def test_off_taxonomy_words_are_grouped_across_spellings_and_ranked_by_rows(machine, silence):
     build(machine, silence, *_library(), Track("40", "", GRIME, artist="Nobody", folder="five"))
     plan = _planned(machine)
-    assert [word.spelling.casefold() for word in plan.words] == ["indie tech", AMAPIANO, "grime"]
+    assert [word.spelling.casefold() for word in plan.words] == [
+        "indie tech",
+        ALTERNATIVE,
+        AMAPIANO,
+        "grime",
+        MPB,
+    ]
     indie = _word(plan, INDIE)
-    assert indie.rows == 3 and indie.files_carry == 2 and indie.row_only == 1
+    assert (indie.rows, indie.files_carry, indie.elsewhere, indie.on_row) == (3, 2, 1, 2)
     assert {_row(plan, cid).status for cid in ("15", "16", "17")} == {backlog.ASKED}
     # The artist's eight Melodic House tracks vote, so the alias is recommended.
-    assert indie.options[0].answer == backlog.ALIAS and indie.neighbour_genre == MELODIC
+    assert indie.options[0].answer == backlog.ALIAS and indie.neighbours[0][0] == MELODIC
+    assert [option.rows for option in indie.options] == [2, 2, 0]
 
 
 def test_a_word_neither_answer_takes_leaves_its_rows_with_the_refusal(machine, silence):
@@ -407,7 +514,16 @@ def test_a_word_neither_answer_takes_leaves_its_rows_with_the_refusal(machine, s
     row = _row(plan, "18")
     assert row.status == backlog.LEFT
     assert row.reason == f"{backlog.UNANSWERABLE}:{word_edit.ALREADY_FILED}"
-    assert _word(plan, AMAPIANO).options == ()
+    assert _word(plan, ALTERNATIVE).options == ()
+
+
+def test_a_word_with_one_answer_moves_only_the_rows_it_reaches(machine, silence):
+    build(machine, silence, *_library())
+    plan = _planned(machine)
+    mpb, amapiano = _row(plan, "41"), _row(plan, "42")
+    assert (mpb.status, mpb.verb) == (backlog.SETTLED, f"{word_edit.ALIAS_VERB} mpb 'R&B'")
+    assert (amapiano.status, amapiano.reason) == (backlog.LEFT, backlog.NOT_REACHED)
+    assert _word(plan, AMAPIANO).settled and not _word(plan, AMAPIANO).reached
 
 
 def test_a_file_whose_genre_cannot_be_read_is_its_own_cause(machine, silence):
@@ -425,13 +541,14 @@ def test_the_campaign_lists_the_existing_verbs_in_order_and_the_projection(machi
     assert commands == [
         backlog.ROWS_VERB,
         backlog.SUGGEST_VERB,
+        f"{word_edit.ALIAS_VERB} mpb 'R&B'",
         f"{word_edit.ALIAS_VERB} WORD GENRE or {word_edit.FOLDER_VERB} WORD",
         backlog.ROWS_VERB,
         backlog.RESORT_VERB,
     ]
     rows_moved = [step["rows"] for step in plan.campaign()]
-    assert rows_moved == [1, 1, 3, 2, 2]
-    assert plan.projected() == {"now": 9, "no_word_answered": 7, "every_word_answered": 5}
+    assert rows_moved == [1, 1, 1, 2, 1, 3]
+    assert plan.projected() == {"now": 11, "no_word_answered": 8, "every_word_answered": 6}
 
 
 def test_an_empty_backlog_plans_no_campaign(machine, silence):
@@ -502,14 +619,14 @@ def test_the_verb_reports_the_backlog_and_asks_no_gate(machine, silence):
     assert code == int(ExitCode.OK), envelope
     assert _tree(machine) == before
     totals = envelope["data"]["summary"]
-    assert totals["causes"][backlog.OFF_TAXONOMY] == 4 and totals["floor"] == backlog.FLOOR
-    assert totals["projected"]["now"] == 9 and not totals["catalogue"]
+    assert totals["causes"][backlog.OFF_TAXONOMY] == 6 and totals["floor"] == backlog.FLOOR
+    assert totals["projected"]["now"] == 11 and not totals["catalogue"]
     words = {word["word"]: word for word in totals["words"]}
     assert words[INDIE]["question"].startswith("Indie Tech: 3 track(s)")
     assert words[INDIE]["recommended"] == 0 and words[INDIE]["options"][0]["answer"] == backlog.ALIAS
     codes = {warning["code"] for warning in envelope["warnings"]}
     assert {"backlog-words-asked", "backlog-library-alone", "backlog-remainder"} <= codes
-    assert len(totals["items"]) == 9 and all("path" in item for item in totals["items"])
+    assert len(totals["items"]) == 11 and all("path" in item for item in totals["items"])
     keys = [check["key"] for check in envelope["data"]["checks"]]
     assert keys[0] == f"backlog.cause.{backlog.ROW_LAGS_FILE}" and keys[-1] == "backlog.projected"
     assert "backlog.word.Indie Tech" in keys and "backlog.step.1" in keys
@@ -567,7 +684,8 @@ def test_a_person_reads_the_backlog(machine, silence):
     assert code == int(ExitCode.OK), text
     assert "Indie Tech: 3 track(s) carry this genre word" in text
     assert "1) An alias of Melodic House (recommended)" in text
-    assert "crate tag rows: 1 row(s)" in text and "9 row(s) need a genre now" in text
+    assert "crate tag rows: 1 row(s)" in text and "11 row(s) need a genre now" in text
+    assert "one answer, asking nothing: crate taxonomy alias mpb 'R&B'" in text
 
 
 def test_the_verb_declares_no_write_and_no_gate():
@@ -576,3 +694,105 @@ def test_the_verb_declares_no_write_and_no_gate():
     entry = registry.entry("tag.backlog")
     assert entry.writes == frozenset() and not entry.destructive and entry.gates == ()
     assert entry.output_schema == "diagnostic/1"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5. What round one of the review drove
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_rows_whose_file_is_not_here_are_counted_and_said(machine, silence):
+    """Round one: three files unlinked read as a clean no op over 13 rows."""
+    paths = build(machine, silence, *_eight(), Track("70", "", ""), Track("71", "", INDIE))
+    paths["70"].unlink()
+    paths["71"].unlink()
+    paths["20"].unlink()
+    plan = _planned(machine)
+    assert plan.rows == () and plan.unread == {rows.FILE_MISSING: 3}
+    code, envelope = drive(VERB)
+    assert code == int(ExitCode.OK) and envelope["outcome"] == "ok", envelope
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == "backlog-files-unread"]
+    assert "3 row(s) are in no cause" in warning["message"]
+    assert envelope["data"]["summary"]["unread"] == {rows.FILE_MISSING: 3}
+
+
+def test_a_row_tag_rows_would_move_into_needs_genre_is_counted_back(machine, silence):
+    """Round one: a routed row whose file carries a word no folder takes is
+    written that word by tag rows, the campaign's first step."""
+    build(machine, silence, Track("70", MELODIC, INDIE), Track("71", "", MELODIC))
+    plan = _planned(machine)
+    assert plan.joining == ("70",)
+    assert plan.projected() == {"now": 1, "no_word_answered": 1, "every_word_answered": 1}
+    code, envelope = drive(VERB)
+    assert "backlog-rows-joining" in {w["code"] for w in envelope["warnings"]}
+
+
+def test_a_neighbour_votes_with_its_files_word_as_tag_suggest_votes_it(machine, silence):
+    """Round one: eight neighbours with blank rows and Melodic House files said
+    nothing, and after tag rows wrote their rows the alias was recommended."""
+    build(
+        machine,
+        silence,
+        *[Track(str(20 + n), "", MELODIC, artist="The Artist", folder="one") for n in range(8)],
+        Track("15", "", INDIE, artist="The Artist", folder="four"),
+    )
+    indie = _word(_planned(machine), INDIE)
+    assert indie.neighbours == ((MELODIC, 8 * suggest.ARTIST_WEIGHT),)
+    assert indie.options[0].answer == backlog.ALIAS
+
+
+def test_a_folder_counts_a_row_only_where_tag_rows_would_write_its_word(machine, silence):
+    """Round one: a file holding the word beside another genre was counted as
+    filed by a folder, and tag rows leaves such a row."""
+    paths = build(machine, silence, Track("15", "", INDIE), Track("16", "", INDIE))
+    from cratekit.core import tags
+
+    assert tags.write_tag_values(paths["16"], "genre", [INDIE, DEEP])
+    assert tags.read_tag_values(paths["16"], "genre") == (INDIE, DEEP)
+    indie = _word(_planned(machine), INDIE)
+    folder = next(option for option in indie.options if option.answer == backlog.FOLDER)
+    assert folder.rows == 1 and indie.several == 1 and indie.files_carry == 1
+
+
+def test_the_digest_covers_the_words_the_unread_and_the_joining():
+    row = backlog.Row("1", "p", "", "", "", "", backlog.NO_GENRE, "", backlog.LEFT)
+    base = backlog.Backlog(rows=(row,), words=(), tracks=1, catalogue=False)
+    word = backlog.word_of(DECLARED, SHIPPED, _members(1), {})
+    for other in (
+        replace(base, words=(word,)),
+        replace(base, catalogue=True),
+        replace(base, unread={rows.FILE_MISSING: 1}),
+        replace(base, joining=("9",)),
+    ):
+        assert other.digest != base.digest
+
+
+def test_a_library_most_of_whose_rows_are_under_no_prefix_rule_refuses(machine, silence, monkeypatch):
+    from cratekit.write import metadata_cli
+
+    build(machine, silence, Track("70", "", ""))
+    monkeypatch.setattr(
+        metadata_cli,
+        "resolution_totals",
+        lambda cfg, db: metadata_cli.ResolutionTotals(
+            active=10, unresolved=9, unmapped=9, prefixes={"/Elsewhere": 9}
+        ),
+    )
+    code, envelope = drive(VERB)
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "library-paths-majority-unresolved"
+
+
+def test_discogs_passed_over_is_said_with_how_to_record_a_token(machine, silence, monkeypatch):
+    from cratekit.tagging import searchers
+
+    build(machine, silence, Track("60", "", "", artist="Nobody", folder="x"))
+    passed = suggest.Asked(
+        suggest.UNREAD, note="unread: discogs, no token", passed_over=(searchers.DISCOGS,)
+    )
+    monkeypatch.setattr(suggest, "catalogue_lookup", lambda *_searchers: lambda *_row: passed)
+    code, envelope = drive([*VERB, "--catalogue"])
+    assert code == int(ExitCode.OK), envelope
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == "backlog-catalogue-unread"]
+    assert "Discogs was not asked about 1 row(s), 60" in warning["message"]
+    assert "could not be read" not in warning["message"]
