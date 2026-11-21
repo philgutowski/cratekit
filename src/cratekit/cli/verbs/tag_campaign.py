@@ -51,8 +51,8 @@ THE STEPS, EACH PLANNED ON THE LIBRARY THE STEPS BEFORE IT LEFT (R-1732):
    is never written back into needs genre with another case of the word.
 5. ``route resort`` is NAMED, NOT RUN. Its adds are known only once the steps
    have written, and its gate binds those adds, so this answer cannot stand for
-   them without one minted for a plan nobody was shown (U294's question for
-   Phillip; the conservative answer is built).
+   them without one minted for a plan nobody was shown. Phillip answered on
+   #851 on 2026-11-21 that the resort keeps its own approval.
 
 A STEP THAT REFUSES STOPS THE CAMPAIGN THERE. Each step is its own verb's
 session, so what landed stays landed. The refusal is the step's own, reworded
@@ -821,12 +821,18 @@ def _words_step(
 
 def _followers(plan: backlog.Backlog, words: tuple[WordPlan, ...]) -> dict[str, str]:
     """The rows of every word the third step wrote, each with the file word its
-    answer files, which ``tag rows`` follows."""
+    answer files, which ``tag rows`` follows.
+
+    NO CAUSE IS CHECKED: every word the third step writes is an off taxonomy
+    word, and a row of any other cause carries a genre adoption files by, a
+    coarse word or none, so only an off taxonomy row can carry one (U294's
+    mutation table measured a check of the cause dead, and it was taken out).
+    """
     filed = {word.word.casefold(): word.genre for word in words}
     return {
         row.content_id: filed[row.word.casefold()]
         for row in plan.rows
-        if row.cause == backlog.OFF_TAXONOMY and row.word.casefold() in filed
+        if row.word.casefold() in filed
     }
 
 

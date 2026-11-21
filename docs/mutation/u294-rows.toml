@@ -150,15 +150,6 @@ old = '''    return [word for word in plan.words if word.settled and word.reache
 new = '''    return [word for word in plan.words if word.settled]'''
 
 [[rows]]
-id = "M17_followers_cause"
-description = "the follow step keeps a word's rows of any cause, not only the off taxonomy rows"
-file = "src/cratekit/cli/verbs/tag_campaign.py"
-surface = "user"
-tests = ["tests/test_tag_campaign.py"]
-old = '''        if row.cause == backlog.OFF_TAXONOMY and row.word.casefold() in filed'''
-new = '''        if row.word.casefold() in filed'''
-
-[[rows]]
 id = "M18_no_reload_after_words"
 description = "the rows that follow are planned on the taxonomy as it was before the words step wrote the copy"
 file = "src/cratekit/cli/verbs/tag_campaign.py"
@@ -240,4 +231,9 @@ reason = "zero on the first run of this table, confirmed on the full suite: scan
 id = "M22_needing_live"
 description = "the census after a step counts a tombstone"
 reason = "zero on the first run of this table, confirmed on the full suite: scan_rows skips a tombstone before it classifies anything, so the check was dead and was taken out; M26 measures the filter that holds it"
+
+[[dropped]]
+id = "M17_followers_cause"
+description = "the follow step keeps a word's rows of any cause, not only the off taxonomy rows"
+reason = "zero on the second run of this table; the first run's one kill was test_repair_rows's fresh inode test, which has nothing to do with the follow step and passed on the second run under the same mutant. Every word the third step writes is an off taxonomy word, and a row of any other cause carries a genre adoption files by, a coarse word or none, so the check was dead and was taken out"
 
