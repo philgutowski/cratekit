@@ -459,8 +459,9 @@ it.
   and takes `main`'s `RESTART-cratekit.md` as it is.
 
 - **Reserved-cause pins are per module, decided by U125.** The populations in
-  `tests/test_reserved_causes.py` are pinned in
+  `tests/test_reserved_causes.py` are pinned through
   `tests/_pinned_reserved_populations.py`: kebab literals and holders by module,
+  held one file per package under `tests/ratchets/reserved_causes/` since U296,
   non-reserved causes one slug per line. Totals are derived from those pins,
   never hand-edited. When a merge moves a pin, update only the modules (or
   slugs) that joined or left, measured on the merged tree, and put a dated

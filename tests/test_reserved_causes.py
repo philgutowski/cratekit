@@ -194,6 +194,9 @@ from tests._source_guards import (
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PACKAGE_ROOT = REPO_ROOT / "src" / "cratekit"
 
+#: Where a per module pin is edited, said by every failure that names one (U296).
+_PIN_FILES = "each in its own package's file under tests/ratchets/reserved_causes/"
+
 #: The only two files in the package that may map a refusal cause to a code.
 #: One is the reservation itself; the other is the closed reason registry that
 #: predates it. A test below asserts the two AGREE wherever they overlap, which
@@ -4715,8 +4718,10 @@ def test_pinned_populations_derive_totals_and_key_by_module():
     """U125: totals come from per-module pins, so parallel cards edit different lines.
 
     Two cards that each add a pin entry under a different module path touch
-    different lines of `_pinned_reserved_populations.py` and merge with no
-    conflict in that file. The suite still fails when a module's measured set
+    different lines, and since U296 different files when the modules are in
+    different packages: the per module pins are held one file per package
+    under `tests/ratchets/reserved_causes/`, read by
+    `_pinned_reserved_populations.py`. The suite still fails when a module's measured set
     disagrees with its pin, naming the module. The derived totals equal the
     sums and unions of the pinned parts, and those totals equal the figures
     measured on the tree.
@@ -4837,7 +4842,7 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     assert by_module == PINNED_KEBAB_LITERALS_BY_MODULE, (
         "kebab literals moved in at least one module; joined modules or literals: "
         f"{ {k: sorted(set(by_module.get(k, [])) - set(PINNED_KEBAB_LITERALS_BY_MODULE.get(k, []))) for k in sorted(set(by_module) | set(PINNED_KEBAB_LITERALS_BY_MODULE)) if set(by_module.get(k, [])) != set(PINNED_KEBAB_LITERALS_BY_MODULE.get(k, [])) } }. "
-        "Update only those module entries in PINNED_KEBAB_LITERALS_BY_MODULE"
+        "Update only those module entries in KEBAB_LITERALS, " + _PIN_FILES
     )
     literals = frozenset().union(*(frozenset(v) for v in by_module.values())) if by_module else frozenset()
     pinned_literals = (
@@ -4882,19 +4887,19 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     ]
     assert without == PINNED_NAMED_WITHOUT_OWN, (
         "the named without-own population moved; update only the modules that "
-        f"joined or left in PINNED_NAMED_WITHOUT_OWN: joined "
+        f"joined or left in NAMED_WITHOUT_OWN, {_PIN_FILES}: joined "
         f"{sorted(set(without) - set(PINNED_NAMED_WITHOUT_OWN))}, left "
         f"{sorted(set(PINNED_NAMED_WITHOUT_OWN) - set(without))}"
     )
     assert with_own == PINNED_NAMED_WITH_OWN, (
         "the named with-own population moved; update only the modules that "
-        f"joined or left in PINNED_NAMED_WITH_OWN: joined "
+        f"joined or left in NAMED_WITH_OWN, {_PIN_FILES}: joined "
         f"{sorted(set(with_own) - set(PINNED_NAMED_WITH_OWN))}, left "
         f"{sorted(set(PINNED_NAMED_WITH_OWN) - set(with_own))}"
     )
     assert frozenset(both) == PINNED_NAMED_WITH_INTEGER, (
         "the named-with-integer population moved; update "
-        "PINNED_NAMED_WITH_INTEGER for the modules that joined or left"
+        "NAMED_WITH_INTEGER for the modules that joined or left, " + _PIN_FILES
     )
     assert (len(without), len(with_own), len(both)) == (
         len(PINNED_NAMED_WITHOUT_OWN),
@@ -4908,13 +4913,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     )
     assert literal_holders == PINNED_LITERAL_HOLDERS, (
         "the literal-holder population moved; update only the modules that "
-        f"joined or left in PINNED_LITERAL_HOLDERS: joined "
+        f"joined or left in LITERAL_HOLDERS, {_PIN_FILES}: joined "
         f"{sorted(set(literal_holders) - set(PINNED_LITERAL_HOLDERS))}, left "
         f"{sorted(set(PINNED_LITERAL_HOLDERS) - set(literal_holders))}"
     )
     assert frozenset(literal_both) == PINNED_LITERAL_HOLDERS_WITH_INTEGER, (
         "the literal-holders-with-integer population moved; update "
-        "PINNED_LITERAL_HOLDERS_WITH_INTEGER for the modules that joined or left"
+        "LITERAL_HOLDERS_WITH_INTEGER for the modules that joined or left, " + _PIN_FILES
     )
     assert (len(literal_holders), len(literal_both)) == (
         len(PINNED_LITERAL_HOLDERS),

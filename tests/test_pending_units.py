@@ -177,6 +177,8 @@ ALWAYS_ARMED_MODULES = (
     "test_portability.py",  # R1 literals and the repository-wide secret scan
     "test_layering.py",  # KTD23 import direction, R19 stable identifiers
     "test_packaging.py",  # R5 slim core, KTD19 interpreter bounds
+    "test_duplication.py",  # U296: no newly copied block of six logical lines
+    "test_import_rules.py",  # U296: private names, the core interface, the toggles
 )
 
 

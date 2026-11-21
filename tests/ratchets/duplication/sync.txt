@@ -1,0 +1,32 @@
+# Copied blocks sync may still hold (U296). One line per place: the digest of
+# a window of six logical lines that also stands somewhere else. Lines are only
+# ever removed, by hand or with: scripts/refactor_measure.py prune sync
+# A line whose copy is gone fails nothing. To see where a window stands:
+# scripts/refactor_measure.py duplicates --where DIGEST
+02401d13ab70e406
+02401d13ab70e406
+0364bf01e5591c30
+0364bf01e5591c30
+0a0e2f0b5ff80c74
+0a0e2f0b5ff80c74
+5013e662765b04c4
+5013e662765b04c4
+594b1bb2b82ba5cf
+594b1bb2b82ba5cf
+594b1bb2b82ba5cf
+60009715408a6922
+60f86e4fdd31d13a
+60f86e4fdd31d13a
+7b2703202404b08a
+7b2703202404b08a
+82ec3217eecc9fbe
+82ec3217eecc9fbe
+82ec3217eecc9fbe
+914e0d1b00405d30
+a9b3a79243aae207
+b5c80bd858abe28e
+b5c80bd858abe28e
+c4773ecee9360b52
+c4773ecee9360b52
+cde7e28239e5d94c
+e8c103f4b2dc0475

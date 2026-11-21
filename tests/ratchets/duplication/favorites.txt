@@ -1,0 +1,15 @@
+# Copied blocks favorites may still hold (U296). One line per place: the digest of
+# a window of six logical lines that also stands somewhere else. Lines are only
+# ever removed, by hand or with: scripts/refactor_measure.py prune favorites
+# A line whose copy is gone fails nothing. To see where a window stands:
+# scripts/refactor_measure.py duplicates --where DIGEST
+0a0e2f0b5ff80c74
+2cd87f73d3ef28f6
+2cd87f73d3ef28f6
+2cd87f73d3ef28f6
+2cd87f73d3ef28f6
+60009715408a6922
+7b2703202404b08a
+914e0d1b00405d30
+cde7e28239e5d94c
+e8c103f4b2dc0475

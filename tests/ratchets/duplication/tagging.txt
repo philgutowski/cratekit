@@ -1,0 +1,54 @@
+# Copied blocks tagging may still hold (U296). One line per place: the digest of
+# a window of six logical lines that also stands somewhere else. Lines are only
+# ever removed, by hand or with: scripts/refactor_measure.py prune tagging
+# A line whose copy is gone fails nothing. To see where a window stands:
+# scripts/refactor_measure.py duplicates --where DIGEST
+0e415ca4f775c7b8
+13a15b9fddbbeb33
+146239a5b51635c7
+1adf81136a6813ec
+1fa680fb533f2039
+2551d8f6e469822a
+2ad5b62d0b8a4ca7
+2cd87f73d3ef28f6
+2cd87f73d3ef28f6
+2ec3a03427e9e635
+32376b0d4bbfae23
+39c6630ce639b398
+44eb451dfc749c9c
+45431846ed29d16a
+4d8b63d85858fd6a
+4e144a254979c465
+559c222033455777
+58d1b44f810badda
+67a537946d4e1ef7
+72696c33ea97107b
+89848877ae118dad
+89848877ae118dad
+8b476051178f7e27
+8b6a958780ff989d
+94c8c93075f8a855
+971b88949c793530
+97e8b4501f903794
+a06d6ef3daeb558b
+a273c1a33679ec6a
+a273c1a33679ec6a
+a39c553b3b762769
+adf1582f82f1be2c
+b1278eb82f2746e4
+b1278eb82f2746e4
+b9722cfa5bc9d758
+bca659227b80c356
+c0fb8e087a2a9e16
+ca76de4430a225ad
+ca8d5a8df1ac5746
+d00783eb79eafd72
+d1db8f425543ae0c
+d3b09f501a0937f0
+d3b09f501a0937f0
+e206997d90d349d2
+e7bbede1267c70bc
+eebc2f72b60d95c4
+f0e1b5c0fb0d71bb
+fa233203131b283c
+fda7cabebf802af0
