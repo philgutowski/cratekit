@@ -488,12 +488,11 @@ plan, progress notes, brainstorm, set-aside and landing are comments headed
 `Plan`, `Progress`, `Brainstorm`, `Needs the machine` and `Landed`; Phillip's
 answer is any comment without the session footer after the question, or
 any comment headed `Answer from Phillip` whoever posts it. **The
-cloud has five lanes**, three decided 2026-10-28 for the backlog and raised
-to five by Phillip on 2026-10-31 (`CLOUD_LANES` in `scripts/board.py`), and
-**the building project runs at most four threads at once**, Phillip's cap of
-2026-11-05, so it leaves the fifth lane empty and `CLOUD_LANES` is unchanged.
-Its coordinator counts lanes by its own running threads, not by the held
-count `board.py cloud` prints, which stops counting a card once its thread
+cloud has ten lanes, and the building project runs at most ten threads at
+once**, Phillip's decision of 2026-11-21 (`CLOUD_LANES` in `scripts/board.py`),
+after three lanes for the backlog on 2026-10-28, five on 2026-10-31 and his
+cap of four threads on 2026-11-05. Its coordinator counts lanes by its own
+running threads, not by the held count `board.py cloud` prints, which stops counting a card once its thread
 posts a question for Phillip although the thread keeps building. Each worker
 merges the latest `main` into its branch and runs the battery again before
 it merges, so two builders landing in either order is the case the repository was already built for
@@ -597,7 +596,7 @@ never touched, merged in or pruned by a cloud thread.
 **Two Claude projects share Cratekit, and one of them builds.** The project
 on Phillip's first account builds nothing: it files cards from his ideas,
 keeps the decisions page, and relays his answers. The project on his second
-account does all of the building, up to four threads at once (The cloud
+account does all of the building, up to ten threads at once (The cloud
 lane, above), taking every card `board.py cloud` lists as takeable, in
 order. So a held card belongs to one of the building project's threads or to
 the `grok/` builder, and is never taken. The building project cannot reach
