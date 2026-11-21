@@ -45,7 +45,9 @@ Every one of these holds, or the pass does not start.
 3. **The backups are fresh enough.** `crate doctor` shows `backup.age.files`
    and `backup.age.database`. At five days or more, or with either unknown,
    run `crate backup run` first and read the ages again, as CLAUDE.md's backup
-   rule says. Under five days, no backup.
+   rule says. Under five days, no backup. A backup over a library that barely
+   changed is quick or skipped, and both reset the ages as a full one does;
+   one that fails resets nothing, and the next is a full check.
 4. **rekordbox is closed.** `crate doctor` reads `rekordbox.closed` as ok.
 
 ## 2. The pass, to its landing gate

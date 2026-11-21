@@ -54059,3 +54059,178 @@ repository.
 **Closes when:** the scan refuses an email address outside an allowlisted
 placeholder domain and a tilde path below the home, or the record says why
 either is not personal. Ledger only.
+
+---
+
+## R-1756. A file moved away and back with the same size and time while a backup ran is trusted by the next run though the remote may lack it
+
+**Found:** at the build of #877, U317, 2026-11-21.
+
+**The mechanism.** `backup_record.settled` trusts an entry when the walk before
+the transfer and the walk after it agree. A file moved out of the library and
+back while rclone ran, keeping its size and time (a move keeps both), agrees in
+both walks, yet the transfer may have missed it: a quick run's copy exits 0
+over a listed path that is not there, and a full sync deletes it from the
+mirror. The next quick run then compares it as unchanged and skips it, and the
+remote lacks it until the weekly full check sends it again.
+
+**Measured cost.** Not driven. It needs a move out and back inside one run's
+transfer, which no verb does; organize moves files to new paths, which both
+walks see.
+
+**Closes when:** a quick run reads rclone's per path log for the listed paths
+it did not transfer or find current, or the next full check, which closes each
+instance within a week. Ledger only.
+
+---
+
+## R-1757. A quick run's archive check asks whether a removed path resolves, so a case only rename on a Mac volume fails the run and costs a full check
+
+**Found:** at the round two review of #877, U317, 2026-11-21.
+
+**The mechanism.** `backup_record.still_removed` refuses the archive when a
+path the walk found removed resolves with `lstat`. On a case insensitive
+volume a case only rename (`Album/a.flac` to `Album/A.flac`) leaves the old
+spelling resolving, and a folder replaced by a symbolic link leaves its old
+paths resolving through the link, so the quick run fails with "was found
+removed by the walk and is there again" and the next run is a full check.
+
+**Measured cost.** The symbolic link case was driven: one failed run, then a
+full check, no age or file wrong. The case only rename was emulated, since no
+case insensitive file system mounts in the container. Each costs a failed
+backup and one full run, never a wrong skip or a lost file.
+
+**Closes when:** the check compares the path as the walk would list it, by
+the exact name in its directory's listing and not by resolving it. Ledger
+only; the attended timing card renames one folder by case to measure it.
+
+---
+
+## R-1758. A database fingerprint is trusted after another installation took a newer snapshot, so an unchanged database is not snapshotted again while the default restore takes the other one
+
+**Found:** at the round two review of #877, U317, 2026-11-21.
+
+**The mechanism.** The database fingerprint record is installation state and
+carries no token the library's database fact must hold, unlike the files
+record since round one. Installation A snapshots generation one, installation
+B snapshots generation two, the database is put back to generation one, and A
+finds it unchanged against its own fingerprint, takes no snapshot and resets
+the database age. A restore with no stamp named then pulls B's newer snapshot.
+
+**Measured cost.** Driven at the engine with the put back made by a copy.
+Generation one stays on the remote under its stamp, so nothing is lost; a
+restore that names no stamp gets the other machine's database. `crate restore`
+was not driven.
+
+**Closes when:** the database fact carries the fingerprint record's token as
+the files fact does, and a fact without it snapshots. Ledger only.
+
+---
+
+## R-1759. One file whose name holds a line break or carriage return makes every backup a full check, however little changed
+
+**Found:** at the round two review of #877, U317, 2026-11-21.
+
+**The mechanism.** rclone reads a quick run's paths one per line, so the walk
+refuses a name holding a line feed or a carriage return, and a refused walk is
+a full run that keeps no record. macOS's folder icon file, `Icon` followed by a
+carriage return, is such a name, and it never changes, so every run is full.
+
+**Measured cost.** Driven on three consecutive days: full each day with
+`backup-record-not-kept`. The card's measure of minutes is never met on a
+library holding one. Whether the live library holds one is unmeasured; the
+attended card runs a `find` for it first.
+
+**Closes when:** such a name is carried by the full check alone and left out
+of the record and the comparison, so a quick run neither lists it nor reads
+its absence as a removal, or the walk excludes `Icon\r` as volume clutter.
+Ledger only.
+
+---
+
+## R-1760. The settings folders and the analysis share beside the database are fingerprinted by size and time only, so a rewrite keeping both is called unchanged
+
+**Found:** at the round one review of #877, U317, 2026-11-21.
+
+**The mechanism.** `backup_record.database_fingerprint` hashes the database
+set's content and reads the settings folders and an outside analysis share by
+size and modification time, since the share can be gigabytes. A file there
+rewritten keeping both is not seen, the portion is `unchanged`, and the newest
+snapshot holds the older file.
+
+**Measured cost.** Driven with the time put back by hand. rekordbox moves the
+time when it writes, so no producer of a rewrite keeping both was driven.
+
+**Closes when:** the small settings folders are hashed whole, with the share
+left to size and time. Ledger only.
+
+---
+
+## R-1761. A backup over an empty library root moves the whole mirror into its dated archive, quick or full, with no check that the root is the library
+
+**Found:** at the build of #877, U317, 2026-11-21.
+
+**The mechanism.** `_plan_files` refuses only a library root that is not a
+directory. An empty directory at the configured root, the mount point a lost or
+unmounted drive can leave, is walked as a library with no files. A full check
+then runs `rclone sync` from it, which moves every file on the mirror into the
+run's dated archive, and since U317 a quick run of a library under
+`QUICK_LIMIT` files plans the same thing as one `rclone move` of every path. The
+archive rotation at a keep of one purges that folder at the second completed
+run after it. U317 did not make this reachable; it was the full sync's
+behaviour before, and the quick run inherits it rather than adding a guard of
+its own.
+
+**Measured cost.** Driven at U317's round two review against a real tmpfs
+volume unmounted during the plan's walk, which leaves the empty directory it
+was mounted on: the walk refuses, the run goes full, `rclone sync` exits 0
+over the empty directory, all 12 mirror files move to the dated archive, and
+the files age is reset. Not driven on a Mac, where whether an unmount leaves
+such a directory at the configured root was not measured, nor on the live
+remote.
+
+**Closes when:** the files portion refuses, before any transfer, a root that
+does not carry this library's identity (the volume identity assertion the
+restore gates already use), or one whose walk is empty while the last record
+held files. It earns an issue because a guard on a path that deletes from the
+backup is absent.
+
+---
+
+## R-1762. A run of a build before U317 that sends and then fails does not strike the record's token, so this installation's record may be trusted over a mirror it changed
+
+**Found:** at the round two review of #877, U317, 2026-11-21.
+
+**The mechanism.** Since round two a U317 run strikes the files record's
+token from the library's fact before it sends, so a failed run of any U317
+installation leaves no record trusted. A build before U317 knows no token: its
+completed run publishes a fact without one, which is caught, and its failed
+run publishes nothing, which leaves the token in place.
+
+**Measured cost.** One candidate driven at round two, the build on `main` on
+one state directory, and it did not produce a wrong skip: the next run was
+full. Which write removed the token there was not measured. It needs an older
+build to send, fail, and the library to be put back before the next run.
+
+**Closes when:** every installation runs U317 or later, which the next
+release and its installed copy close. Ledger only.
+
+---
+
+## R-1763. Guards U317's fix rounds added that the review's mutations reverted with a green suite
+
+**Found:** at the round two review of #877, U317, 2026-11-21.
+
+**The mechanism.** Round two reverted each of these alone on a scratch copy
+with every test in the five backup files green: an unreadable fact file read
+as no reason in `_record_unpublished`; the root's device read again after the
+walk; `still_removed` comparing the device and treating an unreadable path as
+absent; an unconfirmed scan before the second database read; the archived
+count over every quick command; the under a second bound; and the doubt count
+inside `changed`. Each was then driven by hand and holds on the branch.
+
+**Measured cost.** None today; each can be reverted with a green suite. The
+unit's own table, `docs/mutation/u317.md`, measures its 25 rows against the
+whole suite and names its own zeros.
+
+**Closes when:** a test pins each. Ledger only.

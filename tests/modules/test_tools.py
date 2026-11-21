@@ -1840,8 +1840,15 @@ class ArchiveRemote:
 
 
 def _mirror_at(cfg, remote, at, *, keep=backup.DEFAULT_ARCHIVE_KEEP):
-    """One attempt at the whole plan at one instant, the way one claim makes it."""
-    plan = backup.plan_backup(cfg, now=at, process_lister=no_processes, archive_keep=keep)
+    """One attempt at the whole plan at one instant, the way one claim makes it.
+
+    A FULL CHECK EACH TIME (U317). These drive the rotation over the full
+    sync, and a library that did not change between two runs is otherwise
+    skipped, which writes no dated folder at all.
+    """
+    plan = backup.plan_backup(
+        cfg, now=at, process_lister=no_processes, archive_keep=keep, check=True
+    )
     return backup.run_backup(cfg, plan, runner=remote, now=at)
 
 

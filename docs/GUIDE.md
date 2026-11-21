@@ -1260,7 +1260,7 @@ the source and refuses to replace a master without `--overwrite`.
 
 ```bash
 crate backup run --dry-run
-crate backup run [--full]
+crate backup run [--check | --full]
 crate restore list
 crate restore run [SESSION_ID] --dry-run
 crate restore run --from-backup --target /path/to/empty/dir
@@ -1271,10 +1271,34 @@ crate restore bare-metal --target /path/to/replacement --accept-replacement --dr
 by date and snapshots the database. `[backup]`'s `dest`, `archive_root` and
 `db_dest_root` are each an rclone `remote:path`. The database part refuses
 while rekordbox or its agent runs, so doctor reports the two ages apart.
-Every run compares every file by size and modification time; `--full` lists
-the remote folder by folder (most of an hour, independent of the recursive
-listing), and doctor's `backup.full_comparison` asks for one every thirty
-days. With the database outside the library root, the `share` folder beside
+
+A run is one of three kinds, and its report says which, what changed, how
+long it took and when the next full check is due:
+
+- **full check**: lists the remote and compares every file by size and
+  modification time, as every backup did before. It runs when the last one is
+  seven days old, when Cratekit has no trustworthy record of what the last
+  backup left (the first run, after a failed or interrupted one, or after the
+  library, mirror or excludes changed, or another installation or an older
+  Cratekit backed the library up since), when a folder cannot be read or
+  vanishes while it is read, when more than 10,000 paths changed, when a
+  changed name is in decomposed Unicode form, when any name in the library
+  holds a line break or carriage return, or when asked with `--check`. `--full` is a full check that lists the remote folder
+  by folder (most of an hour, independent of the recursive listing), and
+  doctor's `backup.full_comparison` asks for one every thirty days.
+- **quick**: between full checks, the library is compared with Cratekit's own
+  record of what the last backup left, and only the files added, changed or
+  removed are sent or moved to the dated archive, without listing the remote.
+- **skip**: nothing changed, so nothing is sent.
+
+A quick run that completes resets the files age, since the remote then holds
+everything. A skip resets it too, because the comparison proved nothing
+changed. The database is snapshotted only when it differs from the last
+snapshot (always with `--check` or `--full`), and an unchanged one resets the
+database age without a copy. A run that fails or stops part way resets no age
+and leaves no record, so the next run is a full check. Doctor's
+`backup.full_check` says when the last full check ran and when the next is
+due, and `backup.age.*` names the kind of run that set each age. With the database outside the library root, the `share` folder beside
 it (rekordbox's analysis files) is mirrored to `analysis-share/` under
 `db_dest_root`.
 
