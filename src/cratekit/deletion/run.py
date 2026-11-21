@@ -34,7 +34,9 @@ has a reason it is where it is:
 
 **NOTHING HERE WRITES A DATABASE ROW (KTD15).** Deletion is driven by rekordbox's
 own soft-delete marker precisely so the guarded writer's unconditional delete
-prohibition never has to be reopened. The database is opened, read, and closed.
+prohibition never has to be reopened, and by the session records of ``crate
+sync removed``, which deletes a row outright as rekordbox does (U288) and names
+each one it took out, since such a row carries no marker. The database is opened, read, and closed.
 That is also why there is no capture: a snapshot protects database rows, this
 run creates, edits and deletes none, and the thing that is actually at risk is
 files, which a database snapshot does not hold. What protects those is the
@@ -235,6 +237,23 @@ def _assert_library_is_still(
     rb_writer.canary(db)
 
 
+def _recorded_details(cfg: config.Config) -> tuple[Mapping[str, Any], ...]:
+    """Each readable session record's detail, for the removals recorded in it (U288).
+
+    A record that cannot be read, or a log that cannot be listed, offers
+    nothing of its own, so the files it names stay where they are; the pass
+    says so rather than reading the silence as no removal.
+    """
+    found, unreadable = session.scan_log(cfg)
+    if unreadable:
+        logger.warning(
+            "%d session record(s) could not be read, so a row a recorded removal "
+            "took out of the collection may not be offered this run",
+            len(unreadable),
+        )
+    return tuple(record.detail for record in found)
+
+
 def plan(
     cfg: config.Config,
     db: Any,
@@ -271,6 +290,21 @@ def plan(
     # second walk would return nothing at all against a database cursor, which is
     # the shape that reports an empty library while the run reports clean.
     seen = library.read_collection(db.get_content())
+    # A ROW DELETED OUTRIGHT CARRIES NO MARKER (R-1037, U288). rekordbox's own
+    # Remove from Collection deletes the row, and so does ``crate sync
+    # removed``, which records each row it took out in its session record. The
+    # recorded rows join the marked ones here, before the baseline and the
+    # watermark, so every rule below is the one a marked row meets.
+    seen = library.CollectionRead(
+        active=seen.active,
+        removed=seen.removed
+        + library.recorded_removals(
+            _recorded_details(cfg),
+            database_identity=identity,
+            present=[row.content_id for row in seen.active]
+            + [row.content_id for row in seen.removed],
+        ),
+    )
     highest = max((row.sequence for row in seen.removed), default=counter)
 
     mark, baselined = marks.baseline(

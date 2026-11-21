@@ -951,6 +951,118 @@ def test_an_admitted_removal_admits_no_hard_delete():
     assert len(violations) == 1 and "additive-only" in violations[0]
 
 
+# ── the one hard delete, the removal from the collection (U288) ─────────────
+
+
+def test_a_delete_is_admitted_only_in_a_table_the_commit_names():
+    """Each table of the removal set alone: named, its delete passes; unnamed, it refuses."""
+    for table in sorted(W.DELETABLE_TABLES):
+        assert W.guard_violations([], [], [table], deletions={table}) == [], table
+        refused = W.guard_violations([], [], [table], deletions=W.DELETABLE_TABLES - {table})
+        assert len(refused) == 1 and "additive-only" in refused[0], table
+        assert W.guard_violations([], [], [table]) != [], table
+
+
+def test_a_delete_outside_the_removal_set_is_refused_even_when_asked_for():
+    for table in ("djmdPlaylist", "djmdSongMyTag", "djmdArtist", "agentRegistry"):
+        violations = W.guard_violations([], [], [table], deletions={table})
+        assert any("asks to delete" in line for line in violations), table
+        assert any("additive-only" in line for line in violations), table
+    # Asked for and unused, it is still refused.
+    assert W.guard_violations([], [], [], deletions={"djmdPlaylist"}) != []
+
+
+def test_the_removal_set_is_rekordboxs_measured_shape_and_nothing_wider():
+    """A185's seven tables, read from the sitting, and none of the unmeasured ones."""
+    assert W.DELETABLE_TABLES == frozenset(
+        {
+            "djmdContent",
+            "djmdSongPlaylist",
+            "djmdCue",
+            "contentCue",
+            "contentFile",
+            "djmdSongHistory",
+            "djmdMixerParam",
+        }
+    )
+    assert W.COLLECTION_REMOVAL_TABLES[0] == W.CONTENT_TABLE
+    assert W.PLAYLIST_TABLE not in W.DELETABLE_TABLES
+    # The soft delete admission is not widened to the content table by it.
+    assert W.CONTENT_TABLE not in W.REMOVABLE_TABLES
+
+
+def test_an_admitted_delete_admits_no_soft_delete_no_creation_and_no_modification():
+    asked = W.DELETABLE_TABLES
+    assert W.guard_violations([], [(W.CONTENT_TABLE, {W.SOFT_DELETE_COLUMN})], [], deletions=asked)
+    assert W.guard_violations([(W.CONTENT_TABLE, {"ID", "Title"})], [], [], deletions=asked)
+    assert W.guard_violations([], [(W.CONTENT_TABLE, {"BPM"})], [], deletions=asked)
+    assert W.guard_violations([], [("djmdCue", {"InMsec"})], [], deletions=asked)
+
+
+def _reading(rows, named=None, counter=5):
+    return W.DatabaseReading(rows=rows, named=named or {}, counter=counter)
+
+
+def _readings():
+    before = _reading(
+        {
+            W.CONTENT_TABLE: {"1": "a", "2": "b"},
+            "djmdCue": {"c1": "x", "c2": "y"},
+            "djmdPlaylist": {"p": "q"},
+            "agentRegistry": {W.LOCAL_UPDATE_COUNT: "n"},
+        },
+        {W.CONTENT_TABLE: {"1": "1", "2": "2"}, "djmdCue": {"c1": "1", "c2": "2"}},
+    )
+    after = _reading(
+        {
+            W.CONTENT_TABLE: {"2": "b"},
+            "djmdCue": {"c2": "y"},
+            "djmdPlaylist": {"p": "q"},
+            "agentRegistry": {W.LOCAL_UPDATE_COUNT: "n"},
+        },
+        {W.CONTENT_TABLE: {"2": "2"}, "djmdCue": {"c2": "2"}},
+    )
+    return before, after
+
+
+def test_a_confined_removal_reads_clean_and_every_stray_difference_is_named():
+    before, after = _readings()
+    assert W.collection_removal_violations(before, after, removed=["1"]) == []
+    # A row of another track gone, a row changed, a row added, a table gone.
+    for table, change in (
+        ("djmdCue", {}),
+        ("djmdPlaylist", {"p": "moved"}),
+        ("djmdPlaylist", {"p": "q", "p2": "new"}),
+    ):
+        rows = {**after.rows, table: change}
+        assert W.collection_removal_violations(before, _reading(rows), removed=["1"]), (table, change)
+    gone = {key: value for key, value in after.rows.items() if key != "djmdPlaylist"}
+    assert W.collection_removal_violations(before, _reading(gone), removed=["1"])
+
+
+def test_a_planned_removal_that_was_not_made_is_refused():
+    before, _after = _readings()
+    assert W.collection_removal_violations(before, before, removed=["1"])
+    # Half made: the content row gone and its cue still naming it.
+    half = _reading({**before.rows, W.CONTENT_TABLE: {"2": "b"}})
+    assert any("still names" in line for line in W.collection_removal_violations(before, half, removed=["1"]))
+    # A content row that was never there is not a removal.
+    assert W.collection_removal_violations(before, before, removed=["9"])
+
+
+def test_the_read_back_after_the_commit_admits_only_the_counter_moving_forward():
+    before, after = _readings()
+    moved = _reading({**after.rows, "agentRegistry": {W.LOCAL_UPDATE_COUNT: "m"}}, counter=7)
+    assert W.collection_removal_violations(before, moved, removed=["1"], committed=True) == []
+    # Before the commit the counter may not move at all.
+    assert W.collection_removal_violations(before, moved, removed=["1"])
+    # After it, it must have moved forward.
+    still = _reading(after.rows, counter=5)
+    assert W.collection_removal_violations(before, still, removed=["1"], committed=True)
+    other = _reading({**moved.rows, "agentRegistry": {W.LOCAL_UPDATE_COUNT: "m", "x": "y"}}, counter=7)
+    assert W.collection_removal_violations(before, other, removed=["1"], committed=True)
+
+
 def test_an_admitted_removal_still_judges_the_other_columns_of_the_row():
     violations = W.guard_violations(
         [],

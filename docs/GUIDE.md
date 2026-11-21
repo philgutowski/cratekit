@@ -720,10 +720,33 @@ crate sync removed
 
 `sync removed` reads every account playlist a pass downloaded and landed
 again, and lists each track its pass recorded that the account no longer
-lists, with what it would do about the track's row in the collection. It
-removes nothing and writes nothing: the database is read on a copy, so
-rekordbox must be closed, and taking an offered track out of the collection
-is still done by hand, then `crate delete review` for the file.
+lists, with what it would do about the track's row in the collection. The
+database is read on a copy, so rekordbox must be closed. A run that offers
+nothing ends there and writes nothing.
+
+When a track is offered, the run reads your backup acknowledgment and stops
+at the explicit gate `sync.removed.confirm`, which lists every offered track
+by artist, title, the playlists you took it off and its file, with the kept
+and left ones beside them. Answer it with `crate run decide RUN_ID
+sync.removed.confirm apply --actor NAME`, then run `crate --run RUN_ID sync
+removed` again. `apply` takes each offered track out of the rekordbox
+collection the way rekordbox's own Remove from Collection does: the
+collection row and every membership, cue, history entry, analysis file row
+and mixer row naming it are deleted, and the playlists and history lists
+stay, emptier. Nothing else in the database moves, which the verb reads back
+from the database after its commit, and it refuses with nothing written when
+the collection or the playlists moved since the gate. A track a My Tag (the
+landing's own `vox` and `dyn` included), a sampler slot, related tracks or any
+other table rekordbox was never measured on names is kept, with that table
+named, and never offered. It touches no file: run `crate delete review` next, which offers
+each removed track's file to the Trash behind its own proofs and its own
+gate. `crate restore list` names the tracks a removal took out, and a restore
+of its session puts them back. `abort` writes nothing.
+
+Unlike rekordbox, the removal leaves the track's analysis files in the
+analysis folder and any artist or album row it was the last to name (rekordbox
+sweeps those at its next removal), and it does not renumber the tracks after
+it in a playlist or history list that keeps others.
 
 - **Offered**: the pass downloaded it, its file is where the pass's landing
   filed it, no other synced playlist on the account and none of your hearts
@@ -732,8 +755,9 @@ is still done by hand, then `crate delete review` for the file.
   playlist twin).
 - **Kept**: a track the library held before the pass, one whose file the pass
   did not bring, one still on another synced playlist (by its id, its ISRC,
-  or its artist and title), and one in any other playlist, All Favorites
-  and label year playlists included. Each is shown with what keeps it. A
+  or its artist and title), one in any other playlist, All Favorites and
+  label year playlists included, and one a My Tag or another table rekordbox's
+  removal was never measured on names. Each is shown with what keeps it. A
   synced playlist is one a pass swept, queued or took, one still titled
   with the old `DOWNLOADED ` prefix, a pair, or one a landing downloaded.
 - **Left**: a track no single row holds now: none does, two claim its file,
@@ -1276,9 +1300,15 @@ removed in rekordbox; confirmed ones go to the system Trash only. It refuses
 while any active row records a path it cannot resolve, naming each prefix and
 the `library.location_prefix_map` rule that would resolve it; rows that are no
 local file, rekordbox's streaming rows and `soundcloud:` locations among them,
-are left out and counted on the gate. `crate sync removed` lists the
-downloaded tracks you took off their playlist on the account, to remove from
-the collection first. `crate tombstone list` shows what was
+are left out and counted on the gate. A row rekordbox deletes outright on
+Remove from Collection leaves no mark for it to read, so its file is offered
+when `crate sync removed` took the row out and recorded it; a track you remove
+by hand in rekordbox is not offered, so you trash its file yourself (it can be
+offered when `sync removed` had taken that same track out before and a restore
+put it back). `crate
+sync removed` lists the downloaded tracks you took off their playlist on the
+account and, behind its gate, takes them out of the collection first. `crate
+tombstone list` shows what was
 removed; `--revoke ID` lets that version be acquired again. A removed track
 also stays off its label's year playlists: `label playlists` never adds it,
 `label heard` never merges it in from a dated playlist (nor a track `label
@@ -1520,6 +1550,7 @@ without one.
 | `adopt.move.approve` | approve | `adopt move` |
 | `inbox.rotate.approve` | approve | `inbox rotate` |
 | `inbox.refill.approve` | apply | `inbox refill` |
+| `sync.removed.confirm` | apply | `sync removed` |
 | `inbox.analyzed.approve` | apply | `inbox analyzed` |
 | `favorites.backfill.approve` | approve | `favorites backfill` |
 | `favorites.refresh.approve` | approve | `favorites refresh` |
