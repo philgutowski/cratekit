@@ -55877,3 +55877,98 @@ posted on the card under its question heading.
 **Closes when:** Phillip answers the question on #889 and the bound matches
 his answer, or the provider is found to publish which hearts it withholds.
 Ledger only.
+
+---
+
+## R-1842. When sync removed gives the deletion pass its first position, landed rows already gone are numbered at the first review and offered, not taken as history
+
+**Found:** at the review of #913, R-1037, round one, a hypothesis the review named and did not drive, 2026-11-21.
+
+**The mechanism.** `sync.removed` gives the deletion pass its first position
+when it has none, so a removal it records is not baselined away (U288). That
+position records no sightings, so a landed row removed in rekordbox before it
+is first seen by the next `delete review`, at a count past the position, and
+offered. R35 takes the removals before a library's first position as history,
+and a review that baselines does take them so; a position `sync removed` gave
+does not.
+
+**Measured cost.** Not driven. Each such row is a real removal of a Cratekit
+landed track, offered at the explicit gate with its proofs, so a person is
+asked about a removal older than the position rather than not asked; nothing
+is moved without the trash answer.
+
+**Closes when:** `sync removed`'s first position also numbers every absent
+landed row as history, or R35 is read as allowing it and GUIDE says so.
+Ledger only.
+
+---
+
+## R-1843. A track landed into a batch playlist that was already there is never offered by delete review when removed in rekordbox
+
+**Found:** at the review of #913, R-1037, round two, 2026-11-21.
+
+**The mechanism.** A landing's record names the playlists it made, and the
+deletion pass offers a landed row only while the database holds every one of
+them (`deletion.library.landed_absences`), because no database from before the
+landing holds one: a `restore run`, a bare metal recovery from an older
+snapshot and a hand copy all take the landing's rows away as a removal does,
+and the last two leave no record. Round one's guard, a restore record started
+after the landing, missed the bare metal recovery (round two's B1, driven end
+to end to a file in the Trash). A landing into a batch playlist that already
+existed, an explicit `--name` reused or a set landing adding to its recorded
+INBOX playlist (U135), makes none, so it names none and offers nothing.
+
+**Measured cost.** Driven: such a landing's track removed outright stays on
+disk and is not offered (`tests/test_delete_landed_removed.py`). A person
+trashes the file by hand, as before this card. Nothing is lost; the cost is
+the card's goal unmet for that landing.
+
+**Closes when:** a fact a removal keeps and every rollback takes away is found
+for a landing that made no playlist (an attended comparison of a removal
+against a restore), or the landing makes a marker row of its own that
+rekordbox leaves. Ledger only.
+
+---
+
+## R-1844. The landed row reader reads a landing whose playlists rekordbox deleted outright as rolled back, so its later removals are never offered
+
+**Found:** at the review of #913, R-1037, round one, 2026-11-21.
+
+**The mechanism.** `deletion.library.landed_absences` offers nothing of a
+landing whose playlists, the ones it made, the database no longer holds in any
+state, since any rollback to before the landing takes them away. Cratekit's own
+rotation soft deletes a playlist, so the row stays and the guard holds. What
+rekordbox 7.2.19 writes when a person deletes a playlist by hand was not
+measured: A185's playlist was deleted after its AFTER copy, and the same
+version deletes content rows outright.
+
+**Measured cost.** Not driven, since only rekordbox produces it. If rekordbox
+deletes the playlist row outright, every later removal of that landing's
+tracks is never offered, and the gate shows no count of it; the files stay on
+disk, which keeps rather than trashes.
+
+**Closes when:** an attended check deletes a throwaway playlist made by hand
+in rekordbox and reads djmdPlaylist on before and after copies, and the guard
+is kept or given a fact rekordbox leaves.
+
+---
+
+## R-1845. A deletion watermark written at version 2 is refused by every build before R-1037, sync removed's first position included
+
+**Found:** at the review of #913, R-1037, round one, 2026-11-21.
+
+**The mechanism.** R-1037 keeps the number each absent landed row is given in
+the deletion watermark's document, so it writes version 2. A build before it
+reads only version 1 and refuses anything else (`deletion-watermark-unusable`,
+"it says version 2 and this build writes 1"). `crate sync removed` gives the
+pass its first position through the same store, so its document is version 2
+too.
+
+**Measured cost.** The review loaded the base's `watermark.py` against a
+document the branch wrote and drove the refusal. A refusal, nothing lost: an
+older install asked to run `delete review` or `sync removed` against a library
+a newer one already read stops and says why. No mixed install was driven.
+
+**Closes when:** every install that reads the library carries R-1037, or a
+reader of version 2 is backported. Ledger only: a refusal over an unusual
+install is the intended answer of a versioned document.
