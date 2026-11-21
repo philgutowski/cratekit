@@ -16,15 +16,20 @@ THE ORDER IS ``tag rows``'S, and for its reasons:
 * the backup acknowledgment is read before the plan and the gate (R-733);
 * the backlog is planned on a handle opened to read, by ``tag backlog``'s own
   plan, and a library most of whose rows are under no prefix rule refuses;
-* the answers are checked against the plan, and each one the verbs' own
-  edits would refuse is refused, all before the gate and before any write;
-* the gate is asked over one digest, the backlog's and the answers', AND AN
-  EMPTY PLAN STILL ASKS. The run that answers rebuilds the backlog, so a
-  library or an answer that moved refuses as stale with nothing written.
+* the answers are checked against the plan, and every word the third step
+  writes is planned by ``taxonomy alias`` and ``taxonomy folder``'s own edits,
+  each alias with that verb's own walk of the files it retags, so an answer
+  the verbs refuse is refused before the gate and before any write;
+* the gate is asked over one digest, the backlog's, the answers' and every
+  file an alias retags, AND AN EMPTY PLAN STILL ASKS. It shows every write,
+  each file included, and what the verbs could not read. The run that answers
+  rebuilds all of it, so a library, an answer or a file that moved refuses as
+  stale with nothing written.
 
 THE DIGEST NAMES NO COPY. The backlog's covers its rows and words and no path,
-and the answers are words and genres, so a rehearsal on a disposable copy
-digests equal to the live plan, and ``--rehearsed`` sets the rehearsal's digest
+the answers are words and genres, and each file is named by its path under
+the library root, so a rehearsal on a disposable copy digests equal to the
+live plan, and ``--rehearsed`` sets the rehearsal's digest
 beside the live one at the gate for CLAUDE.md's rehearsal rule. It is shown and
 never digested: the answer binds the plan.
 
@@ -38,8 +43,12 @@ THE STEPS, EACH PLANNED ON THE LIBRARY THE STEPS BEFORE IT LEFT (R-1732):
    row's neighbours read the first step's genres, is left and named, so no
    genre is written that was not shown or that the floor would not give now.
 3. The words: each settled word's one answer, then each answered word through
-   ``taxonomy alias`` or ``taxonomy folder``'s own plan and apply.
-4. ``tag rows`` again, narrowed to the rows of the words the third step answered.
+   ``taxonomy alias`` or ``taxonomy folder``'s own plan and apply, each planned
+   again and refused as stale when its edit or its files are not the ones the
+   gate listed.
+4. ``tag rows`` again, narrowed to the rows of the words the third step wrote,
+   and to a file carrying the answer's own spelling, so a row the answer filed
+   is never written back into needs genre with another case of the word.
 5. ``route resort`` is NAMED, NOT RUN. Its adds are known only once the steps
    have written, and its gate binds those adds, so this answer cannot stand for
    them without one minted for a plan nobody was shown (U294's question for
@@ -68,10 +77,11 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from cratekit.cli import output, registry
+from cratekit.cli import gates, output, registry
 from cratekit.cli.output import Envelope
 from cratekit.cli.verbs import taxonomy_word
 from cratekit.core import active_taxonomy, config, rb_writer, session
+from cratekit.core import taxonomy_word as word_edit
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.tagging import backlog, backlog_cli, rows, rows_cli, suggest, suggest_cli
@@ -242,21 +252,51 @@ def _asked(plan: backlog.Backlog) -> str:
     return f"the words it asks about: {shown}"
 
 
+def _held_by_copy(declared, spelling: str, kind: str, genre: str) -> bool:
+    """Whether the copy already holds this answer to the word: its folder, or the alias."""
+    if declared is None:
+        return False
+    if kind == backlog.FOLDER:
+        return word_edit.own_folder(declared, spelling) is not None
+    if kind != backlog.ALIAS:
+        return False
+    saved = declared.tagging_alias(spelling.lower())
+    if saved is None or saved[1] is not None:
+        return False
+    return genre.casefold() in (saved[0].casefold(), declared.bucket(saved[0]).display.casefold())
+
+
+def _same_as_settled(word: backlog.Word, kind: str, genre: str) -> bool:
+    """Whether an answer is the settled word's own one answer, given again."""
+    if kind == backlog.ALIAS:
+        return genre.casefold() == word.settled_genre.casefold()
+    if kind == backlog.FOLDER:
+        return word.settled_genre.casefold() == word.spelling.casefold()
+    return False
+
+
 def answers(
     plan: backlog.Backlog,
     *,
     alias: list[str],
     folder: list[str],
     leave_word: list[str],
+    declared=None,
 ) -> tuple[Answer, ...]:
     """Each answer given, matched to its word in the plan, in the plan's word order.
 
     REFUSED BEFORE ANYTHING IS WRITTEN when an alias is not ``WORD=GENRE``, a
     word names none the backlog asks about in any of its spellings, a word is
     answered twice, or the word is not one the backlog asks: a settled word,
-    whose one answer the campaign runs anyway, or one neither verb takes. The
-    answer carries the plan's spelling, so two cases of one word on the command
-    line are one answer and one digest.
+    which takes no answer, or one neither verb takes. The answer carries the
+    plan's spelling, so two cases of one word on the command line are one
+    answer and one digest.
+
+    AN ANSWER THE COPY ALREADY HOLDS IS TAKEN AS GIVEN AND DROPPED (round one
+    of the review): the same command run again once the words landed names a
+    word that is now settled, or that its folder now files and the backlog no
+    longer holds, and that is a person repeating an answer, never a new one.
+    ``declared`` is the copy those are read from.
     """
     given: list[tuple[str, str, str, str]] = []
     for value in alias:
@@ -276,13 +316,18 @@ def answers(
     for spelling, kind, genre, flag in given:
         word = by_fold.get(spelling.casefold())
         if word is None:
+            if _held_by_copy(declared, spelling, kind, genre):
+                continue
             raise _invalid(
                 f"{flag} names no word the backlog asks about; {_asked(plan)}", word=spelling
             )
         if word.settled:
+            if _same_as_settled(word, kind, genre):
+                continue
             raise _invalid(
-                f"{flag} answers {word.spelling!r}, which has one answer, {word.settled}, "
-                f"and the campaign runs it with no answer given",
+                f"{flag} answers {word.spelling!r}, which already has its one answer, "
+                f"{word.settled}, so it takes none on the command line; the campaign "
+                f"runs that answer whenever it moves a row",
                 word=word.spelling,
             )
         if word.unanswerable is not None:
@@ -299,17 +344,67 @@ def answers(
     return tuple(sorted(found.values(), key=lambda answer: order[answer.word]))
 
 
-def check_edits(cfg: config.Config, given: tuple[Answer, ...]) -> None:
-    """Plan every answer's edit of the copy, in order, and refuse one the verbs refuse.
+#: What a settled word's answer is called in a word plan.
+SETTLED = "settled"
 
-    THE VERBS' OWN EDITS, ``taxonomy alias``'s and ``taxonomy folder``'s, each on
-    the text the answers before it leave, so an answer that refuses, or two
-    that cannot both be written, refuse here with the verb's own words before
-    the gate. Nothing is saved.
+
+@dataclass(frozen=True, slots=True)
+class WordPlan:
+    """One word the third step writes, planned before the gate by the verbs' own plans.
+
+    ``asked`` is the genre as given, which the apply plans again with;
+    ``genre`` is the genre folder the edit names. ``files`` is every file the
+    alias walk found carrying the word, each by its path under the library
+    root, as ``taxonomy alias``'s own gate lists it: written, left, or not
+    read. ``notes`` are that verb's own sentences about the files it leaves
+    and the files it could not read.
     """
-    writing = [answer for answer in given if answer.answer != backlog.LEAVE]
-    if not writing:
-        return
+
+    word: str
+    answer: str
+    asked: str
+    genre: str
+    bucket: str
+    like: str
+    copy: bool
+    files: tuple[dict[str, str], ...] = ()
+    notes: tuple[dict[str, str], ...] = ()
+
+    @property
+    def retags(self) -> int:
+        return sum(1 for item in self.files if item["change"] == taxonomy_word.WRITE)
+
+    def to_json(self) -> dict[str, Any]:
+        """What the digest and the gate carry: nothing that names a copy."""
+        return {
+            "word": self.word,
+            "answer": self.answer,
+            "genre": self.genre,
+            "bucket": self.bucket,
+            "like": self.like,
+            "copy": self.copy,
+            "files": [dict(item) for item in self.files],
+        }
+
+
+def plan_words(
+    cfg: config.Config, plan: backlog.Backlog, given: tuple[Answer, ...]
+) -> tuple[WordPlan, ...]:
+    """Plan every word the third step writes, in order, before the gate. Writes nothing.
+
+    THE VERBS' OWN EDITS AND THE ALIAS VERB'S OWN FILE WALK (round one of the
+    review). Each edit is ``taxonomy alias``'s or ``taxonomy folder``'s, on the
+    text the words before it leave, so an answer the verbs refuse, or two that
+    cannot both be written, refuse here with the verb's own words. Each alias's
+    files are walked as that verb walks them, every audio file under the
+    library root, so every file the campaign retags is on the gate and in its
+    digest, by its path under the root, and the apply refuses as stale when the
+    walk then finds another set.
+    """
+    todo = [(word.spelling, SETTLED, word.settled_genre) for word in _settled(plan)]
+    todo += [(answer.word, answer.answer, answer.genre) for answer in given if answer.answer != backlog.LEAVE]
+    if not todo:
+        return ()
     path, text = active_taxonomy.read_text(cfg)
     if text is None:
         raise refuse(
@@ -320,25 +415,51 @@ def check_edits(cfg: config.Config, given: tuple[Answer, ...]) -> None:
             origin=_ORIGIN,
             detail={"path": str(path)},
         )
-    for answer in writing:
-        if answer.answer == backlog.ALIAS:
-            text = taxonomy_word.edit_alias(text, answer.word, answer.genre).after
+    root = taxonomy_word.library_root(cfg, None)
+    found: list[WordPlan] = []
+    for spelling, kind, genre in todo:
+        if kind == backlog.FOLDER:
+            edit = taxonomy_word.edit_folder(text, spelling)
+            found.append(
+                WordPlan(spelling, kind, "", edit.display, edit.bucket_id, edit.like or "", edit.writes)
+            )
         else:
-            text = taxonomy_word.edit_folder(text, answer.word).after
+            edit = taxonomy_word.edit_alias(text, spelling, genre)
+            files = taxonomy_word.carrying(root, edit.word, edit.display)
+            found.append(
+                WordPlan(
+                    spelling,
+                    kind,
+                    genre,
+                    edit.display,
+                    edit.bucket_id,
+                    "",
+                    edit.writes,
+                    files=tuple(item.to_json(edit.display) for item in files.items),
+                    notes=tuple(taxonomy_word.file_notes(files)),
+                )
+            )
+        text = edit.after
+    return tuple(found)
 
 
-def digest(plan: backlog.Backlog, given: tuple[Answer, ...]) -> str:
-    """The fingerprint the one approval binds to: the backlog's and the answers'.
+def digest(
+    plan: backlog.Backlog, given: tuple[Answer, ...], words: tuple[WordPlan, ...] = ()
+) -> str:
+    """The fingerprint the one approval binds to: the backlog, the answers and the words.
 
-    NOTHING THAT NAMES A COPY: the backlog's digest names none, and the answers
-    are words and genres, so a rehearsal on a disposable copy digests equal to
-    the live plan.
+    NOTHING THAT NAMES A COPY: the backlog's digest names none, the answers
+    are words and genres, and each word's files are named by their path under
+    the library root, so a rehearsal on a disposable copy digests equal to the
+    live plan. A file that comes to carry a word, or stops carrying it, between
+    the plan and the approval moves it.
     """
     return output.digest_of(
         {
             "kind": WORKFLOW,
             "backlog": plan.digest,
             "answers": [answer.to_json() for answer in given],
+            "words": [word.to_json() for word in words],
         }
     )
 
@@ -353,8 +474,8 @@ def _settled(plan: backlog.Backlog) -> list[backlog.Word]:
     return [word for word in plan.words if word.settled and word.reached]
 
 
-def _items(plan: backlog.Backlog, given: tuple[Answer, ...]) -> list[dict[str, Any]]:
-    """Every write the campaign will make, as the backlog showed it."""
+def _items(plan: backlog.Backlog, words: tuple[WordPlan, ...]) -> list[dict[str, Any]]:
+    """Every write the campaign plans before the gate: rows, proposals, words, files."""
     items: list[dict[str, Any]] = []
     for row in plan.rows:
         if row.status == backlog.SERVED:
@@ -374,27 +495,20 @@ def _items(plan: backlog.Backlog, given: tuple[Answer, ...]) -> list[dict[str, A
                 "source_genre": proposal.source_genre,
             }
         )
-    for word in _settled(plan):
-        items.append(
-            {
-                "kind": WORDS,
-                "word": word.spelling,
-                "answer": "settled",
-                "genre": word.settled_genre,
-                "command": word.settled,
-                "rows": len(word.reached),
-            }
-        )
-    for answer in given:
-        if answer.answer != backlog.LEAVE:
-            items.append({"kind": WORDS, **answer.to_json()})
+    for word in words:
+        shown = word.to_json()
+        files = shown.pop("files")
+        items.append({"kind": WORDS, **shown, "retags": word.retags})
+        items.extend({**item, "kind": "file", "word": word.word} for item in files)
     return items
 
 
-def _payload(plan: backlog.Backlog, given: tuple[Answer, ...]) -> dict[str, Any]:
-    items = _items(plan, given)
+def _payload(
+    plan: backlog.Backlog, given: tuple[Answer, ...], words: tuple[WordPlan, ...]
+) -> dict[str, Any]:
+    items = _items(plan, words)
     return {
-        "digest": digest(plan, given),
+        "digest": digest(plan, given, words),
         "items": items,
         "totals": {
             "count": len(items),
@@ -413,19 +527,51 @@ def _unanswered(plan: backlog.Backlog, given: tuple[Answer, ...]) -> list[str]:
     return [word.spelling for word in plan.words if word.options and word.spelling not in answered]
 
 
+#: The backlog's own notes the campaign carries to its report: what it could
+#: not read, and the rows ``tag rows`` would have moved, which are held out.
+_CARRIED = (
+    backlog_cli.FILES_UNREAD,
+    backlog_cli.CATALOGUE_UNREAD,
+    backlog_cli.LIBRARY_ALONE,
+    backlog_cli.ROWS_JOINING,
+)
+
+
+def _notes(plan: backlog.Backlog, words: tuple[WordPlan, ...]) -> list[dict[str, str]]:
+    """What the composed verbs say they could not read or left, in their own words.
+
+    THE BACKLOG'S NOTES AND THE ALIAS VERB'S (round one of the review): a gate
+    standing for those verbs shows what each would show at its own, so a clean
+    screen is never put over state a verb could not read.
+    """
+    found = [note for note in backlog_cli.advisories(plan) if note["code"] in _CARRIED]
+    for word in words:
+        found.extend(
+            {"code": note["code"], "message": f"{word.word}: {note['message']}"} for note in word.notes
+        )
+    return found
+
+
 def _facts(
-    plan: backlog.Backlog, given: tuple[Answer, ...], data: dict[str, Any], rehearsed: str | None
+    plan: backlog.Backlog,
+    given: tuple[Answer, ...],
+    words: tuple[WordPlan, ...],
+    data: dict[str, Any],
+    rehearsed: str | None,
 ) -> dict[str, Any]:
     """What the gate puts in front of the items."""
     facts: dict[str, Any] = {
         "needs_genre": len(plan.rows),
         "causes": plan.counts,
+        "unread": dict(plan.unread),
         "floor": backlog.FLOOR,
         "catalogue": plan.catalogue,
         "answers": [answer.to_json() for answer in given],
         "unanswered": _unanswered(plan, given),
         "campaign": plan.campaign(),
         "joining": len(plan.joining),
+        "retags": sum(word.retags for word in words),
+        "notes": [note["message"] for note in _notes(plan, words)],
         "resort": f"named, not run: {backlog.RESORT_VERB} asks its own gate over its adds",
     }
     if rehearsed is not None:
@@ -481,7 +627,11 @@ class Step:
     def said(self) -> str:
         """The step as one clause of a sentence."""
         if self.key == WORDS:
+            if self.state == REFUSED:
+                return f"{TITLES[self.key]} refused after {len(self.words)} word(s) and {self.files} file(s)"
             return f"{TITLES[self.key]} {self.state}, {len(self.words)} word(s) and {self.files} file(s)"
+        if self.state == REFUSED:
+            return f"{TITLES[self.key]} refused, and its own sentence says what it wrote"
         return f"{TITLES[self.key]} {self.state}, {self.written} row(s)"
 
 
@@ -496,21 +646,39 @@ def _needing(cfg: config.Config, declared) -> int:
         rb_writer.close_db(db)
 
 
+#: Why a follower is held out: its file carries the word in another spelling
+#: than the one the answer filed, so ``tag rows`` would unfile it (round one).
+ANOTHER_SPELLING = "file-carries-another-spelling"
+
+
 def _rows_step(
-    cfg: config.Config, declared, step: Step, keep: frozenset[str], *, served: bool
+    cfg: config.Config,
+    declared,
+    step: Step,
+    keep: frozenset[str],
+    *,
+    served: bool,
+    expected: dict[str, str] | None = None,
 ) -> None:
     """``tag rows``, its own plan and apply, narrowed to the rows ``keep`` names.
 
     ``served`` says each kept row is one the backlog showed this verb writing,
     as the first step's are; the fourth step's are a word's rows, some of which
-    agree with their file already.
+    agree with their file already. ``expected`` holds a kept row to the file
+    word its answer filed, so a row whose file carries another spelling of the
+    word is never written over the answer that filed it.
     """
     step.planned = len(keep)
     if not keep:
         step.state = EMPTY
         return
     whole = rows_cli.plan_library(cfg, declared, [])
-    narrowed = rows.narrowed(whole, keep)
+    other = {
+        item.content_id
+        for item in whole.writes
+        if expected is not None and item.content_id in keep and item.file != expected.get(item.content_id)
+    }
+    narrowed = rows.narrowed(whole, keep - other)
     step.held = len(whole.writes) - len(narrowed.writes)
     writing = {item.content_id for item in narrowed.writes}
     # A KEPT ROW THE VERB LEAVES keeps the verb's own reason, a word with no
@@ -520,6 +688,7 @@ def _rows_step(
         for item in whole.items
         if item.content_id in keep and item.action == rows.LEAVE
     }
+    step.left.update(dict.fromkeys(other, ANOTHER_SPELLING))
     if served:
         # A SERVED ROW THE VERB NO LONGER WRITES moved since the plan showed it.
         step.moved = sorted(keep - writing - set(step.left))
@@ -570,35 +739,53 @@ def _words_step(
     spec: registry.GateSpec,
     run_id: str,
     step: Step,
-    plan: backlog.Backlog,
-    given: tuple[Answer, ...],
+    words: tuple[WordPlan, ...],
 ) -> None:
-    """Each settled word's one answer, then each answered word, by the verbs' own apply."""
-    todo: list[tuple[str, str, str]] = [
-        (word.spelling, "settled", word.settled_genre) for word in _settled(plan)
-    ]
-    todo += [(answer.word, answer.answer, answer.genre) for answer in given if answer.answer != backlog.LEAVE]
-    step.planned = len(todo)
-    for spelling, kind, genre in todo:
-        if kind == backlog.FOLDER:
-            planned_folder = taxonomy_word.plan_folder(cfg, spelling)
-            made = planned_folder.edit.writes
-            if made:
-                step.sentences += taxonomy_word.apply_folder(cfg, spec, run_id, planned_folder)
-            step.words.append({"word": spelling, "answer": kind, "folder_made": made, "files": 0})
+    """Each word the gate showed, by the verbs' own plan and apply, held to what it showed.
+
+    EACH WORD IS PLANNED AGAIN BY ITS VERB and refused as stale when the edit
+    or the files it would retag are not the ones the gate listed, so a file
+    that came to carry the word after the approval is never written. A word is
+    recorded once its apply returned, so a refusal names the words before it.
+    """
+    step.planned = len(words)
+    for shown in words:
+        if shown.answer == backlog.FOLDER:
+            folder = taxonomy_word.plan_folder(cfg, shown.word)
+            fresh = (folder.edit.display, folder.edit.bucket_id, folder.edit.like or "", folder.edit.writes)
+            if fresh != (shown.genre, shown.bucket, shown.like, shown.copy):
+                raise gates.DecisionStale(
+                    spec, run_id, output.digest_of(shown.to_json()), output.digest_of(list(fresh))
+                )
+            if folder.edit.writes:
+                step.sentences += taxonomy_word.apply_folder(cfg, spec, run_id, folder)
+            step.words.append({"word": shown.word, "answer": shown.answer, "folder_made": shown.copy, "files": 0})
             continue
-        planned = taxonomy_word.plan_alias(cfg, spelling, genre)
-        files = len(planned.files.of(taxonomy_word.WRITE))
+        planned = taxonomy_word.plan_alias(cfg, shown.word, shown.asked)
+        files = tuple(item.to_json(planned.edit.display) for item in planned.files.items)
+        if (planned.edit.display, files) != (shown.genre, shown.files):
+            raise gates.DecisionStale(
+                spec,
+                run_id,
+                output.digest_of([dict(item) for item in shown.files]),
+                output.digest_of([dict(item) for item in files]),
+            )
         if planned.writes:
-            step.sentences += taxonomy_word.apply_alias(cfg, spec, run_id, planned)
-        step.files += files
+            # THE VERB'S OWN ADVICE TO RUN TAG ROWS IS NOT CARRIED: the fourth
+            # step is that verb (round one of the review).
+            step.sentences += [
+                sentence
+                for sentence in taxonomy_word.apply_alias(cfg, spec, run_id, planned)
+                if sentence["code"] != taxonomy_word.FILES_RETAGGED
+            ]
+        step.files += shown.retags
         step.words.append(
             {
-                "word": spelling,
-                "answer": kind,
-                "genre": planned.edit.display,
+                "word": shown.word,
+                "answer": shown.answer,
+                "genre": shown.genre,
                 "alias_saved": planned.edit.writes,
-                "files": files,
+                "files": shown.retags,
             }
         )
     step.state = (
@@ -608,15 +795,15 @@ def _words_step(
     )
 
 
-def _followers(plan: backlog.Backlog, given: tuple[Answer, ...]) -> frozenset[str]:
-    """The rows of every word the third step answered, which ``tag rows`` follows."""
-    answered = {word.spelling.casefold() for word in _settled(plan)}
-    answered |= {answer.word.casefold() for answer in given if answer.answer != backlog.LEAVE}
-    return frozenset(
-        row.content_id
+def _followers(plan: backlog.Backlog, words: tuple[WordPlan, ...]) -> dict[str, str]:
+    """The rows of every word the third step wrote, each with the file word its
+    answer files, which ``tag rows`` follows."""
+    filed = {word.word.casefold(): word.genre for word in words}
+    return {
+        row.content_id: filed[row.word.casefold()]
         for row in plan.rows
-        if row.cause == backlog.OFF_TAXONOMY and row.word.casefold() in answered
-    )
+        if row.cause == backlog.OFF_TAXONOMY and row.word.casefold() in filed
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -642,6 +829,8 @@ def _report(data: dict[str, Any], steps: list[Step], before: int, after: int) ->
 def _stopped(steps: list[Step], failed: Step, data: dict[str, Any]) -> CratekitError:
     """The step's own refusal, reworded to name what landed and what did not run."""
     landed = [step.said() for step in steps if step.state == LANDED]
+    if failed.key == WORDS and failed.words:
+        landed.append(failed.said())
     not_run = [TITLES[step.key] for step in steps if step.state == NOT_RUN]
     error = failed.error
     cause = error.cause
@@ -665,6 +854,7 @@ def _stopped(steps: list[Step], failed: Step, data: dict[str, Any]) -> CratekitE
 def _warnings(
     plan: backlog.Backlog,
     given: tuple[Answer, ...],
+    words: tuple[WordPlan, ...],
     steps: list[Step],
     before: int,
     after: int,
@@ -680,6 +870,7 @@ def _warnings(
     ]
     for step in steps:
         found.extend(step.sentences)
+    found.extend(_notes(plan, words))
     moved = [content_id for step in steps for content_id in step.moved]
     if moved:
         found.append(
@@ -697,14 +888,26 @@ def _warnings(
         reasons = "; ".join(
             f"{count} {reason}" for reason, count in sorted(Counter(left.values()).items())
         )
+        advice = []
+        if rows.GENRE_UNKNOWN in left.values():
+            advice.append(
+                f"{rows.GENRE_UNKNOWN}: a word with no genre row in the library gets one "
+                f"when a track is given that genre in rekordbox, and the next run writes it"
+            )
+        if ANOTHER_SPELLING in left.values():
+            advice.append(
+                f"{ANOTHER_SPELLING}: the file carries the word in another spelling than "
+                f"the one the answer filed, so writing it would move the row back into "
+                f"needs genre; retag the file by hand"
+            )
+        if set(left.values()) - {rows.GENRE_UNKNOWN, ANOTHER_SPELLING}:
+            advice.append(f"any other reason is {backlog.ROWS_VERB}'s own, which names each row")
         found.append(
             {
                 "code": ROWS_LEFT,
                 "message": (
-                    f"{len(left)} row(s) the campaign meant to write were left by tag rows "
-                    f"with its own reason ({reasons}), {_named(sorted(left))}; a word with "
-                    f"no genre row in the library gets one when a track is given that "
-                    f"genre in rekordbox, and the next run writes it"
+                    f"{len(left)} row(s) the campaign meant to write were left ({reasons}), "
+                    f"{_named(sorted(left))}; " + "; ".join(advice)
                 ),
             }
         )
@@ -767,10 +970,11 @@ def tag_campaign(ctx: "Context") -> Envelope:
         alias=list(args.alias or ()),
         folder=list(args.folder_word or ()),
         leave_word=list(args.leave_word or ()),
+        declared=declared,
     )
-    check_edits(cfg, given)
-    data = _payload(plan, given)
-    facts = _facts(plan, given, data, getattr(args, "rehearsed", None))
+    words = plan_words(cfg, plan, given)
+    data = _payload(plan, given, words)
+    facts = _facts(plan, given, words, data, getattr(args, "rehearsed", None))
     if ctx.gate.require(spec, plan=data, context=facts) != APPLY:
         return ctx.envelope(data=data, outcome=Outcome.NO_OP)
     before = len(plan.rows)
@@ -785,7 +989,8 @@ def tag_campaign(ctx: "Context") -> Envelope:
                         f"the campaign has nothing to write: {before} row(s) need a genre "
                         f"and no step the backlog names would move one"
                     ),
-                }
+                },
+                *_notes(plan, words),
             ],
         )
 
@@ -793,11 +998,17 @@ def tag_campaign(ctx: "Context") -> Envelope:
     by_key = {step.key: step for step in steps}
     run_id = ctx.run.run_id
     served = frozenset(row.content_id for row in plan.rows if row.status == backlog.SERVED)
+    followers = _followers(plan, words)
     work = (
         (ROWS, lambda d: _rows_step(cfg, d, by_key[ROWS], served, served=True)),
         (SUGGEST, lambda d: _suggest_step(cfg, d, by_key[SUGGEST], plan, progress)),
-        (WORDS, lambda d: _words_step(cfg, spec, run_id, by_key[WORDS], plan, given)),
-        (FOLLOW, lambda d: _rows_step(cfg, d, by_key[FOLLOW], _followers(plan, given), served=False)),
+        (WORDS, lambda d: _words_step(cfg, spec, run_id, by_key[WORDS], words)),
+        (
+            FOLLOW,
+            lambda d: _rows_step(
+                cfg, d, by_key[FOLLOW], frozenset(followers), served=False, expected=followers
+            ),
+        ),
     )
     after = before
     for key, run in work:
@@ -819,6 +1030,17 @@ def tag_campaign(ctx: "Context") -> Envelope:
                 detail={"step": key, "kind": type(exc).__name__},
             )
         if step.state == REFUSED:
+            # A STEP THAT REFUSES MAY HAVE WRITTEN PART OF ITSELF, a file
+            # refusal after its rows landed above all, so needs genre is read
+            # again and a session the refusal names is kept (round one).
+            session_id = (step.error.cause.detail or {}).get("session")
+            if session_id:
+                step.sessions.append(str(session_id))
+            try:
+                after = _needing(cfg, active_taxonomy.load(cfg))
+            except CratekitError:
+                pass
+            step.needs_genre_after = after
             raise _stopped(steps, step, _report(data, steps, before, after))
         if key == WORDS and step.state == LANDED:
             # THE COPY MOVED, so the rows that follow are planned on it.
@@ -832,7 +1054,7 @@ def tag_campaign(ctx: "Context") -> Envelope:
     return ctx.envelope(
         data=data,
         outcome=Outcome.OK if landed else Outcome.NO_OP,
-        warnings=_warnings(plan, given, steps, before, after),
+        warnings=_warnings(plan, given, words, steps, before, after),
     )
 
 
@@ -852,6 +1074,7 @@ __all__ = [
     "RESORT",
     "RESORT_NEXT",
     "ROWS",
+    "ANOTHER_SPELLING",
     "ROWS_LEFT",
     "STEPS",
     "SUGGEST",
@@ -859,9 +1082,10 @@ __all__ = [
     "WORDS_LEFT",
     "Answer",
     "Step",
+    "WordPlan",
     "answers",
+    "plan_words",
     "build",
-    "check_edits",
     "digest",
     "tag_campaign",
 ]

@@ -125,7 +125,7 @@ def _named(values: list[str]) -> str:
     return shown + (f" and {more} more" if more > 0 else "")
 
 
-def _advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
+def advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
     found: list[dict[str, str]] = []
     asked = [word for word in plan.words if word.options]
     if asked:
@@ -355,7 +355,7 @@ def tag_backlog(ctx) -> Envelope:
     return ctx.envelope(
         data=_payload(plan),
         outcome=Outcome.OK if plan.rows or plan.unread or plan.joining else Outcome.NO_OP,
-        warnings=_advisories(plan),
+        warnings=advisories(plan),
     )
 
 
@@ -366,6 +366,7 @@ __all__ = [
     "REMAINDER",
     "ROWS_JOINING",
     "WORDS_ASKED",
+    "advisories",
     "build",
     "checks",
     "plan_library",

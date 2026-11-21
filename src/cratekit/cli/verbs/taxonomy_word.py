@@ -297,7 +297,7 @@ def _named(items: tuple[FileItem, ...]) -> str:
     return shown + (f" and {more} more" if more > 0 else "")
 
 
-def _file_notes(files: Files) -> list[dict[str, str]]:
+def file_notes(files: Files) -> list[dict[str, str]]:
     notes = []
     left = files.of(LEFT)
     if left:
@@ -324,7 +324,7 @@ def _file_notes(files: Files) -> list[dict[str, str]]:
     return notes
 
 
-def _root(cfg: config.Config, folder: str | None) -> Path:
+def library_root(cfg: config.Config, folder: str | None) -> Path:
     root = Path(folder).expanduser().absolute() if folder else Path(cfg.library.root)
     if not root.is_dir():
         raise refuse(
@@ -406,7 +406,7 @@ def plan_alias(cfg: config.Config, word: str, genre: str, folder: str | None = N
     THE ONE PLAN, the verb's and ``tag campaign``'s (U294), so an answer the
     campaign applies is planned exactly as this verb plans it.
     """
-    root = _root(cfg, folder)
+    root = library_root(cfg, folder)
     path, edit = _edit(cfg, lambda text: edit_alias(text, word, genre))
     return AliasPlan(path=path, root=root, edit=edit, files=carrying(root, edit.word, edit.display))
 
@@ -491,7 +491,7 @@ def taxonomy_alias_verb(ctx: "Context") -> Envelope:
     planned = plan_alias(cfg, args.word, args.genre, folder)
     path, root, edit, files = planned.path, planned.root, planned.edit, planned.files
     data = planned.data
-    notes = _file_notes(files)
+    notes = file_notes(files)
     if not planned.writes:
         return ctx.envelope(
             data=data,
@@ -673,6 +673,8 @@ __all__ = [
     "carrying",
     "edit_alias",
     "edit_folder",
+    "file_notes",
+    "library_root",
     "plan_alias",
     "plan_folder",
     "taxonomy_alias_verb",
