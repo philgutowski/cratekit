@@ -612,11 +612,13 @@ def landed_absences(
 
     A LANDING A RESTORE ROLLED BACK IS NO REMOVAL. Its rows are absent and
     nobody took them out: the database is from before it. rekordbox's Remove
-    from Collection leaves every playlist row (A178, A185) and a playlist a
-    person deletes is soft deleted, so a record whose playlists the database
-    no longer holds at all, asked through ``playlist_held``, offers nothing.
-    A landing into a playlist that was already there leaves no playlist to
-    miss, and the update count answers for it at the first sighting.
+    from Collection leaves every playlist row (A178, A185) and Cratekit's own
+    rotation soft deletes one, so a record whose playlists the database no
+    longer holds at all, asked through ``playlist_held``, offers nothing. A
+    landing into a playlist that was already there leaves no playlist to miss:
+    the caller drops every landing a restore started after
+    (``run._not_restored_since``) and the update count is asked at the first
+    sighting.
     """
     held = {str(one) for one in present}
     found: dict[str, LandedAbsence] = {}

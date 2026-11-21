@@ -2611,7 +2611,7 @@ def _record_landing_commit(
     # AND EVERY ROW IT MADE (R-1037), so the deletion pass offers a landed
     # row's file once rekordbox has deleted the row outright. Persisted by the
     # content table's commit below, which is recorded whenever a row landed.
-    if landed is not None and rows > 0:
+    if landed is not None:
         record.detail[LANDED_ROWS_KEY] = dict(landed)
     # AND THE PASS (R-777), which is what ``sync mark --pass`` reads as the
     # proof this pass landed. Only with the commit, never for a plan.

@@ -177,12 +177,19 @@ def _record_path(cfg: config.Config, session_id: str) -> Path:
     return session.log_path(session_id, cfg)
 
 
-def _landing_record(cfg: config.Config) -> session.SessionRecord:
-    landings = [
-        one for one in session.records(cfg) if native.LANDED_ROWS_KEY in one.detail
+def _landing_record(cfg: config.Config, content_id: str) -> session.SessionRecord:
+    """The one landing record naming ``content_id``: chosen by the row, never by order.
+
+    Two records started in the same second are listed in no stable order, since
+    a session id is the second and random hex (round one's R3).
+    """
+    (landing,) = [
+        one
+        for one in session.records(cfg)
+        if content_id
+        in {row["content_id"] for row in one.detail.get(native.LANDED_ROWS_KEY, {}).get("rows", ())}
     ]
-    assert landings, "no landing record names a landed row"
-    return landings[-1]
+    return landing
 
 
 # ---------------------------------------------------------------------------
@@ -196,7 +203,7 @@ def test_the_landing_record_names_every_row_it_made_as_the_database_holds_it(
     cfg, _root = native_library
     _land(cfg, silence, "One", "Two")
 
-    landed = _landing_record(cfg).detail[native.LANDED_ROWS_KEY]
+    landed = _landing_record(cfg, _row(cfg, "One")[0]).detail[native.LANDED_ROWS_KEY]
 
     ((dbid,),) = _query(cfg, "SELECT DBID FROM djmdProperty")
     assert landed["database_identity"] == str(dbid)
@@ -359,7 +366,7 @@ def test_a_landing_of_another_database_offers_nothing(
     _deletion_on(cfg, monkeypatch, tmp_path)
     _baseline(cfg)
     gone, music = _row(cfg, "One")
-    landing = _landing_record(cfg)
+    landing = _landing_record(cfg, gone)
     path = _record_path(cfg, landing.session_id)
     raw = json.loads(path.read_text())
     raw["detail"][native.LANDED_ROWS_KEY]["database_identity"] = "another-library"
@@ -378,7 +385,7 @@ def test_an_unreadable_landing_record_offers_nothing_and_says_so(
     _deletion_on(cfg, monkeypatch, tmp_path)
     _baseline(cfg)
     gone, music = _row(cfg, "One")
-    _record_path(cfg, _landing_record(cfg).session_id).write_text("{ not json")
+    _record_path(cfg, _landing_record(cfg, gone).session_id).write_text("{ not json")
     _remove_outright(cfg, gone)
 
     with caplog.at_level(logging.WARNING, logger="cratekit.deletion.run"):
@@ -458,10 +465,14 @@ def test_a_rolled_back_landing_whose_playlist_was_kept_is_history_by_its_count(
     _land(cfg, silence, "Zero")
     _deletion_on(cfg, monkeypatch, tmp_path)
     _baseline(cfg)
+    # Something changes the library after the baseline, so the count the
+    # database is put back at is past the watermark and only the landing's
+    # own count can say the row is history (round one's R2).
+    _sql(cfg, ("UPDATE agentRegistry SET int_1 = int_1 + 3 WHERE registry_id = 'localUpdateCount'", ()))
     before = Path(cfg.library.db_path).read_bytes()
     _land(cfg, silence, "One", name="rolled back batch")
     one, music = _row(cfg, "One")
-    landing = _landing_record(cfg)
+    landing = _landing_record(cfg, one)
     path = _record_path(cfg, landing.session_id)
     raw = json.loads(path.read_text())
     raw["detail"][native.LANDED_ROWS_KEY]["playlists"] = []
@@ -506,7 +517,7 @@ def test_a_landed_row_sync_removed_recorded_is_one_candidate_at_its_recorded_num
     _deletion_on(cfg, monkeypatch, tmp_path)
     _baseline(cfg)
     gone, _music = _row(cfg, "One")
-    landing = _landing_record(cfg)
+    landing = _landing_record(cfg, gone)
     (named,) = [
         one for one in landing.detail[native.LANDED_ROWS_KEY]["rows"] if one["content_id"] == gone
     ]
@@ -678,7 +689,7 @@ def test_a_rolled_back_landing_is_kept_by_its_playlist_whatever_the_count(
     before = Path(cfg.library.db_path).read_bytes()
     _land(cfg, silence, "One", name="rolled back batch")
     one, music = _row(cfg, "One")
-    landed_at = _landing_record(cfg).detail[native.LANDED_ROWS_KEY]["sequence"]
+    landed_at = _landing_record(cfg, one).detail[native.LANDED_ROWS_KEY]["sequence"]
     Path(cfg.library.db_path).write_bytes(before)
     _sql(
         cfg,
@@ -691,3 +702,92 @@ def test_a_rolled_back_landing_is_kept_by_its_playlist_whatever_the_count(
     assert one not in _candidates(cfg)
     assert one not in watermark.WatermarkStore(cfg).read().absent
     assert music.exists()
+
+
+# ---------------------------------------------------------------------------
+# A restore takes a landing's rows away, and leaves its own record (round one's B1)
+# ---------------------------------------------------------------------------
+
+
+def _restore(session_id: str) -> None:
+    """``crate restore run`` of one session's capture, both acts."""
+    code, refused = drive(["restore", "run", session_id])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, envelope = drive(
+        ["run", "decide", run_id, "restore.run.confirm", "restore", "--actor", "a-person"]
+    )
+    assert decided == int(ExitCode.OK), envelope
+    code, envelope = drive(["--run", run_id, "restore", "run", session_id])
+    assert code == int(ExitCode.OK), envelope
+
+
+def test_a_restored_landing_into_a_playlist_already_there_is_never_offered(
+    native_library, silence, monkeypatch, tmp_path
+):
+    """Round one's B1, as the review drove it: the playlist was there, the count moves past."""
+    cfg, _root = native_library
+    _land(cfg, silence, "Zero", name="same batch")
+    _deletion_on(cfg, monkeypatch, tmp_path)
+    _baseline(cfg)
+    _land(cfg, silence, "One", name="same batch")
+    one, music = _row(cfg, "One")
+    landing = _landing_record(cfg, one)
+    landed = landing.detail[native.LANDED_ROWS_KEY]
+    before = music.read_bytes()
+    _restore(landing.session_id)
+    assert not _query(cfg, "SELECT ID FROM djmdContent WHERE ID = ?", one)
+    # Every playlist the landing names is still there, and later work moves
+    # the count past the landing's before any review reads the absence.
+    for playlist_id in landed["playlists"]:
+        assert _query(cfg, "SELECT ID FROM djmdPlaylist WHERE ID = ?", playlist_id)
+    _land(cfg, silence, "Two", "Three", name="next batch")
+    assert _counter(cfg) > landed["sequence"]
+
+    assert _offered() == 0
+    assert one not in _candidates(cfg)
+    assert music.read_bytes() == before
+    assert stores.list_tombstones(cfg) == ()
+
+
+def test_a_landing_after_a_restore_is_still_offered_when_removed(
+    native_library, silence, monkeypatch, tmp_path
+):
+    """Only the landings a restore started after are set aside, never a later one."""
+    cfg, _root = native_library
+    _land(cfg, silence, "Zero", name="same batch")
+    _deletion_on(cfg, monkeypatch, tmp_path)
+    _baseline(cfg)
+    _land(cfg, silence, "One", name="same batch")
+    _restore(_landing_record(cfg, _row(cfg, "One")[0]).session_id)
+    _land(cfg, silence, "Two", name="next batch")
+    two, _music = _row(cfg, "Two")
+    _remove_outright(cfg, two)
+
+    assert _candidates(cfg) == {two: "deletable"}
+
+
+def test_the_restore_workflow_is_spelled_as_the_restore_records_it():
+    from cratekit.core import restore
+
+    assert deletion_run.RESTORE_WORKFLOW == restore.CAPTURE_RESTORE_WORKFLOW
+
+
+def test_one_row_two_landings_name_keeps_the_later_landings_count():
+    columns = {"ID": "7", "FolderPath": "/x/a.flac", "FileSize": 1, "ArtistName": "A", "Title": "T"}
+
+    def landed(sequence: int) -> dict:
+        return {
+            native.LANDED_ROWS_KEY: {
+                "database_identity": "db",
+                "sequence": sequence,
+                "playlists": [],
+                "rows": [{"content_id": "7", "columns": columns}],
+            }
+        }
+
+    for order in ((landed(5), landed(9)), (landed(9), landed(5))):
+        found = deletion_library.landed_absences(
+            order, database_identity="db", present=(), playlist_held=lambda _one: True
+        )
+        assert {key: one.landed for key, one in found.items()} == {"7": 9}

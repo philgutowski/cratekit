@@ -34,7 +34,10 @@ so a later run reads the same number and neither offers it twice nor skips it.
 A row seen live again is forgotten, so a second removal after a restore is
 numbered afresh. A first sighting while the count is not past the landing's own
 commit is HISTORY, numbered at the watermark: the database is from before the
-landing, put back by a restore, and nobody removed the row.
+landing, and nobody removed the row. It is one of three guards against reading a
+restore as a removal; the pass's own reading of the restore records and the
+landing's playlists are the others (``run._not_restored_since``,
+``library.landed_absences``).
 
 **THE READ AND THE WRITE ARE ONE LOCKED CYCLE.** ``atomic_write_bytes`` makes the
 rename atomic and does nothing for the cycle around it. Two passes finishing at
@@ -254,7 +257,7 @@ class WatermarkStore:
             raise self._unusable(
                 f"its sequence is a {type(sequence).__name__} rather than a whole number"
             )
-        absent = raw.get("absent", {}) if version == WATERMARK_VERSION else {}
+        absent = raw.get("absent", {})
         if not isinstance(absent, Mapping):
             raise self._unusable(f"its sightings are a {type(absent).__name__}, not a mapping")
         for content_id, sighted in absent.items():
@@ -357,16 +360,15 @@ class WatermarkStore:
         absent: Mapping[str, int],
         present: Iterable[str],
         counter: int,
-        history: bool = False,
     ) -> Watermark:
         """Number every absent landed row not yet numbered, and forget every one held again.
 
         ``absent`` maps each landed row the database does not hold to the
         update count its landing's commit left. A row first seen here is
         numbered at ``counter``, the count now, when that is past its
-        landing's; otherwise, and for every row when ``history`` is True (the
-        run that baselines, R35), at the watermark itself, which no later run
-        offers. A row already numbered keeps its number, so a removal is
+        landing's, and otherwise at the watermark itself, which no later run
+        offers. On the run that baselines (R35) the count is at or under the
+        new position, so every row already gone is history either way. A row already numbered keeps its number, so a removal is
         neither offered twice nor hidden. ``present`` names the rows the
         database holds, live or marked, and their sightings are dropped: a row
         a restore put back is no removal, and its next removal is new.
@@ -386,7 +388,7 @@ class WatermarkStore:
             for content_id, landed in absent.items():
                 if content_id in kept or content_id in held:
                     continue
-                past = not history and int(counter) > int(landed)
+                past = int(counter) > int(landed)
                 kept[str(content_id)] = int(counter) if past else existing.sequence
             if kept == dict(existing.absent):
                 return existing
