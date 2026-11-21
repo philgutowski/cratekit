@@ -55185,3 +55185,128 @@ than its last word. Ledger only.
 **Measured cost.** Not driven on a real library: the rehearsal is the owed attended card's. Unless the music files are cloned with the database, a rehearsal writes genres into the live files.
 
 **Closes when:** the campaign has a rehearsal of its own that clones the files it would write, as `core.rehearsal` does for the landing, or the attended procedure clones them and pins the database file. Ledger only; the attended card names the cloning step.
+
+---
+
+## R-1811. With no census, record or files fact on record, one stray file at an unmounted volume's mount point is mirrored as the library and the whole mirror is archived
+
+**Found:** at the round one review of #893, R-1761, 2026-11-21.
+
+**The mechanism.** The content proof in `modules/tools/backup.py`'s
+`_unproven` measures the root against the census, then the record, then the
+library's own files fact. When none of the three is there, a fresh
+installation or installation state wiped while the volume is away, a root
+holding one file outside the state folder is no new library (it holds a
+file) and has no history to fall short of, so the full sync runs over it and
+moves every mirror file into the dated archive. The identity proof refuses
+this wherever a recorded identity is read, so the hole is a platform that
+reads none, today every Linux volume.
+
+**Measured cost.** Driven by the round one and round two reviews with the
+installation state removed and the stray file written by hand: 12 of 12
+mirror files archived, recoverable from the archive until the rotation
+purges it at the second completed run after. No producer of a stray file at
+a mount point was found: three candidates (a refused plan, a run time
+failure, a flagged run) were driven and none leaves one.
+
+**Closes when:** a run with no history at all lists the remote's top level,
+or is held to `--max-delete 0` like a root holding none of the library's
+files, at the cost of a first backup failing where the mirror holds files
+the library lost since another installation's last run. Ledger only.
+
+---
+
+## R-1812. The content floor passes a root holding exactly a tenth of the census, so one stray file at the mount point of a ten file library is mirrored as the library
+
+**Found:** at the round one review of #893, R-1761, 2026-11-21.
+
+**The mechanism.** `_unproven` refuses `held * LIBRARY_FLOOR < had`, a root
+holding under a tenth of the files the census counted. A library of ten
+files or fewer and one stray file at its mount point is held to the floor
+and passes, and the full sync archives the mirror.
+
+**Measured cost.** Driven at the engine with a ten file census and one stray
+file written by hand: 10 mirror files archived. Bounded to libraries of ten
+files or fewer, and no producer of the stray file was found.
+
+**Closes when:** the floor also asks for a minimum number of files, or the
+census's own paths, at a library this small. Ledger only.
+
+---
+
+## R-1813. With the database under the library root, an unmounted root refuses both portions and the verb reports no-evidence, so the unproven refusal's remedy is not shown
+
+**Found:** at the round one review of #893, R-1761, 2026-11-21.
+
+**The mechanism.** After an unmount the files portion refuses
+`library-root-unproven` and the database portion `database-absent`. The
+queued job aggregates two distinct permanent reasons as `no-evidence`,
+caused by the database's, and the verb prints that remedy. The aggregation
+predates R-1761.
+
+**Measured cost.** Driven through the verb at both review rounds: nothing
+moved and nothing false is said, but the person is not shown the unproven
+refusal's mount or emptied flag steps.
+
+**Closes when:** the backup job's aggregation names every refused portion's
+remedy, as `backup-nothing-ran` does for the unqueued run. Ledger only.
+
+---
+
+## R-1814. The probe that stands in for a refused walk passes over a folder it cannot list, so an unreadable library can be refused as holding none of its files
+
+**Found:** at the round one review of #893, R-1761, 2026-11-21.
+
+**The mechanism.** `backup_record.probe` skips a directory whose listing
+raises, so what it cannot read is never counted. Where the walk refused and
+the library's folders cannot be listed, the root reads as holding none of
+its files and the backup refuses with the mount remedy, which is the wrong
+fix. It fails closed: nothing is sent or archived.
+
+**Measured cost.** Not driven: the container runs as root, which lists every
+directory. A person would be told to mount a mounted volume.
+
+**Closes when:** the probe counts an unlistable folder as unreadable and the
+refusal says so. Ledger only.
+
+---
+
+## R-1815. The analysis share's snapshot is an rclone sync with an archive and no proof of its source, so an emptied or unmounted share moves its whole copy into the dated archive
+
+**Found:** at the round one review of #893, R-1761, 2026-11-21.
+
+**The mechanism.** `SNAPSHOT_SHARE` in `modules/tools/backup.py` syncs the
+analysis share beside a database kept outside the library root to
+`analysis-share/` under `db_dest_root` with a backup dir, the same shape the
+files mirror had before R-1761, and nothing proves the share folder holds
+what it held.
+
+**Measured cost.** Driven at round two with an emptied share folder: 5 of 5
+analysis files moved to the share's dated archive. The producer, a share on
+a volume that unmounts while the database stays, was not driven, and the
+database portion was out of the card's scope.
+
+**Closes when:** the share snapshot is held to the census's rule, or to
+`--max-delete 0` when the share holds nothing. Ledger only.
+
+---
+
+## R-1816. With the database outside the library root, a backup's database item publishes the fact file into whatever is at the root, an unmounted volume's mount point included
+
+**Found:** at the round two review of #893, R-1761, 2026-11-21.
+
+**The mechanism.** The fact file is library state under the root, and the
+database portion publishes its age there whether or not the files portion
+proved the root, creating the state folder at a mount point, and the root
+itself where an unmount removed it. Before round two's fix that file was the
+emptied flag's proof, and the reviewer drove a second flagged ask through it
+to an emptied mirror; the flag now asks for a files fact, which the database
+item does not write.
+
+**Measured cost.** Driven at round two: the database snapshot and its age
+are real, and the fact file sits on the boot disk at the mount point, where
+a remount hides it and the library's own file no longer carries that age.
+
+**Closes when:** the database portion publishes its age only into a root the
+files proof passed, or the files portion's refusal stops the job's database
+item from writing there. Ledger only.
