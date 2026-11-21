@@ -581,9 +581,8 @@ LANDED_ROWS_KEY = "collection_landed"
 class LandedAbsence:
     """One row a landing made that the database no longer holds, before it is numbered.
 
-    ``landed`` is the update count the landing's commit left, which a first
-    sighting must be past for the absence to be read as a removal (see
-    ``watermark.WatermarkStore.sight``).
+    ``landed`` is the update count the landing's commit left; of two landings
+    naming one row, the later one's is kept.
     """
 
     columns: Mapping[str, Any]
@@ -610,15 +609,17 @@ def landed_absences(
     with no update count offers nothing, and one row named by two landings
     keeps the later one.
 
-    A LANDING A RESTORE ROLLED BACK IS NO REMOVAL. Its rows are absent and
-    nobody took them out: the database is from before it. rekordbox's Remove
-    from Collection leaves every playlist row (A178, A185) and Cratekit's own
-    rotation soft deletes one, so a record whose playlists the database no
-    longer holds at all, asked through ``playlist_held``, offers nothing. A
-    landing into a playlist that was already there leaves no playlist to miss:
-    the caller drops every landing a restore started after
-    (``run._not_restored_since``) and the update count is asked at the first
-    sighting.
+    A LANDING ROLLED BACK IS NO REMOVAL. Its rows are absent and nobody took
+    them out: the database is from before it, put back by ``restore run``, by
+    a bare metal recovery from an older snapshot, or by a hand copy, the last
+    two leaving no record of their own. The landing's record names the
+    playlists it MADE, and no database from before the landing holds one,
+    while rekordbox's Remove from Collection leaves every playlist row (A178,
+    A185) and Cratekit's own rotation soft deletes one. So a record offers its
+    rows only while the database holds every playlist it made, asked through
+    ``playlist_held``, and a record naming none, a landing into a playlist
+    that was already there, offers nothing: nothing tells its removal from
+    its rollback, and keeping a file is the answer that costs nothing.
     """
     held = {str(one) for one in present}
     found: dict[str, LandedAbsence] = {}
@@ -632,7 +633,7 @@ def landed_absences(
         if not isinstance(sequence, int) or isinstance(sequence, bool):
             continue
         playlists = landed.get("playlists") or ()
-        if not isinstance(playlists, (list, tuple)):
+        if not isinstance(playlists, (list, tuple)) or not playlists:
             continue
         if not all(playlist_held(str(one)) for one in playlists):
             continue

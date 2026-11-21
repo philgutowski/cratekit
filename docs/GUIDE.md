@@ -1320,9 +1320,12 @@ review sees the row gone, so it is offered once, and the review that takes a
 library's first position takes the ones already gone as history. A track no
 record names, a hand import or a track landed before landings named their
 rows, is not offered when you remove it by hand in rekordbox, so you trash its
-file yourself. Nor is a track of any landing a `crate restore run` started
-after: a restore can take a landing's rows away as a removal does, so its
-files stay where they are and you trash them yourself if you want them gone. `crate
+file yourself. A landed track is offered only while every playlist its landing
+made is still in rekordbox, because a restore, a bare metal recovery or a
+database copied back takes a landing's rows away as a removal does, and only
+the playlists it made tell the two apart: so a track landed into a batch
+playlist that was already there is never offered either, nor one of a landing
+rolled back. `crate
 sync removed` lists the downloaded tracks you took off their playlist on the
 account and, behind its gate, takes them out of the collection first. `crate
 tombstone list` shows what was

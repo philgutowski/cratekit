@@ -162,7 +162,7 @@ PASS_KEY = "pass"
 
 #: The session record field naming every row a landing made (R-1037): the
 #: database by its identity, the update count the landing's commit left, the
-#: playlists it wrote into, and each row's :data:`LANDED_COLUMNS` as the
+#: playlists it made, and each row's :data:`LANDED_COLUMNS` as the
 #: database holds them after the commit. rekordbox 7.2 deletes a row a person
 #: removes OUTRIGHT (A178, A185), so the deletion pass reads a landed row the
 #: database no longer holds as that removal, and this record is the only place
@@ -2096,6 +2096,10 @@ def apply_rows(
                 root_id=plan.root_id,
             )
         playlist_id = ""
+        # EVERY PLAYLIST ROW BEFORE THIS LANDING WRITES ONE (R-1037), so its
+        # record names only the playlists it MADE: a rollback to before the
+        # landing cannot hold one of those, and a removal leaves them.
+        playlists_before = frozenset(str(row.ID) for row in db.get_playlist())
         written: list[WrittenPlaylist] = []
         left: list[tuple[str, Left]] = [
             *plan.unplanned_left,
@@ -2283,7 +2287,10 @@ def apply_rows(
                     len(added_ids),
                     memberships + analyze_added,
                     cfg,
-                    landed=_landed_rows(db, plan, added_ids, playlist_id, written),
+                    landed=_landed_rows(
+                        db, plan, added_ids, (playlist_id, *(one.playlist_id for one in written)),
+                        before=playlists_before,
+                    ),
                     playlist_id=playlist_id,
                     written=written,
                     placed=placed,
@@ -2301,7 +2308,10 @@ def apply_rows(
             len(added_ids),
             memberships + analyze_added,
             cfg,
-            landed=_landed_rows(db, plan, added_ids, playlist_id, written),
+            landed=_landed_rows(
+                db, plan, added_ids, (playlist_id, *(one.playlist_id for one in written)),
+                before=playlists_before,
+            ),
             playlist_id=playlist_id,
             written=written,
             placed=placed,
@@ -2726,17 +2736,19 @@ def _landed_rows(
     db: Any,
     plan: NativePlan,
     added_ids: Sequence[tuple[RowPlan, str]],
-    playlist_id: str,
-    written: Sequence[WrittenPlaylist],
+    joined: Iterable[str],
+    *,
+    before: frozenset[str],
 ) -> dict[str, Any] | None:
     """What :data:`LANDED_ROWS_KEY` records of a committed landing, read back from the database.
 
     THE ROWS AS THE DATABASE HOLDS THEM, read after the commit, so a column
     the binding filled differently from the plan is recorded as it is. The
-    update count is the one the commit left, which a removal in rekordbox
-    advances past (A178, A185) and a restore of a capture from before this
-    landing sets back. The playlists are the ones the rows joined that this
-    landing wrote into, which a removal leaves and such a restore takes away.
+    update count is the one the commit left. The playlists are the ones the
+    rows joined that this landing MADE, every id in ``joined`` that was not a
+    playlist row ``before`` it wrote: a removal in rekordbox leaves them (A178,
+    A185), and no database from before the landing holds one, so they are what
+    tells a removal from a rollback, whatever put the database back.
 
     A READ THAT FAILS RECORDS NOTHING and says so: the landing has committed,
     so refusing here would report a landing that happened as failed, and a
@@ -2765,7 +2777,7 @@ def _landed_rows(
             exc,
         )
         return None
-    playlists = sorted({one for one in (playlist_id, *(one.playlist_id for one in written)) if one})
+    playlists = sorted({str(one) for one in joined if one and str(one) not in before})
     return {
         "database_identity": plan.master_db_id,
         "sequence": sequence,

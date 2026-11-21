@@ -38,8 +38,8 @@ prohibition never has to be reopened, by the session records of ``crate
 sync removed``, which deletes a row outright as rekordbox does (U288) and names
 each one it took out, since such a row carries no marker, and by the native
 landing's records of the rows it made, a landed row the database no longer
-holds being one rekordbox's Remove from Collection took out (R-1037), unless a
-restore started after its landing, which takes rows away as a removal does. The database is opened, read, and closed.
+holds, while every playlist that landing made is still there, being one
+rekordbox's Remove from Collection took out (R-1037). The database is opened, read, and closed.
 That is also why there is no capture: a snapshot protects database rows, this
 run creates, edits and deletes none, and the thing that is actually at risk is
 files, which a database snapshot does not hold. What protects those is the
@@ -240,13 +240,6 @@ def _assert_library_is_still(
     rb_writer.canary(db)
 
 
-#: The workflow a restore's own session record carries, ``core.restore``'s
-#: ``CAPTURE_RESTORE_WORKFLOW``, spelled here so this package reaches no
-#: further into the core; ``tests/test_delete_landed_removed.py`` holds the
-#: two spellings equal.
-RESTORE_WORKFLOW = "capture-restore"
-
-
 def _recorded_details(cfg: config.Config) -> tuple[session.SessionRecord, ...]:
     """Each readable session record, for the removals and landings recorded in it.
 
@@ -264,42 +257,6 @@ def _recorded_details(cfg: config.Config) -> tuple[session.SessionRecord, ...]:
             len(unreadable),
         )
     return found
-
-
-def _not_restored_since(records: Sequence[session.SessionRecord]) -> tuple[Mapping[str, Any], ...]:
-    """The detail of every record no restore session started after, for its landed rows.
-
-    A RESTORE TAKES A LANDING'S ROWS AWAY AS A REMOVAL DOES, and the session
-    log, which survives a rollback, keeps the landing's record naming them. A
-    restore of the landing's own capture, of an earlier one, or of a backup
-    leaves the database from before the landing, its rows absent though nobody
-    removed them, and the playlist the landing wrote into may have been there
-    before it. What a restore leaves behind is its own record, so a landing
-    any restore started after, whatever that restore's state, offers nothing:
-    a restore of a later capture keeps the rows, and its landing's files are
-    then kept too, which keeps a file rather than trashing one. A time that
-    cannot be read counts as a restore after.
-    """
-    restores = [one.started for one in records if one.workflow == RESTORE_WORKFLOW]
-    if not restores:
-        return tuple(one.detail for one in records)
-    latest = max((_instant(when) for when in restores), default=None)
-    kept = []
-    for one in records:
-        started = _instant(one.started)
-        if latest is None or started is None or latest > started:
-            continue
-        kept.append(one.detail)
-    return tuple(kept)
-
-
-def _instant(text: str) -> datetime | None:
-    """A record's start, or None when it cannot be read as an aware time."""
-    try:
-        when = datetime.fromisoformat(str(text))
-    except ValueError:
-        return None
-    return when if when.tzinfo is not None else None
 
 
 def _playlists_held(db: Any) -> Callable[[str], bool]:
@@ -371,7 +328,7 @@ def plan(
     # is the row a person removed by hand in rekordbox (R-1037). One that a
     # recorded removal already names is that removal, at its own sequence.
     absent = library.landed_absences(
-        _not_restored_since(records),
+        [one.detail for one in records],
         database_identity=identity,
         present=held | {row.content_id for row in recorded},
         playlist_held=_playlists_held(db),
@@ -391,7 +348,7 @@ def plan(
     # already gone is history (R35) without a rule of its own.
     mark = marks.sight(
         database_identity=identity,
-        absent={key: one.landed for key, one in absent.items()},
+        absent=absent,
         present=held,
         counter=counter,
     )
