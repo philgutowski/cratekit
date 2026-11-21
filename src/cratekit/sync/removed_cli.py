@@ -79,8 +79,10 @@ RETIRE_GATE = "sync.removed.retire"
 #: What ``--retire`` retired.
 RETIRED_NOW = "sync-removed-retired-now"
 
-#: The one command that retires them now, as a person types it.
-RETIRE_COMMAND = "crate sync removed --retire"
+#: The one command that retires them now, as a person types it. It reads every
+#: synced playlist, about two calls each, so on a large account it needs the
+#: ceilings raised as a run that finds a removal does (R-1716).
+RETIRE_COMMAND = "crate --calls N --calls-per-hour M sync removed --retire"
 
 
 def build_removed(parser, entry) -> None:
@@ -266,7 +268,20 @@ def _read_synced(
     account = catalogue.resolve(cfg)
     listed = removed.account_listing(account)
     recorded = removed.recorded_contents(cfg)
-    asked = {"sightings": sightings, "moment": moment, "listed": listed, "recorded": recorded}
+    paired = pairs.PairStore(cfg).all()
+    # WHAT CRATEKIT CALLS EACH ONE (round one), so a playlist the account's
+    # list no longer names is still named on the screen and in the record.
+    names = {
+        **{key: one.name for key, one in paired.items() if one.name},
+        **{one.account: one.name for one in found if one.name},
+    }
+    asked = {
+        "sightings": sightings,
+        "moment": moment,
+        "listed": listed,
+        "recorded": recorded,
+        "names": names,
+    }
     reads = removed.read_account(account, [one.account for one in found], **asked)
     if every or removed.removals(found, reads):
         others = [
@@ -274,7 +289,7 @@ def _read_synced(
             for one in removed.synced(
                 cfg,
                 found,
-                paired=pairs.paired_ids(cfg),
+                paired=frozenset(paired),
                 swept_now=removed.job_playlists(cfg),
                 listed=listed,
             )
@@ -329,21 +344,37 @@ def retire(ctx, cfg) -> Envelope:
         if one.noted is not None
     ]
     data = {
+        # THE PLAYLISTS NAMED, NOT THE DATES (round one), so the gate's two
+        # drives either side of midnight bind to one plan.
         "digest": digest_of(
             {
                 "kind": "sync-removed-retire",
-                "playlists": [
-                    {key: item[key] for key in ("account", "name", "first seen unavailable")}
-                    for item in items
-                ],
+                "playlists": [{key: item[key] for key in ("account", "name")} for item in items],
             }
         ),
         "items": items,
         "totals": {"count": len(items), "playlists read": len(reads)},
         "chunk": None,
     }
+    # A PLAYLIST THIS READ COULD NOT ASK IS SAID (round one), so an outage
+    # that answered nothing is not read as a clean list with nothing to retire.
+    unasked = [one for one in reads.values() if one.state in removed.NOT_WHOLE and not one.not_found]
+    warnings = (
+        [
+            {
+                "code": PARTIAL,
+                "message": (
+                    f"{len(unasked)} synced playlist(s) could not be read whole and are not "
+                    f"offered for retirement, since only a not found is: "
+                    + "; ".join(f"{one.name or one.account} ({one.why})" for one in unasked)
+                ),
+            }
+        ]
+        if unasked
+        else []
+    )
     if not named:
-        return ctx.envelope(data=data, outcome=Outcome.NO_OP)
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
     context = {
         "retire": [
             f"{item['account']}" + (f" ({item['name']})" if item["name"] else "")
@@ -358,7 +389,7 @@ def retire(ctx, cfg) -> Envelope:
         ),
     }
     if ctx.gate.require(_gate(ctx.entry, RETIRE_GATE), plan=data, context=context) != "retire":
-        return ctx.envelope(data=data, outcome=Outcome.NO_OP)
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
     moment = unavailable.now()
     unavailable.UnavailableRecord(cfg).update(
         {
@@ -373,6 +404,7 @@ def retire(ctx, cfg) -> Envelope:
     return ctx.envelope(
         data=data,
         warnings=[
+            *warnings,
             {
                 "code": RETIRED_NOW,
                 "message": (

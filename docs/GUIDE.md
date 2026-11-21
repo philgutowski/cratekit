@@ -766,7 +766,8 @@ it in a playlist or history list that keeps others.
   purpose, or the pass never brought a file for it.
 - A synced playlist or the hearts not read whole (unreadable, short of the
   count declared, or empty with nothing saying they hold none) stop every
-  offer, and are named. A synced playlist neither the account's list nor its
+  offer, and are named, save the hearts short only by what the provider
+  withholds and a retired playlist, both below. A synced playlist neither the account's list nor its
   id finds is named as gone: it offers none of its own tracks, and is read as
   still holding what its finished jobs recorded; one nothing readable records
   stops every offer.
@@ -775,31 +776,38 @@ it in a playlist or history list that keeps others.
   declares ("349 declared, 340 listed, 9 withheld by the provider"). Short
   only by that, with hearts served, they are read whole for this question,
   since a heart the service will not serve is not one you see either, and the
-  plan names them with both counts. With no heart served at all they still
-  stop every offer.
+  plan names them with both counts. With no heart served at all, or short by
+  more than a tenth of their count, which a page the service dropped looks
+  like, they still stop every offer. The service publishes no count of what
+  it withholds, so a shortfall inside that tenth is read as withheld.
 - **A playlist gone for good.** A synced playlist the account no longer lists
   whose id answers not found is recorded, with the date, in the library's
   `sync_unavailable.json`. When it answers not found again at least a day
   after it first did, it is **retired**: from then on it holds nothing and
-  stops nothing, and the plan names it with its id and both dates. Once, or
-  twice the same day, it still stops every offer, as does a playlist whose id
-  failed any other way (an outage, a refused session), which is never
-  retired. A retired playlist that opens again, or that the account lists
-  again, is dropped from the record and read as any other. Nothing is written
-  on the account.
+  stops nothing, and the plan names it with its id and both dates. Seen once,
+  or twice the same day, it is read as before: gone, still holding what its
+  finished jobs recorded, or stopping every offer when nothing readable
+  records it. A playlist whose id failed any other way (an outage, a refused
+  session) records nothing and is never retired; a retired one whose id
+  fails that way stops every offer for that run and stays retired. A retired
+  playlist that opens again, or that the account lists again, is dropped from
+  the record and read as any other. Nothing is written on the account.
 - **Retiring them sooner.** The run names each playlist seen unavailable and
   the one command that retires them now:
 
   ```bash
-  crate sync removed --retire
+  crate --calls N --calls-per-hour M sync removed --retire
   ```
 
-  It reads every synced playlist and stops at the explicit gate
+  It reads every synced playlist, about two calls each, so on an account with
+  hundreds of them it needs the ceilings raised as a run that finds a removal
+  does. It stops at the explicit gate
   `sync.removed.retire`, which lists each one the account no longer lists
   whose id answered not found on this read, with its id and the dates. Answer
   it with `crate run decide RUN_ID sync.removed.retire retire --actor NAME`,
   then run `crate --run RUN_ID sync removed --retire` again; then run `crate
-  sync removed` to plan without them. `abort` writes nothing.
+  sync removed` to plan without them. `abort` writes nothing. A synced
+  playlist it could not read is named and never offered for retirement.
 - A run that finds a removal reads every synced playlist, about two calls
   each, so on an account with hundreds of them it stops at the call ceiling
   with nothing offered; run it again as `crate --calls N --calls-per-hour M

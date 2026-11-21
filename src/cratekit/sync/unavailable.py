@@ -55,6 +55,10 @@ _ORIGIN = ("sync.unavailable",)
 #: How long after its first sighting a not found retires a playlist.
 APART = timedelta(hours=24)
 
+#: The provider client's own not found class, ``tidalapi.exceptions.ObjectNotFound``,
+#: by its exact name, so this module imports no client.
+CLIENT_NOT_FOUND = "ObjectNotFound"
+
 #: Who retired a playlist: a second sighting a day after the first, or a person at the gate.
 BY_SIGHTINGS = "sightings"
 BY_PERSON = "person"
@@ -89,12 +93,16 @@ def answered_unavailable(exc: BaseException) -> bool:
     answers by it, so a server error met while handling a not found is the
     server error, and a link of the client's not found class answers yes, read
     only off links the failure declares as its causes, since a not found met
-    while handling something else is not this answer.
+    while handling something else is not this answer. THE CLIENT'S CLASS BY
+    ITS EXACT NAME, never a name that merely holds "not found" (round one):
+    Python's own ``FileNotFoundError`` is raised by the provider gate's lock
+    before any request is sent, and read as the provider's answer it recorded
+    a sighting of a playlist nobody asked about.
     """
     for link, declared in failure_links(exc):
         if getattr(getattr(link, "response", None), "status_code", None) is not None:
             return answered_not_found(link)
-        if declared and "notfound" in type(link).__name__.lower():
+        if declared and type(link).__name__ == CLIENT_NOT_FOUND:
             return True
     return False
 
@@ -268,6 +276,7 @@ class UnavailableRecord:
 
 __all__ = [
     "APART",
+    "CLIENT_NOT_FOUND",
     "BY",
     "BY_PERSON",
     "BY_SIGHTINGS",

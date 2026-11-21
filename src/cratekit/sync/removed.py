@@ -44,13 +44,15 @@ removal could ever be offered on the author's account. The hearts listed
 short only by what the provider withholds, R-504's shortfall over a walk that
 reached the declared count and served hearts, are WITHHELD: they hold every
 heart served, since a heart the provider will not serve is not one the account
-shows, and are named with both counts; no heart served at all stays short. And
+shows, and are named with both counts; no heart served at all, or a shortfall
+over a tenth of the count, which a dropped window looks like, stays short. And
 a playlist the account no longer lists whose id answers the provider's NOT
 FOUND, a 404 and nothing else, is a sighting in
 :mod:`cratekit.sync.unavailable`'s record; a sighting a day after the first,
 or a person at the explicit gate ``sync.removed.retire``, RETIRES it, and a
 retired playlist holds nothing and stops nothing until it opens again or the
-account lists it again. Every other failure leaves it not read whole.
+account lists it again. Every other failure leaves it not read whole, a
+retired one for that run alone, its retirement kept.
 
 A TRACK IS REMOVED when its playlist's listing holds no row of its provider
 id, and no read row of it carries its ISRC or its artist and title as the
@@ -149,6 +151,14 @@ NOT_WHOLE = frozenset({UNREADABLE, SHORT, EMPTY})
 WITHHELD = "withheld"
 #: A synced playlist retired by the record of not found answers: holds nothing, stops nothing (U320).
 RETIRED = "retired"
+#: The reader's refusal of rows a playlist served: its id opened, so it is not gone.
+SERVED_UNREADABLE = "intake-list-unusable"
+
+#: The most of its declared count the hearts may be short by and still read whole
+#: (U320), as a fraction: a provider measured withholding 12 of 197 and 9 of 349,
+#: and a fault that drops a whole window of a hundred stays short.
+WITHHELD_AT_MOST = 0.10
+
 #: Every state a listing holds tracks in.
 HOLDING = frozenset({READ, GONE, WITHHELD})
 
@@ -456,25 +466,31 @@ def read_one(
     *,
     sightings: Mapping[str, unavailable.Sighting] | None = None,
     moment: datetime | None = None,
+    names: Mapping[str, str] | None = None,
 ) -> Listing:
     """One synced playlist read through the sweep's own reader, or why it is not read whole.
 
     ``sightings`` is the record of not found answers as it stood before this
-    run, and ``moment`` when this run asked (U320). The listing carries what
+    run, ``moment`` when this run asked, and ``names`` what Cratekit calls a
+    playlist the account's list no longer names (U320). The listing carries what
     the record holds for the playlist after this read, in ``noted``: a not
     found while the account's list omits it is a sighting, which retires it a
     day after the first; any other failure leaves the entry as it stands; a
     playlist that opens, or that the account lists again, holds none.
     """
     shown = listed.get(account)
-    name = shown.name if shown is not None else ""
     prior = (sightings or {}).get(account)
+    name = (
+        shown.name
+        if shown is not None
+        else (names or {}).get(account) or (prior.name if prior is not None else "")
+    )
     try:
         readable = intake_cli.list_playlist_readable(found, account)
     except CratekitError as exc:
         if exc.cause.reason not in playlists.PER_PLAYLIST_REASONS:
             raise
-        if shown is None:
+        if shown is None and exc.cause.reason != SERVED_UNREADABLE:
             # GONE ONLY WHEN TWO READS AGREE, and even then not read as empty.
             # The account's list stops on an empty page and publishes no total
             # (R-385), and the id's failure is any provider failure, so a gone
@@ -482,25 +498,28 @@ def read_one(
             # records is not read whole at all. ONLY A NOT FOUND IS A SIGHTING
             # (U320, R-1713): an outage leaves the record as it stands, so a
             # playlist that is only unreadable is never retired.
+            # AND ONLY THIS READ'S NOT FOUND READS IT RETIRED (round one): a
+            # retired playlist whose id now fails some other way keeps its
+            # retirement in the record and is read not whole for this run, the
+            # side that offers less.
             said_none = unavailable.answered_unavailable(exc)
             noted = (
-                unavailable.sighted(
-                    prior,
-                    account,
-                    prior.name if prior is not None else name,
-                    moment or unavailable.now(),
-                )
+                unavailable.sighted(prior, account, name, moment or unavailable.now())
                 if said_none
                 else prior
             )
-            if noted is not None and noted.is_retired:
+            if said_none and noted is not None and noted.is_retired:
                 return _retired(account, name, noted, not_found=said_none)
             seen = (
-                f"; its id answered not found, first on {unavailable.day(noted.first)}"
-                if noted is not None
-                else ""
+                ""
+                if noted is None
+                else (
+                    f"; retired on {unavailable.day(noted.retired)}, and read not whole "
+                    f"while its id fails another way"
+                )
+                if noted.is_retired
+                else f"; its id answered not found, first on {unavailable.day(noted.first)}"
             )
-            name = name or (noted.name if noted is not None else "")
             known = recorded(account) if recorded is not None else None
             if not known:
                 return Listing(
@@ -526,8 +545,9 @@ def read_one(
                 not_found=said_none,
                 **_held(known),
             )
-        # LISTED BY THE ACCOUNT, so not gone whatever its id answers: the
-        # record holds nothing for it, a retirement included.
+        # LISTED BY THE ACCOUNT, or OPENED and its rows refused by the reader
+        # (round one), so not gone whatever else it answers: the record holds
+        # nothing for it, a retirement included.
         return Listing(account=account, name=name, state=UNREADABLE, why=exc.cause.message)
     if readable.short is not None:
         block = readable.short.block()
@@ -597,10 +617,14 @@ def read_hearts(found: catalogue.Catalogue) -> Listing:
         if exc.cause.reason not in playlists.PER_PLAYLIST_REASONS:
             raise
         return Listing(account=HEARTS, name=HEARTS_NAME, state=UNREADABLE, why=exc.cause.message)
-    if short is not None and not (frozen and short.withheld > 0):
+    if short is not None and not (
+        frozen and 0 < short.withheld <= short.declared * WITHHELD_AT_MOST
+    ):
         # SHORT BY MORE THAN THE PROVIDER WITHHOLDS, or by nothing a walk
         # could reach: no heart served at all, which a provider serving nothing
-        # looks like, or numbers that do not reconcile.
+        # looks like, numbers that do not reconcile, or more than a tenth of
+        # the count short, which a window the provider dropped looks like
+        # (round one): the provider publishes no withheld count of its own.
         return Listing(
             account=HEARTS,
             name=HEARTS_NAME,
@@ -649,10 +673,13 @@ def read_account(
     recorded: Recorded | None = None,
     sightings: Mapping[str, unavailable.Sighting] | None = None,
     moment: datetime | None = None,
+    names: Mapping[str, str] | None = None,
 ) -> dict[str, Listing]:
     """Each playlist in ``wanted`` read once, against the account's listing read once."""
     return {
-        account: read_one(found, account, listed, recorded, sightings=sightings, moment=moment)
+        account: read_one(
+            found, account, listed, recorded, sightings=sightings, moment=moment, names=names
+        )
         for account in dict.fromkeys(wanted)
     }
 

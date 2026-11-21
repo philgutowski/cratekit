@@ -361,7 +361,8 @@ file, on another synced playlist, in a playlist of yours, named by a table
 rekordbox's removal was never measured on), or **left** when no
 single row holds it. Nothing is offered while a synced playlist is not read
 whole, save two shapes read whole for this question (U320): the hearts short
-only by what the provider withholds, and a **retired** playlist, one the
+only by what the provider withholds, a tenth of their count at most, and a
+**retired** playlist, one the
 account no longer lists whose id answered not found a day apart, or that a
 person retired behind `sync.removed.retire`, which holds nothing and stops
 nothing. Behind the explicit gate `sync.removed.confirm`, the offered rows leave
