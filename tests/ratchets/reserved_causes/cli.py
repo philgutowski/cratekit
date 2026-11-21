@@ -164,6 +164,15 @@ KEBAB_LITERALS = {
         'review-verdict-conflict',
         'utf-8',
     ],
+    # 2026-11-21, U295: the night pass's schedule joined.
+    'cli/schedule.py': [
+        'refused-by-policy',  # 2026-11-21, U295 review round one: root is refused.
+        'schedule-agent-unusable',
+        'schedule-agent-unwritten',
+        'schedule-crate-unresolved',
+        'schedule-launchctl-failed',
+        'schedule-platform-unsupported',
+    ],
     'cli/setup.py': [
         'config-unusable',
         'library-database-not-rekordbox',
@@ -348,6 +357,15 @@ LITERAL_HOLDERS = {
     'cli/render.py': ['cancelled', 'decision-required', 'decision-stale'],
     'cli/reports.py': ['config-unusable', 'report-as-of-invalid'],
     'cli/review.py': ['review-file-unusable', 'review-selection-invalid'],
+    # 2026-11-21, U295: the night pass's schedule joined.
+    'cli/schedule.py': [
+        'refused-by-policy',  # 2026-11-21, U295 review round one: root is refused.
+        'schedule-agent-unusable',
+        'schedule-agent-unwritten',
+        'schedule-crate-unresolved',
+        'schedule-launchctl-failed',
+        'schedule-platform-unsupported',
+    ],
     'cli/setup.py': [
         'config-unusable',
         'library-database-not-rekordbox',
@@ -374,5 +392,6 @@ LITERAL_HOLDERS = {
 LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'cli/doctor.py',
     'cli/gates.py',  # 2026-11-01, U186: the sibling window's twelve hours.
+    'cli/schedule.py',  # 2026-11-21, U295: launchctl's not found code and its timeout.
     'cli/output.py',
 })
