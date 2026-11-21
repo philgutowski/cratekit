@@ -31,7 +31,7 @@ from pathlib import Path
 import pytest
 
 from cratekit.backup import cli as backup_cli
-from cratekit.core import backup_facts, binaries, config
+from cratekit.core import backup_facts, binaries, config, preflight
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.tools import backup, backup_record
@@ -55,6 +55,40 @@ def _remote(tmp_path: Path) -> Path:
 @pytest.fixture(autouse=True)
 def _nothing_is_running(monkeypatch):
     monkeypatch.setattr("cratekit.core.processes.running_process_names", lambda: ())
+
+
+@pytest.fixture(autouse=True)
+def _the_machines_own_disk_is_never_read(monkeypatch):
+    """U323: no test here asks the disk it runs on what volume it is.
+
+    The identity proof falls back to the platform's provider and the kernel's
+    mount table when a caller passes no seam. On a Mac the provider reads the
+    temporary library's real volume UUID, which is never the fixture's recorded
+    identity, so a backup a test meant as proven refused as foreign and mirrored
+    nothing (A183's battery on 413c6bbd); on Linux it reads nothing and the
+    same test passed. Each test states the identity it means instead, and a
+    fallback reached here fails the test where it was reached. ``pytest.fail``
+    is not an ``Exception``, so the proof's own catch of an unread identity
+    cannot swallow it, and the teardown check holds should anything else.
+    """
+    reached: list[str] = []
+
+    def fallback(name: str):
+        def reach(*_args, **_kwargs):
+            reached.append(name)
+            pytest.fail(
+                f"this test read the machine's own disk through preflight.{name}; "
+                f"pass the identity_provider and mount_enumerator the test means"
+            )
+
+        return reach
+
+    monkeypatch.setattr(
+        preflight, "default_identity_provider", fallback("default_identity_provider")
+    )
+    monkeypatch.setattr(preflight, "local_mount_points", fallback("local_mount_points"))
+    yield
+    assert reached == [], f"the machine's own disk was read through {reached}"
 
 
 @pytest.fixture
@@ -182,10 +216,30 @@ def _unmount(cfg, tmp_path) -> Path:
     return away
 
 
-def _first_backup(cfg, tmp_path):
+def _on_the_recorded_volume(cfg):
+    """The identity seams of a root that is the library's own volume."""
+    return {
+        "identity_provider": lambda path: cfg.library.volume_id,
+        "mount_enumerator": lambda: (),
+    }
+
+
+def _first_backup(cfg, tmp_path, **identity):
+    """Seed the library and back it up once, completed, onto an empty mirror.
+
+    The identity is the test's to state (U323). A test that takes the real
+    proof back passes the answer it tests, as every one does today; the default,
+    the recorded volume, is for the next one that does not, so its first backup
+    is on the library's own volume rather than on whatever the machine's disk
+    reads. Under the suite's neutralized proof the seams go unread. A first
+    backup that refuses or skips its files fails here, with its reason, rather
+    than leaving a test to read an empty mirror as a history it never had.
+    """
     _seed(cfg)
-    _, outcome = _backup(cfg, at=MOMENT)
+    plan, outcome = _backup(cfg, at=MOMENT, **(identity or _on_the_recorded_volume(cfg)))
     assert outcome.ok, outcome
+    assert plan.portion(FILES).refusal is None, plan.portion(FILES)
+    assert _portion(outcome, FILES).ran, _portion(outcome, FILES)
     assert len(_remote_state(tmp_path)["mirror"]) >= len(MUSIC)
     return outcome
 
@@ -444,17 +498,13 @@ def test_the_recorded_volume_at_the_root_backs_up(cfg, real_rclone, tmp_path, re
 def test_an_identity_the_platform_cannot_read_is_left_to_the_content(
     cfg, real_rclone, tmp_path, real_identity
 ):
-    """Every Linux volume reads as no identity; the census holds there."""
-    _first_backup(cfg, tmp_path)
+    """Every Linux volume reads as no identity; the census holds there. The
+    platform reads none for the first backup as well, which is what kept the
+    census this refusal stands on."""
+    unread = {"identity_provider": lambda path: None, "mount_enumerator": lambda: ()}
+    _first_backup(cfg, tmp_path, **unread)
     _unmount(cfg, tmp_path)
-    plan = backup.plan_backup(
-        cfg,
-        now=MOMENT,
-        only=FILES,
-        settings_dirs=(),
-        identity_provider=lambda path: None,
-        mount_enumerator=lambda: (),
-    )
+    plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=(), **unread)
     assert plan.portion(FILES).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
 
 
@@ -726,20 +776,18 @@ def test_a_library_of_only_its_state_folder_skips_once_backed_up(cfg, real_rclon
 def test_an_identity_read_that_raises_is_left_to_the_census(
     cfg, real_rclone, tmp_path, real_identity, raised
 ):
+    """A read that raises is an unread identity, from the first backup on: it
+    neither stops a backup of the library nor proves an unmounted root."""
+
     def broken(path):
         raise raised
 
-    _first_backup(cfg, tmp_path)
-    plan = backup.plan_backup(
-        cfg, now=MOMENT, only=FILES, settings_dirs=(), identity_provider=broken,
-        mount_enumerator=lambda: (),
-    )
+    flaky = {"identity_provider": broken, "mount_enumerator": lambda: ()}
+    _first_backup(cfg, tmp_path, **flaky)
+    plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=(), **flaky)
     assert plan.portion(FILES).refusal is None, plan.portion(FILES)
     _unmount(cfg, tmp_path)
-    plan = backup.plan_backup(
-        cfg, now=MOMENT, only=FILES, settings_dirs=(), identity_provider=broken,
-        mount_enumerator=lambda: (),
-    )
+    plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=(), **flaky)
     assert plan.portion(FILES).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
 
 
