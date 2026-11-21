@@ -224,6 +224,16 @@ folder, plus one shared voice from each account playlist the file was downloaded
 for. Banded like a suggestion but always written; a tie takes the artist's
 heaviest genre, then the first by name, and reports **split**. Part of the tail.
 
+### Needs genre backlog
+Every row adoption's census reads as **needs-genre**, as `crate tag backlog`
+sorts it (`tagging/backlog.py`) into one **cause**: `row-lags-file` (the file
+carries a genre the row lacks), `no-genre`, `too-coarse`, `off-taxonomy` (one
+question per word, folded on case) or `file-unread`. The **floor** is the high
+**suggestion band**; a row below it is the **remainder**, left by hand with its
+reason. The report writes nothing; U294 applies it.
+
+*Avoid:* adoption's **withheld**, which is a routed row the plan will not place.
+
 ### Provider gate
 The one seam every streaming provider call passes, `core/provider_gate`, on the
 transport of every client. It paces calls machine wide, honours `Retry-After`,
