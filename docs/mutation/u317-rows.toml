@@ -1,0 +1,247 @@
+name = "u317"
+pass_kind = "light"
+
+[[rows]]
+id = "Q1_unlisted_folder_is_absence"
+description = "walk: a listed folder that is gone is skipped as absent, so its files read as removed (round one's B2)"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''            raise WalkRefused(
+                f"{directory} was listed and then was not there, so the walk did "
+                f"not see the whole library"
+            ) from None'''
+new = '''            continue'''
+
+[[rows]]
+id = "Q2_unreadable_folder_is_absence"
+description = "walk: a folder that cannot be listed is skipped, so its files read as removed"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''            raise WalkRefused(f"{directory} could not be listed: {exc}") from exc'''
+new = '''            continue'''
+
+[[rows]]
+id = "Q3_excluded_folder_entered"
+description = "walk: an excluded folder is entered, so an unreadable system folder refuses every quick run"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''                    if not matcher.directory(rel):'''
+new = '''                    if True:'''
+
+[[rows]]
+id = "Q4_racy_file_not_hashed"
+description = "walk: a file inside the racy window is not hashed, so a rewrite keeping size and time is skipped"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''            if rel in must_hash or status.st_mtime_ns >= racy_after_ns:'''
+new = '''            if rel in must_hash:'''
+
+[[rows]]
+id = "Q5_rewrite_not_compared"
+description = "difference: a hash that moved under a kept size and time is not a change"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''        elif was.sha256 is not None and was.sha256 != now.sha256:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "Q6_removed_not_found"
+description = "difference: a path in the record and not in the walk is not removed"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''    removed = [rel for rel in recorded if rel not in walked]'''
+new = '''    removed = []'''
+
+[[rows]]
+id = "Q7_only_additions_count"
+description = "Difference.anything: only added paths count, so a change or a removal is skipped"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''        return any(path not in self.self_written for path in self.paths)'''
+new = '''        return any(path not in self.self_written for path in self.added)'''
+
+[[rows]]
+id = "Q8_settled_trusts_the_first_walk"
+description = "settled: every entry of the walk before the transfer is trusted, so a file changed mid run is never sent again"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''        out[rel] = was if now is not None and was.agrees(now) else DOUBT'''
+new = '''        out[rel] = was'''
+
+[[rows]]
+id = "Q9_doubt_through_plain_copy"
+description = "difference: a present doubt is a plain change, so it is never resent with the times ignored (round one's R1)"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''        elif was == DOUBT:
+            doubted.append(rel)'''
+new = '''        elif was == DOUBT:
+            changed.append(rel)'''
+
+[[rows]]
+id = "Q10_mirror_mismatch_ignored"
+description = "manifest_mismatch: a record kept for another mirror is trusted"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''        ("mirror", manifest.dest, str(cfg.backup.dest)),'''
+new = '''        ("mirror", str(cfg.backup.dest), str(cfg.backup.dest)),'''
+
+[[rows]]
+id = "Q11_line_break_carried"
+description = "_carriable: a name holding a line break is put on rclone's list of paths"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''    if "\n" in rel or "\r" in rel:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "Q12_root_volume_not_rechecked"
+description = "still_removed: a quick run's archive runs over a root that went away or changed volume (round one's B2)"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''        if os.stat(root).st_dev != root_dev:
+            return f"the library root {root} is on another volume than the one walked"
+    except OSError as exc:
+        return f"the library root {root} could not be read before the archive: {exc}"'''
+new = '''        pass
+    except OSError:
+        pass'''
+
+[[rows]]
+id = "Q13_returned_path_archived"
+description = "still_removed: a removed path that came back after the plan is archived off the mirror"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''        return f"{rel} was found removed by the walk and is there again"'''
+new = '''        continue'''
+
+[[rows]]
+id = "Q14_no_invalidation"
+description = "run_backup: the record is not removed before a transfer, so a failed run leaves it to be trusted"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''                backup_record.invalidate(_record_path(entry.portion))'''
+new = '''                pass'''
+
+[[rows]]
+id = "Q15_archive_not_rechecked"
+description = "run_backup: the quick archive runs without asking still_removed first"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''                if stale:
+                    failed = CommandResult('''
+new = '''                if False:
+                    failed = CommandResult('''
+
+[[rows]]
+id = "Q16_token_not_asked"
+description = "_plan_files: the library's files fact is not asked for the record's token, so another writer's run is not seen (round one's B1)"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''    if manifest is not None and not why:
+        why = _record_unpublished(cfg, manifest)'''
+new = '''    if manifest is not None and not why:
+        why = ""'''
+
+[[rows]]
+id = "Q17_skip_drops_the_token"
+description = "run_backup: a skip publishes no token, so the run after every skip is full"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''            token = entry.record_token
+        seconds'''
+new = '''            token = ""
+        seconds'''
+
+[[rows]]
+id = "Q18_week_doubled"
+description = "_full_reason: a full check is due at twice the week, so an eight day old one is not run"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''    if answer.age is None or answer.age >= timedelta(days=backup_facts.FULL_CHECK_DAYS):'''
+new = '''    if answer.age is None or answer.age >= timedelta(days=2 * backup_facts.FULL_CHECK_DAYS):'''
+
+[[rows]]
+id = "Q19_self_written_empty"
+description = "_self_written: the fact file counts as a change, so no run after a backup is ever skipped"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''    return frozenset({rel.as_posix()})'''
+new = '''    return frozenset()'''
+
+[[rows]]
+id = "Q20_resend_keeps_times"
+description = "_quick_commands: the resend loses --ignore-times, so a rewrite with its size and time kept is never sent"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''                    rclone, "copy", root, dest, *listed, "--ignore-times",'''
+new = '''                    rclone, "copy", root, dest, *listed,'''
+
+[[rows]]
+id = "Q21_send_without_archive"
+description = "_quick_commands: the send loses --backup-dir, so an overwritten version is not archived"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''                    rclone, "copy", root, dest, *listed, "--backup-dir", archive,'''
+new = '''                    rclone, "copy", root, dest, *listed,'''
+
+[[rows]]
+id = "Q22_flags_do_not_force_a_snapshot"
+description = "plan_backup: --check and --full do not force a snapshot of an unchanged database"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''                snapshot_anyway=check or full,'''
+new = '''                snapshot_anyway=False,'''
+
+[[rows]]
+id = "Q23_fingerprint_key_ignored"
+description = "_plan_database: a fingerprint taken for another snapshot root or identity is compared as this one's"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''            and all(held.get(name) == value for name, value in key.items())'''
+new = '''            and True'''
+
+[[rows]]
+id = "Q24_marker_failure_kept"
+description = "_settle_record: a snapshot whose marker failed keeps its fingerprint, so it is never retaken (round one's R2)"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''            if marker_failed:
+                why = "the snapshot's identity marker could not be written"
+            elif _not_confirmed_gone(lister):'''
+new = '''            if _not_confirmed_gone(lister):'''
+
+[[rows]]
+id = "Q25_second_read_without_scan"
+description = "_settle_record: the database is read again with no second process scan (round one's R4)"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_quick.py"]
+old = '''            elif _not_confirmed_gone(lister):
+                why = "rekordbox was not confirmed gone after the copy"
+            elif'''
+new = '''            elif'''
