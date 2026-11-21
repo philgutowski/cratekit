@@ -1352,6 +1352,10 @@ _SCRUBBED = "[token]"
 #: a credential the run cannot use, as the catalogue app's rejection uses it.
 _CREDENTIAL_REASON = "credential-missing"
 
+#: The same slug, for a caller that tells a token Discogs could not use from a
+#: catalogue refusing this client by the refusal's declared reason (U322).
+CREDENTIAL_REASON = _CREDENTIAL_REASON
+
 
 def discogs_headers(token: str) -> dict[str, str]:
     """What every Discogs request says about itself, the token in its one place.
@@ -2560,6 +2564,7 @@ __all__ = [
     "BEATPORT_IMAGE_EDGE",
     "BEATPORT_SEARCH",
     "CLOUDFLARE_CHALLENGE",
+    "CREDENTIAL_REASON",
     "DISCOGS",
     "DISCOGS_API",
     "DISCOGS_CREDENTIAL",

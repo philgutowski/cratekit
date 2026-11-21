@@ -815,6 +815,7 @@ def test_a_refusing_beatport_beside_an_answering_discogs_asks_every_row_and_coun
     """U322, sitting 102's shape through the verb: Discogs reads no genre and
     Beatport answers Cloudflare's challenge on every row. Every row is asked of
     Discogs, Beatport is fetched three times, and the catalogue line counts it."""
+    from cratekit.core import tags
     from cratekit.tagging import published, searchers
     from tests.test_beatport_refusal import (
         REFUSED,
@@ -824,11 +825,20 @@ def test_a_refusing_beatport_beside_an_answering_discogs_asks_every_row_and_coun
     )
     from tests.test_discogs_searcher import SENT
 
-    build(
+    paths = build(
         machine,
         silence,
         *(Track(str(60 + n), "", "", artist="Nobody", folder="x") for n in range(6)),
     )
+    for n, path in enumerate(sorted(paths.values())):
+        assert tags.write_tags(path, {"isrc": f"GBAYE00000{n:02d}"})
+    general: list[object] = []
+
+    def deezer(isrc):
+        general.append(isrc)
+        return published.Published(published.SOURCE, "miss")
+
+    monkeypatch.setattr(published, "for_lookup", lambda: deezer)
     seen: list[str] = []
     fetch = _over_the_wire(REFUSED, seen=seen)
     asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
@@ -849,8 +859,12 @@ def test_a_refusing_beatport_beside_an_answering_discogs_asks_every_row_and_coun
     assert counted["catalogues"][searchers.BEATPORT] == {
         "asked": 3, "matched": 0, "missed": 0, "unread": 3, "not_asked": 3, "not_sent": 3,
     }  # fmt: skip
-    # The rows carry no ISRC, so the general catalogue is asked about none.
-    assert counted["catalogues"][published.SOURCE]["not_asked"] == 6
+    # The verb asks the general catalogue through the suggest binder, past the
+    # refusing Beatport, by each file's ISRC (round one of the review, 5).
+    assert sorted(general) == [f"GBAYE00000{n:02d}" for n in range(6)]
+    assert counted["catalogues"][published.SOURCE] == {
+        "asked": 6, "matched": 0, "missed": 6, "unread": 0, "not_asked": 0, "not_sent": 0,
+    }  # fmt: skip
     (check,) = [c for c in envelope["data"]["checks"] if c["key"] == "backlog.catalogue"]
     assert check["detail"].startswith(
         "6 row(s) with no genre were weighed with the catalogues: discogs asked about 6, "
@@ -869,3 +883,29 @@ def test_the_catalogue_line_is_absent_without_the_catalogue(machine, silence):
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["summary"]["catalogue_answers"] is None
     assert "backlog.catalogue" not in [c["key"] for c in envelope["data"]["checks"]]
+
+
+def test_the_catalogue_line_names_the_rows_the_walk_stopped_before(machine, silence, monkeypatch):
+    from cratekit.core.cause import refuse
+    from cratekit.tagging import published, searchers
+
+    build(
+        machine,
+        silence,
+        *(Track(str(60 + n), "", "", artist="Nobody", folder="x") for n in range(5)),
+    )
+
+    def blocked(artist, title):
+        raise refuse("catalogue-unreachable", "blocked", origin=("test",))
+
+    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: blocked)
+    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
+    code, envelope = drive([*VERB, "--catalogue"])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["catalogue_answers"]["stopped"] == 2
+    (check,) = [c for c in envelope["data"]["checks"] if c["key"] == "backlog.catalogue"]
+    assert check["detail"] == (
+        "5 row(s) with no genre were weighed with the catalogues, and no catalogue's "
+        "answer is recorded; the walk asked nothing about 2 row(s) once no catalogue "
+        "could be read for 3 rows in a row"
+    )

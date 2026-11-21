@@ -16,7 +16,8 @@ census's own names and never offered, because nothing says it is blank.
 THREE SIGNALS, IN ORDER OF STRENGTH, each a weighted vote for a genre:
 
 * the catalogue lookup ``tag folder`` makes, the record shops and then the
-  general catalogue by ISRC, asked again once on a miss, since a third of a
+  general catalogue by ISRC, which the suggest verbs also ask past a refusing
+  Beatport once Discogs answered (U322), asked again once on a miss, since a third of a
   label download misses the first time. Opt in, because it is paced network
   work over every candidate. Weight :data:`CATALOGUE_WEIGHT`;
 * the artist's other tracks in the library, weight :data:`ARTIST_WEIGHT` each;
@@ -143,6 +144,11 @@ UNREAD = "unread"
 #: catalogue was not asked about (U322).
 NOT_SENT = "not-sent"
 
+#: The head of the note on a row Discogs was passed over on because the recorded
+#: token could not be used, refused by Discogs or unreadable in the keychain
+#: (U322's review), so the verbs say it apart from no token being recorded.
+TOKEN_UNUSABLE = "the recorded Discogs token could not be used: "
+
 #: A catalogue's words that say it answered about the row, a match or a miss,
 #: whatever the taxonomy made of the match (U322).
 _ANSWERED: tuple[str, ...] = (searchers.Answer.MATCHED.value, searchers.Answer.MISS.value)
@@ -228,6 +234,31 @@ class Asked:
             if word in searchers.UNREAD_ANSWERS or word == NOT_SENT
         )
 
+    @property
+    def unread_beside_an_answer(self) -> tuple[str, ...]:
+        """The catalogues that could not be read for a row another one answered (U322).
+
+        Whatever the row was then said to be: a genre the general catalogue
+        gave while Beatport refused is written without Beatport's word, and
+        the verbs say so, as they say a row nobody could read.
+        """
+        if not any(word in _ANSWERED for _source, word in self.answers):
+            return ()
+        return self.unread_by
+
+    def digested(self) -> dict[str, Any]:
+        """What a plan's digest covers of the answer: everything but the words.
+
+        THE WORDS ARE THE RECORD OF WHO ANSWERED, NOT WHAT IS WRITTEN (U322's
+        review). Which of a refusing catalogue's rows were sent and which were
+        passed over moves with the rows a run asks, and a gate shown one day
+        and answered the next asks again the rows nobody could read, so the
+        words would refuse a plan as stale that writes the same.
+        """
+        found = self.to_json()
+        del found["answers"]
+        return found
+
     def to_json(self) -> dict[str, Any]:
         return {
             "said": self.said,
@@ -275,7 +306,7 @@ class Item:
             "band": self.band,
             "options": list(self.options),
             "votes": [[word, weight] for word, weight in self.votes],
-            "catalogue": self.catalogue.to_json() if self.catalogue else None,
+            "catalogue": self.catalogue.digested() if self.catalogue else None,
             "action": self.action,
             "reason": self.reason,
             "genre_id": self.genre_id,
@@ -283,8 +314,15 @@ class Item:
         }
 
     def to_json(self) -> dict[str, Any]:
-        """The item as the gate shows it, with the file and the track's name."""
-        return {**self.digested(), "path": self.path, "artist": self.artist, "title": self.title}
+        """The item as the gate shows it, with the file, the track's name and the
+        catalogues' words (U322)."""
+        return {
+            **self.digested(),
+            "catalogue": self.catalogue.to_json() if self.catalogue else None,
+            "path": self.path,
+            "artist": self.artist,
+            "title": self.title,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -491,6 +529,10 @@ def _asked_from(hit: SearchHit | None) -> Asked:
 def catalogue_lookup(searcher: Searcher, published: PublishedGenre | None = None) -> Lookup:
     """The catalogue lookup ``tag folder`` makes, asked again once on a plain miss.
 
+    ``published`` is the general catalogue's seam; the two suggest verbs hand
+    in :func:`cratekit.tagging.published.for_suggestions`, which asks past a
+    refusing Beatport once Discogs answered (U322).
+
     The record shops first, then the general catalogue by ISRC when they gave no
     genre, which is :func:`cratekit.tagging.tag.tag_one`'s order. A refusal to
     read a catalogue is not raised: it is this row's answer, :data:`UNREAD`, and
@@ -503,6 +545,18 @@ def catalogue_lookup(searcher: Searcher, published: PublishedGenre | None = None
             if published is not None and hit is not None and not hit.genre:
                 hit = published(hit, isrc)
         except CratekitError as exc:
+            if exc.cause.reason == searchers.CREDENTIAL_REASON:
+                # A TOKEN DISCOGS COULD NOT USE IS DISCOGS PASSED OVER, as no token
+                # is (U244), told by the refusal's declared reason (U322's review).
+                # The searcher raises it whatever Beatport answered, so the row
+                # neither counts toward the stop nor resets it, and a refusing
+                # Beatport is still passed over by its own count (U281).
+                return Asked(
+                    UNREAD,
+                    note=f"unread: {searchers.DISCOGS}, {TOKEN_UNUSABLE}{exc.cause.message}",
+                    passed_over=(searchers.DISCOGS,),
+                    answers=((searchers.DISCOGS, searchers.NOT_ASKED),),
+                )
             return Asked(
                 UNREAD,
                 note=f"{exc.cause.reason}: {exc.cause.message}",
@@ -551,6 +605,11 @@ def _kept_answer(entry: Any, asked_for: dict[str, str], today: date) -> Asked | 
     try:
         age = (today - date.fromisoformat(str(entry.get("on")))).days
         said = dict(entry["answer"])
+        # AN ANSWER KEPT BEFORE THE WORDS WERE IS ASKED AGAIN (U322's review), once,
+        # so what each catalogue said is counted from what it said rather than
+        # read as nobody having been asked.
+        if "answers" not in said:
+            return None
         answer = Asked(
             str(said["said"]),
             genre=str(said.get("genre") or ""),
@@ -654,12 +713,51 @@ class KeptCatalogue:
         return answer
 
 
-def unread_names(answers: Iterable[Asked]) -> str:
-    """The catalogues that could not be read across ``answers``, each named once."""
+@dataclass(frozen=True, slots=True)
+class Unread:
+    """The rows a walk could not read whole, sorted by why, as the two verbs warn (U322).
+
+    ``refused`` no catalogue sent the row could be read; ``partly`` another
+    catalogue answered beside the ones ``partly_by`` names, whatever the row
+    was then said to be; ``no_token`` Discogs was passed over for want of a
+    token, and ``token_unusable`` because the recorded one could not be used.
+    Each is the rows' content identifiers, in the walk's order.
+    """
+
+    refused: tuple[str, ...] = ()
+    partly: tuple[str, ...] = ()
+    partly_by: str = ""
+    no_token: tuple[str, ...] = ()
+    token_unusable: tuple[str, ...] = ()
+
+
+def sort_unread(answers: Iterable[tuple[str, Asked]]) -> Unread:
+    """Each row's answer, by content identifier, sorted into :class:`Unread`. Pure."""
+    refused: list[str] = []
+    partly: list[str] = []
     named: list[str] = []
-    for asked in answers:
-        named.extend(source for source in asked.unread_by if source not in named)
-    return " and ".join(named) if named else "a catalogue"
+    no_token: list[str] = []
+    unusable: list[str] = []
+    for content_id, asked in answers:
+        beside = asked.unread_beside_an_answer
+        if beside:
+            partly.append(content_id)
+            named.extend(source for source in beside if source not in named)
+        elif asked.said != UNREAD:
+            continue
+        elif not asked.passed_over:
+            refused.append(content_id)
+        elif TOKEN_UNUSABLE in asked.note:
+            unusable.append(content_id)
+        else:
+            no_token.append(content_id)
+    return Unread(
+        refused=tuple(refused),
+        partly=tuple(partly),
+        partly_by=" and ".join(named),
+        no_token=tuple(no_token),
+        token_unusable=tuple(unusable),
+    )
 
 
 def catalogue_counts(answers: Iterable[Asked]) -> dict[str, Any]:
@@ -1061,7 +1159,9 @@ __all__ = [
     "STOPPED_NOTE",
     "STOP_AFTER_UNREAD",
     "TIED",
+    "TOKEN_UNUSABLE",
     "UNREAD",
+    "Unread",
     "WORKFLOW",
     "WRITE",
     "Asked",
@@ -1077,8 +1177,8 @@ __all__ = [
     "narrowed",
     "plan_suggestions",
     "rows_plan",
+    "sort_unread",
     "suggestable",
-    "unread_names",
     "weigh",
     "write_files",
 ]

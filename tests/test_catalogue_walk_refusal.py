@@ -258,23 +258,27 @@ def test_a_kept_answer_keeps_its_words(machine):
     assert again == PARTLY and again.partly_read and table.asked == 1
 
 
-def test_a_kept_answer_saved_before_the_words_reads_as_none(machine):
+@pytest.mark.parametrize("said", [suggest.MATCHED, suggest.DECLINED, suggest.UNREAD])
+def test_an_answer_kept_before_the_words_is_asked_again_once(machine, said):
+    """U322's review, round one, 3: an answer main kept carries no words, and
+    read as kept the backlog's line counted its Discogs match as not asked."""
     import json
+    from datetime import date
 
     path = suggest.catalogue_path(machine)
     path.parent.mkdir(parents=True, exist_ok=True)
-    from datetime import date
-
     entry = {
         "for": {"artist": "a", "title": "t", "isrc": ""},
         "on": date.today().isoformat(),
-        "answer": {"said": suggest.UNREAD, "note": "unread: beatport"},
+        "answer": {"said": said, "genre": "", "note": ""},
     }
     path.write_text(json.dumps({"1": entry}), encoding="utf-8")
-    table = _Table()
+    table = _Table(PARTLY)
     with suggest.KeptCatalogue(machine, table) as kept:
         again = kept.answer("1", "a", "t", "")
-    assert again.answers == () and not again.partly_read and table.asked == 0
+    assert again == PARTLY and table.asked == 1
+    with suggest.KeptCatalogue(machine, table) as kept:
+        assert kept.answer("1", "a", "t", "") == PARTLY and kept.asked == 0
 
 
 # ---------------------------------------------------------------------------
@@ -416,3 +420,161 @@ def test_the_backlogs_catalogue_line_counts_each_catalogues_answers():
             "not_sent": 0,
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# F. Round one of the review
+# ---------------------------------------------------------------------------
+
+DEEZER_MATCH = _fake(
+    {"discogs": "miss", "beatport": "blocked", "deezer": "matched"},
+    said=suggest.MATCHED,
+    genre="Soul",
+    source="deezer",
+)
+
+
+def test_a_row_written_from_deezer_while_beatport_refused_is_named_at_the_gate():
+    """Round one, 1: a Deezer genre past a refusing Beatport was suggested with
+    no word that Beatport was read for none of the rows."""
+    plan = suggest.SuggestPlan(
+        items=(_item("1", DEEZER_MATCH), _item("2", REFUSED_ROW)),
+        counts=defaultdict(int),
+        changes=None,
+        band="",
+        catalogue=True,
+    )
+    (warning,) = [
+        w for w in suggest_cli._advisories(plan) if w["code"] == suggest_cli.CATALOGUE_UNREAD
+    ]
+    assert "beatport could not be read for 1 row(s) another catalogue answered, 1," in (
+        warning["message"]
+    )
+    assert "the catalogues could not be read for 1 row(s), 2," in warning["message"]
+
+
+def test_rows_are_sorted_by_why_they_were_not_read_whole():
+    declined = _fake({"discogs": "matched", "beatport": suggest.NOT_SENT}, said=suggest.DECLINED)
+    clean = _fake({"discogs": "matched"}, said=suggest.MATCHED)
+    unusable = suggest.Asked(
+        suggest.UNREAD,
+        note=f"unread: discogs, {suggest.TOKEN_UNUSABLE}refused",
+        passed_over=("discogs",),
+    )
+    unread = suggest.sort_unread(
+        [
+            ("1", REFUSED_ROW),
+            ("2", PARTLY),
+            ("3", DEEZER_MATCH),
+            ("4", declined),
+            ("5", clean),
+            ("6", PASSED),
+            ("7", unusable),
+        ]
+    )
+    assert unread == suggest.Unread(
+        refused=("1",),
+        partly=("2", "3", "4"),
+        partly_by="beatport",
+        no_token=("6",),
+        token_unusable=("7",),
+    )
+
+
+def test_a_rejected_discogs_token_beside_a_beatport_that_answers_does_not_stop_the_walk(machine):
+    """Round one, 2: the searcher raises a token Discogs refused whatever
+    Beatport answered, and three such rows stopped a walk Beatport answered."""
+    from tests.test_beatport_refusal import MISSED
+
+    search, _opinion, seen = _walk(MISSED, discogs=_Response(401, "{}", {}))
+    kept, answers = _asked(machine, search, None)
+
+    assert not kept.stopped and kept.asked == 8
+    assert _beatport_requests(seen) == 8
+    for answer in answers:
+        assert answer.passed_over == (searchers.DISCOGS,)
+        assert suggest.TOKEN_UNUSABLE in answer.note
+    unread = suggest.sort_unread((str(n), a) for n, a in enumerate(answers))
+    assert unread.token_unusable == tuple(str(n) for n in range(8)) and not unread.refused
+
+
+def test_a_rejected_token_beside_a_refusing_beatport_sends_beatport_nothing_past_its_stop(machine):
+    search, _opinion, seen = _walk(REFUSED, discogs=_Response(401, "{}", {}))
+    _kept, _answers = _asked(machine, search, None)
+    assert _beatport_requests(seen) == searchers.REFUSALS_BEFORE_STOP
+    assert _discogs_searches(seen) == 1
+
+
+def test_the_words_are_left_out_of_a_plans_digest():
+    """Round one, 4: which of a refusing catalogue's rows were sent moves with
+    the rows a run asks, and refused a plan answered the next day as stale."""
+    sent = _fake({"discogs": "miss", "beatport": "blocked"}, note="unread: beatport")
+    passed = _fake({"discogs": "miss", "beatport": suggest.NOT_SENT}, note="unread: beatport")
+
+    def plan(asked):
+        return suggest.SuggestPlan(
+            items=(_item("1", asked),),
+            counts=defaultdict(int),
+            changes=None,
+            band="",
+            catalogue=True,
+        )
+
+    assert plan(sent).digest == plan(passed).digest
+    assert plan(sent).digest != plan(REFUSED_ROW).digest
+    assert _item("1", passed).to_json()["catalogue"]["answers"] == [
+        ["discogs", "miss"],
+        ["beatport", suggest.NOT_SENT],
+    ]
+
+
+def _refusal(**detail):
+    cause = refuse(searchers.UNREACHABLE_REASON, "refused", origin=("test",), detail=detail)
+
+    def search(artist, title):
+        raise cause
+
+    return suggest.catalogue_lookup(search)("a", "t", "")
+
+
+def test_a_discogs_passed_over_beside_a_refusal_is_named_among_the_words():
+    answer = _refusal(
+        sources=["beatport"],
+        answers=["blocked"],
+        notes=[""],
+        **{searchers.DISCOGS_DETAIL: searchers.DISCOGS_NO_TOKEN},
+    )
+    assert answer.answers == (("discogs", searchers.NOT_ASKED), ("beatport", "blocked"))
+
+
+def test_a_refusals_detail_of_the_wrong_shape_carries_no_words():
+    assert _refusal(sources=["beatport", "discogs"], answers=["blocked"]).answers == ()
+    assert _refusal(sources="beatport", answers=["blocked"]).answers == ()
+    # Notes of another length are read as none, so no refusal reads as unsent.
+    notes = _refusal(
+        sources=["beatport"], answers=["blocked"], notes=[f"{searchers.NOT_SENT}x", "y"]
+    )
+    assert notes.answers == (("beatport", "blocked"),)
+
+
+def test_a_declined_and_a_passed_over_row_carry_their_words():
+    declined = suggest._asked_from(
+        SearchHit(
+            source="discogs",
+            source_genre="Weird",
+            answers=(SourceAnswer("discogs", "matched"), SourceAnswer("beatport", "miss")),
+        )
+    )
+    assert declined.said == suggest.DECLINED
+    assert declined.answers == (("discogs", "matched"), ("beatport", "miss"))
+    passed = suggest._asked_from(
+        SearchHit(
+            answers=(
+                SourceAnswer("discogs", searchers.NOT_ASKED, note=searchers.DISCOGS_NO_TOKEN),
+                SourceAnswer("beatport", "miss"),
+            ),
+            unread=("discogs",),
+        )
+    )
+    assert passed.passed_over == ("discogs",)
+    assert passed.answers == (("discogs", searchers.NOT_ASKED), ("beatport", "miss"))

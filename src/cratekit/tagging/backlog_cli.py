@@ -153,34 +153,38 @@ def advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
                 ),
             }
         )
-    unread = [row for row in plan.rows if row.asked is not None and row.asked.said == suggest.UNREAD]
     # A ROW LEFT UNREAD ONLY BY A CATALOGUE NOBODY ASKED is said as that, with
-    # how to have it asked, as ``tag suggest`` says it (U244).
-    # A ROW ANOTHER CATALOGUE ANSWERED is said apart, naming the one that could
-    # not be read (U322).
-    refused = [
-        row.content_id for row in unread if not row.asked.passed_over and not row.asked.partly_read
-    ]
-    partly = [row for row in unread if row.asked.partly_read]
-    passed = [row.content_id for row in unread if row.asked.passed_over]
+    # how to have it asked, as ``tag suggest`` says it (U244). A ROW ANOTHER
+    # CATALOGUE ANSWERED is said apart, naming the one that could not be read,
+    # whatever was then proposed for it (U322).
+    unread = suggest.sort_unread(
+        (row.content_id, row.asked) for row in plan.rows if row.asked is not None
+    )
     parts = []
-    if refused:
+    if unread.refused:
         parts.append(
-            f"the catalogues could not be read for {len(refused)} row(s), "
-            f"{_named(refused)}, so those were weighed from the library alone"
+            f"the catalogues could not be read for {len(unread.refused)} row(s), "
+            f"{_named(list(unread.refused))}, so those were weighed from the library alone"
         )
-    if partly:
+    if unread.partly:
         parts.append(
-            f"{suggest.unread_names(row.asked for row in partly)} could not be read "
-            f"for {len(partly)} row(s) another catalogue answered, "
-            f"{_named([row.content_id for row in partly])}, so those were weighed "
-            f"without it"
+            f"{unread.partly_by} could not be read for {len(unread.partly)} row(s) "
+            f"another catalogue answered, {_named(list(unread.partly))}, so those were "
+            f"weighed without it"
         )
-    if passed:
+    if unread.no_token:
         parts.append(
-            f"Discogs was not asked about {len(passed)} row(s), {_named(passed)}, "
-            f"because no Discogs token is recorded, so those were weighed from the "
-            f"library alone; to record one: {searchers.DISCOGS_LOGIN_STEPS}"
+            f"Discogs was not asked about {len(unread.no_token)} row(s), "
+            f"{_named(list(unread.no_token))}, because no Discogs token is recorded, so "
+            f"those were weighed from the library alone; to record one: "
+            f"{searchers.DISCOGS_LOGIN_STEPS}"
+        )
+    if unread.token_unusable:
+        parts.append(
+            f"Discogs was not read for {len(unread.token_unusable)} row(s), "
+            f"{_named(list(unread.token_unusable))}, because the recorded Discogs token "
+            f"could not be used, so those were weighed without it; to record a new one: "
+            f"{searchers.DISCOGS_LOGIN_STEPS}"
         )
     if parts:
         found.append({"code": CATALOGUE_UNREAD, "message": "; ".join(parts)})

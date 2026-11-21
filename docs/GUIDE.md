@@ -572,10 +572,13 @@ crate route pending
   searched and could not tag while every other catalogue refused. `tag suggest --catalogue`, `tag backlog --catalogue` and `tag campaign --catalogue` stop the
   same way within one run, and stop asking the catalogues altogether only
   after three rows in a row that no catalogue they were sent to could read,
-  so a row Discogs answered beside a refusing Beatport keeps the walk going
-  and stays askable on a later day; they also ask Deezer about a row Beatport
-  refused once Discogs answered, which a sweep does not; `tag retag` asks
-  afresh for each file. The sweep's warning names such a catalogue as having
+  so a row Discogs answered beside a refusing Beatport keeps the walk going,
+  as does a row Beatport answered while Discogs refused the recorded token;
+  they also ask Deezer about a row Beatport refused once Discogs answered,
+  which a sweep does not, and their warning names the catalogue that could
+  not be read on each row another one answered, a row given a genre
+  included. A row that ends with no genre and no catalogue's word is asked
+  again on a later day; `tag retag` asks afresh for each file. The sweep's warning names such a catalogue as having
   refused this client, and a Cloudflare challenge as one, and keeps
   `unreachable` for a catalogue that is down. A file no catalogue knows keeps
   no genre. A file's label is its label
