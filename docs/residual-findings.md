@@ -55612,3 +55612,115 @@ gap as anything else is the measurement.
 **Closes when:** an attended sitting removes one track from a playlist and a
 history list holding others with Remove from Collection, compares the copies,
 and the removal imitates what it finds. Ledger only: it closes at a sitting.
+
+---
+
+## R-1831. With no Discogs token recorded, the suggest verbs never ask Deezer while Beatport refuses this client
+
+**Found:** at the review of #891, U322, 2026-11-21.
+
+**The mechanism.** U322 lets `tag suggest --catalogue` and `tag backlog
+--catalogue` ask the general catalogue past a Beatport that refused this
+client only once Discogs answered about the row (`published._refused_beside_discogs`),
+the narrower of the card's requirement and #796's option 3. With no token
+Discogs is passed over, Beatport's refusal is every answer the searcher had,
+and the searcher raises before the general catalogue's seam runs, so Deezer is
+asked about no row while Beatport refuses. The review drove ten rows: the walk
+stops at the third with Deezer asked 0 times.
+
+**Measured cost.** None on Phillip's library, which has a token. A library
+with none weighs every row from the library alone for as long as Beatport
+refuses.
+
+**Closes when:** Phillip answers whether Deezer's album genre should stand in
+while every record shop asked refuses (the question on #796), and the searcher
+hands such a row to the seam rather than raising. Ledger only.
+
+---
+
+## R-1832. A catalogue that is down beside one that answers is asked on every row of a suggest walk
+
+**Found:** at the review of #891, U322, 2026-11-21.
+
+**The mechanism.** Since U322 a row some catalogue answered ends the suggest
+walk's run of unread rows, so the walk stops only when no catalogue it sends
+rows to could read three in a row. U281's per catalogue count stops a
+catalogue only for refusals (`searchers.Refusals`); an outage or a parse break
+ends a run of refusals and has no stop of its own. So Discogs answering 503
+beside a Beatport miss is asked on every row: the review drove ten rows, ten
+Discogs searches where main made three.
+
+**Measured cost.** Unmeasured in wall time: each such request waits up to the
+request timeout before it is read unreachable, on top of the pacing.
+
+**Closes when:** a catalogue unreachable on several rows in a row is passed
+over for the rest of the run the way a refusing one is, with its own count
+and note, or the cost is measured and found small. Ledger only.
+
+---
+
+## R-1833. tag folder still holds Deezer behind a refusing Beatport while the suggest verbs ask past it
+
+**Found:** at the plan of #891, U322, 2026-11-21.
+
+**The mechanism.** U322 gave `tag suggest --catalogue` and `tag backlog
+--catalogue` their own binder, `published.for_suggestions`, which asks the
+general catalogue on a row Beatport refused once Discogs answered. `tag folder`
+keeps `published.for_taxonomy`, whose gate asks it only once Beatport answered
+a match or a miss, the conservative option U281 built while #796's question
+waits. So while Beatport refuses, a sweep records Deezer not asked on every
+file Discogs missed, and `tag suggest --catalogue` asks it about the same
+rows.
+
+**Measured cost.** Not driven on the live library. The two verbs disagree only
+on files Discogs missed while Beatport refused; the suggest verbs show what
+they would write at a gate, and a sweep writes without one.
+
+**Closes when:** #796's question is answered and `tag folder` follows it, or
+U282 ends Beatport's refusal. Ledger only.
+
+---
+
+## R-1834. A row passed over for a token Discogs refused loses what the searcher knew of Beatport, so its line leaves Beatport out and Deezer is never asked
+
+**Found:** at the review of #891, U322, round two, 2026-11-21.
+
+**The mechanism.** When Discogs refuses the recorded token and no record shop
+matches, `catalogue_searcher` raises the credential refusal and drops every
+other catalogue's answer. Since U322 `suggest.catalogue_lookup` reads that
+refusal by its declared reason as Discogs passed over, so the walk goes on,
+but its words are only Discogs `not-asked`: `tag backlog`'s catalogue line has
+no Beatport entry whether Beatport refused or answered, and the general
+catalogue's seam never runs, so Deezer is asked about no row. The review drove
+six rows each way and eight with Beatport missing: Deezer asked 0 times where
+the same library with no token is asked 8.
+
+**Measured cost.** The warning names the refused token and says how to record
+a new one, so a person is told the cause; what they are not told is Beatport's
+part, and the rows take no Deezer genre until the token is fixed.
+
+**Closes when:** the searcher carries the shops' answers on the credential
+refusal as a declared field, or returns a decline that names Discogs passed
+over for a refused token, so the lookup reads the words and offers the row to
+the general catalogue. Ledger only.
+
+---
+
+## R-1835. tag suggest's gate shows none of its warnings, so a row written without a refusing catalogue's word is said only after the decision
+
+**Found:** at the review of #891, U322, round two, 2026-11-21.
+
+**The mechanism.** `tag suggest` builds its gate screen from the plan's band,
+counts, groups and items, and its warnings, `suggest-catalogue-unread` among
+them, reach only the envelope of the act that applies. `tag campaign` carries
+the backlog's warning onto its gate's notes. So the sentence U322 added, that
+Beatport could not be read for rows another catalogue answered, reaches a
+person deciding `tag suggest`'s gate only through each item's words. On main
+the gate is built the same way.
+
+**Measured cost.** Driven through the verb at the review: five rows given a
+Deezer genre while Beatport refused, exit 10 with empty warnings and no note,
+the warning arriving after the decision.
+
+**Closes when:** the gate screen carries the verb's advisories as notes, as
+`tag campaign`'s does. Ledger only.
