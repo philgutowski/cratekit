@@ -86,7 +86,9 @@ Beatport when Discogs gives no genre (U282; U244 asked Beatport first). A
 Discogs decline gives way to Beatport, and a file Discogs tagged with no
 picture asks Beatport for its cover only. Every source is asked one question
 per file, the artist and the title read past the naming verb's head and marker
-(`titles.question`, U289), and matches its rows against the file's own text.
+(`titles.question`, U289), and matches its rows against the file's own text,
+for a file with no title tag its name past the older naming's `_PN` tail
+(`titles.name_title`, R-1724).
 Traxsource and Bandcamp are kept off the walk, since both answer
 a bot check, and still counted in old records. Each source answers one of
 `matched`, `miss`, `unreachable`, `blocked` (bot check, block page, spent rate
@@ -578,19 +580,32 @@ lands; `restore list` reads only the session log.
 exception follows it, since the binding can raise after rows are durable.
 
 ### Rotation floor
-The stamp of the last completed mirror to a destination. Archive folders newer
+The stamp of the last completed files backup to a destination, a skip
+included. Archive folders newer
 than it are **held** (one keep slot); ones at or before it are **settled** and
 rotate out. No floor holds everything.
 
 ### Twin
 An open backup job that already is the backup asked for (same verb, library,
 rehearsal flag, mirror or archive root). `backup run` warns
-`backup-already-queued` and files nothing. Fast and full are twins.
+`backup-already-queued` and files nothing. Fast, full and `--check` asks are twins.
 
 ### Full comparison
 `backup run --full`, which lists the remote folder by folder, against the
 **fast** mirror's one recursive listing; both compare size and mtime. Doctor
 reports its age as `backup.full_comparison`.
+
+### Full check, quick run, skip
+The three kinds of files backup (U317). A **full check** lists the remote and
+compares every file, in either listing mode; it is due weekly and on
+`--check`. A **quick run** compares the library with the **backup record**
+(installation state: what the last completed mirror left, path, size, mtime,
+and a hash where the time is racy) and sends only the difference with no
+remote listing. A **skip** found no difference. The database's counterpart is
+a **snapshot** or **unchanged**, by a fingerprint of the database set's content
+and the settings and share folders' sizes and times. A record is removed
+before a transfer and written only after it completes, from two walks that
+agree; an entry they disagree on is a **doubt** that matches nothing.
 
 ### Journal ledger
 A state file kept as a header line and one record per line: each write appends
@@ -622,7 +637,64 @@ reason to widen it.
 A module's rank, enforced by `tests/test_layering.py`: foundation, domain,
 infrastructure, write, modules, cli. An import may point only to its own layer or
 lower, and separately a lower layer may not name a higher layer's verb or package
-as a string. Two independent checks.
+as a string. Two independent checks. A module placed by name has its own line in
+the ladder, so a part split from it is placed by adding one line.
+
+### Package
+For every measure of the refactor, the first directory under `src/cratekit`,
+with `modules` read one level deeper (`modules.outbound`, `modules.reports`,
+`modules.tools`) and `root` for the files beside them. A feature package is any
+package but `core`, `write`, `cli` and `root`. One definition, in
+`scripts/refactor_measure.py`.
+
+### Logical line
+One statement's tokens up to its NEWLINE token, joined by single spaces, with
+comments, blank lines, statements that are one string and import statements
+dropped. Indentation is not part of it, so a copy that was indented, commented
+or wrapped differently is still a copy.
+
+### Copied block
+Six or more consecutive logical lines that stand in two or more places, exactly.
+`tests/test_duplication.py` fails on a new one. The renamed reading, with
+identifiers, numbers and strings normalised, also matches tables and is a
+reading only, never a rule.
+
+### Window
+Exactly six consecutive logical lines, the unit a copied block is held in. A
+whole block's edges move when a partner copy is removed elsewhere; a window
+either still stands twice or it does not, so removing a place of a copy can
+only shrink what the check finds. An edit that brings two stretches of lines
+together can form a window that was never there, which is a new copy.
+
+### Allowance
+A file of lines, one per place a package may still hold something a rule
+forbids, under `tests/ratchets/`: one file per package for copied blocks and one
+for seam crossings. Lines are only ever removed. A line whose finding is gone
+fails nothing, so a card that removes a copy or a crossing cannot fail another
+card's package by removing it, and `scripts/refactor_measure.py prune` removes
+such lines and can add none.
+
+### Named interface
+The core modules a feature package may import, `CORE_INTERFACE` in
+`tests/test_import_rules.py`, at most 25. A reach into any other core module is
+a seam crossing.
+
+### Seam crossing
+One of four things the import rules forbid: a private name used from another
+package, a core module off the named interface reached by a feature package, a
+toggleable package imported at module top level by an always on one, and an
+import that stops a verb building when a toggle is off. Held per importing
+package, one line per crossing however many files hold it.
+
+### Toggle home
+The packages and modules a toggle of `core.profiles.MODULES` owns, `TOGGLE_HOMES`
+in `tests/test_import_rules.py`: what cannot be imported once it is off. A
+package holding one is toggleable; every other package is always on.
+
+### Dangling verb
+A verb that no longer builds when a toggle that does not gate it is off, because
+importing its module, or running its builder, loads a module in that toggle's
+home.
 
 ### Beat grid
 rekordbox's timing map for a track. Never written, in any form or container. A
@@ -768,6 +840,38 @@ adapter's session: one token file and one login for every track the drive
 acquires. A resume is a new drive.
 
 ## Sync
+
+### Night pass
+`crate sync night` (`cli/sync_night.py`, U293): `crate sync land` run with
+nobody watching, for a schedule overnight, stopping at the landing's gate. It
+answers no gate, refuses beside rekordbox, a live job driver, the staging lock
+and a staging folder holding what a landing takes, holds the **night's
+budget** (`[provider] night_calls`, 1,200, noon to noon across every firing,
+read off the gate's running total and charged before the first call; one
+firing's line is the lower of what is left and one command's ceiling, and its
+hour is lowered to `[provider] night_calls_per_hour`, 600; a call past it parks
+as `provider-night-budget`), continues its own pass a wait would mend, and
+leaves one line, doctor's `sync.night`, that `--last` prints with its fields. A
+refused firing keeps a pass still owed; a wait whose pass has landed since, by
+its native landing's record, reads `settled`.
+
+### Night schedule
+`crate schedule install`, `show` and `remove` (`cli/schedule.py`, U295): the
+night pass on launchd, one user agent, `cratekit.sync-night`, in the person's
+own LaunchAgents, loaded into `gui/<uid>`, running the absolute `crate` with
+`sync night` and nothing else at `--at` (03:17 local by default), its output
+in the state entry `schedule_log`, carrying the configuration, state and gate
+directories as the install resolved them. launchctl is reached through one
+seam the suite replaces in every test; a failed load removes its plist once
+launchd reads it gone, all three refuse as root, and install and remove refuse
+beside a pass holding the staging lock.
+
+### Staging lock
+`core/staging_lock.py` (U293): one advisory lock, held by `sync land`,
+`label sync --go` and `sync night` for a whole run, and by `schedule install`
+and `schedule remove` around their bootout (U295), so two passes never
+download into the one staging folder; a second refuses `staging-held`. The
+driver lock's rules, and reentrant within one process.
 
 ### Sync watermark
 An audit record of how far one source got on a clean increment that processed

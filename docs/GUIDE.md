@@ -240,6 +240,11 @@ the two commands that answer and apply it and the rekordbox visit after.
   out, and continue.
 - `crate sync land --pass-run RUN_ID` continues an earlier pass, by either run
   id it printed. Jobs already ended are read, not driven again.
+- One pass stages at a time: `sync land`, `label sync --go` and the night pass
+  below each hold one staging lock for the whole of a run, and a second
+  refuses `staging-held`, naming the holder's verb, process, run and start.
+  `crate schedule install` and `remove` hold it too while they boot the night's
+  agent out, so they wait for any pass, never ending a night in progress.
 
 Then, in order:
 
@@ -254,8 +259,19 @@ Then, in order:
 writes a grid. Open rekordbox, select `INBOX / Analyze` and run Analyze Tracks:
 rows without the `dyn` My Tag with Analysis Mode Normal, high precision off,
 BPM/Grid, Phrase and KEY on; rows with `dyn` with Analysis Mode Dynamic, every
-other setting the same. Quit rekordbox and confirm `rekordbox` and
-`rekordboxAgent` are gone. Then:
+other setting the same.
+
+With Auto Analysis on in rekordbox's preferences the visit is shorter. Open
+rekordbox and bring its window to the front: it raises one dialog saying Auto
+Analysis is starting, with the fields it will use. Press OK only when it shows
+every one of the Normal settings above with Vocal and CUE off and no field set
+otherwise, and it analyses every row waiting with no selection; otherwise,
+Cancel it and select as above. Auto Analysis runs on its preference's own mode,
+so rows with `dyn` still take Analyze Tracks with Dynamic. Cratekit never turns
+Auto Analysis on or off. rekordbox's Auto Analysis analyses every track it
+finds unanalysed, however it came in, so whether it is on is yours to choose.
+
+Quit rekordbox and confirm `rekordbox` and `rekordboxAgent` are gone. Then:
 
 ```bash
 crate analyze check        # exit 0 done, 12 rows still waiting, 27 suspect
@@ -266,6 +282,103 @@ crate inbox analyzed       # take the analysed rows out of INBOX / Analyze
 grid one tempo (or moving on a `dyn` row), Key filled, and how often the
 title's key agrees with rekordbox's. `--pass` or `--session` names one
 landing.
+
+**A night pass.** `crate sync night` is the same pass with nobody watching,
+for a schedule to run overnight, so the time at the Mac is the landing's
+gate and the rekordbox visit. It runs `sync land` and adds only what an
+unattended run needs, each a refusal before any provider call:
+
+- It answers nothing: a `-d`, `--calls` or `--calls-per-hour` given to it
+  refuses, and every gate the pass meets waits for the session (the landing,
+  the backup acknowledgment, `sync.land.without-vocals`). It never mints the
+  acknowledgment, never writes the database and never opens rekordbox. The
+  tail's own `name apply` confirm is the one answer in its chain, as in any
+  pass.
+- It refuses while rekordbox or `rekordboxAgent` is up, while any job has a
+  live driver, and while another pass holds the staging lock.
+- A new night pass refuses while the staging folder holds anything a landing
+  would take, an earlier night's pass waiting at its gate above all, so it
+  never queues a new pass behind one waiting.
+- It holds a night's budget, `[provider] night_calls` (1,200) across every
+  firing from noon to noon, counted in the one provider gate across every
+  process and charged before its first call, and lowers the hour to
+  `[provider] night_calls_per_hour` (600). One firing's line is the lower of
+  what is left of the night and one command's ceiling, `[provider]
+  calls_per_command` (500), so a firing never spends past either. A call past
+  the line is not sent and the pass stops as `provider-night-budget`; the
+  next firing continues it with `--pass-run`, as it does a pass the hour or a
+  cooldown stopped.
+- Whatever the ending it leaves one line: `crate doctor` shows it as
+  `sync.night`, and `crate sync night --last` prints the line and, a row
+  each, the outcome, the gate's run, the pass run, the pass name, the
+  staging folder, what to do next and any track the download refused, and
+  runs nothing (`--output json` carries them under `data.summary.night`). A
+  firing that refuses keeps a pass still waiting or still to continue, and
+  says it was refused in front of the line. A wait whose pass has since
+  landed, by its native landing's record, reads as `settled`; an answered
+  gate alone does not end it, since an apply refused or an abort leaves the
+  tracks staged.
+
+At the Mac, a pass that waits at the landing gate goes straight to the
+rehearsal and the landing with the run, pass and staging folder `--last`
+names (the `crate-sync` skill does this); one that waits on the backup
+acknowledgment takes `crate session ack --as session` and then the `crate
+sync land --pass-run RUN` its line names.
+
+**The night pass on a schedule (macOS).** Three verbs put `crate sync night`
+on launchd, so it runs overnight without being typed:
+
+    crate schedule install            # each night at 03:17, local time
+    crate schedule install --at 02:40 # another time, HH:MM on the 24 hour clock
+    crate schedule show               # installed or not, the time, the crate, loaded, last night
+    crate schedule remove             # unload it and delete it
+
+- `install` writes one launchd agent, `cratekit.sync-night.plist`, in your own
+  `Library/LaunchAgents` and loads it for your login with `launchctl
+  bootstrap`. It runs the `crate` you ran the install with, by its absolute
+  path, with `sync night` and nothing else: no `-d`, no `--calls`, no other
+  verb, so every limit above is the night verb's own. Installing again
+  replaces the agent, never adds a second one. Install again after moving or
+  reinstalling Cratekit, so the agent names the `crate` that is there now.
+- The agent carries a fixed `PATH`; the configuration, state and provider
+  gate directories as the install found them (`CRATEKIT_CONFIG_DIR`,
+  `CRATEKIT_STATE_DIR`, `CRATEKIT_PROVIDER_GATE_DIR`), absolute, so the night
+  reads the same installation whether an override, an XDG variable or the
+  platform's default found it; and the library, staging, ISRC cache and
+  binary overrides (`CRATEKIT_BIN_<NAME>` for a binary Cratekit runs) set when
+  you installed it, made absolute. Nothing else of your environment, never a
+  credential and never a raised limit. Its output is appended to
+  `schedule/sync-night.log` under the installation's state directory, the
+  place to look when a night left no line of its own.
+- The three verbs run as you and refuse as root. Install and remove refuse
+  `staging-held` while any pass holds the staging lock, so a night pass in
+  progress is never ended by its own bootout, as long as the shell reads the
+  installation the agent carries (a shell pointed at another
+  `CRATEKIT_STATE_DIR` holds another lock). The lock's file, `staging.lock`,
+  is left in the installation's state.
+- A launchctl that fails is refused in its own words (`schedule-launchctl-failed`)
+  and the plist written for it is removed once launchd reads it gone, so
+  nothing is left half installed; when a replace fails at the load, the
+  refusal says the earlier schedule is gone too. If launchd may still hold it,
+  the plist is kept and the refusal says so; `crate schedule remove` takes it
+  away. A replace whose plist cannot be written (`schedule-agent-unwritten`)
+  says the earlier schedule is booted out and its plist kept, so it is off
+  until the next login or an install that succeeds.
+- `show` writes nothing. It reads whether launchd has the agent loaded, says
+  so when launchd cannot be read rather than calling it not loaded, and reads
+  the last night's line from the state the agent carries. It fails
+  (`schedule-agent-unusable`) on an agent it cannot read, one whose `crate` is
+  gone, one launchd holds with no plist, and one that is anything but the
+  agent install writes (another program or argument, a run at load, another
+  calendar, an environment name Cratekit never carries, a carried directory
+  missing or relative, a log outside the state it carries); `crate schedule
+  install` replaces it. A value changed by hand to another absolute directory
+  is not something it can tell from one install wrote.
+- `remove` with nothing installed changes no schedule. A bootout launchd does not
+  confirm keeps the plist, so `show` still reads what launchd holds.
+- launchd fires a night the Mac slept through when it wakes. On any platform
+  but macOS the three verbs refuse naming it (`schedule-platform-unsupported`);
+  there, run `crate sync night` from your own scheduler or by hand.
 
 `sync all` alone queues each enabled source's increment under one run and
 returns at once; nothing has run until the jobs are resumed. It sweeps no
@@ -392,7 +505,11 @@ crate route pending
   alone is asked as written too. A file with no tags is asked by its name: a
   headed name of two parts, `Artist - Title`, is asked as that artist and
   that title, and any other headed name with no artist, as before, and its
-  name past the head. Each file's record names the artist and the title read
+  name past the head. A file with no title tag, in `tag folder` and `tag
+  retag` alike, is asked and matched by its name with the `_PN` an older
+  naming wrote after the title left off, so `Sunshine Hotel_PN` is asked as
+  `Sunshine Hotel`; a title tag ending in `_PN` is asked as written, and so
+  is a name whose last part is `_PN` alone, as before. Each file's record names the artist and the title read
   past the head, and how they were read, under `asked`; Discogs is sent that
   title with a round bracketed group it ends with set aside, as before. A Discogs style no folder holds is written nowhere and is
   the file's unmapped word only if Beatport writes no genre either. A catalogue's row counts only when its title names the file's own
@@ -1247,7 +1364,7 @@ the source and refuses to replace a master without `--overwrite`.
 
 ```bash
 crate backup run --dry-run
-crate backup run [--full]
+crate backup run [--check | --full]
 crate restore list
 crate restore run [SESSION_ID] --dry-run
 crate restore run --from-backup --target /path/to/empty/dir
@@ -1258,10 +1375,34 @@ crate restore bare-metal --target /path/to/replacement --accept-replacement --dr
 by date and snapshots the database. `[backup]`'s `dest`, `archive_root` and
 `db_dest_root` are each an rclone `remote:path`. The database part refuses
 while rekordbox or its agent runs, so doctor reports the two ages apart.
-Every run compares every file by size and modification time; `--full` lists
-the remote folder by folder (most of an hour, independent of the recursive
-listing), and doctor's `backup.full_comparison` asks for one every thirty
-days. With the database outside the library root, the `share` folder beside
+
+A run is one of three kinds, and its report says which, what changed, how
+long it took and when the next full check is due:
+
+- **full check**: lists the remote and compares every file by size and
+  modification time, as every backup did before. It runs when the last one is
+  seven days old, when Cratekit has no trustworthy record of what the last
+  backup left (the first run, after a failed or interrupted one, or after the
+  library, mirror or excludes changed, or another installation or an older
+  Cratekit backed the library up since), when a folder cannot be read or
+  vanishes while it is read, when more than 10,000 paths changed, when a
+  changed name is in decomposed Unicode form, when any name in the library
+  holds a line break or carriage return, or when asked with `--check`. `--full` is a full check that lists the remote folder
+  by folder (most of an hour, independent of the recursive listing), and
+  doctor's `backup.full_comparison` asks for one every thirty days.
+- **quick**: between full checks, the library is compared with Cratekit's own
+  record of what the last backup left, and only the files added, changed or
+  removed are sent or moved to the dated archive, without listing the remote.
+- **skip**: nothing changed, so nothing is sent.
+
+A quick run that completes resets the files age, since the remote then holds
+everything. A skip resets it too, because the comparison proved nothing
+changed. The database is snapshotted only when it differs from the last
+snapshot (always with `--check` or `--full`), and an unchanged one resets the
+database age without a copy. A run that fails or stops part way resets no age
+and leaves no record, so the next run is a full check. Doctor's
+`backup.full_check` says when the last full check ran and when the next is
+due, and `backup.age.*` names the kind of run that set each age. With the database outside the library root, the `share` folder beside
 it (rekordbox's analysis files) is mirrored to `analysis-share/` under
 `db_dest_root`.
 
@@ -1466,6 +1607,13 @@ Read the refusal's reason and remedy before retrying, then `crate doctor`.
 | A resume that refuses the same way | `crate job cancel JOB_ID` and queue a fresh one. |
 | `provider-call-ceiling` | The command hit the provider call ceiling (`[provider] calls_per_command`, 500). Run the printed command; `--calls N` raises it for one run, as `crate --calls N job resume JOB_ID`, with `--calls-per-hour` beside it when N is above the hour's budget, 1,500. |
 | `provider-budget` | The account, or the app credentials, has made as many provider calls in the last hour as this command may (`[provider] calls_per_hour`, 1,500, reads stopping at 1,125), counted across every command and copy. Wait until the time it names, then run it again or `crate job resume JOB_ID`; `crate --calls-per-hour N` raises the hour for one run. A `--calls` above the whole hour is refused the same way: lower it, or raise the hour with it. A `label sync` walk over every label refuses first when its estimate will not fit; ask one label with `--next --label NAME`. |
+| `provider-night-budget` | The night pass has made as many provider calls as its line allows, the lower of what is left of `[provider] night_calls` (1,200, noon to noon, counted across every process) and one command's ceiling (500), or what it spent cannot be read. A stop at the line needs nothing: the night pass's next firing continues it, or continue it at the Mac with `crate sync land --pass-run RUN`. A spend that cannot be read refuses every firing of that night and names the ledger and the gate's state file to look at; the next night starts afresh. |
+| `staging-held` | Another pass is downloading into the staging folder (`sync land`, `label sync --go` or `sync night`), named in the message, or `crate schedule install` or `remove` is changing the night's schedule. Wait for it to end, then run this again. |
+| `schedule-launchctl-failed` | launchctl refused to load or unload the night pass's agent; its own words are in the message. An install that failed at the load leaves nothing installed, unless launchd may still hold the agent, when its plist is kept and the message says so; a bootout of the earlier agent that failed leaves it installed as it was. Read `crate schedule show`, then run the verb again. |
+| `schedule-agent-unusable` | The agent `crate schedule show` read cannot be read, its `crate` is gone, launchd holds it with no plist, or it is anything but the agent install writes; the message names each difference. `crate schedule install` replaces it; `crate schedule remove` takes it away. |
+| `schedule-agent-unwritten` | The night pass's plist could not be written or removed, the reason in the message. On a replace, the earlier schedule is booted out and its plist kept until the next login. Make your `Library/LaunchAgents` writable and install again. |
+| `schedule-platform-unsupported` | `crate schedule install`, `show` and `remove` need launchd, which is macOS's. Run `crate sync night` from this platform's own scheduler, or by hand. |
+| `schedule-crate-unresolved` | The `crate` an install would schedule is not an executable file. Run `crate schedule install` from the `crate` you installed. |
 | `rekordbox-absence-unconfirmed` | A process the check could not read, usually one still exiting. Wait, then continue with the printed `crate --run RUN_ID ...`. Inspect with `ps -p PID -o pid,stat,comm`. |
 | `backup-acknowledgment-missing` | [The backup acknowledgment](#the-backup-acknowledgment). |
 | `sync land` lists intake jobs left open | `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`. A queued `crate organize` download is taken by the next new pass. |
@@ -1557,6 +1705,8 @@ wins over the profile's preset), `[taxonomy]`, `[naming]`, `[acquisition]`,
 | `provider.isrc_cache_days` | 30 (0 turns the ISRC cache off) |
 | `provider.calls_per_hour` | 1500 (per identity, over any sixty minutes) |
 | `provider.reserve_share` | 0.25 (kept for writes and downloads) |
+| `provider.night_calls` | 1200 (the night pass's budget, noon to noon, every firing) |
+| `provider.night_calls_per_hour` | 600 (the hour the night pass holds the account to) |
 | `labels.offer_per_sweep` | 10 |
 | `labels.new_playlist_age_days` | 30 |
 

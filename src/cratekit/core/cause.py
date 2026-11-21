@@ -775,6 +775,17 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # prevent, one level in from where it was last prevented.
         "path-read-only": ExitCode.PRECONDITION,
         "path-locked": ExitCode.PRECONDITION,
+        # U295. ``crate schedule``, the night pass on launchd. The platform has
+        # no launchd; the crate the agent would run is not an executable file;
+        # launchctl answered a failure, in its own words; the agent's plist
+        # could not be written or removed; the installed agent cannot be read,
+        # or runs something other than the night. The installation band, since each
+        # is a fact about this machine a person changes, never a defect.
+        "schedule-platform-unsupported": ExitCode.PRECONDITION,
+        "schedule-crate-unresolved": ExitCode.PRECONDITION,
+        "schedule-launchctl-failed": ExitCode.PRECONDITION,
+        "schedule-agent-unwritten": ExitCode.PRECONDITION,
+        "schedule-agent-unusable": ExitCode.PRECONDITION,
         "no-evidence": ExitCode.INTERNAL,
         # R-391. A failed job whose permanent item failures do not share one
         # reason. Beside ``no-evidence`` because it is the same kind of thing, a
@@ -819,6 +830,10 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # the holder" in all three cases, and what differs is WHAT is held, which
         # is the only thing that helps a person work out how long to wait.
         "job-driver-held": ExitCode.LIBRARY_BUSY,
+        # U293. Another pass holds the staging lock: a sync pass, a label go or
+        # the night pass is downloading into the one staging folder, and two
+        # passes staging together would each land the other's tracks.
+        "staging-held": ExitCode.LIBRARY_BUSY,
         # R-705. The one call at a time lock over the streaming provider was
         # held by another driver for longer than a call can take. A fourth slug
         # on this code, for the reason the third gives: the remedy is still
@@ -1088,6 +1103,12 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # the act differs from the ceiling's: it frees at a named minute, and a
         # higher ceiling cannot continue it.
         "provider-budget": ExitCode.REFUSED_BY_POLICY,
+        # U293. The night pass has made as many calls since its firing began as
+        # were left of the night's budget, counted in the one gate across every
+        # process, or the gate's total fell below its mark. The person's own
+        # line, so the policy code, and its own slug because the act differs:
+        # nobody continues it at night, the next night's pass does.
+        "provider-night-budget": ExitCode.REFUSED_BY_POLICY,
         # U56. No public catalogue could be READ, which is a different fact from
         # no catalogue carrying the track, and the slug is the only place that
         # difference survives. The tagging searcher declines when a source

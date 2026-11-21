@@ -1,0 +1,21 @@
+# Copied blocks cli may still hold (U296). One line per place: the digest of
+# a window of six logical lines that also stands somewhere else. Lines are only
+# ever removed, by hand or with: scripts/refactor_measure.py prune cli
+# A line whose copy is gone fails nothing. To see where a window stands:
+# scripts/refactor_measure.py duplicates --where DIGEST
+007a4998c113207e
+007a4998c113207e
+292d00967a73917b
+292d00967a73917b
+acb019e6d01f063f
+acb019e6d01f063f
+b41cebffaca450c3
+b41cebffaca450c3
+b9aaef62043ec311
+b9aaef62043ec311
+d2adb6d6e2dfc804
+d2adb6d6e2dfc804
+d4e8e1a5f9124343
+d4e8e1a5f9124343
+fef12e0ccfc077c2
+fef12e0ccfc077c2

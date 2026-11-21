@@ -451,7 +451,7 @@ def provider_gate_dir() -> Path:
 #: The state entries resolved under :func:`provider_gate_dir` rather than under
 #: their root's directory (U278). Resolved here, inside :func:`state_path`, so
 #: the gate, a report, doctor and a rehearsal's copy all get one answer.
-_PROVIDER_GATE_KEYS = frozenset({"provider_gate", "provider_gate_lock"})
+_PROVIDER_GATE_KEYS = frozenset({"provider_gate", "provider_gate_lock", "night_budget"})
 
 
 def library_state_dir(config: Config) -> Path:
@@ -866,6 +866,62 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="night_budget",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="night_budget.json",
+        why=(
+            "What the night pass has spent of its night's budget (U293): the "
+            "night, the calls its finished firings made, and the gate's running "
+            "total when a firing began, written before its first call so a run "
+            "that died is still charged. A fact about the ACCOUNT's allowance, "
+            "so it sits beside the gate under provider_gate_dir and a copy run "
+            "reads the same night."
+        ),
+    ),
+    StateFile(
+        key="night_status",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="night_status.json",
+        why=(
+            "The last night pass's one line of status and what it stopped on "
+            "(U293), which crate doctor shows and crate sync night --last "
+            "prints. It describes this installation's last unattended run, "
+            "not a library, and losing it loses only the line."
+        ),
+    ),
+    StateFile(
+        key="schedule_log",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="schedule/sync-night.log",
+        why=(
+            "What the scheduled night pass printed (U295): launchd appends the "
+            "agent's output and errors here, the one place a night that never "
+            "reached its own record says why. It describes this installation's "
+            "schedule, not a library, and losing it loses only the output."
+        ),
+    ),
+    StateFile(
+        key="staging_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="staging.lock",
+        why=(
+            "One pass stages at a time (U293): crate sync land, crate label "
+            "sync --go and crate sync night hold it for the whole of a run, so "
+            "the night pass and a pass by hand never download into the one "
+            "staging folder together; crate schedule install and remove hold "
+            "it around their bootout (U295), so they never end a night pass. The kernel releases it when its holder "
+            "dies; the holder written inside is for the refusal's words."
+        ),
+    ),
+    StateFile(
         key="isrc_cache",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.INSTALLATION,
@@ -1091,6 +1147,42 @@ STATE_FILES: tuple[StateFile, ...] = (
             "Installation-scoped beside the job queue it is keyed by, so job "
             "show finds it from the job identifier alone. NEVER_RESTORED for the "
             "job queue's reason: it describes one machine's work, not the library."
+        ),
+    ),
+    StateFile(
+        key="backup_manifest",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="backup_manifest.json.gz",
+        why=(
+            "What the last completed file mirror left on the remote, path by "
+            "path, so a backup that changed little sends only the change and one "
+            "that changed nothing is skipped (U317). INSTALLATION and never "
+            "library state: the library's state folder is inside the mirrored "
+            "tree, so a record kept there would change the tree each time it was "
+            "written and no run could skip. It names the library, the mirror and "
+            "the exclude set it was kept for, and carries a token the library's "
+            "files fact is published with, so a record for any other library or "
+            "remote, or one a second installation or an older build has since "
+            "backed up past, is not trusted: either costs one full run and never "
+            "a wrong skip. NEVER_RESTORED: it describes the remote, which a "
+            "restore does not roll back."
+        ),
+    ),
+    StateFile(
+        key="backup_database_fingerprint",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="backup_database_fingerprint.json",
+        why=(
+            "The content fingerprint of the database set the last completed "
+            "snapshot copied, so a database that has not changed since is not "
+            "copied again (U317). Installation state for the manifest's reason, "
+            "and keyed by the database path, the snapshot root and the library "
+            "identity, so a fingerprint taken for another is not compared. "
+            "NEVER_RESTORED: it describes a snapshot on the remote."
         ),
     ),
     StateFile(
@@ -3164,6 +3256,20 @@ DEFAULT_PROVIDER_ISRC_CACHE_DAYS = 30
 #: field for the reason the intake ages give.
 DEFAULT_PROVIDER_CALLS_PER_HOUR = 1500
 
+#: How many calls the night pass may make to the streaming provider in one
+#: night, across every firing of it that night and every process that reads the
+#: one gate (U293). Twelve hundred: a hundred track pass spends about four
+#: hundred and fifty (sitting 100 measured 42 calls for a ten track download),
+#: and the whole is far below the 7,800 calls in twenty minutes that locked the
+#: account at sitting 94. A night runs from noon to noon, local time. Named here
+#: as well as on the field for the reason the intake ages give.
+DEFAULT_PROVIDER_NIGHT_CALLS = 1200
+
+#: The hour's budget the night pass holds the account to (U293), lower than
+#: ``calls_per_hour`` so an unattended run spends at most this much in any
+#: sixty minutes. Six hundred. The lower of this and ``calls_per_hour`` holds.
+DEFAULT_PROVIDER_NIGHT_CALLS_PER_HOUR = 600
+
 #: The share of the hour's budget a command that only reads may never spend,
 #: kept for the verbs that write the account or download (U278). A quarter, the
 #: brief's default: reads stop at 1,125 of 1,500 and a label go keeps 375.
@@ -3198,6 +3304,12 @@ class ProviderConfig:
     may make in any sixty minutes, counted in the one gate across every command
     and every process, and ``reserve_share`` the part of it a command that only
     reads may never spend. Neither has a value that switches it off.
+
+    ``night_calls`` and ``night_calls_per_hour`` are the night pass's own
+    ceilings (U293): the most calls the night pass, ``sync.night``, may make in
+    one night, counted in the one gate across every firing and every process, and the
+    hour's budget it holds the account to while it runs. Both only lower what
+    the lines above allow; neither has a value that switches it off.
     """
 
     min_interval_s: float = DEFAULT_PROVIDER_MIN_INTERVAL_S
@@ -3206,6 +3318,8 @@ class ProviderConfig:
     isrc_cache_days: int = DEFAULT_PROVIDER_ISRC_CACHE_DAYS
     calls_per_hour: int = DEFAULT_PROVIDER_CALLS_PER_HOUR
     reserve_share: float = DEFAULT_PROVIDER_RESERVE_SHARE
+    night_calls: int = DEFAULT_PROVIDER_NIGHT_CALLS
+    night_calls_per_hour: int = DEFAULT_PROVIDER_NIGHT_CALLS_PER_HOUR
 
 
 #: How many releases one sweep of one favourite label may offer for review,
@@ -3708,6 +3822,21 @@ def _validate_provider(data: Mapping) -> list[str]:
             f"{key} must be a number from 0 up to but not including 1, the share of "
             f"the hour's budget kept for writes and downloads, found {share!r}."
         )
+    # U293. The night pass's own two lines, each a positive whole number, since
+    # a night pass that may make no call is a schedule that does nothing.
+    for key, what in (
+        ("provider.night_calls", "the night pass may make in one night"),
+        ("provider.night_calls_per_hour", "the night pass may make in an hour"),
+    ):
+        value = _dig(data, key)
+        if value is not None and (
+            not isinstance(value, int) or isinstance(value, bool) or value < 1
+        ):
+            problems.append(
+                f"{key} must be a positive whole number of calls {what} to the "
+                f"streaming provider, found {value!r}. There is no value that "
+                f"switches it off."
+            )
     return problems
 
 

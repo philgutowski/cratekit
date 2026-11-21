@@ -1878,6 +1878,77 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     Entry(
+        name="sync.night",
+        summary=(
+            "run the sync pass unattended, for a schedule overnight: refuses beside "
+            "rekordbox, a running job or another pass, holds the night's provider "
+            "budget, answers no gate and stops at the landing's gate"
+        ),
+        module="cratekit.cli.sync_night",
+        builder="build",
+        handler_key="sync.night",
+        feature_rows=(25,),
+        # NOT long_running, AND NO argv_builder (U293), for ``sync.land``'s
+        # reason: it runs ``sync land`` in this process, and every job that
+        # drives is queued and driven under its own verb's key.
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        # ``sync land``'s files, written by the verbs it runs. No database
+        # write and no gate of its own: the landing it plans waits at its
+        # explicit gate for the session at the Mac, and this verb answers none.
+        writes=frozenset({"files"}),
+        destructive=True,
+        doctor_checks=("library.mounted", "rekordbox.closed", "credential.provider"),
+    ),
+    # U295. The night pass on a schedule: one launchd user agent that runs
+    # ``crate sync night`` and nothing else. Core, beside the night verb, and
+    # macOS only by refusal rather than by profile, so every profile reads it.
+    #
+    # NO LIBRARY WRITE SURFACE AND NOT DESTRUCTIVE, on ``skills.install``'s
+    # argument: what install writes is the agent's plist in the person's own
+    # LaunchAgents directory and the directory of its log, the declared state
+    # entry ``schedule_log``; what remove deletes is that plist. Both leave the
+    # staging lock's file, held around the bootout. Nothing a
+    # library knows about is touched, so the destructive session's gates would
+    # be gates over the wrong thing. No gate either: installing a schedule
+    # approves nothing, since every limit the night keeps is the night verb's.
+    Entry(
+        name="schedule.install",
+        summary=(
+            "install the nightly run of crate sync night as a launchd agent of your "
+            "own on macOS, replacing one already installed"
+        ),
+        module="cratekit.cli.schedule",
+        builder="build_install",
+        handler_key="schedule.install",
+        feature_rows=(25,),
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+    ),
+    Entry(
+        name="schedule.show",
+        summary=(
+            "show the nightly run's schedule: installed or not, its time, the crate "
+            "it runs, whether launchd has it loaded and the last night's line"
+        ),
+        module="cratekit.cli.schedule",
+        builder="build_show",
+        handler_key="schedule.show",
+        feature_rows=(25,),
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+    ),
+    Entry(
+        name="schedule.remove",
+        summary="unload the nightly run's launchd agent and delete it; nothing installed is a no op",
+        module="cratekit.cli.schedule",
+        builder="build_remove",
+        handler_key="schedule.remove",
+        feature_rows=(25,),
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+    ),
+    Entry(
         name="sync.bandcamp",
         summary=(
             "take new Bandcamp purchases to their landing in one verb: the plan, the "

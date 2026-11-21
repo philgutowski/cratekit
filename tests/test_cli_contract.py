@@ -1706,6 +1706,19 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # NO_OP. Unbound, its first step refuses for want of a provider
         # session. The chain is driven in tests/test_sync_land.py.
         "sync.land": _a_pass_with_no_vocal_model_and_nothing_new,
+        # U293. The night pass takes no argument and answers nothing: on this
+        # fixture the pass it runs ends with its own first refusal, which the
+        # night carries with its record. The night is driven in
+        # tests/test_sync_night.py.
+        "sync.night": [],
+        # U295. The schedule's verbs take no argument, and on every machine
+        # they refuse ``schedule-platform-unsupported`` here before launchd is
+        # reached: tests/conftest.py reads the platform as Linux and stands the
+        # launchctl seam in with a refusal. The three are driven as a Mac, over
+        # a launchd standing in, in tests/test_schedule.py.
+        "schedule.install": [],
+        "schedule.show": [],
+        "schedule.remove": [],
         # U179. The driver takes no argument: on this fixture its plan step
         # refuses for want of a Bandcamp session, and the driver ends with that
         # step's own refusal. The chain is driven in tests/test_sync_bandcamp.py.

@@ -597,3 +597,37 @@ def rekordbox_on_the_host():
     with _own_patch() as monkeypatch:
         _host_processes.install(monkeypatch)
         yield _host_processes.OPEN
+
+
+@pytest.fixture(autouse=True)
+def _no_live_launchd():
+    """Refuse launchctl in every test, and read the platform as one without it.
+
+    U295. ``crate schedule`` loads and unloads a launchd agent through one seam,
+    ``schedule.launchctl``, looked up on the module at call time. On the Mac a
+    test that forgot to stand it in, the contract sweep driving every verb
+    above all, would load a real job into the person's own launchd with the
+    battery green. So the seam is replaced with one that refuses and fails the
+    test, even when the verb's own refusal path swallowed the error, and the
+    platform is read as Linux, so every verb refuses before it reaches launchd
+    unless a test names the Mac and stands launchd in itself.
+    """
+    from cratekit.cli import schedule
+
+    reached: list[str] = []
+
+    def refused(*args):
+        reached.append(" ".join(args))
+        raise AssertionError(
+            f"a test reached launchctl {' '.join(args)}; set schedule.launchctl to a fake"
+        )
+
+    with _own_patch() as monkeypatch:
+        monkeypatch.setattr(schedule, "launchctl", refused)
+        monkeypatch.setattr(schedule, "platform", lambda: "linux")
+        yield reached
+    if reached:
+        pytest.fail(
+            f"a test reached launchctl: {reached}; set schedule.launchctl to a fake",
+            pytrace=False,
+        )

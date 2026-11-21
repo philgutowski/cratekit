@@ -1,0 +1,42 @@
+# Copied blocks intake may still hold (U296). One line per place: the digest of
+# a window of six logical lines that also stands somewhere else. Lines are only
+# ever removed, by hand or with: scripts/refactor_measure.py prune intake
+# A line whose copy is gone fails nothing. To see where a window stands:
+# scripts/refactor_measure.py duplicates --where DIGEST
+15d5339f377384b5
+15d5339f377384b5
+18686bbccd1488a1
+1894a58e0d2ae4d9
+2dbb14e105a2e859
+4647ca1be05624b4
+4647ca1be05624b4
+491d85397e124e19
+491d85397e124e19
+5d035f95839ad1de
+5d035f95839ad1de
+5d035f95839ad1de
+5ef0afa0342dd409
+618a85a7a3d51a3b
+618a85a7a3d51a3b
+82a3db2afd08036b
+82a3db2afd08036b
+98ab5cc5a334d6f1
+98ab5cc5a334d6f1
+9d11af591da7473d
+9d11af591da7473d
+ae52d73ee808eb21
+ae52d73ee808eb21
+c1593134e65fcd86
+c46bcb1735e05ff6
+c46bcb1735e05ff6
+c9dec1eca68f5596
+c9dec1eca68f5596
+d487fc74106d1f85
+d487fc74106d1f85
+d7e9ee400097efe3
+d7e9ee400097efe3
+e12a61916959c541
+f52c998f8a5156f4
+f52c998f8a5156f4
+f5c20b1414f2cc3c
+f5c20b1414f2cc3c
