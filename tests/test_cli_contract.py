@@ -1706,6 +1706,11 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # NO_OP. Unbound, its first step refuses for want of a provider
         # session. The chain is driven in tests/test_sync_land.py.
         "sync.land": _a_pass_with_no_vocal_model_and_nothing_new,
+        # U293. The night pass takes no argument and answers nothing: on this
+        # fixture the pass it runs ends with its own first refusal, which the
+        # night carries with its record. The night is driven in
+        # tests/test_sync_night.py.
+        "sync.night": [],
         # U179. The driver takes no argument: on this fixture its plan step
         # refuses for want of a Bandcamp session, and the driver ends with that
         # step's own refusal. The chain is driven in tests/test_sync_bandcamp.py.
@@ -2067,6 +2072,10 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # database, where no row lacks a genre on a file it can read, so the
         # plan is empty, the explicit gate still asks and the apply is a no op.
         "tag.suggest": [],
+        # U292. No argument: it reads the whole collection of the configured
+        # database and writes nothing; every cause is driven in
+        # tests/test_tag_backlog.py.
+        "tag.backlog": [],
         # U172. The configured library's root, a folder with no audio in it on
         # this fixture, so the guess reads nothing, writes nothing and ends
         # NO_OP. Every guess is driven in tests/test_tag_guess.py.

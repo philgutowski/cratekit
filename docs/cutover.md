@@ -1408,8 +1408,15 @@ since sitting 15 (#212) and `inbox` since sitting 31. Record Labels stays on
 the xml bridge in the registry, and a native landing appends to it (U156).
 Sitting 10's finding stands for a tree still on the bridge: an import lands a
 playlist at the root (R-687) and sets attributes only on rows it creates
-(R-688). U29 waits on #178 lines 8 and 9, art on a real player and a bare
-metal restore onto a spare drive, both the author's.
+(R-688).
+
+**As of sitting 101 (2026-11-21).** Sitting 101 read the Feature Inventory
+against every row here and recorded one cutover line per workflow already
+proven live: 19 of the 37 inventory rows. U29 waits on #178 lines 8 and 9, art
+on a real player and a bare metal restore onto a spare drive, both the
+author's; on the 6 rows run only in part and the 9 never run live that sitting
+101 lists, each needing one attended run or Phillip's word that it ends with
+DJ_tools; and on Phillip having lived through a full cycle on Cratekit alone.
 
 ## Sitting 43, 2026-10-16, the operator session, U153's live colour backfill
 
@@ -2698,6 +2705,46 @@ Phillip present, asked to work the open attended cards through without questions
 | The account's hour | doctor's `provider.budget` and the gate's own count | The three organize runs on the copy spent **335 account calls each**, since the copy's gate is the live one (U278); with the export and the pass the hour reached **1,460 of 1,500**, and a live account read parked until 20:14 UTC. No call answered rate limited. | read |
 
 **Met:** A169 (#816), A172 (#822), A174 (#827), A170 (#818), A168 (#814), A164 (#805), A177 (#837), A176 (#835), A166 (#809), A163 (#802), A175 (#829), A57 (#415), A173 (#825). **Closed as not planned:** A165 (#807). **Filed:** U289 (#843), Discogs asked with the title as written. **Battery halves met, tag halves waiting on U282 (#797) and U289 (#843):** A157 (#782), A160 (#789), A161 (#793), A162 (#795); A167 (#811) on U289. **Still waiting on a circumstance:** A171 (#820), a pass with files to tag while Beatport refuses; A141 (#744), an album of eight or more with no cover; A72 (#446), U282 (#797) and a new Bandcamp purchase; A129 (#711), a removal Phillip chooses and his own `delete review`; A5 (#178), lines 8 and 9, a real player and a spare drive. **Not taken:** A33 (#293), U29 (#29).
+
+## Sitting 101, 2026-11-21, the attended session on v0.18.0 and the development checkout at `907783b2`, with rekordbox opened twice for A178: the macOS battery for nine cards, what Remove from Collection writes, and U29's per workflow lines
+
+Phillip present at the start, then away under his standing instruction of 2026-11-21 ("Don't ask me any more questions just follow your recommendations until I say otherwise"); the session took every decision itself and records each below as decided by the session under that instruction. The sitting ran as one orchestrator, the one writer to the library, to this record and to the board, with two worker sessions doing the battery, the reads and the comparisons on copies. The library's drive was not mounted when the sitting began; Phillip attached it at 14:13 UTC. Cards that prove units merged after v0.18.0 (U287, U289, R-1705) ran on the development checkout's own `crate` at `907783b2`.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| The backup | `crate backup run`, job `2026-11-21T14:13:53Z-d157`, under nohup | Both ages read **5 days** at the start, so it ran first. **Succeeded** in 6 minutes: the mirror took 157 s in the fast mode, checked 102,692 files and sent 6. Both ages then read **0 days**. | done |
+| The macOS battery | `ruff`, `pytest`, `scan_repo.py` on `907783b2`, under the backup's load and while rekordbox was open for A178; then `tests/test_match_states.py` and `tests/test_discogs_question.py` alone | **Green**: ruff clean, **21,373 passed and 1 skipped**, 0 failures, 338.61 s; the scan clean. It carries every merge the battery cards name: U287 (`01a4e241`), R-1705 (`e5352fc0`), U289 (`a7691c2a`), U243 (`8fa2ae5b`), U260 (`96b9fba0`), R-1631 (`be548af0`), R-1636 (`3c2ab3dc`), R-1646 (`eb29824e`) and U280 (`49f72710`); so `tests/test_title_matcher.py` passed whole, and alone `tests/test_match_states.py` read **609 passed** and `tests/test_discogs_question.py` **167 passed**. The crate config's hash was the same before and after. | met |
+| A178, the throwaway brought in | a ten second silent AIFF made for the check, titled "A178 throwaway", no artist and no tags, imported in rekordbox with File, Import Track, and put alone in a new top level playlist "A178 check" made by hand; rekordbox quit, both processes gone in 15 s | Collection 10,916 to **10,917**. rekordbox did not analyse it (BPM 0.00, Analysed 0). An info window offered rekordbox 7.2.20; the pin stays at 7.2.19 and it was closed unread. | done |
+| A178, the BEFORE copy | `crate backup run`, database stamp `2026-11-21T142950Z` | ok. The analysis store held 75,652 files, none newer than 14:20 UTC; the audio file's hash and time noted. | done |
+| A178, Remove from Collection | rekordbox opened, the throwaway selected in Collection, right click, Remove from Collection; its dialog read "Are you sure you want to remove the selected track(s) from your Collection? Track(s) will be removed from the Collections of all synced devices.", answered OK; rekordbox quit, both gone in 10 s | "A178 check" then read **0 tracks**. The playlist left in place, empty, to be deleted at the next visit so this copy shows the removal alone. | done |
+| A178, the AFTER copy and the comparison | `crate backup run`, database stamp `2026-11-21T144041Z`; both copies fetched read only from the backup remote and compared table by table through `read_only_copy` on disposable copies, every table keyed by its primary key | **4 of 48 tables changed.** The content row **deleted outright**, not soft deleted (live rows 11,068 to 11,067, soft deleted 7,404 both times); its **one membership deleted outright**; the playlist row **untouched** in every column, `updated_at` and `rb_local_usn` included, left empty. One artist row the track never named, the only **live orphan artist** (created 2026-11-10), **deleted outright**; the 176 orphan artists already soft deleted stayed. `agentRegistry`'s `localUpdateCount` **3,037,494 to 3,037,506**, twelve steps that no surviving row carries. History, cues, `contentFile`, the cloud and sync tables, `djmdProperty` and `uuidIDMap` **unchanged**, and no tombstone row anywhere. The audio file's hash and time unchanged; the analysis store 75,652 files before and after, none newer than 14:20 UTC. No `-wal` beside either copy. The copies removed. The shape is in `docs/solutions/integration-issues/rekordbox-remove-from-collection-deletes-outright.md` and in U288's brief (#839), under "What rekordbox writes, from A178". **Unmeasured:** a track with cues, analysis files or history, since the throwaway had none. | met |
+| U29, the inventory against the record | read only: `tests/test_cutover_parity.py`'s Feature Inventory (`registry.FEATURES`, 37 rows), every sitting row in this file, A5 (#178) | **19 rows have run correctly on the live library**, 6 only in part, **9 never**, and 3 are cut or deferred. The 19 are recorded one per line in the table below. The section "What blocks retiring DJ_tools" said U29 waited only on A5 lines 8 and 9; it now names the unproven rows too. | read |
+
+**U29's per workflow cutover lines**, one per workflow whose live proof is already recorded, decided by the session under Phillip's instruction of 2026-11-21. Each names the sitting whose row proves it. DJ_tools is not retired: that waits on the rows below this table, on A5 lines 8 and 9, and on Phillip having lived through a full cycle on Cratekit alone, which only he can attest. Nothing of DJ_tools was touched.
+
+| Inventory row | Workflow | Covering verb | Proven live at | State |
+|---|---|---|---|---|
+| 1 | mix URL set identification | `intake set` | sitting 35, 2026-10-09, the first set end to end, 54 tracks queued | cut over |
+| 2 | tracklist intake | `intake set` | sitting 11, 2026-09-24, one typed tracklist, 18 downloaded; again at 35 | cut over |
+| 3 | streaming playlist import | `intake playlist`, `missing`, `land`, `sync mark` | sitting 8, 2026-09-23, 54 landed; `sync mark` at 23 | cut over |
+| 6 | concurrent downloader | `acquire download`, `acquire bandcamp` | sitting 7, 2026-09-23, 54 acquired, 1 refused; the Bandcamp fetch at 83 | cut over, but `sync bandcamp` never ran live (A72) |
+| 8 | genre and art tagging | `tag folder` | sitting 7, 2026-09-23, 40 tagged, art repaired on 54 | cut over, art on a real player still A5 line 8 |
+| 9 | analysis, key, BPM, energy | `analyze run`, `restamp`, `calibrate` | sitting 16, 2026-09-29; sitting 25, 186 analysed and stamped | cut over, `analyze validate` in no live row |
+| 10 | vocal detection | `analyze vocals`, `metadata mytags-vocals` | sitting 38, 2026-10-12, 688 associations at cut 5.0 | cut over |
+| 11 | naming engine | `name apply` | sitting 8, 2026-09-23, 54 renamed, 0 referenced, 0 colliding | cut over |
+| 13 | routing to the taxonomy | `route resort`, `adopt move` | sitting 20, 2026-09-29, `adopt move`; sitting 80, 2026-11-06, `route resort` | cut over |
+| 20 | intake aging | `inbox rotate` | sitting 32, 2026-10-08; sitting 92, 2026-11-08, the first batch rotated out | cut over, `report intake-aging` in no live row |
+| 21 | label registry and sweeps | `label sync` and its family | sitting 31, 2026-10-08, the first guided label sync | cut over |
+| 24 | hearted track sync | `sync favorites` | sitting 23, 2026-09-30 | cut over |
+| 25 | sync orchestrator | `sync all`, `sync land` | sitting 23, 2026-09-30; `sync land` at 51, 2026-10-30 | cut over |
+| 26 | job engine | `job list`, `show`, `resume`, `cancel` | sittings 6, 47 and 51 | cut over |
+| 27 | setup, config, profiles | `setup`, `login`, `profile show` | sitting 1, 2026-09-16; `login` at 30 | cut over, `profile set` in no live row |
+| 28 | doctor and status | `doctor`, `status` | sitting 1 onward; `status` at 67, 2026-11-05 | cut over |
+| 31 | library backup | `backup run` | sitting 14, 2026-09-27, and every sitting since | cut over, the bare metal restore still A5 line 9 |
+| 34 | library adoption | `adopt scan`, `adopt apply` | sitting 15, 2026-09-28, the first native write | cut over |
+| 35 | public playlist intake | `intake playlist` and the landing | sittings 8 and 9, 2026-09-23 | cut over |
+
+**Run only in part** (6): 12, guarded database writes (`restore` only rehearsed to scratch, the bare metal restore open, `rebuild`, `tree revert` and `session release` in no live row); 14, intake sorting (`route unplaced` measured only before any tree cut over, `audit coverage` in no row); 18, coarse genre correction (`tag retag` ran live and correctly wrote nothing); 22, label import and harvest (`label harvest` in no live row); 23, label playlist folders (`label prune` owed by the author, `label heard` in no row); 36, export (`export archive` cannot fire after a native landing, R-995). **Never run live** (9), each needing one attended run or Phillip's word that it ends with DJ_tools: 4, single file ingest (`intake file`); 5, identification only (`intake identify`); 7, lossy fallback (`acquire fallback`, off by Phillip's lossless policy); 15, the duplicate audit (`audit duplicates`); 17, path repair (`repair paths`); 29, the set builder (`setbuild`, run only in a copy's environment at 96); 30, mastering (`master`); 33, the skill install (`skills install`); 37, the deletion review (`delete review`, which the permission system keeps from a session).
 
 ## Next sitting
 

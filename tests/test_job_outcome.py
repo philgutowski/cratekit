@@ -655,7 +655,12 @@ def test_no_shell_keeps_a_hand_rolled_copy_of_the_mapping():
 #: A refusal built from a cause where NO EXCEPTION IS IN HAND, so there is no type
 #: to keep. ``sync`` collects the causes of sources that refused at the queue and
 #: raises the first one over the whole pass. It drives no job.
-NO_ERROR_IN_HAND = {"sync/cli.py": "compose"}
+NO_ERROR_IN_HAND = {
+    "sync/cli.py": "compose",
+    # U293: the night pass rebuilds the cause of the pass it ran, read off that
+    # pass's envelope as JSON, so no exception is in hand to rebuild.
+    "cli/sync_night.py": "_ended",
+}
 
 
 def _is_a_replace(node: ast.expr) -> bool:

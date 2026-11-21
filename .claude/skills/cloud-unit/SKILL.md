@@ -120,7 +120,7 @@ each review round, mutation measured.
 
 The lanes are filled by the coordinator, the Claude in Phillip's building
 project that started this thread (METHOD's Sharing the board section). It
-runs at most four threads at once and counts them itself. It wakes hourly to fill any free lane,
+runs at most ten threads at once and counts them itself. It wakes hourly to fill any free lane,
 and whenever a thread reports; it never reads the decisions page, which is
 the relay thread's job (Asking Phillip, below). So tell it, with the
 project's tool for messaging the coordinator, right after the last comment
@@ -197,7 +197,7 @@ Without the paste an answer waits for the hourly check.
     .venv/bin/python scripts/board.py cloud
 
 It lists every open unit and residual card by state, says how many of the
-cloud's lanes are held (five by default, `CLOUD_LANES` in `scripts/board.py`),
+cloud's lanes are held (ten by default, `CLOUD_LANES` in `scripts/board.py`),
 and names the next card to take. **If your prompt names a card, take that one**,
 as long as the queue lists it as takeable; the coordinator chose it so that
 parallel threads never pick the same card. Otherwise take the one the queue
