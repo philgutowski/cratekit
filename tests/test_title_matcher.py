@@ -147,6 +147,11 @@ SAME = [
     ("Summer 1999 (Original Mix)", "Summer 1999"),
 ]
 
+#: SAME pairs whose file names a mix its row does not write: the shared
+#: matcher reads them as one recording, and Discogs, since U318, takes no
+#: release on them, since a named mix is not its plain title.
+NAMED_MIX_UNWRITTEN = [("Sunrise Mood (Mike's (Dub) Mix)", "Sunrise Mood")]
+
 #: (searched, found) pairs that name different recordings and must not match.
 DIFFERENT = [
     ("(Intro)", OTHER),
@@ -525,9 +530,17 @@ def test_discogs_writes_no_style_off_another_track_by_the_artist(searched, found
     assert hit.genre is None
 
 
-@pytest.mark.parametrize(("searched", "found"), SAME + HEADED)
+@pytest.mark.parametrize(
+    ("searched", "found"), [case for case in SAME + HEADED if case not in NAMED_MIX_UNWRITTEN]
+)
 def test_discogs_still_matches_a_title_to_its_own_track(searched, found):
     assert discogs_answer(_discogs_hit(searched, found)).answer == "matched"
+
+
+@pytest.mark.parametrize(("searched", "found"), NAMED_MIX_UNWRITTEN)
+def test_discogs_takes_no_track_that_does_not_write_the_files_named_mix(searched, found):
+    assert _matches(searched, found), "the shared matcher is unchanged"
+    assert discogs_answer(_discogs_hit(searched, found)).answer == "miss"
 
 
 def test_discogs_reads_no_single_whose_title_is_noise():

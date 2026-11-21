@@ -54059,3 +54059,1254 @@ repository.
 **Closes when:** the scan refuses an email address outside an allowlisted
 placeholder domain and a tilde path below the home, or the record says why
 either is not personal. Ledger only.
+
+---
+
+## R-1756. A file moved away and back with the same size and time while a backup ran is trusted by the next run though the remote may lack it
+
+**Found:** at the build of #877, U317, 2026-11-21.
+
+**The mechanism.** `backup_record.settled` trusts an entry when the walk before
+the transfer and the walk after it agree. A file moved out of the library and
+back while rclone ran, keeping its size and time (a move keeps both), agrees in
+both walks, yet the transfer may have missed it: a quick run's copy exits 0
+over a listed path that is not there, and a full sync deletes it from the
+mirror. The next quick run then compares it as unchanged and skips it, and the
+remote lacks it until the weekly full check sends it again.
+
+**Measured cost.** Not driven. It needs a move out and back inside one run's
+transfer, which no verb does; organize moves files to new paths, which both
+walks see.
+
+**Closes when:** a quick run reads rclone's per path log for the listed paths
+it did not transfer or find current, or the next full check, which closes each
+instance within a week. Ledger only.
+
+---
+
+## R-1757. A quick run's archive check asks whether a removed path resolves, so a case only rename on a Mac volume fails the run and costs a full check
+
+**Found:** at the round two review of #877, U317, 2026-11-21.
+
+**The mechanism.** `backup_record.still_removed` refuses the archive when a
+path the walk found removed resolves with `lstat`. On a case insensitive
+volume a case only rename (`Album/a.flac` to `Album/A.flac`) leaves the old
+spelling resolving, and a folder replaced by a symbolic link leaves its old
+paths resolving through the link, so the quick run fails with "was found
+removed by the walk and is there again" and the next run is a full check.
+
+**Measured cost.** The symbolic link case was driven: one failed run, then a
+full check, no age or file wrong. The case only rename was emulated, since no
+case insensitive file system mounts in the container. Each costs a failed
+backup and one full run, never a wrong skip or a lost file.
+
+**Closes when:** the check compares the path as the walk would list it, by
+the exact name in its directory's listing and not by resolving it. Ledger
+only; the attended timing card renames one folder by case to measure it.
+
+---
+
+## R-1758. A database fingerprint is trusted after another installation took a newer snapshot, so an unchanged database is not snapshotted again while the default restore takes the other one
+
+**Found:** at the round two review of #877, U317, 2026-11-21.
+
+**The mechanism.** The database fingerprint record is installation state and
+carries no token the library's database fact must hold, unlike the files
+record since round one. Installation A snapshots generation one, installation
+B snapshots generation two, the database is put back to generation one, and A
+finds it unchanged against its own fingerprint, takes no snapshot and resets
+the database age. A restore with no stamp named then pulls B's newer snapshot.
+
+**Measured cost.** Driven at the engine with the put back made by a copy.
+Generation one stays on the remote under its stamp, so nothing is lost; a
+restore that names no stamp gets the other machine's database. `crate restore`
+was not driven.
+
+**Closes when:** the database fact carries the fingerprint record's token as
+the files fact does, and a fact without it snapshots. Ledger only.
+
+---
+
+## R-1759. One file whose name holds a line break or carriage return makes every backup a full check, however little changed
+
+**Found:** at the round two review of #877, U317, 2026-11-21.
+
+**The mechanism.** rclone reads a quick run's paths one per line, so the walk
+refuses a name holding a line feed or a carriage return, and a refused walk is
+a full run that keeps no record. macOS's folder icon file, `Icon` followed by a
+carriage return, is such a name, and it never changes, so every run is full.
+
+**Measured cost.** Driven on three consecutive days: full each day with
+`backup-record-not-kept`. The card's measure of minutes is never met on a
+library holding one. Whether the live library holds one is unmeasured; the
+attended card runs a `find` for it first.
+
+**Closes when:** such a name is carried by the full check alone and left out
+of the record and the comparison, so a quick run neither lists it nor reads
+its absence as a removal, or the walk excludes `Icon\r` as volume clutter.
+Ledger only.
+
+---
+
+## R-1760. The settings folders and the analysis share beside the database are fingerprinted by size and time only, so a rewrite keeping both is called unchanged
+
+**Found:** at the round one review of #877, U317, 2026-11-21.
+
+**The mechanism.** `backup_record.database_fingerprint` hashes the database
+set's content and reads the settings folders and an outside analysis share by
+size and modification time, since the share can be gigabytes. A file there
+rewritten keeping both is not seen, the portion is `unchanged`, and the newest
+snapshot holds the older file.
+
+**Measured cost.** Driven with the time put back by hand. rekordbox moves the
+time when it writes, so no producer of a rewrite keeping both was driven.
+
+**Closes when:** the small settings folders are hashed whole, with the share
+left to size and time. Ledger only.
+
+---
+
+## R-1761. A backup over an empty library root moves the whole mirror into its dated archive, quick or full, with no check that the root is the library
+
+**Found:** at the build of #877, U317, 2026-11-21.
+
+**The mechanism.** `_plan_files` refuses only a library root that is not a
+directory. An empty directory at the configured root, the mount point a lost or
+unmounted drive can leave, is walked as a library with no files. A full check
+then runs `rclone sync` from it, which moves every file on the mirror into the
+run's dated archive, and since U317 a quick run of a library under
+`QUICK_LIMIT` files plans the same thing as one `rclone move` of every path. The
+archive rotation at a keep of one purges that folder at the second completed
+run after it. U317 did not make this reachable; it was the full sync's
+behaviour before, and the quick run inherits it rather than adding a guard of
+its own.
+
+**Measured cost.** Driven at U317's round two review against a real tmpfs
+volume unmounted during the plan's walk, which leaves the empty directory it
+was mounted on: the walk refuses, the run goes full, `rclone sync` exits 0
+over the empty directory, all 12 mirror files move to the dated archive, and
+the files age is reset. Not driven on a Mac, where whether an unmount leaves
+such a directory at the configured root was not measured, nor on the live
+remote.
+
+**Closes when:** the files portion refuses, before any transfer, a root that
+does not carry this library's identity (the volume identity assertion the
+restore gates already use), or one whose walk is empty while the last record
+held files. It earns an issue because a guard on a path that deletes from the
+backup is absent.
+
+---
+
+## R-1762. A run of a build before U317 that sends and then fails does not strike the record's token, so this installation's record may be trusted over a mirror it changed
+
+**Found:** at the round two review of #877, U317, 2026-11-21.
+
+**The mechanism.** Since round two a U317 run strikes the files record's
+token from the library's fact before it sends, so a failed run of any U317
+installation leaves no record trusted. A build before U317 knows no token: its
+completed run publishes a fact without one, which is caught, and its failed
+run publishes nothing, which leaves the token in place.
+
+**Measured cost.** One candidate driven at round two, the build on `main` on
+one state directory, and it did not produce a wrong skip: the next run was
+full. Which write removed the token there was not measured. It needs an older
+build to send, fail, and the library to be put back before the next run.
+
+**Closes when:** every installation runs U317 or later, which the next
+release and its installed copy close. Ledger only.
+
+---
+
+## R-1763. Guards U317's fix rounds added that the review's mutations reverted with a green suite
+
+**Found:** at the round two review of #877, U317, 2026-11-21.
+
+**The mechanism.** Round two reverted each of these alone on a scratch copy
+with every test in the five backup files green: an unreadable fact file read
+as no reason in `_record_unpublished`; the root's device read again after the
+walk; `still_removed` comparing the device and treating an unreadable path as
+absent; an unconfirmed scan before the second database read; the archived
+count over every quick command; the under a second bound; and the doubt count
+inside `changed`. Each was then driven by hand and holds on the branch.
+
+**Measured cost.** None today; each can be reverted with a green suite. The
+unit's own table, `docs/mutation/u317.md`, measures its 25 rows against the
+whole suite and names its own zeros.
+
+**Closes when:** a test pins each. Ledger only.
+
+---
+
+## R-1764. The Auto Analysis path's wait can reach its count on rows outside INBOX / Analyze and end before the batch is analysed
+
+**Found:** at the review of #887, U319, 2026-11-21.
+
+**The mechanism.** Auto Analysis analyses every row rekordbox finds not
+analysed, not only the batch, and the skill's wait counts every
+`ANLZ0000.DAT` newer than the marker. Driven on a simulated store: seven
+files for other rows and none for the batch print `done: 7 of 7`. The skill
+says the count can pass `expected` and leans on step 7, whose check then
+exits 12 and stops the visit, so nothing is cleared wrongly. A related
+shape: a row with `Analysed` 1 and no analysis path judges as waiting and is
+counted in `data.summary.not_analysed`, which Auto Analysis may leave alone,
+so a wait on it stalls one short. One candidate producer driven, a native
+landing, which writes `Analysed` 0 and does not produce it.
+
+**Measured cost.** A visit that stops at waiting and is run again, not a
+false report. Reachability on the live library unmeasured.
+
+**Closes when:** `crate analyze check` can say before the launch how many
+rows of the whole collection wait (its `unanalysed` scope is read today only
+when INBOX / Analyze is empty), and the skill waits for that count. Ledger
+only: no data is lost and no report is false.
+
+---
+
+## R-1765. The Auto Analysis launch dialog's field list and whether an Auto Analysis run sets cues are unmeasured, so the visit's short path cancels until a visit records them
+
+**Found:** at the review of #887, U319, 2026-11-21.
+
+**The mechanism.** Sitting 101 recorded the launch dialog only as "showing
+the analysis fields (KEY unticked, as set)". The Analysis preference it read
+back holds nine fields and no CUE. The `rekordbox-visit` skill reads every
+field of its table from the dialog and holds a table field the dialog does
+not show as unread and not equal, CUE included, so if the dialog mirrors the
+preference every visit with Auto Analysis on pays a Cancel and thirty
+seconds before the Analyze Tracks path. That is the conservative call: an
+Auto Analysis run that set cue points would be a run on other fields, and
+nothing has measured that it does not. Also unmeasured: what Cancel does
+with Auto Analysis on, and how long a launch in front takes to raise the
+dialog (the skill waits thirty seconds).
+
+**Measured cost.** None while Auto Analysis stays off, which it is. Once on,
+the short path never runs until this is measured. Not driven: no rekordbox
+here.
+
+**Closes when:** an attended visit with Auto Analysis on records the
+dialog's exact fields, whether Cancel stops the run, and the cue rows of the
+rows an Auto Analysis run analysed, read on a disposable copy; then a card
+lets an unshown CUE pass if the run sets none. Ledger only: it closes at an
+attended sitting, which the owed attended card carries.
+
+---
+
+## R-1766. The rekordbox visit skill's Auto Analysis rules are pinned as sentences, so a rewording that keeps a rule passes only if it keeps the words
+
+**Found:** at the review of #887, U319, 2026-11-21.
+
+**The mechanism.** `tests/test_rekordbox_visit_skill.py` holds each new
+rule of the Auto Analysis path by its sentence, the order of its parts and
+the values it reads from the owning modules. Round one's thirteen surviving
+text mutations are now each pinned, but the forbidden word list ("tick Auto
+Analysis", "turn Auto Analysis on", "untick") forbids a phrasing, not the
+act, so a step telling a session to change the preference in other words
+passes. The skill is procedure text no test can drive.
+
+**Measured cost.** None to a person today; a later edit could reword a rule
+away with the suite green.
+
+**Closes when:** a reader of the skill's steps as data replaces the sentence
+pins, or a card decides sentence pins are the guard. Ledger only.
+
+---
+
+## R-1767. crate schedule install and remove hold the staging lock of the shell's installation, not the one the agent carries
+
+**Found:** at the review of #852, U295, 2026-11-21.
+
+**The mechanism.** `install` and `remove` in `src/cratekit/cli/schedule.py` hold `staging_lock.held` around their bootout so a night pass in progress is never ended by launchd. The lock is resolved under the shell's `installation_state_dir()`. A shell pointed at another `CRATEKIT_STATE_DIR`, or one that lost the XDG variable the install was found through, holds another lock, and boots the agent out while the night it runs holds its own. The lock is reentrant per process through module state, so holding a second one under the agent's carried state is not a one line change.
+
+**Measured cost.** Driven at round two with launchd stood in: four of four cases exit 0 and call `launchctl bootout` while a process held the agent's lock as `crate sync night`. What launchd then does to the running pass, and what a pass ended mid download leaves in the staging folder, was not driven.
+
+**Closes when:** install and remove also hold, or refuse beside, the lock under the state directory the installed agent carries.
+
+---
+
+## R-1768. crate schedule install and remove refuse beside any pass, a first install included, in words about staging
+
+**Found:** at the review of #852, U295, 2026-11-21.
+
+**The mechanism.** The schedule verbs take the staging lock with no `what=`, so beside a `crate label sync --go` or a pass by hand the refusal reads "another pass is staging downloads (...), so crate schedule install stages nothing until it has finished", and a first install with nothing to boot out waits as well. The other way round, a night refused beside the schedule verb is told another pass is staging downloads.
+
+**Measured cost.** Driven at round two: exit 20, launchctl never asked, the refusal's words untrue for the schedule verb. The block ends with the pass and is retryable.
+
+**Closes when:** the schedule verbs take the lock only when there is an agent to boot out, and both refusals name a schedule change rather than a download.
+
+---
+
+## R-1769. crate schedule show cannot tell a carried directory changed by hand, and settles the agent's night against the shell's configuration
+
+**Found:** at the review of #852, U295, 2026-11-21.
+
+**The mechanism.** `read_agent` fails over a carried directory that is missing or relative and a log outside the carried state, but a directory changed by hand to another absolute one, a directory put in front of the agent's PATH, or the crate pointed at another executable named crate reads clean. `_night_line` reads the night's record from the agent's carried state and then settles it through `sync_night.settle` against the shell's configuration and run store.
+
+**Measured cost.** Driven at round two: three hand edits of that shape read clean at exit 0. Install was driven under five environment shapes and none produces such a plist; a hand edit is the only producer found. The settle against the shell's configuration was read, not driven.
+
+**Closes when:** show compares the carried environment against what this install would write, and settles the record against the configuration the agent carries.
+
+---
+
+## R-1770. Several of the schedule's guards kill no test
+
+**Found:** at the review of #852, U295, 2026-11-21.
+
+**The mechanism.** Round two's 48 rows over the fix's guards in `src/cratekit/cli/schedule.py` found 15 with zero deaths. Mended in fix round two: words after `sync night` on the reading side, a relative log, the minute range and the type check of the calendar. Still killing nothing on the round's own reading: the environment shape check in `read_agent`; `_boot_out` returning `state == LOADED` alone or `out.ok` alone; the write failure message saying the earlier schedule is off whether or not one was booted out; `replaced = had_plist` alone; the launchctl timeout's value (the hang test sets its own); and `settle` dropped from `show`'s night line.
+
+**Measured cost.** None today: each is a guard whose removal no test notices. The unit's own table, `docs/mutation/u295.md`, measures the 25 rows it ranked above these.
+
+**Closes when:** each has a test that dies when it is removed, or the record says why it need not.
+
+---
+
+## R-1771. A bootout that answers a failure after an unreadable first print is counted as nothing booted out
+
+**Found:** at the review of #852, U295, 2026-11-21.
+
+**The mechanism.** `_boot_out` in `src/cratekit/cli/schedule.py` counts an agent booted out only when launchd read it loaded first or the bootout answered success. When the first `launchctl print` cannot be read, the bootout answers a failure and launchd then reads the agent absent, `remove` answers no op and a failed install's refusal omits that the earlier schedule is gone.
+
+**Measured cost.** Eight of 1,088 stood in launchd answer combinations at round two, one shape. Not driven against a real launchctl, and whether launchd produces that sequence is unknown.
+
+**Closes when:** the ambiguous case is said as such in the report rather than counted either way.
+
+---
+
+## R-1772. The schedule assumes launchctl's answers, and none has been read on a Mac
+
+**Found:** at the record of #852, U295, 2026-11-21.
+
+**The mechanism.** `src/cratekit/cli/schedule.py` reads `launchctl print gui/<uid>/cratekit.sync-night` answering 113 as not loaded and anything else but 0 as unknown, bootstraps straight after a bootout, and expects `gui/<uid>` to exist for the logged in person. The suite stands launchd in whole and the container has no launchctl.
+
+**Measured cost.** Not driven anywhere. If print answers another code for an absent service, every show reads launchd as unknown and every install refuses at its first bootout; the refusal names launchctl's words, so nothing is lost.
+
+**Closes when:** the attended install (A183, #879) records each answer launchctl gave, and the code reads them as they are.
+
+---
+
+## R-1773. The second fix round of U295 was not reviewed
+
+**Found:** at the record of #852, U295, 2026-11-21.
+
+**The mechanism.** Both fix rounds were spent. Round two reviewed `767ffa84..6cca323c`; the commit after it, `69765ae4`, was not reviewed. What to read: the agent's PATH built from `binaries.find` over the installable binaries, `read_agent`'s new checks (carried directories present and absolute, the log inside the carried state, the name of the crate), `show` refusing root, the summary's environment filtered to names this build carries, and the structural test's launcher names.
+
+**Measured cost.** None measured; the unit's own tests and the mutation table cover the commit.
+
+**Closes when:** a review of `6cca323c..69765ae4` reports nothing that holds.
+
+---
+
+## R-1774. The scheduled night's log grows without bound
+
+**Found:** at the plan of #852, U295, 2026-11-21.
+
+**The mechanism.** launchd appends the agent's output and errors to `schedule/sync-night.log` under the installation's state (`schedule_log`) every night, and nothing rotates or trims it.
+
+**Measured cost.** Not measured. A night's output is a few lines when the pass refuses and a pass's whole report when it runs, so the file grows by kilobytes a night.
+
+**Closes when:** the log is trimmed or rotated, or the record measures that it need not be.
+
+---
+
+## R-1775. A replace that fails at the load leaves no schedule rather than the earlier one
+
+**Found:** at the build of #852, U295, 2026-11-21.
+
+**The mechanism.** `crate schedule install` over an installed agent boots the earlier one out, writes the new plist and bootstraps it. When the bootstrap fails, the new plist is removed and nothing is installed; the earlier schedule is not restored. The refusal says the earlier schedule was removed too. Decided at the build as the conservative reading of the brief's "leaves no half installed agent".
+
+**Measured cost.** Driven with launchd stood in: no agent afterwards, and the refusal says so. The person installs again.
+
+**Closes when:** Phillip rules that a failed replace should restore the earlier agent, or the ledger keeps this as decided.
+
+---
+
+## R-1776. The naming suffixes DJ_tools once wrote beside _PN were not read, since DJ_tools is not in a cloud container
+
+**Found:** at the build of #883, R-1724, 2026-11-21.
+
+**The mechanism.** The brief asks that any other suffix the naming verb or
+DJ_tools once wrote be checked against DJ_tools' naming docs, read only,
+and handled as `_PN` is only if it is the same kind of marker. DJ_tools is
+not cloned into a cloud container, so its docs could not be read. Cratekit's
+own code, docs and ledger name only `_PN` (R-168's and R-1192's samples,
+sitting 101's count), and Cratekit's naming verb writes no suffix of its
+own (`_mastered.flac` and `_set` are the mastering tool's output names, not
+a library name's tail). So `titles.name_title` reads `_PN` only, exactly
+and case sensitively.
+
+**Measured cost.** Not driven. A library name ending in another such marker
+is asked and matched with it, as on main.
+
+**Closes when:** a local session greps DJ_tools' naming docs and code, read
+only, for every suffix it wrote after a title, and either finds none other
+or a card adds each to `titles.NAME_TAIL`'s reading. Ledger only.
+
+---
+
+## R-1777. A name whose last part is _PN alone is asked as written, the bare tail as its title, where the brief said it asks nothing
+
+**Found:** at the review of #883, R-1724, 2026-11-21.
+
+**The mechanism.** The brief's fifth scenario says a name whose title is
+only `_PN` reads nothing and asks nothing. Round one of the review drove
+that build through `tag folder` with the shipped ISRC seam: three tagless
+files of that shape with an ISRC took their genre by ISRC on main and none
+on the branch, because `published.second_opinion` asks the general catalogue
+only once Beatport has answered, and a file asked nothing has no answer.
+So `titles.name_title` returns such a name unchanged and it is asked
+exactly as on main, `8A - 124 - Sean Doron - _PN` as `Sean Doron` / `_PN`.
+The choice is put to Phillip on the card (#883) as a Question for Phillip.
+
+**Measured cost.** One question that will miss per such file, main's
+question byte for byte. No such name is known in the library.
+
+**Closes when:** Phillip answers the question on #883: as built, ledger
+only; asking nothing with the ISRC lookup freed from Beatport's answer, its
+own card.
+
+---
+
+## R-1778. The tail is read off when the last dash part keeps a title, though the title past the head and marker may be the tail alone
+
+**Found:** at the review of #883, R-1724, round two, 2026-11-21.
+
+**The mechanism.** `titles.name_title` keeps a name unchanged only when its
+last dash part is the tail alone. In `8A - 124 - [MP3] _PN`, `8A - 124 -
+[MP3]_PN`, `8A - 124_PN` and `8A_PN` the last part keeps a letter or digit
+once the tail is off (`[MP3]`, `124`, `8A`), so the name is read past the
+tail, and the question is a head alone, `8A - 124 - [MP3]` (`head-alone`),
+where main asked `_PN`. The guard reads the last dash part; the question
+reads past the head and the marker.
+
+**Measured cost.** Driven at round two through `tag_one`, the `tag folder`
+verb and `tag retag`: every such file took the same genre by ISRC on both
+sides, and only the record's `asked` text differs. A main match was lost
+only against a contrived row titled `PN`. No producer writes such a name in
+this container.
+
+**Closes when:** the tail alone test reads the title past the head and the
+marker, or the shape is measured absent from the library. Ledger only.
+
+---
+
+## R-1779. A file named with a title that truly ends in _PN loses it, and a doubled or numbered tail is read only once or not at all
+
+**Found:** at the review of #883, R-1724, 2026-11-21.
+
+**The mechanism.** `titles.name_title` drops a trailing `_PN` from any name
+with no title tag, as the brief asks. A title that is truly spelled with it,
+`8A - 124 - Artist - Vitamin_PN`, is asked and matched as `Vitamin`, so a
+release titled `Vitamin PN` or `Vitamin_PN` is no longer read as the file's
+own. `Track_PN_PN` is read as `Track_PN`, and `Track_PN (1)`, a copy's
+numbered name, keeps its tail.
+
+**Measured cost.** Driven at round one: the `Vitamin PN` rows matched on
+main and miss on the branch, 4 runs, through Discogs and Beatport. No real
+title of this kind is known; the doubled and numbered names are main's
+reading, unchanged.
+
+**Closes when:** the library is counted for names whose tail is doubled or
+followed by a copy number, and for titles a catalogue spells with `PN`.
+Ledger only.
+
+---
+
+## R-1780. tag suggest and tag backlog ask by the library row's title, which this unit does not read past a _PN tail
+
+**Found:** at the review of #883, R-1724, 2026-11-21.
+
+**The mechanism.** `tag folder` and `tag retag` read a file with no title
+tag by its name through `titles.name_title`. `tag suggest --catalogue` and
+`tag backlog --catalogue` ask by the rekordbox row's Title column
+(`suggest.catalogue_lookup`), so a row whose Title carries `_PN` is asked
+with it: handed `06A - 126 - Sean Doron - Sunshine Hotel_PN`, the shipped
+searcher asks Discogs `Sunshine Hotel_PN`. Whether rekordbox writes a file's
+name into Title for a file with no title tag was not driven.
+
+**Measured cost.** Driven to the question only, at round one; the library's
+Title column was not read.
+
+**Closes when:** an attended sitting counts library rows whose Title ends in
+`_PN`; none closes it, any earns a card reading the column through
+`name_title`. Ledger only.
+
+---
+
+## R-1781. The 5,637 names ending in _PN are not the files this reading changes, which are only those with no title tag
+
+**Found:** at the review of #883, R-1724, 2026-11-21.
+
+**The mechanism.** Sitting 101 counted 5,637 of 10,997 library names ending
+in `_PN`. The tail is read off a name only for a file with no title tag, so
+the files whose question changes are the tagless ones among them, and the
+three misses the brief cites came from copies whose tags were cleared. How
+many library files carry the tail and no title tag, and whether library
+title tags carry the tail themselves, was not counted.
+
+**Measured cost.** Not measured; the unit's reach on the live library is
+unknown.
+
+**Closes when:** the attended sweep owed at landing counts both. Ledger
+only.
+
+---
+
+## R-1782. The tail alone guard's choice of the stem over the stripped text, and the ISRC test's hold on the reading, are pinned loosely
+
+**Found:** at the review of #883, R-1724, round two, 2026-11-21.
+
+**The mechanism.** Two of round two's mutations on a scratch copy. The tail
+alone guard in `titles.name_title` returning the stripped text rather than
+the stem survives, 0 kills of 1,285 collected: a file named `_PN  .flac`
+would be asked `_PN` rather than `_PN  `, and no test lists a tail alone
+name with trailing whitespace. Round one's reading restored alone, a tail
+alone name reading to the empty string with `tag_one` still asking, is
+killed by 9 tests but not by
+`test_a_name_with_no_title_past_its_tail_still_takes_its_genre_by_isrc`,
+since an empty title is still asked and the ISRC lookup still runs; that
+test fails 3 of 3 against round one's whole source, the defect it was
+written for.
+
+**Measured cost.** None driven: both inputs ask a question that misses and
+reach the ISRC lookup either way.
+
+**Closes when:** a test names a tail alone stem with trailing whitespace,
+and the ISRC test asserts what Discogs was asked. Ledger only.
+
+---
+
+## R-1783. CLAUDE.md's "never on a real track" reads two ways against an analysis setting probe run on a landed batch
+
+**Found:** at the review of #890, U321, 2026-11-21.
+
+**The mechanism.** The clause U321 adds to CLAUDE.md's rekordbox constraint
+lets a session change an analysis setting a probe names and put it back,
+"never on a real track". A probe owed inside the visit runs in place of its
+first analysis, on the landed batch, which is real tracks; sitting 101's Auto
+Analysis probe analysed three of them. Analysing real tracks is already
+allowed by the constraint's "to let it analyse", so the clause is most
+naturally read as barring the throwaway's changes on a real track and not the
+setting change, but a reader can take it the other way.
+
+**Measured cost.** Not driven. A session could refuse a probe a card owes, or
+run one believing the clause allows more than it does.
+
+**Closes when:** Phillip says which reading holds, beside the present for
+question on #890, and a docs unit words the clause to match, or the record
+says the wording stands. Ledger only.
+
+---
+
+## R-1784. The volume copies folder may sit inside the tree the backup mirrors, where a restore from backup also refuses a target
+
+**Found:** at the review of #890, U321, 2026-11-21.
+
+**The mechanism.** U321 moves a sitting's library and database copies out of
+the checkout, which is mirrored to Google Drive, into a folder one level down
+in the library volume's scratch folder. Driven at the review in a sandbox with
+that folder under the configured library root: the backup's mirror is one sync
+of the whole root, excluding only its clutter patterns and the live
+database's own files, so copies left there while a settlement's BEFORE and
+AFTER backups run are sent to the remote, which is a Drive remote too. And
+`crate restore run --from-backup --target` with a target inside the root
+refuses, saying the target sits inside the live library, so the product's own
+fetch cannot fill that folder.
+
+**Measured cost.** Not driven on the Mac: whether the volume's scratch folder
+sits inside the configured library root there is unmeasured, and sitting 102
+fetched its copies by a means its record does not name. If it does, the copies
+reach a mirrored remote all the same, and a restore into the folder is
+refused.
+
+**Closes when:** an attended sitting reads whether the volume's scratch folder
+is inside the library root, and either records that it is not, or a docs unit
+names a place outside it (or a mirror exclude for it) in the skill and its
+worker rules. Ledger only.
+
+---
+
+## R-1785. Whether a sitting Phillip started and then left is one he is present for is unanswered
+
+**Found:** at the build of #890, U321, 2026-11-21.
+
+**The mechanism.** CLAUDE.md lets "a session Phillip is present for" open,
+drive and quit rekordbox, and the `rekordbox-visit` skill stops a session that
+is not one. Sittings 101 and 102 were started by Phillip and then run while he
+was away, under his standing instruction of 2026-11-21, and each opened
+rekordbox. Read strictly, neither was a session he was present for. U321's
+brief kept the wording out of scope and asked the question on #890 under
+Question for Phillip, with three options: a sitting he started counts for its
+whole length (recommended), only while he is at the desk, or he confirms at
+each opening. The wording is left as written meanwhile.
+
+**Measured cost.** Not driven. The attended orchestrator's settlements and
+visits run while Phillip is away, which the strict reading forbids, so a later
+session reading CLAUDE.md alone could stop a sitting the skill expects to
+finish.
+
+**Closes when:** Phillip answers on #890 and a docs unit writes his answer into
+CLAUDE.md's rekordbox constraint and the `rekordbox-visit` skill's stop, or the
+record says why the wording stands. Ledger only.
+
+---
+
+## R-1786. A replay resumed from a sidecar that was measured while a tracked file was changed reuses its rows once the file is put back
+
+**Found:** at the review of #854, U297, round two, 2026-11-21.
+
+**The mechanism.** `scripts/mutate.py` lets a replay pass reuse a row from a
+prior sidecar only when the sidecar's `head` is this commit and no tracked
+file differs from the commit now (`replay_resume_refusal`). The sidecar does
+not record whether a tracked file differed while it was being measured. So a
+replay measured with a test edited and uncommitted, then resumed after the
+edit was reverted, reuses rows that were measured against the edited suite.
+The same holds for a light or a full pass, which resume across commits as
+they always did, and for `--allow-dirty`.
+
+**Measured cost.** Not driven. The review drove the other half, a test
+deleted and not committed after the measurement, where `killset.py check`
+passed a lost kill, and that half is closed. This half takes a replay run on
+a tree the procedure says is committed, which it is not. Maintainer facing.
+
+**Closes when:** the replay's sidecar records that the tree was clean when
+each row was measured and a resume reads it, or the driver refuses a replay
+on a tree with a tracked change. Ledger only.
+
+---
+
+## R-1787. Guards in killset.py, behaviour_compare.py and the stage that kill no test when reverted alone, as the two reviews of U297 left them
+
+**Found:** at the review of #854, U297, rounds one and two, 2026-11-21.
+
+**The mechanism.** The reviewer reverted 56 guards at round one and 60 fix
+round guards at round two, one at a time in a copy of the tree, and ran each
+one's test file. 22 and 12 killed nothing. The two fix rounds gave a test to
+the ones with a named cost. These stayed at zero, each a line the suite does
+not notice when it is reverted alone:
+
+- `scripts/killset.py`: the `isinstance(..., bool)` half of `killed`; the
+  suffix filter and the skipped directories in `Tree.holders`; the reading of
+  a before table's `head` only when it is a string; the `^{commit}` peel that
+  tells a commit from another object in `Commit._read`.
+- `scripts/mutate.py`: that the line `main` prints when a resume reuses
+  nothing is printed for a replay alone.
+- `scripts/behaviour_compare.py`: that only a table's declaration is put in
+  one order (an index's or a trigger's with two parenthesised items is
+  returned as written, and no test hands it one); the `UnicodeDecodeError`
+  arm in `dump_databases`; the longest word first order in `same_but_for`,
+  which matters only when one word of a capture is the prefix of another.
+- `tests/behaviour/`: the check against the system's temporary directory
+  inside `refuse_a_root_outside`, which the check against the scenario's own
+  directory covers; the stage fixture's refusal at set up, which the refusal
+  before each command covers; the reseeding of the shared `random` generator
+  and its restoring.
+
+**Measured cost.** None to a person using the shipped verbs: all three are
+maintainer tools, and each guard was seen to work when driven by hand. The
+cost is that a later edit can remove one of them with the suite green. The
+card's own mutation table, `docs/mutation/u297.md`, measures 25 other rows.
+
+**Closes when:** each has a test that fails with it reverted, or is shown
+equivalent and removed. Ledger only.
+
+---
+
+## R-1788. The test that captures every behaviour scenario twice takes about sixteen seconds, and grows with every scenario an area card adds
+
+**Found:** at the build of #854, U297, 2026-11-21.
+
+**The mechanism.**
+`tests/test_behaviour_compare.py::test_two_captures_of_one_commit_are_equal`
+runs `scripts/behaviour_compare.py capture` twice as two real processes over
+every file under `tests/behaviour/` and compares the two. It is the one test
+that goes red when a scenario prints or writes something the stage did not
+pin. One capture of the six shipped scenarios is about eight seconds, most of
+it the scenario run's own start up and the 152 help screens.
+
+**Measured cost.** 15.5 and 16.5 seconds in two runs on the four core cloud
+container, of a suite that sums to about 1,870 seconds of test time, so under
+one percent, and real work: two child runs of pytest. It is over METHOD's ten
+second line for a slow test, and each area card under U290 adds its verbs'
+scenarios to it, while U312 has to make the suite 30 percent faster.
+
+**Closes when:** U312 decides it: the equality is held over a fixed sample
+of scenarios in the suite and over all of them by each card's own capture,
+or the two captures share one scenario run. Ledger only.
+
+---
+
+## R-1789. A behaviour capture cannot hold still a file's own times read back in the command that wrote it, or its change time, and no shipped scenario records one
+
+**Found:** at the build of #854, U297, 2026-11-21.
+
+**The mechanism.** The stage pins what Python reads: the clock, the two
+duration clocks, the id sources and the rekordbox binding's row stamps. It
+sets every file's access and modification time to the pinned instant between
+commands (`Stage.settle`). It cannot set a change time at all, and a file
+written and then read back for its times inside one command carries the real
+time. A process id, a process start and a file's inode are read past by
+`compare` where each capture holds its own. Product code that persists a
+file's `st_mtime_ns` or `st_ctime_ns` taken in the same command (the library
+index's cache key in `acquire/match.py`, the ISRC cache in
+`acquire/isrc_cache.py`, the adoption fingerprint in `adopt/apply.py`) would
+make two captures of one commit differ.
+
+**Measured cost.** None today: the six shipped scenarios compare with no
+difference, run after run. The first area card whose scenario reaches such a
+write will see the equality test fail with the differing value shown, which
+is loud, and will have to pair that value as a capture's own word or pin it.
+
+**Closes when:** a scenario records such a value and the stage or `compare`
+is taught it. Ledger only.
+
+---
+
+## R-1790. The suite's disposable rekordbox database is built with its foreign keys in an order that changes from one process to the next
+
+**Found:** at the review of #854, U297, fix round one, 2026-11-21.
+
+**The mechanism.** `tests/test_rb_writer_db.py::_relaxed_schema` copies the
+binding's tables into a fresh `MetaData` with `Table.to_metadata`, which
+walks each table's constraints as a set of objects. The copies take their
+creation order from that walk, the order follows the objects' addresses, and
+`create_all` writes the FOREIGN KEY clauses of each CREATE TABLE in it. A
+fixed hash seed does not hold it still.
+
+**Measured cost.** Found by the schema comparison the review asked for, on
+its first run: two captures of one commit differed in five table
+declarations. The review then built the schema in ten processes and read ten
+distinct digests. `scripts/behaviour_compare.py` reads a table's declaration
+with its table constraints in one order, which the review checked changes
+nothing but that order over the 40 declarations of a real capture. No test
+of the suite reads the declaration's text, so nothing else pays.
+
+**Closes when:** the builder orders the copied constraints, at which point
+`canonical_declaration` could go; the file is on U300's list. Ledger only.
+
+---
+
+## R-1791. killset.py list counts a row that broke collection and recorded a death as a recorded kill, 24 of 8,541, while check ranks it under one
+
+**Found:** at the review of #854, U297, round one, 2026-11-21.
+
+**The mechanism.** The reader calls a row killed when its table recorded at
+least one death, which is the rule the survey of U290 used and what
+reproduces its 8,541 and its 7,093 live rows. 24 of those rows have the
+status `collect-error`: the mutation broke an import, the collected count
+moved, and the driver says of such a row that it is neither a zero nor a
+clean kill. `rows` writes the 20 of them that are live into a replay, and
+`check` ranks one under a kill: it holds it to no less after than before,
+and reports a clean kill that became one.
+
+**Measured cost.** An area card's replay holds up to 20 rows across the tree
+whose before measurement is a collection error, each held only to staying
+one. Counted, never driven on a card.
+
+**Closes when:** U315's audit says which the definition of done means, or
+the 20 are measured and those that break collection for a reason of the
+row's own making are dropped from the set. Ledger only.
+
+---
+
+## R-1792. A new row can still pass as a replay by naming a recorded source and writing a moved reason
+
+**Found:** at the review of #854, U297, round two, 2026-11-21.
+
+**The mechanism.** A replay pass has no row cap because every row names a
+recorded kill. `scripts/mutate.py` reads each source before anything runs:
+the table exists under `docs/mutation/`, holds that row, the row recorded a
+death, and a row whose file or text is not its source's must carry a `moved`
+reason. A row anchored again by hand is exactly that, so the reason cannot be
+refused, and nothing ties the new text to the old guard but the author's
+word, which is committed in the table.
+
+**Measured cost.** The review drove 26 new rows under real sources with no
+reason, which is now refused. With a reason on each they would be measured.
+Maintainer facing, and it takes an author writing 26 false reasons into a
+committed table.
+
+**Closes when:** it is accepted as the limit of a text based check, or
+`killset.py check` is made the only reader of a replay table and holds a row
+at new text to a test in common whoever wrote its reason. Ledger only.
+
+---
+
+## R-1793. killset.py list piped into head ends in a BrokenPipeError traceback after the lines asked for
+
+**Found:** at the last battery of #854, U297, 2026-11-21, after both review rounds were spent.
+
+**The mechanism.** `scripts/killset.py list` prints its counts and then one
+line per source file, 326 of them on the merged tree, with plain `print`.
+When the reader closes the pipe early, `list | head -12`, the next `print`
+raises `BrokenPipeError`, nothing in `main` catches it, and Python prints a
+traceback on standard error and exits 1. `list --rows`, which prints every
+row, does the same. The lines that were asked for are printed whole and
+correct before it.
+
+**Measured cost.** Driven once: `scripts/killset.py list | head -12` printed
+its count lines and the head of the per file table, then the traceback. Maintainer facing and cosmetic: no count is wrong and no file is
+written. A reader who sees the traceback may take the counts for
+unreliable, and a shell running under `pipefail` reads the pipeline as
+failed. `rows` and `check` print a handful of lines and were not seen to do
+it.
+
+**Closes when:** `main` in `scripts/killset.py` ends quietly when its output
+is closed, as a filter does, with a test that closes the pipe after one
+line. Ledger only.
+
+---
+
+## R-1794. behaviour_compare.py capture of a revision that lacks a module the tree's test fixtures import fails every scenario
+
+**Found:** at the last merge of main into #854, U297, 2026-11-21, after both review rounds were spent.
+
+**The mechanism.** `capture --rev REV` runs the working tree's scenarios,
+fixtures and `tests/conftest.py` against a copy of that revision's `src/`.
+U295 landed while this unit was built and added an autouse fixture to
+`tests/conftest.py` that imports `cratekit.cli.schedule`. A revision from
+before U295 has no such module, so every scenario errors as its fixtures are
+set up. The same holds for any revision that lacks a product module, or a
+name in one, that the tree's conftest or a fixture a scenario imports reads.
+
+**Measured cost.** Driven once on the final tree: `capture --rev 0f0f1032`,
+the commit before U295's merge, ended `6 errors`, exit 1, with no scenario
+recorded and no manifest, so `compare` refuses the directory. It is loud and
+nothing is compared wrongly. A card that compares its branch with
+`origin/main` after merging it is not touched, since that base holds
+everything the tree's fixtures import, unless the card's own branch adds a
+module and makes the suite's fixtures import it: then its base cannot be
+captured with the branch's tests, and the comparison the card owes has to be
+taken before that fixture is added.
+
+**Closes when:** the script's docstring says a revision must hold everything
+the tree's fixtures import and what to do when it does not, or `capture`
+names the missing module in its own words instead of six errors. Ledger
+only.
+
+---
+
+## R-1795. A remix's Discogs search reads three releases ranked for its plain title, so a refusal can spend the cap before its own release
+
+**Found:** at the review of #882, U318, round one, 2026-11-21.
+
+**The mechanism.** `DiscogsAsker._search` asks Discogs for the title with
+its last bracketed group set aside (`_last_group_stripped`), so a remix is
+asked as its plain title, and reads the first `DISCOGS_RELEASES_READ`, three,
+of the releases the search names. Before U318 the first plain pressing was
+taken; since U318 a pressing without the file's mix is refused, so three
+plain pressings ranked first spend the cap and a fourth release carrying the
+remix is never read.
+
+**Measured cost.** Driven on hand built answers: four search results, three
+plain pressings and a fourth "Sunrise Mood (Remixes)" holding "Sunrise Mood
+(Tide Remix)", through `tag_one`: a miss naming releases 1 to 3, release 4
+never fetched. How often Discogs ranks the remix release past three is a live
+service's order and unmeasured; a sitting recorded 43 releases for one title.
+The cost is a miss, never a wrong genre.
+
+**Closes when:** a remix's search asks with its mix (or reads further when a
+named mix was refused), measured at the next attended tag sweep. Ledger
+only: a miss is no board bar cost.
+
+---
+
+## R-1796. A Discogs track whose remixer is named only in its credits is read as no mix, and the miss says the release lacks it
+
+**Found:** at the review of #882, U318, round one, 2026-11-21.
+
+**The mechanism.** `_discogs_release` reads each track's `title` and
+`artists` and never its `extraartists`, so a track "Sunrise Mood (Remix)"
+credited Remix: Tide writes no maker, and a file "Sunrise Mood (Tide Remix)"
+is refused with a note that the release holds no track with its version,
+over a field that was never read.
+
+**Measured cost.** Driven on a hand built release through `tag_one`: main
+matched, the branch misses with that note. How often Discogs names a
+remixer only in a track's credits is unmeasured.
+
+**Closes when:** the release reader carries each track's remix credits and
+`writes_version` reads them. Ledger only: the cost is a miss.
+
+---
+
+## R-1797. A maker's mix in another length or edition counts as the file's own version on Discogs
+
+**Found:** at the review of #882, U318, round one, 2026-11-21.
+
+**The mechanism.** A version is compared by its maker's words, the version
+words and `titles.MIX_DESCRIPTIONS` folded away, so "Still In Love (DJ Spen
+7" Version)" and a track "Still In Love (DJ Spen Long Version)" are one
+version, and "Two Months Off (Tim Green Remix)" takes "Two Months Off (Tim
+Green Dub)". The session's call: the brief folds the reader's noise words,
+and a maker's other cut is the same recording's arrangement by the same
+hand, so its genre is the file's; the third pair sitting 101 recorded
+(docs/cutover.md, "U318's version blindness") is kept by design.
+
+**Measured cost.** Driven over eight spellings of the long version row:
+matched on five. No wrong genre was measured; whether Phillip wants a
+length to count as another version is his.
+
+**Closes when:** Phillip decides whether a maker's other length or edition
+is another version; ledger only until then.
+
+---
+
+## R-1798. A remix written with no bracket, or with a feature credit after it, still takes another mix's Discogs release
+
+**Found:** at the build and review of #882, U318, 2026-11-21.
+
+**The mechanism.** `titles.named_versions` reads a version only from a
+bracket group the title part ends with or the dash part after the title.
+"Sunrise Mood Tim Green Remix", where only a list could cut the title from
+the mix, "Sunrise Mood - Tide Remix feat. Sun" and "Two Months Off (Tim
+Green Remix) feat. Tide - Artist", whose feature credit follows the mix, and
+a remixer whose whole name is folded words, "(Mono Remix)", name nothing, so
+they are matched as main matched them, another mix's release included.
+
+**Measured cost.** Round one's shape drive: 9 of 1,056 names, all the
+feature credit after the mix, still take the four other mixes release, as on
+main. Not new; a wrong genre where main wrote the same one.
+
+**Closes when:** the reader reads a version before a trailing feature
+credit and the unbracketed shapes have a rule that is not a list. Ledger
+only: no cost beyond main's.
+
+---
+
+## R-1799. A remix Discogs refuses for its version walks on to Beatport, which takes the original mix's row
+
+**Found:** at the review of #882, U318, round one, 2026-11-21.
+
+**The mechanism.** A version refusal is a Discogs miss, so the walk asks
+Beatport, as the brief orders, and Beatport's scorer reads a title past its
+version (R-1637's mirror), so "Two Months Off (Tim Green Remix)" takes a
+Beatport row "Two Months Off", mix "Original Mix".
+
+**Measured cost.** Driven through `tag_one` on a hand built Beatport page:
+Deep House from Beatport where main wrote Techno from Discogs; neither is
+the file's mix. Today Beatport refuses this machine, so the card's goal
+holds; it holds only while it does.
+
+**Closes when:** Beatport's scorer requires a named mix the way Discogs now
+does, the remix side of R-1637. Ledger only, beside R-1637.
+
+---
+
+## R-1800. A mix description no list holds reads as a maker's name, and a file so titled misses a release of its plain title
+
+**Found:** at the build and review of #882, U318, 2026-11-21.
+
+**The mechanism.** `titles._naming_words` folds the domain's version words
+and `titles.MIX_DESCRIPTIONS`; any other word is a maker's. "Juno Mix",
+"Jack Mix", "Acid Mix", "Summer Mix" and "Friday Night Mix" name "juno",
+"jack", "acid", "summer" and "friday night", as "HD Remaster", "Vinyl
+Version", "CD Version", "2019 Mix", "Studio Version" and "(A Dub)" name
+theirs, so a file so titled takes no Discogs release of its plain title.
+And name folding stops at accents, "and", "the" and a possessive: "T. Green Remix" and "DJ Tide" against "Tide" with
+another word are other makers. A row writing its maker after the mix,
+"(Remixed By Tim Green)" or "(Remix By Tim Green)", writes no maker, so a
+file "(Tim Green Remix)" misses it.
+
+**Measured cost.** One of the 147 labels round one drove, "Juno Mix", and
+146 of round two's 274 holdout labels, none among the 147 (styles, places
+and times of day mostly, "Tech House Mix", "Ibiza Mix", "Late Night Mix",
+and media, "Vinyl Version"), measured at the final head; the author's
+differential over the matcher corpus refused 662 pairs for "Jack Mix" and 17
+for "Acid Mix" against plain rows. Every label was written by a session,
+none read from a library. Each is a miss the record explains, never a wrong
+genre; widening the list further buys these back at `u318-g`'s price.
+
+**Closes when:** a mix's description can be told from a maker's name by
+something other than a list, or the list grows from the sweeps' records.
+Ledger only: the cost is a miss.
+
+---
+
+## R-1801. A maker named by the mix descriptions' words alone is read as no one, so their remix takes another mix's Discogs release as on main
+
+**Found:** at the review of #882, U318, round two, 2026-11-21.
+
+**The mechanism.** `titles._naming_words` folds `titles.MIX_DESCRIPTIONS`
+off both ends of a version, so a maker whose name is only those words, "DJ
+Deep", "DJ Promo", "Digital", "Final Cut", "Classic", is read as no one and
+the file is matched as main matched it. And `writes_version` reads a titled
+row's unbracketed whole by its last words, across a dash, so "Dixon Remix"
+takes "Sunrise Mood - Alan Dixon Remix", and a fold can make one maker end
+another's ("New Order" folds to "order" and meets "Out Of Order Remix").
+With a refusal ahead of it on one result page, such a release can be the
+one taken where main took an earlier one (round two's row 4).
+
+**Measured cost.** Round two: 29 of 377 maker names it wrote are folded
+away whole, 25 of them by the round one widening, "dj" alone 7; on 60,000
+generated releases that never write the file's maker the fix took 4,579
+where round one's head took 4,153. Against main nothing is newly taken at
+the release level (0 of 330,000); round two's row 4, two crafted releases
+on one page, writes House from the second where main wrote Techno from the
+first. No such maker or pair was driven from a real library. The fold and
+the misses of `u318-f` pull against each other: a word taken out of the list
+buys back makers and loses the plain recording's mixes main matched.
+
+**Closes when:** a description can be told from a maker by something other
+than a list (Discogs' own credits, `u318-b`), or Phillip decides which way
+the list should fail. Ledger only: no cost beyond main's for one release.
+
+---
+
+## R-1802. A Discogs single whose track writes the file's mix in full is refused when that track is not read as the file's own title or artist
+
+**Found:** at the review of #882, U318, round two, 2026-11-21.
+
+**The mechanism.** Since round one the single fallback counts another
+track only when it is the mix alone, so a single "Two Months Off" whose
+track "Two Months Off (Tim Green Remix)" is credited to a name sharing none
+with the file's artist, or written "Two Months Off, Pt. 1 (Tim Green
+Remix)", "The Two Months Off (...)" or "... (Tim Green Remix) - Bonus
+Track", which the matcher does not read as the file's title, is refused.
+The note then says the release holds no track with the version while a
+track writes it.
+
+**Measured cost.** Round two drove 24 track shapes by 7 file spellings:
+the credited track and 8 of 44 full row spellings lost against main. Hand
+built; whether Discogs credits a single's remix track that way is
+unmeasured. The cost is a miss with a note false on its face.
+
+**Closes when:** the fallback reads a track writing the full title and
+mix by the release's credit, without reading another title's remix
+(round one's finding 6). Ledger only.
+
+---
+
+## R-1803. The Discogs version miss names the maker's folded words, "(tale of)" or "(order)", not the maker as the file writes them
+
+**Found:** at the review of #882, U318, round two, 2026-11-21.
+
+**The mechanism.** `searchers._another_version` writes the named
+versions' words, which `titles._naming_words` has folded: descriptions off
+both ends, "and", "the" and a possessive dropped, accents off. "(Tale Of Us
+Remix)" reads "(tale of)", "(New Order Remix)" "(order)", "(DJ Koze Remix)"
+"(koze)".
+
+**Measured cost.** Round two: 191 of 377 maker names read differently from
+the file. Garbled, never false: the release named is the one refused.
+
+**Closes when:** the note quotes the file's own version text beside the
+words compared. Ledger only, a wording fix.
+
+---
+
+## R-1804. A bracketed subtitle ending in a version word, "(On The Radio)" or "(Welcome To The Club)", is read as a mix and misses the plain track
+
+**Found:** at the review of #882, U318, round two, 2026-11-21.
+
+**The mechanism.** A bracket group the title ends with is a version when
+its last word is a version word, so a subtitle "(On The Radio)", "(Welcome
+To The Club)", "(Back To The Original)" or "(In Session)" names "on", "welcome
+to", "back to" and "in", and the file takes no Discogs release that does
+not write it. A feature credit group is no version since fix round two
+("(feat. Tom Tom Club)", "(with Bombay Bicycle Club)"), so this is what is
+left of round two's row 7. And a title naming two mixes is satisfied by
+either: "Song (Tim Green Remix) (Dark Lane Edit)" takes "Song (Dark Lane
+Edit)".
+
+**Measured cost.** Round two drove 10 such groups against an album's plain
+track: main matched all; four subtitles still miss. Whether a library title
+carries one is unmeasured. A miss, never a wrong genre; the two mixes case
+is main's own match.
+
+**Closes when:** a subtitle can be told from a mix by something other
+than its last word. Ledger only.
+
+---
+
+## R-1805. The needs genre campaign walks every audio file under the library root three times per alias word
+
+**Found:** at round two of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** For each settled or answered alias, `plan_words` in `cli/verbs/tag_campaign.py` walks every audio file under the library root to list the files the alias retags. It does so at the run that shows the gate and again at the run that answers it, and `_words_step` walks once more through the verb's own `plan_alias` to hold the apply to what the gate listed. Round two counted 40 tag reads at the first act and 86 at the answering run, on 20 files and 2 words. Round one's head walked once per word, and showed none of the files.
+
+**Measured cost.** Time on the live campaign, which reads one tag of every file under the root three times per word. Not measured on a real library.
+
+**Closes when:** the answering run reuses one walk for the gate check and the apply, or the walk reads each file once for every word. Ledger only.
+
+---
+
+## R-1806. An alias to a genre folder the same campaign makes lands or refuses by the backlog's word order
+
+**Found:** at round two of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** `plan_words` in `cli/verbs/tag_campaign.py` plans the answers in the backlog's word order, which is by rows. An alias of word A to the folder that word B's folder answer makes is planned before that folder exists when A has more rows, and the alias edit refuses it as a genre the taxonomy does not declare. Round two drove the same two answers on two libraries that differed only by row count: one landed and one refused before the gate.
+
+**Measured cost.** The second library's campaign is refused before anything is written, and needs two runs: the folder first, then the alias. The refusal says why.
+
+**Closes when:** folder answers are planned before alias answers, or the refusal names the order. Ledger only.
+
+---
+
+## R-1807. The campaign's follow step gives the another spelling reason for any follower whose file word is not the answer's
+
+**Found:** at round two of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** `_rows_step` in `cli/verbs/tag_campaign.py` holds out a follower whose file word differs from the genre its answer filed, and names it `file-carries-another-spelling`. A follower whose file the alias walk never reached, so its file still carries the word exactly, gets the same reason. Round two produced it with a row whose path climbs out of the library root through `..`; a file at an absolute path outside the root is excluded by the census instead.
+
+**Measured cost.** A false reason in the report; its advice, to retag the file by hand, still works. Reachability on a real library, through a prefix rule that points outside the root, was not driven.
+
+**Closes when:** the reason tells a file the walk never reached apart from a file carrying another spelling. Ledger only.
+
+---
+
+## R-1808. An alias answer given by bucket id and repeated while its word is settled is refused
+
+**Found:** at round two of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** `_same_as_settled` in `cli/verbs/tag_campaign.py` compares a repeated alias answer with the settled word's genre folder by its display name only. `Indie Tech=melodic_house`, the bucket id, is taken on the first run. Repeated while the word is still settled, because some of its files did not take the genre, it is refused with "already has its one answer".
+
+**Measured cost.** The repeated command is refused with nothing written, and runs once the answer is dropped or given by name.
+
+**Closes when:** the settled comparison reads the bucket id too. Ledger only.
+
+---
+
+## R-1809. tag backlog's alias question counts the files rows name, while the campaign retags every file under the root carrying the word
+
+**Found:** at round two of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** R-1733's shape, one verb over. `word_of` in `tagging/backlog.py` says how many files an alias retags by counting the files backlog rows name. `crate tag campaign` lists, and retags, every audio file under the library root whose one genre is the word, a file no row names included. Round two drove 12 stray files carrying the word: the question said 2 files and the campaign's gate listed 14.
+
+**Measured cost.** The question Phillip answers from understates the files an alias rewrites. The campaign's gate lists every one before anything is written, so nothing is written unseen. How many such files the real library holds is not measured.
+
+**Closes when:** the alias option reads its file count from the alias verb's own walk. Ledger only.
+
+---
+
+## R-1810. A campaign rehearsed on a copy of the database alone writes the live files, and its answer is pinned to no library
+
+**Found:** at round one of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** `crate tag campaign` writes audio files in two steps: `tag suggest` writes each proposal's genre into its file, and `taxonomy alias` retags every file carrying the word under the library root. A rehearsal that copies the database and redirects library state, with the rows still naming the live files, would write those files, and the live plan afterwards would differ in what is written, which is the one case CLAUDE.md's rehearsal rule still stops on. The gate is also asked with no `pinned` fact (the shape `docs/solutions/workflow-issues/a-fact-taken-out-of-a-digest-so-a-rehearsal-can-match-must-be-pinned-on-the-run.md` describes), as `tag rows` and `tag suggest` ask theirs. Round one drove one candidate, a run answered on one library and continued under another root, and it refused with nothing written; a copy whose rows resolve under the new root was not driven.
+
+**Measured cost.** Not driven on a real library: the rehearsal is the owed attended card's. Unless the music files are cloned with the database, a rehearsal writes genres into the live files.
+
+**Closes when:** the campaign has a rehearsal of its own that clones the files it would write, as `core.rehearsal` does for the landing, or the attended procedure clones them and pins the database file. Ledger only; the attended card names the cloning step.
+
+---
+
+## R-1811. With no census, record or files fact on record, one stray file at an unmounted volume's mount point is mirrored as the library and the whole mirror is archived
+
+**Found:** at the round one review of #893, R-1761, 2026-11-21.
+
+**The mechanism.** The content proof in `modules/tools/backup.py`'s
+`_unproven` measures the root against the census, then the record, then the
+library's own files fact. When none of the three is there, a fresh
+installation or installation state wiped while the volume is away, a root
+holding one file outside the state folder is no new library (it holds a
+file) and has no history to fall short of, so the full sync runs over it and
+moves every mirror file into the dated archive. The identity proof refuses
+this wherever a recorded identity is read, so the hole is a platform that
+reads none, today every Linux volume.
+
+**Measured cost.** Driven by the round one and round two reviews with the
+installation state removed and the stray file written by hand: 12 of 12
+mirror files archived, recoverable from the archive until the rotation
+purges it at the second completed run after. No producer of a stray file at
+a mount point was found: three candidates (a refused plan, a run time
+failure, a flagged run) were driven and none leaves one.
+
+**Closes when:** a run with no history at all lists the remote's top level,
+or is held to `--max-delete 0` like a root holding none of the library's
+files, at the cost of a first backup failing where the mirror holds files
+the library lost since another installation's last run. Ledger only.
+
+---
+
+## R-1812. The content floor passes a root holding exactly a tenth of the census, so one stray file at the mount point of a ten file library is mirrored as the library
+
+**Found:** at the round one review of #893, R-1761, 2026-11-21.
+
+**The mechanism.** `_unproven` refuses `held * LIBRARY_FLOOR < had`, a root
+holding under a tenth of the files the census counted. A library of ten
+files or fewer and one stray file at its mount point is held to the floor
+and passes, and the full sync archives the mirror.
+
+**Measured cost.** Driven at the engine with a ten file census and one stray
+file written by hand: 10 mirror files archived. Bounded to libraries of ten
+files or fewer, and no producer of the stray file was found.
+
+**Closes when:** the floor also asks for a minimum number of files, or the
+census's own paths, at a library this small. Ledger only.
+
+---
+
+## R-1813. With the database under the library root, an unmounted root refuses both portions and the verb reports no-evidence, so the unproven refusal's remedy is not shown
+
+**Found:** at the round one review of #893, R-1761, 2026-11-21.
+
+**The mechanism.** After an unmount the files portion refuses
+`library-root-unproven` and the database portion `database-absent`. The
+queued job aggregates two distinct permanent reasons as `no-evidence`,
+caused by the database's, and the verb prints that remedy. The aggregation
+predates R-1761.
+
+**Measured cost.** Driven through the verb at both review rounds: nothing
+moved and nothing false is said, but the person is not shown the unproven
+refusal's mount or emptied flag steps.
+
+**Closes when:** the backup job's aggregation names every refused portion's
+remedy, as `backup-nothing-ran` does for the unqueued run. Ledger only.
+
+---
+
+## R-1814. The probe that stands in for a refused walk passes over a folder it cannot list, so an unreadable library can be refused as holding none of its files
+
+**Found:** at the round one review of #893, R-1761, 2026-11-21.
+
+**The mechanism.** `backup_record.probe` skips a directory whose listing
+raises, so what it cannot read is never counted. Where the walk refused and
+the library's folders cannot be listed, the root reads as holding none of
+its files and the backup refuses with the mount remedy, which is the wrong
+fix. It fails closed: nothing is sent or archived.
+
+**Measured cost.** Not driven: the container runs as root, which lists every
+directory. A person would be told to mount a mounted volume.
+
+**Closes when:** the probe counts an unlistable folder as unreadable and the
+refusal says so. Ledger only.
+
+---
+
+## R-1815. The analysis share's snapshot is an rclone sync with an archive and no proof of its source, so an emptied or unmounted share moves its whole copy into the dated archive
+
+**Found:** at the round one review of #893, R-1761, 2026-11-21.
+
+**The mechanism.** `SNAPSHOT_SHARE` in `modules/tools/backup.py` syncs the
+analysis share beside a database kept outside the library root to
+`analysis-share/` under `db_dest_root` with a backup dir, the same shape the
+files mirror had before R-1761, and nothing proves the share folder holds
+what it held.
+
+**Measured cost.** Driven at round two with an emptied share folder: 5 of 5
+analysis files moved to the share's dated archive. The producer, a share on
+a volume that unmounts while the database stays, was not driven, and the
+database portion was out of the card's scope.
+
+**Closes when:** the share snapshot is held to the census's rule, or to
+`--max-delete 0` when the share holds nothing. Ledger only.
+
+---
+
+## R-1816. With the database outside the library root, a backup's database item publishes the fact file into whatever is at the root, an unmounted volume's mount point included
+
+**Found:** at the round two review of #893, R-1761, 2026-11-21.
+
+**The mechanism.** The fact file is library state under the root, and the
+database portion publishes its age there whether or not the files portion
+proved the root, creating the state folder at a mount point, and the root
+itself where an unmount removed it. Before round two's fix that file was the
+emptied flag's proof, and the reviewer drove a second flagged ask through it
+to an emptied mirror; the flag now asks for a files fact, which the database
+item does not write.
+
+**Measured cost.** Driven at round two: the database snapshot and its age
+are real, and the fact file sits on the boot disk at the mount point, where
+a remount hides it and the library's own file no longer carries that age.
+
+**Closes when:** the database portion publishes its age only into a root the
+files proof passed, or the files portion's refusal stops the job's database
+item from writing there. Ledger only.

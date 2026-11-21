@@ -208,6 +208,11 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'routing-outstanding',
     # 2026-10-31, U168: run decide --continue over a run that keeps no command line.
     'run-not-continuable',
+    'schedule-agent-unusable',  # 2026-11-21, U295: the installed agent is not the night's.
+    'schedule-agent-unwritten',  # 2026-11-21, U295: the schedule's plist could not be written.
+    'schedule-crate-unresolved',  # 2026-11-21, U295: no crate to schedule.
+    'schedule-launchctl-failed',  # 2026-11-21, U295: launchctl answered a failure.
+    'schedule-platform-unsupported',  # 2026-11-21, U295: no launchd here.
     'session-committed-unverified',
     'session-lock-held',
     'set-playlist-unnamed',
@@ -266,7 +271,8 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
 
 # Reserved table size. Moves only when a reservation is added or removed.
 # 2026-11-05, U211: rekordbox-absence-unconfirmed joined the backup reservations.
-PINNED_RESERVED_CAUSE_COUNT = 29
+# 2026-11-21, #893: library-root-foreign and library-root-unproven joined them.
+PINNED_RESERVED_CAUSE_COUNT = 31
 
 #: What a package's file may define, and the table each one feeds.
 #:

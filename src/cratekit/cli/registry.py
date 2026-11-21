@@ -1900,6 +1900,54 @@ ENTRIES: tuple[Entry, ...] = (
         destructive=True,
         doctor_checks=("library.mounted", "rekordbox.closed", "credential.provider"),
     ),
+    # U295. The night pass on a schedule: one launchd user agent that runs
+    # ``crate sync night`` and nothing else. Core, beside the night verb, and
+    # macOS only by refusal rather than by profile, so every profile reads it.
+    #
+    # NO LIBRARY WRITE SURFACE AND NOT DESTRUCTIVE, on ``skills.install``'s
+    # argument: what install writes is the agent's plist in the person's own
+    # LaunchAgents directory and the directory of its log, the declared state
+    # entry ``schedule_log``; what remove deletes is that plist. Both leave the
+    # staging lock's file, held around the bootout. Nothing a
+    # library knows about is touched, so the destructive session's gates would
+    # be gates over the wrong thing. No gate either: installing a schedule
+    # approves nothing, since every limit the night keeps is the night verb's.
+    Entry(
+        name="schedule.install",
+        summary=(
+            "install the nightly run of crate sync night as a launchd agent of your "
+            "own on macOS, replacing one already installed"
+        ),
+        module="cratekit.cli.schedule",
+        builder="build_install",
+        handler_key="schedule.install",
+        feature_rows=(25,),
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+    ),
+    Entry(
+        name="schedule.show",
+        summary=(
+            "show the nightly run's schedule: installed or not, its time, the crate "
+            "it runs, whether launchd has it loaded and the last night's line"
+        ),
+        module="cratekit.cli.schedule",
+        builder="build_show",
+        handler_key="schedule.show",
+        feature_rows=(25,),
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+    ),
+    Entry(
+        name="schedule.remove",
+        summary="unload the nightly run's launchd agent and delete it; nothing installed is a no op",
+        module="cratekit.cli.schedule",
+        builder="build_remove",
+        handler_key="schedule.remove",
+        feature_rows=(25,),
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+    ),
     Entry(
         name="sync.bandcamp",
         summary=(
@@ -3234,6 +3282,55 @@ ENTRIES: tuple[Entry, ...] = (
             "library.mounted",
             "rekordbox.pins",
             "library.paths_resolved",
+        ),
+    ),
+    # ── The needs genre campaign (U294) ─────────────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives. A
+    # COMPOSER, as ``organize`` is: every step it runs is another verb's plan
+    # and another verb's write, under one gate over ``tag.backlog``'s plan.
+    Entry(
+        name="tag.campaign",
+        summary="apply the needs genre backlog under one gate: tag rows, tag "
+        "suggest at the floor, the answered words, then tag rows again; writes "
+        "file and row, names the resort",
+        module="cratekit.cli.verbs.tag_campaign",
+        builder="build",
+        handler_key="tag.campaign",
+        # NO FEATURE ROW AND NO SOURCE SCRIPT, for the reason ``tag.backlog``
+        # gives.
+        #
+        # GATED BY ``repair``, as ``tag.rows`` is: its first and last steps are
+        # that verb, and a composer is never a way round a module switched off.
+        module_id="repair",
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: The union of its steps' surfaces: ``tag.rows`` the row, ``tag.suggest``
+        #: file and row, ``taxonomy.alias`` the files. ``taxonomy.folder``
+        #: writes the copy, which no surface names there either.
+        writes=frozenset({"files", "db_metadata"}),
+        destructive=True,
+        taxonomy_terms=("genre_energy",),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            "library.paths_resolved",
+        ),
+        gates=(
+            GateSpec(
+                name="tag.campaign.approve",
+                options=("apply", "abort"),
+                prompt="Apply the needs genre campaign: the rows from their files, "
+                "the suggestions at the floor, and the answered words, each through "
+                "its own verb? Filing them into their folders asks its own gate.",
+                #: EXPLICIT (R34). It stands for ``tag.rows.confirm``,
+                #: ``tag.suggest.confirm``, ``taxonomy.alias.apply`` and
+                #: ``taxonomy.folder.apply``, all explicit.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
     # ── The INBOX rotation (U111) ───────────────────────────────────────────

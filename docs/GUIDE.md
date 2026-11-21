@@ -54,7 +54,7 @@ crate login NAME --from-file PATH
 | `identify-key`, `identify-signing-key` | The recognition service's key and signing value, for `intake set` and `intake identify`. |
 | `catalogue-app-id`, `catalogue-app-key` | Optional. Cratekit's own app on the provider's developer platform. With both recorded, catalogue lookups go under the app rather than your account; doctor says where lookups go and how many calls each side made. |
 | `cyanite-key` | Optional. An integration access token from your Cyanite account's integrations section, for the Cyanite trial below and nothing else. Doctor reports it and never fails on it; setup does not offer it. |
-| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag`, `tag suggest --catalogue` and `tag backlog --catalogue` ask Discogs first, and Beatport only when Discogs gives no genre; without it Discogs is recorded as not asked on every file that needs a genre and Beatport is asked as before, a file Beatport misses stays askable rather than `no-hit`, and the sweep's summary and a warning say how many files Discogs was not asked about. A token Discogs refuses does not stop Beatport being asked: a file Beatport settles is tagged as before, a file it cannot settle fails with the token's refusal while the sweep goes on, and the sweep warns how many files Discogs was not read for because it refused the token. Setup links it as its own step, checking the token with Discogs before storing it (above); doctor reports it and never fails on it. |
+| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag`, `tag suggest --catalogue`, `tag backlog --catalogue` and `tag campaign --catalogue` ask Discogs first, and Beatport only when Discogs gives no genre; without it Discogs is recorded as not asked on every file that needs a genre and Beatport is asked as before, a file Beatport misses stays askable rather than `no-hit`, and the sweep's summary and a warning say how many files Discogs was not asked about. A token Discogs refuses does not stop Beatport being asked: a file Beatport settles is tagged as before, a file it cannot settle fails with the token's refusal while the sweep goes on, and the sweep warns how many files Discogs was not read for because it refused the token. Setup links it as its own step, checking the token with Discogs before storing it (above); doctor reports it and never fails on it. |
 
 A provider that rejects the stored session is reported as rejected, with the
 sign in step. A provider that fails or cannot be reached is reported as an
@@ -243,6 +243,8 @@ the two commands that answer and apply it and the rekordbox visit after.
 - One pass stages at a time: `sync land`, `label sync --go` and the night pass
   below each hold one staging lock for the whole of a run, and a second
   refuses `staging-held`, naming the holder's verb, process, run and start.
+  `crate schedule install` and `remove` hold it too while they boot the night's
+  agent out, so they wait for any pass, never ending a night in progress.
 
 Then, in order:
 
@@ -257,8 +259,19 @@ Then, in order:
 writes a grid. Open rekordbox, select `INBOX / Analyze` and run Analyze Tracks:
 rows without the `dyn` My Tag with Analysis Mode Normal, high precision off,
 BPM/Grid, Phrase and KEY on; rows with `dyn` with Analysis Mode Dynamic, every
-other setting the same. Quit rekordbox and confirm `rekordbox` and
-`rekordboxAgent` are gone. Then:
+other setting the same.
+
+With Auto Analysis on in rekordbox's preferences the visit is shorter. Open
+rekordbox and bring its window to the front: it raises one dialog saying Auto
+Analysis is starting, with the fields it will use. Press OK only when it shows
+every one of the Normal settings above with Vocal and CUE off and no field set
+otherwise, and it analyses every row waiting with no selection; otherwise,
+Cancel it and select as above. Auto Analysis runs on its preference's own mode,
+so rows with `dyn` still take Analyze Tracks with Dynamic. Cratekit never turns
+Auto Analysis on or off. rekordbox's Auto Analysis analyses every track it
+finds unanalysed, however it came in, so whether it is on is yours to choose.
+
+Quit rekordbox and confirm `rekordbox` and `rekordboxAgent` are gone. Then:
 
 ```bash
 crate analyze check        # exit 0 done, 12 rows still waiting, 27 suspect
@@ -310,8 +323,62 @@ At the Mac, a pass that waits at the landing gate goes straight to the
 rehearsal and the landing with the run, pass and staging folder `--last`
 names (the `crate-sync` skill does this); one that waits on the backup
 acknowledgment takes `crate session ack --as session` and then the `crate
-sync land --pass-run RUN` its line names. Nothing installs the schedule yet,
-so until a verb does, the night pass runs when it is typed.
+sync land --pass-run RUN` its line names.
+
+**The night pass on a schedule (macOS).** Three verbs put `crate sync night`
+on launchd, so it runs overnight without being typed:
+
+    crate schedule install            # each night at 03:17, local time
+    crate schedule install --at 02:40 # another time, HH:MM on the 24 hour clock
+    crate schedule show               # installed or not, the time, the crate, loaded, last night
+    crate schedule remove             # unload it and delete it
+
+- `install` writes one launchd agent, `cratekit.sync-night.plist`, in your own
+  `Library/LaunchAgents` and loads it for your login with `launchctl
+  bootstrap`. It runs the `crate` you ran the install with, by its absolute
+  path, with `sync night` and nothing else: no `-d`, no `--calls`, no other
+  verb, so every limit above is the night verb's own. Installing again
+  replaces the agent, never adds a second one. Install again after moving or
+  reinstalling Cratekit, so the agent names the `crate` that is there now.
+- The agent carries a fixed `PATH`; the configuration, state and provider
+  gate directories as the install found them (`CRATEKIT_CONFIG_DIR`,
+  `CRATEKIT_STATE_DIR`, `CRATEKIT_PROVIDER_GATE_DIR`), absolute, so the night
+  reads the same installation whether an override, an XDG variable or the
+  platform's default found it; and the library, staging, ISRC cache and
+  binary overrides (`CRATEKIT_BIN_<NAME>` for a binary Cratekit runs) set when
+  you installed it, made absolute. Nothing else of your environment, never a
+  credential and never a raised limit. Its output is appended to
+  `schedule/sync-night.log` under the installation's state directory, the
+  place to look when a night left no line of its own.
+- The three verbs run as you and refuse as root. Install and remove refuse
+  `staging-held` while any pass holds the staging lock, so a night pass in
+  progress is never ended by its own bootout, as long as the shell reads the
+  installation the agent carries (a shell pointed at another
+  `CRATEKIT_STATE_DIR` holds another lock). The lock's file, `staging.lock`,
+  is left in the installation's state.
+- A launchctl that fails is refused in its own words (`schedule-launchctl-failed`)
+  and the plist written for it is removed once launchd reads it gone, so
+  nothing is left half installed; when a replace fails at the load, the
+  refusal says the earlier schedule is gone too. If launchd may still hold it,
+  the plist is kept and the refusal says so; `crate schedule remove` takes it
+  away. A replace whose plist cannot be written (`schedule-agent-unwritten`)
+  says the earlier schedule is booted out and its plist kept, so it is off
+  until the next login or an install that succeeds.
+- `show` writes nothing. It reads whether launchd has the agent loaded, says
+  so when launchd cannot be read rather than calling it not loaded, and reads
+  the last night's line from the state the agent carries. It fails
+  (`schedule-agent-unusable`) on an agent it cannot read, one whose `crate` is
+  gone, one launchd holds with no plist, and one that is anything but the
+  agent install writes (another program or argument, a run at load, another
+  calendar, an environment name Cratekit never carries, a carried directory
+  missing or relative, a log outside the state it carries); `crate schedule
+  install` replaces it. A value changed by hand to another absolute directory
+  is not something it can tell from one install wrote.
+- `remove` with nothing installed changes no schedule. A bootout launchd does not
+  confirm keeps the plist, so `show` still reads what launchd holds.
+- launchd fires a night the Mac slept through when it wakes. On any platform
+  but macOS the three verbs refuse naming it (`schedule-platform-unsupported`);
+  there, run `crate sync night` from your own scheduler or by hand.
 
 `sync all` alone queues each enabled source's increment under one run and
 returns at once; nothing has run until the jobs are resumed. It sweeps no
@@ -438,7 +505,11 @@ crate route pending
   alone is asked as written too. A file with no tags is asked by its name: a
   headed name of two parts, `Artist - Title`, is asked as that artist and
   that title, and any other headed name with no artist, as before, and its
-  name past the head. Each file's record names the artist and the title read
+  name past the head. A file with no title tag, in `tag folder` and `tag
+  retag` alike, is asked and matched by its name with the `_PN` an older
+  naming wrote after the title left off, so `Sunshine Hotel_PN` is asked as
+  `Sunshine Hotel`; a title tag ending in `_PN` is asked as written, and so
+  is a name whose last part is `_PN` alone, as before. Each file's record names the artist and the title read
   past the head, and how they were read, under `asked`; Discogs is sent that
   title with a round bracketed group it ends with set aside, as before. A Discogs style no folder holds is written nowhere and is
   the file's unmapped word only if Beatport writes no genre either. A catalogue's row counts only when its title names the file's own
@@ -463,7 +534,24 @@ crate route pending
   only inside the other title's brackets, so "Intro" is never "Sunrise Mood
   (Intro)", and a number in a title is kept, save a remaster's year and the
   zero padded track number a file's name opens with, so "Session 2" is never
-  "Session 1" and "Summer 1999" never "Summer 2000". Discogs' first style that names a folder is written, through the
+  "Session 1" and "Summer 1999" never "Summer 2000". On Discogs a file whose
+  title names a mix by its maker, "Two Months Off (Tim Green Remix)" or
+  "Two Months Off - Tim Green Remix", takes a release only when a track
+  writes the same mix, or, for a single, the release's own title or a track
+  that is the mix alone ("Tim Green Remix"); a release holding the recording
+  in other mixes only is a miss, the file's record says "Discogs release N
+  holds no track with this version", and the file goes on to Beatport. A mix
+  that names no one, by the domain's version words and a list of a mix's
+  descriptions ("Extended Mix", "Original Mix", "Radio Edit", "Vocal Mix",
+  "Main Mix", "LP Version", "2009 Digital Remaster", "UK Radio Edit"), is
+  matched as before, and so is a mix written into the title with no bracket
+  or dash; a word in neither list is read as a maker's name, so "Juno Mix"
+  misses a release of the plain title, and a maker named by the list's words
+  alone, "DJ Deep" or "Digital", is read as no one and matched as before,
+  another mix's release included. A maker's name is compared as a name
+  is, accents, "and" and a possessive aside, and "Rmx" is a remix; a row
+  that writes the mix with no bracket is read by its last words, so "Dixon
+  Remix" also takes "Sunrise Mood - Alan Dixon Remix". Discogs' first style that names a folder is written, through the
   taxonomy's `[vocabulary.discogs]` table and its aliases; a style naming no
   folder is a decline. A library set up before that table shipped gets it
   with `crate taxonomy upgrade`, which doctor names; until then nine of the
@@ -481,7 +569,7 @@ crate route pending
   refusal naming them and since when, and, when Discogs went unasked for want
   of a token, how to record one; with `--output json` the summary lists such
   files under `refusal_stop`, and lists under `refused` the files Discogs
-  searched and could not tag while every other catalogue refused. `tag suggest --catalogue` and `tag backlog --catalogue` stop the
+  searched and could not tag while every other catalogue refused. `tag suggest --catalogue`, `tag backlog --catalogue` and `tag campaign --catalogue` stop the
   same way within one run; `tag retag` asks afresh for each file. The sweep's warning names such a catalogue as having
   refused this client, and a Cloudflare challenge as one, and keeps
   `unreachable` for a catalogue that is down. A file no catalogue knows keeps
@@ -1126,6 +1214,7 @@ writes their genre tags.
 | Verb | Does |
 |---|---|
 | `tag backlog [--catalogue]` | Sorts every row adoption leaves under needs genre by cause, names the verb that settles each and one question per genre word no folder takes; writes nothing. |
+| `tag campaign [--alias WORD=GENRE] [--folder WORD] [--leave-word WORD] [--catalogue] [--rehearsed DIGEST]` | Applies the backlog under one gate: `tag rows`, `tag suggest` at the floor, the answered words, then `tag rows` again; writes file and row, and names `route resort`. |
 | `tag rows [--leave ID]` | Writes each row's genre from its file where they disagree. |
 | `tag suggest [--band] [--set ID=GENRE] [--catalogue]` | Suggests a genre for rows with none, from artist, folder and optionally the catalogues; writes file and row. |
 | `tag retag FOLDER` | Replaces a genre too coarse to be final. |
@@ -1169,6 +1258,42 @@ order that settles the backlog with the rows each moves, the rows left by
 hand with what would settle them, any row `tag rows` would move into needs
 genre, and needs genre now and after. It opens the database only to read and
 writes nothing.
+
+**The campaign.** `tag campaign` applies that backlog under one gate,
+`tag.campaign.approve`, in place of five verbs and five gates. Answer each
+word the backlog asks about on the command line, `--alias WORD=GENRE`,
+`--folder WORD` or `--leave-word WORD`, and give the same answers on the run
+that applies; a word the backlog does not ask about, one answered twice, or
+an answer `taxonomy alias` or `taxonomy folder` would refuse is refused
+before anything is written, and an unanswered word is left for hand tagging.
+An answer the taxonomy copy already holds, given again on a later run, is
+taken as given. Every word is planned before the gate by `taxonomy alias`
+and `taxonomy folder` themselves, and the gate shows every row `tag rows`
+writes from its file, every proposal and answer, every file an alias retags
+(each audio file under the library root whose one genre is the word, a file
+no row names included), the files it leaves or could not read, and the rows
+the backlog could not read. The rows that then follow their retagged files
+are bound by the backlog's digest and counted in the campaign's steps. Its digest
+covers the backlog, the answers and those files, by their path under the
+root, and names no copy, so a library, an answer or a file that moved
+between the plan and the approval refuses as stale, and a rehearsal on
+a disposable copy digests equal to the live plan (`--rehearsed DIGEST` sets
+the rehearsal's digest beside the live one at the gate). Then each step runs
+through its own verb, planned on the library the steps before it left: `tag
+rows` for the rows the backlog served, `tag suggest` at the floor for the
+proposals it showed with the genre it showed, each settled word's one answer
+and each answered word, each planned again and refused as stale if it would
+retag a file the gate did not list, then `tag rows` again for the rows that
+follow, never writing a row whose file carries the word in another spelling
+than the one the answer filed. A row
+the backlog did not show, a routed row `tag rows` would move into needs genre
+above all, is never written, and a proposal that appeared or moved once the
+earlier steps wrote is left for the next run. A step that refuses stops the
+campaign there, naming what landed and what did not run; what landed stays,
+and a second run plans only what is left. The report gives needs genre before
+the campaign and after each step, as measured. Filing the tracks into BY
+GENRE + ENERGY is left to `route resort`, which shows every add and asks its
+own gate.
 
 **Removing tracks.** `crate delete review` offers the files behind rows you
 removed in rekordbox; confirmed ones go to the system Trash only. It refuses
@@ -1286,7 +1411,7 @@ the source and refuses to replace a master without `--overwrite`.
 
 ```bash
 crate backup run --dry-run
-crate backup run [--full]
+crate backup run [--check | --full] [--library-emptied]
 crate restore list
 crate restore run [SESSION_ID] --dry-run
 crate restore run --from-backup --target /path/to/empty/dir
@@ -1297,10 +1422,52 @@ crate restore bare-metal --target /path/to/replacement --accept-replacement --dr
 by date and snapshots the database. `[backup]`'s `dest`, `archive_root` and
 `db_dest_root` are each an rclone `remote:path`. The database part refuses
 while rekordbox or its agent runs, so doctor reports the two ages apart.
-Every run compares every file by size and modification time; `--full` lists
-the remote folder by folder (most of an hour, independent of the recursive
-listing), and doctor's `backup.full_comparison` asks for one every thirty
-days. With the database outside the library root, the `share` folder beside
+
+A run is one of three kinds, and its report says which, what changed, how
+long it took and when the next full check is due:
+
+- **full check**: lists the remote and compares every file by size and
+  modification time, as every backup did before. It runs when the last one is
+  seven days old, when Cratekit has no trustworthy record of what the last
+  backup left (the first run, after a failed or interrupted one, or after the
+  library, mirror or excludes changed, or another installation or an older
+  Cratekit backed the library up since), when a folder cannot be read or
+  vanishes while it is read, when more than 10,000 paths changed, when a
+  changed name is in decomposed Unicode form, when any name in the library
+  holds a line break or carriage return, or when asked with `--check`. `--full` is a full check that lists the remote folder
+  by folder (most of an hour, independent of the recursive listing), and
+  doctor's `backup.full_comparison` asks for one every thirty days.
+- **quick**: between full checks, the library is compared with Cratekit's own
+  record of what the last backup left, and only the files added, changed or
+  removed are sent or moved to the dated archive, without listing the remote.
+- **skip**: nothing changed, so nothing is sent.
+
+Before any of the three, the files backup proves the root is the library,
+since an empty folder left where an unmounted volume was would otherwise be
+mirrored as a library with no files, moving the whole remote into the
+archive. It refuses `library-root-foreign` when the library's recorded volume
+identity is read and is not the root's, and `library-root-unproven` when the
+root holds no file at all, none outside the library's own state folder while
+the last completed backup held some, or under a tenth of what it held. The
+refused files backup sends no file, archives nothing and leaves the files age
+as it was; the database part runs or refuses on its own, as always. Mount the
+volume and run it again. A library emptied on purpose is backed up with
+`--library-emptied`, which passes only a root still carrying the library's
+own record of a completed files backup, kept in its state folder, and never
+passes the identity. A library holding only its state folder, a new one or
+one emptied before, is mirrored with rclone told to delete nothing from the
+remote, so a remote holding files it lacks fails that run rather than
+archiving them; a skip and a quick run of its state folder are planned as
+any other.
+
+A quick run that completes resets the files age, since the remote then holds
+everything. A skip resets it too, because the comparison proved nothing
+changed. The database is snapshotted only when it differs from the last
+snapshot (always with `--check` or `--full`), and an unchanged one resets the
+database age without a copy. A run that fails or stops part way resets no age
+and leaves no record, so the next run is a full check. Doctor's
+`backup.full_check` says when the last full check ran and when the next is
+due, and `backup.age.*` names the kind of run that set each age. With the database outside the library root, the `share` folder beside
 it (rekordbox's analysis files) is mirrored to `analysis-share/` under
 `db_dest_root`.
 
@@ -1374,6 +1541,7 @@ without one.
 | `tag.rows.confirm` | apply | `tag rows` |
 | `tag.remap.confirm` | apply | `tag remap` |
 | `tag.suggest.confirm` | apply | `tag suggest` |
+| `tag.campaign.approve` | apply | `tag campaign` |
 | `taxonomy.upgrade.apply` | approve | `taxonomy upgrade` |
 | `taxonomy.alias.apply` | approve | `taxonomy alias` |
 | `taxonomy.folder.apply` | approve | `taxonomy folder` |
@@ -1506,9 +1674,15 @@ Read the refusal's reason and remedy before retrying, then `crate doctor`.
 | `provider-call-ceiling` | The command hit the provider call ceiling (`[provider] calls_per_command`, 500). Run the printed command; `--calls N` raises it for one run, as `crate --calls N job resume JOB_ID`, with `--calls-per-hour` beside it when N is above the hour's budget, 1,500. |
 | `provider-budget` | The account, or the app credentials, has made as many provider calls in the last hour as this command may (`[provider] calls_per_hour`, 1,500, reads stopping at 1,125), counted across every command and copy. Wait until the time it names, then run it again or `crate job resume JOB_ID`; `crate --calls-per-hour N` raises the hour for one run. A `--calls` above the whole hour is refused the same way: lower it, or raise the hour with it. A `label sync` walk over every label refuses first when its estimate will not fit; ask one label with `--next --label NAME`. |
 | `provider-night-budget` | The night pass has made as many provider calls as its line allows, the lower of what is left of `[provider] night_calls` (1,200, noon to noon, counted across every process) and one command's ceiling (500), or what it spent cannot be read. A stop at the line needs nothing: the night pass's next firing continues it, or continue it at the Mac with `crate sync land --pass-run RUN`. A spend that cannot be read refuses every firing of that night and names the ledger and the gate's state file to look at; the next night starts afresh. |
-| `staging-held` | Another pass is downloading into the staging folder (`sync land`, `label sync --go` or `sync night`), named in the message. Wait for it to end, then run this again. |
+| `staging-held` | Another pass is downloading into the staging folder (`sync land`, `label sync --go` or `sync night`), named in the message, or `crate schedule install` or `remove` is changing the night's schedule. Wait for it to end, then run this again. |
+| `schedule-launchctl-failed` | launchctl refused to load or unload the night pass's agent; its own words are in the message. An install that failed at the load leaves nothing installed, unless launchd may still hold the agent, when its plist is kept and the message says so; a bootout of the earlier agent that failed leaves it installed as it was. Read `crate schedule show`, then run the verb again. |
+| `schedule-agent-unusable` | The agent `crate schedule show` read cannot be read, its `crate` is gone, launchd holds it with no plist, or it is anything but the agent install writes; the message names each difference. `crate schedule install` replaces it; `crate schedule remove` takes it away. |
+| `schedule-agent-unwritten` | The night pass's plist could not be written or removed, the reason in the message. On a replace, the earlier schedule is booted out and its plist kept until the next login. Make your `Library/LaunchAgents` writable and install again. |
+| `schedule-platform-unsupported` | `crate schedule install`, `show` and `remove` need launchd, which is macOS's. Run `crate sync night` from this platform's own scheduler, or by hand. |
+| `schedule-crate-unresolved` | The `crate` an install would schedule is not an executable file. Run `crate schedule install` from the `crate` you installed. |
 | `rekordbox-absence-unconfirmed` | A process the check could not read, usually one still exiting. Wait, then continue with the printed `crate --run RUN_ID ...`. Inspect with `ps -p PID -o pid,stat,comm`. |
 | `backup-acknowledgment-missing` | [The backup acknowledgment](#the-backup-acknowledgment). |
+| `library-root-unproven`, `library-root-foreign` | The backup found no library at the root, usually the volume not mounted. Mount it and run `crate backup run` again; `--library-emptied` only for a library emptied on purpose. |
 | `sync land` lists intake jobs left open | `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`. A queued `crate organize` download is taken by the next new pass. |
 | An unknown verb | `crate profile show`: its module is off. |
 | A tree "unconverged" | `crate converge`, `crate rebuild`, `crate converge`. |

@@ -68,8 +68,10 @@ WHAT THIS PORT CHANGES, beyond translating the shell.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
@@ -78,6 +80,7 @@ from enum import StrEnum
 from pathlib import Path
 
 from cratekit.core import analysis_store, backup_facts, binaries, config, preflight, session
+from cratekit.core.cause import CratekitError
 from cratekit.core.processes import (
     REKORDBOX_PROCESSES,
     AbsenceUnconfirmed,
@@ -85,6 +88,7 @@ from cratekit.core.processes import (
     rekordbox_processes_running,
     running_process_names,
 )
+from cratekit.modules.tools import backup_record
 
 #: Volume clutter no backup should carry. Platform metadata directories and
 #: resource-fork stubs: large in aggregate, meaningless off the machine that made
@@ -129,6 +133,23 @@ LIST_SNAPSHOTS = "list-snapshots"
 LIST_SNAPSHOT_CONTENTS = "list-snapshot-contents"
 LIST_SNAPSHOT_IDENTITY = "list-snapshot-identity"
 LIST_SHARE = "list-share"
+#: The three commands of a QUICK run (U317), each reading its paths from
+#: standard input and none listing the remote. The first sends what was added
+#: or changed, the second what was rewritten in place with its size and time
+#: kept, and the third moves what was removed into this run's dated archive,
+#: which is where the full sync's ``--backup-dir`` puts a deletion.
+QUICK_SEND = "quick-send"
+QUICK_RESEND = "quick-resend"
+QUICK_ARCHIVE = "quick-archive"
+QUICK_LABELS: frozenset[str] = frozenset({QUICK_SEND, QUICK_RESEND, QUICK_ARCHIVE})
+
+#: What a completed portion's run was (U317), the word its fact records under
+#: ``kind``. The files portion is ``full``, ``quick`` or ``skipped``; the
+#: database portion is ``snapshot`` or ``unchanged``. ``backup_facts.KINDS``
+#: holds the same words, which it accepts and doctor reads, and a test holds
+#: the two equal.
+KINDS = ("full", "quick", "skipped", "snapshot", "unchanged")
+KIND_FULL, KIND_QUICK, KIND_SKIPPED, KIND_SNAPSHOT, KIND_UNCHANGED = KINDS
 
 #: What a portion says about a rotation that did not happen, as codes rather
 #: than as sentences, for the same reason the labels above are constants: a
@@ -186,6 +207,9 @@ RCLONE_DIRECTORY_NOT_FOUND = 3
 TRANSFERRING_LABELS: frozenset[str] = frozenset(
     {
         MIRROR,
+        QUICK_SEND,
+        QUICK_RESEND,
+        QUICK_ARCHIVE,
         SNAPSHOT_DATABASE,
         SNAPSHOT_SETTINGS,
         SNAPSHOT_IDENTITY,
@@ -201,6 +225,11 @@ TRANSFERRING_LABELS: frozenset[str] = frozenset(
 #: having, and what is lost is that the newest-by-default restore will ask for
 #: this snapshot to be named.
 SNAPSHOT_IDENTITY_NOT_WRITTEN = "snapshot-identity-not-written"
+
+#: A portion completed and the record a quick run reads next time could not be
+#: kept (U317). A warning and not a failure: the backup exists and its age is
+#: true, and what is lost is speed, since the next run is a full check.
+BACKUP_RECORD_NOT_KEPT = "backup-record-not-kept"
 
 #: What a snapshot's identity marker is called, up to the identity itself. The
 #: marker is an EMPTY file whose name carries the value, beside ``db/`` in the
@@ -224,6 +253,19 @@ IDENTITY_MARKER_PREFIX = "library-volume."
 #: wider keep.
 DEFAULT_ARCHIVE_KEEP = 1
 
+#: The flag that is the only way past the content proof (R-1761), named once
+#: so every refusal and failure that names it names the one the verb declares.
+EMPTIED_FLAG = "--library-emptied"
+
+#: R-1761. What a new library's first backup is given, so rclone itself
+#: deletes no file from the mirror: one it would delete fails the run instead.
+#: A new library has nothing to remove, and a lost volume's mount point on an
+#: installation that remembers nothing would otherwise archive the whole
+#: mirror. ``--max-delete`` counts a move into ``--backup-dir`` as a delete. It
+#: stops deletions and not overwrites: a file the library sends over an older
+#: copy still moves that copy into the archive, as every mirror does.
+MOVE_NOTHING = ("--max-delete", "0")
+
 #: The option that makes rclone list the remote in one recursive pass, where it
 #: otherwise asks once per folder (R-757). It changes HOW THE REMOTE IS LISTED
 #: and nothing about what is compared: every file on both sides is still
@@ -240,6 +282,9 @@ FAST_LIST = "--fast-list"
 #: The two ways the mirror lists the remote, as the words a report carries.
 COMPARISON_FAST = "fast"
 COMPARISON_FULL = "full"
+#: A quick run's report (U317), which compared the library with the record and
+#: listed nothing on the remote.
+COMPARISON_QUICK = "quick"
 
 #: What makes rclone say what the mirror did, in a shape that can be read
 #: rather than scraped. Without ``--stats-log-level`` the final totals are
@@ -264,6 +309,13 @@ class Refusal(StrEnum):
     REMOTE_NOT_CONFIGURED = "remote-not-configured"
     DESTINATION_NOT_CONFIGURED = "destination-not-configured"
     LIBRARY_ROOT_ABSENT = "library-root-absent"
+    # R-1761. The root is a directory and not provably this library: a volume
+    # that is not the one recorded for it, or a folder that holds none of its
+    # files, the empty mount point an unmounted drive leaves. Two members for
+    # two acts: the first is fixed only by mounting the right volume, and the
+    # second also by saying the library was emptied on purpose.
+    LIBRARY_ROOT_FOREIGN = "library-root-foreign"
+    LIBRARY_ROOT_UNPROVEN = "library-root-unproven"
     REKORDBOX_RUNNING = "rekordbox-running"
     # U211. The process scan met a live process it could not read, so whether
     # rekordbox is closed was not established. Its own member because "quit
@@ -313,6 +365,11 @@ class Command:
 
     label: str
     argv: tuple[str, ...]
+    #: What the runner pipes to the program, or None for nothing. A quick run's
+    #: paths travel here and rclone reads them with ``--files-from-raw -``, so
+    #: the plan stays data and no list file is left behind. Nothing in this
+    #: module reads its own standard input.
+    feed: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -384,10 +441,40 @@ class PortionPlan:
     detail: str = ""
     commands: tuple[Command, ...] = field(default_factory=tuple)
     warnings: tuple[Mapping[str, str], ...] = field(default_factory=tuple)
+    #: Which kind of run this portion is (U317), one of :data:`KINDS`,
+    #: or empty for a refused portion. A ``skipped`` or ``unchanged`` portion
+    #: carries no command and still runs: it publishes its age, because the
+    #: plan proved the remote already holds what it would have sent.
+    kind: str = ""
+    #: Why the files portion is a full run, or empty when it is not.
+    why: str = ""
+    #: What the walk found changed since the record, by kind of change, or
+    #: None where no comparison with a record was made.
+    changes: Mapping[str, int] | None = None
+    #: What a completed run settles its record from: the walk before the
+    #: transfer, or the fingerprint before the snapshot. None keeps no record.
+    basis: object = field(default=None, compare=False, repr=False)
+    #: The token of the record a skip was proved against, carried onto the
+    #: fact it publishes.
+    record_token: str = ""
+    #: R-1761. The device the library root was on when the plan read it, which
+    #: the full mirror is held to just before it runs, and -1 where it could
+    #: not be read, which holds it to nothing and fails it.
+    root_dev: int = -1
+    #: R-1761. How many files outside the library's own state folder the plan
+    #: found, by the walk or, where it refused, by the probe: the census a
+    #: completed portion keeps.
+    held: int = 0
 
     @property
     def will_run(self) -> bool:
-        return self.refusal is None and bool(self.commands)
+        if self.refusal is not None:
+            return False
+        return bool(self.commands) or self.kind in _NOTHING_TO_SEND
+
+
+#: The kinds that complete with no command, because nothing changed.
+_NOTHING_TO_SEND = frozenset({KIND_SKIPPED, KIND_UNCHANGED})
 
 
 @dataclass(frozen=True, slots=True)
@@ -446,6 +533,13 @@ class PortionOutcome:
     #: no mirror. Built by :func:`comparison_report` from the command AS RUN and
     #: from rclone's own totals.
     comparison: Mapping[str, object] | None = None
+    #: The plan's kind, reason and changes, carried so a report says which kind
+    #: of run this was without the plan beside it (U317).
+    kind: str = ""
+    why: str = ""
+    changes: Mapping[str, int] | None = None
+    #: Wall clock seconds the portion took, its walk included.
+    seconds: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -713,6 +807,11 @@ def plan_backup(
     archive_keep: int = DEFAULT_ARCHIVE_KEEP,
     settings_dirs: Sequence[Path] | None = None,
     full: bool = False,
+    check: bool = False,
+    only: backup_facts.Portion | None = None,
+    emptied: bool = False,
+    identity_provider: preflight.IdentityProvider | None = None,
+    mount_enumerator: preflight.MountEnumerator | None = None,
 ) -> BackupPlan:
     """Decide what a run would do. Touches no remote and copies nothing.
 
@@ -720,6 +819,32 @@ def plan_backup(
     R-757, instead of in one recursive pass. Both modes compare every file, so
     it selects the slower listing that does not depend on the recursive one
     being complete, and nothing else.
+
+    ``check`` asks for a FULL CHECK (U317), the backup as it always was: the
+    mirror lists the remote and compares every file, and the database is
+    snapshotted whether or not it changed. Without it the files portion runs
+    one only when :func:`_full_reason` names a reason, and otherwise compares
+    the library with the record of the last completed backup and plans a quick
+    run of the difference, or a skip; the database is snapshotted only when it
+    changed. ``full`` is a full check too.
+
+    THE WEEKLY FULL CHECK IS THE FILES PORTION'S ALONE. It exists to read the
+    remote again, which only the mirror lists. A queued backup plans each
+    portion in its own item, after the one before it published, so a due date
+    read by the database item would already have moved, and only the frozen
+    flags force a snapshot the same way in both items.
+
+    ``only`` plans one portion, so the item that backs up the database does not
+    walk the library and the item that mirrors it does not read the database.
+
+    THE FILES PORTION PROVES THE ROOT IS THE LIBRARY FIRST (R-1761), or refuses
+    with no command: the recorded volume identity where the platform reads
+    one, and a walk holding the library's files measured against the census
+    the last completed backup kept. ``emptied`` is the one way past the second,
+    for a library its owner emptied on purpose, and ``identity_provider`` and
+    ``mount_enumerator`` are the identity's seams, as ``preflight`` takes them.
+    ``check`` and ``full`` are no way past either: an attended sitting asks for
+    a full check, and the volume may be the thing missing.
 
     The same function serves the dry run and the real run, so "what it says it
     will do" and "what it does" are one decision rather than two that can
@@ -737,9 +862,11 @@ def plan_backup(
     set a variable.
     """
     _require_destinations(cfg)
-    stamp = stamp_for(now or datetime.now(timezone.utc))
+    moment = now or datetime.now(timezone.utc)
+    stamp = stamp_for(moment)
     rclone = binaries.find("rclone")
     portions: list[PortionPlan] = []
+    wanted = tuple(p for p in backup_facts.Portion if only is None or p is only)
 
     if rclone is None:
         detail = (
@@ -751,30 +878,150 @@ def plan_backup(
             archive_keep=archive_keep,
             portions=tuple(
                 PortionPlan(portion=p, refusal=Refusal.RCLONE_MISSING, detail=detail)
-                for p in backup_facts.Portion
+                for p in wanted
             ),
         )
 
-    portions.append(
-        _plan_files(
-            cfg, rclone=rclone, stamp=stamp, archive_keep=archive_keep, full=full
+    if backup_facts.Portion.FILES in wanted:
+        asked = (
+            "a full check was asked for"
+            if check or full
+            else _full_reason(cfg, now=moment)
         )
-    )
-    portions.append(
-        _plan_database(
-            cfg,
-            rclone=rclone,
-            stamp=stamp,
-            process_lister=process_lister,
-            settings_dirs=settings_dirs,
+        portions.append(
+            _plan_files(
+                cfg,
+                rclone=rclone,
+                stamp=stamp,
+                archive_keep=archive_keep,
+                full=full,
+                asked=asked,
+                emptied=emptied,
+                identity_provider=identity_provider,
+                mount_enumerator=mount_enumerator,
+            )
         )
-    )
+    if backup_facts.Portion.DATABASE in wanted:
+        portions.append(
+            _plan_database(
+                cfg,
+                rclone=rclone,
+                stamp=stamp,
+                process_lister=process_lister,
+                settings_dirs=settings_dirs,
+                snapshot_anyway=check or full,
+            )
+        )
     return BackupPlan(stamp=stamp, archive_keep=archive_keep, portions=tuple(portions))
 
 
+def _full_reason(cfg: config.Config, *, now: datetime) -> str:
+    """Why the next run must be a full check by the calendar, or an empty string.
+
+    Read off the files portion's age, which carries the full check's schedule,
+    so the planner and the session gate answer from one reading of the fact
+    file. A fact file that cannot be read is a reason too. A record that is
+    missing or damaged is the files portion's own reason, read where the
+    record is.
+    """
+    try:
+        reported = backup_facts.ages(cfg, now=now)
+    except backup_facts.BackupFactsUnreadable as exc:
+        return f"the record of the last full check could not be read: {exc}"
+    files = next(entry for entry in reported if entry.portion is backup_facts.Portion.FILES)
+    return files.full_check_overdue
+
+
+#: The summary key under which a files fact carries its record's token (U317).
+RECORD_TOKEN = "record"
+
+
+def _strike_token(cfg: config.Config) -> None:
+    """Strike the record's token from the library's files fact, leaving its age.
+
+    Through the fact file's own reader and writer, so the age, its destination,
+    its kind and the held full check and full comparison travel through as they
+    were. A fact with no token is left as it is and the file not rewritten.
+    """
+    fact = backup_facts.read_facts(cfg).get(backup_facts.Portion.FILES)
+    if fact is None or fact.summary is None or RECORD_TOKEN not in fact.summary:
+        return
+    backup_facts.record(
+        cfg,
+        backup_facts.Portion.FILES,
+        completed_at=fact.completed_at,
+        destination=fact.destination,
+        kind=fact.kind,
+        summary={name: value for name, value in fact.summary.items() if name != RECORD_TOKEN},
+    )
+
+
+def _record_unpublished(cfg: config.Config, manifest: backup_record.Manifest) -> str:
+    """Why the library's files fact says another writer reached the mirror.
+
+    THE RECORD IS THIS INSTALLATION'S AND THE MIRROR IS NOT. A second
+    installation of this library, or a build before U317 on this state, mirrors
+    without reading or removing this record, so a run of either that sent or
+    archived files would leave it describing a remote it no longer matches.
+    Each of them publishes a files fact without this record's token, so the
+    fact the library carries is asked: unless it is the one this record was
+    published with, the run is full.
+    """
+    try:
+        fact = backup_facts.read_facts(cfg).get(backup_facts.Portion.FILES)
+    except backup_facts.BackupFactsUnreadable as exc:
+        return f"the record of the last backup's age could not be read: {exc}"
+    held = (fact.summary or {}).get(RECORD_TOKEN) if fact is not None else None
+    if fact is None or not manifest.token or held != manifest.token:
+        return (
+            "the library's backup age was published by a run that did not keep "
+            "this record, another installation or an older build, so the mirror "
+            "may have changed since it was kept"
+        )
+    return ""
+
+
+def _self_written(cfg: config.Config) -> frozenset[str]:
+    """The files under the library root the backup itself rewrites after a run.
+
+    The fact file is library state inside the mirrored tree, and every run
+    publishes it after its transfer, so the remote's copy is a run behind under
+    every kind of run. Counting it would make every run after a backup a
+    change, and no run could ever be skipped.
+    """
+    try:
+        # The fact file's inventory key, which ``backup_facts`` resolves by.
+        rel = config.state_path("backup_facts", cfg).relative_to(cfg.library.root)
+    except ValueError:
+        return frozenset()
+    return frozenset({rel.as_posix()})
+
+
 def _plan_files(
-    cfg: config.Config, *, rclone: str, stamp: str, archive_keep: int, full: bool = False
+    cfg: config.Config,
+    *,
+    rclone: str,
+    stamp: str,
+    archive_keep: int,
+    full: bool = False,
+    asked: str = "a full check was asked for",
+    emptied: bool = False,
+    identity_provider: preflight.IdentityProvider | None = None,
+    mount_enumerator: preflight.MountEnumerator | None = None,
 ) -> PortionPlan:
+    """The files portion: a full check, a quick run of the difference, or a skip.
+
+    ``asked`` is why a full check is due before the record is read, or empty.
+    The library is walked whichever kind follows, because the walk before the
+    transfer is what a completed full check settles the next record from.
+
+    NOTHING IS PLANNED OVER A ROOT THAT IS NOT PROVEN TO BE THE LIBRARY
+    (R-1761). An empty folder at the root, the mount point an unmounted drive
+    leaves, walks as a library with no files, and both a full sync and a quick
+    run of that difference empty the mirror into the archive. So the root is
+    proved by the identity and then by what the walk holds, and a refusal
+    carries no command: no record removed, no token struck, no age published.
+    """
     root = cfg.library.root
     if not root.is_dir():
         return PortionPlan(
@@ -782,6 +1029,356 @@ def _plan_files(
             refusal=Refusal.LIBRARY_ROOT_ABSENT,
             detail=f"the library root {root} is not a directory; mount the volume first",
         )
+    foreign = _not_the_recorded_volume(
+        cfg, identity_provider=identity_provider, mount_enumerator=mount_enumerator
+    )
+    if foreign:
+        return PortionPlan(
+            portion=backup_facts.Portion.FILES,
+            refusal=Refusal.LIBRARY_ROOT_FOREIGN,
+            detail=foreign,
+        )
+    excludes = _mirror_excludes(cfg)
+    state_dirname = cfg.library.state_dirname
+    why = asked
+    manifest: backup_record.Manifest | None = None
+    if not why:
+        manifest, why = backup_record.read_manifest()
+    if manifest is not None and not why:
+        why = backup_record.manifest_mismatch(manifest, cfg, excludes)
+    if manifest is not None and not why:
+        why = _record_unpublished(cfg, manifest)
+    trusted = manifest.entries if manifest is not None and not why else {}
+    try:
+        root_dev = os.stat(root).st_dev
+    except OSError:
+        root_dev = -1
+    try:
+        before = backup_record.walk(
+            root,
+            excludes,
+            hash_paths=[rel for rel, entry in trusted.items() if entry.sha256 is not None],
+        )
+    except backup_record.WalkRefused as exc:
+        before = None
+        why = why or f"the library could not be walked: {exc}"
+    if before is not None:
+        root_dev = before.root_dev
+        anything = bool(before.entries)
+        held = backup_record.count_held(before.entries, state_dirname)
+    else:
+        # The walk refused, so it is counted another way: the floor below
+        # needs a number, and the census this run keeps needs one too.
+        anything, held = backup_record.probe(root, excludes, state_dirname)
+    unproven, new_library = _unproven(cfg, anything=anything, held=held, emptied=emptied)
+    if unproven:
+        return PortionPlan(
+            portion=backup_facts.Portion.FILES,
+            refusal=Refusal.LIBRARY_ROOT_UNPROVEN,
+            detail=unproven,
+        )
+    proof = {"root_dev": root_dev, "held": held}
+    # A ROOT HOLDING NONE OF THE LIBRARY'S FILES IS MIRRORED DELETING NOTHING,
+    # whatever is on record, unless the flag says it was emptied on purpose. A
+    # new library's first backup has nothing to delete, and a census of none
+    # only says the last completed backup held nothing: a later run that failed
+    # part way can have sent files the census never counted, and a full sync
+    # over a lost volume's mount point would archive them. A skip runs no
+    # command and a quick run archives only paths the record held, so both are
+    # planned as any other.
+    move_nothing = held == 0 and not emptied
+    if new_library:
+        why = (
+            "the library holds no file outside its state folder and no "
+            "backup of it is on record, so it runs as a new library's "
+            "first backup, which deletes nothing from the mirror"
+        )
+    if not why and before is not None:
+        found = backup_record.difference(
+            trusted, before.entries, self_written=_self_written(cfg)
+        )
+        if not found.anything:
+            return PortionPlan(
+                portion=backup_facts.Portion.FILES,
+                kind=KIND_SKIPPED,
+                detail="nothing changed since the last completed backup",
+                changes=found.counts(),
+                basis=before,
+                record_token=manifest.token if manifest is not None else "",
+                **proof,
+            )
+        uncomposed = backup_record.first_uncomposed(found.paths)
+        if len(found.paths) > backup_record.QUICK_LIMIT:
+            why = (
+                f"{len(found.paths)} paths changed, more than the "
+                f"{backup_record.QUICK_LIMIT} a quick run is for"
+            )
+        elif uncomposed is not None:
+            why = (
+                f"the changed name {uncomposed!r} is not in composed Unicode form, "
+                f"and a quick run looks each name up on the remote, where a remote "
+                f"that composes names would not find it"
+            )
+        else:
+            return PortionPlan(
+                portion=backup_facts.Portion.FILES,
+                kind=KIND_QUICK,
+                commands=_quick_commands(
+                    cfg, rclone=rclone, stamp=stamp, archive_keep=archive_keep, found=found
+                ),
+                detail=_rotation_detail(archive_keep),
+                changes=found.counts(),
+                basis=before,
+                **proof,
+            )
+    return PortionPlan(
+        portion=backup_facts.Portion.FILES,
+        kind=KIND_FULL,
+        why=why,
+        commands=_full_commands(
+            cfg,
+            rclone=rclone,
+            stamp=stamp,
+            archive_keep=archive_keep,
+            full=full,
+            move_nothing=move_nothing,
+        ),
+        detail=_rotation_detail(archive_keep),
+        basis=before,
+        **proof,
+    )
+
+
+def _not_the_recorded_volume(
+    cfg: config.Config,
+    *,
+    identity_provider: preflight.IdentityProvider | None,
+    mount_enumerator: preflight.MountEnumerator | None,
+) -> str:
+    """Why the root is on a volume other than the library's, or an empty string.
+
+    The first proof (R-1761), through the volume gate destructive sessions
+    pass, read for what it found: a recorded identity read and found elsewhere,
+    or not at all, refuses whatever else the root holds. An identity the
+    platform cannot read, or one never recorded, is no answer and is left to
+    the census, which holds on every platform: every Linux volume reads as the
+    first, and refusing it would stop every backup there.
+
+    An identity read that raises is the same unread identity, left to the
+    census, and never a refusal: a flaky probe of the volume should not stop
+    every backup when the second proof stands on its own.
+    """
+    try:
+        session.assert_volume_identity(
+            cfg, identity_provider=identity_provider, mount_enumerator=mount_enumerator
+        )
+    except CratekitError as exc:
+        found = exc.cause.detail or {}
+        recorded, observed = found.get("recorded_identity"), found.get("observed_identity")
+        if recorded is None or observed is None:
+            return ""
+        return (
+            f"the volume at the library root {cfg.library.root} is not the one "
+            f"recorded for this library (recorded {recorded}, observed {observed}), "
+            f"so the folder there is not proven to be this library and nothing "
+            f"was sent or archived; mount the library's own volume and back up again"
+        )
+    except Exception:  # noqa: BLE001 - an unread identity is left to the census
+        return ""
+    return ""
+
+
+def _history(cfg: config.Config) -> tuple[int | None, str] | None:
+    """How many of the library's files the last completed backup held, and
+    which record says so, or None when no record says a backup was kept.
+
+    THE CENSUS ANSWERS FIRST AND ALONE when there is one for this root and
+    mirror, since it is the one record no run removes: a count of none says the
+    last backup held nothing and there is nothing to guard. Without it, a
+    record kept for this root and mirror (one an older build kept), and then
+    the library's own files fact, which goes with its volume. A count of None
+    is a backup that happened with a count nobody can read.
+    """
+    census = backup_record.read_census(cfg)
+    if census is not None:
+        return census.files, "the last completed backup"
+    manifest, _ = backup_record.read_manifest()
+    if (
+        manifest is not None
+        and manifest.library_root == str(cfg.library.root)
+        and manifest.dest == str(cfg.backup.dest)
+    ):
+        return (
+            backup_record.count_held(manifest.entries, cfg.library.state_dirname),
+            "the record of the last completed backup",
+        )
+    try:
+        fact = backup_facts.read_facts(cfg).get(backup_facts.Portion.FILES)
+    except backup_facts.BackupFactsUnreadable:
+        return None, "the library's own record of its backups"
+    if fact is not None:
+        return None, "the library's own record of its backups"
+    return None
+
+
+def _unproven(
+    cfg: config.Config, *, anything: bool, held: int, emptied: bool
+) -> tuple[str, bool]:
+    """Why what the root holds does not prove it is the library, or an empty
+    string, and whether it is a new library's first backup.
+
+    The second proof (R-1761), and the one that holds where no identity is
+    read. ``anything`` is whether the root holds any file the mirror carries,
+    and ``held`` how many outside the library's own state folder.
+
+    ``emptied`` passes the census and nothing else: the root must still carry
+    the library's own fact of a completed FILES backup, which every completed
+    files run leaves in its state folder. A library its owner emptied keeps
+    it; the mount point a lost volume leaves does not, so a queued job frozen
+    with the flag and driven after the volume went refuses as a plain ask does.
+    The fact file alone proves nothing: the database item of the same job
+    writes one wherever the root is when the database lives outside it, with
+    a database fact and no files fact.
+    """
+    root = cfg.library.root
+    remedy = (
+        f"Mount the library's volume and back up again; if the library was "
+        f"emptied on purpose, back it up with {EMPTIED_FLAG}"
+    )
+    if emptied:
+        try:
+            carried = backup_facts.read_facts(cfg).get(backup_facts.Portion.FILES)
+        except backup_facts.BackupFactsUnreadable:
+            carried = None
+        if carried is not None:
+            return "", False
+        return (
+            f"the backup was asked with {EMPTIED_FLAG} and the library root "
+            f"{root} does not carry the library's own record of a completed "
+            f"files backup, which a library emptied by its owner keeps in its "
+            f"state folder and the folder an unmounted volume leaves does not, "
+            f"so nothing was sent or archived. Mount the library's volume and "
+            f"back up again; a library emptied before its first completed "
+            f"backup needs no flag"
+        ), False
+    history = _history(cfg)
+    if not anything:
+        held_before = ""
+        if history is not None and history[0]:
+            held_before = f", where {history[1]} held {history[0]} files"
+        return (
+            f"the library root {root} holds no file at all, not even the "
+            f"library's own state folder{held_before}, which is what an "
+            f"unmounted volume leaves, so nothing was sent or archived. {remedy}"
+        ), False
+    if history is None:
+        return "", held == 0
+    had, said = history
+    if held == 0 and had != 0:
+        counted = "files" if had is None else f"{had} files"
+        return (
+            f"the library root {root} holds no file outside the library's own "
+            f"state folder, and {said} held {counted}, so nothing was sent or "
+            f"archived. {remedy}"
+        ), False
+    if had and held * backup_record.LIBRARY_FLOOR < had:
+        return (
+            f"the library root {root} holds {held} files outside the library's "
+            f"own state folder, under a tenth of the {had} {said} held, so it is "
+            f"not proven to be the library and nothing was sent or archived. "
+            f"{remedy}"
+        ), False
+    return "", False
+
+
+def _quick_commands(
+    cfg: config.Config,
+    *,
+    rclone: str,
+    stamp: str,
+    archive_keep: int,
+    found: backup_record.Difference,
+) -> tuple[Command, ...]:
+    """A quick run's commands: the difference sent, rewritten and archived.
+
+    NONE LISTS THE REMOTE. ``--no-traverse`` makes rclone look each listed path
+    up on its own, and each still compares size and time before it sends, so a
+    path already current costs a lookup and no transfer.
+
+    The archive is this run's dated folder, the one the full sync's
+    ``--backup-dir`` names, so whatever a quick run overwrites or removes is
+    undoable exactly as a full run's is, and the rotation counts it the same.
+    """
+    root, dest = str(cfg.library.root), str(cfg.backup.dest)
+    archive = f"{cfg.backup.archive_root}/{stamp}"
+    listed = ("--files-from-raw", "-", "--no-traverse")
+    commands: list[Command] = []
+    send = (*found.added, *found.changed)
+    if send:
+        commands.append(
+            Command(
+                label=QUICK_SEND,
+                argv=(
+                    rclone, "copy", root, dest, *listed, "--backup-dir", archive,
+                    "--transfers", "8", "--checkers", "16", *MIRROR_STATS_ARGS,
+                ),
+                feed=backup_record.paths_list(send),
+            )
+        )
+    resend = tuple(sorted((*found.rewritten, *found.doubted)))
+    if resend:
+        # THE ONE PLACE A TIME IS IGNORED, and only for files whose size and
+        # time held while their content hash moved, or whose record was a
+        # doubt. rclone compares size and time, so without this it would find
+        # each one current and send none.
+        commands.append(
+            Command(
+                label=QUICK_RESEND,
+                argv=(
+                    rclone, "copy", root, dest, *listed, "--ignore-times",
+                    "--backup-dir", archive, "--transfers", "8", "--checkers", "16",
+                    *MIRROR_STATS_ARGS,
+                ),
+                feed=backup_record.paths_list(resend),
+            )
+        )
+    if found.removed:
+        # A path already gone from the remote is no error to rclone, so a
+        # retried run archives what is left and nothing else.
+        commands.append(
+            Command(
+                label=QUICK_ARCHIVE,
+                argv=(rclone, "move", dest, archive, *listed, *MIRROR_STATS_ARGS),
+                feed=backup_record.paths_list(found.removed),
+            )
+        )
+    if archive_keep >= 0:
+        commands.append(_prune_listing(cfg, rclone))
+    return tuple(commands)
+
+
+def _prune_listing(cfg: config.Config, rclone: str) -> Command:
+    return Command(
+        label=PRUNE_ARCHIVE,
+        argv=(rclone, "lsf", f"{cfg.backup.archive_root}/", "--dirs-only"),
+    )
+
+
+def _full_commands(
+    cfg: config.Config,
+    *,
+    rclone: str,
+    stamp: str,
+    archive_keep: int,
+    full: bool,
+    move_nothing: bool = False,
+) -> tuple[Command, ...]:
+    """The full check: the mirror as it was before U317, and its rotation.
+
+    ``move_nothing`` adds :data:`MOVE_NOTHING`, for a root holding none of the
+    library's files (R-1761).
+    """
+    root = cfg.library.root
     archive = f"{cfg.backup.archive_root}/{stamp}"
     commands = [
         Command(
@@ -798,6 +1395,7 @@ def _plan_files(
                 # cannot drift apart in anything else: the excludes, the
                 # archive and the comparison itself are the same arguments.
                 *(() if full else (FAST_LIST,)),
+                *(MOVE_NOTHING if move_nothing else ()),
                 *MIRROR_STATS_ARGS,
             ),
         )
@@ -807,17 +1405,8 @@ def _plan_files(
         # succeeds, so a failed backup never removes the rollback it might need.
         # A negative keep disables pruning entirely, for a user whose remote has
         # room and who would rather keep every run's archive.
-        commands.append(
-            Command(
-                label=PRUNE_ARCHIVE,
-                argv=(rclone, "lsf", f"{cfg.backup.archive_root}/", "--dirs-only"),
-            )
-        )
-    return PortionPlan(
-        portion=backup_facts.Portion.FILES,
-        commands=tuple(commands),
-        detail=_rotation_detail(archive_keep),
-    )
+        commands.append(_prune_listing(cfg, rclone))
+    return tuple(commands)
 
 
 def _rotation_detail(archive_keep: int) -> str:
@@ -845,7 +1434,18 @@ def _plan_database(
     stamp: str,
     process_lister: ProcessLister | None,
     settings_dirs: Sequence[Path] | None,
+    snapshot_anyway: bool = True,
 ) -> PortionPlan:
+    """The database portion: a dated snapshot, or none when nothing changed.
+
+    THE FINGERPRINT IS TAKEN ONLY BELOW THE PROCESS CHECK (U317), because it
+    reads the live database, and CLAUDE.md allows the backup that read only
+    with both rekordbox processes confirmed gone. A refused or unconfirmed scan
+    returns above it, so nothing here opens the database file.
+
+    ``snapshot_anyway`` is a full check's: the database is snapshotted whether
+    or not it changed, so a full check is the backup as it always was.
+    """
     uncovered = absent_analysis_share(cfg)
     try:
         running = rekordbox_processes_running(lister=process_lister)
@@ -920,6 +1520,31 @@ def _plan_database(
     resolved_settings = (
         settings_directories() if settings_dirs is None else tuple(settings_dirs)
     )
+    share = _outside_share(cfg)
+    carried_share = share if share is not None and share.is_dir() else None
+    fileset = database_fileset(cfg)
+    folders = (*resolved_settings, *((carried_share,) if carried_share is not None else ()))
+    key = backup_record.fingerprint_key(cfg, marker)
+    fingerprint = backup_record.database_fingerprint(fileset, folders)
+    if not snapshot_anyway and fingerprint is not None:
+        held = backup_record.read_fingerprint()
+        if (
+            held is not None
+            and held.get("fingerprint") == fingerprint
+            and all(held.get(name) == value for name, value in key.items())
+        ):
+            return PortionPlan(
+                portion=backup_facts.Portion.DATABASE,
+                kind=KIND_UNCHANGED,
+                detail=(
+                    "the database, its settings and its analysis share are what "
+                    "the last completed snapshot copied, so no new one is taken"
+                ),
+                warnings=tuple(warnings),
+            )
+    basis = (
+        None if fingerprint is None else (key, fingerprint, fileset, folders, process_lister)
+    )
     for directory in resolved_settings:
         commands.append(
             Command(
@@ -936,8 +1561,8 @@ def _plan_database(
     # the executor stops at the first failing command: a share that fails after
     # the settings costs the settings nothing. It still FAILS the portion, so no
     # database age is published over a library whose grids did not copy.
-    share = _outside_share(cfg)
-    if share is not None and share.is_dir():
+    if carried_share is not None:
+        share = carried_share
         kept = share_destination(cfg, identity=cfg.library.volume_id)
         commands.append(
             Command(
@@ -955,8 +1580,10 @@ def _plan_database(
         )
     return PortionPlan(
         portion=backup_facts.Portion.DATABASE,
+        kind=KIND_SNAPSHOT,
         commands=tuple(commands),
         warnings=tuple(warnings),
+        basis=basis,
     )
 
 
@@ -1050,7 +1677,6 @@ def absent_analysis_share(cfg: config.Config) -> tuple[Mapping[str, str], ...]:
 def subprocess_runner(command: Command) -> CommandResult:
     """Run one command with the fallback directories on PATH and no credentials."""
     import subprocess
-    import time
 
     started = time.monotonic()
     completed = subprocess.run(
@@ -1059,6 +1685,9 @@ def subprocess_runner(command: Command) -> CommandResult:
         text=True,
         env=binaries.subprocess_env(),
         check=False,
+        # A quick run's paths (U317). None leaves standard input as it was for
+        # every command that reads none.
+        **({"input": command.feed} if command.feed is not None else {}),
     )
     return CommandResult(
         returncode=completed.returncode,
@@ -1219,6 +1848,43 @@ def run_backup(
             )
             continue
 
+        started = time.monotonic()
+        planned = {"kind": entry.kind, "why": entry.why, "changes": entry.changes}
+        if not dry_run and entry.commands:
+            # THE RECORD GOES BEFORE THE FIRST TRANSFER IT DESCRIBES (U317), and
+            # a record that cannot be removed stops the portion before anything
+            # is sent. A record that outlived a failed run could be compared
+            # with a tree a person then put back, and would answer "nothing
+            # changed" over a remote the failed run half rewrote. Removed, the
+            # next run is full whatever happens below.
+            try:
+                backup_record.invalidate(_record_path(entry.portion))
+                if entry.portion is backup_facts.Portion.FILES:
+                    # AND THE TOKEN GOES FROM THE LIBRARY'S FACT WITH IT, so a
+                    # run that fails after sending leaves every installation's
+                    # record untrusted, this one's and any other's: a record is
+                    # trusted only while the fact carries its token, and a
+                    # failed run publishes no fact to replace it.
+                    _strike_token(cfg)
+            # A fact file that cannot be read raises out of here, before
+            # anything is sent, and the shell refuses with the file it names,
+            # as it does when the publish after a transfer meets the same file.
+            except OSError as exc:
+                outcomes.append(
+                    PortionOutcome(
+                        portion=entry.portion,
+                        ran=False,
+                        detail=(
+                            f"{entry.portion.value} portion failed before sending "
+                            f"anything: the record of the last backup could not be "
+                            f"removed ahead of the transfer: {exc}"
+                        ),
+                        warnings=entry.warnings,
+                        **planned,
+                    )
+                )
+                continue
+
         results: list[CommandResult] = []
         warnings: list[Mapping[str, str]] = list(entry.warnings)
         failed: CommandResult | None = None
@@ -1229,6 +1895,8 @@ def run_backup(
         # belongs to which command, and the prune returns a variable number.
         executed: list[Command] = []
         comparison: Mapping[str, object] | None = None
+        quick: list[tuple[Command, CommandResult]] = []
+        marker_failed = False
 
         def recorded(command: Command, _executed: list[Command] = executed) -> CommandResult:
             _executed.append(command)
@@ -1263,14 +1931,57 @@ def run_backup(
                     warnings.append(warning)
                 continue
             if dry_run:
-                command = Command(label=command.label, argv=dry_run_argv(command))
+                command = Command(
+                    label=command.label, argv=dry_run_argv(command), feed=command.feed
+                )
+            elif command.label in QUICK_LABELS and isinstance(entry.basis, backup_record.Walk):
+                # THE PLAN'S WALK CAN BE MINUTES OLD BY NOW. Every quick command
+                # runs only while the root is still the volume it walked, and
+                # what it found removed is archived off the mirror only while
+                # every path is still absent, so a volume unmounted after the
+                # plan fails the portion here rather than emptying the mirror or
+                # sending nothing and calling that a backup.
+                stale = backup_record.still_removed(
+                    cfg.library.root,
+                    entry.basis.root_dev,
+                    backup_record.paths_from(command.feed)
+                    if command.label == QUICK_ARCHIVE
+                    else (),
+                )
+                if stale:
+                    failed = CommandResult(
+                        returncode=1, stderr=f"nothing was archived: {stale}"
+                    )
+                    break
+            elif command.label == MIRROR:
+                # R-1761, THE SAME QUESTION ASKED OF THE FULL SYNC, which would
+                # empty the mirror into the archive to match a folder a volume
+                # unmounted after the plan left behind. The root must still be
+                # the device the plan read and, where the plan found the
+                # library's files, still hold one.
+                lost = backup_record.root_still_holds(
+                    cfg.library.root,
+                    entry.root_dev,
+                    _mirror_excludes(cfg),
+                    cfg.library.state_dirname,
+                    files=entry.held != 0,
+                )
+                if lost:
+                    failed = CommandResult(
+                        returncode=1, stderr=f"nothing was sent or archived: {lost}"
+                    )
+                    break
             result = recorded(command)
             results.append(result)
             if command.label == MIRROR:
                 # READ WHETHER OR NOT THE MIRROR SUCCEEDED, so a run that failed
                 # after sending half of what changed still says how far it got.
                 comparison = comparison_report(command, result)
+            if command.label in QUICK_LABELS:
+                quick.append((command, result))
+                comparison = quick_report(quick)
             if result.returncode != 0 and command.label == SNAPSHOT_IDENTITY:
+                marker_failed = True
                 # THE SECOND CLASS THIS LOOP DOES NOT FAIL ON. By the time the
                 # marker is attempted the whole database set has copied, and
                 # that copy is what the portion is for. Failing here would skip
@@ -1295,19 +2006,69 @@ def run_backup(
                 break
 
         if failed is not None:
+            said = _said(failed.stderr)[-400:]
+            if (
+                executed
+                and executed[-1].label == MIRROR
+                and _moves_nothing(executed[-1])
+                # rclone names the option it stopped on, "max-delete
+                # threshold reached", read off the option itself.
+                and MOVE_NOTHING[0].lstrip("-") in failed.stderr
+            ):
+                said += (
+                    f". The library holds none of its files outside its state "
+                    f"folder, so this mirror was told to delete nothing from "
+                    f"the remote, and the remote holds files it would have "
+                    f"moved into the archive. "
+                    f"Mount the library's volume and back up again; if the "
+                    f"library was emptied on purpose, back it up with {EMPTIED_FLAG}"
+                )
             outcomes.append(
                 PortionOutcome(
                     portion=entry.portion,
                     ran=False,
-                    detail=f"{entry.portion.value} portion failed: {_said(failed.stderr)[-400:]}",
+                    detail=f"{entry.portion.value} portion failed: {said}",
                     results=tuple(results),
                     warnings=tuple(warnings),
                     commands=tuple(executed),
                     comparison=comparison,
+                    seconds=time.monotonic() - started,
+                    **planned,
                 )
             )
             continue
 
+        if publish and entry.commands:
+            # ONLY AFTER EVERY COMMAND RETURNED ZERO, and only where a record
+            # was removed above, so a skip keeps the record it was proved
+            # against and a rehearsal touches neither.
+            kept, token = _settle_record(
+                cfg, entry, at=moment, marker_failed=marker_failed
+            )
+            if kept is not None:
+                warnings.append(kept)
+        else:
+            # A skip keeps the record it was proved against, and its fact
+            # carries that record's token on, so the next run trusts it still.
+            token = entry.record_token
+        if publish and entry.portion is backup_facts.Portion.FILES:
+            # R-1761. The census every completed files portion leaves, a skip
+            # included, and the one record no run removes before it sends.
+            try:
+                backup_record.write_census(cfg, entry.held, at=moment)
+            except OSError as exc:
+                warnings.append(
+                    {
+                        "code": BACKUP_RECORD_NOT_KEPT,
+                        "message": (
+                            f"the files portion completed and the count of the "
+                            f"library's files the next backup is checked against "
+                            f"was not kept: {exc}. The next backup proves the "
+                            f"library against the older count, or the record"
+                        ),
+                    }
+                )
+        seconds = time.monotonic() - started + _walk_seconds(entry)
         if publish:
             backup_facts.record(
                 cfg,
@@ -1321,6 +2082,14 @@ def run_backup(
                     comparison is not None
                     and comparison["mode"] == COMPARISON_FULL
                 ),
+                # A FULL CHECK IS THE MIRROR THAT RAN, in either listing mode,
+                # read off the command as run like the fact above.
+                full_check=(
+                    comparison is not None
+                    and comparison["mode"] in (COMPARISON_FAST, COMPARISON_FULL)
+                ),
+                kind=entry.kind or None,
+                summary=_summary(entry, comparison, seconds, token=token),
             )
         outcomes.append(
             PortionOutcome(
@@ -1330,6 +2099,8 @@ def run_backup(
                 warnings=tuple(warnings),
                 commands=tuple(executed),
                 comparison=comparison,
+                seconds=seconds,
+                **planned,
             )
         )
 
@@ -1338,6 +2109,161 @@ def run_backup(
     # still copied the library; a rehearsal is the one that did not. The flag
     # recorded is the one this body branched its neutralisation on.
     return BackupOutcome(stamp=plan.stamp, portions=tuple(outcomes), dry_run=dry_run)
+
+
+def _moves_nothing(command: Command) -> bool:
+    """Whether a mirror command was told to delete nothing from the remote."""
+    argv = command.argv
+    return any(
+        argv[i : i + len(MOVE_NOTHING)] == MOVE_NOTHING for i in range(len(argv))
+    )
+
+
+def _record_path(portion: backup_facts.Portion) -> Path:
+    """The record a portion's transfer would make untrue."""
+    if portion is backup_facts.Portion.DATABASE:
+        return backup_record.fingerprint_path()
+    return backup_record.manifest_path()
+
+
+def _walk_seconds(entry: PortionPlan) -> float:
+    """The seconds the plan spent walking the library for this portion."""
+    return entry.basis.seconds if isinstance(entry.basis, backup_record.Walk) else 0.0
+
+
+def _settle_record(
+    cfg: config.Config, entry: PortionPlan, *, at: datetime, marker_failed: bool = False
+) -> tuple[Mapping[str, str] | None, str]:
+    """Keep the record a completed portion leaves, or say why it was not kept.
+
+    THE FILES RECORD IS SETTLED FROM TWO WALKS. The one before the transfer is
+    the plan's; the one after is taken here, hashing the same files against the
+    same instant, and :func:`backup_record.settled` trusts only the entries the
+    two agree on. THE DATABASE FINGERPRINT is taken again the same way and kept
+    only when it equals the one taken before the copy, since a database that
+    moved while it copied may be in the snapshot in either version.
+
+    Nothing kept is not a failure: the backup exists and its age is true, and
+    the next run is full. Each reason is said, so a person whose runs stay slow
+    is told why.
+
+    THE SECOND READING OF THE DATABASE IS HELD TO THE RULE THE FIRST WAS: the
+    processes are scanned again first, and with either running or unconfirmed
+    the database is not read and no fingerprint is kept. A snapshot whose
+    identity marker failed keeps none either, so the next run takes a fresh,
+    marked one rather than calling the unmarked one current.
+
+    Returns the warning, or None, and the token the files record was kept
+    under, or an empty string.
+    """
+    basis = entry.basis
+    try:
+        if isinstance(basis, backup_record.Walk):
+            excludes = _mirror_excludes(cfg)
+            after = backup_record.walk(
+                cfg.library.root,
+                excludes,
+                hash_paths=[rel for rel, e in basis.entries.items() if e.sha256 is not None],
+                racy_after_ns=basis.racy_after_ns,
+            )
+            token = backup_record.new_token()
+            backup_record.write_manifest(
+                cfg, excludes, backup_record.settled(basis, after), at=at, token=token
+            )
+            return None, token
+        if isinstance(basis, tuple):
+            key, fingerprint, fileset, folders, lister = basis
+            if marker_failed:
+                why = "the snapshot's identity marker could not be written"
+            elif _not_confirmed_gone(lister):
+                why = "rekordbox was not confirmed gone after the copy"
+            elif backup_record.database_fingerprint(fileset, folders) == fingerprint:
+                backup_record.write_fingerprint(key, fingerprint, at=at)
+                return None, ""
+            else:
+                why = "the database or a folder beside it changed while it was copied"
+        else:
+            why = "what it held before the transfer could not be read"
+    except (backup_record.WalkRefused, OSError) as exc:
+        why = str(exc)
+    return {
+        "code": BACKUP_RECORD_NOT_KEPT,
+        "message": (
+            f"the {entry.portion.value} portion completed and the record the next "
+            f"run compares against was not kept: {why}. The next backup of it "
+            f"is a full one"
+        ),
+    }, ""
+
+
+def _not_confirmed_gone(lister: ProcessLister | None) -> bool:
+    try:
+        return bool(rekordbox_processes_running(lister=lister))
+    except AbsenceUnconfirmed:
+        return True
+
+
+def _summary(
+    entry: PortionPlan,
+    comparison: Mapping[str, object] | None,
+    seconds: float,
+    *,
+    token: str = "",
+) -> dict[str, object]:
+    """What a fact records about the run that completed it (U317).
+
+    ``record`` is the token of the files record this run left, the one thing
+    here a run decides on: a quick run or a skip trusts the record only while
+    the library's files fact still carries it.
+    """
+    out: dict[str, object] = {"seconds": round(seconds, 1)}
+    if token:
+        out[RECORD_TOKEN] = token
+    if entry.why:
+        out["why"] = entry.why
+    if entry.changes is not None:
+        out.update(entry.changes)
+    if comparison is not None:
+        for name in ("sent", "archived", "checked"):
+            if comparison.get(name) is not None:
+                out[name] = comparison[name]
+    return out
+
+
+def quick_report(ran: Sequence[tuple[Command, CommandResult]]) -> dict[str, object]:
+    """What a quick run's commands did, in the comparison's own words (U317).
+
+    rclone's totals per command, read the way :func:`comparison_report` reads
+    the mirror's and summed: ``sent`` is what the two copies transferred,
+    ``archived`` what the move put in the dated archive, and ``checked`` the
+    listed paths a copy found already current. A total any command did not give
+    makes its sum unread, None and never zero, for the reason given there.
+    """
+
+    def total(labels: frozenset[str], key: str) -> int | float | None:
+        found = [
+            comparison_report(command, result)[key]
+            for command, result in ran
+            if command.label in labels
+        ]
+        if not found:
+            return 0
+        if any(value is None for value in found):
+            return None
+        return sum(found)  # type: ignore[arg-type]
+
+    sending = frozenset({QUICK_SEND, QUICK_RESEND})
+    elapsed = [result.elapsed for _, result in ran]
+    return {
+        "mode": COMPARISON_QUICK,
+        "seconds": None if any(e is None for e in elapsed) else sum(elapsed),  # type: ignore[arg-type]
+        "sent": total(sending, "sent"),
+        "sent_bytes": total(sending, "sent_bytes"),
+        "checked": total(sending, "checked"),
+        # A copy's --backup-dir moves what it overwrites into the archive, and
+        # rclone counts each such move as a rename, as it does the archive's.
+        "archived": total(QUICK_LABELS, "renames"),
+    }
 
 
 def _destination_for(cfg: config.Config, portion: backup_facts.Portion) -> str:
@@ -2248,6 +3174,25 @@ def _ran(results: tuple[CommandResult, ...], plan: RestorePlan) -> tuple[Command
 PAYLOAD_VERSION = 1
 
 
+def _listed(command: Command) -> dict[str, int]:
+    """How many paths a command read on standard input, never the paths.
+
+    A quick run can list thousands, and the report names the count and leaves
+    the paths to the record.
+    """
+    if command.feed is None:
+        return {}
+    return {"paths": len(backup_record.paths_from(command.feed))}
+
+
+def _kind_fields(kind: str, why: str, changes: Mapping[str, int] | None) -> dict:
+    return {
+        "kind": kind or None,
+        "why": why or None,
+        "changes": dict(changes) if changes is not None else None,
+    }
+
+
 def plan_payload(plan: BackupPlan) -> dict:
     """A plan as plain data. Human rendering stays with the CLI."""
     return {
@@ -2260,9 +3205,11 @@ def plan_payload(plan: BackupPlan) -> dict:
                 "refusal": entry.refusal.value if entry.refusal else None,
                 "detail": entry.detail,
                 "commands": [
-                    {"label": c.label, "argv": list(c.argv)} for c in entry.commands
+                    {"label": c.label, "argv": list(c.argv), **_listed(c)}
+                    for c in entry.commands
                 ],
                 "warnings": [dict(warning) for warning in entry.warnings],
+                **_kind_fields(entry.kind, entry.why, entry.changes),
             }
             for entry in plan.portions
         ],
@@ -2313,9 +3260,13 @@ def outcome_payload(outcome: BackupOutcome) -> dict:
                         "label": command.label,
                         "argv": list(command.argv),
                         "returncode": result.returncode,
+                        **_listed(command),
                     }
                     for command, result in zip(entry.commands, entry.results, strict=True)
                 ],
+                # U317. Fields that join, so ``PAYLOAD_VERSION`` stays.
+                **_kind_fields(entry.kind, entry.why, entry.changes),
+                "seconds": entry.seconds,
             }
             for entry in outcome.portions
         ],
@@ -2323,13 +3274,26 @@ def outcome_payload(outcome: BackupOutcome) -> dict:
 
 
 __all__ = [
+    "BACKUP_RECORD_NOT_KEPT",
     "COMPARISON_FAST",
     "COMPARISON_FULL",
+    "COMPARISON_QUICK",
     "DEFAULT_ARCHIVE_KEEP",
     "FAST_LIST",
     "MIRROR",
     "MIRROR_STATS_ARGS",
     "PAYLOAD_VERSION",
+    "QUICK_ARCHIVE",
+    "QUICK_LABELS",
+    "QUICK_RESEND",
+    "QUICK_SEND",
+    "KINDS",
+    "KIND_FULL",
+    "KIND_QUICK",
+    "KIND_SKIPPED",
+    "KIND_SNAPSHOT",
+    "KIND_UNCHANGED",
+    "RECORD_TOKEN",
     "REFUSALS",
     "REKORDBOX_PROCESSES",
     "RESTORE_WORKFLOW",
@@ -2363,6 +3327,7 @@ __all__ = [
     "plan_payload",
     "plan_restore",
     "outcome_payload",
+    "quick_report",
     "rekordbox_processes_running",
     "run_backup",
     "run_restore",

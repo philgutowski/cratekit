@@ -894,6 +894,19 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="schedule_log",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="schedule/sync-night.log",
+        why=(
+            "What the scheduled night pass printed (U295): launchd appends the "
+            "agent's output and errors here, the one place a night that never "
+            "reached its own record says why. It describes this installation's "
+            "schedule, not a library, and losing it loses only the output."
+        ),
+    ),
+    StateFile(
         key="staging_lock",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.INSTALLATION,
@@ -903,7 +916,8 @@ STATE_FILES: tuple[StateFile, ...] = (
             "One pass stages at a time (U293): crate sync land, crate label "
             "sync --go and crate sync night hold it for the whole of a run, so "
             "the night pass and a pass by hand never download into the one "
-            "staging folder together. The kernel releases it when its holder "
+            "staging folder together; crate schedule install and remove hold "
+            "it around their bootout (U295), so they never end a night pass. The kernel releases it when its holder "
             "dies; the holder written inside is for the refusal's words."
         ),
     ),
@@ -1133,6 +1147,60 @@ STATE_FILES: tuple[StateFile, ...] = (
             "Installation-scoped beside the job queue it is keyed by, so job "
             "show finds it from the job identifier alone. NEVER_RESTORED for the "
             "job queue's reason: it describes one machine's work, not the library."
+        ),
+    ),
+    StateFile(
+        key="backup_manifest",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="backup_manifest.json.gz",
+        why=(
+            "What the last completed file mirror left on the remote, path by "
+            "path, so a backup that changed little sends only the change and one "
+            "that changed nothing is skipped (U317). INSTALLATION and never "
+            "library state: the library's state folder is inside the mirrored "
+            "tree, so a record kept there would change the tree each time it was "
+            "written and no run could skip. It names the library, the mirror and "
+            "the exclude set it was kept for, and carries a token the library's "
+            "files fact is published with, so a record for any other library or "
+            "remote, or one a second installation or an older build has since "
+            "backed up past, is not trusted: either costs one full run and never "
+            "a wrong skip. NEVER_RESTORED: it describes the remote, which a "
+            "restore does not roll back."
+        ),
+    ),
+    StateFile(
+        key="backup_database_fingerprint",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="backup_database_fingerprint.json",
+        why=(
+            "The content fingerprint of the database set the last completed "
+            "snapshot copied, so a database that has not changed since is not "
+            "copied again (U317). Installation state for the manifest's reason, "
+            "and keyed by the database path, the snapshot root and the library "
+            "identity, so a fingerprint taken for another is not compared. "
+            "NEVER_RESTORED: it describes a snapshot on the remote."
+        ),
+    ),
+    StateFile(
+        key="backup_census",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="backup_census.json",
+        why=(
+            "How many files outside the library's own state folder the last "
+            "completed file mirror walked, for this library root and mirror "
+            "(R-1761). It is what lets a backup refuse an empty folder left "
+            "where an unmounted volume was, which a full sync would otherwise "
+            "empty the mirror to match. INSTALLATION for the manifest's reason, "
+            "and also because the library's own state goes with the volume it "
+            "would be guarding. Unlike the manifest it is NEVER removed before a "
+            "transfer, so a failed run still leaves it saying what the library "
+            "held. NEVER_RESTORED: it describes the remote."
         ),
     ),
     StateFile(

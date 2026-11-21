@@ -26,10 +26,11 @@ most conservative one when none is named, write the decision and why into
 the sitting record, STATE.md and a Progress comment on the card, and carry
 on. Leave for him only the steps that physically need him (hardware he must
 plug in or carry) or that the permission system refuses; those go in the
-closing report, never as a wait. This is the one place the skill departs
-from CLAUDE.md, whose stop takes the conservative call: here the
-recommendation wins, by that instruction, and the record says which was
-taken.
+closing report, never as a wait. Here the skill departs from CLAUDE.md's
+stop, which takes the conservative call: in a sitting the recommendation
+wins, by that instruction, and the record says which was taken. Only the
+orchestrator takes the recommendation; a worker still takes the
+conservative reading, as `WORKER.md` says.
 
 ## 1. Orientation, before anything else
 
@@ -79,11 +80,17 @@ taken.
 ## 2. The shared state, and how the workers take direction
 
 All coordination lives in one folder inside the checkout's ignored `.local/`
-directory, so nothing in it is ever committed: `.local/attended/<DATE>/`,
-with `<DATE>` the sitting's start date in the form 2026-11-21, kept for the
-whole sitting across midnight. Create it at the start,
-and write the real date wherever `<DATE>` appears, in the copy of
-`WORKER.md` and the kickoff line too. Its layout:
+directory, so nothing in it is ever committed:
+`.local/attended/<DATE>-s<N>/`, with `<DATE>` the sitting's start date in
+the form 2026-11-21 and `<N>` the sitting number, this sitting's own, one
+past the last that orientation read, so two
+sittings on one day never share a folder. The name is kept for the whole
+sitting across midnight. Create it at the start, and write the real date and
+number wherever `<DATE>-s<N>` appears, in the copy of `WORKER.md` and the
+kickoff line too. A fresh orchestrator lists `.local/attended/` first and
+resumes from the folder whose STATE.md is not at its end state, the newest
+if two are; a folder named by date alone predates this form and is
+finished. With none, it starts a new sitting in a new folder. Its layout:
 
     STATE.md                 the ledger, written by the orchestrator only
     WORKER.md                the worker rules, copied from this skill's folder
@@ -92,7 +99,15 @@ and write the real date wherever `<DATE>` appears, in the copy of
     workers/W1/status        one word: starting, idle, working, retiring
     workers/W1/done/         finished orders and reports, numbered, kept
     workers/W2/...           the same for W2
-    scratch/                 temporary copies, sweeps' JSON, database diffs
+    scratch/                 sweeps' JSON, diff reports, long output, the throwaway audio
+
+**Copies live on the library volume, never here.** The checkout is
+mirrored to Google Drive, so no copy of a library audio file and no copy of
+a database ever goes in the state folder, `scratch/` included. Every such
+copy goes in a folder named `<DATE>-s<N>`, made at the start one level down
+in the library volume's scratch folder and called the volume copies folder
+below; an order names it to the worker. The state folder keeps orders,
+reports, STATE.md, JSON summaries and the throwaway audio only.
 
 **STATE.md** lets any session, a fresh orchestrator included, pick up the
 sitting cold. Keep it short and current: the sitting number and the `main`
@@ -100,7 +115,9 @@ commit; which `crate` each card runs on; one line per card with its status
 (todo, in progress with whom, done with the record commit, left open and
 why); every decision taken under the standing instruction with its reason;
 who holds the live library and desktop control (always the orchestrator);
-and the next step. Rewrite it after every step that changes any of these.
+and the next step, which reads `none, the sitting is over` only at the end:
+that is its end state. Rewrite it after every step that changes any of
+these.
 
 **An order** is a markdown file that stands alone: the cards it serves, the
 goal, the exact commands (with which `crate`), what to read and count, what
@@ -118,20 +135,27 @@ background shell that exits when it appears with the worker idle or
 retiring, run in the background so it wakes this session when it exits, and
 get on with other work meanwhile:
 
-    until [ -f .local/attended/<DATE>/workers/W1/report.md ] && grep -qxE 'idle|retiring' .local/attended/<DATE>/workers/W1/status; do sleep 30; done
+    until [ -f .local/attended/<DATE>-s<N>/workers/W1/report.md ] && grep -qxE 'idle|retiring' .local/attended/<DATE>-s<N>/workers/W1/status; do sleep 30; done
 
 A worker that reads `retiring` has stopped: read its report, then ask
 Phillip for a fresh one, as Keeping context small below says.
 
 **Starting the workers.** Right after orientation, copy this skill's
-`WORKER.md` into the state folder with the date written in, create
+`WORKER.md` into the state folder with the date and number written in, create
 `workers/W1` and `workers/W2` with status `starting`, post a macOS
 notification besides saying it in the reply, and ask Phillip to open two new
 terminal tabs in this checkout, run `claude` in each, and paste:
 
-    You are Cratekit attended worker W1. Read .local/attended/<DATE>/WORKER.md and follow it.
+    You are Cratekit attended worker W1. Read .local/attended/<DATE>-s<N>/WORKER.md and follow it.
 
-(W2 in the second tab.) The notification:
+(W2 in the second tab.) Print each line in the reply and put it on the
+clipboard too, since Phillip may not see a printed line to copy it: W1's
+first, and W2's once he says W1's is pasted or W1's status leaves
+`starting`, so the clipboard holds one line at a time:
+
+    printf '%s' 'You are Cratekit attended worker W1. Read .local/attended/<DATE>-s<N>/WORKER.md and follow it.' | pbcopy
+
+The notification:
 
     osascript -e 'display notification "Start workers W1 and W2" with title "Cratekit orchestrator"'
 
@@ -144,9 +168,17 @@ tool), so that only its report enters this context.
 **Who does what.** The orchestrator alone: desktop control, rekordbox, the
 streaming app, every live gated verb and its approval, `crate backup run`,
 `crate session ack`, every commit, push, card comment and card close.
-Workers: the macOS battery, sweeps and reads on copies in `scratch/`,
-database diffs on disposable copies, reading the code and docs, drafting
-records and card briefs. `WORKER.md` lists what a worker never does.
+Workers: the macOS battery, sweeps and reads on copies in the volume copies
+folder, database diffs on disposable copies there, reading the code and
+docs, drafting records and card briefs. `WORKER.md` lists what a worker
+never does, and where its database copy comes from.
+
+**The backup from this session.** `crate backup run` only queues, with a
+terminal or without: it queues its job, prints the job's identifier
+and exits without copying anything. Drive that job with
+`crate backup run --job ID` under `nohup`, started in a background shell
+that waits on that process, and read the job's result before the step that
+needed the backup.
 
 **The checkout holds still while a worker runs from it.** The battery, a
 sweep and a database diff all run from this checkout's editable install, so no
@@ -157,7 +189,8 @@ preflight finds no job running.
 
 **Keeping context small.** Give each order one job. A worker near half its
 context finishes its order, writes `retiring` and stops; notify Phillip to
-start a fresh one in a new tab with the same kickoff line, and it takes the
+start a fresh one in a new tab with the same kickoff line, printed and put
+on the clipboard as Starting the workers says, and it takes the
 same name and reads `done/` for history. When this session's context passes
 about half, finish the step in hand, bring STATE.md fully up to date,
 release desktop control as the `rekordbox-visit` skill's preflight says, and
@@ -213,7 +246,8 @@ calibration.
 
 **Sweeps and other reads on copies (a worker, beside the battery).** A card
 that reads a `tag folder` run, a matcher or anything else off files runs on
-copies in `scratch/`, never on the library's own files: the worker copies
+copies in the volume copies folder, never on the library's own files and
+never in the state folder: the worker copies
 the shape the card describes, clears what it says to clear, runs the verb
 under `crate --output json`, and reports each number the card's "Done when" asks
 for. One sweep shaped for several cards serves them all, and the order says
@@ -221,14 +255,23 @@ which card reads which count. A card whose unit is still open records what
 this run read and closes only if its own "Done when" is met whole.
 
 **Settlements in rekordbox (the orchestrator).** A card that asks what
-rekordbox itself writes runs early, because a unit waits on it. Use a
-throwaway file made in `scratch/` (a ten second silent AIFF) and a playlist
-made by hand, never a real track; take the BEFORE and AFTER copies the card
-asks for with `crate backup run`, each after both processes are confirmed
-gone; hand the table by table comparison of disposable copies to a free
-worker; put the library back as it was the next time rekordbox is open; and
+rekordbox itself writes runs early, because a unit waits on it. It does
+only what CLAUDE.md's rekordbox constraint allows such a card, read there
+and not restated here, and never touches a real track. The throwaway is a
+short AIFF made in `scratch/`, silent unless the card needs it analysed, and
+then a click track, since rekordbox does not analyse silence (sitting 102
+used a click of sixty seconds at 120 BPM, which rekordbox read as 120.00).
+Bring it in beside a playlist made by hand for the check; take the BEFORE
+and AFTER copies the card asks for with `crate backup run`, each after both
+processes are confirmed gone; hand the table by table comparison of
+disposable copies to a free worker, which fetches both read only from the
+backup remote into the volume copies folder (a database portion that reads
+`unchanged` made no new snapshot, so its copy is the newest earlier one); put the library back as it was the next time rekordbox is open; and
 record the shape as a `docs/solutions/` entry and a sitting line, and in the
-waiting unit's brief under a heading naming the settling card.
+waiting unit's brief under a heading naming the settling card. If rekordbox
+raises its Auto Analysis dialog on a launch that is not the visit, answer it
+Cancel and record it, so nothing is analysed outside the visit's own read of
+its fields.
 
 **One sync pass and its visit (the orchestrator).** The `crate-sync` skill
 runs it end to end, and the `rekordbox-visit` skill is its visit, on the
@@ -238,8 +281,9 @@ resolve (a review answered by the recommendation it shows, one with none
 left open), refusal and tag paths from the pass's JSON, album cover and
 timing reads if an album of the size a card asks for lands, and any
 rekordbox probe a card owes, done inside the visit in place of its first
-Analyze and followed by the visit as that skill writes it. A probe that
-changes a rekordbox setting puts it back to Phillip's standard afterwards,
+analysis, by either of its paths, and followed by the visit as that skill
+writes it. A probe changes only the setting it names, as CLAUDE.md's
+rekordbox constraint allows, puts it back to Phillip's standard afterwards,
 and a screenshot confirms it. If the pass lands nothing, record that and
 leave the cards that needed files open, saying so.
 
@@ -256,10 +300,13 @@ do not touch section keeps U29 attended. Order a worker to read
 `tests/test_cutover_parity.py`, the Feature Inventory it names,
 `docs/cutover.md` and A5 (#178), and report one row per inventory entry: the
 covering verb, the sitting whose record proves it live, and whether it is
-proven. Record in `docs/cutover.md` a cutover line for each workflow newly
-proven since the last such reading, one line per workflow and never one
-batch line, naming its proving sitting, and list what each unproven one
-needs. DJ_tools is not retired while any A5 line is open or until Phillip
+proven. Record in `docs/cutover.md` a line for each workflow newly proven
+live since the last such reading, one line per workflow and never one batch
+line, naming its proving sitting, with its state written "proven live",
+since a run on the live library is half of what that file's header asks of
+a cutover. A state moves to "cut over" only on Phillip's word that he has
+lived on that workflow, and the line that moves it quotes him and names the
+sitting. List what each unproven one needs. DJ_tools is not retired while any A5 line is open or until Phillip
 has said he has lived through a full cycle on Cratekit alone. Post the
 summary and the decision on #29 as Progress, and leave it open.
 
@@ -283,10 +330,12 @@ purchase or a seller he has not registered.
    says. Delete none but a plainly finished `cloud/` branch merged into
    `main`, list the rest for Phillip, and never touch a `grok/` branch.
 4. rekordbox and rekordboxAgent both gone, no Cratekit job running, desktop
-   control released, and the scratch copies deleted.
+   control released, the volume copies folder deleted with every copy in
+   it, and the throwaway audio deleted.
 5. Tell each worker it is done with an order that says only "The sitting is
    over. Write your final report and stop."
-6. Bring STATE.md to its end state, then give Phillip one report he can
+6. Bring STATE.md to its end state, its next step reading
+   `none, the sitting is over`, then give Phillip one report he can
    paste into the Cratekit project chat: the sitting number and commit; the
    battery result; one line per card (closed with its record commit, a new
    card filed, or left open and what it waits on); every decision taken under

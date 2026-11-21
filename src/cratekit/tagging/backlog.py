@@ -240,8 +240,8 @@ class Word:
     Exactly one of three holds. ``options`` is the question, the
     recommendation first. ``settled`` is the one answer the word has, a
     command that plans no change to the copy and retags its files (another
-    case of a folder's name, or an alias already saved), with ``reached`` the
-    rows it moves. ``unanswerable`` is the two verbs' refusal, its kind,
+    case of a folder's name, or an alias already saved), with ``settled_genre``
+    the genre folder it names and ``reached`` the rows it moves. ``unanswerable`` is the two verbs' refusal, its kind,
     sentence and next step.
     """
 
@@ -255,6 +255,7 @@ class Word:
     neighbours: tuple[tuple[str, int], ...]
     options: tuple[Option, ...] = ()
     settled: str = ""
+    settled_genre: str = ""
     reached: frozenset[str] = frozenset()
     unanswerable: tuple[str, str, str] | None = None
 
@@ -686,7 +687,12 @@ def word_of(
         edit = _edit(lambda: word_edit.alias(text, spelling, fixed))
         if isinstance(edit, word_edit.Edit) and not edit.writes:
             command = f"{word_edit.ALIAS_VERB} {shlex.join((spelling, edit.display))}"
-            return Word(**base, settled=command, reached=reached(edit.display))
+            return Word(
+                **base,
+                settled=command,
+                settled_genre=edit.display,
+                reached=reached(edit.display),
+            )
 
     # THE HEAVIEST GENRE ALONE, since at medium or better it holds 60 percent
     # of the votes and no second genre can agree as far. One the alias verb
@@ -773,6 +779,41 @@ def word_of(
 # ---------------------------------------------------------------------------
 # The walk
 # ---------------------------------------------------------------------------
+
+
+def needing(
+    cfg: config.Config,
+    db: Any,
+    declared: taxonomy.Taxonomy,
+    *,
+    probe: Callable[[Path], adopt_scan.Readability] = adopt_scan.probe_readability,
+) -> frozenset[str]:
+    """The rows :func:`plan_backlog` would count as the backlog, and nothing else read.
+
+    THE SAME CENSUS AND THE SAME FILTER: adoption's ``needs-genre`` rows, live,
+    with a readable file. ``tag campaign`` reads it after each step it applies
+    (U294), so needs genre after a step is measured, not projected (R-1737),
+    and is the count this report would give if run again. Reads no tag.
+
+    THE CENSUS ITSELF HOLDS LIVE AND READABLE: ``scan_rows`` skips a tombstone
+    and files every row whose file it could not read as excluded, never as
+    ``needs-genre``, so the disposition is the whole filter. Checks of their own
+    here were measured dead by U294's mutation table and taken out.
+    """
+    mapped = {str(row.ID): row for row in db.get_content()}
+    census = adopt_scan.scan_rows(
+        collection.collection_rows(mapped.values()),
+        declared,
+        root=Path(cfg.library.root),
+        prefix_map=locations.prefix_rules(cfg.resolved_prefix_map()),
+        probe=probe,
+        energy_reader=rows._no_energy,
+    )
+    return frozenset(
+        track.content_id
+        for track in census
+        if track.disposition is adopt_scan.Disposition.NEEDS_GENRE
+    )
 
 
 def plan_backlog(
@@ -1009,6 +1050,7 @@ __all__ = [
     "Row",
     "Word",
     "cause_of",
+    "needing",
     "neighbour_votes",
     "plan_backlog",
     "proposal_of",

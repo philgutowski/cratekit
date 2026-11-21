@@ -12,10 +12,13 @@ KEBAB_LITERALS = {
         'analysis-share-absent',
         'archive-listing-failed',
         'archive-purge-failed',
+        'backup-record-not-kept',  # 2026-11-21, U317
         'backup-restore',
         'database-absent',
         'destination-not-configured',
         'library-root-absent',
+        'library-root-foreign',  # 2026-11-21, #893
+        'library-root-unproven',  # 2026-11-21, #893
         'list-share',
         'list-snapshot-contents',
         'list-snapshot-identity',
@@ -23,6 +26,9 @@ KEBAB_LITERALS = {
         'no-snapshot-available',
         'prune-archive',
         'prune-archive-folder',
+        'quick-archive',  # 2026-11-21, U317
+        'quick-resend',  # 2026-11-21, U317
+        'quick-send',  # 2026-11-21, U317
         'rclone-missing',
         'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
@@ -43,6 +49,7 @@ KEBAB_LITERALS = {
         'snapshot-settings',
         'snapshot-share',
     ],
+    'modules/tools/backup_record.py': ['utf-8'],  # 2026-11-21, U317
     'modules/tools/mastering.py': [
         '24-bit',
         'archive-holds-a-different-recording',
@@ -64,6 +71,8 @@ NAMED_WITHOUT_OWN = {
         'database-absent',
         'destination-not-configured',
         'library-root-absent',
+        'library-root-foreign',  # 2026-11-21, #893
+        'library-root-unproven',  # 2026-11-21, #893
         'no-snapshot-available',
         'rclone-missing',
         'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
@@ -93,6 +102,8 @@ NAMED_WITH_OWN = {
         'database-absent',
         'destination-not-configured',
         'library-root-absent',
+        'library-root-foreign',  # 2026-11-21, #893
+        'library-root-unproven',  # 2026-11-21, #893
         'no-snapshot-available',
         'rclone-missing',
         'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
@@ -126,6 +137,8 @@ LITERAL_HOLDERS = {
         'database-absent',
         'destination-not-configured',
         'library-root-absent',
+        'library-root-foreign',  # 2026-11-21, #893
+        'library-root-unproven',  # 2026-11-21, #893
         'no-snapshot-available',
         'rclone-missing',
         'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.

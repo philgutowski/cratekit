@@ -64,6 +64,8 @@ KEBAB_LITERALS = {
         'install-binary',
         'install-binary-source-unknown',
         'library-root-absent',
+        'library-root-foreign',  # 2026-11-21, #893
+        'library-root-unproven',  # 2026-11-21, #893
         'no-snapshot-available',
         'output-exists',
         'rclone-missing',
@@ -164,6 +166,15 @@ KEBAB_LITERALS = {
         'review-verdict-conflict',
         'utf-8',
     ],
+    # 2026-11-21, U295: the night pass's schedule joined.
+    'cli/schedule.py': [
+        'refused-by-policy',  # 2026-11-21, U295 review round one: root is refused.
+        'schedule-agent-unusable',
+        'schedule-agent-unwritten',
+        'schedule-crate-unresolved',
+        'schedule-launchctl-failed',
+        'schedule-platform-unsupported',
+    ],
     'cli/setup.py': [
         'config-unusable',
         'library-database-not-rekordbox',
@@ -235,6 +246,24 @@ KEBAB_LITERALS = {
         'taxonomy-upgrade-keyword-rule',
         'taxonomy-upgraded',
         'utf-8',
+    ],
+    # 2026-11-21, U294: a new module, crate tag campaign. Its notes, the
+    # states of its steps, and its three causes.
+    'cli/verbs/tag_campaign.py': [
+        'campaign-landed',
+        'campaign-moved-since-plan',
+        'campaign-nothing-to-write',
+        'campaign-remainder',
+        'campaign-resort-next',
+        'campaign-rows-left',
+        'campaign-words-left',
+        'config-unusable',
+        'file-carries-another-spelling',
+        'internal-error',
+        'not-run',
+        'nothing-to-write',
+        'review-selection-invalid',
+        'tag-campaign',
     ],
     # 2026-11-02, U194: a new module, crate taxonomy alias and crate taxonomy
     # folder. Its notes, its three causes and the kind of a left file.
@@ -348,6 +377,15 @@ LITERAL_HOLDERS = {
     'cli/render.py': ['cancelled', 'decision-required', 'decision-stale'],
     'cli/reports.py': ['config-unusable', 'report-as-of-invalid'],
     'cli/review.py': ['review-file-unusable', 'review-selection-invalid'],
+    # 2026-11-21, U295: the night pass's schedule joined.
+    'cli/schedule.py': [
+        'refused-by-policy',  # 2026-11-21, U295 review round one: root is refused.
+        'schedule-agent-unusable',
+        'schedule-agent-unwritten',
+        'schedule-crate-unresolved',
+        'schedule-launchctl-failed',
+        'schedule-platform-unsupported',
+    ],
     'cli/setup.py': [
         'config-unusable',
         'library-database-not-rekordbox',
@@ -358,6 +396,8 @@ LITERAL_HOLDERS = {
     'cli/verbs/profile.py': ['config-unusable'],
     # 2026-10-31, U168: a run with no command line to continue is refused.
     'cli/verbs/runs.py': ['decision-unknown-gate', 'run-not-continuable'],
+    # 2026-11-21, U294: a new module, crate tag campaign.
+    'cli/verbs/tag_campaign.py': ['config-unusable', 'internal-error', 'review-selection-invalid'],
     # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
     # a new module, crate taxonomy upgrade (U132). Measured on the merged tree.
     'cli/verbs/taxonomy.py': ['config-unusable', 'internal-error'],
@@ -374,5 +414,6 @@ LITERAL_HOLDERS = {
 LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'cli/doctor.py',
     'cli/gates.py',  # 2026-11-01, U186: the sibling window's twelve hours.
+    'cli/schedule.py',  # 2026-11-21, U295: launchctl's not found code and its timeout.
     'cli/output.py',
 })

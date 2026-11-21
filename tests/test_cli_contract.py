@@ -1711,6 +1711,14 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # night carries with its record. The night is driven in
         # tests/test_sync_night.py.
         "sync.night": [],
+        # U295. The schedule's verbs take no argument, and on every machine
+        # they refuse ``schedule-platform-unsupported`` here before launchd is
+        # reached: tests/conftest.py reads the platform as Linux and stands the
+        # launchctl seam in with a refusal. The three are driven as a Mac, over
+        # a launchd standing in, in tests/test_schedule.py.
+        "schedule.install": [],
+        "schedule.show": [],
+        "schedule.remove": [],
         # U179. The driver takes no argument: on this fixture its plan step
         # refuses for want of a Bandcamp session, and the driver ends with that
         # step's own refusal. The chain is driven in tests/test_sync_bandcamp.py.
@@ -2076,6 +2084,11 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # database and writes nothing; every cause is driven in
         # tests/test_tag_backlog.py.
         "tag.backlog": [],
+        # U294. An empty backlog: the plan writes nothing, the explicit gate is
+        # still asked over it, and the verb ends NO_OP. It reads the backup
+        # acknowledgment first, see ACKNOWLEDGED_BEFORE_THE_GATE. The campaign
+        # is driven in tests/test_tag_campaign.py.
+        "tag.campaign": [],
         # U172. The configured library's root, a folder with no audio in it on
         # this fixture, so the guess reads nothing, writes nothing and ends
         # NO_OP. Every guess is driven in tests/test_tag_guess.py.
@@ -2832,6 +2845,10 @@ ACKNOWLEDGED_BEFORE_THE_GATE = {
     ),
     "tag.suggest": (
         "tests/test_tag_suggest.py::"
+        "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+    ),
+    "tag.campaign": (
+        "tests/test_tag_campaign.py::"
         "test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
     ),
     "intake.inspiration": (

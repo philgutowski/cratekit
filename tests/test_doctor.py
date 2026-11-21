@@ -229,6 +229,7 @@ def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
         *(f"backup.age.{portion}" for portion in backup_facts.PORTIONS),
         "backup.acknowledgment",
         "backup.full_comparison",
+        "backup.full_check",
         "backup.remote",
         "deadca7.push",
         "session.unresolved",

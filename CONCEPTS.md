@@ -86,7 +86,12 @@ Beatport when Discogs gives no genre (U282; U244 asked Beatport first). A
 Discogs decline gives way to Beatport, and a file Discogs tagged with no
 picture asks Beatport for its cover only. Every source is asked one question
 per file, the artist and the title read past the naming verb's head and marker
-(`titles.question`, U289), and matches its rows against the file's own text.
+(`titles.question`, U289), and matches its rows against the file's own text,
+for a file with no title tag its name past the older naming's `_PN` tail
+(`titles.name_title`, R-1724); Discogs also takes a release only when it
+writes a mix the file's title names by its maker (`titles.named_versions`,
+U318), a maker being the mix's words that are neither version words nor
+`titles.MIX_DESCRIPTIONS`.
 Traxsource and Bandcamp are kept off the walk, since both answer
 a bot check, and still counted in old records. Each source answers one of
 `matched`, `miss`, `unreachable`, `blocked` (bot check, block page, spent rate
@@ -233,7 +238,8 @@ question per word, folded on case) or `file-unread`. The **floor** is the high
 reason. A word already saved as an alias has one answer and is **settled**. A
 row whose file is not here is in no cause and counted as **unread**; a routed
 row `tag rows` would give a word no folder takes is **joining**. The report
-writes nothing; U294 applies it.
+writes nothing; `crate tag campaign` (U294) applies it under one gate, each
+step through its own verb, writing only the rows the backlog showed.
 
 *Avoid:* adoption's **withheld**, which is a routed row the plan will not place.
 
@@ -581,19 +587,45 @@ lands; `restore list` reads only the session log.
 exception follows it, since the binding can raise after rows are durable.
 
 ### Rotation floor
-The stamp of the last completed mirror to a destination. Archive folders newer
+The stamp of the last completed files backup to a destination, a skip
+included. Archive folders newer
 than it are **held** (one keep slot); ones at or before it are **settled** and
 rotate out. No floor holds everything.
 
 ### Twin
 An open backup job that already is the backup asked for (same verb, library,
 rehearsal flag, mirror or archive root). `backup run` warns
-`backup-already-queued` and files nothing. Fast and full are twins.
+`backup-already-queued` and files nothing. Fast, full and `--check` asks are twins.
 
 ### Full comparison
 `backup run --full`, which lists the remote folder by folder, against the
 **fast** mirror's one recursive listing; both compare size and mtime. Doctor
 reports its age as `backup.full_comparison`.
+
+### Full check, quick run, skip
+The three kinds of files backup (U317). A **full check** lists the remote and
+compares every file, in either listing mode; it is due weekly and on
+`--check`. A **quick run** compares the library with the **backup record**
+(installation state: what the last completed mirror left, path, size, mtime,
+and a hash where the time is racy) and sends only the difference with no
+remote listing. A **skip** found no difference. The database's counterpart is
+a **snapshot** or **unchanged**, by a fingerprint of the database set's content
+and the settings and share folders' sizes and times. A record is removed
+before a transfer and written only after it completes, from two walks that
+agree; an entry they disagree on is a **doubt** that matches nothing.
+
+### Census
+How many files outside the library's own state folder the last completed
+files backup walked, for this library root and mirror (installation state,
+never removed before a transfer, unlike the backup record). A backup refuses
+`library-root-unproven` when the root holds none of the library's files while
+the census, or failing it the record or the library's files fact, says a
+backup held some, or under a tenth of the census; `library-root-foreign` when
+the recorded volume identity is read and is not the root's. A root with
+only its state folder, a new library or one emptied before, is mirrored with
+rclone told to delete nothing from the remote. `--library-emptied` passes the
+first only at a root still carrying the library's own files fact, and never
+the second.
 
 ### Journal ledger
 A state file kept as a header line and one record per line: each write appends
@@ -736,6 +768,38 @@ must kill nothing. A zero on a subset is promoted to a full run before reporting
 The second mutation a zero on a user facing guard owes, aimed at what the guard
 protects and reported beside it. A maintainer facing zero owes none.
 
+### Kill set
+Every row under `docs/mutation/` that recorded a death, the same substitution
+counted once, as `scripts/killset.py` reads it. A row is **live** when its
+file exists and its `old` text stands in it exactly once, **stale** when the
+text is gone, **ambiguous** when it stands more than once, and **gone** when
+the file is. The live rows are what "every guard a test kills today" means
+for a card that restructures code (U290).
+
+### Replay pass
+The driver's third pass kind, `replay`: recorded kills measured again, each
+row naming the table and id it came from, with no row cap because it chooses
+no rows. A row whose file or text is no longer its source's carries a
+**moved** reason, and a kill with no row left is **mapped**, with a reason, to
+a row that is killed. The same text in another file is not the same guard, so
+`killset.py check` holds a moved row to a test in common with its source, by
+name, or to a reason a person wrote.
+
+*Avoid:* a replay as a unit's own table, whose cap of 25 stands.
+
+### Scenario
+One function in a file under `tests/behaviour/`, one file per package, that
+runs verbs through the `stage` fixture on a disposable library with the clock
+and every generated id pinned. The suite does not collect it.
+
+### Capture
+What one run of the scenarios left, written by `scripts/behaviour_compare.py
+capture`: per command its arguments, both streams and its exit code, then
+every file by bytes and permission bits and every SQLite database as its
+schema, settings and rows. A base's capture is compared with a branch's. A
+process id, a process start and a file's inode are a capture's **own words**,
+read past only where each side holds its own at the same place.
+
 ### Pinned population
 A count the suite recomputes from the tree and asserts exactly. When a merge
 moves it, look, re-measure and re-pin by naming members, never widen. A whole
@@ -843,9 +907,21 @@ leaves one line, doctor's `sync.night`, that `--last` prints with its fields. A
 refused firing keeps a pass still owed; a wait whose pass has landed since, by
 its native landing's record, reads `settled`.
 
+### Night schedule
+`crate schedule install`, `show` and `remove` (`cli/schedule.py`, U295): the
+night pass on launchd, one user agent, `cratekit.sync-night`, in the person's
+own LaunchAgents, loaded into `gui/<uid>`, running the absolute `crate` with
+`sync night` and nothing else at `--at` (03:17 local by default), its output
+in the state entry `schedule_log`, carrying the configuration, state and gate
+directories as the install resolved them. launchctl is reached through one
+seam the suite replaces in every test; a failed load removes its plist once
+launchd reads it gone, all three refuse as root, and install and remove refuse
+beside a pass holding the staging lock.
+
 ### Staging lock
 `core/staging_lock.py` (U293): one advisory lock, held by `sync land`,
-`label sync --go` and `sync night` for a whole run, so two passes never
+`label sync --go` and `sync night` for a whole run, and by `schedule install`
+and `schedule remove` around their bootout (U295), so two passes never
 download into the one staging folder; a second refuses `staging-held`. The
 driver lock's rules, and reentrant within one process.
 

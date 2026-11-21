@@ -45,7 +45,7 @@ from tests.test_catalogue_searcher import _beatport_page
 from tests.test_discogs_searcher import SENT, release, results
 from tests.test_tag_folder_copyright import cfg, sweep  # noqa: F401
 from tests.test_tag_workers import bound
-from tests.test_title_matcher import DIFFERENT, HEADED, HEADED_NOT, SAME
+from tests.test_title_matcher import DIFFERENT, HEADED, HEADED_NOT, NAMED_MIX_UNWRITTEN, SAME
 
 TAXONOMY = default_taxonomy()
 
@@ -187,10 +187,12 @@ def test_an_untagged_file_is_asked_by_the_artist_and_title_its_name_reads_to(tmp
     result = tag.tag_one(path, searcher=build(typed_fetch(seen)))
     (question,) = discogs_questions(seen)
     assert question["artist"] == "Obiman"
-    assert question["track"] == "On The Rocks (Cafe Del Mar Mix)_PN"
+    # Past the older naming's _PN tail too, so Discogs sets the mix aside
+    # (R-1724, ``tests/test_name_tail.py``).
+    assert question["track"] == "On The Rocks"
     assert (result.asked_artist, result.asked_title, result.asked_read) == (
         "Obiman",
-        "On The Rocks (Cafe Del Mar Mix)_PN",
+        "On The Rocks (Cafe Del Mar Mix)",
         titles.Read.BY_NAME.value,
     )
 
@@ -340,6 +342,8 @@ CORPUS = [*SAME, *DIFFERENT, *HEADED, *HEADED_NOT]
 @pytest.mark.parametrize(("searched", "found"), CORPUS)
 def test_every_matcher_corpus_case_keeps_its_verdict_when_asked_past_its_head(searched, found):
     expected = (searched, found) in SAME or (searched, found) in HEADED
+    # A named mix its row does not write is no Discogs match (U318).
+    expected = expected and (searched, found) not in NAMED_MIX_UNWRITTEN
     seen: list[str] = []
     tracks = [{"position": "A1", "type_": "track", "title": found}]
 
