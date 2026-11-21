@@ -32,7 +32,7 @@ from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.deletion import library as deletion_library
 from cratekit.deletion import run as deletion_run
-from cratekit.deletion import watermark
+from cratekit.deletion import stores, watermark
 from cratekit.intake import native
 from tests.cli_drive import drive
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
@@ -174,7 +174,7 @@ def _candidates(cfg: config.Config) -> dict[str, str]:
 
 
 def _record_path(cfg: config.Config, session_id: str) -> Path:
-    return session.log_dir(cfg) / f"{session_id}.json"
+    return session.log_path(session_id, cfg)
 
 
 def _landing_record(cfg: config.Config) -> session.SessionRecord:
@@ -201,16 +201,13 @@ def test_the_landing_record_names_every_row_it_made_as_the_database_holds_it(
     ((dbid,),) = _query(cfg, "SELECT DBID FROM djmdProperty")
     assert landed["database_identity"] == str(dbid)
     assert landed["sequence"] == _counter(cfg)
-    columns = ", ".join(native.LANDED_COLUMNS)
     held = {
-        str(values[0]): dict(zip(native.LANDED_COLUMNS, values))
-        for values in _query(
-            cfg,
-            f"SELECT {columns.replace('ArtistName', 'ArtistID')} FROM djmdContent",
-        )
+        str(values[0]): {"ID": values[0], "FolderPath": values[1], "FileSize": values[2], "Title": values[3]}
+        for values in _query(cfg, "SELECT ID, FolderPath, FileSize, Title FROM djmdContent")
     }
     named = {one["content_id"]: one["columns"] for one in landed["rows"]}
-    assert sorted(named) == sorted(held)
+    # Exactly the two rows this landing made, and none the library held before.
+    assert sorted(named) == sorted(_row(cfg, title)[0] for title in ("One", "Two"))
     for content_id, recorded in named.items():
         row = held[content_id]
         assert recorded["ID"] == str(row["ID"])
@@ -257,9 +254,12 @@ def test_a_landed_row_removed_outright_is_offered_trashed_and_tombstoned_once(
     assert other.exists()
     # The tombstone carries the landing's artist and title, which is what
     # ``label prune`` and ``label playlists`` match a track against (U243).
-    (stone,) = tombstone.list_tombstones(cfg)
-    assert stone.identity["artist"] == "Probe", stone.identity
-    assert stone.identity["title"].endswith(" - One"), stone.identity
+    (stone,) = stores.list_tombstones(cfg)
+    assert stone.payload["artist"] == "Probe", stone.payload
+    assert stone.payload["title"].endswith(" - One"), stone.payload
+    assert stone.identity == tombstone.version_identity(
+        artist="Probe", title=stone.payload["title"]
+    ), stone.identity
     assert out["outcome"] == "ok"
     # ONCE: the next run offers nothing, the row still absent.
     assert _offered() == 0
@@ -597,3 +597,97 @@ def test_an_advance_and_a_rebaseline_keep_and_drop_the_sightings_as_their_databa
     # Another database: the sightings went with the old position.
     mark, baselined = store.baseline(database_identity="other", sequence=1, actor="a-person")
     assert baselined and mark.absent == {}
+
+
+# ---------------------------------------------------------------------------
+# What the merge bar names: still in the collection, still referenced, a copy
+# ---------------------------------------------------------------------------
+
+
+def _insert_like(cfg: config.Config, content_id: str, **changed) -> None:
+    """A new collection row copied from ``content_id``'s, with ``changed`` columns."""
+    names = [row[1] for row in _query(cfg, "PRAGMA table_info(djmdContent)")]
+    (values,) = _query(cfg, "SELECT * FROM djmdContent WHERE ID = ?", content_id)
+    row = {**dict(zip(names, values)), **changed}
+    _sql(
+        cfg,
+        (
+            f"INSERT INTO djmdContent ({', '.join(names)}) VALUES ({', '.join('?' for _ in names)})",
+            tuple(row[name] for name in names),
+        ),
+    )
+
+
+def test_only_the_unreferenced_file_is_trashed_and_only_it_is_tombstoned(
+    native_library, silence, monkeypatch, tmp_path
+):
+    """One removal re-imported, one left in a playlist, one copy a live row names, one free."""
+    cfg, _root = native_library
+    _land(cfg, silence, "One", "Two", "Three", "Four")
+    _deletion_on(cfg, monkeypatch, tmp_path)
+    _baseline(cfg)
+    files = {title: _row(cfg, title) for title in ("One", "Two", "Three", "Four")}
+    # One: re-imported, a new row of another id naming the same file.
+    one, _ = files["One"]
+    _insert_like(cfg, one, ID=str(int(one) + 7), UUID="re-imported-one")
+    _remove_outright(cfg, one)
+    # Two: its row deleted and a membership left naming it.
+    two, _ = files["Two"]
+    _sql(
+        cfg,
+        ("DELETE FROM djmdContent WHERE ID = ?", (two,)),
+        ("UPDATE agentRegistry SET int_1 = int_1 + 3 WHERE registry_id = 'localUpdateCount'", ()),
+    )
+    # Three: a hard link of its file, at another path, is a live row's file.
+    three, three_file = files["Three"]
+    copy = three_file.with_name("Three copy.flac")
+    copy.hardlink_to(three_file)
+    _insert_like(cfg, three, ID=str(int(three) + 7), UUID="copy-three", FolderPath=str(copy))
+    _remove_outright(cfg, three)
+    # Four: removed, and nothing names its file.
+    four, four_file = files["Four"]
+    _remove_outright(cfg, four)
+    kept = {title: path.read_bytes() for title, (_id, path) in files.items() if title != "Four"}
+
+    categories = _candidates(cfg)
+    code, refused = _review()
+
+    assert categories == {
+        one: "collides-with-active-row",
+        two: "still-referenced",
+        three: "collides-with-active-row",
+        four: "deletable",
+    }, categories
+    assert code == int(ExitCode.DECISION_REQUIRED) and _shown(refused)["offered"] == 1
+    _trash(refused)
+    assert not four_file.exists()
+    for title, held in kept.items():
+        assert files[title][1].read_bytes() == held, title
+    (stone,) = stores.list_tombstones(cfg)
+    assert stone.payload["title"].endswith(" - Four"), stone.payload
+
+
+def test_a_rolled_back_landing_is_kept_by_its_playlist_whatever_the_count(
+    native_library, silence, monkeypatch, tmp_path
+):
+    """The playlist guard alone: the count is already past the landing at the first sighting."""
+    cfg, _root = native_library
+    _land(cfg, silence, "Zero")
+    _deletion_on(cfg, monkeypatch, tmp_path)
+    _baseline(cfg)
+    before = Path(cfg.library.db_path).read_bytes()
+    _land(cfg, silence, "One", name="rolled back batch")
+    one, music = _row(cfg, "One")
+    landed_at = _landing_record(cfg).detail[native.LANDED_ROWS_KEY]["sequence"]
+    Path(cfg.library.db_path).write_bytes(before)
+    _sql(
+        cfg,
+        (
+            "UPDATE agentRegistry SET int_1 = ? WHERE registry_id = 'localUpdateCount'",
+            (landed_at + 500,),
+        ),
+    )
+
+    assert one not in _candidates(cfg)
+    assert one not in watermark.WatermarkStore(cfg).read().absent
+    assert music.exists()

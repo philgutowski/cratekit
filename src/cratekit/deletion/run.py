@@ -34,9 +34,11 @@ has a reason it is where it is:
 
 **NOTHING HERE WRITES A DATABASE ROW (KTD15).** Deletion is driven by rekordbox's
 own soft-delete marker precisely so the guarded writer's unconditional delete
-prohibition never has to be reopened, and by the session records of ``crate
+prohibition never has to be reopened, by the session records of ``crate
 sync removed``, which deletes a row outright as rekordbox does (U288) and names
-each one it took out, since such a row carries no marker. The database is opened, read, and closed.
+each one it took out, since such a row carries no marker, and by the native
+landing's records of the rows it made, a landed row the database no longer
+holds being one rekordbox's Remove from Collection took out (R-1037). The database is opened, read, and closed.
 That is also why there is no capture: a snapshot protects database rows, this
 run creates, edits and deletes none, and the thing that is actually at risk is
 files, which a database snapshot does not hold. What protects those is the
@@ -238,20 +240,38 @@ def _assert_library_is_still(
 
 
 def _recorded_details(cfg: config.Config) -> tuple[Mapping[str, Any], ...]:
-    """Each readable session record's detail, for the removals recorded in it (U288).
+    """Each readable session record's detail, for the removals and landings recorded in it.
 
-    A record that cannot be read, or a log that cannot be listed, offers
-    nothing of its own, so the files it names stay where they are; the pass
-    says so rather than reading the silence as no removal.
+    U288's removals and R-1037's landed rows. A record that cannot be read,
+    or a log that cannot be listed, offers nothing of its own, so the files
+    it names stay where they are; the pass says so rather than reading the
+    silence as no removal.
     """
     found, unreadable = session.scan_log(cfg)
     if unreadable:
         logger.warning(
             "%d session record(s) could not be read, so a row a recorded removal "
-            "took out of the collection may not be offered this run",
+            "took out of the collection, or a landed row removed in rekordbox, "
+            "may not be offered this run",
             len(unreadable),
         )
     return tuple(record.detail for record in found)
+
+
+def _playlists_held(db: Any) -> Callable[[str], bool]:
+    """Whether the database holds a playlist row of an id, live or marked, read once when asked.
+
+    Asked only of a landing record that names a playlist, so a pass over a
+    library no landing named reads no playlist at all.
+    """
+    read: list[frozenset[str]] = []
+
+    def held(playlist_id: str) -> bool:
+        if not read:
+            read.append(library.playlist_ids(db.get_playlist()))
+        return playlist_id in read[0]
+
+    return held
 
 
 def plan(
@@ -295,16 +315,19 @@ def plan(
     # removed``, which records each row it took out in its session record. The
     # recorded rows join the marked ones here, before the baseline and the
     # watermark, so every rule below is the one a marked row meets.
-    seen = library.CollectionRead(
-        active=seen.active,
-        removed=seen.removed
-        + library.recorded_removals(
-            _recorded_details(cfg),
-            database_identity=identity,
-            present=[row.content_id for row in seen.active]
-            + [row.content_id for row in seen.removed],
-        ),
+    details = _recorded_details(cfg)
+    held = {row.content_id for row in seen.active} | {row.content_id for row in seen.removed}
+    recorded = library.recorded_removals(details, database_identity=identity, present=held)
+    # AND A ROW A NATIVE LANDING MADE AND THE DATABASE NO LONGER HOLDS, which
+    # is the row a person removed by hand in rekordbox (R-1037). One that a
+    # recorded removal already names is that removal, at its own sequence.
+    absent = library.landed_absences(
+        details,
+        database_identity=identity,
+        present=held | {row.content_id for row in recorded},
+        playlist_held=_playlists_held(db),
     )
+    seen = library.CollectionRead(active=seen.active, removed=seen.removed + recorded)
     highest = max((row.sequence for row in seen.removed), default=counter)
 
     mark, baselined = marks.baseline(
@@ -312,6 +335,21 @@ def plan(
         sequence=max(counter, highest),
         actor=actor,
         now=None if now is None else timestamp(now),
+    )
+    # NUMBERED AFTER THE BASELINE, because a removal with no sequence of its
+    # own is given the count at its first sighting, and the baseline decides
+    # whether that sighting is history (R35) or a removal to offer.
+    mark = marks.sight(
+        database_identity=identity,
+        absent={key: one.landed for key, one in absent.items()},
+        present=held,
+        counter=counter,
+        history=baselined,
+    )
+    seen = library.CollectionRead(
+        active=seen.active,
+        removed=seen.removed
+        + tuple(one.row(mark.absent[key]) for key, one in absent.items()),
     )
     if baselined:
         return Plan(
