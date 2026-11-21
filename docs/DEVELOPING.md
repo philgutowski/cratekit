@@ -187,9 +187,14 @@ package, look here first; `tests/test_shared_homes.py` holds each of them.
 | a lock held across one read then write cycle of a state document | `core.config.held(lock_path, refused)` |
 | a lock a writer would rather skip than wait for | `core.config.lock_within(...)` yields whether it was had |
 | a lock taken without waiting, the holder's words left readable | `core.config.lock_now(path)` |
-| a state document read as JSON, refused rather than read as empty | `core.config.read_json`, `read_json_map`, `read_bytes_if_present` |
+| a lock that waits for its holder, made under a private directory | `core.config.exclusive_lock(path)`, and `core.config.mkdir_private` for the directory |
+| a lock file opened owner only, hardened by the caller, then taken | `core.config.flock_exclusive(target, harden)` |
+| a state document read as JSON, refused rather than read as empty | `core.config.read_json`, `read_json_map`, `read_bytes_if_present`, and `read_json_as_text` for the two stores that read in the platform's encoding |
+| whether one path is inside another | `core.config.is_inside(child, parent)` |
+| the device a path is on, read off its nearest ancestor that exists | `core.preflight.device_of` |
 | the lossy name template and the name budget from configuration | `core.naming.NameTemplate.lossy`, `.lossy_if_marked`, `core.naming.NameBudget.of` |
 | the capture a guarded database write opens with | `write.trees.attached_capture(gates, cfg, db)` |
+| undo pending work on a handle after a failed write, never masking its cause | `write.trees.rollback_quietly(db)` |
 | the commit a content row write records | `write.row_defaults.record_commit` |
 
 ## CI

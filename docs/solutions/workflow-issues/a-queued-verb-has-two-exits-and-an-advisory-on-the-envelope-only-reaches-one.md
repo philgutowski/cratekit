@@ -50,7 +50,9 @@ were actually corrected.
 
 **A queued verb's resume has two exits, and only one of them is an envelope.**
 
-`cratekit.tagging.shell.advance` ends with:
+The tagging shell's resume ended with this when the trap was found; since U298 it
+is `cratekit.core.jobs.advance`, shared with the adoption shell, and the same
+check is `raise_for_state(job)` at the end of `cratekit.core.jobs.resumed`:
 
 ```python
 if not job.is_open() and job.cause is not None:
@@ -75,9 +77,10 @@ advisory drove a sweep that succeeded. The failure path had its own tests, they
 asserted item states and written genres, and nothing asked what the refusal told
 the person to do next.
 
-The same shape sits behind `cratekit.adopt.shell` and
-`cratekit.modules.outbound.shell`, which are the other two copies of this resume,
-so anything learned here applies to every queued verb in the repository.
+The same shape sits behind `cratekit.adopt.shell`, which since U298 runs the same
+`cratekit.core.jobs.advance`, and `cratekit.modules.outbound.shell`, the one copy of
+this resume left, so anything learned here applies to every queued verb in the
+repository.
 
 ## What to do instead
 
