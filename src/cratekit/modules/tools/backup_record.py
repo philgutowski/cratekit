@@ -20,8 +20,8 @@ blocker of the card that built it.
 * **An entry is trusted only when the walk before the transfer and the walk
   after it agree.** A file that changed, appeared or vanished while rclone ran
   may or may not be on the remote in the version the record would claim, so it
-  is kept as a DOUBT entry that matches no file, and the next run sends it or
-  archives it again. rclone's own comparison then decides whether a byte moves.
+  is kept as a DOUBT entry that matches no file, and the next run sends it
+  again with the times ignored, or archives it.
 * **A file whose time cannot be trusted carries a content hash.** A write that
   lands inside the file system's time granularity of an earlier one leaves the
   size and the time where they were (two seconds on exFAT), so a file modified
@@ -329,8 +329,9 @@ def walk(
     the walk began, and a caller walking twice passes the first walk's value so
     the two readings hash the same files.
 
-    A FILE OR DIRECTORY THAT VANISHED BETWEEN BEING LISTED AND BEING READ IS
-    ABSENT, which is true. Anything else that cannot be read refuses the walk.
+    A FILE THAT VANISHED BETWEEN BEING LISTED AND BEING READ IS ABSENT, which is
+    true of a file. A DIRECTORY that did refuses the walk, as does anything
+    else that cannot be read, and a root that changed volume while it was read.
     """
     started = time.monotonic()
     if racy_after_ns is None:
@@ -349,7 +350,9 @@ def walk(
             # renamed under the walk or a volume unmounted under it, and read as
             # absence its files would be archived off the mirror. The full run
             # this refusal makes meets the same state through rclone, which
-            # refuses to delete over a directory it cannot read.
+            # refuses to delete over a directory that is gone; an empty
+            # directory left where the volume was is the residual the full
+            # sync carries from before U317.
             raise WalkRefused(
                 f"{directory} was listed and then was not there, so the walk did "
                 f"not see the whole library"
@@ -670,6 +673,17 @@ def first_uncomposed(paths: Iterable[str]) -> str | None:
     return None
 
 
+def paths_from(feed: str | None) -> tuple[str, ...]:
+    """The paths a list from :func:`paths_list` carries, split where rclone splits.
+
+    On the line feed alone: ``str.splitlines`` also splits on separators a file
+    name may hold, which rclone reads as part of the name.
+    """
+    if not feed:
+        return ()
+    return tuple(feed.split("\n")[:-1])
+
+
 def paths_list(paths: Iterable[str]) -> str:
     """A list rclone reads from standard input with ``--files-from-raw -``."""
     return "".join(f"{path}\n" for path in paths)
@@ -696,6 +710,7 @@ __all__ = [
     "manifest_mismatch",
     "manifest_path",
     "new_token",
+    "paths_from",
     "paths_list",
     "read_fingerprint",
     "read_manifest",

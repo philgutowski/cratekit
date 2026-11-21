@@ -581,10 +581,10 @@ def build(parser, entry) -> None:
         help=(
             "run the full check now: list the remote, compare every file, and "
             "snapshot the database whether or not it changed. Without it a "
-            "backup lists the remote only when the last full check is a week "
-            "old, and otherwise sends only what changed since the last backup, "
-            "snapshots the database only if it changed, or is skipped when "
-            "nothing did"
+            "backup lists the remote when the last full check is a week old or "
+            "when it cannot trust its record of the last backup, and otherwise "
+            "sends only what changed since then, snapshots the database only if "
+            "it changed, or is skipped when nothing did"
         ),
     )
     parser.add_argument(
@@ -1327,8 +1327,8 @@ def perform_backup(
         # is that they are told which file to fix.
         raise refuse(
             "backup-facts-unreadable",
-            f"the {portion or 'backup'} portion transferred and the age it "
-            f"publishes cannot be written: {exc}. The copy exists; the fact a "
+            f"the {portion or 'backup'} portion cannot read or write the record "
+            f"of its age: {exc}. Whatever it copied exists; the fact a "
             f"destructive session reads does not",
             remedy=Remedy(str(exc.remedy)),
             origin=("backup", "cli"),

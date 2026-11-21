@@ -523,6 +523,51 @@ def test_a_run_by_another_installation_makes_the_next_run_full(cfg, real_rclone,
     assert _mirrored(cfg, tmp_path) == _library_as_mirrored(cfg)
 
 
+def test_a_failed_run_by_another_installation_makes_the_next_run_full(
+    cfg, real_rclone, tmp_path, monkeypatch
+):
+    """Round two's finding: the other installation's run sent, then failed, so
+    it published no fact for its token to be missing from. The token is struck
+    from the library's fact when a run removes its own record, before it sends."""
+    music = _seed(cfg)
+    _backup(cfg, at=MOMENT)
+    mine = os.environ["CRATEKIT_STATE_DIR"]
+    good = (music / "kept.flac").read_bytes()
+
+    _write(music / "kept.flac", b"damaged", at=OLD + timedelta(days=5))
+    monkeypatch.setenv("CRATEKIT_STATE_DIR", str(tmp_path / "second-installation"))
+
+    class SendsThenFails(Counting):
+        def __call__(self, command):
+            result = super().__call__(command)
+            if command.label == backup.MIRROR:
+                return backup.CommandResult(returncode=1, stderr="the remote filled up")
+            return result
+
+    _, failed = _backup(cfg, at=MOMENT + timedelta(hours=1), runner=SendsThenFails(), only=FILES)
+    assert _portion(failed, FILES).ran is False
+    assert _mirrored(cfg, tmp_path)["Music/kept.flac"] == b"damaged"
+    monkeypatch.setenv("CRATEKIT_STATE_DIR", mine)
+    _write(music / "kept.flac", good)
+
+    _, outcome = _backup(cfg, at=MOMENT + timedelta(hours=3))
+    files = _portion(outcome, FILES)
+    assert files.kind == backup_facts.KIND_FULL, files
+    assert _mirrored(cfg, tmp_path)["Music/kept.flac"] == good
+
+
+def test_a_run_that_fails_strikes_the_token_from_the_library_fact(cfg, real_rclone):
+    music = _seed(cfg)
+    _backup(cfg, at=MOMENT)
+    facts = backup_facts.read_facts(cfg)
+    assert facts[FILES].summary[backup.RECORD_TOKEN]
+    _write(music / "added.flac", b"added")
+    _backup(cfg, at=MOMENT + timedelta(hours=1), runner=Counting(fail=backup.QUICK_SEND))
+    facts = backup_facts.read_facts(cfg)
+    assert backup.RECORD_TOKEN not in facts[FILES].summary
+    assert facts[FILES].completed_at == MOMENT, "striking the token moved the age"
+
+
 def test_a_fact_published_by_a_build_before_u317_makes_the_next_run_full(cfg, real_rclone):
     _seed(cfg)
     _backup(cfg, at=MOMENT)
@@ -741,9 +786,11 @@ def test_a_folder_gone_between_being_listed_and_being_read_makes_a_full_run(
     assert files.kind == backup_facts.KIND_FULL and "was listed and then was not there" in files.why
 
 
-@pytest.mark.parametrize("after_the_plan", ["the path came back", "the root went away"])
+@pytest.mark.parametrize(
+    "after_the_plan", ["the path came back", "the root went away", "another volume"]
+)
 def test_a_removal_is_archived_only_while_the_walk_still_holds(
-    cfg, real_rclone, tmp_path, after_the_plan
+    cfg, real_rclone, tmp_path, after_the_plan, monkeypatch
 ):
     """Round one's B2, the plan to run half: the archive is asked again first."""
     music = _seed(cfg)
@@ -755,8 +802,10 @@ def test_a_removal_is_archived_only_while_the_walk_still_holds(
     root = cfg.library.root
     if after_the_plan == "the path came back":
         _write(music / "removed.flac", b"removed, generation one")
-    else:
+    elif after_the_plan == "the root went away":
         root.rename(root.with_name("library-unmounted"))
+    else:
+        _another_volume(monkeypatch, root)
 
     runner = Counting()
     outcome = backup.run_backup(cfg, plan, runner=runner, now=later)
@@ -767,6 +816,48 @@ def test_a_removal_is_archived_only_while_the_walk_still_holds(
     if after_the_plan == "the root went away":
         root.with_name("library-unmounted").rename(root)
     assert _ages(cfg, later)["files"] == timedelta(hours=1)
+
+
+def _another_volume(monkeypatch, root: Path) -> None:
+    """The root answers from another device, as a mount point does once unmounted."""
+    real = os.stat
+
+    class Moved:
+        def __init__(self, status):
+            self._status = status
+            self.st_dev = status.st_dev + 1
+
+        def __getattr__(self, name):
+            return getattr(self._status, name)
+
+    def stat(path, *args, **kwargs):
+        found = real(path, *args, **kwargs)
+        return Moved(found) if Path(path) == root else found
+
+    monkeypatch.setattr(backup_record.os, "stat", stat)
+
+
+def test_a_send_runs_only_while_the_root_is_the_volume_walked(
+    cfg, real_rclone, tmp_path, monkeypatch
+):
+    """Round two's finding 4: an unmount after the plan with only an addition."""
+    music = _seed(cfg)
+    _backup(cfg, at=MOMENT)
+    _write(music / "added.flac", b"added")
+    later = MOMENT + timedelta(hours=1)
+    plan = backup.plan_backup(cfg, now=later, only=FILES, settings_dirs=())
+    _another_volume(monkeypatch, cfg.library.root)
+    runner = Counting()
+    outcome = backup.run_backup(cfg, plan, runner=runner, now=later)
+    files = _portion(outcome, FILES)
+    assert files.ran is False and "another volume" in files.detail, files
+    assert runner.ran == []
+    assert _ages(cfg, later)["files"] == timedelta(hours=1)
+
+
+def test_a_name_holding_a_line_separator_is_one_path_to_the_archive_check(cfg):
+    listed = backup_record.paths_list(["Music/Title\u2028Part.flac", "Music/b.flac"])
+    assert backup_record.paths_from(listed) == ("Music/Title\u2028Part.flac", "Music/b.flac")
 
 
 def test_an_excluded_system_folder_that_cannot_be_listed_is_never_entered(

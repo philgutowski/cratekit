@@ -1576,6 +1576,18 @@ def run_backup(
             # next run is full whatever happens below.
             try:
                 backup_record.invalidate(_record_path(entry.portion))
+                if entry.portion is backup_facts.Portion.FILES:
+                    # AND THE TOKEN GOES FROM THE LIBRARY'S FACT WITH IT, so a
+                    # run that fails after sending leaves every installation's
+                    # record untrusted, this one's and any other's: a record is
+                    # trusted only while the fact carries its token, and a
+                    # failed run publishes no fact to replace it.
+                    backup_facts.forget_summary_key(
+                        cfg, backup_facts.Portion.FILES, RECORD_TOKEN
+                    )
+            # A fact file that cannot be read raises out of here, before
+            # anything is sent, and the shell refuses with the file it names,
+            # as it does when the publish after a transfer meets the same file.
             except OSError as exc:
                 outcomes.append(
                     PortionOutcome(
@@ -1641,14 +1653,19 @@ def run_backup(
                 command = Command(
                     label=command.label, argv=dry_run_argv(command), feed=command.feed
                 )
-            elif command.label == QUICK_ARCHIVE and isinstance(entry.basis, backup_record.Walk):
-                # THE PLAN'S WALK CAN BE MINUTES OLD BY NOW. What it found
-                # removed is archived off the mirror only while the root is
-                # still the volume it walked and every path is still absent,
-                # so a volume unmounted after the plan fails the portion here
-                # rather than emptying the mirror.
+            elif command.label in QUICK_LABELS and isinstance(entry.basis, backup_record.Walk):
+                # THE PLAN'S WALK CAN BE MINUTES OLD BY NOW. Every quick command
+                # runs only while the root is still the volume it walked, and
+                # what it found removed is archived off the mirror only while
+                # every path is still absent, so a volume unmounted after the
+                # plan fails the portion here rather than emptying the mirror or
+                # sending nothing and calling that a backup.
                 stale = backup_record.still_removed(
-                    cfg.library.root, entry.basis.root_dev, (command.feed or "").splitlines()
+                    cfg.library.root,
+                    entry.basis.root_dev,
+                    backup_record.paths_from(command.feed)
+                    if command.label == QUICK_ARCHIVE
+                    else (),
                 )
                 if stale:
                     failed = CommandResult(
@@ -2824,7 +2841,7 @@ def _listed(command: Command) -> dict[str, int]:
     """
     if command.feed is None:
         return {}
-    return {"paths": len(command.feed.splitlines())}
+    return {"paths": len(backup_record.paths_from(command.feed))}
 
 
 def _kind_fields(kind: str, why: str, changes: Mapping[str, int] | None) -> dict:

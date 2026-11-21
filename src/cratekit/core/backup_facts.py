@@ -391,8 +391,9 @@ def _fact(portion: Portion, entry: dict, *, named: str, path: Path) -> BackupFac
         portion=portion,
         completed_at=completed,
         destination=str(entry.get("destination") or ""),
-        # Read loosely, because both feed a sentence and nothing decides on
-        # them: an unknown word or a damaged summary is no kind and no summary.
+        # Read loosely: an unknown word or a damaged summary is no kind and no
+        # summary. The one key a run decides on, the files record's token, is
+        # then absent, and its absence sends the next run full.
         kind=kind if kind in KINDS else None,
         summary=dict(summary) if isinstance(summary, dict) else None,
     )
@@ -458,6 +459,28 @@ def took(seconds: object) -> str:
     if seconds < 1:
         return " in under a second"
     return f" in {seconds:.0f} seconds"
+
+
+def forget_summary_key(cfg: config.Config, portion: Portion, key: str) -> None:
+    """Strike one key from a portion's recorded summary, leaving the rest (U317).
+
+    The files record's token is struck this way before a transfer, so no
+    record anywhere is trusted again until a run that kept one publishes. A
+    portion with no fact, or a summary without the key, is left as it is and
+    the file is not rewritten.
+    """
+    read, _held = _read(cfg)
+    fact = read.get(portion)
+    if fact is None or fact.summary is None or key not in fact.summary:
+        return
+    record(
+        cfg,
+        portion,
+        completed_at=fact.completed_at,
+        destination=fact.destination,
+        kind=fact.kind,
+        summary={name: value for name, value in fact.summary.items() if name != key},
+    )
 
 
 def full_check_due(answer: PortionAge) -> datetime | None:
@@ -711,6 +734,7 @@ __all__ = [
     "ages",
     "clear_outcome",
     "encode_outcome",
+    "forget_summary_key",
     "full_check_age",
     "full_check_due",
     "took",

@@ -1232,8 +1232,8 @@ long it took and when the next full check is due:
   library, mirror or excludes changed, or another installation or an older
   Cratekit backed the library up since), when a folder cannot be read or
   vanishes while it is read, when more than 10,000 paths changed, when a
-  changed name is in decomposed Unicode form or holds a line break, or when
-  asked with `--check`. `--full` is a full check that lists the remote folder
+  changed name is in decomposed Unicode form, when any name in the library
+  holds a line break or carriage return, or when asked with `--check`. `--full` is a full check that lists the remote folder
   by folder (most of an hour, independent of the recursive listing), and
   doctor's `backup.full_comparison` asks for one every thirty days.
 - **quick**: between full checks, the library is compared with Cratekit's own
