@@ -696,7 +696,7 @@ def _rows_step(
     if not keep:
         step.state = EMPTY
         return
-    whole = rows_cli.plan_library(cfg, declared, [])
+    whole = rows_cli.read_plan(cfg, declared, [])
     other = {
         item.content_id
         for item in whole.writes
@@ -734,7 +734,7 @@ def _suggest_step(
     if not any(row.cause == backlog.NO_GENRE for row in plan.rows):
         step.state = EMPTY
         return
-    whole = suggest_cli.plan_library(
+    whole = suggest_cli.read_plan(
         cfg,
         declared,
         band=backlog.FLOOR,
@@ -988,7 +988,7 @@ def tag_campaign(ctx: "Context") -> Envelope:
 
     args = ctx.args
     progress = getattr(ctx, "progress", None)
-    plan = backlog_cli.plan_library(cfg, declared, bool(args.catalogue), progress)
+    plan = backlog_cli.read_plan(cfg, declared, bool(args.catalogue), progress)
     given = answers(
         plan,
         alias=list(args.alias or ()),

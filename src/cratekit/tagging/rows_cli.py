@@ -265,7 +265,7 @@ def _written(plan: rows.RowsPlan, written: rows.Written) -> dict[str, str]:
     }
 
 
-def plan_library(cfg: config.Config, declared, leave: list[str]) -> rows.RowsPlan:
+def read_plan(cfg: config.Config, declared, leave: list[str]) -> rows.RowsPlan:
     """The plan over the library as it stands, through a handle opened to read.
 
     ``require_closed`` is the opener's write intent flag and it is left False,
@@ -319,7 +319,7 @@ def tag_rows(ctx) -> Envelope:
     # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
     session.assert_backup_acknowledged(cfg)
 
-    plan = plan_library(cfg, declared, list(getattr(ctx.args, "leave", None) or ()))
+    plan = read_plan(cfg, declared, list(getattr(ctx.args, "leave", None) or ()))
     data = _payload(plan)
     if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "apply":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=_advisories(plan))
@@ -348,6 +348,6 @@ __all__ = [
     "ROWS_LEFT",
     "apply_plan",
     "build",
-    "plan_library",
+    "read_plan",
     "tag_rows",
 ]

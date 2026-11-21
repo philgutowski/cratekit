@@ -544,6 +544,8 @@ def test_a_step_that_refuses_stops_the_campaign_with_the_earlier_writes_named(
     run_id, _refused = _first_act(["--alias", INDIE_ALIAS])
     _decide(run_id)
 
+    real = tags.write_genre
+
     def stuck(path, genre):
         return False
 
@@ -568,8 +570,8 @@ def test_a_step_that_refuses_stops_the_campaign_with_the_earlier_writes_named(
     assert tags.read_genre_from_file(paths["15"]) == INDIE
     assert active_taxonomy.load(cfg).tagging_alias(INDIE.lower()) is None
 
-    # A second run plans only what is left.
-    monkeypatch.undo()
+    # A second run plans only what is left, with the writer working again.
+    monkeypatch.setattr(tags, "write_genre", real)
     _run, refused = _first_act(["--alias", INDIE_ALIAS])
     shown = {item.get("content_id") for item in refused["cause"]["detail"]["shown"]["items"]}
     assert "10" not in shown and "12" in shown
@@ -907,7 +909,7 @@ def test_an_unexpected_failure_in_a_step_is_this_builds_defect_with_what_landed(
     def broken(*args, **kwargs):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(tag_campaign.suggest_cli, "plan_library", broken)
+    monkeypatch.setattr(tag_campaign.suggest_cli, "read_plan", broken)
     code, stopped = drive(["--run", run_id, *VERB])
     assert stopped["cause"]["reason"] == "internal-error", stopped
     assert "RuntimeError: boom" in stopped["cause"]["message"]
@@ -920,14 +922,14 @@ def test_the_suggest_step_plans_at_the_backlogs_floor(acknowledged, silence, mon
     build(acknowledged, silence, *_library())
     run_id, _refused = _first_act([])
     _decide(run_id)
-    real = tag_campaign.suggest_cli.plan_library
+    real = tag_campaign.suggest_cli.read_plan
     bands: list[str] = []
 
     def spy(*args, band, **kwargs):
         bands.append(band)
         return real(*args, band=band, **kwargs)
 
-    monkeypatch.setattr(tag_campaign.suggest_cli, "plan_library", spy)
+    monkeypatch.setattr(tag_campaign.suggest_cli, "read_plan", spy)
     code, acted = drive(["--run", run_id, *VERB])
     assert code == int(ExitCode.OK), acted
     assert bands == [backlog.FLOOR]

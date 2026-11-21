@@ -82,7 +82,7 @@ def build(parser, entry) -> None:
     parser.set_defaults(_handler=tag_backlog)
 
 
-def plan_library(cfg: config.Config, declared, catalogue: bool, progress) -> backlog.Backlog:
+def read_plan(cfg: config.Config, declared, catalogue: bool, progress) -> backlog.Backlog:
     """The backlog over the library as it stands, through a handle opened to read.
 
     THE ONE PLAN, this report's and ``tag campaign``'s (U294), so the campaign
@@ -349,7 +349,7 @@ def tag_backlog(ctx) -> Envelope:
     """Sort the needs genre backlog by cause and name the campaign. Writes nothing."""
     cfg = _load()
     declared = active_taxonomy.load(cfg)
-    plan = plan_library(
+    plan = read_plan(
         cfg, declared, bool(getattr(ctx.args, "catalogue", False)), getattr(ctx, "progress", None)
     )
     return ctx.envelope(
@@ -369,6 +369,6 @@ __all__ = [
     "advisories",
     "build",
     "checks",
-    "plan_library",
+    "read_plan",
     "tag_backlog",
 ]

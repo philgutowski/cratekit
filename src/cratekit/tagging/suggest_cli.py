@@ -326,7 +326,7 @@ def _written(written: rows.Written) -> dict[str, str]:
     }
 
 
-def plan_library(
+def read_plan(
     cfg: config.Config,
     declared,
     *,
@@ -489,7 +489,7 @@ def tag_suggest(ctx) -> Envelope:
     session.assert_backup_acknowledged(cfg)
 
     args = ctx.args
-    plan = plan_library(
+    plan = read_plan(
         cfg,
         declared,
         band=args.band,
@@ -527,6 +527,6 @@ __all__ = [
     "apply_plan",
     "build",
     "picks",
-    "plan_library",
+    "read_plan",
     "tag_suggest",
 ]
