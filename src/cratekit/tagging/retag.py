@@ -72,6 +72,7 @@ from typing import Any
 from cratekit.core import locations, review, tags, taxonomy
 from cratekit.core.naming import AUDIO_EXTS
 from cratekit.core.review import Queue
+from cratekit.tagging import titles
 from cratekit.tagging.tag import Searcher
 from cratekit.write import metadata, trees
 
@@ -393,8 +394,10 @@ def retag_one(
         answer = accepted_genre(item)
     if not answer:
         artist = tags.read_tag(candidate.path, "artist") or ""
-        title = tags.read_tag(candidate.path, "title") or candidate.path.stem
-        hit = searcher(artist, title)
+        # A NAME IS READ AS ``tag folder`` READS ONE, past the older naming's
+        # tail, and one whose title is that tail alone asks nothing (R-1724).
+        title = tags.read_tag(candidate.path, "title") or titles.name_title(candidate.path.stem)
+        hit = searcher(artist, title) if title else None
         answer = (hit.genre or "").strip() if hit is not None and hit.genre else ""
     if not answer:
         return _ask(

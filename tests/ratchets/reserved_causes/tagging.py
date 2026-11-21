@@ -169,7 +169,15 @@ KEBAB_LITERALS = {
         'tag-suggest-unwritten',
     ],
     # 2026-11-15, U289: how a catalogue's question was read off a file.
-    'tagging/titles.py': ['as-written', 'by-name', 'head-alone', 'name-ambiguous', 'past-head'],
+    # 2026-11-21, R-1724: a name whose title is the older naming's tail alone.
+    'tagging/titles.py': [
+        'as-written',
+        'by-name',
+        'head-alone',
+        'name-ambiguous',
+        'no-title',
+        'past-head',
+    ],
     # 2026-10-31, U178: the label genre disposition joined.
     'tagging/tag.py': [
         'has-genre',
@@ -203,7 +211,15 @@ NAMED_WITH_OWN = {
     ],
     # 2026-10-31, U178: the engine refuses a file that would not take its genre.
     # 2026-11-15, U289: how a catalogue's question was read off a file.
-    'tagging/titles.py': ['as-written', 'by-name', 'head-alone', 'name-ambiguous', 'past-head'],
+    # 2026-11-21, R-1724: a name whose title is the older naming's tail alone.
+    'tagging/titles.py': [
+        'as-written',
+        'by-name',
+        'head-alone',
+        'name-ambiguous',
+        'no-title',
+        'past-head',
+    ],
     'tagging/tag.py': ['tag-folder-unwritten'],
 }
 

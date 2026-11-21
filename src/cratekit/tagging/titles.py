@@ -1096,6 +1096,8 @@ class Read(Enum):
     BY_NAME = "by-name"
     #: A headed name with no tags that read to no one split: no artist is read.
     NAME_AMBIGUOUS = "name-ambiguous"
+    #: A file's name whose title is the older naming's tail alone: nothing is asked.
+    NO_TITLE = "no-title"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1164,8 +1166,45 @@ def question(value: str, artist: str) -> Question:
     return Question(artist, title, Read.PAST_HEAD)
 
 
+#: The tail an older naming wrote after a file name's title, "_PN" of
+#: "06A - 126 - Sean Doron - Sunshine Hotel_PN", the library's mark of a
+#: processed copy and no part of the title (R-1724). Read exactly as it was
+#: written, at the very end of the name, and off a name only: a title TAG
+#: ending in it is a title as written.
+NAME_TAIL = "_PN"
+
+
+def name_title(stem: str) -> str:
+    """The title a file's name carries, for a file with no title tag.
+
+    The name, ``stem``, with the :data:`NAME_TAIL` it ends with dropped from
+    its last dash part, so "Sunshine Hotel_PN" is "Sunshine Hotel" and "On The
+    Rocks (Cafe Del Mar Mix)_PN" ends with its mix, which Discogs then sets
+    aside and the matcher reads as the release's own. A name with no tail is
+    returned as it is, the same string. A last part that is the tail alone,
+    "8A - 124 - Artist - _PN" or "_PN", leaves the name no title, and it reads
+    to the empty string, which asks no catalogue.
+
+    Every reader of a name as a title reads it through here, the by-name read
+    (:func:`by_name`) and what ``tag folder`` and ``tag retag`` hand the
+    searcher, so the question and the text a row is matched against are one.
+    """
+    text = stem.rstrip()
+    if not text.endswith(NAME_TAIL):
+        return stem
+    parts = text[: -len(NAME_TAIL)].split(DASH)
+    parts[-1] = parts[-1].rstrip()
+    if not identifies(parts[-1]):
+        return ""
+    return DASH.join(parts)
+
+
 def by_name(stem: str) -> Question:
     """The artist and title a file with no tags is asked by, read off its name.
+
+    The name is read past the older naming's tail first (:func:`name_title`),
+    and a name whose title is that tail alone is :attr:`Read.NO_TITLE`, with
+    no artist and no title, so nothing is asked by it.
 
     The naming verb writes a name as ``KEY - BPM - [marker] Artist - Title``,
     so a headed name whose body is exactly two parts is that artist and that
@@ -1178,10 +1217,13 @@ def by_name(stem: str) -> Question:
     say which part is the artist. A name with no head is asked as written,
     with no artist, exactly as before.
     """
-    rest = _past_head(stem)
+    name = name_title(stem)
+    if not name:
+        return Question("", "", Read.NO_TITLE)
+    rest = _past_head(name)
     if rest is None:
-        return Question("", stem, Read.AS_WRITTEN)
-    unsplit = question(stem, "")
+        return Question("", name, Read.AS_WRITTEN)
+    unsplit = question(name, "")
     if unsplit.read is Read.HEAD_ALONE:
         return unsplit
     if len(rest) == 2:

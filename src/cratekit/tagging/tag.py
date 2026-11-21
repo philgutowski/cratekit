@@ -735,6 +735,13 @@ def tag_one(
     every row against the name itself. A name that does not read to one
     artist and title is asked with no artist, as before, and its record says
     so in ``asked_read``.
+
+    A NAME IS READ PAST THE ``_PN`` TAIL the older naming wrote after its
+    title (R-1724, :func:`cratekit.tagging.titles.name_title`), so the
+    question and the text every row is matched against carry the name's own
+    title. A title tag is never read so. A name whose title is that tail alone
+    asks no catalogue by artist and title, ``no-hit`` with ``asked_read``
+    ``no-title``, and is still asked by its ISRC.
     """
     repair = art.repair_in_place(path)
     repaired = {"art_repair": repair.status, "art_repair_detail": repair.detail}
@@ -768,12 +775,20 @@ def tag_one(
     needs_genre = not existing and by_label is None
     artist = tags.read_tag(path, "artist") or ""
     title_tag = tags.read_tag(path, "title")
-    title = title_tag or path.stem
+    # A NAME IS READ PAST THE OLDER NAMING'S TAIL, and a title tag never is
+    # (R-1724): the searcher asks and matches the one text it is handed.
+    title = title_tag or titles.name_title(path.stem)
     named = titles.by_name(path.stem) if not artist and not title_tag else None
     if named is not None:
         artist = named.artist
     try:
-        hit = searcher(artist, title)
+        # A NAME THAT READS TO NO TITLE ASKS NO CATALOGUE by artist and title,
+        # and its empty decline still carries the file to the ISRC question.
+        hit = (
+            searcher(artist, title)
+            if title
+            else SearchHit(asked=titles.Question(artist, "", titles.Read.NO_TITLE))
+        )
     except CratekitError as exc:
         if needs_genre and tier.copyright_labels and type(exc) is CratekitError:
             # A PLAIN REFUSAL ONLY: ``rebuilt`` keeps the job's own carried
