@@ -113,6 +113,19 @@ DRY_RUN = "dry_run"
 #: the fast comparison under a job a person queued to be the full one.
 FULL = "full"
 
+#: The payload key for the full check (U317), frozen and rebuilt the way the
+#: two above are: a resume that lost it would run a quick backup under a job a
+#: person queued to read the whole remote.
+CHECK = "check"
+
+#: The advisory saying which kind of run a backup was (U317): skipped, quick or
+#: full, what changed, how long it took and when the next full check is due.
+KIND = "backup-kind"
+
+#: The progress key carrying when the last full check completed and when the
+#: next is due, read back from the fact file after the run.
+FULL_CHECK = "full_check"
+
 #: The advisory saying what the file comparison did (R-757). A warning because
 #: the default renderer prints a verb's warnings and nothing of its payload, so
 #: this is the only place a person reading the terminal meets the numbers.
@@ -207,6 +220,133 @@ def _is_full(job) -> bool:
     gives: ``--full`` typed beside ``--job`` selects nothing.
     """
     return bool((job.payload or {}).get(FULL))
+
+
+def _is_check(job) -> bool:
+    """Whether this JOB was asked for a full check, by either flag (U317)."""
+    payload = job.payload or {}
+    return bool(payload.get(CHECK)) or bool(payload.get(FULL))
+
+
+def _outcome_row(outcomes, portion: backup_facts.Portion) -> tuple[dict | None, bool]:
+    """One item's recorded portion row, and whether its run was a rehearsal."""
+    recorded = (outcomes or {}).get(str(portion))
+    if not isinstance(recorded, dict):
+        return None, False
+    found = None
+    for row in recorded.get("portions") or ():
+        if isinstance(row, dict) and row.get("portion") == str(portion):
+            found = row
+    return found, bool(recorded.get("dry_run"))
+
+
+def kind_warning(outcomes, full_check: dict | None) -> tuple[dict[str, str], ...]:
+    """Which kind of run this backup was, as one sentence, or nothing (U317).
+
+    READ FROM THE RECORDED OUTCOMES, as :func:`comparison_warning` is, so the
+    sentence says what the run did and never what it was planned to do. An
+    item that recorded nothing, or a kind this build does not know, says
+    nothing rather than a kind nobody measured.
+
+    THE WHOLE RUN'S KIND IS THE FILES PORTION'S, except that a skipped files
+    portion beside a new database snapshot is a quick run: something was sent.
+    A skip is a run in which nothing at all was.
+
+    THE NEXT FULL CHECK IS READ BACK FROM THE FACT FILE, beside the ages, so a
+    rehearsal names the date the last real run left and not one it invented.
+    """
+    files, rehearsed = _outcome_row(outcomes, backup_facts.Portion.FILES)
+    database, db_rehearsed = _outcome_row(outcomes, backup_facts.Portion.DATABASE)
+    rehearsed = rehearsed or db_rehearsed
+    parts: list[str] = []
+    overall: str | None = None
+    if files is not None and files.get("ran") and files.get("kind") in (
+        backup_facts.KIND_FULL, backup_facts.KIND_QUICK, backup_facts.KIND_SKIPPED,
+    ):
+        overall = files["kind"]
+        parts.append(_files_sentence(files, rehearsed))
+    if database is not None and database.get("ran") and database.get("kind") in (
+        backup_facts.KIND_SNAPSHOT, backup_facts.KIND_UNCHANGED,
+    ):
+        if database["kind"] == backup_facts.KIND_SNAPSHOT:
+            parts.append(
+                "the database would have been snapshotted"
+                if rehearsed
+                else "the database was snapshotted into a new dated folder"
+            )
+            if overall in (None, backup_facts.KIND_SKIPPED):
+                overall = backup_facts.KIND_QUICK
+        else:
+            parts.append(
+                "the database is what its last completed snapshot copied, so no "
+                "new snapshot was taken and its age was reset"
+                if not rehearsed
+                else "the database is what its last completed snapshot copied, so "
+                "no new snapshot would be taken"
+            )
+            overall = overall or backup_facts.KIND_SKIPPED
+    if overall is None:
+        return ()
+    due = (full_check or {}).get("due")
+    after = (
+        f"The next full check is due {due}"
+        if due
+        else "The next backup runs a full check"
+    )
+    lead = "this rehearsal planned a" if rehearsed else "this backup was a"
+    word = {"full": "full check", "quick": "quick run", "skipped": "skip"}[overall]
+    return (
+        {
+            "code": KIND,
+            "message": (
+                f"{lead} {word}: {'; '.join(parts)}. {after}; to run one now: "
+                f"crate backup run --check"
+            ),
+        },
+    )
+
+
+def _files_sentence(row: dict, rehearsed: bool) -> str:
+    """What the files portion did, in the words of its kind."""
+    kind = row["kind"]
+    changes = row.get("changes") if isinstance(row.get("changes"), dict) else {}
+    found = ", ".join(
+        f"{changes.get(name, 0)} {name}"
+        for name in ("added", "changed", "rewritten", "removed")
+    )
+    seconds = row.get("seconds")
+    took = (
+        f" in {seconds:.0f} seconds"
+        if isinstance(seconds, (int, float)) and not isinstance(seconds, bool)
+        else ""
+    )
+    if kind == backup_facts.KIND_SKIPPED:
+        return (
+            f"the files are what the last completed backup left, checked{took} "
+            f"without listing the remote, so nothing was sent"
+            + ("" if rehearsed else " and their age was reset")
+        )
+    if kind == backup_facts.KIND_QUICK:
+        said = row.get("comparison") if isinstance(row.get("comparison"), dict) else {}
+
+        def number(key: str) -> str:
+            value = said.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                return "an unread number of"
+            return f"{value:.0f}"
+
+        sent = (
+            f"rclone would have sent {number('sent')} and archived "
+            f"{number('archived')}"
+            if rehearsed
+            else f"rclone sent {number('sent')} and archived {number('archived')}"
+        )
+        return (
+            f"against the record of the last completed backup the files had "
+            f"{found}, and {sent}{took}, listing nothing on the remote"
+        )
+    why = row.get("why") or "one was asked for"
+    return f"the files were compared with the whole remote{took}, because {why}"
 
 
 def comparison_warning(outcomes) -> tuple[dict[str, str], ...]:
@@ -439,19 +579,30 @@ def build(parser, entry) -> None:
         ),
     )
     parser.add_argument(
+        "--check",
+        action="store_true",
+        dest="check",
+        help=(
+            "run the full check now: list the remote, compare every file, and "
+            "snapshot the database. Without it a backup runs one when the last "
+            "is a week old, and otherwise sends only what changed since the last "
+            "backup, or is skipped when nothing did"
+        ),
+    )
+    parser.add_argument(
         "--full",
         action="store_true",
         dest="full",
         help=(
-            "list the remote folder by folder instead of in one recursive pass, "
-            "which takes most of an hour on a large library and does not depend "
-            "on the recursive listing being complete"
+            "run the full check listing the remote folder by folder instead of "
+            "in one recursive pass, which takes most of an hour on a large "
+            "library and does not depend on the recursive listing being complete"
         ),
     )
     parser.set_defaults(_handler=backup_library)
 
 
-def frozen_payload(dry_run: bool, full: bool = False) -> dict[str, Any]:
+def frozen_payload(dry_run: bool, full: bool = False, check: bool = False) -> dict[str, Any]:
     """What the queued job carries, and the only thing the resume is rebuilt from.
 
     ``bool`` rather than the argparse value straight through, so the payload holds
@@ -459,7 +610,7 @@ def frozen_payload(dry_run: bool, full: bool = False) -> dict[str, Any]:
     namespace. A payload key that is ``"false"`` as a string is true to every
     reader of it, and the reader here decides whether anything is copied.
     """
-    return {DRY_RUN: bool(dry_run), FULL: bool(full)}
+    return {DRY_RUN: bool(dry_run), FULL: bool(full), CHECK: bool(check)}
 
 
 def backup_argv(job) -> list[str]:
@@ -488,6 +639,8 @@ def backup_argv(job) -> list[str]:
         argv.append("--dry-run")
     if payload.get(FULL):
         argv.append("--full")
+    if payload.get(CHECK):
+        argv.append("--check")
     return [*argv, "--job", job.job_id]
 
 
@@ -616,7 +769,11 @@ def _open_twin(store, *, handler_key: str, dry_run: bool, cfg: config.Config):
 
 
 def _already_queued(
-    job, frozen: config.Config | None, *, asked_full: bool | None = None
+    job,
+    frozen: config.Config | None,
+    *,
+    asked_full: bool | None = None,
+    asked_check: bool | None = None,
 ) -> dict[str, str]:
     """The one warning a reported twin carries, in the JOB's terms.
 
@@ -647,6 +804,13 @@ def _already_queued(
         where += (
             f". It will run the {held} comparison and this ask was for the "
             f"{asked} one, so cancel it first if that is the one wanted"
+        )
+    elif asked_check and not _is_check(job):
+        # U317. The open job runs a full check only if one is due, so a person
+        # who asked for one now would otherwise watch a quick run complete.
+        where += (
+            ". It runs a full check only if one is due and this ask was for one "
+            "now, so cancel it first if that is the one wanted"
         )
     return {
         "code": ALREADY_QUEUED,
@@ -765,6 +929,9 @@ def backup_library(ctx) -> Envelope:
             # the condition.
             try:
                 reported["ages"] = published_ages(jobs.frozen_config(job))
+                reported["progress"][FULL_CHECK] = published_full_check(
+                    jobs.frozen_config(job)
+                )
             except CratekitError as exc:
                 _raise_refusal(exc, job)
             # THE SHARE WARNING IS ASKED HERE AND NOT READ FROM THE ITEM. The work
@@ -791,9 +958,14 @@ def backup_library(ctx) -> Envelope:
                 # R-757. From what ``_reported`` just read, so the sentence and
                 # the payload beside it are one reading of one file.
                 *comparison_warning(reported["progress"].get(OUTCOMES)),
+                # U317, from the same reading and the full check read back.
+                *kind_warning(
+                    reported["progress"].get(OUTCOMES),
+                    reported["progress"].get(FULL_CHECK),
+                ),
             )
             return ctx.envelope(data=reported, warnings=warnings)
-        payload = frozen_payload(ctx.args.dry_run, ctx.args.full)
+        payload = frozen_payload(ctx.args.dry_run, ctx.args.full, ctx.args.check)
         found = _open_twin(
             store,
             handler_key=ctx.entry.handler_key,
@@ -814,7 +986,9 @@ def backup_library(ctx) -> Envelope:
             return ctx.envelope(
                 data=_reported(store, twin),
                 warnings=(
-                    _already_queued(twin, frozen, asked_full=payload[FULL]),
+                    _already_queued(
+                        twin, frozen, asked_full=payload[FULL], asked_check=payload[CHECK]
+                    ),
                     *map(dict, backup.absent_analysis_share(described)),
                     *map(dict, backup.snapshot_identity_warning(described)),
                     # THE TWIN'S OWN, not this ask's. A rehearsal and a real run
@@ -898,6 +1072,34 @@ def published_ages(cfg: config.Config, *, now: datetime | None = None) -> list[d
         }
         for entry in reported
     ]
+
+
+def published_full_check(cfg: config.Config, *, now: datetime | None = None) -> dict:
+    """When the last full check completed and the next is due, READ BACK (U317).
+
+    From the fact file a destructive session reads the ages from, for the
+    reason :func:`published_ages` gives, and refusing the same way when it
+    cannot be read. ``due`` is None when the next backup runs one at once.
+    """
+    try:
+        answer = backup_facts.full_check_age(cfg, now=now)
+    except backup_facts.BackupFactsUnreadable as exc:
+        raise refuse(
+            "backup-facts-unreadable",
+            f"the backup ran and the date of its last full check cannot be read "
+            f"back: {exc}",
+            remedy=Remedy(str(exc.remedy)),
+            origin=("backup", "cli"),
+            detail={"path": str(exc.path), "library": str(cfg.library.root)},
+        ) from exc
+    due = backup_facts.full_check_due(answer)
+    return {
+        "state": str(answer.state),
+        "completed_at": (
+            answer.completed_at.isoformat() if answer.completed_at is not None else None
+        ),
+        "due": due.date().isoformat() if due is not None else None,
+    }
 
 
 def refusal_for(outcome: backup.BackupOutcome) -> CratekitError | None:
@@ -1070,6 +1272,10 @@ def perform_backup(
             now=now,
             process_lister=process_lister,
             full=bool(payload.get(FULL)),
+            check=bool(payload.get(CHECK)),
+            # U317. One portion planned, so the database item does not walk
+            # the library and the files item does not read the database.
+            only=portion,
         )
     except backup.BackupRefused as exc:
         raise _engine_refusal(

@@ -473,6 +473,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'backup-already-queued',
         'backup-comparison',
         'backup-facts-unreadable',
+        'backup-kind',  # 2026-11-21, U317
         'backup-nothing-ran',
         'backup-rehearsal',
         'backup-transfer-failed',
@@ -1772,6 +1773,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'analysis-share-absent',
         'archive-listing-failed',
         'archive-purge-failed',
+        'backup-record-not-kept',  # 2026-11-21, U317
         'backup-restore',
         'database-absent',
         'destination-not-configured',
@@ -1783,6 +1785,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'no-snapshot-available',
         'prune-archive',
         'prune-archive-folder',
+        'quick-archive',  # 2026-11-21, U317
+        'quick-resend',  # 2026-11-21, U317
+        'quick-send',  # 2026-11-21, U317
         'rclone-missing',
         'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
@@ -1803,6 +1808,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'snapshot-settings',
         'snapshot-share',
     ],
+    'modules/tools/backup_record.py': ['utf-8'],  # 2026-11-21, U317
     'modules/tools/mastering.py': [
         '24-bit',
         'archive-holds-a-different-recording',

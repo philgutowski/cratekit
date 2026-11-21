@@ -166,7 +166,12 @@ def _mirror(payload: dict, cfg, *, now: datetime, publish: bool = False) -> dict
     sends it. ``test_a_run_that_published_sends_its_own_record_next_time`` holds
     that, and every other drive here keeps it out of the count.
     """
-    plan = backup.plan_backup(cfg, now=now, full=bool(payload.get(backup_cli.FULL)))
+    plan = backup.plan_backup(
+        cfg,
+        now=now,
+        full=bool(payload.get(backup_cli.FULL)),
+        check=bool(payload.get(backup_cli.CHECK)),
+    )
     narrowed = replace(plan, portions=(plan.portion(backup_facts.Portion.FILES),))
     outcome = backup.run_backup(
         cfg,
@@ -350,8 +355,12 @@ def test_a_run_that_published_sends_its_own_record_next_time(cfg, real_rclone, t
 
     The fact file is library state and the mirror carries it, which is right:
     it is restored with the library. The cost is that the sentence a person
-    reads never says zero after a real run. Recorded as a residual and held
-    here so the number is explained by a test and not by a guess.
+    reads never says zero after a real full check. Recorded as a residual and
+    held here so the number is explained by a test and not by a guess.
+
+    A FULL CHECK, ASKED FOR (U317). Without it the second run finds nothing
+    changed but the fact file, which every run rewrites, and is skipped;
+    ``tests/test_backup_quick.py`` holds that half.
     """
     _seed(cfg)
     _mirror(FAST, cfg, now=MOMENT, publish=True)
@@ -359,7 +368,7 @@ def test_a_run_that_published_sends_its_own_record_next_time(cfg, real_rclone, t
     assert cfg.library.root in fact.parents, "the fact file moved out of the library"
 
     later = MOMENT + timedelta(hours=1)
-    row = _mirror(FAST, cfg, now=later, publish=True)
+    row = _mirror({**FAST, backup_cli.CHECK: True}, cfg, now=later, publish=True)
 
     assert row["comparison"]["sent"] == 1, row
     sent = _folder(tmp_path, cfg.backup.dest) / fact.relative_to(cfg.library.root)
@@ -398,7 +407,12 @@ def _totals(**stats) -> str:
 
 
 def _run_files(cfg, runner, *, full: bool = False) -> backup.PortionOutcome:
-    plan = backup.plan_backup(cfg, now=MOMENT, full=full)
+    """The files portion's full check over a stand in runner.
+
+    Asked for (U317): a second run over a library the first left unchanged is
+    otherwise skipped, and these read the full mirror's report.
+    """
+    plan = backup.plan_backup(cfg, now=MOMENT, full=full, check=True)
     narrowed = replace(plan, portions=(plan.portion(backup_facts.Portion.FILES),))
     (outcome,) = backup.run_backup(cfg, narrowed, runner=runner, now=MOMENT).portions
     return outcome
@@ -697,7 +711,9 @@ def test_the_full_flag_is_frozen_by_the_parser_and_rebuilt_by_the_resume(cfg):
     assert envelope["data"]["progress"][backup_cli.FULL] is True
     with jobs.open_store() as store:
         job = jobs.get(store, envelope["data"]["job_id"])
-    assert job.payload == {backup_cli.DRY_RUN: True, backup_cli.FULL: True}
+    assert job.payload == {
+        backup_cli.DRY_RUN: True, backup_cli.FULL: True, backup_cli.CHECK: False
+    }
     assert backup_cli.backup_argv(job) == [
         "backup", "run", "--dry-run", "--full", "--job", job.job_id,
     ]
@@ -710,8 +726,15 @@ def test_the_full_flag_is_frozen_by_the_parser_and_rebuilt_by_the_resume(cfg):
 
 
 def test_the_frozen_mode_is_the_one_the_plan_is_built_in(cfg, real_rclone, monkeypatch):
-    """The payload reaches the planner, asserted on the command that was run."""
+    """The payload reaches the planner, asserted on the command that was run.
+
+    Each drive starts with no record of a completed backup (U317), so each is
+    a full check in its frozen mode rather than a skip of the one before.
+    """
+    from cratekit.modules.tools import backup_record
+
     for payload, wanted in ((FAST, "fast"), (FULL, "full"), ({}, "fast")):
+        backup_record.invalidate(backup_record.manifest_path())
         report = backup_cli.perform_backup(
             payload,
             portion=backup_facts.Portion.FILES,
