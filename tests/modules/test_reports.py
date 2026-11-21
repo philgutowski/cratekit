@@ -1777,6 +1777,12 @@ QUALIFIED_MUTATIONS = frozenset(
     {
         "config._back_up_version",
         "config.exclusive_lock",
+        # U298: the lock every state store shared, in its four forms. Each
+        # creates the lock file, and the directory above it, when it is absent.
+        "config.flock_exclusive",
+        "config.held",
+        "config.lock_now",
+        "config.lock_within",
         "config.mkdir_private",
         "config._write_lock",
         "config.load",
@@ -1824,6 +1830,9 @@ QUALIFIED_MUTATIONS = frozenset(
         "rb_writer.write_lock_path",
         "rb_writer.write_session_lock",
         "reconcile._locked",
+        # U298: the mode the convergence lock is held to, handed to
+        # ``config.flock_exclusive`` as its hardening.
+        "reconcile._own_only",
         "reconcile._write",
         "reconcile.close_marker",
         "reconcile.record_markers",

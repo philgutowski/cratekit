@@ -435,12 +435,16 @@ def _path_to(block: list[ast.stmt], target: ast.AST) -> list[tuple[list[ast.stmt
 
 
 def _is_the_call(statement: ast.stmt) -> bool:
-    return (
-        isinstance(statement, ast.Expr)
-        and isinstance(statement.value, ast.Call)
-        and isinstance(statement.value.func, ast.Attribute)
-        and statement.value.func.attr == "raise_for_state"
-    )
+    """A statement that is the mapping call and nothing else.
+
+    As ``jobs.raise_for_state(job)`` in a shell, or by its bare name, which is
+    how ``core.jobs`` calls it in the tail every resume shares (U298).
+    """
+    if not (isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call)):
+        return False
+    callee = statement.value.func
+    name = callee.attr if isinstance(callee, ast.Attribute) else getattr(callee, "id", "")
+    return name == "raise_for_state"
 
 
 def _never_returns(module: ast.AST) -> frozenset[str]:
@@ -536,7 +540,15 @@ def test_every_function_that_drives_a_job_maps_its_ending_afterwards():
     here.
     """
     shells = _shells()
-    assert len(shells) >= 13, "the walk stopped finding the shells it exists to read"
+    # ELEVEN SINCE U298, fourteen before it. The adoption and the tagging
+    # shells, ``acquire fallback`` and ``master`` drove a job each and now
+    # leave through ``jobs.resumed``, the one tail they wrote four times. That
+    # function is a shell like any other to this walk, so it is read below,
+    # and it is named here so a walk that stopped finding it says so.
+    assert len(shells) >= 11, "the walk stopped finding the shells it exists to read"
+    assert ("core/jobs.py", "resumed") in {
+        (path.relative_to(SRC).as_posix(), function.name) for path, function, _ in shells
+    }, "the shared tail of every resume is no longer one of the shells this guard reads"
     for path, function, never_returns in shells:
         reason = unmapped_reason(function, never_returns)
         assert reason is None, (
