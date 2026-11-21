@@ -1709,27 +1709,34 @@ def test_what_the_whole_name_found_the_parse_still_reads(artist, title, row):
 # U324. A credit spelled with a letter accent stripping leaves alone
 # ---------------------------------------------------------------------------
 
-#: (artist tag, file title, the credit as a row would write it): the
-#: artist's part is the tag's artist spelled with a letter NFKD leaves whole,
-#: "ø", "æ", "ß", "ł" or "þ", written plain on one side, as "Âme" and "Ame"
-#: always were; and an initial the fold spells with two letters, "Þ." of
-#: "Þórður" or "Æ." of "Æsop", still stands for the word it opens.
+#: (artist tag, file title, the credit as a row would write it, the title a
+#: catalogue is asked): the artist's part is the tag's artist spelled with a
+#: letter NFKD leaves whole, "ø", "æ", "ß", "ł" or "þ", written plain on one
+#: side, as "Âme" and "Ame" always were; and an initial the fold spells with
+#: two letters, "Þ." of "Þórður" or "Æ." of "Æsop", still stands for the
+#: word it opens. The question reads past a part that is the artist's name
+#: alone, as on main, never past a collaboration or an initial.
 FOLDED_CREDITS = (
-    ("Trentemøller", "08A - 124 - Trentemoller - Sun Path", "Trentemoller"),
-    ("Trentemoller", "08A - 124 - Trentemøller - Sun Path", "Trentemøller"),
-    ("Łukasz Bloom", "08A - 124 - Lukasz Bloom & Tide - Sun Path", "Lukasz Bloom & Tide"),
-    ("Straße Bloom", "08A - 124 - Strasse Bloom - Sun Path", "Strasse Bloom"),
-    ("Æther", "08A - 124 - [MP3] Aether - Sun Path", "Aether"),
-    ("Þórður Badie", "08A - 124 - Þ. Badie - Sun Path", "Þ Badie"),
-    ("Æsop Badie", "08A - 124 - Æ. Badie - Sun Path", "Æ Badie"),
+    ("Trentemøller", "08A - 124 - Trentemoller - Sun Path", "Trentemoller", "Sun Path"),
+    ("Trentemoller", "08A - 124 - Trentemøller - Sun Path", "Trentemøller", "Sun Path"),
+    (
+        "Łukasz Bloom",
+        "08A - 124 - Lukasz Bloom & Tide - Sun Path",
+        "Lukasz Bloom & Tide",
+        "Lukasz Bloom & Tide - Sun Path",
+    ),
+    ("Straße Bloom", "08A - 124 - Strasse Bloom - Sun Path", "Strasse Bloom", "Sun Path"),
+    ("Æther", "08A - 124 - [MP3] Aether - Sun Path", "Aether", "Sun Path"),
+    ("Þórður Badie", "08A - 124 - Þ. Badie - Sun Path", "Þ Badie", "Þ. Badie - Sun Path"),
+    ("Æsop Badie", "08A - 124 - Æ. Badie - Sun Path", "Æ Badie", "Æ. Badie - Sun Path"),
 )
 
 
-@pytest.mark.parametrize(("artist", "title", "credit"), FOLDED_CREDITS)
-def test_a_credit_spelled_with_a_letter_nfkd_leaves_is_the_artists(artist, title, credit):
+@pytest.mark.parametrize(("artist", "title", "credit", "asked"), FOLDED_CREDITS)
+def test_a_credit_spelled_with_a_letter_nfkd_leaves_is_the_artists(artist, title, credit, asked):
     assert searchers._title_matches(title, "Sun Path", artist=artist)
     assert not searchers._title_matches(title, credit, artist=artist)
-    assert titles.question(title, artist).title == "Sun Path"
+    assert titles.question(title, artist).title == asked
 
 
 @pytest.mark.parametrize(

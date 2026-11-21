@@ -789,3 +789,10 @@ def test_the_fold_takes_exactly_the_letters_nfkd_leaves_alone():
         "ø": "o", "Ø": "o", "æ": "ae", "Æ": "ae", "œ": "oe", "Œ": "oe", "ß": "ss",
         "đ": "d", "Đ": "d", "ł": "l", "Ł": "l", "þ": "th", "Þ": "th",
     }
+
+
+def test_a_letter_that_also_carries_an_accent_is_read_plain():
+    """The table is read after the accents come off, so "ǿ" and "ǽ", which
+    NFKD splits into "ø" or "æ" and a mark, are "o" and "ae" as well."""
+    assert (titles._folded("ǿ"), titles._folded("ǽ")) == ("o", "ae")
+    assert matched("Sunrise Mood (Trentemoller Remix)", tracks=("Sunrise Mood (Trentemǿller Remix)",))

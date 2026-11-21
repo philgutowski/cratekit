@@ -611,9 +611,40 @@ _CREDIT_JOIN = re.compile(r"[,&/;+]")
 _CREDIT_WORDS = frozenset({"x", "vs", "pres", "presents"}) | _FEATURING
 
 
+#: The Latin letters accent stripping leaves whole, each read as its plain
+#: spelling (U324). NFKD takes the accent off "Â", but "ø", "æ", "œ", "ß",
+#: "đ", "ł" and "þ" are letters of their own, so "Trentemøller" and the
+#: "Trentemoller" a file writes read as two makers, and a remix credited one
+#: way missed every release crediting it the other. Each letter is read one
+#: way only, "ø" as "o" and never "oe", so "Trentemoeller" stays another
+#: spelling. Lower case, as every caller has already lowered the text.
+_PLAIN_LETTERS = str.maketrans(
+    {
+        "ø": "o",
+        "Ø": "o",
+        "æ": "ae",
+        "Æ": "ae",
+        "œ": "oe",
+        "Œ": "oe",
+        "ß": "ss",
+        "đ": "d",
+        "Đ": "d",
+        "ł": "l",
+        "Ł": "l",
+        "þ": "th",
+        "Þ": "th",
+    }
+)
+
+
 def _folded(word: str) -> str:
-    """A word with its accents taken off, so "Âme" and "Ame" are one name."""
-    return "".join(c for c in unicodedata.normalize("NFKD", word) if not unicodedata.combining(c))
+    """A word with its accents taken off, so "Âme" and "Ame" are one name,
+    and with the letters NFKD leaves whole spelled plain
+    (:data:`_PLAIN_LETTERS`), so "Trentemøller" and "Trentemoller" are too.
+    The table is read after the accents come off, so a letter carrying an
+    accent as well, "ǿ", is read as its plain spelling too."""
+    stripped = "".join(c for c in unicodedata.normalize("NFKD", word) if not unicodedata.combining(c))
+    return stripped.translate(_PLAIN_LETTERS)
 
 
 def _credited_names(text: str) -> set[Words]:
@@ -647,17 +678,23 @@ def _artist_names(artist: str) -> frozenset[Words]:
     return frozenset(names)
 
 
-def _runs_in(inner: Words, outer: Words, *, initials: bool = False) -> bool:
+def _runs_in(inner: Words, outer: Words, *, written: Words | None = None) -> bool:
     """Whether ``inner`` is a run of ``outer``'s words, in order and together;
-    with ``initials``, a word of one letter in ``inner`` stands for a word it
-    opens, "B Badie" in "Bernard Badie"."""
+    with ``written``, ``inner``'s words as written before they were folded, a
+    word of one letter stands for a word it opens, "B Badie" in "Bernard
+    Badie". A letter is judged as written, since the fold spells "Þ" and "Æ"
+    with two (U324): "Þ Badie" still stands for "Þórður Badie"."""
     size = len(inner)
 
-    def same(mine: str, theirs: str) -> bool:
-        return mine == theirs or (initials and len(mine) == 1 and theirs.startswith(mine))
+    def initial(index: int) -> bool:
+        return written is not None and 1 in (len(inner[index]), len(written[index]))
+
+    def same(index: int, theirs: str) -> bool:
+        mine = inner[index]
+        return mine == theirs or (initial(index) and theirs.startswith(mine))
 
     return any(
-        all(same(mine, theirs) for mine, theirs in zip(inner, outer[start : start + size], strict=True))
+        all(same(index, theirs) for index, theirs in enumerate(outer[start : start + size]))
         for start in range(len(outer) - size + 1)
     )
 
@@ -683,10 +720,11 @@ def _names_the_artist(part: str, names: frozenset[Words], *, first: bool) -> boo
         text = text.split(found[0], 1)[1]
     elif _numbered(found):
         return False
-    folded = tuple(_folded(word) for word in words(text))
+    written = words(text)
+    folded = tuple(_folded(word) for word in written)
     if names & _credited_names(text):
         return True
-    return len(folded) > 1 and any(_runs_in(folded, name, initials=True) for name in names)
+    return len(folded) > 1 and any(_runs_in(folded, name, written=written) for name in names)
 
 
 def _featuring_at(text: str) -> int | None:
