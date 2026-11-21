@@ -227,11 +227,13 @@ def _on_the_recorded_volume(cfg):
 def _first_backup(cfg, tmp_path, **identity):
     """Seed the library and back it up once, completed, onto an empty mirror.
 
-    The identity is the test's to state (U323): by default the recorded volume,
-    so the first backup never depends on what the machine's own disk reads; a
-    test of another platform's answer passes that answer. A first backup that
-    refuses or skips its files fails here, with its reason, rather than leaving
-    a test to read an empty mirror as a history it never had.
+    The identity is the test's to state (U323). A test that takes the real
+    proof back passes the answer it tests, as every one does today; the default,
+    the recorded volume, is for the next one that does not, so its first backup
+    is on the library's own volume rather than on whatever the machine's disk
+    reads. Under the suite's neutralized proof the seams go unread. A first
+    backup that refuses or skips its files fails here, with its reason, rather
+    than leaving a test to read an empty mirror as a history it never had.
     """
     _seed(cfg)
     plan, outcome = _backup(cfg, at=MOMENT, **(identity or _on_the_recorded_volume(cfg)))
