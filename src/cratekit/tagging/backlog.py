@@ -199,11 +199,18 @@ class Row:
             "verb": self.verb,
             "reason": self.reason,
             "proposal": self.proposal.to_json() if self.proposal else None,
-            "catalogue": self.asked.to_json() if self.asked else None,
+            "catalogue": self.asked.digested() if self.asked else None,
         }
 
     def to_json(self) -> dict[str, Any]:
-        return {**self.digested(), "path": self.path, "artist": self.artist, "title": self.title}
+        """The row as the envelope carries it, the catalogues' words included (U322)."""
+        return {
+            **self.digested(),
+            "catalogue": self.asked.to_json() if self.asked else None,
+            "path": self.path,
+            "artist": self.artist,
+            "title": self.title,
+        }
 
 
 @dataclass(frozen=True, slots=True)

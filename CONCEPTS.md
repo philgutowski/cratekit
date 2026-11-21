@@ -114,7 +114,9 @@ comes from the same row as its genre.
 The source `crate tag folder` asks after the searcher: Deezer, keyless, by the
 file's ISRC only (`tagging/published.py`). Asked only when the file needs a
 genre and Beatport, asked, answered without a usable match, and, since U244, not while
-Discogs was asked and went unread. Its **published genre** is
+Discogs was asked and went unread. `tag suggest --catalogue` and `tag backlog
+--catalogue` also ask it about a row Beatport refused once Discogs answered
+(U322). Its **published genre** is
 the album's genre word, written only when it maps to a folder that is not too
 coarse (first mapping word wins); it is never off taxonomy and carries no
 inferred mark. Answers are the searcher's five or `no-isrc`. After one

@@ -570,7 +570,15 @@ crate route pending
   of a token, how to record one; with `--output json` the summary lists such
   files under `refusal_stop`, and lists under `refused` the files Discogs
   searched and could not tag while every other catalogue refused. `tag suggest --catalogue`, `tag backlog --catalogue` and `tag campaign --catalogue` stop the
-  same way within one run; `tag retag` asks afresh for each file. The sweep's warning names such a catalogue as having
+  same way within one run, and stop asking the catalogues altogether only
+  after three rows in a row that no catalogue they were sent to could read,
+  so a row Discogs answered beside a refusing Beatport keeps the walk going,
+  as does a row Beatport answered while Discogs refused the recorded token;
+  they also ask Deezer about a row Beatport refused once Discogs answered,
+  which a sweep does not, and their warning names the catalogue that could
+  not be read on each row another one answered, a row given a genre
+  included. A row that ends with no genre and no catalogue's word is asked
+  again on a later day; `tag retag` asks afresh for each file. The sweep's warning names such a catalogue as having
   refused this client, and a Cloudflare challenge as one, and keeps
   `unreachable` for a catalogue that is down. A file no catalogue knows keeps
   no genre. A file's label is its label
@@ -1241,7 +1249,10 @@ floor, and each proposal names its source (the catalogue that matched and
 its own word, or the neighbours) and its share of the votes; with
 `--catalogue` the catalogues are asked as `tag suggest --catalogue` asks
 them and the answers are kept a week, so `tag suggest --catalogue` reads the
-same ones. The words no folder takes are grouped across spellings and ranked
+same ones, and a catalogue line counts, for each catalogue, the rows it was
+asked about, matched, missed and could not read, and the rows it was not asked
+about, among them those it was passed over on once it had refused this
+client. The words no folder takes are grouped across spellings and ranked
 by rows. Each answer is planned by `taxonomy alias` and `taxonomy folder`
 themselves on your active copy, so a word is offered only answers those
 verbs take: an alias of the genre folder the rows' artist and folder
