@@ -2527,6 +2527,14 @@ def test_a_recorded_commit_is_on_disk_before_the_session_ends(cfg):
     assert only.change.trees == (session.TreeChange(tree="a-tree", created=6),)
 
 
+#: The one function every writer takes its capture through since U298,
+#: ``write.trees.attached_capture``. It attaches the capture to the record it
+#: is handed before it judges it, which
+#: ``test_the_shared_capture_attaches_before_it_judges`` holds, so a caller of
+#: it has made that act and still owes the other two.
+SHARED_CAPTURE = "attached_capture"
+
+
 def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
     """Every FUNCTION in ``src`` that takes a capture, with what it still owes.
 
@@ -2535,6 +2543,10 @@ def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
     complies. Returns the unreadable spellings too: a capture imported by name
     or under an alias is a call this walk cannot attribute, and a guard that
     cannot read something says so rather than passing it.
+
+    A capture is taken by ``snapshot.capture`` or through the shared function,
+    whose own body is not a taker: it takes the capture FOR the writer that
+    called it, and the record and the commit are that writer's to keep.
     """
     import ast
 
@@ -2558,10 +2570,21 @@ def _capture_takers(src: Path) -> tuple[dict[str, set[str]], list[str]]:
         for function in ast.walk(tree):
             if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
+            if function.name == SHARED_CAPTURE:
+                continue
             takes = False
             seen: set[str] = set()
             for node in ast.walk(function):
-                if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                if not isinstance(node, ast.Call):
+                    continue
+                if (
+                    node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+                ) == SHARED_CAPTURE:
+                    takes = True
+                    seen.add("attach_capture")
+                if isinstance(node.func, ast.Name) and node.func.id == "record_commit":
+                    seen.add("a recorded commit")
+                if not isinstance(node.func, ast.Attribute):
                     continue
                 receiver = node.func.value
                 if (
@@ -2719,6 +2742,107 @@ def test_the_capture_guard_reads_a_function_that_keeps_no_record(tmp_path):
     assert unreadable == ["aliased.py: from cratekit.core.snapshot import capture"]
 
 
+def test_the_capture_guard_reads_a_writer_that_takes_its_capture_through_the_shared_function(
+    tmp_path,
+):
+    """The spelling every writer has used since U298, held to the acts it still owes.
+
+    The shared function attaches, so a caller is not asked for that again. It
+    is asked for the record and the commit, by either name the function goes
+    by, and the shared function's own body is not read as a writer.
+    """
+    module = tmp_path / "write" / "sample.py"
+    module.parent.mkdir()
+    module.write_text(
+        "def attached_capture(gates, cfg, db):\n"
+        "    capture = snapshot.capture(cfg, db=db)\n"
+        "    session.attach_capture(gates.record, capture.root, cfg)\n"
+        "    return gates.record, capture\n"
+        "\n"
+        "def good(cfg, db):\n"
+        "    with session.assert_gates(cfg, workflow='w', keep=session.Keep.RECORD) as gates:\n"
+        "        record, capture = attached_capture(gates, cfg, db)\n"
+        "        record_commit(record, 's', 1, cfg)\n"
+        "\n"
+        "def unrecorded(cfg, db):\n"
+        "    with session.assert_gates(cfg, workflow='w', keep=session.Keep.RECORD) as gates:\n"
+        "        record, capture = trees.attached_capture(gates, cfg, db)\n"
+        "\n"
+        "def bare(cfg, db):\n"
+        "    with session.assert_gates(cfg, workflow='w') as gates:\n"
+        "        trees.attached_capture(gates, cfg, db)\n"
+    )
+
+    takers, unreadable = _capture_takers(tmp_path)
+
+    assert takers == {
+        "write/sample.py::good": set(),
+        "write/sample.py::unrecorded": {"a recorded commit"},
+        "write/sample.py::bare": {"keep=Keep.RECORD", "a recorded commit"},
+    }
+    assert unreadable == []
+
+
+def test_the_shared_capture_attaches_before_it_judges(cfg, monkeypatch):
+    """The act the guard above takes on trust from every writer, held here.
+
+    ATTACHED BEFORE IT IS JUDGED: a capture that fails its check is still a
+    directory a person may go looking for, and the restore side lists an
+    unusable entry where a capture nobody attached answers with silence. And
+    it is the only place in ``src`` a capture is taken, so no writer can take
+    one this guard does not see.
+    """
+    import ast
+    from types import SimpleNamespace
+
+    from cratekit.write import trees
+
+    acts: list[str] = []
+    taken = SimpleNamespace(root=Path("captures") / "one")
+    gates = SimpleNamespace(record=object())
+
+    def capture(given, *, db):
+        acts.append("capture")
+        assert given is cfg and db == "the handle"
+        return taken
+
+    def attach(record, root, given):
+        acts.append("attach")
+        assert record is gates.record and root == taken.root and given is cfg
+
+    def judge(capture):
+        acts.append("judge")
+        assert capture is taken
+        raise RuntimeError("the capture did not verify")
+
+    monkeypatch.setattr(snapshot, "capture", capture)
+    monkeypatch.setattr(session, "attach_capture", attach)
+    monkeypatch.setattr(snapshot, "assert_verified", judge)
+
+    with pytest.raises(RuntimeError, match="did not verify"):
+        trees.attached_capture(gates, cfg, "the handle")
+    assert acts == ["capture", "attach", "judge"]
+
+    monkeypatch.setattr(snapshot, "assert_verified", lambda capture: acts.append("verified"))
+    assert trees.attached_capture(gates, cfg, "the handle") == (gates.record, taken)
+
+    src = Path(session.__file__).resolve().parents[1]
+    direct = [
+        f"{path.relative_to(src).as_posix()}::{function.name}"
+        for path in sorted(src.rglob("*.py"))
+        if path.relative_to(src).as_posix() != "core/snapshot.py"
+        for function in ast.walk(ast.parse(path.read_text()))
+        if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
+        for node in ast.walk(function)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "capture"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "snapshot"
+    ]
+    assert direct == [f"write/trees.py::{SHARED_CAPTURE}"]
+
+
 def test_each_commit_helper_records_the_commit():
     """The helpers the guard accepts by name really do make the call."""
     import ast
@@ -2726,6 +2850,7 @@ def test_each_commit_helper_records_the_commit():
     src = Path(session.__file__).resolve().parents[1]
     for relative, helper in (
         ("write/trees.py", "_record_membership_commit"),
+        ("write/row_defaults.py", "record_commit"),
         ("write/metadata_cli.py", "_record_mytags_commit"),
         ("intake/native.py", "_record_landing_commit"),
         ("intake/rotate.py", "_record_rotation_commit"),

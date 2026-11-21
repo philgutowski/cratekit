@@ -43,7 +43,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from cratekit.acquire import match, match_cli
 from cratekit.cli.output import digest_of
-from cratekit.core import config, convergence, jobs, rb_writer, session, snapshot, tree_registry
+from cratekit.core import config, convergence, jobs, rb_writer, session, tree_registry
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.favorites import backfill, placeholders, placement
 from cratekit.intake import account_playlists, native
@@ -761,10 +761,7 @@ def apply(
     with session.assert_gates(
         cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
     ) as gates:
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = trees.attached_capture(gates, cfg, db)
 
         # ── the additions, and their own commit ────────────────────────────
         added = 0

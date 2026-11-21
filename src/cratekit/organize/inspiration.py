@@ -69,7 +69,7 @@ from typing import Any
 
 from cratekit.acquire import match
 from cratekit.cli.output import digest_of
-from cratekit.core import analysis_store, config, convergence, rb_writer, session, snapshot
+from cratekit.core import analysis_store, config, convergence, rb_writer, session
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.modules.outbound.folders import MARK_PREFIX
 
@@ -760,16 +760,13 @@ def apply(cfg: config.Config, declared: Any, approved: ParityPlan) -> Applied:
             ) as gates,
             rb_writer.commit_witness(db) as witness,
         ):
-            record = gates.record
-            capture = snapshot.capture(cfg, db=db)
-            session.attach_capture(record, capture.root, cfg)
-            snapshot.assert_verified(capture)
+            from cratekit.write import trees
+
+            record, capture = trees.attached_capture(gates, cfg, db)
             try:
                 wrote, folder_created = write(db, approved)
                 rb_writer.commit_guarded(db)
             except BaseException:
-                from cratekit.write import trees
-
                 trees.rollback_quietly(db)
                 if witness.landed and wrote:
                     _record_parity_commit(record, wrote, approved, cfg)

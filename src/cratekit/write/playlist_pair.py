@@ -38,7 +38,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from cratekit.core import config, convergence, rb_writer, session, snapshot
+from cratekit.core import config, convergence, rb_writer, session
 from cratekit.core.cause import refuse
 from cratekit.write import trees
 
@@ -425,10 +425,7 @@ def apply(
         ) as gates,
         rb_writer.commit_witness(db) as witness,
     ):
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = trees.attached_capture(gates, cfg, db)
         try:
             playlist = db.get_playlist(ID=change.playlist_id)
             removed = rb_writer.remove_memberships(db, playlist, change.removes)

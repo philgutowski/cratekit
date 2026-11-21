@@ -88,7 +88,6 @@ from cratekit.core import (
     convergence,
     rb_writer,
     session,
-    snapshot,
     taxonomy,
     tree_registry,
 )
@@ -914,10 +913,7 @@ def apply_rotation(
         ) as gates,
         rb_writer.commit_witness(db) as witness,
     ):
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = trees.attached_capture(gates, cfg, db)
 
         changed = len(plan.moves) + len(plan.removals)
         try:

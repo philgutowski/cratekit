@@ -67,7 +67,6 @@ from cratekit.core import (
     jobs,
     rb_writer,
     session,
-    snapshot,
     taxonomy,
     tree_registry,
 )
@@ -632,10 +631,7 @@ def apply_refill(
         ) as gates,
         rb_writer.commit_witness(db) as witness,
     ):
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = trees.attached_capture(gates, cfg, db)
         try:
             for target in plan.targets:
                 if not target.adds:

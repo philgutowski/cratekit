@@ -50,7 +50,7 @@ from typing import Any
 
 from cratekit.acquire import match
 from cratekit.cli.output import digest_of
-from cratekit.core import config, convergence, rb_writer, session, snapshot, tree_registry
+from cratekit.core import config, convergence, rb_writer, session, tree_registry
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.sync.playlists import PER_PLAYLIST_REASONS, is_taken, untaken_name
 from cratekit.write import playlist_pair, trees
@@ -825,10 +825,7 @@ def write(
     with session.assert_gates(
         cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
     ) as gates:
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = trees.attached_capture(gates, cfg, db)
         with rb_writer.commit_witness(db) as witness:
             try:
                 before = rb_writer.node_tables(db)

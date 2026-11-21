@@ -68,7 +68,6 @@ from cratekit.core import (
     locations,
     rb_writer,
     session,
-    snapshot,
     tags,
     taxonomy,
     tree_registry,
@@ -622,10 +621,7 @@ def apply_rows(
         ) as gates,
         rb_writer.commit_witness(db) as witness,
     ):
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = trees.attached_capture(gates, cfg, db)
 
         if narrow is not None:
             plan = narrow(plan)

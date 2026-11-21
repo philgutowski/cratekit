@@ -904,6 +904,22 @@ def _root_row(db: Any, root_id: str) -> Any:
     return row
 
 
+def attached_capture(gates: Any, cfg: config.Config, db: Any):
+    """The session record and the verified capture every guarded write opens with.
+
+    ATTACHED BEFORE IT IS JUDGED. A capture that fails its check is still a
+    directory a person may go looking for, and the restore side lists an
+    unusable entry rather than answering with silence. One function for the
+    twenty one writers that open this way, so none of them can come to judge
+    a capture it never attached.
+    """
+    record = gates.record
+    capture = snapshot.capture(cfg, db=db)
+    session.attach_capture(record, capture.root, cfg)
+    snapshot.assert_verified(capture)
+    return record, capture
+
+
 def rollback_quietly(db: Any) -> None:
     """Undo pending work on the caller's handle. Never masks the original failure.
 
@@ -1068,13 +1084,7 @@ def write_tree_membership(
     with session.assert_gates(
         cfg, workflow=workflow, analysis_roots=watched, intent=intent, keep=session.Keep.RECORD
     ) as gates, rb_writer.commit_witness(db) as witness:
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        # ATTACHED BEFORE IT IS JUDGED. A capture that fails its check is still
-        # a directory a person may go looking for, and the restore side lists an
-        # unusable entry rather than answering with silence.
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = attached_capture(gates, cfg, db)
 
         # THE WRITE IS PARENTED TO THE ROOT THE CUTOVER ADOPTED. Asserting the
         # anchored root and then resolving the folder globally by name would
@@ -1397,10 +1407,7 @@ def move_tree_membership(
         intent=session.Intent.WRITE,
         keep=session.Keep.RECORD,
     ) as gates:
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = attached_capture(gates, cfg, db)
 
         anchor = _root_row(db, root_id)
         places = _Destinations(db, anchor)
@@ -1537,6 +1544,7 @@ __all__ = [
     "insert_record_labels_trees",
     "match_active_rows",
     "match_indexed_rows",
+    "attached_capture",
     "rollback_quietly",
     "root_playlist_members",
     "soft_delete_marker",

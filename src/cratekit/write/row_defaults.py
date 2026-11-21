@@ -76,7 +76,6 @@ from cratekit.core import (
     preflight,
     rb_writer,
     session,
-    snapshot,
     tree_registry,
 )
 from cratekit.core.cause import refuse
@@ -721,10 +720,7 @@ def apply_rows(
             ) as gates,
             rb_writer.commit_witness(db) as witness,
         ):
-            record = gates.record
-            capture = snapshot.capture(cfg, db=db)
-            session.attach_capture(record, capture.root, cfg)
-            snapshot.assert_verified(capture)
+            record, capture = trees.attached_capture(gates, cfg, db)
 
             before = read_columns(db, content_ids)
             written = renumbered = 0

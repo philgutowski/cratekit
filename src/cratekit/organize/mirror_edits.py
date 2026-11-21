@@ -844,7 +844,7 @@ def write(
     (U204); the Favorites folder is nobody's tree, so for it alone the
     restore is detected and marked, as ``favorites backfill`` does.
     """
-    from cratekit.core import analysis_store, convergence, rb_writer, session, snapshot
+    from cratekit.core import analysis_store, convergence, rb_writer, session
     from cratekit.favorites import placement
     from cratekit.write import metadata, trees
 
@@ -863,10 +863,7 @@ def write(
         as gates,
         rb_writer.commit_witness(db) as witness,
     ):
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = trees.attached_capture(gates, cfg, db)
         # THE FILES FIRST, each read back, and only a file that took has its
         # row written, so the database never says what the file does not. An
         # edit of the Favorites folder or INBOX writes no file (U204).

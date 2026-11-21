@@ -62,7 +62,6 @@ from cratekit.core import (
     foreign_tree,
     rb_writer,
     session,
-    snapshot,
     taxonomy,
     taxonomy_upgrade,
     tree_registry,
@@ -692,10 +691,7 @@ def apply_refresh(
     with session.assert_gates(
         cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
     ) as gates:
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = trees.attached_capture(gates, cfg, db)
 
         # ── the additions, and their own commit ────────────────────────────
         with rb_writer.commit_witness(db) as witness:
