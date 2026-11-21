@@ -1,0 +1,51 @@
+name = "u291"
+pass_kind = "light"
+
+# U291 changes one constant and its help text. A small card on a static
+# setting, so a few rows: each moves the count off ten, or unhooks the help
+# text and the default from the constant.
+
+[[rows]]
+id = "L1_lanes_back_to_five"
+description = "CLOUD_LANES: put the cap back at five, the count before 2026-11-21"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''CLOUD_LANES = 10'''
+new = '''CLOUD_LANES = 5'''
+
+[[rows]]
+id = "L2_lanes_one_short"
+description = "CLOUD_LANES: nine lanes, one short of the cap"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''CLOUD_LANES = 10'''
+new = '''CLOUD_LANES = 9'''
+
+[[rows]]
+id = "L3_lanes_one_over"
+description = "CLOUD_LANES: eleven lanes, one over the cap"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''CLOUD_LANES = 10'''
+new = '''CLOUD_LANES = 11'''
+
+[[rows]]
+id = "L4_help_names_a_literal"
+description = "--lanes help: name a literal five rather than read the constant"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''        help=f"how many cards the cloud builds at once (default {CLOUD_LANES})",'''
+new = '''        help="how many cards the cloud builds at once (default 5)",'''
+
+[[rows]]
+id = "L5_default_ignores_the_constant"
+description = "cmd_cloud: with no --lanes, count four lanes rather than CLOUD_LANES"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''    lanes = max(1, getattr(args, "lanes", None) or CLOUD_LANES)'''
+new = '''    lanes = max(1, getattr(args, "lanes", None) or 4)'''
