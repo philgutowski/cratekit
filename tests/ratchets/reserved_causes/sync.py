@@ -120,11 +120,18 @@ KEBAB_LITERALS = {
     # 2026-11-21, U288: the apply's stale plan and unverified read back, and
     # the applied warning.
     'sync/removed.py': ['decision-stale', 'session-committed-unverified', 'sync-removed'],
+    # 2026-11-21, U320: the withheld hearts, the playlists seen unavailable
+    # and retired, and the retire step's warning and digest kind.
     'sync/removed_cli.py': [
         'sync-removed-applied',
+        'sync-removed-hearts-withheld',
         'sync-removed-partial',
         'sync-removed-playlist-gone',
+        'sync-removed-playlist-retired',
+        'sync-removed-playlist-unavailable',
         'sync-removed-records-unreadable',
+        'sync-removed-retire',
+        'sync-removed-retired-now',
     ],
     'sync/run.py': ['sync-source-lookups-failed', 'utf-8'],
     # 2026-11-01, U149: the custom playlist twins and their backfill.
@@ -166,6 +173,8 @@ KEBAB_LITERALS = {
         'sync-unmark-changed-since-plan',
         'sync-unmark-no-mark',
     ],
+    # 2026-11-21, U320: the record of not found answers.
+    'sync/unavailable.py': ['sync-unavailable-record-unusable', 'utf-8'],
     'sync/watermarks.py': ['sync-watermark-unusable', 'utf-8'],
 }
 
@@ -227,9 +236,12 @@ LITERAL_HOLDERS = {
     # 2026-11-01, U149: the twins' stale plan, unverified read back and confinement.
     'sync/twins.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],
     'sync/unmark_cli.py': ['internal-error', 'sync-marks-blocked'],
+    # 2026-11-21, U320: the record of not found answers.
+    'sync/unavailable.py': ['sync-unavailable-record-unusable'],
     'sync/watermarks.py': ['sync-watermark-unusable'],
 }
 
 LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'sync/removed.py',  # 2026-11-21, U288: the read back names its first twenty differences.
+    'sync/unavailable.py',  # 2026-11-21, U320: a playlist retires a day after its first not found.
 })

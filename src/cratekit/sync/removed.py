@@ -39,6 +39,19 @@ failure, not a not found, so a gone playlist is still read as holding what its
 finished jobs recorded, and one nothing records is not read whole. A playlist
 the listing omits and its id still opens is read as any other.
 
+TWO SHAPES ARE READ WHOLE FOR THIS QUESTION (U320), since without them no
+removal could ever be offered on the author's account. The hearts listed
+short only by what the provider withholds, R-504's shortfall over a walk that
+reached the declared count and served hearts, are WITHHELD: they hold every
+heart served, since a heart the provider will not serve is not one the account
+shows, and are named with both counts; no heart served at all stays short. And
+a playlist the account no longer lists whose id answers the provider's NOT
+FOUND, a 404 and nothing else, is a sighting in
+:mod:`cratekit.sync.unavailable`'s record; a sighting a day after the first,
+or a person at the explicit gate ``sync.removed.retire``, RETIRES it, and a
+retired playlist holds nothing and stops nothing until it opens again or the
+account lists it again. Every other failure leaves it not read whole.
+
 A TRACK IS REMOVED when its playlist's listing holds no row of its provider
 id, and no read row of it carries its ISRC or its artist and title as the
 matcher folds a recording, version excluded. The same rule says whether
@@ -81,6 +94,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -101,7 +115,7 @@ from cratekit.core.cause import CratekitError, refuse
 from cratekit.intake import account_playlists, ingest, native, refill, set_playlist
 from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue
-from cratekit.sync import playlists, twins
+from cratekit.sync import playlists, twins, unavailable
 from cratekit.sync.watermarks import WatermarkStore
 
 #: The three answers a row can get.
@@ -131,6 +145,12 @@ UNREADABLE = "unreadable"
 SHORT = "short"
 EMPTY = "empty"
 NOT_WHOLE = frozenset({UNREADABLE, SHORT, EMPTY})
+#: The hearts, short only by what the provider withholds, read whole for this question (U320).
+WITHHELD = "withheld"
+#: A synced playlist retired by the record of not found answers: holds nothing, stops nothing (U320).
+RETIRED = "retired"
+#: Every state a listing holds tracks in.
+HOLDING = frozenset({READ, GONE, WITHHELD})
 
 _STANDING = frozenset(
     {
@@ -165,16 +185,23 @@ class Listing:
     isrcs: frozenset[str] = frozenset()
     #: Every read row's artist and title, folded as a recording, version excluded.
     recordings: frozenset[str] = frozenset()
+    #: What the record of not found answers holds for this playlist after this
+    #: read (U320), ``None`` for nothing: never part of the digest, which reads
+    #: the state and the words it carries.
+    noted: unavailable.Sighting | None = None
+    #: Whether the account no longer lists it and its id answered not found on this read.
+    not_found: bool = False
 
     def holds(self, wanted: match.Wanted) -> bool:
         """Whether this listing still holds the track, by any of the three tests.
 
         A GONE playlist holds what its finished jobs recorded, its last known
-        contents, since "gone" is two reads failing and not a provider's not
-        found; nothing else not read whole holds anything, and stops every
-        offer instead.
+        contents, since "gone" is two reads failing; the hearts short only by
+        what the provider withholds hold every heart it served (U320). A
+        RETIRED playlist holds nothing and stops nothing, and nothing else not
+        read whole holds anything, and stops every offer instead.
         """
-        if self.state not in (READ, GONE):
+        if self.state not in HOLDING:
             return False
         if wanted.ref and wanted.ref in self.refs:
             return True
@@ -404,15 +431,44 @@ def job_playlists(cfg: config.Config) -> tuple[str, ...]:
         )
 
 
+def _retired(account: str, name: str, noted: unavailable.Sighting, *, not_found: bool) -> Listing:
+    """A playlist the record retired: named with its id and the dates, holding nothing."""
+    who = " by a person" if noted.by == unavailable.BY_PERSON else ""
+    return Listing(
+        account=account,
+        name=name or noted.name,
+        state=RETIRED,
+        why=(
+            f"retired{who} on {unavailable.day(noted.retired)}: the account no longer "
+            f"lists it and its id answered not found on {noted.seen()}, so it holds "
+            f"nothing and stops nothing"
+        ),
+        noted=noted,
+        not_found=not_found,
+    )
+
+
 def read_one(
     found: catalogue.Catalogue,
     account: str,
     listed: Mapping[str, catalogue.AccountPlaylist],
     recorded: Recorded | None = None,
+    *,
+    sightings: Mapping[str, unavailable.Sighting] | None = None,
+    moment: datetime | None = None,
 ) -> Listing:
-    """One synced playlist read through the sweep's own reader, or why it is not read whole."""
+    """One synced playlist read through the sweep's own reader, or why it is not read whole.
+
+    ``sightings`` is the record of not found answers as it stood before this
+    run, and ``moment`` when this run asked (U320). The listing carries what
+    the record holds for the playlist after this read, in ``noted``: a not
+    found while the account's list omits it is a sighting, which retires it a
+    day after the first; any other failure leaves the entry as it stands; a
+    playlist that opens, or that the account lists again, holds none.
+    """
     shown = listed.get(account)
     name = shown.name if shown is not None else ""
+    prior = (sightings or {}).get(account)
     try:
         readable = intake_cli.list_playlist_readable(found, account)
     except CratekitError as exc:
@@ -421,9 +477,30 @@ def read_one(
         if shown is None:
             # GONE ONLY WHEN TWO READS AGREE, and even then not read as empty.
             # The account's list stops on an empty page and publishes no total
-            # (R-385), and the id's failure is any provider failure, not a not
-            # found, so a gone playlist still holds what its finished jobs
-            # recorded; one nothing records is not read whole at all.
+            # (R-385), and the id's failure is any provider failure, so a gone
+            # playlist still holds what its finished jobs recorded; one nothing
+            # records is not read whole at all. ONLY A NOT FOUND IS A SIGHTING
+            # (U320, R-1713): an outage leaves the record as it stands, so a
+            # playlist that is only unreadable is never retired.
+            said_none = unavailable.answered_unavailable(exc)
+            noted = (
+                unavailable.sighted(
+                    prior,
+                    account,
+                    prior.name if prior is not None else name,
+                    moment or unavailable.now(),
+                )
+                if said_none
+                else prior
+            )
+            if noted is not None and noted.is_retired:
+                return _retired(account, name, noted, not_found=said_none)
+            seen = (
+                f"; its id answered not found, first on {unavailable.day(noted.first)}"
+                if noted is not None
+                else ""
+            )
+            name = name or (noted.name if noted is not None else "")
             known = recorded(account) if recorded is not None else None
             if not known:
                 return Listing(
@@ -432,8 +509,10 @@ def read_one(
                     state=UNREADABLE,
                     why=(
                         "the account no longer lists it, its id does not open, and no "
-                        "finished job readable now records what it held"
+                        "finished job readable now records what it held" + seen
                     ),
+                    noted=noted,
+                    not_found=said_none,
                 )
             return Listing(
                 account=account,
@@ -441,10 +520,14 @@ def read_one(
                 state=GONE,
                 why=(
                     "the account no longer lists it and its id does not open; read as "
-                    "still holding what its finished jobs recorded"
+                    "still holding what its finished jobs recorded" + seen
                 ),
+                noted=noted,
+                not_found=said_none,
                 **_held(known),
             )
+        # LISTED BY THE ACCOUNT, so not gone whatever its id answers: the
+        # record holds nothing for it, a retirement included.
         return Listing(account=account, name=name, state=UNREADABLE, why=exc.cause.message)
     if readable.short is not None:
         block = readable.short.block()
@@ -514,12 +597,18 @@ def read_hearts(found: catalogue.Catalogue) -> Listing:
         if exc.cause.reason not in playlists.PER_PLAYLIST_REASONS:
             raise
         return Listing(account=HEARTS, name=HEARTS_NAME, state=UNREADABLE, why=exc.cause.message)
-    if short is not None:
+    if short is not None and not (frozen and short.withheld > 0):
+        # SHORT BY MORE THAN THE PROVIDER WITHHOLDS, or by nothing a walk
+        # could reach: no heart served at all, which a provider serving nothing
+        # looks like, or numbers that do not reconcile.
         return Listing(
             account=HEARTS,
             name=HEARTS_NAME,
             state=SHORT,
-            why="listed fewer hearts than the account declares",
+            why=(
+                f"listed fewer hearts than the account declares ({short.summary()}), "
+                f"and not only by hearts the provider withholds"
+            ),
         )
     if not frozen:
         return Listing(
@@ -532,7 +621,20 @@ def read_hearts(found: catalogue.Catalogue) -> Listing:
     return Listing(
         account=HEARTS,
         name=HEARTS_NAME,
-        state=READ,
+        # SHORT ONLY BY WHAT THE PROVIDER WITHHOLDS (U320, R-504's shape): the
+        # walk ended on the count the account published and served hearts, so
+        # every heart it lacks is one the provider counts and will not serve,
+        # which the account does not show either. Read whole for this
+        # question, and named with both counts.
+        state=READ if short is None else WITHHELD,
+        why=(
+            ""
+            if short is None
+            else (
+                f"{short.summary()}; read whole, since a heart the provider will not "
+                f"serve is not one the account shows"
+            )
+        ),
         refs=frozenset(str(one) for one in frozen),
         isrcs=frozenset(one.isrc.strip().upper() for one in wanted if one.isrc),
         recordings=frozenset(recording(one) for one in wanted),
@@ -545,11 +647,23 @@ def read_account(
     *,
     listed: Mapping[str, catalogue.AccountPlaylist],
     recorded: Recorded | None = None,
+    sightings: Mapping[str, unavailable.Sighting] | None = None,
+    moment: datetime | None = None,
 ) -> dict[str, Listing]:
     """Each playlist in ``wanted`` read once, against the account's listing read once."""
     return {
-        account: read_one(found, account, listed, recorded) for account in dict.fromkeys(wanted)
+        account: read_one(found, account, listed, recorded, sightings=sightings, moment=moment)
+        for account in dict.fromkeys(wanted)
     }
+
+
+def noted(reads: Mapping[str, Listing]) -> dict[str, unavailable.Sighting | None]:
+    """What the record of not found answers holds after these reads, by playlist (U320).
+
+    Every playlist read says, ``None`` dropping its entry; the hearts are no
+    playlist and say nothing.
+    """
+    return {account: one.noted for account, one in reads.items() if account != HEARTS}
 
 
 def removals(

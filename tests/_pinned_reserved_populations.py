@@ -243,6 +243,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'sync-release-not-a-twin',
     'sync-release-unnamed',
     'sync-source-lookups-failed',
+    'sync-unavailable-record-unusable',  # 2026-11-21, U320: the record of not found answers.
     'sync-watermark-unusable',
     'tag-folder-unwritten',  # 2026-10-31, U178: a file that would not take its genre.
     'tag-remap-unwritten',
