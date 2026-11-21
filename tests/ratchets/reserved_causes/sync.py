@@ -117,8 +117,11 @@ KEBAB_LITERALS = {
         'sync-release-unnamed',
     ],
     # 2026-11-15, U287: the removed tracks plan and its verb joined.
-    'sync/removed.py': ['sync-removed'],
+    # 2026-11-21, U288: the apply's stale plan and unverified read back, and
+    # the applied warning.
+    'sync/removed.py': ['decision-stale', 'session-committed-unverified', 'sync-removed'],
     'sync/removed_cli.py': [
+        'sync-removed-applied',
         'sync-removed-partial',
         'sync-removed-playlist-gone',
         'sync-removed-records-unreadable',
@@ -216,6 +219,8 @@ LITERAL_HOLDERS = {
     'sync/playlists.py': ['intake-list-unusable', 'label-playlist-unreadable', 'sync-source-lookups-failed'],
     # 2026-11-05, U221.
     'sync/release_cli.py': ['sync-release-not-a-twin', 'sync-release-unnamed'],
+    # 2026-11-21, U288: the removal's stale plan and unverified read back.
+    'sync/removed.py': ['decision-stale', 'session-committed-unverified'],
     'sync/run.py': ['sync-source-lookups-failed'],
     # 2026-11-12, U242: the strip verb joined.
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
@@ -226,3 +231,7 @@ LITERAL_HOLDERS = {
     'sync/unmark_cli.py': ['internal-error'],
     'sync/watermarks.py': ['sync-watermark-unusable'],
 }
+
+LITERAL_HOLDERS_WITH_INTEGER = frozenset({
+    'sync/removed.py',  # 2026-11-21, U288: the read back names its first twenty differences.
+})

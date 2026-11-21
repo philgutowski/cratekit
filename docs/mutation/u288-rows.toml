@@ -1,0 +1,253 @@
+name = "u288"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_delete_admitted_by_any_name"
+description = "guard_violations: admit a delete in any table once any table is named, not only the named one"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''        if table in deletable:
+            continue'''
+new = '''        if deletable:
+            continue'''
+
+[[rows]]
+id = "M2_deletable_set_unbounded"
+description = "guard_violations: stop holding the named tables to DELETABLE_TABLES, so a commit can ask to delete anywhere"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''    deletable &= DELETABLE_TABLES'''
+new = '''    deletable = deletable'''
+
+[[rows]]
+id = "M3_unmeasured_tables_skipped"
+description = "content_references: ask no table, so a My Tag, sampler or unknown table naming the row is never refused nor kept"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        asked = [CONTENT_REFERENCE_COLUMN] if CONTENT_REFERENCE_COLUMN in names else []'''
+new = '''        asked = []'''
+
+[[rows]]
+id = "M4_target_id_not_asked"
+description = "content_references: drop the TargetID column, so an image row naming the track is left naming a row that is gone"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        if TARGET_REFERENCE_COLUMN in names:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M5_prepare_liveness"
+description = "CollectionRemoval.prepare: drop the soft delete check, so a row rekordbox already removed is taken out as live"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''            if row is None or soft_deleted(
+                row,
+                message=(
+                    f"the collection row {key!r} cannot say whether rekordbox removed it, "'''
+new = '''            if row is None or False and soft_deleted(
+                row,
+                message=(
+                    f"the collection row {key!r} cannot say whether rekordbox removed it, "'''
+
+[[rows]]
+id = "M6_prepare_unmeasured_refusal"
+description = "CollectionRemoval.prepare: drop the refusal of a row an unmeasured table names"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        held = content_references(db, ids)
+        if held:'''
+new = '''        held = content_references(db, ids)
+        if False:'''
+
+[[rows]]
+id = "M7_prepare_identity"
+description = "CollectionRemoval.prepare: drop the refusal of a database with no identity, so the record is bound to nothing"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        identity = database_id(db)
+        if not identity:'''
+new = '''        identity = database_id(db)
+        if False:'''
+
+[[rows]]
+id = "M8_memberships_kept"
+description = "remove_from_collection: delete from the five tables after the membership table only, so the track's memberships stay naming a row that is gone"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''    for table in COLLECTION_REMOVAL_TABLES[1:]:'''
+new = '''    for table in COLLECTION_REMOVAL_TABLES[2:]:'''
+
+[[rows]]
+id = "M9_whose_row_disappeared"
+description = "collection_removal_violations: let any row of any table disappear"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''            if table not in DELETABLE_TABLES or naming.get(key) not in gone:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M10_changed_rows"
+description = "collection_removal_violations: read a changed row as unchanged"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''            if old[key] == new[key]:
+                continue'''
+new = '''            if True:
+                continue'''
+
+[[rows]]
+id = "M11_added_rows"
+description = "collection_removal_violations: read an added row as nothing"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''        for key in sorted(set(new) - set(old)):
+            violations.append(f"an unplanned {table} row {key!r} was added")'''
+new = '''        for key in sorted(set(new) - set(old)):
+            pass'''
+
+[[rows]]
+id = "M12_still_names"
+description = "collection_removal_violations: drop the check that every row naming a removed track is gone"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''            if names in gone and key in new:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M13_counter_forward"
+description = "collection_removal_violations: accept a read back whose update count did not move"
+file = "src/cratekit/core/rb_writer.py"
+surface = "maintainer"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''        before.counter is None or after.counter is None or after.counter <= before.counter'''
+new = '''        before.counter is None or after.counter is None or after.counter < before.counter'''
+
+[[rows]]
+id = "M14_confinement_not_called"
+description = "CollectionRemoval.commit: skip the SQL confinement before the commit"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        assert_collection_removal_confined(self.db, self.before, removed=self.content_ids)
+        commit_guarded('''
+new = '''        commit_guarded('''
+
+[[rows]]
+id = "M15_append_past_highest"
+description = "add_memberships: keep the binding's count plus one, so an append after a removal lands on a live row's position"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py", "tests/test_inbox_refill.py"]
+old = '''        if added is not None and number <= highest:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M16_stale_digest"
+description = "apply_removed: never refuse a plan that moved between the gate and the write"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''    if again.digest != plan.digest:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M17_only_the_offered"
+description = "apply_removed: take out every answered row that has one, kept rows included, not only the offered"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''    offered = plan.offered
+    if not offered:'''
+new = '''    offered = tuple(one for one in plan.answers if one.content_id)
+    if not offered:'''
+
+[[rows]]
+id = "M18_unmeasured_kept"
+description = "_answer: drop the keep of a row an unmeasured table names, so a vox tagged track is offered and then refuses the apply"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''    if unmeasured:
+        return replace(shown, why=UNMEASURED, kept_by=tuple(sorted(unmeasured)))'''
+new = '''    if False:
+        return replace(shown, why=UNMEASURED, kept_by=tuple(sorted(unmeasured)))'''
+
+[[rows]]
+id = "M19_first_position"
+description = "apply_removed: give the deletion pass no first position, so a first delete review accepts the removal as history"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        first = _first_deletion_position(cfg, db)'''
+new = '''        first = None'''
+
+[[rows]]
+id = "M20_read_back_refusal"
+description = "apply_removed: report a read back that disagrees as success"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        violations = removal.read_back()
+        if violations:'''
+new = '''        violations = removal.read_back()
+        if False:'''
+
+[[rows]]
+id = "M21_gate_answer"
+description = "sync_removed: apply whatever the gate is answered, abort included"
+file = "src/cratekit/sync/removed_cli.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''    if ctx.gate.require(_gate(ctx.entry), plan=data, context=facts(plan)) != "apply":'''
+new = '''    if ctx.gate.require(_gate(ctx.entry), plan=data, context=facts(plan)) == "never":'''
+
+[[rows]]
+id = "M22_closed_at_open"
+description = "written: open the write handle without refusing a running rekordbox"
+file = "src/cratekit/sync/removed_cli.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)'''
+new = '''    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=False, cfg=cfg)'''
+
+[[rows]]
+id = "M23_recorded_identity"
+description = "recorded_removals: read a record of another database as this one's"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py", "tests/test_deletion.py"]
+old = '''        if str(recorded.get("database_identity") or "") != str(database_identity):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M24_recorded_present"
+description = "run.plan: hand the recorded removals no present rows, so a row a restore put back live is offered"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py", "tests/test_deletion.py"]
+old = '''            present=[row.content_id for row in seen.active]
+            + [row.content_id for row in seen.removed],'''
+new = '''            present=[row.content_id for row in seen.removed],'''
+
+[[rows]]
+id = "M25_recorded_rows_join"
+description = "run.plan: drop the recorded removals, so no file a removal took out is ever offered"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py", "tests/test_deletion.py"]
+old = '''        removed=seen.removed
+        + library.recorded_removals('''
+new = '''        removed=seen.removed
+        + 0 * library.recorded_removals('''

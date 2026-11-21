@@ -93,8 +93,10 @@ running Cratekit with an AI assistant. `crate --help` lists every verb.
   field. Not configurable; tests fail the build on any code path that could.
 - **Database writes go through one guarded layer**: version pins, refusal while
   rekordbox or its background agent runs, a backup acknowledgment, a cloud-sync
-  canary, a snapshot before writing, an additive whitelist, a cross-process
-  lock and a read-back after the commit. Any refusal stops the write.
+  canary, a snapshot before writing, an additive whitelist that admits one
+  removal (a track out of the collection, as rekordbox's own Remove from
+  Collection takes it out, behind its gate), a cross-process lock and a
+  read-back after the commit. Any refusal stops the write.
 - **Music files change only by** tag writes, content-preserving renames, and a
   move to the system Trash once no library row references the file.
 

@@ -653,7 +653,7 @@ def test_the_verb_with_catalogue_asks_the_recorded_catalogue_and_keeps_its_answe
         {"track 60": SearchHit(genre=DEEP, source="discogs", source_genre="Deep House")}
     )
     monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: search)
-    monkeypatch.setattr(published, "for_taxonomy", lambda declared: lambda hit, isrc: hit)
+    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
     code, envelope = drive([*VERB, "--catalogue"])
     assert code == int(ExitCode.OK), envelope
     (item,) = envelope["data"]["summary"]["items"]
@@ -675,7 +675,7 @@ def test_a_catalogue_nobody_could_read_is_named(machine, silence, monkeypatch):
         raise refuse("catalogue-unreachable", "blocked", origin=("test",))
 
     monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: blocked)
-    monkeypatch.setattr(published, "for_taxonomy", lambda declared: lambda hit, isrc: hit)
+    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
     code, envelope = drive([*VERB, "--catalogue"])
     assert code == int(ExitCode.OK), envelope
     (warning,) = [w for w in envelope["warnings"] if w["code"] == "backlog-catalogue-unread"]
@@ -807,3 +807,138 @@ def test_discogs_passed_over_is_said_with_how_to_record_a_token(machine, silence
     (warning,) = [w for w in envelope["warnings"] if w["code"] == "backlog-catalogue-unread"]
     assert "Discogs was not asked about 1 row(s), 60" in warning["message"]
     assert "could not be read" not in warning["message"]
+
+
+def test_a_refusing_beatport_beside_an_answering_discogs_asks_every_row_and_counts_them(
+    machine, silence, monkeypatch
+):
+    """U322, sitting 102's shape through the verb: Discogs reads no genre and
+    Beatport answers Cloudflare's challenge on every row. Every row is asked of
+    Discogs, Beatport is fetched three times, and the catalogue line counts it."""
+    from cratekit.core import tags
+    from cratekit.tagging import published, searchers
+    from tests.test_beatport_refusal import (
+        REFUSED,
+        _beatport_requests,
+        _discogs_searches,
+        _over_the_wire,
+    )
+    from tests.test_discogs_searcher import SENT
+
+    paths = build(
+        machine,
+        silence,
+        *(Track(str(60 + n), "", "", artist="Nobody", folder="x") for n in range(6)),
+    )
+    for n, path in enumerate(sorted(paths.values())):
+        assert tags.write_tags(path, {"isrc": f"GBAYE00000{n:02d}"})
+    general: list[object] = []
+
+    def deezer(isrc):
+        general.append(isrc)
+        return published.Published(published.SOURCE, "miss")
+
+    monkeypatch.setattr(published, "for_lookup", lambda: deezer)
+    seen: list[str] = []
+    fetch = _over_the_wire(REFUSED, seen=seen)
+    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
+    search = searchers.catalogue_searcher(
+        DECLARED, fetch=fetch, sleep=lambda _s: None, discogs=asker
+    )
+    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: search)
+    code, envelope = drive([*VERB, "--catalogue"])
+    assert code == int(ExitCode.OK), envelope
+
+    assert _discogs_searches(seen) == 6
+    assert _beatport_requests(seen) == searchers.REFUSALS_BEFORE_STOP
+    counted = envelope["data"]["summary"]["catalogue_answers"]
+    assert counted["rows"] == 6 and counted["stopped"] == 0
+    assert counted["catalogues"][searchers.DISCOGS] == {
+        "asked": 6, "matched": 0, "missed": 6, "unread": 0, "not_asked": 0, "not_sent": 0,
+    }  # fmt: skip
+    assert counted["catalogues"][searchers.BEATPORT] == {
+        "asked": 3, "matched": 0, "missed": 0, "unread": 3, "not_asked": 3, "not_sent": 3,
+    }  # fmt: skip
+    # The verb asks the general catalogue through the suggest binder, past the
+    # refusing Beatport, by each file's ISRC (round one of the review, 5).
+    assert sorted(general) == [f"GBAYE00000{n:02d}" for n in range(6)]
+    assert counted["catalogues"][published.SOURCE] == {
+        "asked": 6, "matched": 0, "missed": 6, "unread": 0, "not_asked": 0, "not_sent": 0,
+    }  # fmt: skip
+    (check,) = [c for c in envelope["data"]["checks"] if c["key"] == "backlog.catalogue"]
+    assert check["detail"].startswith(
+        "6 row(s) with no genre were weighed with the catalogues: discogs asked about 6, "
+        "matched 0, missed 6, could not be read for 0, not asked about 0; beatport asked "
+        "about 3, matched 0, missed 0, could not be read for 3, not asked about 3 (3 of "
+        "them once it had refused this client)"
+    )
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == "backlog-catalogue-unread"]
+    assert "beatport could not be read for 6 row(s) another catalogue answered" in warning["message"]
+    assert "the catalogues could not be read" not in warning["message"]
+
+
+def test_the_catalogue_line_is_absent_without_the_catalogue(machine, silence):
+    build(machine, silence, Track("60", "", "", artist="Nobody", folder="x"))
+    code, envelope = drive(VERB)
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["catalogue_answers"] is None
+    assert "backlog.catalogue" not in [c["key"] for c in envelope["data"]["checks"]]
+
+
+def test_the_catalogue_line_names_the_rows_the_walk_stopped_before(machine, silence, monkeypatch):
+    from cratekit.core.cause import refuse
+    from cratekit.tagging import published, searchers
+
+    build(
+        machine,
+        silence,
+        *(Track(str(60 + n), "", "", artist="Nobody", folder="x") for n in range(5)),
+    )
+
+    def blocked(artist, title):
+        raise refuse("catalogue-unreachable", "blocked", origin=("test",))
+
+    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: blocked)
+    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
+    code, envelope = drive([*VERB, "--catalogue"])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["catalogue_answers"]["stopped"] == 2
+    (check,) = [c for c in envelope["data"]["checks"] if c["key"] == "backlog.catalogue"]
+    assert check["detail"] == (
+        "5 row(s) with no genre were weighed with the catalogues, and no catalogue's "
+        "answer is recorded; the walk asked nothing about 2 row(s) once no catalogue "
+        "could be read for 3 rows in a row"
+    )
+
+
+def test_a_token_discogs_refused_is_said_and_beatport_is_asked_on_every_row(
+    machine, silence, monkeypatch
+):
+    """U322's review, round one, 2: a token Discogs refused beside a Beatport
+    that answers no longer stops the walk, and the warning says the token."""
+    from cratekit.tagging import published, searchers
+    from tests.test_beatport_refusal import MISSED, _beatport_requests, _over_the_wire, _Response
+    from tests.test_discogs_searcher import SENT
+
+    build(
+        machine,
+        silence,
+        *(Track(str(60 + n), "", "", artist="Nobody", folder="x") for n in range(5)),
+    )
+    seen: list[str] = []
+    fetch = _over_the_wire(MISSED, discogs=_Response(401, "{}", {}), seen=seen)
+    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
+    search = searchers.catalogue_searcher(
+        DECLARED, fetch=fetch, sleep=lambda _s: None, discogs=asker
+    )
+    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: search)
+    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
+    code, envelope = drive([*VERB, "--catalogue"])
+    assert code == int(ExitCode.OK), envelope
+    assert _beatport_requests(seen) == 5
+    assert envelope["data"]["summary"]["catalogue_answers"]["stopped"] == 0
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == "backlog-catalogue-unread"]
+    assert warning["message"].startswith(
+        "Discogs was not read for 5 row(s), 60, 61, 62, 63, 64, because the recorded "
+        "Discogs token could not be used, so those were weighed without it"
+    )

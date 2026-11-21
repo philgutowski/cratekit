@@ -85,6 +85,16 @@ not hold it back, or a library with no token would never be asked here; nor do
 the two scraped fallbacks, off the walk and refusing this machine on every
 search when they were on it.
 
+THE TWO SUGGEST VERBS ASK PAST A REFUSING BEATPORT (U322). ``tag suggest
+--catalogue`` and ``tag backlog --catalogue``, and ``tag campaign`` through
+them, weigh a row's answers as votes shown at a gate, and while Beatport
+refused this client on every lookup the gate above kept this catalogue from
+every row. So their binder, :func:`for_suggestions`, asks it on a row Beatport
+refused, sent or passed over, once Discogs was asked and answered, a match or
+a miss. A Beatport that is down or unparsable still holds it back, and so does
+a Discogs that did not answer. ``tag folder`` keeps the gate as it was, which
+#796's question asked about and nobody has answered.
+
 A WORD NOTHING DECLARES IS A DECLINE HERE AND A WRITE FOR BEATPORT, on purpose.
 The resolver's last tier passes an unknown word through so a new dance genre
 survives long enough to be noticed. A general catalogue's vocabulary is a
@@ -159,6 +169,10 @@ _PERMISSION = "OAuthException"
 #: Beatport's answers that count as Beatport having ANSWERED. Anything else and
 #: the general catalogue is not asked, see the module docstring.
 _BEATPORT_ANSWERED = (Answer.MATCHED.value, Answer.MISS.value)
+
+#: Discogs' answers that let the suggest verbs ask this catalogue past a
+#: refusing Beatport (U322): Discogs answered about the track.
+_DISCOGS_ANSWERED = (Answer.MATCHED.value, Answer.MISS.value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -490,7 +504,9 @@ def choose(declared: Taxonomy, genres: Sequence[str]) -> tuple[str, str] | None:
 # ---------------------------------------------------------------------------
 
 
-def second_opinion(declared: Taxonomy, *, lookup: Lookup | None = None) -> PublishedGenre:
+def second_opinion(
+    declared: Taxonomy, *, lookup: Lookup | None = None, past_a_refusing_shop: bool = False
+) -> PublishedGenre:
     """Build the seam :func:`cratekit.tagging.tag.tag_one` offers a hit to.
 
     Given the searcher's hit and the file's ISRC tag, it returns the hit to act
@@ -508,7 +524,9 @@ def second_opinion(declared: Taxonomy, *, lookup: Lookup | None = None) -> Publi
       record shops did;
     * a hit whose Beatport answer is not a match or a miss is recorded
       ``not-asked`` with the reason, and the file stays as the searcher left it;
-      so is one whose Discogs was asked and went unread (U244);
+      so is one whose Discogs was asked and went unread (U244). With
+      ``past_a_refusing_shop``, the suggest verbs' binder, a Beatport that
+      refused this client does not hold it back once Discogs answered (U322);
     * otherwise the catalogue is asked. A genre that maps to a folder becomes
       the hit's genre, with no flag saying it was inferred, because it was not.
       Anything else leaves the hit a decline that says what was answered.
@@ -550,7 +568,10 @@ def second_opinion(declared: Taxonomy, *, lookup: Lookup | None = None) -> Publi
         if bare is not None:
             return recorded(SourceAnswer(SOURCE, bare.answer, note=bare.note))
         first = next((said for said in hit.answers if said.source == searchers.BEATPORT), None)
-        if first is None or first.answer not in _BEATPORT_ANSWERED:
+        if first is None or (
+            first.answer not in _BEATPORT_ANSWERED
+            and not (past_a_refusing_shop and _refused_beside_discogs(first, hit))
+        ):
             return recorded(
                 SourceAnswer(
                     SOURCE,
@@ -599,6 +620,14 @@ def second_opinion(declared: Taxonomy, *, lookup: Lookup | None = None) -> Publi
     return decide
 
 
+def _refused_beside_discogs(beatport: SourceAnswer, hit: SearchHit) -> bool:
+    """Whether Beatport refused this client while Discogs answered about the track (U322)."""
+    if beatport.answer != Answer.BLOCKED.value:
+        return False
+    discogs = next((said for said in hit.answers if said.source == searchers.DISCOGS), None)
+    return discogs is not None and discogs.answer in _DISCOGS_ANSWERED
+
+
 # ---------------------------------------------------------------------------
 # The binders, looked up at call time
 # ---------------------------------------------------------------------------
@@ -636,6 +665,17 @@ def for_taxonomy(declared: Taxonomy) -> PublishedGenre:
     return second_opinion(declared, lookup=for_lookup())
 
 
+def for_suggestions(declared: Taxonomy) -> PublishedGenre:
+    """The seam ``tag suggest --catalogue`` and ``tag backlog --catalogue`` ask through.
+
+    :func:`for_taxonomy`'s, asking past a Beatport that refused this client once
+    Discogs answered (U322), so a refusing record shop does not keep this
+    catalogue from every row a suggest walk weighs. Built over
+    :func:`for_lookup` the same way.
+    """
+    return second_opinion(declared, lookup=for_lookup(), past_a_refusing_shop=True)
+
+
 __all__ = [
     "ALBUM",
     "ANSWERS",
@@ -647,6 +687,7 @@ __all__ = [
     "Published",
     "choose",
     "for_lookup",
+    "for_suggestions",
     "for_taxonomy",
     "genre_lookup",
     "second_opinion",

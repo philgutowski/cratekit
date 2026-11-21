@@ -145,6 +145,12 @@ def build_list(parser, entry) -> None:
     parser.set_defaults(_handler=list_restorable)
 
 
+#: The key a removal from the collection names its rows under in its session
+#: record, the guarded writer's ``RECORDED_REMOVALS_KEY``, spelled here so this
+#: package reaches no more of the core than it did; a test holds them equal.
+RECORDED_REMOVALS_KEY = "collection_removed"
+
+
 def _listed(entry: restore.Restorable) -> dict[str, Any]:
     """One session as a listing row: when, what, how much, and whether it is spendable.
 
@@ -154,17 +160,29 @@ def _listed(entry: restore.Restorable) -> dict[str, Any]:
     session a person is about to go looking for, and dropping it from the list
     answers their question with silence.
     """
-    return {
+    listed: dict[str, Any] = {
         "session_id": entry.session_id,
         "started": entry.started,
         "workflow": entry.workflow,
         "restorable": entry.restorable,
         "unusable": entry.unusable,
-        "change": [
-            {"tree": tree.tree, "created": tree.created, "updated": tree.updated}
-            for tree in entry.change.trees
-        ],
+        "change": [tree.to_json() for tree in entry.change.trees],
     }
+    # A SESSION THAT TOOK ROWS OUT OF THE COLLECTION NAMES EACH ONE (U288), so a
+    # person deciding whether to restore it reads which tracks come back.
+    recorded = entry.record.detail.get(RECORDED_REMOVALS_KEY)
+    if isinstance(recorded, dict):
+        listed["removed"] = [
+            {
+                "content_id": str(row.get("content_id", "")),
+                "artist": str(row.get("artist", "")),
+                "title": str(row.get("title", "")),
+                "file": str(row.get("file", "")),
+            }
+            for row in recorded.get("rows") or ()
+            if isinstance(row, dict)
+        ]
+    return listed
 
 
 def list_restorable(ctx) -> Envelope:
@@ -648,10 +666,7 @@ def _offer(
                 "session_id": chosen.session_id,
                 "started": chosen.started,
                 "workflow": chosen.workflow,
-                "change": [
-                    {"tree": tree.tree, "created": tree.created, "updated": tree.updated}
-                    for tree in chosen.change.trees
-                ],
+                "change": [tree.to_json() for tree in chosen.change.trees],
                 "discarding": list(discarding),
             }
         )

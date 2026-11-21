@@ -114,7 +114,9 @@ comes from the same row as its genre.
 The source `crate tag folder` asks after the searcher: Deezer, keyless, by the
 file's ISRC only (`tagging/published.py`). Asked only when the file needs a
 genre and Beatport, asked, answered without a usable match, and, since U244, not while
-Discogs was asked and went unread. Its **published genre** is
+Discogs was asked and went unread. `tag suggest --catalogue` and `tag backlog
+--catalogue` also ask it about a row Beatport refused once Discogs answered
+(U322). Its **published genre** is
 the album's genre word, written only when it maps to a folder that is not too
 coarse (first mapping word wins); it is never off taxonomy and carries no
 inferred mark. Answers are the searcher's five or `no-isrc`. After one
@@ -357,9 +359,13 @@ A track a pass downloaded for an account playlist that the account no longer
 lists there (U287): no row of it by its id, ISRC, or artist and title folded as
 a recording. `crate sync removed` answers each one's row **offered** for
 removal from the collection or **kept** (held before the pass, not this pass's
-file, on another synced playlist, in a playlist of yours), or **left** when no
+file, on another synced playlist, in a playlist of yours, named by a table
+rekordbox's removal was never measured on), or **left** when no
 single row holds it. Nothing is offered while a synced playlist is not read
-whole. Only listed; the removal is a later card's.
+whole. Behind the explicit gate `sync.removed.confirm`, the offered rows leave
+the collection as rekordbox's Remove from Collection takes them out (U288): the
+row and every row naming it deleted, the lists left; the session record names
+each one, and `crate delete review` then offers its file.
 
 *Avoid:* a pair removal, which takes a membership and never a track.
 

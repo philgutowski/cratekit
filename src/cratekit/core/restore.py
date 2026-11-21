@@ -1102,6 +1102,7 @@ def _assert_override_names_them(
         + ", and everything they wrote goes with it:\n"
         + "\n".join(
             f"  - {entry.tree}: {entry.created} created, {entry.updated} updated"
+            + (f", {entry.removed} removed" if entry.removed else "")
             for entry in summary.trees
         )
         + ("\n  - no tree-level changes were recorded" if not summary.trees else "")

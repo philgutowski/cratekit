@@ -148,6 +148,7 @@ KEBAB_LITERALS = {
         'genre-unknown',
         'held-out',
         'no-votes',
+        'not-sent',
         'row-has-genre',
         'tag-suggest',
         'utf-8',

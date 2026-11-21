@@ -8,9 +8,10 @@ INBOX by design, and the INBOX refill (U134) reads the pass's recorded reports,
 never the account. This module is the noticing. It reads every downloaded
 playlist again, finds each track its pass recorded that the account no longer
 lists, resolves it to its collection row, and answers each row as OFFERED for
-removal from the collection or KEPT, with why. It writes nothing anywhere: no
-row, no file, no account write, no record. U288's gate shows this plan and
-binds to its digest.
+removal from the collection or KEPT, with why. The plan writes nothing
+anywhere: no row, no file, no account write, no record. U288's gate shows it
+and binds to its digest, and :func:`apply_removed` takes the offered rows out
+of the collection behind that gate, as rekordbox's Remove from Collection does.
 
 WHAT IS DOWNLOADED. An account playlist an ``intake.playlist`` job with a
 recorded name succeeded for, whose pass has a standing landing record naming
@@ -55,10 +56,16 @@ EACH ROW GETS ONE ANSWER, the first that holds of these:
   standing landing of its pass recorded filing into (``filed_batch``), so the
   match found a file this pass did not bring;
 * ``kept, on another synced playlist``;
+* ``kept, named by a table rekordbox's removal was never measured on``: a My
+  Tag (the landing's own ``vox`` and ``dyn`` included), a sampler slot,
+  related tracks, a hot cue bank list, a tag list, an active censor, an image
+  row or a table this build does not know names the row, so the removal
+  would refuse it (U288), checked after the playlists below;
 * ``kept, in a playlist of yours``: a live membership anywhere but the intake
   tree, the routing tree, or the custom playlist twin a landing recorded for a
-  playlist it left. A label year playlist keeps the row, the brief's rule,
-  until Phillip answers whether Cratekit's own filing does;
+  playlist it left. A label year playlist keeps the row: Phillip answered
+  on 2026-11-21 that Cratekit's own filing keeps nothing, and the label
+  year playlists are not yet told apart from a person's here (a residual);
 * ``offered``.
 
 One collection row reached from two playlists, or two passes, is one answer
@@ -74,12 +81,23 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Any
 
 from cratekit.acquire import match
 from cratekit.cli.output import digest_of
-from cratekit.core import config, jobs, locations, rb_writer, session, taxonomy, tree_registry
-from cratekit.core.cause import CratekitError
+from cratekit.core import (
+    config,
+    convergence,
+    jobs,
+    locations,
+    rb_writer,
+    session,
+    snapshot,
+    taxonomy,
+    tree_registry,
+)
+from cratekit.core.cause import CratekitError, refuse
 from cratekit.intake import account_playlists, ingest, native, refill, set_playlist
 from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue
@@ -97,6 +115,9 @@ NOT_THIS_PASS = "not this pass's file"
 ON_ANOTHER = "on another synced playlist"
 IN_YOURS = "in a playlist of yours"
 PARTIAL_READ = "not offered while a synced playlist could not be read whole"
+#: U288. A row a table rekordbox's removal was never measured on names, a vox
+#: or dyn My Tag above all: the removal would refuse it, so it is never offered.
+UNMEASURED = "named by a table rekordbox's removal was never measured on"
 
 #: Why a removed track has no row to answer, beside the resolver's own reasons.
 NOT_CARRIED = "the pass never downloaded it"
@@ -695,6 +716,7 @@ def plan_removed(
                     held.brought = True
         made = _twins(records)
         members = memberships(db, reached)
+        unmeasured = rb_writer.CollectionRemoval.held(db, reached)
         for held in reached.values():
             own = own_nodes.union(
                 *(made.get(account, frozenset()) for account in held.accounts),
@@ -707,6 +729,7 @@ def plan_removed(
                     own=own,
                     partial=partial,
                     names={one.account: one.name for one in found},
+                    unmeasured=unmeasured.get(held.content_id, {}),
                 )
             )
     plan = RemovedPlan(
@@ -726,6 +749,7 @@ def _answer(
     own: frozenset[str],
     partial: bool,
     names: Mapping[str, str] | None = None,
+    unmeasured: Mapping[str, int] | None = None,
 ) -> Answer:
     """The one answer a reached row gets, the first of the kept reasons that holds."""
     shown = Answer(
@@ -753,12 +777,235 @@ def _answer(
     yours = tuple(dict.fromkeys(name or playlist_id for playlist_id, name in held_by if playlist_id not in own))
     if yours:
         return replace(shown, why=IN_YOURS, kept_by=yours)
+    if unmeasured:
+        return replace(shown, why=UNMEASURED, kept_by=tuple(sorted(unmeasured)))
     if partial:
         return replace(shown, why=PARTIAL_READ)
     return replace(shown, answer=OFFERED)
 
 
+# ---------------------------------------------------------------------------
+# The removal, behind the gate (U288)
+# ---------------------------------------------------------------------------
+
+#: The workflow a removal's session record names.
+WORKFLOW = "sync-removed"
+
+#: What the change summary calls the place the rows left: the collection
+#: itself, not a playlist tree, since a content row belongs to no tree.
+COLLECTION = "collection"
+
+_ORIGIN = ("sync.removed",)
+
+
+@dataclass(frozen=True, slots=True)
+class Removed:
+    """What one apply took out of the collection, read back."""
+
+    session_id: str
+    rows: tuple[Answer, ...]
+    #: Rows deleted, by table, the content rows included.
+    deleted: Mapping[str, int]
+    #: The update count the commit left, which the record carries.
+    sequence: int | None
+
+
+def _rollback_quietly(db: Any) -> None:
+    try:
+        db.session.rollback()
+    except Exception:  # noqa: BLE001 - a failed cleanup must not hide its cause
+        pass
+
+
+def apply_removed(
+    cfg: config.Config,
+    db: Any,
+    plan: RemovedPlan,
+    *,
+    declared: taxonomy.Taxonomy,
+    registry: tree_registry.Registry,
+    records: Sequence[session.SessionRecord],
+    found: Sequence[Downloaded],
+    reads: Mapping[str, Listing],
+    unreadable: int,
+    analysis_roots: Iterable[Path | str],
+) -> Removed:
+    """Take every offered row out of the collection in one guarded commit, and read it back.
+
+    THE PLAN IS TAKEN AGAIN ON THIS HANDLE FIRST, the refill's rule, over the
+    same account reads, and a digest that moved refuses with nothing written:
+    the plan the person approved was read on a copy that has since closed.
+
+    WHAT IS WRITTEN IS REKORDBOX'S OWN REMOVE FROM COLLECTION (A178, A185),
+    through :func:`rb_writer.remove_from_collection`: each offered content row
+    and every row naming it in the six tables beside it, deleted outright, the
+    playlist and history list rows left as they are. A row any other table
+    names refuses the whole apply. Nothing else: no kept or left row, no
+    playlist row, no file, never a beat grid. The analysis files rekordbox
+    deletes are left, and the orphan artist and album rows are left for
+    rekordbox's next removal, which sweeps them.
+
+    THE SESSION SPINE IS CALLED, NOT REBUILT: the gates with a record kept, a
+    capture verified before anything is written, the analysis watch over the
+    roots named, the commit witness, the SQL confinement before the commit and
+    the guarded commit, whose whitelist admits the deletes by name and nothing
+    else. Then the read back, the whole database from SQL against the reading
+    taken before the first delete.
+
+    THE RECORD NAMES EVERY ROW REMOVED, with the columns the deletion pass
+    reads, the database's identity and the update count the commit left, so
+    ``restore list`` names them and the next ``crate delete review`` offers
+    their files (R-1037), each behind its own proofs and its own gate.
+    """
+    watched = [Path(root) for root in analysis_roots]
+    if not watched:
+        raise ValueError(
+            "analysis_roots is empty, so the analysis-file watch would watch nothing "
+            "and this session would report itself clean whatever happened to the "
+            "library's grids; name the roots this write could touch"
+        )
+    again = plan_removed(
+        cfg,
+        db,
+        declared=declared,
+        registry=registry,
+        records=records,
+        found=found,
+        reads=reads,
+        unreadable=unreadable,
+    )
+    if again.digest != plan.digest:
+        raise refuse(
+            "decision-stale",
+            "the collection, the playlists or the session records are not as the "
+            "approved plan read them, so nothing was written; run it again and approve "
+            "what it shows now",
+            origin=_ORIGIN,
+            detail={"approved": plan.digest, "now": again.digest},
+        )
+    offered = plan.offered
+    if not offered:
+        return Removed(session_id="", rows=(), deleted={}, sequence=None)
+    convergence.assert_tree_writable(cfg, db, declared.intake.id, registry)
+    about = {
+        one.content_id: {
+            "artist": one.artist,
+            "title": one.title,
+            "file": one.file,
+            "removed_from": list(one.removed_from),
+        }
+        for one in offered
+    }
+    with (
+        session.assert_gates(
+            cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
+        ) as gates,
+        rb_writer.commit_witness(db) as witness,
+    ):
+        record = gates.record
+        capture = snapshot.capture(cfg, db=db)
+        session.attach_capture(record, capture.root, cfg)
+        snapshot.assert_verified(capture)
+        removal = rb_writer.CollectionRemoval.prepare(db, [one.content_id for one in offered])
+        first = _first_deletion_position(cfg, db)
+        try:
+            removal.commit()
+        except BaseException:
+            _rollback_quietly(db)
+            if witness.landed:
+                _record_removal_commit(record, removal, about, _counter(db), cfg)
+                _give_first_position(first)
+            raise
+        sequence = _counter(db)
+        _record_removal_commit(record, removal, about, sequence, cfg)
+        _give_first_position(first)
+        convergence.record_fingerprint(cfg, db)
+        violations = removal.read_back()
+        if violations:
+            raise refuse(
+                "session-committed-unverified",
+                "the removal committed, and the database read back from SQL is not what "
+                "it planned, so this answer cannot be vouched for:\n  - "
+                + "\n  - ".join(violations[:20]),
+                origin=_ORIGIN,
+                detail={"violations": violations, "session_id": record.session_id},
+            )
+        session_id = record.session_id
+    return Removed(
+        session_id=session_id, rows=offered, deleted=dict(removal.deleted), sequence=sequence
+    )
+
+
+def _first_deletion_position(cfg: config.Config, db: Any) -> Callable[[], None] | None:
+    """The deletion pass's first position, read before the removal, to give once it lands.
+
+    A FIRST ``delete review`` BASELINES: it accepts every removal it can see as
+    history and offers nothing (R35), and a removal recorded after that point
+    would be one of them, so its file would never be offered (review round
+    one). So when the pass has no position for this database, the position it
+    would take is read here, before the removal's commit, with the pass's own
+    rule (the greater of the counter and the highest marked removal), and is
+    written only once the commit lands, so a refused removal leaves the pass
+    as it found it (round two). Every removal before this one is then history
+    and this one, at the count its commit leaves, is not. A position the pass
+    already holds is kept, and the collection is not even read (round two).
+
+    None when there is nothing to give. The deletion package is imported here,
+    under the function, since it is a module of its own; it is asked whether
+    the profile switches it on nowhere, so a library that turns deletion on
+    later still finds its removals offered.
+    """
+    try:
+        from cratekit.deletion import library as deletion_library
+        from cratekit.deletion import watermark
+    except ImportError:  # pragma: no cover - the deletion package is not installed
+        return None
+    store = watermark.WatermarkStore(cfg)
+    identity = deletion_library.database_identity(db)
+    held = store.read()
+    if held is not None and held.applies_to(identity):
+        return None
+    seen = deletion_library.read_collection(db.get_content())
+    counter = deletion_library.current_sequence(db)
+    start = max([counter, *(row.sequence for row in seen.removed)])
+
+    def give() -> None:
+        store.baseline(database_identity=identity, sequence=start, actor=WORKFLOW)
+
+    return give
+
+
+def _give_first_position(first: Callable[[], None] | None) -> None:
+    if first is not None:
+        first()
+
+
+def _counter(db: Any) -> int | None:
+    try:
+        return int(db.get_local_usn())
+    except Exception:  # noqa: BLE001 - an unread counter is recorded as unknown
+        return None
+
+
+def _record_removal_commit(
+    record: session.SessionRecord,
+    removal: Any,
+    about: Mapping[str, Mapping[str, Any]],
+    sequence: int | None,
+    cfg: config.Config,
+) -> None:
+    """Record the commit, every row named, under the collection, the way a restore reads one.
+
+    Named the way the write session guard reads a commit helper. A sequence
+    that could not be read is recorded as unknown, and the deletion pass then
+    offers none of these files, keeping them rather than guessing.
+    """
+    removal.write_into(record.detail, sequence=sequence, about=about)
+    changes = (session.TreeChange(tree=COLLECTION, removed=len(removal.content_ids)),)
+    session.record_commit(record, COLLECTION, session.ChangeSummary(changes), cfg)
+
 __all__ = [
+    "COLLECTION",
     "EMPTY",
     "GONE",
     "HEARTS",
@@ -772,12 +1019,16 @@ __all__ = [
     "PARTIAL_READ",
     "READ",
     "SHORT",
+    "UNMEASURED",
     "UNREADABLE",
     "Answer",
     "Downloaded",
     "Listing",
+    "Removed",
     "RemovedPlan",
+    "WORKFLOW",
     "account_listing",
+    "apply_removed",
     "downloaded",
     "identity",
     "job_playlists",

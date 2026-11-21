@@ -618,7 +618,7 @@ def test_a_recorded_catalogue_proposal_is_written_and_asked_once_across_the_acts
         return SearchHit(genre=DEEP, source="discogs", source_genre="Deep House")
 
     monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: search)
-    monkeypatch.setattr(published, "for_taxonomy", lambda declared: lambda hit, isrc: hit)
+    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
     code, acted, refused = _two_acts(["--catalogue"])
     assert code == int(ExitCode.OK), acted
     assert _genre_of(cfg, "60") == DEEP and tags.read_genre_from_file(paths["60"]) == DEEP
@@ -770,7 +770,7 @@ def test_a_catalogue_nobody_could_read_is_said_at_the_gate(acknowledged, silence
         raise refuse("catalogue-unreachable", "blocked", origin=("test",))
 
     monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: blocked)
-    monkeypatch.setattr(published, "for_taxonomy", lambda declared: lambda hit, isrc: hit)
+    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
     _run, refused = _first_act(["--catalogue"])
     assert any("could not be read for 1 row(s)" in note for note in refused["cause"]["detail"]["shown"]["notes"])
 

@@ -3,7 +3,12 @@
 Deletion is driven by rekordbox's own soft-delete marker, which is the decision
 that keeps the writer's unconditional delete prohibition closed: a removed row
 persists with its path intact, so removals are identified exactly without this
-unit ever creating, editing, or deleting a database row. Nothing in this module
+unit ever creating, editing, or deleting a database row. rekordbox 7.2 deletes
+a row OUTRIGHT on Remove from Collection (A178, A185), which leaves no marker,
+so a row ``crate sync removed`` takes out is read from the session record that
+names it instead, :func:`recorded_removals` (U288); a row a person removes by
+hand in rekordbox is still invisible here (R-1037), though a recorded removal
+of the same row can still stand when a restore put it back in between. Nothing in this module
 writes. Nothing in this module can write: it reads mapped rows into frozen values
 and hands those on, so every later stage in the pass operates on data rather than
 on live objects that could be mutated by accident.
@@ -28,7 +33,7 @@ no verb.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
@@ -512,13 +517,111 @@ def playlist_referenced(memberships: Any) -> frozenset[str]:
     return frozenset(referenced)
 
 
+# ---------------------------------------------------------------------------
+# A removal recorded rather than marked (U288)
+# ---------------------------------------------------------------------------
+
+#: The key a session record names its removed rows under, and the columns
+#: each keeps: the guarded writer's, beside the removal that writes them
+#: (U288), read here. rekordbox's Remove from Collection, and Cratekit's
+#: imitation of it, delete the row OUTRIGHT (A178, A185), so the soft delete
+#: marker this module partitions on never says the row went (R-1037).
+#: Spelled here rather than imported, so this package reaches no more of the
+#: core than it did (U296's names ceiling); ``tests/test_sync_removed.py``
+#: holds the two spellings equal.
+RECORDED_REMOVALS_KEY = "collection_removed"
+RECORDED_COLUMNS: tuple[str, ...] = (
+    "ID",
+    "FolderPath",
+    "FileSize",
+    "ArtistName",
+    "Title",
+    "ISRC",
+    "RemixerName",
+    "Subtitle",
+)
+
+
+class _Recorded:
+    """A recorded row's columns as attributes, so the readers above read it as a row."""
+
+    def __init__(self, columns: Mapping[str, Any]) -> None:
+        for name in RECORDED_COLUMNS:
+            setattr(self, name, columns.get(name))
+
+
+def _recorded_row(columns: Mapping[str, Any], sequence: int) -> RemovedRow:
+    row = _Recorded(columns)
+    version, kind, unbelieved = _version_of(row)
+    return RemovedRow(
+        content_id=_identifier(row, "ID"),
+        recorded=_text(row, "FolderPath"),
+        sequence=sequence,
+        size=_size_of(row),
+        artist=_text(row, "ArtistName"),
+        title=_text(row, "Title"),
+        isrc=_text(row, "ISRC") or None,
+        version=version,
+        version_kind=kind or VERSION_IS_A_DESIGNATION,
+        version_unbelieved=unbelieved,
+    )
+
+
+def recorded_removals(
+    details: Iterable[Mapping[str, Any]],
+    *,
+    database_identity: str,
+    present: Iterable[str],
+) -> tuple[RemovedRow, ...]:
+    """Every row a recorded removal took out of THIS database that it still does not hold.
+
+    ``details`` is each session record's ``detail``. A record of another
+    database is not this one's (its identity differs, so its sequence means
+    nothing here, as a watermark's does not). A row the database holds again,
+    live or marked, is no removal: a restore brought it back, and the marker or
+    the live row then answers for it. Each row is read through the same readers
+    a marked row is, at the update count the record names, the counter as the
+    removal's commit left it, so the watermark orders it with every other
+    removal. One content id recorded twice keeps its later sequence.
+
+    A RECORD THAT CANNOT SAY IS SKIPPED, never guessed at: a row with no
+    sequence, or a record with no identity, offers nothing, which keeps a file
+    rather than trashing one.
+    """
+    held = {str(one) for one in present}
+    found: dict[str, RemovedRow] = {}
+    for detail in details:
+        recorded = detail.get(RECORDED_REMOVALS_KEY) if isinstance(detail, Mapping) else None
+        if not isinstance(recorded, Mapping):
+            continue
+        if str(recorded.get("database_identity") or "") != str(database_identity):
+            continue
+        sequence = recorded.get("sequence")
+        if not isinstance(sequence, int) or isinstance(sequence, bool):
+            continue
+        for entry in recorded.get("rows") or ():
+            columns = entry.get("columns") if isinstance(entry, Mapping) else None
+            if not isinstance(columns, Mapping):
+                continue
+            row = _recorded_row(columns, sequence)
+            if not row.content_id or row.content_id in held:
+                continue
+            seen = found.get(row.content_id)
+            if seen is None or seen.sequence < row.sequence:
+                found[row.content_id] = row
+    return tuple(found[key] for key in sorted(found))
+
+
 __all__ = [
     "VERSION_IS_AN_ARTIST",
     "VERSION_IS_A_DESIGNATION",
     "CollectionRead",
+    "RECORDED_COLUMNS",
+    "RECORDED_REMOVALS_KEY",
     "RemovedRow",
     "current_sequence",
     "database_identity",
     "playlist_referenced",
     "read_collection",
+    "recorded_removals",
 ]

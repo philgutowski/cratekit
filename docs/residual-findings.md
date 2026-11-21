@@ -55310,3 +55310,472 @@ a remount hides it and the library's own file no longer carries that age.
 **Closes when:** the database portion publishes its age only into a root the
 files proof passed, or the files portion's refusal stops the job's database
 item from writing there. Ledger only.
+
+---
+
+## R-1817. A delete made on the raw session and flushed before the commit reaches neither source the whitelist reads, so it commits
+
+**Found:** at the review of #839, U288, round one, 2026-11-21.
+
+**The mechanism.** `pending_changes` reads the session's pending collections
+and the binding's update buffer. `db.delete` reaches the buffer; a
+`session.delete(row)` followed by a flush leaves `session.deleted` empty and
+never reaches the buffer, so `commit_guarded` with no `deletions` commits it.
+Predates U288, whose own deletes go through the binding and whose
+confinement reads every table from SQL.
+
+**Measured cost.** Driven by round one on a disposable copy: the content row
+was deleted by a commit that named nothing. No producer: `session.delete(`
+has no hit under `src`.
+
+**Closes when:** the whitelist also compares a reading from SQL before and
+after for every commit, or a source guard refuses `session.delete` outside the
+writer. Ledger only.
+
+---
+
+## R-1818. A removal restored and then removed again by hand in rekordbox is offered by delete review from the old record
+
+**Found:** at the review of #839, U288, round one, 2026-11-21.
+
+**The mechanism.** `recorded_removals` reads every standing record of the
+database and skips a row the database holds again. After a restore puts the
+row back, the record still stands; when the person later removes the same
+track by hand in rekordbox, the row is absent again and the old record offers
+its file, at the old record's sequence if the watermark is still below it.
+
+**Measured cost.** Driven by round one: after the restore, offered 0; after a
+hand delete, offered 1. The offer is behind `delete.review.confirm` and its
+proofs, and a hand removal is a removal, so the cost is a file offered that
+the person did mean to remove; the GUIDE now says so.
+
+**Closes when:** a restore marks the removal records it reaches back past as
+undone, or the pass reads a record only for rows it removed after the last
+restore. Ledger only.
+
+---
+
+## R-1819. delete review offers nothing from a session record it cannot read and says nothing on its envelope
+
+**Found:** at the review of #839, U288, round one, 2026-11-21.
+
+**The mechanism.** `deletion.run._recorded_details` reads the log with
+`scan_log` and only logs how many records it could not read, so a removal
+whose record is torn or written by a later build is not offered and the gate
+shows `offered: 0` with no warning.
+
+**Measured cost.** Driven by round one with a record truncated by hand: offered
+0 and no warning; repaired, offered 1. It keeps the file, the safe side. Not
+driven: a later readable removal advancing the watermark past the unread one,
+which would then never be offered.
+
+**Closes when:** the plan carries the unread count and the gate screen and the
+envelope name it. Ledger only.
+
+---
+
+## R-1820. A removal whose read back disagrees refuses as unverified, and the next write to the library proceeds
+
+**Found:** at the review of #839, U288, round one, 2026-11-21.
+
+**The mechanism.** `apply_removed` refuses `session-committed-unverified` when
+the database read back after the commit is not what it planned, and the
+session record then closes abandoned with its source committed, which the
+write session gate does not refuse on. So a following `intake land` writes the
+library the removal could not vouch for.
+
+**Measured cost.** Driven by round one with the read back patched to report
+one difference: exit 25, then `intake land` exited OK. No real producer of a
+disagreeing read back was found.
+
+**Closes when:** an unverified removal leaves the session unresolved, as the
+landing's committed unverified state does, so the next write refuses until a
+person reads it. Ledger only.
+
+---
+
+## R-1821. A track carrying any My Tag row, the landing's own vox and dyn and one marked removed included, is kept by sync removed and never offered
+
+**Found:** at the review of #839, U288, rounds one and two, 2026-11-21.
+
+**The mechanism.** Neither sitting measured what Remove from Collection does
+with a `djmdSongMyTag` row, so the plan keeps every track one names, as
+`named by a table rekordbox's removal was never measured on`, a row marked
+removed included. The landing gives the `vox` My Tag to tracks scored over the
+cut, so every such downloaded track taken off its playlist is kept.
+
+**Measured cost.** Driven by rounds one and two: kept, with the table named,
+never offered. The share of landed tracks tagged was not measured on the tree;
+`docs/cutover.md` records 19 of 116 at one sitting. The verb is inert for them,
+and each can be removed by hand.
+
+**Closes when:** an attended sitting measures Remove from Collection on a track
+with a My Tag, and the removal admits `djmdSongMyTag` in the shape found.
+Ledger only; the attended card for U288 picks a track with no My Tag.
+
+---
+
+## R-1822. The rule that picks the first deletion position and the removed count in restore's refusal kill no test
+
+**Found:** at the review of #839, U288, round two, 2026-11-21.
+
+**The mechanism.** Round two mutated `max(counter, highest)` to the counter
+alone, and `highest` to the counter, and deleted restore's `, N removed`
+suffix: each killed none of the tests that cover them, since no test puts a
+marked row above the counter or refuses a restore over a removal session.
+
+**Measured cost.** None to a person today: the rule is the pass's own, and the
+suffix reads right when called directly. Maintainer facing.
+
+**Closes when:** a test holds a marked row above the counter to the position,
+and one holds restore's refusal over a removal session to its removed count.
+Ledger only.
+
+---
+
+## R-1823. A removed track Cratekit filed into a label year playlist is still kept, though Phillip answered that Cratekit's own filing keeps nothing
+
+**Found:** at the build of #839, U288, 2026-11-21.
+
+**The mechanism.** Phillip answered on 2026-11-21 (#373, decision 1) that a
+downloaded track Cratekit filed into a genre or a Record Labels playlist, then
+taken off its account playlist, is offered. U287's plan counts the intake
+tree, a database native routing tree and the twins as the pass's own filing,
+and a label year playlist still keeps the row, as `in a playlist of yours`,
+since those playlists are not told apart there from one a person made. U288
+left U287's offer rules unchanged.
+
+**Measured cost.** None driven. Errs toward keeping: a track Phillip would have
+had offered stays in the collection, named kept with the label playlist that
+keeps it, and he can remove it by hand.
+
+**Closes when:** the label year playlists `label playlists` made are read as
+the pass's own filing (the label registry's recorded playlist ids, or the
+Record Labels tree by its root), with a test that one keeps nothing. Ledger
+only; worth a card of its own, since it is Phillip's answered decision.
+
+---
+
+## R-1824. The removal asks other tables only by columns named ContentID and TargetID, and TargetID without the table it names
+
+**Found:** at the review of #839, U288, round two, 2026-11-21.
+
+**The mechanism.** `rb_writer.content_references` refuses a track any table
+outside the removal set names by `ContentID`, or by `TargetID`. A table naming
+a track by another column (`ContentID1`, `ContentUUID`, `TargetUUID`) is not
+asked, so its row would be left naming a deleted track; and a `TargetID`
+naming a row of another table that happens to equal a content id keeps the
+track for the wrong reason.
+
+**Measured cost.** Driven by round two on synthetic tables: a
+`djmdRecommendLike (ContentID1, ContentID2)` row was left naming the removed
+track, and an `imageFile` row for a playlist kept a track forever. Neither the
+repository nor the binding names such a table, and whether the live schema
+holds one is unmeasured.
+
+**Closes when:** the live schema is read for every column that can name a
+content row, each asked, and `TargetID` asked with its `TableName` where the
+table has one. Ledger only.
+
+---
+
+## R-1825. crate sync removed has no rehearsal of its own, so its gate is rehearsed by hand on a copy with library state redirected
+
+**Found:** at the build of #839, U288, 2026-11-21.
+
+**The mechanism.** CLAUDE.md approves a database write gate only when a
+rehearsal matches. `intake land` rehearses itself (`--rehearse`, U162);
+`sync removed` does not, so the crate-sync skill's step drives it on a
+disposable copy with `CRATEKIT_CONFIG_DIR`, `CRATEKIT_STATE_DIR` and the
+library root redirected, by hand, and compares the offered rows with the live
+plan's.
+
+**Measured cost.** None driven: a session that skips the copy still meets the
+gate, the backup acknowledgment, the confinement and the read back. The hand
+procedure is slower and is where a session can get the redirection wrong
+(the solutions entry on a disposable database copy).
+
+**Closes when:** `sync removed --rehearse` runs the apply on a
+`core.rehearsal` area and the live gate names the rehearsal's digest, as the
+landing's does. Ledger only.
+
+---
+
+## R-1826. The first position a removal gives the deletion pass can sit above its own commit, or replace one of another identity over an earlier removal, and its file is then never offered
+
+**Found:** at the review of #839, U288, round two, 2026-11-21.
+
+**The mechanism.** With no position, `sync removed` gives the deletion pass
+the greater of the update count before its commit and the highest marked
+removal, the pass's own rule. A marked row whose `rb_local_usn` sits above the
+counter puts the position above the removal's commit, so its recorded row is
+filtered as history. And a position stored for another database identity is
+replaced, as the pass itself replaces one, which drops an earlier removal still
+waiting under the old position.
+
+**Measured cost.** Driven by round two on copies whose rows were written by
+SQL: a marked row at the counter plus 1000 left the removed file never
+offered; an identity rewritten by hand between two removals left the first
+one's file never offered. Neither producer was driven: no real marked row
+above the counter, and a rehearsal copy carries the live `DBID`. Both keep the
+file, the safe side, and Phillip's library holds a position since 2026-09-23.
+
+**Closes when:** the first position is the lower of the pass's rule and the
+earliest recorded removal less one, with a test of each corner. Ledger only.
+
+---
+
+## R-1827. When a removal gives the deletion pass its first position, the first delete review never says how many removals it accepted as history
+
+**Found:** at the review of #839, U288, round two, 2026-11-21.
+
+**The mechanism.** A first `delete review` that baselines shows `baselined`
+and `accepted_as_history` so a person learns the history before now was
+accepted (R35, R-134). When `sync removed` gives the position instead, it
+drops the store's `(mark, baselined)` answer and says nothing, and the first
+review then shows `baselined: false, accepted_as_history: 0`.
+
+**Measured cost.** Driven by round two with one marked row and no position:
+the notice is never shown anywhere. Not reached on Phillip's library, which
+holds a position since 2026-09-23.
+
+**Closes when:** the removal's envelope names the position it gave and how many
+marked removals it accepted as history. Ledger only.
+
+---
+
+## R-1828. crate sync removed leaves an artist or album row the removed track was the last to name, which rekordbox's removal deletes
+
+**Found:** at the build of #839, U288, 2026-11-21.
+
+**The mechanism.** A178 and A185 measured rekordbox deleting every live artist
+and album row a removal leaves named by nothing, the one it just orphaned and
+any other already orphaned. The removal deletes in its seven measured tables
+only and leaves those rows; rekordbox sweeps them at its own next removal, as
+A178 saw it sweep an older orphan. Genre and label rows were never measured.
+
+**Measured cost.** None driven: an orphan lookup row is invisible in rekordbox's
+track list, and a landing that mints the same word reuses a live row rather
+than minting another.
+
+**Closes when:** the orphan sweep is measured for genre and label rows too and
+imitated under the confinement, or it is left to rekordbox for good. Ledger
+only.
+
+---
+
+## R-1829. crate sync removed leaves a removed track's analysis folder and files, which rekordbox's own removal deletes
+
+**Found:** at the build of #839, U288, 2026-11-21.
+
+**The mechanism.** A185 measured rekordbox's Remove from Collection deleting
+the track's folder in the analysis store and its DAT, EXT, 2EX and 3EX files.
+`rb_writer.collection_removal` deletes the `contentFile` rows that name them
+and leaves the files, since the verb touches no file and a delete outside the
+database needs a guard of its own. So every track `sync removed` takes out
+leaves its analysis folder behind, named by no row.
+
+**Measured cost.** Not driven on a live library. A few files and some hundreds
+of kilobytes per track; no row reads them, and a track landed again later is
+analysed into a new folder. Nothing a person sees in rekordbox.
+
+**Closes when:** the analysis folder is deleted under a guard proving it is the
+removed row's own and named by no other row, or Phillip judges the files
+harmless. Ledger only.
+
+---
+
+## R-1830. A playlist or history list that keeps other tracks keeps the gap a removed track's TrackNo leaves, and what rekordbox does there is unmeasured
+
+**Found:** at the build of #839, U288, 2026-11-21.
+
+**The mechanism.** A178 and A185 each removed a track alone in its playlist and
+its history list, so neither measured whether rekordbox renumbers the
+`TrackNo` of the members after a removed one. The binding's own
+`remove_from_playlist` renumbers them; Cratekit's soft delete of a membership
+never has. The removal renumbers nothing, so an INBOX playlist holding the
+other tracks of the pass keeps a gap where the removed one was, and the
+confinement refuses any renumbering as a change it did not plan.
+
+**The next append collided, fixed in round one.** Review round one drove it: `rb_writer.add_memberships`
+appends through the binding's `add_to_playlist`, which numbers a new row as
+the row count plus one. After a removal INBOX / Analyze held 1, 2, 3, 5, and
+the next landing put its new track at 5 beside the live one already there;
+without the removal it went to 6. `add_memberships` now numbers an append past
+the highest position the playlist holds, so the gap stays a gap.
+
+**Measured cost.** Not driven against rekordbox. A gap is what every soft
+deleted membership has always left in a live playlist, and rekordbox orders a
+list by `TrackNo`, so the order shown is unchanged; whether rekordbox reads a
+gap as anything else is the measurement.
+
+**Closes when:** an attended sitting removes one track from a playlist and a
+history list holding others with Remove from Collection, compares the copies,
+and the removal imitates what it finds. Ledger only: it closes at a sitting.
+
+---
+
+## R-1831. With no Discogs token recorded, the suggest verbs never ask Deezer while Beatport refuses this client
+
+**Found:** at the review of #891, U322, 2026-11-21.
+
+**The mechanism.** U322 lets `tag suggest --catalogue` and `tag backlog
+--catalogue` ask the general catalogue past a Beatport that refused this
+client only once Discogs answered about the row (`published._refused_beside_discogs`),
+the narrower of the card's requirement and #796's option 3. With no token
+Discogs is passed over, Beatport's refusal is every answer the searcher had,
+and the searcher raises before the general catalogue's seam runs, so Deezer is
+asked about no row while Beatport refuses. The review drove ten rows: the walk
+stops at the third with Deezer asked 0 times.
+
+**Measured cost.** None on Phillip's library, which has a token. A library
+with none weighs every row from the library alone for as long as Beatport
+refuses.
+
+**Closes when:** Phillip answers whether Deezer's album genre should stand in
+while every record shop asked refuses (the question on #796), and the searcher
+hands such a row to the seam rather than raising. Ledger only.
+
+---
+
+## R-1832. A catalogue that is down beside one that answers is asked on every row of a suggest walk
+
+**Found:** at the review of #891, U322, 2026-11-21.
+
+**The mechanism.** Since U322 a row some catalogue answered ends the suggest
+walk's run of unread rows, so the walk stops only when no catalogue it sends
+rows to could read three in a row. U281's per catalogue count stops a
+catalogue only for refusals (`searchers.Refusals`); an outage or a parse break
+ends a run of refusals and has no stop of its own. So Discogs answering 503
+beside a Beatport miss is asked on every row: the review drove ten rows, ten
+Discogs searches where main made three.
+
+**Measured cost.** Unmeasured in wall time: each such request waits up to the
+request timeout before it is read unreachable, on top of the pacing.
+
+**Closes when:** a catalogue unreachable on several rows in a row is passed
+over for the rest of the run the way a refusing one is, with its own count
+and note, or the cost is measured and found small. Ledger only.
+
+---
+
+## R-1833. tag folder still holds Deezer behind a refusing Beatport while the suggest verbs ask past it
+
+**Found:** at the plan of #891, U322, 2026-11-21.
+
+**The mechanism.** U322 gave `tag suggest --catalogue` and `tag backlog
+--catalogue` their own binder, `published.for_suggestions`, which asks the
+general catalogue on a row Beatport refused once Discogs answered. `tag folder`
+keeps `published.for_taxonomy`, whose gate asks it only once Beatport answered
+a match or a miss, the conservative option U281 built while #796's question
+waits. So while Beatport refuses, a sweep records Deezer not asked on every
+file Discogs missed, and `tag suggest --catalogue` asks it about the same
+rows.
+
+**Measured cost.** Not driven on the live library. The two verbs disagree only
+on files Discogs missed while Beatport refused; the suggest verbs show what
+they would write at a gate, and a sweep writes without one.
+
+**Closes when:** #796's question is answered and `tag folder` follows it, or
+U282 ends Beatport's refusal. Ledger only.
+
+---
+
+## R-1834. A row passed over for a token Discogs refused loses what the searcher knew of Beatport, so its line leaves Beatport out and Deezer is never asked
+
+**Found:** at the review of #891, U322, round two, 2026-11-21.
+
+**The mechanism.** When Discogs refuses the recorded token and no record shop
+matches, `catalogue_searcher` raises the credential refusal and drops every
+other catalogue's answer. Since U322 `suggest.catalogue_lookup` reads that
+refusal by its declared reason as Discogs passed over, so the walk goes on,
+but its words are only Discogs `not-asked`: `tag backlog`'s catalogue line has
+no Beatport entry whether Beatport refused or answered, and the general
+catalogue's seam never runs, so Deezer is asked about no row. The review drove
+six rows each way and eight with Beatport missing: Deezer asked 0 times where
+the same library with no token is asked 8.
+
+**Measured cost.** The warning names the refused token and says how to record
+a new one, so a person is told the cause; what they are not told is Beatport's
+part, and the rows take no Deezer genre until the token is fixed.
+
+**Closes when:** the searcher carries the shops' answers on the credential
+refusal as a declared field, or returns a decline that names Discogs passed
+over for a refused token, so the lookup reads the words and offers the row to
+the general catalogue. Ledger only.
+
+---
+
+## R-1835. tag suggest's gate shows none of its warnings, so a row written without a refusing catalogue's word is said only after the decision
+
+**Found:** at the review of #891, U322, round two, 2026-11-21.
+
+**The mechanism.** `tag suggest` builds its gate screen from the plan's band,
+counts, groups and items, and its warnings, `suggest-catalogue-unread` among
+them, reach only the envelope of the act that applies. `tag campaign` carries
+the backlog's warning onto its gate's notes. So the sentence U322 added, that
+Beatport could not be read for rows another catalogue answered, reaches a
+person deciding `tag suggest`'s gate only through each item's words. On main
+the gate is built the same way.
+
+**Measured cost.** Driven through the verb at the review: five rows given a
+Deezer genre while Beatport refused, exit 10 with empty warnings and no note,
+the warning arriving after the decision.
+
+**Closes when:** the gate screen carries the verb's advisories as notes, as
+`tag campaign`'s does. Ledger only.
+
+---
+
+## R-1836. Ten tests in eight files outside the backup's own read the machine's real disk identity and mount table, so on a Mac they run against a foreign identity
+
+**Found:** at the review of #914, U323, 2026-11-21.
+
+**The mechanism.** `tests/test_backup_unproven_root.py` now fails any test
+that reaches `preflight.default_identity_provider` or
+`preflight.local_mount_points`. No other file has that guard, and the
+review, running the whole suite with the platform provider answering a real
+looking foreign UUID as a Mac does, logged ten tests reaching the fallback
+with no seam: four in `tests/test_backup_comparison.py` (doctor and age
+reports), and one each in `tests/test_config.py`
+(`test_doctor_reports_a_database_that_sits_outside_the_library_root`),
+`tests/test_doctor.py`
+(`test_the_wizard_does_not_call_an_intact_configuration_corrupt`),
+`tests/test_intake_imported.py`
+(`test_a_refused_close_is_reported_and_tried_again_next_time`),
+`tests/test_provider_budget.py`
+(`test_calls_past_the_budget_is_refused_before_a_verb_that_makes_no_call_runs`),
+`tests/test_restore.py`
+(`test_a_reconciliation_store_on_an_unmounted_volume_is_not_an_empty_one`)
+and `tests/test_write_session.py`
+(`test_a_way_to_the_target_this_account_cannot_walk_is_a_refusal_and_not_a_traceback`).
+
+**Measured cost.** None red: all ten passed under the foreign answer, and
+A183's macOS battery failed only the three U323 fixed. What they prove can
+differ by platform, which the next finding shows for one of them.
+
+**Closes when:** the suite answers the platform identity and the mount table
+through a seam in `tests/conftest.py`, or each of the ten passes its own, so
+no test reads the machine it runs on. Ledger only: nothing fails.
+
+---
+
+## R-1837. The restore test of a reconciliation store on an unmounted volume refuses for a different reason on each platform, and its assertion names none
+
+**Found:** at the review of #914, U323, 2026-11-21.
+
+**The mechanism.** In `tests/test_restore.py`,
+`test_a_reconciliation_store_on_an_unmounted_volume_is_not_an_empty_one`
+ends on `pytest.raises(CratekitError)` around `close_session`, with no seam
+for the volume identity. Driven at the review of U323 with the platform
+provider patched: answering none, as Linux does, it refuses
+`library-volume-mismatch`; answering a foreign UUID, as a Mac does, or the
+recorded volume, it refuses `library-volume-unmounted`. The assertion takes
+either.
+
+**Measured cost.** None to a person: it refuses on both. The test cannot tell
+which refusal it proved, so a change that broke the unmounted reading on one
+platform would pass there through the other.
+
+**Closes when:** the test passes the identity it means and asserts the
+reason it expects. Ledger only.

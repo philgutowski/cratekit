@@ -20,7 +20,7 @@ delegated upstream. The chain, in the order it fires, and what each link refuses
    any write and verified before anything commits behind it.
 5. **The additive whitelist.** A session may CREATE rows only in named playlist
    and tag tables, may MODIFY only columns an enabled operation has REGISTERED,
-   and may DELETE nothing at all, ever. That is R17 stated as a property of the
+   and may DELETE nothing but the one row shape below. That is R17 stated as a property of the
    database rather than as a code-review note: grid and analysis data is
    structurally unwritable, not merely untested. ONE REMOVAL IS ADMITTED, on
    purpose (R-758): a membership row may be marked removed with rekordbox's own
@@ -29,7 +29,12 @@ delegated upstream. The chain, in the order it fires, and what each link refuses
    WHITELIST IS ADMITTED the same way (R-746): a content row, only by a commit
    that names the table, and only carrying what the file and the filesystem
    say, with every column an analysis pass fills asserted empty from SQL
-   before the commit. See :data:`ADMITTABLE_ROW_TABLES`.
+   before the commit. See :data:`ADMITTABLE_ROW_TABLES`. ONE HARD DELETE IS
+   ADMITTED (U288), rekordbox's own Remove from Collection as two sittings
+   measured it (A178, A185): a track's content row and every row naming it
+   in six tables beside it, only by a commit that names those tables, and
+   proven from SQL before the commit to have reached nothing else. See
+   :data:`DELETABLE_TABLES`.
 6. **A cross-process write-session lock**, held from snapshot through smoke test.
 
 WHAT CHANGED IN THE PORT, AND WHY EACH CHANGE IS A FIX RATHER THAN A DRIFT.
@@ -2090,17 +2095,25 @@ def add_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> list[
     person cannot see it in, and a track moved away and later moved back would
     never come back.
     """
-    present = {
-        str(song.ContentID)
-        for song in db.get_playlist_songs(PlaylistID=str(playlist.ID))
-        if not membership_removed(song)
-    }
+    songs = list(db.get_playlist_songs(PlaylistID=str(playlist.ID)))
+    present = {str(song.ContentID) for song in songs if not membership_removed(song)}
+    highest = max((int(song.TrackNo or 0) for song in songs), default=0)
     inserted: list[str] = []
     for content_id in content_ids:
         key = str(content_id)
         if key in present:
             continue
-        db.add_to_playlist(playlist, key)
+        added = db.add_to_playlist(playlist, key)
+        # AN APPEND GOES PAST THE HIGHEST POSITION, NOT PAST THE ROW COUNT
+        # (U288). The binding numbers a new row as the count plus one, which is
+        # the highest position only while no row was ever deleted outright; a
+        # track taken out of the collection leaves a gap, and the count plus
+        # one would then land on a position a live row already holds.
+        number = int(getattr(added, "TrackNo", 0) or 0)
+        if added is not None and number <= highest:
+            added.TrackNo = highest + 1
+            number = highest + 1
+        highest = max(highest, number)
         present.add(key)
         inserted.append(key)
     return inserted
@@ -2859,7 +2872,8 @@ PLAYLIST_TABLE = "djmdPlaylist"
 #: table, these included, unless the commit names the table in ``removals``,
 #: and a commit that names any table outside this set is refused as well, so no
 #: caller can widen it by asking. Static, for the reason
-#: :data:`PERMITTED_ROW_TABLES` is. A hard delete is admitted nowhere.
+#: :data:`PERMITTED_ROW_TABLES` is. A hard delete is admitted only by
+#: ``deletions`` (U288), in :data:`DELETABLE_TABLES`.
 #:
 #: THE PLAYLIST TABLE JOINED WITH U111, on purpose and with a guard of its own.
 #: Admitting it here lets a commit carry a removed node, and that is all it
@@ -2869,6 +2883,72 @@ PLAYLIST_TABLE = "djmdPlaylist"
 #: before its commit, :func:`assert_node_changes_confined`, that nothing it did
 #: not plan changed. Never the content table.
 REMOVABLE_TABLES = frozenset({MEMBERSHIP_TABLE, PLAYLIST_TABLE})
+
+# ---------------------------------------------------------------------------
+# A track taken out of the collection, as rekordbox takes it out (U288)
+# ---------------------------------------------------------------------------
+
+#: The tables rekordbox's own Remove from Collection deletes a track's rows
+#: from, OUTRIGHT, and the whole of them: measured at sittings 101 and 102
+#: (A178, A185) on rekordbox 7.2.19, on a never analysed track and then on an
+#: analysed one with cues, a history play and a playlist membership. The
+#: content row first, since it is the row the others name. A commit may be
+#: asked to admit a hard delete in these tables and in no other, by
+#: ``deletions``, and only the collection removal asks (U288).
+#:
+#: WHAT REKORDBOX ALSO DOES AND THIS DOES NOT, said here so nobody reads the
+#: set as the whole of rekordbox's removal: it deletes the artist and album
+#: rows the removal leaves named by nothing, which its next removal sweeps
+#: anyway (A178), and it deletes the track's analysis folder, which is a file
+#: and outside this module. Both are left, and the record says so.
+COLLECTION_REMOVAL_TABLES: tuple[str, ...] = (
+    CONTENT_TABLE,
+    MEMBERSHIP_TABLE,
+    "djmdCue",
+    "contentCue",
+    "contentFile",
+    "djmdSongHistory",
+    "djmdMixerParam",
+)
+
+#: The same tables as a set: what ``deletions`` may name. Static, for the
+#: reason :data:`REMOVABLE_TABLES` is: no caller widens it by asking.
+DELETABLE_TABLES = frozenset(COLLECTION_REMOVAL_TABLES)
+
+#: The column a row of another table names a content row by.
+CONTENT_REFERENCE_COLUMN = "ContentID"
+
+#: The column a few tables name ANY row by, a content row among them, beside
+#: the table it names (``imageFile``). Asked too, so a row that names the
+#: track this way is refused rather than left naming a row that is gone.
+#: ``uuidIDMap``, which A178 and A185 read unchanged, names rows by
+#: ``CurrentID`` and is not asked.
+TARGET_REFERENCE_COLUMN = "TargetID"
+
+#: The registry row whose counter the binding advances at every commit.
+LOCAL_UPDATE_COUNT = "localUpdateCount"
+
+#: The key a session record names the rows a removal took out under, so the
+#: deletion pass can offer their files and ``restore list`` can name them. A
+#: row deleted outright leaves no soft delete marker for the pass to read
+#: (R-1037), so this record is the only place the removal is written down.
+RECORDED_REMOVALS_KEY = "collection_removed"
+
+#: The collection row's columns a recorded removal keeps, read before the row
+#: is deleted: every one the deletion pass reads off a removed row but the
+#: marker and the sequence, which the record states for itself.
+RECORDED_COLUMNS: tuple[str, ...] = (
+    "ID",
+    "FolderPath",
+    "FileSize",
+    "ArtistName",
+    "Title",
+    "ISRC",
+    "RemixerName",
+    "Subtitle",
+)
+
+
 
 #: The columns a node change may move on a playlist row it does not plan:
 #: a sibling's position, which the binding renumbers when a node leaves or
@@ -3135,6 +3215,7 @@ def guard_violations(
     content_columns: Iterable[str] | None = None,
     removals: Iterable[str] = (),
     creations: Iterable[str] = (),
+    deletions: Iterable[str] = (),
 ) -> list[str]:
     """Judge a pending session against the whitelist. Empty means allowed.
 
@@ -3149,6 +3230,12 @@ def guard_violations(
     admitted content row is judged against :data:`CONTENT_ROW_EMPTY_COLUMNS`
     rather than waved through: what makes the admission safe is that the row
     declares nothing rekordbox derives from the audio.
+
+    ``deletions`` names the tables this one commit admits a HARD delete in
+    (U288). It is empty for every writer but the removal from the collection,
+    and a name outside :data:`DELETABLE_TABLES` is itself a violation. A delete
+    in any table it does not name is refused as every delete always was; which
+    rows go is judged from SQL by :func:`assert_collection_removal_confined`.
 
     PURE, and that is what makes it the part of the safety chain that is actually
     tested. It takes table names and column names, so every branch is reachable
@@ -3178,6 +3265,13 @@ def guard_violations(
             f"whitelist is admitted in {sorted(ADMITTABLE_ROW_TABLES)} and nowhere else"
         )
     creatable &= ADMITTABLE_ROW_TABLES
+    deletable = frozenset(deletions)
+    for table in sorted(deletable - DELETABLE_TABLES):
+        violations.append(
+            f"asks to delete rows in {table!r}, and a delete is admitted in "
+            f"{sorted(DELETABLE_TABLES)} and nowhere else"
+        )
+    deletable &= DELETABLE_TABLES
 
     for table, columns in new:
         if table == CONTENT_TABLE and table in creatable:
@@ -3252,13 +3346,19 @@ def guard_violations(
             )
 
     for table in deleted:
-        # Unconditional. No table exemption, no flag, no configuration. Additive
-        # only is what makes the snapshot a real safety net: if nothing is ever
-        # removed, the worst outcome of a bad run is extra rows, which a person
-        # can see and remove. Deletion is the one operation whose damage is
-        # invisible. Do not soften this to make a later unit easier. The one
-        # removal R-758 admits is a soft delete and arrives as a modification,
-        # so it never reaches this loop and ``removals`` does not apply here.
+        # Unconditional for every writer but one. No flag, no configuration.
+        # Additive only is what makes the snapshot a real safety net: if nothing
+        # is ever removed, the worst outcome of a bad run is extra rows, which a
+        # person can see and remove. Deletion is the one operation whose damage
+        # is invisible. The removal R-758 admits is a soft delete and arrives as
+        # a modification, so it never reaches this loop and ``removals`` does
+        # not apply here. THE ONE HARD DELETE (U288) is rekordbox's own Remove
+        # from Collection, measured at two sittings (A178, A185): admitted only
+        # in a table the commit names in ``deletions``, only from
+        # :data:`DELETABLE_TABLES`, and judged row by row from SQL before the
+        # commit by :func:`assert_collection_removal_confined`.
+        if table in deletable:
+            continue
         violations.append(f"deletes a row in {table!r}; writers are additive-only")
 
     return violations
@@ -3687,11 +3787,12 @@ def assert_session_whitelisted(
     *,
     removals: Iterable[str] = (),
     creations: Iterable[str] = (),
+    deletions: Iterable[str] = (),
 ) -> None:
     """Raise unless the pending session touches only whitelisted tables and columns."""
     created, modified, removed = pending_changes(session, db)
     violations = guard_violations(
-        created, modified, removed, removals=removals, creations=creations
+        created, modified, removed, removals=removals, creations=creations, deletions=deletions
     )
     if violations:
         raise _unavailable(
@@ -3931,6 +4032,7 @@ def commit_guarded(
     force_cloud_canary: bool = False,
     removals: Iterable[str] = (),
     creations: Iterable[str] = (),
+    deletions: Iterable[str] = (),
 ) -> None:
     """Commit only when it is still safe to, and roll back rather than leak.
 
@@ -3946,6 +4048,12 @@ def commit_guarded(
     whitelist holds it to :data:`ADMITTABLE_ROW_TABLES`, and a source guard
     holds the callers that pass it to the native landing. Any other commit
     refuses a content row, as every commit did before the landing existed.
+
+    ``deletions`` IS EMPTY FOR EVERY WRITER BUT THE REMOVAL FROM THE COLLECTION
+    (U288). It names the tables this commit admits a hard delete in, held to
+    :data:`DELETABLE_TABLES`, and a source guard holds its one caller to
+    ``sync.removed``. Any other commit refuses every delete the session or the
+    binding's buffer reports, as before.
 
     RE-CHECKED AT COMMIT, NOT ONLY AT OPEN, AND UNCONDITIONALLY. A run takes
     minutes, and the user can launch rekordbox during it. The open-time process
@@ -3983,7 +4091,7 @@ def commit_guarded(
             # write autoflush has already carried out of ``session.new`` is
             # still judged (W2).
             assert_session_whitelisted(
-                db.session, db, removals=removals, creations=creations
+                db.session, db, removals=removals, creations=creations, deletions=deletions
             )
             assert_created_rows_are_gridless(db)
             assert_foreign_untouched(db)
@@ -4002,6 +4110,452 @@ def commit_guarded(
             db.commit()
     finally:
         reconciliation_logger.setLevel(previous)
+
+
+# The collection removal's own reads and checks (U288)
+
+
+def _tables(session: Any) -> tuple[str, ...]:
+    from sqlalchemy import text
+
+    rows = session.execute(
+        text("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+    ).fetchall()
+    return tuple(str(row[0]) for row in rows if not str(row[0]).startswith("sqlite_"))
+
+
+def _columns(session: Any, table: str) -> tuple[tuple[str, int], ...]:
+    """Each column's name and its place in the primary key (0 when it is not in it)."""
+    from sqlalchemy import text
+
+    return tuple(
+        (str(row[1]), int(row[5] or 0))
+        for row in session.execute(text(f'PRAGMA table_info("{table}")')).fetchall()
+    )
+
+
+def content_references(db: Any, content_ids: Iterable[str]) -> dict[str, dict[str, int]]:
+    """Every row naming one of ``content_ids`` in a table the removal does NOT delete from.
+
+    Read from SQL over every table the database holds, by its
+    ``ContentID`` column and by ``TargetID`` where a table has one
+    (``imageFile``), so a table the binding does not map is asked too.
+    ``uuidIDMap`` names rows by ``CurrentID``, which is not asked, and
+    rekordbox was measured to leave it.
+    ``{content id: {table: rows}}``, empty when nothing outside
+    :data:`DELETABLE_TABLES` names any of them. A table A178 and A185 did not
+    measure (My Tag, the sampler, related tracks, the hot cue bank list, the
+    tag list, the active censor, or one this build has never heard of) is one
+    whose rows rekordbox may delete or keep, so a row holding one is refused
+    rather than guessed at.
+    """
+    from sqlalchemy import bindparam, text
+
+    wanted = sorted({str(one) for one in content_ids})
+    found: dict[str, dict[str, int]] = {}
+    if not wanted:
+        return found
+    session = db.session
+    for table in _tables(session):
+        if table in DELETABLE_TABLES:
+            continue
+        names = {name for name, _pk in _columns(session, table)}
+        asked = [CONTENT_REFERENCE_COLUMN] if CONTENT_REFERENCE_COLUMN in names else []
+        if TARGET_REFERENCE_COLUMN in names:
+            asked.append(TARGET_REFERENCE_COLUMN)
+        for column in asked:
+            statement = text(
+                f'SELECT {column}, COUNT(*) FROM "{table}" '
+                f"WHERE {column} IN :ids GROUP BY {column}"
+            ).bindparams(bindparam("ids", expanding=True))
+            for content_id, count in session.execute(statement, {"ids": wanted}).fetchall():
+                held = found.setdefault(str(content_id), {})
+                held[table] = held.get(table, 0) + int(count)
+    return found
+
+
+def _mapped(table: str) -> Any:
+    from pyrekordbox.db6 import tables
+
+    for mapper in tables.Base.registry.mappers:
+        if getattr(mapper.class_, "__tablename__", None) == table:
+            return mapper.class_
+    raise _unavailable(
+        "whitelist-violation",
+        f"the binding maps no class for {table!r}, so a track's rows there cannot be "
+        f"deleted through it; nothing was written",
+        detail={"table": table},
+    )
+
+
+def database_id(db: Any) -> str | None:
+    """rekordbox's own identifier for the library, ``DjmdProperty.DBID``, or None.
+
+    What a recorded removal is bound to, as the deletion watermark is: a
+    position in one database's update count means nothing in another's.
+    """
+    held = db.get_property()
+    row = held.first() if hasattr(held, "first") else held
+    identity = getattr(row, "DBID", None) if row is not None else None
+    return str(identity) if identity else None
+
+
+def recorded_columns(row: Any) -> dict[str, Any]:
+    """One collection row's :data:`RECORDED_COLUMNS`, read off it before it is deleted."""
+    found: dict[str, Any] = {}
+    for name in RECORDED_COLUMNS:
+        value = getattr(row, name, None)
+        found[name] = value if value is None or isinstance(value, (int, float)) else str(value)
+    return found
+
+
+def remove_from_collection(db: Any, content_id: str) -> dict[str, tuple[str, ...]]:
+    """Delete one live track's every row in :data:`COLLECTION_REMOVAL_TABLES`. Returns them by table.
+
+    THE ONE HARD DELETE THIS PRODUCT MAKES, and it is rekordbox's own (A178,
+    A185): Remove from Collection deletes the content row and every row naming
+    it in the six tables beside it, outright, none of them soft deleted, and
+    leaves each playlist and history list row untouched and possibly empty.
+    So does this. ``TrackNo`` is not renumbered in a list that keeps other
+    members, since what rekordbox does there was not measured.
+
+    THROUGH THE BINDING'S OWN DELETE, so each row reaches its update buffer:
+    the whitelist judges it, and the commit advances ``localUpdateCount`` once
+    per row deleted, stamping only the rows that go, so no surviving row
+    carries the new values, which is what A178 and A185 read. The children
+    first and the content row last.
+
+    REFUSED, WITH NOTHING DELETED: a content id the database holds no live row
+    for, and one that a table outside the removal set names
+    (:func:`content_references`), since what rekordbox does with that row was
+    never measured.
+
+    DOES NOT COMMIT. The commit is the caller's, through :func:`commit_guarded`
+    with ``deletions`` naming :data:`DELETABLE_TABLES`, after
+    :func:`assert_collection_removal_confined`; any other commit refuses every
+    delete this makes.
+    """
+    key = str(content_id)
+    content_class = _mapped(CONTENT_TABLE)
+    row = db.session.get(content_class, key)
+    if row is None or soft_deleted(
+        row,
+        message=(
+            f"the collection row {key!r} cannot say whether rekordbox removed it, and "
+            f"deleting it as live could take a track out twice"
+        ),
+        origin=("rb_writer",),
+        detail={"content_id": key},
+    ):
+        raise _unavailable(
+            "whitelist-violation",
+            f"asked to take the collection row {key!r} out of the collection, and the "
+            f"database holds no live row of that id; nothing was written",
+            detail={"content_id": key},
+        )
+    held = content_references(db, (key,)).get(key, {})
+    if held:
+        named = ", ".join(f"{table} ({count})" for table, count in sorted(held.items()))
+        raise _unavailable(
+            "whitelist-violation",
+            f"the collection row {key!r} is named by rows in {named}, which "
+            f"rekordbox's Remove from Collection was never measured on, so what it "
+            f"would do with them is not known; nothing was written",
+            detail={"content_id": key, "tables": dict(sorted(held.items()))},
+        )
+    deleted: dict[str, tuple[str, ...]] = {}
+    for table in COLLECTION_REMOVAL_TABLES[1:]:
+        mapped = _mapped(table)
+        found = list(
+            db.session.query(mapped).filter(getattr(mapped, CONTENT_REFERENCE_COLUMN) == key)
+        )
+        for child in found:
+            db.delete(child)
+        deleted[table] = tuple(sorted(str(child.ID) for child in found))
+    db.delete(row)
+    deleted[CONTENT_TABLE] = (key,)
+    return {table: deleted[table] for table in COLLECTION_REMOVAL_TABLES}
+
+
+@dataclass(frozen=True)
+class DatabaseReading:
+    """Every table of the database as it stands, row by row, read from SQL.
+
+    ``rows`` is each table's rows keyed by their primary key (``rowid`` for a
+    table with none), each a digest of the row's values, so what is compared
+    is what the database holds. ``named`` is, for each table of
+    :data:`DELETABLE_TABLES`, which content row each row names. ``counter`` is
+    ``localUpdateCount``, or None when the registry holds no such row.
+    """
+
+    rows: Mapping[str, Mapping[str, str]]
+    named: Mapping[str, Mapping[str, str]]
+    counter: int | None
+
+
+def database_reading(db: Any) -> DatabaseReading:
+    """Read every table from SQL. Flushes nothing itself, as :func:`node_tables` does not."""
+    import hashlib
+
+    from sqlalchemy import text
+
+    session = db.session
+    rows: dict[str, dict[str, str]] = {}
+    named: dict[str, dict[str, str]] = {}
+    for table in _tables(session):
+        columns = _columns(session, table)
+        keys = [name for name, place in sorted(columns, key=lambda one: one[1]) if place]
+        names = [name for name, _place in columns]
+        selected = ", ".join(f'"{name}"' for name in names)
+        if keys:
+            keyed = [names.index(name) for name in keys]
+            result = session.execute(text(f'SELECT {selected} FROM "{table}"'))
+        else:
+            keyed = [len(names)]
+            result = session.execute(text(f'SELECT {selected}, rowid FROM "{table}"'))
+        reference = (
+            names.index("ID")
+            if table == CONTENT_TABLE
+            else (names.index(CONTENT_REFERENCE_COLUMN) if CONTENT_REFERENCE_COLUMN in names else None)
+        )
+        found: dict[str, str] = {}
+        naming: dict[str, str] = {}
+        for row in result:
+            values = tuple(row)
+            key = "|".join(str(values[at]) for at in keyed)
+            found[key] = hashlib.sha256(repr(values[: len(names)]).encode("utf-8")).hexdigest()
+            if table in DELETABLE_TABLES and reference is not None:
+                naming[key] = str(values[reference])
+        rows[table] = found
+        if table in DELETABLE_TABLES:
+            named[table] = naming
+    counter = session.execute(
+        text("SELECT int_1 FROM agentRegistry WHERE registry_id = :id"),
+        {"id": LOCAL_UPDATE_COUNT},
+    ).scalar() if "agentRegistry" in rows else None
+    return DatabaseReading(rows, named, None if counter is None else int(counter))
+
+
+def collection_removal_violations(
+    before: DatabaseReading,
+    after: DatabaseReading,
+    *,
+    removed: Iterable[str],
+    committed: bool = False,
+) -> list[str]:
+    """Every difference between two readings the planned removal does not explain.
+
+    PURE, as :func:`node_change_violations` is. Empty means the removal was
+    confined, AND that it was made. What it explains, and nothing more:
+
+    * a row disappears only from a table of :data:`DELETABLE_TABLES`, and only
+      when it names one of the ``removed`` content rows;
+    * EVERY row of those tables that named one is gone, and each removed
+      content row was live before, asked whether anything changed or not, so a
+      planned delete that never happened is refused before the commit;
+    * no table appears or disappears, no row is added, no row changes;
+    * with ``committed``, the read back after the commit: the one exception is
+      the registry's ``localUpdateCount`` row, which must have moved forward,
+      since the binding advances it at every commit and rekordbox's own
+      removal advanced it too.
+    """
+    gone = {str(one) for one in removed}
+    violations: list[str] = []
+    for table in sorted(set(before.rows) ^ set(after.rows)):
+        violations.append(f"the table {table!r} appeared or disappeared")
+    for content_id in sorted(gone):
+        if content_id not in before.named.get(CONTENT_TABLE, {}):
+            violations.append(f"the planned {CONTENT_TABLE} row {content_id!r} was not there")
+    for table in sorted(set(before.rows) & set(after.rows)):
+        old, new = before.rows[table], after.rows[table]
+        for key in sorted(set(new) - set(old)):
+            violations.append(f"an unplanned {table} row {key!r} was added")
+        naming = before.named.get(table, {})
+        for key in sorted(set(old) - set(new)):
+            if table not in DELETABLE_TABLES or naming.get(key) not in gone:
+                violations.append(f"the {table} row {key!r} disappeared, which no planned removal explains")
+        for key in sorted(set(old) & set(new)):
+            if old[key] == new[key]:
+                continue
+            if committed and table == "agentRegistry" and key == LOCAL_UPDATE_COUNT:
+                continue
+            violations.append(f"the {table} row {key!r} changed, and a removal changes no row")
+        for key, names in sorted(naming.items()):
+            if names in gone and key in new:
+                violations.append(
+                    f"the {table} row {key!r} still names the removed {CONTENT_TABLE} row {names!r}"
+                )
+    if committed and (
+        before.counter is None or after.counter is None or after.counter <= before.counter
+    ):
+        violations.append(
+            f"{LOCAL_UPDATE_COUNT} did not move forward ({before.counter} to {after.counter})"
+        )
+    return violations
+
+
+def assert_collection_removal_confined(
+    db: Any, before: DatabaseReading, *, removed: Iterable[str]
+) -> None:
+    """Refuse, before the commit, a removal that reached anything it did not plan.
+
+    THE CHECK IS FROM SQL, as :func:`assert_node_changes_confined` is and for
+    its reason, and the pending work is flushed DELIBERATELY inside the
+    transaction so the second reading sees it and a violation still rolls
+    back. What it adds to the whitelist, which :func:`commit_guarded` still
+    runs after it: the whitelist admits a delete of ANY row of a named table,
+    and this judges rows: whose, and that nothing else in any table moved.
+
+    A REFUSAL ROLLS THE HANDLE BACK, so nothing the removal made can land later
+    under another operation's name.
+    """
+    db.session.flush()
+    violations = collection_removal_violations(before, database_reading(db), removed=removed)
+    if violations:
+        db.rollback()
+        raise _unavailable(
+            "whitelist-violation",
+            "the removal from the collection reached rows it did not plan, or did not "
+            "make one it planned, read from SQL before the commit:\n  - "
+            + "\n  - ".join(violations[:20]),
+            detail={"violations": violations},
+        )
+
+
+class CollectionRemoval:
+    """One removal from the collection, prepared, then committed, then read back (U288).
+
+    THE ONE ENTRY A VERB CALLS, so the order is this class's and not each
+    caller's: :meth:`prepare` reads everything first and writes nothing (each row live, no unmeasured table naming one, the database's
+    identity, the columns the record keeps, and the whole database from SQL);
+    :meth:`commit` deletes, proves the deletes confined from SQL before the
+    commit, and commits with ``deletions`` naming :data:`DELETABLE_TABLES`;
+    :meth:`read_back` reads the whole database again after it.
+    """
+
+    def __init__(
+        self,
+        db: Any,
+        content_ids: Sequence[str],
+        identity: str,
+        columns: Mapping[str, Mapping[str, Any]],
+        before: DatabaseReading,
+    ) -> None:
+        self.db = db
+        self.content_ids = tuple(content_ids)
+        self.identity = identity
+        self.columns = {key: dict(value) for key, value in columns.items()}
+        self.before = before
+        #: Rows deleted, by table, once :meth:`commit` has made them.
+        self.deleted: dict[str, int] = {}
+
+    @classmethod
+    def prepare(cls, db: Any, content_ids: Iterable[str]) -> CollectionRemoval:
+        """Prepare a removal from the collection, reading everything and writing NOTHING.
+
+        REFUSED HERE, before any delete: a content id with no live row, one a
+        table outside the removal set names (:func:`content_references`), and a
+        database with no identity of its own, since the record of what was
+        removed is bound to it and a record bound to nothing never offers a file.
+        """
+        ids = tuple(dict.fromkeys(str(one) for one in content_ids))
+        identity = database_id(db)
+        if not identity:
+            raise _unavailable(
+                "canary-read-failed",
+                "the rekordbox database reports no identity of its own, so the record of "
+                "what was removed could not be bound to it; nothing was written",
+                detail={"column": "DBID"},
+            )
+        content_class = _mapped(CONTENT_TABLE)
+        columns: dict[str, dict[str, Any]] = {}
+        for key in ids:
+            row = db.session.get(content_class, key)
+            if row is None or soft_deleted(
+                row,
+                message=(
+                    f"the collection row {key!r} cannot say whether rekordbox removed it, "
+                    f"and deleting it as live could take a track out twice"
+                ),
+                origin=("rb_writer",),
+                detail={"content_id": key},
+            ):
+                raise _unavailable(
+                    "whitelist-violation",
+                    f"asked to take the collection row {key!r} out of the collection, and "
+                    f"the database holds no live row of that id; nothing was written",
+                    detail={"content_id": key},
+                )
+            columns[key] = recorded_columns(row)
+        held = content_references(db, ids)
+        if held:
+            named = "; ".join(
+                f"{key}: " + ", ".join(f"{table} ({count})" for table, count in sorted(tables.items()))
+                for key, tables in sorted(held.items())
+            )
+            raise _unavailable(
+                "whitelist-violation",
+                f"rows in tables rekordbox's Remove from Collection was never measured on "
+                f"name collection rows this removal would take out ({named}), so what it "
+                f"would do with them is not known; nothing was written",
+                detail={"tables": {key: dict(value) for key, value in sorted(held.items())}},
+            )
+        return cls(db, ids, identity, columns, database_reading(db))
+
+
+    @staticmethod
+    def held(db: Any, content_ids: Iterable[str]) -> dict[str, dict[str, int]]:
+        """Which of ``content_ids`` a table outside the removal set names, and where.
+
+        The plan asks this before it offers a row, so a row :meth:`prepare`
+        would refuse is answered kept rather than offered and then refused.
+        See :func:`content_references`.
+        """
+        return content_references(db, content_ids)
+
+    def commit(self, *, force_cloud_canary: bool = False) -> None:
+        """Delete every planned row, prove it confined, and commit through the guard."""
+        for content_id in self.content_ids:
+            for table, rows in remove_from_collection(self.db, content_id).items():
+                self.deleted[table] = self.deleted.get(table, 0) + len(rows)
+        assert_collection_removal_confined(self.db, self.before, removed=self.content_ids)
+        commit_guarded(
+            self.db, force_cloud_canary=force_cloud_canary, deletions=DELETABLE_TABLES
+        )
+
+    def read_back(self) -> list[str]:
+        """Every difference the committed database shows that the removal does not explain."""
+        return collection_removal_violations(
+            self.before, database_reading(self.db), removed=self.content_ids, committed=True
+        )
+
+    def write_into(
+        self,
+        detail: dict[str, Any],
+        *,
+        sequence: int | None,
+        about: Mapping[str, Mapping[str, Any]],
+    ) -> None:
+        """Name every removed row in a session record's ``detail``, under :data:`RECORDED_REMOVALS_KEY`.
+
+        ``about`` is what the verb says of each row beside its columns, its
+        artist, title, file and the playlists it left. ``sequence`` is the
+        update count the commit left, or None when it could not be read, and
+        the deletion pass then offers none of these files.
+        """
+        detail[RECORDED_REMOVALS_KEY] = {
+            "database_identity": self.identity,
+            "sequence": sequence,
+            "deleted": dict(sorted(self.deleted.items())),
+            "rows": [
+                {
+                    "content_id": content_id,
+                    **dict(about.get(content_id, {})),
+                    "columns": dict(self.columns.get(content_id, {})),
+                }
+                for content_id in self.content_ids
+            ],
+        }
 
 
 __all__ = [
@@ -4032,6 +4586,22 @@ __all__ = [
     "PERMITTED_ROW_TABLES",
     "PLAYLIST_TABLE",
     "REMOVABLE_TABLES",
+    "COLLECTION_REMOVAL_TABLES",
+    "CollectionRemoval",
+    "TARGET_REFERENCE_COLUMN",
+    "RECORDED_COLUMNS",
+    "RECORDED_REMOVALS_KEY",
+    "database_id",
+    "recorded_columns",
+    "CONTENT_REFERENCE_COLUMN",
+    "DELETABLE_TABLES",
+    "DatabaseReading",
+    "LOCAL_UPDATE_COUNT",
+    "assert_collection_removal_confined",
+    "collection_removal_violations",
+    "content_references",
+    "database_reading",
+    "remove_from_collection",
     "ROW_DEFAULTS_POLICY",
     "ROOT_PARENT_SENTINELS",
     "SETTINGS_APP_DIRNAME",
