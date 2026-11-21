@@ -55113,3 +55113,75 @@ is main's own match.
 
 **Closes when:** a subtitle can be told from a mix by something other
 than its last word. Ledger only.
+
+---
+
+## R-1805. The needs genre campaign walks every audio file under the library root three times per alias word
+
+**Found:** at round two of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** For each settled or answered alias, `plan_words` in `cli/verbs/tag_campaign.py` walks every audio file under the library root to list the files the alias retags. It does so at the run that shows the gate and again at the run that answers it, and `_words_step` walks once more through the verb's own `plan_alias` to hold the apply to what the gate listed. Round two counted 40 tag reads at the first act and 86 at the answering run, on 20 files and 2 words. Round one's head walked once per word, and showed none of the files.
+
+**Measured cost.** Time on the live campaign, which reads one tag of every file under the root three times per word. Not measured on a real library.
+
+**Closes when:** the answering run reuses one walk for the gate check and the apply, or the walk reads each file once for every word. Ledger only.
+
+---
+
+## R-1806. An alias to a genre folder the same campaign makes lands or refuses by the backlog's word order
+
+**Found:** at round two of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** `plan_words` in `cli/verbs/tag_campaign.py` plans the answers in the backlog's word order, which is by rows. An alias of word A to the folder that word B's folder answer makes is planned before that folder exists when A has more rows, and the alias edit refuses it as a genre the taxonomy does not declare. Round two drove the same two answers on two libraries that differed only by row count: one landed and one refused before the gate.
+
+**Measured cost.** The second library's campaign is refused before anything is written, and needs two runs: the folder first, then the alias. The refusal says why.
+
+**Closes when:** folder answers are planned before alias answers, or the refusal names the order. Ledger only.
+
+---
+
+## R-1807. The campaign's follow step gives the another spelling reason for any follower whose file word is not the answer's
+
+**Found:** at round two of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** `_rows_step` in `cli/verbs/tag_campaign.py` holds out a follower whose file word differs from the genre its answer filed, and names it `file-carries-another-spelling`. A follower whose file the alias walk never reached, so its file still carries the word exactly, gets the same reason. Round two produced it with a row whose path climbs out of the library root through `..`; a file at an absolute path outside the root is excluded by the census instead.
+
+**Measured cost.** A false reason in the report; its advice, to retag the file by hand, still works. Reachability on a real library, through a prefix rule that points outside the root, was not driven.
+
+**Closes when:** the reason tells a file the walk never reached apart from a file carrying another spelling. Ledger only.
+
+---
+
+## R-1808. An alias answer given by bucket id and repeated while its word is settled is refused
+
+**Found:** at round two of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** `_same_as_settled` in `cli/verbs/tag_campaign.py` compares a repeated alias answer with the settled word's genre folder by its display name only. `Indie Tech=melodic_house`, the bucket id, is taken on the first run. Repeated while the word is still settled, because some of its files did not take the genre, it is refused with "already has its one answer".
+
+**Measured cost.** The repeated command is refused with nothing written, and runs once the answer is dropped or given by name.
+
+**Closes when:** the settled comparison reads the bucket id too. Ledger only.
+
+---
+
+## R-1809. tag backlog's alias question counts the files rows name, while the campaign retags every file under the root carrying the word
+
+**Found:** at round two of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** R-1733's shape, one verb over. `word_of` in `tagging/backlog.py` says how many files an alias retags by counting the files backlog rows name. `crate tag campaign` lists, and retags, every audio file under the library root whose one genre is the word, a file no row names included. Round two drove 12 stray files carrying the word: the question said 2 files and the campaign's gate listed 14.
+
+**Measured cost.** The question Phillip answers from understates the files an alias rewrites. The campaign's gate lists every one before anything is written, so nothing is written unseen. How many such files the real library holds is not measured.
+
+**Closes when:** the alias option reads its file count from the alias verb's own walk. Ledger only.
+
+---
+
+## R-1810. A campaign rehearsed on a copy of the database alone writes the live files, and its answer is pinned to no library
+
+**Found:** at round one of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** `crate tag campaign` writes audio files in two steps: `tag suggest` writes each proposal's genre into its file, and `taxonomy alias` retags every file carrying the word under the library root. A rehearsal that copies the database and redirects library state, with the rows still naming the live files, would write those files, and the live plan afterwards would differ in what is written, which is the one case CLAUDE.md's rehearsal rule still stops on. The gate is also asked with no `pinned` fact (the shape `docs/solutions/workflow-issues/a-fact-taken-out-of-a-digest-so-a-rehearsal-can-match-must-be-pinned-on-the-run.md` describes), as `tag rows` and `tag suggest` ask theirs. Round one drove one candidate, a run answered on one library and continued under another root, and it refused with nothing written; a copy whose rows resolve under the new root was not driven.
+
+**Measured cost.** Not driven on a real library: the rehearsal is the owed attended card's. Unless the music files are cloned with the database, a rehearsal writes genres into the live files.
+
+**Closes when:** the campaign has a rehearsal of its own that clones the files it would write, as `core.rehearsal` does for the landing, or the attended procedure clones them and pins the database file. Ledger only; the attended card names the cloning step.
