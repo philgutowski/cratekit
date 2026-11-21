@@ -1,0 +1,210 @@
+name = "u324"
+pass_kind = "light"
+
+# Every row targets code U324 added or changed: the plain letters table, the
+# fold that reads it, and the initial judged as written. The subset is every
+# test file importing the tagging searcher or the title reader, as U318's.
+
+[[rows]]
+id = "F01_entry_o_slash"
+description = "_PLAIN_SPELLINGS: delete the ø entry, so it is read as a letter of its own again"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        "ø": "o",
+'''
+new = ''''''
+
+[[rows]]
+id = "F02_entry_O_slash"
+description = "_PLAIN_SPELLINGS: delete the Ø entry, so it is read as a letter of its own again"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        "Ø": "o",
+'''
+new = ''''''
+
+[[rows]]
+id = "F03_entry_ae"
+description = "_PLAIN_SPELLINGS: delete the æ entry, so it is read as a letter of its own again"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        "æ": "ae",
+'''
+new = ''''''
+
+[[rows]]
+id = "F04_entry_AE"
+description = "_PLAIN_SPELLINGS: delete the Æ entry, so it is read as a letter of its own again"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        "Æ": "ae",
+'''
+new = ''''''
+
+[[rows]]
+id = "F05_entry_oe"
+description = "_PLAIN_SPELLINGS: delete the œ entry, so it is read as a letter of its own again"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        "œ": "oe",
+'''
+new = ''''''
+
+[[rows]]
+id = "F06_entry_OE"
+description = "_PLAIN_SPELLINGS: delete the Œ entry, so it is read as a letter of its own again"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        "Œ": "oe",
+'''
+new = ''''''
+
+[[rows]]
+id = "F07_entry_sharp_s"
+description = "_PLAIN_SPELLINGS: delete the ß entry, so it is read as a letter of its own again"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        "ß": "ss",
+'''
+new = ''''''
+
+[[rows]]
+id = "F08_entry_d_stroke"
+description = "_PLAIN_SPELLINGS: delete the đ entry, so it is read as a letter of its own again"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        "đ": "d",
+'''
+new = ''''''
+
+[[rows]]
+id = "F09_entry_D_stroke"
+description = "_PLAIN_SPELLINGS: delete the Đ entry, so it is read as a letter of its own again"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        "Đ": "d",
+'''
+new = ''''''
+
+[[rows]]
+id = "F10_entry_l_stroke"
+description = "_PLAIN_SPELLINGS: delete the ł entry, so it is read as a letter of its own again"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        "ł": "l",
+'''
+new = ''''''
+
+[[rows]]
+id = "F11_entry_L_stroke"
+description = "_PLAIN_SPELLINGS: delete the Ł entry, so it is read as a letter of its own again"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        "Ł": "l",
+'''
+new = ''''''
+
+[[rows]]
+id = "F12_entry_thorn"
+description = "_PLAIN_SPELLINGS: delete the þ entry, so it is read as a letter of its own again"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        "þ": "th",
+'''
+new = ''''''
+
+[[rows]]
+id = "F13_entry_THORN"
+description = "_PLAIN_SPELLINGS: delete the Þ entry, so it is read as a letter of its own again"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        "Þ": "th",
+'''
+new = ''''''
+
+[[rows]]
+id = "F14_o_as_oe"
+description = "_PLAIN_SPELLINGS: read ø as oe, the Danish transliteration, so Trentemoller no longer meets Trentemøller"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        "ø": "o",
+'''
+new = '''        "ø": "oe",
+'''
+
+[[rows]]
+id = "F15_no_table"
+description = "_folded: drop the table, the fold main had"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    return _unaccented(word).translate(_PLAIN_LETTERS)'''
+new = '''    return _unaccented(word)'''
+
+[[rows]]
+id = "F16_table_before_nfkd"
+description = "_folded: read the table before the accents come off, so ǿ keeps its ø"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    return _unaccented(word).translate(_PLAIN_LETTERS)'''
+new = '''    return _unaccented(word.translate(_PLAIN_LETTERS))'''
+
+[[rows]]
+id = "F17_table_letter_no_initial"
+description = "_runs_in: judge an initial on its folded length, so Þ. no longer stands for Þórður"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        return written is not None and len(_unaccented(written[index])) == 1'''
+new = '''        return written is not None and len(inner[index]) == 1'''
+
+[[rows]]
+id = "F18_written_length_initial"
+description = "_runs_in: judge an initial by its written length, round one's NIT 4, so Ĳ. becomes an initial main never read"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        return written is not None and len(_unaccented(written[index])) == 1'''
+new = '''        return written is not None and len(written[index]) == 1'''
+
+[[rows]]
+id = "F19_no_initials"
+description = "_names_the_artist: pass no written words, so no initial stands for a word"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    return len(folded) > 1 and any(_runs_in(folded, name, written=written) for name in names)'''
+new = '''    return len(folded) > 1 and any(_runs_in(folded, name) for name in names)'''
+
+[[rows]]
+id = "F20_initial_prefix_dropped"
+description = "_runs_in: an initial stands for any word, not only one it opens"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        return mine == theirs or (initial(index) and theirs.startswith(mine))'''
+new = '''        return mine == theirs or initial(index)'''
+
+[[rows]]
+id = "F21_folded_credit_words"
+description = "_names_the_artist: compare a run of the credit's written words rather than its folded ones"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''    folded = tuple(_folded(word) for word in written)'''
+new = '''    folded = written'''

@@ -17,4 +17,4 @@ and a question carrying the credit.
 
 **Closes when:** each of these letters has a plain spelling chosen (ð as
 "d" or "dh" is a decision) and the table takes it, with a differential
-as U324's.
+as U324's. Ledger only: a miss, never a wrong genre.

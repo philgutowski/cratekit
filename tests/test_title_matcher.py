@@ -1729,6 +1729,9 @@ FOLDED_CREDITS = (
     ("Æther", "08A - 124 - [MP3] Aether - Sun Path", "Aether", "Sun Path"),
     ("Þórður Badie", "08A - 124 - Þ. Badie - Sun Path", "Þ Badie", "Þ. Badie - Sun Path"),
     ("Æsop Badie", "08A - 124 - Æ. Badie - Sun Path", "Æ Badie", "Æ. Badie - Sun Path"),
+    # A table letter carrying an accent as well is an initial, as on main.
+    ("Æsir Badie", "08A - 124 - Ǽ. Badie - Sun Path", "Ǽ Badie", "Ǽ. Badie - Sun Path"),
+    ("Ǣsir Badie", "08A - 124 - Ǣ. Badie - Sun Path", "Ǣ Badie", "Ǣ. Badie - Sun Path"),
 )
 
 

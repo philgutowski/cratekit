@@ -646,14 +646,18 @@ _PLAIN_SPELLINGS = MappingProxyType(
 _PLAIN_LETTERS = str.maketrans(dict(_PLAIN_SPELLINGS))
 
 
+def _unaccented(word: str) -> str:
+    """A word with its accents taken off, NFKD's combining marks dropped."""
+    return "".join(c for c in unicodedata.normalize("NFKD", word) if not unicodedata.combining(c))
+
+
 def _folded(word: str) -> str:
     """A word with its accents taken off, so "Âme" and "Ame" are one name,
     and with the letters :data:`_PLAIN_SPELLINGS` lists, which NFKD leaves
     whole, spelled plain, so "Trentemøller" and "Trentemoller" are too.
     The table is read after the accents come off, so a letter carrying an
     accent as well, "ǿ", is read as its plain spelling too."""
-    stripped = "".join(c for c in unicodedata.normalize("NFKD", word) if not unicodedata.combining(c))
-    return stripped.translate(_PLAIN_LETTERS)
+    return _unaccented(word).translate(_PLAIN_LETTERS)
 
 
 def _credited_names(text: str) -> set[Words]:
@@ -691,15 +695,15 @@ def _runs_in(inner: Words, outer: Words, *, written: Words | None = None) -> boo
     """Whether ``inner`` is a run of ``outer``'s words, in order and together;
     with ``written``, ``inner``'s words as written before they were folded, a
     word of one letter stands for a word it opens, "B Badie" in "Bernard
-    Badie". So does a letter the fold spells with two (U324),
-    :data:`_PLAIN_SPELLINGS`: "Þ Badie" still stands for "Þórður Badie".
-    Any other word folded to two letters, "Ĳ", is no initial, as on main."""
+    Badie". A letter is one with its accents off and before the table
+    spells it plain, main's rule exactly, since the fold spells "Þ" and "Æ"
+    with two (U324): "Þ Badie" still stands for "Þórður Badie" and "Ǽ Badie"
+    for "Æsir Badie", and a word NFKD itself spells with two, "Ĳ", is no
+    initial, as on main."""
     size = len(inner)
 
     def initial(index: int) -> bool:
-        if written is None:
-            return False
-        return len(inner[index]) == 1 or written[index] in _PLAIN_SPELLINGS
+        return written is not None and len(_unaccented(written[index])) == 1
 
     def same(index: int, theirs: str) -> bool:
         mine = inner[index]
