@@ -2027,6 +2027,36 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="sync_unavailable_record",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="sync_unavailable.json",
+        why=(
+            "U320. Which synced account playlists ``sync removed`` found absent "
+            "from the account's list with their id answering not found, the first "
+            "and latest time it did, and which are retired, so a playlist deleted "
+            "on the account stops holding back every removal once it has answered "
+            "not found a day apart or a person retired it at the gate."
+            " NEVER_RESTORED for the mark record's reason: it records what "
+            "somebody else's server answered, which a database restore does not "
+            "undo, and rolled back it would read a deleted playlist as live again."
+        ),
+    ),
+    StateFile(
+        key="sync_unavailable_record_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.LIBRARY,
+        medium=Medium.FILE,
+        relative="sync_unavailable.lock",
+        why=(
+            "The sibling lock for the record above, a read then a write over one "
+            "document: two runs recording at once would both read it and the "
+            "second write would drop the first one's sightings. NEVER_RESTORED "
+            "for the inode reason every lock here shares."
+        ),
+    ),
+    StateFile(
         key="sync_artifacts",
         snapshot=SnapshotRole.COUPLED,
         rollback_effects=(RollbackEffect.DOWNLOADED_FILE,),

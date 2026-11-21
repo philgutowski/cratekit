@@ -226,7 +226,14 @@ and the filing are answered:
 
 It reads every downloaded playlist on the account again and answers each
 track taken off one as offered, kept or left. A run that offers nothing
-writes nothing; report its counts. One that offers a track needs the backup
+writes nothing but Cratekit's own record of synced playlists the account
+answered not found for; report its counts. Hearts listed short only by what
+the provider withholds are read whole and named with both counts, and a
+synced playlist the account no longer lists whose id answered not found is
+retired by itself when it answers so again a day later (U320). Name each one
+the run reports as seen unavailable or retired, with its id and dates; do not
+answer `crate sync removed --retire`'s gate, `sync.removed.retire`, which is
+Phillip's to answer when he wants one retired sooner. One that offers a track needs the backup
 acknowledgment (mint it with `crate session ack --as session`, as CLAUDE.md's
 rule says) and stops at its explicit gate, `sync.removed.confirm`, whose
 screen lists each offered track by artist, title, the playlists it left and

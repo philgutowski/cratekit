@@ -4079,6 +4079,17 @@ ENTRIES: tuple[Entry, ...] = (
                 explicit=True,
                 digest_source="plan",
             ),
+            GateSpec(
+                name="sync.removed.retire",
+                options=("retire", "abort"),
+                prompt="Retire these playlists the account no longer has?",
+                #: EXPLICIT (U320). A retired playlist stops keeping the tracks
+                #: on it, so later removals can be offered past it: answered
+                #: by a recorded act, as the removal itself is. It writes
+                #: Cratekit's own record only.
+                explicit=True,
+                digest_source="plan",
+            ),
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
