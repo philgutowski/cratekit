@@ -1136,6 +1136,42 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="backup_manifest",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="backup_manifest.json.gz",
+        why=(
+            "What the last completed file mirror left on the remote, path by "
+            "path, so a backup that changed little sends only the change and one "
+            "that changed nothing is skipped (U317). INSTALLATION and never "
+            "library state: the library's state folder is inside the mirrored "
+            "tree, so a record kept there would change the tree each time it was "
+            "written and no run could skip. It names the library, the mirror and "
+            "the exclude set it was kept for, and carries a token the library's "
+            "files fact is published with, so a record for any other library or "
+            "remote, or one a second installation or an older build has since "
+            "backed up past, is not trusted: either costs one full run and never "
+            "a wrong skip. NEVER_RESTORED: it describes the remote, which a "
+            "restore does not roll back."
+        ),
+    ),
+    StateFile(
+        key="backup_database_fingerprint",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="backup_database_fingerprint.json",
+        why=(
+            "The content fingerprint of the database set the last completed "
+            "snapshot copied, so a database that has not changed since is not "
+            "copied again (U317). Installation state for the manifest's reason, "
+            "and keyed by the database path, the snapshot root and the library "
+            "identity, so a fingerprint taken for another is not compared. "
+            "NEVER_RESTORED: it describes a snapshot on the remote."
+        ),
+    ),
+    StateFile(
         key="run_state",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.INSTALLATION,

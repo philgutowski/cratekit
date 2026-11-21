@@ -10,6 +10,7 @@ KEBAB_LITERALS = {
         'backup-already-queued',
         'backup-comparison',
         'backup-facts-unreadable',
+        'backup-kind',  # 2026-11-21, U317
         'backup-nothing-ran',
         'backup-rehearsal',
         'backup-transfer-failed',
