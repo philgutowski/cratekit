@@ -2167,6 +2167,28 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'parse-break',
         'x-discogs-ratelimit-remaining',  # 2026-11-12, U244
     ],
+    # 2026-11-21, U292: the needs genre backlog's causes and its verb's notes.
+    'tagging/backlog.py': [
+        'answer-does-not-reach',
+        'file-unread',
+        'no-copy',
+        'no-genre',
+        'not-planned',
+        'off-taxonomy',
+        'row-lags-file',
+        'tag-backlog',
+        'too-coarse',
+        'word-unanswerable',
+    ],
+    'tagging/backlog_cli.py': [
+        'backlog-catalogue-unread',
+        'backlog-files-unread',
+        'backlog-library-alone',
+        'backlog-remainder',
+        'backlog-rows-joining',
+        'backlog-words-asked',
+        'config-unusable',
+    ],
     'tagging/shell.py': ['internal-error'],
     'tagging/suggest.py': [
         'below-band',
@@ -3316,6 +3338,7 @@ PINNED_LITERAL_HOLDERS = {
         'source-missing',
         'tag-retag-folder-unknown',
     ],
+    'tagging/backlog_cli.py': ['config-unusable'],  # 2026-11-21, U292
     'tagging/rows.py': ['decision-stale', 'internal-error', 'whitelist-violation'],
     'tagging/rows_cli.py': ['config-unusable', 'internal-error'],
     # 2026-11-12, U244: a Discogs token the API rejected, or the keychain could not read.
