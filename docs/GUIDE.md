@@ -54,7 +54,7 @@ crate login NAME --from-file PATH
 | `identify-key`, `identify-signing-key` | The recognition service's key and signing value, for `intake set` and `intake identify`. |
 | `catalogue-app-id`, `catalogue-app-key` | Optional. Cratekit's own app on the provider's developer platform. With both recorded, catalogue lookups go under the app rather than your account; doctor says where lookups go and how many calls each side made. |
 | `cyanite-key` | Optional. An integration access token from your Cyanite account's integrations section, for the Cyanite trial below and nothing else. Doctor reports it and never fails on it; setup does not offer it. |
-| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag`, `tag suggest --catalogue` and `tag backlog --catalogue` ask Discogs first, and Beatport only when Discogs gives no genre; without it Discogs is recorded as not asked on every file that needs a genre and Beatport is asked as before, a file Beatport misses stays askable rather than `no-hit`, and the sweep's summary and a warning say how many files Discogs was not asked about. A token Discogs refuses does not stop Beatport being asked: a file Beatport settles is tagged as before, a file it cannot settle fails with the token's refusal while the sweep goes on, and the sweep warns how many files Discogs was not read for because it refused the token. Setup links it as its own step, checking the token with Discogs before storing it (above); doctor reports it and never fails on it. |
+| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag`, `tag suggest --catalogue`, `tag backlog --catalogue` and `tag campaign --catalogue` ask Discogs first, and Beatport only when Discogs gives no genre; without it Discogs is recorded as not asked on every file that needs a genre and Beatport is asked as before, a file Beatport misses stays askable rather than `no-hit`, and the sweep's summary and a warning say how many files Discogs was not asked about. A token Discogs refuses does not stop Beatport being asked: a file Beatport settles is tagged as before, a file it cannot settle fails with the token's refusal while the sweep goes on, and the sweep warns how many files Discogs was not read for because it refused the token. Setup links it as its own step, checking the token with Discogs before storing it (above); doctor reports it and never fails on it. |
 
 A provider that rejects the stored session is reported as rejected, with the
 sign in step. A provider that fails or cannot be reached is reported as an
@@ -569,7 +569,7 @@ crate route pending
   refusal naming them and since when, and, when Discogs went unasked for want
   of a token, how to record one; with `--output json` the summary lists such
   files under `refusal_stop`, and lists under `refused` the files Discogs
-  searched and could not tag while every other catalogue refused. `tag suggest --catalogue` and `tag backlog --catalogue` stop the
+  searched and could not tag while every other catalogue refused. `tag suggest --catalogue`, `tag backlog --catalogue` and `tag campaign --catalogue` stop the
   same way within one run; `tag retag` asks afresh for each file. The sweep's warning names such a catalogue as having
   refused this client, and a Cloudflare challenge as one, and keeps
   `unreachable` for a catalogue that is down. A file no catalogue knows keeps
@@ -1190,6 +1190,7 @@ writes their genre tags.
 | Verb | Does |
 |---|---|
 | `tag backlog [--catalogue]` | Sorts every row adoption leaves under needs genre by cause, names the verb that settles each and one question per genre word no folder takes; writes nothing. |
+| `tag campaign [--alias WORD=GENRE] [--folder WORD] [--leave-word WORD] [--catalogue] [--rehearsed DIGEST]` | Applies the backlog under one gate: `tag rows`, `tag suggest` at the floor, the answered words, then `tag rows` again; writes file and row, and names `route resort`. |
 | `tag rows [--leave ID]` | Writes each row's genre from its file where they disagree. |
 | `tag suggest [--band] [--set ID=GENRE] [--catalogue]` | Suggests a genre for rows with none, from artist, folder and optionally the catalogues; writes file and row. |
 | `tag retag FOLDER` | Replaces a genre too coarse to be final. |
@@ -1233,6 +1234,42 @@ order that settles the backlog with the rows each moves, the rows left by
 hand with what would settle them, any row `tag rows` would move into needs
 genre, and needs genre now and after. It opens the database only to read and
 writes nothing.
+
+**The campaign.** `tag campaign` applies that backlog under one gate,
+`tag.campaign.approve`, in place of five verbs and five gates. Answer each
+word the backlog asks about on the command line, `--alias WORD=GENRE`,
+`--folder WORD` or `--leave-word WORD`, and give the same answers on the run
+that applies; a word the backlog does not ask about, one answered twice, or
+an answer `taxonomy alias` or `taxonomy folder` would refuse is refused
+before anything is written, and an unanswered word is left for hand tagging.
+An answer the taxonomy copy already holds, given again on a later run, is
+taken as given. Every word is planned before the gate by `taxonomy alias`
+and `taxonomy folder` themselves, and the gate shows every row `tag rows`
+writes from its file, every proposal and answer, every file an alias retags
+(each audio file under the library root whose one genre is the word, a file
+no row names included), the files it leaves or could not read, and the rows
+the backlog could not read. The rows that then follow their retagged files
+are bound by the backlog's digest and counted in the campaign's steps. Its digest
+covers the backlog, the answers and those files, by their path under the
+root, and names no copy, so a library, an answer or a file that moved
+between the plan and the approval refuses as stale, and a rehearsal on
+a disposable copy digests equal to the live plan (`--rehearsed DIGEST` sets
+the rehearsal's digest beside the live one at the gate). Then each step runs
+through its own verb, planned on the library the steps before it left: `tag
+rows` for the rows the backlog served, `tag suggest` at the floor for the
+proposals it showed with the genre it showed, each settled word's one answer
+and each answered word, each planned again and refused as stale if it would
+retag a file the gate did not list, then `tag rows` again for the rows that
+follow, never writing a row whose file carries the word in another spelling
+than the one the answer filed. A row
+the backlog did not show, a routed row `tag rows` would move into needs genre
+above all, is never written, and a proposal that appeared or moved once the
+earlier steps wrote is left for the next run. A step that refuses stops the
+campaign there, naming what landed and what did not run; what landed stays,
+and a second run plans only what is left. The report gives needs genre before
+the campaign and after each step, as measured. Filing the tracks into BY
+GENRE + ENERGY is left to `route resort`, which shows every add and asks its
+own gate.
 
 **Removing tracks.** `crate delete review` offers the files behind rows you
 removed in rekordbox; confirmed ones go to the system Trash only. It refuses
@@ -1456,6 +1493,7 @@ without one.
 | `tag.rows.confirm` | apply | `tag rows` |
 | `tag.remap.confirm` | apply | `tag remap` |
 | `tag.suggest.confirm` | apply | `tag suggest` |
+| `tag.campaign.approve` | apply | `tag campaign` |
 | `taxonomy.upgrade.apply` | approve | `taxonomy upgrade` |
 | `taxonomy.alias.apply` | approve | `taxonomy alias` |
 | `taxonomy.folder.apply` | approve | `taxonomy folder` |

@@ -1,0 +1,239 @@
+name = "u294"
+pass_kind = "light"
+
+[[rows]]
+id = "M01_rows_narrowed_keeps_all"
+description = "rows.narrowed: hold out no write, so the campaign's tag rows step writes every row the verb would, joining and other routed rows included"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py", "tests/test_tag_rows.py"]
+old = '''    held = {item.content_id for item in plan.writes if item.content_id not in kept}'''
+new = '''    held = set()'''
+
+[[rows]]
+id = "M02_rows_narrowed_changes_unfiltered"
+description = "rows.narrowed: leave every change in the write, so a held row is written though its item says held"
+file = "src/cratekit/tagging/rows.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py", "tests/test_tag_rows.py"]
+old = '''        changes=tuple(change for change in plan.changes.changes if change.content_id not in held),'''
+new = '''        changes=tuple(plan.changes.changes),'''
+
+[[rows]]
+id = "M03_suggest_narrowed_ignores_genre"
+description = "suggest.narrowed: keep a write whatever genre it now carries, so a proposal that moved since the gate is written"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py", "tests/test_tag_suggest.py"]
+old = '''        if keep.get(item.content_id) != item.genre'''
+new = '''        if item.content_id not in keep'''
+
+[[rows]]
+id = "M04_suggest_narrowed_changes_unfiltered"
+description = "suggest.narrowed: leave every change in the write, so a held proposal's row is written"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py", "tests/test_tag_suggest.py"]
+old = '''                change for change in plan.changes.changes if change.content_id not in held'''
+new = '''                change for change in plan.changes.changes'''
+
+[[rows]]
+id = "M05_suggest_step_band"
+description = "the suggest step plans at medium rather than the backlog's floor"
+file = "src/cratekit/cli/verbs/tag_campaign.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py"]
+old = '''        band=backlog.FLOOR,'''
+new = '''        band=suggest.MEDIUM,'''
+
+[[rows]]
+id = "M06_served_is_every_row"
+description = "the rows step keeps every backlog row rather than the served ones"
+file = "src/cratekit/cli/verbs/tag_campaign.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py"]
+old = '''    served = frozenset(row.content_id for row in plan.rows if row.status == backlog.SERVED)'''
+new = '''    served = frozenset(row.content_id for row in plan.rows)'''
+
+[[rows]]
+id = "M07_followers_another_spelling"
+description = "the follow step writes a row whose file carries another spelling than the answer filed"
+file = "src/cratekit/cli/verbs/tag_campaign.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py"]
+old = '''    narrowed = rows.narrowed(whole, keep - other)'''
+new = '''    narrowed = rows.narrowed(whole, keep)'''
+
+[[rows]]
+id = "M08_alias_files_stale_check"
+description = "the words step drops its check that the alias would retag the files the gate listed"
+file = "src/cratekit/cli/verbs/tag_campaign.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py"]
+old = '''        if (planned.edit.display, files) != (shown.genre, shown.files):'''
+new = '''        if planned.edit.display != shown.genre:'''
+
+[[rows]]
+id = "M09_digest_drops_words"
+description = "the digest leaves out the words and their files, so a file that came to carry a word moves nothing"
+file = "src/cratekit/cli/verbs/tag_campaign.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py"]
+old = '''            "words": [word.to_json() for word in words],'''
+new = '''            "words": [],'''
+
+[[rows]]
+id = "M10_digest_drops_answers"
+description = "the digest leaves out the answers, so an answer changed between the gate and the apply is not stale"
+file = "src/cratekit/cli/verbs/tag_campaign.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py"]
+old = '''            "answers": [answer.to_json() for answer in given],
+            "words": [word.to_json() for word in words],'''
+new = '''            "answers": [],
+            "words": [word.to_json() for word in words],'''
+
+[[rows]]
+id = "M11_unknown_word_accepted"
+description = "an answer naming no word the backlog holds is dropped rather than refused"
+file = "src/cratekit/cli/verbs/tag_campaign.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py"]
+old = '''            if _held_by_copy(declared, spelling, kind, genre):'''
+new = '''            if True:'''
+
+[[rows]]
+id = "M12_settled_answer_taken"
+description = "an answer to a settled word is dropped whatever it says, rather than refused"
+file = "src/cratekit/cli/verbs/tag_campaign.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py"]
+old = '''            if _same_as_settled(word, kind, genre):'''
+new = '''            if True:'''
+
+[[rows]]
+id = "M13_unanswerable_accepted"
+description = "an answer to a word neither verb takes is not refused"
+file = "src/cratekit/cli/verbs/tag_campaign.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py"]
+old = '''        if word.unanswerable is not None:
+            raise _invalid('''
+new = '''        if False:
+            raise _invalid('''
+
+[[rows]]
+id = "M14_answered_twice"
+description = "a word answered twice takes the last answer rather than refusing"
+file = "src/cratekit/cli/verbs/tag_campaign.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py"]
+old = '''        if word.spelling in found:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M15_text_not_threaded"
+description = "each word's edit is planned on the copy as it stands, not on the text the words before it leave"
+file = "src/cratekit/cli/verbs/tag_campaign.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py"]
+old = '''        text = edit.after'''
+new = '''        text = text'''
+
+[[rows]]
+id = "M16_settled_unreached"
+description = "the campaign runs a settled word's answer even when it moves no row"
+file = "src/cratekit/cli/verbs/tag_campaign.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py"]
+old = '''    return [word for word in plan.words if word.settled and word.reached]'''
+new = '''    return [word for word in plan.words if word.settled]'''
+
+[[rows]]
+id = "M18_no_reload_after_words"
+description = "the rows that follow are planned on the taxonomy as it was before the words step wrote the copy"
+file = "src/cratekit/cli/verbs/tag_campaign.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py"]
+old = '''            # THE COPY MOVED, so the rows that follow are planned on it.
+            declared = active_taxonomy.load(cfg)'''
+new = '''            # THE COPY MOVED, so the rows that follow are planned on it.
+            pass'''
+
+[[rows]]
+id = "M19_ack_skipped"
+description = "the backup acknowledgment is not read before the plan and the gate"
+file = "src/cratekit/cli/verbs/tag_campaign.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py", "tests/test_cli_contract.py"]
+old = '''    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
+    session.assert_backup_acknowledged(cfg)
+
+    args = ctx.args'''
+new = '''    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
+
+    args = ctx.args'''
+
+[[rows]]
+id = "M20_abort_applies"
+description = "an aborted gate goes on to the steps as if applied"
+file = "src/cratekit/cli/verbs/tag_campaign.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py"]
+old = '''    if ctx.gate.require(spec, plan=data, context=facts) != APPLY:'''
+new = '''    if ctx.gate.require(spec, plan=data, context=facts) not in (APPLY, "abort"):'''
+
+[[rows]]
+id = "M23_rows_read_back"
+description = "tag rows' apply path no longer refuses over a row that does not read back"
+file = "src/cratekit/tagging/rows_cli.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py", "tests/test_tag_rows.py"]
+old = '''    rows.assert_read_back(written)
+    return written'''
+new = '''    return written'''
+
+[[rows]]
+id = "M24_notes_dropped"
+description = "the gate and the report carry none of the backlog's own notes"
+file = "src/cratekit/cli/verbs/tag_campaign.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py"]
+old = '''        if note["code"] in _CARRIED and note["code"] != backlog_cli.ROWS_JOINING'''
+new = '''        if False'''
+
+[[rows]]
+id = "M25_folder_stale_check"
+description = "the words step drops its check that the folder edit is the one the gate listed"
+file = "src/cratekit/cli/verbs/tag_campaign.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py"]
+old = '''            if fresh != (shown.genre, shown.bucket, shown.like, shown.copy):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M26_needing_disposition"
+description = "the census after a step counts every row it scanned, not only the needs genre ones: the one filter needing keeps once its dead checks were taken out"
+file = "src/cratekit/tagging/backlog.py"
+surface = "user"
+tests = ["tests/test_tag_campaign.py", "tests/test_tag_backlog.py"]
+old = '''        if track.disposition is adopt_scan.Disposition.NEEDS_GENRE
+    )'''
+new = '''        if True
+    )'''
+
+[[dropped]]
+id = "M21_needing_readable"
+description = "the census after a step counts a row whose file is missing as needing a genre"
+reason = "zero on the first run of this table, confirmed on the full suite: scan_rows files a file it cannot read as excluded, never as needs genre, so the check was dead and was taken out; M26 measures the filter that holds it"
+
+[[dropped]]
+id = "M22_needing_live"
+description = "the census after a step counts a tombstone"
+reason = "zero on the first run of this table, confirmed on the full suite: scan_rows skips a tombstone before it classifies anything, so the check was dead and was taken out; M26 measures the filter that holds it"
+
+[[dropped]]
+id = "M17_followers_cause"
+description = "the follow step keeps a word's rows of any cause, not only the off taxonomy rows"
+reason = "zero on the second run of this table; the first run's one kill was test_repair_rows's fresh inode test, which has nothing to do with the follow step and passed on the second run under the same mutant. Every word the third step writes is an off taxonomy word, and a row of any other cause carries a genre adoption files by, a coarse word or none, so the check was dead and was taken out"
+

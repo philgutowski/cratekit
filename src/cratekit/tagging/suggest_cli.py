@@ -326,8 +326,21 @@ def _written(written: rows.Written) -> dict[str, str]:
     }
 
 
-def _plan(cfg: config.Config, declared, args, chosen: dict[str, str], progress):
-    """The plan over the library as it stands, through a handle opened to read."""
+def read_plan(
+    cfg: config.Config,
+    declared,
+    *,
+    band: str,
+    leave: list[str],
+    chosen: dict[str, str],
+    catalogue: bool,
+    progress,
+) -> suggest.SuggestPlan:
+    """The plan over the library as it stands, through a handle opened to read.
+
+    THE ONE PLAN, the verb's and ``tag campaign``'s (U294), so the campaign's
+    suggestions are weighed, asked and kept exactly as this verb's are.
+    """
     db = rb_writer.open_db(
         rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
     )
@@ -338,12 +351,12 @@ def _plan(cfg: config.Config, declared, args, chosen: dict[str, str], progress):
                 metadata_cli.majority_unmapped_cause(cfg, totals, blocked=_BLOCKED)
             )
         options = {
-            "band": args.band,
-            "leave": list(args.leave or ()),
+            "band": band,
+            "leave": list(leave),
             "chosen": chosen,
             "progress": progress,
         }
-        if not args.catalogue:
+        if not catalogue:
             return suggest.plan_suggestions(cfg, db, declared, **options)
         lookup = suggest.catalogue_lookup(
             searchers.for_taxonomy(declared), published.for_taxonomy(declared)
@@ -452,6 +465,20 @@ def _read_back(files: suggest.FilesWritten, written: rows.Written) -> None:
         ) from exc
 
 
+def apply_plan(cfg: config.Config, plan: suggest.SuggestPlan) -> rows.Written:
+    """Write the files and then their rows, and refuse over what did not take.
+
+    THE ONE APPLY PATH, the verb's and ``tag campaign``'s (U294): the row
+    engine's read back first, naming the files that did not take theirs too,
+    then the files' own refusal once the rest have landed.
+    """
+    files, written = _write(cfg, plan)
+    _read_back(files, written)
+    if not files.clean:
+        raise _files_refusal(files, written)
+    return written
+
+
 def tag_suggest(ctx) -> Envelope:
     """Suggest a genre for every row with none, ask, then write file and row."""
     cfg = _load()
@@ -461,7 +488,16 @@ def tag_suggest(ctx) -> Envelope:
     # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
     session.assert_backup_acknowledged(cfg)
 
-    plan = _plan(cfg, declared, ctx.args, chosen, getattr(ctx, "progress", None))
+    args = ctx.args
+    plan = read_plan(
+        cfg,
+        declared,
+        band=args.band,
+        leave=list(args.leave or ()),
+        chosen=chosen,
+        catalogue=bool(args.catalogue),
+        progress=getattr(ctx, "progress", None),
+    )
     data = _payload(plan)
     if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "apply":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=_advisories(plan))
@@ -470,10 +506,7 @@ def tag_suggest(ctx) -> Envelope:
             data=data, outcome=Outcome.NO_OP, warnings=[_nothing(plan), *_advisories(plan)]
         )
 
-    files, written = _write(cfg, plan)
-    _read_back(files, written)
-    if not files.clean:
-        raise _files_refusal(files, written)
+    written = apply_plan(cfg, plan)
     data["totals"] = {
         **data["totals"],
         "written": written.written,
@@ -491,7 +524,9 @@ __all__ = [
     "NOTHING_TO_WRITE",
     "ROWS_LEFT",
     "UNMATCHED",
+    "apply_plan",
     "build",
     "picks",
+    "read_plan",
     "tag_suggest",
 ]
