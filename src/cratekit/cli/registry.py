@@ -1878,6 +1878,29 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     Entry(
+        name="sync.night",
+        summary=(
+            "run the sync pass unattended, for a schedule overnight: refuses beside "
+            "rekordbox, a running job or another pass, holds the night's provider "
+            "budget, answers no gate and stops at the landing's gate"
+        ),
+        module="cratekit.cli.sync_night",
+        builder="build",
+        handler_key="sync.night",
+        feature_rows=(25,),
+        # NOT long_running, AND NO argv_builder (U293), for ``sync.land``'s
+        # reason: it runs ``sync land`` in this process, and every job that
+        # drives is queued and driven under its own verb's key.
+        emits=frozenset({"diagnostic"}),
+        output_schema="diagnostic/1",
+        # ``sync land``'s files, written by the verbs it runs. No database
+        # write and no gate of its own: the landing it plans waits at its
+        # explicit gate for the session at the Mac, and this verb answers none.
+        writes=frozenset({"files"}),
+        destructive=True,
+        doctor_checks=("library.mounted", "rekordbox.closed", "credential.provider"),
+    ),
+    Entry(
         name="sync.bandcamp",
         summary=(
             "take new Bandcamp purchases to their landing in one verb: the plan, the "

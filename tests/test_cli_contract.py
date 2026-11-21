@@ -1706,6 +1706,11 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # NO_OP. Unbound, its first step refuses for want of a provider
         # session. The chain is driven in tests/test_sync_land.py.
         "sync.land": _a_pass_with_no_vocal_model_and_nothing_new,
+        # U293. The night pass takes no argument and answers nothing: on this
+        # fixture the pass it runs ends with its own first refusal, which the
+        # night carries with its record. The night is driven in
+        # tests/test_sync_night.py.
+        "sync.night": [],
         # U179. The driver takes no argument: on this fixture its plan step
         # refuses for want of a Bandcamp session, and the driver ends with that
         # step's own refusal. The chain is driven in tests/test_sync_bandcamp.py.
