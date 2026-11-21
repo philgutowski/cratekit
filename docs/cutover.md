@@ -1418,6 +1418,15 @@ author's; on the 6 rows run only in part and the 9 never run live that sitting
 101 lists, each needing one attended run or Phillip's word that it ends with
 DJ_tools; and on Phillip having lived through a full cycle on Cratekit alone.
 
+**As of U321 (2026-11-21), after sitting 102.** Sitting 101's 19 per
+workflow lines say "cut over" in their State column, where this file's
+header asks for a run on the live library and the author having lived on
+it. Those lines meet the first half only, so they read as proven live until
+Phillip says he has lived on each, and sitting 101's rows are not rewritten.
+From U321 a sitting writes "proven live", and a line moves to "cut over" only
+on Phillip's word that he has lived on that workflow, quoted, naming the
+sitting he said it in.
+
 ## Sitting 43, 2026-10-16, the operator session, U153's live colour backfill
 
 Phillip asked why his recent favourites imported without the pink colour.

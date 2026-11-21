@@ -98,7 +98,13 @@ a green suite cannot see, as METHOD lists.
 - **rekordbox is opened by an attended session and by nothing else**, decided
   2026-09-29. A session Phillip is present for may open, drive and quit
   rekordbox on the live library through the desktop control tool, to import,
-  to let it analyse, and to read what it shows. A cloud session, a job, a verb
+  to let it analyse, and to read what it shows. Where an attended card asks
+  what rekordbox itself writes, it may also make, on a throwaway track and a
+  playlist made by hand for the check, the change that card names (removing
+  it from the collection, setting cues, playing it on a deck, deleting that
+  playlist), and may change an analysis setting a probe names and put it back
+  to Phillip's standard, read back by a screenshot; never on a real track, and
+  never a change the card does not name (U321). A cloud session, a job, a verb
   and a test never launch rekordbox or its background agent. Before opening it: no
   Cratekit job is running, and `crate doctor` reads both backup ages under five
   days. After quitting it: `rekordbox` and `rekordboxAgent` are both confirmed
