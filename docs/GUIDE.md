@@ -475,8 +475,12 @@ crate route pending
   "Main Mix", "LP Version", "2009 Digital Remaster", "UK Radio Edit"), is
   matched as before, and so is a mix written into the title with no bracket
   or dash; a word in neither list is read as a maker's name, so "Juno Mix"
-  misses a release of the plain title. A maker's name is compared as a name
-  is, accents, "and" and a possessive aside, and "Rmx" is a remix. Discogs' first style that names a folder is written, through the
+  misses a release of the plain title, and a maker named by the list's words
+  alone, "DJ Deep" or "Digital", is read as no one and matched as before,
+  another mix's release included. A maker's name is compared as a name
+  is, accents, "and" and a possessive aside, and "Rmx" is a remix; a row
+  that writes the mix with no bracket is read by its last words, so "Dixon
+  Remix" also takes "Sunrise Mood - Alan Dixon Remix". Discogs' first style that names a folder is written, through the
   taxonomy's `[vocabulary.discogs]` table and its aliases; a style naming no
   folder is a decline. A library set up before that table shipped gets it
   with `crate taxonomy upgrade`, which doctor names; until then nine of the

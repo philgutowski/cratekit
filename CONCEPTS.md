@@ -88,7 +88,8 @@ picture asks Beatport for its cover only. Every source is asked one question
 per file, the artist and the title read past the naming verb's head and marker
 (`titles.question`, U289), and matches its rows against the file's own text;
 Discogs also takes a release only when it writes a mix the file's title
-names by its maker (`titles.named_versions`, U318).
+names by its maker (`titles.named_versions`, U318), a maker being the mix's
+words that are neither version words nor `titles.MIX_DESCRIPTIONS`.
 Traxsource and Bandcamp are kept off the walk, since both answer
 a bot check, and still counted in old records. Each source answers one of
 `matched`, `miss`, `unreachable`, `blocked` (bot check, block page, spent rate

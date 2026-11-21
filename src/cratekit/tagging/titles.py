@@ -54,8 +54,10 @@ version from one that is not. A word it lacks makes a title longer than its
 row writes it, a miss. It never decides that a part is the title: that is
 position, and where position cannot tell, the outcome is ambiguous. For a
 named mix, :data:`VERSION_WORDS` and :data:`MIX_DESCRIPTIONS` say which
-words name no one; a word both lack is read as a name, which costs a Discogs
-miss, never another mix's genre.
+words name no one, and it fails both ways: a word both lack is read as a
+name, which costs a Discogs miss, and a maker named by their words alone,
+"(DJ Deep Remix)", is read as no one, matched as before, another mix's
+release included.
 """
 
 from __future__ import annotations
@@ -1102,7 +1104,9 @@ def matches(file: FileName, row: Row) -> bool:
 #: Remaster", "UK Radio Edit", "12 Inch Version", "Deep Mix". Such a mix is
 #: the plain title's own recording, so a file so titled still takes the
 #: release of its plain title, as it did before. A word missing here reads
-#: as a maker's name, which costs a Discogs miss, never another mix's genre.
+#: as a maker's name, which costs a Discogs miss; a maker named by these
+#: words alone, "DJ Deep" or "Digital", reads as no one and is matched as
+#: before, another mix's release included.
 #: Pinned word for word by ``tests/test_discogs_version.py``.
 MIX_DESCRIPTIONS = frozenset(
     {
@@ -1148,10 +1152,11 @@ def _naming_words(found: Words) -> Words:
 
     "tim green" of "Tim Green Remix" and of "Extended Tim Green Remix",
     "mita gami" of "Mita Gami Extended Mix": the words of a stretch that ends
-    in a version word, with the words it ends and opens with that are the
-    reader's own fold (:data:`VERSION_WORDS` and a remaster's year,
-    :func:`_a_version_word`) or a mix's description (:data:`MIX_DESCRIPTIONS`)
-    left out, and folded as a name is (accents off, "and" and a possessive
+    in a version word or a spelling of one ("Rmx"), with the words it ends
+    and opens with that are the reader's own fold (:data:`VERSION_WORDS` and
+    a remaster's year, :func:`_a_version_word`, a year anywhere in a
+    remaster's stretch), a mix's description (:data:`MIX_DESCRIPTIONS`) or a
+    spelling left out, and folded as a name is (accents off, "and" and a possessive
     "s" dropped). A version of those alone, "Extended Mix", "Original Mix",
     "Radio Edit", "Vocal Mix" or "2014 Remaster", names no other mix, and a
     stretch that does not end in a version word, "Part 1" or "feat.
