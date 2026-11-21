@@ -612,9 +612,10 @@ never removed before a transfer, unlike the backup record). A backup refuses
 the census, or failing it the record or the library's files fact, says a
 backup held some, or under a tenth of the census; `library-root-foreign` when
 the recorded volume identity is read and is not the root's. A root with only
-its state folder and no backup on record is a new library, mirrored with
-rclone told to move nothing. `--library-emptied` passes the first, never the
-second.
+its state folder and no backup of it on record is a new library, mirrored
+with rclone told to delete nothing from the remote. `--library-emptied` passes
+the first only at a root still carrying the library's own fact file, and never
+the second.
 
 ### Journal ledger
 A state file kept as a header line and one record per line: each write appends

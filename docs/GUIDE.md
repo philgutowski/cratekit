@@ -1296,9 +1296,13 @@ root holds no file at all, none outside the library's own state folder while
 the last completed backup held some, or under a tenth of what it held. A
 refusal sends nothing, archives nothing and resets no age: mount the volume
 and run it again. A library emptied on purpose is backed up with
-`--library-emptied`, which never passes the identity. A new library holding
-only its state folder, with no backup on record, is mirrored with rclone told
-to move nothing off the remote.
+`--library-emptied`, which passes only a root still carrying the library's
+own record of its backups, the file every completed run leaves in its state
+folder, and never passes the identity. A new library holding only its state
+folder, with no backup of it on record, is mirrored with rclone told to
+delete nothing from the remote, so a remote that already holds files fails
+that run rather than archiving them; once one completes, it is backed up as
+any other library.
 
 A quick run that completes resets the files age, since the remote then holds
 everything. A skip resets it too, because the comparison proved nothing

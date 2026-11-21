@@ -629,8 +629,9 @@ def build(parser, entry) -> None:
             "refuses a library root that holds none of the library's files, or "
             "under a tenth of what the last backup held, because that is what an "
             "unmounted or lost volume leaves, and mirroring it would move the "
-            "whole remote into the archive. It never passes a root on another "
-            "volume than the library's"
+            "whole remote into the archive. It passes only a root that still "
+            "carries the library's own record of its backups, and never one on "
+            "another volume than the library's"
         ),
     )
     parser.set_defaults(_handler=backup_library)
@@ -857,14 +858,21 @@ def _already_queued(
             ". It runs a full check only if one is due and this ask was for one "
             "now, so cancel it first if that is the one wanted"
         )
-    if asked_emptied and not bool((job.payload or {}).get(EMPTIED)):
-        # R-1761. The open job refuses a library root holding none of its
-        # files, so a person who said the library was emptied would otherwise
-        # resume it and meet the refusal they asked past.
+    held_emptied = bool((job.payload or {}).get(EMPTIED))
+    if asked_emptied is not None and asked_emptied != held_emptied:
+        # R-1761. The flag is no twin's business to drop or add: a person who
+        # said the library was emptied would resume a job that refuses it, and
+        # one who did not would resume a job told it was. Said either way, and
+        # the plan refuses the flag at a root that does not carry the library's
+        # own record of its backups, whoever drives the job.
         where += (
             f". It was not asked with {backup.EMPTIED_FLAG}, so it refuses a "
             f"library holding none of its files; cancel it first if this "
             f"library was emptied on purpose"
+            if asked_emptied
+            else f". It was asked with {backup.EMPTIED_FLAG}, which backs up a "
+            f"library emptied on purpose; cancel it first unless that is what "
+            f"this library is"
         )
     return {
         "code": ALREADY_QUEUED,

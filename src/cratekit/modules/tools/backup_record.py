@@ -708,9 +708,8 @@ class Census:
     """How many files outside the library's own state folder the last completed
     files portion walked, for this library root and mirror.
 
-    ``files`` is None where a backup was kept and its count cannot be read: a
-    damaged census, or a run whose walk refused and whose probe found files.
-    A count nobody can read still says a backup happened here.
+    ``files`` is None where a census is there and cannot be read, or holds no
+    count: a count nobody can read still says a backup happened here.
     """
 
     files: int | None
@@ -730,20 +729,25 @@ def count_held(entries: Iterable[str], state_dirname: str) -> int:
     return sum(1 for rel in entries if held(rel, state_dirname))
 
 
-def probe(root: Path, excludes: Sequence[str], state_dirname: str) -> tuple[bool, bool]:
-    """Whether the root holds any file the mirror carries, and any outside the
-    state folder, stopping at the first of the second kind.
+def probe(
+    root: Path, excludes: Sequence[str], state_dirname: str, *, first: bool = False
+) -> tuple[bool, int]:
+    """Whether the root holds any file the mirror carries, and how many lie
+    outside the state folder, or, with ``first``, whether one does, stopping
+    there.
 
-    THE STAND IN FOR A WALK THAT REFUSED, and the check just before the mirror.
-    Best effort by design and failing closed: a folder it cannot list is passed
-    over, so what it cannot read is never counted as a file, and a root it can
-    read nothing of reads as empty and is refused. An exclude the walk cannot
-    translate is left out rather than refusing, since the probe stands in for
-    a walk that may have refused for that very reason; what it then counts is
-    the database set a configuration with such a name keeps under the root.
+    THE STAND IN FOR A WALK THAT REFUSED, so the floor and the census still
+    have a count, and the check just before the mirror. Best effort by design
+    and failing closed: a folder it cannot list is passed over, so what it
+    cannot read is never counted as a file, and a root it can read nothing of
+    reads as empty and is refused. An exclude the walk cannot translate is left
+    out rather than refusing, since the probe stands in for a walk that may
+    have refused for that very reason; what it then counts is the database set
+    a configuration with such a name keeps under the root.
     """
     matcher = _excludes([p for p in excludes if not any(c in _UNTRANSLATED for c in p)])
     anything = False
+    found = 0
     pending: list[tuple[Path, str]] = [(root, "")]
     while pending:
         directory, prefix = pending.pop()
@@ -767,8 +771,10 @@ def probe(root: Path, excludes: Sequence[str], state_dirname: str) -> tuple[bool
                 continue
             anything = True
             if held(rel, state_dirname):
-                return True, True
-    return anything, False
+                found += 1
+                if first:
+                    return True, found
+    return anything, found
 
 
 def root_still_holds(
@@ -791,7 +797,7 @@ def root_still_holds(
             return f"the library root {root} is on another volume than the one the plan read"
     except OSError as exc:
         return f"the library root {root} could not be read before the mirror: {exc}"
-    if files and not probe(root, excludes, state_dirname)[1]:
+    if files and not probe(root, excludes, state_dirname, first=True)[1]:
         return (
             f"the library root {root} held the library's files when the backup "
             f"was planned and holds none now"
@@ -826,7 +832,7 @@ def read_census(cfg: config.Config) -> Census | None:
     return Census(files=files)
 
 
-def write_census(cfg: config.Config, files: int | None, *, at: datetime) -> Path:
+def write_census(cfg: config.Config, files: int, *, at: datetime) -> Path:
     """Keep the census a completed files portion leaves. NEVER removed before a
     transfer, unlike the record, so a failed run still leaves it saying what
     the library held."""

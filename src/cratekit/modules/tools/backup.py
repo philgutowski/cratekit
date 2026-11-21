@@ -256,12 +256,13 @@ DEFAULT_ARCHIVE_KEEP = 1
 #: so every refusal and failure that names it names the one the verb declares.
 EMPTIED_FLAG = "--library-emptied"
 
-#: R-1761. What a full mirror over a root holding none of the library's files
-#: is given, so rclone itself moves not one mirror file into the archive. A
-#: new library's first backup has nothing to remove, and a lost volume's
-#: mount point on an installation that remembers nothing would otherwise
-#: archive the whole mirror. ``--max-delete`` counts a move into
-#: ``--backup-dir`` as a delete.
+#: R-1761. What a new library's first backup is given, so rclone itself
+#: deletes no file from the mirror: one it would delete fails the run instead.
+#: A new library has nothing to remove, and a lost volume's mount point on an
+#: installation that remembers nothing would otherwise archive the whole
+#: mirror. ``--max-delete`` counts a move into ``--backup-dir`` as a delete. It
+#: stops deletions and not overwrites: a file the library sends over an older
+#: copy still moves that copy into the archive, as every mirror does.
 MOVE_NOTHING = ("--max-delete", "0")
 
 #: The option that makes rclone list the remote in one recursive pass, where it
@@ -460,9 +461,9 @@ class PortionPlan:
     #: not be read, which holds it to nothing and fails it.
     root_dev: int = -1
     #: R-1761. How many files outside the library's own state folder the plan
-    #: found: the census a completed portion keeps. None where the walk refused
-    #: and the probe found some, a count nobody read.
-    held: int | None = None
+    #: found, by the walk or, where it refused, by the probe: the census a
+    #: completed portion keeps.
+    held: int = 0
 
     @property
     def will_run(self) -> bool:
@@ -1063,32 +1064,34 @@ def _plan_files(
     if before is not None:
         root_dev = before.root_dev
         anything = bool(before.entries)
-        held: int | None = backup_record.count_held(before.entries, state_dirname)
+        held = backup_record.count_held(before.entries, state_dirname)
     else:
-        anything, found_held = backup_record.probe(root, excludes, state_dirname)
-        held = None if found_held else 0
-    if not emptied:
-        unproven = _unproven(cfg, anything=anything, held=held)
-        if unproven:
-            return PortionPlan(
-                portion=backup_facts.Portion.FILES,
-                refusal=Refusal.LIBRARY_ROOT_UNPROVEN,
-                detail=unproven,
-            )
+        # The walk refused, so it is counted another way: the floor below
+        # needs a number, and the census this run keeps needs one too.
+        anything, held = backup_record.probe(root, excludes, state_dirname)
+    unproven, new_library = _unproven(cfg, anything=anything, held=held, emptied=emptied)
+    if unproven:
+        return PortionPlan(
+            portion=backup_facts.Portion.FILES,
+            refusal=Refusal.LIBRARY_ROOT_UNPROVEN,
+            detail=unproven,
+        )
     proof = {"root_dev": root_dev, "held": held}
-    if held == 0 and not emptied:
+    if new_library:
         # A NEW LIBRARY, holding its state folder and none of its files, with
-        # no census, record or fact saying it ever held any. The plan cannot
-        # tell it from a lost volume's mount point a stray state folder landed
-        # in on an installation that remembers nothing, so it runs as a full
-        # check that rclone itself will let move nothing off the mirror.
+        # no census, record or fact saying a backup was ever kept. The plan
+        # cannot tell it from a lost volume's mount point a stray state folder
+        # landed in on an installation that remembers nothing, so it runs as a
+        # full check rclone itself will let delete nothing from the mirror.
+        # Once it completes, the census says the library held nothing, and the
+        # next run is planned as any other.
         return PortionPlan(
             portion=backup_facts.Portion.FILES,
             kind=KIND_FULL,
             why=(
                 "the library holds no file outside its state folder and no "
-                "backup on record held any, so it runs as a new library's "
-                "backup, which moves nothing off the mirror"
+                "backup of it is on record, so it runs as a new library's "
+                "first backup, which removes nothing from the mirror"
             ),
             commands=_full_commands(
                 cfg,
@@ -1185,7 +1188,7 @@ def _not_the_recorded_volume(
             f"this library and nothing was sent or archived; mount the library's "
             f"own volume and back up again"
         )
-    except OSError:
+    except Exception:  # noqa: BLE001 - an unread identity is left to the census
         return ""
     return ""
 
@@ -1223,19 +1226,37 @@ def _history(cfg: config.Config) -> tuple[int | None, str] | None:
     return None
 
 
-def _unproven(cfg: config.Config, *, anything: bool, held: int | None) -> str:
-    """Why what the root holds does not prove it is the library, or an empty string.
+def _unproven(
+    cfg: config.Config, *, anything: bool, held: int, emptied: bool
+) -> tuple[str, bool]:
+    """Why what the root holds does not prove it is the library, or an empty
+    string, and whether it is a new library's first backup.
 
     The second proof (R-1761), and the one that holds where no identity is
     read. ``anything`` is whether the root holds any file the mirror carries,
-    and ``held`` how many outside the library's own state folder, None for some
-    the probe found and nobody counted.
+    and ``held`` how many outside the library's own state folder.
+
+    ``emptied`` passes the census and nothing else: the root must still carry
+    the library's own record of its backups, the fact file every completed run
+    leaves in its state folder. A library its owner emptied keeps it; the mount
+    point a lost volume leaves does not, so a queued job frozen with the flag
+    and driven after the volume went refuses as a plain ask does.
     """
     root = cfg.library.root
     remedy = (
         f"Mount the library's volume and back up again; if the library was "
         f"emptied on purpose, back it up with {EMPTIED_FLAG}"
     )
+    if emptied:
+        if backup_facts.path_for(cfg).is_file():
+            return "", False
+        return (
+            f"the backup was asked with {EMPTIED_FLAG} and the library root "
+            f"{root} does not carry the library's own record of its backups, "
+            f"which a library emptied by its owner keeps in its state folder and "
+            f"the folder an unmounted volume leaves does not, so nothing was sent "
+            f"or archived. Mount the library's volume and back up again"
+        ), False
     history = _history(cfg)
     if not anything:
         held_before = ""
@@ -1245,9 +1266,9 @@ def _unproven(cfg: config.Config, *, anything: bool, held: int | None) -> str:
             f"the library root {root} holds no file at all, not even the "
             f"library's own state folder{held_before}, which is what an "
             f"unmounted volume leaves, so nothing was sent or archived. {remedy}"
-        )
+        ), False
     if history is None:
-        return ""
+        return "", held == 0
     had, said = history
     if held == 0 and had != 0:
         counted = "files" if had is None else f"{had} files"
@@ -1255,15 +1276,15 @@ def _unproven(cfg: config.Config, *, anything: bool, held: int | None) -> str:
             f"the library root {root} holds no file outside the library's own "
             f"state folder, and {said} held {counted}, so nothing was sent or "
             f"archived. {remedy}"
-        )
-    if held is not None and had and held * backup_record.LIBRARY_FLOOR < had:
+        ), False
+    if had and held * backup_record.LIBRARY_FLOOR < had:
         return (
             f"the library root {root} holds {held} files outside the library's "
             f"own state folder, under a tenth of the {had} {said} held, so it is "
             f"not proven to be the library and nothing was sent or archived. "
             f"{remedy}"
-        )
-    return ""
+        ), False
+    return "", False
 
 
 def _quick_commands(
@@ -1982,11 +2003,19 @@ def run_backup(
 
         if failed is not None:
             said = _said(failed.stderr)[-400:]
-            if executed and executed[-1].label == MIRROR and _moves_nothing(executed[-1]):
+            if (
+                executed
+                and executed[-1].label == MIRROR
+                and _moves_nothing(executed[-1])
+                # rclone names the option it stopped on, "max-delete
+                # threshold reached", read off the option itself.
+                and MOVE_NOTHING[0].lstrip("-") in failed.stderr
+            ):
                 said += (
                     f". The library holds none of its files outside its state "
-                    f"folder, so this mirror was told to move nothing off the "
-                    f"remote, and the remote holds files it would have moved. "
+                    f"folder, so this mirror was told to delete nothing from "
+                    f"the remote, and the remote holds files it would have "
+                    f"moved into the archive. "
                     f"Mount the library's volume and back up again; if the "
                     f"library was emptied on purpose, back it up with {EMPTIED_FLAG}"
                 )
@@ -2079,7 +2108,7 @@ def run_backup(
 
 
 def _moves_nothing(command: Command) -> bool:
-    """Whether a mirror command was told to move nothing off the remote."""
+    """Whether a mirror command was told to delete nothing from the remote."""
     argv = command.argv
     return any(
         argv[i : i + len(MOVE_NOTHING)] == MOVE_NOTHING for i in range(len(argv))

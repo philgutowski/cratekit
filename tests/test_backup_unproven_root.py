@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -250,15 +251,63 @@ def test_an_empty_root_after_a_failed_run_left_no_record_still_refuses(
 
 def test_an_empty_root_with_only_the_record_on_record_refuses(cfg, real_rclone, tmp_path):
     """A record kept by a build before the census, and no census: the record's
-    own entries are the history."""
+    own entries are the history. The root holds a stray state folder, so it is
+    the record and not an empty root that refuses."""
     _first_backup(cfg, tmp_path)
     backup_record.census_path().unlink()
     remote = _remote_state(tmp_path)
     _unmount(cfg, tmp_path)
+    _write(config.library_state_dir(cfg) / "lock.json", b"{}")
 
     plan, _ = _backup(cfg, at=MOMENT + timedelta(hours=1))
     assert plan.portion(FILES).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
+    assert "the record of the last completed backup held 12" in plan.portion(FILES).detail
     assert _remote_state(tmp_path) == remote
+
+
+def test_a_record_kept_for_another_mirror_is_no_history(cfg, real_rclone, tmp_path):
+    """The record answers only for its own root and mirror: one kept for
+    another mirror leaves a state folder alone as a new library."""
+    _first_backup(cfg, tmp_path)
+    backup_record.census_path().unlink()
+    manifest, _ = backup_record.read_manifest()
+    backup_record.write_manifest(
+        replace(cfg, backup=replace(cfg.backup, dest="remote:elsewhere")),
+        manifest.excludes,
+        manifest.entries,
+        at=MOMENT,
+        token=manifest.token,
+    )
+    for rel in MUSIC:
+        (cfg.library.root / rel).unlink()
+    backup_facts.path_for(cfg).unlink()
+    _write(config.library_state_dir(cfg) / "taxonomy.toml", b"[taxonomy]")
+    plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=())
+    assert plan.portion(FILES).refusal is None, plan.portion(FILES)
+    (mirror,) = [c for c in plan.portion(FILES).commands if c.label == backup.MIRROR]
+    assert backup._moves_nothing(mirror)  # noqa: SLF001
+
+
+def test_with_no_census_or_record_the_librarys_own_fact_is_the_history(
+    cfg, real_rclone, tmp_path
+):
+    """A library emptied on its own volume keeps its fact file, which is what
+    a backup having happened looks like with installation state lost."""
+    _first_backup(cfg, tmp_path)
+    backup_record.census_path().unlink()
+    backup_record.manifest_path().unlink()
+    for rel in MUSIC:
+        (cfg.library.root / rel).unlink()
+
+    plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=())
+    assert plan.portion(FILES).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
+    assert "the library's own record of its backups held files" in plan.portion(FILES).detail
+
+    backup_facts.path_for(cfg).write_text("{not json")
+    plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=())
+    assert plan.portion(FILES).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN, (
+        "a fact file that cannot be read is still a backup having happened"
+    )
 
 
 def test_a_damaged_census_counts_as_a_backup_having_happened(cfg, real_rclone, tmp_path):
@@ -289,6 +338,12 @@ def test_a_root_holding_nothing_at_all_refuses_with_no_history_anywhere(
     assert "not even" in plan.portion(FILES).detail
     assert all(c.label not in MOVERS for c in runner.ran)
     assert _remote_state(tmp_path) == remote_before
+
+
+def test_a_census_that_cannot_be_read_as_a_file_is_a_backup_with_no_count(cfg):
+    backup_record.census_path().parent.mkdir(parents=True, exist_ok=True)
+    backup_record.census_path().mkdir()
+    assert backup_record.read_census(cfg) == backup_record.Census(files=None)
 
 
 def test_a_mount_point_a_stray_file_landed_in_refuses_by_the_floor(cfg, real_rclone, tmp_path):
@@ -493,6 +548,25 @@ def test_a_volume_lost_between_the_plan_and_the_mirror_fails_before_rclone_sync(
     assert _remote_state(tmp_path) == remote
 
 
+def test_a_root_on_another_device_than_the_plan_read_fails_before_rclone_sync(
+    cfg, real_rclone, tmp_path
+):
+    """The device half alone, with the library's files still in place: a
+    volume swapped for another holding a copy is not the one walked."""
+    _first_backup(cfg, tmp_path)
+    remote = _remote_state(tmp_path)
+    plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=1), check=True, settings_dirs=())
+    files = plan.portion(FILES)
+    moved = replace(plan, portions=(replace(files, root_dev=files.root_dev + 1),))
+
+    runner = Counting()
+    outcome = backup.run_backup(cfg, moved, runner=runner, now=MOMENT + timedelta(hours=1))
+    assert not _portion(outcome, FILES).ran
+    assert "another volume" in _portion(outcome, FILES).detail
+    assert backup.MIRROR not in runner.labels()
+    assert _remote_state(tmp_path) == remote
+
+
 def test_a_root_emptied_on_the_same_volume_between_the_plan_and_the_mirror_fails(
     cfg, real_rclone, tmp_path
 ):
@@ -554,9 +628,12 @@ def test_the_census_is_kept_for_its_root_and_mirror_only(cfg, real_rclone, tmp_p
     _first_backup(cfg, tmp_path)
     held = json.loads(backup_record.census_path().read_text())
     assert held["files"] == len(MUSIC)
-    held["dest"] = "remote:elsewhere"
+    for key, other in (("dest", "remote:elsewhere"), ("library_root", "/elsewhere")):
+        moved = {**held, key: other}
+        backup_record.census_path().write_text(json.dumps(moved))
+        assert backup_record.read_census(cfg) is None, key
     backup_record.census_path().write_text(json.dumps(held))
-    assert backup_record.read_census(cfg) is None
+    assert backup_record.read_census(cfg) == backup_record.Census(files=len(MUSIC))
 
 
 def test_the_probe_reads_past_an_exclude_the_walk_cannot_translate(tmp_path):
@@ -566,12 +643,118 @@ def test_the_probe_reads_past_an_exclude_the_walk_cannot_translate(tmp_path):
     _write(root / ".cratekit" / "state.json", b"{}")
     assert backup_record.probe(root, ("/db/[master].db", ".DS_Store"), ".cratekit") == (
         True,
-        False,
+        0,
     )
     _write(root / "Music" / "a.flac", b"a")
-    assert backup_record.probe(root, ("/db/[master].db",), ".cratekit") == (True, True)
+    assert backup_record.probe(root, ("/db/[master].db",), ".cratekit") == (True, 1)
     _write(tmp_path / "empty" / ".DS_Store", b"")
     assert backup_record.probe(tmp_path / "empty", (".DS_Store",), ".cratekit") == (
         False,
-        False,
+        0,
     )
+
+
+# ---------------------------------------------------------------------------
+# Round one's findings, driven
+# ---------------------------------------------------------------------------
+
+
+def test_a_job_frozen_with_the_flag_and_driven_after_the_volume_went_refuses(
+    cfg, real_rclone, tmp_path
+):
+    """Round one's B1: a job queued with the flag was handed to a plain ask
+    and, driven after an unmount, emptied the mirror. The flag now passes only
+    a root that still carries the library's own record of its backups."""
+    _first_backup(cfg, tmp_path)
+    remote = _remote_state(tmp_path)
+    _unmount(cfg, tmp_path)
+
+    with pytest.raises(CratekitError) as excinfo:
+        backup_cli.perform_backup(
+            {backup_cli.EMPTIED: True}, now=MOMENT + timedelta(hours=1), portion=FILES
+        )
+    assert excinfo.value.cause.reason == "library-root-unproven"
+    assert "does not carry" in excinfo.value.cause.message
+    assert _remote_state(tmp_path) == remote
+    assert not backup_facts.path_for(cfg).exists(), "a fact was published at the mount point"
+
+
+def test_the_flag_reaches_the_plan_through_the_worker(cfg, real_rclone, tmp_path):
+    _first_backup(cfg, tmp_path)
+    for rel in MUSIC:
+        (cfg.library.root / rel).unlink()
+    at = MOMENT + timedelta(hours=1)
+    with pytest.raises(CratekitError):
+        backup_cli.perform_backup({}, now=at, portion=FILES)
+    backup_cli.perform_backup({backup_cli.EMPTIED: True}, now=at, portion=FILES)
+    assert backup_record.read_census(cfg) == backup_record.Census(files=0)
+
+
+def test_a_move_nothing_mirror_failing_for_another_reason_says_only_that(
+    cfg, real_rclone, tmp_path
+):
+    """Round one's B2: the sentence about files on the remote is rclone's
+    max-delete refusal's, and no other failure's."""
+    _write(config.library_state_dir(cfg) / "taxonomy.toml", b"[taxonomy]")
+    plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=())
+    outcome = backup.run_backup(
+        cfg, plan, runner=Counting(fail=backup.MIRROR), now=MOMENT
+    )
+    detail = _portion(outcome, FILES).detail
+    assert "the remote went away" in detail
+    assert "--library-emptied" not in detail and "holds files" not in detail, detail
+
+
+def test_a_library_of_only_its_state_folder_skips_once_backed_up(cfg, real_rclone, tmp_path):
+    """Round one's R1: the census of none makes the next run an ordinary one,
+    so it skips when nothing changed and archives a state file that went."""
+    state = config.library_state_dir(cfg)
+    _write(state / "taxonomy.toml", b"[taxonomy]")
+    _write(state / "notes.json", b"{}")
+    _, first = _backup(cfg, at=MOMENT)
+    assert _portion(first, FILES).ran
+
+    _, second = _backup(cfg, at=MOMENT + timedelta(hours=1))
+    assert _portion(second, FILES).kind == backup_facts.KIND_SKIPPED
+
+    (state / "notes.json").unlink()
+    _, third = _backup(cfg, at=MOMENT + timedelta(hours=2))
+    assert _portion(third, FILES).ran, _portion(third, FILES)
+
+
+@pytest.mark.parametrize("raised", [OSError("diskutil went away"), RuntimeError("psutil")])
+def test_an_identity_read_that_raises_is_left_to_the_census(
+    cfg, real_rclone, tmp_path, real_identity, raised
+):
+    def broken(path):
+        raise raised
+
+    _first_backup(cfg, tmp_path)
+    plan = backup.plan_backup(
+        cfg, now=MOMENT, only=FILES, settings_dirs=(), identity_provider=broken,
+        mount_enumerator=lambda: (),
+    )
+    assert plan.portion(FILES).refusal is None, plan.portion(FILES)
+    _unmount(cfg, tmp_path)
+    plan = backup.plan_backup(
+        cfg, now=MOMENT, only=FILES, settings_dirs=(), identity_provider=broken,
+        mount_enumerator=lambda: (),
+    )
+    assert plan.portion(FILES).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
+
+
+def test_a_walk_that_refused_is_counted_so_the_floor_still_holds(cfg, real_rclone, tmp_path):
+    """Round one's R2 (a): a name the walk refuses left the census with no
+    count, and one stray file at the mount point then passed."""
+    _seed(cfg)
+    _write(cfg.library.root / "Music" / "line\nbreak.flac", b"x")
+    plan, outcome = _backup(cfg, at=MOMENT)
+    assert plan.portion(FILES).basis is None, "the walk did not refuse"
+    assert plan.portion(FILES).held == len(MUSIC) + 1
+    assert _portion(outcome, FILES).ran
+    assert backup_record.read_census(cfg) == backup_record.Census(files=len(MUSIC) + 1)
+
+    _unmount(cfg, tmp_path)
+    _write(cfg.library.root / "stray.txt", b"stray")
+    plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=())
+    assert plan.portion(FILES).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
