@@ -53611,3 +53611,94 @@ fill, per dead thread. Maintainer facing; no user of a shipped verb pays.
 **Closes when:** the cloud-unit skill says a card the coordinator assigned is
 built whatever the lane alarm says (R-1666's own condition), or the reader
 stops counting a hold the coordinator does not, with a test. Ledger only.
+
+---
+
+## R-1732. The needs genre backlog's proposals and word counts read the library as it stands, not after the campaign's earlier steps
+
+**Found:** at the review of #849, U292, 2026-11-21.
+
+**The mechanism.** `crate tag backlog` reads each verb's own plan over the library as it is now (`tagging/backlog.py`, `plan_backlog`). Its campaign then runs those verbs in order, and `tag rows` changes the rows `tag suggest` votes with. Round one drove eight neighbours whose rows said Deep House and whose files said Melodic House: the backlog proposed Deep House for the genreless row, and after `tag rows` wrote the neighbours' rows, `tag suggest` planned Melodic House. A word's counts move the same way when `tag rows` writes a file's word onto a row.
+
+**Measured cost.** A proposal printed by the backlog can differ from what `tag suggest` writes when run after `tag rows`, on a library whose rows disagree with their files. No genre is written by the backlog, and `tag suggest` shows its own plan at its own gate, so a person is never written a genre they were not shown; the cost is a report that overstates its agreement with the campaign.
+
+**Closes when:** U294 (#851) plans each step of the campaign after the steps before it land, or reads the backlog again between steps. Ledger only.
+
+---
+
+## R-1733. The needs genre backlog counts an alias's rows, while taxonomy alias retags every file under the root carrying the word
+
+**Found:** at the review of #849, U292, 2026-11-21.
+
+**The mechanism.** `word_of` in `tagging/backlog.py` counts the rows an alias would move: rows whose file holds the word alone. `crate taxonomy alias` walks every audio file under the library root (or `--folder`) and retags each whose one genre is the word, including files no library row names. Round one drove an alias detail saying one track's file is retagged where the alias gate listed four file writes, one of them a file in no row.
+
+**Measured cost.** The backlog's alias option names fewer file writes than the alias verb's own gate will show. The gate lists every file before anything is written, so nothing is written unseen; the backlog's count is of rows moved out of needs genre, which is what it says.
+
+**Closes when:** the option's detail names the files the alias would retag as well as the rows it moves, read from the verb's own file walk. Ledger only.
+
+---
+
+## R-1734. tag rows writes a genre word no folder takes over a routed row, moving it into needs genre, and the backlog campaign runs it first
+
+**Found:** at the review of #849, U292, 2026-11-21.
+
+**The mechanism.** `tag rows` reads every disagreement as the row lagging its file (`tagging/rows.py`). A row adoption files today, say Melodic House, whose file carries a word no folder takes, say Indie Tech, is written that word, and adoption then files it nowhere. Round one drove two such rows: the backlog projected 0 left after the campaign and the census read 2. The backlog now counts them (`Backlog.joining`), adds them back into its projection and warns `backlog-rows-joining`, naming them; it writes nothing itself.
+
+**Measured cost.** Running the printed campaign moves the named rows into needs genre unless each is held out with `tag rows --leave`. The backlog names them before the step runs.
+
+**Closes when:** U294 (#851) holds every joining row out of its `tag rows` step, or `tag rows` stops writing a word adoption files nowhere over one it files. Ledger only.
+
+---
+
+## R-1735. The needs genre backlog's folder answer counts a row whose row carries the word while tag rows would write another case of it
+
+**Found:** at round two of the review of #849, U292, 2026-11-21.
+
+**The mechanism.** `word_of` in `tagging/backlog.py` counts a row as filed by a folder of the word's name when its row carries that spelling exactly, even when `tag rows` would write its file's other case of the word over it. Round two drove a library with genre entries for both `Indie Tech` and `indie tech`: the folder claimed 3 rows and filed 2.
+
+**Measured cost.** A folder's row count over by such rows, and the projection with it. Whether rekordbox keeps two genre entries that differ only in case was not measured, so reachability on a real library is unmeasured.
+
+**Closes when:** the count reads the word `tag rows` would write before the row's own word. Ledger only.
+
+---
+
+## R-1736. A genre word beginning with a hyphen is offered a taxonomy command argparse reads as an option
+
+**Found:** at round two of the review of #849, U292, 2026-11-21.
+
+**The mechanism.** `tag backlog` builds each answer's command with `shlex.join`, which quotes for the shell and not for argparse. A word such as `-x` is offered `crate taxonomy folder -x`, and that command exits 2 with a usage error. Round two drove two files tagged `-x`; the same was true at round one's head.
+
+**Measured cost.** A person pasting the offered command for such a word is refused with a usage error. No catalogue or acquisition path that writes such a genre was driven, so reachability is unmeasured.
+
+**Closes when:** a command for a word beginning with a hyphen is offered in a form argparse takes, or the word is offered no command. Ledger only.
+
+---
+
+## R-1737. The needs genre backlog's projection leaves out rows filed under another word's answer and rows tag rows moves in, so it reads pessimistic
+
+**Found:** at round two of the review of #849, U292, 2026-11-21.
+
+**The mechanism.** `Backlog.projected` in `tagging/backlog.py` counts each word's widest answer over that word's own rows. A row grouped under its file's word whose row carries another word is filed when that other word gets a folder, and a joining row is filed by its new word's answer; neither is counted. Round two ran 300 random libraries through the printed campaign: 164 ended below the projection and none above, and 42 of 1,075 answered words moved more of their rows than claimed.
+
+**Measured cost.** The projection overstates what stays in needs genre after the campaign, never understates it. A person reading it is told the campaign does less than it does.
+
+**Closes when:** U294 (#851) reads needs genre again after each step, or the projection counts rows reached by another word's answer. Ledger only.
+
+---
+
+## R-1738. Guards in the needs genre backlog that round two's mutation table left unpinned
+
+**Found:** at round two of the review of #849, U292, 2026-11-21.
+
+**The mechanism.** Round two ran 32 mutation rows over the fix round's guards in `tagging/backlog.py` and `backlog_cli.py` against `tests/test_tag_backlog.py`, and 19 survived. The unit's own table killed its 16 rows, so these survivors remain:
+- `_fixed_target`'s own folder branch, which no shipped folder name reaches, since every one routes by keyword in another case, and its sub alias test;
+- `not edit.writes` on the settled path, and `_edit`'s `TaxonomyError` catch;
+- `alone` against `carrying` in the alias reach, and the exact case tests in the folder's row count;
+- `follow` and `asked` in the campaign's last two steps;
+- the joining row's route test and its check row, and the unread check row;
+- `text=text` on the `--catalogue` branch of `_plan`, where every word would read `no-copy` with the flag and no test would notice;
+- the Discogs `unasked` set copied from `suggest_cli`.
+
+**Measured cost.** Unpinned behaviour, so a later change could break any of them with a green suite. None was driven to a wrong report by round two.
+
+**Closes when:** each has a test that kills its mutant, `--catalogue`'s copy text first. Ledger only.
