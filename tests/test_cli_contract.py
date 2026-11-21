@@ -2663,6 +2663,14 @@ UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
             "U288's brief. The gate, its explicit two act answer, the removal and "
             "its refusals are driven in tests/test_sync_removed.py."
         ),
+        "sync.removed.retire": (
+            "asked only by sync removed --retire over a synced playlist the "
+            "account no longer lists whose id answered not found, and the "
+            "conformance sample passes no flag and downloaded nothing, so it asks "
+            "the account nothing and ends NO_OP with no gate (U320). The gate, its "
+            "explicit two act answer, the retirement and its abort are driven in "
+            "tests/test_sync_removed_gone.py."
+        ),
         "rebuild.accept": (
             "asked only by rebuild --tree naming a tree no rebuild can "
             "reproduce, the intake tree above all, that a restore marked "
@@ -4128,12 +4136,13 @@ EXPECTED_UNREACHABLE_GATES = frozenset(
         "sync.twins.approve",
         "rebuild.accept",
         "sync.removed.confirm",
+        "sync.removed.retire",
     }
 )
 
 
 def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
-    """Eleven gates are exempt. A twelfth one is a decision, not a diff.
+    """Twelve gates are exempt. A thirteenth one is a decision, not a diff.
 
     The sixth, ``intake.shelve.native``, joined with U154, decided there: the
     verb asks only over a plan that moves a batch, approving one writes a path
@@ -4177,7 +4186,11 @@ def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
     a plan that offers a row, which needs a pass landed into a native intake
     tree and read again with a track taken off, and the conformance fixture
     downloaded nothing. tests/test_sync_removed.py drives the gate's two acts,
-    the removal and its refusals.
+    the removal and its refusals. The twelfth, ``sync.removed.retire``, joined
+    with U320: it is asked only by ``--retire`` over a playlist the account no
+    longer lists whose id answered not found, and the sample passes no flag.
+    tests/test_sync_removed_gone.py drives its two acts, the retirement and
+    its abort.
 
     Note what this pin does NOT prove, so nobody reads more into a green run than
     is there: the map is still a named exemption, not a drive of the unreadable

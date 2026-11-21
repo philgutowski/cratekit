@@ -1396,6 +1396,10 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # understood. Read as empty, it would refuse every mark it holds, so
         # the one verb that can take a mark off could take none off.
         "sync-mark-record-unusable": ExitCode.PRECONDITION,
+        # U320. The record of the synced playlists the account answered not
+        # found for is present and cannot be understood, or locked. Read as
+        # empty, it would forget every retirement and every first sighting.
+        "sync-unavailable-record-unusable": ExitCode.PRECONDITION,
         # ── U20's refusals, appended for the reason given above ─────────────
         #
         # A tree cannot flip while a run is still open, while an intake XML is
