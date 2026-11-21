@@ -26,11 +26,11 @@ KEBAB_LITERALS = {
     # 2026-11-05, U205: the app credentials' catalogue client refuses a rejected
     # or unreadable app credential.
     'acquire/catalogue_api.py': ['credential-missing'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'acquire/cli.py': [
         'acquire-refused',  # 2026-11-01, U169: the warning naming a declined track.
         'adapter-broken',
         'auth-failed',
-        'config-unusable',
         'format-undecided',
         'intake-list-unusable',
         'internal-error',
@@ -104,10 +104,10 @@ KEBAB_LITERALS = {
         'version-match',
         'version-uncredited',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'acquire/match_cli.py': [
         'acquisition-suppressed',
         'candidates-withheld',
-        'config-unusable',
         'intake-list-unusable',
         'reading-unsettled',
         'tombstone-over-owned',
@@ -199,10 +199,10 @@ LITERAL_HOLDERS = {
     ],
     # 2026-11-05, U205: a rejected or unreadable app credential.
     'acquire/catalogue_api.py': ['credential-missing'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'acquire/cli.py': [
         'adapter-broken',
         'auth-failed',
-        'config-unusable',
         'intake-list-unusable',
         'internal-error',
         'lossy-refused',
@@ -220,7 +220,8 @@ LITERAL_HOLDERS = {
         'unavailable-transient',
     ],
     'acquire/match.py': ['review-selection-invalid'],
-    'acquire/match_cli.py': ['config-unusable', 'intake-list-unusable'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'acquire/match_cli.py': ['intake-list-unusable'],
 }
 
 LITERAL_HOLDERS_WITH_INTEGER = frozenset({

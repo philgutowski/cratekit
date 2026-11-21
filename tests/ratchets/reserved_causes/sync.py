@@ -8,8 +8,8 @@ modules that moved, and put a dated comment on those entries.
 KEBAB_LITERALS = {
     'sync/artifacts.py': ['sync-artifacts-unusable', 'utf-8'],
     # 2026-11-05, R-1289: the sweep's warning naming each unread track.
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'sync/cli.py': [
-        'config-unusable',
         'not-built',
         'nothing-new',
         'sync-playlists-unread',
@@ -17,6 +17,7 @@ KEBAB_LITERALS = {
         'sync-playlists-withheld',
         'sync-source-not-queued',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'sync/mark_cli.py': [
         'already-marked',
         'changed-since-plan',
@@ -29,7 +30,6 @@ KEBAB_LITERALS = {
         'sync-mark-changed-since-plan',
         'sync-mark-no-pass',
         'sync-mark-record-unusable',
-        'sync-marks-blocked',
     ],
     # 2026-11-12, U242: the taken ledger's found prefix joined.
     'sync/mark_record.py': ['found-prefixed', 'sync-mark-record-unusable', 'utf-8'],
@@ -134,12 +134,12 @@ KEBAB_LITERALS = {
         'whitelist-violation',
     ],
     # 2026-11-12, U242: the strip verb joined.
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'sync/strip_cli.py': [
         'changed-since-plan',
         'internal-error',
         'nothing-left',
         'prefix-strip',
-        'sync-marks-blocked',
         'sync-strip',
         'sync-strip-changed-since-plan',
         'sync-strip-nothing',
@@ -153,12 +153,12 @@ KEBAB_LITERALS = {
         'sync-twins-missing',
         'sync-twins-nothing',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'sync/unmark_cli.py': [
         'already-unmarked',
         'internal-error',
         'marked-again',
         'renamed-since-mark',
-        'sync-marks-blocked',
         'sync-unmark',
         'sync-unmark-changed-since-plan',
         'sync-unmark-no-mark',
@@ -190,8 +190,8 @@ NAMED_WITH_OWN = {
 
 LITERAL_HOLDERS = {
     'sync/artifacts.py': ['sync-artifacts-unusable'],
-    'sync/cli.py': ['config-unusable'],
-    'sync/mark_cli.py': ['internal-error', 'sync-mark-record-unusable', 'sync-marks-blocked'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'sync/mark_cli.py': ['internal-error', 'sync-mark-record-unusable'],
     'sync/mark_record.py': ['sync-mark-record-unusable'],
     'sync/marks.py': ['sync-marks-blocked'],
     # 2026-10-10, U130: the sync pair verb joined.
@@ -218,9 +218,11 @@ LITERAL_HOLDERS = {
     'sync/release_cli.py': ['sync-release-not-a-twin', 'sync-release-unnamed'],
     'sync/run.py': ['sync-source-lookups-failed'],
     # 2026-11-12, U242: the strip verb joined.
-    'sync/strip_cli.py': ['internal-error', 'sync-marks-blocked'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'sync/strip_cli.py': ['internal-error'],
     # 2026-11-01, U149: the twins' stale plan, unverified read back and confinement.
     'sync/twins.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],
-    'sync/unmark_cli.py': ['internal-error', 'sync-marks-blocked'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'sync/unmark_cli.py': ['internal-error'],
     'sync/watermarks.py': ['sync-watermark-unusable'],
 }

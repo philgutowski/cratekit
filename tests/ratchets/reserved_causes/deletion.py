@@ -14,7 +14,6 @@ KEBAB_LITERALS = {
         'size-mismatch',
         'still-referenced',
     ],
-    'deletion/cli.py': ['config-unusable'],
     'deletion/library.py': ['canary-read-failed', 'deletion-evidence-incomplete', 'removal-sequence-unreadable'],
     'deletion/run.py': [
         'internal-error',
@@ -43,7 +42,6 @@ NAMED_WITH_INTEGER = frozenset({
 
 LITERAL_HOLDERS = {
     'deletion/candidates.py': ['deletion-evidence-incomplete', 'deletion-reference-set-incomplete'],
-    'deletion/cli.py': ['config-unusable'],
     'deletion/library.py': ['canary-read-failed', 'deletion-evidence-incomplete', 'removal-sequence-unreadable'],
     'deletion/run.py': ['internal-error', 'review-item-unknown', 'trash-unavailable'],
     'deletion/trash.py': ['trash-unavailable'],

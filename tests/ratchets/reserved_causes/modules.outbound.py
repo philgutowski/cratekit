@@ -7,7 +7,8 @@ modules that moved, and put a dated comment on those entries.
 
 KEBAB_LITERALS = {
     'modules/outbound/account.py': ['credential-missing', 'outbound-account-unbound', 'unavailable-transient'],
-    'modules/outbound/artifacts.py': ['outbound-artifacts', 'outbound-staging', 'utf-8'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'modules/outbound/artifacts.py': ['outbound-artifacts', 'outbound-staging'],
     'modules/outbound/folders.py': ['label-playlists', 'label-playlists-ambiguous', 'unavailable-transient'],
     'modules/outbound/ledger.py': ['outbound-ledger-unusable', 'outbound-record-moved', 'utf-8'],
     # 2026-10-15, U147: the account mirror joined.

@@ -6,6 +6,7 @@ modules that moved, and put a dated comment on those entries.
 """
 
 KEBAB_LITERALS = {
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'backup/cli.py': [
         'backup-already-queued',
         'backup-comparison',
@@ -14,17 +15,16 @@ KEBAB_LITERALS = {
         'backup-nothing-ran',
         'backup-rehearsal',
         'backup-transfer-failed',
-        'config-unusable',
         'internal-error',
     ],
 }
 
 LITERAL_HOLDERS = {
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'backup/cli.py': [
         'backup-facts-unreadable',
         'backup-nothing-ran',
         'backup-transfer-failed',
-        'config-unusable',
         'internal-error',
     ],
 }

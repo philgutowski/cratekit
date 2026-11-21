@@ -6,9 +6,9 @@ modules that moved, and put a dated comment on those entries.
 """
 
 KEBAB_LITERALS = {
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'vocals/cli.py': [
         'analysis-write-failed',
-        'config-unusable',
         'folder-absent',
         'internal-error',
         'job-unknown',
@@ -20,9 +20,9 @@ KEBAB_LITERALS = {
 }
 
 LITERAL_HOLDERS = {
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'vocals/cli.py': [
         'analysis-write-failed',
-        'config-unusable',
         'internal-error',
         'job-unknown',
         'module-extras-missing',

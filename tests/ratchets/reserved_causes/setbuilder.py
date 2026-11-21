@@ -6,8 +6,8 @@ modules that moved, and put a dated comment on those entries.
 """
 
 KEBAB_LITERALS = {
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'setbuilder/cli.py': [
-        'config-unusable',
         'library-root-absent',
         'setbuild-anchor-ambiguous',
         'setbuild-anchor-not-indexed',
@@ -19,8 +19,8 @@ KEBAB_LITERALS = {
 }
 
 LITERAL_HOLDERS = {
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'setbuilder/cli.py': [
-        'config-unusable',
         'library-root-absent',
         'setbuild-anchor-ambiguous',
         'setbuild-anchor-not-indexed',

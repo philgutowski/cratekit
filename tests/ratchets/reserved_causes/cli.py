@@ -112,9 +112,10 @@ KEBAB_LITERALS = {
         'intake-list-unusable',  # 2026-11-11, R-1499: a folder its tail cannot list.
         'label-sync-landing-unrecorded',
     ],
-    'cli/output.py': ['awaiting-human-action'],
+    # 2026-11-21, U298: the one config load and the gate lookup's refusal joined, home to every verb's.
+    'cli/output.py': ['awaiting-human-action', 'config-unusable', 'internal-error'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'cli/rebuild.py': [
-        'config-unusable',
         'internal-error',
         'job-unknown',
         'no-derivable-tree',  # 2026-11-05, U219
@@ -157,7 +158,8 @@ KEBAB_LITERALS = {
         'not-imported',
         'not-judged',
     ],
-    'cli/reports.py': ['config-unusable', 'report-as-of-invalid'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'cli/reports.py': ['report-as-of-invalid'],
     'cli/review.py': [
         'review-file-unusable',
         'review-selection-invalid',
@@ -218,9 +220,9 @@ KEBAB_LITERALS = {
         'waiting-at-acknowledgment',
         'waiting-at-gate',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'cli/tail.py': [
         'backup-acknowledgment-missing',
-        'config-unusable',
         'decision-required',
         'internal-error',
         # 2026-11-05, U212: the name step's refusal it reads for a second copy.
@@ -228,7 +230,6 @@ KEBAB_LITERALS = {
         'source-missing',
     ],
     'cli/verbs/login.py': ['credential-missing', 'utf-8'],
-    'cli/verbs/profile.py': ['config-unusable'],
     # 2026-10-31, U168: run decide --continue names the answer it continued on.
     'cli/verbs/runs.py': ['decision-recorded', 'decision-unknown-gate', 'run-not-continuable'],
     # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
@@ -236,8 +237,8 @@ KEBAB_LITERALS = {
     # the literals new to the package; the rest were already declared.
     # Measured on the merged tree; do not bring back a package-wide total tuple.
     # 2026-10-12, U133: the keyword rule warning joined.
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'cli/verbs/taxonomy.py': [
-        'config-unusable',
         'internal-error',
         'taxonomy-nothing-to-upgrade',
         'taxonomy-upgrade-held',
@@ -327,9 +328,9 @@ LITERAL_HOLDERS = {
     # 2026-11-01, U190: the tail and the landing, lifted out of the sync pass driver.
     # 2026-11-21, U293: the night pass joined.
     'cli/sync_night.py': ['intake-list-unusable', 'internal-error', 'job-driver-held', 'refused-by-policy'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'cli/tail.py': [
         'backup-acknowledgment-missing',
-        'config-unusable',
         'decision-required',
         'internal-error',
         'rename-incomplete',  # 2026-11-05, U212: read for a second copy.
@@ -362,9 +363,10 @@ LITERAL_HOLDERS = {
     ],
     'cli/handlers.py': ['internal-error'],
     'cli/jobs.py': ['internal-error', 'job-unknown'],
-    'cli/output.py': ['awaiting-human-action'],
+    # 2026-11-21, U298: the one config load and the gate lookup's refusal joined, home to every verb's.
+    'cli/output.py': ['awaiting-human-action', 'config-unusable', 'internal-error'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'cli/rebuild.py': [
-        'config-unusable',
         'internal-error',
         'job-unknown',
         'rebuild-actor-required',
@@ -373,7 +375,8 @@ LITERAL_HOLDERS = {
     # 2026-11-01, U182: the stale cancel's list says which jobs it cancelled.
     # 2026-11-06, R-1334: a gate's screen, an open gate's or a stale answer's.
     'cli/render.py': ['cancelled', 'decision-required', 'decision-stale'],
-    'cli/reports.py': ['config-unusable', 'report-as-of-invalid'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'cli/reports.py': ['report-as-of-invalid'],
     'cli/review.py': ['review-file-unusable', 'review-selection-invalid'],
     # 2026-11-21, U295: the night pass's schedule joined.
     'cli/schedule.py': [
@@ -391,14 +394,14 @@ LITERAL_HOLDERS = {
         'library-volume-unmounted',
     ],
     'cli/verbs/login.py': ['credential-missing'],
-    'cli/verbs/profile.py': ['config-unusable'],
     # 2026-10-31, U168: a run with no command line to continue is refused.
     'cli/verbs/runs.py': ['decision-unknown-gate', 'run-not-continuable'],
     # 2026-11-21, U294: a new module, crate tag campaign.
     'cli/verbs/tag_campaign.py': ['config-unusable', 'internal-error', 'review-selection-invalid'],
     # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
     # a new module, crate taxonomy upgrade (U132). Measured on the merged tree.
-    'cli/verbs/taxonomy.py': ['config-unusable', 'internal-error'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'cli/verbs/taxonomy.py': ['internal-error'],
     # 2026-11-02, U194: a new module, crate taxonomy alias and folder.
     'cli/verbs/taxonomy_word.py': [
         'config-unusable',

@@ -9,8 +9,8 @@ KEBAB_LITERALS = {
     'tagging/artifacts.py': ['tag-artifacts', 'tag-staging', 'utf-8'],
     # 2026-10-31, U178: the --label refusal and the two label genre warnings joined.
     # 2026-11-11, U240: the copyright line's two label warning joined.
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'tagging/cli.py': [
-        'config-unusable',
         'label-unknown',
         'no-op',
         'source-missing',
@@ -33,8 +33,8 @@ KEBAB_LITERALS = {
     # 2026-11-01, U172: tag guess joined, its engine and its verb.
     'tagging/cyanite.py': ['utf-8'],  # 2026-11-13, U245
     'tagging/guess.py': ['tag-guess'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'tagging/guess_cli.py': [
-        'config-unusable',
         'source-missing',
         'tag-guess-file-not-read',
         'tag-guess-library-unread',
@@ -54,9 +54,8 @@ KEBAB_LITERALS = {
         'tag-remap',
         'word-declined',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'tagging/remap_cli.py': [
-        'config-unusable',
-        'internal-error',
         'remap-file-not-read',
         'remap-genre-written',
         'remap-left-alone',
@@ -77,8 +76,8 @@ KEBAB_LITERALS = {
         # 2026-11-01, R-1103: a file that would not take its corrected genre.
         'tag-retag-unwritten',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'tagging/retag_cli.py': [
-        'config-unusable',
         'library-row-not-updated',
         'no-op',
         'refused-by-policy',
@@ -103,9 +102,8 @@ KEBAB_LITERALS = {
         'tag-rows',
         'whitelist-violation',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'tagging/rows_cli.py': [
-        'config-unusable',
-        'internal-error',
         'rows-file-not-read',
         'rows-genre-written',
         'rows-leave-unmatched',
@@ -135,6 +133,7 @@ KEBAB_LITERALS = {
         'too-coarse',
         'word-unanswerable',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'tagging/backlog_cli.py': [
         'backlog-catalogue-unread',
         'backlog-files-unread',
@@ -142,9 +141,7 @@ KEBAB_LITERALS = {
         'backlog-remainder',
         'backlog-rows-joining',
         'backlog-words-asked',
-        'config-unusable',
     ],
-    'tagging/shell.py': ['internal-error'],
     'tagging/suggest.py': [
         'below-band',
         'file-has-genre',
@@ -155,9 +152,8 @@ KEBAB_LITERALS = {
         'tag-suggest',
         'utf-8',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'tagging/suggest_cli.py': [
-        'config-unusable',
-        'internal-error',
         'review-selection-invalid',
         'suggest-catalogue-unread',
         'suggest-file-has-genre',
@@ -215,27 +211,26 @@ NAMED_WITH_INTEGER = frozenset({
 
 LITERAL_HOLDERS = {
     # 2026-10-31, U178: tag folder refuses a --label nobody registered.
-    'tagging/cli.py': ['config-unusable', 'label-unknown', 'source-missing'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'tagging/cli.py': ['label-unknown', 'source-missing'],
     # 2026-11-01, U172: tag guess's verb joined.
-    'tagging/guess_cli.py': ['config-unusable', 'source-missing'],
-    'tagging/remap_cli.py': ['config-unusable', 'internal-error', 'tag-remap-unwritten'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'tagging/guess_cli.py': ['source-missing'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'tagging/remap_cli.py': ['tag-remap-unwritten'],
     # 2026-11-01, R-1103: a file that would not take its corrected genre.
     'tagging/retag.py': ['tag-retag-unwritten'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'tagging/retag_cli.py': [
-        'config-unusable',
         'refused-by-policy',
         'source-missing',
         'tag-retag-folder-unknown',
     ],
-    'tagging/backlog_cli.py': ['config-unusable'],  # 2026-11-21, U292
     'tagging/rows.py': ['decision-stale', 'internal-error', 'whitelist-violation'],
-    'tagging/rows_cli.py': ['config-unusable', 'internal-error'],
     # 2026-11-12, U244: a Discogs token the API rejected, or the keychain could not read.
     'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable', 'credential-missing'],
-    'tagging/shell.py': ['internal-error'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'tagging/suggest_cli.py': [
-        'config-unusable',
-        'internal-error',
         'review-selection-invalid',
         'tag-suggest-unwritten',
     ],

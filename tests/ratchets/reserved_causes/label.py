@@ -15,8 +15,8 @@ KEBAB_LITERALS = {
     ],
     'label/artists_cli.py': ['unavailable-transient'],
     'label/catalogue.py': ['credential-missing', 'label-catalogue-unbound', 'unavailable-transient'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'label/cli.py': [
-        'config-unusable',
         'internal-error',
         'job-unknown',
         'label-catalogue-unbound',
@@ -74,6 +74,7 @@ KEBAB_LITERALS = {
     # 2026-11-01, R-1091: the kept release reads and their refusal.
     'label/kept_listing.py': ['label-listing-kept-unusable', 'utf-8'],  # 2026-11-05, U217.
     'label/kept_reads.py': ['label-playlists-reads-unusable', 'utf-8'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'label/mark_cli.py': [
         'internal-error',
         'label-mark',
@@ -84,7 +85,6 @@ KEBAB_LITERALS = {
         'not-in-batch',
         'retitled-since-built',
         'sync-mark-record-unusable',
-        'sync-marks-blocked',
     ],
     'label/marks.py': ['label-watermark-unusable', 'utf-8'],
     'label/playlists_cli.py': [
@@ -142,8 +142,8 @@ LITERAL_HOLDERS = {
     'label/approved_cli.py': ['label-list-unusable'],
     'label/artists_cli.py': ['unavailable-transient'],
     'label/catalogue.py': ['credential-missing', 'label-catalogue-unbound', 'unavailable-transient'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'label/cli.py': [
-        'config-unusable',
         'internal-error',
         'job-unknown',
         'label-catalogue-unbound',
@@ -175,7 +175,8 @@ LITERAL_HOLDERS = {
     # 2026-11-01, R-1091: the kept reads' refusal.
     'label/kept_listing.py': ['label-listing-kept-unusable'],  # 2026-11-05, U217.
     'label/kept_reads.py': ['label-playlists-reads-unusable'],
-    'label/mark_cli.py': ['internal-error', 'sync-mark-record-unusable', 'sync-marks-blocked'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'label/mark_cli.py': ['internal-error', 'sync-mark-record-unusable'],
     'label/marks.py': ['label-watermark-unusable'],
     # 2026-10-31, U191: the gate lookup refuses a missing declaration.
     'label/playlists_cli.py': [

@@ -6,11 +6,12 @@ modules that moved, and put a dated comment on those entries.
 """
 
 KEBAB_LITERALS = {
-    'adopt/apply.py': ['adoption-ledger-unusable', 'utf-8'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'adopt/apply.py': ['utf-8'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'adopt/apply_cli.py': [
         'adopt-entries-failed',
         'adoption-nothing-applicable',
-        'config-unusable',
         'decision-stale',
         'favorites-removals-owed',
         'favorites-skipped',
@@ -19,8 +20,8 @@ KEBAB_LITERALS = {
         'no-op',
     ],
     'adopt/approval.py': ['decision-required', 'decision-stale'],
-    'adopt/artifacts.py': ['adopt-artifacts', 'adopt-staging', 'utf-8'],
-    'adopt/genres_cli.py': ['config-unusable'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'adopt/artifacts.py': ['adopt-artifacts', 'adopt-staging'],
     'adopt/move.py': [
         'former-place-not-named-by-genre',
         'genre-names-no-style',
@@ -30,9 +31,9 @@ KEBAB_LITERALS = {
         'reading-names-neither-held',
         'withheld-by-verdict',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'adopt/move_cli.py': [
         'adopt-entries-failed',
-        'config-unusable',
         'decision-required',
         'decision-stale',
         'internal-error',
@@ -59,14 +60,13 @@ KEBAB_LITERALS = {
         'utf-8',
     ],
     'adopt/scan.py': ['needs-genre', 'not-a-path', 'online-only'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'adopt/scan_cli.py': [
         'adopt-item-absent',
         'collection-all-tombstones',
         'collection-empty',
-        'config-unusable',
         'no-op',
     ],
-    'adopt/shell.py': ['internal-error'],
 }
 
 NAMED_WITH_OWN = {
@@ -79,25 +79,23 @@ NAMED_WITH_INTEGER = frozenset({
 })
 
 LITERAL_HOLDERS = {
-    'adopt/apply.py': ['adoption-ledger-unusable'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'adopt/apply_cli.py': [
         'adopt-entries-failed',
-        'config-unusable',
         'decision-stale',
         'internal-error',
     ],
     'adopt/approval.py': ['decision-required', 'decision-stale'],
-    'adopt/genres_cli.py': ['config-unusable'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'adopt/move_cli.py': [
         'adopt-entries-failed',
-        'config-unusable',
         'decision-required',
         'decision-stale',
         'internal-error',
     ],
     'adopt/revert.py': ['adoption-file-unidentifiable', 'adoption-ledger-unusable'],
-    'adopt/scan_cli.py': ['adopt-item-absent', 'config-unusable'],
-    'adopt/shell.py': ['internal-error'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'adopt/scan_cli.py': ['adopt-item-absent'],
 }
 
 LITERAL_HOLDERS_WITH_INTEGER = frozenset({
