@@ -640,7 +640,7 @@ class Tree:
         }
         return _FileReading(found, top_level, aliases, _defined_names(tree))
 
-    # -- the import graph at import time, for rule four --------------------
+    # The import graph at import time, for rule four.
 
     @cached_property
     def loads(self) -> dict[str, frozenset[str]]:
