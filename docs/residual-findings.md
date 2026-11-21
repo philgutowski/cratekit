@@ -53702,3 +53702,87 @@ stops counting a hold the coordinator does not, with a test. Ledger only.
 **Measured cost.** Unpinned behaviour, so a later change could break any of them with a green suite. None was driven to a wrong report by round two.
 
 **Closes when:** each has a test that kills its mutant, `--catalogue`'s copy text first. Ledger only.
+
+---
+
+## R-1739. A plain acquire download, intake missing and sync bandcamp take no staging lock
+
+**Found:** at the plan of #850, U293, 2026-11-21.
+
+**The mechanism.** `core/staging_lock.py` is held by `crate sync land`, `crate label sync --go` and `crate sync night`, the passes the brief names. A plain `crate acquire download`, a job a person resumes by hand, and `crate sync bandcamp` (which stages into a batch folder of its own under the staging folder) take no lock, so one of them can still download beside a night pass.
+
+**Measured cost.** Not driven as a collision. R-1499's arrival check still refuses the night pass's landing over anything that arrived during its tail, so nothing lands wrong; the cost is a night pass refused at its landing and the tracks to sort by hand.
+
+**Closes when:** every verb that writes into the staging folder holds the lock, or the record says why one need not.
+
+---
+
+## R-1740. A night pass continued by hand to its gate is run again by the next night
+
+**Found:** at the review of #850, U293, 2026-11-21, round one finding 5.
+
+**The mechanism.** A firing the night's budget stopped records `continue_pass`, and the next firing runs `crate sync land --pass-run` on it. When the session at the Mac has already continued that pass by hand to its gate, the record still names the continue (`settle` reads only waits, not continues), so the next night runs the tail and `name apply` again and plans a second landing run on the same pass.
+
+**Measured cost.** Driven by the reviewer: a second open gate run on the same pass and a night with no `sync all`. Nothing is lost or landed twice: the second plan is over the same files and waits at its own gate.
+
+**Closes when:** the night settles a continue too, by the pass's land record or its open gate, or the crate-sync skill clears the night's record when it continues a night pass by hand.
+
+---
+
+## R-1741. Deleting the night budget's ledger frees a spent night
+
+**Found:** at the review of #850, U293, 2026-11-21, round one finding 8.
+
+**The mechanism.** `core/night_budget.py` reads a ledger that does not exist as a night that spent nothing, the rule for a fresh installation, so a ledger deleted by hand mid night gives the night its whole budget again. A ledger replaced with one it cannot read refuses.
+
+**Measured cost.** Driven by the reviewer with a hand deletion: a fresh 1,200 calls on the same night. The hour's budget, the night's lowered hour and one command's ceiling still hold every call, so the account sees at most 600 an hour. Nothing in Cratekit deletes the file.
+
+**Closes when:** the ledger's absence is told apart from a fresh installation, for example by the gate's own record of the night's mark.
+
+---
+
+## R-1742. A night pass stopped at its line reads failed, not blocked
+
+**Found:** at the review of #850, U293, 2026-11-21, round one finding 12.
+
+**The mechanism.** The dispatcher reads a park as blocked for the ceiling and the hour's budget only, so a night pass stopped by `provider-night-budget` ends with outcome `failed` and exit 42, where a pass meant to wait would read blocked.
+
+**Measured cost.** None on the night's own record or line, which say stopped and that the next night continues it. A wrapper reading the envelope's outcome, the U295 schedule's log above all, reads a failure.
+
+**Closes when:** the dispatcher reads the night's park as blocked, like the hour's.
+
+---
+
+## R-1743. One night firing spends at most one command's ceiling, so a large pass takes two nights
+
+**Found:** at the review of #850, U293, 2026-11-21, round one finding 4.
+
+**The mechanism.** Built at first so the night's line stood in for the per command ceiling, one firing sent 1,200 calls where any other command stops at 500. The fix round made the firing's line the lower of the night's remainder and the ceiling, the conservative reading of "every line only lowers". A pass needing more than 500 calls, about a hundred tracks at sitting 100's 42 calls per ten, stops at the night's line and is continued by the next firing.
+
+**Measured cost.** A pass over about 110 tracks lands over two nights rather than one unless the schedule fires twice a night. Not driven on a real account.
+
+**Closes when:** Phillip decides whether a night firing may spend past `[provider] calls_per_command`, or U295 schedules a second firing a night.
+
+---
+
+## R-1744. The night pass's second fix round was not reviewed
+
+**Found:** at the landing of #850, U293, 2026-11-21.
+
+**The mechanism.** METHOD caps a unit at two fix rounds, and U293 spent both: round one fixed the night's record as a snapshot, round two found that `settle` ended a wait on an answered gate or an empty folder, and the second fix (`04508be6`) made a wait end only on the pass's own native landing, read through `intake.native.landings_of_pass`. No third review read it.
+
+**Measured cost.** None measured. The fix is pinned by tests for an answered gate over staged tracks, a landed pass with another pass's file staged since, an emptied folder and an unreadable landing log, and by mutation rows N6 and N7. What a review would look at: a pass that is aborted and whose tracks are then left staged keeps the night refusing on the folder until they are landed or moved, which is the conservative reading; and `landings_of_pass` reading a library on the bridge rather than native, where no native landing is ever recorded and a wait would never settle by itself (the next firing that runs still writes a fresh record).
+
+**Closes when:** a review of `04508be6` against the night's record, or the attended night card reads one real night's record through a landing.
+
+---
+
+## R-1745. A dead night firing's mark charges every call made since, by anything, to tonight
+
+**Found:** at the review of #850, U293, 2026-11-21, round two finding 4.
+
+**The mechanism.** `night_budget.open_night` charges a mark left by a firing that never closed to tonight in full, whichever night it began in, so a crash is never a free night. A mark days old charges every call any command made since, the day's attended work included, and the refusal says the night pass spent them.
+
+**Measured cost.** Driven by the reviewer on a hand written ledger: a mark three nights old and the gate's total 5,000 past it read "the night pass has spent 5000 of the 1200", and that night did not run. The next night runs. Early and never late, as the ledger means, at the cost of one night and a sentence that credits the night with calls it did not make.
+
+**Closes when:** a dead mark is charged at most its own night's budget, or the gate records the night pass's own calls apart.
