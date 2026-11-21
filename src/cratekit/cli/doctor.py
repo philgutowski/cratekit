@@ -3939,7 +3939,9 @@ def _check_night_pass(inputs: _Inputs) -> Finding:
 
     title = "the last night pass"
     try:
-        record = sync_night.read_status()
+        # AS THINGS STAND NOW (review round one): a wait answered or landed
+        # since its firing reads as settled, never as still waiting.
+        record = sync_night.settle(sync_night.read_status())
     except ValueError as exc:
         return Finding(
             key=NIGHT_CHECK,

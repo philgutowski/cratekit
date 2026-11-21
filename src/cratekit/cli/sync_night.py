@@ -32,7 +32,8 @@ anything:
   had spent calls and queued a new pass behind the one waiting.
 * **It holds a night's budget.** ``[provider] night_calls`` across every
   firing of one night (:mod:`cratekit.core.night_budget`), held call by call
-  by the gate's night line (:func:`cratekit.core.provider_gate.night`), with
+  by the gate's night line (:func:`cratekit.core.provider_gate.night`), which
+  is the lower of what is left of the night and of one command's ceiling, with
   the hour lowered to ``[provider] night_calls_per_hour``. A night already
   spent refuses before any call.
 * **It continues its own pass.** A pass of its own that the night's budget,
@@ -43,6 +44,14 @@ IT NEVER APPROVES A GATE, NEVER MINTS THE ACKNOWLEDGMENT, NEVER WRITES THE
 DATABASE AND NEVER OPENS REKORDBOX. Nothing here decides a run, imports the
 acknowledgment's mint, or starts a process; the landing is planned by ``intake
 land`` and waits at its explicit gate for the session at the Mac.
+
+THE RECORD IS WHAT IS OWED, NOT THE LAST SNAPSHOT (review round one). A
+firing that refuses keeps a pass still waiting for the session or still to be
+continued, with every field its landing or its continue needs, and says only
+that it was refused; and every reader, ``--last``, doctor and the next firing,
+reads the record through :func:`settle`, so a wait the session has since
+ended, its gate answered or its staging folder emptied, is never shown as
+still waiting.
 
 ONE LINE OF STATUS, WHATEVER THE ENDING. The last firing's record is written
 to ``night_status``, with one line a person reads and the fields the next step
@@ -88,7 +97,17 @@ WAITING = "waiting"
 NOTHING = "nothing-new"
 STOPPED = "stopped"
 REFUSED = "refused"
-OUTCOMES: tuple[str, ...] = (WAITING_GATE, WAITING_ACK, WAITING, NOTHING, STOPPED, REFUSED)
+#: A wait the record names that has ended since: the gate was answered, or the
+#: staging folder no longer holds what the pass staged. Never written by a
+#: firing; :func:`settle` reads a record this way.
+SETTLED = "settled"
+OUTCOMES: tuple[str, ...] = (
+    WAITING_GATE, WAITING_ACK, WAITING, NOTHING, STOPPED, REFUSED, SETTLED,
+)
+
+#: The outcomes a later firing must not lose: a pass waiting for the session,
+#: or one the next firing continues.
+WAITS: tuple[str, ...] = (WAITING_GATE, WAITING_ACK)
 
 #: The stops waiting mends, after which the next firing continues the pass.
 CONTINUES: frozenset[str] = frozenset(
@@ -200,6 +219,7 @@ class _Firing:
             "staging": None,
             "land_name": None,
             "downloaded": None,
+            "download_refused": [],
             "reason": None,
             "continue_pass": None,
             "next": None,
@@ -213,9 +233,16 @@ class _Firing:
 
 
 def _spend_words(firing: _Firing) -> str:
+    if "calls" not in firing.fields:
+        return "no provider call made"
     calls = firing.fields.get("calls")
     if calls is None:
-        return "no provider call made"
+        # A TOTAL THAT COULD NOT BE READ AT THE CLOSE is said, never read as
+        # nothing spent (review round one); the next firing refuses over it.
+        return (
+            f"provider calls not read at the close, the night's "
+            f"{firing.fields.get('budget')} held until they are"
+        )
     return (
         f"{calls} provider call(s), {firing.fields.get('spent_tonight')} of the "
         f"night's {firing.fields.get('budget')}"
@@ -319,6 +346,63 @@ def _nothing_waits(cfg: config.Config, last: Mapping[str, Any] | None) -> None:
     )
 
 
+def _gate_open(run_id: str) -> bool | None:
+    """Whether ``run_id``'s landing gate is still open; None when it cannot be read."""
+    try:
+        state = gates.load(run_id)
+    except (CratekitError, AttributeError, KeyError, TypeError, ValueError, OSError):
+        return None
+    return state.open_gate == tail.LAND_GATE
+
+
+def _holds(folder: str | None) -> bool | None:
+    """Whether ``folder`` holds anything a landing would take; None when unread."""
+    from cratekit.intake.landing import listing  # noqa: PLC0415 - one module's reading
+
+    if not folder:
+        return None
+    path = Path(folder)
+    try:
+        if not path.exists():
+            return False
+        return bool(listing(path))
+    except OSError:
+        return None
+
+
+def settle(record: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The record as things stand now, not as the firing that wrote it left them.
+
+    A record names the last firing's ending, and a wait it names may have ended
+    since: the session answered the landing's gate, or landed the pass and the
+    staging folder emptied (review round one, finding 3). Such a record reads as
+    :data:`SETTLED`, its line saying what ended it. A wait whose gate or folder
+    cannot be read is left as written, since what it names may still wait.
+    """
+    if not record or record.get("outcome") not in WAITS:
+        return record
+    ended = None
+    if record.get("outcome") == WAITING_GATE and record.get("gate_run"):
+        if _gate_open(str(record["gate_run"])) is False:
+            ended = f"its gate run {record['gate_run']} has been answered"
+    if ended is None and _holds(record.get("staging")) is False:
+        ended = f"the staging folder {record.get('staging')} no longer holds its tracks"
+    if ended is None:
+        return record
+    settled = dict(record)
+    settled["was"] = record.get("outcome")
+    settled["outcome"] = SETTLED
+    settled["line"] = f"{record.get('line')}; since then {ended}, so nothing waits"
+    return settled
+
+
+def _owed(record: Mapping[str, Any] | None) -> bool:
+    """Whether a settled record names a pass a later firing must not lose."""
+    if not record:
+        return False
+    return record.get("outcome") in WAITS or bool(_continued(record))
+
+
 def _continued(last: Mapping[str, Any] | None) -> str | None:
     """The pass of its own the last firing left to continue, or None."""
     if not last or last.get("outcome") != STOPPED:
@@ -370,6 +454,11 @@ def _pass_fields(summary: Mapping[str, Any]) -> dict[str, Any]:
         "staging": summary.get("staging") or None,
         "land_name": summary.get("land_name") or None,
         "downloaded": downloaded if isinstance(downloaded, int) else None,
+        "download_refused": [
+            {"item_id": str(row.get("item_id")), "reason": str(row.get("reason"))}
+            for row in summary.get("download_refused") or ()
+            if isinstance(row, dict)
+        ],
     }
 
 
@@ -396,20 +485,29 @@ def _show_last(ctx: Context) -> Envelope:
             origin=_ORIGIN,
             detail={"status": str(status_path())},
         ) from None
-    if record is None:
-        detail = "no night pass has run on this installation"
-        status = "info"
-    else:
-        detail = record["line"]
-        status = "info"
+    record = settle(record)
+    rows = [
+        {"key": CHECK, "title": "night pass", "status": "info",
+         "detail": record["line"] if record else "no night pass has run on this installation",
+         "remedy": None}
+    ]
+    # EACH FIELD A LANDING NEEDS, as a row of its own, so the human output
+    # names them too and not only the JSON (review round one).
+    for name, title in (
+        ("outcome", "outcome"), ("gate_run", "gate run"), ("pass_run", "pass run"),
+        ("land_name", "pass name"), ("staging", "staging folder"), ("next", "next"),
+    ):
+        if record and record.get(name):
+            rows.append({"key": f"sync.night.{name}", "title": title, "status": "info",
+                         "detail": str(record[name]), "remedy": None})
+    if record and record.get("download_refused"):
+        refused = ", ".join(
+            f"{row.get('item_id')} ({row.get('reason')})" for row in record["download_refused"]
+        )
+        rows.append({"key": "sync.night.download_refused", "title": "download refused",
+                     "status": "info", "detail": refused, "remedy": None})
     return ctx.envelope(
-        data={
-            "checks": [
-                {"key": CHECK, "title": "night pass", "status": status, "detail": detail,
-                 "remedy": None}
-            ],
-            "summary": {"night": record},
-        },
+        data={"checks": rows, "summary": {"night": record}},
         outcome=Outcome.NO_OP,
     )
 
@@ -434,8 +532,17 @@ def _envelope(
     )
 
 
-def _refused(firing: _Firing, error: CratekitError) -> CratekitError:
-    """A refusal before or around the pass, its record written and carried."""
+def _refused(
+    firing: _Firing, error: CratekitError, last: Mapping[str, Any] | None
+) -> CratekitError:
+    """A refusal before or around the pass, its record written and carried.
+
+    A REFUSAL NEVER ERASES WHAT IS OWED (review round one, findings 1 and 2).
+    When the last record names a pass waiting for the session, or one the next
+    firing continues, the record is kept as it was, every field a landing or a
+    continue needs with it, and only its line and its ``firing`` say this
+    firing was refused.
+    """
     cause = error.cause
     if cause.reason == provider_gate.NIGHT:
         line_head = "refused: the night's provider budget"
@@ -445,7 +552,18 @@ def _refused(firing: _Firing, error: CratekitError) -> CratekitError:
         line_head = "refused"
     step = cause.remediation.steps[0] if cause.remediation.steps else None
     line = f"night of {firing.night}: {line_head}: {cause.message}"
-    record = firing.record(REFUSED, line, reason=cause.reason, next=step)
+    refusal = {"outcome": REFUSED, "night": firing.night, "run_id": firing.run_id,
+               "ended": _iso(_clock()), "reason": cause.reason, "line": line}
+    if _owed(last) and last is not None:
+        record = dict(last)
+        pass_line = str(last.get("pass_line") or last.get("line"))
+        record.update(
+            firing=refusal,
+            pass_line=pass_line,
+            line=f"{line}; still owed: {pass_line}",
+        )
+    else:
+        record = firing.record(REFUSED, line, reason=cause.reason, next=step, firing=refusal)
     trouble = _write_status(record)
     detail = {**dict(cause.detail or {}), "sync_night": record}
     if trouble:
@@ -460,17 +578,17 @@ def sync_night(ctx: Context) -> Envelope:
     started = _clock()
     firing = _Firing(night=night_budget.night_of(started), started=started, run_id=ctx.run.run_id)
     try:
+        last = settle(read_status())
+    except ValueError:
+        # A RECORD THAT CANNOT BE READ CONTINUES NOTHING, and the folder
+        # reading below still refuses a pass beside what waits.
+        last = None
+    try:
         _no_answer(ctx)
         cfg = tail.load_config(_ORIGIN)
         with staging_lock.held("crate sync night", run_id=ctx.run.run_id):
             rb_writer.assert_rekordbox_closed("crate sync night")
             _no_live_job()
-            try:
-                last = read_status()
-            except ValueError:
-                # A RECORD THAT CANNOT BE READ CONTINUES NOTHING, and the folder
-                # reading below still refuses a pass beside what waits.
-                last = None
             pass_run = _continued(last)
             if pass_run is None:
                 _nothing_waits(cfg, last)
@@ -489,9 +607,12 @@ def sync_night(ctx: Context) -> Envelope:
                     code, envelope = tail.dispatch(argv)
             finally:
                 spent = night_budget.close_night(opened)
-                firing.fields.update(calls=spent, spent_tonight=opened.spent_before + spent)
+                firing.fields.update(
+                    calls=spent,
+                    spent_tonight=None if spent is None else opened.spent_before + spent,
+                )
     except CratekitError as exc:
-        raise _refused(firing, exc) from None
+        raise _refused(firing, exc, last) from None
     return _ended(ctx, firing, code, envelope, continued=pass_run)
 
 
@@ -504,6 +625,13 @@ def _ended(
     if continued and not firing.fields.get("pass_run"):
         firing.fields["pass_run"] = continued
     spend = _spend_words(firing)
+    refused = firing.fields.get("download_refused") or []
+    if refused:
+        # A TRACK THE DOWNLOAD REFUSED IS NAMED IN THE LINE (review round one),
+        # since a pass that waits at its gate is landed without its own run.
+        spend += f"; {len(refused)} track(s) refused by the download: " + ", ".join(
+            f"{row['item_id']} ({row['reason']})" for row in refused
+        )
     head = f"night of {firing.night}"
     if continued:
         head += f", continuing pass {continued}"
@@ -518,7 +646,7 @@ def _ended(
         if stopped == tail.LAND_GATE:
             gate_run = firing.fields.get("gate_run")
             line = (
-                f"{head}: downloaded, tagged, analysed and named, and waiting at the "
+                f"{head}: downloaded, tagged, analysed and named, and waits at the "
                 f"landing gate under run {gate_run}; {spend}; at the Mac, the crate-sync "
                 f"skill lands it from crate sync night --last"
             )

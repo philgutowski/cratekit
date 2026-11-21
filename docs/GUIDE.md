@@ -289,14 +289,21 @@ unattended run needs, each a refusal before any provider call:
 - It holds a night's budget, `[provider] night_calls` (1,200) across every
   firing from noon to noon, counted in the one provider gate across every
   process and charged before its first call, and lowers the hour to
-  `[provider] night_calls_per_hour` (600). A call past the night's line is
-  not sent and the pass stops as `provider-night-budget`; the next night's
-  pass continues it with `--pass-run`, as it does a pass the hour, a cooldown
-  or the ceiling stopped.
+  `[provider] night_calls_per_hour` (600). One firing's line is the lower of
+  what is left of the night and one command's ceiling, `[provider]
+  calls_per_command` (500), so a firing never spends past either. A call past
+  the line is not sent and the pass stops as `provider-night-budget`; the
+  next firing continues it with `--pass-run`, as it does a pass the hour or a
+  cooldown stopped.
 - Whatever the ending it leaves one line: `crate doctor` shows it as
-  `sync.night`, and `crate sync night --last` prints the record (the line,
-  the gate's run, the pass, the staging folder, the calls spent) and runs
-  nothing.
+  `sync.night`, and `crate sync night --last` prints the line and, a row
+  each, the outcome, the gate's run, the pass run, the pass name, the
+  staging folder, what to do next and any track the download refused, and
+  runs nothing (`--output json` carries them under `data.summary.night`). A
+  firing that refuses keeps a pass still waiting or still to continue, and
+  says it was refused in front of the line. A wait the session has since
+  ended, its gate answered or its staging folder emptied, reads as
+  `settled`.
 
 At the Mac, a pass that waits at the landing gate goes straight to the
 rehearsal and the landing with the run, pass and staging folder `--last`
@@ -1436,7 +1443,7 @@ Read the refusal's reason and remedy before retrying, then `crate doctor`.
 | A resume that refuses the same way | `crate job cancel JOB_ID` and queue a fresh one. |
 | `provider-call-ceiling` | The command hit the provider call ceiling (`[provider] calls_per_command`, 500). Run the printed command; `--calls N` raises it for one run, as `crate --calls N job resume JOB_ID`, with `--calls-per-hour` beside it when N is above the hour's budget, 1,500. |
 | `provider-budget` | The account, or the app credentials, has made as many provider calls in the last hour as this command may (`[provider] calls_per_hour`, 1,500, reads stopping at 1,125), counted across every command and copy. Wait until the time it names, then run it again or `crate job resume JOB_ID`; `crate --calls-per-hour N` raises the hour for one run. A `--calls` above the whole hour is refused the same way: lower it, or raise the hour with it. A `label sync` walk over every label refuses first when its estimate will not fit; ask one label with `--next --label NAME`. |
-| `provider-night-budget` | The night pass has made as many provider calls tonight as `[provider] night_calls` allows (1,200, noon to noon, counted across every process), or what it spent cannot be read. Nothing to do: the next night's pass continues it, or continue it at the Mac with `crate sync land --pass-run RUN`. |
+| `provider-night-budget` | The night pass has made as many provider calls as its line allows, the lower of what is left of `[provider] night_calls` (1,200, noon to noon, counted across every process) and one command's ceiling (500), or what it spent cannot be read. Nothing to do: the next night's pass continues it, or continue it at the Mac with `crate sync land --pass-run RUN`. |
 | `staging-held` | Another pass is downloading into the staging folder (`sync land`, `label sync --go` or `sync night`), named in the message. Wait for it to end, then run this again. |
 | `rekordbox-absence-unconfirmed` | A process the check could not read, usually one still exiting. Wait, then continue with the printed `crate --run RUN_ID ...`. Inspect with `ps -p PID -o pid,stat,comm`. |
 | `backup-acknowledgment-missing` | [The backup acknowledgment](#the-backup-acknowledgment). |

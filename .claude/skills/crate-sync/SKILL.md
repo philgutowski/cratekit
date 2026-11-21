@@ -63,13 +63,15 @@ and branch on `data.summary.night.outcome`:
   and go to step 3 with `STAGING` from `data.summary.night.staging`, `PASS`
   from `data.summary.night.land_name` and `GATE_RUN` from
   `data.summary.night.gate_run`; for the report, `data.summary.night.pass_run`
-  is the pass.
+  is the pass and `data.summary.night.download_refused` the tracks the
+  download refused, which step 2's own reading would otherwise have given.
 - **`waiting-at-acknowledgment`.** Mint the acknowledgment as below, then
   continue the night's pass with `crate --output json sync land --pass-run
   PASS_RUN`, the run in `data.summary.night.pass_run`, and read it as below.
 - **Anything else**, or no record: run the pass below. A night that stopped
   or was refused says why in `data.summary.night.line`; carry it into the
-  report.
+  report. `settled` means the session already answered the night's gate or
+  landed its tracks.
 
     crate --output json sync land
 

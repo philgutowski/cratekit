@@ -761,10 +761,12 @@ nobody watching, for a schedule overnight, stopping at the landing's gate. It
 answers no gate, refuses beside rekordbox, a live job driver, the staging lock
 and a staging folder holding what a landing takes, holds the **night's
 budget** (`[provider] night_calls`, 1,200, noon to noon across every firing,
-read off the gate's running total and charged before the first call, its
-hour lowered to `[provider] night_calls_per_hour`, 600; a call past it parks
+read off the gate's running total and charged before the first call; one
+firing's line is the lower of what is left and one command's ceiling, and its
+hour is lowered to `[provider] night_calls_per_hour`, 600; a call past it parks
 as `provider-night-budget`), continues its own pass a wait would mend, and
-leaves one line, doctor's `sync.night`, that `--last` prints with its fields.
+leaves one line, doctor's `sync.night`, that `--last` prints with its fields. A
+refused firing keeps a pass still owed; a wait since ended reads `settled`.
 
 ### Staging lock
 `core/staging_lock.py` (U293): one advisory lock, held by `sync land`,

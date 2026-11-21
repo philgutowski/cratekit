@@ -102,16 +102,14 @@ breaker, and a refusal of either is a park and never a retry.
 THE NIGHT'S LINE (U293). The night pass, ``crate sync night``, runs with
 nobody watching, so it holds a line of its own: :func:`night` opens it inside
 the command's scope with the gate's running total when the night's firing
-began and what is left of the night's budget, and every call asks, under the
-lock and before the send, whether the gate's total has moved that far since.
-It counts every process that reads the gate, so it can stop early and never
-late, and a total that has fallen below the mark, a state file replaced, is a
-spend nobody can read and stops the call too. Past it the call parks as
-:data:`NIGHT`. The line this process opened IS the command's ceiling while it
-holds, so the per command ceiling is not asked beside it; one read off the
-environment, a detached child's, is held beside the ceiling, so a variable
-only ever lowers. The hour is lowered to the night's own hour for the length
-of the scope, and nothing here raises a line.
+began and the lower of what is left of the night's budget and what is left of
+the command's ceiling, and every call asks, under the lock and before the
+send, whether the gate's total has moved that far since. It counts every
+process that reads the gate, so it can stop early and never late, and a total
+that has fallen below the mark, a state file replaced, is a spend nobody can
+read and stops the call too. Past it the call parks as :data:`NIGHT`. The
+ceiling is still asked beside it, and the hour is lowered to the night's own
+hour for the length of the scope: every line here only ever lowers.
 
 WHAT IT DOES NOT COVER. The vendored downloader fetches media segments through
 its own session against a content delivery host. Those are not calls to the
@@ -452,9 +450,6 @@ class Command:
     declared: bool = False
     #: The night pass's line while :func:`night` holds it, else None (U293).
     night: Night | None = None
-    #: Whether :func:`night` in this process opened that line, which alone
-    #: stands in for the ceiling; a line read off the environment does not.
-    night_owned: bool = False
 
     def spent(self) -> int:
         return max(0, _PROCESS_CALLS - self.started)
@@ -568,16 +563,22 @@ def night(
     """Hold the open command to the night pass's line for the body (U293).
 
     ``start`` is the gate's running total when the firing began, ``calls``
-    what is left of the night's budget, and ``label`` the night. The hour is
-    lowered to the lower of ``calls_per_hour`` and the hour the command
-    already runs under; nothing here raises a line. Both reach a detached
+    what is left of the night's budget, and ``label`` the night. The line is
+    the lower of ``calls`` and what is left of the command's ceiling, so the
+    night's line is met first and the ceiling never stands in for it (review
+    round one: a firing once sent 1,200 calls where a command stops at 500).
+    The hour is lowered to the lower of ``calls_per_hour`` and the hour the
+    command already runs under; nothing here raises a line. Both reach a detached
     child through the environment while the body runs, and the scope is put
     back as it was after. Only a verb opens it, inside the dispatcher's scope.
     """
     scope = _COMMAND
     if scope is None:
         raise RuntimeError("the night's line is opened inside a command's scope only")
-    held = Night(start=max(0, int(start)), budget=max(0, int(calls)), night=label)
+    left_of_ceiling = max(0, ceiling(settings) - scope.spent())
+    held = Night(
+        start=max(0, int(start)), budget=max(0, min(int(calls), left_of_ceiling)), night=label
+    )
     if scope.night is not None:
         # NESTED, THE LOWER LINE HOLDS: what is left of the outer night's
         # budget, read against its own mark, is never widened by an inner one.
@@ -586,15 +587,14 @@ def night(
         if left < held.budget:
             held = Night(start=held.start, budget=max(0, left), night=held.night)
     hour = min(hourly(settings), max(1, int(calls_per_hour)))
-    before = (scope.night, scope.hourly, scope.night_owned)
+    before = (scope.night, scope.hourly)
     scope.night = held
     scope.hourly = hour
-    scope.night_owned = True
     try:
         with _exported(NIGHT_ENV, held.to_env()), _exported(BUDGET_ENV, hour):
             yield held
     finally:
-        scope.night, scope.hourly, scope.night_owned = before
+        scope.night, scope.hourly = before
 
 
 def _night() -> Night | None:
@@ -1236,9 +1236,10 @@ class Gate:
             message = (
                 f"the night pass of {held.night} has made {spent} {calls} to the "
                 f"streaming provider since it began, counted from every command and "
-                f"copy that reads this gate, and {held.budget} were left of the "
-                f"night's budget, [provider] night_calls, so it stopped before the "
-                f"next call and the remaining items stay queued"
+                f"copy that reads this gate, and its line was {held.budget}, the lower "
+                f"of what was left of the night's budget, [provider] night_calls, and "
+                f"of one command's ceiling, [provider] calls_per_command, so it "
+                f"stopped before the next call and the remaining items stay queued"
             )
         return Cause(
             reason=NIGHT,
@@ -1360,9 +1361,8 @@ class Gate:
                         scope.stopped = cause
                     raise self._stopped(cause)
                 # THE NIGHT'S LINE, AFTER THE HOUR (U293), read off the gate's
-                # running total so every process the night started is counted.
-                # While it holds it is the command's ceiling, so the ceiling
-                # below is not asked beside it.
+                # running total so every process the night started is counted,
+                # and before the ceiling, which still holds beside it.
                 held_night = _night()
                 if held_night is not None and (
                     state.calls - held_night.start >= held_night.budget
@@ -1372,11 +1372,7 @@ class Gate:
                     if scope is not None:
                         scope.stopped = cause
                     raise self._stopped(cause)
-                # ONLY A LINE THIS PROCESS'S :func:`night` OPENED stands in for
-                # the ceiling. One read off the environment, a detached child's
-                # or a shell's, is held beside the ceiling, so a variable can
-                # only ever lower what a command may spend.
-                if scope is not None and not scope.night_owned:
+                if scope is not None:
                     line = ceiling(self.settings)
                     if scope.spent() >= line:
                         # BEFORE THE SEND, so the count at the stop is the

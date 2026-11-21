@@ -106,25 +106,40 @@ def test_a_total_below_the_mark_is_a_spend_nobody_can_read_and_stops(tmp_path, c
     assert "cannot be read" in caught.value.cause.message
 
 
-def test_the_line_this_process_opened_stands_in_for_the_command_ceiling(tmp_path, clock):
-    """The night's budget is the command's ceiling while it holds: a ceiling of
-    two does not stop a night with four left."""
+def test_the_nights_line_is_held_to_what_is_left_of_the_command_ceiling(tmp_path, clock):
+    """Review round one: the night's line once stood in for the ceiling, and a
+    firing sent 1,200 calls where a command stops at 500. The line is now the
+    lower of the two, met first, so the stop names the night."""
     gate = _gate(tmp_path, clock, calls_per_command=2)
     transport = Transport()
 
     with provider_gate.command():
-        with provider_gate.night(0, 4, "n", calls_per_hour=600, settings=gate.settings):
-            for _ in range(4):
+        with provider_gate.night(0, 4, "n", calls_per_hour=600, settings=gate.settings) as held:
+            assert held.budget == 2
+            for _ in range(2):
                 _send(gate, transport)
             with pytest.raises(jobs.Parked) as caught:
                 _send(gate, transport)
-        # AND THE CEILING IS BACK THE MOMENT THE LINE CLOSES.
-        with pytest.raises(jobs.Parked) as after:
+
+    assert len(transport.calls) == 2
+    assert caught.value.cause.reason == provider_gate.NIGHT
+    assert "[provider] calls_per_command" in caught.value.cause.message
+
+
+def test_the_ceiling_still_holds_beside_a_line_above_it(tmp_path, clock):
+    """Asked beside the night's line, so even a line handed past the ceiling
+    by a parent's environment cannot widen a command."""
+    gate = _gate(tmp_path, clock, calls_per_command=2)
+    transport = Transport()
+
+    with provider_gate.command() as scope:
+        scope.night = Night(start=0, budget=10, night="n")
+        _send(gate, transport)
+        _send(gate, transport)
+        with pytest.raises(jobs.Parked) as caught:
             _send(gate, transport)
 
-    assert len(transport.calls) == 4
-    assert caught.value.cause.reason == provider_gate.NIGHT
-    assert after.value.cause.reason == provider_gate.CEILING
+    assert caught.value.cause.reason == provider_gate.CEILING
 
 
 def test_a_line_read_off_the_environment_is_held_beside_the_ceiling(
@@ -138,7 +153,6 @@ def test_a_line_read_off_the_environment_is_held_beside_the_ceiling(
 
     with provider_gate.command() as scope:
         assert scope.night == Night(start=0, budget=100, night="n")
-        assert not scope.night_owned
         _send(gate, transport)
         _send(gate, transport)
         with pytest.raises(jobs.Parked) as caught:
@@ -301,6 +315,42 @@ def test_a_spent_night_refuses_and_names_when_it_frees():
     assert cause.detail["frees_at"].startswith("2026-11-22T12:00")
 
 
+def test_a_dead_firings_mark_from_an_earlier_night_is_charged_to_tonight():
+    """Review round one: a firing that died before noon was free after it."""
+    _set_total(200)
+    night_budget.open_night(1200, now=AT_THREE - timedelta(days=1))  # never closed
+    _set_total(500)
+
+    opened = night_budget.open_night(1200, now=AT_THREE)
+
+    assert opened.spent_before == 300 and opened.remaining == 900
+
+
+def test_a_gate_unreadable_at_the_close_is_none_and_keeps_the_mark():
+    _set_total(10)
+    opened = night_budget.open_night(100, now=AT_THREE)
+    config.state_path(provider_gate.STATE_KEY).write_text("{")
+
+    assert night_budget.close_night(opened) is None
+    assert night_budget.read().open_start == 10
+
+
+def test_outside_any_command_a_line_off_the_environment_holds_the_call(
+    tmp_path, clock, monkeypatch
+):
+    """Review round one's zero row: the line is asked outside a scope too."""
+    gate = _gate(tmp_path, clock)
+    transport = Transport()
+    monkeypatch.setenv(provider_gate.NIGHT_ENV, "0:1:n")
+
+    _send(gate, transport)
+    with pytest.raises(jobs.Parked) as caught:
+        _send(gate, transport)
+
+    assert caught.value.cause.reason == provider_gate.NIGHT
+    assert len(transport.calls) == 1
+
+
 def test_a_dead_firings_mark_is_charged_in_full_and_folded_on_a_refusal():
     _set_total(0)
     night_budget.open_night(10, now=AT_THREE)  # never closed
@@ -356,7 +406,7 @@ def test_a_total_below_its_own_mark_at_close_keeps_the_mark():
     opened = night_budget.open_night(100, now=AT_THREE)
     _set_total(5)
 
-    assert night_budget.close_night(opened) == 0
+    assert night_budget.close_night(opened) is None
     assert night_budget.read().open_start == 50
 
 

@@ -234,7 +234,7 @@ def test_a_night_pass_reaches_the_landing_gate_and_answers_nothing_but_the_name_
     assert record["staging"] == str(_staging(cfg))
     assert record["land_name"] and record["pass_run"]
     assert record["night"] == _night()
-    assert "waiting at the landing gate under run land-run" in record["line"]
+    assert "waits at the landing gate under run land-run" in record["line"]
     assert envelope["data"]["summary"]["night"] == record
     # EVERY ANSWER IN THE CHAIN, read off the commands it ran: the tail's
     # name confirm, and nothing else.
@@ -433,7 +433,9 @@ def test_the_pass_runs_under_the_nights_line_and_hour(plain, one_pass):
 
     (line,) = one_pass.lines
     assert line is not None
-    assert line.start == 40 and line.budget == plain.provider.night_calls
+    # THE LOWER OF THE NIGHT'S BUDGET AND ONE COMMAND'S CEILING (review round one).
+    assert line.start == 40
+    assert line.budget == min(plain.provider.night_calls, plain.provider.calls_per_command)
     assert line.night == _night()
     assert one_pass.hours == [min(plain.provider.night_calls_per_hour, plain.provider.calls_per_hour)]
     assert one_pass.env == [line.to_env()]
@@ -467,7 +469,8 @@ def test_a_firing_that_died_is_charged_to_the_next_of_the_same_night(plain, one_
 
     (line,) = one_pass.lines
     # 100 finished, and 200 the dead firing moved the total by since its mark.
-    assert line.budget == plain.provider.night_calls - 300
+    assert line.budget == min(plain.provider.night_calls - 300, plain.provider.calls_per_command)
+    assert night_budget.read().spent >= 300
     assert line.start == 500
 
 
@@ -701,3 +704,152 @@ def test_the_night_never_reaches_tail_names_it_does_not_own():
     for name in ("LAND_GATE", "ACK_STOP", "NAME_GATE", "NAME_OPTION", "dispatch", "load_config"):
         assert hasattr(tail_chain, name), name
     assert Tail  # the stand in this file shares with the sync land suite
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 8. Review round one: the record is what is owed, not the last snapshot
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_refused_firing_keeps_the_pass_waiting_at_its_gate(machine, monkeypatch, tail):
+    """Finding 1: the firing after a waiting pass refuses on the occupied folder,
+    and once erased every field the landing needs."""
+    cfg, script = machine
+    _account(monkeypatch, script, "101", "102")
+    drive(["sync", "night"])
+    waiting = _status()
+    assert waiting["outcome"] == sync_night.WAITING_GATE
+
+    code, envelope = drive(["sync", "night"])
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    code, envelope = drive(["-d", "x=y", "sync", "night"])
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+
+    kept = _status()
+    for name in ("outcome", "gate_run", "pass_run", "staging", "land_name", "gate"):
+        assert kept[name] == waiting[name], name
+    assert kept["firing"]["outcome"] == sync_night.REFUSED
+    assert kept["firing"]["reason"] == "refused-by-policy"
+    assert kept["pass_line"] == waiting["line"]
+    assert kept["line"].endswith(f"still owed: {waiting['line']}")
+    code, envelope = drive(["sync", "night", "--last"])
+    assert envelope["data"]["summary"]["night"]["gate_run"] == "land-run"
+    assert envelope["data"]["summary"]["night"]["outcome"] == sync_night.WAITING_GATE
+
+
+def test_a_refused_firing_keeps_the_pass_the_next_night_continues(plain, monkeypatch):
+    """Finding 2: a budget stop, a refusal the same night, then the next night."""
+    monkeypatch.setattr(tail_chain, "dispatch", Pass(_stopped_by(provider_gate.NIGHT)))
+    drive(["sync", "night"])
+    staging = _staging(plain)
+    staging.mkdir(parents=True, exist_ok=True)
+    (staging / "101.wav").write_bytes(b"x")
+    monkeypatch.setattr(rb_writer, "rekordbox_processes_running", lambda: ("rekordbox",))
+    drive(["sync", "night"])
+    monkeypatch.setattr(rb_writer, "rekordbox_processes_running", lambda: ())
+    night_budget._write(
+        night_budget.Ledger(night=_night(), spent=plain.provider.night_calls),
+        night_budget.ledger_path(),
+    )
+    drive(["sync", "night"])
+    assert _status()["continue_pass"] == "pass-1"
+
+    later = datetime(2026, 11, 23, 3, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(sync_night, "_clock", lambda: later)
+    nxt = Pass()
+    monkeypatch.setattr(tail_chain, "dispatch", nxt)
+    code, envelope = drive(["sync", "night"])
+
+    assert code == int(ExitCode.OK), envelope
+    assert nxt.calls == [["sync", "land", "--pass-run", "pass-1"]]
+
+
+def _run_with_gate(run_id: str, *, open_: bool) -> None:
+    from cratekit.cli import gates
+
+    state = gates.RunState(run_id=run_id, verb="intake.land", created="then")
+    state.open_gate = tail_chain.LAND_GATE if open_ else None
+    gates.save(state)
+
+
+def test_a_wait_whose_gate_was_answered_reads_settled_everywhere(plain, one_pass):
+    """Finding 3: after the landing the record still said the pass waited."""
+    staging = _staging(plain)
+    staging.mkdir(parents=True, exist_ok=True)
+    (staging / "101.wav").write_bytes(b"x")
+    _write_status(
+        outcome=sync_night.WAITING_GATE, gate_run="2026-11-22T030000Z-land",
+        staging=str(staging), land_name="P", pass_run="R",
+        line="night of 2026-11-21: waits at the landing gate under run 2026-11-22T030000Z-land",
+    )
+    _run_with_gate("2026-11-22T030000Z-land", open_=True)
+    assert sync_night.settle(sync_night.read_status())["outcome"] == sync_night.WAITING_GATE
+
+    _run_with_gate("2026-11-22T030000Z-land", open_=False)
+
+    settled = sync_night.settle(sync_night.read_status())
+    assert settled["outcome"] == sync_night.SETTLED and settled["was"] == sync_night.WAITING_GATE
+    assert "has been answered" in settled["line"]
+    code, envelope = drive(["sync", "night", "--last"])
+    assert envelope["data"]["summary"]["night"]["outcome"] == sync_night.SETTLED
+    assert "nothing waits" in _doctor_row(plain).detail
+
+
+def test_a_wait_whose_staging_emptied_reads_settled_and_the_night_runs(plain, one_pass):
+    staging = _staging(plain)
+    staging.mkdir(parents=True, exist_ok=True)
+    _write_status(
+        outcome=sync_night.WAITING_ACK, staging=str(staging), land_name="P", pass_run="R",
+        line="night of 2026-11-21: the landing waits for the backup acknowledgment",
+    )
+
+    code, envelope = drive(["sync", "night"])
+
+    assert code == int(ExitCode.OK), envelope
+    assert one_pass.calls == [["sync", "land"]]
+
+
+def test_a_wait_whose_gate_and_folder_cannot_be_read_stays_as_written(plain):
+    _write_status(outcome=sync_night.WAITING_GATE, gate_run="no-such-run", staging=None,
+                  line="waits")
+    assert sync_night.settle(sync_night.read_status())["outcome"] == sync_night.WAITING_GATE
+
+
+@pytest.mark.parametrize("reason", sorted(sync_night.CONTINUES))
+def test_every_stop_waiting_mends_is_continued(plain, monkeypatch, reason):
+    """Review round one's zero row: each reason in the set, not only the night's."""
+    monkeypatch.setattr(tail_chain, "dispatch", Pass(_stopped_by(reason)))
+    drive(["sync", "night"])
+    assert _status()["continue_pass"] == "pass-1"
+
+
+def test_a_track_the_download_refused_is_named_in_the_record(machine, monkeypatch, tail):
+    """Finding 7: a pass that waits at its gate is landed without its own run."""
+    cfg, script = machine
+    _account(monkeypatch, script, "101", "107", lossy=("107",))
+
+    drive(["sync", "night"])
+
+    record = _status()
+    assert record["download_refused"] == [{"item_id": "107", "reason": "lossy-refused"}]
+    assert "107 (lossy-refused)" in record["line"]
+    code, envelope = drive(["sync", "night", "--last"])
+    rows = {row["key"]: row["detail"] for row in envelope["data"]["checks"]}
+    assert rows["sync.night.download_refused"] == "107 (lossy-refused)"
+    assert rows["sync.night.gate_run"] == "land-run"
+
+
+def test_a_gate_unreadable_at_the_close_is_said_not_read_as_nothing(plain, monkeypatch):
+    _gate_total(5)
+
+    def breaking(argv):
+        config.state_path(provider_gate.STATE_KEY).write_text("{")
+        return _ok({"checks": [], "summary": {"stopped_at": "sync"}}, "no_op")
+
+    monkeypatch.setattr(tail_chain, "dispatch", breaking)
+
+    drive(["sync", "night"])
+
+    record = _status()
+    assert record["calls"] is None and record["spent_tonight"] is None
+    assert "provider calls not read at the close" in record["line"]

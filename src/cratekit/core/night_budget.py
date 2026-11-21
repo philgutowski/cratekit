@@ -19,8 +19,8 @@ A FIRING IS CHARGED BEFORE ITS FIRST CALL. :func:`open_night` writes the
 gate's total as the firing's mark before anything is asked of the provider,
 and :func:`close_night` adds what the total moved by since and clears the
 mark. A firing that died between the two leaves its mark, and the next firing
-of the same night charges everything the total moved since it, so a crash is
-never a free night.
+charges everything the total moved since it to its own night, whichever night
+the dead one began in, so a crash is never a free night.
 
 WHAT CANNOT BE READ REFUSES. A ledger that cannot be parsed, a gate whose
 totals cannot be read, or a total below a firing's mark is a spend nobody can
@@ -173,9 +173,7 @@ def spent_tonight(now: datetime, *, path: Path | None = None) -> int:
     would charge it. For a report: it writes nothing."""
     target = path if path is not None else ledger_path()
     ledger = read(target)
-    if ledger.night != night_of(now):
-        return 0
-    spent = ledger.spent
+    spent = ledger.spent if ledger.night == night_of(now) else 0
     if ledger.open_start is not None:
         moved = _total(target) - ledger.open_start
         if moved < 0:
@@ -198,12 +196,16 @@ def open_night(budget: int, *, now: datetime, path: Path | None = None) -> Opene
     night = night_of(now)
     total = _total(target)
     spent = ledger.spent if ledger.night == night else 0
-    if ledger.night == night and ledger.open_start is not None:
+    if ledger.open_start is not None:
+        # A DEAD FIRING'S MARK IS CHARGED TO TONIGHT, whichever night it began
+        # in (review round one): a firing that died before noon and is read
+        # after it spent calls nobody can place, so they are tonight's, early
+        # and never late.
         moved = total - ledger.open_start
         if moved < 0:
             raise _unreadable(
                 "the provider gate's running total is below the mark an earlier "
-                "firing of tonight left",
+                "firing left",
                 target,
             )
         spent += moved
@@ -230,21 +232,19 @@ def open_night(budget: int, *, now: datetime, path: Path | None = None) -> Opene
     return Opened(night=night, start=total, spent_before=spent, budget=budget)
 
 
-def close_night(opened: Opened, *, path: Path | None = None) -> int:
+def close_night(opened: Opened, *, path: Path | None = None) -> int | None:
     """Add what this firing spent to its night and clear its mark; return the
-    calls it spent. A gate that cannot be read leaves the mark, so the next
-    firing charges it."""
+    calls it spent, or None when that cannot be read. A gate that cannot be
+    read, or a total below the mark, leaves the mark, so the next firing
+    refuses over it rather than reading this one as free."""
     target = path if path is not None else ledger_path()
     try:
         total = _total(target)
     except CratekitError:
-        return 0
+        return None
     spent = total - opened.start
     if spent < 0:
-        # A TOTAL BELOW THE MARK cannot say what this firing spent, so the mark
-        # stays and the next firing of tonight refuses over it rather than
-        # reading the firing as free.
-        return 0
+        return None
     _write(
         Ledger(night=opened.night, spent=opened.spent_before + spent, open_start=None), target
     )
