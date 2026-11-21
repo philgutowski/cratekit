@@ -20,10 +20,12 @@ it safe to share between cards. A whole block's edges move when somebody else
 removes a partner copy: ten copied lines of which eight are also copied a
 third time become an eight line block the day the ten line partner goes, and
 a digest of the whole block would then be a new digest in a package nobody
-touched. A window of six lines either still stands twice or it does not.
-Removing any copy anywhere can only shrink what is found, so one card's
-cleanup cannot redden another card's package, and a line whose copy is gone
-fails nothing.
+touched. A window of six lines either still stands twice or it does not, so
+removing a place of a copy can only shrink what is found, and a line whose
+copy is gone fails nothing. What can still form a window that was never
+there is an edit that brings two stretches of lines together, a deletion
+between them or a split that sets two functions side by side, and that is a
+new copy: it fails on the branch that made it, naming every place.
 
 The checker is a pure function over source text, measured by the same code
 the refactor's audit reads through. Fixture tests prove each half of the rule
@@ -175,6 +177,14 @@ def test_removing_a_block_with_its_line_still_on_the_allowance_passes():
     assert measure.over_allowance(_held(cleaned), allowed) == {}
 
 
+def test_an_allowance_is_its_own_packages_and_excuses_no_other():
+    """A window ``label`` and ``sync`` may hold is not one ``intake`` may copy."""
+    allowed = _held(_sources(label=_block(6), sync=_block(6)))
+    spread = _sources(label=_block(6), sync=_block(6), intake=_block(6))
+    excess = measure.over_allowance(_held(spread), allowed)
+    assert set(excess) == {"intake"} and sum(excess["intake"].values()) == 1
+
+
 def test_a_third_copy_of_an_allowed_block_in_the_same_package_fails():
     """The allowance counts places, so an allowed digest is not a licence to copy it again."""
     twice = {"src/cratekit/label/a.py": _block(6), "src/cratekit/label/b.py": _block(6)}
@@ -185,7 +195,7 @@ def test_a_third_copy_of_an_allowed_block_in_the_same_package_fails():
     assert sum(excess["label"].values()) == 1
 
 
-def test_one_packages_cleanup_never_reddens_another_package():
+def test_removing_a_partner_copy_does_not_fail_the_package_that_kept_its_lines():
     """The scenario windows exist for, with whole blocks shown failing it.
 
     ``adopt`` holds eight lines. ``tagging`` copies all eight and ``intake``
@@ -209,6 +219,28 @@ def test_one_packages_cleanup_never_reddens_another_package():
     blocks_after = {(run.path, run.logical) for run in measure.Copies(after).runs}
     assert ("src/cratekit/adopt/module.py", 8) in blocks_before
     assert ("src/cratekit/adopt/module.py", 7) in blocks_after
+
+
+def test_a_deletion_that_brings_two_stretches_together_is_a_new_copy():
+    """The limit of "cleanup only shrinks", stated as a test (the review's row 4).
+
+    ``sync`` holds two stretches back to back. ``label`` holds the same two
+    with other lines between them, so nothing is copied yet. When ``label``
+    deletes the lines between, it has made a copy of ``sync``'s lines, and
+    both places are reported on ``label``'s branch, as for any new copy.
+    """
+    first, second = _block(3, prefix="first"), _block(3, prefix="second")
+    before = _sources(sync=first + second, label=first + _block(2, prefix="between") + second)
+    assert _held(before) == {}
+    after = _sources(sync=first + second, label=first + second)
+    excess = measure.over_allowance(_held(after), _held(before))
+    assert set(excess) == {"label", "sync"}
+
+
+def test_overlapping_windows_in_one_file_are_two_places():
+    """Seven identical statements in a row read as a copy, as the survey's instrument read them."""
+    held = _held({"src/cratekit/label/module.py": "step = compute()\n" * 7})
+    assert sum(held["label"].values()) == 2
 
 
 def test_an_allowance_file_is_a_multiset_of_its_lines():

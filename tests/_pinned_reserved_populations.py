@@ -317,8 +317,6 @@ def read_package_pins(directory: Path) -> dict[str, dict[str, object]]:
                         f"{path.name} pins {key!r} in {name}, a module of {owner!r}: "
                         f"it belongs in {owner}.py"
                     )
-                if key in merged[name]:
-                    raise ValueError(f"{key!r} is pinned twice in {name}")
                 merged[name][key] = table[key] if isinstance(table, dict) else None
     return merged
 

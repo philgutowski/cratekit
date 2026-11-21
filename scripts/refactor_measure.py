@@ -26,7 +26,9 @@ A WINDOW is exactly six consecutive logical lines. The suite's allowance is
 held in windows and not in whole blocks, because the edges of a whole block
 move when somebody else removes a partner copy, and a package whose own lines
 did not change must never fail for that. A window either still occurs twice or
-it does not, so removing any copy anywhere can only shrink what is found.
+it does not, so removing a place of a copy can only shrink what is found. An
+edit that brings two stretches of lines together can form a window that was
+never there, and that is a new copy, failing on the branch that made it.
 
 A PACKAGE is the first directory under ``src/cratekit``, with ``modules`` read
 one level deeper (``modules.outbound``), and ``root`` for the files beside
@@ -37,8 +39,10 @@ something the rule forbids. Lines are only ever removed. A line whose finding
 is gone never fails anything, so one card's cleanup cannot redden another
 card's package; ``prune`` removes such lines and can add none.
 
-Standard library only, and it imports nothing of Cratekit: the verb registry,
-the toggles and the rules' own lists are read from source text.
+Standard library only, and it imports nothing of Cratekit: the verb registry
+and the rules' own lists are read from source text. Every reading is of what
+the source writes, so a module reached through ``importlib.import_module`` and
+a name reached through ``getattr`` with a string are seen by no rule.
 """
 
 from __future__ import annotations
@@ -226,14 +230,8 @@ def count_test_functions(source: str) -> int:
 # ── Copied blocks ───────────────────────────────────────────────────────────
 
 
-@dataclass(frozen=True, slots=True)
-class Logical:
-    """One logical line: where it starts and ends, and its tokens."""
-
-    start: int
-    end: int
-    text: str
-
+#: One logical line: the physical lines it starts and ends on, and its tokens.
+Logical = collections.namedtuple("Logical", "start end text")
 
 _STRING_TOKENS = frozenset(
     getattr(tokenize, name, -1)
@@ -283,22 +281,10 @@ def logical_lines(source: str, *, renamed: bool = False) -> list[Logical]:
     return out
 
 
-@dataclass(frozen=True, slots=True)
-class Place:
-    """One place a window stands: its file, and its first logical line's index."""
-
-    path: str
-    index: int
-
-
-@dataclass(frozen=True, slots=True)
-class Run:
-    """A maximal run of copied logical lines in one file: the survey's "block"."""
-
-    path: str
-    first_line: int
-    last_line: int
-    logical: int
+#: One place a window stands: its file, and its first logical line's index.
+Place = collections.namedtuple("Place", "path index")
+#: A maximal run of copied logical lines in one file: the survey's "block".
+Run = collections.namedtuple("Run", "path first_line last_line logical")
 
 
 class Copies:
@@ -1360,7 +1346,7 @@ def _lines_line(scope: str, texts: Mapping[str, str], out) -> None:
 
 
 def table_report(root: Path, out) -> int:
-    """Points 2 to 5 of U290 in one print. Exit 1 when an allowance is exceeded."""
+    """Points 2 to 5 of U290 in one print. Exit 1 when an allowance or the ceiling is exceeded."""
     source, tree, rules, verbs = _load(root)
     print("point 2, size", file=out)
     _lines_line(SOURCE, source, out)
@@ -1380,6 +1366,8 @@ def table_report(root: Path, out) -> int:
         print(f"  {count:6d}  {label}", file=out)
     found = import_findings(tree, rules, verbs)
     exceeded = _allowance_line(root, IMPORT_ALLOWANCES, found, out) or exceeded
+    names = {name for used in core_names(tree).values() for name in used}
+    exceeded = exceeded or len(names) > rules.names_ceiling
 
     tests = read_sources(root, ["tests"])
     print("point 5, tests", file=out)
@@ -1401,11 +1389,13 @@ def prune_report(root: Path, packages: Sequence[str], out) -> int:
         (IMPORT_ALLOWANCES, import_findings(tree, rules, verbs)),
     )
     status = 0
+    known = {package_of_path(path) for path in source}
     for package in packages:
         paths = [(root / directory / f"{package}.txt", found) for directory, found in readings]
-        if not any(path.is_file() for path, _ in paths):
+        if package not in known or not any(path.is_file() for path, _ in paths):
             print(f"{package}: no allowance file by that name", file=out)
             status = 2
+            continue
         for path, found in paths:
             if not path.is_file():
                 continue
@@ -1462,6 +1452,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None, *, root: Path = REPO_ROOT, out=None) -> int:
     out = out if out is not None else sys.stdout
     args = build_parser().parse_args(argv)
+    empty = [scope for scope in getattr(args, "paths", ()) if not python_files(root, scope)]
+    if empty:
+        print("no Python file is at or under: " + ", ".join(empty), file=out)
+        return 2
     if args.command == "lines":
         scopes = args.paths or [SOURCE, "tests"]
         for position, scope in enumerate(scopes):

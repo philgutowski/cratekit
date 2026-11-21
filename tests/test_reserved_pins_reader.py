@@ -63,6 +63,15 @@ def test_a_table_the_reader_does_not_know_is_refused_rather_than_ignored(tmp_pat
         pins.read_package_pins(tmp_path)
 
 
+def test_a_frozenset_table_is_read_by_its_members(tmp_path):
+    _write(tmp_path, "write", "LITERAL_HOLDERS_WITH_INTEGER = frozenset({'write/trees.py'})\n")
+    merged = pins.read_package_pins(tmp_path)
+    assert set(merged["LITERAL_HOLDERS_WITH_INTEGER"]) == {"write/trees.py"}
+    _write(tmp_path, "write", "LITERAL_HOLDERS_WITH_INTEGER = frozenset({'core/jobs.py'})\n")
+    with pytest.raises(ValueError, match=r"belongs in core\.py"):
+        pins.read_package_pins(tmp_path)
+
+
 def test_every_pin_file_is_named_for_the_package_of_the_modules_it_holds():
     """Over the real files, by the script's own definition of a package."""
     files = sorted(pins.PINS_DIRECTORY.glob("*.py"))

@@ -19,8 +19,10 @@ ever shrinks:
    module in a home of the toggle that was switched off. Driving it for real
    costs more than the whole budget of these checks, so the suite reads it
    statically and ``scripts/refactor_measure.py imports --drive`` drives it
-   for the audit; on the day this was written the two readings agreed on all
-   159 verbs.
+   for the audit; on the day this was written the two readings agreed on
+   every toggle, 159 dangling verbs summed over them. An import made by a
+   function the builder calls is not followed, and an import guarded by
+   ``try`` is read as one that runs.
 
 And one ceiling: the count of distinct core names feature packages use may
 not grow.
@@ -225,6 +227,34 @@ def test_a_relative_import_is_resolved_and_cannot_hide_a_crossing():
     }
 
 
+def test_a_relative_import_in_a_package_initializer_starts_from_that_package():
+    """One dot in ``sync/__init__.py`` is ``cratekit.sync``, not ``cratekit``."""
+    sources = {
+        "src/cratekit/__init__.py": "",
+        "src/cratekit/core/__init__.py": "",
+        "src/cratekit/core/config.py": "def _exclusive_lock(): ...\n",
+        "src/cratekit/sync/__init__.py": (
+            "from ..core.config import _exclusive_lock\nfrom .run import _go\n"
+        ),
+        "src/cratekit/sync/run.py": "def _go(): ...\n",
+    }
+    assert _lines(measure.private_crossings(measure.Tree(sources))) == {
+        "sync": ["private cratekit.core.config._exclusive_lock"]
+    }
+
+
+def test_a_dotted_import_under_another_name_is_followed_to_its_module():
+    tree = _tree(
+        write__trees="def _rollback_quietly(): ...\n",
+        tagging__rows="import cratekit.write.trees as writer\n\nwriter._rollback_quietly()\n",
+        intake__land="import cratekit.write.trees\n\ncratekit.write.trees._rollback_quietly()\n",
+    )
+    assert _lines(measure.private_crossings(tree)) == {
+        "intake": ["private cratekit.write.trees._rollback_quietly"],
+        "tagging": ["private cratekit.write.trees._rollback_quietly"],
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Rule two: a feature package imports only the named interface of core
 # ═══════════════════════════════════════════════════════════════════════════
@@ -337,6 +367,18 @@ def test_an_import_under_type_checking_never_runs_and_passes():
     }
 
 
+def test_type_checking_spelled_through_its_module_is_read_the_same():
+    tree = _tree(
+        label__registry="class Registry: ...\n",
+        sync__run=(
+            "import typing\n"
+            "if typing.TYPE_CHECKING:\n"
+            "    from cratekit.label.registry import Registry\n"
+        ),
+    )
+    assert measure.top_level_toggleable(tree, HOMES) == {}
+
+
 def test_a_toggleable_package_may_import_another_at_top_level_under_this_rule():
     """Rule three is about the always on packages. Rule four reads the rest."""
     tree = _tree(
@@ -436,6 +478,50 @@ def test_an_import_written_in_the_builder_runs_when_the_verb_builds_and_dangles(
     assert found[0].verbs == ("intake.set",)
 
 
+def test_a_home_imported_directly_in_the_builder_dangles_the_verb():
+    tree = _tree(
+        label__registry="",
+        sync__cli="def build(parser, entry):\n    from cratekit.label import registry\n",
+    )
+    found = measure.dangling(tree, [_verb("sync", "cratekit.sync.cli")], HOMES)
+    assert found[0].verbs == ("sync",)
+    assert found[0].edges == (("cratekit.sync.cli", "cratekit.label.registry"),)
+
+
+def test_an_import_under_type_checking_is_never_loaded_for_a_verb():
+    """Neither at the top of a module nor in its builder."""
+    guarded = "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    from cratekit.label import registry\n"
+    tree = _tree(
+        label__registry="",
+        sync__cli=guarded + "def build(parser, entry): ...\n",
+        intake__cli=(
+            "from typing import TYPE_CHECKING\n"
+            "def build(parser, entry):\n"
+            "    if TYPE_CHECKING:\n"
+            "        from cratekit.label import registry\n"
+        ),
+    )
+    verbs = [_verb("sync", "cratekit.sync.cli"), _verb("intake", "cratekit.intake.cli")]
+    assert [item.verbs for item in measure.dangling(tree, verbs, HOMES)] == [(), (), ()]
+
+
+def test_an_import_guarded_by_try_is_read_as_one_that_runs():
+    """A known limit, pinned so it is changed on purpose: the driven reading
+    builds this verb, and the static one calls it dangling."""
+    tree = _tree(
+        label__registry="",
+        sync__cli=(
+            "try:\n"
+            "    from cratekit.label import registry\n"
+            "except ImportError:\n"
+            "    registry = None\n"
+            "def build(parser, entry): ...\n"
+        ),
+    )
+    found = measure.dangling(tree, [_verb("sync", "cratekit.sync.cli")], HOMES)
+    assert found[0].verbs == ("sync",)
+
+
 def test_a_verb_the_registry_loads_from_inside_a_home_it_is_not_gated_by_dangles():
     tree = _tree(label__cli="def build(parser, entry): ...\n")
     found = measure.dangling(tree, [_verb("label.heard", "cratekit.label.cli")], HOMES)
@@ -494,6 +580,28 @@ def test_core_names_are_counted_across_feature_packages_and_only_there():
     assert measure.core_names(tree) == {
         "intake": {"cratekit.core.config.load"},
         "sync": {"cratekit.core.config.load", "cratekit.core.config.locate"},
+    }
+
+
+def test_a_name_imported_from_the_core_package_itself_is_a_core_name():
+    sources = {
+        "src/cratekit/__init__.py": "",
+        "src/cratekit/core/__init__.py": "VERSION = 1\n",
+        "src/cratekit/sync/__init__.py": "",
+        "src/cratekit/sync/run.py": "from cratekit.core import VERSION\n",
+    }
+    assert measure.core_names(measure.Tree(sources)) == {"sync": {"cratekit.core.VERSION"}}
+
+
+def test_a_name_bound_in_an_except_branch_is_a_name_the_module_defines():
+    tree = _tree(
+        core__config=(
+            "try:\n    import tomllib\nexcept ImportError:\n    def fallback(): ...\n"
+        ),
+        sync__run="from cratekit.core import config\n\nconfig.fallback()\nconfig.tomllib\n",
+    )
+    assert measure.core_names(tree) == {
+        "sync": {"cratekit.core.config.fallback", "cratekit.core.config.tomllib"}
     }
 
 

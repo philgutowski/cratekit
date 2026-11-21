@@ -342,6 +342,18 @@ def test_table_prints_points_two_to_five_and_is_clean_on_a_full_allowance(repo):
     assert "in 2 files under tests (code" in out and "  1 test functions; the suite's time" in out
 
 
+def test_table_fails_when_the_ceiling_on_core_names_is_exceeded(repo):
+    """The audit's one command may not say clean where the suite is red."""
+    _allow_everything(repo)
+    rules = repo / "tests" / "test_import_rules.py"
+    rules.write_text(RULES.replace("CORE_NAMES_CEILING = 3", "CORE_NAMES_CEILING = 2"))
+    code, out = _run(repo, "table")
+    assert code == 1
+    assert "beyond the allowance: 0" in out and "beyond the allowance: 3" not in out
+    assert "     3  distinct core names feature packages use" in out
+    assert "     2  the ceiling on distinct core names" in out
+
+
 def test_table_fails_when_something_stands_beyond_an_allowance(repo):
     _allow_everything(repo)
     (repo / measure.IMPORT_ALLOWANCES / "sync.txt").write_text("private cratekit.core.config._lock\n")
@@ -391,6 +403,24 @@ def test_prune_never_adds_a_line_for_something_newly_found(repo):
 def test_prune_says_when_a_package_has_no_allowance_file(repo):
     code, out = _run(repo, "prune", "nowhere")
     assert code == 2 and "nowhere: no allowance file by that name" in out
+
+
+def test_prune_takes_a_package_and_never_a_path_to_another_directorys_file(repo):
+    """``../imports/sync`` names a real file from the duplication directory."""
+    _allow_everything(repo)
+    seams = repo / measure.IMPORT_ALLOWANCES / "sync.txt"
+    before = seams.read_text()
+    code, out = _run(repo, "prune", "../imports/sync")
+    assert code == 2 and "../imports/sync: no allowance file by that name" in out
+    assert seams.read_text() == before
+
+
+@pytest.mark.parametrize("command", ["lines", "duplicates"])
+def test_a_path_that_names_no_python_file_is_refused_not_read_as_empty(repo, command):
+    """A mistyped path must not print "0 blocks in 0 files" into a record."""
+    code, out = _run(repo, command, f"{SOURCE}/core", f"{SOURCE}/lable")
+    assert code == 2
+    assert out == f"no Python file is at or under: {SOURCE}/lable\n"
 
 
 def test_the_script_runs_as_a_command_with_the_standard_library_alone(repo):
