@@ -1,0 +1,166 @@
+name = "r1724"
+pass_kind = "light"
+
+[[rows]]
+id = "N1_tail_any_case"
+description = "name_title: read the tail in any letter case, so a name ending _pn loses it too"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''    if not text.endswith(NAME_TAIL):
+        return stem
+    parts ='''
+new = '''    if not text.lower().endswith(NAME_TAIL.lower()):
+        return stem
+    parts ='''
+
+[[rows]]
+id = "N2_no_trailing_space_read"
+description = "name_title: read the stem with its trailing space, so a tail before a space is kept"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''    text = stem.rstrip()
+    if not text.endswith(NAME_TAIL):'''
+new = '''    text = stem
+    if not text.endswith(NAME_TAIL):'''
+
+[[rows]]
+id = "N3_space_before_tail_kept"
+description = "name_title: keep the space before the tail, so Sunrise Mood _PN is asked with a trailing space"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''    parts[-1] = parts[-1].rstrip()
+'''
+new = ''''''
+
+[[rows]]
+id = "N4_tail_alone_guard"
+description = "name_title: drop the tail alone guard, so 8A - 124 - Artist - _PN reads to a name ending in a dash and loses its ISRC genre"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''    if not identifies(parts[-1]):
+        return stem
+    return DASH.join(parts)'''
+new = '''    return DASH.join(parts)'''
+
+[[rows]]
+id = "N5_tail_alone_empty"
+description = "name_title: a tail alone name reads to nothing, round one's code, so it asks nothing and misses its ISRC"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''    if not identifies(parts[-1]):
+        return stem
+    return DASH.join(parts)'''
+new = '''    if not identifies(parts[-1]):
+        return ""
+    return DASH.join(parts)'''
+
+[[rows]]
+id = "N6_tail_never_dropped"
+description = "name_title: return the stem whatever it ends with, main's reading"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''        return stem
+    return DASH.join(parts)'''
+new = '''        return stem
+    return stem'''
+
+[[rows]]
+id = "N7_tail_word"
+description = "NAME_TAIL: the tail without its underscore, so Sunrise Mood PN loses a word"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''NAME_TAIL = "_PN"'''
+new = '''NAME_TAIL = "PN"'''
+
+[[rows]]
+id = "N8_by_name_raw_stem"
+description = "by_name: read the raw stem, so Sunshine Hotel_PN splits with its tail"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''    name = name_title(stem)
+    rest = _past_head(name)'''
+new = '''    name = stem
+    rest = _past_head(name)'''
+
+[[rows]]
+id = "N9_by_name_headless_stem"
+description = "by_name: a headless name is asked as its raw stem, tail and all"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''        return Question("", name, Read.AS_WRITTEN)'''
+new = '''        return Question("", stem, Read.AS_WRITTEN)'''
+
+[[rows]]
+id = "N10_by_name_unsplit_stem"
+description = "by_name: the unsplit question reads the raw stem, so an ambiguous name is asked with its tail"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''    unsplit = question(name, "")'''
+new = '''    unsplit = question(stem, "")'''
+
+[[rows]]
+id = "N11_tag_one_raw_stem"
+description = "tag_one: hand the searcher the raw stem, so the match reads mix)_pn and the Obiman release is missed"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''    title = title_tag or titles.name_title(path.stem)'''
+new = '''    title = title_tag or path.stem'''
+
+[[rows]]
+id = "N12_tag_one_tag_read"
+description = "tag_one: read the tail off a title tag too, so a tag ending _PN is not asked as written"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''    title = title_tag or titles.name_title(path.stem)'''
+new = '''    title = titles.name_title(title_tag or path.stem)'''
+
+[[rows]]
+id = "N13_retag_raw_stem"
+description = "retag_one: ask the raw stem, so tag retag asks Sunshine Hotel_PN"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''        title = tags.read_tag(candidate.path, "title") or titles.name_title(candidate.path.stem)'''
+new = '''        title = tags.read_tag(candidate.path, "title") or candidate.path.stem'''
+
+[[rows]]
+id = "N14_retag_tag_read"
+description = "retag_one: read the tail off a title tag too"
+file = "src/cratekit/tagging/retag.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''        title = tags.read_tag(candidate.path, "title") or titles.name_title(candidate.path.stem)'''
+new = '''        title = titles.name_title(tags.read_tag(candidate.path, "title") or candidate.path.stem)'''
+
+[[rows]]
+id = "S1_u289_head_needs_a_key"
+description = "sample, U289: _past_head reads any leading head, a tempo alone included"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''    if not body or not _a_head(words(DASH.join(parts[:body]))):
+        return None'''
+new = '''    if not body:
+        return None'''
+
+[[rows]]
+id = "S2_u289_version_part"
+description = "sample, U289: by_name splits a name whose second part ends in a version"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_name_tail.py", "tests/test_discogs_question.py", "tests/test_title_matcher.py", "tests/test_genre_retag.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py"]
+old = '''            and not _ends_in_version(folded_title)
+'''
+new = ''''''
