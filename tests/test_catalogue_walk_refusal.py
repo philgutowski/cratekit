@@ -434,7 +434,7 @@ DEEZER_MATCH = _fake(
 )
 
 
-def test_a_row_written_from_deezer_while_beatport_refused_is_named_at_the_gate():
+def test_a_row_written_from_deezer_while_beatport_refused_is_named_in_the_warning():
     """Round one, 1: a Deezer genre past a refusing Beatport was suggested with
     no word that Beatport was read for none of the rows."""
     plan = suggest.SuggestPlan(
@@ -458,7 +458,7 @@ def test_rows_are_sorted_by_why_they_were_not_read_whole():
     clean = _fake({"discogs": "matched"}, said=suggest.MATCHED)
     unusable = suggest.Asked(
         suggest.UNREAD,
-        note=f"unread: discogs, {suggest.TOKEN_UNUSABLE}refused",
+        note=f"unread: discogs, {suggest.TOKEN_UNUSABLE}",
         passed_over=("discogs",),
     )
     unread = suggest.sort_unread(
@@ -493,7 +493,10 @@ def test_a_rejected_discogs_token_beside_a_beatport_that_answers_does_not_stop_t
     assert _beatport_requests(seen) == 8
     for answer in answers:
         assert answer.passed_over == (searchers.DISCOGS,)
-        assert suggest.TOKEN_UNUSABLE in answer.note
+        assert answer.answers == ((searchers.DISCOGS, searchers.NOT_ASKED),)
+        # One note on every row, the one sent and those after it, since the
+        # note is in the plan's digest (round two of the review, 1).
+        assert answer.note == f"unread: discogs, {suggest.TOKEN_UNUSABLE}"
     unread = suggest.sort_unread((str(n), a) for n, a in enumerate(answers))
     assert unread.token_unusable == tuple(str(n) for n in range(8)) and not unread.refused
 
@@ -578,3 +581,64 @@ def test_a_declined_and_a_passed_over_row_carry_their_words():
     )
     assert passed.passed_over == ("discogs",)
     assert passed.answers == (("discogs", searchers.NOT_ASKED), ("beatport", "miss"))
+
+
+def test_a_row_passed_over_for_a_refused_token_is_kept_for_the_day(machine):
+    """Round two, 1: the recorded token is not None, so a kept row passed over
+    for it read as askable and the applying act asked every one again."""
+    from tests.test_beatport_refusal import MISSED
+
+    def run():
+        search, _opinion, seen = _walk(MISSED, discogs=_Response(401, "{}", {}))
+        lookup = suggest.catalogue_lookup(search)
+        with suggest.KeptCatalogue(machine, lookup, unasked=frozenset()) as kept:
+            for n in range(4):
+                kept.answer(str(n), ARTIST, f"{TITLE} {n}", "")
+        return kept, seen
+
+    first, seen = run()
+    assert first.asked == 4 and _beatport_requests(seen) == 4
+    again, seen = run()
+    assert again.asked == 0 and seen == []
+
+
+def test_the_suggest_verb_says_a_token_that_could_not_be_used():
+    unusable = suggest.Asked(
+        suggest.UNREAD,
+        note=f"unread: discogs, {suggest.TOKEN_UNUSABLE}",
+        passed_over=("discogs",),
+    )
+    plan = suggest.SuggestPlan(
+        items=(_item("1", unusable),),
+        counts=defaultdict(int),
+        changes=None,
+        band="",
+        catalogue=True,
+    )
+    (warning,) = [
+        w for w in suggest_cli._advisories(plan) if w["code"] == suggest_cli.CATALOGUE_UNREAD
+    ]
+    assert warning["message"].startswith(
+        "Discogs was not read for 1 row(s), 1, because the recorded Discogs token could "
+        "not be used, so those were suggested without it; to record a new one: "
+    )
+    assert "no Discogs token is recorded" not in warning["message"]
+
+
+def test_a_backlog_rows_digest_leaves_the_words_out_and_its_envelope_keeps_them():
+    from cratekit.tagging import backlog
+
+    def row(asked):
+        return backlog.Row(
+            content_id="1", path="p", artist="a", title="t", row_word="", file_word="",
+            cause=backlog.NO_GENRE, word="", status=backlog.LEFT, asked=asked,
+        )  # fmt: skip
+
+    sent = _fake({"discogs": "miss", "beatport": "blocked"}, note="unread: beatport")
+    passed = _fake({"discogs": "miss", "beatport": suggest.NOT_SENT}, note="unread: beatport")
+    assert row(sent).digested() == row(passed).digested()
+    assert "answers" not in row(sent).digested()["catalogue"]
+    assert row(passed).to_json()["catalogue"]["answers"] == [
+        ["discogs", "miss"],
+        ["beatport", suggest.NOT_SENT],
+    ]

@@ -909,3 +909,36 @@ def test_the_catalogue_line_names_the_rows_the_walk_stopped_before(machine, sile
         "answer is recorded; the walk asked nothing about 2 row(s) once no catalogue "
         "could be read for 3 rows in a row"
     )
+
+
+def test_a_token_discogs_refused_is_said_and_beatport_is_asked_on_every_row(
+    machine, silence, monkeypatch
+):
+    """U322's review, round one, 2: a token Discogs refused beside a Beatport
+    that answers no longer stops the walk, and the warning says the token."""
+    from cratekit.tagging import published, searchers
+    from tests.test_beatport_refusal import MISSED, _beatport_requests, _over_the_wire, _Response
+    from tests.test_discogs_searcher import SENT
+
+    build(
+        machine,
+        silence,
+        *(Track(str(60 + n), "", "", artist="Nobody", folder="x") for n in range(5)),
+    )
+    seen: list[str] = []
+    fetch = _over_the_wire(MISSED, discogs=_Response(401, "{}", {}), seen=seen)
+    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
+    search = searchers.catalogue_searcher(
+        DECLARED, fetch=fetch, sleep=lambda _s: None, discogs=asker
+    )
+    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: search)
+    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
+    code, envelope = drive([*VERB, "--catalogue"])
+    assert code == int(ExitCode.OK), envelope
+    assert _beatport_requests(seen) == 5
+    assert envelope["data"]["summary"]["catalogue_answers"]["stopped"] == 0
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == "backlog-catalogue-unread"]
+    assert warning["message"].startswith(
+        "Discogs was not read for 5 row(s), 60, 61, 62, 63, 64, because the recorded "
+        "Discogs token could not be used, so those were weighed without it"
+    )

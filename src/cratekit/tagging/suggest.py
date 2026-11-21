@@ -144,10 +144,12 @@ UNREAD = "unread"
 #: catalogue was not asked about (U322).
 NOT_SENT = "not-sent"
 
-#: The head of the note on a row Discogs was passed over on because the recorded
-#: token could not be used, refused by Discogs or unreadable in the keychain
-#: (U322's review), so the verbs say it apart from no token being recorded.
-TOKEN_UNUSABLE = "the recorded Discogs token could not be used: "
+#: The note's words on a row Discogs was passed over on because it refused the
+#: recorded token (U322's review), so the verbs say it apart from no token
+#: being recorded. The same words on every such row, since the note is in a
+#: plan's digest and the refusal's own sentence differs between the row that
+#: was sent and the rows after it.
+TOKEN_UNUSABLE = "the recorded Discogs token could not be used"
 
 #: A catalogue's words that say it answered about the row, a match or a miss,
 #: whatever the taxonomy made of the match (U322).
@@ -553,7 +555,7 @@ def catalogue_lookup(searcher: Searcher, published: PublishedGenre | None = None
                 # Beatport is still passed over by its own count (U281).
                 return Asked(
                     UNREAD,
-                    note=f"unread: {searchers.DISCOGS}, {TOKEN_UNUSABLE}{exc.cause.message}",
+                    note=f"unread: {searchers.DISCOGS}, {TOKEN_UNUSABLE}",
                     passed_over=(searchers.DISCOGS,),
                     answers=((searchers.DISCOGS, searchers.NOT_ASKED),),
                 )
@@ -670,8 +672,14 @@ class KeptCatalogue:
         self.save()
 
     def _askable_now(self, kept: Asked) -> bool:
-        """Whether a kept answer passed over a catalogue this run can ask."""
-        if self._unasked is None or not kept.passed_over:
+        """Whether a kept answer passed over a catalogue this run can ask.
+
+        A ROW PASSED OVER FOR A TOKEN DISCOGS REFUSED IS KEPT FOR THE DAY, as any
+        unread row is (U322's review, round two). The recorded token is the
+        same one, so asking again would only take the same refusal, and the
+        run that applies a gate would ask what the gate was shown.
+        """
+        if self._unasked is None or not kept.passed_over or kept.note.endswith(TOKEN_UNUSABLE):
             return False
         return not set(kept.passed_over) <= self._unasked
 
