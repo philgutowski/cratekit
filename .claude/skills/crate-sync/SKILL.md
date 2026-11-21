@@ -50,6 +50,27 @@ Every one of these holds, or the pass does not start.
 
 ## 2. The pass, to its landing gate
 
+**First, from a waiting night pass (U293).** A night pass, `crate sync
+night`, may already have taken the pass to its gate while nobody watched.
+Read its record, which runs nothing:
+
+    crate --output json sync night --last
+
+and branch on `data.summary.night.outcome`:
+
+- **`waiting-at-gate`.** The night's pass is downloaded, tagged, analysed and
+  named and its landing waits at `intake.land.native`. Skip the pass below
+  and go to step 3 with `STAGING` from `data.summary.night.staging`, `PASS`
+  from `data.summary.night.land_name` and `GATE_RUN` from
+  `data.summary.night.gate_run`; for the report, `data.summary.night.pass_run`
+  is the pass.
+- **`waiting-at-acknowledgment`.** Mint the acknowledgment as below, then
+  continue the night's pass with `crate --output json sync land --pass-run
+  PASS_RUN`, the run in `data.summary.night.pass_run`, and read it as below.
+- **Anything else**, or no record: run the pass below. A night that stopped
+  or was refused says why in `data.summary.night.line`; carry it into the
+  report.
+
     crate --output json sync land
 
 One verb runs the whole pass: `sync all`, the intake jobs it queued, the

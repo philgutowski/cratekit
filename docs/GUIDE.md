@@ -240,6 +240,9 @@ the two commands that answer and apply it and the rekordbox visit after.
   out, and continue.
 - `crate sync land --pass-run RUN_ID` continues an earlier pass, by either run
   id it printed. Jobs already ended are read, not driven again.
+- One pass stages at a time: `sync land`, `label sync --go` and the night pass
+  below each hold one staging lock for the whole of a run, and a second
+  refuses `staging-held`, naming the holder's verb, process, run and start.
 
 Then, in order:
 
@@ -266,6 +269,41 @@ crate inbox analyzed       # take the analysed rows out of INBOX / Analyze
 grid one tempo (or moving on a `dyn` row), Key filled, and how often the
 title's key agrees with rekordbox's. `--pass` or `--session` names one
 landing.
+
+**A night pass.** `crate sync night` is the same pass with nobody watching,
+for a schedule to run overnight, so the time at the Mac is the landing's
+gate and the rekordbox visit. It runs `sync land` and adds only what an
+unattended run needs, each a refusal before any provider call:
+
+- It answers nothing: a `-d`, `--calls` or `--calls-per-hour` given to it
+  refuses, and every gate the pass meets waits for the session (the landing,
+  the backup acknowledgment, `sync.land.without-vocals`). It never mints the
+  acknowledgment, never writes the database and never opens rekordbox. The
+  tail's own `name apply` confirm is the one answer in its chain, as in any
+  pass.
+- It refuses while rekordbox or `rekordboxAgent` is up, while any job has a
+  live driver, and while another pass holds the staging lock.
+- A new night pass refuses while the staging folder holds anything a landing
+  would take, an earlier night's pass waiting at its gate above all, so it
+  never queues a new pass behind one waiting.
+- It holds a night's budget, `[provider] night_calls` (1,200) across every
+  firing from noon to noon, counted in the one provider gate across every
+  process and charged before its first call, and lowers the hour to
+  `[provider] night_calls_per_hour` (600). A call past the night's line is
+  not sent and the pass stops as `provider-night-budget`; the next night's
+  pass continues it with `--pass-run`, as it does a pass the hour, a cooldown
+  or the ceiling stopped.
+- Whatever the ending it leaves one line: `crate doctor` shows it as
+  `sync.night`, and `crate sync night --last` prints the record (the line,
+  the gate's run, the pass, the staging folder, the calls spent) and runs
+  nothing.
+
+At the Mac, a pass that waits at the landing gate goes straight to the
+rehearsal and the landing with the run, pass and staging folder `--last`
+names (the `crate-sync` skill does this); one that waits on the backup
+acknowledgment takes `crate session ack --as session` and then the `crate
+sync land --pass-run RUN` its line names. Nothing installs the schedule yet,
+so until a verb does, the night pass runs when it is typed.
 
 `sync all` alone queues each enabled source's increment under one run and
 returns at once; nothing has run until the jobs are resumed. It sweeps no
@@ -1398,6 +1436,8 @@ Read the refusal's reason and remedy before retrying, then `crate doctor`.
 | A resume that refuses the same way | `crate job cancel JOB_ID` and queue a fresh one. |
 | `provider-call-ceiling` | The command hit the provider call ceiling (`[provider] calls_per_command`, 500). Run the printed command; `--calls N` raises it for one run, as `crate --calls N job resume JOB_ID`, with `--calls-per-hour` beside it when N is above the hour's budget, 1,500. |
 | `provider-budget` | The account, or the app credentials, has made as many provider calls in the last hour as this command may (`[provider] calls_per_hour`, 1,500, reads stopping at 1,125), counted across every command and copy. Wait until the time it names, then run it again or `crate job resume JOB_ID`; `crate --calls-per-hour N` raises the hour for one run. A `--calls` above the whole hour is refused the same way: lower it, or raise the hour with it. A `label sync` walk over every label refuses first when its estimate will not fit; ask one label with `--next --label NAME`. |
+| `provider-night-budget` | The night pass has made as many provider calls tonight as `[provider] night_calls` allows (1,200, noon to noon, counted across every process), or what it spent cannot be read. Nothing to do: the next night's pass continues it, or continue it at the Mac with `crate sync land --pass-run RUN`. |
+| `staging-held` | Another pass is downloading into the staging folder (`sync land`, `label sync --go` or `sync night`), named in the message. Wait for it to end, then run this again. |
 | `rekordbox-absence-unconfirmed` | A process the check could not read, usually one still exiting. Wait, then continue with the printed `crate --run RUN_ID ...`. Inspect with `ps -p PID -o pid,stat,comm`. |
 | `backup-acknowledgment-missing` | [The backup acknowledgment](#the-backup-acknowledgment). |
 | `sync land` lists intake jobs left open | `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`. A queued `crate organize` download is taken by the next new pass. |
@@ -1489,6 +1529,8 @@ wins over the profile's preset), `[taxonomy]`, `[naming]`, `[acquisition]`,
 | `provider.isrc_cache_days` | 30 (0 turns the ISRC cache off) |
 | `provider.calls_per_hour` | 1500 (per identity, over any sixty minutes) |
 | `provider.reserve_share` | 0.25 (kept for writes and downloads) |
+| `provider.night_calls` | 1200 (the night pass's budget, noon to noon, every firing) |
+| `provider.night_calls_per_hour` | 600 (the hour the night pass holds the account to) |
 | `labels.offer_per_sweep` | 10 |
 | `labels.new_playlist_age_days` | 30 |
 
