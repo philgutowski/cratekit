@@ -15,9 +15,13 @@ run after it. U317 did not make this reachable; it was the full sync's
 behaviour before, and the quick run inherits it rather than adding a guard of
 its own.
 
-**Measured cost.** Driven on a local alias remote only: a library whose files
-were all removed after a completed backup plans a quick run whose archive list
-is every path. Not driven against a real empty mount point or the live remote.
+**Measured cost.** Driven at U317's round two review against a real tmpfs
+volume unmounted during the plan's walk, which leaves the empty directory it
+was mounted on: the walk refuses, the run goes full, `rclone sync` exits 0
+over the empty directory, all 12 mirror files move to the dated archive, and
+the files age is reset. Not driven on a Mac, where whether an unmount leaves
+such a directory at the configured root was not measured, nor on the live
+remote.
 
 **Closes when:** the files portion refuses, before any transfer, a root that
 does not carry this library's identity (the volume identity assertion the
