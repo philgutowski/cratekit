@@ -1,0 +1,12 @@
+name = "u288-m24"
+pass_kind = "light"
+
+[[rows]]
+id = "M24_recorded_present"
+description = "run.plan: hand the recorded removals no present rows, so a row a restore put back live is offered"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py", "tests/test_deletion.py"]
+old = '''            present=[row.content_id for row in seen.active]
+            + [row.content_id for row in seen.removed],'''
+new = '''            present=[row.content_id for row in seen.removed],'''

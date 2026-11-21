@@ -1532,6 +1532,16 @@ def test_a_removed_row_the_database_holds_again_is_not_offered_by_delete_review(
 
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     assert refused["cause"]["detail"]["shown"]["offered"] == 0, refused
+    # Not merely refused by the reference proof: the live row means the
+    # recorded removal is no removal at all, so the pass never judges it.
+    from cratekit.deletion import run as deletion_run
+
+    handle = _handle(cfg)
+    try:
+        found = deletion_run.plan(cfg, handle, actor="cli")
+    finally:
+        rb_writer.close_db(handle)
+    assert offered not in {one.row.content_id for one in found.candidates}
 
 
 def test_a_track_added_after_a_removal_goes_past_the_highest_position(
