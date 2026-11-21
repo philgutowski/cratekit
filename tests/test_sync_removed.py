@@ -1551,3 +1551,69 @@ def test_a_track_added_after_a_removal_goes_past_the_highest_position(
         rb_writer.close_db(handle)
     numbers = sorted(row[0] for row in _query(cfg, "SELECT TrackNo FROM djmdSongPlaylist WHERE PlaylistID = ?", mine))
     assert numbers == [1, 3, 4], numbers
+
+
+def test_two_appends_after_a_removal_each_take_the_next_position(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
+    _sql(cfg, "DELETE FROM djmdSongPlaylist WHERE PlaylistID = ? AND ContentID = ?", mine, _row(cfg, "New1"))
+    handle = _handle(cfg)
+    try:
+        playlist = handle.get_playlist(ID=mine)
+        assert rb_writer.add_memberships(handle, playlist, [_row(cfg, "Held3"), _row(cfg, "New2")])
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    numbers = sorted(row[0] for row in _query(cfg, "SELECT TrackNo FROM djmdSongPlaylist WHERE PlaylistID = ?", mine))
+    assert numbers == [1, 3, 4, 5], numbers
+
+
+def test_a_refused_removal_gives_the_deletion_pass_no_position(
+    native_library, silence, monkeypatch, offline
+):
+    """Round two: the first position is written only once the removal's commit lands."""
+    from cratekit.deletion import watermark
+
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+
+    def refused(self, **_kwargs):
+        raise rb_writer.RekordboxUnavailable(
+            rb_writer.refuse("whitelist-violation", "refused, as a test says", origin=("tests",)).cause
+        )
+
+    monkeypatch.setattr(rb_writer.CollectionRemoval, "commit", refused)
+
+    code, acted, _ = _apply()
+
+    assert code != int(ExitCode.OK)
+    assert watermark.WatermarkStore(cfg).read() is None
+
+
+def test_a_position_the_pass_holds_is_kept_and_the_collection_not_walked(
+    native_library, silence, monkeypatch, offline
+):
+    """Round two: with a position held, a marked row the pass could not read stops nothing here."""
+    from cratekit.deletion import library as deletion_library
+    from cratekit.deletion import watermark
+
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    handle = _handle(cfg)
+    try:
+        identity = deletion_library.database_identity(handle)
+    finally:
+        rb_writer.close_db(handle)
+    watermark.WatermarkStore(cfg).baseline(database_identity=identity, sequence=3, actor="cli")
+    walked: list = []
+    real = deletion_library.read_collection
+    monkeypatch.setattr(deletion_library, "read_collection", lambda rows: walked.append(1) or real(rows))
+
+    code, acted, _ = _apply()
+
+    assert code == int(ExitCode.OK), acted
+    assert watermark.WatermarkStore(cfg).read().sequence == 3
+    assert not walked

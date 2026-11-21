@@ -230,9 +230,10 @@ answered as the session:
 
     crate run decide RUN_ID sync.removed.confirm apply --actor session --continue
 
-A plan the copy offers differently, a refusal on the copy, or a refusal
-naming a table rekordbox was never measured on stops this step: report it
-and answer nothing. A run that stops at the call ceiling is run again with
+A track a My Tag or another table rekordbox's removal was never measured on
+names is answered kept with that table named, which is the ordinary answer
+for a `vox` or `dyn` track; report it. A plan the copy offers differently, or
+any refusal on the copy, stops this step: report it and answer nothing. A run that stops at the call ceiling is run again with
 `crate --calls N --calls-per-hour M sync removed`. The files are not touched:
 `crate delete review`, which only Phillip runs, offers them to the Trash.
 

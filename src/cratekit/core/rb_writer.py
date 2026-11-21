@@ -2921,11 +2921,9 @@ CONTENT_REFERENCE_COLUMN = "ContentID"
 #: The column a few tables name ANY row by, a content row among them, beside
 #: the table it names (``imageFile``). Asked too, so a row that names the
 #: track this way is refused rather than left naming a row that is gone.
+#: ``uuidIDMap``, which A178 and A185 read unchanged, names rows by
+#: ``CurrentID`` and is not asked.
 TARGET_REFERENCE_COLUMN = "TargetID"
-
-#: The tables that name rows by :data:`TARGET_REFERENCE_COLUMN` and that
-#: rekordbox's removal was measured to leave as they were (A178, A185).
-TARGET_REFERENCES_LEFT = frozenset({"uuidIDMap"})
 
 #: The registry row whose counter the binding advances at every commit.
 LOCAL_UPDATE_COUNT = "localUpdateCount"
@@ -4141,8 +4139,9 @@ def content_references(db: Any, content_ids: Iterable[str]) -> dict[str, dict[st
 
     Read from SQL over every table the database holds, by its
     ``ContentID`` column and by ``TargetID`` where a table has one
-    (``imageFile``; ``uuidIDMap`` excepted, which rekordbox was measured to
-    leave), so a table the binding does not map is asked too.
+    (``imageFile``), so a table the binding does not map is asked too.
+    ``uuidIDMap`` names rows by ``CurrentID``, which is not asked, and
+    rekordbox was measured to leave it.
     ``{content id: {table: rows}}``, empty when nothing outside
     :data:`DELETABLE_TABLES` names any of them. A table A178 and A185 did not
     measure (My Tag, the sampler, related tracks, the hot cue bank list, the
@@ -4162,7 +4161,7 @@ def content_references(db: Any, content_ids: Iterable[str]) -> dict[str, dict[st
             continue
         names = {name for name, _pk in _columns(session, table)}
         asked = [CONTENT_REFERENCE_COLUMN] if CONTENT_REFERENCE_COLUMN in names else []
-        if TARGET_REFERENCE_COLUMN in names and table not in TARGET_REFERENCES_LEFT:
+        if TARGET_REFERENCE_COLUMN in names:
             asked.append(TARGET_REFERENCE_COLUMN)
         for column in asked:
             statement = text(
@@ -4590,7 +4589,6 @@ __all__ = [
     "COLLECTION_REMOVAL_TABLES",
     "CollectionRemoval",
     "TARGET_REFERENCE_COLUMN",
-    "TARGET_REFERENCES_LEFT",
     "RECORDED_COLUMNS",
     "RECORDED_REMOVALS_KEY",
     "database_id",

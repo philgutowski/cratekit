@@ -907,16 +907,18 @@ def apply_removed(
         session.attach_capture(record, capture.root, cfg)
         snapshot.assert_verified(capture)
         removal = rb_writer.CollectionRemoval.prepare(db, [one.content_id for one in offered])
-        _baseline_deletion(cfg, db)
+        first = _first_deletion_position(cfg, db)
         try:
             removal.commit()
         except BaseException:
             _rollback_quietly(db)
             if witness.landed:
                 _record_removal_commit(record, removal, about, _counter(db), cfg)
+                _give_first_position(first)
             raise
         sequence = _counter(db)
         _record_removal_commit(record, removal, about, sequence, cfg)
+        _give_first_position(first)
         convergence.record_fingerprint(cfg, db)
         violations = removal.read_back()
         if violations:
@@ -934,33 +936,48 @@ def apply_removed(
     )
 
 
-def _baseline_deletion(cfg: config.Config, db: Any) -> None:
-    """Give the deletion pass its first position now, before the removal, if it has none.
+def _first_deletion_position(cfg: config.Config, db: Any) -> Callable[[], None] | None:
+    """The deletion pass's first position, read before the removal, to give once it lands.
 
     A FIRST ``delete review`` BASELINES: it accepts every removal it can see as
     history and offers nothing (R35), and a removal recorded after that point
-    would be one of them, so its file would never be offered (review round one).
-    The baseline is taken here instead, at the update count before this
-    removal's commit, with the same rule the pass uses, the greater of the
-    counter and the highest marked removal, so every removal before this one
-    is history and this one, at the count its commit leaves, is not. A library
-    that already has a position for this database keeps it: the store writes
-    one only when there is none. The deletion module is imported here, under
-    the function, since it can be switched off; off, there is no pass to feed.
+    would be one of them, so its file would never be offered (review round
+    one). So when the pass has no position for this database, the position it
+    would take is read here, before the removal's commit, with the pass's own
+    rule (the greater of the counter and the highest marked removal), and is
+    written only once the commit lands, so a refused removal leaves the pass
+    as it found it (round two). Every removal before this one is then history
+    and this one, at the count its commit leaves, is not. A position the pass
+    already holds is kept, and the collection is not even read (round two).
+
+    None when there is nothing to give. The deletion package is imported here,
+    under the function, since it is a module of its own; it is asked whether
+    the profile switches it on nowhere, so a library that turns deletion on
+    later still finds its removals offered.
     """
     try:
         from cratekit.deletion import library as deletion_library
         from cratekit.deletion import watermark
     except ImportError:  # pragma: no cover - the deletion package is not installed
-        return
+        return None
+    store = watermark.WatermarkStore(cfg)
+    identity = deletion_library.database_identity(db)
+    held = store.read()
+    if held is not None and held.applies_to(identity):
+        return None
     seen = deletion_library.read_collection(db.get_content())
     counter = deletion_library.current_sequence(db)
-    highest = max((row.sequence for row in seen.removed), default=counter)
-    watermark.WatermarkStore(cfg).baseline(
-        database_identity=deletion_library.database_identity(db),
-        sequence=max(counter, highest),
-        actor=WORKFLOW,
-    )
+    start = max([counter, *(row.sequence for row in seen.removed)])
+
+    def give() -> None:
+        store.baseline(database_identity=identity, sequence=start, actor=WORKFLOW)
+
+    return give
+
+
+def _give_first_position(first: Callable[[], None] | None) -> None:
+    if first is not None:
+        first()
 
 
 def _counter(db: Any) -> int | None:
