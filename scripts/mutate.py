@@ -43,7 +43,8 @@ triple quoted literal strings hold code exactly, with no escaping. A worked
 example, complete:
 
     name = "u34-round-2"
-    pass_kind = "light"          # "light" caps at 25 rows, "full" at 45
+    pass_kind = "light"          # "light" caps at 25 rows, "full" at 45;
+                                 # "replay" is below
 
     [[rows]]
     id = "G1_empty_name"
@@ -85,6 +86,31 @@ row owes a composite. `pairs_with` names the row this one is the composite for.
 `dropped` entries are rows you CONSIDERED and did not run. METHOD caps a light
 pass at 25 rows and a full pass at 45, and a truncation nobody logged reads as
 coverage. Logging it is what makes the gap visible.
+
+
+THE REPLAY PASS
+---------------
+    pass_kind = "replay"
+
+    [[rows]]
+    id = "u114.G3_blank_name"
+    source = { table = "u114.json", id = "G3_blank_name" }
+    ...
+
+A third pass kind, for measuring again what a table under `docs/mutation/`
+already recorded (U297). It has no row cap, because it chooses no rows: every
+row must name the table and the id it came from in `source`, a row that names
+none is refused, and so are two rows naming the same one. `scripts/killset.py
+rows` writes such a file. Everything else is the pass every table gets: one
+full baseline, one null control, a subset baseline per distinct subset, a zero
+promoted to the full suite, every restore verified, and `--resume`.
+
+A replay row may say `moved = "why"` when its text is no longer the text its
+source recorded, and the file may carry `[[mapped]]` entries, each naming a
+`source` this batch has no row for, the row `to` that now covers it and the
+`reason`. Both are carried into the table for `scripts/killset.py check`,
+which reads two replay tables and fails on a kill the second one lost. The
+caps on a light and a full pass are unchanged.
 
 
 WHAT HAPPENS PER ROW, AND WHY EACH STEP IS THERE
@@ -250,6 +276,11 @@ NULL_CONTROL_COMMENT = "\n# mutation driver null control, restored automatically
 #: METHOD's hard row caps. A cap with no enforcement was tried and did not hold:
 #: light passes ran 50 and 89 rows on 2026-08-10.
 ROW_CAPS = {"light": 25, "full": 45}
+
+#: The pass that measures recorded rows again (U297). It has no cap because it
+#: chooses nothing: every row names the table and id it came from.
+REPLAY = "replay"
+PASS_KINDS = (*ROW_CAPS, REPLAY)
 
 PLUGIN_MODULE = "mutate_report_plugin"
 
@@ -427,6 +458,10 @@ class Row:
     surface: str = "maintainer"
     pairs_with: str | None = None
     kind: str = "mutation"
+    #: The table and row id a replay row came from, and why its text differs
+    #: from what that table recorded, when it does (U297).
+    source: tuple[str, str] | None = None
+    moved: str = ""
 
     def fingerprint(self) -> str:
         """A stable digest of everything that changes the measurement.
@@ -447,25 +482,65 @@ class Dropped:
     reason: str
 
 
-def load_spec(spec_path: Path) -> tuple[str, str, list[Row], list[Dropped]]:
-    """Read a row file and return ``(name, pass_kind, rows, dropped)``."""
+@dataclass(frozen=True)
+class Mapped:
+    """A recorded row a replay batch has no row for, and the row that covers it."""
+
+    source: tuple[str, str]
+    to: str
+    reason: str
+
+    def to_dict(self) -> dict:
+        return {
+            "source": {"table": self.source[0], "id": self.source[1]},
+            "to": self.to,
+            "reason": self.reason,
+        }
+
+
+def read_source(entry: dict, what: str) -> tuple[str, str] | None:
+    """The ``source`` of a row or a mapped entry, or None when it carries none.
+
+    A source that is present and is not a table name and a row id, both text
+    and neither empty, is refused: a half named source reads as a named one.
+    """
+    if "source" not in entry:
+        return None
+    source = entry["source"]
+    table = source.get("table") if isinstance(source, dict) else None
+    row_id = source.get("id") if isinstance(source, dict) else None
+    if not (isinstance(table, str) and table and isinstance(row_id, str) and row_id):
+        raise DriverRefusal(
+            f"{what}: source must name the table and the row it came from, "
+            f'source = {{ table = "u114.json", id = "G3" }}'
+        )
+    return (table, row_id)
+
+
+def read_spec(spec_path: Path) -> dict:
+    """A row file's contents, TOML or JSON by its suffix."""
     text = spec_path.read_text(encoding="utf-8")
     if spec_path.suffix == ".toml":
-        data = tomllib.loads(text)
-    elif spec_path.suffix == ".json":
-        data = json.loads(text)
-    else:
-        raise DriverRefusal(
-            f"{spec_path.name}: row files are .toml or .json, not {spec_path.suffix!r}"
-        )
+        return tomllib.loads(text)
+    if spec_path.suffix == ".json":
+        return json.loads(text)
+    raise DriverRefusal(
+        f"{spec_path.name}: row files are .toml or .json, not {spec_path.suffix!r}"
+    )
+
+
+def load_spec(spec_path: Path) -> tuple[str, str, list[Row], list[Dropped]]:
+    """Read a row file and return ``(name, pass_kind, rows, dropped)``."""
+    data = read_spec(spec_path)
 
     name = str(data.get("name") or spec_path.stem)
     pass_kind = str(data.get("pass_kind", "full"))
-    if pass_kind not in ROW_CAPS:
-        raise DriverRefusal(f"pass_kind must be one of {sorted(ROW_CAPS)}, got {pass_kind!r}")
+    if pass_kind not in PASS_KINDS:
+        raise DriverRefusal(f"pass_kind must be one of {sorted(PASS_KINDS)}, got {pass_kind!r}")
 
     rows: list[Row] = []
     seen: set[str] = set()
+    sources: set[tuple[str, str]] = set()
     for index, entry in enumerate(data.get("rows", [])):
         missing = [key for key in ("id", "description", "file", "old", "new") if key not in entry]
         if missing:
@@ -480,6 +555,20 @@ def load_spec(spec_path: Path) -> tuple[str, str, list[Row], list[Dropped]]:
         if surface not in {"user", "maintainer"}:
             raise DriverRefusal(f"row {row_id}: surface must be 'user' or 'maintainer'")
         tests = entry.get("tests")
+        source = read_source(entry, f"row {row_id}")
+        if pass_kind == REPLAY:
+            if source is None:
+                raise DriverRefusal(
+                    f"row {row_id}: a replay row names where it came from and this one "
+                    f"names no source. A replay pass has no row cap because it measures "
+                    f"recorded rows again; a new row belongs in a light or a full pass."
+                )
+            if source in sources:
+                raise DriverRefusal(
+                    f"row {row_id}: {source[0]} row {source[1]} is already the source of "
+                    f"another row in this batch, and one recorded row is replayed once"
+                )
+            sources.add(source)
         rows.append(
             Row(
                 id=row_id,
@@ -490,12 +579,14 @@ def load_spec(spec_path: Path) -> tuple[str, str, list[Row], list[Dropped]]:
                 tests=tuple(str(one) for one in tests) if tests else None,
                 surface=surface,
                 pairs_with=str(entry["pairs_with"]) if entry.get("pairs_with") else None,
+                source=source,
+                moved=str(entry.get("moved") or ""),
             )
         )
 
     if not rows:
         raise DriverRefusal(f"{spec_path.name} declares no rows")
-    cap = ROW_CAPS[pass_kind]
+    cap = ROW_CAPS.get(pass_kind, len(rows))
     if len(rows) > cap:
         raise DriverRefusal(
             f"{len(rows)} rows exceeds the {pass_kind} pass cap of {cap} (METHOD). "
@@ -516,6 +607,49 @@ def load_spec(spec_path: Path) -> tuple[str, str, list[Row], list[Dropped]]:
         for index, entry in enumerate(data.get("dropped", []))
     ]
     return name, pass_kind, rows, dropped
+
+
+def load_mapped(spec_path: Path, pass_kind: str, rows: list[Row]) -> list[Mapped]:
+    """The ``[[mapped]]`` entries of a replay row file, each checked against its rows.
+
+    An entry says a recorded row has no row of its own in this batch and names
+    the row that covers it. So its source may not be a row's source here, its
+    target must be a row here, and it must say why, or `killset.py check` would
+    be handed a mapping nothing stands behind. Only a replay pass maps.
+    """
+    entries = read_spec(spec_path).get("mapped", [])
+    if entries and pass_kind != REPLAY:
+        raise DriverRefusal(
+            f"[[mapped]] belongs to a replay pass, and this is a {pass_kind} pass"
+        )
+    ids = {row.id for row in rows}
+    replayed = {row.source for row in rows}
+    mapped: list[Mapped] = []
+    seen: set[tuple[str, str]] = set()
+    for index, entry in enumerate(entries):
+        what = f"mapped entry {index}"
+        source = read_source(entry, what) if isinstance(entry, dict) else None
+        if source is None:
+            raise DriverRefusal(f"{what}: it names no source, the recorded row it stands for")
+        target = str(entry.get("to") or "")
+        reason = str(entry.get("reason") or "").strip()
+        if source in replayed:
+            raise DriverRefusal(
+                f"{what}: {source[0]} row {source[1]} has a row of its own in this batch, "
+                f"so it is replayed, not mapped"
+            )
+        if source in seen:
+            raise DriverRefusal(f"{what}: {source[0]} row {source[1]} is mapped twice")
+        if target not in ids:
+            raise DriverRefusal(f"{what}: it maps to {target!r}, which is no row in this batch")
+        if not reason:
+            raise DriverRefusal(
+                f"{what}: it gives no reason; say what became of the guard, moved or "
+                f"merged into the row it names"
+            )
+        seen.add(source)
+        mapped.append(Mapped(source=source, to=target, reason=reason))
+    return mapped
 
 
 def null_control_row(rows: list[Row]) -> Row:
@@ -1322,9 +1456,23 @@ class RowResult:
     head_verified: bool = True
     old: str = ""
     new: str = ""
+    source: dict | None = None
+    moved: str = ""
 
     def to_dict(self) -> dict:
-        return dict(self.__dict__)
+        """The sidecar's row. ``source`` and ``moved`` are written only when set,
+        so a light or a full pass's sidecar is what it was before replay (U297)."""
+        data = dict(self.__dict__)
+        for key in ("source", "moved"):
+            if not data[key]:
+                del data[key]
+        return data
+
+
+def replay_fields(row: Row) -> dict:
+    """What a replay row carries into its result: where it came from, and why it moved."""
+    source = {"table": row.source[0], "id": row.source[1]} if row.source else None
+    return {"source": source, "moved": row.moved}
 
 
 def measure_row(
@@ -1354,6 +1502,7 @@ def measure_row(
         old=row.old,
         new=row.new,
         head_verified=head_verify,
+        **replay_fields(row),
     )
 
     try:
@@ -1455,9 +1604,11 @@ class Batch:
     baseline_source: str = "measured"
     baseline_note: str = ""
     subset_baselines: int = 0
+    mapped: list[Mapped] = field(default_factory=list)
 
     def to_dict(self) -> dict:
-        return {
+        """The sidecar. ``mapped`` is a replay pass's key and no other pass writes it."""
+        data = {
             "name": self.name,
             "pass_kind": self.pass_kind,
             "branch": self.branch,
@@ -1481,6 +1632,9 @@ class Batch:
             "rows": [one.to_dict() for one in self.results],
             "dropped": [one.__dict__ for one in self.dropped],
         }
+        if self.pass_kind == REPLAY:
+            data["mapped"] = [one.to_dict() for one in self.mapped]
+        return data
 
 
 def measure_batch(
@@ -1500,6 +1654,7 @@ def measure_batch(
     known_digest: str = "",
     battery_verdict: Path | None = None,
     baseline_note: str = "",
+    mapped: list[Mapped] | None = None,
 ) -> Batch:
     """Run a whole batch: preflight, baselines, the control, then the rows.
 
@@ -1529,6 +1684,7 @@ def measure_batch(
         known_source=known_source,
         temp_place=getattr(known, "place", ""),
         temp_on_disk=len(getattr(known, "on_disk", ())),
+        mapped=list(mapped or []),
     )
 
     control = null_control_row(rows)
@@ -1721,6 +1877,7 @@ def measure_batch(
                     runs=1,
                     old=row.old,
                     new=row.new,
+                    **replay_fields(row),
                 )
             )
         runs += results[-1].runs
@@ -1791,6 +1948,14 @@ def render_markdown(batch: Batch) -> str:
         f"at `{batch.head}`. Pass kind: {batch.pass_kind}."
     )
     add("")
+    if batch.pass_kind == REPLAY:
+        add(
+            "A replay pass measures again rows a table under `docs/mutation/` already "
+            "recorded, so it has no row cap and chooses no rows: every row below names "
+            "the table and the id it came from. One full baseline and one null control "
+            "serve the batch, and each row ran on its own subset (U297)."
+        )
+        add("")
     add(
         f"Baseline: green, {batch.baseline_collected} collected. "
         f"pytest invocations for this batch: {batch.pytest_runs}."
@@ -1900,13 +2065,32 @@ def render_markdown(batch: Batch) -> str:
             add(f"- `{one.id}` ({one.surface} facing): {composite_note(batch, one)}")
         add("")
 
+    if batch.mapped:
+        add("## Mapped")
+        add("")
+        add(
+            "Recorded rows this batch has no row for, each with the row that covers it. "
+            "`scripts/killset.py check` holds each mapping to a row that is killed."
+        )
+        add("")
+        for one in batch.mapped:
+            add(f"- `{one.source[0]}` row `{one.source[1]}` is covered by `{one.to}`: {one.reason}")
+        add("")
+
     if batch.dropped:
         add("## Considered and dropped")
         add("")
-        add(
-            f"METHOD caps a {batch.pass_kind} pass at {ROW_CAPS[batch.pass_kind]} rows. "
-            f"These were ranked below the cap and NOT measured. They are not coverage."
-        )
+        if batch.pass_kind == REPLAY:
+            add(
+                "Recorded rows this replay left out and did NOT measure. They are not "
+                "coverage, and `scripts/killset.py check` fails on one that was killed "
+                "before and is neither a row nor mapped here."
+            )
+        else:
+            add(
+                f"METHOD caps a {batch.pass_kind} pass at {ROW_CAPS[batch.pass_kind]} rows. "
+                f"These were ranked below the cap and NOT measured. They are not coverage."
+            )
         add("")
         for one in batch.dropped:
             add(f"- `{one.id}`: {one.description} Dropped because: {one.reason}")
@@ -1920,6 +2104,10 @@ def render_markdown(batch: Batch) -> str:
         add(one.description)
         add("")
         add(f"- File: `{one.file}`")
+        if one.source:
+            add(f"- Source: `{one.source['table']}`, row `{one.source['id']}`")
+        if one.moved:
+            add(f"- Moved: {one.moved}")
         add(f"- Surface: {one.surface}")
         add(f"- Subset: {one.subset_reason}")
         if one.subset:
@@ -2117,6 +2305,7 @@ def main(argv: list[str]) -> int:
     args = build_parser().parse_args(argv[1:])
     try:
         name, pass_kind, rows, dropped = load_spec(args.spec)
+        mapped = load_mapped(args.spec, pass_kind, rows)
     except DriverRefusal as refusal:
         print(f"refused: {refusal}", file=sys.stderr)
         return 2
@@ -2167,6 +2356,7 @@ def main(argv: list[str]) -> int:
             known_digest=known_digest,
             battery_verdict=battery_verdict,
             baseline_note=baseline_note,
+            mapped=mapped,
         )
     except DriverRefusal as refusal:
         print(f"refused: {refusal}", file=sys.stderr)

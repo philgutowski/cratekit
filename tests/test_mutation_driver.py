@@ -1867,6 +1867,247 @@ def test_a_batch_with_no_python_target_cannot_produce_a_control(tmp_path):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# The replay pass, U297
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _replay_entry(n: int, **extra) -> dict:
+    """One replay row as a row file spells it, naming where it came from."""
+    return {
+        "id": f"u1.G{n}",
+        "description": "d",
+        "file": "f.py",
+        "old": f"a{n}",
+        "new": "b",
+        "source": {"table": "u1.json", "id": f"G{n}"},
+        **extra,
+    }
+
+
+def _spec(tmp_path: Path, **body) -> Path:
+    spec = tmp_path / "rows.json"
+    spec.write_text(json.dumps(body), encoding="utf-8")
+    return spec
+
+
+def test_a_replay_pass_has_no_row_cap_and_keeps_each_rows_source(tmp_path):
+    """46 rows is one past the full cap, and every one of them is a recorded row."""
+    spec = _spec(tmp_path, pass_kind="replay", rows=[_replay_entry(n) for n in range(46)])
+    _, pass_kind, rows, _ = mutate.load_spec(spec)
+    assert pass_kind == "replay" and len(rows) == 46
+    assert rows[45].source == ("u1.json", "G45")
+
+
+def test_a_replay_row_that_names_no_source_is_refused(tmp_path):
+    """The cap is lifted only for rows a table already recorded."""
+    nameless = _replay_entry(1)
+    del nameless["source"]
+    spec = _spec(tmp_path, pass_kind="replay", rows=[_replay_entry(0), nameless])
+    with pytest.raises(mutate.DriverRefusal, match="row u1.G1: a replay row names where it came"):
+        mutate.load_spec(spec)
+
+
+def test_a_light_pass_of_26_rows_is_still_refused_whatever_they_name(tmp_path):
+    """Naming a source does not buy a capped pass a 26th row."""
+    spec = _spec(tmp_path, pass_kind="light", rows=[_replay_entry(n) for n in range(26)])
+    with pytest.raises(mutate.DriverRefusal, match="26 rows exceeds the light pass cap of 25"):
+        mutate.load_spec(spec)
+
+
+def test_a_full_pass_of_46_rows_is_still_refused(tmp_path):
+    spec = _spec(tmp_path, pass_kind="full", rows=[_replay_entry(n) for n in range(46)])
+    with pytest.raises(mutate.DriverRefusal, match="46 rows exceeds the full pass cap of 45"):
+        mutate.load_spec(spec)
+
+
+def test_an_unknown_pass_kind_is_refused_naming_the_three(tmp_path):
+    spec = _spec(tmp_path, pass_kind="heavy", rows=[_replay_entry(0)])
+    with pytest.raises(mutate.DriverRefusal, match=r"one of \['full', 'light', 'replay'\]"):
+        mutate.load_spec(spec)
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["u1.json#G0", {"table": "u1.json"}, {"table": "", "id": "G0"}, {"table": "u1.json", "id": 3}],
+)
+def test_a_half_named_source_is_refused_rather_than_read_as_named(tmp_path, source):
+    spec = _spec(tmp_path, pass_kind="replay", rows=[_replay_entry(0, source=source)])
+    with pytest.raises(mutate.DriverRefusal, match="row u1.G0: source must name the table"):
+        mutate.load_spec(spec)
+
+
+def test_two_replay_rows_naming_one_source_are_refused(tmp_path):
+    twice = _replay_entry(1, source={"table": "u1.json", "id": "G0"})
+    spec = _spec(tmp_path, pass_kind="replay", rows=[_replay_entry(0), twice])
+    with pytest.raises(mutate.DriverRefusal, match="u1.json row G0 is already the source"):
+        mutate.load_spec(spec)
+
+
+def _mapped(tmp_path: Path, entry: dict, pass_kind: str = "replay"):
+    spec = _spec(tmp_path, pass_kind=pass_kind, rows=[_replay_entry(0)], mapped=[entry])
+    _, kind, rows, _ = mutate.load_spec(spec)
+    return mutate.load_mapped(spec, kind, rows)
+
+
+def test_a_mapped_entry_is_read_with_its_source_its_row_and_its_reason(tmp_path):
+    entry = {"source": {"table": "u1.json", "id": "G9"}, "to": "u1.G0", "reason": "merged"}
+    assert _mapped(tmp_path, entry) == [
+        mutate.Mapped(source=("u1.json", "G9"), to="u1.G0", reason="merged")
+    ]
+
+
+@pytest.mark.parametrize(
+    "entry, refusal",
+    [
+        ({"to": "u1.G0", "reason": "merged"}, "mapped entry 0: it names no source"),
+        (
+            {"source": {"table": "u1.json", "id": "G9"}, "to": "u1.G7", "reason": "merged"},
+            "it maps to 'u1.G7', which is no row in this batch",
+        ),
+        (
+            {"source": {"table": "u1.json", "id": "G9"}, "to": "u1.G0", "reason": "  "},
+            "mapped entry 0: it gives no reason",
+        ),
+        (
+            {"source": {"table": "u1.json", "id": "G0"}, "to": "u1.G0", "reason": "merged"},
+            "u1.json row G0 has a row of its own in this batch",
+        ),
+    ],
+)
+def test_a_mapping_nothing_stands_behind_is_refused(tmp_path, entry, refusal):
+    with pytest.raises(mutate.DriverRefusal, match=refusal):
+        _mapped(tmp_path, entry)
+
+
+def test_one_source_mapped_twice_is_refused(tmp_path):
+    entry = {"source": {"table": "u1.json", "id": "G9"}, "to": "u1.G0", "reason": "merged"}
+    spec = _spec(tmp_path, pass_kind="replay", rows=[_replay_entry(0)], mapped=[entry, entry])
+    _, kind, rows, _ = mutate.load_spec(spec)
+    with pytest.raises(mutate.DriverRefusal, match="u1.json row G9 is mapped twice"):
+        mutate.load_mapped(spec, kind, rows)
+
+
+def test_a_mapped_entry_outside_a_replay_pass_is_refused(tmp_path):
+    entry = {"source": {"table": "u1.json", "id": "G9"}, "to": "u1.G0", "reason": "merged"}
+    with pytest.raises(mutate.DriverRefusal, match="belongs to a replay pass, and this is a light"):
+        _mapped(tmp_path, entry, pass_kind="light")
+
+
+def _replay_rows() -> list:
+    return [
+        _row(
+            "u1.K1",
+            "if value > limit:",
+            "if value > 10000:",
+            source=("u1.json", "K1"),
+            tests=("tests/test_guards.py",),
+        ),
+        _row(
+            "u1.K2",
+            "if value < lowest:",
+            "if value < -10000:",
+            source=("u1.json", "K2"),
+            moved="the same text, now in src/fixtpkg/guards.py",
+            tests=("tests/test_guards.py",),
+        ),
+    ]
+
+
+def test_a_replay_batch_spends_one_baseline_and_one_control_and_carries_its_sources(
+    repo, tmp_path
+):
+    """The whole of what the pass kind adds, on a batch whose every count is known.
+
+    Four runs before the rows: none for the rows' sake. One full baseline, one
+    baseline for the one subset both rows share, the null control on the full
+    suite, then a run a row. A pass that paid a baseline or a control per row
+    would spend seven.
+    """
+    mapped = [mutate.Mapped(source=("u1.json", "K9"), to="u1.K1", reason="merged into K1")]
+    dropped = [mutate.Dropped(id="u1.K8", description="A row left out.", reason="unplaced")]
+    batch = mutate.measure_batch(
+        repo, "replayed", _replay_rows(), dropped, pass_kind="replay", mapped=mapped
+    )
+
+    assert batch.valid is True
+    assert [(one.id, one.status, one.deaths) for one in batch.results] == [
+        ("u1.K1", "killed", 1),
+        ("u1.K2", "killed", 1),
+    ]
+    assert batch.pytest_runs == 5
+    assert batch.subset_baselines == 1
+    assert batch.control.status == "zero"
+    assert (repo / GUARDS_FILE).read_text(encoding="utf-8") == GUARDS
+
+    _, sidecar = mutate.write_outputs(batch, tmp_path / "docs" / "mutation")
+    data = json.loads(sidecar.read_text(encoding="utf-8"))
+    assert data["pass_kind"] == "replay"
+    assert data["rows"][0]["source"] == {"table": "u1.json", "id": "K1"}
+    assert "moved" not in data["rows"][0]
+    assert data["rows"][1]["moved"] == "the same text, now in src/fixtpkg/guards.py"
+    assert data["mapped"] == [
+        {"source": {"table": "u1.json", "id": "K9"}, "to": "u1.K1", "reason": "merged into K1"}
+    ]
+
+    markdown = mutate.render_markdown(batch)
+    assert "Pass kind: replay." in markdown
+    assert "it has no row cap and chooses no rows" in markdown
+    assert "- Source: `u1.json`, row `K1`" in markdown
+    assert "- Moved: the same text, now in src/fixtpkg/guards.py" in markdown
+    assert "- `u1.json` row `K9` is covered by `u1.K1`: merged into K1" in markdown
+    assert "Recorded rows this replay left out and did NOT measure" in markdown
+    assert "METHOD caps" not in markdown
+
+
+def test_a_replay_row_that_errors_still_names_its_source(repo, monkeypatch):
+    """The row the batch loop builds by hand carries the same two fields."""
+    real = mutate.measure_row
+
+    def failing(repo_root, row, *args, **kwargs):
+        if row.kind == "null-control":
+            return real(repo_root, row, *args, **kwargs)
+        raise mutate.MeasurementFailure("nothing readable")
+
+    monkeypatch.setattr(mutate, "measure_row", failing)
+    batch = mutate.measure_batch(repo, "errors", _replay_rows()[:1], pass_kind="replay")
+    assert batch.results[0].status == "error"
+    assert batch.results[0].to_dict()["source"] == {"table": "u1.json", "id": "K1"}
+
+
+def test_a_resumed_replay_reuses_its_rows_and_they_keep_their_sources(repo):
+    rows = _replay_rows()
+    first = mutate.measure_batch(repo, "resumed", rows, pass_kind="replay")
+    prior = first.to_dict()
+    prior["rows"][0]["deaths"] = 99  # a marker only a reused row can carry
+    second = mutate.measure_batch(repo, "resumed", rows, pass_kind="replay", prior=prior)
+    assert second.reused_rows == 2
+    assert second.results[0].deaths == 99
+    assert second.results[0].source == {"table": "u1.json", "id": "K1"}
+    assert second.results[1].moved == "the same text, now in src/fixtpkg/guards.py"
+
+
+def test_a_light_pass_writes_the_sidecar_it_always_wrote(repo):
+    """No replay key reaches a table that is not a replay, so old readers read new tables."""
+    batch = mutate.measure_batch(
+        repo, "light", [_row("K1", "if value > limit:", "if value > 10000:")], pass_kind="light"
+    )
+    data = batch.to_dict()
+    assert "mapped" not in data
+    assert "source" not in data["rows"][0] and "moved" not in data["rows"][0]
+    assert "source" not in data["control"]
+    assert "## Mapped" not in mutate.render_markdown(batch)
+
+
+def test_a_capped_pass_still_says_which_cap_its_dropped_rows_fell_under(repo):
+    dropped = [mutate.Dropped(id="D1", description="A fifth row.", reason="below the cap")]
+    batch = mutate.measure_batch(
+        repo, "capped", [_row("K1", "if value > limit:", "if value > 10000:")], dropped,
+        pass_kind="light",
+    )
+    assert "METHOD caps a light pass at 25 rows." in mutate.render_markdown(batch)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Under the repository's work stealing distribution, U251
 # ═══════════════════════════════════════════════════════════════════════════
 
