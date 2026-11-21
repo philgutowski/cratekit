@@ -1,0 +1,249 @@
+name = "u322"
+pass_kind = "light"
+
+[[rows]]
+id = "M01_stop_counts_partly_read"
+description = "KeptCatalogue.answer: a partly read row no longer resets the run, the card's defect: a Discogs miss beside a refusing Beatport stops the walk at the third row"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''            if answer.said != UNREAD or answer.partly_read:'''
+new = '''            if answer.said != UNREAD:'''
+
+[[rows]]
+id = "M02_stop_counts_passed_over"
+description = "KeptCatalogue.answer: a row unread only by a catalogue nobody asked counts toward the stop, against U244"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''            elif not answer.passed_over:
+                self._unread_running += 1'''
+new = '''            else:
+                self._unread_running += 1'''
+
+[[rows]]
+id = "M03_partly_read_ignores_passed_over"
+description = "Asked.partly_read: a passed over row reads as partly read, so it resets a run of refusals"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''        if self.said != UNREAD or self.passed_over:
+            return False
+        return any(word in _ANSWERED'''
+new = '''        if self.said != UNREAD:
+            return False
+        return any(word in _ANSWERED'''
+
+[[rows]]
+id = "M04_partly_read_reads_refusals"
+description = "Asked.partly_read: a refusal counts as an answer, so a row every catalogue refused never stops the walk"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''        return any(word in _ANSWERED for _source, word in self.answers)
+
+    @property
+    def unread_by'''
+new = '''        return any(word in (*_ANSWERED, *searchers.UNREAD_ANSWERS) for _source, word in self.answers)
+
+    @property
+    def unread_by'''
+
+[[rows]]
+id = "M05_not_sent_read_as_sent"
+description = "_word: a refusal never sent is recorded as one sent, so the counts call Beatport asked on every row"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''    if answer == searchers.Answer.BLOCKED.value and note.startswith(searchers.NOT_SENT):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M06_refused_row_drops_words"
+description = "_asked_from: a row a catalogue refused beside one that answered carries no words, so it counts toward the stop"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''            return Asked(UNREAD, note=f"unread: {', '.join(refused)}", answers=words)'''
+new = '''            return Asked(UNREAD, note=f"unread: {', '.join(refused)}")'''
+
+[[rows]]
+id = "M07_refusal_words_dropped"
+description = "catalogue_lookup: a refusal raised by the searcher carries no words, so the line counts its catalogues not asked"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''                answers=_words_of_refusal(exc),'''
+new = '''                answers=(),'''
+
+[[rows]]
+id = "M08_credential_counts"
+description = "catalogue_lookup: a token Discogs refused is read as every catalogue refusing, so a Beatport that answers stops the walk at row three"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''            if exc.cause.reason == searchers.CREDENTIAL_REASON:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M09_token_row_asked_every_run"
+description = "KeptCatalogue._askable_now: a row passed over for a refused token is asked again by every run of the day"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''        if self._unasked is None or not kept.passed_over or kept.note.endswith(TOKEN_UNUSABLE):'''
+new = '''        if self._unasked is None or not kept.passed_over:'''
+
+[[rows]]
+id = "M10_old_answer_kept"
+description = "_kept_answer: an answer kept before the words were is kept, so the line counts it as not asked"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''        if "answers" not in said:
+            return None'''
+new = '''        if False:
+            return None'''
+
+[[rows]]
+id = "M11_kept_words_lost"
+description = "_kept_answer: the words are not read back, so a kept partly read row counts toward the stop"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''            answers=tuple((str(source), str(word)) for source, word in said.get("answers") or ()),'''
+new = '''            answers=(),'''
+
+[[rows]]
+id = "M12_digest_keeps_words"
+description = "Asked.digested: the words stay in the digest, so a gate answered the next day is refused stale"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''        del found["answers"]
+'''
+new = ''''''
+
+[[rows]]
+id = "M13_beside_any_said_dropped"
+description = "Asked.unread_beside_an_answer: only an unread row is named, so a row written from Deezer while Beatport refused is silent"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''        if not any(word in _ANSWERED for _source, word in self.answers):
+            return ()
+        return self.unread_by'''
+new = '''        if self.said != UNREAD or not any(word in _ANSWERED for _source, word in self.answers):
+            return ()
+        return self.unread_by'''
+
+[[rows]]
+id = "M14_token_rows_said_no_token"
+description = "sort_unread: a row passed over for a refused token is said as no token recorded"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''        elif TOKEN_UNUSABLE in asked.note:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "M15_counts_not_sent_as_asked"
+description = "catalogue_counts: a row a catalogue was passed over on counts as asked"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''            if word in _ANSWERED or word in searchers.UNREAD_ANSWERS:'''
+new = '''            if word in _ANSWERED or word in (*searchers.UNREAD_ANSWERS, NOT_SENT):'''
+
+[[rows]]
+id = "M16_counts_stopped_zero"
+description = "catalogue_counts: the rows the walk stopped before are not counted"
+file = "src/cratekit/tagging/suggest.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''        "stopped": sum(asked.note == STOPPED_NOTE for asked in listed),'''
+new = '''        "stopped": 0,'''
+
+[[rows]]
+id = "M17_deezer_gate_open_always"
+description = "second_opinion: the flag is ignored, so tag folder asks Deezer past a refusing Beatport too"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''            and not (past_a_refusing_shop and _refused_beside_discogs(first, hit))'''
+new = '''            and not _refused_beside_discogs(first, hit)'''
+
+[[rows]]
+id = "M18_deezer_past_an_outage"
+description = "_refused_beside_discogs: any unread Beatport lets Deezer be asked, an outage included"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''    if beatport.answer != Answer.BLOCKED.value:
+        return False'''
+new = '''    if beatport.answer not in UNREAD:
+        return False'''
+
+[[rows]]
+id = "M19_suggest_binder_flag_off"
+description = "for_suggestions: the binder does not ask past a refusing Beatport, so Deezer is asked about no row"
+file = "src/cratekit/tagging/published.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''    return second_opinion(declared, lookup=for_lookup(), past_a_refusing_shop=True)'''
+new = '''    return second_opinion(declared, lookup=for_lookup(), past_a_refusing_shop=False)'''
+
+[[rows]]
+id = "M20_backlog_uses_folder_binder"
+description = "backlog_cli.read_plan: the backlog asks through tag folder's binder, so Deezer is held behind a refusing Beatport"
+file = "src/cratekit/tagging/backlog_cli.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''            searchers.for_taxonomy(declared), published.for_suggestions(declared)'''
+new = '''            searchers.for_taxonomy(declared), published.for_taxonomy(declared)'''
+
+[[rows]]
+id = "M21_suggest_uses_folder_binder"
+description = "suggest_cli.read_plan: tag suggest asks through tag folder's binder"
+file = "src/cratekit/tagging/suggest_cli.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''            searchers.for_taxonomy(declared), published.for_suggestions(declared)'''
+new = '''            searchers.for_taxonomy(declared), published.for_taxonomy(declared)'''
+
+[[rows]]
+id = "M22_backlog_partly_clause_gone"
+description = "backlog_cli.advisories: the partly read clause is dropped, so the campaign's gate says nothing of Beatport"
+file = "src/cratekit/tagging/backlog_cli.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''    if unread.partly:
+        parts.append(
+            f"{unread.partly_by} could not be read for {len(unread.partly)} row(s) "
+            f"another catalogue answered, {_named(list(unread.partly))}, so those were "'''
+new = '''    if False:
+        parts.append(
+            f"{unread.partly_by} could not be read for {len(unread.partly)} row(s) "
+            f"another catalogue answered, {_named(list(unread.partly))}, so those were "'''
+
+[[rows]]
+id = "M23_backlog_row_digest_keeps_words"
+description = "backlog.Row.digested: the backlog digest keeps the words"
+file = "src/cratekit/tagging/backlog.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''            "catalogue": self.asked.digested() if self.asked else None,
+        }'''
+new = '''            "catalogue": self.asked.to_json() if self.asked else None,
+        }'''
+
+[[rows]]
+id = "M24_backlog_line_gone"
+description = "backlog_cli.checks: no catalogue line"
+file = "src/cratekit/tagging/backlog_cli.py"
+surface = "user"
+tests = ["tests/test_catalogue_walk_refusal.py", "tests/test_tag_suggest.py", "tests/test_tag_backlog.py", "tests/test_tag_campaign.py", "tests/test_published_genre.py", "tests/test_beatport_refusal.py"]
+old = '''    if plan.catalogue:
+        found.append(_check("backlog.catalogue"'''
+new = '''    if False:
+        found.append(_check("backlog.catalogue"'''
