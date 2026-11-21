@@ -42,15 +42,19 @@ even when the branch changed a test helper a scenario uses.
 WHAT IT REFUSES
 ---------------
 `capture` refuses a `--root` that is not inside the system's temporary
-directory, before anything runs; a root another capture holds; and a root
-that holds files no capture left there, since the run empties its root.
+directory, before anything runs; a root another capture holds; and a root, or
+the source directory beside it, that holds files no capture left there, since
+the run empties both. A capture marks each directory it leaves behind,
+whether it failed, timed out or was asked to keep it, and that mark, or the
+holder file of a capture that died, is what says a directory is a capture's.
 Inside the run, before every command, the scenario refuses unless the
 configuration and state directories the product itself resolves are inside
 the scenario's own temporary directory. The run lists every scenario it
 collected, and the capture is closed with a manifest only when the run
-passed and every one of them left a record: a scenario that failed, was
-skipped, was expected to fail or ran past the stage leaves none, and
-`compare` refuses a directory with no manifest.
+passed, every one of them left a record, and every scenario file left at
+least one: a scenario that failed, was skipped, was expected to fail or ran
+past the stage leaves none, a file skipped as it was imported collects none,
+and `compare` refuses a directory with no manifest.
 
 
 WHAT COMPARE READS AS A DIFFERENCE
@@ -293,8 +297,13 @@ def _cell(value: object) -> object:
 #: The settings a database file carries for itself that a reader depends on.
 SETTINGS = ("user_version", "application_id", "journal_mode")
 
-#: How a table constraint opens, as against a column, in a CREATE TABLE.
-TABLE_CONSTRAINTS = ("CONSTRAINT", "PRIMARY KEY", "UNIQUE", "CHECK", "FOREIGN KEY")
+#: How a table constraint opens, as against a column, in a CREATE TABLE: the
+#: keyword and then what must follow it, so a column called ``checksum`` or
+#: ``unique_key`` is a column.
+TABLE_CONSTRAINT = re.compile(
+    r"\s*(CONSTRAINT\s|PRIMARY\s+KEY\s*\(|UNIQUE\s*\(|CHECK\s*\(|FOREIGN\s+KEY\s*\()",
+    re.IGNORECASE,
+)
 _QUOTES = {"'": "'", '"': '"', "`": "`", "[": "]"}
 
 
@@ -347,12 +356,10 @@ def canonical_declaration(kind: str, sql: str | None) -> str | None:
     if split is None:
         return sql
     head, items, tail = split
-    constraints = [
-        one.strip() for one in items if one.strip().upper().startswith(TABLE_CONSTRAINTS)
-    ]
+    constraints = [one.strip() for one in items if TABLE_CONSTRAINT.match(one)]
     if len(constraints) < 2:
         return sql
-    columns = [one for one in items if not one.strip().upper().startswith(TABLE_CONSTRAINTS)]
+    columns = [one for one in items if not TABLE_CONSTRAINT.match(one)]
     return head + ",".join([*columns, *(f" {one}" for one in sorted(constraints))]) + tail
 
 
@@ -484,6 +491,7 @@ def place_source(repo_root: Path, rev: str | None, target: Path) -> str:
     if target.exists():
         shutil.rmtree(target)
     target.mkdir(parents=True)
+    mark(target)
     if rev is None:
         shutil.copytree(
             repo_root / "src",
@@ -529,30 +537,48 @@ def _alive(pid: int) -> bool:
     return True
 
 
+def left_by_a_capture(folder: Path, holder: Path) -> bool:
+    """Whether ``folder`` is a capture's to empty.
+
+    It is when there is nothing in it, when a capture marked it as it left
+    it, or when the holder beside the root names a process, which only a
+    capture writes: that capture died before it could mark anything. A
+    directory with files and neither is somebody's.
+    """
+    if not folder.is_dir() or not any(folder.iterdir()):
+        return True
+    if (folder / LEFT_BY_A_CAPTURE).is_file():
+        return True
+    try:
+        return int(holder.read_text(encoding="utf-8").strip()) > 0
+    except (OSError, ValueError):
+        return False
+
+
+def mark(folder: Path) -> None:
+    """Say, inside a directory a capture is leaving behind, that a capture left it."""
+    if folder.is_dir():
+        (folder / LEFT_BY_A_CAPTURE).write_text("", encoding="utf-8")
+
+
 def take_root(root: Path) -> Path:
     """Hold ``root`` for this process, or refuse one a running capture holds.
 
     The holder is a file beside the root, since the run empties the root
     itself, and it is created exclusively, so of two captures started together
     one is refused. A holder whose process is gone is a capture that died, and
-    its root is taken over. A root that holds files and carries neither that
-    holder nor a failed capture's marker is refused, never emptied.
+    its root is taken over. The run empties the root and the source directory
+    beside it, so either one holding files no capture left is refused, never
+    emptied.
     """
     holder = root.with_name(root.name + HOLDER_SUFFIX)
     holder.parent.mkdir(parents=True, exist_ok=True)
-    # The run empties its root. What is in one already is a capture's to
-    # empty only if a capture left it: a failed run's marker is in it, or a
-    # holder beside it says a capture died there. Anything else is somebody's.
-    if (
-        root.is_dir()
-        and any(root.iterdir())
-        and not (root / LEFT_BY_A_CAPTURE).exists()
-        and not holder.exists()
-    ):
-        raise Refusal(
-            f"{root} holds files no capture left there, and a capture empties its root; "
-            f"remove it yourself or pass another --root"
-        )
+    for folder in (root, source_directory(root)):
+        if not left_by_a_capture(folder, holder):
+            raise Refusal(
+                f"{folder} holds files no capture left there, and a capture empties it; "
+                f"remove it yourself or pass another --root"
+            )
     for _ in range(2):
         try:
             descriptor = os.open(holder, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
@@ -608,14 +634,20 @@ def recorded_scenarios(out: Path) -> list[str]:
     return sorted(path.parent.relative_to(out).as_posix() for path in out.glob(f"*/*/{COMMANDS}"))
 
 
-def unrecorded(out: Path, recorded: list[str]) -> list[str]:
-    """What the run collected and did not record, or what stands in for that.
+def unrecorded(out: Path, recorded: list[str], files: list[str]) -> list[str]:
+    """What the run should have recorded and did not, or what stands in for that.
 
     The run writes the list of scenarios it collected. One of them with no
     record was skipped, was expected to fail, or ran past the stage: it did
     not fail the run, and without this the capture would close short and say
     nothing. A run that wrote no list at all is read the same way, as a run
     whose scenarios cannot be counted.
+
+    ``files`` is the scenario files the run was handed, and each must have
+    left a record too. A file skipped as it was imported, by a fixture module
+    that skips itself where an extra is absent, collects nothing, so the list
+    above never names it. Empty when the capture was asked for part of the
+    scenarios, where a file may rightly have none chosen.
     """
     try:
         expected = json.loads((out / EXPECTED).read_text(encoding="utf-8"))
@@ -623,7 +655,12 @@ def unrecorded(out: Path, recorded: list[str]) -> list[str]:
         return ["every scenario (the run listed none it collected)"]
     if not isinstance(expected, list):
         return ["every scenario (the run's list of what it collected is not a list)"]
-    return sorted(set(map(str, expected)) - set(recorded))
+    missing = sorted(set(map(str, expected)) - set(recorded))
+    for name in files:
+        stem = Path(name).stem
+        if not any(one.startswith(f"{stem}/") for one in recorded):
+            missing.append(f"every scenario of {name} (none of it was collected or recorded)")
+    return missing
 
 
 def write_manifest(out: Path, *, root: Path, source: str, checkout: str, only: str) -> None:
@@ -681,23 +718,28 @@ def run_capture(args, repo_root: Path, root: Path, source: Path, out: Path, file
             timeout=args.timeout,
         )
     except subprocess.TimeoutExpired:
-        print(f"capture: the scenario run passed {args.timeout} seconds and was stopped")
+        print(
+            f"capture: the scenario run passed {args.timeout} seconds and was stopped; "
+            f"what it wrote is left under {root} for reading"
+        )
         return 1
     finally:
+        # Whatever happened, a root still standing is one a capture left, and
+        # the next capture into it must be able to tell.
+        mark(root)
         if not args.keep:
             shutil.rmtree(source, ignore_errors=True)
     recorded = recorded_scenarios(out)
-    missing = unrecorded(out, recorded)
+    missing = unrecorded(out, recorded, [] if args.only else files)
     if done.returncode != 0 or not recorded or missing:
-        if root.is_dir():
-            (root / LEFT_BY_A_CAPTURE).write_text("", encoding="utf-8")
         print(done.stdout[-6000:])
         print(done.stderr[-2000:], file=sys.stderr)
-        without = f"; {', '.join(missing)} ran and left no record" if missing else ""
+        without = f"; {', '.join(missing)} left no record" if missing else ""
         print(
             f"capture: the scenario run exited {done.returncode} with {len(recorded)} "
             f"scenarios recorded{without}, so {out} is not a capture and holds no "
-            f"manifest; what the scenarios wrote is left under {root} for reading"
+            f"manifest; what the scenarios wrote is left under {root} for reading, and "
+            f"the next capture into that root empties it"
         )
         return 1
     if not args.keep:
@@ -1056,7 +1098,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--rev", default=None, help="run against this revision's src/ instead of the tree's"
     )
     capture.add_argument("--only", default=None, help="a pytest -k expression choosing scenarios")
-    capture.add_argument("--keep", action="store_true", help="leave the root and source in place")
+    capture.add_argument(
+        "--keep",
+        action="store_true",
+        help="leave the root and the source beside it in place, marked as a capture's, "
+        "for reading; the next capture into that root empties them",
+    )
     capture.add_argument("--timeout", type=int, default=3600, help="seconds for the scenario run")
     capture.set_defaults(run=cmd_capture)
 

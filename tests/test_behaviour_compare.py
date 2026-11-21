@@ -33,6 +33,10 @@ SCRIPT = REPO_ROOT / "scripts" / "behaviour_compare.py"
 #: The script as the stage loaded it, so a refusal raised there is the class caught here.
 compare = stage_fixtures.compare
 
+#: A path that is not inside the temporary directory wherever the checkout is: the
+#: directory the temporary one sits in. Never created; the refusals only resolve it.
+OUTSIDE = compare.temporary_directory().parent / "cratekit-outside-the-temporary-directory"
+
 #: The two words a capture's process is known by: its id and when it started.
 FIRST_PROCESS = ["3409", "1795265299.040"]
 SECOND_PROCESS = ["3467", "1795265311.350"]
@@ -422,6 +426,54 @@ def test_one_order_for_the_constraints_hides_nothing_else(changed):
     )
 
 
+NAMED_LIKE = "CREATE TABLE t (a INTEGER, checksum TEXT, unique_key TEXT, PRIMARY KEY (a), UNIQUE (a))"
+
+
+def test_a_column_named_like_a_constraint_is_a_column_and_keeps_its_place():
+    """The review's finding: ``checksum`` and ``unique_key`` were read as constraints.
+
+    Two such columns swapped in an empty table compared as no difference.
+    """
+    swapped = NAMED_LIKE.replace("checksum TEXT, unique_key TEXT", "unique_key TEXT, checksum TEXT")
+    canonical = compare.canonical_declaration("table", NAMED_LIKE)
+    assert canonical != compare.canonical_declaration("table", swapped)
+    assert canonical == "CREATE TABLE t (a INTEGER, checksum TEXT, unique_key TEXT, PRIMARY KEY (a), UNIQUE (a))"
+    reordered = NAMED_LIKE.replace("PRIMARY KEY (a), UNIQUE (a)", "UNIQUE (a), PRIMARY KEY (a)")
+    assert compare.canonical_declaration("table", reordered) == canonical
+
+
+@pytest.mark.parametrize(
+    "item, constraint",
+    [
+        (' \n\tPRIMARY KEY ("ID")', True),
+        ("primary  key(a)", True),
+        ("CONSTRAINT fk FOREIGN KEY (a) REFERENCES u (a)", True),
+        ("FOREIGN KEY(a) REFERENCES u (a)", True),
+        ("UNIQUE (a, b)", True),
+        ("check (a > 0)", True),
+        ("checksum TEXT", False),
+        ("unique_key TEXT UNIQUE", False),
+        ("constraint_name TEXT", False),
+        ("primary_key INTEGER PRIMARY KEY", False),
+        ('"check" TEXT', False),
+    ],
+)
+def test_a_constraint_is_told_from_a_column_by_what_follows_its_keyword(item, constraint):
+    assert bool(compare.TABLE_CONSTRAINT.match(item)) is constraint
+
+
+def test_a_declaration_is_split_at_its_own_commas_only():
+    sql = "CREATE TABLE \"t,x\" (a TEXT DEFAULT 'p, q', b NUMERIC(10, 2), [c,d] TEXT, CHECK (a IN ('x', 'y'))) STRICT"
+    head, items, tail = compare.split_declaration(sql)
+    assert head == 'CREATE TABLE "t,x" ('
+    assert items == [
+        "a TEXT DEFAULT 'p, q'", " b NUMERIC(10, 2)", " [c,d] TEXT", " CHECK (a IN ('x', 'y'))"
+    ]
+    assert tail == ") STRICT"
+    assert compare.split_declaration("CREATE TABLE t") is None
+    assert compare.split_declaration("CREATE TABLE t (a, b") is None
+
+
 @pytest.mark.parametrize(
     "kind, sql",
     [
@@ -587,6 +639,11 @@ WORDS = [("3409", "3467"), ("1795265299.040", "1795265311.350")]
         ("wrote 134091 bytes", "wrote 134671 bytes", False),
         ("sha 9f3409c", "sha 9f3467c", False),
         ("lock_3409", "lock_3467", False),
+        # Each end alone: only what precedes it, then only what follows it.
+        ("pid 13409", "pid 13467", False),
+        ("pid 34091", "pid 34671", False),
+        ("pid x3409", "pid x3467", False),
+        ("pid 3409x", "pid 3467x", False),
         # Whole, against punctuation, a path or the end of a sentence, it is the word.
         ("process 3409.", "process 3467.", True),
         ("/proc/3409/stat", "/proc/3467/stat", True),
@@ -727,11 +784,25 @@ def _capture_main(*argv: str) -> int:
     return compare.main(["behaviour_compare.py", "capture", *argv])
 
 
+def _checkout(tmp_path: Path, *scenario_files: str) -> Path:
+    """A checkout with these scenario files and an empty source, for a run that is faked."""
+    root = tmp_path / "checkout"
+    (root / "src").mkdir(parents=True, exist_ok=True)
+    (root / "tests" / "behaviour").mkdir(parents=True, exist_ok=True)
+    for name in ("conftest.py", "__init__.py", *scenario_files):
+        (root / "tests" / "behaviour" / name).write_text("", encoding="utf-8")
+    return root
+
+
+def _capture_in(checkout: Path, *argv: str) -> int:
+    return compare.main(["behaviour_compare.py", "--repo-root", str(checkout), "capture", *argv])
+
+
 def test_a_root_outside_the_temporary_directory_is_refused_before_anything_runs(
     tmp_path, capsys, no_run
 ):
     """The one thing between a capture and somebody's library is where its root is."""
-    outside = REPO_ROOT / "not-a-temporary-directory"
+    outside = OUTSIDE / "root"
     assert _capture_main("--out", str(tmp_path / "out"), "--root", str(outside)) == 2
     err = capsys.readouterr().err
     assert "the capture root is" in err and "not inside the temporary directory" in err
@@ -746,9 +817,9 @@ def test_the_temporary_directory_itself_is_no_root(tmp_path, capsys, no_run):
 
 def test_a_link_inside_the_temporary_directory_that_leads_out_of_it_is_refused(tmp_path):
     link = tmp_path / "looks-temporary"
-    link.symlink_to(REPO_ROOT)
+    link.symlink_to(compare.temporary_directory().parent)
     with pytest.raises(compare.Refusal, match="not inside the temporary directory"):
-        compare.refuse_outside_temporary(link / "docs", "the capture root")
+        compare.refuse_outside_temporary(link / OUTSIDE.name, "the capture root")
     compare.refuse_outside_temporary(tmp_path / "plain", "the capture root")
 
 
@@ -796,7 +867,7 @@ def test_a_root_that_holds_somebodys_files_is_refused_and_left_alone(tmp_path, c
 
 
 def test_a_root_a_capture_left_is_taken_again(tmp_path):
-    """A failed run's marker, or the holder of a capture that died, says whose it is."""
+    """A capture's own mark, or the holder of a capture that died, says whose it is."""
     marked = tmp_path / "marked"
     marked.mkdir()
     (marked / "leftover").write_text("x", encoding="utf-8")
@@ -816,6 +887,37 @@ def test_a_root_a_capture_left_is_taken_again(tmp_path):
     assert compare.take_root(empty).name == "empty-holder"
 
 
+def test_a_file_that_is_only_named_like_a_holder_vouches_for_nothing(tmp_path):
+    """The review's finding: any file of that name made a directory a capture's to empty."""
+    root = tmp_path / "theirs"
+    root.mkdir()
+    (root / "notes.txt").write_text("kept", encoding="utf-8")
+    root.with_name("theirs-holder").write_text("somebody's own file", encoding="utf-8")
+    with pytest.raises(compare.Refusal, match="holds files no capture left there"):
+        compare.take_root(root)
+    assert (root / "notes.txt").read_text(encoding="utf-8") == "kept"
+    assert root.with_name("theirs-holder").read_text(encoding="utf-8") == "somebody's own file"
+
+
+def test_the_directory_beside_the_root_is_not_emptied_either(tmp_path, capsys, no_run):
+    """The review's finding, one directory over: the source's place held somebody's files."""
+    root = tmp_path / "root"
+    beside = compare.source_directory(root)
+    beside.mkdir()
+    (beside / "theirs.txt").write_text("kept", encoding="utf-8")
+    assert _capture_main("--out", str(tmp_path / "out"), "--root", str(root)) == 2
+    assert f"{beside} holds files no capture left there" in capsys.readouterr().err
+    assert (beside / "theirs.txt").read_text(encoding="utf-8") == "kept"
+
+
+def test_the_source_a_capture_places_is_marked_as_its_own(checkout, tmp_path):
+    target = tmp_path / "placed"
+    compare.place_source(checkout, None, target)
+    assert compare.left_by_a_capture(target, tmp_path / "no-holder")
+    compare.place_source(checkout, "HEAD", target)
+    assert (target / compare.LEFT_BY_A_CAPTURE).is_file()
+
+
 def test_a_failed_run_marks_the_root_it_leaves_behind(tmp_path, monkeypatch, capsys):
     root = tmp_path / "root"
 
@@ -829,6 +931,43 @@ def test_a_failed_run_marks_the_root_it_leaves_behind(tmp_path, monkeypatch, cap
     assert f"is left under {root} for reading" in capsys.readouterr().out
     # So the next capture may empty it.
     assert compare.take_root(root).name == "root-holder"
+
+
+def test_a_run_stopped_at_its_timeout_leaves_a_root_the_next_capture_may_take(
+    tmp_path, monkeypatch, capsys
+):
+    """The review's finding on the refusal: it fired on a root a capture itself left."""
+    root = tmp_path / "root"
+
+    def hung(command, *, timeout, **_):
+        (root / "test_a_scenario0").mkdir(parents=True)
+        raise subprocess.TimeoutExpired(command, timeout)
+
+    monkeypatch.setattr(compare.subprocess, "run", hung)
+    assert _capture_main("--out", str(tmp_path / "out"), "--root", str(root)) == 1
+    assert f"is left under {root} for reading" in capsys.readouterr().out
+    assert (root / compare.LEFT_BY_A_CAPTURE).is_file()
+    assert compare.take_root(root).name == "root-holder"
+
+
+def test_a_kept_capture_leaves_a_root_and_a_source_the_next_capture_may_take(
+    tmp_path, monkeypatch
+):
+    out = tmp_path / "out"
+    root = tmp_path / "root"
+    checkout = _checkout(tmp_path, "write.py")
+    passing = _passing_run(out, tmp_path, ["write/route"])
+
+    def run(command, **kwargs):
+        if command[0] != "git":
+            (root / "test_a_scenario0").mkdir(parents=True)
+        return passing(command, **kwargs)
+
+    monkeypatch.setattr(compare.subprocess, "run", run)
+    assert _capture_in(checkout, "--out", str(out), "--root", str(root), "--keep") == 0
+    assert (root / "test_a_scenario0").is_dir() and compare.source_directory(root).is_dir()
+    holder = compare.take_root(root)
+    assert holder.name == "root-holder"
 
 
 def test_a_holder_that_names_no_process_is_taken_over(tmp_path):
@@ -893,10 +1032,44 @@ def test_a_scenario_that_ran_and_left_no_record_keeps_the_capture_open(
     monkeypatch.setattr(
         compare.subprocess, "run", _passing_run(out, tmp_path, ["write/route", "write/skipped"])
     )
-    assert _capture_main("--out", str(out), "--root", str(tmp_path / "root")) == 1
+    checkout = _checkout(tmp_path, "write.py")
+    assert _capture_in(checkout, "--out", str(out), "--root", str(tmp_path / "root")) == 1
     said = capsys.readouterr().out
-    assert "exited 0 with 1 scenarios recorded; write/skipped ran and left no record" in said
+    assert "exited 0 with 1 scenarios recorded; write/skipped left no record" in said
     assert not (out / compare.MANIFEST).exists()
+
+
+def test_a_scenario_file_that_collected_nothing_keeps_the_capture_open(
+    tmp_path, monkeypatch, capsys
+):
+    """The review's second finding on records: a file skipped as it was imported.
+
+    Its fixtures come from a test module that skips itself where an extra is
+    absent, so the file collects no scenario, the run's list never names one,
+    and base and branch would compare clean without it. Every scenario file
+    the run was handed must have left a record.
+    """
+    out = tmp_path / "out"
+    monkeypatch.setattr(compare.subprocess, "run", _passing_run(out, tmp_path, ["write/route"]))
+    checkout = _checkout(tmp_path, "write.py", "analysis.py")
+    assert _capture_in(checkout, "--out", str(out), "--root", str(tmp_path / "root")) == 1
+    said = capsys.readouterr().out
+    assert (
+        "every scenario of tests/behaviour/analysis.py (none of it was collected or "
+        "recorded) left no record" in said
+    )
+    assert not (out / compare.MANIFEST).exists()
+
+
+def test_a_capture_asked_for_part_of_the_scenarios_owes_no_record_for_the_other_files(
+    tmp_path, monkeypatch
+):
+    out = tmp_path / "out"
+    monkeypatch.setattr(compare.subprocess, "run", _passing_run(out, tmp_path, ["write/route"]))
+    checkout = _checkout(tmp_path, "write.py", "analysis.py")
+    argv = ("--out", str(out), "--root", str(tmp_path / "root"), "--only", "route")
+    assert _capture_in(checkout, *argv) == 0
+    assert json.loads((out / compare.MANIFEST).read_text())["only"] == "route"
 
 
 @pytest.mark.parametrize("expected", [None, {"write/route": True}])
@@ -906,7 +1079,8 @@ def test_a_run_that_did_not_list_what_it_collected_is_not_a_capture(
     """No list, or one that is not a list: the scenarios cannot be counted, which is not all."""
     out = tmp_path / "out"
     monkeypatch.setattr(compare.subprocess, "run", _passing_run(out, tmp_path, expected))
-    assert _capture_main("--out", str(out), "--root", str(tmp_path / "root")) == 1
+    checkout = _checkout(tmp_path, "write.py")
+    assert _capture_in(checkout, "--out", str(out), "--root", str(tmp_path / "root")) == 1
     assert "every scenario (the run" in capsys.readouterr().out
     assert not (out / compare.MANIFEST).exists()
 
@@ -914,7 +1088,8 @@ def test_a_run_that_did_not_list_what_it_collected_is_not_a_capture(
 def test_a_run_that_recorded_everything_it_collected_is_closed(tmp_path, monkeypatch, capsys):
     out = tmp_path / "out"
     monkeypatch.setattr(compare.subprocess, "run", _passing_run(out, tmp_path, ["write/route"]))
-    assert _capture_main("--out", str(out), "--root", str(tmp_path / "root")) == 0
+    checkout = _checkout(tmp_path, "write.py")
+    assert _capture_in(checkout, "--out", str(out), "--root", str(tmp_path / "root")) == 0
     assert "captured 1 scenarios and 2 commands from the working tree" in capsys.readouterr().out
     assert json.loads((out / compare.MANIFEST).read_text())["scenarios"] == ["write/route"]
 
@@ -1050,7 +1225,7 @@ def test_a_revisions_source_is_placed_as_git_holds_it_and_git_is_only_read(check
     described = compare.place_source(checkout, "HEAD", target)
     assert described.startswith("commit ") and len(described) == len("commit ") + 40
     assert (target / "src/pkg/verb.py").read_text(encoding="utf-8") == "HELP = 'committed'\n"
-    assert sorted(path.name for path in target.iterdir()) == ["src"]
+    assert sorted(path.name for path in target.iterdir()) == [compare.LEFT_BY_A_CAPTURE, "src"]
     # The checkout still holds the edit: nothing was checked out over it.
     assert (checkout / "src/pkg/verb.py").read_text(encoding="utf-8") == "HELP = 'edited'\n"
 
@@ -1074,7 +1249,7 @@ def test_a_config_root_outside_a_temporary_directory_is_refused(monkeypatch, tmp
     monkeypatch.setenv(config.ENV_STATE_DIR, str(scenario / "state"))
     stage_fixtures.refuse_a_root_outside(scenario)
 
-    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(REPO_ROOT / "a-real-config"))
+    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(OUTSIDE / "a-real-config"))
     with pytest.raises(compare.Refusal, match="the configuration directory is .*a-real-config"):
         stage_fixtures.refuse_a_root_outside(scenario)
 
@@ -1084,7 +1259,7 @@ def test_a_state_root_outside_a_temporary_directory_is_refused(monkeypatch, tmp_
 
     scenario = tmp_path / "scenario"
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(scenario / "config"))
-    monkeypatch.setenv(config.ENV_STATE_DIR, str(REPO_ROOT / "a-real-state"))
+    monkeypatch.setenv(config.ENV_STATE_DIR, str(OUTSIDE / "a-real-state"))
     with pytest.raises(compare.Refusal, match="the state directory is .*a-real-state"):
         stage_fixtures.refuse_a_root_outside(scenario)
 
@@ -1177,7 +1352,7 @@ def test_in_a_real_run_only_a_scenario_that_took_the_stage_and_passed_is_recorde
         "wired/is_expected_to_fail",
         "wired/fails_after_a_command",
     ]
-    assert compare.unrecorded(out, compare.recorded_scenarios(out)) == [
+    assert compare.unrecorded(out, compare.recorded_scenarios(out), []) == [
         "wired/fails_after_a_command",
         "wired/is_expected_to_fail",
         "wired/is_skipped",
