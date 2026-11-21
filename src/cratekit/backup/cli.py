@@ -122,10 +122,6 @@ CHECK = "check"
 #: full, what changed, how long it took and when the next full check is due.
 KIND = "backup-kind"
 
-#: The progress key carrying when the last full check completed and when the
-#: next is due, read back from the fact file after the run.
-FULL_CHECK = "full_check"
-
 #: The advisory saying what the file comparison did (R-757). A warning because
 #: the default renderer prints a verb's warnings and nothing of its payload, so
 #: this is the only place a person reading the terminal meets the numbers.
@@ -240,7 +236,21 @@ def _outcome_row(outcomes, portion: backup_facts.Portion) -> tuple[dict | None, 
     return found, bool(recorded.get("dry_run"))
 
 
-def kind_warning(outcomes, full_check: dict | None) -> tuple[dict[str, str], ...]:
+def _took(seconds: object) -> str:
+    """How long a recorded run took, as the words after a verb, or nothing.
+
+    Spelled as doctor's ``backup_facts.took`` spells it, and a test holds the
+    two equal: this layer reaches the fact file through the names it already
+    uses, the ages among them.
+    """
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
+        return ""
+    if seconds < 1:
+        return " in under a second"
+    return f" in {seconds:.0f} seconds"
+
+
+def kind_warning(outcomes, ages: list[dict] | None) -> tuple[dict[str, str], ...]:
     """Which kind of run this backup was, as one sentence, or nothing (U317).
 
     READ FROM THE RECORDED OUTCOMES, as :func:`comparison_warning` is, so the
@@ -261,21 +271,21 @@ def kind_warning(outcomes, full_check: dict | None) -> tuple[dict[str, str], ...
     parts: list[str] = []
     overall: str | None = None
     if files is not None and files.get("ran") and files.get("kind") in (
-        backup_facts.KIND_FULL, backup_facts.KIND_QUICK, backup_facts.KIND_SKIPPED,
+        backup.KIND_FULL, backup.KIND_QUICK, backup.KIND_SKIPPED,
     ):
         overall = files["kind"]
         parts.append(_files_sentence(files, rehearsed))
     if database is not None and database.get("ran") and database.get("kind") in (
-        backup_facts.KIND_SNAPSHOT, backup_facts.KIND_UNCHANGED,
+        backup.KIND_SNAPSHOT, backup.KIND_UNCHANGED,
     ):
-        if database["kind"] == backup_facts.KIND_SNAPSHOT:
+        if database["kind"] == backup.KIND_SNAPSHOT:
             parts.append(
                 "the database would have been snapshotted"
                 if rehearsed
                 else "the database was snapshotted into a new dated folder"
             )
-            if overall in (None, backup_facts.KIND_SKIPPED):
-                overall = backup_facts.KIND_QUICK
+            if overall in (None, backup.KIND_SKIPPED):
+                overall = backup.KIND_QUICK
         else:
             parts.append(
                 "the database is what its last completed snapshot copied, so no "
@@ -284,10 +294,17 @@ def kind_warning(outcomes, full_check: dict | None) -> tuple[dict[str, str], ...
                 else "the database is what its last completed snapshot copied, so "
                 "no new snapshot would be taken"
             )
-            overall = overall or backup_facts.KIND_SKIPPED
+            overall = overall or backup.KIND_SKIPPED
     if overall is None:
         return ()
-    due = (full_check or {}).get("due")
+    due = next(
+        (
+            entry.get("full_check_due")
+            for entry in ages or ()
+            if entry.get("portion") == str(backup_facts.Portion.FILES)
+        ),
+        None,
+    )
     after = (
         f"The next full check is due {due}"
         if due
@@ -315,14 +332,14 @@ def _files_sentence(row: dict, rehearsed: bool) -> str:
         for name in ("added", "changed", "rewritten", "removed")
     )
     seconds = row.get("seconds")
-    took = backup_facts.took(seconds)
-    if kind == backup_facts.KIND_SKIPPED:
+    took = _took(seconds)
+    if kind == backup.KIND_SKIPPED:
         return (
             f"the files are what the last completed backup left, checked{took} "
             f"without listing the remote, so nothing was sent"
             + ("" if rehearsed else " and their age was reset")
         )
-    if kind == backup_facts.KIND_QUICK:
+    if kind == backup.KIND_QUICK:
         said = row.get("comparison") if isinstance(row.get("comparison"), dict) else {}
 
         def number(key: str) -> str:
@@ -928,9 +945,6 @@ def backup_library(ctx) -> Envelope:
             # the condition.
             try:
                 reported["ages"] = published_ages(jobs.frozen_config(job))
-                reported["progress"][FULL_CHECK] = published_full_check(
-                    jobs.frozen_config(job)
-                )
             except CratekitError as exc:
                 _raise_refusal(exc, job)
             # THE SHARE WARNING IS ASKED HERE AND NOT READ FROM THE ITEM. The work
@@ -958,10 +972,7 @@ def backup_library(ctx) -> Envelope:
                 # the payload beside it are one reading of one file.
                 *comparison_warning(reported["progress"].get(OUTCOMES)),
                 # U317, from the same reading and the full check read back.
-                *kind_warning(
-                    reported["progress"].get(OUTCOMES),
-                    reported["progress"].get(FULL_CHECK),
-                ),
+                *kind_warning(reported["progress"].get(OUTCOMES), reported["ages"]),
             )
             return ctx.envelope(data=reported, warnings=warnings)
         payload = frozen_payload(ctx.args.dry_run, ctx.args.full, ctx.args.check)
@@ -1068,37 +1079,17 @@ def published_ages(cfg: config.Config, *, now: datetime | None = None) -> list[d
                 entry.completed_at.isoformat() if entry.completed_at is not None else None
             ),
             "destination": entry.destination,
+            # U317. When the next full check is due, as a date, for the files
+            # portion; None when the next backup runs one, and always for the
+            # database, which has no full check.
+            "full_check_due": (
+                entry.full_check_due.date().isoformat()
+                if entry.full_check_due is not None
+                else None
+            ),
         }
         for entry in reported
     ]
-
-
-def published_full_check(cfg: config.Config, *, now: datetime | None = None) -> dict:
-    """When the last full check completed and the next is due, READ BACK (U317).
-
-    From the fact file a destructive session reads the ages from, for the
-    reason :func:`published_ages` gives, and refusing the same way when it
-    cannot be read. ``due`` is None when the next backup runs one at once.
-    """
-    try:
-        answer = backup_facts.full_check_age(cfg, now=now)
-    except backup_facts.BackupFactsUnreadable as exc:
-        raise refuse(
-            "backup-facts-unreadable",
-            f"the backup ran and the date of its last full check cannot be read "
-            f"back: {exc}",
-            remedy=Remedy(str(exc.remedy)),
-            origin=("backup", "cli"),
-            detail={"path": str(exc.path), "library": str(cfg.library.root)},
-        ) from exc
-    due = backup_facts.full_check_due(answer)
-    return {
-        "state": str(answer.state),
-        "completed_at": (
-            answer.completed_at.isoformat() if answer.completed_at is not None else None
-        ),
-        "due": due.date().isoformat() if due is not None else None,
-    }
 
 
 def refusal_for(outcome: backup.BackupOutcome) -> CratekitError | None:

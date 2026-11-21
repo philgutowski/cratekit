@@ -74,7 +74,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
 
@@ -140,6 +140,18 @@ QUICK_SEND = "quick-send"
 QUICK_RESEND = "quick-resend"
 QUICK_ARCHIVE = "quick-archive"
 QUICK_LABELS: frozenset[str] = frozenset({QUICK_SEND, QUICK_RESEND, QUICK_ARCHIVE})
+
+#: What a completed portion's run was (U317), the word its fact records under
+#: ``kind``. The files portion is ``full``, ``quick`` or ``skipped``; the
+#: database portion is ``snapshot`` or ``unchanged``. ``backup_facts.KINDS``
+#: holds the same words, which it accepts and doctor reads, and a test holds
+#: the two equal.
+KIND_FULL = "full"
+KIND_QUICK = "quick"
+KIND_SKIPPED = "skipped"
+KIND_SNAPSHOT = "snapshot"
+KIND_UNCHANGED = "unchanged"
+KINDS = (KIND_FULL, KIND_QUICK, KIND_SKIPPED, KIND_SNAPSHOT, KIND_UNCHANGED)
 
 #: What a portion says about a rotation that did not happen, as codes rather
 #: than as sentences, for the same reason the labels above are constants: a
@@ -411,7 +423,7 @@ class PortionPlan:
     detail: str = ""
     commands: tuple[Command, ...] = field(default_factory=tuple)
     warnings: tuple[Mapping[str, str], ...] = field(default_factory=tuple)
-    #: Which kind of run this portion is (U317), one of ``backup_facts.KINDS``,
+    #: Which kind of run this portion is (U317), one of :data:`KINDS`,
     #: or empty for a refused portion. A ``skipped`` or ``unchanged`` portion
     #: carries no command and still runs: it publishes its age, because the
     #: plan proved the remote already holds what it would have sent.
@@ -436,7 +448,7 @@ class PortionPlan:
 
 
 #: The kinds that complete with no command, because nothing changed.
-_NOTHING_TO_SEND = frozenset({backup_facts.KIND_SKIPPED, backup_facts.KIND_UNCHANGED})
+_NOTHING_TO_SEND = frozenset({KIND_SKIPPED, KIND_UNCHANGED})
 
 
 @dataclass(frozen=True, slots=True)
@@ -865,29 +877,42 @@ def plan_backup(
 def _full_reason(cfg: config.Config, *, now: datetime) -> str:
     """Why the next run must be a full check by the calendar, or an empty string.
 
-    Every doubt is a reason: a fact file that cannot be read, no full check on
-    record, one recorded for another mirror, one in the future, and one
-    :data:`backup_facts.FULL_CHECK_DAYS` old or more. A record that is missing
-    or damaged is the files portion's own reason, read where the record is.
+    Read off the files portion's age, which carries the full check's schedule,
+    so the planner and the session gate answer from one reading of the fact
+    file. A fact file that cannot be read is a reason too. A record that is
+    missing or damaged is the files portion's own reason, read where the
+    record is.
     """
     try:
-        answer = backup_facts.full_check_age(cfg, now=now)
+        reported = backup_facts.ages(cfg, now=now)
     except backup_facts.BackupFactsUnreadable as exc:
         return f"the record of the last full check could not be read: {exc}"
-    if answer.state is backup_facts.AgeState.NEVER_RECORDED:
-        return "no full check is on record"
-    if answer.state is backup_facts.AgeState.RECORDED_IN_THE_FUTURE:
-        return "the last full check is recorded ahead of now"
-    if answer.destination != str(cfg.backup.dest or ""):
-        return "the last full check was of another mirror"
-    if answer.age is None or answer.age >= timedelta(days=backup_facts.FULL_CHECK_DAYS):
-        days = answer.age.days if answer.age is not None else "an unknown number of"
-        return f"the last full check was {days} days ago"
-    return ""
+    files = next(entry for entry in reported if entry.portion is backup_facts.Portion.FILES)
+    return files.full_check_overdue
 
 
 #: The summary key under which a files fact carries its record's token (U317).
 RECORD_TOKEN = "record"
+
+
+def _strike_token(cfg: config.Config) -> None:
+    """Strike the record's token from the library's files fact, leaving its age.
+
+    Through the fact file's own reader and writer, so the age, its destination,
+    its kind and the held full check and full comparison travel through as they
+    were. A fact with no token is left as it is and the file not rewritten.
+    """
+    fact = backup_facts.read_facts(cfg).get(backup_facts.Portion.FILES)
+    if fact is None or fact.summary is None or RECORD_TOKEN not in fact.summary:
+        return
+    backup_facts.record(
+        cfg,
+        backup_facts.Portion.FILES,
+        completed_at=fact.completed_at,
+        destination=fact.destination,
+        kind=fact.kind,
+        summary={name: value for name, value in fact.summary.items() if name != RECORD_TOKEN},
+    )
 
 
 def _record_unpublished(cfg: config.Config, manifest: backup_record.Manifest) -> str:
@@ -924,7 +949,8 @@ def _self_written(cfg: config.Config) -> frozenset[str]:
     change, and no run could ever be skipped.
     """
     try:
-        rel = backup_facts.path_for(cfg).relative_to(cfg.library.root)
+        # The fact file's inventory key, which ``backup_facts`` resolves by.
+        rel = config.state_path("backup_facts", cfg).relative_to(cfg.library.root)
     except ValueError:
         return frozenset()
     return frozenset({rel.as_posix()})
@@ -978,7 +1004,7 @@ def _plan_files(
         if not found.anything:
             return PortionPlan(
                 portion=backup_facts.Portion.FILES,
-                kind=backup_facts.KIND_SKIPPED,
+                kind=KIND_SKIPPED,
                 detail="nothing changed since the last completed backup",
                 changes=found.counts(),
                 basis=before,
@@ -999,7 +1025,7 @@ def _plan_files(
         else:
             return PortionPlan(
                 portion=backup_facts.Portion.FILES,
-                kind=backup_facts.KIND_QUICK,
+                kind=KIND_QUICK,
                 commands=_quick_commands(
                     cfg, rclone=rclone, stamp=stamp, archive_keep=archive_keep, found=found
                 ),
@@ -1009,7 +1035,7 @@ def _plan_files(
             )
     return PortionPlan(
         portion=backup_facts.Portion.FILES,
-        kind=backup_facts.KIND_FULL,
+        kind=KIND_FULL,
         why=why,
         commands=_full_commands(
             cfg, rclone=rclone, stamp=stamp, archive_keep=archive_keep, full=full
@@ -1252,7 +1278,7 @@ def _plan_database(
         ):
             return PortionPlan(
                 portion=backup_facts.Portion.DATABASE,
-                kind=backup_facts.KIND_UNCHANGED,
+                kind=KIND_UNCHANGED,
                 detail=(
                     "the database, its settings and its analysis share are what "
                     "the last completed snapshot copied, so no new one is taken"
@@ -1297,7 +1323,7 @@ def _plan_database(
         )
     return PortionPlan(
         portion=backup_facts.Portion.DATABASE,
-        kind=backup_facts.KIND_SNAPSHOT,
+        kind=KIND_SNAPSHOT,
         commands=tuple(commands),
         warnings=tuple(warnings),
         basis=basis,
@@ -1582,9 +1608,7 @@ def run_backup(
                     # record untrusted, this one's and any other's: a record is
                     # trusted only while the fact carries its token, and a
                     # failed run publishes no fact to replace it.
-                    backup_facts.forget_summary_key(
-                        cfg, backup_facts.Portion.FILES, RECORD_TOKEN
-                    )
+                    _strike_token(cfg)
             # A fact file that cannot be read raises out of here, before
             # anything is sent, and the shell refuses with the file it names,
             # as it does when the publish after a transfer meets the same file.
@@ -2946,6 +2970,13 @@ __all__ = [
     "QUICK_LABELS",
     "QUICK_RESEND",
     "QUICK_SEND",
+    "KINDS",
+    "KIND_FULL",
+    "KIND_QUICK",
+    "KIND_SKIPPED",
+    "KIND_SNAPSHOT",
+    "KIND_UNCHANGED",
+    "RECORD_TOKEN",
     "REFUSALS",
     "REKORDBOX_PROCESSES",
     "RESTORE_WORKFLOW",

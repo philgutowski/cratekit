@@ -44,7 +44,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 from pathlib import Path
@@ -187,6 +187,12 @@ class PortionAge:
     destination: str | None = None
     kind: str | None = None
     summary: Mapping[str, object] | None = None
+    #: For the files portion only (U317): when the next full check is due, or
+    #: None when the next backup runs one at once, and why it does, or an empty
+    #: string when it does not. Carried here so a reader of the ages learns the
+    #: full check from the same reading.
+    full_check_due: datetime | None = None
+    full_check_overdue: str = ""
 
     @property
     def usable(self) -> bool:
@@ -461,28 +467,6 @@ def took(seconds: object) -> str:
     return f" in {seconds:.0f} seconds"
 
 
-def forget_summary_key(cfg: config.Config, portion: Portion, key: str) -> None:
-    """Strike one key from a portion's recorded summary, leaving the rest (U317).
-
-    The files record's token is struck this way before a transfer, so no
-    record anywhere is trusted again until a run that kept one publishes. A
-    portion with no fact, or a summary without the key, is left as it is and
-    the file is not rewritten.
-    """
-    read, _held = _read(cfg)
-    fact = read.get(portion)
-    if fact is None or fact.summary is None or key not in fact.summary:
-        return
-    record(
-        cfg,
-        portion,
-        completed_at=fact.completed_at,
-        destination=fact.destination,
-        kind=fact.kind,
-        summary={name: value for name, value in fact.summary.items() if name != key},
-    )
-
-
 def full_check_due(answer: PortionAge) -> datetime | None:
     """When the next full check is due, or None when one is due at once.
 
@@ -502,8 +486,44 @@ def ages(cfg: config.Config, *, now: datetime | None = None) -> tuple[PortionAge
     whether a user is warned (P3).
     """
     moment = now or datetime.now(timezone.utc)
-    facts = read_facts(cfg)
-    return tuple(_age_of(portion, facts.get(portion), moment) for portion in Portion)
+    facts, held = _read(cfg)
+    out = [_age_of(portion, facts.get(portion), moment) for portion in Portion]
+    due, overdue = _full_check_schedule(cfg, facts, held, moment)
+    return tuple(
+        replace(entry, full_check_due=due, full_check_overdue=overdue)
+        if entry.portion is Portion.FILES
+        else entry
+        for entry in out
+    )
+
+
+def _full_check_schedule(
+    cfg: config.Config, facts: dict[Portion, BackupFact], held: dict[str, object], moment: datetime
+) -> tuple[datetime | None, str]:
+    """When the next full check is due and why the next backup runs one (U317).
+
+    A DAMAGED FULL CHECK ENTRY IS A REASON, NEVER A REFUSAL, for the reason
+    :func:`_read` gives: ``ages`` feeds the age a destructive session reads, and
+    one damaged informational key must not refuse it. Every doubt is a reason:
+    no full check on record, one recorded in the future, one of another mirror,
+    and one :data:`FULL_CHECK_DAYS` old or more.
+    """
+    try:
+        fact = _full_comparison(cfg, facts, held[FULL_CHECK_KEY], key=FULL_CHECK_KEY)
+    except BackupFactsUnreadable as exc:
+        return None, f"the record of the last full check could not be read: {exc}"
+    answer = _age_of(Portion.FILES, fact, moment)
+    if answer.state is AgeState.NEVER_RECORDED:
+        return None, "no full check is on record"
+    if answer.state is AgeState.RECORDED_IN_THE_FUTURE:
+        return None, "the last full check is recorded ahead of now"
+    due = full_check_due(answer)
+    if answer.destination != str(cfg.backup.dest or ""):
+        return None, "the last full check was of another mirror"
+    if answer.age is None or answer.age >= timedelta(days=FULL_CHECK_DAYS):
+        days = answer.age.days if answer.age is not None else "an unknown number of"
+        return None, f"the last full check was {days} days ago"
+    return due, ""
 
 
 def oldest_usable_age(
@@ -734,7 +754,6 @@ __all__ = [
     "ages",
     "clear_outcome",
     "encode_outcome",
-    "forget_summary_key",
     "full_check_age",
     "full_check_due",
     "took",

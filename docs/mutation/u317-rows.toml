@@ -88,13 +88,13 @@ new = '''        elif was == DOUBT:
             changed.append(rel)'''
 
 [[rows]]
-id = "Q10_mirror_mismatch_ignored"
-description = "manifest_mismatch: a record kept for another mirror is trusted"
-file = "src/cratekit/modules/tools/backup_record.py"
+id = "Q10_token_not_struck"
+description = "run_backup: the record's token stays in the library's fact while a run sends, so a failed run of another installation leaves its record trusted (round two's finding)"
+file = "src/cratekit/modules/tools/backup.py"
 surface = "user"
 tests = ["tests/test_backup_quick.py"]
-old = '''        ("mirror", manifest.dest, str(cfg.backup.dest)),'''
-new = '''        ("mirror", str(cfg.backup.dest), str(cfg.backup.dest)),'''
+old = '''                    _strike_token(cfg)'''
+new = '''                    pass'''
 
 [[rows]]
 id = "Q11_line_break_carried"
@@ -172,12 +172,12 @@ new = '''            token = ""
 
 [[rows]]
 id = "Q18_week_doubled"
-description = "_full_reason: a full check is due at twice the week, so an eight day old one is not run"
-file = "src/cratekit/modules/tools/backup.py"
+description = "_full_check_schedule: a full check is due at twice the week, so an eight day old one is not run"
+file = "src/cratekit/core/backup_facts.py"
 surface = "user"
 tests = ["tests/test_backup_quick.py"]
-old = '''    if answer.age is None or answer.age >= timedelta(days=backup_facts.FULL_CHECK_DAYS):'''
-new = '''    if answer.age is None or answer.age >= timedelta(days=2 * backup_facts.FULL_CHECK_DAYS):'''
+old = '''    if answer.age is None or answer.age >= timedelta(days=FULL_CHECK_DAYS):'''
+new = '''    if answer.age is None or answer.age >= timedelta(days=2 * FULL_CHECK_DAYS):'''
 
 [[rows]]
 id = "Q19_self_written_empty"

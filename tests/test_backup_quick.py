@@ -980,7 +980,8 @@ def test_the_report_says_the_kind_what_changed_and_when_the_next_full_check_is_d
     music = _seed(cfg)
     first = _run_verb()
     assert _kind_said(first).startswith("this backup was a full check")
-    due = first["data"]["progress"][backup_cli.FULL_CHECK]["due"]
+    (files_age,) = [a for a in first["data"]["ages"] if a["portion"] == "files"]
+    due = files_age["full_check_due"]
     assert due is not None and due in _kind_said(first)
 
     second = _run_verb()
@@ -1058,3 +1059,28 @@ def test_the_record_module_reads_files_and_writes_only_its_two_records():
     writes = [ast.unparse(c) for c in called.get("atomic_write_bytes", [])]
     assert len(writes) == 2 and all(w.endswith(", path)") for w in writes), writes
     assert [ast.unparse(c) for c in called.get("unlink", [])] == ["path.unlink(missing_ok=True)"]
+
+
+def test_the_kind_words_and_the_seconds_are_spelled_once_on_each_side():
+    """The backup module and the fact file each hold the kind words, and the
+    shell and doctor each spell a run's seconds, so a word added on one side
+    cannot silently fail the other."""
+    assert backup.KINDS == backup_facts.KINDS
+    for seconds in (None, True, 0, 0.4, 1, 41.6, 600):
+        assert backup_cli._took(seconds) == backup_facts.took(seconds)  # noqa: SLF001
+
+
+def test_a_damaged_full_check_entry_never_refuses_the_ages(cfg, real_rclone):
+    """``ages`` feeds the age a destructive session reads, so a damaged
+    informational key is a reason for a full check and not a refusal."""
+    _seed(cfg)
+    _backup(cfg, at=MOMENT)
+    path = backup_facts.path_for(cfg)
+    data = json.loads(path.read_text())
+    data[backup_facts.FULL_CHECK_KEY] = "not an object"
+    path.write_text(json.dumps(data))
+    (files, _db) = backup_facts.ages(cfg, now=MOMENT)
+    assert files.age == timedelta(0)
+    assert files.full_check_due is None and "could not be read" in files.full_check_overdue
+    plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=())
+    assert plan.portion(FILES).kind == backup_facts.KIND_FULL
