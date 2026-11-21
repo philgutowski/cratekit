@@ -373,6 +373,8 @@ def test_a_folder_answer_makes_the_folder_and_the_rows_follow_their_files(acknow
     needing = _census_needing(cfg)
     assert "16" in needing and not {"15", "17"} & needing
     assert _steps(acted)["follow"]["left"] == {"16": rows.GENRE_UNKNOWN}
+    (said,) = [w for w in acted["warnings"] if w["code"] == tag_campaign.ROWS_LEFT]
+    assert "1 genre-unknown" in said["message"] and "16" in said["message"]
 
 
 def test_a_word_left_or_unanswered_is_named_and_nothing_retags_it(acknowledged, silence):

@@ -64,6 +64,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -118,6 +119,7 @@ MOVED = "campaign-moved-since-plan"
 RESORT_NEXT = "campaign-resort-next"
 REMAINDER = "campaign-remainder"
 WORDS_LEFT = "campaign-words-left"
+ROWS_LEFT = "campaign-rows-left"
 
 #: How many identifiers or words a sentence names. The data carries all.
 _NAMED = 5
@@ -690,6 +692,22 @@ def _warnings(
                 ),
             }
         )
+    left = {content_id: reason for step in steps for content_id, reason in step.left.items()}
+    if left:
+        reasons = "; ".join(
+            f"{count} {reason}" for reason, count in sorted(Counter(left.values()).items())
+        )
+        found.append(
+            {
+                "code": ROWS_LEFT,
+                "message": (
+                    f"{len(left)} row(s) the campaign meant to write were left by tag rows "
+                    f"with its own reason ({reasons}), {_named(sorted(left))}; a word with "
+                    f"no genre row in the library gets one when a track is given that "
+                    f"genre in rekordbox, and the next run writes it"
+                ),
+            }
+        )
     resort = steps[STEPS.index(RESORT)]
     if resort.state == NEXT:
         found.append(
@@ -702,15 +720,15 @@ def _warnings(
                 ),
             }
         )
-    left = _unanswered(plan, given) + [
+    words_left = _unanswered(plan, given) + [
         answer.word for answer in given if answer.answer == backlog.LEAVE
     ]
-    if left:
+    if words_left:
         found.append(
             {
                 "code": WORDS_LEFT,
                 "message": (
-                    f"{len(left)} word(s) were left for hand tagging, {_named(left)}; "
+                    f"{len(words_left)} word(s) were left for hand tagging, {_named(words_left)}; "
                     f"answer one with --alias WORD=GENRE or --folder WORD on a later run"
                 ),
             }
@@ -834,6 +852,7 @@ __all__ = [
     "RESORT",
     "RESORT_NEXT",
     "ROWS",
+    "ROWS_LEFT",
     "STEPS",
     "SUGGEST",
     "WORDS",

@@ -705,6 +705,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'campaign-nothing-to-write',
         'campaign-remainder',
         'campaign-resort-next',
+        'campaign-rows-left',
         'campaign-words-left',
         'config-unusable',
         'internal-error',
