@@ -128,7 +128,10 @@ to an attended card, which runs it with `--mac-battery`.
 labelled `attended`, so the cloud never offers it. `board.py local` lists
 them, ready first, and a local Claude Code session shows that list when it
 starts. A cloud worker files one card per live check its landing owes, rather
-than leaving it in a comment.
+than leaving it in a comment. A whole attended sitting, every open attended
+card at once with worker sessions Phillip starts, runs by the project's
+`attended-orchestrator` skill (U316), which closes each card by the steps
+below.
 
 **How a local session takes one without colliding with the cloud**, which
 writes `main` at any hour:

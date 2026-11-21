@@ -53993,3 +53993,69 @@ crosses it.
 
 **Closes when:** each placed module that exists is on the parametrized list
 and the five that name no file are removed or built. Ledger only.
+
+---
+
+## R-1753. No repository guard holds the house rule against em dashes, en dashes and double hyphens in prose
+
+**Found:** at the review of #874, U316, 2026-11-21.
+
+**The mechanism.** CLAUDE.md forbids em dashes, en dashes and double hyphens
+in any prose, code comment, commit message or issue body, and the U316 brief
+assumed `scripts/scan_repo.py` enforces it. It has no dash rule: the review
+put an em dash and a double hyphen into the new skill and its worker rules,
+and the scan exited 0 on both. The only guard is the new skill's own test,
+which reads its two files and nothing else.
+
+**Measured cost.** None to a person using the verbs. A dash in any other doc,
+skill or comment lands green, and the rule is kept only by reading.
+
+**Closes when:** a guard over the tracked prose (the docs METHOD's Docs always
+current section lists, the skills and the commit messages) refuses an em or
+en dash anywhere and a double hyphen outside code, with its own anti vacuity
+test. Ledger only.
+
+---
+
+## R-1754. The attended orchestrator carries two rules from its prompt that its first sitting should read against CLAUDE.md and the cutover record
+
+**Found:** at the review of #874, U316, 2026-11-21.
+
+**The mechanism.** The attended-orchestrator skill keeps two rules of the
+prompt it was made from, each with its meaning unchanged as the card asks.
+Its settlements and probes drive rekordbox to remove from the collection or
+to change an analysis setting and put it back, where CLAUDE.md names opening
+it "to import, to let it analyse, and to read what it shows". And it records
+in `docs/cutover.md` a cutover line for each workflow newly proven live,
+where that file's header says a workflow is cut over only once its
+replacement ran on the live library and the author has lived on it.
+
+**Measured cost.** Not driven: the producer is an attended sitting on the
+Mac. Read as written, a settlement could be argued outside CLAUDE.md's list,
+and a cutover line written for a workflow proven but not yet lived on would
+overstate the record.
+
+**Closes when:** the attended card that proves the skill reads both against
+CLAUDE.md and the cutover record, and either the skill's words or CLAUDE.md's
+list is aligned in a docs unit. Ledger only.
+
+---
+
+## R-1755. The portability scan passes a tilde home path and an email address
+
+**Found:** at the review of #874, U316, 2026-11-21.
+
+**The mechanism.** `scan.portability_violations`, which the skills lint and
+the scan share, matches the home directory by its absolute shape and the
+volume by name. Driven at the review with no identity tokens: a line working
+in a tilde path under the home's music folder, a `cd` into a tilde documents
+path, and an email address each returned no violation.
+
+**Measured cost.** None measured: no tracked file carries either today, and a
+tilde path names no person by itself. A personal email address or a tilde
+path to a real library in a skill or doc would land green in a public
+repository.
+
+**Closes when:** the scan refuses an email address outside an allowlisted
+placeholder domain and a tilde path below the home, or the record says why
+either is not personal. Ledger only.
