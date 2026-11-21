@@ -2519,6 +2519,24 @@ def ask_then_write(
         rb_writer.close_db(db)
 
 
+#: The visit's short path (U319), which A33's probe at sitting 101 measured:
+#: with Auto Analysis on, a launch brought to the front raises one dialog whose
+#: OK analyses every row waiting, with no selection, on the fields and the mode
+#: the preference holds, so a dyn row still takes Dynamic. Said after the
+#: Analyze Tracks selections it stands in for, so "as above" names them, and
+#: ONE WORDING for every sentence that offers it: ``cli.tail`` spells the same
+#: for the step ``crate sync land`` prints, held to this by a test, since a
+#: lower package imports no feature module. Nothing here or in the visit turns
+#: Auto Analysis on: it is the person's.
+AUTO_ANALYSIS_STEP = (
+    "or, with Auto Analysis on, open rekordbox with its window in front and press OK "
+    "on its Auto Analysis dialog only when it shows every one of those Normal "
+    "settings with Vocal and CUE off and no field set otherwise, else Cancel it and "
+    "select as above; Auto Analysis runs on its preference's own mode, so the rows "
+    f"carrying the dyn My Tag still take Analyze Tracks with {drift.DYNAMIC_SETTINGS}"
+)
+
+
 def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
     """The warning a native write carries when rows joined the collection, else none.
 
@@ -2533,8 +2551,8 @@ def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
     # TWO SELECTIONS IN IT (U157), each with its count and its settings: the
     # rows without the dyn My Tag take Normal and the rows with it Dynamic.
     # TWO PATHS TO THEM (U319): the selections with Auto Analysis off, and
-    # with it on the one dialog a launch in front raises, said in core.drift's
-    # one wording, which leaves the dyn rows to their own Dynamic run.
+    # with it on the one dialog a launch in front raises, said in the one
+    # wording above, which leaves the dyn rows to their own Dynamic run.
     dyned = sum(1 for row in collection.added if row.dyn)
     normal = len(collection.added) - dyned
     selections = (
@@ -2550,7 +2568,7 @@ def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
                 f"tempo, grid, key or waveform, and rekordbox analyses nothing on its "
                 f"own with Auto Analysis off; open rekordbox, select the "
                 f"{collection.analyze_name} playlist, which holds every row waiting "
-                f"for analysis, and {selections}; {drift.AUTO_ANALYSIS_STEP}; then "
+                f"for analysis, and {selections}; {AUTO_ANALYSIS_STEP}; then "
                 f"crate inbox analyzed takes out each row rekordbox analysed"
             ),
         }
@@ -2667,6 +2685,7 @@ __all__ = [
     "VERIFY_VERB",
     "XML_GATE",
     "ask_then_write",
+    "AUTO_ANALYSIS_STEP",
     "awaiting_analysis",
     "build_land",
     "collection_facts",

@@ -4,7 +4,7 @@ pass_kind = "light"
 # A small unit: skill text, docs and two messages, no path that writes or
 # deletes, so a short table. Rows 1 to 7 turn one rule of the skill's new
 # Auto Analysis path the way a later edit could get it wrong; rows 8 to 10 the
-# one wording in core.drift and its two callers.
+# one wording and its two callers.
 
 [[rows]]
 id = "M1_ok_on_a_suspect_check"
@@ -75,8 +75,8 @@ new = '''  read it here: `data.summary.key_filled` may be below
 
 [[rows]]
 id = "M8_ok_on_any_field"
-description = "drift: the short path's OK offered whatever the dialog shows"
-file = "src/cratekit/core/drift.py"
+description = "land_cli: the short path's OK offered whatever the dialog shows"
+file = "src/cratekit/intake/land_cli.py"
 surface = "user"
 tests = ["tests/test_drift.py", "tests/test_intake_land_dyn_native.py", "tests/test_rekordbox_visit_skill.py"]
 old = '''    "on its Auto Analysis dialog only when it shows every one of those Normal "'''
@@ -88,7 +88,7 @@ description = "land_cli: the awaiting analysis warning names one path again"
 file = "src/cratekit/intake/land_cli.py"
 surface = "user"
 tests = ["tests/test_intake_land_dyn_native.py", "tests/test_intake_land_native.py", "tests/test_inbox_analyzed.py"]
-old = '''                f"for analysis, and {selections}; {drift.AUTO_ANALYSIS_STEP}; then "'''
+old = '''                f"for analysis, and {selections}; {AUTO_ANALYSIS_STEP}; then "'''
 new = '''                f"for analysis, and {selections}; then "'''
 
 [[rows]]
@@ -98,5 +98,5 @@ file = "src/cratekit/cli/tail.py"
 surface = "user"
 tests = ["tests/test_drift.py", "tests/test_rekordbox_visit_skill.py", "tests/test_label_sync_go.py"]
 old = '''    f"carrying the dyn My Tag, if any: {drift.DYNAMIC_SETTINGS}; "
-    f"{drift.AUTO_ANALYSIS_STEP}",'''
+    f"{AUTO_ANALYSIS_STEP}",'''
 new = '''    f"carrying the dyn My Tag, if any: {drift.DYNAMIC_SETTINGS}",'''

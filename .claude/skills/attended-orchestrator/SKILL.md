@@ -228,7 +228,10 @@ asks for with `crate backup run`, each after both processes are confirmed
 gone; hand the table by table comparison of disposable copies to a free
 worker; put the library back as it was the next time rekordbox is open; and
 record the shape as a `docs/solutions/` entry and a sitting line, and in the
-waiting unit's brief under a heading naming the settling card.
+waiting unit's brief under a heading naming the settling card. If rekordbox
+raises its Auto Analysis dialog on a launch that is not the visit, answer it
+Cancel and record it, so nothing is analysed outside the visit's own read of
+its fields.
 
 **One sync pass and its visit (the orchestrator).** The `crate-sync` skill
 runs it end to end, and the `rekordbox-visit` skill is its visit, on the

@@ -47,21 +47,6 @@ UNSCORED = "unscored"
 NORMAL_SETTINGS = "Analysis Mode Normal, high precision off, BPM/Grid, Phrase and KEY on"
 DYNAMIC_SETTINGS = "Analysis Mode Dynamic, every other setting the same"
 
-#: The visit's short path (U319), which A33's probe at sitting 101 measured:
-#: with Auto Analysis on, a launch brought to the front raises one dialog whose
-#: OK analyses every row waiting, with no selection, on the fields and the mode
-#: the preference holds, so a dyn row still takes Dynamic. Said after the Analyze
-#: Tracks selections it stands in for, so "as above" names them, and ONE
-#: WORDING for every sentence that offers it, as for the settings above.
-#: Nothing here or in the visit turns Auto Analysis on: it is the person's.
-AUTO_ANALYSIS_STEP = (
-    "or, with Auto Analysis on, open rekordbox with its window in front and press OK "
-    "on its Auto Analysis dialog only when it shows every one of those Normal "
-    "settings with Vocal and CUE off and no field set otherwise, else Cancel it and "
-    "select as above; Auto Analysis runs on its preference's own mode, so the rows "
-    f"carrying the dyn My Tag still take Analyze Tracks with {DYNAMIC_SETTINGS}"
-)
-
 
 def verdict(drift: float | None, cut: float) -> str:
     """The verdict a measured drift reads as against ``cut``, at or above it variable.
@@ -111,7 +96,6 @@ def reading(score_text: str | None, verdict_text: str | None, cut: float) -> tup
 
 
 __all__ = [
-    "AUTO_ANALYSIS_STEP",
     "DYNAMIC_SETTINGS",
     "NORMAL_SETTINGS",
     "STEADY",

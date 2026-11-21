@@ -109,14 +109,18 @@ def test_the_normal_settings_are_the_visit_standard_the_sync_stop_prints():
 def test_the_sync_stop_offers_the_auto_analysis_path_after_the_selections_it_stands_in_for():
     """U319: one wording, said after the Analyze Tracks selections its "as above" names."""
     from cratekit.cli import tail
+    from cratekit.intake import land_cli
 
+    assert tail.AUTO_ANALYSIS_STEP == land_cli.AUTO_ANALYSIS_STEP, "one wording, two spellings"
     step = tail.REKORDBOX_STEPS[0]
-    assert step.endswith(f"; {drift.AUTO_ANALYSIS_STEP}")
-    assert step.index(drift.DYNAMIC_SETTINGS) < step.index(drift.AUTO_ANALYSIS_STEP)
+    assert step.endswith(f"; {land_cli.AUTO_ANALYSIS_STEP}")
+    assert step.index(drift.DYNAMIC_SETTINGS) < step.index(land_cli.AUTO_ANALYSIS_STEP)
 
 
 def test_the_auto_analysis_step_cancels_on_any_other_field_and_leaves_dyn_to_dynamic():
-    step = drift.AUTO_ANALYSIS_STEP
+    from cratekit.intake import land_cli
+
+    step = land_cli.AUTO_ANALYSIS_STEP
     assert step == (
         "or, with Auto Analysis on, open rekordbox with its window in front and press OK on "
         "its Auto Analysis dialog only when it shows every one of those Normal settings "
