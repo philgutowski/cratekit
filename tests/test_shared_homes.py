@@ -17,8 +17,8 @@ What each section holds:
    The job report and the job shell are held where they always were, in
    ``tests/test_tag_workers.py`` and ``tests/test_adopt_workers.py``, through
    the two shell modules that now only name them.
-3. ``core.jobs``: the store both queues open, with each queue's own rule for
-   a file it cannot make private.
+3. ``core.private_store``: the store both queues open, with each queue's own
+   rule for a file it cannot make private.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ from cratekit.adopt import artifacts as adopt_artifacts
 from cratekit.adopt import shell as adopt_shell
 from cratekit.analysis import artifacts as analysis_artifacts
 from cratekit.cli import output
-from cratekit.core import config, jobs, review
+from cratekit.core import config, jobs, private_store, review
 from cratekit.core.cause import DATABASE_PATH_ATTRIBUTE, CratekitError
 from cratekit.core.exit_codes import Remedy
 from cratekit.modules.outbound import artifacts as outbound_artifacts
@@ -394,7 +394,7 @@ def test_the_report_base_never_resolves_the_queue_root_for_itself():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 3. core.jobs: the store both queues open
+# 3. core.private_store: the store both queues open
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -426,9 +426,30 @@ def test_a_store_is_opened_private_before_its_log_exists_and_on_the_queues_pragm
 
 def test_each_queue_keeps_its_own_rule_for_a_file_it_cannot_make_private():
     """The job queue passes over a mode it could not set; the review queue refuses."""
+    assert issubclass(jobs.JobStore, private_store.PrivateStore)
+    assert issubclass(review.ReviewStore, private_store.PrivateStore)
     assert jobs.JobStore._own_only is jobs._own_only
     assert review.ReviewStore._own_only is review._own_only
     assert jobs._own_only is not review._own_only
+
+
+def test_the_review_queue_opens_its_store_without_the_job_engine():
+    """The reports package persists through ``core.review`` alone (R12).
+
+    What that module imports is what the reports guard has to be able to name,
+    so the store's home is a module of its own and never ``core.jobs``.
+    """
+    tree = ast.parse((SRC_ROOT / "core" / "review.py").read_text(encoding="utf-8"))
+    imported = {
+        alias.name if isinstance(node, ast.Import) else f"{node.module}.{alias.name}"
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Import, ast.ImportFrom))
+        for alias in node.names
+    }
+
+    assert "cratekit.core.private_store.PrivateStore" in imported
+    assert not {name for name in imported if name.startswith("cratekit.core.jobs")}
+    assert "cratekit.core.jobs" not in imported
 
 
 @pytest.mark.parametrize("kind", [jobs.JobStore, review.ReviewStore])

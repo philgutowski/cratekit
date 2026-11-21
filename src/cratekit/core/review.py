@@ -82,9 +82,10 @@ from types import MappingProxyType
 from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from cratekit.cli.output import canonical_json, timestamp
-from cratekit.core import config, jobs
+from cratekit.core import config
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
 from cratekit.core.exit_codes import Remedy
+from cratekit.core.private_store import PrivateStore
 
 #: The queue's own schema version. A cross version read REFUSES rather than
 #: guessing, for the reason the job engine states: an unversioned state file
@@ -886,7 +887,7 @@ def _own_only(path: Path) -> None:
         ) from exc
 
 
-class ReviewStore(jobs.PrivateStore):
+class ReviewStore(PrivateStore):
     """The connection to the queue, on the job engine's pragmas, deliberately.
 
     ``synchronous=FULL`` because a verdict lost to a power cut is a question a

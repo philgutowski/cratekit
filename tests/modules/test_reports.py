@@ -1858,6 +1858,10 @@ QUALIFIED_MUTATIONS = frozenset(
         "tree_registry.record_cutover",
         "tree_registry.revert_cutover",
         "tree_registry.write",
+        # U298: the one config load every verb's shell shares. It calls
+        # ``config.load``, which writes the file back, so it is a writer by the
+        # rule above, and a report is HANDED its configuration and loads none.
+        "output.load_config",
     }
 )
 
