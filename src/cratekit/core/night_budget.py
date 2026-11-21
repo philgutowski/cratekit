@@ -1,7 +1,7 @@
 """The night pass's budget across a night's firings (U293).
 
-``crate sync night`` runs unattended, and the account is not to be pushed
-toward the lock it met at sitting 94, so a night has a budget of its own,
+The night pass, ``sync.night``, runs unattended, and the account is not to be
+pushed toward the lock it met at sitting 94, so a night has a budget of its own,
 ``[provider] night_calls``, that holds however many times the schedule fires
 that night. This module keeps what the night has spent; the gate holds the
 line call by call (:func:`cratekit.core.provider_gate.night`).
@@ -27,8 +27,8 @@ totals cannot be read, or a total below a firing's mark is a spend nobody can
 measure, and the night pass makes no call over it. Only a ledger that does
 not exist yet is an installation whose night pass has spent nothing.
 
-THE STAGING LOCK SERIALIZES IT. Only ``crate sync night`` writes the ledger,
-and it does so while holding :mod:`cratekit.core.staging_lock`, so two
+THE STAGING LOCK SERIALIZES IT. Only the night pass, ``sync.night``, writes the
+ledger, and it does so while holding :mod:`cratekit.core.staging_lock`, so two
 firings never read and write it together.
 
 Layer: core.

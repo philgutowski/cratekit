@@ -5,10 +5,10 @@ of it, so two passes downloading together would each land the other's tracks.
 R-1499 made a pass read the folder before its download and again around its
 tail, and refuse beside anything that is not its own; that keeps a wrong
 landing out, and it catches the collision only after both passes have spent
-their downloads. Once a pass runs with nobody watching, the night pass of
-``crate sync night``, the collision has to be refused before either starts.
+their downloads. Once a pass runs with nobody watching, the night pass,
+``sync.night``, the collision has to be refused before either starts.
 
-So ``crate sync land``, ``crate label sync --go`` and ``crate sync night`` each
+So ``sync.land``, ``label.sync`` with its go and ``sync.night`` each
 hold this lock for the whole of a run, and a second refuses ``staging-held``
 naming the holder's verb, process, run and start.
 
@@ -20,7 +20,7 @@ The file is never unlinked, since unlinking on release is how two processes
 come to hold locks on two inodes at one name. The holder written inside is for
 the refusal's words and is never the liveness test.
 
-REENTRANT WITHIN ONE PROCESS. ``crate sync night`` runs ``crate sync land``
+REENTRANT WITHIN ONE PROCESS. ``sync.night`` runs ``sync.land``
 through the dispatcher in the same process, and an advisory lock on a second
 descriptor would refuse its own holder, so a process that holds the lock
 already holds it again by count and releases it when the outermost hold ends.

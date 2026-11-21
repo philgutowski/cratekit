@@ -99,7 +99,7 @@ continue with a higher ceiling cannot help a run the hour has stopped, and
 after the cooldown, which keeps its own meaning: the budget never trips the
 breaker, and a refusal of either is a park and never a retry.
 
-THE NIGHT'S LINE (U293). The night pass, ``crate sync night``, runs with
+THE NIGHT'S LINE (U293). The night pass, ``sync.night``, runs with
 nobody watching, so it holds a line of its own: :func:`night` opens it inside
 the command's scope with the gate's running total when the night's firing
 began and the lower of what is left of the night's budget and what is left of

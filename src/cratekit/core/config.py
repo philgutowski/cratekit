@@ -3256,8 +3256,8 @@ class ProviderConfig:
     reads may never spend. Neither has a value that switches it off.
 
     ``night_calls`` and ``night_calls_per_hour`` are the night pass's own
-    ceilings (U293): the most calls ``crate sync night`` may make in one night,
-    counted in the one gate across every firing and every process, and the
+    ceilings (U293): the most calls the night pass, ``sync.night``, may make in
+    one night, counted in the one gate across every firing and every process, and the
     hour's budget it holds the account to while it runs. Both only lower what
     the lines above allow; neither has a value that switches it off.
     """
