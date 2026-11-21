@@ -223,6 +223,13 @@ def test_the_warning_names_both_selections_and_counts_each(writable, silence):
     assert f"on the 1 row(s) carrying it with {drift.DYNAMIC_SETTINGS}" in message, message
     assert "Analysis Mode Normal, high precision off, BPM/Grid, Phrase and KEY on" in message
     assert "Analysis Mode Dynamic" in message
+    # U319: both paths, the selections with Auto Analysis off and then the
+    # one dialog with it on, before the clear that follows either.
+    off = "rekordbox analyses nothing on its own with Auto Analysis off; open rekordbox, select the"
+    assert off in message, message
+    selections = message.index(f"on the 1 row(s) carrying it with {drift.DYNAMIC_SETTINGS}")
+    auto = message.index(f"; {drift.AUTO_ANALYSIS_STEP}; then crate inbox analyzed takes out")
+    assert message.index(off) < selections < auto, message
     assert _shown(refused)["dyn My Tag"] == (
         "1 of 4 added row(s), each whose drift is at or above the cut 1.5 percent; "
         "1 file(s) carry no drift reading and get no tag"

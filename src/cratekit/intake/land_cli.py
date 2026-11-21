@@ -2532,6 +2532,9 @@ def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
     # only those, so the visit is one selection rather than one per batch.
     # TWO SELECTIONS IN IT (U157), each with its count and its settings: the
     # rows without the dyn My Tag take Normal and the rows with it Dynamic.
+    # TWO PATHS TO THEM (U319): the selections with Auto Analysis off, and
+    # with it on the one dialog a launch in front raises, said in core.drift's
+    # one wording, which leaves the dyn rows to their own Dynamic run.
     dyned = sum(1 for row in collection.added if row.dyn)
     normal = len(collection.added) - dyned
     selections = (
@@ -2547,8 +2550,8 @@ def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
                 f"tempo, grid, key or waveform, and rekordbox analyses nothing on its "
                 f"own with Auto Analysis off; open rekordbox, select the "
                 f"{collection.analyze_name} playlist, which holds every row waiting "
-                f"for analysis, and {selections}; then crate inbox analyzed takes "
-                f"out each row rekordbox analysed"
+                f"for analysis, and {selections}; {drift.AUTO_ANALYSIS_STEP}; then "
+                f"crate inbox analyzed takes out each row rekordbox analysed"
             ),
         }
     ]

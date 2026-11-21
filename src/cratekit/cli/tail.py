@@ -170,12 +170,15 @@ ANALYZE_PLAYLIST = "INBOX / Analyze"
 #: carries its artist, album, genre and year from the commit that made it.
 #: TWO SELECTIONS SINCE U157, the settings ``core.drift`` names for both: the
 #: rows a landing marked ``dyn`` because their tempo moves take Dynamic, and
-#: every other row Normal.
+#: every other row Normal. TWO PATHS SINCE U319: those selections, or with
+#: Auto Analysis on the one dialog a launch in front raises, in the wording
+#: ``core.drift`` keeps for every sentence that offers it.
 REKORDBOX_STEPS: tuple[str, ...] = (
     f"in rekordbox, select the {ANALYZE_PLAYLIST} playlist, which holds every "
     f"landed row waiting for analysis, and run Analyze Tracks on its rows "
     f"without the dyn My Tag: {drift.NORMAL_SETTINGS}; then on its rows "
-    f"carrying the dyn My Tag, if any: {drift.DYNAMIC_SETTINGS}",
+    f"carrying the dyn My Tag, if any: {drift.DYNAMIC_SETTINGS}; "
+    f"{drift.AUTO_ANALYSIS_STEP}",
     "quit rekordbox and confirm rekordbox and rekordboxAgent are both gone "
     "before any other verb runs",
     "then take the analysed rows out of it: crate inbox analyzed",
