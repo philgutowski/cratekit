@@ -93,7 +93,6 @@ from cratekit.core import (
     locations,
     rb_writer,
     session,
-    snapshot,
     taxonomy,
     tree_registry,
 )
@@ -103,6 +102,7 @@ from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue
 from cratekit.sync import playlists, twins
 from cratekit.sync.watermarks import WatermarkStore
+from cratekit.write import trees
 
 #: The three answers a row can get.
 OFFERED = "offered"
@@ -902,10 +902,7 @@ def apply_removed(
         ) as gates,
         rb_writer.commit_witness(db) as witness,
     ):
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = trees.attached_capture(gates, cfg, db)
         removal = rb_writer.CollectionRemoval.prepare(db, [one.content_id for one in offered])
         first = _first_deletion_position(cfg, db)
         try:
