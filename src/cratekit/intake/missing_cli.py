@@ -1269,12 +1269,9 @@ def _missing_for_list(ctx, given: str) -> Envelope:
     missing: list[match.Wanted] = []
     seen: set[str] = set()
     for settled in resolved.matches:
-        if settled.state is match.MatchState.MATCHED:
-            counts["owned"] += 1
-        elif settled.state is match.MatchState.NEEDS_REVIEW:
-            counts["offered"] += 1
-        elif settled.state is match.MatchState.SUPPRESSED:
-            counts["suppressed"] += 1
+        word = match_cli.SETTLED_WORDS.get(settled.state)
+        if word is not None:
+            counts[word] += 1
         else:
             counts["missing"] += 1
             # THE SAME LINE TWICE IS ONE ROW, on the match identifier.

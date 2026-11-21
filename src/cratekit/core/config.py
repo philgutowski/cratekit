@@ -5282,6 +5282,19 @@ def flock_exclusive(target: Path, harden: Callable[[Path], None]):
     return handle
 
 
+def read_bytes_if_present(path: Path) -> bytes | None:
+    """A state file's bytes, or None when there is no file.
+
+    Absent is an answer, the empty record every ledger names. Any other
+    failure to read leaves as the ``OSError`` it is, for the caller to refuse
+    in its own words.
+    """
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+
+
 def read_json(path: Path, unusable: Callable[[str], BaseException]) -> tuple[bool, Any]:
     """Whether a state document exists at ``path``, and what it parses to.
 
@@ -5299,6 +5312,20 @@ def read_json(path: Path, unusable: Callable[[str], BaseException]) -> tuple[boo
         raise unusable("it could not be opened") from exc
     except ValueError as exc:
         raise unusable("it is not JSON") from exc
+
+
+def read_json_map(path: Path, unusable: Callable[[str], BaseException]) -> Mapping[str, Any] | None:
+    """:func:`read_json` for a document that must be a map, None when the file is absent.
+
+    Anything else at the top level is refused in the store's own words, since
+    a list or a scalar read as an empty record is deleted by the next write.
+    """
+    found, raw = read_json(path, unusable)
+    if not found:
+        return None
+    if not isinstance(raw, Mapping):
+        raise unusable(f"the document is a {type(raw).__name__}, not a map")
+    return raw
 
 
 def read_json_as_text(path: Path, unusable: Callable[[str], BaseException]) -> tuple[bool, Any]:
@@ -5394,8 +5421,10 @@ __all__ = [
     "mkdir_private",
     "out_of_band_effects",
     "provider_gate_dir",
+    "read_bytes_if_present",
     "read_json",
     "read_json_as_text",
+    "read_json_map",
     "rekey_records",
     "reset_cache",
     "save",

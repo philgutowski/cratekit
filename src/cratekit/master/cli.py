@@ -281,22 +281,9 @@ def master_recording(ctx) -> Envelope:
             # claim left behind by a driver that died is state the queue cannot
             # see for itself.
             job = jobs.reconcile(store, ctx.args.job)
-            warnings: tuple[dict[str, str], ...] = ()
-            if job.is_open():
-                # The step that was missing until U46. Everything above this line
-                # already worked; nothing below it ever ran an item. A total
-                # failure raises out of here rather than reaching the report,
-                # which is correct: the engine has already recorded the job as
-                # failed and the refusal carries the item's own cause.
-                _, warnings = ctx.run_job(store, job)
-                job = jobs.get(store, job.job_id)
-            # A JOB THAT DID NOT END CLEANLY IS NOT AN OK EXIT, and this branch
-            # returned one for every such job until R-225 was closed here. A
-            # total failure raises out of the drive above, and nothing else did:
-            # a job already failed on entry, a cancelled one and a parked one all
-            # reached the report and exited 0. OUTSIDE the ``is_open`` branch so
-            # the second ask about a failed job answers the way the first did.
-            jobs.raise_for_state(job)
+            # The drive was missing until U46, and a job that did not end
+            # cleanly exited 0 here until R-225: both are ``jobs.resumed``'s now.
+            job, warnings = jobs.resumed(ctx, store, job)
             return ctx.envelope(data=jobs.reported(store, job), warnings=warnings)
         # THE RECORDING IS NOT STATTED HERE, deliberately. Queueing needs neither
         # the file nor ffmpeg, and a stat in this handler would make the verb

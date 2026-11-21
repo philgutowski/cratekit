@@ -420,11 +420,11 @@ def stopped_writes(
 def front_moves(before: Sequence[str], order: Iterable[str]) -> list[str]:
     """The tracks the account adapter moves to the front, in the order it moves them (U220).
 
-    A copy of the adapter's rule (``_to_the_front`` in the account adapter),
-    held to it by a test: a track the playlist does not hold, or holds twice,
-    is not asked; the longest run at the tail of the asked order already
-    standing in that order stays; every asked track before that run is moved,
-    the last of them first.
+    The adapter's own rule, which it takes from here: a track the playlist
+    does not hold, or holds twice, is not asked; the longest run at the tail
+    of the asked order already standing in that order stays; every asked track
+    before that run is moved, the last of them first, so each lands in front
+    of the one after it.
     """
     counts: dict[str, int] = {}
     for one in before:

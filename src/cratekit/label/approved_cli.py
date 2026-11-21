@@ -765,12 +765,9 @@ def list_releases(
                     suppression_id=identify,
                 )
         for settled in resolved.matches:
-            if settled.state is match.MatchState.MATCHED:
-                counts["owned"] += 1
-            elif settled.state is match.MatchState.NEEDS_REVIEW:
-                counts["offered"] += 1
-            elif settled.state is match.MatchState.SUPPRESSED:
-                counts["suppressed"] += 1
+            word = match_cli.SETTLED_WORDS.get(settled.state)
+            if word is not None:
+                counts[word] += 1
             elif settled.match_id in seen:
                 counts["duplicate"] += 1
             elif str(settled.wanted.ref or "").strip() in already:

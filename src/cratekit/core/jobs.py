@@ -2133,18 +2133,31 @@ def advance(ctx, store: JobStore, job: Job, *, origin: Sequence[str], nothing_to
     which is open, leaves as ``JobBlocked``.
     """
     job = reconcile(store, job.job_id)
+    if job.is_open() and not items(store, job.job_id):
+        raise refuse(
+            "internal-error",
+            f"job {job.job_id} has no items to run, so driving it would "
+            f"{nothing_to_run}. It was queued by a build that did not record "
+            f"what its items were",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=tuple(origin),
+            detail={"job_id": job.job_id},
+        )
+    return resumed(ctx, store, job)
+
+
+def resumed(ctx, store: JobStore, job: Job):
+    """Drive a reconciled job if it is still open, and raise if it did not end cleanly.
+
+    The tail of every resume, and of :func:`advance`. A JOB THAT DID NOT END
+    CLEANLY IS NOT AN OK EXIT (R-225): the raise is OUTSIDE the ``is_open``
+    branch, so a job already failed on entry, a cancelled one and a parked one
+    leave through their cause, and the second ask about a failed job answers
+    the way the first did. Returns the job as it stands, and the driver's
+    warnings.
+    """
     warnings: tuple[dict[str, str], ...] = ()
     if job.is_open():
-        if not items(store, job.job_id):
-            raise refuse(
-                "internal-error",
-                f"job {job.job_id} has no items to run, so driving it would "
-                f"{nothing_to_run}. It was queued by a build that did not record "
-                f"what its items were",
-                remedy=Remedy.REPORT_DEFECT,
-                origin=tuple(origin),
-                detail={"job_id": job.job_id},
-            )
         _result, warnings = ctx.run_job(store, job)
         job = get(store, job.job_id)
     raise_for_state(job)
@@ -2206,6 +2219,7 @@ __all__ = [
     "release_claims",
     "reopen",
     "reported",
+    "resumed",
     "retry",
     "spawn",
     "states_of",

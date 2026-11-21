@@ -90,6 +90,7 @@ from cratekit.modules.outbound.service import (
     UNREADABLE_CANDIDATE,
     PlaylistListing,
 )
+from cratekit.sync.pair_stopped import front_moves
 
 #: How many times a write or a single lookup is retried after its first attempt.
 WRITE_RETRIES = 1
@@ -164,23 +165,10 @@ def _stale_tag(exc: BaseException) -> bool:
 def _to_the_front(before: list[str], remote_ids: Iterable[str]) -> list[str]:
     """The tracks to move to the front, in the order to move them, to stand as asked (U220).
 
-    A track the playlist does not hold, or holds twice, is not asked. The
-    longest run at the tail of the asked order already standing in that order
-    in ``before`` stays; every asked track before that run is moved, the last
-    of them first, so each lands in front of the one after it.
+    ``sync.pair_stopped.front_moves`` is the rule, which the pair's own
+    reading of a stopped write follows too.
     """
-    counts: dict[str, int] = {}
-    for one in before:
-        counts[one] = counts.get(one, 0) + 1
-    wanted = [
-        str(one) for one in dict.fromkeys(remote_ids) if str(one) and counts.get(str(one)) == 1
-    ]
-    asked = set(wanted)
-    keep = 0
-    for one in reversed([one for one in before if one in asked]):
-        if keep < len(wanted) and one == wanted[len(wanted) - 1 - keep]:
-            keep += 1
-    return list(reversed(wanted[: len(wanted) - keep]))
+    return front_moves(before, remote_ids)
 
 
 def _fronted(order: list[str], one: str) -> list[str]:

@@ -204,11 +204,9 @@ def load_record(cfg: config.Config) -> dict[str, Any]:
     asks every question again.
     """
     path = config.state_path("label_sync", cfg)
-    found, raw = config.read_json(path, lambda why: _unusable(path, why))
-    if not found:
+    raw = config.read_json_map(path, lambda why: _unusable(path, why))
+    if raw is None:
         return _empty()
-    if not isinstance(raw, Mapping):
-        raise _unusable(path, f"the document is a {type(raw).__name__}, not a map")
     version = raw.get("version")
     if version != RECORD_VERSION:
         raise _unusable(

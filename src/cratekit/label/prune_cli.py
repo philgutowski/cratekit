@@ -130,19 +130,16 @@ def label_prune(ctx) -> Envelope:
                 }
             ],
         )
-    if option != "apply" or not planned.writes:
-        return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
-    done = prune.Pruned()
-    try:
-        prune.apply(cfg, remote, planned, done)
-    except Exception as exc:
-        raise prune.failed_part_way(
-            exc,
-            done,
-            origin=_ORIGIN,
-            again="run crate label prune again; what was taken off is recorded and never asked twice",
-        ) from exc
-    return prune.finished(ctx, payload, planned, done)
+    return prune.settle(
+        ctx,
+        cfg,
+        remote,
+        payload,
+        planned,
+        option=option,
+        origin=_ORIGIN,
+        again="run crate label prune again; what was taken off is recorded and never asked twice",
+    )
 
 
 __all__ = ["build_prune", "held_releases", "label_prune"]

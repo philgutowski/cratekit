@@ -920,6 +920,20 @@ def attached_capture(gates: Any, cfg: config.Config, db: Any):
     return record, capture
 
 
+def membership_positions(tables: Any) -> tuple[int, int, int]:
+    """Where a membership row holds its playlist, its content row and its removal marker.
+
+    Read off the node tables a writer took before its commit, for the check
+    afterwards that every membership it made is one its plan named.
+    """
+    columns = tables.membership_columns
+    return (
+        columns.index("PlaylistID"),
+        columns.index("ContentID"),
+        columns.index(rb_writer.SOFT_DELETE_COLUMN),
+    )
+
+
 def rollback_quietly(db: Any) -> None:
     """Undo pending work on the caller's handle. Never masks the original failure.
 
@@ -1544,6 +1558,7 @@ __all__ = [
     "insert_record_labels_trees",
     "match_active_rows",
     "match_indexed_rows",
+    "membership_positions",
     "attached_capture",
     "rollback_quietly",
     "root_playlist_members",

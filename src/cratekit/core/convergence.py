@@ -731,15 +731,15 @@ def read(cfg: config.Config) -> ConvergenceState:
     """
     path = path_for(cfg)
     try:
-        raw = path.read_bytes()
-    except FileNotFoundError:
-        return EMPTY
+        raw = config.read_bytes_if_present(path)
     except OSError as exc:
         raise ConvergenceStateUnreadable(
             f"{path} exists and could not be read: {exc}",
             path=path,
             remedy=Remedy.RUN_DOCTOR,
         ) from exc
+    if raw is None:
+        return EMPTY
 
     try:
         data = json.loads(raw.decode("utf-8"))

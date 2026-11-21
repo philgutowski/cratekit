@@ -670,10 +670,7 @@ def addition_violations(
                 f"the {rb_writer.PLAYLIST_TABLE} row {key!r} changed {sorted(changed - allowed)}, "
                 f"which the twins made do not explain"
             )
-    m_cols = before.membership_columns
-    owner_at = m_cols.index("PlaylistID")
-    content_at = m_cols.index("ContentID")
-    m_marker = m_cols.index(rb_writer.SOFT_DELETE_COLUMN)
+    owner_at, content_at, m_marker = trees.membership_positions(before)
     for key in sorted(set(before.memberships) - set(after.memberships)):
         violations.append(f"the {rb_writer.MEMBERSHIP_TABLE} row {key!r} disappeared")
     for key in sorted(set(before.memberships) & set(after.memberships)):

@@ -101,6 +101,15 @@ LIST_KEYS = frozenset({"list", "origin", "tracks"})
 #: Warning codes this verb emits. Identifiers a consumer can switch on, never
 #: sentences.
 #:
+#: The word a settled row is counted under by the verbs that list what a
+#: resolve left missing. A missing row has no entry: each verb decides for
+#: itself whether to list it, and counts it then.
+SETTLED_WORDS = {
+    match.MatchState.MATCHED: "owned",
+    match.MatchState.NEEDS_REVIEW: "offered",
+    match.MatchState.SUPPRESSED: "suppressed",
+}
+
 #: NOT called ``SUPPRESSED``. ``match.MatchState.SUPPRESSED`` is a state and this
 #: is a warning code, and one name meaning two things in two modules of one unit
 #: is a defect no passing test can see.
@@ -995,6 +1004,7 @@ __all__ = [
     "LIST_VERSION",
     "ListResolved",
     "QUEUE",
+    "SETTLED_WORDS",
     "READING_UNSETTLED",
     "REVIEW_VERB",
     "SUPPRESSED_WARNING",
