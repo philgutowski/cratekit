@@ -118,6 +118,12 @@ FULL = "full"
 #: person queued to read the whole remote.
 CHECK = "check"
 
+#: The payload key for the library emptied on purpose (R-1761), frozen and
+#: rebuilt the way the three above are: a resume that lost it would refuse the
+#: backup a person asked for, and one that invented it would archive the mirror
+#: over a folder nobody said was the library.
+EMPTIED = "library_emptied"
+
 #: The advisory saying which kind of run a backup was (U317): skipped, quick or
 #: full, what changed, how long it took and when the next full check is due.
 KIND = "backup-kind"
@@ -614,10 +620,26 @@ def build(parser, entry) -> None:
             "library and does not depend on the recursive listing being complete"
         ),
     )
+    parser.add_argument(
+        backup.EMPTIED_FLAG,
+        action="store_true",
+        dest="library_emptied",
+        help=(
+            "back up a library its owner emptied on purpose. Without it a backup "
+            "refuses a library root that holds none of the library's files, or "
+            "under a tenth of what the last backup held, because that is what an "
+            "unmounted or lost volume leaves, and mirroring it would move the "
+            "whole remote into the archive. It passes only a root that still "
+            "carries the library's own record of a completed files backup, and "
+            "never one on another volume than the library's"
+        ),
+    )
     parser.set_defaults(_handler=backup_library)
 
 
-def frozen_payload(dry_run: bool, full: bool = False, check: bool = False) -> dict[str, Any]:
+def frozen_payload(
+    dry_run: bool, full: bool = False, check: bool = False, emptied: bool = False
+) -> dict[str, Any]:
     """What the queued job carries, and the only thing the resume is rebuilt from.
 
     ``bool`` rather than the argparse value straight through, so the payload holds
@@ -625,7 +647,12 @@ def frozen_payload(dry_run: bool, full: bool = False, check: bool = False) -> di
     namespace. A payload key that is ``"false"`` as a string is true to every
     reader of it, and the reader here decides whether anything is copied.
     """
-    return {DRY_RUN: bool(dry_run), FULL: bool(full), CHECK: bool(check)}
+    return {
+        DRY_RUN: bool(dry_run),
+        FULL: bool(full),
+        CHECK: bool(check),
+        EMPTIED: bool(emptied),
+    }
 
 
 def backup_argv(job) -> list[str]:
@@ -656,6 +683,8 @@ def backup_argv(job) -> list[str]:
         argv.append("--full")
     if payload.get(CHECK):
         argv.append("--check")
+    if payload.get(EMPTIED):
+        argv.append(backup.EMPTIED_FLAG)
     return [*argv, "--job", job.job_id]
 
 
@@ -789,6 +818,7 @@ def _already_queued(
     *,
     asked_full: bool | None = None,
     asked_check: bool | None = None,
+    asked_emptied: bool | None = None,
 ) -> dict[str, str]:
     """The one warning a reported twin carries, in the JOB's terms.
 
@@ -827,6 +857,22 @@ def _already_queued(
         where += (
             ". It runs a full check only if one is due and this ask was for one "
             "now, so cancel it first if that is the one wanted"
+        )
+    held_emptied = bool((job.payload or {}).get(EMPTIED))
+    if asked_emptied is not None and asked_emptied != held_emptied:
+        # R-1761. The flag is no twin's business to drop or add: a person who
+        # said the library was emptied would resume a job that refuses it, and
+        # one who did not would resume a job told it was. Said either way, and
+        # the plan refuses the flag at a root that does not carry the library's
+        # own record of its backups, whoever drives the job.
+        where += (
+            f". It was not asked with {backup.EMPTIED_FLAG}, so it refuses a "
+            f"library holding none of its files; cancel it first if this "
+            f"library was emptied on purpose"
+            if asked_emptied
+            else f". It was asked with {backup.EMPTIED_FLAG}, which backs up a "
+            f"library emptied on purpose; cancel it first unless that is what "
+            f"this library is"
         )
     return {
         "code": ALREADY_QUEUED,
@@ -975,7 +1021,9 @@ def backup_library(ctx) -> Envelope:
                 *kind_warning(reported["progress"].get(OUTCOMES), reported["ages"]),
             )
             return ctx.envelope(data=reported, warnings=warnings)
-        payload = frozen_payload(ctx.args.dry_run, ctx.args.full, ctx.args.check)
+        payload = frozen_payload(
+            ctx.args.dry_run, ctx.args.full, ctx.args.check, ctx.args.library_emptied
+        )
         found = _open_twin(
             store,
             handler_key=ctx.entry.handler_key,
@@ -997,7 +1045,11 @@ def backup_library(ctx) -> Envelope:
                 data=_reported(store, twin),
                 warnings=(
                     _already_queued(
-                        twin, frozen, asked_full=payload[FULL], asked_check=payload[CHECK]
+                        twin,
+                        frozen,
+                        asked_full=payload[FULL],
+                        asked_check=payload[CHECK],
+                        asked_emptied=payload[EMPTIED],
                     ),
                     *map(dict, backup.absent_analysis_share(described)),
                     *map(dict, backup.snapshot_identity_warning(described)),
@@ -1263,6 +1315,7 @@ def perform_backup(
             process_lister=process_lister,
             full=bool(payload.get(FULL)),
             check=bool(payload.get(CHECK)),
+            emptied=bool(payload.get(EMPTIED)),
             # U317. One portion planned, so the database item does not walk
             # the library and the files item does not read the database.
             only=portion,

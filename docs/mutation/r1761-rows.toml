@@ -1,0 +1,267 @@
+name = "r1761"
+pass_kind = "light"
+
+[[rows]]
+id = "P1_identity_not_asked"
+description = "_plan_files: skip the identity proof, so a root on another volume is walked and mirrored"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''    if foreign:
+        return PortionPlan(
+            portion=backup_facts.Portion.FILES,
+            refusal=Refusal.LIBRARY_ROOT_FOREIGN,'''
+new = '''    if False:
+        return PortionPlan(
+            portion=backup_facts.Portion.FILES,
+            refusal=Refusal.LIBRARY_ROOT_FOREIGN,'''
+
+[[rows]]
+id = "P2_identity_at_read_strength_tolerates_mismatch"
+description = "_not_the_recorded_volume: read every refusal of the gate as an unread identity, so a foreign volume is left to the census"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''        if recorded is None or observed is None:
+            return ""'''
+new = '''        if True:
+            return ""'''
+
+[[rows]]
+id = "P3_identity_raise_refuses"
+description = "_not_the_recorded_volume: an identity read that raises is a refusal, so a flaky probe stops every backup"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''    except Exception:  # noqa: BLE001 - an unread identity is left to the census
+        return ""'''
+new = '''    except Exception:  # noqa: BLE001 - an unread identity is left to the census
+        return "the identity could not be read"'''
+
+[[rows]]
+id = "P4_content_proof_skipped"
+description = "_plan_files: ignore the content proof's refusal, so an empty root is mirrored (the defect)"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''    if unproven:
+        return PortionPlan(
+            portion=backup_facts.Portion.FILES,
+            refusal=Refusal.LIBRARY_ROOT_UNPROVEN,'''
+new = '''    if False:
+        return PortionPlan(
+            portion=backup_facts.Portion.FILES,
+            refusal=Refusal.LIBRARY_ROOT_UNPROVEN,'''
+
+[[rows]]
+id = "P5_empty_root_passes"
+description = "_unproven: a root holding nothing at all is not refused, so with no history it runs as a new library"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''    if not anything:
+        held_before = ""'''
+new = '''    if False:
+        held_before = ""'''
+
+[[rows]]
+id = "P6_no_music_with_history_passes"
+description = "_unproven: a root of only its state folder is not refused while a backup on record held files"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''    if held == 0 and had != 0:'''
+new = '''    if held == 0 and had:'''
+
+[[rows]]
+id = "P7_floor_coefficient_halved"
+description = "LIBRARY_FLOOR: a twentieth rather than a tenth, so one file where twelve were passes"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''LIBRARY_FLOOR = 10'''
+new = '''LIBRARY_FLOOR = 20'''
+
+[[rows]]
+id = "P8_floor_comparison_inclusive"
+description = "_unproven: the floor refuses at a tenth as well as under it, so two of twenty refuses"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''    if had and held * backup_record.LIBRARY_FLOOR < had:'''
+new = '''    if had and held * backup_record.LIBRARY_FLOOR <= had:'''
+
+[[rows]]
+id = "P9_emptied_passes_on_the_fact_file"
+description = "_unproven: the emptied flag passes on the fact file alone, which a database item writes at a mount point (round two's N2)"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''        if carried is not None:
+            return "", False'''
+new = '''        if backup_facts.path_for(cfg).is_file():
+            return "", False'''
+
+[[rows]]
+id = "P10_move_nothing_only_when_new"
+description = "_plan_files: delete nothing only for a new library, so a census of none mirrors a lost volume's mount point (round two's B3)"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''    move_nothing = held == 0 and not emptied'''
+new = '''    move_nothing = new_library'''
+
+[[rows]]
+id = "P11_move_nothing_dropped"
+description = "_full_commands: a new library's mirror is not told to delete nothing, so a stray state folder archives the mirror"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''                *(MOVE_NOTHING if move_nothing else ()),'''
+new = '''                *(()),'''
+
+[[rows]]
+id = "P12_history_census_ignored"
+description = "_history: the census is not read, so a failed run that removed the record leaves no history"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''    census = backup_record.read_census(cfg)
+    if census is not None:'''
+new = '''    census = backup_record.read_census(cfg)
+    if False:'''
+
+[[rows]]
+id = "P13_history_record_ignored"
+description = "_history: the record is not read, so an upgrade from a record with no census has no history"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''        manifest is not None
+        and manifest.library_root == str(cfg.library.root)'''
+new = '''        manifest is None
+        and manifest.library_root == str(cfg.library.root)'''
+
+[[rows]]
+id = "P14_history_record_any_mirror"
+description = "_history: a record kept for another mirror is history, so a new library is refused"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''        and manifest.dest == str(cfg.backup.dest)
+    ):'''
+new = '''    ):'''
+
+[[rows]]
+id = "P15_history_fact_ignored"
+description = "_history: the library's own fact is not history, so an emptied library with installation state lost runs"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''    if fact is not None:
+        return None, "the library's own record of its backups"'''
+new = '''    if False:
+        return None, "the library's own record of its backups"'''
+
+[[rows]]
+id = "P16_history_unreadable_fact_none"
+description = "_history: a fact file that cannot be read is no history"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''    except backup_facts.BackupFactsUnreadable:
+        return None, "the library's own record of its backups"'''
+new = '''    except backup_facts.BackupFactsUnreadable:
+        return None'''
+
+[[rows]]
+id = "P17_census_damaged_is_none"
+description = "read_census: a census that cannot be parsed is no census, so it is not history"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''    except (ValueError, KeyError, TypeError, UnicodeDecodeError):
+        return Census(files=None)'''
+new = '''    except (ValueError, KeyError, TypeError, UnicodeDecodeError):
+        return None'''
+
+[[rows]]
+id = "P18_census_any_root"
+description = "read_census: a census kept for another library root answers for this one"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''        if data["library_root"] != str(cfg.library.root) or data["dest"] != str(cfg.backup.dest):'''
+new = '''        if data["dest"] != str(cfg.backup.dest):'''
+
+[[rows]]
+id = "P19_census_not_written"
+description = "run_backup: no census is kept after a completed files portion"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''                backup_record.write_census(cfg, entry.held, at=moment)'''
+new = '''                pass'''
+
+[[rows]]
+id = "P20_runtime_check_skipped"
+description = "run_backup: the full mirror is not held to the root the plan read, so a volume lost after the plan is mirrored"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''                if lost:
+                    failed = CommandResult(
+                        returncode=1, stderr=f"nothing was sent or archived: {lost}"
+                    )
+                    break'''
+new = '''                if False:
+                    break'''
+
+[[rows]]
+id = "P21_runtime_device_unchecked"
+description = "root_still_holds: the device is not compared, so a volume swapped for one holding a copy is mirrored"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''        if os.stat(root).st_dev != root_dev:
+            return f"the library root {root} is on another volume than the one the plan read"'''
+new = '''        if os.stat(root).st_dev != os.stat(root).st_dev:
+            return f"the library root {root} is on another volume than the one the plan read"'''
+
+[[rows]]
+id = "P22_runtime_files_unchecked"
+description = "root_still_holds: the files half is not asked, so a root emptied on its own volume after the plan is mirrored"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''    if files and not probe(root, excludes, state_dirname, first=True)[1]:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "P23_probe_counts_state"
+description = "probe: a file in the state folder is counted as the library's, so a stray state folder proves the root"
+file = "src/cratekit/modules/tools/backup_record.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''            anything = True
+            if held(rel, state_dirname):'''
+new = '''            anything = True
+            if True:'''
+
+[[rows]]
+id = "P24_flag_lost_in_the_worker"
+description = "perform_backup: the frozen flag is not handed to the plan, so a queued emptied backup refuses"
+file = "src/cratekit/backup/cli.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''            emptied=bool(payload.get(EMPTIED)),'''
+new = '''            emptied=False,'''
+
+[[rows]]
+id = "P25_max_delete_sentence_on_any_failure"
+description = "run_backup: the remote holds files sentence is said for any failure of a move nothing mirror, round one's B2"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py", "tests/test_backup_quick.py", "tests/test_backup_cli.py", "tests/test_backup_comparison.py", "tests/modules/test_tools.py"]
+old = '''                and MOVE_NOTHING[0].lstrip("-") in failed.stderr'''
+new = '''                and True'''

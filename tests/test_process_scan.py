@@ -641,6 +641,11 @@ def test_a_backup_refuses_the_database_portion_alone_and_still_mirrors(
     database = config.state_path("rekordbox_db", contained)
     database.parent.mkdir(parents=True, exist_ok=True)
     database.write_bytes(b"SQLite format 3\x00")
+    # A library holds its music: an empty folder at the root is what an
+    # unmounted volume leaves, and the files portion refuses it (#893).
+    track = contained.library.root / "Music" / "fixture.flac"
+    track.parent.mkdir(parents=True, exist_ok=True)
+    track.write_bytes(b"one track")
     table(FakeProcess(300, raises=DYING), finder())
     plan = backup.plan_backup(
         contained, process_lister=processes.running_process_names, settings_dirs=()

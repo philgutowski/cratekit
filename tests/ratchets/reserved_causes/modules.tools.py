@@ -17,6 +17,8 @@ KEBAB_LITERALS = {
         'database-absent',
         'destination-not-configured',
         'library-root-absent',
+        'library-root-foreign',  # 2026-11-21, #893
+        'library-root-unproven',  # 2026-11-21, #893
         'list-share',
         'list-snapshot-contents',
         'list-snapshot-identity',
@@ -69,6 +71,8 @@ NAMED_WITHOUT_OWN = {
         'database-absent',
         'destination-not-configured',
         'library-root-absent',
+        'library-root-foreign',  # 2026-11-21, #893
+        'library-root-unproven',  # 2026-11-21, #893
         'no-snapshot-available',
         'rclone-missing',
         'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
@@ -98,6 +102,8 @@ NAMED_WITH_OWN = {
         'database-absent',
         'destination-not-configured',
         'library-root-absent',
+        'library-root-foreign',  # 2026-11-21, #893
+        'library-root-unproven',  # 2026-11-21, #893
         'no-snapshot-available',
         'rclone-missing',
         'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
@@ -131,6 +137,8 @@ LITERAL_HOLDERS = {
         'database-absent',
         'destination-not-configured',
         'library-root-absent',
+        'library-root-foreign',  # 2026-11-21, #893
+        'library-root-unproven',  # 2026-11-21, #893
         'no-snapshot-available',
         'rclone-missing',
         'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.

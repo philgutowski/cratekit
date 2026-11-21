@@ -140,6 +140,13 @@ def _write(path: Path, content: bytes, *, at: datetime) -> None:
     os.utime(path, (stamp, stamp))
 
 
+def _one_track(cfg) -> None:
+    """R-1761. A library holds its music: an empty folder at the root is what
+    an unmounted volume leaves, and a backup refuses it. For the tests that
+    read the command or a stand in's report rather than what was sent."""
+    _write(cfg.library.root / "Music" / "fixture.flac", b"one track", at=MOMENT)
+
+
 def _seed(cfg) -> Path:
     """Three tracks in the library, and the folder they live in."""
     music = cfg.library.root / "Music"
@@ -200,6 +207,7 @@ def _held(folder: Path) -> dict[str, bytes]:
 
 
 def _mirror_command(cfg, **kwargs) -> backup.Command:
+    _one_track(cfg)
     plan = backup.plan_backup(cfg, now=MOMENT, **kwargs)
     (found,) = [
         command
@@ -412,6 +420,7 @@ def _run_files(cfg, runner, *, full: bool = False) -> backup.PortionOutcome:
     Asked for (U317): a second run over a library the first left unchanged is
     otherwise skipped, and these read the full mirror's report.
     """
+    _one_track(cfg)
     plan = backup.plan_backup(cfg, now=MOMENT, full=full, check=True)
     narrowed = replace(plan, portions=(plan.portion(backup_facts.Portion.FILES),))
     (outcome,) = backup.run_backup(cfg, narrowed, runner=runner, now=MOMENT).portions
@@ -712,7 +721,10 @@ def test_the_full_flag_is_frozen_by_the_parser_and_rebuilt_by_the_resume(cfg):
     with jobs.open_store() as store:
         job = jobs.get(store, envelope["data"]["job_id"])
     assert job.payload == {
-        backup_cli.DRY_RUN: True, backup_cli.FULL: True, backup_cli.CHECK: False
+        backup_cli.DRY_RUN: True,
+        backup_cli.FULL: True,
+        backup_cli.CHECK: False,
+        backup_cli.EMPTIED: False,
     }
     assert backup_cli.backup_argv(job) == [
         "backup", "run", "--dry-run", "--full", "--job", job.job_id,
@@ -733,6 +745,7 @@ def test_the_frozen_mode_is_the_one_the_plan_is_built_in(cfg, real_rclone, monke
     """
     from cratekit.modules.tools import backup_record
 
+    _one_track(cfg)
     for payload, wanted in ((FAST, "fast"), (FULL, "full"), ({}, "fast")):
         backup_record.invalidate(backup_record.manifest_path())
         report = backup_cli.perform_backup(
@@ -831,6 +844,7 @@ def test_the_sentence_never_prints_an_unread_number_as_zero():
 
 
 def test_a_failed_full_run_is_still_a_refusal(cfg, real_rclone):
+    _one_track(cfg)
     with pytest.raises(CratekitError) as excinfo:
         backup_cli.perform_backup(
             FULL,
