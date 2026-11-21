@@ -647,9 +647,10 @@ collection row and every membership, cue, history entry, analysis file row
 and mixer row naming it are deleted, and the playlists and history lists
 stay, emptier. Nothing else in the database moves, which the verb reads back
 from the database after its commit, and it refuses with nothing written when
-the collection or the playlists moved since the gate, or when a My Tag,
-sampler, related tracks or other table rekordbox was never measured on names
-the track. It touches no file: run `crate delete review` next, which offers
+the collection or the playlists moved since the gate. A track a My Tag (the
+landing's own `vox` and `dyn` included), a sampler slot, related tracks or any
+other table rekordbox was never measured on names is kept, with that table
+named, and never offered. It touches no file: run `crate delete review` next, which offers
 each removed track's file to the Trash behind its own proofs and its own
 gate. `crate restore list` names the tracks a removal took out, and a restore
 of its session puts them back. `abort` writes nothing.
@@ -666,8 +667,9 @@ it in a playlist or history list that keeps others.
   playlist twin).
 - **Kept**: a track the library held before the pass, one whose file the pass
   did not bring, one still on another synced playlist (by its id, its ISRC,
-  or its artist and title), and one in any other playlist, All Favorites
-  and label year playlists included. Each is shown with what keeps it. A
+  or its artist and title), one in any other playlist, All Favorites and
+  label year playlists included, and one a My Tag or another table rekordbox's
+  removal was never measured on names. Each is shown with what keeps it. A
   synced playlist is one a pass swept, queued or took, one still titled
   with the old `DOWNLOADED ` prefix, a pair, or one a landing downloaded.
 - **Left**: a track no single row holds now: none does, two claim its file,
@@ -1175,8 +1177,9 @@ the `library.location_prefix_map` rule that would resolve it; rows that are no
 local file, rekordbox's streaming rows and `soundcloud:` locations among them,
 are left out and counted on the gate. A row rekordbox deletes outright on
 Remove from Collection leaves no mark for it to read, so its file is offered
-only when `crate sync removed` took the row out and recorded it; a track you
-remove by hand in rekordbox leaves its file for you to trash yourself. `crate
+when `crate sync removed` took the row out and recorded it; a track you remove
+by hand in rekordbox is not offered, so you trash its file yourself (unless
+`sync removed` had taken that same track out before and a restore put it back). `crate
 sync removed` lists the downloaded tracks you took off their playlist on the
 account and, behind its gate, takes them out of the collection first. `crate
 tombstone list` shows what was

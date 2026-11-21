@@ -2095,17 +2095,25 @@ def add_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> list[
     person cannot see it in, and a track moved away and later moved back would
     never come back.
     """
-    present = {
-        str(song.ContentID)
-        for song in db.get_playlist_songs(PlaylistID=str(playlist.ID))
-        if not membership_removed(song)
-    }
+    songs = list(db.get_playlist_songs(PlaylistID=str(playlist.ID)))
+    present = {str(song.ContentID) for song in songs if not membership_removed(song)}
+    highest = max((int(song.TrackNo or 0) for song in songs), default=0)
     inserted: list[str] = []
     for content_id in content_ids:
         key = str(content_id)
         if key in present:
             continue
-        db.add_to_playlist(playlist, key)
+        added = db.add_to_playlist(playlist, key)
+        # AN APPEND GOES PAST THE HIGHEST POSITION, NOT PAST THE ROW COUNT
+        # (U288). The binding numbers a new row as the count plus one, which is
+        # the highest position only while no row was ever deleted outright; a
+        # track taken out of the collection leaves a gap, and the count plus
+        # one would then land on a position a live row already holds.
+        number = int(getattr(added, "TrackNo", 0) or 0)
+        if added is not None and number <= highest:
+            added.TrackNo = highest + 1
+            number = highest + 1
+        highest = max(highest, number)
         present.add(key)
         inserted.append(key)
     return inserted
@@ -2909,6 +2917,15 @@ DELETABLE_TABLES = frozenset(COLLECTION_REMOVAL_TABLES)
 
 #: The column a row of another table names a content row by.
 CONTENT_REFERENCE_COLUMN = "ContentID"
+
+#: The column a few tables name ANY row by, a content row among them, beside
+#: the table it names (``imageFile``). Asked too, so a row that names the
+#: track this way is refused rather than left naming a row that is gone.
+TARGET_REFERENCE_COLUMN = "TargetID"
+
+#: The tables that name rows by :data:`TARGET_REFERENCE_COLUMN` and that
+#: rekordbox's removal was measured to leave as they were (A178, A185).
+TARGET_REFERENCES_LEFT = frozenset({"uuidIDMap"})
 
 #: The registry row whose counter the binding advances at every commit.
 LOCAL_UPDATE_COUNT = "localUpdateCount"
@@ -4037,7 +4054,8 @@ def commit_guarded(
     ``deletions`` IS EMPTY FOR EVERY WRITER BUT THE REMOVAL FROM THE COLLECTION
     (U288). It names the tables this commit admits a hard delete in, held to
     :data:`DELETABLE_TABLES`, and a source guard holds its one caller to
-    ``sync.removed``. Any other commit refuses every delete, as before.
+    ``sync.removed``. Any other commit refuses every delete the session or the
+    binding's buffer reports, as before.
 
     RE-CHECKED AT COMMIT, NOT ONLY AT OPEN, AND UNCONDITIONALLY. A run takes
     minutes, and the user can launch rekordbox during it. The open-time process
@@ -4122,7 +4140,9 @@ def content_references(db: Any, content_ids: Iterable[str]) -> dict[str, dict[st
     """Every row naming one of ``content_ids`` in a table the removal does NOT delete from.
 
     Read from SQL over every table the database holds, by its
-    ``ContentID`` column, so a table the binding does not map is asked too.
+    ``ContentID`` column and by ``TargetID`` where a table has one
+    (``imageFile``; ``uuidIDMap`` excepted, which rekordbox was measured to
+    leave), so a table the binding does not map is asked too.
     ``{content id: {table: rows}}``, empty when nothing outside
     :data:`DELETABLE_TABLES` names any of them. A table A178 and A185 did not
     measure (My Tag, the sampler, related tracks, the hot cue bank list, the
@@ -4140,14 +4160,18 @@ def content_references(db: Any, content_ids: Iterable[str]) -> dict[str, dict[st
     for table in _tables(session):
         if table in DELETABLE_TABLES:
             continue
-        if CONTENT_REFERENCE_COLUMN not in {name for name, _pk in _columns(session, table)}:
-            continue
-        statement = text(
-            f'SELECT {CONTENT_REFERENCE_COLUMN}, COUNT(*) FROM "{table}" '
-            f"WHERE {CONTENT_REFERENCE_COLUMN} IN :ids GROUP BY {CONTENT_REFERENCE_COLUMN}"
-        ).bindparams(bindparam("ids", expanding=True))
-        for content_id, count in session.execute(statement, {"ids": wanted}).fetchall():
-            found.setdefault(str(content_id), {})[table] = int(count)
+        names = {name for name, _pk in _columns(session, table)}
+        asked = [CONTENT_REFERENCE_COLUMN] if CONTENT_REFERENCE_COLUMN in names else []
+        if TARGET_REFERENCE_COLUMN in names and table not in TARGET_REFERENCES_LEFT:
+            asked.append(TARGET_REFERENCE_COLUMN)
+        for column in asked:
+            statement = text(
+                f'SELECT {column}, COUNT(*) FROM "{table}" '
+                f"WHERE {column} IN :ids GROUP BY {column}"
+            ).bindparams(bindparam("ids", expanding=True))
+            for content_id, count in session.execute(statement, {"ids": wanted}).fetchall():
+                held = found.setdefault(str(content_id), {})
+                held[table] = held.get(table, 0) + int(count)
     return found
 
 
@@ -4403,8 +4427,7 @@ class CollectionRemoval:
     """One removal from the collection, prepared, then committed, then read back (U288).
 
     THE ONE ENTRY A VERB CALLS, so the order is this class's and not each
-    caller's: :func:`collection_removal` reads everything first and writes
-    nothing (each row live, no unmeasured table naming one, the database's
+    caller's: :meth:`prepare` reads everything first and writes nothing (each row live, no unmeasured table naming one, the database's
     identity, the columns the record keeps, and the whole database from SQL);
     :meth:`commit` deletes, proves the deletes confined from SQL before the
     commit, and commits with ``deletions`` naming :data:`DELETABLE_TABLES`;
@@ -4426,6 +4449,70 @@ class CollectionRemoval:
         self.before = before
         #: Rows deleted, by table, once :meth:`commit` has made them.
         self.deleted: dict[str, int] = {}
+
+    @classmethod
+    def prepare(cls, db: Any, content_ids: Iterable[str]) -> CollectionRemoval:
+        """Prepare a removal from the collection, reading everything and writing NOTHING.
+
+        REFUSED HERE, before any delete: a content id with no live row, one a
+        table outside the removal set names (:func:`content_references`), and a
+        database with no identity of its own, since the record of what was
+        removed is bound to it and a record bound to nothing never offers a file.
+        """
+        ids = tuple(dict.fromkeys(str(one) for one in content_ids))
+        identity = database_id(db)
+        if not identity:
+            raise _unavailable(
+                "canary-read-failed",
+                "the rekordbox database reports no identity of its own, so the record of "
+                "what was removed could not be bound to it; nothing was written",
+                detail={"column": "DBID"},
+            )
+        content_class = _mapped(CONTENT_TABLE)
+        columns: dict[str, dict[str, Any]] = {}
+        for key in ids:
+            row = db.session.get(content_class, key)
+            if row is None or soft_deleted(
+                row,
+                message=(
+                    f"the collection row {key!r} cannot say whether rekordbox removed it, "
+                    f"and deleting it as live could take a track out twice"
+                ),
+                origin=("rb_writer",),
+                detail={"content_id": key},
+            ):
+                raise _unavailable(
+                    "whitelist-violation",
+                    f"asked to take the collection row {key!r} out of the collection, and "
+                    f"the database holds no live row of that id; nothing was written",
+                    detail={"content_id": key},
+                )
+            columns[key] = recorded_columns(row)
+        held = content_references(db, ids)
+        if held:
+            named = "; ".join(
+                f"{key}: " + ", ".join(f"{table} ({count})" for table, count in sorted(tables.items()))
+                for key, tables in sorted(held.items())
+            )
+            raise _unavailable(
+                "whitelist-violation",
+                f"rows in tables rekordbox's Remove from Collection was never measured on "
+                f"name collection rows this removal would take out ({named}), so what it "
+                f"would do with them is not known; nothing was written",
+                detail={"tables": {key: dict(value) for key, value in sorted(held.items())}},
+            )
+        return cls(db, ids, identity, columns, database_reading(db))
+
+
+    @staticmethod
+    def held(db: Any, content_ids: Iterable[str]) -> dict[str, dict[str, int]]:
+        """Which of ``content_ids`` a table outside the removal set names, and where.
+
+        The plan asks this before it offers a row, so a row :meth:`prepare`
+        would refuse is answered kept rather than offered and then refused.
+        See :func:`content_references`.
+        """
+        return content_references(db, content_ids)
 
     def commit(self, *, force_cloud_canary: bool = False) -> None:
         """Delete every planned row, prove it confined, and commit through the guard."""
@@ -4472,59 +4559,6 @@ class CollectionRemoval:
         }
 
 
-def collection_removal(db: Any, content_ids: Iterable[str]) -> CollectionRemoval:
-    """Prepare a removal from the collection, reading everything and writing NOTHING.
-
-    REFUSED HERE, before any delete: a content id with no live row, one a
-    table outside the removal set names (:func:`content_references`), and a
-    database with no identity of its own, since the record of what was
-    removed is bound to it and a record bound to nothing never offers a file.
-    """
-    ids = tuple(dict.fromkeys(str(one) for one in content_ids))
-    identity = database_id(db)
-    if not identity:
-        raise _unavailable(
-            "canary-read-failed",
-            "the rekordbox database reports no identity of its own, so the record of "
-            "what was removed could not be bound to it; nothing was written",
-            detail={"column": "DBID"},
-        )
-    content_class = _mapped(CONTENT_TABLE)
-    columns: dict[str, dict[str, Any]] = {}
-    for key in ids:
-        row = db.session.get(content_class, key)
-        if row is None or soft_deleted(
-            row,
-            message=(
-                f"the collection row {key!r} cannot say whether rekordbox removed it, "
-                f"and deleting it as live could take a track out twice"
-            ),
-            origin=("rb_writer",),
-            detail={"content_id": key},
-        ):
-            raise _unavailable(
-                "whitelist-violation",
-                f"asked to take the collection row {key!r} out of the collection, and "
-                f"the database holds no live row of that id; nothing was written",
-                detail={"content_id": key},
-            )
-        columns[key] = recorded_columns(row)
-    held = content_references(db, ids)
-    if held:
-        named = "; ".join(
-            f"{key}: " + ", ".join(f"{table} ({count})" for table, count in sorted(tables.items()))
-            for key, tables in sorted(held.items())
-        )
-        raise _unavailable(
-            "whitelist-violation",
-            f"rows in tables rekordbox's Remove from Collection was never measured on "
-            f"name collection rows this removal would take out ({named}), so what it "
-            f"would do with them is not known; nothing was written",
-            detail={"tables": {key: dict(value) for key, value in sorted(held.items())}},
-        )
-    return CollectionRemoval(db, ids, identity, columns, database_reading(db))
-
-
 __all__ = [
     "ADMITTABLE_ROW_TABLES",
     "BINDING_ID_LIMIT",
@@ -4555,7 +4589,8 @@ __all__ = [
     "REMOVABLE_TABLES",
     "COLLECTION_REMOVAL_TABLES",
     "CollectionRemoval",
-    "collection_removal",
+    "TARGET_REFERENCE_COLUMN",
+    "TARGET_REFERENCES_LEFT",
     "RECORDED_COLUMNS",
     "RECORDED_REMOVALS_KEY",
     "database_id",

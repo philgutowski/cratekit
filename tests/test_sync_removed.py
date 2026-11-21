@@ -1092,45 +1092,95 @@ def test_a_plan_that_moved_before_the_write_refuses_with_nothing_written(
     assert _every_table(cfg) == seen["tables"]
 
 
-def test_a_row_another_table_names_refuses_the_whole_apply_with_nothing_written(
+def test_a_row_a_my_tag_names_is_kept_and_never_offered_and_the_rest_is_removed(
     native_library, silence, monkeypatch, offline
 ):
-    """A My Tag row is a table neither sitting measured, so the removal refuses rather than guesses."""
+    """Round one's B1: the landing's own vox My Tag would make the removal refuse, so it keeps."""
+    cfg, _root = native_library
+    _five(cfg, silence)
+    account = Account(monkeypatch)
+    account.lists("pl-a", SUNSET, [track("Held1"), track("Held2"), track("Held3")])
+    tagged, clean = _row(cfg, "New1"), _row(cfg, "New2")
+    _sql(cfg, 'INSERT INTO "djmdSongMyTag" (ID, ContentID) VALUES (?, ?)', "mt-1", tagged)
+
+    code, acted, refused = _apply()
+
+    assert code == int(ExitCode.OK), acted
+    answers = _by_title(acted)
+    assert answers["New1"]["action"] == removed.KEPT
+    assert answers["New1"]["why"] == removed.UNMEASURED
+    assert answers["New1"]["kept_by"] == ["djmdSongMyTag"]
+    assert answers["New2"]["action"] == removed.OFFERED
+    assert acted["data"]["totals"]["removed"] == 1
+    assert _query(cfg, "SELECT COUNT(*) FROM djmdContent WHERE ID = ?", tagged) == [(1,)]
+    assert _query(cfg, "SELECT COUNT(*) FROM djmdContent WHERE ID = ?", clean) == [(0,)]
+    assert not any("New1" in line for line in refused["cause"]["detail"]["shown"]["offered"])
+
+
+@pytest.mark.parametrize(
+    "made, inserted",
+    [
+        # A table the binding maps and neither sitting measured.
+        (None, 'INSERT INTO "djmdSongSampler" (ID, ContentID) VALUES (\'x-1\', ?)'),
+        # A table the binding does not even map, asked by its column alone.
+        (
+            'CREATE TABLE "someFutureTable" (ID TEXT PRIMARY KEY, ContentID TEXT)',
+            'INSERT INTO "someFutureTable" (ID, ContentID) VALUES (\'x-1\', ?)',
+        ),
+        # A row naming it by TargetID, as an image row does.
+        (None, 'INSERT INTO "imageFile" (ID, TargetID) VALUES (\'x-1\', ?)'),
+    ],
+)
+def test_the_writer_refuses_a_row_an_unmeasured_table_names_with_nothing_written(
+    native_library, silence, monkeypatch, offline, made, inserted
+):
     cfg, _root = native_library
     _one_offered(cfg, silence, monkeypatch)
     offered = _row(cfg, "New1")
-    _sql(cfg, 'INSERT INTO "djmdSongMyTag" (ID, ContentID) VALUES (?, ?)', "mt-1", offered)
+    if made:
+        _sql(cfg, made)
+    _sql(cfg, inserted, offered)
     before = _every_table(cfg)
-
-    code, acted, _ = _apply()
-
-    assert code != int(ExitCode.OK)
-    assert acted["cause"]["reason"] == "whitelist-violation", acted
-    assert "djmdSongMyTag" in acted["cause"]["message"]
+    handle = _handle(cfg)
+    try:
+        assert rb_writer.CollectionRemoval.held(handle, [offered])[offered]
+        with pytest.raises(rb_writer.RekordboxUnavailable, match="never measured"):
+            rb_writer.CollectionRemoval.prepare(handle, [offered])
+        with pytest.raises(rb_writer.RekordboxUnavailable, match="never measured"):
+            rb_writer.remove_from_collection(handle, offered)
+    finally:
+        rb_writer.close_db(handle)
     assert _every_table(cfg) == before
+
+
+def test_a_uuid_map_row_is_left_as_rekordbox_leaves_it(native_library, silence, monkeypatch, offline):
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    offered = _row(cfg, "New1")
+    _sql(cfg, 'INSERT INTO "uuidIDMap" (ID, TableName, TargetUUID, CurrentID) VALUES (?, ?, ?, ?)', "u-1", "djmdContent", "uu", offered)
+    handle = _handle(cfg)
+    try:
+        assert rb_writer.CollectionRemoval.held(handle, [offered]) == {}
+    finally:
+        rb_writer.close_db(handle)
 
 
 def test_delete_review_after_the_apply_offers_the_removed_file_and_none_other(
     native_library, silence, monkeypatch, offline, tmp_path
 ):
     """The removed row is gone outright, and delete review still offers its file (R-1037)."""
-    from cratekit.deletion import library as deletion_library
     from cratekit.deletion import watermark
 
     cfg, _root = native_library
     _one_offered(cfg, silence, monkeypatch)
     offered = _row(cfg, "New1")
     music = Path(_query(cfg, "SELECT FolderPath FROM djmdContent WHERE ID = ?", offered)[0][0])
-    handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
-    try:
-        watermark.WatermarkStore(cfg).baseline(
-            database_identity=deletion_library.database_identity(handle),
-            sequence=_counter(cfg),
-            actor="cli",
-        )
-    finally:
-        rb_writer.close_db(handle)
+    # NO DELETE REVIEW HAS EVER RUN ON THIS LIBRARY (round one's B2): the
+    # removal gives the pass its first position, below its own commit.
+    assert watermark.WatermarkStore(cfg).read() is None
     code, acted, _ = _apply()
+    mark = watermark.WatermarkStore(cfg).read()
+    assert mark is not None and mark.sequence < _counter(cfg)
     assert code == int(ExitCode.OK), acted
     # Deletion is a feature module and the slim profile hides it.
     config.save(dataclasses.replace(cfg, profile=config.ProfileConfig(name="full")))
@@ -1166,20 +1216,39 @@ def test_delete_review_after_the_apply_offers_the_removed_file_and_none_other(
 
 
 def test_only_the_collection_removal_asks_a_commit_to_admit_a_delete():
-    """A source guard, as the creation's is: who may ask is the property."""
+    """A source guard, as the creation's is: who may ask is the property.
+
+    READ AS SYNTAX, not as text (round one's R8): any call in the package that
+    passes ``deletions``, or hands one of the writer's three judges a ``**``
+    mapping that could carry it, outside the writer itself.
+    """
+    import ast
     import re
 
+    judges = {"commit_guarded", "assert_session_whitelisted", "guard_violations"}
     root = Path(rb_writer.__file__).resolve().parents[1]
-    askers = sorted(
-        str(path.relative_to(root))
-        for path in root.rglob("*.py")
-        if re.search(r"commit_guarded\([^)]*deletions=", path.read_text(encoding="utf-8"), re.S)
-    )
-    assert askers == ["core/rb_writer.py"], askers
+    askers: list[str] = []
+    for path in sorted(root.rglob("*.py")):
+        if "_vendor" in path.parts:
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Call):
+                continue
+            name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(
+                node.func, "id", ""
+            )
+            for keyword in node.keywords:
+                if keyword.arg == "deletions" or (keyword.arg is None and name in judges):
+                    askers.append(f"{path.relative_to(root).as_posix()}::{name}")
+    assert sorted(set(askers)) == [
+        "core/rb_writer.py::assert_session_whitelisted",
+        "core/rb_writer.py::commit_guarded",
+        "core/rb_writer.py::guard_violations",
+    ], askers
     callers = sorted(
         str(path.relative_to(root))
         for path in root.rglob("*.py")
-        if re.search(r"\bcollection_removal\(", path.read_text(encoding="utf-8"))
+        if re.search(r"\bCollectionRemoval\.prepare\(", path.read_text(encoding="utf-8"))
         and path.name != "rb_writer.py"
     )
     assert callers == ["sync/removed.py"], callers
@@ -1198,10 +1267,15 @@ def _handle(cfg: config.Config):
     return rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
 
 
-def test_another_writer_deleting_a_content_row_is_refused_at_its_commit(
+def test_another_writer_deleting_a_content_row_through_the_binding_is_refused_at_its_commit(
     native_library, silence, monkeypatch, offline
 ):
-    """Every commit but the removal's still refuses a delete, the content table above all."""
+    """Every commit but the removal's still refuses a delete the binding made, the content table above all.
+
+    Through the binding's own delete, which reaches its update buffer. A delete
+    made on the raw session and flushed reaches neither source the whitelist
+    reads, which predates this unit and is a residual.
+    """
     cfg, _root = native_library
     _one_offered(cfg, silence, monkeypatch)
     offered = _row(cfg, "New1")
@@ -1304,3 +1378,176 @@ def test_a_recorded_removal_is_read_only_for_its_own_database_and_a_row_still_ab
     assert [(row.content_id, row.sequence, row.recorded, row.size) for row in rows] == [
         ("a", 45, "/m/a.flac", 9)
     ]
+
+
+# ---------------------------------------------------------------------------
+# U288, round one: the guards a first table killed nothing with
+# ---------------------------------------------------------------------------
+
+
+def test_the_acknowledgment_is_read_before_the_gate_is_asked(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+
+    def missing(_cfg, **_kwargs):
+        raise session.refuse(
+            "backup-acknowledgment-missing",
+            "no acknowledgment, as a test says",
+            origin=("tests",),
+        )
+
+    monkeypatch.setattr(removed_cli.session, "assert_backup_acknowledged", missing)
+
+    code, out = drive(VERB)
+
+    assert code != int(ExitCode.DECISION_REQUIRED), out
+    assert out["cause"]["reason"] == "backup-acknowledgment-missing", out
+
+
+def test_rekordbox_running_at_the_write_refuses_before_any_session_opens(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    before = _every_table(cfg)
+    real = removed_cli.written
+
+    def running(cfg_, plan, **kwargs):
+        monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
+        return real(cfg_, plan, **kwargs)
+
+    monkeypatch.setattr(removed_cli, "written", running)
+
+    code, acted, _ = _apply()
+
+    assert code != int(ExitCode.OK)
+    assert acted["cause"]["reason"] == "rekordbox-running", acted
+    assert _every_table(cfg) == before
+    # Refused at the open, before the gates: no session was begun for it.
+    assert not [one for one in session.records(cfg) if one.workflow == removed.WORKFLOW]
+
+
+def test_prepare_refuses_a_row_not_live_and_a_database_with_no_identity(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    offered, held = _row(cfg, "New1"), _row(cfg, "Held1")
+    _sql(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", held)
+    handle = _handle(cfg)
+    try:
+        for content_id in (held, "no-such-row"):
+            with pytest.raises(rb_writer.RekordboxUnavailable, match="no live row"):
+                rb_writer.CollectionRemoval.prepare(handle, [offered, content_id])
+    finally:
+        rb_writer.close_db(handle)
+    _sql(cfg, "UPDATE djmdProperty SET DBID = ''")
+    handle = _handle(cfg)
+    try:
+        with pytest.raises(rb_writer.RekordboxUnavailable, match="no identity"):
+            rb_writer.CollectionRemoval.prepare(handle, [offered])
+    finally:
+        rb_writer.close_db(handle)
+
+
+def test_commit_proves_the_removal_confined_before_it_commits(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    offered, held = _row(cfg, "New1"), _row(cfg, "Held1")
+    before = _every_table(cfg)
+    handle = _handle(cfg)
+    try:
+        removal = rb_writer.CollectionRemoval.prepare(handle, [offered])
+        handle.get_content(ID=held).Title = "Moved"
+        with pytest.raises(rb_writer.RekordboxUnavailable, match="did not plan"):
+            removal.commit()
+    finally:
+        rb_writer.close_db(handle)
+    assert _every_table(cfg) == before
+
+
+def test_a_read_back_that_disagrees_refuses_as_unverified(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    monkeypatch.setattr(rb_writer.CollectionRemoval, "read_back", lambda self: ["a row moved"])
+
+    code, acted, _ = _apply()
+
+    assert code != int(ExitCode.OK)
+    assert acted["cause"]["reason"] == "session-committed-unverified", acted
+    assert "a row moved" in acted["cause"]["message"]
+
+
+def test_a_commit_that_lands_and_then_raises_still_records_every_row(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    offered = _row(cfg, "New1")
+    real = rb_writer.commit_guarded
+
+    def landed_then_raised(db, **kwargs):
+        real(db, **kwargs)
+        raise RuntimeError("the binding's legacy playlist file could not be saved")
+
+    monkeypatch.setattr(rb_writer, "commit_guarded", landed_then_raised)
+
+    code, acted, _ = _apply()
+
+    assert code != int(ExitCode.OK)
+    (record,) = [one for one in session.records(cfg) if one.workflow == removed.WORKFLOW]
+    rows = record.detail[rb_writer.RECORDED_REMOVALS_KEY]["rows"]
+    assert [row["content_id"] for row in rows] == [offered]
+    assert record.detail[rb_writer.RECORDED_REMOVALS_KEY]["sequence"] == _counter(cfg)
+
+
+def test_a_removed_row_the_database_holds_again_is_not_offered_by_delete_review(
+    native_library, silence, monkeypatch, offline, tmp_path
+):
+    """A restore puts the row back live, and the live row answers for its file."""
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    offered = _row(cfg, "New1")
+    (content,) = [row for row in _every_table(cfg)["djmdContent"] if str(row[_columns_of(cfg, "djmdContent").index("ID")]) == offered]
+    code, acted, _ = _apply()
+    assert code == int(ExitCode.OK), acted
+    columns = _columns_of(cfg, "djmdContent")
+    _sql(
+        cfg,
+        f'INSERT INTO djmdContent ({", ".join(columns)}) VALUES ({", ".join("?" for _ in columns)})',
+        *content,
+    )
+    config.save(dataclasses.replace(cfg, profile=config.ProfileConfig(name="full")))
+    config.reset_cache()
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
+    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
+
+    code, refused = drive(["delete", "review"])
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["shown"]["offered"] == 0, refused
+
+
+def test_a_track_added_after_a_removal_goes_past_the_highest_position(
+    native_library, silence, monkeypatch, offline
+):
+    """Round one's R1: the binding's count plus one would land on a live row's position."""
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
+    _sql(cfg, "DELETE FROM djmdSongPlaylist WHERE PlaylistID = ? AND ContentID = ?", mine, _row(cfg, "New1"))
+    handle = _handle(cfg)
+    try:
+        playlist = handle.get_playlist(ID=mine)
+        assert rb_writer.add_memberships(handle, playlist, [_row(cfg, "Held3")])
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    numbers = sorted(row[0] for row in _query(cfg, "SELECT TrackNo FROM djmdSongPlaylist WHERE PlaylistID = ?", mine))
+    assert numbers == [1, 3, 4], numbers

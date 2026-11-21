@@ -56,6 +56,11 @@ EACH ROW GETS ONE ANSWER, the first that holds of these:
   standing landing of its pass recorded filing into (``filed_batch``), so the
   match found a file this pass did not bring;
 * ``kept, on another synced playlist``;
+* ``kept, named by a table rekordbox's removal was never measured on``: a My
+  Tag (the landing's own ``vox`` and ``dyn`` included), a sampler slot,
+  related tracks, a hot cue bank list, a tag list, an active censor, an image
+  row or a table this build does not know names the row, so the removal
+  would refuse it (U288), checked after the playlists below;
 * ``kept, in a playlist of yours``: a live membership anywhere but the intake
   tree, the routing tree, or the custom playlist twin a landing recorded for a
   playlist it left. A label year playlist keeps the row: Phillip answered
@@ -110,6 +115,9 @@ NOT_THIS_PASS = "not this pass's file"
 ON_ANOTHER = "on another synced playlist"
 IN_YOURS = "in a playlist of yours"
 PARTIAL_READ = "not offered while a synced playlist could not be read whole"
+#: U288. A row a table rekordbox's removal was never measured on names, a vox
+#: or dyn My Tag above all: the removal would refuse it, so it is never offered.
+UNMEASURED = "named by a table rekordbox's removal was never measured on"
 
 #: Why a removed track has no row to answer, beside the resolver's own reasons.
 NOT_CARRIED = "the pass never downloaded it"
@@ -708,6 +716,7 @@ def plan_removed(
                     held.brought = True
         made = _twins(records)
         members = memberships(db, reached)
+        unmeasured = rb_writer.CollectionRemoval.held(db, reached)
         for held in reached.values():
             own = own_nodes.union(
                 *(made.get(account, frozenset()) for account in held.accounts),
@@ -720,6 +729,7 @@ def plan_removed(
                     own=own,
                     partial=partial,
                     names={one.account: one.name for one in found},
+                    unmeasured=unmeasured.get(held.content_id, {}),
                 )
             )
     plan = RemovedPlan(
@@ -739,6 +749,7 @@ def _answer(
     own: frozenset[str],
     partial: bool,
     names: Mapping[str, str] | None = None,
+    unmeasured: Mapping[str, int] | None = None,
 ) -> Answer:
     """The one answer a reached row gets, the first of the kept reasons that holds."""
     shown = Answer(
@@ -766,6 +777,8 @@ def _answer(
     yours = tuple(dict.fromkeys(name or playlist_id for playlist_id, name in held_by if playlist_id not in own))
     if yours:
         return replace(shown, why=IN_YOURS, kept_by=yours)
+    if unmeasured:
+        return replace(shown, why=UNMEASURED, kept_by=tuple(sorted(unmeasured)))
     if partial:
         return replace(shown, why=PARTIAL_READ)
     return replace(shown, answer=OFFERED)
@@ -893,7 +906,8 @@ def apply_removed(
         capture = snapshot.capture(cfg, db=db)
         session.attach_capture(record, capture.root, cfg)
         snapshot.assert_verified(capture)
-        removal = rb_writer.collection_removal(db, [one.content_id for one in offered])
+        removal = rb_writer.CollectionRemoval.prepare(db, [one.content_id for one in offered])
+        _baseline_deletion(cfg, db)
         try:
             removal.commit()
         except BaseException:
@@ -917,6 +931,35 @@ def apply_removed(
         session_id = record.session_id
     return Removed(
         session_id=session_id, rows=offered, deleted=dict(removal.deleted), sequence=sequence
+    )
+
+
+def _baseline_deletion(cfg: config.Config, db: Any) -> None:
+    """Give the deletion pass its first position now, before the removal, if it has none.
+
+    A FIRST ``delete review`` BASELINES: it accepts every removal it can see as
+    history and offers nothing (R35), and a removal recorded after that point
+    would be one of them, so its file would never be offered (review round one).
+    The baseline is taken here instead, at the update count before this
+    removal's commit, with the same rule the pass uses, the greater of the
+    counter and the highest marked removal, so every removal before this one
+    is history and this one, at the count its commit leaves, is not. A library
+    that already has a position for this database keeps it: the store writes
+    one only when there is none. The deletion module is imported here, under
+    the function, since it can be switched off; off, there is no pass to feed.
+    """
+    try:
+        from cratekit.deletion import library as deletion_library
+        from cratekit.deletion import watermark
+    except ImportError:  # pragma: no cover - the deletion package is not installed
+        return
+    seen = deletion_library.read_collection(db.get_content())
+    counter = deletion_library.current_sequence(db)
+    highest = max((row.sequence for row in seen.removed), default=counter)
+    watermark.WatermarkStore(cfg).baseline(
+        database_identity=deletion_library.database_identity(db),
+        sequence=max(counter, highest),
+        actor=WORKFLOW,
     )
 
 
@@ -959,6 +1002,7 @@ __all__ = [
     "PARTIAL_READ",
     "READ",
     "SHORT",
+    "UNMEASURED",
     "UNREADABLE",
     "Answer",
     "Downloaded",

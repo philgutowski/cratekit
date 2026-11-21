@@ -351,7 +351,8 @@ A track a pass downloaded for an account playlist that the account no longer
 lists there (U287): no row of it by its id, ISRC, or artist and title folded as
 a recording. `crate sync removed` answers each one's row **offered** for
 removal from the collection or **kept** (held before the pass, not this pass's
-file, on another synced playlist, in a playlist of yours), or **left** when no
+file, on another synced playlist, in a playlist of yours, named by a table
+rekordbox's removal was never measured on), or **left** when no
 single row holds it. Nothing is offered while a synced playlist is not read
 whole. Behind the explicit gate `sync.removed.confirm`, the offered rows leave
 the collection as rekordbox's Remove from Collection takes them out (U288): the
