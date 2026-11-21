@@ -1084,3 +1084,18 @@ def test_a_damaged_full_check_entry_never_refuses_the_ages(cfg, real_rclone):
     assert files.full_check_due is None and "could not be read" in files.full_check_overdue
     plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=())
     assert plan.portion(FILES).kind == backup_facts.KIND_FULL
+
+
+@pytest.mark.parametrize("field", ["db_dest_root", "identity", "database"])
+def test_a_fingerprint_taken_for_another_snapshot_is_not_compared(cfg, real_rclone, field):
+    """The mutation table's zero row Q23: a fingerprint of the same database
+    taken for another snapshot root, another library identity or another
+    database path does not make this one unchanged."""
+    _seed(cfg)
+    _backup(cfg, at=MOMENT)
+    path = backup_record.fingerprint_path()
+    held = json.loads(path.read_text())
+    held[field] = "elsewhere"
+    path.write_text(json.dumps(held))
+    plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=1), only=DATABASE, settings_dirs=())
+    assert plan.portion(DATABASE).kind == backup_facts.KIND_SNAPSHOT
