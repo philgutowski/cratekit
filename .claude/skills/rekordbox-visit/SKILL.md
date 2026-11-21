@@ -40,7 +40,10 @@ Every one of these holds, or the visit does not start.
    either unknown, run `crate backup run` first, as CLAUDE.md's backup rule
    says, and read the ages again. A quick run or a skip resets the ages as a
    full one does, since each proves the remote holds the library; a failed
-   run resets nothing.
+   run resets nothing. One refused `library-root-unproven` or
+   `library-root-foreign` found no library at the root, most often the volume
+   not mounted: mount it and run the backup again, and never reach for
+   `--library-emptied`, which is for a library emptied on purpose.
 
 3. **rekordbox and rekordboxAgent are both gone.** `crate doctor` reads
    `rekordbox.closed` as ok, and from the shell `pgrep -x rekordbox` and
