@@ -46,7 +46,10 @@ recording to it. Discogs lists a release's mixes as its tracks, and a remix
 took a release of four other mixes that way, so Discogs also asks
 :func:`named_versions` of the file and :func:`writes_version` of the row: a
 mix that names its maker must be written on the release. The other sources
-are unchanged.
+are unchanged. A maker and a credit are compared as names, folded
+(:func:`_folded`): accents off, and the letters NFKD leaves whole spelled
+plain, so "Trentemøller" is "Trentemoller" (U324). A title is compared by
+its words as written.
 
 WHERE A LIST STILL DECIDES, and which way it fails. :data:`VERSION_WORDS`
 sheds a trailing version from a title and tells a dash tail that is a
@@ -687,7 +690,7 @@ def _runs_in(inner: Words, outer: Words, *, written: Words | None = None) -> boo
     size = len(inner)
 
     def initial(index: int) -> bool:
-        return written is not None and 1 in (len(inner[index]), len(written[index]))
+        return written is not None and len(written[index]) == 1
 
     def same(index: int, theirs: str) -> bool:
         mine = inner[index]
@@ -704,7 +707,8 @@ def _names_the_artist(part: str, names: frozenset[Words], *, first: bool) -> boo
 
     It is when it reads as a credit naming the artist: one of the names it
     joins (:func:`_credited_names`) is one of the artist's names word for word,
-    accents aside, once a marker the naming verb writes before it ("[MP3] ")
+    accents aside and "ø" read as "o" (:func:`_folded`), once a marker the
+    naming verb writes before it ("[MP3] ")
     is taken off: "Bernard Badie & Tide", "[MP3] Bernard Badie", "The Black
     Madonna" and "Ame" credit "Bernard Badie", "Black Madonna" and "Âme". Or
     its words, two or more, are a run of one of the artist's names, an
@@ -1200,7 +1204,8 @@ def _naming_words(found: Words) -> Words:
     and opens with that are the reader's own fold (:data:`VERSION_WORDS` and
     a remaster's year, :func:`_a_version_word`, a year anywhere in a
     remaster's stretch), a mix's description (:data:`MIX_DESCRIPTIONS`) or a
-    spelling left out, and folded as a name is (accents off, "and", "the"
+    spelling left out, and folded as a name is (accents off, "ø", "æ" and
+    "ß" read as "o", "ae" and "ss" (:func:`_folded`), "and", "the"
     and a possessive "s" dropped). A version of those alone, "Extended
     Mix", "Original Mix", "Radio Edit", "Vocal Mix" or "2014 Remaster",
     names no other mix, and a stretch that does not end in a version word,
@@ -1379,7 +1384,8 @@ def _past_head(value: str) -> list[str] | None:
 
 
 def _same_name(part: str, artist: str) -> bool:
-    """Whether a part's words are the artist's words, accents and case aside."""
+    """Whether a part's words are the artist's words, accents and case aside
+    and the letters NFKD leaves whole read plain (:func:`_folded`)."""
     mine = tuple(_folded(word) for word in words(normalized(part)))
     return bool(mine) and mine == tuple(_folded(word) for word in words(normalized(artist)))
 

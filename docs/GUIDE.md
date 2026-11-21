@@ -518,7 +518,9 @@ crate route pending
   starts, after the head, the `[MP3]` marker the naming verb writes and a
   part crediting the file's artist (alone,
   with others joined by "&", "," or "x", or with "The" or an accent written
-  otherwise; a title that merely holds the artist's name is a title), so the album
+  otherwise, and a letter accent stripping leaves alone, "ø", "æ", "œ", "ß",
+  "đ", "ł" or "þ", read as its plain spelling, "o", "ae", "oe", "ss", "d",
+  "l" or "th", so "Trentemoller" credits "Trentemøller"; a title that merely holds the artist's name is a title), so the album
   or the artist written after it in a title tag or in the name of a file with
   no title tag is never read as its title, and neither is a version;
   "Artist - X" with X ending in a version, which only a list of version
@@ -549,7 +551,9 @@ crate route pending
   misses a release of the plain title, and a maker named by the list's words
   alone, "DJ Deep" or "Digital", is read as no one and matched as before,
   another mix's release included. A maker's name is compared as a name
-  is, accents, "and" and a possessive aside, and "Rmx" is a remix; a row
+  is, accents, those plain spellings, "and" and a possessive aside, so
+  "Trentemoller Remix" takes a release listing "Trentemøller Remix" and the
+  reverse, while "Trentemoeller" stays another name, and "Rmx" is a remix; a row
   that writes the mix with no bracket is read by its last words, so "Dixon
   Remix" also takes "Sunrise Mood - Alan Dixon Remix". Discogs' first style that names a folder is written, through the
   taxonomy's `[vocabulary.discogs]` table and its aliases; a style naming no

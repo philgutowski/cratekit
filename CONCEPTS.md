@@ -91,7 +91,8 @@ for a file with no title tag its name past the older naming's `_PN` tail
 (`titles.name_title`, R-1724); Discogs also takes a release only when it
 writes a mix the file's title names by its maker (`titles.named_versions`,
 U318), a maker being the mix's words that are neither version words nor
-`titles.MIX_DESCRIPTIONS`.
+`titles.MIX_DESCRIPTIONS`, folded as a name is, accents off and "ø", "æ",
+"œ", "ß", "đ", "ł" and "þ" spelled plain (U324).
 Traxsource and Bandcamp are kept off the walk, since both answer
 a bot check, and still counted in old records. Each source answers one of
 `matched`, `miss`, `unreachable`, `blocked` (bot check, block page, spent rate
