@@ -1513,10 +1513,11 @@ def _release_carries(
     its version, so a file naming a version, ``named``
     (:func:`titles.named_versions`), counts a track only when the track
     writes that version (:func:`titles.writes_version`), and the single only
-    when the release's title writes it or one of its tracks is it. Otherwise
+    when the release's title writes it or one of its tracks is the mix
+    alone, "Tim Green Remix", never another title's remix. Otherwise
     a remix took a release of four other mixes, and the genre of a recording
     it was never given. A file naming none, or a version that names no one,
-    "Extended Mix" or "Vocal Mix" (:data:`titles.MIX_DESCRIPTIONS`), is
+    "Extended Mix", "Vocal Mix" or "LP Version" (:data:`titles.MIX_DESCRIPTIONS`), is
     matched as before. The seam is Discogs' alone: the record shops' rows
     are read by the shared matcher as they were.
     """

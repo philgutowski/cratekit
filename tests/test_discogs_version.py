@@ -406,7 +406,7 @@ def test_beatport_is_unchanged_for_a_remix_against_the_plain_row():
         ("Two Months Off (Vocal Mix)", set()),
         ("Two Months Off (Album Version)", set()),
         ("Two Months Off (Tim Green Vocal Mix)", {("tim", "green")}),
-        ("Two Months Off (Mike's (Dub) Mix)", {("mike", "s")}),
+        ("Two Months Off (Mike's (Dub) Mix)", {("mike",)}),
         ("Two Months Off (2014 Remaster)", set()),
         ("Two Months Off (Remix)", set()),
         ("Two Months Off (Part 1)", set()),
@@ -437,30 +437,197 @@ def test_a_files_named_versions(title, named):
 
 
 @pytest.mark.parametrize(
-    ("row", "titled", "writes"),
+    ("row", "titled", "alone"),
     [
-        ("Two Months Off (Tim Green Remix)", False, True),
-        ("Two Months Off [Tim Green Remix]", False, True),
-        ("Two Months Off - Tim Green Remix", False, True),
-        ("Two Months Off (Tim Green Remix) - 2014 Remaster", False, True),
-        ("Two Months Off (Tim Green Remix) (Extended)", False, True),
-        ("Two Months Off (Tim Green Dub)", False, True),
-        ("Tim Green Remix", False, True),
-        ("Tim Green Extended Mix", False, True),
-        ("Two Months Off Tim Green Remix", True, True),
-        ("Two Months Off Tim Green Remix", False, False),
-        ("Two Months Off", True, False),
-        ("Two Months Off (Dark Lane Remix)", True, False),
-        ("Two Months Off (Green Remix)", True, False),
-        ("Two Months Off (Tim Green)", True, False),
-        ("Two Months Off (Remixes)", True, False),
-        ("Lost And Found Tim Green", True, False),
-        ("", True, False),
+        # A row whose title is the file's writes the mix wherever its
+        # structure puts it; read alone, only a row that is the mix does.
+        ("Two Months Off (Tim Green Remix)", True, False),
+        ("Two Months Off [Tim Green Remix]", True, False),
+        ("Two Months Off - Tim Green Remix", True, False),
+        ("Two Months Off - Tim Green Remix - Part 2", True, False),
+        ("Two Months Off (Tim Green Remix) - 2014 Remaster", True, False),
+        ("Two Months Off (Tim Green Remix) (Extended)", True, False),
+        ("Two Months Off (Tim Green Dub)", True, False),
+        ("Two Months Off (Tim Green's Remix)", True, False),
+        ("Two Months Off (TIM GREEN REMIX)", True, False),
+        ("Two Months Off (Tim Green Rmx)", True, False),
+        ("Two Months Off Tim Green Remix", True, False),
+        ("Tim Green Remix", True, True),
+        ("Tim Green Extended Mix", True, True),
+        ("Tim Green Remix (Extended)", True, True),
+        ("(Tim Green Remix)", True, True),
+        ("Two Months Off", False, False),
+        ("Two Months Off (Dark Lane Remix)", False, False),
+        ("Two Months Off (Green Remix)", False, False),
+        ("Two Months Off (Tim Green)", False, False),
+        ("Two Months Off (Remixes)", False, False),
+        ("Sun Path (Tim Green Remix)", True, False),
+        ("Lost And Found Tim Green", False, False),
+        ("Lost And Found Tim Green Dub", True, False),
+        ("", False, False),
     ],
 )
-def test_a_catalogue_title_writes_a_version(row, titled, writes):
-    assert titles.writes_version(row, frozenset({("tim", "green")}), titled=titled) is writes
+def test_a_catalogue_title_writes_a_version(row, titled, alone):
+    named = frozenset({("tim", "green")})
+    assert titles.writes_version(row, named, titled=True) is titled
+    assert titles.writes_version(row, named, titled=False) is alone
 
 
 def test_no_named_version_is_written_by_any_row():
     assert not titles.writes_version("Two Months Off (Tim Green Remix)", frozenset(), titled=True)
+
+
+# ---------------------------------------------------------------------------
+# E. Review round one: what names no one, folding, and the guards
+# ---------------------------------------------------------------------------
+
+
+def test_the_mix_descriptions_are_exactly_these():
+    """Pinned word for word, as the domain's version words are: a word taken
+    out reads as a maker's name and loses the plain release (round one's
+    BLOCKING finding), and a word put in can fold a maker away."""
+    assert titles.MIX_DESCRIPTIONS == frozenset(
+        {
+            "album", "bonus", "beats", "beatless", "full", "length", "long", "main",
+            "short", "single", "track", "intro", "outro", "part", "pt", "maxi", "ep",
+            "lp", "inch", "7", "12", "1", "2", "3",
+            "alternative", "clean", "dirty", "explicit", "censored", "digital",
+            "digitally", "hi", "res", "mono", "stereo", "master", "mixed", "unmixed",
+            "continuous", "new", "early", "first", "second", "final", "rough",
+            "special", "unreleased", "promo", "re", "video", "tv", "film", "movie",
+            "soundtrack", "dj", "tool", "uk", "us", "english", "spanish", "german",
+            "french", "italian", "japanese",
+            "vocal", "piano", "orchestral", "stripped", "ambient", "classic", "deep",
+            "disco", "dance", "house",
+        }
+    )  # fmt: skip
+
+
+#: Mixes of the plain title's own recording, the 147 labels round one drove,
+#: each matched against the album's plain track on main.
+SAME_RECORDING = (
+    "LP Version|Album Version|Album Mix|Digital Remaster|2009 Digital Remaster|"
+    "2009 Remastered Version|Remastered Version|Remastered 2009|2009 Remaster|"
+    "2009 - Remaster|UK Radio Edit|US Radio Edit|Video Edit|Video Version|Video Mix|"
+    "Re-Edit|Alternative Mix|Alternative Version|Alternate Version|Bonus Beats|Beats|"
+    "Dub Version|Instrumental Version|Acapella Version|Edit|Short Version|Long Version|"
+    "Full Version|Full Length Version|Extended Version|Extended Club Mix|"
+    "Extended Vocal Mix|Club Vocal Mix|Classic Mix|Classic Vocal Mix|Deep Mix|Disco Mix|"
+    "Dance Mix|House Mix|Special Version|Special Edit|Promo Edit|DJ Edit|DJ Mix|"
+    "DJ Version|Unreleased Mix|Unreleased Version|Original Version|Original Extended Mix|"
+    'Original Club Mix|Original 12" Mix|12" Version|7" Version|7 Inch Edit|12 Inch Mix|'
+    "Single Version|Single Edit|Radio Mix|Radio Version|Original Radio Edit|"
+    "Explicit Version|Clean Version|Clean Edit|Stereo Mix|Mono Version|Live Version|"
+    "Live Edit|Acoustic Version|Piano Version|Orchestral Version|Stripped Version|"
+    "Demo Version|Remix|Rework|VIP Mix|Beatless Mix|Ambient Mix|DJ Tool|Reprise|"
+    "Vocal Edit|Vocal Version|Vocal Dub|Instrumental Edit|Instrumental Dub|"
+    "Main Vocal Mix|Mixed|Bonus Track|Original|Extended|Instrumental|Dub|Club Mix|"
+    "Radio Edit|Original Mix|Extended Mix|New Mix|New Version|Remix Edit|Remix Version|"
+    "Remix Radio Edit|Extended Remix|Original Instrumental Mix|TV Mix|TV Version|"
+    "Soundtrack Version|Film Version|Movie Version|Promo Mix|Promo Version|Master Mix|"
+    "Final Mix|Rough Mix|Early Version|Early Mix|First Version|Second Version|"
+    "Version 2|Mix 1|Mix 2|Pt. 2 Mix|Part 2 Mix|Japanese Version|English Version|"
+    "Spanish Version|German Version|Maxi Version|Maxi Mix|Maxi Edit|EP Version|"
+    "12'' Extended Mix|Extended 12\" Mix|Original 7\" Version|Remastered Album Version|"
+    "Remastered LP Version|2011 Remastered Version|2011 - Remastered|Digitally Remastered|"
+    "Digital Remastered Version|Mixed Version|Continuous Mix|Unmixed Version|"
+    "Hi-Res Version|Stereo Version|Mono Mix|Mono Single Version|Original Mono Version"
+).split("|")
+
+
+@pytest.mark.parametrize("label", SAME_RECORDING)
+def test_a_mix_of_the_same_recording_still_takes_the_album_track(label):
+    assert matched(f"04A - 126 - Sunrise Mood ({label})", tracks=("Opener", "Sunrise Mood"))
+
+
+def test_a_mix_named_by_a_word_no_list_holds_is_read_as_its_makers():
+    """The recorded cost (a residual): a style word both lists lack reads as a
+    maker's name, so such a file misses the plain track rather than guess."""
+    assert not matched("Sunrise Mood (Juno Mix)", tracks=("Sunrise Mood",))
+
+
+@pytest.mark.parametrize(
+    ("title", "row"),
+    [
+        ("Sunrise Mood (Ame Remix)", "Sunrise Mood (Âme Remix)"),
+        ("Sunrise Mood (Âme Remix)", "Sunrise Mood (Ame Remix)"),
+        ("Sunrise Mood (Tide & Sun Remix)", "Sunrise Mood (Tide And Sun Remix)"),
+        ("Sunrise Mood (Tim Green's Remix)", "Sunrise Mood (Tim Green Remix)"),
+        ("Sunrise Mood (Tim Green Remix)", "Sunrise Mood (Tim Green Rmx)"),
+        ("Sunrise Mood (Tim Green Rmx)", "Sunrise Mood (Tim Green Remix)"),
+        ("Sunrise Mood (Main Tim Green Mix)", "Sunrise Mood (Tim Green Remix)"),
+    ],
+)
+def test_a_maker_is_folded_as_a_name_is(title, row):
+    assert matched(title, tracks=(row,))
+
+
+def test_the_single_fallback_reads_no_other_track_of_the_release_as_the_mix():
+    """Round one's finding 6: "Sun Path (Tide Remix)" is Tide's remix of
+    another title, never evidence that a single of "Sunrise Mood" holds one."""
+    assert not matched(
+        "Sunrise Mood (Tide Remix)",
+        release_title="Sunrise Mood",
+        tracks=("Sunrise Mood", "Sun Path (Tide Remix)"),
+    )
+    assert matched(
+        "Sunrise Mood (Tide Remix)",
+        release_title="Sunrise Mood",
+        tracks=("Sunrise Mood", "(Tide Remix)"),
+    )
+
+
+def test_a_row_written_as_the_file_is_written_matches_whatever_its_dash_parts():
+    """Round one's finding 9: a version in a middle dash part is written."""
+    for title in (
+        "Two Months Off - Tim Green Remix - Part 2",
+        "Two Months Off (Tim Green Remix) - Live",
+        "Two Months Off - Tim Green Remix (Extended) - 2014 Remaster",
+    ):
+        assert matched(title, tracks=(title,)), title
+
+
+@pytest.mark.parametrize(
+    ("title", "artist", "named"),
+    [
+        # A part that credits the artist is no version of the title.
+        ("Two Months Off - Culture Club - Album", "Culture Club", set()),
+        # A later part's own groups are its version.
+        ("Two Months Off - Extended Mix (Tim Green Remix)", ARTIST, {("tim", "green")}),
+        # An ambiguous name's splits carry its version, so it names none here.
+        (f"{ARTIST} - Vocal Mix (Tide Remix)", ARTIST, set()),
+        # A stretch that ends in no version word is no version.
+        ("Two Months Off (Tim Green Vocal)", ARTIST, set()),
+        ("Two Months Off (Main Tim Green Mix)", ARTIST, {("tim", "green")}),
+        ("Two Months Off (Tim Green's Remix)", ARTIST, {("tim", "green")}),
+        ("Two Months Off (2009 Digital Remaster)", ARTIST, set()),
+    ],
+)
+def test_what_a_title_names_as_its_mix(title, artist, named):
+    assert titles.named_versions(titles.read_file(title, artist)) == frozenset(named)
+
+
+def test_the_miss_names_a_release_refused_on_its_tracks_alone_or_its_title_alone():
+    fetch = routed(
+        search=results(1, 2),
+        releases={
+            # Refused on its tracks alone: the release's title is not the file's.
+            1: release(1, artist=ARTIST, title="Other", tracks=listed("Two Months Off")),
+            # Refused on its title alone: no track is the file's title.
+            2: release(2, artist=ARTIST, title="Two Months Off", tracks=listed("Side One")),
+        },
+    )
+    said = discogs_answer(searcher(fetch)(ARTIST, "Two Months Off (Tim Green Remix)"))
+    assert (said.answer, said.note) == (
+        "miss",
+        "Discogs release 1 holds no track with this version (tim green); "
+        "Discogs release 2 holds no track with this version (tim green)",
+    )
+
+
+def test_a_title_naming_two_mixes_lists_them_in_order_in_the_note():
+    said = asked("X (Tide Remix) (Bloom Edit)", 6, tracks=("X",))
+    assert (said.answer, said.note) == (
+        "miss",
+        "Discogs release 6 holds no track with this version (bloom or tide)",
+    )

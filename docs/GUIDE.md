@@ -470,9 +470,13 @@ crate route pending
   that is the mix alone ("Tim Green Remix"); a release holding the recording
   in other mixes only is a miss, the file's record says "Discogs release N
   holds no track with this version", and the file goes on to Beatport. A mix
-  that names no one, "Extended Mix", "Original Mix", "Radio Edit", "Vocal
-  Mix" or "Main Mix", is matched as before, and so is a mix written into the
-  title with no bracket or dash. Discogs' first style that names a folder is written, through the
+  that names no one, by the domain's version words and a list of a mix's
+  descriptions ("Extended Mix", "Original Mix", "Radio Edit", "Vocal Mix",
+  "Main Mix", "LP Version", "2009 Digital Remaster", "UK Radio Edit"), is
+  matched as before, and so is a mix written into the title with no bracket
+  or dash; a word in neither list is read as a maker's name, so "Juno Mix"
+  misses a release of the plain title. A maker's name is compared as a name
+  is, accents, "and" and a possessive aside, and "Rmx" is a remix. Discogs' first style that names a folder is written, through the
   taxonomy's `[vocabulary.discogs]` table and its aliases; a style naming no
   folder is a decline. A library set up before that table shipped gets it
   with `crate taxonomy upgrade`, which doctor names; until then nine of the
