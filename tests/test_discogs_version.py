@@ -631,3 +631,24 @@ def test_a_title_naming_two_mixes_lists_them_in_order_in_the_note():
         "miss",
         "Discogs release 6 holds no track with this version (bloom or tide)",
     )
+
+
+@pytest.mark.parametrize(
+    "group",
+    ["feat. Tom Tom Club", "feat. Culture Club", "ft. Amp Live", "with Bombay Bicycle Club"],
+)
+def test_a_credit_group_ending_in_a_version_word_is_no_version(group):
+    """Review round two's row 7: a feature credit is a credit, never a mix,
+    so the album's plain track is still the file's, as on main."""
+    assert titles.named_versions(titles.read_file(f"Song ({group})", ARTIST)) == frozenset()
+    assert matched(f"Song ({group})", tracks=("Opener", "Song"))
+
+
+@pytest.mark.parametrize("label", ["The Original Mix", "The Remix", "The Radio Edit"])
+def test_an_article_names_no_maker(label):
+    assert matched(f"Sunrise Mood ({label})", tracks=("Sunrise Mood",))
+
+
+def test_an_article_is_folded_out_of_a_makers_name_on_both_sides():
+    assert matched("Sunrise Mood (The Black Madonna Remix)", tracks=("Sunrise Mood (Black Madonna Remix)",))
+    assert not matched("Sunrise Mood (The Black Madonna Remix)", tracks=("Sunrise Mood",))

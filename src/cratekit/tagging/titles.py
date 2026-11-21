@@ -1131,8 +1131,14 @@ MIX_DESCRIPTIONS = frozenset(
 _VERSION_SPELLINGS = frozenset({"rmx", "remixed"})
 
 #: Words a maker's name is written with or without: "Tide & Sun" and "Tide And
-#: Sun" are one maker, and "Tim Green's Remix" is Tim Green's.
-_NAME_JOINS = frozenset({"and", "s"})
+#: Sun" are one maker, "Tim Green's Remix" is Tim Green's, and "The Original
+#: Mix" names no one. "A" stays a name: "A Remix" may be A's.
+_NAME_JOINS = frozenset({"and", "s", "the"})
+
+#: The words that open a credit to someone who is not the mix's maker: a
+#: group "(feat. Tom Tom Club)" or "(with Bombay Bicycle Club)" is a credit,
+#: never a version, whatever word it ends with.
+_CREDITS = _FEATURING | {"with"}
 
 
 def _a_kind_word(found: Words, index: int) -> bool:
@@ -1156,13 +1162,14 @@ def _naming_words(found: Words) -> Words:
     and opens with that are the reader's own fold (:data:`VERSION_WORDS` and
     a remaster's year, :func:`_a_version_word`, a year anywhere in a
     remaster's stretch), a mix's description (:data:`MIX_DESCRIPTIONS`) or a
-    spelling left out, and folded as a name is (accents off, "and" and a possessive
-    "s" dropped). A version of those alone, "Extended Mix", "Original Mix",
-    "Radio Edit", "Vocal Mix" or "2014 Remaster", names no other mix, and a
-    stretch that does not end in a version word, "Part 1" or "feat.
-    Someone", is no version at all; both name nothing.
+    spelling left out, and folded as a name is (accents off, "and", "the"
+    and a possessive "s" dropped). A version of those alone, "Extended
+    Mix", "Original Mix", "Radio Edit", "Vocal Mix" or "2014 Remaster",
+    names no other mix, and a stretch that does not end in a version word,
+    "Part 1", or that opens with a credit, "feat. Tom Tom Club", is no
+    version at all; both name nothing.
     """
-    if not found or not _a_kind_word(found, len(found) - 1):
+    if not found or not _a_kind_word(found, len(found) - 1) or found[0] in _CREDITS:
         return ()
     end = len(found)
     while end and _a_mix_word(found, end - 1):
