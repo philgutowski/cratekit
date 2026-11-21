@@ -1,0 +1,284 @@
+name = "u296"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_block_size"
+description = "BLOCK_LINES: a block needs seven logical lines, so a new copy of exactly six passes the duplication check"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_duplication.py", "tests/test_refactor_measure.py"]
+old = '''BLOCK_LINES = 6'''
+new = '''BLOCK_LINES = 7'''
+
+[[rows]]
+id = "M2_imports_count_as_lines"
+description = "logical_lines: stop dropping import statements, so two module headers read as a copied block"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_duplication.py", "tests/test_refactor_measure.py"]
+old = '''                an_import = first.type == tokenize.NAME and first.string in ("import", "from")'''
+new = '''                an_import = False'''
+
+[[rows]]
+id = "M3_allowance_forgets_places"
+description = "over_allowance: compare which lines are held and not how many places hold each, so a third copy of an allowed block passes"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_duplication.py", "tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''        excess = counts - allowed.get(package, collections.Counter())'''
+new = '''        excess = collections.Counter(set(counts) - set(allowed.get(package, ())))'''
+
+[[rows]]
+id = "M4_allowance_shared_between_packages"
+description = "over_allowance: read every package against one merged allowance, so a block allowed in one package is allowed in all"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_duplication.py", "tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''    for package, counts in found.items():
+        excess = counts - allowed.get(package, collections.Counter())'''
+new = '''    for package, counts in found.items():
+        excess = counts - sum(allowed.values(), collections.Counter())'''
+
+[[rows]]
+id = "M5_private_inside_its_package"
+description = "private_crossings: drop the comparison of packages, so a private name used inside its own package is a crossing"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''            if private and tree.package(use.target) != importer:'''
+new = '''            if private:'''
+
+[[rows]]
+id = "M6_private_through_a_module"
+description = "private_crossings: read the private rule off import statements only, so a private name reached through an imported module passes"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''        for use in uses:
+            parts = use.target.split(".")[1:]
+            if VENDOR in parts:'''
+new = '''        for use in uses:
+            parts = use.target.split(".")[1:]
+            if VENDOR in parts or use.kind != "import":'''
+
+[[rows]]
+id = "M7_interface_binds_the_lower_layers"
+description = "core_modules_reached: stop exempting core, write and the shell, so the interface list binds packages it was never for"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''    core = f"{tree.root_package}.core"
+    for path, uses in tree.uses.items():
+        importer = package_of_path(path)
+        if importer in LOWER_PACKAGES:
+            continue
+        for use in uses:
+            if use.target.startswith(core + "."):'''
+new = '''    core = f"{tree.root_package}.core"
+    for path, uses in tree.uses.items():
+        importer = package_of_path(path)
+        for use in uses:
+            if use.target.startswith(core + "."):'''
+
+[[rows]]
+id = "M8_interface_list_ignored"
+description = "off_interface: treat every core module as off the list, so the named interface allows nothing"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''        if module in named:
+            continue'''
+new = '''        if module in ():
+            continue'''
+
+[[rows]]
+id = "M9_lazy_reads_as_top_level"
+description = "Tree._read_file: read every import as top level, so an import under a function fails rule three and dangles a verb"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''            lazy = inside(node.lineno, functions)'''
+new = '''            lazy = False'''
+
+[[rows]]
+id = "M10_type_checking_reads_as_running"
+description = "Tree._read_file: read an import under TYPE_CHECKING as one that runs, so a typing only import fails rule three"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''            typing_only = inside(node.lineno, typing_blocks)'''
+new = '''            typing_only = False'''
+
+[[rows]]
+id = "M11_builder_imports_unread"
+description = "dangling: do not read the imports written in a verb's builder, so intake.set's shape builds on paper and dangles in fact"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''            built = tree.function_loads(verb.module, verb.builder)'''
+new = '''            built = frozenset()'''
+
+[[rows]]
+id = "M12_followed_through_a_blocked_module"
+description = "Tree.loaded_from: follow imports through a module that cannot be imported, so an import nothing reaches is named as a cause"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''                if module in seen or within(module, blocked):'''
+new = '''                if module in seen:'''
+
+[[rows]]
+id = "M13_own_verbs_dangle"
+description = "dangling: count the switched off toggle's own verbs, so every gated verb reads as dangling"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''            if verb.toggle == toggle:
+                continue'''
+new = '''            if verb.toggle == "":
+                continue'''
+
+[[rows]]
+id = "M14_core_names_everywhere"
+description = "core_names: count the names core, write and the shell use too, so the ceiling measures something else"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''    out: dict[str, set[str]] = collections.defaultdict(set)
+    for path, uses in tree.uses.items():
+        importer = package_of_path(path)
+        if importer in LOWER_PACKAGES:
+            continue
+        for use in uses:
+            if use.name is not None and (use.target == core or use.target.startswith(core + ".")):'''
+new = '''    out: dict[str, set[str]] = collections.defaultdict(set)
+    for path, uses in tree.uses.items():
+        importer = package_of_path(path)
+        for use in uses:
+            if use.name is not None and (use.target == core or use.target.startswith(core + ".")):'''
+
+[[rows]]
+id = "M15_shadowed_alias_counts"
+description = "Tree.uses: count a name reached through a module whether or not the module defines it, so a local variable named as an imported module is reads as a use"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''                or use.name in defined[use.target]'''
+new = '''                or use.name is not None'''
+
+[[rows]]
+id = "M16_prune_adds_lines"
+description = "pruned: keep what is found or allowed, so prune writes newly found lines into an allowance"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_duplication.py", "tests/test_refactor_measure.py"]
+old = '''    return found & allowed'''
+new = '''    return found | allowed'''
+
+[[rows]]
+id = "M18_vendored_tree_read"
+description = "python_files: read the vendored tree, which is never refactored and never measured"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_duplication.py", "tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''        and f"/{VENDOR}/" not in f"/{path}"'''
+new = '''        and f"/{VENDOR}x/" not in f"/{path}"'''
+
+[[rows]]
+id = "M19_pin_in_the_wrong_file"
+description = "read_package_pins: accept a module pinned in another package's file, so a pin can sit where nobody looks for it"
+file = "tests/_pinned_reserved_populations.py"
+surface = "maintainer"
+tests = ["tests/test_reserved_pins_reader.py", "tests/test_reserved_causes.py"]
+old = '''                if owner != package:'''
+new = '''                if False:'''
+
+[[rows]]
+id = "M20_unknown_pin_table"
+description = "read_package_pins: ignore a table it does not know, so a misspelt table silently stops pinning"
+file = "tests/_pinned_reserved_populations.py"
+surface = "maintainer"
+tests = ["tests/test_reserved_pins_reader.py", "tests/test_reserved_causes.py"]
+old = '''        if unknown:
+            raise ValueError'''
+new = '''        if False:
+            raise ValueError'''
+
+[[rows]]
+id = "M21_placed_modules_unread"
+description = "layer_of: skip the per module placement table, so every module takes its directory's layer"
+file = "tests/test_layering.py"
+surface = "maintainer"
+tests = ["tests/test_layering.py"]
+old = '''    placed = _PLACED.get(module)'''
+new = '''    placed = None'''
+
+[[rows]]
+id = "M22_initializer_relative_import"
+description = "Tree._base_of: resolve a relative import in a package initializer as in any other module, one package too high, so a crossing written there is read against the wrong module (the review's row 7)"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''        if not path.endswith("/__init__.py"):
+            parts = parts[:-1]'''
+new = '''        parts = parts[:-1]'''
+
+[[rows]]
+id = "M23_except_branch_names_unread"
+description = "_defined_names: do not read the names bound in except branches, so a name defined there is taken for a local variable's attribute and dropped (the review's row 7)"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''            pending.extend(
+                inner for handler in getattr(node, "handlers", ()) for inner in handler.body
+            )'''
+new = '''            pass'''
+
+[[rows]]
+id = "M24_builder_names_a_home_directly"
+description = "dangling: forget the homes a builder imports directly, so only what its other imports reach can dangle the verb (the review's row 7)"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''            crossing = {(verb.module, target) for target in built if within(target, owned)}'''
+new = '''            crossing = set()'''
+
+[[rows]]
+id = "M25_dotted_import_alias"
+description = "Tree._read_file: bind an import under another name to the root package, so a private name reached through it passes (the review's row 7)"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''                    aliases[alias.asname or top] = alias.name if alias.asname else top'''
+new = '''                    aliases[alias.asname or top] = top'''
+
+[[rows]]
+id = "M26_core_package_name"
+description = "core_names: count names of core's modules only, so a name imported from the core package itself is not a core name (the review's row 7)"
+file = "scripts/refactor_measure.py"
+surface = "maintainer"
+tests = ["tests/test_import_rules.py", "tests/test_refactor_measure.py"]
+old = '''            if use.name is not None and (use.target == core or use.target.startswith(core + ".")):
+                out[importer].add(use.dotted)'''
+new = '''            if use.name is not None and use.target.startswith(core + "."):
+                out[importer].add(use.dotted)'''
+
+[[dropped]]
+id = "M17_blank_inside_a_docstring"
+description = "count_lines: read docstring before blank, so a blank line inside a docstring is a docstring line"
+reason = "ranked below the cap: a reading and not a rule, and its order is pinned by a literal fixture in tests/test_refactor_measure.py"
+
+[[dropped]]
+id = "D1_loads_under_type_checking"
+description = "Tree.loads: count an import under TYPE_CHECKING as one a module's import runs"
+reason = "ranked below the cap: it makes rule four see more, so a wrong edit fails on the tree; the same family as M10, which is measured, and the fix round's fixture names it"
+
+[[dropped]]
+id = "D2_typing_dot_type_checking"
+description = "_is_type_checking: recognise only the bare name, not typing.TYPE_CHECKING"
+reason = "ranked below the cap: it makes rule three see more; the same family as M10, and the fix round's fixture names it"
+
+[[dropped]]
+id = "D3_builder_import_under_type_checking"
+description = "Tree.function_loads: count a builder's import under TYPE_CHECKING"
+reason = "ranked below the cap: it makes rule four see more; the same family as M10 and M11, and the fix round's fixture names it"

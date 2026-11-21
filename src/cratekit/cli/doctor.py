@@ -3902,6 +3902,9 @@ ISRC_CACHE_CHECK = "provider.isrc-cache"
 
 #: The key of doctor's note on the hour's budget (U278).
 BUDGET_CHECK = "provider.budget"
+
+#: The key of doctor's note on the last night pass (U293).
+NIGHT_CHECK = "sync.night"
 OPEN_GATE_NOTE_AGE = timedelta(days=1)
 
 
@@ -4004,6 +4007,41 @@ def _check_isrc_cache(inputs: _Inputs) -> Finding:
             f"they may be removed"
         )
     return Finding(key=ISRC_CACHE_CHECK, title="ISRC answers kept", status=Status.INFO, detail=detail)
+
+
+def _check_night_pass(inputs: _Inputs) -> Finding:
+    """The last night pass's one line (U293), what ``crate sync night`` left.
+
+    A NOTE AND NEVER A FAILURE, in every state: a night that waits at the
+    landing's gate is the pass working as meant, and one that stopped or was
+    refused says why in its own line. A record that cannot be read is said,
+    never shown as no night pass having run.
+    """
+    from cratekit.cli import sync_night  # noqa: PLC0415 - the verb's own record
+
+    title = "the last night pass"
+    try:
+        # AS THINGS STAND NOW (review round one): a wait answered or landed
+        # since its firing reads as settled, never as still waiting.
+        record = sync_night.settle(sync_night.read_status(), inputs.cfg)
+    except ValueError as exc:
+        return Finding(
+            key=NIGHT_CHECK,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"the last night pass's record could not be read: {exc}; the next "
+                f"crate sync night writes a new one"
+            ),
+        )
+    if record is None:
+        detail = "no night pass has run on this installation; crate sync night runs one"
+    else:
+        # THE LATEST FIRING'S TIME (review round two): a record kept over a
+        # refusal carries the refusal's own under ``firing``.
+        firing = record.get("firing") if isinstance(record.get("firing"), dict) else {}
+        detail = f"{record['line']} (ended {firing.get('ended') or record.get('ended')})"
+    return Finding(key=NIGHT_CHECK, title=title, status=Status.INFO, detail=detail)
 
 
 def _check_provider_budget(inputs: _Inputs) -> Finding:
@@ -4128,6 +4166,9 @@ CHECKS: tuple[Check, ...] = (
     # U278. Beside the ISRC note, the other note about the provider, and like
     # it never a failure.
     Check(BUDGET_CHECK, _check_provider_budget),
+    # U293. Beside the hour's budget, the other note about this installation's
+    # provider calls, and like it never a failure.
+    Check(NIGHT_CHECK, _check_night_pass),
     # R-235. Beside the session check because both report this product's own
     # library state, and after the taxonomy check, which it lists trees from.
     Check("tree.registry", _check_tree_registry),

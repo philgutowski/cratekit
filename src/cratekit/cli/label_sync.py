@@ -49,6 +49,10 @@ between them the folder is compared with what it held as the tail started
 meanwhile, or a file a person put there, would have been renamed with the
 go's own, so the landing is not planned and the tail's record is not kept.
 
+A GO HOLDS THE STAGING LOCK (U293) for its whole length, as ``crate sync
+land`` and the night pass do, so a go and a sync pass never download into the
+one folder together; a second refuses ``staging-held`` naming the holder.
+
 A GO THAT NAMES NO TAIL IS RETURNED AS IT WAS. An abort, a go that listed
 nothing, one that downloaded nothing, and every walk or question that never
 reached the go are the verb's own envelopes, untouched.
@@ -64,7 +68,7 @@ from typing import TYPE_CHECKING, Any
 
 from cratekit.cli import gates, tail
 from cratekit.cli.output import Envelope, PendingHumanAction
-from cratekit.core import jobs
+from cratekit.core import jobs, staging_lock
 from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import beside as staged
@@ -173,6 +177,15 @@ def _data(envelope: Envelope, chain: tail.Chain) -> dict[str, Any]:
 
 def label_sync(ctx: Context) -> Envelope:
     """Run the verb, then the tail its go names. See the module docstring."""
+    if not getattr(ctx.args, "go", False):
+        return _label_sync(ctx)
+    # A GO STAGES, SO IT HOLDS THE STAGING LOCK (U293) for its whole length,
+    # as ``sync land`` and the night pass do: one pass downloads at a time.
+    with staging_lock.held("crate label sync --go", run_id=ctx.run.run_id):
+        return _label_sync(ctx)
+
+
+def _label_sync(ctx: Context) -> Envelope:
     try:
         envelope = sync_cli.label_sync(ctx)
     except CratekitError as exc:

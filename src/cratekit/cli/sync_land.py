@@ -56,6 +56,12 @@ with the pass's own, so the folder is compared once more after the tail with
 what it held as the tail started (:func:`cratekit.intake.beside.arrived`), and
 anything new refuses before the landing is planned, with no record kept.
 
+ONE PASS STAGES AT A TIME (U293). The pass holds
+:mod:`cratekit.core.staging_lock` for its whole length, as ``label sync --go``
+and the night pass, ``crate sync night``, do, so a second refuses
+``staging-held`` naming the holder before it asks anything; the reading above
+is what keeps a landing right whatever else put files in the folder.
+
 A DOWNLOAD REFUSAL IS RECORDED AND SKIPPED. An item the worker refused for good,
 a lossy only track above all, leaves the job failed with every other item
 durable. The pass names each refused track and goes on with the ones that
@@ -130,7 +136,7 @@ from cratekit.cli.tail import (
     TAG,
     TAIL,
 )
-from cratekit.core import config, jobs, rb_writer
+from cratekit.core import config, jobs, rb_writer, staging_lock
 from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 
@@ -1356,6 +1362,14 @@ def _with_warnings(report: _Pass) -> dict[str, Any]:
 
 def sync_land(ctx: Context) -> Envelope:
     """Take one sync pass to its landing gate. See the module docstring."""
+    # ONE PASS STAGES AT A TIME (U293), held for the whole of the pass, so the
+    # night pass, a label go and a pass by hand never download together. The
+    # night pass runs this verb in its own process and already holds it.
+    with staging_lock.held("crate sync land", run_id=ctx.run.run_id):
+        return _sync_land(ctx)
+
+
+def _sync_land(ctx: Context) -> Envelope:
     cfg = _load()
     report = _report(ctx.progress)
     taken = _resolve(report, cfg, ctx.args.pass_run) if ctx.args.pass_run else None

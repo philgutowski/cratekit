@@ -1,0 +1,45 @@
+# Copied blocks modules.outbound may still hold (U296). One line per place: the digest of
+# a window of six logical lines that also stands somewhere else. Lines are only
+# ever removed, by hand or with: scripts/refactor_measure.py prune modules.outbound
+# A line whose copy is gone fails nothing. To see where a window stands:
+# scripts/refactor_measure.py duplicates --where DIGEST
+040f4010eaddea38
+040f4010eaddea38
+06aa16572b8e8c0f
+06aa16572b8e8c0f
+146239a5b51635c7
+18dc2958815565ea
+1c6f279cf9270a39
+1fa680fb533f2039
+252a1949568c705a
+27bf208ac540e65e
+2ad5b62d0b8a4ca7
+45431846ed29d16a
+46a9ed7252f3bcee
+46a9ed7252f3bcee
+4e144a254979c465
+54997d82e3fae990
+594b1bb2b82ba5cf
+67a537946d4e1ef7
+68e6b402c0b8a0e4
+68e6b402c0b8a0e4
+72696c33ea97107b
+72e8236fca6f8832
+7f246c181124c828
+7f246c181124c828
+82ec3217eecc9fbe
+8b6a958780ff989d
+8cb982d00d8896c9
+971b88949c793530
+a9b3a79243aae207
+b9722cfa5bc9d758
+ca76de4430a225ad
+ca8d5a8df1ac5746
+d00783eb79eafd72
+d1db8f425543ae0c
+e05cfebb04f02e46
+e0ad0a72c5de7b5f
+eebc2f72b60d95c4
+f06f0c88ab181d31
+f603b89e0ac0398d
+fda7cabebf802af0

@@ -280,3 +280,18 @@ def test_step_three_re_planned_on_its_stopped_run_names_the_rehearsal_and_lands(
     )
     assert code == int(ExitCode.OK), landed
     assert len(_landed_rows(cfg)) == 2
+
+
+def test_the_night_fields_and_outcomes_it_reads_are_the_night_passs_own(flat):
+    """U293: the record ``crate sync night --last`` prints, read by name."""
+    from cratekit.cli import sync_night
+
+    record = sync_night._Firing(night="n", started=sync_night._clock(), run_id="r").record(
+        sync_night.NOTHING, "line"
+    )
+    named = set(re.findall(r"`data\.summary\.night\.([a-z_]+)`", flat))
+    assert {"outcome", "staging", "land_name", "gate_run", "pass_run", "line"} <= named
+    assert named <= set(record), sorted(named - set(record))
+    branched = set(re.findall(r"\*\*`(waiting-[a-z-]+)`\.\*\*", flat))
+    assert branched == {sync_night.WAITING_GATE, sync_night.WAITING_ACK}
+    assert "crate --output json sync night --last" in flat

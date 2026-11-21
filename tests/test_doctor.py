@@ -236,6 +236,7 @@ def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
         "runs.open-gates",
         "provider.isrc-cache",
         "provider.budget",
+        "sync.night",
         "tree.registry",
         "repo.commit_hook",
         "install.extras",

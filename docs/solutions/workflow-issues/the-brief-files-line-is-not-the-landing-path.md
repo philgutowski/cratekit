@@ -79,9 +79,9 @@ and a different unit.
 
 Layering had already ranked `label` as a top-level feature-module
 package. `MODULE_PACKAGES` lists `"label"` next to `"acquire"`,
-`"intake"`, `"favorites"`, and the rest (`tests/test_layering.py:123-134`).
+`"intake"`, `"favorites"`, and the rest (in `tests/test_layering.py`).
 The first-match layer rule `^cratekit\.[a-z_]+\.` ranks
-`cratekit.label.cli` as `modules` (`tests/test_layering.py:109`). That
+`cratekit.label.cli` as `modules` (`_LAYER_RULES`, the same file). That
 is a legal place for a feature CLI shell, and U26's shell stays legal
 by not importing the registry: builders take an untyped `entry` so
 `src/cratekit/label/cli.py` does not reach upward (KTD23)
@@ -136,8 +136,10 @@ green, and `planned_in` never expires.
 Before you change `module=`, walk the layering rules in
 `tests/test_layering.py`. Two questions, in order:
 
-1. What layer does the current `module=` string rank as? First match
-   in `_LAYER_RULES` wins (`tests/test_layering.py:69-112`).
+1. What layer does the current `module=` string rank as? A module
+   `_PLACED` names takes the layer on its own line (one line per module
+   since U296); for every other module the first match in `_LAYER_RULES`
+   wins, both in `tests/test_layering.py`.
    `cratekit.label.cli` matches `^cratekit\.[a-z_]+\.` and ranks
    `modules`. `cratekit.reports.cli` ranks the same way.
    `cratekit.cli.jobs` matches `^cratekit\.cli\.` and ranks `cli`.
@@ -248,7 +250,7 @@ The brief Files line was `src/cratekit/modules/labels/`. The
 registry already pointed all four verbs at `cratekit.label.cli`
 (`src/cratekit/cli/registry.py:1141`, `1179`, `1191`, `1209`).
 `MODULE_PACKAGES` already listed `"label"` as a top-level feature
-package (`tests/test_layering.py:125`). The landing that matches
+package (`tests/test_layering.py`). The landing that matches
 those facts is `src/cratekit/label/cli.py`, with the engines in the
 same package so the shell can import them downward. That is what
 merged. `planned_in` is gone on all four rows. `find_spec` can

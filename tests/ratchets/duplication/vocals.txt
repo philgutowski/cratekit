@@ -1,0 +1,18 @@
+# Copied blocks vocals may still hold (U296). One line per place: the digest of
+# a window of six logical lines that also stands somewhere else. Lines are only
+# ever removed, by hand or with: scripts/refactor_measure.py prune vocals
+# A line whose copy is gone fails nothing. To see where a window stands:
+# scripts/refactor_measure.py duplicates --where DIGEST
+231ec93b4c84d2c5
+30d3fb8cc491991f
+505f1ad3071807df
+56616fb6d1f7dd90
+591959b0a439689b
+5b7b6a9e8dc58117
+5b7e879a8646b89e
+7a1da9a1231d8adf
+7d93f3c4126ca038
+884257d9cf5f4e80
+bc6e96cb98b7cc72
+da09d93b47d8a161
+ea1b5fa3b1004f75

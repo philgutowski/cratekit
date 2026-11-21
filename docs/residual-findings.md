@@ -53702,3 +53702,360 @@ stops counting a hold the coordinator does not, with a test. Ledger only.
 **Measured cost.** Unpinned behaviour, so a later change could break any of them with a green suite. None was driven to a wrong report by round two.
 
 **Closes when:** each has a test that kills its mutant, `--catalogue`'s copy text first. Ledger only.
+
+---
+
+## R-1739. A plain acquire download, intake missing and sync bandcamp take no staging lock
+
+**Found:** at the plan of #850, U293, 2026-11-21.
+
+**The mechanism.** `core/staging_lock.py` is held by `crate sync land`, `crate label sync --go` and `crate sync night`, the passes the brief names. A plain `crate acquire download`, a job a person resumes by hand, and `crate sync bandcamp` (which stages into a batch folder of its own under the staging folder) take no lock, so one of them can still download beside a night pass.
+
+**Measured cost.** Not driven as a collision. R-1499's arrival check still refuses the night pass's landing over anything that arrived during its tail, so nothing lands wrong; the cost is a night pass refused at its landing and the tracks to sort by hand.
+
+**Closes when:** every verb that writes into the staging folder holds the lock, or the record says why one need not.
+
+---
+
+## R-1740. A night pass continued by hand to its gate is run again by the next night
+
+**Found:** at the review of #850, U293, 2026-11-21, round one finding 5.
+
+**The mechanism.** A firing the night's budget stopped records `continue_pass`, and the next firing runs `crate sync land --pass-run` on it. When the session at the Mac has already continued that pass by hand to its gate, the record still names the continue (`settle` reads only waits, not continues), so the next night runs the tail and `name apply` again and plans a second landing run on the same pass.
+
+**Measured cost.** Driven by the reviewer: a second open gate run on the same pass and a night with no `sync all`. Nothing is lost or landed twice: the second plan is over the same files and waits at its own gate.
+
+**Closes when:** the night settles a continue too, by the pass's land record or its open gate, or the crate-sync skill clears the night's record when it continues a night pass by hand.
+
+---
+
+## R-1741. Deleting the night budget's ledger frees a spent night
+
+**Found:** at the review of #850, U293, 2026-11-21, round one finding 8.
+
+**The mechanism.** `core/night_budget.py` reads a ledger that does not exist as a night that spent nothing, the rule for a fresh installation, so a ledger deleted by hand mid night gives the night its whole budget again. A ledger replaced with one it cannot read refuses.
+
+**Measured cost.** Driven by the reviewer with a hand deletion: a fresh 1,200 calls on the same night. The hour's budget, the night's lowered hour and one command's ceiling still hold every call, so the account sees at most 600 an hour. Nothing in Cratekit deletes the file.
+
+**Closes when:** the ledger's absence is told apart from a fresh installation, for example by the gate's own record of the night's mark.
+
+---
+
+## R-1742. A night pass stopped at its line reads failed, not blocked
+
+**Found:** at the review of #850, U293, 2026-11-21, round one finding 12.
+
+**The mechanism.** The dispatcher reads a park as blocked for the ceiling and the hour's budget only, so a night pass stopped by `provider-night-budget` ends with outcome `failed` and exit 42, where a pass meant to wait would read blocked.
+
+**Measured cost.** None on the night's own record or line, which say stopped and that the next night continues it. A wrapper reading the envelope's outcome, the U295 schedule's log above all, reads a failure.
+
+**Closes when:** the dispatcher reads the night's park as blocked, like the hour's.
+
+---
+
+## R-1743. One night firing spends at most one command's ceiling, so a large pass takes two nights
+
+**Found:** at the review of #850, U293, 2026-11-21, round one finding 4.
+
+**The mechanism.** Built at first so the night's line stood in for the per command ceiling, one firing sent 1,200 calls where any other command stops at 500. The fix round made the firing's line the lower of the night's remainder and the ceiling, the conservative reading of "every line only lowers". A pass needing more than 500 calls, about a hundred tracks at sitting 100's 42 calls per ten, stops at the night's line and is continued by the next firing.
+
+**Measured cost.** A pass over about 110 tracks lands over two nights rather than one unless the schedule fires twice a night. Not driven on a real account.
+
+**Closes when:** Phillip decides whether a night firing may spend past `[provider] calls_per_command`, or U295 schedules a second firing a night.
+
+---
+
+## R-1744. The night pass's second fix round was not reviewed
+
+**Found:** at the landing of #850, U293, 2026-11-21.
+
+**The mechanism.** METHOD caps a unit at two fix rounds, and U293 spent both: round one fixed the night's record as a snapshot, round two found that `settle` ended a wait on an answered gate or an empty folder, and the second fix (`04508be6`) made a wait end only on the pass's own native landing, read through `intake.native.landings_of_pass`. No third review read it.
+
+**Measured cost.** None measured. The fix is pinned by tests for an answered gate over staged tracks, a landed pass with another pass's file staged since, an emptied folder and an unreadable landing log, and by mutation rows N6 and N7. What a review would look at: a pass that is aborted and whose tracks are then left staged keeps the night refusing on the folder until they are landed or moved, which is the conservative reading; and `landings_of_pass` reading a library on the bridge rather than native, where no native landing is ever recorded and a wait would never settle by itself (the next firing that runs still writes a fresh record).
+
+**Closes when:** a review of `04508be6` against the night's record, or the attended night card reads one real night's record through a landing.
+
+---
+
+## R-1745. A dead night firing's mark charges every call made since, by anything, to tonight
+
+**Found:** at the review of #850, U293, 2026-11-21, round two finding 4.
+
+**The mechanism.** `night_budget.open_night` charges a mark left by a firing that never closed to tonight in full, whichever night it began in, so a crash is never a free night. A mark days old charges every call any command made since, the day's attended work included, and the refusal says the night pass spent them.
+
+**Measured cost.** Driven by the reviewer on a hand written ledger: a mark three nights old and the gate's total 5,000 past it read "the night pass has spent 5000 of the 1200", and that night did not run. The next night runs. Early and never late, as the ledger means, at the cost of one night and a sentence that credits the night with calls it did not make.
+
+**Closes when:** a dead mark is charged at most its own night's budget, or the gate records the night pass's own calls apart.
+
+---
+
+## R-1746. The ceiling on core names feature packages use, 437, is met by any card that gives a helper one home in core, which is what U298 is for
+
+**Found:** while building #853, U296, 2026-11-21.
+
+**The mechanism.** U296's brief asks that the count of distinct core names
+feature packages use, 437 on `ff8e5ec`, be printed and not grow, and
+`tests/test_import_rules.py` holds it as `CORE_NAMES_CEILING`. U298 (#855)
+gives config loading, gate lookup, job reports, artifact paths, locks and the
+provider helpers one home each, in core or in the three foundation modules of
+the shell. A helper homed in core and called from a feature package is one
+more core name, and the copies it replaces used names other code still uses,
+so the count rises by about the number of new helpers while duplication
+falls. Making a private name public does not move the count: the private
+spelling leaves as the public one joins.
+
+**Measured cost.** Not driven, since U298 is not built. Read from the survey:
+38 clusters of whole functions in two or more files, in about seven families,
+so the rise is of the order of ten to twenty names against a ceiling with no
+slack. A maintainer facing cost only: U298's battery is red on a rule its own
+brief does not name, until its thread decides which of these it is. The
+options are that U298 homes its helpers in the shell's foundation modules
+where the layer allows it, which adds no core name; that it removes as many
+uses as it adds; or that the ceiling is restated for that one card with the
+names it added listed in its record. The third breaks the rule that an
+allowance only shrinks, so it is the coordinator's call or Phillip's, not a
+build thread's.
+
+**Closes when:** U298 lands with the count at or under the ceiling, or the
+ceiling's rule is restated on #847. Ledger only.
+
+---
+
+## R-1747. The suite reads "every remaining verb still builds" from source, and an import made by a function a builder calls is not followed
+
+**Found:** while building #853, U296, 2026-11-21.
+
+**The mechanism.** Rule four of `tests/test_import_rules.py` asks that with a
+toggle off and its homes unimportable every remaining verb still builds.
+`refactor_measure.dangling` answers from source text: a verb loads what its
+module's import runs, plus the imports written in its builder's own body. An
+import inside a function the builder calls, or one made through
+`importlib.import_module`, is not seen, and an import guarded by `try` and
+`except ImportError` is read as one that runs. The driven reading, each toggle's
+homes blocked in a fresh interpreter and every remaining verb imported and
+built, is `scripts/refactor_measure.py imports --drive` and is not in the
+suite.
+
+**Measured cost.** On `ff8e5ec` the two readings agree on every toggle, 159
+dangling verbs in all, and the one verb the first static reading missed
+(`intake.set`, whose builder imports `intake.set_playlist`) is what the
+builder's own imports are followed for. The driven reading took 12 seconds
+by the author's clock and 15 to 16 by the review's on the four core
+container, the whole command 18 to 19, against a budget of ten seconds for
+every new check together, which is why the suite does not run it. So a verb can
+come to dangle through a builder's helper with the suite green: the review
+drove it, a helper called by `session.ack`'s builder importing `skills`, and
+the real tree test passed while the driven reading named the verb. None of
+the 120 landed verbs is that shape today. The other way, a guarded import the
+review planted was called dangling by the suite and built by the driven
+reading; the tree holds no such import, and rule three would fail it first.
+Maintainer facing: no verb's behaviour changes, since a toggle that is off
+does not make a package unimportable on a real install.
+
+**Closes when:** the final audit of U290 (#872) runs `imports --drive` and
+records that the two readings still agree, or the driven reading is made
+cheap enough to join the suite. Ledger only.
+
+---
+
+## R-1748. An allowance only shrinks by rule, and nothing fails when a line is added to one
+
+**Found:** while building #853, U296, 2026-11-21.
+
+**The mechanism.** The files under `tests/ratchets/duplication/` and
+`tests/ratchets/imports/` hold what each package may still keep, and the two
+checks fail on anything beyond them. Whether a line may be added is a rule in
+the files' own headers, in `docs/DEVELOPING.md` and in each failure's
+message. A branch that copies a block and adds its windows to the allowance
+in the same commit passes the suite. `refactor_measure.py prune` can add
+none, but a hand edit can. The same holds for `CORE_INTERFACE`, whose length
+is capped at 25 but whose members can be swapped, and for `CORE_NAMES_CEILING`.
+
+**Measured cost.** Driven by the review: a six line copy planted in
+`skills/cli.py` and `vocals/cli.py` with its digest appended to one allowance
+and a new file made for the other passed both suites, and `table` exited 0
+over 438 lines. A maintainer facing guard that depends on the
+review reading the diff of `tests/ratchets/`: a line added there is plain in
+a pull request, one `+` line per window or crossing. A check that compares
+the allowance with the base commit needs the base's history, which a test
+cannot assume, so it belongs in `board.py closing` or in CI's scan job, and
+both are outside this card.
+
+**Closes when:** the pull request check refuses a diff that adds a line under
+`tests/ratchets/duplication/` or `tests/ratchets/imports/`, or the final
+audit of U290 reads the history of those files and finds no line added.
+Ledger only.
+
+---
+
+## R-1749. The three area cards that share core share its allowance and pin files, so "no register another card edits" holds per line there and not per file
+
+**Found:** while building #853, U296, 2026-11-21.
+
+**The mechanism.** U296 holds the registers one file per package, which keeps
+two cards on two packages from ever editing the same file. U299, U300 and
+U301 (#856, #857, #858) each own a third of `core` and may build together, so
+they share `tests/ratchets/duplication/core.txt` and
+`tests/ratchets/reserved_causes/core.py`. Core crosses no seam today, so it
+has no import allowance to share.
+Entries are one per line and sorted, the pins keyed by module, and the layer
+ladder is one line per placed module, so their edits fall on different lines
+and git merges them. Two deletions on adjacent lines of one allowance file
+still conflict.
+
+**Measured cost.** Not driven. `core` holds 64 window places today, so two
+cards deleting neighbouring digests is possible and its cost is one conflict
+resolved by deleting both lines when the second card merges `main`.
+Maintainer facing.
+
+**Closes when:** the three core cards have landed. Ledger only.
+
+---
+
+## R-1750. A copied block is read across function boundaries, so a split that sets two functions side by side can fail the duplication check for lines nobody copied
+
+**Found:** at the review of #853, U296, round one, 2026-11-21.
+
+**The mechanism.** A logical line belongs to its file and not to its function,
+so a window of six can span the end of one function and the start of the
+next. Two functions that each stand in several files, apart, are no copy
+until an edit sets them one after the other: then the window across their
+boundary stands wherever another file already has them in that order. A plain
+split does this. So does a deletion between two stretches of lines, which is
+the limit of "removing a copy only shrinks what is found" and is now said in
+the suite, the script and the docs. Two overlapping windows in one file are
+also two places, as in the survey's instrument, so seven identical statements
+in a row read as a copy.
+
+**Measured cost.** The review moved `produced` and `committed` from
+`analysis/artifacts.py` into a new module, side by side as
+`adopt/artifacts.py`, `modules/outbound/artifacts.py` and
+`tagging/artifacts.py` already hold them, and the check failed naming two
+windows in `analysis`. The remedy the rule allows is to keep the order the
+lines had or to give them one home, which for that family is three other
+packages' files. Reach on the tree: 23 of 219,748 ordered pairs of functions
+in 8 files would form such a window if set side by side, by round one's
+count, which round two did not recount; of the single deletions round one
+tried in memory, each of the 143 blocks and each function, none forms one;
+and none of the 190 repeated windows today is two overlapping places.
+Maintainer facing: an area card meets it during a split and reorders.
+
+**Closes when:** U298 has given the helper families one home, which removes
+the pairs, or the final audit of U290 finds the allowances empty. Ledger only.
+
+---
+
+## R-1751. When an edit makes an old import reachable from a verb, the import rules name the package holding that import and not the edit
+
+**Found:** at the review of #853, U296, round one, 2026-11-21.
+
+**The mechanism.** Rule four files each cause of a dangling verb under the
+package that holds the import of a toggle's home. An import that no remaining
+verb reaches is not a cause and is on no allowance. When another package then
+imports that module at top level, the old import becomes reachable and is
+reported as new, under its own package, and the import that made it reachable
+is named nowhere in the failure.
+
+**Measured cost.** The review added `from cratekit.sync import pair_discover`
+at the top of `session/cli.py`; the only line reported was
+`sync: dangling export cratekit.modules.outbound.mirror`, in a package the
+edit did not touch. Three such latent imports stand on the tree today, two in
+`cli` and one in `sync`. Maintainer facing: the author of the edit reads a
+failure about another card's package and has to find their own import by
+asking what newly loads the named module.
+
+**Closes when:** the failure also names a verb that newly dangles and the
+chain of imports from it, or the area cards have emptied the dangling
+allowances. Ledger only.
+
+---
+
+## R-1752. Eleven of the layer ladder's 21 placed modules can move one layer with tests/test_layering.py green, and five of them name no file
+
+**Found:** at the review of #853, U296, round one, 2026-11-21.
+
+**The mechanism.** U296 moved the ladder's named modules from alternations
+inside three patterns to one line each in `_PLACED`, answering as before for
+every module. What pins a placement is the parametrized list in
+`test_every_planned_module_has_a_layer` and the real package's own imports,
+and neither covers every line: `types`, `output`, `match`, `identity` and
+`cli.envelope` are planned names with no file, and six more are not on the
+parametrized list and would not break an import one layer away.
+
+**Measured cost.** The review moved each of the 21 lines one layer in turn
+and ran the file, 50 tests collected each time: no test failed for
+`cli.envelope`, `cli.exit_codes`, `cli.prompt`, `core.identity`,
+`core.locations`, `core.match`, `core.output`, `core.restore`, `core.secrets`,
+`core.tombstone` and `core.types`. Carried from `main`, whose alternations
+this table equals; the one line per module table makes it visible. Maintainer
+facing: a wrong placement of one of those is caught only when an import
+crosses it.
+
+**Closes when:** each placed module that exists is on the parametrized list
+and the five that name no file are removed or built. Ledger only.
+
+---
+
+## R-1753. No repository guard holds the house rule against em dashes, en dashes and double hyphens in prose
+
+**Found:** at the review of #874, U316, 2026-11-21.
+
+**The mechanism.** CLAUDE.md forbids em dashes, en dashes and double hyphens
+in any prose, code comment, commit message or issue body, and the U316 brief
+assumed `scripts/scan_repo.py` enforces it. It has no dash rule: the review
+put an em dash and a double hyphen into the new skill and its worker rules,
+and the scan exited 0 on both. The only guard is the new skill's own test,
+which reads its two files and nothing else.
+
+**Measured cost.** None to a person using the verbs. A dash in any other doc,
+skill or comment lands green, and the rule is kept only by reading.
+
+**Closes when:** a guard over the tracked prose (the docs METHOD's Docs always
+current section lists, the skills and the commit messages) refuses an em or
+en dash anywhere and a double hyphen outside code, with its own anti vacuity
+test. Ledger only.
+
+---
+
+## R-1754. The attended orchestrator carries two rules from its prompt that its first sitting should read against CLAUDE.md and the cutover record
+
+**Found:** at the review of #874, U316, 2026-11-21.
+
+**The mechanism.** The attended-orchestrator skill keeps two rules of the
+prompt it was made from, each with its meaning unchanged as the card asks.
+Its settlements and probes drive rekordbox to remove from the collection or
+to change an analysis setting and put it back, where CLAUDE.md names opening
+it "to import, to let it analyse, and to read what it shows". And it records
+in `docs/cutover.md` a cutover line for each workflow newly proven live,
+where that file's header says a workflow is cut over only once its
+replacement ran on the live library and the author has lived on it.
+
+**Measured cost.** Not driven: the producer is an attended sitting on the
+Mac. Read as written, a settlement could be argued outside CLAUDE.md's list,
+and a cutover line written for a workflow proven but not yet lived on would
+overstate the record.
+
+**Closes when:** the attended card that proves the skill reads both against
+CLAUDE.md and the cutover record, and either the skill's words or CLAUDE.md's
+list is aligned in a docs unit. Ledger only.
+
+---
+
+## R-1755. The portability scan passes a tilde home path and an email address
+
+**Found:** at the review of #874, U316, 2026-11-21.
+
+**The mechanism.** `scan.portability_violations`, which the skills lint and
+the scan share, matches the home directory by its absolute shape and the
+volume by name. Driven at the review with no identity tokens: a line working
+in a tilde path under the home's music folder, a `cd` into a tilde documents
+path, and an email address each returned no violation.
+
+**Measured cost.** None measured: no tracked file carries either today, and a
+tilde path names no person by itself. A personal email address or a tilde
+path to a real library in a skill or doc would land green in a public
+repository.
+
+**Closes when:** the scan refuses an email address outside an allowlisted
+placeholder domain and a tilde path below the home, or the record says why
+either is not personal. Ledger only.
