@@ -871,24 +871,16 @@ def apply_removed(
     offered = plan.offered
     if not offered:
         return Removed(session_id="", rows=(), deleted={}, sequence=None)
-    identity = rb_writer.database_id(db)
-    if not identity:
-        raise refuse(
-            "canary-read-failed",
-            "the rekordbox database reports no identity of its own, so the record of "
-            "what was removed could not be bound to it and the deletion pass could "
-            "never offer the files; nothing was written",
-            origin=_ORIGIN,
-            detail={"column": "DBID"},
-        )
     convergence.assert_tree_writable(cfg, db, declared.intake.id, registry)
-    columns: dict[str, dict[str, Any]] = {}
-    for one in offered:
-        row = db.get_content(ID=one.content_id)
-        columns[one.content_id] = rb_writer.recorded_columns(row) if row is not None else {}
-    ids = [one.content_id for one in offered]
-
-    deleted: dict[str, int] = {}
+    about = {
+        one.content_id: {
+            "artist": one.artist,
+            "title": one.title,
+            "file": one.file,
+            "removed_from": list(one.removed_from),
+        }
+        for one in offered
+    }
     with (
         session.assert_gates(
             cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
@@ -899,24 +891,18 @@ def apply_removed(
         capture = snapshot.capture(cfg, db=db)
         session.attach_capture(record, capture.root, cfg)
         snapshot.assert_verified(capture)
-        before = rb_writer.database_reading(db)
+        removal = rb_writer.collection_removal(db, [one.content_id for one in offered])
         try:
-            for content_id in ids:
-                for table, rows in rb_writer.remove_from_collection(db, content_id).items():
-                    deleted[table] = deleted.get(table, 0) + len(rows)
-            rb_writer.assert_collection_removal_confined(db, before, removed=ids)
-            rb_writer.commit_guarded(db, deletions=rb_writer.DELETABLE_TABLES)
+            removal.commit()
         except BaseException:
             _rollback_quietly(db)
             if witness.landed:
-                _record_removal(record, offered, columns, deleted, identity, _counter(db), cfg)
+                _record_removal_commit(record, removal, about, _counter(db), cfg)
             raise
         sequence = _counter(db)
-        _record_removal(record, offered, columns, deleted, identity, sequence, cfg)
+        _record_removal_commit(record, removal, about, sequence, cfg)
         convergence.record_fingerprint(cfg, db)
-        violations = rb_writer.collection_removal_violations(
-            before, rb_writer.database_reading(db), removed=ids, committed=True
-        )
+        violations = removal.read_back()
         if violations:
             raise refuse(
                 "session-committed-unverified",
@@ -927,7 +913,9 @@ def apply_removed(
                 detail={"violations": violations, "session_id": record.session_id},
             )
         session_id = record.session_id
-    return Removed(session_id=session_id, rows=offered, deleted=deleted, sequence=sequence)
+    return Removed(
+        session_id=session_id, rows=offered, deleted=dict(removal.deleted), sequence=sequence
+    )
 
 
 def _counter(db: Any) -> int | None:
@@ -937,12 +925,10 @@ def _counter(db: Any) -> int | None:
         return None
 
 
-def _record_removal(
+def _record_removal_commit(
     record: session.SessionRecord,
-    offered: Sequence[Answer],
-    columns: Mapping[str, Mapping[str, Any]],
-    deleted: Mapping[str, int],
-    identity: str,
+    removal: Any,
+    about: Mapping[str, Mapping[str, Any]],
     sequence: int | None,
     cfg: config.Config,
 ) -> None:
@@ -952,25 +938,9 @@ def _record_removal(
     that could not be read is recorded as unknown, and the deletion pass then
     offers none of these files, keeping them rather than guessing.
     """
-    record.detail[rb_writer.RECORDED_REMOVALS_KEY] = {
-        "database_identity": identity,
-        "sequence": sequence,
-        "deleted": dict(sorted(deleted.items())),
-        "rows": [
-            {
-                "content_id": one.content_id,
-                "artist": one.artist,
-                "title": one.title,
-                "file": one.file,
-                "removed_from": list(one.removed_from),
-                "columns": dict(columns.get(one.content_id, {})),
-            }
-            for one in offered
-        ],
-    }
-    changes = (session.TreeChange(tree=COLLECTION, removed=len(offered)),)
+    removal.write_into(record.detail, sequence=sequence, about=about)
+    changes = (session.TreeChange(tree=COLLECTION, removed=len(removal.content_ids)),)
     session.record_commit(record, COLLECTION, session.ChangeSummary(changes), cfg)
-
 
 __all__ = [
     "COLLECTION",

@@ -1175,7 +1175,23 @@ def test_only_the_collection_removal_asks_a_commit_to_admit_a_delete():
         for path in root.rglob("*.py")
         if re.search(r"commit_guarded\([^)]*deletions=", path.read_text(encoding="utf-8"), re.S)
     )
-    assert askers == ["sync/removed.py"], askers
+    assert askers == ["core/rb_writer.py"], askers
+    callers = sorted(
+        str(path.relative_to(root))
+        for path in root.rglob("*.py")
+        if re.search(r"\bcollection_removal\(", path.read_text(encoding="utf-8"))
+        and path.name != "rb_writer.py"
+    )
+    assert callers == ["sync/removed.py"], callers
+
+
+def test_the_record_key_and_its_columns_are_spelled_the_same_everywhere_they_are_read():
+    from cratekit.deletion import library as deletion_library
+    from cratekit.session import restore_cli
+
+    assert deletion_library.RECORDED_REMOVALS_KEY == rb_writer.RECORDED_REMOVALS_KEY
+    assert restore_cli.RECORDED_REMOVALS_KEY == rb_writer.RECORDED_REMOVALS_KEY
+    assert deletion_library.RECORDED_COLUMNS == rb_writer.RECORDED_COLUMNS
 
 
 def _handle(cfg: config.Config):

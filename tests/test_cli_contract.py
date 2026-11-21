@@ -2642,6 +2642,14 @@ def test_conformance_2_no_module_builds_an_exit_code_from_a_bare_integer():
 #: fires is a gate the suite can hold a verb to.
 UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
     {
+        "sync.removed.confirm": (
+            "asked only by a plan that offers a row, which needs a pass swept, "
+            "landed into a native intake tree and read again on the account with "
+            "a track taken off, and the conformance fixture downloaded nothing, so "
+            "the sample asks the account nothing and ends NO_OP with no gate, by "
+            "U288's brief. The gate, its explicit two act answer, the removal and "
+            "its refusals are driven in tests/test_sync_removed.py."
+        ),
         "rebuild.accept": (
             "asked only by rebuild --tree naming a tree no rebuild can "
             "reproduce, the intake tree above all, that a restore marked "
@@ -4102,12 +4110,13 @@ EXPECTED_UNREACHABLE_GATES = frozenset(
         "label.playlists.crawl",
         "sync.twins.approve",
         "rebuild.accept",
+        "sync.removed.confirm",
     }
 )
 
 
 def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
-    """Ten gates are exempt. An eleventh one is a decision, not a diff.
+    """Eleven gates are exempt. A twelfth one is a decision, not a diff.
 
     The sixth, ``intake.shelve.native``, joined with U154, decided there: the
     verb asks only over a plan that moves a batch, approving one writes a path
@@ -4146,7 +4155,12 @@ def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
     The tenth, ``rebuild.accept``, joined with U219: it is asked only by a
     rebuild naming a tree no rebuild can reproduce that a restore marked, and
     the conformance fixture has no native tree. tests/test_resort_scope.py
-    drives the gate's two acts over a restore the real detection marked.
+    drives the gate's two acts over a restore the real detection marked. The
+    eleventh, ``sync.removed.confirm``, joined with U288: it is asked only by
+    a plan that offers a row, which needs a pass landed into a native intake
+    tree and read again with a track taken off, and the conformance fixture
+    downloaded nothing. tests/test_sync_removed.py drives the gate's two acts,
+    the removal and its refusals.
 
     Note what this pin does NOT prove, so nobody reads more into a green run than
     is there: the map is still a named exemption, not a drive of the unreadable

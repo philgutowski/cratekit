@@ -30,7 +30,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping
 
-from cratekit.core import rb_writer
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.tombstone import reads_as_version
@@ -522,8 +521,20 @@ def playlist_referenced(memberships: Any) -> frozenset[str]:
 #: (U288), read here. rekordbox's Remove from Collection, and Cratekit's
 #: imitation of it, delete the row OUTRIGHT (A178, A185), so the soft delete
 #: marker this module partitions on never says the row went (R-1037).
-RECORDED_REMOVALS_KEY = rb_writer.RECORDED_REMOVALS_KEY
-RECORDED_COLUMNS = rb_writer.RECORDED_COLUMNS
+#: Spelled here rather than imported, so this package reaches no more of the
+#: core than it did (U296's names ceiling); ``tests/test_sync_removed.py``
+#: holds the two spellings equal.
+RECORDED_REMOVALS_KEY = "collection_removed"
+RECORDED_COLUMNS: tuple[str, ...] = (
+    "ID",
+    "FolderPath",
+    "FileSize",
+    "ArtistName",
+    "Title",
+    "ISRC",
+    "RemixerName",
+    "Subtitle",
+)
 
 
 class _Recorded:

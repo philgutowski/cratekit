@@ -2738,7 +2738,7 @@ def _landings_said(cfg: config.Config, unread: Sequence[Path]) -> tuple[str, ...
     """The log's unread entries as a warning names them: the log itself, or each record (R-1383)."""
     if session.log_unlisted(unread, cfg):
         return (
-            f"the session log at {session.log_dir(cfg)}, which exists and cannot be listed "
+            f"the session log at {unread[0]}, which exists and cannot be listed "
             f"by this account, and reads once this account may list it",
         )
     return tuple(

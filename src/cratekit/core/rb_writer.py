@@ -4399,6 +4399,132 @@ def assert_collection_removal_confined(
         )
 
 
+class CollectionRemoval:
+    """One removal from the collection, prepared, then committed, then read back (U288).
+
+    THE ONE ENTRY A VERB CALLS, so the order is this class's and not each
+    caller's: :func:`collection_removal` reads everything first and writes
+    nothing (each row live, no unmeasured table naming one, the database's
+    identity, the columns the record keeps, and the whole database from SQL);
+    :meth:`commit` deletes, proves the deletes confined from SQL before the
+    commit, and commits with ``deletions`` naming :data:`DELETABLE_TABLES`;
+    :meth:`read_back` reads the whole database again after it.
+    """
+
+    def __init__(
+        self,
+        db: Any,
+        content_ids: Sequence[str],
+        identity: str,
+        columns: Mapping[str, Mapping[str, Any]],
+        before: DatabaseReading,
+    ) -> None:
+        self.db = db
+        self.content_ids = tuple(content_ids)
+        self.identity = identity
+        self.columns = {key: dict(value) for key, value in columns.items()}
+        self.before = before
+        #: Rows deleted, by table, once :meth:`commit` has made them.
+        self.deleted: dict[str, int] = {}
+
+    def commit(self, *, force_cloud_canary: bool = False) -> None:
+        """Delete every planned row, prove it confined, and commit through the guard."""
+        for content_id in self.content_ids:
+            for table, rows in remove_from_collection(self.db, content_id).items():
+                self.deleted[table] = self.deleted.get(table, 0) + len(rows)
+        assert_collection_removal_confined(self.db, self.before, removed=self.content_ids)
+        commit_guarded(
+            self.db, force_cloud_canary=force_cloud_canary, deletions=DELETABLE_TABLES
+        )
+
+    def read_back(self) -> list[str]:
+        """Every difference the committed database shows that the removal does not explain."""
+        return collection_removal_violations(
+            self.before, database_reading(self.db), removed=self.content_ids, committed=True
+        )
+
+    def write_into(
+        self,
+        detail: dict[str, Any],
+        *,
+        sequence: int | None,
+        about: Mapping[str, Mapping[str, Any]],
+    ) -> None:
+        """Name every removed row in a session record's ``detail``, under :data:`RECORDED_REMOVALS_KEY`.
+
+        ``about`` is what the verb says of each row beside its columns, its
+        artist, title, file and the playlists it left. ``sequence`` is the
+        update count the commit left, or None when it could not be read, and
+        the deletion pass then offers none of these files.
+        """
+        detail[RECORDED_REMOVALS_KEY] = {
+            "database_identity": self.identity,
+            "sequence": sequence,
+            "deleted": dict(sorted(self.deleted.items())),
+            "rows": [
+                {
+                    "content_id": content_id,
+                    **dict(about.get(content_id, {})),
+                    "columns": dict(self.columns.get(content_id, {})),
+                }
+                for content_id in self.content_ids
+            ],
+        }
+
+
+def collection_removal(db: Any, content_ids: Iterable[str]) -> CollectionRemoval:
+    """Prepare a removal from the collection, reading everything and writing NOTHING.
+
+    REFUSED HERE, before any delete: a content id with no live row, one a
+    table outside the removal set names (:func:`content_references`), and a
+    database with no identity of its own, since the record of what was
+    removed is bound to it and a record bound to nothing never offers a file.
+    """
+    ids = tuple(dict.fromkeys(str(one) for one in content_ids))
+    identity = database_id(db)
+    if not identity:
+        raise _unavailable(
+            "canary-read-failed",
+            "the rekordbox database reports no identity of its own, so the record of "
+            "what was removed could not be bound to it; nothing was written",
+            detail={"column": "DBID"},
+        )
+    content_class = _mapped(CONTENT_TABLE)
+    columns: dict[str, dict[str, Any]] = {}
+    for key in ids:
+        row = db.session.get(content_class, key)
+        if row is None or soft_deleted(
+            row,
+            message=(
+                f"the collection row {key!r} cannot say whether rekordbox removed it, "
+                f"and deleting it as live could take a track out twice"
+            ),
+            origin=("rb_writer",),
+            detail={"content_id": key},
+        ):
+            raise _unavailable(
+                "whitelist-violation",
+                f"asked to take the collection row {key!r} out of the collection, and "
+                f"the database holds no live row of that id; nothing was written",
+                detail={"content_id": key},
+            )
+        columns[key] = recorded_columns(row)
+    held = content_references(db, ids)
+    if held:
+        named = "; ".join(
+            f"{key}: " + ", ".join(f"{table} ({count})" for table, count in sorted(tables.items()))
+            for key, tables in sorted(held.items())
+        )
+        raise _unavailable(
+            "whitelist-violation",
+            f"rows in tables rekordbox's Remove from Collection was never measured on "
+            f"name collection rows this removal would take out ({named}), so what it "
+            f"would do with them is not known; nothing was written",
+            detail={"tables": {key: dict(value) for key, value in sorted(held.items())}},
+        )
+    return CollectionRemoval(db, ids, identity, columns, database_reading(db))
+
+
 __all__ = [
     "ADMITTABLE_ROW_TABLES",
     "BINDING_ID_LIMIT",
@@ -4428,6 +4554,8 @@ __all__ = [
     "PLAYLIST_TABLE",
     "REMOVABLE_TABLES",
     "COLLECTION_REMOVAL_TABLES",
+    "CollectionRemoval",
+    "collection_removal",
     "RECORDED_COLUMNS",
     "RECORDED_REMOVALS_KEY",
     "database_id",

@@ -86,7 +86,7 @@ from typing import Any
 # whose name would otherwise be ambiguous says what it is instead.
 from cratekit.cli import exit_codes as reservations
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import analysis_store, config, processes, rb_writer, restore
+from cratekit.core import analysis_store, config, processes, restore
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
 from cratekit.core.exit_codes import Remedy
 from cratekit.modules.tools import backup
@@ -166,6 +166,12 @@ def build_list(parser, entry) -> None:
     parser.set_defaults(_handler=list_restorable)
 
 
+#: The key a removal from the collection names its rows under in its session
+#: record, the guarded writer's ``RECORDED_REMOVALS_KEY``, spelled here so this
+#: package reaches no more of the core than it did; a test holds them equal.
+RECORDED_REMOVALS_KEY = "collection_removed"
+
+
 def _listed(entry: restore.Restorable) -> dict[str, Any]:
     """One session as a listing row: when, what, how much, and whether it is spendable.
 
@@ -185,7 +191,7 @@ def _listed(entry: restore.Restorable) -> dict[str, Any]:
     }
     # A SESSION THAT TOOK ROWS OUT OF THE COLLECTION NAMES EACH ONE (U288), so a
     # person deciding whether to restore it reads which tracks come back.
-    recorded = entry.record.detail.get(rb_writer.RECORDED_REMOVALS_KEY)
+    recorded = entry.record.detail.get(RECORDED_REMOVALS_KEY)
     if isinstance(recorded, dict):
         listed["removed"] = [
             {
