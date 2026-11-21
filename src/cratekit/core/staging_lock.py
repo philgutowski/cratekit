@@ -119,21 +119,11 @@ def held(verb: str, *, run_id: str | None = None, what: str | None = None) -> It
             _DEPTH -= 1
         return
     path = lock_path()
-    config.mkdir_private(path.parent)
-    # os.open with an explicit mode, for the driver lock's reason: a lock any
-    # local account could hold would refuse every pass.
-    handle = os.fdopen(os.open(path, os.O_CREAT | os.O_RDWR, config.PRIVATE_FILE_MODE), "r+")
+    handle, had = config.lock_now(path)
     try:
-        try:
-            import fcntl
-        except ImportError:  # pragma: no cover - POSIX only in practice
-            fcntl = None
-        if fcntl is not None:
-            try:
-                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                handle.seek(0)
-                raise _held_error(what or verb, _read_holder(handle.read()), path) from None
+        if not had:
+            handle.seek(0)
+            raise _held_error(what or verb, _read_holder(handle.read()), path) from None
         record = {"pid": os.getpid(), "verb": verb, "run_id": run_id, "started": _now()}
         handle.seek(0)
         handle.truncate()

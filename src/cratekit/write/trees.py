@@ -948,6 +948,27 @@ def rollback_quietly(db: Any) -> None:
         logger.warning("could not roll back the pending session after a failed write")
 
 
+def _undo_unless_landed(
+    db: Any, witness: Any, record: session.SessionRecord, tree_id: str, added: int, cfg: config.Config
+) -> None:
+    """What a membership write does on its way out of a failure, before it re-raises.
+
+    ROLLED BACK. Nothing durable has landed, but the objects the loop created
+    are still pending on the CALLER'S handle, and the guarded commit raises on
+    two of its refusals before reaching its own rollback. Left pending, they
+    land on whatever commits next and arrive under that operation's name. A
+    cleanup, never a place that decides an error is survivable.
+
+    AN EXCEPTION IS NOT PROOF NOTHING LANDED. The binding commits the
+    transaction and THEN saves rekordbox's playlist file, so a failure there
+    arrives over durable rows. The witness is the engine's own answer, and a
+    commit it saw is recorded before the caller re-raises.
+    """
+    rollback_quietly(db)
+    if witness.landed:
+        _record_membership_commit(record, tree_id, added, cfg)
+
+
 def _record_membership_commit(
     record: session.SessionRecord, tree_id: str, added: int, cfg: config.Config
 ) -> None:
@@ -1147,20 +1168,7 @@ def write_tree_membership(
 
             rb_writer.commit_guarded(db)
         except BaseException:
-            # Nothing durable has landed, but the objects this loop created are
-            # still pending on the CALLER'S handle, and the guarded commit raises
-            # on two of its refusals before reaching its own rollback. Left
-            # pending, they land on whatever commits next and arrive under that
-            # operation's name, which is the hazard the writer's own docstring
-            # describes. Rolled back here, and re-raised unchanged: this is a
-            # cleanup, never a place that decides an error is survivable.
-            rollback_quietly(db)
-            # AN EXCEPTION IS NOT PROOF NOTHING LANDED. The binding commits the
-            # transaction and THEN saves rekordbox's playlist file, so a failure
-            # there arrives here over durable rows. The witness is the engine's
-            # own answer, and a commit it saw is recorded before this re-raises.
-            if witness.landed:
-                _record_membership_commit(record, tree_id, added, cfg)
+            _undo_unless_landed(db, witness, record, tree_id, added, cfg)
             raise
 
         # RECORDED THE INSTANT THE COMMIT RETURNS, ahead of the fingerprint. A
@@ -1444,9 +1452,7 @@ def move_tree_membership(
                     already_present += len(content_ids) - len(inserted)
                 rb_writer.commit_guarded(db)
             except BaseException:
-                rollback_quietly(db)
-                if witness.landed:
-                    _record_membership_commit(record, tree_id, added, cfg)
+                _undo_unless_landed(db, witness, record, tree_id, added, cfg)
                 raise
         _record_membership_commit(record, tree_id, added, cfg)
         if added:

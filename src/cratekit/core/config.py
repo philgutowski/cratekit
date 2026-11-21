@@ -5256,6 +5256,38 @@ def lock_within(
         os.close(fd)  # closing the descriptor releases the lock; the file stays
 
 
+def lock_now(path: Path) -> tuple[Any, bool]:
+    """Open the lock file at ``path`` and take its lock WITHOUT WAITING.
+
+    Returns the open handle, whose close releases the lock, and whether the
+    lock was had. A lock another process holds is ``False`` with the handle
+    still open: the holder's own words are in the file, and the caller refuses
+    with them. ``os.open`` with an explicit mode and never the builtin
+    ``open``, which creates at 0666 masked by the umask and would leave a lock
+    any local account could hold, refusing every later run.
+
+    A platform with no advisory locks reads as had. Refusing there would make
+    the product unusable on it, and what each caller guards is a transaction
+    of its own. The handle is closed on any other failure, which leaves as
+    itself.
+    """
+    mkdir_private(path.parent)
+    handle = os.fdopen(os.open(path, os.O_CREAT | os.O_RDWR, PRIVATE_FILE_MODE), "r+")
+    try:
+        try:
+            import fcntl  # noqa: PLC0415 - POSIX only, see the except
+        except ImportError:  # pragma: no cover - POSIX only in practice
+            return handle, True
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return handle, False
+    except BaseException:
+        handle.close()
+        raise
+    return handle, True
+
+
 def flock_exclusive(target: Path, harden: Callable[[Path], None]):
     """Open ``target`` owner only, harden it, and take its exclusive lock.
 
@@ -5417,6 +5449,7 @@ __all__ = [
     "flock_exclusive",
     "held",
     "is_inside",
+    "lock_now",
     "lock_within",
     "mkdir_private",
     "out_of_band_effects",

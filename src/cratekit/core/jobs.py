@@ -1342,26 +1342,13 @@ def driver_lock(job_id: str, *, root: Path | None = None) -> Iterator[Path]:
     refusal message; it is never the liveness test.
     """
     path = lock_path(job_id, root=root)
-    config.mkdir_private(path.parent)
-    # os.open with an explicit mode rather than the builtin open(), which creates
-    # at 0666 masked by the umask and would leave a world-writable lock any local
-    # account could hold, making every future drive of this job refuse.
-    handle = os.fdopen(os.open(path, os.O_CREAT | os.O_RDWR, config.PRIVATE_FILE_MODE), "r+")
+    # No advisory locks on a platform reads as had: a claim is still a
+    # transaction, so duplicate work is prevented even with the lock absent.
+    handle, had = config.lock_now(path)
     try:
-        try:
-            import fcntl
-        except ImportError:  # pragma: no cover - POSIX only in practice
-            # No advisory locks here. Proceeding unlocked is the honest
-            # degradation: refusing would make the product unusable on that
-            # platform, and a claim is still a transaction, so duplicate work is
-            # prevented even with the lock absent.
-            fcntl = None
-        if fcntl is not None:
-            try:
-                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                handle.seek(0)
-                raise DriverHeld(_held_cause(job_id, handle.read(), path)) from None
+        if not had:
+            handle.seek(0)
+            raise DriverHeld(_held_cause(job_id, handle.read(), path)) from None
         handle.seek(0)
         handle.truncate()
         json.dump({"pid": os.getpid(), "acquired": timestamp()}, handle)
