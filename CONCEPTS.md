@@ -852,9 +852,21 @@ leaves one line, doctor's `sync.night`, that `--last` prints with its fields. A
 refused firing keeps a pass still owed; a wait whose pass has landed since, by
 its native landing's record, reads `settled`.
 
+### Night schedule
+`crate schedule install`, `show` and `remove` (`cli/schedule.py`, U295): the
+night pass on launchd, one user agent, `cratekit.sync-night`, in the person's
+own LaunchAgents, loaded into `gui/<uid>`, running the absolute `crate` with
+`sync night` and nothing else at `--at` (03:17 local by default), its output
+in the state entry `schedule_log`, carrying the configuration, state and gate
+directories as the install resolved them. launchctl is reached through one
+seam the suite replaces in every test; a failed load removes its plist once
+launchd reads it gone, all three refuse as root, and install and remove refuse
+beside a pass holding the staging lock.
+
 ### Staging lock
 `core/staging_lock.py` (U293): one advisory lock, held by `sync land`,
-`label sync --go` and `sync night` for a whole run, so two passes never
+`label sync --go` and `sync night` for a whole run, and by `schedule install`
+and `schedule remove` around their bootout (U295), so two passes never
 download into the one staging folder; a second refuses `staging-held`. The
 driver lock's rules, and reentrant within one process.
 

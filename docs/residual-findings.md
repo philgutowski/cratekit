@@ -54307,3 +54307,111 @@ away with the suite green.
 
 **Closes when:** a reader of the skill's steps as data replaces the sentence
 pins, or a card decides sentence pins are the guard. Ledger only.
+
+---
+
+## R-1767. crate schedule install and remove hold the staging lock of the shell's installation, not the one the agent carries
+
+**Found:** at the review of #852, U295, 2026-11-21.
+
+**The mechanism.** `install` and `remove` in `src/cratekit/cli/schedule.py` hold `staging_lock.held` around their bootout so a night pass in progress is never ended by launchd. The lock is resolved under the shell's `installation_state_dir()`. A shell pointed at another `CRATEKIT_STATE_DIR`, or one that lost the XDG variable the install was found through, holds another lock, and boots the agent out while the night it runs holds its own. The lock is reentrant per process through module state, so holding a second one under the agent's carried state is not a one line change.
+
+**Measured cost.** Driven at round two with launchd stood in: four of four cases exit 0 and call `launchctl bootout` while a process held the agent's lock as `crate sync night`. What launchd then does to the running pass, and what a pass ended mid download leaves in the staging folder, was not driven.
+
+**Closes when:** install and remove also hold, or refuse beside, the lock under the state directory the installed agent carries.
+
+---
+
+## R-1768. crate schedule install and remove refuse beside any pass, a first install included, in words about staging
+
+**Found:** at the review of #852, U295, 2026-11-21.
+
+**The mechanism.** The schedule verbs take the staging lock with no `what=`, so beside a `crate label sync --go` or a pass by hand the refusal reads "another pass is staging downloads (...), so crate schedule install stages nothing until it has finished", and a first install with nothing to boot out waits as well. The other way round, a night refused beside the schedule verb is told another pass is staging downloads.
+
+**Measured cost.** Driven at round two: exit 20, launchctl never asked, the refusal's words untrue for the schedule verb. The block ends with the pass and is retryable.
+
+**Closes when:** the schedule verbs take the lock only when there is an agent to boot out, and both refusals name a schedule change rather than a download.
+
+---
+
+## R-1769. crate schedule show cannot tell a carried directory changed by hand, and settles the agent's night against the shell's configuration
+
+**Found:** at the review of #852, U295, 2026-11-21.
+
+**The mechanism.** `read_agent` fails over a carried directory that is missing or relative and a log outside the carried state, but a directory changed by hand to another absolute one, a directory put in front of the agent's PATH, or the crate pointed at another executable named crate reads clean. `_night_line` reads the night's record from the agent's carried state and then settles it through `sync_night.settle` against the shell's configuration and run store.
+
+**Measured cost.** Driven at round two: three hand edits of that shape read clean at exit 0. Install was driven under five environment shapes and none produces such a plist; a hand edit is the only producer found. The settle against the shell's configuration was read, not driven.
+
+**Closes when:** show compares the carried environment against what this install would write, and settles the record against the configuration the agent carries.
+
+---
+
+## R-1770. Several of the schedule's guards kill no test
+
+**Found:** at the review of #852, U295, 2026-11-21.
+
+**The mechanism.** Round two's 48 rows over the fix's guards in `src/cratekit/cli/schedule.py` found 15 with zero deaths. Mended in fix round two: words after `sync night` on the reading side, a relative log, the minute range and the type check of the calendar. Still killing nothing on the round's own reading: the environment shape check in `read_agent`; `_boot_out` returning `state == LOADED` alone or `out.ok` alone; the write failure message saying the earlier schedule is off whether or not one was booted out; `replaced = had_plist` alone; the launchctl timeout's value (the hang test sets its own); and `settle` dropped from `show`'s night line.
+
+**Measured cost.** None today: each is a guard whose removal no test notices. The unit's own table, `docs/mutation/u295.md`, measures the 25 rows it ranked above these.
+
+**Closes when:** each has a test that dies when it is removed, or the record says why it need not.
+
+---
+
+## R-1771. A bootout that answers a failure after an unreadable first print is counted as nothing booted out
+
+**Found:** at the review of #852, U295, 2026-11-21.
+
+**The mechanism.** `_boot_out` in `src/cratekit/cli/schedule.py` counts an agent booted out only when launchd read it loaded first or the bootout answered success. When the first `launchctl print` cannot be read, the bootout answers a failure and launchd then reads the agent absent, `remove` answers no op and a failed install's refusal omits that the earlier schedule is gone.
+
+**Measured cost.** Eight of 1,088 stood in launchd answer combinations at round two, one shape. Not driven against a real launchctl, and whether launchd produces that sequence is unknown.
+
+**Closes when:** the ambiguous case is said as such in the report rather than counted either way.
+
+---
+
+## R-1772. The schedule assumes launchctl's answers, and none has been read on a Mac
+
+**Found:** at the record of #852, U295, 2026-11-21.
+
+**The mechanism.** `src/cratekit/cli/schedule.py` reads `launchctl print gui/<uid>/cratekit.sync-night` answering 113 as not loaded and anything else but 0 as unknown, bootstraps straight after a bootout, and expects `gui/<uid>` to exist for the logged in person. The suite stands launchd in whole and the container has no launchctl.
+
+**Measured cost.** Not driven anywhere. If print answers another code for an absent service, every show reads launchd as unknown and every install refuses at its first bootout; the refusal names launchctl's words, so nothing is lost.
+
+**Closes when:** the attended install (A183, #879) records each answer launchctl gave, and the code reads them as they are.
+
+---
+
+## R-1773. The second fix round of U295 was not reviewed
+
+**Found:** at the record of #852, U295, 2026-11-21.
+
+**The mechanism.** Both fix rounds were spent. Round two reviewed `767ffa84..6cca323c`; the commit after it, `69765ae4`, was not reviewed. What to read: the agent's PATH built from `binaries.find` over the installable binaries, `read_agent`'s new checks (carried directories present and absolute, the log inside the carried state, the name of the crate), `show` refusing root, the summary's environment filtered to names this build carries, and the structural test's launcher names.
+
+**Measured cost.** None measured; the unit's own tests and the mutation table cover the commit.
+
+**Closes when:** a review of `6cca323c..69765ae4` reports nothing that holds.
+
+---
+
+## R-1774. The scheduled night's log grows without bound
+
+**Found:** at the plan of #852, U295, 2026-11-21.
+
+**The mechanism.** launchd appends the agent's output and errors to `schedule/sync-night.log` under the installation's state (`schedule_log`) every night, and nothing rotates or trims it.
+
+**Measured cost.** Not measured. A night's output is a few lines when the pass refuses and a pass's whole report when it runs, so the file grows by kilobytes a night.
+
+**Closes when:** the log is trimmed or rotated, or the record measures that it need not be.
+
+---
+
+## R-1775. A replace that fails at the load leaves no schedule rather than the earlier one
+
+**Found:** at the build of #852, U295, 2026-11-21.
+
+**The mechanism.** `crate schedule install` over an installed agent boots the earlier one out, writes the new plist and bootstraps it. When the bootstrap fails, the new plist is removed and nothing is installed; the earlier schedule is not restored. The refusal says the earlier schedule was removed too. Decided at the build as the conservative reading of the brief's "leaves no half installed agent".
+
+**Measured cost.** Driven with launchd stood in: no agent afterwards, and the refusal says so. The person installs again.
+
+**Closes when:** Phillip rules that a failed replace should restore the earlier agent, or the ledger keeps this as decided.
