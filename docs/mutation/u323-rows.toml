@@ -1,0 +1,85 @@
+# U323: the rows target R-1761's identity proof, which the unit's tests
+# (tests/test_backup_unproven_root.py) must still kill now that their first
+# backup states the volume it is on. The unit adds no source of its own.
+name = "u323"
+pass_kind = "light"
+
+[[rows]]
+id = "I1_unread_identity_refuses"
+description = "_not_the_recorded_volume: an identity the platform cannot read (observed None) refuses as foreign instead of being left to the census"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py"]
+old = '''        if recorded is None or observed is None:
+            return ""'''
+new = '''        if recorded is None:
+            return ""'''
+
+[[rows]]
+id = "I2_raising_read_refuses"
+description = "_not_the_recorded_volume: an identity read that raises refuses as foreign instead of being left to the census"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py"]
+old = '''    except Exception:  # noqa: BLE001 - an unread identity is left to the census
+        return ""'''
+new = '''    except Exception:  # noqa: BLE001 - an unread identity is left to the census
+        return "the identity could not be read"'''
+
+[[rows]]
+id = "I3_raising_read_escapes"
+description = "_not_the_recorded_volume: an identity read that raises escapes the plan instead of being left to the census"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py"]
+old = '''    except Exception:  # noqa: BLE001 - an unread identity is left to the census
+        return ""'''
+new = '''    except Exception:  # noqa: BLE001 - an unread identity is left to the census
+        raise'''
+
+[[rows]]
+id = "I4_foreign_never_refuses"
+description = "_plan_files: a root on another volume than the recorded one is walked as the library"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "user"
+tests = ["tests/test_backup_unproven_root.py"]
+old = '''    if foreign:
+        return PortionPlan(
+            portion=backup_facts.Portion.FILES,
+            refusal=Refusal.LIBRARY_ROOT_FOREIGN,'''
+new = '''    if False:
+        return PortionPlan(
+            portion=backup_facts.Portion.FILES,
+            refusal=Refusal.LIBRARY_ROOT_FOREIGN,'''
+
+[[rows]]
+id = "I5_provider_dropped_by_the_plan"
+description = "plan_backup: the caller's identity provider is not handed to the files portion, so the platform's own is read"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "maintainer"
+tests = ["tests/test_backup_unproven_root.py"]
+old = '''                emptied=emptied,
+                identity_provider=identity_provider,
+                mount_enumerator=mount_enumerator,
+            )
+        )
+    if backup_facts.Portion.DATABASE in wanted:'''
+new = '''                emptied=emptied,
+                identity_provider=None,
+                mount_enumerator=mount_enumerator,
+            )
+        )
+    if backup_facts.Portion.DATABASE in wanted:'''
+
+[[rows]]
+id = "I6_provider_dropped_at_the_gate"
+description = "_not_the_recorded_volume: the volume gate is asked with no provider, so the platform's own identity read answers"
+file = "src/cratekit/modules/tools/backup.py"
+surface = "maintainer"
+tests = ["tests/test_backup_unproven_root.py"]
+old = '''        session.assert_volume_identity(
+            cfg, identity_provider=identity_provider, mount_enumerator=mount_enumerator
+        )'''
+new = '''        session.assert_volume_identity(
+            cfg, identity_provider=None, mount_enumerator=mount_enumerator
+        )'''
