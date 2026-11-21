@@ -1,0 +1,240 @@
+name = "u320"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_hearts_nothing_withheld_reads_whole"
+description = "read_hearts: drop the withheld count from the hearts rule, so a shortfall whose numbers do not reconcile reads whole"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''    if short is not None and not (frozen and short.withheld > 0):'''
+new = '''    if short is not None and not frozen:'''
+
+[[rows]]
+id = "M2_hearts_none_served_reads_whole"
+description = "read_hearts: drop the served hearts from the hearts rule, so a listing that served none reads whole"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''    if short is not None and not (frozen and short.withheld > 0):'''
+new = '''    if short is not None and not (short.withheld > 0):'''
+
+[[rows]]
+id = "M3_hearts_withheld_named_read"
+description = "read_hearts: name the withheld hearts read, so the plan never says they were short"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''        state=READ if short is None else WITHHELD,'''
+new = '''        state=READ,'''
+
+[[rows]]
+id = "M4_withheld_hearts_hold_nothing"
+description = "Listing.holds: leave the withheld hearts out of the holding states, so a hearted track they served is offered"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''HOLDING = frozenset({READ, GONE, WITHHELD})'''
+new = '''HOLDING = frozenset({READ, GONE})'''
+
+[[rows]]
+id = "M5_retired_holds"
+description = "Listing.holds: count a retired playlist among the holding states"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''HOLDING = frozenset({READ, GONE, WITHHELD})'''
+new = '''HOLDING = frozenset({READ, GONE, WITHHELD, RETIRED})'''
+
+[[rows]]
+id = "M6_any_failure_is_a_sighting"
+description = "read_one: record a sighting for any failure of an unlisted playlist, an outage included"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''                if said_none
+                else prior'''
+new = '''                if True
+                else prior'''
+
+[[rows]]
+id = "M7_outage_forgets_the_record"
+description = "read_one: an unlisted playlist whose id failed some other way drops its entry, a retirement included"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''                if said_none
+                else prior'''
+new = '''                if said_none
+                else None'''
+
+[[rows]]
+id = "M8_retirement_never_applies"
+description = "read_one: never read a retired entry as retired"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''            if noted is not None and noted.is_retired:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M9_relisted_keeps_its_retirement"
+description = "read_one: a playlist the account lists again keeps its entry, so its retirement survives"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''        return Listing(account=account, name=name, state=UNREADABLE, why=exc.cause.message)'''
+new = '''        return Listing(account=account, name=name, state=UNREADABLE, why=exc.cause.message, noted=prior)'''
+
+[[rows]]
+id = "M10_reopened_keeps_its_retirement"
+description = "read_one: a playlist that opens again keeps its entry, so its retirement survives"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''        state=READ,
+        refs=frozenset(str(one) for one in readable.order),'''
+new = '''        state=READ,
+        noted=prior,
+        refs=frozenset(str(one) for one in readable.order),'''
+
+[[rows]]
+id = "M11_apart_halved"
+description = "APART: retire twelve hours after the first sighting rather than a day"
+file = "src/cratekit/sync/unavailable.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''APART = timedelta(hours=24)'''
+new = '''APART = timedelta(hours=12)'''
+
+[[rows]]
+id = "M12_apart_strict"
+description = "sighted: retire only past a day, not at a day"
+file = "src/cratekit/sync/unavailable.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''    if latest - datetime.fromisoformat(held.first) >= APART:'''
+new = '''    if latest - datetime.fromisoformat(held.first) > APART:'''
+
+[[rows]]
+id = "M13_retired_entry_moves"
+description = "sighted: move a retired entry's latest sighting, so the dates shown at its retirement drift"
+file = "src/cratekit/sync/unavailable.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''    if prior.is_retired:
+        return prior
+    latest'''
+new = '''    latest'''
+
+[[rows]]
+id = "M14_any_status_is_not_found"
+description = "answered_unavailable: read any status as a not found"
+file = "src/cratekit/sync/unavailable.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''            return answered_not_found(link)'''
+new = '''            return True'''
+
+[[rows]]
+id = "M15_context_class_counts"
+description = "answered_unavailable: read the not found class off a link met only while handling another failure"
+file = "src/cratekit/sync/unavailable.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''        if declared and "notfound" in type(link).__name__.lower():'''
+new = '''        if "notfound" in type(link).__name__.lower():'''
+
+[[rows]]
+id = "M16_damaged_record_reads_empty"
+description = "UnavailableRecord.read: read a record that is not JSON as holding nothing"
+file = "src/cratekit/sync/unavailable.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''            # Not UTF-8 is a ``ValueError`` too, and as unreadable.
+            raise self._unusable("it is not JSON") from exc'''
+new = '''            return {}'''
+
+[[rows]]
+id = "M17_other_library_read"
+description = "UnavailableRecord: read a record written for another library"
+file = "src/cratekit/sync/unavailable.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''        if raw.get("library_id") != self.cfg.library.volume_id:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M18_retired_by_nobody_read"
+description = "UnavailableRecord: read an entry retired by nobody, or by an unknown hand"
+file = "src/cratekit/sync/unavailable.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''            if bool(fields["retired"]) != bool(fields["by"]) or ('''
+new = '''            if False and (bool(fields["retired"]) != bool(fields["by"])) or ('''
+
+[[rows]]
+id = "M19_none_drops_nothing"
+description = "UnavailableRecord._apply: a change of None drops nothing, so a reopened playlist stays retired"
+file = "src/cratekit/sync/unavailable.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''        after = {key: value for key, value in entries.items() if key not in changes}'''
+new = '''        after = dict(entries)'''
+
+[[rows]]
+id = "M20_retirable_without_this_reads_not_found"
+description = "retirable: offer a playlist for retirement on its record alone, whatever its id answered now"
+file = "src/cratekit/sync/removed_cli.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''        if one.not_found and one.noted is not None and not one.noted.is_retired'''
+new = '''        if one.noted is not None and not one.noted.is_retired'''
+
+[[rows]]
+id = "M21_retire_records_before_the_gate"
+description = "retire: record the reads before the gate, so its abort writes"
+file = "src/cratekit/sync/removed_cli.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''    reads = _read_synced(cfg, found, every=True, record_now=False)'''
+new = '''    reads = _read_synced(cfg, found, every=True, record_now=True)'''
+
+[[rows]]
+id = "M22_retire_ignores_its_answer"
+description = "retire: retire whatever the gate was answered"
+file = "src/cratekit/sync/removed_cli.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''    if ctx.gate.require(_gate(ctx.entry, RETIRE_GATE), plan=data, context=context) != "retire":
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP)'''
+new = '''    ctx.gate.require(_gate(ctx.entry, RETIRE_GATE), plan=data, context=context)'''
+
+[[rows]]
+id = "M23_reads_never_recorded"
+description = "_read_synced: never write the record after the reads"
+file = "src/cratekit/sync/removed_cli.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''    if record_now:
+        record.update(removed.noted(reads))'''
+new = '''    if False:
+        record.update(removed.noted(reads))'''
+
+[[rows]]
+id = "M24_record_read_as_empty"
+description = "_read_synced: plan over an empty record whatever it holds"
+file = "src/cratekit/sync/removed_cli.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''    sightings = record.read()'''
+new = '''    sightings = record.read() and {}'''
+
+[[rows]]
+id = "M25_person_retires_nothing"
+description = "retire: record the named playlists as sighted, never retired"
+file = "src/cratekit/sync/removed_cli.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''                one.account: unavailable.retired_by_person(one.noted, moment)'''
+new = '''                one.account: one.noted'''
