@@ -51,8 +51,10 @@ Every one of these holds, or the pass does not start.
 ## 2. The pass, to its landing gate
 
 **First, from a waiting night pass (U293).** A night pass, `crate sync
-night`, may already have taken the pass to its gate while nobody watched.
-Read its record, which runs nothing:
+night`, may already have taken the pass to its gate while nobody watched;
+`crate schedule install` puts it on launchd to run each night, `crate
+schedule show` says whether it is installed and loaded, and `crate schedule
+remove` takes it away (U295). Read its record, which runs nothing:
 
     crate --output json sync night --last
 
