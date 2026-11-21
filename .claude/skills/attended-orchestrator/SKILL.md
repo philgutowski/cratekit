@@ -238,7 +238,8 @@ resolve (a review answered by the recommendation it shows, one with none
 left open), refusal and tag paths from the pass's JSON, album cover and
 timing reads if an album of the size a card asks for lands, and any
 rekordbox probe a card owes, done inside the visit in place of its first
-Analyze and followed by the visit as that skill writes it. A probe that
+analysis, by either of its paths, and followed by the visit as that skill
+writes it. A probe that
 changes a rekordbox setting puts it back to Phillip's standard afterwards,
 and a screenshot confirms it. If the pass lands nothing, record that and
 leave the cards that needed files open, saying so.

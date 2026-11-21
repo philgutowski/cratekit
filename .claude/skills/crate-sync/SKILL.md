@@ -168,9 +168,10 @@ Tag, and every warning.
 ## 4. The rekordbox visit and its check
 
 Follow the project's `rekordbox-visit` skill step by step: its preflight, the
-analysis of INBOX / Analyze on Phillip's standard settings, the wait counted
-in analysis files, the second run for rows marked `dyn`, the quit, `crate
-analyze check`, and the clear with `crate inbox analyzed`. It is the one
+analysis of INBOX / Analyze on Phillip's standard settings, by its Auto
+Analysis path when the launch dialog shows them or else by Analyze Tracks,
+the wait counted in analysis files, the second run for rows marked `dyn`,
+the quit, `crate analyze check`, and the clear with `crate inbox analyzed`. It is the one
 procedure for the visit, and nothing it says is repeated here. Its verdict is
 this pass's: a check that ends waiting or suspect stops the pass there, and
 the report says what it named.

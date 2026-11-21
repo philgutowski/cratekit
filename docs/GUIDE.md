@@ -257,8 +257,19 @@ Then, in order:
 writes a grid. Open rekordbox, select `INBOX / Analyze` and run Analyze Tracks:
 rows without the `dyn` My Tag with Analysis Mode Normal, high precision off,
 BPM/Grid, Phrase and KEY on; rows with `dyn` with Analysis Mode Dynamic, every
-other setting the same. Quit rekordbox and confirm `rekordbox` and
-`rekordboxAgent` are gone. Then:
+other setting the same.
+
+With Auto Analysis on in rekordbox's preferences the visit is shorter. Open
+rekordbox and bring its window to the front: it raises one dialog saying Auto
+Analysis is starting, with the fields it will use. Press OK only when every
+field it shows reads as the Normal settings above with Vocal and CUE off, and
+it analyses every row waiting with no selection; on any other field, Cancel it
+and select as above. Auto Analysis analyses Normal only, so rows with `dyn`
+still take Analyze Tracks with Dynamic. Cratekit never turns Auto Analysis on
+or off: it analyses every track rekordbox finds unanalysed, however it came in,
+so whether it is on is yours to choose.
+
+Quit rekordbox and confirm `rekordbox` and `rekordboxAgent` are gone. Then:
 
 ```bash
 crate analyze check        # exit 0 done, 12 rows still waiting, 27 suspect
