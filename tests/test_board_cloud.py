@@ -9,8 +9,8 @@ cloud queue reads each card's comments the same way.
 
 The cloud session writes no label and no status, so its hold on a card is its
 own last comment, told from the person's by the footer the harness appends.
-The states here are the whole protocol the cloud skill follows: one builder at
-a time, a stale hold resumed rather than abandoned, a brainstorm released by
+The states here are the whole protocol the cloud skill follows: one builder a
+lane, a stale hold resumed rather than abandoned, a brainstorm released by
 the person's reply. The double is a `gh` that refuses GraphQL the way the
 proxy does and serves REST pages the way GitHub does.
 """
@@ -403,16 +403,16 @@ def test_every_lane_held_offers_nothing(board, monkeypatch, capsys):
 def test_the_default_is_the_configured_lane_count(board, monkeypatch, capsys):
     issues = [_issue(n, f"U{n}: card {n}") for n in range(1, board.CLOUD_LANES + 2)]
     # Each hold is minutes old, so none of them passes the eight hour mark
-    # that reads a hold as a dead session, whatever the lane count is.
-    held = {n: [_mine("Started", n / 10)] for n in range(1, board.CLOUD_LANES)}
+    # that reads a hold as a dead session at any lane count below a
+    # thousand, and the order of the holds is still the order of the cards.
+    held = {n: [_mine("Started", 0.1 + n / 1000)] for n in range(1, board.CLOUD_LANES)}
     _wire(board, monkeypatch, issues, held)
     assert board.cmd_cloud(None) == 0
     assert f"Take #{board.CLOUD_LANES}" in capsys.readouterr().out
 
 
 def test_the_cloud_runs_ten_lanes(board):
-    # Phillip's cap of 2026-11-21 (U291), raised from five; METHOD's cloud
-    # lane section and the cloud-unit skill say the same number.
+    # Phillip's cap of 2026-11-21 (U291), raised from five.
     assert board.CLOUD_LANES == 10
 
 
