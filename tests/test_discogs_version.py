@@ -412,6 +412,17 @@ def test_beatport_is_unchanged_for_a_remix_against_the_plain_row():
         ("Two Months Off (Part 1)", set()),
         ("Two Months Off (feat. Someone)", set()),
         ("Two Months Off - Original Mix", set()),
+        # A title of brackets alone is its own title, never its version, and
+        # a title part that names nothing is no title for one to follow.
+        ("(Sunrise Mood Extended Mix)", set()),
+        ("(Kerri Chandler Remix) - Original Mix", set()),
+        ("(Intro) (Tide Remix)", {("tide",)}),
+        ("02 (Sunrise Mood Extended Mix)", set()),
+        ("[MP3] (Sunrise Mood Extended Mix)", set()),
+        (f"{ARTIST} - Sun Path - 02 (Sunrise Mood Extended Mix)", set()),
+        ("007 (Tide Remix)", {("tide",)}),
+        ("[MP3] Sunrise Mood (Tide Remix)", {("tide",)}),
+        ("08A - 124 -  - Sunrise Mood Extended Mix", set()),
         # Only a list could cut an unbracketed version from its title.
         ("Two Months Off Tim Green Remix", set()),
         # An album after the artist's credit is no version of the title.

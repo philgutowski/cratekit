@@ -10,7 +10,7 @@ resolution_type: code_fix
 applies_when:
   - "A unit compares titles, artists or any names by containment after stripping part of them"
   - "A unit adds a new catalogue source, or a new caller of the shared title matcher"
-tags: [title-match, substring, bracket-strip, beatport, discogs, traxsource, bandcamp, r-1534, r-1631, r-1636, r-1646, u280, camelot-head, dash-parts, typed-parse, differential]
+tags: [title-match, substring, bracket-strip, beatport, discogs, traxsource, bandcamp, r-1534, r-1631, r-1636, r-1646, u280, u318, remix, version, camelot-head, dash-parts, typed-parse, differential]
 ---
 
 # A strip that can empty a title turns a substring match into a match of anything
@@ -170,6 +170,17 @@ and Beatport's own scoring, which strips separately from the shared matcher.
   callers, not only the matcher's.
 - **The same empty substring hides on the artist side.** A credit with no
   name was contained in every searched artist in `_beatport_best`.
+- **Reading past a version is right for a title and wrong for a release
+  (U318).** The matcher sheds a version so that "Burning (Extended Mix)"
+  finds "Burning", and so "Two Months Off (Tim Green Remix)" found a Discogs
+  release of four other mixes, and its genre. Leave the shared reader alone
+  and check the version at the source that lists mixes as tracks:
+  `titles.named_versions` reads the mix a file's title names by its maker,
+  and `titles.writes_version` whether a row writes it. Fold the words that
+  name no one (the version words and `MIX_DESCRIPTIONS`), or "Vocal Mix" and
+  "Main Mix" lose their plain row. And a group is a version only after a
+  title: "(Sunrise Mood Extended Mix)" and "02 (Intro)" are titles, which a
+  differential over the matcher's corpus found before review.
 
 ## How to test it
 

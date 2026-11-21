@@ -463,7 +463,16 @@ crate route pending
   only inside the other title's brackets, so "Intro" is never "Sunrise Mood
   (Intro)", and a number in a title is kept, save a remaster's year and the
   zero padded track number a file's name opens with, so "Session 2" is never
-  "Session 1" and "Summer 1999" never "Summer 2000". Discogs' first style that names a folder is written, through the
+  "Session 1" and "Summer 1999" never "Summer 2000". On Discogs a file whose
+  title names a mix by its maker, "Two Months Off (Tim Green Remix)" or
+  "Two Months Off - Tim Green Remix", takes a release only when a track
+  writes the same mix, or, for a single, the release's own title or a track
+  that is the mix alone ("Tim Green Remix"); a release holding the recording
+  in other mixes only is a miss, the file's record says "Discogs release N
+  holds no track with this version", and the file goes on to Beatport. A mix
+  that names no one, "Extended Mix", "Original Mix", "Radio Edit", "Vocal
+  Mix" or "Main Mix", is matched as before, and so is a mix written into the
+  title with no bracket or dash. Discogs' first style that names a folder is written, through the
   taxonomy's `[vocabulary.discogs]` table and its aliases; a style naming no
   folder is a decline. A library set up before that table shipped gets it
   with `crate taxonomy upgrade`, which doctor names; until then nine of the

@@ -1153,31 +1153,47 @@ def _naming_words(found: Words) -> Words:
     return found[start:end]
 
 
-def _trailing_groups(text: str) -> tuple[str, list[str]]:
-    """A text before the bracket groups it ends with, and each group's
-    inside, the last first, read as :func:`without_trailing_groups` reads
-    them."""
+def _trailing_groups(text: str) -> list[tuple[str, str]]:
+    """Each bracket group a text ends with, the last first, as the text
+    before it and the group's inside, read as :func:`without_trailing_groups`
+    reads them."""
     current = text.strip()
-    inside: list[str] = []
+    groups: list[tuple[str, str]] = []
     start = _trailing_group_start(current)
     while start is not None:
-        inside.append(current[start + 1 : -1])
+        inside = current[start + 1 : -1]
         current = current[:start].rstrip()
+        groups.append((current, inside))
         start = _trailing_group_start(current)
-    return current, inside
+    return groups
 
 
-def _group_versions(text: str) -> set[Words]:
-    """What each bracket group a text ends with names as a version."""
-    _, inside = _trailing_groups(text)
-    return {named for named in (_naming_words(words(group)) for group in inside) if named}
+def _group_versions(text: str, *, title: bool = False) -> set[Words]:
+    """What each bracket group a text ends with names as a version.
+
+    With ``title``, for a file's title, a group with nothing before it that
+    names anything is the title itself, as :func:`title_core` reads a title
+    of brackets alone, never its version, and so is one after only the
+    naming verb's marker or a lone track number, which the reader reads past:
+    "(Sunrise Mood Extended Mix)" and "02 (Sunrise Mood Extended Mix)" name
+    no mix, and "(Intro) (Tide Remix)" names Tide's."""
+    return {
+        named
+        for before, inside in _trailing_groups(text)
+        if not title or _a_title_before(before)
+        if (named := _naming_words(words(inside)))
+    }
+
+
+def _a_title_before(before: str) -> bool:
+    rest = _MARKER.sub("", before, count=1).strip()
+    return identifies(rest) and not _a_track_number(rest)
 
 
 def _stretch_version(text: str) -> Words:
     """What a stretch names as a version written with no bracket, "Tim Green
     Remix" or "Tim Green Remix (Extended)", read before its bracket groups."""
-    core, _ = _trailing_groups(text)
-    return _naming_words(words(core))
+    return _naming_words(words(without_trailing_groups(text)))
 
 
 def named_versions(file: FileName) -> frozenset[Words]:
@@ -1198,9 +1214,10 @@ def named_versions(file: FileName) -> frozenset[Words]:
         return frozenset()
     named: set[Words] = set()
     for index, part in enumerate(file.parts):
-        if part.role is not Role.TITLE:
+        # A title part that names nothing is no title for a version to follow.
+        if part.role is not Role.TITLE or not identifies(part.text):
             continue
-        named |= _group_versions(part.text)
+        named |= _group_versions(part.text, title=True)
         after = file.parts[index + 1] if index + 1 < len(file.parts) else None
         if after is not None and after.role is Role.LATER:
             named |= _group_versions(after.text)
