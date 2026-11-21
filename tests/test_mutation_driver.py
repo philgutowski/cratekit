@@ -2148,11 +2148,13 @@ def _recorded_table(repo: Path, rows: list[dict], name: str = "u1.json") -> None
     path.write_text(json.dumps({"name": Path(name).stem, "rows": rows}), encoding="utf-8")
 
 
+#: K1 is the clamp guard exactly as ``_replay_rows`` and ``_replay_spec`` replay it.
+CLAMP = {"file": GUARDS_FILE, "old": "if value > limit:", "new": "if value > 10000:"}
 RECORDED = [
-    {"id": "K1", "deaths": 1},
+    {"id": "K1", "deaths": 1, **CLAMP},
     {"id": "K9", "deaths": 3},
-    {"id": "Z1", "deaths": 0},
-    {"id": "T1", "deaths": True},
+    {"id": "Z1", "deaths": 0, **CLAMP},
+    {"id": "T1", "deaths": True, **CLAMP},
 ]
 
 
@@ -2191,6 +2193,88 @@ def test_a_replay_row_naming_a_source_no_table_recorded_is_refused(repo, source,
     covered = mutate.Mapped(source=source, to="u1.K1", reason="merged")
     with pytest.raises(mutate.DriverRefusal, match=r"the mapping to u1\.K1: "):
         mutate.refuse_unrecorded_sources(repo, _replay_rows()[:1], [covered])
+
+
+def test_a_table_that_is_not_json_is_not_a_recorded_table(repo):
+    (repo / "docs" / "mutation").mkdir(parents=True)
+    (repo / "docs" / "mutation" / "u1.json").write_text("{ not json", encoding="utf-8")
+    with pytest.raises(mutate.DriverRefusal, match="docs/mutation/u1.json is not a recorded table"):
+        mutate.refuse_unrecorded_sources(repo, _replay_rows()[:1], [])
+
+
+@pytest.mark.parametrize(
+    "change",
+    [{"file": "src/fixtpkg/other.py"}, {"old": "return True"}, {"new": "if value > 1:"}],
+)
+def test_a_new_row_under_a_recorded_name_is_refused_unless_it_says_it_moved(repo, change):
+    """The review's second finding on sources: the name was read and the text was not.
+
+    26 rows over a file no table measured, each under a real recorded source,
+    were measured as a replay. A row whose file or text is not its source's
+    is either a guard anchored again by hand, which says so, or a new row.
+    """
+    _recorded_table(repo, RECORDED)
+    text = {**CLAMP, **change}
+    borrowed = _row("u1.K1", text["old"], text["new"], file=text["file"], source=("u1.json", "K1"))
+    with pytest.raises(
+        mutate.DriverRefusal,
+        match="row u1.K1: its file or text is not what docs/mutation/u1.json recorded for 'K1'",
+    ):
+        mutate.refuse_unrecorded_sources(repo, [borrowed], [])
+    anchored = _row(
+        "u1.K1", text["old"], text["new"], file=text["file"], source=("u1.json", "K1"),
+        moved="the guard was split out by hand",
+    )
+    mutate.refuse_unrecorded_sources(repo, [anchored], [])
+    blank = _row(
+        "u1.K1", text["old"], text["new"], file=text["file"], source=("u1.json", "K1"), moved="  "
+    )
+    with pytest.raises(mutate.DriverRefusal, match="gives no moved reason"):
+        mutate.refuse_unrecorded_sources(repo, [blank], [])
+
+
+def test_a_replay_reuses_nothing_while_a_tracked_file_differs_from_the_commit(repo):
+    """The same commit by name, and the test that killed the row deleted but not committed."""
+    rows = _replay_rows()[:1]
+    first = mutate.measure_batch(repo, "resumed", rows, pass_kind="replay")
+    assert first.results[0].status == "killed"
+    tests = repo / "tests" / "test_guards.py"
+    tests.write_text(
+        tests.read_text(encoding="utf-8").replace(
+            "def test_clamp_caps_at_the_limit():\n    assert clamp(50) == 10\n", ""
+        ),
+        encoding="utf-8",
+    )
+    assert "a tracked file differs from this commit" in mutate.replay_resume_refusal(
+        repo, first.to_dict()
+    )
+    second = mutate.measure_batch(repo, "resumed", rows, pass_kind="replay", prior=first.to_dict())
+    assert second.head == first.head
+    assert second.reused_rows == 0 and second.results[0].status == "zero"
+
+
+def test_a_replay_resumes_over_untracked_files_since_its_own_table_is_one(repo):
+    rows = _replay_rows()[:1]
+    first = mutate.measure_batch(repo, "resumed", rows, pass_kind="replay")
+    (repo / "docs" / "mutation").mkdir(parents=True)
+    (repo / "docs" / "mutation" / "resumed.json").write_text("{}", encoding="utf-8")
+    assert mutate.replay_resume_refusal(repo, first.to_dict()) == ""
+    assert mutate.replay_resume_refusal(repo, None) == ""
+    second = mutate.measure_batch(repo, "resumed", rows, pass_kind="replay", prior=first.to_dict())
+    assert second.reused_rows == 1
+
+
+def test_a_status_git_cannot_read_is_not_a_clean_one(repo, monkeypatch):
+    first = mutate.measure_batch(repo, "resumed", _replay_rows()[:1], pass_kind="replay")
+    real = mutate._git
+
+    def no_status(repo_root, *args):
+        if args[0] == "status":
+            return subprocess.CompletedProcess(args, 128, b"", b"fatal")
+        return real(repo_root, *args)
+
+    monkeypatch.setattr(mutate, "_git", no_status)
+    assert "git could not say" in mutate.replay_resume_refusal(repo, first.to_dict())
 
 
 def _replay_spec(repo: Path, *, source_id: str = "K1") -> Path:
@@ -2257,7 +2341,8 @@ def test_resuming_a_replay_from_another_commits_sidecar_says_nothing_is_reused(
     capsys.readouterr()
     assert mutate.main(argv) == 0
     err = capsys.readouterr().err
-    assert "a replay reuses rows only from this commit, so every row is measured again" in err
+    assert "resume: nothing of u1-replay.json is reused: it was measured at" in err
+    assert "so every row is measured again" in err
     data = json.loads((out / "u1-replay.json").read_text(encoding="utf-8"))
     assert data["reused_rows"] == 0
 

@@ -107,9 +107,10 @@ past the caps by naming a table that never held it. `scripts/killset.py rows`
 writes such a file. Everything else is the pass every table gets: one full
 baseline, one null control, a subset baseline per distinct subset, a zero
 promoted to the full suite, and every restore verified. `--resume` reuses a
-replay's rows only from a sidecar measured at this commit, because a replay
-is read as what the tests of this commit kill; a light or a full pass resumes
-as it always did.
+replay's rows only from a sidecar measured at this commit with no tracked
+file changed since, because a replay is read as what the tests of this commit
+kill; a light or a full pass resumes as it always did. A row whose file or
+text is not what its source recorded must say why in `moved`.
 
 A replay row may say `moved = "why"` when its text is no longer the text its
 source recorded, and the file may carry `[[mapped]]` entries, each naming a
@@ -670,8 +671,11 @@ def refuse_unrecorded_sources(repo_root: Path, rows: list[Row], mapped: list[Map
     a source taken on trust would let any number of new rows through under a
     table's name. So each source is read: the table is a file under
     ``docs/mutation/``, it holds a row of that id, and that row recorded at
-    least one death. Read before anything runs, so a forged batch never
-    reaches a baseline.
+    least one death. And a row's own text is read against it: a row whose
+    file or text is not what its source recorded is a guard anchored again by
+    hand, which says so in ``moved``, or it is a new row under a borrowed
+    name. Read before anything runs, so a forged batch never reaches a
+    baseline.
     """
     tables: dict[str, dict[str, dict] | None] = {}
 
@@ -690,9 +694,9 @@ def refuse_unrecorded_sources(repo_root: Path, rows: list[Row], mapped: list[Map
             )
         return tables[table]
 
-    named = [(f"row {row.id}", row.source) for row in rows if row.source]
-    named += [(f"the mapping to {one.to}", one.source) for one in mapped]
-    for what, (table, row_id) in named:
+    named = [(f"row {row.id}", row.source, row) for row in rows if row.source]
+    named += [(f"the mapping to {one.to}", one.source, None) for one in mapped]
+    for what, (table, row_id), replayed in named:
         held = recorded(table)
         shown = (RECORDED_TABLES / table).as_posix()
         if held is None:
@@ -706,6 +710,39 @@ def refuse_unrecorded_sources(repo_root: Path, rows: list[Row], mapped: list[Map
                 f"{what}: {shown} row {row_id!r} recorded no death, so there is no kill "
                 f"of it to replay"
             )
+        if replayed is None or replayed.moved.strip():
+            continue
+        written = (replayed.file, replayed.old, replayed.new)
+        if written != (row.get("file"), row.get("old"), row.get("new")):
+            raise DriverRefusal(
+                f"{what}: its file or text is not what {shown} recorded for {row_id!r}, "
+                f"and it gives no moved reason. A guard anchored again by hand says so "
+                f"in moved; a new row belongs in a light or a full pass."
+            )
+
+
+def replay_resume_refusal(repo_root: Path, prior: dict | None) -> str:
+    """Why a replay reuses nothing of a prior sidecar, or "" when it may.
+
+    A replay is read as what the tests of THIS commit kill. A row measured
+    before the test that killed it was deleted would otherwise say killed
+    where nothing kills it, and `killset.py check` would pass a lost kill on
+    it (U297). So the sidecar must have been measured at this commit, and no
+    tracked file may differ from it now: a test deleted and not yet committed
+    leaves the commit's name unchanged. A status git cannot read is not a
+    clean one.
+    """
+    if prior is None:
+        return ""
+    here = head_sha(repo_root)
+    if prior.get("head") != here:
+        return f"it was measured at {prior.get('head')!r} and this is {here!r}"
+    status = _git(repo_root, "status", "--porcelain", "--untracked-files=no")
+    if status.returncode != 0:
+        return "git could not say whether a tracked file changed since this commit"
+    if status.stdout.strip():
+        return "a tracked file differs from this commit, so what it measured may not hold"
+    return ""
 
 
 def null_control_row(rows: list[Row]) -> Row:
@@ -1875,11 +1912,7 @@ def measure_batch(
         )
 
     # ---- the rows -------------------------------------------------------
-    # A replay is read as what the tests of THIS commit kill, so it reuses a
-    # row only from a sidecar measured here: a row measured before the test
-    # that killed it was deleted would otherwise say killed at the new head,
-    # and `killset.py check` would pass a lost kill on it (U297).
-    stale = pass_kind == REPLAY and prior is not None and prior.get("head") != header["head"]
+    stale = pass_kind == REPLAY and bool(replay_resume_refusal(repo_root, prior))
     reused = {
         entry["fingerprint"]: entry
         for entry in ({} if stale else prior or {}).get("rows", [])
@@ -2240,7 +2273,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--resume",
         action="store_true",
-        help="reuse rows already in the JSON sidecar whose text has not changed",
+        help=(
+            "reuse rows already in the JSON sidecar whose text has not changed; a replay "
+            "reuses them only from a sidecar measured at this commit with no tracked "
+            "file changed since"
+        ),
     )
     parser.add_argument("--timeout", type=int, default=3600, help="seconds per pytest run")
     parser.add_argument(
@@ -2405,12 +2442,11 @@ def main(argv: list[str]) -> int:
     sidecar = args.out_dir / f"{name}.json"
     if args.resume and sidecar.is_file():
         prior = json.loads(sidecar.read_text(encoding="utf-8"))
-        here = head_sha(args.repo_root)
-        if pass_kind == REPLAY and prior.get("head") != here:
+        why = replay_resume_refusal(args.repo_root, prior) if pass_kind == REPLAY else ""
+        if why:
             print(
-                f"resume: {sidecar.name} was measured at {prior.get('head')!r} and this is "
-                f"{here!r}; a replay reuses rows only from this commit, so every row is "
-                f"measured again",
+                f"resume: nothing of {sidecar.name} is reused: {why}. A replay reuses "
+                f"rows only from this commit as committed, so every row is measured again",
                 file=sys.stderr,
             )
 

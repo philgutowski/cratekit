@@ -33,13 +33,14 @@ ambiguous and gone rows are left out and counted.
 `rows --after BEFORE.json` writes the row file for the same kills after a
 refactor: every row the BEFORE table killed, anchored where its text now is.
 Text still in its file is written as it was. Text that left its file is
-written at another file, with a `moved` reason, only when that is the one
-file under the same top directory that holds it, it holds it once, and it did
-not hold it at the commit the BEFORE table was measured on: a file that held
-the same line all along holds another guard, not this one moved (188 of the
-7,093 live rows on `ff8e5ec` have exactly one such twin). What the file held
-then is read from git, which is only read, and when git cannot say the row is
-not placed. Anything else is written under `[[dropped]]` as unplaced, for the
+written at another file, with a `moved` reason, only when it stands in
+exactly one place under the same top directory now and stood in exactly one
+at the commit the BEFORE table was measured on. A line that stood in two
+places then has a twin, another guard written the same way, and the one place
+left now may be the twin's, whatever its file is called today (188 of the
+7,093 live rows on `ff8e5ec` have exactly one twin). What the tree held then
+is read from git, which is only read, and when git cannot say the row is not
+placed. Anything else is written under `[[dropped]]` as unplaced, for the
 author to anchor by hand (a row with the same `source`, the new text and a
 `moved` reason) or to map onto the row that now covers it (a `[[mapped]]`
 entry with its `reason`).
@@ -49,15 +50,20 @@ exits 1 unless every row killed before is killed after, or is mapped in the
 AFTER table to a row of it that is killed. It reads the driver's own verdict:
 a row whose status is `killed`, and one that broke collection with a death
 counts for less, so a kill that became a collection error is reported. A row
-whose text changed between the two tables must say why in `moved`. Exit 2 is
-a table that cannot be read, is not a finished, valid batch, or holds two
-rows for one source.
+whose text changed between the two tables must say why in `moved`, and text
+alone does not make it the same guard: a deleted guard and a new line written
+the same way elsewhere read as one move. So a row at a new anchor must be
+killed by at least one test, by name, that killed it before, or carry a
+`moved` reason a person wrote in place of the one `rows --after` writes. Exit
+2 is a table that cannot be read, is not a finished, valid batch, or holds
+two rows for one source.
 
 A replay table is itself a record. A row killed in one is its source's kill at
 the text the replay ran, so a guard a refactor moved stays in the kill set at
 its new place, and a later `list` or `rows` finds it there with the tests that
-replay ran. Replay tables are never counted as tables of their own: every row
-in one came from another table.
+replay ran. A row at a new anchor is believed there on the rule `check` holds
+it to, a test in common or a reason a person wrote. Replay tables are never
+counted as tables of their own: every row in one came from another table.
 
 Nothing here runs a test or writes a source file. `scripts/mutate.py` is the
 one driver, and a replay runs through it under every rule it holds.
@@ -66,10 +72,12 @@ one driver, and a replay runs through it under every rule it holds.
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import subprocess
 import sys
+import tarfile
 import tomllib
 from collections import Counter
 from dataclasses import dataclass, field
@@ -91,6 +99,11 @@ STATES = (LIVE, DUPLICATE, STALE, AMBIGUOUS, GONE)
 
 #: Directories a search for moved text never enters.
 SKIPPED_DIRECTORIES = frozenset({"__pycache__", "_vendor", "node_modules"})
+
+#: How the `moved` reason `rows --after` writes opens. A reason that opens
+#: this way was written by the tool from the text alone; any other was written
+#: by a person, who thereby says the row is the same guard.
+AUTOMATIC_MOVE = "the same text, now in "
 
 
 class Refusal(RuntimeError):
@@ -126,8 +139,8 @@ class Recorded:
     surface: str
     anchor: Anchor
     state: str = ""
-    #: Where a replay table re-anchored this row, oldest first.
-    moves: list[Anchor] = field(default_factory=list)
+    #: The tests that killed it, by name, as its own table recorded them.
+    killers: frozenset[str] = frozenset()
 
     @property
     def source(self) -> tuple[str, str]:
@@ -163,6 +176,46 @@ def source_of(row: dict) -> tuple[str, str] | None:
     if isinstance(table, str) and table and isinstance(row_id, str) and row_id:
         return (table, row_id)
     return None
+
+
+def killer_names(row: dict) -> frozenset[str]:
+    """The tests that killed a row, each by its function's name.
+
+    A node id without its file and without its parameters, so a test that
+    moved to another file with the code it tests is still the same test, and
+    one that was renamed is not.
+    """
+    names = set()
+    for node in row.get("killed") or []:
+        if isinstance(node, str) and node:
+            names.add(node.rsplit("::", 1)[-1].split("[", 1)[0])
+    return frozenset(names)
+
+
+def unvouched_move(killers_before: frozenset[str], after: dict) -> str:
+    """Why a row killed at a new anchor is not yet known to be the same guard, or "".
+
+    Its text being the same is not enough: a refactor that deletes a guard
+    and leaves, renames or writes an identical line elsewhere produces the
+    same text at a new place, killed there by that other line's tests. So one
+    of two things must hold. A test that killed the row before kills it now,
+    by name. Or a person wrote its `moved` reason, which is them saying it is
+    the same guard; the reason `rows --after` writes says only where the text
+    is.
+    """
+    reason = str(after.get("moved") or "").strip()
+    if not reason:
+        return "it gives no moved reason, so nothing says it is the same guard"
+    now = killer_names(after)
+    if killers_before & now or not reason.startswith(AUTOMATIC_MOVE):
+        return ""
+    return (
+        f"it is killed there only by tests that did not kill it before "
+        f"({', '.join(sorted(killers_before)) or 'none recorded'} then, "
+        f"{', '.join(sorted(now)) or 'none recorded'} now), and its moved reason is the "
+        f"one `rows --after` wrote from the text alone. If it is the same guard, say "
+        f"why in `moved` in your own words; if it is not, the kill is lost"
+    )
 
 
 def kill_files(row: dict) -> list[str]:
@@ -273,7 +326,7 @@ def read_kill_set(repo_root: Path) -> KillSet:
     """Every recorded killed row under ``docs/mutation/``, with its state today."""
     tree = Tree(repo_root)
     found = KillSet(rows=[])
-    moves: dict[tuple[str, str], list[tuple[str, str, Anchor]]] = {}
+    moves: dict[tuple[str, str], list[tuple[str, str, Anchor, dict]]] = {}
     for path in sorted((repo_root / TABLES).glob("*.json")):
         table = load_table(path)
         if table is None:
@@ -286,7 +339,7 @@ def read_kill_set(repo_root: Path) -> KillSet:
                 source = source_of(row) if killed(row) else None
                 if source is not None:
                     moves.setdefault(source, []).append(
-                        (when, path.name, anchor_of(row, repo_root))
+                        (when, path.name, anchor_of(row, repo_root), row)
                     )
             continue
         found.tables += 1
@@ -301,20 +354,22 @@ def read_kill_set(repo_root: Path) -> KillSet:
                     description=str(row.get("description", "")),
                     surface="user" if row.get("surface") == "user" else "maintainer",
                     anchor=anchor_of(row, repo_root),
+                    killers=killer_names(row),
                 )
             )
 
     seen: set[tuple[str, str, str]] = set()
     for row in found.rows:
-        row.moves = [anchor for _, _, anchor in sorted(moves.get(row.source, []), key=_dated)]
         row.state = tree.state(row.anchor)
         # The newest replay that still applies speaks for the row: its text
         # when the recorded text left, and its tests either way, since they
-        # are the ones that last killed it.
-        for anchor in reversed(row.moves):
+        # are the ones that last killed it. A replay at another text is
+        # believed only on the rule `check` holds it to.
+        for _, _, anchor, replayed in sorted(moves.get(row.source, []), key=_dated, reverse=True):
             if tree.state(anchor) != LIVE:
                 continue
-            if row.state != LIVE or anchor.key == row.anchor.key:
+            in_place = anchor.key == row.anchor.key
+            if in_place or (row.state != LIVE and not unvouched_move(row.killers, replayed)):
                 row.anchor = anchor if anchor.tests else Anchor(*anchor.key, row.anchor.tests)
                 row.state = LIVE
                 break
@@ -325,7 +380,7 @@ def read_kill_set(repo_root: Path) -> KillSet:
     return found
 
 
-def _dated(move: tuple[str, str, Anchor]) -> tuple[str, str]:
+def _dated(move: tuple) -> tuple[str, str]:
     return (move[0], move[1])
 
 
@@ -552,53 +607,87 @@ def key_of(row: dict) -> tuple[str, str]:
     return source_of(row) or ("", str(row.get("id", "")))
 
 
-def held_at(repo_root: Path, head: str, rel: str, text: str) -> bool | None:
-    """Whether ``rel`` held ``text`` at commit ``head``, or None when git cannot say.
+class Commit:
+    """The files a commit held, read from git once per top directory. Git is only read."""
 
-    Git is only read. A commit git knows that holds no such file answers no:
-    the file is new since. A commit git does not know, or no commit named at
-    all, answers None, which the caller must not read as no.
-    """
-    if not head:
-        return None
-    known = subprocess.run(
-        ["git", "cat-file", "-e", f"{head}^{{commit}}"],
-        cwd=repo_root, capture_output=True, check=False,
-    )
-    if known.returncode != 0:
-        return None
-    shown = subprocess.run(
-        ["git", "show", f"{head}:{rel}"], cwd=repo_root, capture_output=True, check=False
-    )
-    if shown.returncode != 0:
-        return False
-    return text in shown.stdout.decode("utf-8", "replace")
+    def __init__(self, repo_root: Path, head: str) -> None:
+        self.root = repo_root
+        self.head = head
+        self._tops: dict[str, dict[str, str] | None] = {}
+
+    def _git(self, *args: str) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.run(
+            ["git", *args], cwd=self.root, capture_output=True, check=False
+        )
+
+    def texts(self, top: str) -> dict[str, str] | None:
+        """Every file under ``top`` at the commit, by path, or None when git cannot say.
+
+        A commit git knows that holds no such directory answers with nothing
+        in it. A commit git does not know, or none named at all, answers
+        None, which a caller must not read as nothing.
+        """
+        if top not in self._tops:
+            self._tops[top] = self._read(top)
+        return self._tops[top]
+
+    def _read(self, top: str) -> dict[str, str] | None:
+        if not self.head or not top:
+            return None
+        if self._git("cat-file", "-e", f"{self.head}^{{commit}}").returncode != 0:
+            return None
+        archived = self._git("archive", "--format=tar", self.head, "--", top)
+        if archived.returncode != 0:
+            return {}
+        texts: dict[str, str] = {}
+        with tarfile.open(fileobj=io.BytesIO(archived.stdout)) as archive:
+            for member in archive:
+                if member.isfile():
+                    texts[member.name] = archive.extractfile(member).read().decode(
+                        "utf-8", "replace"
+                    )
+        return texts
+
+    def stood(self, anchor: Anchor) -> int | None:
+        """How many places a row's text stood in, under its top directory, at the commit."""
+        texts = self.texts(anchor.file.split("/", 1)[0])
+        if texts is None:
+            return None
+        suffix = Path(anchor.file).suffix
+        return sum(
+            text.count(anchor.old) for name, text in texts.items() if Path(name).suffix == suffix
+        )
 
 
-def moved_to(tree: Tree, anchor: Anchor, head: str) -> tuple[str | None, str]:
+def moved_to(tree: Tree, anchor: Anchor, commit: Commit) -> tuple[str | None, str]:
     """The file a row's text moved to, or None and why nothing says it moved.
 
     Text that occurs once in one other file is not yet text that moved there.
     A deleted guard often has a twin, the same line in a neighbouring file,
     and anchoring the deleted row on its twin would replay another guard's
-    kill under this one's name. So the holder must not have held the text at
-    the commit the row was measured on.
+    kill under this one's name; the twin's file may itself have been renamed
+    or split since, so asking whether today's holder held the text then does
+    not find it. What does is counting: the text must have stood in exactly
+    one place at the commit the row was measured on, its own, and stand in
+    exactly one now. A line written new elsewhere after its guard was deleted
+    still passes this, which is why `check` asks a moved row for more.
     """
     holders = tree.holders(anchor)
     absent = f"the text is {describe_absence(tree.state(anchor))} in {anchor.file}"
     if len(holders) != 1:
         return None, f"{absent} and occurs once in {len(holders)} other files"
-    before = held_at(tree.root, head, holders[0], anchor.old)
-    if before is None:
+    stood = commit.stood(anchor)
+    if stood is None:
         return None, (
-            f"{absent} and occurs once in {holders[0]}, but git cannot read that file at "
-            f"the commit the table was measured on ({head or 'none named'}), so nothing "
-            "says the text moved there"
+            f"{absent} and occurs once in {holders[0]}, but git cannot read the tree at "
+            f"the commit the table was measured on ({commit.head or 'none named'}), so "
+            "nothing says the text moved there"
         )
-    if before:
+    if stood != 1:
         return None, (
-            f"{absent}, and {holders[0]} holds it now as it did at {head}: that line is "
-            "another guard's, not this one moved"
+            f"{absent} and occurs once in {holders[0]}, but it stood in {stood} places at "
+            f"{commit.head}, so the one left may be another guard's line and not this "
+            "one moved"
         )
     return holders[0], ""
 
@@ -608,6 +697,7 @@ def rows_after(args) -> int:
     before = read_measured(args.after)
     head = before.get("head") if isinstance(before.get("head"), str) else ""
     tree = Tree(args.repo_root)
+    commit = Commit(args.repo_root, head)
     body: list[str] = []
     dropped: list[str] = []
     counts: Counter = Counter()
@@ -625,7 +715,7 @@ def rows_after(args) -> int:
         surface = "user" if row.get("surface") == "user" else "maintainer"
         moved = str(row.get("moved") or "")
         if tree.state(anchor) != LIVE:
-            holder, why = moved_to(tree, anchor, head)
+            holder, why = moved_to(tree, anchor, commit)
             if holder is None:
                 counts["unplaced"] += 1
                 dropped += render_dropped(
@@ -635,7 +725,7 @@ def rows_after(args) -> int:
                     "text and a moved reason, or map it to the row that covers it.",
                 )
                 continue
-            moved = f"the same text, now in {holder}, was in {anchor.file}"
+            moved = f"{AUTOMATIC_MOVE}{holder}, was in {anchor.file}"
             anchor = Anchor(holder, anchor.old, anchor.new, anchor.tests)
             counts["moved"] += 1
         else:
@@ -731,10 +821,10 @@ def compare_tables(
                     f"{name}: {was} before, {now.get('status', 'not killed')} after "
                     f"({now.get('deaths', 0)} deaths)"
                 )
-            elif text_of(now) != text_of(row) and not str(now.get("moved") or "").strip():
+            elif text_of(now) != text_of(row) and unvouched_move(killer_names(row), now):
                 verdict.lost.append(
-                    f"{name}: its text differs between the two tables and the row gives no "
-                    "moved reason, so nothing says it is the same guard"
+                    f"{name}: its text differs between the two tables, and "
+                    f"{unvouched_move(killer_names(row), now)}"
                 )
             elif text_of(now) != text_of(row):
                 verdict.moved += 1
@@ -795,7 +885,11 @@ def build_parser() -> argparse.ArgumentParser:
     rows.add_argument("paths", nargs="*", help="files or directories whose live rows to write")
     rows.add_argument("--after", type=Path, default=None, help="a table measured before a refactor")
     rows.add_argument("--out", type=Path, required=True, help="the .toml row file to write")
-    rows.add_argument("--name", default=None, help="the batch name; defaults to the file's stem")
+    rows.add_argument(
+        "--name",
+        default=None,
+        help="the batch name; defaults to the row file's stem without a closing -rows",
+    )
     rows.set_defaults(run=cmd_rows)
 
     check = verbs.add_parser("check", help="every row killed before is killed after")

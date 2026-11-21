@@ -436,10 +436,85 @@ def test_check_holds_a_row_whose_text_changed_to_a_moved_reason(tmp_path, capsys
     before = [_measured("A")]
     silent = [_measured("A", file="src/pkg/beta.py")]
     assert _check(tmp_path, before, silent) == 1
-    assert "its text differs between the two tables" in capsys.readouterr().out
-    said = [_measured("A", file="src/pkg/beta.py", moved="the same text, now in beta")]
+    assert "its text differs between the two tables, and it gives no moved reason" in (
+        capsys.readouterr().out
+    )
+    said = [_measured("A", file="src/pkg/beta.py", moved="split out with its guard, by hand")]
     assert _check(tmp_path, before, said) == 0
     assert "1 killed after at a new anchor" in capsys.readouterr().out
+
+
+AUTOMATIC = "the same text, now in src/pkg/beta.py, was in src/pkg/alpha.py"
+
+
+def test_a_row_the_tool_moved_must_still_die_by_a_test_that_killed_it_before(tmp_path, capsys):
+    """The review's finding, as a class: the same text elsewhere is not the same guard.
+
+    A guard deleted, and an identical line left, renamed or written new in
+    another file: the row is killed there, by that other line's tests. The
+    tool's own reason says only where the text is, so it vouches for nothing.
+    """
+    before = [_measured("A", killed=["tests/test_alpha.py::test_once"])]
+    twin = [
+        _measured(
+            "A", file="src/pkg/beta.py", moved=AUTOMATIC,
+            killed=["tests/test_beta.py::test_beta_caps[low - high]"],
+        )
+    ]
+    assert _check(tmp_path, before, twin) == 1
+    out = capsys.readouterr().out
+    assert "LOST u1.json A: its text differs between the two tables, and it is killed there " in out
+    assert "(test_once then, test_beta_caps now)" in out
+    assert "say why in `moved` in your own words" in out
+
+
+def test_a_row_the_tool_moved_passes_when_the_same_test_kills_it_wherever_that_test_lives(
+    tmp_path, capsys
+):
+    """The test moved with the code it tests: another file, the same name, the same guard."""
+    before = [_measured("A", killed=["tests/test_alpha.py::test_once[a]", "tests/test_alpha.py::test_two"])]
+    moved = [
+        _measured(
+            "A", file="src/pkg/beta.py", moved=AUTOMATIC,
+            killed=["tests/test_beta.py::TestCaps::test_once[b - c]"],
+        )
+    ]
+    assert _check(tmp_path, before, moved) == 0
+    assert "1 killed after at a new anchor, 0 covered" in capsys.readouterr().out
+
+
+def test_a_person_may_vouch_for_a_moved_row_no_test_in_common_kills(tmp_path):
+    before = [_measured("A", killed=["tests/test_alpha.py::test_once"])]
+    vouched = [
+        _measured(
+            "A", file="src/pkg/beta.py", killed=["tests/test_beta.py::test_renamed"],
+            moved="the guard moved with pair_settle and its test was renamed with it",
+        )
+    ]
+    assert _check(tmp_path, before, vouched) == 0
+
+
+def test_a_row_in_place_needs_no_test_in_common(tmp_path):
+    """The same text in the same file is the same guard, whatever its tests are called now."""
+    before = [_measured("A", killed=["tests/test_alpha.py::test_once"])]
+    after = [_measured("A", killed=["tests/test_alpha.py::test_renamed"])]
+    assert _check(tmp_path, before, after) == 0
+
+
+def test_the_tests_that_killed_a_row_are_read_by_name():
+    row = {"killed": ["tests/a.py::test_x[p - q]", "tests/b.py::TestK::test_y", "", 3, "test_z"]}
+    assert killset.killer_names(row) == {"test_x", "test_y", "test_z"}
+    assert killset.killer_names({}) == frozenset()
+
+
+def test_a_table_of_the_older_form_is_read_by_its_deaths(tmp_path):
+    """No status at all: a death is a kill, as the reader counts it."""
+    old = {"id": "G1", "file": ALPHA, "old": "a", "new": "b", "deaths": 2}
+    first = _table(tmp_path, "before.json", [old])
+    second = _table(tmp_path, "after.json", [{**old, "deaths": 0}])
+    assert killset.strength(old) == 2
+    assert killset.main(["killset.py", "check", str(first), str(first)]) == 0
+    assert killset.main(["killset.py", "check", str(first), str(second)]) == 1
 
 
 def test_check_matches_tables_that_are_not_replays_by_row_id(tmp_path):
@@ -549,20 +624,44 @@ def test_rows_after_follows_text_that_moved_to_one_other_file(committed, capsys)
     assert rows[0].source == ("u1.json", "A")
 
 
-def test_a_deleted_guard_is_not_anchored_on_a_twin_that_was_there_all_along(tree, capsys):
-    """The review's finding: the same line in a neighbouring file is another guard.
-
-    ``twin.py`` held ``return 1`` at the commit the table was measured on.
-    The refactor deleted the guard from ``alpha.py``. One other file holds
-    the text once, which is everything a move looks like from the tree alone,
-    and anchoring there would replay the twin's kill under this row's name.
-    """
+def _with_a_twin(tree: Path) -> str:
+    """Commit the tree with ``twin.py`` holding the guard's line too; the commit's name."""
     (tree / "src" / "pkg" / "twin.py").write_text("def other():\n    return 1\n", encoding="utf-8")
     _git(tree, "init", "-q", "-b", "main")
     _git(tree, "add", "-A")
     _git(tree, "commit", "-q", "-m", "before the refactor")
-    head = _git(tree, "rev-parse", "--short", "HEAD")
+    return _git(tree, "rev-parse", "--short", "HEAD")
+
+
+def _twin_stays(tree: Path) -> None:
+    pass
+
+
+def _twin_is_renamed(tree: Path) -> None:
+    (tree / "src" / "pkg" / "twin.py").rename(tree / "src" / "pkg" / "renamed.py")
+
+
+def _twin_is_split(tree: Path) -> None:
+    (tree / "src" / "pkg" / "twin.py").write_text("def other():\n    pass\n", encoding="utf-8")
+    (tree / "src" / "pkg" / "twin_caps.py").write_text("    return 1\n", encoding="utf-8")
+
+
+@pytest.mark.parametrize("refactor", [_twin_stays, _twin_is_renamed, _twin_is_split])
+def test_a_deleted_guard_is_not_anchored_on_its_twin_wherever_the_twin_is_now(
+    tree, capsys, refactor
+):
+    """The review's finding, both rounds: the same line elsewhere is another guard.
+
+    The guard's line stood in two places at the commit the table was measured
+    on. The refactor deleted it from ``alpha.py``. One file holds the text
+    once now, which is everything a move looks like from today's tree, and
+    asking whether that file held it then is no better: the twin's file may
+    have been renamed or split since. Counting is what tells: two then, one
+    now, so the one left may be the twin's.
+    """
+    head = _with_a_twin(tree)
     (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
+    refactor(tree)
 
     before = _before(tree, _replayed("A", "    return 1"), head=head)
     out = tree / "after.toml"
@@ -572,8 +671,40 @@ def test_a_deleted_guard_is_not_anchored_on_a_twin_that_was_there_all_along(tree
     assert "rows" not in data
     [dropped] = data["dropped"]
     assert dropped["id"] == "u1.A"
-    assert f"src/pkg/twin.py holds it now as it did at {head}" in dropped["reason"]
-    assert "another guard's, not this one moved" in dropped["reason"]
+    assert f"it stood in 2 places at {head}" in dropped["reason"]
+    assert "may be another guard's line and not this one moved" in dropped["reason"]
+
+
+def test_a_line_written_new_elsewhere_reads_as_a_move_and_check_is_what_catches_it(
+    committed, capsys
+):
+    """One place then and one now, yet another guard: nothing in the text can tell.
+
+    The guard is deleted and an identical line is written in a new file.
+    ``rows --after`` places the row there with its own reason, and says where
+    the text is. That reason vouches for nothing, which is why ``check``
+    holds a row at a new anchor to a test in common.
+    """
+    tree, head = committed
+    (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
+    (tree / "src" / "pkg" / "delta.py").write_text("def new():\n    return 1\n", encoding="utf-8")
+    before = _before(tree, _replayed("A", "    return 1"), head=head)
+    out = tree / "after.toml"
+    assert _run(tree, "rows", "--after", str(before), "--out", str(out)) == 0
+    _, _, rows, _ = mutate.load_spec(out)
+    assert rows[0].file == "src/pkg/delta.py"
+    assert rows[0].moved.startswith(killset.AUTOMATIC_MOVE)
+    # Measured there, it dies by the new line's test and none of its own.
+    measured = {
+        **_replayed("A", "    return 1"),
+        "file": rows[0].file,
+        "moved": rows[0].moved,
+        "killed": ["tests/test_delta.py::test_delta_caps"],
+    }
+    verdict = killset.compare_tables(
+        {"rows": [_replayed("A", "    return 1")]}, {"rows": [measured]}
+    )
+    assert len(verdict.lost) == 1 and "test_delta_caps now" in verdict.lost[0]
 
 
 @pytest.mark.parametrize("head", ["", "0123456789abcdef0123456789abcdef01234567"])
@@ -587,22 +718,35 @@ def test_a_move_git_cannot_vouch_for_is_not_a_move(committed, capsys, head):
     assert _run(tree, "rows", "--after", str(before), "--out", str(out)) == 0
     assert "0 rows in place and 0 moved" in capsys.readouterr().out
     [dropped] = tomllib.loads(out.read_text(encoding="utf-8"))["dropped"]
-    assert "git cannot read that file at the commit the table was measured on" in dropped["reason"]
+    assert "git cannot read the tree at the commit the table was measured on" in dropped["reason"]
     assert (head or "none named") in dropped["reason"]
 
 
-def test_what_a_file_held_at_a_commit_is_read_from_git(committed):
+def test_how_many_places_a_text_stood_in_is_read_from_the_commit(committed):
     tree, head = committed
-    assert killset.held_at(tree, head, ALPHA, "    return 1") is True
-    assert killset.held_at(tree, head, ALPHA, "    return 7") is False
-    assert killset.held_at(tree, head, "src/pkg/new_since.py", "    return 1") is False
-    assert killset.held_at(tree, "", ALPHA, "    return 1") is None
-    assert killset.held_at(tree, "no-such-commit", ALPHA, "    return 1") is None
+    (tree / ALPHA).write_text("nothing left\n", encoding="utf-8")
+    then = killset.Commit(tree, head)
+    assert then.stood(killset.Anchor(ALPHA, "    return 1", "")) == 1
+    assert then.stood(killset.Anchor(ALPHA, "    return 2", "")) == 2
+    assert then.stood(killset.Anchor(ALPHA, "    return 7", "")) == 0
+    # Another suffix is another kind of file, and a top directory the commit lacks is empty.
+    assert then.stood(killset.Anchor("src/pkg/alpha.md", "    return 1", "")) == 0
+    assert then.stood(killset.Anchor("scripts/tool.py", "    return 1", "")) == 0
+    assert killset.Commit(tree, "").stood(killset.Anchor(ALPHA, "    return 1", "")) is None
+    assert killset.Commit(tree, "no-such-commit").texts("src") is None
 
 
-def test_outside_a_repository_nothing_is_read_as_moved(tree, tmp_path_factory):
-    """A tree git knows nothing of: the answer is that it cannot say, never no."""
-    assert killset.held_at(tree, "abc1234", ALPHA, "    return 1") is None
+def test_outside_a_repository_nothing_is_read_as_moved(tree):
+    """A tree git knows nothing of: the answer is that it cannot say, never nothing."""
+    assert killset.Commit(tree, "abc1234").stood(killset.Anchor(ALPHA, "    return 1", "")) is None
+
+
+def test_rows_after_names_its_batch_as_rows_does(committed):
+    tree, head = committed
+    before = _before(tree, _replayed("A", "    return 1"), head=head)
+    out = tree / "u1-replay-after-rows.toml"
+    assert _run(tree, "rows", "--after", str(before), "--out", str(out)) == 0
+    assert tomllib.loads(out.read_text(encoding="utf-8"))["name"] == "u1-replay-after"
 
 
 def test_rows_after_leaves_text_it_cannot_place_for_the_author(tree, capsys):
@@ -677,6 +821,30 @@ def test_a_replay_table_says_where_a_moved_guard_lives_now(tree):
     assert (row.table, row.id, row.state) == ("u1.json", "A", "live")
     assert row.anchor.file == "src/pkg/moved.py"
     assert row.anchor.tests == ("tests/test_beta.py",)
+
+
+def test_a_replay_at_another_guards_line_does_not_bring_a_dead_row_back(tree):
+    """A committed table that put the row on a twin: the reader holds it to check's rule."""
+    (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
+    (tree / "src" / "pkg" / "twin.py").write_text("def other():\n    return 1\n", encoding="utf-8")
+    _table(tree, "u1.json", [_recorded("A", "    return 1")])
+
+    def replay(**extra) -> None:
+        _table(
+            tree,
+            "u2-replay.json",
+            [_replayed("A", "    return 1", file="src/pkg/twin.py", **extra)],
+            pass_kind="replay",
+        )
+
+    replay(moved=AUTOMATIC, killed=["tests/test_twin.py::test_other"])
+    assert _states(tree) == {"A": "stale"}
+    replay(moved="")
+    assert _states(tree) == {"A": "stale"}
+    replay(moved=AUTOMATIC, killed=["tests/test_moved.py::test_once"])
+    assert _states(tree) == {"A": "live"}
+    replay(moved="moved by hand with its guard", killed=["tests/test_twin.py::test_other"])
+    assert _states(tree) == {"A": "live"}
 
 
 def test_a_replay_that_did_not_kill_moves_nothing(tree):
