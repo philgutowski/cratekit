@@ -360,9 +360,11 @@ class Backlog:
     def campaign(self) -> list[dict[str, Any]]:
         """The existing gated verbs in the order the campaign runs them.
 
-        Only a step with rows to move is listed. ``route resort`` comes last,
-        listed when any step moves a row or any word waits on its answer,
-        since it files every track the steps give a genre.
+        Only a step with rows to move is listed, an answered word's counted at
+        its alias's rows. ``route resort`` comes last, listed when any step
+        moves a row or any word waits on its answer, since it files every
+        track the steps give a genre, and then with the rows the steps before
+        it move.
         """
         statuses = self.statuses
         steps: list[dict[str, Any]] = []
@@ -393,13 +395,13 @@ class Backlog:
         follow = sum(len(word.reached) for word in settled) + sum(
             option.rows for word in asked for option in word.options if option.answer == ALIAS
         )
-        if follow or asked:
+        if follow:
             steps.append(
                 _step(
                     ROWS_VERB,
-                    sum(len(word.reached) for word in settled),
-                    "the rows follow the files an alias retagged, besides those of an "
-                    "answered word",
+                    follow,
+                    "the rows follow the files an alias retagged, an answered word's at "
+                    "most this many",
                 )
             )
         moved = statuses[SERVED] + statuses[PROPOSED] + statuses[SETTLED]
@@ -596,6 +598,14 @@ def _edit(plan: Callable[[], word_edit.Edit]) -> word_edit.Edit | word_edit.Refu
             f"the active taxonomy copy is not usable: {exc}; it is repaired by hand "
             f"before a word can be answered in it",
         )
+    except ValueError as exc:
+        # A WORD THE COPY CANNOT HOLD, a control character the TOML parser
+        # refuses in the edited text (round two), is an answer the verb cannot
+        # write, never a failure of the whole report.
+        return word_edit.Refused(
+            word_edit.WOULD_NOT_LOAD,
+            f"the copy would not load with the word written into it: {exc}",
+        )
 
 
 def _fixed_target(declared: taxonomy.Taxonomy, spelling: str) -> str | None:
@@ -691,10 +701,13 @@ def word_of(
     )
     if isinstance(edit, word_edit.Edit):
         moved = reached(edit.display)
+        # THE FILES AND THE ROWS ARE TWO COUNTS (round two): the alias retags
+        # every file holding the word alone, and a row follows only where the
+        # library has a genre entry for the alias's genre.
         detail = (
-            f"the neighbours agree at {band}; {len(moved)} track(s) whose file holds "
-            f"the word alone are retagged {edit.display}, then {ROWS_VERB} and "
-            f"{RESORT_VERB} file them"
+            f"the neighbours agree at {band}; {len(alone)} file(s) holding the word "
+            f"alone are retagged {edit.display}, and {len(moved)} row(s) follow by "
+            f"{ROWS_VERB}, which {RESORT_VERB} files"
         )
         if alone and not moved:
             detail += (
@@ -744,9 +757,12 @@ def word_of(
         rows=0,
     )
     offered = [option for option in (folder, alias) if option is not None]
+    # AN ALIAS THAT MOVES NO ROW IS NEVER RECOMMENDED (round two): following it
+    # retags the files, files nothing, and leaves the word one the folder verb
+    # then refuses.
     if folder is not None and folder.rows >= genres_report.FOLDER_WORTH:
         first = folder
-    elif alias is not None:
+    elif alias is not None and alias.rows:
         first = alias
     else:
         first = leave

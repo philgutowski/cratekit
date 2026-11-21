@@ -279,7 +279,7 @@ def test_neighbours_agreeing_at_medium_recommend_their_alias():
     assert word.options[0].answer == backlog.ALIAS
 
 
-def test_an_alias_the_verb_refuses_is_never_offered_and_the_next_genre_is_tried():
+def test_an_alias_the_verb_refuses_is_never_offered():
     """Round one: House is a genre adoption files by, and taxonomy alias
     refuses it as a GENRE, so a recommendation naming it was a refused command."""
     with pytest.raises(word_edit.Refused):
@@ -295,6 +295,17 @@ def test_an_alias_to_a_genre_the_library_has_no_entry_for_moves_nothing():
     word = _word_of(_members(3), {MELODIC: 8}, known=lambda genre: False)
     alias = next(option for option in word.options if option.answer == backlog.ALIAS)
     assert alias.rows == 0 and "no genre entry for Melodic House" in alias.detail
+    # Round two: the files are retagged whatever the rows do, and said so.
+    assert "3 file(s) holding the word alone are retagged Melodic House" in alias.detail
+    assert "0 row(s) follow" in alias.detail
+    # An alias moving no row is not recommended.
+    assert word.options[0].answer == backlog.LEAVE
+
+
+def test_a_word_the_copy_cannot_hold_is_refused_and_the_report_goes_on():
+    """Round two: a control character the TOML parser refuses failed the verb."""
+    word = _word_of(_members(2, "Odd\x7fWord"), {})
+    assert word.options == () and word.unanswerable[0] == word_edit.WOULD_NOT_LOAD
 
 
 def test_with_no_active_copy_no_word_is_answered():
@@ -547,7 +558,7 @@ def test_the_campaign_lists_the_existing_verbs_in_order_and_the_projection(machi
         backlog.RESORT_VERB,
     ]
     rows_moved = [step["rows"] for step in plan.campaign()]
-    assert rows_moved == [1, 1, 1, 2, 1, 3]
+    assert rows_moved == [1, 1, 1, 2, 3, 3]
     assert plan.projected() == {"now": 11, "no_word_answered": 8, "every_word_answered": 6}
 
 
