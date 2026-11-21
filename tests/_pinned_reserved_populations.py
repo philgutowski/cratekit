@@ -190,6 +190,11 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'routing-outstanding',
     # 2026-10-31, U168: run decide --continue over a run that keeps no command line.
     'run-not-continuable',
+    'schedule-agent-unusable',  # 2026-11-21, U295: the installed agent is not the night's.
+    'schedule-agent-unwritten',  # 2026-11-21, U295: the schedule's plist could not be written.
+    'schedule-crate-unresolved',  # 2026-11-21, U295: no crate to schedule.
+    'schedule-launchctl-failed',  # 2026-11-21, U295: launchctl answered a failure.
+    'schedule-platform-unsupported',  # 2026-11-21, U295: no launchd here.
     'session-committed-unverified',
     'session-lock-held',
     'set-playlist-unnamed',
@@ -639,6 +644,14 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'review-verdict-conflict',
         'utf-8',
     ],
+    # 2026-11-21, U295: the night pass's schedule joined.
+    'cli/schedule.py': [
+        'schedule-agent-unusable',
+        'schedule-agent-unwritten',
+        'schedule-crate-unresolved',
+        'schedule-launchctl-failed',
+        'schedule-platform-unsupported',
+    ],
     'cli/setup.py': [
         'config-unusable',
         'library-database-not-rekordbox',
@@ -939,6 +952,11 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'routing-ledger-unusable',
         'routing-outstanding',
         'run-not-continuable',  # 2026-10-31, U168
+        'schedule-agent-unusable',  # 2026-11-21, U295
+        'schedule-agent-unwritten',  # 2026-11-21, U295
+        'schedule-crate-unresolved',  # 2026-11-21, U295
+        'schedule-launchctl-failed',  # 2026-11-21, U295
+        'schedule-platform-unsupported',  # 2026-11-21, U295
         'session-committed-unverified',
         'session-lock-held',
         'set-playlist-unnamed',
@@ -2865,6 +2883,14 @@ PINNED_LITERAL_HOLDERS = {
     'cli/render.py': ['cancelled', 'decision-required', 'decision-stale'],
     'cli/reports.py': ['config-unusable', 'report-as-of-invalid'],
     'cli/review.py': ['review-file-unusable', 'review-selection-invalid'],
+    # 2026-11-21, U295: the night pass's schedule joined.
+    'cli/schedule.py': [
+        'schedule-agent-unusable',
+        'schedule-agent-unwritten',
+        'schedule-crate-unresolved',
+        'schedule-launchctl-failed',
+        'schedule-platform-unsupported',
+    ],
     'cli/setup.py': [
         'config-unusable',
         'library-database-not-rekordbox',
@@ -3436,6 +3462,7 @@ PINNED_LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'analysis/rekordbox_check.py',  # 2026-10-31, U167: the Camelot wheel's twelve.
     'cli/doctor.py',
     'cli/gates.py',  # 2026-11-01, U186: the sibling window's twelve hours.
+    'cli/schedule.py',  # 2026-11-21, U295: launchctl's not found code and its timeout.
     'cli/output.py',
     'core/config.py',
     'core/convergence.py',

@@ -894,6 +894,19 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="schedule_log",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="schedule/sync-night.log",
+        why=(
+            "What the scheduled night pass printed (U295): launchd appends the "
+            "agent's output and errors here, the one place a night that never "
+            "reached its own record says why. It describes this installation's "
+            "schedule, not a library, and losing it loses only the output."
+        ),
+    ),
+    StateFile(
         key="staging_lock",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.INSTALLATION,
