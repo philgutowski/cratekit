@@ -1,0 +1,102 @@
+name = "u319"
+pass_kind = "light"
+
+# A small unit: skill text, docs and two messages, no path that writes or
+# deletes, so a short table. Rows 1 to 7 turn one rule of the skill's new
+# Auto Analysis path the way a later edit could get it wrong; rows 8 to 10 the
+# one wording and its two callers.
+
+[[rows]]
+id = "M1_ok_on_a_suspect_check"
+description = "skill: OK the dialog on a check that exited 27, whose rows Auto Analysis leaves alone"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''   - **Every field equal, and the check in step 1.5 exited 12**: write the'''
+new = '''   - **Every field equal, and the check in step 1.5 exited 12 or 27**: write the'''
+
+[[rows]]
+id = "M2_cue_unread_passes"
+description = "skill: a dialog that shows no CUE field is answered OK, a field read against nothing"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''   not show is unread, and unread is not equal, CUE included: until a visit'''
+new = '''   not show is unread, and unread is not equal, CUE excepted: until a visit'''
+
+[[rows]]
+id = "M3_radar_value"
+description = "skill: a field beyond the table read against another value than sitting 101's"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''   (BPM range 78 to 155, Cloud Analysis off, Radar Analysis on); any other'''
+new = '''   (BPM range 78 to 155, Cloud Analysis on, Radar Analysis on); any other'''
+
+[[rows]]
+id = "M4_auto_wait_counts_the_batch"
+description = "skill: the Auto Analysis wait counts the batch, which stalls on every analysed row left in the playlist"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''     step 4 says, with `expected` the `data.summary.not_analysed` count from
+     step 1.5, not the batch. Then go to step 5.'''
+new = '''     step 4 says, with `expected` the batch from step 1.5. Then go to
+     step 5.'''
+
+[[rows]]
+id = "M5_cancel_becomes_ok"
+description = "skill: a dialog whose fields differ is answered OK, analysing on other fields"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''Cancel, never OK, and touch no field of the dialog. Then wait thirty'''
+new = '''OK, and touch no field of the dialog. Then wait thirty'''
+
+[[rows]]
+id = "M6_restart_at_step_two"
+description = "skill: a wrong run restarts at step 2 on a stale check"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''and start again from step 1.5, so the check is read again before step 2:'''
+new = '''and start again from step 2, with the check as it was read before:'''
+
+[[rows]]
+id = "M7_key_column_unread"
+description = "skill: done clears rows whose Key column is empty, an Auto run with KEY off"
+file = ".claude/skills/rekordbox-visit/SKILL.md"
+surface = "user"
+tests = ["tests/test_rekordbox_visit_skill.py"]
+old = '''  read it here: `data.summary.key_filled` must equal
+  `data.summary.analysed`.'''
+new = '''  read it here: `data.summary.key_filled` may be below
+  `data.summary.analysed`.'''
+
+[[rows]]
+id = "M8_ok_on_any_field"
+description = "land_cli: the short path's OK offered whatever the dialog shows"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_drift.py", "tests/test_intake_land_dyn_native.py", "tests/test_rekordbox_visit_skill.py"]
+old = '''    "on its Auto Analysis dialog only when it shows every one of those Normal "'''
+new = '''    "on its Auto Analysis dialog whatever it shows of those Normal "'''
+
+[[rows]]
+id = "M9_warning_drops_the_short_path"
+description = "land_cli: the awaiting analysis warning names one path again"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_dyn_native.py", "tests/test_intake_land_native.py", "tests/test_inbox_analyzed.py"]
+old = '''                f"for analysis, and {selections}; {AUTO_ANALYSIS_STEP}; then "'''
+new = '''                f"for analysis, and {selections}; then "'''
+
+[[rows]]
+id = "M10_sync_stop_drops_the_short_path"
+description = "tail: the step crate sync land prints names one path again"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_drift.py", "tests/test_rekordbox_visit_skill.py", "tests/test_label_sync_go.py"]
+old = '''    f"carrying the dyn My Tag, if any: {drift.DYNAMIC_SETTINGS}; "
+    f"{AUTO_ANALYSIS_STEP}",'''
+new = '''    f"carrying the dyn My Tag, if any: {drift.DYNAMIC_SETTINGS}",'''
