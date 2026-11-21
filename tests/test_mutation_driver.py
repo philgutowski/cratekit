@@ -2086,6 +2086,187 @@ def test_a_resumed_replay_reuses_its_rows_and_they_keep_their_sources(repo):
     assert second.results[1].moved == "the same text, now in src/fixtpkg/guards.py"
 
 
+def test_a_replay_reuses_nothing_from_a_sidecar_measured_at_another_commit(repo):
+    """The review's finding: a kill measured before its test was deleted is not a kill here.
+
+    The first batch kills K1. Then the test that kills it is deleted and
+    committed, and the batch is resumed from the first one's sidecar. A
+    replay that reused the row would say killed at the new head, where
+    nothing kills it, and ``killset.py check`` would pass the lost kill.
+    """
+    rows = _replay_rows()[:1]
+    first = mutate.measure_batch(repo, "resumed", rows, pass_kind="replay")
+    assert first.results[0].status == "killed"
+
+    tests = repo / "tests" / "test_guards.py"
+    tests.write_text(
+        tests.read_text(encoding="utf-8").replace(
+            "def test_clamp_caps_at_the_limit():\n    assert clamp(50) == 10\n", ""
+        ),
+        encoding="utf-8",
+    )
+    _git(repo, "commit", "-q", "-am", "the test that killed K1 is gone")
+
+    second = mutate.measure_batch(repo, "resumed", rows, pass_kind="replay", prior=first.to_dict())
+    assert second.head != first.head
+    assert second.reused_rows == 0
+    assert (second.results[0].status, second.results[0].deaths) == ("zero", 0)
+
+
+def test_a_light_pass_still_resumes_across_commits_as_it_always_did(repo):
+    """The rule above is the replay's alone; every driver rule stays as it was."""
+    row = _row("K1", "if value > limit:", "if value > 10000:")
+    first = mutate.measure_batch(repo, "light", [row], pass_kind="light")
+    (repo / "notes.txt").write_text("a commit that touches nothing measured\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "another commit")
+    prior = first.to_dict()
+    prior["rows"][0]["deaths"] = 99
+    second = mutate.measure_batch(repo, "light", [row], pass_kind="light", prior=prior)
+    assert second.head != first.head
+    assert (second.reused_rows, second.results[0].deaths) == (1, 99)
+
+
+def test_a_reused_replay_row_says_where_it_came_from_as_the_row_file_does_now(repo):
+    """A moved reason added after the measurement is the row file's to say, not the sidecar's."""
+    row = _replay_rows()[0]
+    first = mutate.measure_batch(repo, "resumed", [row], pass_kind="replay")
+    assert first.results[0].moved == ""
+    said = _row(
+        row.id, row.old, row.new, source=row.source, tests=row.tests,
+        moved="anchored by hand, the guard is the same",
+    )
+    second = mutate.measure_batch(repo, "resumed", [said], pass_kind="replay", prior=first.to_dict())
+    assert second.reused_rows == 1
+    assert second.results[0].moved == "anchored by hand, the guard is the same"
+    assert second.results[0].source == {"table": "u1.json", "id": "K1"}
+
+
+def _recorded_table(repo: Path, rows: list[dict], name: str = "u1.json") -> None:
+    path = repo / "docs" / "mutation" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"name": Path(name).stem, "rows": rows}), encoding="utf-8")
+
+
+RECORDED = [
+    {"id": "K1", "deaths": 1},
+    {"id": "K9", "deaths": 3},
+    {"id": "Z1", "deaths": 0},
+    {"id": "T1", "deaths": True},
+]
+
+
+def test_a_replay_whose_sources_were_all_recorded_as_kills_is_let_through(repo):
+    _recorded_table(repo, RECORDED)
+    mapped = [mutate.Mapped(source=("u1.json", "K9"), to="u1.K1", reason="merged")]
+    mutate.refuse_unrecorded_sources(repo, _replay_rows()[:1], mapped)
+
+
+@pytest.mark.parametrize(
+    "source, refusal",
+    [
+        (("no-such-table.json", "K1"), "docs/mutation/no-such-table.json is not a recorded table"),
+        (("u1.json", "K7"), "docs/mutation/u1.json holds no row 'K7'"),
+        (("u1.json", "Z1"), "row 'Z1' recorded no death"),
+        (("u1.json", "T1"), "row 'T1' recorded no death"),
+        (("notes.json", "K1"), "docs/mutation/notes.json is not a recorded table"),
+        (("../../elsewhere/u1.json", "K1"), "is not a recorded table"),
+    ],
+)
+def test_a_replay_row_naming_a_source_no_table_recorded_is_refused(repo, source, refusal):
+    """The review's finding: 26 new rows under a table's name were measured as a replay.
+
+    The pass has no cap because it measures recorded rows again, so the name
+    is read against the table it names before anything runs.
+    """
+    _recorded_table(repo, RECORDED)
+    _recorded_table(repo, [], name="notes.json")
+    (repo / "docs" / "mutation" / "notes.json").write_text("[1, 2]", encoding="utf-8")
+    elsewhere = repo / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "u1.json").write_text(json.dumps({"rows": RECORDED}), encoding="utf-8")
+    row = _row("u1.K1", "if value > limit:", "if value > 10000:", source=source)
+    with pytest.raises(mutate.DriverRefusal, match=re.escape(refusal)):
+        mutate.refuse_unrecorded_sources(repo, [row], [])
+    covered = mutate.Mapped(source=source, to="u1.K1", reason="merged")
+    with pytest.raises(mutate.DriverRefusal, match=r"the mapping to u1\.K1: "):
+        mutate.refuse_unrecorded_sources(repo, _replay_rows()[:1], [covered])
+
+
+def _replay_spec(repo: Path, *, source_id: str = "K1") -> Path:
+    spec = repo / "replay-rows.json"
+    spec.write_text(
+        json.dumps(
+            {
+                "name": "u1-replay",
+                "pass_kind": "replay",
+                "rows": [
+                    {
+                        "id": "u1.K1",
+                        "description": "the clamp",
+                        "file": GUARDS_FILE,
+                        "old": "if value > limit:",
+                        "new": "if value > 10000:",
+                        "tests": ["tests/test_guards.py"],
+                        "source": {"table": "u1.json", "id": source_id},
+                    }
+                ],
+                "mapped": [
+                    {"source": {"table": "u1.json", "id": "K9"}, "to": "u1.K1", "reason": "merged"}
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return spec
+
+
+def test_the_command_checks_the_sources_and_hands_the_mappings_to_the_table(
+    repo, tmp_path, capsys
+):
+    """End to end through ``main``: the two things only the command line wires."""
+    _recorded_table(repo, RECORDED)
+    out = tmp_path / "out"
+    spec = _replay_spec(repo)
+    assert mutate.main(["mutate.py", str(spec), "--repo-root", str(repo), "--out-dir", str(out)]) == 0
+    data = json.loads((out / "u1-replay.json").read_text(encoding="utf-8"))
+    assert data["rows"][0]["status"] == "killed"
+    assert data["mapped"] == [
+        {"source": {"table": "u1.json", "id": "K9"}, "to": "u1.K1", "reason": "merged"}
+    ]
+
+    forged = _replay_spec(repo, source_id="K7")
+    capsys.readouterr()
+    assert (
+        mutate.main(["mutate.py", str(forged), "--repo-root", str(repo), "--out-dir", str(out)])
+        == 2
+    )
+    assert "refused: row u1.K1: docs/mutation/u1.json holds no row 'K7'" in capsys.readouterr().err
+
+
+def test_resuming_a_replay_from_another_commits_sidecar_says_nothing_is_reused(
+    repo, tmp_path, capsys
+):
+    _recorded_table(repo, RECORDED)
+    out = tmp_path / "out"
+    spec = _replay_spec(repo)
+    argv = ["mutate.py", str(spec), "--repo-root", str(repo), "--out-dir", str(out), "--resume"]
+    assert mutate.main(argv) == 0
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "the table and its rows")
+    capsys.readouterr()
+    assert mutate.main(argv) == 0
+    err = capsys.readouterr().err
+    assert "a replay reuses rows only from this commit, so every row is measured again" in err
+    data = json.loads((out / "u1-replay.json").read_text(encoding="utf-8"))
+    assert data["reused_rows"] == 0
+
+    capsys.readouterr()
+    assert mutate.main(argv) == 0
+    assert "measured again" not in capsys.readouterr().err
+    assert json.loads((out / "u1-replay.json").read_text(encoding="utf-8"))["reused_rows"] == 1
+
+
 def test_a_light_pass_writes_the_sidecar_it_always_wrote(repo):
     """No replay key reaches a table that is not a replay, so old readers read new tables."""
     batch = mutate.measure_batch(

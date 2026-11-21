@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
@@ -226,6 +227,24 @@ def test_rows_for_a_directory_takes_every_file_under_it(tree):
     assert [row["file"] for row in data["rows"]] == [ALPHA, "src/pkg/beta.py"]
 
 
+def test_a_row_file_named_for_its_rows_measures_the_table_beside_it(tree):
+    """``u1-replay-before-rows.toml`` is measured into ``u1-replay-before.json``.
+
+    The driver names its table for the batch, and the next command of a
+    replay reads that table by name, so a batch named for the row file's
+    whole stem would leave the table one ``-rows`` away from where it is read.
+    """
+    _table(tree, "u1.json", [_recorded("A", "    return 1")])
+    out = tree / "u1-replay-before-rows.toml"
+    assert _run(tree, "rows", ALPHA, "--out", str(out)) == 0
+    assert tomllib.loads(out.read_text(encoding="utf-8"))["name"] == "u1-replay-before"
+    assert _run(tree, "rows", ALPHA, "--out", str(out), "--name", "given") == 0
+    assert tomllib.loads(out.read_text(encoding="utf-8"))["name"] == "given"
+    plain = tree / "-rows.toml"
+    assert _run(tree, "rows", ALPHA, "--out", str(plain)) == 0
+    assert tomllib.loads(plain.read_text(encoding="utf-8"))["name"] == "-rows"
+
+
 def test_rows_with_nothing_live_is_refused_and_writes_nothing(tree, capsys):
     _table(tree, "u1.json", [_recorded("STALE", "    return 7")])
     out = tree / "rows.toml"
@@ -344,6 +363,43 @@ def test_check_fails_on_one_lost_kill_and_names_it(tmp_path, capsys):
     assert "LOST u1.json B: killed before, zero after (0 deaths)" in out
 
 
+def test_a_kill_that_became_a_collection_error_is_lost_though_it_records_a_death(
+    tmp_path, capsys
+):
+    """The driver says of such a row that it is neither a zero nor a clean kill."""
+    before = [_measured("A"), _measured("B")]
+    after = [_measured("A"), _measured("B", status="collect-error")]
+    assert _check(tmp_path, before, after) == 1
+    assert "LOST u1.json B: killed before, collect-error after (1 deaths)" in (
+        capsys.readouterr().out
+    )
+
+
+def test_a_row_that_broke_collection_before_is_held_to_no_less_after(tmp_path, capsys):
+    broke = _measured("A", status="collect-error")
+    assert _check(tmp_path, [broke], [broke]) == 0
+    assert _check(tmp_path, [broke], [_measured("A")]) == 0
+    capsys.readouterr()
+    assert _check(tmp_path, [broke], [_measured("A", deaths=0, status="zero")]) == 1
+    assert "LOST u1.json A: collect-error before, zero after" in capsys.readouterr().out
+
+
+def test_a_mapping_onto_a_row_that_only_broke_collection_does_not_cover_a_kill(tmp_path, capsys):
+    before = [_measured("A"), _measured("B")]
+    after = [_measured("A", status="collect-error")]
+    assert _check(tmp_path, [before[1]], after, mapped=[_mapping("u1.A")]) == 1
+    assert "mapped to 'u1.A', which is collect-error after" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("which", ["before", "after"])
+def test_check_refuses_a_table_with_two_rows_for_one_source(tmp_path, capsys, which):
+    """Two rows under one source: whichever was read first would decide the verdict."""
+    one, twice = [_measured("A")], [_measured("A"), _measured("A", deaths=0, status="zero")]
+    before, after = (twice, one) if which == "before" else (one, twice)
+    assert _check(tmp_path, before, after) == 2
+    assert f"{which}.json holds two rows for u1.json A" in capsys.readouterr().err
+
+
 def test_check_fails_on_a_kill_with_no_row_and_no_mapping(tmp_path, capsys):
     assert _check(tmp_path, [_measured("A"), _measured("B")], [_measured("A")]) == 1
     assert "LOST u1.json B: killed before, and no row and no mapping after" in capsys.readouterr().out
@@ -425,10 +481,31 @@ def test_check_refuses_a_file_that_is_not_a_table(tmp_path, capsys):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def _before(tree: Path, *rows: dict) -> Path:
-    """A replay table measured before a refactor, outside ``docs/mutation``."""
+def _git(root: Path, *args: str) -> str:
+    done = subprocess.run(
+        ["git", "-c", "user.email=killset@test", "-c", "user.name=killset", *args],
+        cwd=root, capture_output=True, check=False,
+    )
+    assert done.returncode == 0, done.stderr.decode()
+    return done.stdout.decode().strip()
+
+
+@pytest.fixture
+def committed(tree) -> tuple[Path, str]:
+    """The tree as a repository with one commit, and that commit's short name."""
+    _git(tree, "init", "-q", "-b", "main")
+    _git(tree, "add", "-A")
+    _git(tree, "commit", "-q", "-m", "before the refactor")
+    return tree, _git(tree, "rev-parse", "--short", "HEAD")
+
+
+def _before(tree: Path, *rows: dict, head: str = "") -> Path:
+    """A replay table measured before a refactor, at ``head``, outside ``docs/mutation``."""
     path = tree / "before.json"
-    body = {"name": "before", "pass_kind": "replay", "valid": True, "invalid_reason": ""}
+    body = {
+        "name": "before", "pass_kind": "replay", "valid": True, "invalid_reason": "",
+        "head": head,
+    }
     path.write_text(json.dumps({**body, "rows": list(rows)}), encoding="utf-8")
     return path
 
@@ -453,11 +530,16 @@ def test_rows_after_writes_text_still_in_its_file_as_it_was(tree, capsys):
     assert dropped == []
 
 
-def test_rows_after_follows_text_that_moved_to_one_other_file(tree, capsys):
-    """A file split: the guard's text left ``alpha.py`` and is in ``moved.py`` once."""
+def test_rows_after_follows_text_that_moved_to_one_other_file(committed, capsys):
+    """A file split: the guard's text left ``alpha.py`` and is in ``moved.py`` once.
+
+    ``moved.py`` did not exist at the commit the table was measured on, so
+    the text can only have come there since.
+    """
+    tree, head = committed
     (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
     (tree / "src" / "pkg" / "moved.py").write_text("def once():\n    return 1\n", encoding="utf-8")
-    before = _before(tree, _replayed("A", "    return 1"))
+    before = _before(tree, _replayed("A", "    return 1"), head=head)
     out = tree / "after.toml"
     assert _run(tree, "rows", "--after", str(before), "--out", str(out)) == 0
     assert "0 rows in place and 1 moved" in capsys.readouterr().out
@@ -465,6 +547,62 @@ def test_rows_after_follows_text_that_moved_to_one_other_file(tree, capsys):
     assert rows[0].file == "src/pkg/moved.py"
     assert rows[0].moved == "the same text, now in src/pkg/moved.py, was in src/pkg/alpha.py"
     assert rows[0].source == ("u1.json", "A")
+
+
+def test_a_deleted_guard_is_not_anchored_on_a_twin_that_was_there_all_along(tree, capsys):
+    """The review's finding: the same line in a neighbouring file is another guard.
+
+    ``twin.py`` held ``return 1`` at the commit the table was measured on.
+    The refactor deleted the guard from ``alpha.py``. One other file holds
+    the text once, which is everything a move looks like from the tree alone,
+    and anchoring there would replay the twin's kill under this row's name.
+    """
+    (tree / "src" / "pkg" / "twin.py").write_text("def other():\n    return 1\n", encoding="utf-8")
+    _git(tree, "init", "-q", "-b", "main")
+    _git(tree, "add", "-A")
+    _git(tree, "commit", "-q", "-m", "before the refactor")
+    head = _git(tree, "rev-parse", "--short", "HEAD")
+    (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
+
+    before = _before(tree, _replayed("A", "    return 1"), head=head)
+    out = tree / "after.toml"
+    assert _run(tree, "rows", "--after", str(before), "--out", str(out)) == 0
+    assert "0 rows in place and 0 moved" in capsys.readouterr().out
+    data = tomllib.loads(out.read_text(encoding="utf-8"))
+    assert "rows" not in data
+    [dropped] = data["dropped"]
+    assert dropped["id"] == "u1.A"
+    assert f"src/pkg/twin.py holds it now as it did at {head}" in dropped["reason"]
+    assert "another guard's, not this one moved" in dropped["reason"]
+
+
+@pytest.mark.parametrize("head", ["", "0123456789abcdef0123456789abcdef01234567"])
+def test_a_move_git_cannot_vouch_for_is_not_a_move(committed, capsys, head):
+    """No commit named, or one git does not know: not being able to look is not a no."""
+    tree, _ = committed
+    (tree / ALPHA).write_text("def twice():\n    return 2\n", encoding="utf-8")
+    (tree / "src" / "pkg" / "moved.py").write_text("def once():\n    return 1\n", encoding="utf-8")
+    before = _before(tree, _replayed("A", "    return 1"), head=head)
+    out = tree / "after.toml"
+    assert _run(tree, "rows", "--after", str(before), "--out", str(out)) == 0
+    assert "0 rows in place and 0 moved" in capsys.readouterr().out
+    [dropped] = tomllib.loads(out.read_text(encoding="utf-8"))["dropped"]
+    assert "git cannot read that file at the commit the table was measured on" in dropped["reason"]
+    assert (head or "none named") in dropped["reason"]
+
+
+def test_what_a_file_held_at_a_commit_is_read_from_git(committed):
+    tree, head = committed
+    assert killset.held_at(tree, head, ALPHA, "    return 1") is True
+    assert killset.held_at(tree, head, ALPHA, "    return 7") is False
+    assert killset.held_at(tree, head, "src/pkg/new_since.py", "    return 1") is False
+    assert killset.held_at(tree, "", ALPHA, "    return 1") is None
+    assert killset.held_at(tree, "no-such-commit", ALPHA, "    return 1") is None
+
+
+def test_outside_a_repository_nothing_is_read_as_moved(tree, tmp_path_factory):
+    """A tree git knows nothing of: the answer is that it cannot say, never no."""
+    assert killset.held_at(tree, "abc1234", ALPHA, "    return 1") is None
 
 
 def test_rows_after_leaves_text_it_cannot_place_for_the_author(tree, capsys):

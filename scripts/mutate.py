@@ -100,10 +100,16 @@ THE REPLAY PASS
 A third pass kind, for measuring again what a table under `docs/mutation/`
 already recorded (U297). It has no row cap, because it chooses no rows: every
 row must name the table and the id it came from in `source`, a row that names
-none is refused, and so are two rows naming the same one. `scripts/killset.py
-rows` writes such a file. Everything else is the pass every table gets: one
-full baseline, one null control, a subset baseline per distinct subset, a zero
-promoted to the full suite, every restore verified, and `--resume`.
+none is refused, and so are two rows naming the same one. The name is checked
+before anything runs: the table must be a file under `docs/mutation/` that
+holds a row of that id which recorded a death, so a new row cannot be carried
+past the caps by naming a table that never held it. `scripts/killset.py rows`
+writes such a file. Everything else is the pass every table gets: one full
+baseline, one null control, a subset baseline per distinct subset, a zero
+promoted to the full suite, and every restore verified. `--resume` reuses a
+replay's rows only from a sidecar measured at this commit, because a replay
+is read as what the tests of this commit kill; a light or a full pass resumes
+as it always did.
 
 A replay row may say `moved = "why"` when its text is no longer the text its
 source recorded, and the file may carry `[[mapped]]` entries, each naming a
@@ -650,6 +656,56 @@ def load_mapped(spec_path: Path, pass_kind: str, rows: list[Row]) -> list[Mapped
         seen.add(source)
         mapped.append(Mapped(source=source, to=target, reason=reason))
     return mapped
+
+
+#: Where the recorded tables live, relative to the repository root. A replay
+#: row's source names a file here.
+RECORDED_TABLES = Path("docs") / "mutation"
+
+
+def refuse_unrecorded_sources(repo_root: Path, rows: list[Row], mapped: list[Mapped]) -> None:
+    """Refuse a replay whose rows or mappings name a source no table recorded.
+
+    A replay pass has no row cap because it measures recorded rows again, and
+    a source taken on trust would let any number of new rows through under a
+    table's name. So each source is read: the table is a file under
+    ``docs/mutation/``, it holds a row of that id, and that row recorded at
+    least one death. Read before anything runs, so a forged batch never
+    reaches a baseline.
+    """
+    tables: dict[str, dict[str, dict] | None] = {}
+
+    def recorded(table: str) -> dict[str, dict] | None:
+        if table not in tables:
+            path = repo_root / RECORDED_TABLES / table
+            try:
+                data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+            except (OSError, UnicodeDecodeError, ValueError):
+                data = None
+            held = data.get("rows") if isinstance(data, dict) else None
+            tables[table] = (
+                {str(one.get("id")): one for one in held if isinstance(one, dict)}
+                if isinstance(held, list) and Path(table).name == table
+                else None
+            )
+        return tables[table]
+
+    named = [(f"row {row.id}", row.source) for row in rows if row.source]
+    named += [(f"the mapping to {one.to}", one.source) for one in mapped]
+    for what, (table, row_id) in named:
+        held = recorded(table)
+        shown = (RECORDED_TABLES / table).as_posix()
+        if held is None:
+            raise DriverRefusal(f"{what}: its source {shown} is not a recorded table")
+        row = held.get(row_id)
+        if row is None:
+            raise DriverRefusal(f"{what}: {shown} holds no row {row_id!r}")
+        deaths = row.get("deaths")
+        if not (isinstance(deaths, int) and not isinstance(deaths, bool) and deaths > 0):
+            raise DriverRefusal(
+                f"{what}: {shown} row {row_id!r} recorded no death, so there is no kill "
+                f"of it to replay"
+            )
 
 
 def null_control_row(rows: list[Row]) -> Row:
@@ -1819,16 +1875,24 @@ def measure_batch(
         )
 
     # ---- the rows -------------------------------------------------------
+    # A replay is read as what the tests of THIS commit kill, so it reuses a
+    # row only from a sidecar measured here: a row measured before the test
+    # that killed it was deleted would otherwise say killed at the new head,
+    # and `killset.py check` would pass a lost kill on it (U297).
+    stale = pass_kind == REPLAY and prior is not None and prior.get("head") != header["head"]
     reused = {
         entry["fingerprint"]: entry
-        for entry in (prior or {}).get("rows", [])
+        for entry in ({} if stale else prior or {}).get("rows", [])
         if entry.get("status") not in {None, "error"}
     }
     results: list[RowResult] = []
     for row, subset, why in plans:
         cached = reused.get(row.fingerprint())
         if cached is not None and cached.get("id") == row.id:
-            results.append(RowResult(**cached))
+            # Where a row came from and why it moved are the row file's to
+            # say, not the measurement's, so a reused row takes them as they
+            # stand now.
+            results.append(RowResult(**{**cached, **replay_fields(row)}))
             header["reused_rows"] = header.get("reused_rows", 0) + 1
             continue
         baseline = subset_baselines[tuple(subset)] if subset is not None else full_baseline
@@ -2306,6 +2370,8 @@ def main(argv: list[str]) -> int:
     try:
         name, pass_kind, rows, dropped = load_spec(args.spec)
         mapped = load_mapped(args.spec, pass_kind, rows)
+        if pass_kind == REPLAY:
+            refuse_unrecorded_sources(args.repo_root, rows, mapped)
     except DriverRefusal as refusal:
         print(f"refused: {refusal}", file=sys.stderr)
         return 2
@@ -2339,6 +2405,14 @@ def main(argv: list[str]) -> int:
     sidecar = args.out_dir / f"{name}.json"
     if args.resume and sidecar.is_file():
         prior = json.loads(sidecar.read_text(encoding="utf-8"))
+        here = head_sha(args.repo_root)
+        if pass_kind == REPLAY and prior.get("head") != here:
+            print(
+                f"resume: {sidecar.name} was measured at {prior.get('head')!r} and this is "
+                f"{here!r}; a replay reuses rows only from this commit, so every row is "
+                f"measured again",
+                file=sys.stderr,
+            )
 
     try:
         batch = measure_batch(

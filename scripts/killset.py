@@ -32,18 +32,26 @@ ambiguous and gone rows are left out and counted.
 
 `rows --after BEFORE.json` writes the row file for the same kills after a
 refactor: every row the BEFORE table killed, anchored where its text now is.
-Text still in its file is written as it was. Text that left its file and
-occurs exactly once in exactly one other file under the same top directory is
-written at that file with a `moved` reason. Anything else is written under
-`[[dropped]]` as unplaced, for the author to anchor by hand (a row with the
-same `source`, the new text and a `moved` reason) or to map onto the row that
-now covers it (a `[[mapped]]` entry with its `reason`).
+Text still in its file is written as it was. Text that left its file is
+written at another file, with a `moved` reason, only when that is the one
+file under the same top directory that holds it, it holds it once, and it did
+not hold it at the commit the BEFORE table was measured on: a file that held
+the same line all along holds another guard, not this one moved (188 of the
+7,093 live rows on `ff8e5ec` have exactly one such twin). What the file held
+then is read from git, which is only read, and when git cannot say the row is
+not placed. Anything else is written under `[[dropped]]` as unplaced, for the
+author to anchor by hand (a row with the same `source`, the new text and a
+`moved` reason) or to map onto the row that now covers it (a `[[mapped]]`
+entry with its `reason`).
 
 `check` takes the table measured before and the table measured after and
 exits 1 unless every row killed before is killed after, or is mapped in the
-AFTER table to a row of it that is killed. A row whose text changed between
-the two tables must say why in `moved`. Exit 2 is a table that cannot be read
-or is not a finished, valid batch.
+AFTER table to a row of it that is killed. It reads the driver's own verdict:
+a row whose status is `killed`, and one that broke collection with a death
+counts for less, so a kill that became a collection error is reported. A row
+whose text changed between the two tables must say why in `moved`. Exit 2 is
+a table that cannot be read, is not a finished, valid batch, or holds two
+rows for one source.
 
 A replay table is itself a record. A row killed in one is its source's kill at
 the text the replay ran, so a guard a refactor moved stays in the kill set at
@@ -60,6 +68,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import tomllib
 from collections import Counter
@@ -476,6 +485,16 @@ def render_dropped(source: tuple[str, str], description: str, reason: str) -> li
     ]
 
 
+def batch_name(args) -> str:
+    """The batch's name: the one given, else the row file's stem without a closing ``-rows``.
+
+    The driver names its table and sidecar for the batch, and a unit's row
+    file is ``uN-rows.toml`` beside its table ``uN.json``, so a row file
+    written as ``uN-replay-before-rows.toml`` measures ``uN-replay-before``.
+    """
+    return args.name or args.out.stem.removesuffix("-rows") or args.out.stem
+
+
 def write_rows(out: Path, name: str, body: list[str]) -> None:
     head = [f"name = {toml_string(name)}", f'pass_kind = "{REPLAY}"', ""]
     text = "\n".join([*head, *body])
@@ -503,7 +522,7 @@ def cmd_rows(args) -> int:
     body: list[str] = []
     for row in live:
         body += render_row(row.source, row.description, row.surface, row.anchor)
-    write_rows(args.out, args.name or args.out.stem, body)
+    write_rows(args.out, batch_name(args), body)
     counts = Counter(row.state for row in mine)
     files = len({row.anchor.file for row in live})
     print(f"{len(live)} live rows in {files} files written to {args.out}")
@@ -533,9 +552,61 @@ def key_of(row: dict) -> tuple[str, str]:
     return source_of(row) or ("", str(row.get("id", "")))
 
 
+def held_at(repo_root: Path, head: str, rel: str, text: str) -> bool | None:
+    """Whether ``rel`` held ``text`` at commit ``head``, or None when git cannot say.
+
+    Git is only read. A commit git knows that holds no such file answers no:
+    the file is new since. A commit git does not know, or no commit named at
+    all, answers None, which the caller must not read as no.
+    """
+    if not head:
+        return None
+    known = subprocess.run(
+        ["git", "cat-file", "-e", f"{head}^{{commit}}"],
+        cwd=repo_root, capture_output=True, check=False,
+    )
+    if known.returncode != 0:
+        return None
+    shown = subprocess.run(
+        ["git", "show", f"{head}:{rel}"], cwd=repo_root, capture_output=True, check=False
+    )
+    if shown.returncode != 0:
+        return False
+    return text in shown.stdout.decode("utf-8", "replace")
+
+
+def moved_to(tree: Tree, anchor: Anchor, head: str) -> tuple[str | None, str]:
+    """The file a row's text moved to, or None and why nothing says it moved.
+
+    Text that occurs once in one other file is not yet text that moved there.
+    A deleted guard often has a twin, the same line in a neighbouring file,
+    and anchoring the deleted row on its twin would replay another guard's
+    kill under this one's name. So the holder must not have held the text at
+    the commit the row was measured on.
+    """
+    holders = tree.holders(anchor)
+    absent = f"the text is {describe_absence(tree.state(anchor))} in {anchor.file}"
+    if len(holders) != 1:
+        return None, f"{absent} and occurs once in {len(holders)} other files"
+    before = held_at(tree.root, head, holders[0], anchor.old)
+    if before is None:
+        return None, (
+            f"{absent} and occurs once in {holders[0]}, but git cannot read that file at "
+            f"the commit the table was measured on ({head or 'none named'}), so nothing "
+            "says the text moved there"
+        )
+    if before:
+        return None, (
+            f"{absent}, and {holders[0]} holds it now as it did at {head}: that line is "
+            "another guard's, not this one moved"
+        )
+    return holders[0], ""
+
+
 def rows_after(args) -> int:
     """The BEFORE table's kills, anchored where their text is in the tree now."""
     before = read_measured(args.after)
+    head = before.get("head") if isinstance(before.get("head"), str) else ""
     tree = Tree(args.repo_root)
     body: list[str] = []
     dropped: list[str] = []
@@ -554,27 +625,25 @@ def rows_after(args) -> int:
         surface = "user" if row.get("surface") == "user" else "maintainer"
         moved = str(row.get("moved") or "")
         if tree.state(anchor) != LIVE:
-            holders = tree.holders(anchor)
-            if len(holders) != 1:
+            holder, why = moved_to(tree, anchor, head)
+            if holder is None:
                 counts["unplaced"] += 1
                 dropped += render_dropped(
                     source,
                     description,
-                    f"unplaced: the text is {describe_absence(tree.state(anchor))} in "
-                    f"{anchor.file} and occurs once in {len(holders)} other files. Anchor it "
-                    "by hand, a row with this source, the new text and a moved reason, or "
-                    "map it to the row that covers it.",
+                    f"unplaced: {why}. Anchor it by hand, a row with this source, the new "
+                    "text and a moved reason, or map it to the row that covers it.",
                 )
                 continue
-            moved = f"the same text, now in {holders[0]}, was in {anchor.file}"
-            anchor = Anchor(holders[0], anchor.old, anchor.new, anchor.tests)
+            moved = f"the same text, now in {holder}, was in {anchor.file}"
+            anchor = Anchor(holder, anchor.old, anchor.new, anchor.tests)
             counts["moved"] += 1
         else:
             counts["in place"] += 1
         body += render_row(source, description, surface, anchor, moved)
     if not body and not dropped:
         raise Refusal(f"{args.after} killed nothing, so there is nothing to replay")
-    write_rows(args.out, args.name or args.out.stem, [*body, *dropped])
+    write_rows(args.out, batch_name(args), [*body, *dropped])
     print(
         f"{counts['in place']} rows in place and {counts['moved']} moved written to {args.out}; "
         f"{counts['unplaced']} unplaced, listed under [[dropped]] and owed an anchor or a mapping"
@@ -603,14 +672,45 @@ def text_of(row: dict) -> tuple[object, object, object]:
     return (row.get("file"), row.get("old"), row.get("new"))
 
 
-def compare_tables(before: dict, after: dict) -> Verdict:
+def strength(row: dict) -> int:
+    """How firmly a measured row was killed: 2 killed, 1 a death beside a broken
+    collection, 0 nothing.
+
+    The driver calls a row ``killed`` only when a test died and the collected
+    count held. A row that broke collection may record deaths too, and the
+    driver says of it that it is neither a zero nor a clean kill, so it ranks
+    under one. A table of the older form, with no status, is read by its
+    deaths alone.
+    """
+    if not killed(row):
+        return 0
+    return 2 if row.get("status") in (None, "killed") else 1
+
+
+def keyed(table: dict, path: Path) -> dict[tuple[str, str], dict]:
+    """A table's rows by what they are matched by, refusing two rows under one key."""
+    rows: dict[tuple[str, str], dict] = {}
+    for row in table["rows"]:
+        if not isinstance(row, dict):
+            continue
+        key = key_of(row)
+        if key in rows:
+            raise Refusal(
+                f"{path} holds two rows for {' '.join(key).strip()}, so which one is the "
+                "recorded kill cannot be said"
+            )
+        rows[key] = row
+    return rows
+
+
+def compare_tables(
+    before: dict, after: dict, *, before_path: Path = Path("the first table"),
+    after_path: Path = Path("the second table"),
+) -> Verdict:
     """Every row killed in ``before``, read against ``after``."""
-    after_rows: dict[tuple[str, str], dict] = {}
-    by_id: dict[str, dict] = {}
-    for row in after["rows"]:
-        if isinstance(row, dict):
-            after_rows.setdefault(key_of(row), row)
-            by_id.setdefault(str(row.get("id", "")), row)
+    before_rows = keyed(before, before_path)
+    after_rows = keyed(after, after_path)
+    by_id = {str(row.get("id", "")): row for row in after_rows.values()}
     mapped: dict[tuple[str, str], dict] = {}
     for entry in after.get("mapped") or []:
         source = source_of(entry) if isinstance(entry, dict) else None
@@ -618,16 +718,17 @@ def compare_tables(before: dict, after: dict) -> Verdict:
             mapped.setdefault(source, entry)
 
     verdict = Verdict()
-    for row in before["rows"]:
-        if not killed(row):
+    for key, row in before_rows.items():
+        held = strength(row)
+        if not held:
             continue
-        key = key_of(row)
+        was = "killed" if held == 2 else str(row.get("status"))
         name = f"{key[0]} {key[1]}".strip()
         now = after_rows.get(key)
         if now is not None:
-            if not killed(now):
+            if strength(now) < held:
                 verdict.lost.append(
-                    f"{name}: killed before, {now.get('status', 'not killed')} after "
+                    f"{name}: {was} before, {now.get('status', 'not killed')} after "
                     f"({now.get('deaths', 0)} deaths)"
                 )
             elif text_of(now) != text_of(row) and not str(now.get("moved") or "").strip():
@@ -642,13 +743,13 @@ def compare_tables(before: dict, after: dict) -> Verdict:
             continue
         entry = mapped.get(key)
         if entry is None:
-            verdict.lost.append(f"{name}: killed before, and no row and no mapping after")
+            verdict.lost.append(f"{name}: {was} before, and no row and no mapping after")
             continue
         target = by_id.get(str(entry.get("to", "")))
         reason = str(entry.get("reason") or "").strip()
         if target is None:
             verdict.lost.append(f"{name}: mapped to {entry.get('to')!r}, which is no row after")
-        elif not killed(target):
+        elif strength(target) < held:
             verdict.lost.append(
                 f"{name}: mapped to {entry.get('to')!r}, which is "
                 f"{target.get('status', 'not killed')} after"
@@ -663,7 +764,7 @@ def compare_tables(before: dict, after: dict) -> Verdict:
 def cmd_check(args) -> int:
     before = read_measured(args.before)
     after = read_measured(args.after)
-    verdict = compare_tables(before, after)
+    verdict = compare_tables(before, after, before_path=args.before, after_path=args.after)
     total = verdict.kept + verdict.moved + verdict.covered + len(verdict.lost)
     print(
         f"{total} rows killed before: {verdict.kept} killed after as written, "
