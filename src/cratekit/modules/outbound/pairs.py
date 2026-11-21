@@ -70,8 +70,7 @@ Layer: modules.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import MappingProxyType
@@ -285,13 +284,10 @@ class PairStore:
             detail={"problem": what, "path": str(self.path)},
         )
 
-    @contextmanager
-    def _locked(self) -> Iterator[None]:
-        lock = config.exclusive_lock(self.lock_path)
-        try:
-            lock.__enter__()
-        except config.ConfigLockUnavailable as exc:
-            raise refuse(
+    def _locked(self):
+        return config.held(
+            self.lock_path,
+            lambda exc: refuse(
                 "sync-pair-store-unusable",
                 f"the playlist pairs could not be locked ({exc}), and recording a "
                 f"snapshot unlocked discards whatever a second sync is recording "
@@ -300,24 +296,16 @@ class PairStore:
                 scope=Scope.RUN,
                 origin=_ORIGIN,
                 detail={"lock": str(self.lock_path)},
-            ) from exc
-        try:
-            yield
-        finally:
-            lock.__exit__(None, None, None)
+            ),
+        )
 
     def _load(self) -> dict[str, Pair]:
         return self._document().pairs
 
     def _document(self) -> Document:
-        if not self.path.exists():
+        found, raw = config.read_json(self.path, self._unusable)
+        if not found:
             return Document()
-        try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
-        except OSError as exc:
-            raise self._unusable("it could not be opened") from exc
-        except ValueError as exc:
-            raise self._unusable("it is not JSON") from exc
         pairs = self._recognize(raw)
         return Document(
             pairs=pairs,

@@ -43,10 +43,9 @@ verb.
 from __future__ import annotations
 
 import json
-from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 from cratekit.cli.output import timestamp
 from cratekit.core import config
@@ -162,8 +161,7 @@ class WatermarkStore:
             detail={"problem": what, "path": str(self.path)},
         )
 
-    @contextmanager
-    def _locked(self) -> Iterator[None]:
+    def _locked(self):
         """Hold the exclusive lock across one read then write cycle.
 
         The lock class is the one ``core.config`` already ships for precisely
@@ -174,11 +172,9 @@ class WatermarkStore:
         into this module's own refusal; a failure raised by the body keeps its
         own identity.
         """
-        lock = config.exclusive_lock(self.lock_path)
-        try:
-            lock.__enter__()
-        except config.ConfigLockUnavailable as exc:
-            raise refuse(
+        return config.held(
+            self.lock_path,
+            lambda exc: refuse(
                 "deletion-watermark-unusable",
                 f"the deletion watermark could not be locked ({exc}), and "
                 f"advancing it unlocked discards whatever a second pass is "
@@ -187,11 +183,8 @@ class WatermarkStore:
                 scope=Scope.RUN,
                 origin=("deletion.watermark",),
                 detail={"lock": str(self.lock_path)},
-            ) from exc
-        try:
-            yield
-        finally:
-            lock.__exit__(None, None, None)
+            ),
+        )
 
     # Reading.
 
@@ -205,16 +198,9 @@ class WatermarkStore:
         library whose document is corrupt would be baselined at TODAY's sequence
         and would silently lose every removal a person had not yet answered for.
         """
-        if not self.path.exists():
+        found, raw = config.read_json_as_text(self.path, self._unusable)
+        if not found:
             return None
-        try:
-            text = self.path.read_text()
-        except OSError as exc:
-            raise self._unusable("it could not be opened") from exc
-        try:
-            raw = json.loads(text)
-        except ValueError as exc:
-            raise self._unusable("it is not JSON") from exc
         return self._recognize(raw)
 
     def _recognize(self, raw: Any) -> Watermark:

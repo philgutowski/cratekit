@@ -2622,25 +2622,9 @@ class DecisionStore:
         would leave exactly the defect, reachable by anybody on that platform.
         """
         config.mkdir_private(self.lock_path.parent)
-        handle = None
         try:
-            import fcntl
-
-            # os.open with an explicit mode rather than the builtin open(), which
-            # creates at 0666 masked by the umask (P1).
-            descriptor = os.open(
-                self.lock_path, os.O_CREAT | os.O_RDWR, config.PRIVATE_FILE_MODE
-            )
-            handle = os.fdopen(descriptor, "r+b")
-            # O_CREAT applies the mode only when it CREATES the file, so a lock
-            # left behind at another mode keeps it without this.
-            _own_only(self.lock_path)
-            fcntl.flock(handle, fcntl.LOCK_EX)
-        except BaseException as exc:
-            if handle is not None:
-                handle.close()
-            if not isinstance(exc, (ImportError, OSError)):
-                raise
+            handle = config.flock_exclusive(self.lock_path, _own_only)
+        except (ImportError, OSError) as exc:
             raise refuse(
                 "review-file-unusable",
                 f"the {self.key} store could not be locked ({exc}), and writing it "
@@ -2673,16 +2657,9 @@ class DecisionStore:
         suppressed nothing, and the empty result was then handed to the writer, so
         ONE further record deleted every prior decline from the disk.
         """
-        if not self.path.exists():
+        found, raw = config.read_json_as_text(self.path, self._unusable)
+        if not found:
             return {}
-        try:
-            text = self.path.read_text()
-        except OSError as exc:
-            raise self._unusable("it could not be opened") from exc
-        try:
-            raw = json.loads(text)
-        except ValueError as exc:
-            raise self._unusable("it is not JSON") from exc
         return self._recognize(raw)
 
     def _recognize(self, raw: Any) -> dict[str, Suppression]:

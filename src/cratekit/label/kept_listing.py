@@ -331,14 +331,9 @@ class KeptListing:
         label_id = str(entry.label_id)
         asked = asked_for(entry)
         path = path_for(label_id)
-        if not path.exists():
+        found, raw = config.read_json(path, lambda why: _unusable(path, why))
+        if not found:
             return cls(label_id, asked, {}, path=path)
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except OSError as exc:
-            raise _unusable(path, "it could not be opened") from exc
-        except ValueError as exc:
-            raise _unusable(path, "it is not JSON") from exc
         if not isinstance(raw, Mapping):
             raise _unusable(path, f"the document is a {type(raw).__name__}, not a map")
         version = raw.get("version")

@@ -37,8 +37,7 @@ rolled back with the database would offer a finished playlist as new.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -169,13 +168,10 @@ class MarkRecord:
             detail={"problem": what, "path": str(self.path)},
         )
 
-    @contextmanager
-    def _locked(self) -> Iterator[None]:
-        lock = config.exclusive_lock(self.lock_path)
-        try:
-            lock.__enter__()
-        except config.ConfigLockUnavailable as exc:
-            raise refuse(
+    def _locked(self):
+        return config.held(
+            self.lock_path,
+            lambda exc: refuse(
                 "sync-mark-record-unusable",
                 f"the mark record could not be locked ({exc}), and writing it "
                 f"unlocked discards whatever a second mark is recording at the same time",
@@ -183,21 +179,13 @@ class MarkRecord:
                 scope=Scope.RUN,
                 origin=_ORIGIN,
                 detail={"lock": str(self.lock_path)},
-            ) from exc
-        try:
-            yield
-        finally:
-            lock.__exit__(None, None, None)
+            ),
+        )
 
     def _read(self) -> tuple[list[Marked], list[Taken]]:
-        if not self.path.exists():
+        found, raw = config.read_json(self.path, self._unusable)
+        if not found:
             return [], []
-        try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
-        except OSError as exc:
-            raise self._unusable("it could not be opened") from exc
-        except ValueError as exc:
-            raise self._unusable("it is not JSON") from exc
         return self._recognize(raw)
 
     def _load(self) -> list[Marked]:

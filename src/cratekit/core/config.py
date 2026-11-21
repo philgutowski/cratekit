@@ -96,18 +96,21 @@ from __future__ import annotations
 import copy
 import errno
 import hashlib
+import json
 import math
 import os
 import re
 import sys
 import tempfile
 import tomllib
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field, fields, is_dataclass, replace
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
+from typing import Any
 
 import platformdirs
 import tomli_w
@@ -5187,6 +5190,129 @@ class exclusive_lock:
             self.handle = None
 
 
+# ---------------------------------------------------------------------------
+# What every state document's store did for itself, once (U298)
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def held(lock_path: Path, refused: Callable[[ConfigLockUnavailable], BaseException]) -> Iterator[None]:
+    """Hold the exclusive lock at ``lock_path`` across one read then write cycle.
+
+    ONLY THE ACQUISITION is translated, by ``refused``, into the store's own
+    refusal. A failure raised by the body keeps its own identity.
+    """
+    lock = exclusive_lock(lock_path)
+    try:
+        lock.__enter__()
+    except ConfigLockUnavailable as exc:
+        raise refused(exc) from exc
+    try:
+        yield
+    finally:
+        lock.__exit__(None, None, None)
+
+
+@contextmanager
+def lock_within(
+    lock_path: Path, *, wait_s: float, poll_s: float, sleep: Callable[[float], None]
+) -> Iterator[bool]:
+    """Hold the lock at ``lock_path`` and yield True, or yield False when it was not had in time.
+
+    For a writer that would rather skip one write than wait on another process,
+    a cache or a tally. THE LOCK FILE IS NEVER UNLINKED, for the reason
+    :class:`exclusive_lock`'s is not: one holder unlinking the name while another
+    creates a fresh file at it is how two processes each hold "the" lock.
+    """
+    try:
+        mkdir_private(lock_path.parent)
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, PRIVATE_FILE_MODE)
+    except OSError:
+        yield False
+        return
+    try:
+        try:
+            import fcntl  # noqa: PLC0415 - POSIX only, see the except
+        except ImportError:  # pragma: no cover - no advisory locks here
+            fcntl = None
+        had = fcntl is None
+        polls = 0
+        while not had and polls * poll_s < wait_s:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                had = True
+            except BlockingIOError:
+                polls += 1
+                sleep(poll_s)
+        yield had
+    finally:
+        os.close(fd)  # closing the descriptor releases the lock; the file stays
+
+
+def flock_exclusive(target: Path, harden: Callable[[Path], None]):
+    """Open ``target`` owner only, harden it, and take its exclusive lock.
+
+    Returns the open handle, whose close releases the lock. THE HANDLE IS
+    CLOSED ON ANY FAILURE, an interrupt included, and the failure leaves as
+    itself, so the caller decides which of them is its own refusal.
+    ``os.open`` with an explicit mode and never the builtin ``open``, which
+    creates at 0666 masked by the umask (P1). ``harden`` is the caller's,
+    because ``O_CREAT`` applies the mode only when it CREATES the file and each
+    caller decides what a lock left behind at another mode means.
+    """
+    handle = None
+    try:
+        import fcntl  # noqa: PLC0415 - POSIX only; the caller turns its absence into a refusal
+
+        descriptor = os.open(target, os.O_CREAT | os.O_RDWR, PRIVATE_FILE_MODE)
+        handle = os.fdopen(descriptor, "r+b")
+        harden(target)
+        fcntl.flock(handle, fcntl.LOCK_EX)
+    except BaseException:
+        if handle is not None:
+            handle.close()
+        raise
+    return handle
+
+
+def read_json(path: Path, unusable: Callable[[str], BaseException]) -> tuple[bool, Any]:
+    """Whether a state document exists at ``path``, and what it parses to.
+
+    A DOCUMENT THAT EXISTS AND CANNOT BE READ IS REFUSED, never read as empty:
+    an unreadable record read as unset asks every question again, and the next
+    write then persists that emptiness over the real one. ``unusable`` builds
+    the store's own refusal from the clause that says what was wrong. An
+    absent file is ``(False, None)``, which is not a document holding ``null``.
+    """
+    if not path.exists():
+        return False, None
+    try:
+        return True, json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise unusable("it could not be opened") from exc
+    except ValueError as exc:
+        raise unusable("it is not JSON") from exc
+
+
+def read_json_as_text(path: Path, unusable: Callable[[str], BaseException]) -> tuple[bool, Any]:
+    """:func:`read_json`, for the two stores that read the file in the platform's encoding.
+
+    Not merged with it, because the two differ in what a person sees: here a
+    file that is not text in that encoding leaves as the ``UnicodeDecodeError``
+    it is, where :func:`read_json` refuses it as not JSON.
+    """
+    if not path.exists():
+        return False, None
+    try:
+        text = path.read_text()
+    except OSError as exc:
+        raise unusable("it could not be opened") from exc
+    try:
+        return True, json.loads(text)
+    except ValueError as exc:
+        raise unusable("it is not JSON") from exc
+
+
 __all__ = [
     "ACKNOWLEDGMENT_KEY",
     "BACKUP_DESTINATION_KEYS",
@@ -5253,10 +5379,15 @@ __all__ = [
     "merge_changes",
     "migrate",
     "exclusive_lock",
+    "flock_exclusive",
+    "held",
     "is_inside",
+    "lock_within",
     "mkdir_private",
     "out_of_band_effects",
     "provider_gate_dir",
+    "read_json",
+    "read_json_as_text",
     "rekey_records",
     "reset_cache",
     "save",

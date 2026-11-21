@@ -80,8 +80,7 @@ import json
 import math
 import os
 import time
-from collections.abc import Callable, Iterable, Iterator, Mapping
-from contextlib import contextmanager
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -460,40 +459,11 @@ class Cache:
 
     # ── writing ────────────────────────────────────────────────────────────
 
-    @contextmanager
-    def _locked(self) -> Iterator[bool]:
-        """Hold the sibling lock and yield True, or yield False when it was not had in time.
-
-        THE LOCK FILE IS NEVER UNLINKED, for the reason the provider gate's is
-        not: one holder unlinking the name while another creates a fresh file
-        at it is how two processes each hold "the" lock.
-        """
-        try:
-            config.mkdir_private(self.lock_path.parent)
-            fd = os.open(self.lock_path, os.O_CREAT | os.O_RDWR, config.PRIVATE_FILE_MODE)
-        except OSError:
-            yield False
-            return
-        try:
-            try:
-                import fcntl  # noqa: PLC0415 - POSIX only, see the except
-            except ImportError:  # pragma: no cover - no advisory locks here
-                fcntl = None
-            had = True
-            if fcntl is not None:
-                had = False
-                polls = 0
-                while polls * LOCK_POLL_S < LOCK_WAIT_S:
-                    try:
-                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                        had = True
-                        break
-                    except BlockingIOError:
-                        polls += 1
-                        self.sleep(LOCK_POLL_S)
-            yield had
-        finally:
-            os.close(fd)  # closing the descriptor releases the lock; the file stays
+    def _locked(self):
+        """Hold the sibling lock and yield True, or yield False when it was not had in time."""
+        return config.lock_within(
+            self.lock_path, wait_s=LOCK_WAIT_S, poll_s=LOCK_POLL_S, sleep=self.sleep
+        )
 
     def _set_aside(self) -> Path | None:
         """Rename a file that does not parse out of the way, taking the lock first."""
