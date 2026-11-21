@@ -1711,6 +1711,14 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # night carries with its record. The night is driven in
         # tests/test_sync_night.py.
         "sync.night": [],
+        # U295. The schedule's verbs take no argument, and on every machine
+        # they refuse ``schedule-platform-unsupported`` here before launchd is
+        # reached: tests/conftest.py reads the platform as Linux and stands the
+        # launchctl seam in with a refusal. The three are driven as a Mac, over
+        # a launchd standing in, in tests/test_schedule.py.
+        "schedule.install": [],
+        "schedule.show": [],
+        "schedule.remove": [],
         # U179. The driver takes no argument: on this fixture its plan step
         # refuses for want of a Bandcamp session, and the driver ends with that
         # step's own refusal. The chain is driven in tests/test_sync_bandcamp.py.
