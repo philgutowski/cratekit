@@ -803,3 +803,49 @@ def test_one_row_two_landings_name_keeps_the_later_landings_count():
             order, database_identity="db", present=(), playlist_held=lambda _one: True
         )
         assert {key: one.landed for key, one in found.items()} == {"7": 9}
+
+
+# ---------------------------------------------------------------------------
+# The mutation table's two zeros, each given its test
+# ---------------------------------------------------------------------------
+
+
+def _edit_landing(cfg: config.Config, content_id: str, change) -> None:
+    landing = _landing_record(cfg, content_id)
+    path = _record_path(cfg, landing.session_id)
+    raw = json.loads(path.read_text())
+    change(raw["detail"][native.LANDED_ROWS_KEY])
+    path.write_text(json.dumps(raw))
+
+
+@pytest.mark.parametrize("sequence", [None, "12", True])
+def test_a_landing_record_with_no_update_count_offers_nothing(
+    sequence, native_library, silence, monkeypatch, tmp_path
+):
+    """Row M2: a record that cannot say what its commit left is not guessed at."""
+    cfg, _root = native_library
+    _land(cfg, silence, "One")
+    _deletion_on(cfg, monkeypatch, tmp_path)
+    _baseline(cfg)
+    gone, music = _row(cfg, "One")
+    _edit_landing(cfg, gone, lambda landed: landed.update(sequence=sequence))
+    _remove_outright(cfg, gone)
+
+    assert gone not in _candidates(cfg)
+    assert music.exists()
+
+
+def test_a_landing_one_of_whose_playlists_is_gone_offers_nothing(
+    native_library, silence, monkeypatch, tmp_path
+):
+    """Row M5: every playlist the landing made must remain, not any one of them."""
+    cfg, _root = native_library
+    _land(cfg, silence, "One")
+    _deletion_on(cfg, monkeypatch, tmp_path)
+    _baseline(cfg)
+    gone, music = _row(cfg, "One")
+    _edit_landing(cfg, gone, lambda landed: landed["playlists"].append("999999999"))
+    _remove_outright(cfg, gone)
+
+    assert gone not in _candidates(cfg)
+    assert music.exists()
