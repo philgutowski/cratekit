@@ -49,9 +49,9 @@ from typing import Any
 
 from cratekit.acquire import listing, match, match_cli
 from cratekit.acquire.match import Wanted
-from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import artifacts, binaries, binary_refusal, config, jobs, review
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
+from cratekit.cli.output import Envelope, digest_of, load_config, no_job
+from cratekit.core import binaries, binary_refusal, config, jobs, review
+from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.favorites import placeholders
 from cratekit.intake import fetch, normalize, pipeline, recognize
@@ -95,7 +95,7 @@ HEARTED = "hearted"
 INTAKE_KEYS = frozenset({"intake.set", "intake.playlist"})
 
 #: Where one item's report is staged and where it lands, under the queue root.
-ARTIFACTS = artifacts.Location(final="intake-artifacts", staging="intake-staging")
+ARTIFACTS = jobs.Artifacts(final="intake-artifacts", staging="intake-staging")
 
 #: What a match state is called on the item's report and in the summary. The
 #: words are the verb's, not the engine's, because a person reading a report
@@ -110,39 +110,8 @@ _STATE_WORDS: Mapping[match.MatchState, str] = {
 
 
 def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("intake.cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
-
-
-def _reported(store, job, extra: Mapping[str, Any] | None = None) -> dict:
-    """The ``job_state`` payload. ``extra`` rides UNDER ``progress``, never
-    beside it, because the surface is closed and a top level field the schema
-    does not declare fails every consumer generated from it."""
-    progress = dict(jobs.progress(store, job.job_id))
-    if extra:
-        progress.update(extra)
-    return {
-        "job_id": job.job_id,
-        "state": str(job.state),
-        "cause": job.cause.to_json() if job.cause is not None else None,
-        "progress": progress,
-    }
-
-
-def _no_op(state: str, **progress: Any) -> dict[str, Any]:
-    """A run that correctly queued nothing. ``job_id`` is the empty string and
-    not None, because the schema types it as a string (R-234)."""
-    return {"job_id": "", "state": state, "cause": None, "progress": dict(progress)}
+    """Read config, turning a configuration failure into a typed cause."""
+    return load_config(("intake.cli",))
 
 
 def _plan(items: list[dict[str, str]], *, kind: str) -> dict:
@@ -423,7 +392,7 @@ def _summary(cfg: config.Config, job) -> dict[str, Any]:
     """
     counts = {word: 0 for word in _STATE_WORDS.values()}
     by_reason: dict[str, dict[str, int]] = {word: {} for word in counts}
-    reports = artifacts.committed(ARTIFACTS, cfg, job.job_id)
+    reports = ARTIFACTS.committed(cfg, job.job_id)
     for report in reports:
         word = str(report.get("state") or "")
         if word in counts:
@@ -499,7 +468,7 @@ def _resume(ctx, store, job_id: str) -> Envelope:
         job = jobs.get(store, job.job_id)
     jobs.raise_for_state(job)
     cfg = jobs.frozen_config(job)
-    return ctx.envelope(data=_reported(store, job, extra=_summary(cfg, job)), warnings=warnings)
+    return ctx.envelope(data=jobs.reported(store, job, extra=_summary(cfg, job)), warnings=warnings)
 
 
 # ---------------------------------------------------------------------------
@@ -1074,7 +1043,7 @@ def intake_set(ctx) -> Envelope:
         warnings += _fetch_notes(held)
         if job is None:
             return ctx.envelope(
-                data=_no_op(
+                data=no_job(
                     "nothing-identified",
                     calls=result.calls,
                     chunks=result.chunks,
@@ -1094,7 +1063,7 @@ def intake_set(ctx) -> Envelope:
         if account_data is not None:
             extra["account_playlist"] = account_data
         return ctx.envelope(
-            data=_reported(store, job, extra=extra),
+            data=jobs.reported(store, job, extra=extra),
             warnings=(note, *warnings, *account_notes, *apply_notes),
         )
 
@@ -1782,7 +1751,7 @@ def intake_playlist(ctx) -> Envelope:
         warnings = (warned(short),) if short is not None else ()
         if not tracks:
             return ctx.envelope(
-                data=_no_op("no-tracks", source=reference, **extra),
+                data=no_job("no-tracks", source=reference, **extra),
                 outcome=Outcome.NO_OP,
                 warnings=warnings,
             )
@@ -1794,7 +1763,7 @@ def intake_playlist(ctx) -> Envelope:
             tracks=tracks,
             source_id=FAVORITES_SOURCE_ID if hearts else None,
         )
-        return ctx.envelope(data=_reported(store, job, extra), warnings=warnings)
+        return ctx.envelope(data=jobs.reported(store, job, extra), warnings=warnings)
 
 
 # ---------------------------------------------------------------------------
@@ -1923,7 +1892,7 @@ def handle(job, item, cfg) -> jobs.Produced:
         "acquisitions": [option.to_json() for option in settled.acquisitions],
         "acquired": False,
     }
-    return artifacts.produced(ARTIFACTS, cfg, job, item, report)
+    return ARTIFACTS.produced(cfg, job, item, report)
 
 
 __all__ = [

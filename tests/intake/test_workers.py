@@ -27,7 +27,7 @@ import pytest
 from cratekit.acquire import listing, match
 from cratekit.cli import handlers
 from cratekit.cli import jobs as cli_jobs
-from cratekit.core import artifacts, config, jobs, review, secrets
+from cratekit.core import config, jobs, review, secrets
 from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import acrcloud, recognize
@@ -142,7 +142,7 @@ def job_of(job_id: str) -> jobs.Job:
 
 
 def reports(cfg: config.Config, job_id: str) -> tuple[dict, ...]:
-    return artifacts.committed(intake_cli.ARTIFACTS, cfg, job_id)
+    return intake_cli.ARTIFACTS.committed(cfg, job_id)
 
 
 def by_title(cfg: config.Config, job_id: str) -> dict[str, dict]:
@@ -1778,7 +1778,7 @@ def test_a_report_without_a_reason_counts_in_its_state_and_under_no_reason(cfg, 
         {"state": "owned", "why": 3},
         {"state": "misplaced", "why": "exact"},
     ]
-    monkeypatch.setattr(intake_cli.artifacts, "committed", lambda *args: reports)
+    monkeypatch.setattr(intake_cli.jobs.Artifacts, "committed", lambda *args: reports)
 
     class Job:
         job_id = "j-1"

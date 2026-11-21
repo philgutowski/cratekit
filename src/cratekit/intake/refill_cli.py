@@ -30,7 +30,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import (
     active_taxonomy,
     analysis_store,
@@ -39,8 +39,7 @@ from cratekit.core import (
     session,
     tree_registry,
 )
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
-from cratekit.core.exit_codes import Remedy
+from cratekit.core.cause import Outcome
 from cratekit.intake import land_cli, refill
 
 #: The explicit gate the refill is asked behind.
@@ -60,22 +59,6 @@ UNFOUND = "refill-playlist-unfound"
 
 #: Session records that could not be read, so no playlist was found by name.
 RECORDS_UNREADABLE = "refill-records-unreadable"
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("intake.refill_cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def build(parser, entry) -> None:
@@ -207,7 +190,7 @@ def written(cfg: config.Config, declared, plan: refill.RefillPlan) -> refill.Ref
 
 def inbox_refill(ctx) -> Envelope:
     """Plan the refill, ask, then add what each playlist lacks and read it back."""
-    cfg = _load()
+    cfg = load_config(("intake.refill_cli",))
     declared = active_taxonomy.load(cfg)
     spec = land_cli.gate_named(ctx.entry, APPROVE_GATE)
     # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).

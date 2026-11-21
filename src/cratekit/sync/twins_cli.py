@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, declared_gate
 from cratekit.core import analysis_store, config, rb_writer, session
 from cratekit.core.cause import Outcome
 from cratekit.sync import cli as sync_cli
@@ -51,13 +51,6 @@ def build(parser, entry) -> None:
     """Declare the surface. ``entry`` is untyped so this layer does not name it."""
     del entry
     parser.set_defaults(_handler=sync_twins)
-
-
-def _gate(entry):
-    for spec in entry.gates:
-        if spec.name == APPROVE_GATE:
-            return spec
-    raise RuntimeError(f"registry entry {entry.name!r} declares no gate {APPROVE_GATE!r}")
 
 
 def planned(cfg: config.Config) -> twins.Backfill:
@@ -141,7 +134,7 @@ def _notes(plan: twins.Backfill) -> list[dict[str, str]]:
 def sync_twins(ctx) -> Envelope:
     """Plan every missing twin, ask, then make them and mark their pairs."""
     cfg = sync_cli._load()
-    spec = _gate(ctx.entry)
+    spec = declared_gate(ctx.entry, APPROVE_GATE)
     # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
     session.assert_backup_acknowledged(cfg)
     plan = planned(cfg)

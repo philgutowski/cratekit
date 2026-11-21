@@ -32,10 +32,9 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import active_taxonomy, config, rb_writer
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
-from cratekit.core.exit_codes import Remedy
+from cratekit.core.cause import CratekitError, Outcome
 from cratekit.tagging import backlog, published, rows, searchers, suggest
 from cratekit.write import metadata_cli
 
@@ -52,22 +51,6 @@ _BLOCKED = "the needs genre backlog cannot be read"
 
 #: How many words or identifiers a sentence names. The payload carries all.
 _NAMED = 5
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("tagging.backlog_cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def build(parser, entry) -> None:
@@ -344,7 +327,7 @@ def _payload(plan: backlog.Backlog) -> dict[str, Any]:
 
 def tag_backlog(ctx) -> Envelope:
     """Sort the needs genre backlog by cause and name the campaign. Writes nothing."""
-    cfg = _load()
+    cfg = load_config(("tagging.backlog_cli",))
     declared = active_taxonomy.load(cfg)
     plan = _plan(
         cfg, declared, bool(getattr(ctx.args, "catalogue", False)), getattr(ctx, "progress", None)

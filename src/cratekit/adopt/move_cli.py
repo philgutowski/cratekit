@@ -38,7 +38,7 @@ from typing import Any, Mapping, Sequence
 from cratekit.adopt import apply_cli, artifacts, placements, shell
 from cratekit.adopt import move as move_engine
 from cratekit.adopt import plan as plan_engine
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, approving_actor, load_config
 from cratekit.core import (
     active_taxonomy,
     analysis_store,
@@ -78,22 +78,6 @@ HANDLER_KEY = "adopt.move"
 NOTHING_TO_MOVE = "move-nothing-planned"
 
 _ORIGIN = ("adopt", "move_cli")
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("adopt.move_cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def current_plan(cfg: config.Config, declared: taxonomy.Taxonomy) -> move_engine.MovePlan:
@@ -169,7 +153,7 @@ def move_adoption(ctx) -> Envelope:
     AN EMPTY PLAN STILL ASKS, for the reason ``adopt apply`` gives, and then
     queues nothing: a second approved run plans nothing and writes nothing.
     """
-    cfg = _load()
+    cfg = load_config(("adopt.move_cli",))
     declared = active_taxonomy.load(cfg)
     # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
     session.assert_backup_acknowledged(cfg)
@@ -208,7 +192,7 @@ def move_adoption(ctx) -> Envelope:
                 "tree": plan.tree,
                 "digest": document["digest"],
                 PLAN_KEY: document,
-                ACTOR_KEY: _approving_actor(ctx, spec),
+                ACTOR_KEY: approving_actor(ctx, spec),
                 jobs.GATE_RUN_KEY: ctx.run.run_id,
             },
             item_ids=(document["digest"],),
@@ -649,12 +633,6 @@ def _write(
         )
     finally:
         rb_writer.close_db(handle_)
-
-
-def _approving_actor(ctx, spec) -> str:
-    """Who the run record says answered the approval gate."""
-    decision = ctx.run.decisions.get(spec.name)
-    return decision.actor if decision is not None else ""
 
 
 __all__ = [

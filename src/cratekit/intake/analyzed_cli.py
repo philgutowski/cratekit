@@ -29,7 +29,7 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import (
     active_taxonomy,
     analysis_store,
@@ -38,8 +38,7 @@ from cratekit.core import (
     session,
     tree_registry,
 )
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
-from cratekit.core.exit_codes import Remedy
+from cratekit.core.cause import Outcome
 from cratekit.intake import analyzed, land_cli
 
 #: The explicit gate the clear is asked behind.
@@ -53,22 +52,6 @@ CLEARED = "analyzed-cleared"
 
 #: Rows that stay because rekordbox has not finished with them.
 WAITING = "analyzed-rows-waiting"
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("intake.analyzed_cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def build(parser, entry) -> None:
@@ -149,7 +132,7 @@ def written(cfg: config.Config, declared, plan: analyzed.AnalyzedPlan) -> analyz
 
 def inbox_analyzed(ctx) -> Envelope:
     """Plan the clear, ask, then remove what rekordbox analysed and read it back."""
-    cfg = _load()
+    cfg = load_config(("intake.analyzed_cli",))
     declared = active_taxonomy.load(cfg)
     spec = land_cli.gate_named(ctx.entry, APPROVE_GATE)
     # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).

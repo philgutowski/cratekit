@@ -47,9 +47,9 @@ from pathlib import Path
 
 from cratekit.cli import registry
 from cratekit.cli.doctor import Finding, Status
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import active_taxonomy, config, review
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
+from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.naming import MarkerRule, NameTemplate
 from cratekit.modules.reports import aging, coverage, duplicates, export
@@ -60,28 +60,6 @@ from cratekit.modules.reports import library as library_report
 #: object and a library that has never been swept puts its whole collection in
 #: it. Overridable per run, and the summary reports both numbers either way.
 DEFAULT_COVERAGE_LIMIT = 200
-
-
-def _load() -> config.Config:
-    """The configuration, or the refusal U2 already modelled for each way it fails.
-
-    Copied in shape from ``cli.rebuild`` rather than factored out with it, and
-    that is deliberate for now: the two differ only in the origin they stamp, and
-    a shared helper would have to take that as an argument, which is the same
-    line count with one more indirection.
-    """
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("cli.reports",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def _template(cfg: config.Config) -> NameTemplate:
@@ -182,7 +160,7 @@ def audit_coverage(ctx) -> Envelope:
     truncated list, which is the one arithmetic that would hide the truncation
     from a consumer reading only the summary.
     """
-    cfg = _load()
+    cfg = load_config(("cli.reports",))
     declared = active_taxonomy.load(cfg)
     report = coverage.survey(_view(ctx), tree=declared.tree)
 
@@ -260,7 +238,7 @@ def audit_duplicates(ctx) -> Envelope:
     is the persistent ignore, and this verb keeps no state of its own to make it
     true.
     """
-    cfg = _load()
+    cfg = load_config(("cli.reports",))
     view = _view(ctx)
     with review.open_store(cfg) as store:
         report = duplicates.audit_and_offer(
@@ -296,7 +274,7 @@ def report_library(ctx) -> Envelope:
     building, and a report that painted either red would be this module deciding
     what a person's library should look like.
     """
-    cfg = _load()
+    cfg = load_config(("cli.reports",))
     declared = active_taxonomy.load(cfg)
     stats = library_report.statistics(
         _view(ctx), declared=declared, template=_template(cfg)
@@ -423,7 +401,7 @@ def report_intake_aging(ctx) -> Envelope:
     question the config file already answers, and it would be the copy nobody
     looks at.
     """
-    cfg = _load()
+    cfg = load_config(("cli.reports",))
     declared = active_taxonomy.load(cfg)
     report = aging.intake_aging(
         _view(ctx),

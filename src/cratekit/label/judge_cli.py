@@ -47,7 +47,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from cratekit.cli.output import Envelope
-from cratekit.core import active_taxonomy, artifacts, config, jobs, review, routing
+from cratekit.core import active_taxonomy, config, jobs, review, routing
 from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.review import Queue
@@ -62,7 +62,7 @@ from cratekit.tagging import published, searchers, shell
 ORIGIN = ("label", "judge_cli")
 
 #: Where one release's report is staged and committed, under the queue root.
-ARTIFACTS = artifacts.Location(final="label-judge-artifacts", staging="label-judge-staging")
+ARTIFACTS = jobs.Artifacts(final="label-judge-artifacts", staging="label-judge-staging")
 
 #: What happened to one release, as its report says it. The first three are the
 #: gate's verdicts in the gate's own words. The last three are releases the gate
@@ -246,7 +246,7 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
     """
     totals = _counts()
     rows: dict[str, dict[str, Any]] = {}
-    for report in artifacts.committed(ARTIFACTS, cfg, job_id):
+    for report in ARTIFACTS.committed(cfg, job_id):
         outcome = str(report.get("outcome") or "")
         if outcome not in OUTCOMES:
             continue
@@ -815,7 +815,7 @@ def handle(job, item, cfg) -> jobs.Produced:
         report = _judge_one(job, str(item.item_id or ""), cfg)
     except CratekitError as exc:
         raise _parked(job, exc) from exc
-    return artifacts.produced(ARTIFACTS, cfg, job, item, report)
+    return ARTIFACTS.produced(cfg, job, item, report)
 
 
 __all__ = [

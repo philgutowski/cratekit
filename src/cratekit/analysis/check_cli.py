@@ -28,9 +28,9 @@ from typing import Any
 
 from cratekit.analysis import rekordbox_check as rc
 from cratekit.cli import output
-from cratekit.cli.output import Envelope, PendingHumanAction
+from cratekit.cli.output import Envelope, PendingHumanAction, load_config
 from cratekit.core import active_taxonomy, config
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
+from cratekit.core.cause import Cause, Outcome, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.core.naming import MarkerRule, NameTemplate
 
@@ -44,22 +44,6 @@ RECORDS_UNREAD = "analysis-check-records-unread"
 
 #: How many rows a check's detail names before it counts the rest.
 _NAMED = 8
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=_ORIGIN,
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def build(parser, entry) -> None:
@@ -300,7 +284,7 @@ def warnings_of(found: rc.Check) -> list[dict[str, str]]:
 
 def analyze_check(ctx) -> Envelope:
     """Read rekordbox's result for the rows in scope and answer with the verdict."""
-    cfg = _load()
+    cfg = load_config(_ORIGIN)
     found = rc.check(
         cfg,
         declared=active_taxonomy.load(cfg),

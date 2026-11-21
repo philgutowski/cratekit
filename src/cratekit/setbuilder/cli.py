@@ -67,10 +67,9 @@ import math
 from collections.abc import Sequence
 from pathlib import Path
 
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, digest_of, load_config
 from cratekit.core import active_taxonomy, config, taxonomy
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
-from cratekit.core.exit_codes import Remedy
+from cratekit.core.cause import Outcome, refuse
 from cratekit.core.naming import MarkerRule, NameTemplate
 from cratekit.modules.tools import setbuilder
 
@@ -78,21 +77,6 @@ from cratekit.modules.tools import setbuilder
 #: engine's own vocabulary rather than restated as a literal: ``build_plan``
 #: tests membership in exactly these two, and anything else means "both sides".
 ROLES: tuple[str, ...] = ("before", "after")
-
-
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("setbuilder.cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def _template(cfg: config.Config) -> NameTemplate:
@@ -543,7 +527,7 @@ def set_build(ctx) -> Envelope:
     The unowned form is decided first and the flag check after it, both before
     the scan, so a refused invocation never pays for a walk of the library.
     """
-    cfg = _load()
+    cfg = load_config(("setbuilder.cli",))
     root = Path(cfg.library.root)
     if not root.is_dir():
         raise refuse(

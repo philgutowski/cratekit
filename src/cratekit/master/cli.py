@@ -48,10 +48,9 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import config, jobs
-from cratekit.core.cause import Cause, CratekitError, Remediation, refuse
-from cratekit.core.exit_codes import Remedy
+from cratekit.core.cause import refuse
 from cratekit.modules.tools import mastering
 
 #: Payload keys this build freezes. Named once so the handler and the argv
@@ -69,30 +68,6 @@ PARTS = "parts"
 #: default target, which is what every job queued before this key existed asked
 #: for, so an old payload resumes as the run it was.
 TARGET_LUFS = "target_lufs"
-
-
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("master.cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
-
-
-def _reported(store, job) -> dict:
-    return {
-        "job_id": job.job_id,
-        "state": str(job.state),
-        "cause": job.cause.to_json() if job.cause is not None else None,
-        "progress": jobs.progress(store, job.job_id),
-    }
 
 
 def build(parser, entry) -> None:
@@ -299,7 +274,7 @@ def master_recording(ctx) -> Envelope:
     # known now, and queueing it would park a job whose only possible outcome is
     # that refusal, discovered by whoever resumes it.
     settings_for(ctx.args.lufs)
-    cfg = _load()
+    cfg = load_config(("master.cli",))
     with jobs.open_store() as store:
         if ctx.args.job:
             # RECONCILE FIRST. A resume arrives after something stopped, and a
@@ -322,7 +297,7 @@ def master_recording(ctx) -> Envelope:
             # reached the report and exited 0. OUTSIDE the ``is_open`` branch so
             # the second ask about a failed job answers the way the first did.
             jobs.raise_for_state(job)
-            return ctx.envelope(data=_reported(store, job), warnings=warnings)
+            return ctx.envelope(data=jobs.reported(store, job), warnings=warnings)
         # THE RECORDING IS NOT STATTED HERE, deliberately. Queueing needs neither
         # the file nor ffmpeg, and a stat in this handler would make the verb
         # refuse on a machine where the work would have run fine later. The cost
@@ -348,7 +323,7 @@ def master_recording(ctx) -> Envelope:
         # written: queueing opens no audio file. A warning rather than a data
         # key, because ``job_state/1`` declares its fields and refuses an extra.
         notices = (join_order_warning(frozen_parts(payload)),) if PARTS in payload else ()
-        return ctx.envelope(data=_reported(store, job), warnings=notices)
+        return ctx.envelope(data=jobs.reported(store, job), warnings=notices)
 
 
 def run_master(payload: dict[str, Any], *, runner=mastering.subprocess_runner) -> dict:

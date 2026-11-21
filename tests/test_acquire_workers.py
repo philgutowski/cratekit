@@ -1314,10 +1314,10 @@ def test_a_command_naming_nothing_is_refused_before_the_configuration_is_read(
 ):
     """Argparse refused it before anything ran, and so does the verb."""
 
-    def boom():
+    def boom(origin):
         raise AssertionError("the configuration was read for a command naming nothing")
 
-    monkeypatch.setattr(acquire_cli, "_load", boom)
+    monkeypatch.setattr(acquire_cli, "load_config", boom)
 
     code, envelope = drive(["acquire", "download"])
 

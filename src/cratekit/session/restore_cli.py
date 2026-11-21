@@ -85,7 +85,7 @@ from typing import Any
 # Both are foundation-ranked and both are legitimately needed here, so the one
 # whose name would otherwise be ambiguous says what it is instead.
 from cratekit.cli import exit_codes as reservations
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, digest_of, load_config
 from cratekit.core import analysis_store, config, processes, restore
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
 from cratekit.core.exit_codes import Remedy
@@ -99,27 +99,6 @@ from cratekit.modules.tools import backup
 #: would promise a verdict this verb never asks for. The schema's ``queue`` field
 #: is a string naming the set, and this is the honest name for it.
 LISTING = "restore"
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause.
-
-    The remedy token rides through from the configuration error that raised it,
-    so "no config at all" and "config written by a newer build" keep their
-    different answers all the way out to the shell (D2).
-    """
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("session.restore_cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def _refused(exc: backup.BackupRefused) -> CratekitError:
@@ -204,7 +183,7 @@ def list_restorable(ctx) -> Envelope:
     number of sessions there would tell a person they have work they do not,
     which is the reasoning ``deletion.tombstone_cli`` gives for the same field.
     """
-    cfg = _load()
+    cfg = load_config(("session.restore_cli",))
     listed = restore.list_sessions(cfg)
     return ctx.envelope(
         data={
@@ -1057,7 +1036,7 @@ def perform_restore(ctx) -> Envelope:
     the live library back to a session as well, which is the destructive act the
     flag exists to avoid, chosen by nobody.
     """
-    cfg = _load()
+    cfg = load_config(("session.restore_cli",))
     target = _restore_target(cfg, ctx.args)
     _refuse_pull_flags_without_the_pull(ctx.args)
     requested = ctx.args.session_id
@@ -1608,7 +1587,7 @@ def perform_bare_metal(ctx) -> Envelope:
     target, that it exists, that it is a filesystem of its own, that it holds no
     database, is the engine's, made once under its own name.
     """
-    cfg = _load()
+    cfg = load_config(("session.restore_cli",))
     report = recover_under_bare_metal_session(
         cfg,
         target=Path(ctx.args.target).expanduser().absolute(),

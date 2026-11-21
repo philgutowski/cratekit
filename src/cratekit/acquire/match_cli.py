@@ -72,10 +72,10 @@ from typing import Any, Callable, Mapping, Sequence
 
 from cratekit.acquire import match
 from cratekit.cli import output
-from cratekit.cli.output import Envelope, PendingHumanAction
+from cratekit.cli.output import Envelope, PendingHumanAction, load_config
 from cratekit.core import config, naming, review
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
-from cratekit.core.exit_codes import ExitCode, Remedy
+from cratekit.core.exit_codes import ExitCode
 
 #: The one adjudication surface this verb produces. Assigned once at module
 #: scope so the offer below reads as one idea rather than as a queue name typed
@@ -206,17 +206,8 @@ def _refuse(message: str, *steps: str, **detail: Any) -> CratekitError:
 
 
 def _load() -> config.Config:
-    """Read config, carrying the configuration failure's own remedy through."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise refuse(
-            "config-unusable",
-            str(exc),
-            remedy=Remedy(str(exc.remedy)),
-            origin=("acquire.match",),
-            detail={"kind": type(exc).__name__},
-        ) from exc
+    """Read config, turning a configuration failure into a typed cause."""
+    return load_config(("acquire.match",))
 
 
 # ---------------------------------------------------------------------------

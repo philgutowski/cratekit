@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.cli import output
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, digest_of, load_config
 from cratekit.core import (
     analysis_store,
     config,
@@ -40,7 +40,7 @@ from cratekit.core import (
     snapshot,
     tags,
 )
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
+from cratekit.core.cause import Cause, Outcome, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import routing_pass, trees
 
@@ -76,21 +76,6 @@ VALUE_FEMALE = "female vox"
 DEFAULT_VOCAL_THRESHOLD = 12.0
 
 STATE_KEY_VOCAL_CALIBRATION = "vocal_calibration"
-
-
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=_ORIGIN,
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def vocal_tag_values(
@@ -498,7 +483,7 @@ def build_mytags_vocals(parser, entry) -> None:
 
 
 def mytags_vocals(ctx) -> Envelope:
-    cfg = _load()
+    cfg = load_config(_ORIGIN)
     writing = bool(getattr(ctx.args, "apply", False))
     db = _open(cfg, writing=writing)
     try:

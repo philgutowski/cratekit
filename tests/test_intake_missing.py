@@ -28,7 +28,7 @@ from cratekit.acquire import cli as acquire_cli
 from cratekit.acquire import match_cli
 from cratekit.cli import jobs as cli_jobs
 from cratekit.cli import registry
-from cratekit.core import artifacts, config, jobs
+from cratekit.core import config, jobs
 from cratekit.core.cause import Cause, Remediation
 from cratekit.core.exit_codes import ExitCode
 from cratekit.deletion import stores
@@ -205,7 +205,7 @@ def test_a_track_held_under_a_headed_title_tag_is_owned_and_nothing_is_listed(
         artist="Aurora Bloom", title="08A - 124 - Sun Path",
     )
     job_id = finished(monkeypatch, [Track("201", "Aurora Bloom", "Sun Path")])
-    (report,) = artifacts.committed(intake_cli.ARTIFACTS, cfg, job_id)
+    (report,) = intake_cli.ARTIFACTS.committed(cfg, job_id)
     assert report["state"] == "owned", report
 
     code, envelope = missing(job_id)
@@ -236,7 +236,7 @@ def test_a_track_held_under_the_rows_isrc_is_owned_and_nothing_is_listed(
     heart = Track("301", "Malive", "Burning (Extended Mix)")
     heart.isrc = "USNRS2644532"
     job_id = finished(monkeypatch, [heart])
-    (report,) = artifacts.committed(intake_cli.ARTIFACTS, cfg, job_id)
+    (report,) = intake_cli.ARTIFACTS.committed(cfg, job_id)
     assert report["state"] == "owned", report
 
     code, envelope = missing(job_id)
@@ -262,7 +262,7 @@ def test_a_track_held_with_no_isrc_under_a_credited_list_is_owned_and_nothing_is
     heart = Track("302", "antraum", "Hyaku")
     heart.isrc = "USNRS2644599"
     job_id = finished(monkeypatch, [heart])
-    (report,) = artifacts.committed(intake_cli.ARTIFACTS, cfg, job_id)
+    (report,) = intake_cli.ARTIFACTS.committed(cfg, job_id)
     assert report["state"] == "owned", report
 
     code, envelope = missing(job_id)
@@ -834,7 +834,7 @@ def test_fewer_readable_reports_than_items_refuses_rather_than_listing_a_subset(
     with jobs.open_store() as store:
         job = jobs.get(store, job_id)
         item = jobs.items(store, job_id)[4]
-    artifacts.final_path(intake_cli.ARTIFACTS, jobs.frozen_config(job), job_id, item.ordinal).write_text("{")
+    intake_cli.ARTIFACTS.final_path(jobs.frozen_config(job), job_id, item.ordinal).write_text("{")
 
     code, envelope = missing(job_id)
 
@@ -850,7 +850,7 @@ def test_a_report_for_the_wrong_item_refuses_even_when_the_count_matches(cfg, li
     with jobs.open_store() as store:
         job = jobs.get(store, job_id)
         item = jobs.items(store, job_id)[4]
-    path = artifacts.final_path(intake_cli.ARTIFACTS, jobs.frozen_config(job), job_id, item.ordinal)
+    path = intake_cli.ARTIFACTS.final_path(jobs.frozen_config(job), job_id, item.ordinal)
     report = json.loads(path.read_text())
     report["item_id"] = "999"
     path.write_text(json.dumps(report))
@@ -866,7 +866,7 @@ def test_a_report_with_a_state_this_verb_cannot_read_refuses(cfg, library, monke
     with jobs.open_store() as store:
         job = jobs.get(store, job_id)
         item = jobs.items(store, job_id)[0]
-    path = artifacts.final_path(intake_cli.ARTIFACTS, jobs.frozen_config(job), job_id, item.ordinal)
+    path = intake_cli.ARTIFACTS.final_path(jobs.frozen_config(job), job_id, item.ordinal)
     report = json.loads(path.read_text())
     report["state"] = "needs_review"
     path.write_text(json.dumps(report))
@@ -929,7 +929,7 @@ def test_a_missing_row_from_no_provider_is_reported_unlisted_as_a_failing_check(
     with jobs.open_store() as store:
         job = jobs.get(store, job_id)
         item = jobs.items(store, job_id)[4]
-    path = artifacts.final_path(intake_cli.ARTIFACTS, jobs.frozen_config(job), job_id, item.ordinal)
+    path = intake_cli.ARTIFACTS.final_path(jobs.frozen_config(job), job_id, item.ordinal)
     report = json.loads(path.read_text())
     report["track"] = {**report["track"], "origin": "text", "ref": ""}
     path.write_text(json.dumps(report))
@@ -977,7 +977,7 @@ def test_missing_tracks_none_of_which_can_be_listed_write_the_unlisted_list_not_
     with jobs.open_store() as store:
         job = jobs.get(store, job_id)
         item = jobs.items(store, job_id)[0]
-    path = artifacts.final_path(intake_cli.ARTIFACTS, jobs.frozen_config(job), job_id, item.ordinal)
+    path = intake_cli.ARTIFACTS.final_path(jobs.frozen_config(job), job_id, item.ordinal)
     report = json.loads(path.read_text())
     report["track"] = {**report["track"], "origin": "text", "ref": ""}
     path.write_text(json.dumps(report))
@@ -1293,7 +1293,7 @@ def test_skip_failed_over_tracks_only_handed_on_writes_them_rather_than_refusing
     with jobs.open_store() as store:
         job = jobs.get(store, kept)
         item = jobs.items(store, kept)[0]
-    path = artifacts.final_path(intake_cli.ARTIFACTS, jobs.frozen_config(job), kept, item.ordinal)
+    path = intake_cli.ARTIFACTS.final_path(jobs.frozen_config(job), kept, item.ordinal)
     report = json.loads(path.read_text())
     report["track"] = {**report["track"], "origin": "text", "ref": ""}
     path.write_text(json.dumps(report))

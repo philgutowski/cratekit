@@ -97,9 +97,9 @@ from typing import Any, NoReturn
 # what an engine refusal's remediation is looked up in;
 # ``cratekit.core.exit_codes`` is the status vocabulary and the remedy tokens.
 from cratekit.cli import exit_codes as reservations
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import backup_facts, config, jobs
-from cratekit.core.cause import Cause, CratekitError, Remediation, rebuilt, refuse
+from cratekit.core.cause import Cause, CratekitError, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.modules.tools import backup
 
@@ -141,21 +141,6 @@ REHEARSAL = "backup-rehearsal"
 #: The ``progress`` key carrying each item's recorded outcome (R-349). Named in
 #: core because ``job show`` renders the same key without importing this module.
 OUTCOMES = backup_facts.OUTCOMES_FIELD
-
-
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("backup.cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def _engine_refusal(refusal: backup.Refusal, message: str, **detail: Any) -> CratekitError:
@@ -851,7 +836,7 @@ def backup_library(ctx) -> Envelope:
     volume, and the entry's two doctor checks are what tell a person about those
     before they type the verb.
     """
-    cfg = _load()
+    cfg = load_config(("backup.cli",))
     with jobs.open_store() as store:
         if ctx.args.job:
             # RECONCILE FIRST. A resume arrives after something stopped, and a
@@ -1254,7 +1239,7 @@ def perform_backup(
     cause that is retryable, which :func:`refusal_for` marks a transfer exit
     as. The success channel is :func:`handle`'s ``Produced``.
     """
-    cfg = _load() if cfg is None else cfg
+    cfg = load_config(("backup.cli",)) if cfg is None else cfg
     dry_run = bool(payload.get(DRY_RUN))
     try:
         plan = backup.plan_backup(

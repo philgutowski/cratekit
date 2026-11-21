@@ -55,10 +55,9 @@ import dataclasses
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import config, jobs, profiles
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
-from cratekit.core.exit_codes import Remedy
+from cratekit.core.cause import Cause, CratekitError, Outcome
 from cratekit.modules.outbound import source as outbound_source
 from cratekit.sync import sources
 
@@ -85,18 +84,8 @@ NOTHING_NEW = "nothing-new"
 
 
 def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("sync.cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
+    """Read config, turning a configuration failure into a typed cause."""
+    return load_config(("sync.cli",))
 
 
 def build_all(parser, entry) -> None:

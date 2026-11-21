@@ -36,9 +36,9 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from cratekit.cli import output
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, digest_of, load_config
 from cratekit.core import config, locations, naming, rb_writer, tags
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, refuse
+from cratekit.core.cause import Cause, CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.naming import AUDIO_EXTS, MarkerRule, NameBudget, NameSpec, NameTemplate
 from cratekit.write import trees
@@ -62,21 +62,6 @@ PLAN_SHOWN = 200
 #: Why a referenced item is held, carried on the item like the other held
 #: classes carry theirs, so the plan and the screen say the same thing.
 REFERENCED_WHY = "the rekordbox collection references it"
-
-
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("write.naming_cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def _template(cfg: config.Config) -> NameTemplate:
@@ -870,7 +855,7 @@ def _incomplete_cause(
 
 
 def name_apply(ctx) -> Envelope:
-    cfg = _load()
+    cfg = load_config(("write.naming_cli",))
     root = root_folder(ctx.args.root, cfg, verb="name apply")
     plan = _plan_for(root, cfg=cfg)
     spec = ctx.entry.gates[0]

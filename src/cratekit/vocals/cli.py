@@ -32,44 +32,13 @@ from typing import Any, Mapping
 from cratekit.analysis import artifacts
 from cratekit.analysis import cli as analysis_cli
 from cratekit.analysis import vocals as scoring
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config, no_job
 from cratekit.core import config, discovery, jobs, tags
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
+from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import Remedy
 
 _ORIGIN = ("vocals", "cli")
 
-
-
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=_ORIGIN,
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
-
-
-def _reported(store, job, extra: Mapping[str, Any] | None = None) -> dict:
-    progress = dict(jobs.progress(store, job.job_id))
-    if extra:
-        progress.update(extra)
-    return {
-        "job_id": job.job_id,
-        "state": str(job.state),
-        "cause": job.cause.to_json() if job.cause is not None else None,
-        "progress": progress,
-    }
-
-
-def _no_op(state: str) -> dict:
-    return {"job_id": "", "state": state, "cause": None, "progress": {}}
 
 
 def _folder_of(named: str) -> Path:
@@ -88,9 +57,9 @@ def _nothing_to_queue(
     ctx, folder: Path, extra: tuple[dict[str, str], ...] = (), *, state: str = "no-audio"
 ) -> Envelope:
     if folder.is_dir():
-        return ctx.envelope(data=_no_op(state), outcome=Outcome.NO_OP, warnings=extra)
+        return ctx.envelope(data=no_job(state), outcome=Outcome.NO_OP, warnings=extra)
     return ctx.envelope(
-        data=_no_op("folder-absent"),
+        data=no_job("folder-absent"),
         outcome=Outcome.NO_OP,
         warnings=(
             {
@@ -304,13 +273,13 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
         if unscored is not None:
             warnings = (*warnings, unscored)
         return ctx.envelope(
-            data=_reported(store, job, {"analysis": summary}),
+            data=jobs.reported(store, job, {"analysis": summary}),
             warnings=warnings,
         )
 
 
 def analyze_vocals(ctx) -> Envelope:
-    cfg = _load()
+    cfg = load_config(_ORIGIN)
     if ctx.args.job:
         return _resume(ctx, cfg)
     folder = _folder_of(ctx.args.folder)
@@ -341,7 +310,7 @@ def analyze_vocals(ctx) -> Envelope:
             cfg=cfg,
             item_ids=items,
         )
-        return ctx.envelope(data=_reported(store, job), warnings=extra)
+        return ctx.envelope(data=jobs.reported(store, job), warnings=extra)
 
 
 def handle(job, item, cfg) -> jobs.Produced:

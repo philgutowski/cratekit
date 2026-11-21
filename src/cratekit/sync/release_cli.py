@@ -40,7 +40,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, declared_gate, digest_of
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.sync import cli as sync_cli
@@ -89,13 +89,6 @@ def build(parser, entry) -> None:
         help="let go the held tracks of every twin",
     )
     parser.set_defaults(_handler=sync_release)
-
-
-def _gate(entry):
-    for spec in entry.gates:
-        if spec.name == APPROVE_GATE:
-            return spec
-    raise RuntimeError(f"registry entry {entry.name!r} declares no gate {APPROVE_GATE!r}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,7 +250,7 @@ def sync_release(ctx) -> Envelope:
                 }
             ],
         )
-    if ctx.gate.require(_gate(ctx.entry), plan=data, context=facts(planned)) != "approve":
+    if ctx.gate.require(declared_gate(ctx.entry, APPROVE_GATE), plan=data, context=facts(planned)) != "approve":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP)
     from cratekit.modules.outbound import pairs
 

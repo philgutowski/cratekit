@@ -58,10 +58,10 @@ from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence, TypeVar
 
 from cratekit.analysis import ahead, artifacts, detect, energy, light, vocals
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config, no_job
 from cratekit.core import config, discovery, jobs, naming, pool, tags
 from cratekit.core import drift as drift_words
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
+from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.naming import MarkerRule, NameBudget, NameSpec, NameTemplate
 from cratekit.modules import extras, foreground
@@ -116,51 +116,9 @@ DB_NOT_WRITTEN = {
 }
 
 
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("analysis.cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
-
-
 # ---------------------------------------------------------------------------
 # Reporting, the job_state/1 surface
 # ---------------------------------------------------------------------------
-
-
-def _reported(store, job, extra: Mapping[str, Any] | None = None) -> dict:
-    """One job as the ``job_state`` payload. ``extra`` rides UNDER ``progress``.
-
-    Both queued verbs declare ``job_state/1`` and ``cli.output`` closes that
-    surface, so a per verb detail at the top level is an undeclared field.
-    """
-    progress = dict(jobs.progress(store, job.job_id))
-    if extra:
-        progress.update(extra)
-    return {
-        "job_id": job.job_id,
-        "state": str(job.state),
-        "cause": job.cause.to_json() if job.cause is not None else None,
-        "progress": progress,
-    }
-
-
-def _no_op(state: str) -> dict:
-    """The honest zero: a folder with nothing to analyse queues nothing.
-
-    ``job_id`` is the empty string rather than null, because the declared
-    surface types it as a string (R-234). Queueing a job with no items would
-    drive straight to SUCCEEDED over work nothing did.
-    """
-    return {"job_id": "", "state": state, "cause": None, "progress": {}}
 
 
 def _folder_of(named: str) -> Path:
@@ -197,9 +155,9 @@ def _nothing_to_queue(ctx, folder: Path, extra: tuple[dict[str, str], ...] = ())
     a link is the one place the omission changes the answer completely.
     """
     if folder.is_dir():
-        return ctx.envelope(data=_no_op("no-audio"), outcome=Outcome.NO_OP, warnings=extra)
+        return ctx.envelope(data=no_job("no-audio"), outcome=Outcome.NO_OP, warnings=extra)
     return ctx.envelope(
-        data=_no_op("folder-absent"),
+        data=no_job("folder-absent"),
         outcome=Outcome.NO_OP,
         warnings=(
             {
@@ -553,7 +511,7 @@ def _resume(ctx, cfg: config.Config, job_id: str) -> Envelope:
             if unscored is not None:
                 warnings = (*warnings, unscored)
         return ctx.envelope(
-            data=_reported(store, job, {"analysis": summary}),
+            data=jobs.reported(store, job, {"analysis": summary}),
             warnings=warnings,
         )
 
@@ -571,7 +529,7 @@ def _settle(ctx, cfg: config.Config, job, argv: list[str]) -> Envelope:
 
 
 def analyze_run(ctx) -> Envelope:
-    cfg = _load()
+    cfg = load_config(("analysis.cli",))
     if ctx.args.job:
         return _resume(ctx, cfg, ctx.args.job)
     folder = _folder_of(ctx.args.folder)
@@ -592,7 +550,7 @@ def analyze_run(ctx) -> Envelope:
             item_ids=items,
         )
         if foreground.queue_only(ctx.args):
-            return ctx.envelope(data=_reported(store, job))
+            return ctx.envelope(data=jobs.reported(store, job))
     return _settle(ctx, cfg, job, analyze_argv(job))
 
 
@@ -1003,7 +961,7 @@ def _calibration_or_refuse(cfg: config.Config) -> energy.Calibration:
 
 
 def analyze_restamp(ctx) -> Envelope:
-    cfg = _load()
+    cfg = load_config(("analysis.cli",))
     if ctx.args.job:
         return _resume(ctx, cfg, ctx.args.job)
     folder = _folder_of(ctx.args.folder)
@@ -1032,7 +990,7 @@ def analyze_restamp(ctx) -> Envelope:
         )
         if foreground.queue_only(ctx.args):
             return ctx.envelope(
-                data=_reported(store, job), warnings=(DB_NOT_WRITTEN, *extra)
+                data=jobs.reported(store, job), warnings=(DB_NOT_WRITTEN, *extra)
             )
     # NOT ``extra`` AGAIN: the resume reads the walk's warnings back off the
     # payload this queue froze, and says the database was not written itself.
@@ -1604,7 +1562,7 @@ def analyze_calibrate(ctx) -> Envelope:
     reads every file under the walk. There is no feature cache and no resume: a
     killed calibrate wrote nothing, because each half writes once at its end.
     """
-    cfg = _load()
+    cfg = load_config(("analysis.cli",))
     if ctx.args.vocal_cut is not None:
         return _set_vocal_cut(ctx, cfg, ctx.args.vocal_cut)
     if not ctx.args.folder:

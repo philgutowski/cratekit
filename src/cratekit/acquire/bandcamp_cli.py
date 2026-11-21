@@ -496,10 +496,6 @@ def plan(
     return tuple(planned)
 
 
-def _load() -> config.Config:
-    return match_cli._load()
-
-
 @dataclass(frozen=True, slots=True)
 class Asked:
     """What one plan asked and was answered: the account, the plan, and what it read."""
@@ -667,7 +663,7 @@ def fetch_command(sellers: frozenset[str]) -> str:
 
 def acquire_bandcamp(ctx) -> Envelope:
     """List every purchase with its disposition. Writes nothing."""
-    cfg = _load()
+    cfg = match_cli._load()
     asked = _planned(cfg, ctx.args.seller, ORIGIN)
     found, planned, sellers = asked.found, asked.planned, asked.sellers
     counts = _count(planned)
@@ -798,15 +794,6 @@ def _land_warnings(job) -> tuple[dict[str, str], ...]:
     )
 
 
-def _reported(store, job) -> dict[str, Any]:
-    return {
-        "job_id": job.job_id,
-        "state": str(job.state),
-        "cause": job.cause.to_json() if job.cause is not None else None,
-        "progress": jobs.progress(store, job.job_id),
-    }
-
-
 def frozen_release(planned: Planned) -> dict[str, Any]:
     """What one job item IS. Everything the worker needs but the signed link."""
     purchase = planned.purchase
@@ -882,9 +869,9 @@ def acquire_bandcamp_fetch(ctx) -> Envelope:
                 job = jobs.get(store, job.job_id)
             jobs.raise_for_state(job)
             return ctx.envelope(
-                data=_reported(store, job), warnings=(*warnings, *_land_warnings(job))
+                data=jobs.reported(store, job), warnings=(*warnings, *_land_warnings(job))
             )
-    cfg = _load()
+    cfg = match_cli._load()
     batch = staging_batch(ctx.args.batch)
     asked = _planned(cfg, ctx.args.seller, FETCH_ORIGIN)
     found, planned, library = asked.found, asked.planned, asked.library
@@ -920,7 +907,7 @@ def acquire_bandcamp_fetch(ctx) -> Envelope:
         job = jobs.get(store, job.job_id)
         jobs.raise_for_state(job)
         return ctx.envelope(
-            data=_reported(store, job), warnings=(*warnings, *drift, *_land_warnings(job))
+            data=jobs.reported(store, job), warnings=(*warnings, *drift, *_land_warnings(job))
         )
 
 

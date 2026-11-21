@@ -448,7 +448,7 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
     monkeypatch.setattr(active_taxonomy, "load", declared)
     monkeypatch.setattr(rebuild, "left_behind", left_behind)
     monkeypatch.setattr(rebuild, "left_behind_record", lambda entry: {"kept": entry})
-    monkeypatch.setattr(routing_cli.artifacts, "produced", produced)
+    monkeypatch.setattr(routing_cli.jobs.Artifacts, "produced", produced)
     item = jobs.Item(job_id="j", item_id=TREE_ID, ordinal=0, state=jobs.ItemState.PENDING)
     assert rebuild_verb.handle(object(), item, frozen) is None
     # WHAT THE ENGINE MEASURED BECOMES THE RESORT ITEM'S REPORT (R-312), handed

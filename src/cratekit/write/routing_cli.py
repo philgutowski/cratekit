@@ -52,11 +52,17 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from cratekit.cli.output import Envelope, PendingHumanAction, digest_of, new_pending_id
+from cratekit.cli.output import (
+    Envelope,
+    PendingHumanAction,
+    digest_of,
+    load_config,
+    new_pending_id,
+    no_job,
+)
 from cratekit.core import (
     active_taxonomy,
     analysis_store,
-    artifacts,
     config,
     convergence,
     jobs,
@@ -67,7 +73,7 @@ from cratekit.core import (
     taxonomy,
     tree_registry,
 )
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
+from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.write import metadata_cli, rbxml, rebuild, routing_pass, trees
 
@@ -99,7 +105,7 @@ TREE_NOT_DERIVED = "tree-not-derived"
 #: killed process and reaches a resume that ends in a refusal. The first version
 #: of this kept it in a dict in memory, and the built in review named the two
 #: runs that loses: the one a partial failure ends, and the one that died.
-RESORT_ARTIFACTS = artifacts.Location(final="resort-artifacts", staging="resort-staging")
+RESORT_ARTIFACTS = jobs.Artifacts(final="resort-artifacts", staging="resort-staging")
 
 #: The warning an export sweep gives for the star ratings it did not plan
 #: (R-688). Every row of a collection export is one rekordbox already holds,
@@ -119,21 +125,6 @@ def _rating_not_landable(owed: int) -> list[dict[str, str]]:
         f"already holds, an import keeps the database's rating on such a row, "
         f"and this build writes no rating to the database",
     }]
-
-
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("routing_cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def _plan(items: list[dict[str, str]], *, kind: str, **totals: Any) -> dict:
@@ -195,12 +186,6 @@ def _passed_over(
             f"taxonomy derives nothing for it",
         }
     ]
-
-
-def _no_op(state: str, **progress: Any) -> dict[str, Any]:
-    """A run that correctly queued nothing. ``job_id`` is "" because the schema
-    types it as a string (R-234)."""
-    return {"job_id": "", "state": state, "cause": None, "progress": dict(progress)}
 
 
 def _inbox_files(folder: Path) -> list[Path]:
@@ -531,15 +516,6 @@ def _all_settled(cfg: config.Config, session_id: str) -> bool:
         if entry.session_id == session_id and entry.state is routing_pass.TrackState.ROUTED
     ]
     return bool(routed) and not ledger.outstanding(session_id)
-
-
-def _reported(store, job) -> dict:
-    return {
-        "job_id": job.job_id,
-        "state": str(job.state),
-        "cause": job.cause.to_json() if job.cause is not None else None,
-        "progress": jobs.progress(store, job.job_id),
-    }
 
 
 def build_inbox(parser, entry) -> None:
@@ -1601,7 +1577,7 @@ def route_inbox(ctx) -> Envelope:
     WITH ``--export`` THE INTAKE IS THE EXPORT'S, not the disk folder, and the
     write is a new file rather than the database. See :func:`route_inbox_export`.
     """
-    cfg = _load()
+    cfg = load_config(("routing_cli",))
     if ctx.args.export:
         return route_inbox_export(ctx, cfg, Path(ctx.args.export))
     # ONE READ PER VERB (R-685): the declaration the plan is derived from is
@@ -1924,7 +1900,7 @@ def route_unplaced(ctx) -> Envelope:
     no database write. Its placements are nested membership in a new file, which
     no import lands. See :func:`route_unplaced_export`.
     """
-    cfg = _load()
+    cfg = load_config(("routing_cli",))
     if ctx.args.export:
         return route_unplaced_export(ctx, cfg, Path(ctx.args.export))
     items, totals = unplaced_items(cfg)
@@ -2000,7 +1976,7 @@ def _resume(ctx, store, job_id: str) -> Envelope:
         pinned=_resort_pin(payload),
     )
     if option != "apply":
-        return ctx.envelope(data=_no_op("declined"), outcome=Outcome.NO_OP)
+        return ctx.envelope(data=no_job("declined"), outcome=Outcome.NO_OP)
     warnings: tuple[dict[str, str], ...] = ()
     frozen: config.Config | None = None
     try:
@@ -2056,7 +2032,7 @@ def _resume(ctx, store, job_id: str) -> Envelope:
         if frozen is None:
             raise
         raise _with_left_behind(failed, frozen, job.job_id) from failed
-    return ctx.envelope(data=_reported(store, job), warnings=warnings)
+    return ctx.envelope(data=jobs.reported(store, job), warnings=warnings)
 
 
 def _resort_gate(ctx):
@@ -2123,7 +2099,7 @@ def route_resort(ctx) -> Envelope:
     would be walked to SUCCEEDED over a library nothing changed. A library
     with no routed native tree reads nothing and asks over nothing.
     """
-    cfg = _load()
+    cfg = load_config(("routing_cli",))
     if ctx.args.job:
         with jobs.open_store() as store:
             return _resume(ctx, store, ctx.args.job)
@@ -2154,19 +2130,19 @@ def route_resort(ctx) -> Envelope:
         pinned=_resort_pin(payload),
     )
     if option != "apply":
-        return ctx.envelope(data=_no_op("declined"), outcome=Outcome.NO_OP, warnings=warnings)
+        return ctx.envelope(data=no_job("declined"), outcome=Outcome.NO_OP, warnings=warnings)
     if not routed:
         native = _native_trees(entries)
         return ctx.envelope(
             # A NATIVE TREE THE TAXONOMY DOES NOT DERIVE IS STILL NATIVE, so the
             # count is read and the state says which zero.
-            data=_no_op("no-derivable-tree" if native else "no-native-tree", native=len(native)),
+            data=no_job("no-derivable-tree" if native else "no-native-tree", native=len(native)),
             outcome=Outcome.NO_OP,
             warnings=warnings,
         )
     if not adds:
         return ctx.envelope(
-            data=_no_op("nothing-to-add", trees=len(routed)),
+            data=no_job("nothing-to-add", trees=len(routed)),
             outcome=Outcome.NO_OP,
             warnings=warnings,
         )
@@ -2189,7 +2165,7 @@ def route_resort(ctx) -> Envelope:
             item_ids=tuple(sorted({row["tree"] for row in adds})),
             cfg=cfg,
         )
-        return ctx.envelope(data=_reported(store, job), warnings=warnings)
+        return ctx.envelope(data=jobs.reported(store, job), warnings=warnings)
 
 
 def handle_resort(job, item, cfg) -> None:
@@ -2232,8 +2208,7 @@ def handle_resort(job, item, cfg) -> None:
         ],
     )
     left = rebuild.left_behind(report.after, active_taxonomy.load(cfg))
-    return artifacts.produced(
-        RESORT_ARTIFACTS,
+    return RESORT_ARTIFACTS.produced(
         cfg,
         job,
         item,
@@ -2256,7 +2231,7 @@ def _left_behind(cfg: config.Config, job_id: str) -> tuple[list[dict[str, Any]],
     """
     records = [
         entry
-        for report in artifacts.committed(RESORT_ARTIFACTS, cfg, job_id)
+        for report in RESORT_ARTIFACTS.committed(cfg, job_id)
         for entry in report.get("left_behind") or ()
     ]
     return records, str(jobs.store_dir(cfg) / RESORT_ARTIFACTS.final / job_id)
@@ -2277,7 +2252,7 @@ def _due_again_warnings(cfg: config.Config, job_id: str) -> list[dict[str, str]]
     keep refusing until the next resort files the rest.
     """
     due: dict[str, int] = {}
-    for report in artifacts.committed(RESORT_ARTIFACTS, cfg, job_id):
+    for report in RESORT_ARTIFACTS.committed(cfg, job_id):
         count = int(report.get("due_again") or 0)
         if count:
             due[str(report.get("tree_id"))] = due.get(str(report.get("tree_id")), 0) + count
@@ -2332,7 +2307,7 @@ def route_pending(ctx) -> Envelope:
     tree it is a no-op too, and says so. When a named session's outstanding
     set becomes empty, the run closes through :func:`_close_run`.
     """
-    cfg = _load()
+    cfg = load_config(("routing_cli",))
     ledger = routing_pass.read(cfg)
     wanted = ctx.args.session
     session_ids = (

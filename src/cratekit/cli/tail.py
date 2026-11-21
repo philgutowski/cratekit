@@ -83,6 +83,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from cratekit.cli import gates, registry, render
+from cratekit.cli.output import load_config
 from cratekit.core import config, drift, jobs, profiles, tags
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
@@ -218,22 +219,6 @@ def dispatch(argv: Sequence[str]) -> Child:
     except ValueError:
         document = {}
     return code, document if isinstance(document, dict) else {}
-
-
-def load_config(origin: tuple[str, ...]) -> config.Config:
-    """The configuration, or the refusal a person can act on."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=origin,
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 # ---------------------------------------------------------------------------

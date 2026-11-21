@@ -39,10 +39,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, digest_of, load_config
 from cratekit.core import active_taxonomy, config, rb_writer, taxonomy, taxonomy_word
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
-from cratekit.core.exit_codes import Remedy
+from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.tagging import guess, suggest
 
 #: The files that carry no genre and that nothing voted for.
@@ -70,22 +69,6 @@ OFF_TAXONOMY = "tag-guess-off-taxonomy"
 _NAMED = 5
 
 _ORIGIN = ("tagging", "guess_cli")
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=_ORIGIN,
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def build(parser, entry) -> None:
@@ -329,7 +312,7 @@ def _advisories(found: guess.GuessPlan, declared: taxonomy.Taxonomy | None = Non
 
 def tag_guess(ctx) -> Envelope:
     """Read the folder and what votes for it, guess, write, and report."""
-    cfg = _load()
+    cfg = load_config(_ORIGIN)
     declared = active_taxonomy.load(cfg)
     root = Path(ctx.args.folder).expanduser().absolute()
     if not root.is_dir():

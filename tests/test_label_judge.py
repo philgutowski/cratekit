@@ -28,7 +28,7 @@ import pytest
 
 from cratekit import cli
 from cratekit.cli import handlers, registry
-from cratekit.core import active_taxonomy, artifacts, config, jobs, review, tombstone
+from cratekit.core import active_taxonomy, config, jobs, review, tombstone
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.core.review import DecisionStore, Queue
@@ -145,7 +145,7 @@ def item_of(cfg: config.Config, release_id: str) -> review.Item:
 def reports(cfg: config.Config, job_id: str) -> dict[str, dict]:
     return {
         str(report["release_id"]): report
-        for report in artifacts.committed(judge_cli.ARTIFACTS, cfg, job_id)
+        for report in judge_cli.ARTIFACTS.committed(cfg, job_id)
     }
 
 
@@ -923,7 +923,7 @@ def test_an_item_that_names_another_items_release_is_not_read_and_stamps_only_it
     assert mislabelled[genre_gate.GATE_FIELD] == "not-judged"
     wrong = [
         report
-        for report in artifacts.committed(judge_cli.ARTIFACTS, installed, job_id)
+        for report in judge_cli.ARTIFACTS.committed(installed, job_id)
         if report["item"] == item_id
     ]
     assert [report["outcome"] for report in wrong] == ["not-judged"]

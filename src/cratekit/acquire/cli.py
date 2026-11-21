@@ -67,9 +67,9 @@ from cratekit.acquire.adapter import (
     TrackRequest,
     TrackResult,
 )
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config, no_job
 from cratekit.core import config, jobs, naming, preflight
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, refuse
+from cratekit.core.cause import Cause, CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 
 # ---------------------------------------------------------------------------
@@ -100,30 +100,6 @@ UNDECIDED_EXTS: frozenset[str] = frozenset(naming.AUDIO_EXTS) - LOSSLESS_EXTS - 
 #: for the reason :mod:`cratekit.cli.review` names its own: a consumer reading an
 #: unlabelled queue field has no way to tell which set it is looking at.
 AUDIT_QUEUE = "acquire.lossless"
-
-
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("acquire.cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
-
-
-def _reported(store, job) -> dict:
-    return {
-        "job_id": job.job_id,
-        "state": str(job.state),
-        "cause": job.cause.to_json() if job.cause is not None else None,
-        "progress": jobs.progress(store, job.job_id),
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -273,10 +249,6 @@ def frozen_tracks(wanted: tuple[match.Wanted, ...]) -> dict[str, dict[str, str |
     return frozen
 
 
-def _no_op(state: str) -> dict[str, Any]:
-    return {"job_id": "", "state": state, "cause": None, "progress": {}}
-
-
 def _same_list_or_refuse(named: str | None, job, handler_key: str) -> None:
     """Refuse a resume that names a list other than the one the job froze.
 
@@ -366,7 +338,7 @@ def acquire_download(ctx) -> Envelope:
             "name the list of tracks to acquire",
             "or continue an acquisition already queued with --job JOB_ID",
         )
-    cfg = _load()
+    cfg = load_config(("acquire.cli",))
     with jobs.open_store() as store:
         if ctx.args.job:
             # CHECKED BEFORE THE SWEEP AND THE RECONCILE, so a refused command
@@ -377,7 +349,7 @@ def acquire_download(ctx) -> Envelope:
         sweep_staging(Path(cfg.paths.download_staging), store)
         if ctx.args.job:
             job, warnings = drive_queued(ctx, store, ctx.args.job)
-            return ctx.envelope(data=_reported(store, job), warnings=warnings)
+            return ctx.envelope(data=jobs.reported(store, job), warnings=warnings)
         # READ FROM THE PATH AS TYPED, freeze it absolute. ``read_list`` refuses a
         # pasted URL by matching a scheme at the front of the string, and
         # ``expanduser().absolute()`` turns ``https://...`` into a relative path
@@ -386,8 +358,8 @@ def acquire_download(ctx) -> Envelope:
         # playlist into a list document for a file-not-found over a mangled path.
         job = queue_list(store, cfg, Path(str(ctx.args.list)), handler_key=ctx.entry.handler_key)
         if job is None:
-            return ctx.envelope(data=_no_op("no-tracks"), outcome=Outcome.NO_OP)
-        return ctx.envelope(data=_reported(store, job))
+            return ctx.envelope(data=no_job("no-tracks"), outcome=Outcome.NO_OP)
+        return ctx.envelope(data=jobs.reported(store, job))
 
 
 def queue_list(
@@ -1134,7 +1106,7 @@ def acquire_audit(ctx) -> Envelope:
     the reason :mod:`cratekit.cli.review` gives: reporting the page size as the
     backlog is how a person concludes they are finished.
     """
-    cfg = _load()
+    cfg = load_config(("acquire.cli",))
     found = findings(
         cfg.library.root / cfg.library.music_dir,
         policy=LosslessPolicy(cfg.acquisition.lossless_policy),
