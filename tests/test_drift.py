@@ -106,6 +106,32 @@ def test_the_normal_settings_are_the_visit_standard_the_sync_stop_prints():
     assert "Analysis Mode Dynamic" in drift.DYNAMIC_SETTINGS
 
 
+def test_the_sync_stop_offers_the_auto_analysis_path_after_the_selections_it_stands_in_for():
+    """U319: one wording, said after the Analyze Tracks selections its "as above" names."""
+    from cratekit.cli import tail
+    from cratekit.intake import land_cli
+
+    assert tail.AUTO_ANALYSIS_STEP == land_cli.AUTO_ANALYSIS_STEP, "one wording, two spellings"
+    step = tail.REKORDBOX_STEPS[0]
+    assert step.endswith(f"; {land_cli.AUTO_ANALYSIS_STEP}")
+    assert step.index(drift.DYNAMIC_SETTINGS) < step.index(land_cli.AUTO_ANALYSIS_STEP)
+
+
+def test_the_auto_analysis_step_cancels_on_any_other_field_and_leaves_dyn_to_dynamic():
+    from cratekit.intake import land_cli
+
+    step = land_cli.AUTO_ANALYSIS_STEP
+    assert step == (
+        "or, with Auto Analysis on, open rekordbox with its window in front and press OK on "
+        "its Auto Analysis dialog only when it shows every one of those Normal settings "
+        "with Vocal and CUE off and no field set otherwise, else Cancel it and select as "
+        "above; Auto Analysis runs on its preference's own mode, so the rows carrying the "
+        f"dyn My Tag still take Analyze Tracks with {drift.DYNAMIC_SETTINGS}"
+    )
+    assert drift.NORMAL_SETTINGS == (
+        "Analysis Mode Normal, high precision off, BPM/Grid, Phrase and KEY on"
+    ), "the standard is unchanged"
+
 # ---------------------------------------------------------------------------
 # The cut is configuration
 # ---------------------------------------------------------------------------

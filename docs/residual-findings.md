@@ -54234,3 +54234,76 @@ unit's own table, `docs/mutation/u317.md`, measures its 25 rows against the
 whole suite and names its own zeros.
 
 **Closes when:** a test pins each. Ledger only.
+
+---
+
+## R-1764. The Auto Analysis path's wait can reach its count on rows outside INBOX / Analyze and end before the batch is analysed
+
+**Found:** at the review of #887, U319, 2026-11-21.
+
+**The mechanism.** Auto Analysis analyses every row rekordbox finds not
+analysed, not only the batch, and the skill's wait counts every
+`ANLZ0000.DAT` newer than the marker. Driven on a simulated store: seven
+files for other rows and none for the batch print `done: 7 of 7`. The skill
+says the count can pass `expected` and leans on step 7, whose check then
+exits 12 and stops the visit, so nothing is cleared wrongly. A related
+shape: a row with `Analysed` 1 and no analysis path judges as waiting and is
+counted in `data.summary.not_analysed`, which Auto Analysis may leave alone,
+so a wait on it stalls one short. One candidate producer driven, a native
+landing, which writes `Analysed` 0 and does not produce it.
+
+**Measured cost.** A visit that stops at waiting and is run again, not a
+false report. Reachability on the live library unmeasured.
+
+**Closes when:** `crate analyze check` can say before the launch how many
+rows of the whole collection wait (its `unanalysed` scope is read today only
+when INBOX / Analyze is empty), and the skill waits for that count. Ledger
+only: no data is lost and no report is false.
+
+---
+
+## R-1765. The Auto Analysis launch dialog's field list and whether an Auto Analysis run sets cues are unmeasured, so the visit's short path cancels until a visit records them
+
+**Found:** at the review of #887, U319, 2026-11-21.
+
+**The mechanism.** Sitting 101 recorded the launch dialog only as "showing
+the analysis fields (KEY unticked, as set)". The Analysis preference it read
+back holds nine fields and no CUE. The `rekordbox-visit` skill reads every
+field of its table from the dialog and holds a table field the dialog does
+not show as unread and not equal, CUE included, so if the dialog mirrors the
+preference every visit with Auto Analysis on pays a Cancel and thirty
+seconds before the Analyze Tracks path. That is the conservative call: an
+Auto Analysis run that set cue points would be a run on other fields, and
+nothing has measured that it does not. Also unmeasured: what Cancel does
+with Auto Analysis on, and how long a launch in front takes to raise the
+dialog (the skill waits thirty seconds).
+
+**Measured cost.** None while Auto Analysis stays off, which it is. Once on,
+the short path never runs until this is measured. Not driven: no rekordbox
+here.
+
+**Closes when:** an attended visit with Auto Analysis on records the
+dialog's exact fields, whether Cancel stops the run, and the cue rows of the
+rows an Auto Analysis run analysed, read on a disposable copy; then a card
+lets an unshown CUE pass if the run sets none. Ledger only: it closes at an
+attended sitting, which the owed attended card carries.
+
+---
+
+## R-1766. The rekordbox visit skill's Auto Analysis rules are pinned as sentences, so a rewording that keeps a rule passes only if it keeps the words
+
+**Found:** at the review of #887, U319, 2026-11-21.
+
+**The mechanism.** `tests/test_rekordbox_visit_skill.py` holds each new
+rule of the Auto Analysis path by its sentence, the order of its parts and
+the values it reads from the owning modules. Round one's thirteen surviving
+text mutations are now each pinned, but the forbidden word list ("tick Auto
+Analysis", "turn Auto Analysis on", "untick") forbids a phrasing, not the
+act, so a step telling a session to change the preference in other words
+passes. The skill is procedure text no test can drive.
+
+**Measured cost.** None to a person today; a later edit could reword a rule
+away with the suite green.
+
+**Closes when:** a reader of the skill's steps as data replaces the sentence
+pins, or a card decides sentence pins are the guard. Ledger only.

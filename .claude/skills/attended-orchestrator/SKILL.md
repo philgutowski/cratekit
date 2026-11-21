@@ -228,7 +228,10 @@ asks for with `crate backup run`, each after both processes are confirmed
 gone; hand the table by table comparison of disposable copies to a free
 worker; put the library back as it was the next time rekordbox is open; and
 record the shape as a `docs/solutions/` entry and a sitting line, and in the
-waiting unit's brief under a heading naming the settling card.
+waiting unit's brief under a heading naming the settling card. If rekordbox
+raises its Auto Analysis dialog on a launch that is not the visit, answer it
+Cancel and record it, so nothing is analysed outside the visit's own read of
+its fields.
 
 **One sync pass and its visit (the orchestrator).** The `crate-sync` skill
 runs it end to end, and the `rekordbox-visit` skill is its visit, on the
@@ -238,7 +241,8 @@ resolve (a review answered by the recommendation it shows, one with none
 left open), refusal and tag paths from the pass's JSON, album cover and
 timing reads if an album of the size a card asks for lands, and any
 rekordbox probe a card owes, done inside the visit in place of its first
-Analyze and followed by the visit as that skill writes it. A probe that
+analysis, by either of its paths, and followed by the visit as that skill
+writes it. A probe that
 changes a rekordbox setting puts it back to Phillip's standard afterwards,
 and a screenshot confirms it. If the pass lands nothing, record that and
 leave the cards that needed files open, saying so.
