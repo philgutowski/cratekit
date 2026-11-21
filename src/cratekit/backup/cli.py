@@ -630,8 +630,8 @@ def build(parser, entry) -> None:
             "under a tenth of what the last backup held, because that is what an "
             "unmounted or lost volume leaves, and mirroring it would move the "
             "whole remote into the archive. It passes only a root that still "
-            "carries the library's own record of its backups, and never one on "
-            "another volume than the library's"
+            "carries the library's own record of a completed files backup, and "
+            "never one on another volume than the library's"
         ),
     )
     parser.set_defaults(_handler=backup_library)

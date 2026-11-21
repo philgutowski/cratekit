@@ -611,10 +611,10 @@ never removed before a transfer, unlike the backup record). A backup refuses
 `library-root-unproven` when the root holds none of the library's files while
 the census, or failing it the record or the library's files fact, says a
 backup held some, or under a tenth of the census; `library-root-foreign` when
-the recorded volume identity is read and is not the root's. A root with only
-its state folder and no backup of it on record is a new library, mirrored
-with rclone told to delete nothing from the remote. `--library-emptied` passes
-the first only at a root still carrying the library's own fact file, and never
+the recorded volume identity is read and is not the root's. A root with
+only its state folder, a new library or one emptied before, is mirrored with
+rclone told to delete nothing from the remote. `--library-emptied` passes the
+first only at a root still carrying the library's own files fact, and never
 the second.
 
 ### Journal ledger

@@ -1077,33 +1077,20 @@ def _plan_files(
             detail=unproven,
         )
     proof = {"root_dev": root_dev, "held": held}
+    # A ROOT HOLDING NONE OF THE LIBRARY'S FILES IS MIRRORED DELETING NOTHING,
+    # whatever is on record, unless the flag says it was emptied on purpose. A
+    # new library's first backup has nothing to delete, and a census of none
+    # only says the last completed backup held nothing: a later run that failed
+    # part way can have sent files the census never counted, and a full sync
+    # over a lost volume's mount point would archive them. A skip runs no
+    # command and a quick run archives only paths the record held, so both are
+    # planned as any other.
+    move_nothing = held == 0 and not emptied
     if new_library:
-        # A NEW LIBRARY, holding its state folder and none of its files, with
-        # no census, record or fact saying a backup was ever kept. The plan
-        # cannot tell it from a lost volume's mount point a stray state folder
-        # landed in on an installation that remembers nothing, so it runs as a
-        # full check rclone itself will let delete nothing from the mirror.
-        # Once it completes, the census says the library held nothing, and the
-        # next run is planned as any other.
-        return PortionPlan(
-            portion=backup_facts.Portion.FILES,
-            kind=KIND_FULL,
-            why=(
-                "the library holds no file outside its state folder and no "
-                "backup of it is on record, so it runs as a new library's "
-                "first backup, which removes nothing from the mirror"
-            ),
-            commands=_full_commands(
-                cfg,
-                rclone=rclone,
-                stamp=stamp,
-                archive_keep=archive_keep,
-                full=full,
-                move_nothing=True,
-            ),
-            detail=_rotation_detail(archive_keep),
-            basis=before,
-            **proof,
+        why = (
+            "the library holds no file outside its state folder and no "
+            "backup of it is on record, so it runs as a new library's "
+            "first backup, which deletes nothing from the mirror"
         )
     if not why and before is not None:
         found = backup_record.difference(
@@ -1148,7 +1135,12 @@ def _plan_files(
         kind=KIND_FULL,
         why=why,
         commands=_full_commands(
-            cfg, rclone=rclone, stamp=stamp, archive_keep=archive_keep, full=full
+            cfg,
+            rclone=rclone,
+            stamp=stamp,
+            archive_keep=archive_keep,
+            full=full,
+            move_nothing=move_nothing,
         ),
         detail=_rotation_detail(archive_keep),
         basis=before,
@@ -1237,10 +1229,13 @@ def _unproven(
     and ``held`` how many outside the library's own state folder.
 
     ``emptied`` passes the census and nothing else: the root must still carry
-    the library's own record of its backups, the fact file every completed run
-    leaves in its state folder. A library its owner emptied keeps it; the mount
-    point a lost volume leaves does not, so a queued job frozen with the flag
-    and driven after the volume went refuses as a plain ask does.
+    the library's own fact of a completed FILES backup, which every completed
+    files run leaves in its state folder. A library its owner emptied keeps
+    it; the mount point a lost volume leaves does not, so a queued job frozen
+    with the flag and driven after the volume went refuses as a plain ask does.
+    The fact file alone proves nothing: the database item of the same job
+    writes one wherever the root is when the database lives outside it, with
+    a database fact and no files fact.
     """
     root = cfg.library.root
     remedy = (
@@ -1248,14 +1243,20 @@ def _unproven(
         f"emptied on purpose, back it up with {EMPTIED_FLAG}"
     )
     if emptied:
-        if backup_facts.path_for(cfg).is_file():
+        try:
+            carried = backup_facts.read_facts(cfg).get(backup_facts.Portion.FILES)
+        except backup_facts.BackupFactsUnreadable:
+            carried = None
+        if carried is not None:
             return "", False
         return (
             f"the backup was asked with {EMPTIED_FLAG} and the library root "
-            f"{root} does not carry the library's own record of its backups, "
-            f"which a library emptied by its owner keeps in its state folder and "
-            f"the folder an unmounted volume leaves does not, so nothing was sent "
-            f"or archived. Mount the library's volume and back up again"
+            f"{root} does not carry the library's own record of a completed "
+            f"files backup, which a library emptied by its owner keeps in its "
+            f"state folder and the folder an unmounted volume leaves does not, "
+            f"so nothing was sent or archived. Mount the library's volume and "
+            f"back up again; a library emptied before its first completed "
+            f"backup needs no flag"
         ), False
     history = _history(cfg)
     if not anything:

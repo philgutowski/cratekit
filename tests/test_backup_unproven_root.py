@@ -758,3 +758,89 @@ def test_a_walk_that_refused_is_counted_so_the_floor_still_holds(cfg, real_rclon
     _write(cfg.library.root / "stray.txt", b"stray")
     plan = backup.plan_backup(cfg, now=MOMENT, only=FILES, settings_dirs=())
     assert plan.portion(FILES).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
+
+
+# ---------------------------------------------------------------------------
+# Round two's findings, driven
+# ---------------------------------------------------------------------------
+
+
+def _a_database_fact_at_the_root(cfg) -> None:
+    """What a refused job's database item leaves at a mount point when the
+    database lives outside the root: a fact file holding a database fact."""
+    backup_facts.record(
+        cfg,
+        DATABASE,
+        completed_at=MOMENT,
+        destination=str(cfg.backup.db_dest_root),
+        kind=backup_facts.KIND_SNAPSHOT,
+    )
+
+
+def test_a_census_of_none_still_deletes_nothing_from_a_mirror_holding_files(
+    cfg, real_rclone, tmp_path
+):
+    """Round two's B3: a library first backed up holding nothing, then a mirror
+    that failed part way after its tracks arrived, then the volume lost. The
+    census says none, so nothing refuses, and the full sync must still delete
+    nothing from the mirror it would empty."""
+    _write(config.library_state_dir(cfg) / "taxonomy.toml", b"[taxonomy]")
+    _, first = _backup(cfg, at=MOMENT)
+    assert _portion(first, FILES).ran
+    assert backup_record.read_census(cfg) == backup_record.Census(files=0)
+
+    # The failed run's part: tracks on the mirror the census never counted,
+    # and the record it removed before sending.
+    for rel, data in MUSIC.items():
+        _write(_remote(tmp_path) / "mirror" / rel, data)
+    backup_record.invalidate(backup_record.manifest_path())
+    remote = _remote_state(tmp_path)
+
+    away = _unmount(cfg, tmp_path)
+    (config.library_state_dir(cfg)).mkdir(parents=True)
+    (config.library_state_dir(cfg) / "taxonomy.toml").write_bytes(
+        (away / ".cratekit" / "taxonomy.toml").read_bytes()
+    )
+    _a_database_fact_at_the_root(cfg)
+
+    plan, outcome = _backup(cfg, at=MOMENT + timedelta(hours=1))
+    files = plan.portion(FILES)
+    (mirror,) = [c for c in files.commands if c.label == backup.MIRROR]
+    assert backup._moves_nothing(mirror)  # noqa: SLF001
+    assert not _portion(outcome, FILES).ran
+    after = _remote_state(tmp_path)
+    assert after["archive"] == {}, "a mirror file moved into the archive"
+    for rel, data in remote["mirror"].items():
+        assert after["mirror"].get(rel) == data, rel
+
+
+def test_the_flag_needs_a_files_fact_and_not_just_the_fact_file(cfg, real_rclone, tmp_path):
+    """Round two's N2: the fact file a database item writes at a mount point
+    holds a database fact only, and passes no flag."""
+    _first_backup(cfg, tmp_path)
+    remote = _remote_state(tmp_path)
+    _unmount(cfg, tmp_path)
+    _a_database_fact_at_the_root(cfg)
+    assert backup_facts.path_for(cfg).is_file()
+
+    plan, _ = _backup(cfg, at=MOMENT + timedelta(hours=1), emptied=True)
+    assert plan.portion(FILES).refusal is backup.Refusal.LIBRARY_ROOT_UNPROVEN
+    assert "completed files backup" in plan.portion(FILES).detail
+    assert _remote_state(tmp_path) == remote
+
+
+def test_a_plain_ask_is_told_the_open_job_carries_the_flag():
+    """The twin warning's second direction, which round two found unpinned."""
+
+    class Job:
+        job_id = "j2"
+        payload = backup_cli.frozen_payload(False, emptied=True)
+
+    warning = backup_cli._already_queued(  # noqa: SLF001
+        Job(), None, asked_full=False, asked_check=False, asked_emptied=False
+    )
+    assert "It was asked with --library-emptied" in warning["message"], warning
+    plain = backup_cli._already_queued(  # noqa: SLF001
+        Job(), None, asked_full=False, asked_check=False, asked_emptied=True
+    )
+    assert "--library-emptied" not in plain["message"], plain

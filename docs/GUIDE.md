@@ -1293,16 +1293,17 @@ mirrored as a library with no files, moving the whole remote into the
 archive. It refuses `library-root-foreign` when the library's recorded volume
 identity is read and is not the root's, and `library-root-unproven` when the
 root holds no file at all, none outside the library's own state folder while
-the last completed backup held some, or under a tenth of what it held. A
-refusal sends nothing, archives nothing and resets no age: mount the volume
-and run it again. A library emptied on purpose is backed up with
+the last completed backup held some, or under a tenth of what it held. The
+refused files backup sends no file, archives nothing and leaves the files age
+as it was; the database part runs or refuses on its own, as always. Mount the
+volume and run it again. A library emptied on purpose is backed up with
 `--library-emptied`, which passes only a root still carrying the library's
-own record of its backups, the file every completed run leaves in its state
-folder, and never passes the identity. A new library holding only its state
-folder, with no backup of it on record, is mirrored with rclone told to
-delete nothing from the remote, so a remote that already holds files fails
-that run rather than archiving them; once one completes, it is backed up as
-any other library.
+own record of a completed files backup, kept in its state folder, and never
+passes the identity. A library holding only its state folder, a new one or
+one emptied before, is mirrored with rclone told to delete nothing from the
+remote, so a remote holding files it lacks fails that run rather than
+archiving them; a skip and a quick run of its state folder are planned as
+any other.
 
 A quick run that completes resets the files age, since the remote then holds
 everything. A skip resets it too, because the comparison proved nothing
