@@ -76,5 +76,5 @@ project's own auto-add workflow puts the card on the board.
 ## After filing
 
 Reply with the issue number and title, and one line on where it sits: ready,
-and the cloud lane takes it within the hour unless another card holds the
-lane; blocked, and on what; or attended, and why it is built locally.
+and the cloud lane takes it within the hour unless every lane is held;
+blocked, and on what; or attended, and why it is built locally.
