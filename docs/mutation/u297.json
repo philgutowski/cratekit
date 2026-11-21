@@ -1,0 +1,898 @@
+{
+  "name": "u297",
+  "pass_kind": "light",
+  "branch": "cloud/854-one-command-replays-the-recorded",
+  "head": "1f52f9a7",
+  "when": "2026-11-21 16:29 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 21639,
+  "baseline_exit": 1,
+  "pytest_runs": 31,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 162,
+  "known_source": "/tmp/claude-0/-home-user-cratekit/e430c5e9-2857-5af3-b23c-47770527940b/scratchpad/known-failures.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "measured",
+  "baseline_note": "the battery's verdict was not read: it is for commit `1b3010b7f540`, and this tree is at `1f52f9a7b9a6`",
+  "subset_baselines": 4,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to scripts/mutate.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "scripts/mutate.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "223f5ce6dc0cab01",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 21639,
+    "baseline_collected": 21639,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "D1_replay_row_without_a_source",
+      "description": "load_spec: accept a replay row that names no source, so an uncapped pass takes rows no table recorded",
+      "file": "scripts/mutate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "140654190d41597a",
+      "subset": [
+        "tests/test_mutation_driver.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 172,
+      "baseline_collected": 172,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_mutation_driver.py::test_a_replay_row_that_names_no_source_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if source is None:\n                raise DriverRefusal(\n                    f\"row {row_id}: a replay row names where it came from and this one \"",
+      "new": "            if False:\n                raise DriverRefusal(\n                    f\"row {row_id}: a replay row names where it came from and this one \""
+    },
+    {
+      "id": "D2_cap_lifted_for_every_pass",
+      "description": "load_spec: read the cap as the row count for every pass kind, so a light pass of 26 rows and a full pass of 46 load",
+      "file": "scripts/mutate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7b7600bb50036192",
+      "subset": [
+        "tests/test_mutation_driver.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 172,
+      "baseline_collected": 172,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_mutation_driver.py::test_a_full_pass_of_46_rows_is_still_refused",
+        "tests/test_mutation_driver.py::test_a_light_pass_of_26_rows_is_still_refused_whatever_they_name",
+        "tests/test_mutation_driver.py::test_exceeding_the_pass_cap_is_refused_and_names_the_log"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    cap = ROW_CAPS.get(pass_kind, len(rows))",
+      "new": "    cap = len(rows)"
+    },
+    {
+      "id": "D3_mapped_to_no_row",
+      "description": "load_mapped: accept a mapping whose target is no row in the batch, so a lost kill is covered by nothing",
+      "file": "scripts/mutate.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "5325b9f2c74bcccc",
+      "subset": [
+        "tests/test_mutation_driver.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 172,
+      "baseline_collected": 172,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_mutation_driver.py::test_a_mapping_nothing_stands_behind_is_refused[entry1-it maps to 'u1.G7', which is no row in this batch]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if target not in ids:",
+      "new": "        if False:"
+    },
+    {
+      "id": "D4_a_measured_row_loses_its_source",
+      "description": "measure_row: stop carrying a replay row's source and moved reason into its result, so check has nothing to match the row by",
+      "file": "scripts/mutate.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "39707b36c9601d14",
+      "subset": [
+        "tests/test_mutation_driver.py",
+        "tests/test_killset.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 249,
+      "baseline_collected": 249,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_killset.py::test_recorded_kills_replay_through_the_driver_and_check_clean",
+        "tests/test_mutation_driver.py::test_a_replay_batch_spends_one_baseline_and_one_control_and_carries_its_sources"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        head_verified=head_verify,\n        **replay_fields(row),\n    )",
+      "new": "        head_verified=head_verify,\n    )"
+    },
+    {
+      "id": "D5_a_replay_resumed_from_anywhere",
+      "description": "measure_batch: let a replay reuse rows from any sidecar, another commit's or one measured before a tracked file changed",
+      "file": "scripts/mutate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a94bae128ccbfe92",
+      "subset": [
+        "tests/test_mutation_driver.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 172,
+      "baseline_collected": 172,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_mutation_driver.py::test_a_replay_reuses_nothing_from_a_sidecar_measured_at_another_commit",
+        "tests/test_mutation_driver.py::test_a_replay_reuses_nothing_while_a_tracked_file_differs_from_the_commit",
+        "tests/test_mutation_driver.py::test_resuming_a_replay_from_another_commits_sidecar_says_nothing_is_reused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    stale = pass_kind == REPLAY and bool(replay_resume_refusal(repo_root, prior))",
+      "new": "    stale = False"
+    },
+    {
+      "id": "D6_sources_taken_on_trust",
+      "description": "main: skip the reading of each replay row's source against the table it names, so new rows ride past the caps under a table's name",
+      "file": "scripts/mutate.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "899bca02a5951f3b",
+      "subset": [
+        "tests/test_mutation_driver.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 172,
+      "baseline_collected": 172,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_mutation_driver.py::test_the_command_checks_the_sources_and_hands_the_mappings_to_the_table"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if pass_kind == REPLAY:\n            refuse_unrecorded_sources(args.repo_root, rows, mapped)",
+      "new": "        if False:\n            refuse_unrecorded_sources(args.repo_root, rows, mapped)"
+    },
+    {
+      "id": "K1_a_zero_row_counted_as_a_kill",
+      "description": "killed: count a row with zero deaths as killed, so the kill set holds rows no test ever killed",
+      "file": "scripts/killset.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "297026d417a5a8d0",
+      "subset": [
+        "tests/test_killset.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_killset.py::test_a_row_is_live_stale_ambiguous_or_gone_by_what_the_tree_holds",
+        "tests/test_killset.py::test_a_row_that_broke_collection_before_is_held_to_no_less_after",
+        "tests/test_killset.py::test_a_table_of_the_older_form_is_read_by_its_deaths",
+        "tests/test_killset.py::test_check_passes_when_every_kill_is_kept",
+        "tests/test_killset.py::test_list_prints_the_counts_and_one_line_a_file",
+        "tests/test_killset.py::test_rows_after_leaves_text_it_cannot_place_for_the_author"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return isinstance(deaths, int) and not isinstance(deaths, bool) and deaths > 0",
+      "new": "    return isinstance(deaths, int) and not isinstance(deaths, bool) and deaths >= 0"
+    },
+    {
+      "id": "K2_a_lost_kill_passes_check",
+      "description": "compare_tables: stop reading a row that is weaker after than before as lost, so check passes a refactor that lost a kill",
+      "file": "scripts/killset.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "96e540c01d9bf151",
+      "subset": [
+        "tests/test_killset.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_killset.py::test_a_kill_that_became_a_collection_error_is_lost_though_it_records_a_death",
+        "tests/test_killset.py::test_a_row_that_broke_collection_before_is_held_to_no_less_after",
+        "tests/test_killset.py::test_a_table_of_the_older_form_is_read_by_its_deaths",
+        "tests/test_killset.py::test_check_fails_on_one_lost_kill_and_names_it",
+        "tests/test_killset.py::test_check_matches_tables_that_are_not_replays_by_row_id",
+        "tests/test_killset.py::test_recorded_kills_replay_through_the_driver_and_check_clean"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if strength(now) < held:",
+      "new": "            if False:"
+    },
+    {
+      "id": "K3_mapped_to_a_row_that_is_not_killed",
+      "description": "compare_tables: accept a mapping whose target row is weaker after than the kill it covers",
+      "file": "scripts/killset.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b41a7bf5d2cda356",
+      "subset": [
+        "tests/test_killset.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_killset.py::test_a_mapping_onto_a_row_that_only_broke_collection_does_not_cover_a_kill",
+        "tests/test_killset.py::test_check_fails_a_row_mapped_to_a_row_that_is_not_killed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif strength(target) < held:",
+      "new": "        elif False:"
+    },
+    {
+      "id": "K4_a_collection_error_counts_as_a_kill",
+      "description": "strength: rank a row that broke collection with a death as high as a clean kill, so a kill that became one is kept",
+      "file": "scripts/killset.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "fa35e397ea2ef26d",
+      "subset": [
+        "tests/test_killset.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_killset.py::test_a_kill_that_became_a_collection_error_is_lost_though_it_records_a_death",
+        "tests/test_killset.py::test_a_mapping_onto_a_row_that_only_broke_collection_does_not_cover_a_kill",
+        "tests/test_killset.py::test_a_row_that_broke_collection_before_is_held_to_no_less_after"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return 2 if row.get(\"status\") in (None, \"killed\") else 1",
+      "new": "    return 2"
+    },
+    {
+      "id": "K5_any_reason_vouches_for_a_move",
+      "description": "unvouched_move: accept the reason rows --after wrote with no test in common, so a row killed at another guard's line passes check",
+      "file": "scripts/killset.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4ba3a333543281ca",
+      "subset": [
+        "tests/test_killset.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_killset.py::test_a_line_written_new_elsewhere_reads_as_a_move_and_check_is_what_catches_it",
+        "tests/test_killset.py::test_a_replay_at_another_guards_line_does_not_bring_a_dead_row_back",
+        "tests/test_killset.py::test_a_row_the_tool_moved_must_still_die_by_a_test_that_killed_it_before"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if killers_before & now or not reason.startswith(AUTOMATIC_MOVE):",
+      "new": "    if reason:"
+    },
+    {
+      "id": "K6_a_twin_read_as_a_move",
+      "description": "moved_to: place a row at the one file that holds its text now though the text stood in two places at the measured commit",
+      "file": "scripts/killset.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fc9f90c6f2ed4785",
+      "subset": [
+        "tests/test_killset.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_killset.py::test_a_deleted_guard_is_not_anchored_on_its_twin_wherever_the_twin_is_now[_twin_is_renamed]",
+        "tests/test_killset.py::test_a_deleted_guard_is_not_anchored_on_its_twin_wherever_the_twin_is_now[_twin_is_split]",
+        "tests/test_killset.py::test_a_deleted_guard_is_not_anchored_on_its_twin_wherever_the_twin_is_now[_twin_stays]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if stood != 1:",
+      "new": "    if False:"
+    },
+    {
+      "id": "K7_a_batch_in_progress_read_as_finished",
+      "description": "read_measured: read a table still in progress as a finished batch, so its unmeasured rows are compared as if measured",
+      "file": "scripts/killset.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "7420e3bf3f9d3d5e",
+      "subset": [
+        "tests/test_killset.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 77,
+      "baseline_collected": 77,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_killset.py::test_check_refuses_a_table_that_is_not_a_finished_valid_batch[extra1-in progress]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if table.get(\"valid\") is not True or table.get(\"invalid_reason\"):",
+      "new": "    if table.get(\"valid\") is not True:"
+    },
+    {
+      "id": "B1_a_root_outside_the_temporary_directory",
+      "description": "refuse_outside_temporary: accept any root, so a capture can be pointed at a directory somebody keeps",
+      "file": "scripts/behaviour_compare.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5965edef73dc11fa",
+      "subset": [
+        "tests/test_behaviour_compare.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 137,
+      "baseline_collected": 137,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_behaviour_compare.py::test_a_link_inside_the_temporary_directory_that_leads_out_of_it_is_refused",
+        "tests/test_behaviour_compare.py::test_a_root_outside_the_temporary_directory_is_refused_before_anything_runs",
+        "tests/test_behaviour_compare.py::test_the_temporary_directory_itself_is_no_root"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not is_inside(path, temporary_directory()):",
+      "new": "    if False:"
+    },
+    {
+      "id": "B2_the_temporary_directory_itself",
+      "description": "is_inside: read a directory as inside itself, so the whole temporary directory can be a capture's root and be emptied",
+      "file": "scripts/behaviour_compare.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b95228ced74eea86",
+      "subset": [
+        "tests/test_behaviour_compare.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 137,
+      "baseline_collected": 137,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_behaviour_compare.py::test_the_temporary_directory_itself_is_no_root"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return relative != Path(\".\")",
+      "new": "    return True"
+    },
+    {
+      "id": "B3_somebodys_directory_emptied",
+      "description": "take_root: take a root, or the source directory beside it, that holds files no capture left",
+      "file": "scripts/behaviour_compare.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "74a92b74434bacb4",
+      "subset": [
+        "tests/test_behaviour_compare.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 137,
+      "baseline_collected": 137,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_behaviour_compare.py::test_a_file_that_is_only_named_like_a_holder_vouches_for_nothing",
+        "tests/test_behaviour_compare.py::test_a_root_that_holds_somebodys_files_is_refused_and_left_alone",
+        "tests/test_behaviour_compare.py::test_the_directory_beside_the_root_is_not_emptied_either"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not left_by_a_capture(folder, holder):",
+      "new": "        if False:"
+    },
+    {
+      "id": "B4_a_failed_run_closed_as_a_capture",
+      "description": "run_capture: write the manifest though the scenario run failed, so a capture missing scenarios reads as finished",
+      "file": "scripts/behaviour_compare.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8049956da2ef4bfd",
+      "subset": [
+        "tests/test_behaviour_compare.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 137,
+      "baseline_collected": 137,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_behaviour_compare.py::test_a_run_that_failed_with_every_record_written_is_not_a_capture"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if done.returncode != 0 or not recorded or missing:",
+      "new": "    if not recorded or missing:"
+    },
+    {
+      "id": "B5_a_scenario_with_no_record_closed_over",
+      "description": "run_capture: close the capture though a scenario the run collected, or a whole scenario file, left no record",
+      "file": "scripts/behaviour_compare.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6d1eb06326b11d26",
+      "subset": [
+        "tests/test_behaviour_compare.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 137,
+      "baseline_collected": 137,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_behaviour_compare.py::test_a_run_that_did_not_list_what_it_collected_is_not_a_capture[None]",
+        "tests/test_behaviour_compare.py::test_a_run_that_did_not_list_what_it_collected_is_not_a_capture[expected1]",
+        "tests/test_behaviour_compare.py::test_a_scenario_file_that_collected_nothing_keeps_the_capture_open",
+        "tests/test_behaviour_compare.py::test_a_scenario_that_ran_and_left_no_record_keeps_the_capture_open"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if done.returncode != 0 or not recorded or missing:",
+      "new": "    if done.returncode != 0 or not recorded:"
+    },
+    {
+      "id": "B6_any_two_texts_the_same",
+      "description": "same_but_for: read any two texts as the same once a capture has a word of its own, so no difference in output, a file or a row is seen",
+      "file": "scripts/behaviour_compare.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "67418e6b155e5c7a",
+      "subset": [
+        "tests/test_behaviour_compare.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 21,
+      "collected": 137,
+      "baseline_collected": 137,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_behaviour_compare.py::test_a_changed_cell_is_a_row_gone_and_a_row_come",
+        "tests/test_behaviour_compare.py::test_a_changed_line_of_standard_error_is_reported",
+        "tests/test_behaviour_compare.py::test_a_changed_text_file_shows_the_line_that_changed",
+        "tests/test_behaviour_compare.py::test_a_database_that_holds_the_same_rows_another_way_is_reported[base0-changed0-said0]",
+        "tests/test_behaviour_compare.py::test_a_file_that_only_ends_like_a_sidecar_is_compared_as_a_file",
+        "tests/test_behaviour_compare.py::test_a_long_difference_is_cut_unless_asked_for_whole",
+        "tests/test_behaviour_compare.py::test_a_missing_final_newline_is_a_difference_and_says_how_the_texts_end",
+        "tests/test_behaviour_compare.py::test_a_word_that_stands_for_two_things_keeps_both_counterparts",
+        "tests/test_behaviour_compare.py::test_another_files_inode_in_that_row_is_a_difference",
+        "tests/test_behaviour_compare.py::test_one_changed_character_of_help_is_reported",
+        "tests/test_behaviour_compare.py::test_two_texts_are_the_same_only_where_each_holds_its_own_word[8430 bytes, pid 3409-8431 bytes, pid 3467-False]",
+        "tests/test_behaviour_compare.py::test_two_texts_are_the_same_only_where_each_holds_its_own_word[lock_3409-lock_3467-False]",
+        "tests/test_behaviour_compare.py::test_two_texts_are_the_same_only_where_each_holds_its_own_word[pid 13409-pid 13467-False]",
+        "tests/test_behaviour_compare.py::test_two_texts_are_the_same_only_where_each_holds_its_own_word[pid 34091-pid 34671-False]",
+        "tests/test_behaviour_compare.py::test_two_texts_are_the_same_only_where_each_holds_its_own_word[pid 3409\\n-pid 3467-False]",
+        "tests/test_behaviour_compare.py::test_two_texts_are_the_same_only_where_each_holds_its_own_word[pid 3409x-pid 3467x-False]",
+        "tests/test_behaviour_compare.py::test_two_texts_are_the_same_only_where_each_holds_its_own_word[pid none-pid 3467-False]",
+        "tests/test_behaviour_compare.py::test_two_texts_are_the_same_only_where_each_holds_its_own_word[pid x3409-pid x3467-False]",
+        "tests/test_behaviour_compare.py::test_two_texts_are_the_same_only_where_each_holds_its_own_word[sha 9f3409c-sha 9f3467c-False]",
+        "tests/test_behaviour_compare.py::test_two_texts_are_the_same_only_where_each_holds_its_own_word[started 1795265299.040-started 3467-False]",
+        "tests/test_behaviour_compare.py::test_two_texts_are_the_same_only_where_each_holds_its_own_word[wrote 134091 bytes-wrote 134671 bytes-False]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return re.fullmatch(\"\".join(pattern), second, flags=re.DOTALL) is not None",
+      "new": "    return True"
+    },
+    {
+      "id": "B7_a_word_read_inside_a_longer_one",
+      "description": "same_but_for: drop the leading end of the whole word rule, so a process id is read inside a longer number",
+      "file": "scripts/behaviour_compare.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "716872815d00ae4a",
+      "subset": [
+        "tests/test_behaviour_compare.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 137,
+      "baseline_collected": 137,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_behaviour_compare.py::test_two_texts_are_the_same_only_where_each_holds_its_own_word[lock_3409-lock_3467-False]",
+        "tests/test_behaviour_compare.py::test_two_texts_are_the_same_only_where_each_holds_its_own_word[pid 13409-pid 13467-False]",
+        "tests/test_behaviour_compare.py::test_two_texts_are_the_same_only_where_each_holds_its_own_word[pid x3409-pid x3467-False]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        r\"(?<![0-9A-Za-z_])(?:\" + \"|\".join(re.escape(one) for one in longest_first) + r\")(?![0-9A-Za-z_])\"",
+      "new": "        r\"(?:\" + \"|\".join(re.escape(one) for one in longest_first) + r\")(?![0-9A-Za-z_])\""
+    },
+    {
+      "id": "B8_a_changed_exit_code_unseen",
+      "description": "compare_commands: stop comparing exit codes",
+      "file": "scripts/behaviour_compare.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8c17615ee78d9a05",
+      "subset": [
+        "tests/test_behaviour_compare.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 137,
+      "baseline_collected": 137,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_behaviour_compare.py::test_one_changed_exit_code_is_reported",
+        "tests/test_behaviour_compare.py::test_one_command_more_is_reported_once_and_the_rest_are_still_compared"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if one[\"exit\"] != other[\"exit\"]:",
+      "new": "            if False:"
+    },
+    {
+      "id": "B9_a_file_in_one_capture_only_unseen",
+      "description": "compare_files: walk only the paths both captures hold, so an extra file and a missing one are never reported",
+      "file": "scripts/behaviour_compare.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f9acebddb4ebb2ad",
+      "subset": [
+        "tests/test_behaviour_compare.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 137,
+      "baseline_collected": 137,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_behaviour_compare.py::test_an_empty_directory_a_verb_made_is_an_entry_of_its_own",
+        "tests/test_behaviour_compare.py::test_one_extra_file_is_reported_and_so_is_one_that_is_gone"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    for relative in sorted(set(before) | set(after)):",
+      "new": "    for relative in sorted(set(before) & set(after)):"
+    },
+    {
+      "id": "B10_a_changed_mode_unseen",
+      "description": "compare_files: stop comparing permission bits, so a private file written world readable compares clean",
+      "file": "scripts/behaviour_compare.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "73ac1f8d27cfab66",
+      "subset": [
+        "tests/test_behaviour_compare.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 137,
+      "baseline_collected": 137,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_behaviour_compare.py::test_a_private_file_written_world_readable_is_reported"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if one.get(\"mode\") != other.get(\"mode\"):",
+      "new": "        if False:"
+    },
+    {
+      "id": "B11_a_changed_schema_unseen",
+      "description": "compare_databases: compare no declarations, so a table that lost its key, a constraint or an index compares clean",
+      "file": "scripts/behaviour_compare.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b80dd045b494c80d",
+      "subset": [
+        "tests/test_behaviour_compare.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 137,
+      "baseline_collected": 137,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_behaviour_compare.py::test_a_database_that_holds_the_same_rows_another_way_is_reported[base0-changed0-said0]",
+        "tests/test_behaviour_compare.py::test_a_database_that_holds_the_same_rows_another_way_is_reported[base1-changed1-said1]",
+        "tests/test_behaviour_compare.py::test_a_database_that_holds_the_same_rows_another_way_is_reported[base2-changed2-said2]",
+        "tests/test_behaviour_compare.py::test_a_database_that_holds_the_same_rows_another_way_is_reported[base3-changed3-said3]",
+        "tests/test_behaviour_compare.py::test_a_table_in_one_dump_only_is_reported"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            one.get(\"schema\", []), other.get(\"schema\", []), words, limit,",
+      "new": "            [], [], words, limit,"
+    },
+    {
+      "id": "S1_a_root_outside_the_scenarios_own_directory",
+      "description": "refuse_a_root_outside: accept a configuration or state directory anywhere in the temporary directory, another test's included",
+      "file": "tests/behaviour/conftest.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d13bd6d939171925",
+      "subset": [
+        "tests/test_behaviour_compare.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 137,
+      "baseline_collected": 137,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_behaviour_compare.py::test_a_root_in_another_tests_temporary_directory_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not compare.is_inside(path, scenario_root):",
+      "new": "        if False:"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "two_rows_one_source",
+      "description": "load_spec: accept two replay rows naming one source.",
+      "reason": "ranked below the cap: check refuses a table with two rows under one key, so this fails loud"
+    },
+    {
+      "id": "mapped_outside_a_replay",
+      "description": "load_mapped: accept a [[mapped]] entry in a light pass.",
+      "reason": "ranked below the cap: nothing reads a light table's mappings"
+    },
+    {
+      "id": "mapped_for_no_reason_or_for_a_replayed_source",
+      "description": "load_mapped: accept a mapping with no reason, or one for a source the batch also replays.",
+      "reason": "ranked below the cap: D3 measures the mapping that covers nothing, and check asks for the reason again"
+    },
+    {
+      "id": "unset_keys_in_a_light_sidecar",
+      "description": "RowResult.to_dict and Batch.to_dict: write the replay's keys into every pass's sidecar.",
+      "reason": "ranked below the cap: a changed output, not a lost guard, and a test of its own holds it"
+    },
+    {
+      "id": "a_borrowed_name_over_new_text",
+      "description": "refuse_unrecorded_sources: accept a row whose text is not its source's with no moved reason.",
+      "reason": "ranked below the cap: D6 measures the reading of sources as a whole"
+    },
+    {
+      "id": "ambiguous_or_stale_rows_written",
+      "description": "Tree.state and cmd_rows: read ambiguous text as live, or write stale rows.",
+      "reason": "ranked below the cap: the driver refuses such a row when it applies it, so it cannot be measured as a kill"
+    },
+    {
+      "id": "a_promoted_row_keeps_its_subset",
+      "description": "tests_of: give a promoted row the subset that killed nothing.",
+      "reason": "ranked below the cap: it costs a full suite a row and loses no kill"
+    },
+    {
+      "id": "a_replay_table_counted_as_a_table_and_duplicates_left_live",
+      "description": "read_kill_set: count a replay table as a table of its own, or leave a duplicate live.",
+      "reason": "ranked below the cap: counts, and the same row replayed twice"
+    },
+    {
+      "id": "a_move_git_cannot_vouch_for",
+      "description": "moved_to: place a row though git could not read the tree at the measured commit.",
+      "reason": "ranked below the cap: with the reading absent the next check, K6's, still leaves the row unplaced"
+    },
+    {
+      "id": "a_root_another_capture_holds_and_captures_under_two_roots",
+      "description": "take_root: take a root whose holder is running; compare_captures: compare captures under two roots.",
+      "reason": "ranked below the cap: both fail loud, as files written over or as a difference in every path"
+    },
+    {
+      "id": "rows_only_in_the_second_dump_and_an_undumped_database",
+      "description": "only_in_one: report the first capture's rows alone; compare_files: skip the bytes of a database that could not be dumped.",
+      "reason": "ranked below the cap: B6, B9 and B11 measure the comparison's sensitivity on the same paths"
+    },
+    {
+      "id": "a_column_read_as_a_constraint",
+      "description": "TABLE_CONSTRAINT: match a keyword without what must follow it.",
+      "reason": "ranked below the cap: no table on the tree has such a column, and a parametrized test holds each form"
+    },
+    {
+      "id": "the_stage_s_pins_and_its_first_refusal",
+      "description": "Stage.crate: run a command before asking where the roots are, or stop setting file times; pin: leave the binding's row stamps real.",
+      "reason": "ranked below the cap: S1 measures the refusal itself, and the pins are held by the test that captures every scenario twice"
+    }
+  ]
+}

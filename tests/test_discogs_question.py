@@ -187,10 +187,12 @@ def test_an_untagged_file_is_asked_by_the_artist_and_title_its_name_reads_to(tmp
     result = tag.tag_one(path, searcher=build(typed_fetch(seen)))
     (question,) = discogs_questions(seen)
     assert question["artist"] == "Obiman"
-    assert question["track"] == "On The Rocks (Cafe Del Mar Mix)_PN"
+    # Past the older naming's _PN tail too, so Discogs sets the mix aside
+    # (R-1724, ``tests/test_name_tail.py``).
+    assert question["track"] == "On The Rocks"
     assert (result.asked_artist, result.asked_title, result.asked_read) == (
         "Obiman",
-        "On The Rocks (Cafe Del Mar Mix)_PN",
+        "On The Rocks (Cafe Del Mar Mix)",
         titles.Read.BY_NAME.value,
     )
 
