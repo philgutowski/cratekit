@@ -509,6 +509,11 @@ def mytags_vocals(ctx) -> Envelope:
             analysis_roots=analysis_store.watch_roots(cfg),
             keep=session.Keep.RECORD,
         ) as gates, rb_writer.commit_witness(db) as witness:
+            # THE RECORD IS WHAT MAKES THE CAPTURE AN UNDO (R-375). This verb
+            # took a capture and opened no record, so after a real apply the
+            # only trace of the write was a snapshot directory ``restore list``
+            # could not show and the pruning scan did not protect. Attached
+            # before it is judged, for the reason the membership writer gives.
             record, capture = trees.attached_capture(gates, cfg, db)
             counts = {"written": 0, "already": 0}
             try:

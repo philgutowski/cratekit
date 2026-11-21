@@ -910,7 +910,7 @@ def attached_capture(gates: Any, cfg: config.Config, db: Any):
     ATTACHED BEFORE IT IS JUDGED. A capture that fails its check is still a
     directory a person may go looking for, and the restore side lists an
     unusable entry rather than answering with silence. One function for the
-    twenty one writers that open this way, so none of them can come to judge
+    twenty two writers that open this way, so none of them can come to judge
     a capture it never attached.
     """
     record = gates.record
