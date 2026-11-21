@@ -269,7 +269,14 @@ def _advisories(plan: suggest.SuggestPlan) -> list[dict[str, str]]:
     # A ROW LEFT UNREAD ONLY BY A CATALOGUE NOBODY ASKED is said as that, with
     # how to have it asked, and never as catalogues that could not be read
     # (U244's review, round two): every catalogue asked about it answered.
-    refused = [item.content_id for item in unread_items if not item.catalogue.passed_over]
+    # A ROW ANOTHER CATALOGUE ANSWERED is said apart, naming the one that could
+    # not be read, since it was not suggested from the library alone (U322).
+    refused = [
+        item.content_id
+        for item in unread_items
+        if not item.catalogue.passed_over and not item.catalogue.partly_read
+    ]
+    partly = [item for item in unread_items if item.catalogue.partly_read]
     passed = [item.content_id for item in unread_items if item.catalogue.passed_over]
     parts = []
     if refused:
@@ -277,6 +284,14 @@ def _advisories(plan: suggest.SuggestPlan) -> list[dict[str, str]]:
             f"the catalogues could not be read for {len(refused)} row(s), "
             f"{_named(refused)}, so those were suggested from the library "
             f"alone; a lookup nobody could read is kept for the day and asked "
+            f"again on a later one"
+        )
+    if partly:
+        parts.append(
+            f"{suggest.unread_names(item.catalogue for item in partly)} could not be "
+            f"read for {len(partly)} row(s) another catalogue answered, "
+            f"{_named([item.content_id for item in partly])}, so those were "
+            f"suggested without it; such a lookup is kept for the day and asked "
             f"again on a later one"
         )
     if passed:
@@ -359,7 +374,7 @@ def read_plan(
         if not catalogue:
             return suggest.plan_suggestions(cfg, db, declared, **options)
         lookup = suggest.catalogue_lookup(
-            searchers.for_taxonomy(declared), published.for_taxonomy(declared)
+            searchers.for_taxonomy(declared), published.for_suggestions(declared)
         )
         # WHAT THIS RUN CANNOT ASK, so a row kept for the day as passed over is
         # asked again once a Discogs token has been recorded (U244).

@@ -653,7 +653,7 @@ def test_the_verb_with_catalogue_asks_the_recorded_catalogue_and_keeps_its_answe
         {"track 60": SearchHit(genre=DEEP, source="discogs", source_genre="Deep House")}
     )
     monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: search)
-    monkeypatch.setattr(published, "for_taxonomy", lambda declared: lambda hit, isrc: hit)
+    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
     code, envelope = drive([*VERB, "--catalogue"])
     assert code == int(ExitCode.OK), envelope
     (item,) = envelope["data"]["summary"]["items"]
@@ -675,7 +675,7 @@ def test_a_catalogue_nobody_could_read_is_named(machine, silence, monkeypatch):
         raise refuse("catalogue-unreachable", "blocked", origin=("test",))
 
     monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: blocked)
-    monkeypatch.setattr(published, "for_taxonomy", lambda declared: lambda hit, isrc: hit)
+    monkeypatch.setattr(published, "for_suggestions", lambda declared: lambda hit, isrc: hit)
     code, envelope = drive([*VERB, "--catalogue"])
     assert code == int(ExitCode.OK), envelope
     (warning,) = [w for w in envelope["warnings"] if w["code"] == "backlog-catalogue-unread"]
@@ -807,3 +807,65 @@ def test_discogs_passed_over_is_said_with_how_to_record_a_token(machine, silence
     (warning,) = [w for w in envelope["warnings"] if w["code"] == "backlog-catalogue-unread"]
     assert "Discogs was not asked about 1 row(s), 60" in warning["message"]
     assert "could not be read" not in warning["message"]
+
+
+def test_a_refusing_beatport_beside_an_answering_discogs_asks_every_row_and_counts_them(
+    machine, silence, monkeypatch
+):
+    """U322, sitting 102's shape through the verb: Discogs reads no genre and
+    Beatport answers Cloudflare's challenge on every row. Every row is asked of
+    Discogs, Beatport is fetched three times, and the catalogue line counts it."""
+    from cratekit.tagging import published, searchers
+    from tests.test_beatport_refusal import (
+        REFUSED,
+        _beatport_requests,
+        _discogs_searches,
+        _over_the_wire,
+    )
+    from tests.test_discogs_searcher import SENT
+
+    build(
+        machine,
+        silence,
+        *(Track(str(60 + n), "", "", artist="Nobody", folder="x") for n in range(6)),
+    )
+    seen: list[str] = []
+    fetch = _over_the_wire(REFUSED, seen=seen)
+    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
+    search = searchers.catalogue_searcher(
+        DECLARED, fetch=fetch, sleep=lambda _s: None, discogs=asker
+    )
+    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared: search)
+    code, envelope = drive([*VERB, "--catalogue"])
+    assert code == int(ExitCode.OK), envelope
+
+    assert _discogs_searches(seen) == 6
+    assert _beatport_requests(seen) == searchers.REFUSALS_BEFORE_STOP
+    counted = envelope["data"]["summary"]["catalogue_answers"]
+    assert counted["rows"] == 6 and counted["stopped"] == 0
+    assert counted["catalogues"][searchers.DISCOGS] == {
+        "asked": 6, "matched": 0, "missed": 6, "unread": 0, "not_asked": 0, "not_sent": 0,
+    }  # fmt: skip
+    assert counted["catalogues"][searchers.BEATPORT] == {
+        "asked": 3, "matched": 0, "missed": 0, "unread": 3, "not_asked": 3, "not_sent": 3,
+    }  # fmt: skip
+    # The rows carry no ISRC, so the general catalogue is asked about none.
+    assert counted["catalogues"][published.SOURCE]["not_asked"] == 6
+    (check,) = [c for c in envelope["data"]["checks"] if c["key"] == "backlog.catalogue"]
+    assert check["detail"].startswith(
+        "6 row(s) with no genre were weighed with the catalogues: discogs asked about 6, "
+        "matched 0, missed 6, could not be read for 0, not asked about 0; beatport asked "
+        "about 3, matched 0, missed 0, could not be read for 3, not asked about 3 (3 of "
+        "them once it had refused this client)"
+    )
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == "backlog-catalogue-unread"]
+    assert "beatport could not be read for 6 row(s) another catalogue answered" in warning["message"]
+    assert "the catalogues could not be read" not in warning["message"]
+
+
+def test_the_catalogue_line_is_absent_without_the_catalogue(machine, silence):
+    build(machine, silence, Track("60", "", "", artist="Nobody", folder="x"))
+    code, envelope = drive(VERB)
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["summary"]["catalogue_answers"] is None
+    assert "backlog.catalogue" not in [c["key"] for c in envelope["data"]["checks"]]

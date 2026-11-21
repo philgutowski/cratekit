@@ -44,6 +44,18 @@ lookup that could not be read is kept for the day only and asked again on a
 later one. Three rows in a row whose catalogues could not be read stop the
 walk asking them at all.
 
+A ROW ONE CATALOGUE READ IS NOT A ROW NOBODY COULD READ (U322). At sitting 102
+Discogs read no genre for seven of ten rows while Beatport answered every
+lookup with Cloudflare's challenge, and each of those rows counted toward the
+stop, so the walk stopped at the tenth row and 665 were never sent to Discogs
+or Deezer. Each answer now carries every catalogue's word for the row, and a
+row counts toward the stop only when no catalogue it was sent to answered. A
+row some catalogue answered beside one that refused is still unread, kept for
+the day and asked again on a later one, since a miss beside a refusal is not an
+absence; it ends a run of refusals rather than adding to one. The refusing
+catalogue is passed over by the searcher's own count after three refusals in a
+row (U281), which is the only stop a single catalogue is under.
+
 Layer: modules. It opens no database of its own and names no verb.
 """
 
@@ -124,6 +136,17 @@ MATCHED = "matched"
 DECLINED = "declined"
 UNREAD = "unread"
 
+#: The word :attr:`Asked.answers` carries for a catalogue the walk did not send
+#: the row to because it had already refused this client in the run, U281's
+#: answer whose note opens :data:`cratekit.tagging.searchers.NOT_SENT`. It is a
+#: refusal remembered, not one sent, so a summary counts the row as one that
+#: catalogue was not asked about (U322).
+NOT_SENT = "not-sent"
+
+#: A catalogue's words that say it answered about the row, a match or a miss,
+#: whatever the taxonomy made of the match (U322).
+_ANSWERED: tuple[str, ...] = (searchers.Answer.MATCHED.value, searchers.Answer.MISS.value)
+
 #: How long a catalogue answer is reused, in days.
 CATALOGUE_DAYS = 7
 
@@ -138,6 +161,15 @@ _SAVE_EVERY = 20
 #: stops asking them. A catalogue refusing this client is not asked another
 #: few hundred times, which is how an account gets rate limited for good.
 STOP_AFTER_UNREAD = 3
+
+#: The note on a row the walk did not ask about because it had stopped.
+STOPPED_NOTE = (
+    f"not asked: the catalogues could not be read for {STOP_AFTER_UNREAD} rows in a row"
+)
+
+#: What :func:`catalogue_counts` counts for each catalogue, in the order a
+#: person reads it (U322).
+COUNTED: tuple[str, ...] = ("asked", "matched", "missed", "unread", "not_asked", "not_sent")
 
 _ORIGIN = ("tagging", "suggest")
 
@@ -158,6 +190,11 @@ class Asked:
     at all, Discogs with no token recorded (U244). Such a row is UNREAD, since
     whether that catalogue knows it is unknown, and it is not a refusal of this
     client, so it never counts toward :data:`STOP_AFTER_UNREAD`.
+
+    ``answers`` is each catalogue's word for the row, in the walk's order (U322):
+    one of :class:`cratekit.tagging.searchers.Answer`'s values, ``not-asked``,
+    ``no-isrc``, or :data:`NOT_SENT`. Empty for a row the walk stopped before,
+    and for an answer kept before the words were.
     """
 
     said: str
@@ -167,6 +204,29 @@ class Asked:
     off_taxonomy: bool = False
     note: str = ""
     passed_over: tuple[str, ...] = ()
+    answers: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def partly_read(self) -> bool:
+        """Whether a catalogue refused the row beside one that answered about it (U322).
+
+        Such a row says the catalogues that answered are not refusing, so it
+        ends a run of refusals rather than adding to one. A row unread only by
+        a catalogue nobody asked is :attr:`passed_over` instead, and is not
+        this, whatever the others answered (U244).
+        """
+        if self.said != UNREAD or self.passed_over:
+            return False
+        return any(word in _ANSWERED for _source, word in self.answers)
+
+    @property
+    def unread_by(self) -> tuple[str, ...]:
+        """The catalogues that could not be read for the row, sent or not sent."""
+        return tuple(
+            source
+            for source, word in self.answers
+            if word in searchers.UNREAD_ANSWERS or word == NOT_SENT
+        )
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -177,6 +237,7 @@ class Asked:
             "off_taxonomy": self.off_taxonomy,
             "note": self.note,
             "passed_over": list(self.passed_over),
+            "answers": [[source, word] for source, word in self.answers],
         }
 
 
@@ -352,9 +413,47 @@ def _at_or_above(band: str, least: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _word(answer: str, note: str) -> str:
+    """One catalogue's word for a row, a refusal never sent told from one sent."""
+    if answer == searchers.Answer.BLOCKED.value and note.startswith(searchers.NOT_SENT):
+        return NOT_SENT
+    return answer
+
+
+def _words_of(hit: SearchHit) -> tuple[tuple[str, str], ...]:
+    return tuple((said.source, _word(said.answer, said.note)) for said in hit.answers)
+
+
+def _words_of_refusal(exc: CratekitError) -> tuple[tuple[str, str], ...]:
+    """Each catalogue's word off a refusal the searcher raised, when it names them.
+
+    A refusal by every catalogue asked, and one where none could be read, carry
+    the sources, their answers and their notes (U281, U284); Discogs passed over
+    for want of a token is named apart. A refusal carrying none of that carries
+    no words, which reads as no catalogue having answered.
+    """
+    detail = exc.cause.detail if isinstance(exc.cause.detail, Mapping) else {}
+    sources, answers = detail.get("sources"), detail.get("answers")
+    if not isinstance(sources, list) or not isinstance(answers, list):
+        return ()
+    if len(sources) != len(answers):
+        return ()
+    notes = detail.get("notes")
+    if not isinstance(notes, list) or len(notes) != len(sources):
+        notes = [""] * len(sources)
+    words = tuple(
+        (str(source), _word(str(answer), str(note)))
+        for source, answer, note in zip(sources, answers, notes, strict=True)
+    )
+    if detail.get(searchers.DISCOGS_DETAIL) and searchers.DISCOGS not in sources:
+        words = ((searchers.DISCOGS, searchers.NOT_ASKED), *words)
+    return words
+
+
 def _asked_from(hit: SearchHit | None) -> Asked:
     if hit is None:
         return Asked(DECLINED)
+    words = _words_of(hit)
     if hit.genre:
         return Asked(
             MATCHED,
@@ -362,6 +461,7 @@ def _asked_from(hit: SearchHit | None) -> Asked:
             source=hit.source,
             source_genre=hit.source_genre,
             off_taxonomy=hit.off_taxonomy,
+            answers=words,
         )
     if hit.unread and not hit.source_genre:
         # A CATALOGUE THE WALK NEVER ASKED IS NOT ONE THAT REFUSED (U244). It is
@@ -374,13 +474,18 @@ def _asked_from(hit: SearchHit | None) -> Asked:
         }
         refused = [source for source in hit.unread if source not in unasked]
         if refused:
-            return Asked(UNREAD, note=f"unread: {', '.join(refused)}")
+            # A REFUSAL BESIDE A CATALOGUE THAT ANSWERED IS STILL UNREAD (U322):
+            # a miss beside a refusal is not an absence, so the row stays
+            # askable. Its words say who answered, which is what keeps it out
+            # of the walk's stop, see :attr:`Asked.partly_read`.
+            return Asked(UNREAD, note=f"unread: {', '.join(refused)}", answers=words)
         return Asked(
             UNREAD,
             note="; ".join(f"unread: {source}, {why}" for source, why in unasked.items()),
             passed_over=tuple(unasked),
+            answers=words,
         )
-    return Asked(DECLINED, source=hit.source, source_genre=hit.source_genre)
+    return Asked(DECLINED, source=hit.source, source_genre=hit.source_genre, answers=words)
 
 
 def catalogue_lookup(searcher: Searcher, published: PublishedGenre | None = None) -> Lookup:
@@ -398,7 +503,11 @@ def catalogue_lookup(searcher: Searcher, published: PublishedGenre | None = None
             if published is not None and hit is not None and not hit.genre:
                 hit = published(hit, isrc)
         except CratekitError as exc:
-            return Asked(UNREAD, note=f"{exc.cause.reason}: {exc.cause.message}")
+            return Asked(
+                UNREAD,
+                note=f"{exc.cause.reason}: {exc.cause.message}",
+                answers=_words_of_refusal(exc),
+            )
         return _asked_from(hit)
 
     def lookup(artist: str, title: str, isrc: str) -> Asked:
@@ -450,6 +559,7 @@ def _kept_answer(entry: Any, asked_for: dict[str, str], today: date) -> Asked | 
             off_taxonomy=bool(said.get("off_taxonomy")),
             note=str(said.get("note") or ""),
             passed_over=tuple(str(one) for one in said.get("passed_over") or ()),
+            answers=tuple((str(source), str(word)) for source, word in said.get("answers") or ()),
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -517,23 +627,21 @@ class KeptCatalogue:
         if kept is not None and not self._askable_now(kept):
             return kept
         if self.stopped:
-            answer = Asked(
-                UNREAD,
-                note=(
-                    f"not asked: the catalogues could not be read for "
-                    f"{STOP_AFTER_UNREAD} rows in a row"
-                ),
-            )
+            answer = Asked(UNREAD, note=STOPPED_NOTE)
         else:
             answer = self._lookup(artist, title, isrc)
             self.asked += 1
             # A ROW LEFT UNREAD ONLY BY A CATALOGUE NOBODY ASKED neither counts
             # toward the stop nor ends a run of refusals: it says nothing about
-            # whether the catalogues that were asked are refusing (U244).
-            if answer.said == UNREAD and not answer.passed_over:
-                self._unread_running += 1
-            elif answer.said != UNREAD:
+            # whether the catalogues that were asked are refusing (U244). A ROW
+            # SOME CATALOGUE ANSWERED ends the run, whatever another refused:
+            # the walk stops only when every catalogue it sends rows to has
+            # refused them (U322), and one refusing catalogue is passed over by
+            # the searcher's own count (U281).
+            if answer.said != UNREAD or answer.partly_read:
                 self._unread_running = 0
+            elif not answer.passed_over:
+                self._unread_running += 1
             self.stopped = self._unread_running >= STOP_AFTER_UNREAD
         self._kept[content_id] = {
             "for": asked_for,
@@ -544,6 +652,53 @@ class KeptCatalogue:
         if self._unsaved >= _SAVE_EVERY:
             self.save()
         return answer
+
+
+def unread_names(answers: Iterable[Asked]) -> str:
+    """The catalogues that could not be read across ``answers``, each named once."""
+    named: list[str] = []
+    for asked in answers:
+        named.extend(source for source in asked.unread_by if source not in named)
+    return " and ".join(named) if named else "a catalogue"
+
+
+def catalogue_counts(answers: Iterable[Asked]) -> dict[str, Any]:
+    """What each catalogue said across a walk's rows, as the backlog reports it (U322). Pure.
+
+    ``rows`` is every answer counted and ``stopped`` the rows the walk did not
+    ask about once it had stopped. Each catalogue named in any row's words is
+    counted on every row: ``asked`` the rows it was sent, of them ``matched``
+    (it carried the track, whatever the taxonomy made of its word), ``missed``
+    and ``unread`` (it refused or could not be read); ``not_asked`` the rest,
+    of them ``not_sent`` the rows it was passed over on once it had refused
+    this client in the run. A row with no words, one the walk stopped before or
+    a refusal that named no catalogue, counts as not asked by every catalogue.
+    """
+    listed = list(answers)
+    sources: list[str] = []
+    for asked in listed:
+        for source, _word in asked.answers:
+            if source not in sources:
+                sources.append(source)
+    counted = {source: dict.fromkeys(COUNTED, 0) for source in sources}
+    for asked in listed:
+        words = dict(asked.answers)
+        for source in sources:
+            word = words.get(source, "")
+            entry = counted[source]
+            if word in _ANSWERED or word in searchers.UNREAD_ANSWERS:
+                entry["asked"] += 1
+                entry["matched"] += word == searchers.Answer.MATCHED.value
+                entry["missed"] += word == searchers.Answer.MISS.value
+                entry["unread"] += word in searchers.UNREAD_ANSWERS
+            else:
+                entry["not_asked"] += 1
+                entry["not_sent"] += word == NOT_SENT
+    return {
+        "rows": len(listed),
+        "stopped": sum(asked.note == STOPPED_NOTE for asked in listed),
+        "catalogues": counted,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -885,6 +1040,7 @@ __all__ = [
     "CATALOGUE_DAYS",
     "CATALOGUE_STATE",
     "CATALOGUE_WEIGHT",
+    "COUNTED",
     "DECLINED",
     "FILE_HAS_GENRE",
     "FOLDER_WEIGHT",
@@ -897,10 +1053,12 @@ __all__ = [
     "MATCHED",
     "MEDIUM",
     "NONE",
+    "NOT_SENT",
     "NO_VOTES",
     "OUTCOMES",
     "ROW_HAS_GENRE",
     "SPLIT",
+    "STOPPED_NOTE",
     "STOP_AFTER_UNREAD",
     "TIED",
     "UNREAD",
@@ -913,12 +1071,14 @@ __all__ = [
     "Lookup",
     "SuggestPlan",
     "band_of",
+    "catalogue_counts",
     "catalogue_lookup",
     "catalogue_path",
     "narrowed",
     "plan_suggestions",
     "rows_plan",
     "suggestable",
+    "unread_names",
     "weigh",
     "write_files",
 ]
