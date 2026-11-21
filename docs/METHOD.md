@@ -213,6 +213,29 @@ it guards and report both counts. A prose argument is not evidence.
 descriptions and not only counts. A table that lives only in a chat message is a
 claim. One was lost that way.
 
+**A recorded kill can be replayed, and a restructuring is held to it** (U297).
+`scripts/killset.py list` reads every table under `docs/mutation/` and says
+which recorded kills still apply as written, and `killset.py rows PATH ...
+--out FILE` writes those as a row file for the driver's third pass kind,
+`replay`. A replay has no row cap because it chooses no rows: every row must
+name the table and id it came from, and it is never a unit's own table, whose
+cap of 25 stands. A unit that restructures code replays the kills of the
+files it owns before its first edit and after its last, the second from
+`killset.py rows --after BEFORE.json`, which follows text that moved to
+another file, and `killset.py check BEFORE.json AFTER.json` fails on any kill
+the second table lost that is not mapped there, with its reason, to a row
+that is killed.
+
+**Behaviour is compared, not argued** (U297). `scripts/behaviour_compare.py
+capture --out DIR` runs the scenarios under `tests/behaviour/`, one file per
+package, on a disposable library under the suite's own isolation with the
+clock and every generated id pinned, and keeps each command's output and exit
+code, every file written and every database row. `--rev` runs the same
+scenarios against another revision's `src/`, and `compare` prints every
+difference between two captures and exits 1 on any. A unit that must leave
+behaviour unchanged compares its base with its branch, and first adds a
+scenario for any verb it touches that has none.
+
 ## Reading discipline, because context is what you are billed for
 
 Every tool result stays in context and is re-sent on every later call, so the
