@@ -2434,8 +2434,35 @@ def _check_backup_portion(key: str, inputs: _Inputs) -> Finding:
         key=key,
         title=title,
         status=Status.INFO,
-        detail=f"last completed {days} days ago, to {answer.destination or 'an unnamed destination'}",
+        detail=(
+            f"last completed {days} days ago, to "
+            f"{answer.destination or 'an unnamed destination'}{_by_kind(answer)}"
+        ),
     )
+
+
+def _by_kind(answer) -> str:
+    """Which kind of run completed a portion and what it changed (U317), or nothing.
+
+    Nothing for a fact a build before U317 wrote, which recorded no kind, rather
+    than a kind the record does not hold.
+    """
+    summary = answer.summary or {}
+    took = backup_facts.took(summary.get("seconds"))
+    if answer.kind == backup_facts.KIND_QUICK:
+        found = ", ".join(
+            f"{summary.get(name, 0)} {name}"
+            for name in ("added", "changed", "rewritten", "removed")
+        )
+        return f", by a quick run that sent only what changed ({found}){took}"
+    words = {
+        backup_facts.KIND_FULL: "by a full check of the whole remote",
+        backup_facts.KIND_SKIPPED: "by a skip, since nothing had changed",
+        backup_facts.KIND_SNAPSHOT: "by a new dated snapshot",
+        backup_facts.KIND_UNCHANGED: "unchanged since its last snapshot, so none was taken",
+    }
+    said = words.get(answer.kind or "")
+    return f", {said}{took}" if said else ""
 
 
 def _check_backup_acknowledgment(inputs: _Inputs) -> Finding:
@@ -2562,6 +2589,61 @@ def _check_full_comparison(inputs: _Inputs) -> Finding:
         detail=(
             f"last ran {days} days ago, against "
             f"{answer.destination or 'an unnamed destination'}{due}"
+        ),
+    )
+
+
+def _check_full_check(inputs: _Inputs) -> Finding:
+    """When the file mirror last ran a full check, and when the next is due (U317).
+
+    INFO AT EVERY AGE, for the reason the line above gives: a full check that
+    is due is not a fault, it is what the next ``crate backup run`` does by
+    itself. FAIL only where the record cannot be trusted.
+    """
+    key, title = "backup.full_check", "backup, last full check"
+    if inputs.cfg is None:
+        return _unchecked(key, title)
+    try:
+        answer = backup_facts.full_check_age(inputs.cfg, now=inputs.probes.now)
+    except backup_facts.BackupFactsUnreadable as exc:
+        return _unreadable_facts(key, title, exc)
+    run_one = "To run one now: crate backup run --check"
+    if answer.state is backup_facts.AgeState.NEVER_RECORDED:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                "no full check of the remote is on record, so the next backup "
+                f"runs one. {run_one}"
+            ),
+        )
+    if answer.state is backup_facts.AgeState.RECORDED_IN_THE_FUTURE:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.FAIL,
+            detail=(
+                f"the recorded full check at {answer.completed_at} is ahead of "
+                f"now, so when the next is due cannot be stated"
+            ),
+            remedy=Remedy.REPAIR_BACKUP_FACTS,
+        )
+    due = backup_facts.full_check_due(answer)
+    when = (
+        "is due now, so the next backup runs one"
+        if due is None or due <= inputs.probes.now
+        else f"is due {due.date().isoformat()}; until then a backup sends only "
+        f"what changed, or is skipped when nothing did"
+    )
+    return Finding(
+        key=key,
+        title=title,
+        status=Status.INFO,
+        detail=(
+            f"last ran {_whole_days(answer.age)} days ago, against "
+            f"{answer.destination or 'an unnamed destination'}. The next {when}. "
+            f"{run_one}"
         ),
     )
 
@@ -4069,6 +4151,7 @@ CHECKS: tuple[Check, ...] = (
     Check("backup.acknowledgment", _check_backup_acknowledgment),
     # R-757. After the ages it qualifies and before the remote they all name.
     Check("backup.full_comparison", _check_full_comparison),
+    Check("backup.full_check", _check_full_check),
     Check("backup.remote", _check_backup_remote),
     # U185. After the backup checks, since its warning is a comparison with
     # the database portion's age, and it names the same remedy they do.

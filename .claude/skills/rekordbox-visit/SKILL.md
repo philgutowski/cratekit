@@ -53,7 +53,9 @@ Every one of these holds, or the visit does not start.
 2. **Both backup ages are under five days.** `crate doctor` shows them as
    `backup.age.files` and `backup.age.database`. At five days or more, or with
    either unknown, run `crate backup run` first, as CLAUDE.md's backup rule
-   says, and read the ages again.
+   says, and read the ages again. A quick run or a skip resets the ages as a
+   full one does, since each proves the remote holds the library; a failed
+   run resets nothing.
 
 3. **rekordbox and rekordboxAgent are both gone.** `crate doctor` reads
    `rekordbox.closed` as ok, and from the shell `pgrep -x rekordbox` and
