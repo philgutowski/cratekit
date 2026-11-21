@@ -99,6 +99,18 @@ continue with a higher ceiling cannot help a run the hour has stopped, and
 after the cooldown, which keeps its own meaning: the budget never trips the
 breaker, and a refusal of either is a park and never a retry.
 
+THE NIGHT'S LINE (U293). The night pass, ``sync.night``, runs with
+nobody watching, so it holds a line of its own: :func:`night` opens it inside
+the command's scope with the gate's running total when the night's firing
+began and the lower of what is left of the night's budget and what is left of
+the command's ceiling, and every call asks, under the lock and before the
+send, whether the gate's total has moved that far since. It counts every
+process that reads the gate, so it can stop early and never late, and a total
+that has fallen below the mark, a state file replaced, is a spend nobody can
+read and stops the call too. Past it the call parks as :data:`NIGHT`. The
+ceiling is still asked beside it, and the hour is lowered to the night's own
+hour for the length of the scope: every line here only ever lowers.
+
 WHAT IT DOES NOT COVER. The vendored downloader fetches media segments through
 its own session against a content delivery host. Those are not calls to the
 provider's API and are not paced here.
@@ -168,6 +180,14 @@ BUDGET = "provider-budget"
 #: How an hour's budget raised for one run reaches a job's detached child, on
 #: :data:`CALLS_ENV`'s rule.
 BUDGET_ENV = "CRATEKIT_PROVIDER_CALLS_PER_HOUR"
+
+#: The reason a call past the night pass's own line stops with (U293),
+#: declared in ``cause.REASONS``.
+NIGHT = "provider-night-budget"
+
+#: How the night's line reaches a job's detached child: the gate's running
+#: total at the mark, the calls left, and the night, as ``START:CALLS:NIGHT``.
+NIGHT_ENV = "CRATEKIT_PROVIDER_NIGHT"
 
 #: The window the budget is counted over, and the size of one count in it. A
 #: minute's calls leave the window an hour after the minute ENDS, so the count
@@ -379,6 +399,30 @@ class _State:
         return state
 
 
+@dataclass(frozen=True, slots=True)
+class Night:
+    """The night pass's line (U293): ``budget`` more calls past ``start``, the
+    gate's running total when the firing began, on the night named ``night``."""
+
+    start: int
+    budget: int
+    night: str
+
+    def to_env(self) -> str:
+        return f"{self.start}:{self.budget}:{self.night}"
+
+    @classmethod
+    def from_env(cls, text: str) -> Night | None:
+        """The line off :data:`NIGHT_ENV`, or None when it cannot be read."""
+        parts = text.strip().split(":", 2)
+        if len(parts) != 3:
+            return None
+        start, budget, night = parts
+        if not all(part.isascii() and part.isdigit() for part in (start, budget)) or not night:
+            return None
+        return cls(start=int(start), budget=int(budget), night=night)
+
+
 @dataclass
 class Command:
     """One command's ceiling scope, opened by the dispatcher around a verb.
@@ -404,6 +448,8 @@ class Command:
     #: The class the dispatcher opened the scope with, which :func:`spending`
     #: returns to and never goes past.
     declared: bool = False
+    #: The night pass's line while :func:`night` holds it, else None (U293).
+    night: Night | None = None
 
     def spent(self) -> int:
         return max(0, _PROCESS_CALLS - self.started)
@@ -439,8 +485,14 @@ def _hour_from_env() -> int | None:
     return value if value > 0 else None
 
 
+def _night_from_env() -> Night | None:
+    """The night's line a parent run opened, read off :data:`NIGHT_ENV`."""
+    text = os.environ.get(NIGHT_ENV, "")
+    return Night.from_env(text) if text.strip() else None
+
+
 @contextmanager
-def _exported(name: str, value: int | None) -> Iterator[None]:
+def _exported(name: str, value: int | str | None) -> Iterator[None]:
     """``name`` set to ``value`` for the body, and put back as it was after."""
     if value is None:
         yield
@@ -494,6 +546,7 @@ def command(
         reserve=bool(reserve),
         hourly=hourly_raised,
         declared=bool(reserve),
+        night=_night_from_env(),
     )
     with _exported(CALLS_ENV, calls), _exported(BUDGET_ENV, calls_per_hour):
         _COMMAND = scope
@@ -501,6 +554,61 @@ def command(
             yield scope
         finally:
             _COMMAND = None
+
+
+@contextmanager
+def night(
+    start: int, calls: int, label: str, *, calls_per_hour: int, settings: GateSettings
+) -> Iterator[Night]:
+    """Hold the open command to the night pass's line for the body (U293).
+
+    ``start`` is the gate's running total when the firing began, ``calls``
+    what is left of the night's budget, and ``label`` the night. The line is
+    the lower of ``calls`` and what is left of the command's ceiling, so the
+    night's line is met first and the ceiling never stands in for it (review
+    round one: a firing once sent 1,200 calls where a command stops at 500).
+    The hour is lowered to the lower of ``calls_per_hour`` and the hour the
+    command already runs under; nothing here raises a line. Both reach a detached
+    child through the environment while the body runs, and the scope is put
+    back as it was after. Only a verb opens it, inside the dispatcher's scope.
+    """
+    scope = _COMMAND
+    if scope is None:
+        raise RuntimeError("the night's line is opened inside a command's scope only")
+    # THE CONFIGURED CEILING TOO (review round two): one raised through the
+    # environment, which the night's ``--calls`` refusal cannot see, never
+    # widens a firing.
+    left_of_ceiling = max(
+        0, min(ceiling(settings), settings.calls_per_command) - scope.spent()
+    )
+    held = Night(
+        start=max(0, int(start)), budget=max(0, min(int(calls), left_of_ceiling)), night=label
+    )
+    if scope.night is not None:
+        # NESTED, THE LOWER LINE HOLDS: what is left of the outer night's
+        # budget, read against its own mark, is never widened by an inner one.
+        outer = scope.night
+        left = outer.start + outer.budget - held.start
+        if left < held.budget:
+            held = Night(start=held.start, budget=max(0, left), night=held.night)
+    hour = min(hourly(settings), max(1, int(calls_per_hour)))
+    before = (scope.night, scope.hourly)
+    scope.night = held
+    scope.hourly = hour
+    try:
+        with _exported(NIGHT_ENV, held.to_env()), _exported(BUDGET_ENV, hour):
+            yield held
+    finally:
+        scope.night, scope.hourly = before
+
+
+def _night() -> Night | None:
+    """The night's line the next call runs under: the open command's, else a
+    parent's off the environment, else None."""
+    scope = _COMMAND
+    if scope is not None:
+        return scope.night
+    return _night_from_env()
 
 
 def command_spent() -> int:
@@ -1116,6 +1224,52 @@ class Gate:
             },
         )
 
+    def _night_cause(self, state: _State, held: Night) -> Cause:
+        """The night pass's line reached (U293), or a running total that fell
+        below its mark, which is a spend nobody can read. Parked like a trip,
+        never retryable: what is left waits for the next night."""
+        spent = state.calls - held.start
+        if spent < 0:
+            message = (
+                f"the provider gate's running total is {state.calls}, below the "
+                f"{held.start} it held when the night pass of {held.night} began, so "
+                f"what the night has spent cannot be read and the night pass "
+                f"stopped before the next call"
+            )
+        else:
+            calls = "call" if spent == 1 else "calls"
+            message = (
+                f"the night pass of {held.night} has made {spent} {calls} to the "
+                f"streaming provider since it began, counted from every command and "
+                f"copy that reads this gate, and its line was {held.budget}, the lower "
+                f"of what was left of the night's budget, [provider] night_calls, and "
+                f"of one command's ceiling, [provider] calls_per_command, so it "
+                f"stopped before the next call and the remaining items stay queued"
+            )
+        return Cause(
+            reason=NIGHT,
+            message=message,
+            remediation=Remediation(
+                remedy=Remedy.RETRY_LATER,
+                steps=(
+                    "the night pass's next firing continues it, or continue it by hand "
+                    "at the Mac with crate sync land --pass-run and the pass's run",
+                    "or raise [provider] night_calls, or [provider] calls_per_command "
+                    "when one command's ceiling set the line",
+                ),
+            ),
+            scope=Scope.RUN,
+            retryable=False,
+            origin=("provider_gate",),
+            detail={
+                "night": held.night,
+                "spent": spent,
+                "budget": held.budget,
+                "start": held.start,
+                "total": state.calls,
+            },
+        )
+
     def _stopped(self, cause: Cause) -> CratekitError:
         """A refusal as the job engine's own park, so an item in flight is
         released rather than failed and the driver claims nothing further.
@@ -1209,6 +1363,18 @@ class Gate:
                 spent = state.spent(identity, now)
                 if spent >= hour_line:
                     cause = self._budget_cause(state, identity, now, hour_line, spent)
+                    if scope is not None:
+                        scope.stopped = cause
+                    raise self._stopped(cause)
+                # THE NIGHT'S LINE, AFTER THE HOUR (U293), read off the gate's
+                # running total so every process the night started is counted,
+                # and before the ceiling, which still holds beside it.
+                held_night = _night()
+                if held_night is not None and (
+                    state.calls - held_night.start >= held_night.budget
+                    or state.calls < held_night.start
+                ):
+                    cause = self._night_cause(state, held_night)
                     if scope is not None:
                         scope.stopped = cause
                     raise self._stopped(cause)
@@ -1435,6 +1601,9 @@ __all__ = [
     "LOCK_KEY",
     "LOCK_POLL_S",
     "LOCK_WAIT_S",
+    "NIGHT",
+    "NIGHT_ENV",
+    "Night",
     "RATE_LIMIT_STATUS",
     "STATE_KEY",
     "app_lost",
@@ -1454,6 +1623,7 @@ __all__ = [
     "hourly",
     "iso",
     "line_for",
+    "night",
     "note_app_lost",
     "over_the_line",
     "process_spend",

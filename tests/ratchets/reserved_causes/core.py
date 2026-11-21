@@ -174,6 +174,7 @@ KEBAB_LITERALS = {
          'provider-call-ceiling',  # 2026-11-02, U193
         'provider-cooldown',
         'provider-gate-held',
+        'provider-night-budget',  # 2026-11-21, U293
         'pyrekordbox-pin-drift',
         'rating-scale-unknown',
         'rclone-missing',
@@ -236,6 +237,7 @@ KEBAB_LITERALS = {
         'soft-delete-marker-unreadable',
         'source-missing',
         'source-unsupported',
+        'staging-held',  # 2026-11-21, U293
         'sync-artifacts-unusable',
         'sync-mark-record-unusable',
         'sync-marks-blocked',
@@ -362,12 +364,15 @@ KEBAB_LITERALS = {
     ],
     'core/naming.py': ['utf-8'],
     # 2026-11-11, U241: the name of the thread a stream worker watches its parent with.
+    # 2026-11-21, U293: the night's ledger joined.
+    'core/night_budget.py': ['utf-8'],
     'core/pool.py': ['cratekit-pool-parent-watch'],
     'core/preflight.py': ['if-root-can-be-created', 'if-root-exists'],
     # 2026-11-05, U211: the scan's refusal for a process it could not read.
     'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-11-02, U193: the call ceiling's stop joined.
-    'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held', 'utf-8'],  # 2026-11-12, U278
+    # 2026-11-21, U293: the night pass's line joined.
+    'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held', 'provider-night-budget', 'utf-8'],  # 2026-11-12, U278
     # 2026-11-12, U267: the shared read's refusal of a use it was not made for.
     'core/rb_writer.py': [
         'app-version-pin-drift',
@@ -486,6 +491,8 @@ KEBAB_LITERALS = {
         'snapshot-store-full',
         'utf-8',
     ],
+    # 2026-11-21, U293: the staging lock joined.
+    'core/staging_lock.py': ['staging-held'],
     'core/tags.py': ['utf-8'],
     'core/taxonomy.py': ['utf-8'],
     # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
@@ -539,7 +546,10 @@ NAMED_WITHOUT_OWN = {
     'core/config.py': ['upgrade-cratekit'],
     'core/jobs.py': ['cancelled'],
     # 2026-11-02, U193: the call ceiling's stop joined.
-    'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held'],  # 2026-11-12, U278
+    # 2026-11-21, U293: the night pass's line joined.
+    'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held', 'provider-night-budget'],  # 2026-11-12, U278
+    # 2026-11-21, U293: the staging lock joined.
+    'core/staging_lock.py': ['staging-held'],
     'core/session.py': ['awaiting-import'],
 }
 
@@ -600,7 +610,8 @@ NAMED_WITH_OWN = {
     'core/jobs.py': ['cancelled'],
     'core/preflight.py': ['if-root-can-be-created', 'if-root-exists'],
     # 2026-11-02, U193: the call ceiling's stop joined.
-    'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held'],  # 2026-11-12, U278
+    # 2026-11-21, U293: the night pass's line joined.
+    'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held', 'provider-night-budget'],  # 2026-11-12, U278
     'core/reconcile.py': ['in-flight-restore', 'unconverged-tree'],
     'core/restore.py': [
         'bare-metal-recovery',
@@ -622,6 +633,8 @@ NAMED_WITH_OWN = {
     ],
     'core/routing.py': ['not-judged'],
     'core/secrets.py': ['install-keychain-backend', 'repair-credential-store', 'set-credential'],
+    # 2026-11-21, U293: the staging lock joined.
+    'core/staging_lock.py': ['staging-held'],
     'core/session.py': ['awaiting-import', 'committed-unverified'],
 }
 
@@ -672,7 +685,8 @@ LITERAL_HOLDERS = {
     # 2026-11-05, U211: the scan's refusal for a process it could not read.
     'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-11-02, U193: the call ceiling's stop joined.
-    'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held'],  # 2026-11-12, U278
+    # 2026-11-21, U293: the night pass's line joined.
+    'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held', 'provider-night-budget'],  # 2026-11-12, U278
     # 2026-11-12, U267: the shared read's refusal of a use it was not made for.
     'core/rb_writer.py': [
         'app-version-pin-drift',
@@ -742,6 +756,8 @@ LITERAL_HOLDERS = {
     ],
     # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
     # a new module, the taxonomy upgrade planner (U132). Measured on the merged tree.
+    # 2026-11-21, U293: the staging lock joined.
+    'core/staging_lock.py': ['staging-held'],
     'core/taxonomy_upgrade.py': ['config-unusable', 'internal-error'],
     'core/tombstone.py': ['review-selection-invalid'],
     'core/tree_registry.py': [

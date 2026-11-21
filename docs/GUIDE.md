@@ -54,7 +54,7 @@ crate login NAME --from-file PATH
 | `identify-key`, `identify-signing-key` | The recognition service's key and signing value, for `intake set` and `intake identify`. |
 | `catalogue-app-id`, `catalogue-app-key` | Optional. Cratekit's own app on the provider's developer platform. With both recorded, catalogue lookups go under the app rather than your account; doctor says where lookups go and how many calls each side made. |
 | `cyanite-key` | Optional. An integration access token from your Cyanite account's integrations section, for the Cyanite trial below and nothing else. Doctor reports it and never fails on it; setup does not offer it. |
-| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag` and `tag suggest --catalogue` ask Discogs first, and Beatport only when Discogs gives no genre; without it Discogs is recorded as not asked on every file that needs a genre and Beatport is asked as before, a file Beatport misses stays askable rather than `no-hit`, and the sweep's summary and a warning say how many files Discogs was not asked about. A token Discogs refuses does not stop Beatport being asked: a file Beatport settles is tagged as before, a file it cannot settle fails with the token's refusal while the sweep goes on, and the sweep warns how many files Discogs was not read for because it refused the token. Setup links it as its own step, checking the token with Discogs before storing it (above); doctor reports it and never fails on it. |
+| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag`, `tag suggest --catalogue` and `tag backlog --catalogue` ask Discogs first, and Beatport only when Discogs gives no genre; without it Discogs is recorded as not asked on every file that needs a genre and Beatport is asked as before, a file Beatport misses stays askable rather than `no-hit`, and the sweep's summary and a warning say how many files Discogs was not asked about. A token Discogs refuses does not stop Beatport being asked: a file Beatport settles is tagged as before, a file it cannot settle fails with the token's refusal while the sweep goes on, and the sweep warns how many files Discogs was not read for because it refused the token. Setup links it as its own step, checking the token with Discogs before storing it (above); doctor reports it and never fails on it. |
 
 A provider that rejects the stored session is reported as rejected, with the
 sign in step. A provider that fails or cannot be reached is reported as an
@@ -240,6 +240,9 @@ the two commands that answer and apply it and the rekordbox visit after.
   out, and continue.
 - `crate sync land --pass-run RUN_ID` continues an earlier pass, by either run
   id it printed. Jobs already ended are read, not driven again.
+- One pass stages at a time: `sync land`, `label sync --go` and the night pass
+  below each hold one staging lock for the whole of a run, and a second
+  refuses `staging-held`, naming the holder's verb, process, run and start.
 
 Then, in order:
 
@@ -266,6 +269,49 @@ crate inbox analyzed       # take the analysed rows out of INBOX / Analyze
 grid one tempo (or moving on a `dyn` row), Key filled, and how often the
 title's key agrees with rekordbox's. `--pass` or `--session` names one
 landing.
+
+**A night pass.** `crate sync night` is the same pass with nobody watching,
+for a schedule to run overnight, so the time at the Mac is the landing's
+gate and the rekordbox visit. It runs `sync land` and adds only what an
+unattended run needs, each a refusal before any provider call:
+
+- It answers nothing: a `-d`, `--calls` or `--calls-per-hour` given to it
+  refuses, and every gate the pass meets waits for the session (the landing,
+  the backup acknowledgment, `sync.land.without-vocals`). It never mints the
+  acknowledgment, never writes the database and never opens rekordbox. The
+  tail's own `name apply` confirm is the one answer in its chain, as in any
+  pass.
+- It refuses while rekordbox or `rekordboxAgent` is up, while any job has a
+  live driver, and while another pass holds the staging lock.
+- A new night pass refuses while the staging folder holds anything a landing
+  would take, an earlier night's pass waiting at its gate above all, so it
+  never queues a new pass behind one waiting.
+- It holds a night's budget, `[provider] night_calls` (1,200) across every
+  firing from noon to noon, counted in the one provider gate across every
+  process and charged before its first call, and lowers the hour to
+  `[provider] night_calls_per_hour` (600). One firing's line is the lower of
+  what is left of the night and one command's ceiling, `[provider]
+  calls_per_command` (500), so a firing never spends past either. A call past
+  the line is not sent and the pass stops as `provider-night-budget`; the
+  next firing continues it with `--pass-run`, as it does a pass the hour or a
+  cooldown stopped.
+- Whatever the ending it leaves one line: `crate doctor` shows it as
+  `sync.night`, and `crate sync night --last` prints the line and, a row
+  each, the outcome, the gate's run, the pass run, the pass name, the
+  staging folder, what to do next and any track the download refused, and
+  runs nothing (`--output json` carries them under `data.summary.night`). A
+  firing that refuses keeps a pass still waiting or still to continue, and
+  says it was refused in front of the line. A wait whose pass has since
+  landed, by its native landing's record, reads as `settled`; an answered
+  gate alone does not end it, since an apply refused or an abort leaves the
+  tracks staged.
+
+At the Mac, a pass that waits at the landing gate goes straight to the
+rehearsal and the landing with the run, pass and staging folder `--last`
+names (the `crate-sync` skill does this); one that waits on the backup
+acknowledgment takes `crate session ack --as session` and then the `crate
+sync land --pass-run RUN` its line names. Nothing installs the schedule yet,
+so until a verb does, the night pass runs when it is typed.
 
 `sync all` alone queues each enabled source's increment under one run and
 returns at once; nothing has run until the jobs are resumed. It sweeps no
@@ -435,7 +481,7 @@ crate route pending
   refusal naming them and since when, and, when Discogs went unasked for want
   of a token, how to record one; with `--output json` the summary lists such
   files under `refusal_stop`, and lists under `refused` the files Discogs
-  searched and could not tag while every other catalogue refused. `tag suggest --catalogue` stops the
+  searched and could not tag while every other catalogue refused. `tag suggest --catalogue` and `tag backlog --catalogue` stop the
   same way within one run; `tag retag` asks afresh for each file. The sweep's warning names such a catalogue as having
   refused this client, and a Cloudflare challenge as one, and keeps
   `unreachable` for a catalogue that is down. A file no catalogue knows keeps
@@ -1055,6 +1101,7 @@ writes their genre tags.
 
 | Verb | Does |
 |---|---|
+| `tag backlog [--catalogue]` | Sorts every row adoption leaves under needs genre by cause, names the verb that settles each and one question per genre word no folder takes; writes nothing. |
 | `tag rows [--leave ID]` | Writes each row's genre from its file where they disagree. |
 | `tag suggest [--band] [--set ID=GENRE] [--catalogue]` | Suggests a genre for rows with none, from artist, folder and optionally the catalogues; writes file and row. |
 | `tag retag FOLDER` | Replaces a genre too coarse to be final. |
@@ -1069,6 +1116,35 @@ one already filed, or a genre the taxonomy does not declare. A word that is a
 genre folder's name in another case takes only `taxonomy alias WORD "Exact
 Name"`, which retags without touching the taxonomy. After an alias, run `tag
 rows`, then `route resort`.
+
+**The needs genre backlog.** `tag backlog` reads every row adoption files
+nowhere for want of a genre and puts each in one cause: its file carries a
+genre the row lacks (`tag rows` writes it), no genre on the row or the file
+(`tag suggest` weighs it), a word too coarse to be a genre (`tag retag`), a
+genre word no folder takes, or a file whose genre could not be read. A row
+whose file is not here is in no cause and is counted apart, by why. A row
+with no genre is proposed a genre only at `tag suggest`'s `high` band, the
+floor, and each proposal names its source (the catalogue that matched and
+its own word, or the neighbours) and its share of the votes; with
+`--catalogue` the catalogues are asked as `tag suggest --catalogue` asks
+them and the answers are kept a week, so `tag suggest --catalogue` reads the
+same ones. The words no folder takes are grouped across spellings and ranked
+by rows. Each answer is planned by `taxonomy alias` and `taxonomy folder`
+themselves on your active copy, so a word is offered only answers those
+verbs take: an alias of the genre folder the rows' artist and folder
+neighbours agree on at `medium` or better, its own folder, or left for hand
+tagging. Its own folder is recommended when it would file 50 rows or more,
+otherwise the alias, otherwise leaving it. Each answer says how many rows it
+would move: a folder files a row whose row carries that spelling, or whose
+file does and `tag rows` would write it; an alias moves a row whose file
+holds the word alone, and only when the library has a genre entry for the
+alias's genre. A word already saved as an alias, or another case of a genre
+folder's name, has one answer and asks nothing; a word neither verb takes is
+named with why. The report ends with the campaign, the existing verbs in the
+order that settles the backlog with the rows each moves, the rows left by
+hand with what would settle them, any row `tag rows` would move into needs
+genre, and needs genre now and after. It opens the database only to read and
+writes nothing.
 
 **Removing tracks.** `crate delete review` offers the files behind rows you
 removed in rekordbox; confirmed ones go to the system Trash only. It refuses
@@ -1398,6 +1474,8 @@ Read the refusal's reason and remedy before retrying, then `crate doctor`.
 | A resume that refuses the same way | `crate job cancel JOB_ID` and queue a fresh one. |
 | `provider-call-ceiling` | The command hit the provider call ceiling (`[provider] calls_per_command`, 500). Run the printed command; `--calls N` raises it for one run, as `crate --calls N job resume JOB_ID`, with `--calls-per-hour` beside it when N is above the hour's budget, 1,500. |
 | `provider-budget` | The account, or the app credentials, has made as many provider calls in the last hour as this command may (`[provider] calls_per_hour`, 1,500, reads stopping at 1,125), counted across every command and copy. Wait until the time it names, then run it again or `crate job resume JOB_ID`; `crate --calls-per-hour N` raises the hour for one run. A `--calls` above the whole hour is refused the same way: lower it, or raise the hour with it. A `label sync` walk over every label refuses first when its estimate will not fit; ask one label with `--next --label NAME`. |
+| `provider-night-budget` | The night pass has made as many provider calls as its line allows, the lower of what is left of `[provider] night_calls` (1,200, noon to noon, counted across every process) and one command's ceiling (500), or what it spent cannot be read. A stop at the line needs nothing: the night pass's next firing continues it, or continue it at the Mac with `crate sync land --pass-run RUN`. A spend that cannot be read refuses every firing of that night and names the ledger and the gate's state file to look at; the next night starts afresh. |
+| `staging-held` | Another pass is downloading into the staging folder (`sync land`, `label sync --go` or `sync night`), named in the message. Wait for it to end, then run this again. |
 | `rekordbox-absence-unconfirmed` | A process the check could not read, usually one still exiting. Wait, then continue with the printed `crate --run RUN_ID ...`. Inspect with `ps -p PID -o pid,stat,comm`. |
 | `backup-acknowledgment-missing` | [The backup acknowledgment](#the-backup-acknowledgment). |
 | `sync land` lists intake jobs left open | `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`. A queued `crate organize` download is taken by the next new pass. |
@@ -1489,6 +1567,8 @@ wins over the profile's preset), `[taxonomy]`, `[naming]`, `[acquisition]`,
 | `provider.isrc_cache_days` | 30 (0 turns the ISRC cache off) |
 | `provider.calls_per_hour` | 1500 (per identity, over any sixty minutes) |
 | `provider.reserve_share` | 0.25 (kept for writes and downloads) |
+| `provider.night_calls` | 1200 (the night pass's budget, noon to noon, every firing) |
+| `provider.night_calls_per_hour` | 600 (the hour the night pass holds the account to) |
 | `labels.offer_per_sweep` | 10 |
 | `labels.new_playlist_age_days` | 30 |
 

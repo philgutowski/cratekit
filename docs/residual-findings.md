@@ -53611,3 +53611,178 @@ fill, per dead thread. Maintainer facing; no user of a shipped verb pays.
 **Closes when:** the cloud-unit skill says a card the coordinator assigned is
 built whatever the lane alarm says (R-1666's own condition), or the reader
 stops counting a hold the coordinator does not, with a test. Ledger only.
+
+---
+
+## R-1732. The needs genre backlog's proposals and word counts read the library as it stands, not after the campaign's earlier steps
+
+**Found:** at the review of #849, U292, 2026-11-21.
+
+**The mechanism.** `crate tag backlog` reads each verb's own plan over the library as it is now (`tagging/backlog.py`, `plan_backlog`). Its campaign then runs those verbs in order, and `tag rows` changes the rows `tag suggest` votes with. Round one drove eight neighbours whose rows said Deep House and whose files said Melodic House: the backlog proposed Deep House for the genreless row, and after `tag rows` wrote the neighbours' rows, `tag suggest` planned Melodic House. A word's counts move the same way when `tag rows` writes a file's word onto a row.
+
+**Measured cost.** A proposal printed by the backlog can differ from what `tag suggest` writes when run after `tag rows`, on a library whose rows disagree with their files. No genre is written by the backlog, and `tag suggest` shows its own plan at its own gate, so a person is never written a genre they were not shown; the cost is a report that overstates its agreement with the campaign.
+
+**Closes when:** U294 (#851) plans each step of the campaign after the steps before it land, or reads the backlog again between steps. Ledger only.
+
+---
+
+## R-1733. The needs genre backlog counts an alias's rows, while taxonomy alias retags every file under the root carrying the word
+
+**Found:** at the review of #849, U292, 2026-11-21.
+
+**The mechanism.** `word_of` in `tagging/backlog.py` counts the rows an alias would move: rows whose file holds the word alone. `crate taxonomy alias` walks every audio file under the library root (or `--folder`) and retags each whose one genre is the word, including files no library row names. Round one drove an alias detail saying one track's file is retagged where the alias gate listed four file writes, one of them a file in no row.
+
+**Measured cost.** The backlog's alias option names fewer file writes than the alias verb's own gate will show. The gate lists every file before anything is written, so nothing is written unseen; the backlog's count is of rows moved out of needs genre, which is what it says.
+
+**Closes when:** the option's detail names the files the alias would retag as well as the rows it moves, read from the verb's own file walk. Ledger only.
+
+---
+
+## R-1734. tag rows writes a genre word no folder takes over a routed row, moving it into needs genre, and the backlog campaign runs it first
+
+**Found:** at the review of #849, U292, 2026-11-21.
+
+**The mechanism.** `tag rows` reads every disagreement as the row lagging its file (`tagging/rows.py`). A row adoption files today, say Melodic House, whose file carries a word no folder takes, say Indie Tech, is written that word, and adoption then files it nowhere. Round one drove two such rows: the backlog projected 0 left after the campaign and the census read 2. The backlog now counts them (`Backlog.joining`), adds them back into its projection and warns `backlog-rows-joining`, naming them; it writes nothing itself.
+
+**Measured cost.** Running the printed campaign moves the named rows into needs genre unless each is held out with `tag rows --leave`. The backlog names them before the step runs.
+
+**Closes when:** U294 (#851) holds every joining row out of its `tag rows` step, or `tag rows` stops writing a word adoption files nowhere over one it files. Ledger only.
+
+---
+
+## R-1735. The needs genre backlog's folder answer counts a row whose row carries the word while tag rows would write another case of it
+
+**Found:** at round two of the review of #849, U292, 2026-11-21.
+
+**The mechanism.** `word_of` in `tagging/backlog.py` counts a row as filed by a folder of the word's name when its row carries that spelling exactly, even when `tag rows` would write its file's other case of the word over it. Round two drove a library with genre entries for both `Indie Tech` and `indie tech`: the folder claimed 3 rows and filed 2.
+
+**Measured cost.** A folder's row count over by such rows, and the projection with it. Whether rekordbox keeps two genre entries that differ only in case was not measured, so reachability on a real library is unmeasured.
+
+**Closes when:** the count reads the word `tag rows` would write before the row's own word. Ledger only.
+
+---
+
+## R-1736. A genre word beginning with a hyphen is offered a taxonomy command argparse reads as an option
+
+**Found:** at round two of the review of #849, U292, 2026-11-21.
+
+**The mechanism.** `tag backlog` builds each answer's command with `shlex.join`, which quotes for the shell and not for argparse. A word such as `-x` is offered `crate taxonomy folder -x`, and that command exits 2 with a usage error. Round two drove two files tagged `-x`; the same was true at round one's head.
+
+**Measured cost.** A person pasting the offered command for such a word is refused with a usage error. No catalogue or acquisition path that writes such a genre was driven, so reachability is unmeasured.
+
+**Closes when:** a command for a word beginning with a hyphen is offered in a form argparse takes, or the word is offered no command. Ledger only.
+
+---
+
+## R-1737. The needs genre backlog's projection leaves out rows filed under another word's answer and rows tag rows moves in, so it reads pessimistic
+
+**Found:** at round two of the review of #849, U292, 2026-11-21.
+
+**The mechanism.** `Backlog.projected` in `tagging/backlog.py` counts each word's widest answer over that word's own rows. A row grouped under its file's word whose row carries another word is filed when that other word gets a folder, and a joining row is filed by its new word's answer; neither is counted. Round two ran 300 random libraries through the printed campaign: 164 ended below the projection and none above, and 42 of 1,075 answered words moved more of their rows than claimed.
+
+**Measured cost.** The projection overstates what stays in needs genre after the campaign, never understates it. A person reading it is told the campaign does less than it does.
+
+**Closes when:** U294 (#851) reads needs genre again after each step, or the projection counts rows reached by another word's answer. Ledger only.
+
+---
+
+## R-1738. Guards in the needs genre backlog that round two's mutation table left unpinned
+
+**Found:** at round two of the review of #849, U292, 2026-11-21.
+
+**The mechanism.** Round two ran 32 mutation rows over the fix round's guards in `tagging/backlog.py` and `backlog_cli.py` against `tests/test_tag_backlog.py`, and 19 survived. The unit's own table killed its 16 rows, so these survivors remain:
+- `_fixed_target`'s own folder branch, which no shipped folder name reaches, since every one routes by keyword in another case, and its sub alias test;
+- `not edit.writes` on the settled path, and `_edit`'s `TaxonomyError` catch;
+- `alone` against `carrying` in the alias reach, and the exact case tests in the folder's row count;
+- `follow` and `asked` in the campaign's last two steps;
+- the joining row's route test and its check row, and the unread check row;
+- `text=text` on the `--catalogue` branch of `_plan`, where every word would read `no-copy` with the flag and no test would notice;
+- the Discogs `unasked` set copied from `suggest_cli`.
+
+**Measured cost.** Unpinned behaviour, so a later change could break any of them with a green suite. None was driven to a wrong report by round two.
+
+**Closes when:** each has a test that kills its mutant, `--catalogue`'s copy text first. Ledger only.
+
+---
+
+## R-1739. A plain acquire download, intake missing and sync bandcamp take no staging lock
+
+**Found:** at the plan of #850, U293, 2026-11-21.
+
+**The mechanism.** `core/staging_lock.py` is held by `crate sync land`, `crate label sync --go` and `crate sync night`, the passes the brief names. A plain `crate acquire download`, a job a person resumes by hand, and `crate sync bandcamp` (which stages into a batch folder of its own under the staging folder) take no lock, so one of them can still download beside a night pass.
+
+**Measured cost.** Not driven as a collision. R-1499's arrival check still refuses the night pass's landing over anything that arrived during its tail, so nothing lands wrong; the cost is a night pass refused at its landing and the tracks to sort by hand.
+
+**Closes when:** every verb that writes into the staging folder holds the lock, or the record says why one need not.
+
+---
+
+## R-1740. A night pass continued by hand to its gate is run again by the next night
+
+**Found:** at the review of #850, U293, 2026-11-21, round one finding 5.
+
+**The mechanism.** A firing the night's budget stopped records `continue_pass`, and the next firing runs `crate sync land --pass-run` on it. When the session at the Mac has already continued that pass by hand to its gate, the record still names the continue (`settle` reads only waits, not continues), so the next night runs the tail and `name apply` again and plans a second landing run on the same pass.
+
+**Measured cost.** Driven by the reviewer: a second open gate run on the same pass and a night with no `sync all`. Nothing is lost or landed twice: the second plan is over the same files and waits at its own gate.
+
+**Closes when:** the night settles a continue too, by the pass's land record or its open gate, or the crate-sync skill clears the night's record when it continues a night pass by hand.
+
+---
+
+## R-1741. Deleting the night budget's ledger frees a spent night
+
+**Found:** at the review of #850, U293, 2026-11-21, round one finding 8.
+
+**The mechanism.** `core/night_budget.py` reads a ledger that does not exist as a night that spent nothing, the rule for a fresh installation, so a ledger deleted by hand mid night gives the night its whole budget again. A ledger replaced with one it cannot read refuses.
+
+**Measured cost.** Driven by the reviewer with a hand deletion: a fresh 1,200 calls on the same night. The hour's budget, the night's lowered hour and one command's ceiling still hold every call, so the account sees at most 600 an hour. Nothing in Cratekit deletes the file.
+
+**Closes when:** the ledger's absence is told apart from a fresh installation, for example by the gate's own record of the night's mark.
+
+---
+
+## R-1742. A night pass stopped at its line reads failed, not blocked
+
+**Found:** at the review of #850, U293, 2026-11-21, round one finding 12.
+
+**The mechanism.** The dispatcher reads a park as blocked for the ceiling and the hour's budget only, so a night pass stopped by `provider-night-budget` ends with outcome `failed` and exit 42, where a pass meant to wait would read blocked.
+
+**Measured cost.** None on the night's own record or line, which say stopped and that the next night continues it. A wrapper reading the envelope's outcome, the U295 schedule's log above all, reads a failure.
+
+**Closes when:** the dispatcher reads the night's park as blocked, like the hour's.
+
+---
+
+## R-1743. One night firing spends at most one command's ceiling, so a large pass takes two nights
+
+**Found:** at the review of #850, U293, 2026-11-21, round one finding 4.
+
+**The mechanism.** Built at first so the night's line stood in for the per command ceiling, one firing sent 1,200 calls where any other command stops at 500. The fix round made the firing's line the lower of the night's remainder and the ceiling, the conservative reading of "every line only lowers". A pass needing more than 500 calls, about a hundred tracks at sitting 100's 42 calls per ten, stops at the night's line and is continued by the next firing.
+
+**Measured cost.** A pass over about 110 tracks lands over two nights rather than one unless the schedule fires twice a night. Not driven on a real account.
+
+**Closes when:** Phillip decides whether a night firing may spend past `[provider] calls_per_command`, or U295 schedules a second firing a night.
+
+---
+
+## R-1744. The night pass's second fix round was not reviewed
+
+**Found:** at the landing of #850, U293, 2026-11-21.
+
+**The mechanism.** METHOD caps a unit at two fix rounds, and U293 spent both: round one fixed the night's record as a snapshot, round two found that `settle` ended a wait on an answered gate or an empty folder, and the second fix (`04508be6`) made a wait end only on the pass's own native landing, read through `intake.native.landings_of_pass`. No third review read it.
+
+**Measured cost.** None measured. The fix is pinned by tests for an answered gate over staged tracks, a landed pass with another pass's file staged since, an emptied folder and an unreadable landing log, and by mutation rows N6 and N7. What a review would look at: a pass that is aborted and whose tracks are then left staged keeps the night refusing on the folder until they are landed or moved, which is the conservative reading; and `landings_of_pass` reading a library on the bridge rather than native, where no native landing is ever recorded and a wait would never settle by itself (the next firing that runs still writes a fresh record).
+
+**Closes when:** a review of `04508be6` against the night's record, or the attended night card reads one real night's record through a landing.
+
+---
+
+## R-1745. A dead night firing's mark charges every call made since, by anything, to tonight
+
+**Found:** at the review of #850, U293, 2026-11-21, round two finding 4.
+
+**The mechanism.** `night_budget.open_night` charges a mark left by a firing that never closed to tonight in full, whichever night it began in, so a crash is never a free night. A mark days old charges every call any command made since, the day's attended work included, and the refusal says the night pass spent them.
+
+**Measured cost.** Driven by the reviewer on a hand written ledger: a mark three nights old and the gate's total 5,000 past it read "the night pass has spent 5000 of the 1200", and that night did not run. The next night runs. Early and never late, as the ledger means, at the cost of one night and a sentence that credits the night with calls it did not make.
+
+**Closes when:** a dead mark is charged at most its own night's budget, or the gate records the night pass's own calls apart.

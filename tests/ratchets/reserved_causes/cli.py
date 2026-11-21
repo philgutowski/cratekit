@@ -197,6 +197,18 @@ KEBAB_LITERALS = {
     ],
     # 2026-11-01, U190: the tail and the landing, lifted out of the sync pass
     # driver so ``label sync --go`` runs the same chain.
+    # 2026-11-21, U293: the night pass joined.
+    'cli/sync_night.py': [
+        'intake-list-unusable',
+        'internal-error',
+        'job-driver-held',
+        'nothing-new',
+        'refused-by-policy',
+        'sync-night-status-unwritten',
+        'utf-8',
+        'waiting-at-acknowledgment',
+        'waiting-at-gate',
+    ],
     'cli/tail.py': [
         'backup-acknowledgment-missing',
         'config-unusable',
@@ -286,6 +298,8 @@ LITERAL_HOLDERS = {
         'vocal-scoring-unavailable',  # 2026-11-01, U181
     ],
     # 2026-11-01, U190: the tail and the landing, lifted out of the sync pass driver.
+    # 2026-11-21, U293: the night pass joined.
+    'cli/sync_night.py': ['intake-list-unusable', 'internal-error', 'job-driver-held', 'refused-by-policy'],
     'cli/tail.py': [
         'backup-acknowledgment-missing',
         'config-unusable',

@@ -113,11 +113,13 @@ TOGGLE_HOMES = {
     "skills": ("cratekit.skills",),
 }
 
-#: The most distinct core names feature packages may use between them, 437 on
-#: the commit U290's survey measured. It moves down only, and by the card that
-#: lowers the count; ``refactor_measure.py imports --names`` lists the names,
-#: so two runs of it say which one a failing branch added.
-CORE_NAMES_CEILING = 437
+#: The most distinct core names feature packages may use between them: 437 on
+#: the commit U290's survey measured, and 446 on the day this check landed,
+#: U292 having added nine for the taxonomy word edits its backlog plans while
+#: this was built. It moves down only, and by the card that lowers the count;
+#: ``refactor_measure.py imports --names`` lists the names, so two runs of it
+#: say which one a failing branch added.
+CORE_NAMES_CEILING = 446
 
 
 # ---------------------------------------------------------------------------

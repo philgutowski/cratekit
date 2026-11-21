@@ -171,6 +171,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'provider-call-ceiling',  # 2026-11-02, U193: the call ceiling's stop joined.
     'provider-cooldown',
     'provider-gate-held',
+    'provider-night-budget',  # 2026-11-21, U293: the night pass's line joined.
     'pyrekordbox-pin-drift',
     'rating-scale-unknown',
     'rebuild-actor-required',
@@ -221,6 +222,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'snapshot-integrity-failed',
     'snapshot-store-full',
     'soft-delete-marker-unreadable',
+    'staging-held',  # 2026-11-21, U293: one pass stages at a time.
     'sync-artifacts-unusable',
     'sync-mark-record-unusable',
     'sync-marks-blocked',
