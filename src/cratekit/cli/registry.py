@@ -1528,16 +1528,13 @@ ENTRIES: tuple[Entry, ...] = (
         summary="record every account playlist already taken, the prefixed and the " "marked, in Cratekit's own record",
         module="cratekit.sync.taken_cli", builder="build_taken", handler_key="sync.taken",
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: NO WRITE SURFACE, and not destructive: the account is listed and
-        #: nothing on it changes, and the one write is the taken ledger in the
-        #: mark record, this product's own state. Idempotent.
+        #: No write surface: only the mark record, this product's own state.
         writes=frozenset(), doctor_checks=("credential.provider",),
         gates=(
             GateSpec(
                 name="sync.taken.confirm", options=("apply", "abort"),
                 prompt="Record these playlists as taken in Cratekit's own record?",
-                #: EXPLICIT: a playlist recorded as taken is never offered by a
-                #: sync again, so the answer is a separate recorded act (R34).
+                #: Explicit (R34): a taken playlist is never offered again.
                 explicit=True, digest_source="plan",
             ),
         ),
@@ -1547,18 +1544,15 @@ ENTRIES: tuple[Entry, ...] = (
         summary="take the retired DOWNLOADED prefix off every account playlist, " "each recorded as taken first",
         module="cratekit.sync.strip_cli", builder="build_strip", handler_key="sync.strip",
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: One surface, the account, and the one write is ``rename_playlist``,
-        #: to the title less the prefix, made only once the mark record holds
-        #: the playlist as taken. Each rename is recorded first under the pass
-        #: ``prefix-strip``, so ``sync unmark`` puts the old title back.
-        #: ``destructive`` because the retitle lands on a playlist the product
-        #: did not make.
+        #: The account only: ``rename_playlist``, recorded first under
+        #: ``prefix-strip`` so ``sync unmark`` can undo it. Destructive, for
+        #: ``sync.unmark``'s reason.
         writes=frozenset({"remote"}), destructive=True, doctor_checks=("credential.provider",),
         gates=(
             GateSpec(
                 name="sync.strip.confirm", options=("apply", "abort"),
                 prompt="Take the DOWNLOADED prefix off these playlists on the streaming " "account?",
-                # EXPLICIT, as sync.unmark's is, for the same reason (R34).
+                # Explicit, as ``sync.unmark``'s is (R34).
                 explicit=True, digest_source="plan",
             ),
         ),
@@ -1570,15 +1564,8 @@ ENTRIES: tuple[Entry, ...] = (
         module="cratekit.intake.imported_cli", builder="build_imported",
         handler_key="intake.imported", feature_rows=(3, 35), emits=frozenset({"plan"}),
         output_schema="plan/1",
-        #: The intake file this product wrote is RENAMED so the pending scan
-        #: stops seeing it, which is a write to a file on the library, so it is
-        #: declared as one and the verb is destructive by KTD24's definition.
-        #: It is never deleted and never renamed over another file, the target
-        #: being claimed first, which is why no confirm gate stands in front of
-        #: it: nothing is lost and renaming back undoes it. The Fresh Export is
-        #: read and never written, and no database is opened. The session
-        #: record it settles is this product's own state, not a declared
-        #: surface.
+        #: The intake file is renamed out of the pending scan, so destructive
+        #: (KTD24). No gate: nothing is lost and renaming back undoes it.
         writes=frozenset({"xml", "files"}), destructive=True, doctor_checks=("library.mounted",),
     ),
     # ── The export, without rekordbox's menus (R-745) ───────────────────────
