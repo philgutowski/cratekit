@@ -266,7 +266,7 @@ class TidalAccount(Reads):
                 attempt, limit=0, offset=0, max_retries=retries, sleep=self._sleep
             )
         except catalogue_api.AppCredentialsRejected as exc:
-            # THE APP'S CREDENTIAL, NOT THE ACCOUNT'S: read as the account's it
+            # THE APP'S CREDENTIAL, NOT THE ACCOUNT'S. Read as the account's it
             # would be a wait, and the held account the wrong thing to forget.
             raise catalogue_api.rejected(exc, doing) from exc
         except Exception as exc:  # noqa: BLE001 - translated, never swallowed
