@@ -5,10 +5,10 @@
   "head": "fd8173d3",
   "when": "2026-11-22 18:45 UTC",
   "valid": true,
-  "invalid_reason": "in progress",
+  "invalid_reason": "",
   "baseline_collected": 22933,
   "baseline_exit": 1,
-  "pytest_runs": 149,
+  "pytest_runs": 198,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 251,
@@ -4507,6 +4507,1747 @@
       "source": {
         "table": "u212.json",
         "id": "T1_reason_guard"
+      }
+    },
+    {
+      "id": "u212.T2_done_only",
+      "description": "tail._downloaded_by: a job that froze the track and never acquired it is named as its source",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "627fe491a9a3a40a",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_cli_contract.py",
+        "tests/test_crate_sync_skill.py",
+        "tests/test_drift.py",
+        "tests/test_label_sync_go.py",
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py",
+        "tests/test_sync_land.py",
+        "tests/test_sync_land_staged.py",
+        "tests/test_tag_guess.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1607,
+      "baseline_collected": 1607,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land_staged.py::test_the_passes_named_are_this_librarys_finished_downloads_earliest_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if refs & done:",
+      "new": "            if refs:",
+      "source": {
+        "table": "u212.json",
+        "id": "T2_done_only"
+      }
+    },
+    {
+      "id": "u212.T3_library",
+      "description": "tail._downloaded_by: another library's download job is named",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e9fd4b0f78f032e5",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_cli_contract.py",
+        "tests/test_crate_sync_skill.py",
+        "tests/test_drift.py",
+        "tests/test_label_sync_go.py",
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py",
+        "tests/test_sync_land.py",
+        "tests/test_sync_land_staged.py",
+        "tests/test_tag_guess.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1607,
+      "baseline_collected": 1607,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land_staged.py::test_the_passes_named_are_this_librarys_finished_downloads_earliest_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if cfg is not None and job.library_id != cfg.library.volume_id:\n                continue",
+      "new": "",
+      "source": {
+        "table": "u212.json",
+        "id": "T3_library"
+      }
+    },
+    {
+      "id": "u212.T4_earliest_first",
+      "description": "tail._downloaded_by: the passes named newest first, though the step says earliest first",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0b4bf427a751f089",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_cli_contract.py",
+        "tests/test_crate_sync_skill.py",
+        "tests/test_drift.py",
+        "tests/test_label_sync_go.py",
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py",
+        "tests/test_sync_land.py",
+        "tests/test_sync_land_staged.py",
+        "tests/test_tag_guess.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1607,
+      "baseline_collected": 1607,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land_staged.py::test_the_passes_named_are_this_librarys_finished_downloads_earliest_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        for job in reversed(jobs.list_jobs(store)):",
+      "new": "        for job in jobs.list_jobs(store):",
+      "source": {
+        "table": "u212.json",
+        "id": "T4_earliest_first"
+      }
+    },
+    {
+      "id": "u212.T5_name_wraps",
+      "description": "tail.name: the name step's stop passed on without the passes that downloaded the copy",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "68f800793425ddba",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_cli_contract.py",
+        "tests/test_crate_sync_skill.py",
+        "tests/test_drift.py",
+        "tests/test_label_sync_go.py",
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py",
+        "tests/test_sync_land.py",
+        "tests/test_sync_land_staged.py",
+        "tests/test_tag_guess.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1607,
+      "baseline_collected": 1607,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land_staged.py::test_a_name_stop_over_a_second_copy_names_the_pass_that_downloaded_it",
+        "tests/test_sync_land_staged.py::test_a_second_copy_no_download_job_records_is_said_so"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        raise second_copies(stop, cfg) from None",
+      "new": "        raise stop from None",
+      "source": {
+        "table": "u212.json",
+        "id": "T5_name_wraps"
+      }
+    },
+    {
+      "id": "u284.T1_pass_names_nothing",
+      "description": "tail.tail_step: the pass never names the files the catalogues refused",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "999b9b9511f09373",
+      "subset": [
+        "tests/test_sync_refused.py",
+        "tests/test_sync_land.py",
+        "tests/test_label_sync_go.py",
+        "tests/test_tag_guess.py",
+        "tests/test_tag_folder_copyright.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 385,
+      "baseline_collected": 385,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_refused.py::test_with_a_token_the_pass_reaches_its_landing_and_names_the_refused_files"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if step == TAG:\n        refused_files(chain, chain.settled.get(step))",
+      "new": "    if False:\n        refused_files(chain, chain.settled.get(step))",
+      "source": {
+        "table": "u284.json",
+        "id": "T1_pass_names_nothing"
+      }
+    },
+    {
+      "id": "u284.T2_pass_stop_unsaid",
+      "description": "tail.tail_step: the pass's stop at its tag step says nothing of who refused or the token",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0368726d89af5b42",
+      "subset": [
+        "tests/test_sync_refused.py",
+        "tests/test_sync_land.py",
+        "tests/test_label_sync_go.py",
+        "tests/test_tag_guess.py",
+        "tests/test_tag_folder_copyright.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 385,
+      "baseline_collected": 385,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_refused.py::test_with_no_token_the_pass_stops_at_its_tag_step_saying_who_refused_and_the_token"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        raise Stop(step, refused_stop(error, chain.settled.get(step)) if step == TAG else error)",
+      "new": "        raise Stop(step, error)",
+      "source": {
+        "table": "u284.json",
+        "id": "T2_pass_stop_unsaid"
+      }
+    },
+    {
+      "id": "u319.M10_sync_stop_drops_the_short_path",
+      "description": "tail: the step crate sync land prints names one path again",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ddcffd992a3f8ede",
+      "subset": [
+        "tests/test_drift.py",
+        "tests/test_rekordbox_visit_skill.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 183,
+      "baseline_collected": 183,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_drift.py::test_the_sync_stop_offers_the_auto_analysis_path_after_the_selections_it_stands_in_for"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    f\"carrying the dyn My Tag, if any: {drift.DYNAMIC_SETTINGS}; \"\n    f\"{AUTO_ANALYSIS_STEP}\",",
+      "new": "    f\"carrying the dyn My Tag, if any: {drift.DYNAMIC_SETTINGS}\",",
+      "source": {
+        "table": "u319.json",
+        "id": "M10_sync_stop_drops_the_short_path"
+      }
+    },
+    {
+      "id": "u168.C3_default_actor_cli",
+      "description": "_actor: default to cli whatever the terminal",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b4d3e3229aae9471",
+      "subset": [
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 8,
+      "baseline_collected": 8,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_decide_continue.py::test_a_continuation_that_refuses_answers_with_its_refusal_and_keeps_the_answer",
+        "tests/test_run_decide_continue.py::test_a_session_answers_and_mints_in_one_command_with_no_actor_given",
+        "tests/test_run_decide_continue.py::test_with_no_terminal_and_no_actor_the_answer_is_the_sessions"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if session.has_controlling_terminal():\n        return TERMINAL_ACTOR, \"a terminal, and no --actor\"",
+      "new": "    if True:\n        return TERMINAL_ACTOR, \"a terminal, and no --actor\"",
+      "source": {
+        "table": "u168.json",
+        "id": "C3_default_actor_cli"
+      }
+    },
+    {
+      "id": "u168.C4_default_actor_session",
+      "description": "_actor: default to session even at a terminal",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2cfe968353a8a009",
+      "subset": [
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 8,
+      "baseline_collected": 8,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_decide_continue.py::test_at_a_terminal_and_no_actor_the_answer_is_the_command_lines"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if session.has_controlling_terminal():\n        return TERMINAL_ACTOR, \"a terminal, and no --actor\"",
+      "new": "    if False:\n        return TERMINAL_ACTOR, \"a terminal, and no --actor\"",
+      "source": {
+        "table": "u168.json",
+        "id": "C4_default_actor_session"
+      }
+    },
+    {
+      "id": "u168.C5_given_actor_ignored",
+      "description": "_actor: ignore an actor given with --actor",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3dbad7fb6a15fef7",
+      "subset": [
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 8,
+      "baseline_collected": 8,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_decide_continue.py::test_an_actor_given_is_recorded_whatever_the_terminal"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if given is not None:\n        return given, \"given with --actor\"",
+      "new": "    if False:\n        return given, \"given with --actor\"",
+      "source": {
+        "table": "u168.json",
+        "id": "C5_given_actor_ignored"
+      }
+    },
+    {
+      "id": "u168.C6_no_argv_continues",
+      "description": "_continued: skip the refusal for a run that keeps no command line",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "eb8fcc3719fdf5d8",
+      "subset": [
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 8,
+      "baseline_collected": 8,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_decide_continue.py::test_a_run_that_keeps_no_command_line_is_refused_with_the_answer_recorded"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if state.argv is None:\n        raise CratekitError(",
+      "new": "    if state.argv is None and False:\n        raise CratekitError(",
+      "source": {
+        "table": "u168.json",
+        "id": "C6_no_argv_continues"
+      }
+    },
+    {
+      "id": "u168.C7_continue_without_run",
+      "description": "_continued: dispatch the verb again without --run, as a new run",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "55da5d5fda25b631",
+      "subset": [
+        "tests/test_run_decide_continue.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1005,
+      "baseline_collected": 1005,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cli_contract.py::test_run_decide_continue_resumes_the_owning_verb_with_its_own_arguments",
+        "tests/test_run_decide_continue.py::test_a_session_answers_and_mints_in_one_command_with_no_actor_given"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    envelope = cli.dispatch([\"--run\", state.run_id, *state.argv], stderr=sys.stderr)",
+      "new": "    envelope = cli.dispatch([*state.argv], stderr=sys.stderr)",
+      "source": {
+        "table": "u168.json",
+        "id": "C7_continue_without_run"
+      }
+    },
+    {
+      "id": "u170.R10_moved_guard",
+      "description": "_retire_one: record on a gate that moved since the plan",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ff11c50042c97dc2",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_a_gate_answered_after_the_plan_was_read_is_said_and_not_answered_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if state.open_gate != one.gate:",
+      "new": "    if False:",
+      "source": {
+        "table": "u170.json",
+        "id": "R10_moved_guard"
+      }
+    },
+    {
+      "id": "u170.R11_digest_ids_only",
+      "description": "retire: digest the planned run ids alone, not when each went idle",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c4fa1fa6f452ebb3",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_an_answer_is_stale_once_a_planned_run_is_resumed_even_if_it_stays_old"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    plan = {\"digest\": digest_of(items), \"count\": len(items), \"items\": items}",
+      "new": "    plan = {\"digest\": digest_of([one[\"run_id\"] for one in items]), \"count\": len(items), \"items\": items}",
+      "source": {
+        "table": "u170.json",
+        "id": "R11_digest_ids_only"
+      }
+    },
+    {
+      "id": "u170.R12_default_week",
+      "description": "retire: default threshold fixed at seven days, not the file's",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b3c97e8e57c8319b",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_retire_reads_its_default_threshold_from_the_file"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        age = timedelta(days=config.load().reports.open_gate_stale_days)",
+      "new": "        age = timedelta(days=7)",
+      "source": {
+        "table": "u170.json",
+        "id": "R12_default_week"
+      }
+    },
+    {
+      "id": "u170.R1_zero_days",
+      "description": "older_than: accept 0d",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0c1f3bc7b5d82731",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_an_age_that_is_not_a_whole_number_of_days_is_a_usage_error[0d]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "_AGE = re.compile(r\"^([1-9][0-9]*)d$\")",
+      "new": "_AGE = re.compile(r\"^([0-9]+)d$\")",
+      "source": {
+        "table": "u170.json",
+        "id": "R1_zero_days"
+      }
+    },
+    {
+      "id": "u170.R2_ceiling",
+      "description": "older_than: the ceiling one day higher",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fb14fd95f4f40a6a",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_an_age_that_is_not_a_whole_number_of_days_is_a_usage_error[3651d]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not match or days > config.MAX_OPEN_GATE_STALE_DAYS:",
+      "new": "    if not match or days > config.MAX_OPEN_GATE_STALE_DAYS + 1:",
+      "source": {
+        "table": "u170.json",
+        "id": "R2_ceiling"
+      }
+    },
+    {
+      "id": "u170.R3_own_run",
+      "description": "old_gates: plan the asking run too",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0dcce679abf7c81e",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_retire_never_retires_its_own_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if path.stem == skip:",
+      "new": "        if False:",
+      "source": {
+        "table": "u170.json",
+        "id": "R3_own_run"
+      }
+    },
+    {
+      "id": "u170.R4_unreadable_dropped",
+      "description": "old_gates: drop an unreadable record without saying so",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "77e96199a4bc35c7",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_a_record_retire_cannot_read_is_said_and_not_dropped"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            unreadable.append(path.stem)",
+      "new": "            pass",
+      "source": {
+        "table": "u170.json",
+        "id": "R4_unreadable_dropped"
+      }
+    },
+    {
+      "id": "u170.R5_answers_apply",
+      "description": "_retire_one: record the gate's first option, apply, instead of abort",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9d0efc9e9e3ea213",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_an_explicit_gate_is_retired_with_abort_and_never_apply",
+        "tests/test_run_retire.py::test_retire_asks_once_over_every_old_gate_and_answers_only_those"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    gates.record(state, spec, gates.RETIRE_OPTION, actor=SESSION_ACTOR)",
+      "new": "    gates.record(state, spec, spec.options[0], actor=SESSION_ACTOR)",
+      "source": {
+        "table": "u170.json",
+        "id": "R5_answers_apply"
+      }
+    },
+    {
+      "id": "u170.R6_actor_cli",
+      "description": "_retire_one: record the abort as cli instead of session",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7c915c0756c89cdd",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_an_explicit_gate_is_retired_with_abort_and_never_apply",
+        "tests/test_run_retire.py::test_retire_asks_once_over_every_old_gate_and_answers_only_those"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    gates.record(state, spec, gates.RETIRE_OPTION, actor=SESSION_ACTOR)",
+      "new": "    gates.record(state, spec, gates.RETIRE_OPTION, actor=TERMINAL_ACTOR)",
+      "source": {
+        "table": "u170.json",
+        "id": "R6_actor_cli"
+      }
+    },
+    {
+      "id": "u170.R7_declined_applies",
+      "description": "retire: an abort on the confirm still retires",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b23e665e0f5df559",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_a_declined_retirement_answers_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if option != \"apply\":",
+      "new": "    if False:",
+      "source": {
+        "table": "u170.json",
+        "id": "R7_declined_applies"
+      }
+    },
+    {
+      "id": "u170.R8_empty_asks",
+      "description": "retire: an empty plan is asked over instead of ending with no change",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "20c52b489fe04aeb",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_retire_says_nothing_about_an_old_run_already_answered",
+        "tests/test_run_retire.py::test_retire_with_nothing_old_asks_nothing_and_changes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not planned:",
+      "new": "    if False:",
+      "source": {
+        "table": "u170.json",
+        "id": "R8_empty_asks"
+      }
+    },
+    {
+      "id": "u170.R9_kept_planned",
+      "description": "retire: plan every old gate, the kept ones too",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f4830f722e63bd18",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_retire_lists_what_it_retired_and_what_it_kept"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    planned = [one for one in found if one.retirable]",
+      "new": "    planned = list(found)",
+      "source": {
+        "table": "u170.json",
+        "id": "R9_kept_planned"
+      }
+    },
+    {
+      "id": "u186.R1_decide_abort",
+      "description": "same_plan_answered: drop the abort refusal, so two aborts over one plan warn",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "482774539eb6f492",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_decide_says_nothing_when_both_answers_are_abort"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if option == gates.RETIRE_OPTION or offered is None:",
+      "new": "    if offered is None:",
+      "source": {
+        "table": "u186.json",
+        "id": "R1_decide_abort"
+      }
+    },
+    {
+      "id": "u186.R2_decide_no_digest",
+      "description": "same_plan_answered: drop the no digest refusal, so a run offered nothing matches a sibling that recorded none",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "db64b922b7a00b37",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_decide_says_nothing_when_this_run_was_offered_no_digest"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if option == gates.RETIRE_OPTION or offered is None:",
+      "new": "    if option == gates.RETIRE_OPTION:",
+      "source": {
+        "table": "u186.json",
+        "id": "R2_decide_no_digest"
+      }
+    },
+    {
+      "id": "u186.R3_decide_any_gate",
+      "description": "same_plan_answered: match an answer on any gate, not the one being answered",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "244873777d15bd24",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_decide_says_nothing_when_the_sibling_answered_another_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            name == gate and held.option == option and held.digest == offered",
+      "new": "            held.option == option and held.digest == offered",
+      "source": {
+        "table": "u186.json",
+        "id": "R3_decide_any_gate"
+      }
+    },
+    {
+      "id": "u186.R4_decide_any_option",
+      "description": "same_plan_answered: match an answer of any option, so a sibling's abort warns over an apply",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cd4c0f072789527c",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_decide_says_nothing_when_the_sibling_aborted"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            name == gate and held.option == option and held.digest == offered",
+      "new": "            name == gate and held.digest == offered",
+      "source": {
+        "table": "u186.json",
+        "id": "R4_decide_any_option"
+      }
+    },
+    {
+      "id": "u186.R5_decide_any_digest",
+      "description": "same_plan_answered: match an answer over any digest, so another plan's approval warns",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ca4faf198d6284eb",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_decide_says_nothing_when_the_sibling_answered_another_plan"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            name == gate and held.option == option and held.digest == offered",
+      "new": "            name == gate and held.option == option",
+      "source": {
+        "table": "u186.json",
+        "id": "R5_decide_any_digest"
+      }
+    },
+    {
+      "id": "u186.R6_decide_unwired",
+      "description": "decide: never compute the repeat, so run decide says nothing over a sibling that approved the same plan",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f1ea91f3558d97cb",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_decide_continue_carries_the_warning_on_the_verbs_own_envelope",
+        "tests/test_gate_siblings.py::test_decide_repeats_over_a_sibling_that_answered_then_stopped_at_another_gate",
+        "tests/test_gate_siblings.py::test_decide_repeats_the_warning_over_a_sibling_answered_apply_on_the_same_plan"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    said = same_plan_answered(state, spec.name, ctx.args.option)",
+      "new": "    said = []",
+      "source": {
+        "table": "u186.json",
+        "id": "R6_decide_unwired"
+      }
+    },
+    {
+      "id": "u186.R7_continue_dedupe",
+      "description": "_continued: drop the dedupe, so a sibling named by decide and by the stale gate is said twice",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4ced9ffee514d9d0",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_decide_continue_says_a_sibling_once_when_the_verb_stops_at_its_gate_again"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    repeated = [one for one in said if one not in envelope.warnings]",
+      "new": "    repeated = list(said)",
+      "source": {
+        "table": "u186.json",
+        "id": "R7_continue_dedupe"
+      }
+    },
+    {
+      "id": "u186.R8_continue_drops_repeat",
+      "description": "_continued: drop the repeat on a continued run's envelope",
+      "file": "src/cratekit/cli/verbs/runs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b61f7df231391a49",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_decide_continue_carries_the_warning_on_the_verbs_own_envelope"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    repeated = [one for one in said if one not in envelope.warnings]",
+      "new": "    repeated = []",
+      "source": {
+        "table": "u186.json",
+        "id": "R8_continue_drops_repeat"
+      }
+    },
+    {
+      "id": "u294.M05_suggest_step_band",
+      "description": "the suggest step plans at medium rather than the backlog's floor",
+      "file": "src/cratekit/cli/verbs/tag_campaign.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ef2ef54e5165fe6a",
+      "subset": [
+        "tests/test_tag_campaign.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_campaign.py::test_the_suggest_step_plans_at_the_backlogs_floor"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        band=backlog.FLOOR,",
+      "new": "        band=suggest.MEDIUM,",
+      "source": {
+        "table": "u294.json",
+        "id": "M05_suggest_step_band"
+      }
+    },
+    {
+      "id": "u294.M06_served_is_every_row",
+      "description": "the rows step keeps every backlog row rather than the served ones",
+      "file": "src/cratekit/cli/verbs/tag_campaign.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "28ba8ced49fa299e",
+      "subset": [
+        "tests/test_tag_campaign.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 9,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_campaign.py::test_a_file_that_comes_to_carry_the_word_after_the_gate_stops_the_words_as_stale",
+        "tests/test_tag_campaign.py::test_a_folder_answer_makes_the_folder_and_the_rows_follow_their_files",
+        "tests/test_tag_campaign.py::test_a_follower_whose_file_carries_another_spelling_is_held_out",
+        "tests/test_tag_campaign.py::test_a_step_that_refuses_stops_the_campaign_with_the_earlier_writes_named",
+        "tests/test_tag_campaign.py::test_a_word_left_or_unanswered_is_named_and_nothing_retags_it",
+        "tests/test_tag_campaign.py::test_an_unexpected_failure_in_a_step_is_this_builds_defect_with_what_landed",
+        "tests/test_tag_campaign.py::test_only_the_genre_column_moves_on_a_written_row",
+        "tests/test_tag_campaign.py::test_the_fourth_step_refusing_stops_the_campaign_after_the_words",
+        "tests/test_tag_campaign.py::test_the_whole_campaign_lands_and_needs_genre_falls_as_measured"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    served = frozenset(row.content_id for row in plan.rows if row.status == backlog.SERVED)",
+      "new": "    served = frozenset(row.content_id for row in plan.rows)",
+      "source": {
+        "table": "u294.json",
+        "id": "M06_served_is_every_row"
+      }
+    },
+    {
+      "id": "u294.M07_followers_another_spelling",
+      "description": "the follow step writes a row whose file carries another spelling than the answer filed",
+      "file": "src/cratekit/cli/verbs/tag_campaign.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "054278827a933447",
+      "subset": [
+        "tests/test_tag_campaign.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_campaign.py::test_a_follower_whose_file_carries_another_spelling_is_held_out"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    narrowed = rows.narrowed(whole, keep - other)",
+      "new": "    narrowed = rows.narrowed(whole, keep)",
+      "source": {
+        "table": "u294.json",
+        "id": "M07_followers_another_spelling"
+      }
+    },
+    {
+      "id": "u294.M08_alias_files_stale_check",
+      "description": "the words step drops its check that the alias would retag the files the gate listed",
+      "file": "src/cratekit/cli/verbs/tag_campaign.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "76016ecb0de9e841",
+      "subset": [
+        "tests/test_tag_campaign.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_campaign.py::test_a_file_that_comes_to_carry_the_word_after_the_gate_stops_the_words_as_stale"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if (planned.edit.display, files) != (shown.genre, shown.files):",
+      "new": "        if planned.edit.display != shown.genre:",
+      "source": {
+        "table": "u294.json",
+        "id": "M08_alias_files_stale_check"
+      }
+    },
+    {
+      "id": "u294.M09_digest_drops_words",
+      "description": "the digest leaves out the words and their files, so a file that came to carry a word moves nothing",
+      "file": "src/cratekit/cli/verbs/tag_campaign.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fdf20848e7662e00",
+      "subset": [
+        "tests/test_tag_campaign.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_campaign.py::test_every_file_an_alias_retags_is_on_the_gate_and_in_the_digest"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"words\": [word.to_json() for word in words],",
+      "new": "            \"words\": [],",
+      "source": {
+        "table": "u294.json",
+        "id": "M09_digest_drops_words"
+      }
+    },
+    {
+      "id": "u294.M10_digest_drops_answers",
+      "description": "the digest leaves out the answers, so an answer changed between the gate and the apply is not stale",
+      "file": "src/cratekit/cli/verbs/tag_campaign.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "665e1d5b776b785f",
+      "subset": [
+        "tests/test_tag_campaign.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_campaign.py::test_the_digest_moves_with_an_answer_a_proposal_or_a_row"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            \"answers\": [answer.to_json() for answer in given],\n            \"words\": [word.to_json() for word in words],",
+      "new": "            \"answers\": [],\n            \"words\": [word.to_json() for word in words],",
+      "source": {
+        "table": "u294.json",
+        "id": "M10_digest_drops_answers"
+      }
+    },
+    {
+      "id": "u294.M11_unknown_word_accepted",
+      "description": "an answer naming no word the backlog holds is dropped rather than refused",
+      "file": "src/cratekit/cli/verbs/tag_campaign.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7aa9a1697111b5c3",
+      "subset": [
+        "tests/test_tag_campaign.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_campaign.py::test_an_answer_the_plan_does_not_hold_refuses[alias0-folder0-leave_word0-names no word]",
+        "tests/test_tag_campaign.py::test_an_answer_the_plan_does_not_hold_refuses[alias1-folder1-leave_word1-names no word]",
+        "tests/test_tag_campaign.py::test_an_answer_the_plan_does_not_hold_refuses[alias2-folder2-leave_word2-names no word]",
+        "tests/test_tag_campaign.py::test_an_answer_the_plan_does_not_hold_refuses_before_anything_is_written"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if _held_by_copy(declared, spelling, kind, genre):",
+      "new": "            if True:",
+      "source": {
+        "table": "u294.json",
+        "id": "M11_unknown_word_accepted"
+      }
+    },
+    {
+      "id": "u294.M12_settled_answer_taken",
+      "description": "an answer to a settled word is dropped whatever it says, rather than refused",
+      "file": "src/cratekit/cli/verbs/tag_campaign.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ab6845f578efc79e",
+      "subset": [
+        "tests/test_tag_campaign.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_campaign.py::test_an_answer_the_plan_does_not_hold_refuses[alias7-folder7-leave_word7-already has its one answer]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if _same_as_settled(word, kind, genre):",
+      "new": "            if True:",
+      "source": {
+        "table": "u294.json",
+        "id": "M12_settled_answer_taken"
+      }
+    },
+    {
+      "id": "u294.M13_unanswerable_accepted",
+      "description": "an answer to a word neither verb takes is not refused",
+      "file": "src/cratekit/cli/verbs/tag_campaign.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "60d48f9a3d94cf4c",
+      "subset": [
+        "tests/test_tag_campaign.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_campaign.py::test_an_answer_the_plan_does_not_hold_refuses[alias8-folder8-leave_word8-cannot be answered]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if word.unanswerable is not None:\n            raise _invalid(",
+      "new": "        if False:\n            raise _invalid(",
+      "source": {
+        "table": "u294.json",
+        "id": "M13_unanswerable_accepted"
+      }
+    },
+    {
+      "id": "u294.M14_answered_twice",
+      "description": "a word answered twice takes the last answer rather than refusing",
+      "file": "src/cratekit/cli/verbs/tag_campaign.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4329f681f5dd2d46",
+      "subset": [
+        "tests/test_tag_campaign.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_campaign.py::test_an_answer_the_plan_does_not_hold_refuses[alias5-folder5-leave_word5-answered twice]",
+        "tests/test_tag_campaign.py::test_an_answer_the_plan_does_not_hold_refuses[alias6-folder6-leave_word6-answered twice]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if word.spelling in found:",
+      "new": "        if False:",
+      "source": {
+        "table": "u294.json",
+        "id": "M14_answered_twice"
+      }
+    },
+    {
+      "id": "u294.M15_text_not_threaded",
+      "description": "each word's edit is planned on the copy as it stands, not on the text the words before it leave",
+      "file": "src/cratekit/cli/verbs/tag_campaign.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2d4333a810fa7252",
+      "subset": [
+        "tests/test_tag_campaign.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_campaign.py::test_an_alias_to_the_folder_another_answer_makes_is_planned_on_that_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        text = edit.after",
+      "new": "        text = text",
+      "source": {
+        "table": "u294.json",
+        "id": "M15_text_not_threaded"
+      }
+    },
+    {
+      "id": "u294.M16_settled_unreached",
+      "description": "the campaign runs a settled word's answer even when it moves no row",
+      "file": "src/cratekit/cli/verbs/tag_campaign.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "97d3eea4fc51a9b7",
+      "subset": [
+        "tests/test_tag_campaign.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_campaign.py::test_a_folder_answer_makes_the_folder_and_the_rows_follow_their_files",
+        "tests/test_tag_campaign.py::test_every_file_an_alias_retags_is_on_the_gate_and_in_the_digest",
+        "tests/test_tag_campaign.py::test_the_whole_campaign_lands_and_needs_genre_falls_as_measured"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return [word for word in plan.words if word.settled and word.reached]",
+      "new": "    return [word for word in plan.words if word.settled]",
+      "source": {
+        "table": "u294.json",
+        "id": "M16_settled_unreached"
+      }
+    },
+    {
+      "id": "u294.M18_no_reload_after_words",
+      "description": "the rows that follow are planned on the taxonomy as it was before the words step wrote the copy",
+      "file": "src/cratekit/cli/verbs/tag_campaign.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ec01d309e16f288d",
+      "subset": [
+        "tests/test_tag_campaign.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_campaign.py::test_a_folder_answer_makes_the_folder_and_the_rows_follow_their_files"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            # THE COPY MOVED, so the rows that follow are planned on it.\n            declared = active_taxonomy.load(cfg)",
+      "new": "            # THE COPY MOVED, so the rows that follow are planned on it.\n            pass",
+      "source": {
+        "table": "u294.json",
+        "id": "M18_no_reload_after_words"
+      }
+    },
+    {
+      "id": "u294.M19_ack_skipped",
+      "description": "the backup acknowledgment is not read before the plan and the gate",
+      "file": "src/cratekit/cli/verbs/tag_campaign.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3b05dc7c39661151",
+      "subset": [
+        "tests/test_tag_campaign.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1053,
+      "baseline_collected": 1053,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_campaign.py::test_with_no_acknowledgment_the_verb_refuses_before_the_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).\n    session.assert_backup_acknowledged(cfg)\n\n    args = ctx.args",
+      "new": "    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).\n\n    args = ctx.args",
+      "source": {
+        "table": "u294.json",
+        "id": "M19_ack_skipped"
+      }
+    },
+    {
+      "id": "u294.M20_abort_applies",
+      "description": "an aborted gate goes on to the steps as if applied",
+      "file": "src/cratekit/cli/verbs/tag_campaign.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dc43656f93578a5d",
+      "subset": [
+        "tests/test_tag_campaign.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_campaign.py::test_a_declined_campaign_writes_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if ctx.gate.require(spec, plan=data, context=facts) != APPLY:",
+      "new": "    if ctx.gate.require(spec, plan=data, context=facts) not in (APPLY, \"abort\"):",
+      "source": {
+        "table": "u294.json",
+        "id": "M20_abort_applies"
+      }
+    },
+    {
+      "id": "u294.M24_notes_dropped",
+      "description": "the gate and the report carry none of the backlog's own notes",
+      "file": "src/cratekit/cli/verbs/tag_campaign.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3e4af4cef313dca7",
+      "subset": [
+        "tests/test_tag_campaign.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_campaign.py::test_a_catalogue_nobody_could_read_is_said_at_the_gate",
+        "tests/test_tag_campaign.py::test_the_gate_and_the_report_say_what_the_verbs_could_not_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if note[\"code\"] in _CARRIED and note[\"code\"] != backlog_cli.ROWS_JOINING",
+      "new": "        if False",
+      "source": {
+        "table": "u294.json",
+        "id": "M24_notes_dropped"
+      }
+    },
+    {
+      "id": "u294.M25_folder_stale_check",
+      "description": "the words step drops its check that the folder edit is the one the gate listed",
+      "file": "src/cratekit/cli/verbs/tag_campaign.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3d1421d6b0c7c866",
+      "subset": [
+        "tests/test_tag_campaign.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 56,
+      "baseline_collected": 56,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_campaign.py::test_a_folder_that_would_copy_another_bucket_after_the_gate_stops_the_words_as_stale"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if fresh != (shown.genre, shown.bucket, shown.like, shown.copy):",
+      "new": "            if False:",
+      "source": {
+        "table": "u294.json",
+        "id": "M25_folder_stale_check"
       }
     }
   ],
