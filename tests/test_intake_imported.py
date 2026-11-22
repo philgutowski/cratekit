@@ -476,9 +476,7 @@ def test_after_a_cutover_the_pass_placing_every_track_is_proof_and_closes_the_ru
 def _verified(cfg: config.Config, **changes) -> session.SessionRecord:
     record = session.open_session(cfg, workflow=ingest.INTAKE_WORKFLOW)
     session.mark_awaiting_import(
-        record,
-        session.pending_import(record, artifact="x", summary="s", verify_verb="v"),
-        cfg,
+        record, session.pending_import(record, artifact="x", summary="s", verify_verb="v"), cfg,
     )
     session.mark_import_verified(record, cfg, evidence="a test")
     for name, value in changes.items():
@@ -700,9 +698,7 @@ def test_a_failed_call_records_no_track_the_ledger_cannot_withdraw(
         raise refuse("internal-error", "the session log could not be written")
     monkeypatch.setattr(session, "mark_awaiting_import", failing)
     with pytest.raises(CratekitError):
-        ingest.place_files(
-            [path], cfg=cfg, export=export, destination=music / "One_inboxed.xml"
-        )
+        ingest.place_files([path], cfg=cfg, export=export, destination=music / "One_inboxed.xml")
     assert routing_pass.read(cfg).intents == ()
     (record,) = session.records(cfg)
     assert record.state is session.SessionState.ABANDONED

@@ -218,8 +218,7 @@ def test_a_mixed_job_writes_only_the_missing_rows(cfg, library, monkeypatch, tmp
     body = json.loads(expected.read_text())
     assert body["origin"] == "tidal"
     assert [(t["id"], t["artist"], t["title"]) for t in body["tracks"]] == [
-        ("204", "Lumen Drift", "Salt Road"),
-        ("205", "Kite Harbor", "Low Tide Signal"),
+        ("204", "Lumen Drift", "Salt Road"), ("205", "Kite Harbor", "Low Tide Signal"),
     ]
     sidecar = json.loads(Path(summary["manifest"]).read_text())
     assert set(sidecar["rows"]) == {"204", "205"}
@@ -340,22 +339,21 @@ def test_rows_acquired_since_the_job_are_not_listed_and_name_no_download(
     assert listed.read_bytes() == before, "the earlier list is not this verb's to remove"
 
 
-def test_a_row_tombstoned_since_the_job_is_not_listed_and_counted_suppressed(
-    cfg, library, monkeypatch
+def test_a_row_held_in_another_version_since_is_offered_not_listed(
+    cfg, library, monkeypatch, tmp_path
 ):
     job_id = mixed_job(library, monkeypatch)
-    tombstone(cfg, "Kite Harbor", "Low Tide Signal")
-    envelope, summary = ok(job_id)
-    assert (summary["written"], summary["suppressed_since"], summary["suppressed"]) == (1, 1, 0)
-    assert ids(summary) == ["204"]
-
-
-def test_a_row_held_in_another_version_since_is_offered_not_listed(cfg, library, monkeypatch):
-    job_id = mixed_job(library, monkeypatch)
-    owned(library, "Lumen Drift - Salt Road (Someone Remix).flac")
-    envelope, summary = ok(job_id)
+    remix = library / "Music" / "Lumen Drift - Salt Road (Someone Remix).flac"
+    remix.write_bytes(b"")
+    envelope, summary = ok(job_id, "--out", str(tmp_path / "remix"))
     assert (summary["written"], summary["offered_since"]) == (1, 1)
     assert ids(summary) == ["205"]
+    # A ROW TOMBSTONED SINCE is not listed and is counted suppressed.
+    remix.unlink()
+    tombstone(cfg, "Kite Harbor", "Low Tide Signal")
+    envelope, summary = ok(job_id, "--out", str(tmp_path / "tombstoned"))
+    assert (summary["written"], summary["suppressed_since"], summary["suppressed"]) == (1, 1, 0)
+    assert ids(summary) == ["204"]
 
 
 def test_a_row_a_person_answered_as_another_track_stays_listed(cfg, library, monkeypatch):
@@ -1011,9 +1009,7 @@ def test_a_full_playlist_listing_or_one_with_no_declared_count_warns_nothing(
     assert "shortfall" not in envelope["data"]["progress"]
 
 
-def test_a_playlist_whose_every_track_is_withheld_is_not_a_quiet_no_op(
-    cfg, library, monkeypatch
-):
+def test_a_playlist_whose_every_track_is_withheld_is_not_a_quiet_no_op(cfg, library, monkeypatch):
     bind_playlist(monkeypatch, [], declared=3)
     code, envelope = drive(["intake", "playlist", SHORT])
     assert code == int(ExitCode.OK), envelope

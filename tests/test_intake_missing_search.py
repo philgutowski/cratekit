@@ -468,8 +468,7 @@ def test_an_owned_row_is_never_searched_for(cfg, library, tmp_path, monkeypatch)
     owned(library, "Aurora Bloom - Sun Path.flac")
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path", "Nova Reef - Tide")
     fake = bind(
-        monkeypatch,
-        FakeCatalogue(searches={SUN: [Hit("7001", *SUN)], TIDE: [Hit("7010", *TIDE)]}),
+        monkeypatch, FakeCatalogue(searches={SUN: [Hit("7001", *SUN)], TIDE: [Hit("7010", *TIDE)]}),
     )
     envelope = ok(path)[0]
     assert fake.searched_for == [TIDE], "a track the library holds was searched for"

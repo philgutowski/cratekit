@@ -232,10 +232,7 @@ def test_the_same_id_twice_in_one_answer_is_one_id_and_is_listed(cfg, library, r
     bind(monkeypatch, FakeCatalogue(isrcs={ONE: [FakeTrack("9001"), FakeTrack("9001")]}))
     _code, envelope = missing(job_id)
     assert envelope["data"]["summary"]["written"] == 1
-
-
-def test_an_answer_holding_a_track_with_no_identifier_is_handed_on_not_read_as_one(cfg, library, recognised, monkeypatch):
-    job_id = finished_set(library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path", isrc=ONE))
+    # AN ANSWER HOLDING A TRACK WITH NO IDENTIFIER is handed on, not read as one.
     bind(monkeypatch, FakeCatalogue(isrcs={ONE: [FakeTrack("9001"), FakeTrack("")]}))
     _code, envelope = missing(job_id)
     summary = envelope["data"]["summary"]
@@ -276,8 +273,7 @@ def test_a_track_that_cannot_be_a_text_line_is_named_and_the_rest_are_still_writ
     summary = envelope["data"]["summary"]
     assert summary["written"] == 1
     assert [(t["artist"], t["why"]) for t in summary["unlisted_tracks"]] == [
-        ("Kite - Harbor", missing_cli.NO_ISRC),
-        ("Mira Vale", missing_cli.NO_ISRC),
+        ("Kite - Harbor", missing_cli.NO_ISRC), ("Mira Vale", missing_cli.NO_ISRC),
     ]
     assert [t["in_file"] for t in summary["unlisted_tracks"]] == [False, True]
     read = match_cli.read_list(Path(summary["unlisted_list"]))
