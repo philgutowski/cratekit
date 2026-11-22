@@ -280,6 +280,16 @@ def test_a_gig_ready_playlist_is_made_on_the_account_in_its_folder_and_filled(wo
     assert envelope["data"]["totals"]["created_playlists"] == [made]
 
 
+def test_a_playlist_deleted_in_rekordbox_is_never_found(world):
+    """U304: the walk reads live playlists only, so a deleted one is not made on the account."""
+    gig = world.folder("GIG READY")
+    world.playlist("Opener", "1", under=gig)
+    world.delete_rekordbox(world.playlist("Closer", "2", under=gig))
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert list(world.in_folder("GIG READY")) == ["GIG READY Opener"]
+
+
 def test_a_second_run_plans_nothing(world):
     gig = world.folder("GIG READY")
     world.playlist("Opener", "1", "2", under=gig)
