@@ -448,10 +448,17 @@ class Reads:
         """Every track on the playlist, identifier to ``(artist, title)``, read now.
 
         Fresh rather than the remembered membership, since a playlist created
-        or added to in this run is remembered by identifier alone; the read
-        :meth:`playlist_listing` makes.
+        or added to in this run is remembered by identifier alone. A track
+        listed twice is named by its last listing.
         """
-        return self.playlist_listing(playlist_id).names
+        tracks = self._listed(playlist_id, self._playlist(playlist_id))
+        ids = [_identifier(track) for track in tracks]
+        self._members[playlist_id] = ids
+        return {
+            identifier: (_shown_artist(track), _title(track))
+            for identifier, track in zip(ids, tracks, strict=True)
+            if identifier
+        }
 
     def playlist_listing(self, playlist_id: str) -> service.PlaylistListing:
         """Every track on the playlist with its added time and the declared count (U201).
