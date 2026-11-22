@@ -15,14 +15,7 @@ from cratekit.modules.outbound import ledger, mirror
 from cratekit.organize import account_mirror, mirror_frozen
 from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area
 from cratekit.sync import playlists
-from tests.test_inbox_rotate import (
-    INTAKE,
-    OLD,
-    TODAY,
-    _node,
-    _open,
-    _record_landing,
-)
+from tests.test_inbox_rotate import INTAKE, OLD, TODAY, _node, _open, _record_landing
 from tests.test_inbox_rotate import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_inbox_rotate import _release_process_locks as _release_process_locks  # noqa: PLC0414
 from tests.test_inbox_rotate import acknowledged as acknowledged  # noqa: PLC0414 - fixture
@@ -45,9 +38,7 @@ def inbox(*batches: tuple[str, tuple[int, ...]], present: tuple[str, ...] = ()) 
         name="INBOX",
         playlists=sources,
         retire=True,
-        present=frozenset(
-            {source.name for source in sources} | {mirror.title("INBOX", one) for one in present}
-        ),
+        present=frozenset({source.name for source in sources} | {mirror.title("INBOX", one) for one in present}),
     )
 
 

@@ -146,10 +146,7 @@ def _year(cfg, year: str = "2023"):
 
 
 def test_both_prune_verbs_write_only_the_account_behind_an_explicit_gate():
-    for name, gate, module, row in (
-        ("label.prune", PRUNE, "labels", 23),
-        ("export.prune", EXPORT_PRUNE, "export", 36),
-    ):
+    for name, gate, module, row in (("label.prune", PRUNE, "labels", 23), ("export.prune", EXPORT_PRUNE, "export", 36)):
         entry = registry.entry(name)
         assert entry.writes == frozenset({"remote"}), name
         assert entry.destructive is True, name
@@ -159,9 +156,7 @@ def test_both_prune_verbs_write_only_the_account_behind_an_explicit_gate():
         assert spec.digest_source == "plan"
     # The protocol's removals: R-836's tracks, U123's playlist, U143's two root removals.
     removals = {name for name in outbound_fakes.PROTOCOL_METHODS if "remove" in name}
-    assert removals == {
-        "remove_tracks", "remove_playlist", "remove_root_playlist", "remove_legacy_folder"
-    }
+    assert removals == {"remove_tracks", "remove_playlist", "remove_root_playlist", "remove_legacy_folder"}
     # The client library still offers the removal the adapter makes.
     import tidalapi.playlist
     assert callable(getattr(tidalapi.playlist.UserPlaylist, "remove_by_indices", None))
@@ -349,9 +344,7 @@ def _crate(cfg, *rows: int, under: str = "outbound", **kwargs) -> Path:
 
 
 def _export_prune(path) -> dict:
-    code, done = _two_acts(
-        ["export", "prune", outbound_fakes.CRATE, "--export", str(path)], EXPORT_PRUNE
-    )
+    code, done = _two_acts(["export", "prune", outbound_fakes.CRATE, "--export", str(path)], EXPORT_PRUNE)
     assert code == OK, done
     return done
 
@@ -711,9 +704,7 @@ def test_an_account_that_does_not_vouch_for_every_asked_track_is_refused(install
 def test_the_export_date_goes_on_the_record_the_job_was_confirmed_to_update(installed):
     ledger.reserve_playlist(installed, "J", lambda: "Y")
     ledger.reserve_playlist(installed, "K", lambda: "X")
-    ledger.reserve_playlist(
-        installed, "K", lambda: "never", expected="Y", written="2026-10-03T00:00:00+00:00"
-    )
+    ledger.reserve_playlist(installed, "K", lambda: "never", expected="Y", written="2026-10-03T00:00:00+00:00")
     assert ledger.exported_playlist(installed, "J").written == "2026-10-03T00:00:00+00:00"
     assert ledger.exported_playlist(installed, "K").written == ""
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 import shutil
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -20,7 +21,7 @@ from cratekit.organize import mirror_downloads, mirror_edits, rekordbox
 from cratekit.organize.steps import LISTED, NOTHING, PLANNED
 from tests.label_fakes import FakeCatalogue, catalogue_factory
 from tests.test_inbox_rotate import _record_landing
-from tests.test_organize_mirror_edits import Machine, latched, refused, silence, without_fsync
+from tests.test_organize_mirror_edits import Machine, latched, refused, silence, tree, without_fsync
 from tests.test_organize_mirror_edits import _field_policies as _field_policies  # noqa: PLC0414
 from tests.test_routing_workers import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_routing_workers import _release_process_locks as _release_process_locks
@@ -34,16 +35,6 @@ MONTH = "2026-10"
 BATCH_A = "2026-10-20 Tidal playlists"
 BATCH_B = "2026-10-31 Defected"
 PINK = "1"
-
-
-class Listed:
-    """A provider track in the shape the playlist reader reads."""
-
-    def __init__(self, track_id: str, code: str) -> None:
-        self.id = track_id
-        self.name = f"Title {track_id}"
-        self.artist = {"name": f"Artist {track_id}"}
-        self.isrc = code
 
 
 class LivePlaylist:
@@ -62,12 +53,14 @@ class LivePlaylist:
     def tracks(self, limit=None, offset=0):
         size = self.page_size if limit is None else limit
         members = self.world.account.playlists[self.playlist_id][offset : offset + size]
-        listed = [Listed(one, self.world.codes.get(one, "")) for one in members]
-        for one in listed:
-            if one.id in self.world.untitled:
-                # R-1289: a row the account lists with no title.
-                one.name = ""
-        return listed
+        # R-1289: a row the account lists with no title.
+        return [
+            SimpleNamespace(
+                id=one, name="" if one in self.world.untitled else f"Title {one}",
+                artist={"name": f"Artist {one}"}, isrc=self.world.codes.get(one, ""),
+            )
+            for one in members
+        ]
 
 
 class World(Machine):
@@ -125,16 +118,7 @@ class World(Machine):
 
     def register(self) -> None:
         super().register()
-        tree_registry.write(
-            self.cfg,
-            tree_registry.read(self.cfg).with_record(
-                tree_registry.TreeRecord(
-                    tree_id=DECLARED.intake.id, mode=tree_registry.Mode.DATABASE,
-                    cutover_on=date(2026, 8, 1), root_id=self.inbox,
-                    source=tree_registry.DerivationSource.TAXONOMY,
-                )
-            ),
-        )
+        tree_registry.write(self.cfg, tree_registry.read(self.cfg).with_record(tree(DECLARED.intake.id, self.inbox)))
         _record_landing(self.cfg, self.batch_a, BATCH_A, date(2026, 10, 20))
         _record_landing(self.cfg, self.batch_b, BATCH_B, date(2026, 10, 31))
 
@@ -625,8 +609,6 @@ def test_an_untitled_track_on_a_mirrored_playlist_is_named_and_the_others_queue(
 
 
 def test_a_playlist_the_provider_cannot_list_is_named_and_the_others_queue():
-    from types import SimpleNamespace
-
     from cratekit.core.cause import refuse
     one = edits.Place("Tech House Med", "Tech House", "Med", True)
     two = edits.Place("Deep House Low", "Deep House", "Low", True)
@@ -639,9 +621,7 @@ def test_a_playlist_the_provider_cannot_list_is_named_and_the_others_queue():
     )
     recorded = {
         folder: SimpleNamespace(playlists={title: SimpleNamespace(remote_id=pid)})
-        for folder, title, pid in (
-            ("Tech House", "Tech House Med", "p1"), ("Deep House", "Deep House Low", "p2"),
-        )
+        for folder, title, pid in (("Tech House", "Tech House Med", "p1"), ("Deep House", "Deep House Low", "p2"))
     }
     reading = SimpleNamespace(decided=decided, recorded=recorded)
     def listed(pid):

@@ -11,27 +11,12 @@ from cratekit.core import config
 from cratekit.modules.outbound import ledger
 from cratekit.modules.outbound import mirror_edits as edits
 from tests.test_label_workers import installed as installed  # noqa: PLC0414
-from tests.test_mirror_edits import AF, ALL, NOV, OCT, OFF, OWNED, only
+from tests.test_mirror_edits import AF, ALL, NOV, OCT, OFF, held, one
 
 SEP = edits.Place("Favorites 2026-09", "Favorites", "2026-09", False, edits.FAVORITES)
 
 #: The time of the membership a write made, as rekordbox writes it.
 AT = "2026-11-07 16:40:00.000 +00:00"
-
-
-def held(place, *, account=(), rekordbox=(), agreed=(), never=False, placed=()):
-    """A playlist read three ways, with the placements the reader found still standing."""
-    return edits.Mirrored(
-        place=place,
-        account=frozenset(account),
-        rekordbox=frozenset(rekordbox),
-        agreed=None if never else frozenset(agreed),
-        placed=frozenset(placed),
-    )
-
-
-def one(*playlists) -> edits.Decision:
-    return only(edits.decide(list(playlists), OWNED))
 
 
 # 1. An unfavourite over the library's own month placement
@@ -41,10 +26,7 @@ def test_an_unfavourite_over_the_month_the_library_placed_is_carried():
     """Sitting 88's second round, read pure."""
     got = one(held(AF, **OFF), held(NOV, rekordbox=("t1",), placed=("t1",)))
     assert (got.outcome, got.content_id) == (edits.UNFAVOURITE, "c1")
-    assert set(got.settle) == {
-        ("Favorites", "All Favorites", False),
-        ("Favorites", "Favorites 2026-11", False),
-    }
+    assert set(got.settle) == {("Favorites", "All Favorites", False), ("Favorites", "Favorites 2026-11", False)}
 
 
 def test_the_same_over_a_placed_month_never_agreed():
@@ -59,9 +41,7 @@ def test_without_the_placement_the_month_is_rekordboxs_addition_as_before():
 
 
 def test_a_month_added_beside_the_placed_one_still_beats_the_removal():
-    got = one(
-        held(AF, **OFF), held(OCT, rekordbox=("t1",)), held(NOV, rekordbox=("t1",), placed=("t1",))
-    )
+    got = one(held(AF, **OFF), held(OCT, rekordbox=("t1",)), held(NOV, rekordbox=("t1",), placed=("t1",)))
     assert got.outcome == edits.REKORDBOX and "addition beats a removal" in got.why
 
 
@@ -74,9 +54,7 @@ def test_a_placement_on_another_track_or_in_all_favorites_alone_excuses_nothing(
 
 
 def test_a_favourite_put_in_another_month_leaves_the_placed_one():
-    got = one(
-        held(AF, **ALL), held(SEP, account=("t1",)), held(NOV, rekordbox=("t1",), placed=("t1",))
-    )
+    got = one(held(AF, **ALL), held(SEP, account=("t1",)), held(NOV, rekordbox=("t1",), placed=("t1",)))
     assert (got.outcome, got.to, got.away) == (edits.FAVOURITE, SEP, (NOV,))
     assert "the month the library placed it in" in got.why
     assert ("Favorites", "Favorites 2026-11", False) in got.settle

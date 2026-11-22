@@ -25,15 +25,12 @@ OFF = dict(rekordbox=("t1",), agreed=("t1",))
 ALL = dict(account=("t1",), **OFF)
 
 
-def held(place, *, account=(), rekordbox=(), agreed=(), never=False, short=False, **times):
+def held(place, *, account=(), rekordbox=(), agreed=(), never=False, short=False, placed=(), **times):
+    """A playlist read three ways, with the placements the reader found still standing (U236)."""
     return edits.Mirrored(
-        place=place,
-        account=frozenset(account),
-        rekordbox=frozenset(rekordbox),
-        agreed=None if never else frozenset(agreed),
-        short=short,
-        account_added=times.get("account_added", {}),
-        rekordbox_added=times.get("rekordbox_added", {}),
+        place=place, account=frozenset(account), rekordbox=frozenset(rekordbox),
+        agreed=None if never else frozenset(agreed), short=short, placed=frozenset(placed),
+        account_added=times.get("account_added", {}), rekordbox_added=times.get("rekordbox_added", {}),
     )
 
 
@@ -68,9 +65,7 @@ def test_a_track_taken_off_its_band_and_added_nowhere_is_unfiled():
 
 
 def test_a_playlist_never_agreed_reads_every_difference_as_rekordboxs():
-    decided = decide(
-        held(DHL, rekordbox=("t1",), never=True), held(THM, account=("t1",), never=True)
-    )
+    decided = decide(held(DHL, rekordbox=("t1",), never=True), held(THM, account=("t1",), never=True))
     assert decided.decisions == () and decided.holds == {}
     # A change made in rekordbox alone is no edit either, and holds nothing.
     decided = decide(held(DHL, account=("t1",), agreed=("t1",)), held(THM, rekordbox=("t1",)))

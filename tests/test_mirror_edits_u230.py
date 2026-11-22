@@ -7,20 +7,12 @@ filing stands; every other base counts as before. Pure.
 from __future__ import annotations
 
 from cratekit.modules.outbound import mirror_edits as edits
-
-AHH = edits.Place("Afro House High", "Afro House", "High", True)
-AHM = edits.Place("Afro House Med", "Afro House", "Med", True)
-JZM = edits.Place("Jazz Med", "Jazz", "Med", True)
-JZV = edits.Place("Jazz with vox", "Jazz", "with vox", False)
+from tests.test_mirror_edits_u227 import ACCOUNT_AT, AHH, AHM, FILED, JZM, JZV, LANDED_AT, MOVED_AT
 
 OWNED = {"t9": ["c9"]}
+
 T9 = frozenset({"t9"})
 NONE = frozenset()
-ACCOUNT_AT = "2026-11-06T14:56:32.535000+00:00"
-LANDED_AT = "2026-11-06 15:11:15.593 +00:00"
-MOVED_AT = "2026-11-06 16:00:00.000 +00:00"
-#: Where the landing filed the row, by the adoption ledger.
-FILED = {"t9": frozenset({("Afro House", "High")})}
 #: Which mirrored playlist's job queued the download.
 QUEUED = {"t9": frozenset({"Jazz Med"})}
 

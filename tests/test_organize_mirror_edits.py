@@ -59,6 +59,14 @@ def without_fsync(monkeypatch) -> None:
     monkeypatch.setattr(os, "fsync", lambda _fd: None)
 
 
+def tree(tree_id: str, root_id: str) -> tree_registry.TreeRecord:
+    """A tree cut over to the database on 2026-08-01, rooted at ``root_id``."""
+    return tree_registry.TreeRecord(
+        tree_id=tree_id, mode=tree_registry.Mode.DATABASE, cutover_on=date(2026, 8, 1),
+        root_id=root_id, source=tree_registry.DerivationSource.TAXONOMY,
+    )
+
+
 def _query(db: Path, sql: str, *args) -> list:
     conn = sqlite3.connect(db)
     try:
@@ -135,18 +143,7 @@ class Machine:
 
     def register(self) -> None:
         """The state a library's trees are read by, written for every test."""
-        tree_registry.write(
-            self.cfg,
-            tree_registry.Registry(
-                (
-                    tree_registry.TreeRecord(
-                        tree_id=taxonomy.default_taxonomy().tree.id,
-                        mode=tree_registry.Mode.DATABASE, cutover_on=date(2026, 8, 1),
-                        root_id=self.root_id, source=tree_registry.DerivationSource.TAXONOMY,
-                    ),
-                )
-            ),
-        )
+        tree_registry.write(self.cfg, tree_registry.Registry((tree(taxonomy.default_taxonomy().tree.id, self.root_id),)))
 
     def shared(self) -> account_mirror.Shared:
         self.runs += 1
@@ -518,9 +515,7 @@ def test_a_folder_that_is_not_a_genre_folder_is_mirrored_one_way(installed, monk
     account = outbound_fakes.StrictAccount(catalog={"c1": "r1"})
     favorites = mirror.Folder(
         name="Favorites",
-        playlists=(
-            mirror.Source(name="All Favorites", rows=(mirror.Row(content_id="c1", isrc="ISRC00001"),)),
-        ),
+        playlists=(mirror.Source(name="All Favorites", rows=(mirror.Row(content_id="c1", isrc="ISRC00001"),)),),
     )
     monkeypatch.setattr(account_mirror, "read_library", lambda _cfg, **_: account_mirror.Library(folders=(favorites,)))
     def run() -> None:
@@ -576,9 +571,7 @@ def test_the_ledger_keeps_a_snapshot_apart_from_none_and_only_on_its_own_playlis
     ledger.record_mirror_agreed(
         installed,
         "Deep House",
-        {
-            "Deep House Low": ("p1", {"r1", "r2"}, set()), "Deep House Med": ("another", {"r3"}, set()),
-        },
+        {"Deep House Low": ("p1", {"r1", "r2"}, set()), "Deep House Med": ("another", {"r3"}, set())},
     )
     held = ledger.mirror_folders(installed)["Deep House"].playlists
     assert held["Deep House Low"].agreed == {"r1", "r2"}

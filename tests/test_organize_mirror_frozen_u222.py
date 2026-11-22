@@ -252,9 +252,7 @@ def test_a_playlist_made_again_between_the_acts_reads_its_snapshot_now():
             name="INBOX",
             playlists={
                 "kept": ledger.MirrorPlaylist(name="kept", remote_id="p1", agreed=frozenset({"now"})),
-                "made again": ledger.MirrorPlaylist(
-                    name="made again", remote_id="p3", agreed=frozenset({"now"})
-                ),
+                "made again": ledger.MirrorPlaylist(name="made again", remote_id="p3", agreed=frozenset({"now"})),
                 "new": ledger.MirrorPlaylist(name="new", remote_id="p4", agreed=None),
             },
         ),

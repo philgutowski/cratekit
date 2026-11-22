@@ -78,10 +78,7 @@ def test_a_second_band_added_in_rekordbox_after_the_landing_stands():
 
 def test_a_track_a_snapshot_held_is_read_by_the_later_change_rule_alone():
     """ONCE: the snapshot holds the carried track and the account is unchanged, so no landing is read."""
-    playlists = [
-        _m(JZM, account=True, agreed=True),
-        _m(AHH, rekordbox=True, rekordbox_added={"t9": LANDED_AT}),
-    ]
+    playlists = [_m(JZM, account=True, agreed=True), _m(AHH, rekordbox=True, rekordbox_added={"t9": LANDED_AT})]
     assert edits.decide(playlists, OWNED, FILED).decisions == ()
 
 
