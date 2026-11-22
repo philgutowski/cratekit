@@ -48,8 +48,6 @@ class Named:
 
 
 class ProviderTrack:
-    """The fields the live search was confirmed to carry on 2026-09-16."""
-
     def __init__(self, track_id: str, artist: str, name: str, *, isrc: str = "") -> None:
         self.id = track_id
         self.artists = [Named(artist)]
@@ -256,7 +254,6 @@ def test_with_no_session_the_seam_still_refuses_the_credential_and_builds_no_cli
 
 
 def test_the_label_paths_refusal_carries_the_token_that_renders_the_procedure(cfg, monkeypatch):
-    """U97, closing R-411, and deliberately narrow about what it proves."""
     use_client(monkeypatch, FakeClient())
     with pytest.raises(CratekitError) as excinfo:
         catalogue.resolve(cfg)
@@ -322,7 +319,6 @@ def test_a_session_the_provider_rejects_asks_for_a_new_login_not_a_first_one(
     ids=["connection", "timeout", "server-error", "unparseable-page"],
 )
 def test_a_provider_that_cannot_be_reached_is_a_wait_not_a_new_login(cfg, monkeypatch, failure):
-    """Review finding: an outage told the person to log in again with a good session."""
     use_client(monkeypatch, FakeClient(raises=failure))
     record_session()
     with pytest.raises(CratekitError) as excinfo:
@@ -717,7 +713,6 @@ def test_a_seed_that_does_not_resolve_refuses_the_label_rather_than_narrowing_it
 
 
 def test_two_artists_named_exactly_the_label_refuse_rather_than_guess():
-    """Review finding: the first exact hit could be an unrelated act of one name."""
     twin = ProviderArtist("Harbour Lights", [Release("x1")], artist_id="2")
     first = ProviderArtist("Harbour Lights", [Release("r1")], artist_id="1")
     assert "2 provider artists" in unresolved(FakeClient(artists=[first, twin]))
@@ -763,14 +758,12 @@ def test_an_unresolved_id_seed_refuses_the_label():
 
 def looking_up(answer: Any) -> FakeClient:
     """A client whose identifier lookup records the ask, then raises or returns ``answer``."""
-
     class Looking(FakeClient):
         def artist(self, artist_id: str | None = None) -> Any:
             self.artist_lookups.append(str(artist_id))
             if isinstance(answer, Exception):
                 raise answer
             return answer
-
     return Looking()
 
 
@@ -807,7 +800,6 @@ def test_an_uppercase_id_prefix_is_still_a_name_seed():
 
 
 def test_the_roster_lists_once_when_it_is_built_and_the_crawl_reads_memory():
-    """Review finding: a lazy listing ran a retry ladder inside the crawl's own."""
     artist = ProviderArtist("Harbour Lights", [Release("r1")], [Release("s1")])
     roster = harbour_roster(FakeClient(artists=[artist]))
     listed = list(artist.asked)
@@ -887,7 +879,6 @@ class EndlessArtist:
 
 
 def test_a_provider_listing_that_never_ends_still_spends_its_budget_and_blames_the_offset():
-    """R-888 left the real listing's budget and its wording exactly as they were."""
     with pytest.raises(listing.ListingTruncated) as raised:
         listing.artist_releases(EndlessArtist(), sleep=lambda _s: None)
     text = str(raised.value)
@@ -1099,7 +1090,6 @@ def test_a_harvested_name_is_confirmed_only_by_a_matching_copyright_line():
 
 
 def test_a_longer_act_name_holding_the_needle_neither_confirms_nor_discovers():
-    """U237: the Rawax needle confirmed three releases credited to RAWAXXX, another act."""
     client = FakeClient(albums=[Release("r1", copyright="(P) 2026 RAWAXXX")])
     adapter = tidal_catalogue.TidalCatalogue(client)
     assert adapter.check_label("Rawax")["verdict"] == "unconfirmed"
@@ -1180,7 +1170,6 @@ def _label_with_a_discovered_pair(first: ProviderArtist) -> FakeClient:
 
 
 def test_a_rate_limit_during_discovery_fails_the_sweep_and_names_the_artist(cfg, monkeypatch):
-    """R-393: a 429 on one discovered artist used to read as a complete roster."""
     busy = RateLimitedArtist("Busy Act", [], artist_id="10")
     client = _label_with_a_discovered_pair(busy)
     code, failed, job_id = _sweep_through_the_worker(monkeypatch, client)
@@ -1229,7 +1218,6 @@ def test_a_held_artist_rate_limited_during_discovery_is_not_recorded_as_unread(c
 
 
 def test_a_roster_member_missing_one_listing_fails_the_sweep_and_names_it(cfg, monkeypatch):
-    """R-261: a client exposing one of two listings used to report a complete crawl."""
     own = AlbumsOnlyArtist("Harbour Lights", [Release("own1", copyright=HARBOUR)], artist_id="1")
     client = FakeClient(artists=[own])
     code, failed, job_id = _sweep_through_the_worker(monkeypatch, client)

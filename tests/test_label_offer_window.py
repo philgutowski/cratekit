@@ -367,9 +367,6 @@ def test_a_queue_with_no_grouping_refuses_rather_than_listing_nothing(installed)
     refused_selection("--queue", "path-repair", "--group-by", "label")
 
 
-# 4. What the review of this unit found
-
-
 def item_causes(job_id: str) -> dict[str, str | None]:
     with jobs.open_store() as store:
         return {item.item_id: (item.cause.reason if item.cause is not None else None)

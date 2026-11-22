@@ -448,8 +448,7 @@ def test_a_label_the_registry_no_longer_holds_refuses_rather_than_sweeping_nothi
     assert item_states(job_id)[SLUGS[1]] == str(jobs.ItemState.DONE)
 
 
-# ── 6b. A catalogue that confirms nothing is not a label with nothing new ────
-# Keyed on the drops, not an empty candidate list, so a quiet label stays a no op.
+# ── 6b. Confirming nothing is not nothing new: keyed on the drops, a quiet label stays a no op ──
 
 
 def unconfirming(*label_ids: str) -> FakeCatalogue:
@@ -613,7 +612,6 @@ def test_a_second_resume_of_a_failed_sweep_still_does_not_exit_ok(installed, mon
     job_id = sweep_job(monkeypatch, UnreadableCatalogue(), LABELS[0])
     assert drive(["sync", "labels", "--job", job_id])[0] != int(ExitCode.OK)
     again = unswept(job_id)
-    # The stored job cause: the items' permanent sync-source-lookups-failed.
     assert again["cause"]["reason"] == "sync-source-lookups-failed"
     assert again["cause"]["retryable"] is False
     assert again["cause"]["remediation"]["remedy"] != "resume-job"
@@ -671,8 +669,7 @@ def test_the_worker_offers_into_the_library_its_job_was_queued_for(
     )
 
 
-# ── 9. Harvest, the verb that can now succeed ────────────────────────────────
-# Harvest queues nothing: every assertion reads the envelope or the review store.
+# ── 9. Harvest queues nothing: every assertion reads the envelope or the review store ─────────
 
 PLAYLIST = "https://example.invalid/playlist/harvest"
 
@@ -800,7 +797,6 @@ def test_harvest_human_output_names_the_unresolved_count_and_not_an_unconfirmed_
 
 
 def test_an_empty_harvest_still_names_that_nothing_was_offered(installed, monkeypatch):
-    """A no_op that prints only the verb and a run id is the original defect."""
     bind(monkeypatch, playlist_of())
     text = harvest_human_ok()
     lines = text.splitlines()
@@ -912,10 +908,6 @@ def test_a_refusal_the_harvest_verifier_raises_in_kind_keeps_its_own_reason(inst
     code, refused = run_harvest()
     assert code != int(ExitCode.OK), refused
     assert refused["cause"]["reason"] == "credential-missing"
-
-
-# ── 10. The review round, 2026-09-07 ─────────────────────────────────────────
-# One finding of the review after the merge with main per test.
 
 
 def test_the_keys_this_verb_will_drive_are_the_keys_bound_to_its_worker():
@@ -1062,7 +1054,6 @@ def test_a_refusal_the_artist_lookup_raises_in_kind_keeps_its_own_reason(install
 
 
 # ── 12. A release the library already holds is not offered. R-259. ───────────
-# The worker passed an empty owned set, so every sweep offered what the library held.
 
 
 class Row:

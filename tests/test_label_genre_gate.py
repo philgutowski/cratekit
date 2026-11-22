@@ -44,9 +44,6 @@ MEASURED = {
 TAXONOMY = default_taxonomy()
 
 
-# ── Fixtures and fakes ───────────────────────────────────────────────────────
-
-
 def isrc(n: int) -> str:
     """A well formed ISRC nobody was issued."""
     return f"ZZTST26{n:05d}"

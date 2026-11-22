@@ -51,9 +51,6 @@ GATE = "label.sync.confirm"
 JOB, ITEM = jobs.JobState, jobs.ItemState
 
 
-# Fixtures
-
-
 @pytest.fixture
 def installed(tmp_path, monkeypatch) -> config.Config:
     """A configured library naming the fake adapter with pacing off."""
@@ -479,8 +476,7 @@ def test_a_second_go_that_waited_for_the_first_refuses_rather_than_queue_its_tra
     real = go.held_by_goes
     calls = []
     def first_blind(store):
-        # Blind for both summaries, so the gate's digest agrees and the refusal
-        # measured is the one under the lock (mutation row G11).
+        # Blind for both summaries, so the digest agrees and the refusal measured is under the lock.
         calls.append(1)
         return go.Held(resume=(), tracks=frozenset()) if len(calls) <= 2 else real(store)
     monkeypatch.setattr(go, "held_by_goes", first_blind)
@@ -1310,7 +1306,6 @@ def test_a_go_whose_tail_reached_its_landing_names_that_landing_and_runs_nothing
 def test_a_go_that_ran_its_tail_once_names_its_landing_when_run_again(
     installed, monkeypatch, script, tail
 ):
-    """Before U239 the same run asked again refused stale over an empty plan."""
     one_release_answered(monkeypatch, script)
     run_id, _envelope = approved_with(ExitCode.PENDING_HUMAN)
     tail.calls.clear()
@@ -1329,9 +1324,6 @@ def test_a_go_parked_by_a_rate_limit_names_its_own_go_for_after_the_park(
     assert envelope["cause"]["remediation"]["steps"][-1].endswith(
         f"crate --run {run_id} label sync --go"
     )
-
-
-# U239's review, round one: each guard the suite left unpinned
 
 
 def two_labels(monkeypatch, script, tracks: int = 3, beta: int | None = None) -> None:
@@ -1647,7 +1639,6 @@ def waiting_runs(cause: dict) -> list:
 def test_an_earlier_gos_download_finished_by_hand_refuses_a_fresh_go_before_it_queues(
     installed, monkeypatch, script, tail
 ):
-    """Before R-1467 the fresh go queued, and its tail landed both downloads as one batch."""
     two_labels(monkeypatch, script)
     run_id, first = ceiling_job(monkeypatch, script, label="alpha-works")
     finished_by_hand(first.job_id)

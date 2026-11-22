@@ -148,7 +148,6 @@ def _taken(envelope: dict) -> list[tuple[str, str]]:
 
 
 def test_a_tombstoned_track_on_a_year_playlist_is_pruned(built):
-    """The card's live case: a removed track stayed on its label year playlist."""
     _tombstone(built.cfg, ACT, "Track t4")
     refused = _gated(["label", "prune", LABEL])
     assert "1 track(s)" in refused["cause"]["detail"]["shown"]["removed from the library"]
@@ -331,7 +330,6 @@ def plain(installed, monkeypatch):
 
 
 def test_hearing_a_dated_playlist_never_puts_a_removed_track_back(plain):
-    """R1 B1: the prune took the track off the year and hearing merged it back."""
     cfg, fake, account = plain
     folder_id = heard_suite._made(cfg, fake, account, [dated_suite._answer(["r3", "r4"], DAY)])
     dated_id = heard_suite._ids(account, folder_id)[heard_suite.DATED]
@@ -359,7 +357,6 @@ def test_hearing_a_playlist_of_only_removed_tracks_needs_no_year(plain):
 
 
 def test_a_releases_build_of_a_wholly_removed_release_says_why(followed):
-    """R1 D1: the screen said the provider no longer lists a track it lists."""
     _took(followed.cfg, ("r2", "2022"))
     _tombstone(followed.cfg, ACT, "Track t3")
     refused = _gated(["label", "playlists", LABEL, "--releases"])
@@ -405,7 +402,6 @@ def _with_a_single() -> FakeCatalogue:
 
 
 def test_a_removed_single_is_taken_off_though_its_release_is_suppressed(followed):
-    """R2 B1: the tombstone suppressed the single's release, so its track went unjudged."""
     fake = _with_a_single()
     followed.monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
     done = _build()
@@ -419,7 +415,6 @@ def test_a_removed_single_is_taken_off_though_its_release_is_suppressed(followed
 
 
 def test_hearing_never_merges_back_a_removed_single(installed, monkeypatch):
-    """R2 B1's heard face: the dated playlist held the single from before the removal."""
     fake = _with_a_single()
     account = _world(monkeypatch, fake)
     answer = dated_suite._answer(["r3", "r8"], DAY)

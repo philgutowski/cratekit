@@ -349,7 +349,6 @@ def _adapter_absent(monkeypatch):
 
 
 def test_harvest_on_a_build_with_no_adapter_refuses_that_nothing_is_bound(cfg, monkeypatch):
-    """R14, and the false statement U52 removed."""
     secrets.set_json(secrets.Credential.PROVIDER_SESSION, {"token": "recorded"})
     _adapter_absent(monkeypatch)
     with pytest.raises(CratekitError) as excinfo:
@@ -552,7 +551,6 @@ def test_a_label_the_catalogue_cannot_resolve_stops_the_increment(cfg):
 
 
 def test_a_registered_label_with_no_artist_object_refuses_rather_than_skipping(cfg):
-    """The bare ``continue`` this unit removed, asserted as gone."""
     with pytest.raises(CratekitError) as excinfo:
         _increment(cfg, _bare(cfg))
     assert excinfo.value.cause.reason == "sync-source-lookups-failed"
@@ -568,7 +566,6 @@ def test_the_missing_artist_refusal_names_the_missing_object_not_the_listing(cfg
 
 
 def test_a_source_with_neither_verifier_nor_catalogue_refuses_rather_than_confirming_nothing(cfg):
-    """The verifier's own missing-object case, which the docstring names and no test drove."""
     artists = {labels.slug("Life and Death"): _paged("X", ("a", "2026", "A"))}
     _id, source = _label_source(cfg, "Life and Death", artists=artists)
     with pytest.raises(run.LookupFailure) as excinfo:

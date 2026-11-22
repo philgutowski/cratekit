@@ -486,7 +486,6 @@ def test_an_age_reads_in_minutes_then_hours_then_days(age, said):
     assert kept_reads.age_text(age) == said
 
 
-# 9. What the review of round 2 found unpinned
 def test_a_resumed_run_that_cannot_write_says_both_the_reuse_and_the_loss(kompakt, monkeypatch):
     _cfg, fake, _account = kompakt
     _parked_once(monkeypatch, fake, 3)

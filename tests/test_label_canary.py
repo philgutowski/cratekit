@@ -55,8 +55,7 @@ class LineCatalogue(FakeCatalogue):
         self.verified.append(str(release.id))
         return dict(tidal_catalogue.TidalCatalogue.search_release(self, claimed, release))
 
-    #: The shipped forced read (R-1634) and the album read it makes, so a held
-    #: release re-verified is read from ``_session`` whatever line it carries.
+#: The shipped forced read, so a held release re-verified is read from ``_session`` whatever its line.
     reread_release = tidal_catalogue.TidalCatalogue.reread_release
     _album = tidal_catalogue.TidalCatalogue._album
 
@@ -406,7 +405,6 @@ def every_line_shape(cfg: config.Config, monkeypatch, session: Session, *, also:
 
 
 def test_a_degraded_provider_refuses_though_every_held_line_names_the_label(installed, monkeypatch):
-    """The defect: on ``main`` the held ``a1`` was judged from its line and the label said nothing new."""
     session = Session({"a1": "2025 Rawax"}, degraded=True)
     every_line_shape(installed, monkeypatch, session)
     envelope = unlisted()

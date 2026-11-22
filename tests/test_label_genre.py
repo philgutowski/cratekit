@@ -27,9 +27,6 @@ LABEL = "PULS"
 GENRE = "Rominimal"
 
 
-# Fixtures
-
-
 @pytest.fixture
 def cfg(tmp_path, monkeypatch) -> config.Config:
     """A configured machine on the full profile, so the registry verb has a taxonomy to ask."""
@@ -468,9 +465,6 @@ def test_a_label_typed_on_a_resume_is_still_said_to_be_unapplied(cfg, folder, si
     assert tag_cli.LABEL_ON_RESUME in codes(resumed)
 
 
-# 4. Review round one: what the first build reported and did not do
-
-
 def refusing_writes(monkeypatch) -> None:
     """A file that will not take a genre, a locked file or a read only volume."""
     monkeypatch.setattr(tags, "write_genre", lambda path, genre: False)
@@ -570,7 +564,6 @@ def test_a_label_typed_on_a_resume_is_not_applied_and_says_so(cfg, folder, silen
 def test_a_file_its_own_label_answered_for_is_never_named_as_outranked(
     cfg, folder, silence, monkeypatch
 ):
-    """The mutation table's one zero, E9: the reset of the file's tag on the label path."""
     registered("--genre", GENRE)
     registered("--genre", "Progressive House", name="Sudbeat")
     track(folder, silence, "a", label="Sudbeat", picture=False)
@@ -596,7 +589,6 @@ def two_alphas() -> None:
 def test_a_label_sharing_its_name_with_one_carrying_a_genre_is_never_given_that_genre(
     cfg, folder, silence, monkeypatch
 ):
-    """The defect: omega's sweep froze only the name Alpha, and the seam found the other Alpha."""
     two_alphas()
     track(folder, silence, "a")
     searcher = bound(monkeypatch, specific_for_a())

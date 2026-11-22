@@ -321,7 +321,6 @@ def test_the_crawl_gate_is_asked_again_when_the_listing_grows(
     assert fake.releases_asked_for == [] and account._writes == 0
 
 
-# 3. What the review of round 1 drove
 def test_a_go_whose_every_release_is_gone_says_so_and_not_that_nothing_was_taken(kompakt):
     cfg, fake, account = kompakt
     _took(cfg, ("r7", "2020"))

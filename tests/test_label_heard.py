@@ -465,7 +465,6 @@ def test_a_playlist_the_client_does_not_serve_as_owned_is_refused_in_words(insta
     assert client.deletes == []
 
 
-# 7. The review round's findings, each driven
 def test_an_unreadable_ledger_refuses_a_dated_create_before_anything_exists(installed):
     cfg = installed
     path = config.state_path("outbound_writes", cfg)

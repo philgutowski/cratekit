@@ -29,9 +29,6 @@ from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 -
 ADDRESS = "<provider.artist.Artist object at 0x10b77ec00>"
 
 
-# ── Fixtures ─────────────────────────────────────────────────────────────────
-
-
 @pytest.fixture
 def library(tmp_path, monkeypatch) -> Path:
     root = tmp_path / "library"
@@ -619,9 +616,6 @@ def test_the_verb_declares_what_it_is():
     assert not entry.destructive
     assert entry.writes == frozenset()
     assert entry.landed
-
-
-# ── What the unit's review found, each driven red before it was fixed ────────
 
 
 class Parsing(StrictCatalogue):

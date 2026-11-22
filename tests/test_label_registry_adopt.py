@@ -73,7 +73,6 @@ def test_an_accepted_label_is_added_once_and_a_second_run_adds_none(installed):
     assert second["data"]["summary"]["added"] == []
     assert second["data"]["summary"]["present"] == ["hotflush-recordings"]
     assert listed() == {"hotflush-recordings": "Hotflush Recordings"}
-    # Nothing added, nothing written: the file is the one the first run left.
     assert intent_bytes() == written
 
 

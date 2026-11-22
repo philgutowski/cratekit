@@ -1,5 +1,4 @@
-"""A gate's answer binds to the facts it pins outside the digest, such as the database
-file the native landing's digest does not name (U161)."""
+"""A gate's answer binds to the facts it pins outside the digest, such as the database file."""
 
 from __future__ import annotations
 

@@ -1,5 +1,4 @@
-"""A stale answer's refusal shows the moved plan an answer recorded after it applies, as
-an open gate shows it, and so does an unknown option after the offer (R-1334)."""
+"""A stale answer's refusal, and an unknown option after the offer, show the moved plan."""
 
 from __future__ import annotations
 

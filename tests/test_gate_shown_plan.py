@@ -1,5 +1,4 @@
-"""The gate layer shows a digested plan's items whenever one is passed, through
-``gates.shown_plan``, and a sweep of every ``gate.require`` call guards the class (R-693)."""
+"""The gate layer shows a digested plan's items, and a sweep of ``gate.require`` guards it."""
 
 from __future__ import annotations
 
@@ -147,8 +146,7 @@ def _cause(detail: dict):
 
 @functools.cache
 def _require_calls() -> tuple[tuple[Path, int, set[str]], ...]:
-    """Every ``<something>.gate.require(...)`` call in the package, with its keyword
-    names and where it is, read once for the three guards below."""
+    """Every ``gate.require(...)`` call in the package: its keyword names and where it is."""
     return tuple(_calls())
 
 
@@ -177,8 +175,7 @@ def test_the_population_this_guard_sweeps_is_the_one_the_ledger_counted():
     assert len(found) >= 19, found
 
 
-#: Digest bound gates showing their plan through a body of their own rather than
-#: ``plan=``, by file, with how many such calls the file holds and why each is allowed.
+#: Gates showing their plan through their own body, not ``plan=``: per file, the count and why.
 SHOWS_ITS_OWN_WAY: dict[str, tuple[int, str]] = {
     "src/cratekit/write/naming_cli.py": (
         1,

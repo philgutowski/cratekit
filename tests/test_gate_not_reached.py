@@ -1,5 +1,4 @@
-"""A decide on a digest bound gate its run has not reached is refused (R-1349): its answer
-would bind no digest, so a plan whose screen was never shown would apply."""
+"""A decide on a gate its run has not reached is refused: its answer would bind no digest."""
 
 from __future__ import annotations
 

@@ -255,7 +255,6 @@ def test_a_label_entry_that_changed_reads_the_kept_listing_as_empty(entry, clock
 
 
 def test_a_failed_listing_is_not_kept(entry, clock, monkeypatch):
-    # THE RETRY LADDER WAITS THROUGH THE ADAPTER'S PAUSE, not for real.
     monkeypatch.setattr(tidal_catalogue, "_pause", lambda seconds: None)
     budget = Budget()
     class Failing(CountedArtist):
@@ -404,7 +403,6 @@ def test_a_catalogue_that_keeps_no_listing_says_nothing_about_one(entry, cfg):  
 
 
 
-# Review round one: the guards nothing killed, pinned
 def _forget(entry, section: str, key: str) -> None:
     """Drop one answer from the kept document, as a stop before it would leave it."""
     path = kept_listing.path_for(entry.label_id)

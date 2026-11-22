@@ -32,9 +32,6 @@ QUEUE = str(Queue.LABEL_RELEASE)
 ALPHA_BETA = ("Alpha Works", "Beta Works")
 
 
-# Fixtures and fakes
-
-
 @pytest.fixture(autouse=True)
 def no_disk_flush(monkeypatch):
     """Stores and atomic writes skip the flush to disk, which no test here asserts on."""

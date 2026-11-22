@@ -817,7 +817,6 @@ def test_each_chunk_is_recorded_as_it_lands(kompakt, monkeypatch):
     assert len(added) == 100
 
 
-# 8. Written for the zero rows of mutation batch a
 def test_a_label_folder_deleted_on_the_account_is_made_again_and_recorded(built):
     cfg, fake, account = built
     (gone,) = account.folder_names
@@ -859,7 +858,6 @@ def test_an_unrecorded_marked_year_in_the_folder_is_matched_by_its_marked_name(k
     assert "Kompakt 2022" not in account.created
 
 
-# 9. Written for the zero rows of mutation batch b
 def test_the_sync_pass_hands_the_sweep_every_year_playlist_a_build_recorded(built, monkeypatch):
     from cratekit.sync import cli as sync_cli
     cfg, _fake, _account = built
