@@ -760,26 +760,76 @@ def cmd_start(args) -> int:
     return 0
 
 
-#: The ledger, append only, and the folder a residual waits in for its number.
+#: The ledger, append only, its older entries archived by number range in the
+#: sibling `ledger/` folder with no file over the limit (U314), and the folder a
+#: residual waits in for its number.
 LEDGER = ROOT / "docs" / "residual-findings.md"
 RESIDUALS_DIR = ROOT / "docs" / "residuals"
+LEDGER_LIMIT = 5000
+_HEADING = re.compile(r"^## R-(\d+)\.\s*(.+?)\s*$")
+ARCHIVE_NOTE = [
+    "The older findings are archived by number range in `docs/ledger/`, every entry",
+    "byte for byte as filed, and `board.py residuals --search WORDS` searches them",
+    "all. An amendment to an archived entry is made in its archive file.",
+]
 
 #: A residual file's frontmatter; ``issue`` says it meets METHOD's board bar.
 RESIDUAL_REQUIRED = ("title", "found")
 RESIDUAL_OPTIONAL = {"issue": ("yes", "no")}
 
 
+def _archive_name(first: int, last: int) -> str:
+    return f"R-{first:04d}-R-{last:04d}.md"
+
+
+def ledger_files(ledger: Path | None = None) -> list[Path]:
+    """The ledger's archives in number order, then its working file."""
+    ledger = LEDGER if ledger is None else ledger
+
+    def first(path: Path) -> tuple[int, str]:
+        match = re.fullmatch(r"R-(\d+)-R-\d+\.md", path.name)
+        return (int(match[1]) if match else -1, path.name)
+
+    return sorted((ledger.parent / "ledger").glob("*.md"), key=first) + [ledger]
+
+
+def _headings(ledger: Path | None = None) -> list[tuple[int, str, Path]]:
+    return [
+        (int(match[1]), match[2], path)
+        for path in ledger_files(ledger)
+        if path.exists()
+        for match in map(_HEADING.match, path.read_text().splitlines())
+        if match
+    ]
+
+
 def residual_titles(ledger: Path | None = None) -> dict[int, str]:
-    """Every ``## R-N.`` heading in the ledger, by number, read as text."""
-    source = LEDGER if ledger is None else ledger
-    if not source.exists():
-        return {}
-    found: dict[int, str] = {}
-    for line in source.read_text().splitlines():
-        match = re.match(r"^## R-(\d+)\.\s*(.+?)\s*$", line)
+    """Every ``## R-N.`` heading in every ledger file, by number, read as text."""
+    return {number: title for number, title, _ in _headings(ledger)}
+
+
+def _entries(lines: list[str]) -> list[tuple[int, int, int]]:
+    """(number, where its separator starts, its heading line) per entry."""
+    found = []
+    for head, line in enumerate(lines):
+        match = _HEADING.match(line)
         if match:
-            found[int(match.group(1))] = match.group(2)
+            start = head
+            while start and lines[start - 1] in ("", "---"):
+                start -= 1
+            found.append((int(match[1]), start, head))
     return found
+
+
+def ledger_entries(text: str) -> list[tuple[int, str]]:
+    """Each entry's text, its heading to the next entry's separator."""
+    lines = text.split("\n")
+    found = _entries(lines)
+    ends = [start for _, start, _ in found[1:]] + [len(lines)]
+    return [
+        (number, "\n".join(lines[head:end]).rstrip("\n"))
+        for (number, _, head), end in zip(found, ends)
+    ]
 
 
 #: How many headings a ledger search prints before it counts the rest.
@@ -788,20 +838,16 @@ SEARCH_CAP = 25
 
 def search_residuals(
     words: list[str], ledger: Path | None = None, cap: int = SEARCH_CAP
-) -> tuple[list[tuple[int, str]], int]:
-    """The ledger headings carrying every word, case insensitive, newest first (U196)."""
+) -> tuple[list[tuple[int, str, Path]], int]:
+    """The headings in every ledger file carrying every word, newest first (U196)."""
     source = LEDGER if ledger is None else ledger
     if not source.is_file():
         # A missing ledger is not an empty one: "nothing matches" over a file
         # never read is how a duplicate card gets filed.
         raise FileNotFoundError(f"no residual ledger at {source}")
     wanted = [word.casefold() for word in words]
-    hits = [
-        (number, title)
-        for number, title in residual_titles(source).items()
-        if all(word in title.casefold() for word in wanted)
-    ]
-    hits.sort(reverse=True)
+    hits = [hit for hit in _headings(source) if all(w in hit[1].casefold() for w in wanted)]
+    hits.sort(key=lambda hit: hit[0], reverse=True)
     return hits[:cap], max(0, len(hits) - cap)
 
 
@@ -872,8 +918,9 @@ def land_residuals(
 ) -> list[tuple[int, str, bool]]:
     """Number every waiting residual, append it to the ledger, delete its file.
 
-    Whoever lands first takes the next number past the ledger's highest; every
-    file is validated first. Returns ``(number, title, meets the board bar)``.
+    Whoever lands first takes the next number past the highest in any ledger
+    file; every file is validated first, and the working file is archived if the
+    landing put it over the limit. Returns ``(number, title, meets the board bar)``.
     """
     ledger = LEDGER if ledger is None else ledger
     paths = residual_files(folder)
@@ -907,9 +954,112 @@ def land_residuals(
         text += f"## R-{number}. {meta['title']}\n\n**Found:** {meta['found']}\n\n{body}\n"
         landed.append((number, meta["title"], meta.get("issue") == "yes"))
     ledger.write_text(text)
+    archive_ledger(ledger)
     for path, _, _ in parsed:
         path.unlink()
     return landed
+
+
+def archive_ledger(ledger: Path | None = None) -> list[Path]:
+    """While the working file is over the limit, move its oldest entries to new archives."""
+    ledger = LEDGER if ledger is None else ledger
+    lines = ledger.read_text().rstrip("\n").split("\n")
+    entries = _entries(lines)
+    if not entries:
+        return []
+    head = lines[: entries[0][1]]
+    if ARCHIVE_NOTE[0] not in head:
+        head += ["", *ARCHIVE_NOTE]
+    starts = [start for _, start, _ in entries] + [len(lines)]
+
+    def body(first: int, last: int) -> list[str]:
+        part = lines[starts[first] : starts[last]]
+        while part and not part[0]:
+            part = part[1:]
+        return part
+
+    written, first, count = [], 0, len(entries)
+    while first < count - 1 and len(head) + 1 + len(body(first, count)) > LEDGER_LIMIT:
+        last = first + 1
+        while last < count - 1 and 4 + len(body(first, last + 1)) <= LEDGER_LIMIT:
+            last += 1
+        low, high = entries[first][0], entries[last - 1][0]
+        path = ledger.parent / "ledger" / _archive_name(low, high)
+        path.parent.mkdir(exist_ok=True)
+        path.write_text("\n".join([
+            f"# Residual findings, R-{low} to R-{high}", "",
+            "Archived from `docs/residual-findings.md` by `board.py residuals --archive` "
+            "(U314), every entry byte for byte as filed.", "",
+            *body(first, last),
+        ]) + "\n")
+        written.append(path)
+        first = last
+    if written:
+        ledger.write_text("\n".join([*head, "", *body(first, count)]) + "\n")
+    return written
+
+
+def _ledger_at(rev: str, ledger: Path) -> list[str] | None:
+    """Every ledger file's text at a revision, the single file layout included."""
+    listed = git("ls-tree", "--name-only", rev, "--", "ledger/", cwd=ledger.parent)
+    if listed.returncode != 0:
+        return None
+    texts = []
+    for name in [*(n for n in listed.stdout.split() if n.endswith(".md")), ledger.name]:
+        shown = git("show", f"{rev}:./{name}", cwd=ledger.parent)
+        if shown.returncode != 0:
+            return None
+        texts.append(shown.stdout)
+    return texts
+
+
+def ledger_problems(
+    ledger: Path | None = None, against: str | None = None, unchanged: bool = False
+) -> list[str]:
+    """METHOD's merge checks over the archived ledger, and the move's byte comparison."""
+    ledger = LEDGER if ledger is None else ledger
+    problems: list[str] = []
+    now: dict[int, str] = {}
+    where: dict[int, Path] = {}
+    last = 0
+    for path in ledger_files(ledger):
+        name = path.relative_to(ledger.parent.parent)
+        text = path.read_text() if path.exists() else ""
+        if text.count("\n") > LEDGER_LIMIT:
+            problems.append(f"{name} is {text.count(chr(10))} lines, over {LEDGER_LIMIT}")
+        entries = ledger_entries(text)
+        numbers = [number for number, _ in entries]
+        for number, entry in entries:
+            if number in where:
+                problems.append(f"R-{number} is a heading in {where[number]} and in {name}")
+            where.setdefault(number, name)
+            now.setdefault(number, entry)
+        if path != ledger and (not numbers or path.name != _archive_name(numbers[0], numbers[-1])):
+            held = f"R-{numbers[0]} to R-{numbers[-1]}" if numbers else "no heading"
+            problems.append(f"{name} is not named by what it holds, {held}")
+        if numbers and (numbers != sorted(numbers) or numbers[0] <= last):
+            problems.append(f"{name} is out of number order or overlaps the file before it")
+        last = max([last, *numbers])
+    if against is None:
+        return problems
+    texts = _ledger_at(against, ledger)
+    if texts is None:
+        return [*problems, f"cannot read the ledger at {against}"]
+    before: dict[int, str] = {}
+    for text in texts:
+        for number, entry in ledger_entries(text):
+            before.setdefault(number, entry)
+    missing = [f"R-{n}" for n in sorted(set(before) - set(now))]
+    if missing:
+        problems.append(f"headings at {against} are gone now: {', '.join(missing)}")
+    retitled = [f"R-{n}" for n in sorted(before) if n in now
+                and now[n].split("\n", 1)[0] != before[n].split("\n", 1)[0]]
+    if retitled:
+        problems.append(f"headings at {against} are retitled now: {', '.join(retitled)}")
+    changed = [f"R-{n}" for n in sorted(before) if n in now and now[n] != before[n]]
+    if unchanged and changed:
+        problems.append(f"entries that differ from {against}: {', '.join(changed)}")
+    return problems
 
 
 def repointed_residuals(graph: dict) -> list[str]:
@@ -924,11 +1074,11 @@ def repointed_residuals(graph: dict) -> list[str]:
         if number not in file_titles:
             found.append(
                 f"#{node['number']} R-{number}\n"
-                f"      the issue names it, docs/residual-findings.md has no such finding"
+                f"      the issue names it, the residual ledger has no such finding"
             )
         elif file_titles[number] != issue_title:
             found.append(
-                f"#{node['number']} R-{number} names a different finding than the file does\n"
+                f"#{node['number']} R-{number} names a different finding than the ledger does\n"
                 f"      issue: {issue_title[:72]}\n"
                 f"      file : {file_titles[number][:72]}"
             )
@@ -1091,6 +1241,19 @@ def _refuse(message: str, code: int) -> int:
 
 def cmd_residuals(args) -> int:
     """List the residuals waiting for a number, number them on main, or search."""
+    if getattr(args, "archive", False):
+        written = archive_ledger()
+        for path in written:
+            print(f"wrote {path.relative_to(LEDGER.parent.parent)}")
+        print(f"The working file is within {LEDGER_LIMIT} lines; {len(written)} archive(s) written.")
+        return 0
+    if getattr(args, "check", False):
+        if args.unchanged and not args.against:
+            return _refuse("--unchanged compares with a revision, so it needs --against", 2)
+        problems = ledger_problems(against=args.against, unchanged=args.unchanged)
+        print("The ledger " + ("FAILS its checks:" if problems else "passes its checks."))
+        _print_all(problems)
+        return 1 if problems else 0
     words = getattr(args, "search", None)
     if words is not None:
         if args.land or not words:
@@ -1099,8 +1262,8 @@ def cmd_residuals(args) -> int:
             hits, more = search_residuals(words)
         except FileNotFoundError as exc:
             return _refuse(f"cannot search, {exc}", 2)
-        for number, title in hits:
-            print(f"R-{number}. {title}")
+        for number, title, path in hits:
+            print(f"R-{number}. {title}  ({path.relative_to(LEDGER.parent.parent)})")
         if more:
             print(f"... and {more} more; add a word to narrow it")
         if not hits:
@@ -1147,7 +1310,7 @@ def cmd_residuals(args) -> int:
         if board_bar:
             print(f"    meets the board bar: file the issue titled R-{number}: {title}")
     print("\nCommit the ledger and the deleted files together:")
-    print("    git add docs/residual-findings.md docs/residuals")
+    print("    git add docs/residual-findings.md docs/ledger docs/residuals")
     print('    git commit -m "docs(residuals): number what landed"')
     return 0
 
@@ -1419,6 +1582,16 @@ def main() -> int:
         "--search", nargs="+", metavar="WORD",
         help="print the ledger headings carrying every word, case insensitive, newest first",
     )
+    residuals(
+        "--archive", action="store_true",
+        help=f"move the working file's oldest entries to docs/ledger while over {LEDGER_LIMIT} lines",
+    )
+    residuals(
+        "--check", action="store_true",
+        help="refuse a duplicated heading, a misnamed or overlapping archive, or a file over the limit",
+    )
+    residuals("--against", metavar="REV", help="with --check, refuse a heading REV has and now lacks")
+    residuals("--unchanged", action="store_true", help="with --against, refuse a changed entry")
     command(
         "cloud", "the cloud lane's queue, read from the cards' comments over REST", cmd_cloud
     )(

@@ -260,6 +260,202 @@ def test_the_shipped_residual_folder_holds_only_files_that_can_land(board):
     assert board.residual_file_problems() == []
 
 
+# U314: the ledger archived by number range in docs/ledger/.
+
+#: Every separator shape the real ledger carries: none, a rule with no blank
+#: line, a doubled rule, a comment, and a section that is not a finding.
+_SEPARATORS = ("\n---\n\n", "\n", "\n---\n", "\n---\n\n---\n\n", "\n<!-- x -->\n\n---\n\n")
+
+
+def _long_ledger(count: int = 30) -> str:
+    text = "# Residual findings\n\nThe preamble.\n"
+    for n in range(1, count + 1):
+        text += _SEPARATORS[n % len(_SEPARATORS)] + f"## R-{n}. Finding {n}\n\n"
+        text += "".join(f"Line {k} of {n}.  \n" for k in range(n % 4 + 1))
+        if n % 7 == 0:
+            text += "\n## Note. Not a finding, attached to the one before\n\nProse.\n"
+    return text
+
+
+def _layout(root: Path) -> dict[str, str]:
+    docs = root / "docs"
+    return {p.relative_to(docs).as_posix(): p.read_text() for p in sorted(docs.rglob("*.md"))}
+
+
+def test_the_archive_moves_every_entry_byte_for_byte_and_a_rerun_changes_nothing(
+    tmp_path, monkeypatch, board
+):
+    monkeypatch.setattr(board, "LEDGER_LIMIT", 40)
+    ledger = tmp_path / "docs" / "residual-findings.md"
+    ledger.parent.mkdir()
+    ledger.write_text(_long_ledger())
+    written = board.archive_ledger(ledger)
+    assert len(written) > 2
+    files = board.ledger_files(ledger)
+    assert files[:-1] == written and files[-1] == ledger
+    moved = [entry for path in files for entry in board.ledger_entries(path.read_text())]
+    assert moved == board.ledger_entries(_long_ledger())
+    assert [n for n, _ in moved] == list(range(1, 31))
+    for path in files:
+        text = path.read_text()
+        assert text.count("\n") <= 40 and text.endswith("\n") and not text.endswith("\n\n")
+    assert written[0].read_text().startswith(
+        f"# Residual findings, R-1 to R-{moved[len(board.ledger_entries(written[0].read_text())) - 1][0]}"
+        "\n\nArchived from "
+    )
+    assert ledger.read_text().startswith("# Residual findings\n\nThe preamble.\n\nThe older ")
+    assert board.ledger_problems(ledger) == []
+    before = _layout(tmp_path)
+    assert board.archive_ledger(ledger) == []
+    assert _layout(tmp_path) == before
+    # From scratch again, as a merge that takes the single file ledger does.
+    for path in written:
+        path.unlink()
+    ledger.write_text(_long_ledger())
+    assert board.archive_ledger(ledger) == written
+    assert _layout(tmp_path) == before
+
+
+def test_a_landing_numbers_past_the_highest_in_any_file_and_archives_when_over(
+    tmp_path, monkeypatch, board
+):
+    ledger, folder = _folder(tmp_path, **{"u9-a": _residual("Lands past the archive")})
+    archive = ledger.parent / "ledger" / "R-0013-R-0040.md"
+    archive.parent.mkdir()
+    archive.write_text("# Archived\n\n---\n\n## R-13. Held\n\nBody.\n\n---\n\n## R-40. Top\n\nB.\n")
+    assert board.land_residuals(ledger, folder) == [(41, "Lands past the archive", False)]
+    (folder / "u9-b.md").write_text(_residual("Top"))
+    with pytest.raises(ValueError, match="R-40 already"):
+        board.land_residuals(ledger, folder)
+    (folder / "u9-b.md").write_text(_residual("Over the limit"))
+    monkeypatch.setattr(board, "LEDGER_LIMIT", 20)
+    assert board.land_residuals(ledger, folder) == [(42, "Over the limit", False)]
+    assert [p.name for p in board.ledger_files(ledger)] == [
+        "R-0005-R-0012.md", "R-0013-R-0040.md", "R-0041-R-0041.md", "ledger.md"
+    ]
+    assert list(board.residual_titles(ledger)) == [5, 12, 13, 40, 41, 42]
+    assert "## R-42. Over the limit" in ledger.read_text()
+
+
+def _check(board, monkeypatch, ledger, against=None, unchanged=False) -> int:
+    monkeypatch.setattr(board, "LEDGER", ledger)
+    return board.cmd_residuals(SimpleNamespace(check=True, against=against, unchanged=unchanged))
+
+
+def test_check_refuses_a_heading_in_two_archives_and_a_misnamed_one(
+    tmp_path, monkeypatch, capsys, board
+):
+    monkeypatch.setattr(board, "LEDGER_LIMIT", 40)
+    ledger = tmp_path / "docs" / "residual-findings.md"
+    ledger.parent.mkdir()
+    ledger.write_text(_long_ledger())
+    first, second = board.archive_ledger(ledger)[:2]
+    assert _check(board, monkeypatch, ledger) == 0
+    entry = "\n## R-3. Finding 3\n\nCopied.\n"
+    second.write_text(second.read_text() + entry)
+    assert _check(board, monkeypatch, ledger) == 1
+    out = capsys.readouterr().out
+    assert f"R-3 is a heading in docs/ledger/{first.name} and in docs/ledger/{second.name}" in out
+    assert "out of number order" in out and "not named by what it holds" in out
+    second.write_text(second.read_text().replace(entry, ""))
+    assert _check(board, monkeypatch, ledger) == 0
+    renamed = first.with_name("R-0001-R-0099.md")
+    first.rename(renamed)
+    assert _check(board, monkeypatch, ledger) == 1
+    assert f"{renamed.name} is not named by what it holds, R-1 to" in capsys.readouterr().out
+
+
+def test_check_against_a_revision_refuses_a_removed_heading_and_a_changed_entry(
+    tmp_path, monkeypatch, capsys, board
+):
+    root = tmp_path / "repo"
+    run = _seed(root)
+    ledger = root / "docs" / "residual-findings.md"
+    ledger.write_text(_long_ledger())
+    _commit(run, "the single file")
+    monkeypatch.setattr(board, "LEDGER_LIMIT", 40)
+    board.archive_ledger(ledger)
+    assert _check(board, monkeypatch, ledger, "HEAD", unchanged=True) == 0
+    _commit(run, "the move")
+    assert _check(board, monkeypatch, ledger, "HEAD~1", unchanged=True) == 0
+    archive = board.ledger_files(ledger)[0]
+    archive.write_text(archive.read_text().replace("Line 0 of 2.", "Line 0 of two."))
+    assert _check(board, monkeypatch, ledger, "HEAD") == 0
+    assert _check(board, monkeypatch, ledger, "HEAD", unchanged=True) == 1
+    assert "entries that differ from HEAD: R-2" in capsys.readouterr().out
+    archive.write_text(archive.read_text().replace("## R-4. Finding 4", "R-4 retired"))
+    assert _check(board, monkeypatch, ledger, "HEAD") == 1
+    assert "headings at HEAD are gone now: R-4" in capsys.readouterr().out
+    assert _check(board, monkeypatch, ledger, None, unchanged=True) == 2
+    # A retitle is a heading removed, as the old grep of removed lines read it.
+    archive.write_text(archive.read_text().replace("R-4 retired", "## R-4. Finding 4"))
+    archive.write_text(archive.read_text().replace("## R-3. Finding 3", "## R-3. Other"))
+    assert _check(board, monkeypatch, ledger, "HEAD") == 1
+    assert "headings at HEAD are retitled now: R-3" in capsys.readouterr().out
+
+
+def test_check_against_a_revision_without_the_ledger_is_refused_not_read_as_empty(
+    tmp_path, monkeypatch, capsys, board
+):
+    root = tmp_path / "repo"
+    run = _seed(root)
+    run("git", "rm", "-q", "-r", "docs")
+    _commit(run, "no docs")
+    ledger = root / "docs" / "residual-findings.md"
+    ledger.parent.mkdir(exist_ok=True)
+    ledger.write_text(_long_ledger())
+    assert _check(board, monkeypatch, ledger, "HEAD") == 1
+    assert "cannot read the ledger at HEAD" in capsys.readouterr().out
+
+
+def test_check_refuses_a_file_over_the_limit_and_archives_that_overlap(
+    tmp_path, monkeypatch, capsys, board
+):
+    monkeypatch.setattr(board, "LEDGER_LIMIT", 40)
+    ledger = tmp_path / "docs" / "residual-findings.md"
+    ledger.parent.mkdir()
+    ledger.write_text(_long_ledger())
+    board.archive_ledger(ledger)
+    monkeypatch.setattr(board, "LEDGER_LIMIT", 12)
+    assert _check(board, monkeypatch, ledger) == 1
+    assert "lines, over 12" in capsys.readouterr().out
+    monkeypatch.setattr(board, "LEDGER_LIMIT", 40)
+    for path in board.ledger_files(ledger)[:-1]:
+        path.unlink()
+    (ledger.parent / "ledger" / "R-0001-R-0005.md").write_text("## R-1. A\n\n## R-5. B\n")
+    (ledger.parent / "ledger" / "R-0003-R-0007.md").write_text("## R-3. C\n\n## R-7. D\n")
+    assert _check(board, monkeypatch, ledger) == 1
+    assert "R-0003-R-0007.md is out of number order or overlaps" in capsys.readouterr().out
+
+
+def test_the_working_file_archives_at_one_line_over_the_limit_and_not_at_it(
+    tmp_path, monkeypatch, board
+):
+    monkeypatch.setattr(board, "LEDGER_LIMIT", 40)
+    ledger = tmp_path / "docs" / "residual-findings.md"
+    ledger.parent.mkdir()
+    ledger.write_text(_long_ledger())
+    board.archive_ledger(ledger)
+    assert len(board.ledger_entries(ledger.read_text())) > 1
+    lines = ledger.read_text().count("\n")
+    monkeypatch.setattr(board, "LEDGER_LIMIT", lines)
+    assert board.archive_ledger(ledger) == []
+    monkeypatch.setattr(board, "LEDGER_LIMIT", lines - 1)
+    assert board.archive_ledger(ledger) != []
+
+
+def test_an_entry_runs_from_its_heading_to_the_next_separator_and_no_further(board):
+    """Typed values, never the reader's own reading of another text (L4 of u314)."""
+    text = "# P\n\n## R-1. A\n\nx\n\n---\n\n## R-2. B\n\ny\n---\n## R-3. C\n"
+    assert board.ledger_entries(text) == [
+        (1, "## R-1. A\n\nx"), (2, "## R-2. B\n\ny"), (3, "## R-3. C"),
+    ]
+
+
+def test_the_shipped_ledger_holds_every_heading_once_in_files_within_the_limit(board):
+    assert board.ledger_problems() == []
+
+
 def _restart_text() -> str:
     return (REPO_ROOT / "RESTART-cratekit.md").read_text()
 
