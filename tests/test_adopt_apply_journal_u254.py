@@ -34,11 +34,9 @@ from tests.test_adoption import (
 )
 from tests.test_config import valid_data
 
-#: The bytes the writer before U254 left for three records, captured from that
-#: code on 2026-11-12 rather than composed here, so the compatibility test reads
-#: what a library on disk really holds today and not this test's idea of it. Out
-#: of entry order on purpose in the source calls (the writer sorted), with an
-#: empty digest and an empty sub, which the reader fills from ``or ""``.
+#: The bytes the writer before U254 left for three records, captured from that code on 2026-11-12
+#: rather than composed here, so the compatibility test reads what a library on disk really holds
+#: today and not this test's idea of it.
 DOCUMENT_BEFORE_U254 = (
     '{\n  "applied": [\n    {\n      "actor": "a-person",\n      "applied": '
     '"2026-11-01T00:00:00+00:00",\n      "bucket": "house",\n      "content": '

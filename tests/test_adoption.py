@@ -61,9 +61,8 @@ ADOPT_ROOT = SRC_ROOT / "cratekit" / "adopt"
 TREE_ID = "shelf_stack"
 HANDLER = "adopt.scan"
 
-#: One name in each composition form, because the pair is the whole reason the
-#: identity primitives exist and a ledger keyed on the raw string holds two
-#: records for one file.
+#: One name in each composition form, because the pair is the whole reason the identity primitives
+#: exist and a ledger keyed on the raw string holds two records for one file.
 COMPOSED = "Café One.flac"
 DECOMPOSED = unicodedata.normalize("NFD", COMPOSED)
 
@@ -2087,20 +2086,11 @@ def test_a_container_that_refuses_the_write_is_a_failure_not_a_restore(cfg, tmp_
     assert report.failed[(str(path), "genre")] == "the container refused the write"
 
 
-#: EVERY container the writer claims, derived from the writer's own table rather
-#: than listed beside it. A hand-kept copy named seven of eleven, and the four it
-#: omitted were ``.aif``, ``.aifc``, ``.m4b`` and ``.mp4``: ``.aif`` is an
-#: ordinary DJ container, and nothing anywhere asserted a relationship between
-#: the two lists, so a container ADDED to the writer and not to this list showed
-#: up as nothing at all (P3).
+#: EVERY container the writer claims, derived from the writer's own table rather than listed beside
+#: it.
 LEDGER_CONTAINERS = sorted(tags._DIALECT_BY_SUFFIX)
 
 #: Every shape of "what the file held" that an exact reader has to preserve.
-#: The first four are the losses the convenient reader has. The rest are the
-#: transformations a plausible reader applies without anyone noticing, mapped by
-#: mutating the reader until each one survived: normalizing composition form,
-#: keeping only the first two values, deduplicating, and sorting. Each of these
-#: round trips as itself or the ledger is lying.
 LOSSY_SHAPES = [
     pytest.param(["House "], id="trailing-space"),
     pytest.param(["   "], id="whitespace-only"),
@@ -2113,13 +2103,7 @@ LOSSY_SHAPES = [
     pytest.param(["Techno", "House"], id="unsorted-values"),
 ]
 
-#: Fields driven through the exact pair, one per dialect SHAPE rather than one
-#: per name. ``genre`` is a native key in all three dialects, ``title`` is the
-#: other native one, and ``energylevel`` is the freeform shape: ``TXXX`` in ID3
-#: and a ``----`` atom in MP4, which carries bytes rather than text and is the
-#: only branch where a reader has to decode. Both oracle tests asked only for
-#: ``genre`` before, so a reader exact for one field and lossy for every other
-#: passed.
+#: Fields driven through the exact pair, one per dialect SHAPE rather than one per name.
 LEDGER_FIELDS = ["genre", "title", "energylevel"]
 
 
@@ -2151,11 +2135,9 @@ def test_the_ledger_records_what_the_file_ACTUALLY_HELD(cfg, tmp_path, suffix, o
     assert _oracle_values(path, "genre") == expected, "the restore was not exact"
 
 
-#: The one shape a container genuinely cannot hold, stated rather than tolerated.
-#: mutagen drops an ID3 text frame whose only value is the empty string, so the
-#: field really IS absent afterwards and an exact reader has to say so. Derived
-#: from the dialect rather than listed by suffix, so an ID3 container added to
-#: the writer is covered without editing this.
+#: The one shape a container genuinely cannot hold, stated rather than tolerated. mutagen drops an
+#: ID3 text frame whose only value is the empty string, so the field really IS absent afterwards
+#: and an exact reader has to say so.
 def _drops_the_empty_string(suffix: str, field: str) -> bool:
     # Measured across every frame shape rather than assumed: a TXXX frame drops an empty
     # value exactly as a plain text frame does, so the rule is the DIALECT and nothing
@@ -2300,10 +2282,7 @@ def _document_with_no_state(**overrides) -> dict:
     return document
 
 
-#: Every JSON shape Python calls false, plus the two it calls true. The digest was
-#: read as ``str(entry.get("digest") or "")``, so ALL SIX falsy shapes read back as
-#: "no digest recorded" and took a weaker path, while the truthy garbage was
-#: stringified into a digest that could never match. Neither is a recognition.
+#: Every JSON shape Python calls false, plus the two it calls true.
 @pytest.mark.parametrize(
     "digest",
     [
@@ -2926,9 +2905,7 @@ def _legacy_ledger(cfg_value, *records) -> None:
     )
 
 
-#: One revert pass, in a real interpreter, reporting as JSON. For the properties
-#: that cannot be asserted in the process they are about: a pass that never
-#: returns takes the whole suite with it rather than failing one test.
+#: One revert pass, in a real interpreter, reporting as JSON.
 _REVERT_IN_A_CHILD = """
 import json, sys
 from pathlib import Path
