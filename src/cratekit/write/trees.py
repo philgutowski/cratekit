@@ -1,54 +1,31 @@
 """The tree writers: one implementation per write, in either medium (U18).
 
-WHAT THIS MODULE IS FOR. A tree is a named subtree of the playlist hierarchy, and
-everything a workflow does to one comes through here. Two mediums serve them: the
-XML bridge, which splices an export the user re-imports, and the database, which
-writes membership rows directly. Which one is correct for a given tree at a given
-moment is the registry's answer, not this module's, and asking it is not optional
-in either direction.
+A tree is a named subtree of the playlist hierarchy, and everything a workflow
+does to one comes through here, through the XML bridge (a spliced export the
+user re-imports) or the database (membership rows written directly). Which
+medium is correct for a tree is the registry's answer, asked in both
+directions. One implementation replaces the five splicers, two rating writers
+and second label engine of the system being ported, which disagreed on the
+inputs that mattered; nine golden files pin the bytes.
 
-WHAT IT REPLACES. The system being ported carried FIVE separate splice
-implementations across four files, two copies of the rating writer, and a whole
-second byte engine for the label subtree. They agreed on most inputs and
-disagreed on the ones that mattered: one emitted a bare LF where its siblings
-emitted CRLF, one created a sub-playlist without deduplicating while its twin
-deduplicated, and one inserted a label folder unconditionally, so a second run
-grew a second copy of the whole label. Nine golden files pin the exact bytes all
-of them produced, and the collapse into one implementation is checked against
-those bytes rather than against a reading of the code.
+This module locates nothing and splices nothing: ``rbxml`` holds the locates
+and the byte writers, so its guard covers every byte write. Here a write is
+decided and an emitter called, and every call names the tree it targets, since
+a bridge call that omits the tree is refused by nothing.
 
-WHY THE LOCATES AND THE WRITES BOTH LIVE IN ``rbxml`` AND NOT HERE. That module's
-claim is that a guard inside the byte writers covers every byte write, and the
-claim is false the moment a call site can find a node for itself: a caller that
-can locate a node can splice into it without ever calling a writer. So this
-module locates nothing and splices nothing. It decides WHAT to write and calls an
-emitter, every time, and every call names the tree it targets. A bridge call that
-omits the tree is refused by nothing at all, and after a cutover it keeps
-splicing an export for a tree the database owns.
+No display name is spelled here (R19): the routing tree, intake flow, catalog
+tree and vocal sub-playlist arrive as declared values, and ``VOX_SUB_CLASS`` is
+a stable id.
 
-WHY NO DISPLAY NAME IS SPELLED HERE. R19 puts every playlist display name in the
-declared taxonomy, and the write layer is below the layer allowed to carry one.
-So the routing tree, the intake flow, the catalog tree and the vocal sub-playlist
-all arrive as declared values, and the identifiers this module does spell
-(``VOX_SUB_CLASS``) are stable ids rather than anything a user sees. Renaming a
-folder in rekordbox changes what the document says and changes nothing here.
+The database half calls the session spine rather than rebuilding it:
+:func:`cratekit.core.session.assert_gates`, a commit behind a capture
+:func:`cratekit.core.snapshot.assert_verified` passed, and the analysis roots it
+could touch NAMED, since the watch (R17's fifth surface) watches nothing
+otherwise.
 
-WHAT THE DATABASE HALF OWES THE SESSION SPINE. It does not re-derive the gates,
-take its own lock, or invent its own acknowledgment. It calls
-:func:`cratekit.core.session.assert_gates`, commits behind a capture that
-:func:`cratekit.core.snapshot.assert_verified` passed, and NAMES the analysis
-roots it could touch so the runtime half of R17's fifth surface watches
-something. That last one is the one that matters: the watch defaults to watching
-nothing, so a writer that stays silent about its roots gets a green build and an
-unwatched library.
-
-THE U9 VERDICT THIS UNIT PROCEEDS UNDER (A2, recorded 2026-08-01). Neither clean
-nor severed. rekordbox's XML playlist import REPLACES unconditionally, so there
-is no merge lineage for a database write to sever, and a control playlist the
-database never touched was destroyed and replaced anyway. The consequence is a
-one-way door and it is why the registry exists: a tree that has taken a
-database-native write is permanently unsafe to XML import, and the bridge guard
-is what stops the next sweep walking through that door by accident.
+Under U9's A2 verdict rekordbox's XML import replaces unconditionally, so a tree
+that has taken a database-native write is permanently unsafe to XML import, and
+the bridge guard is what stops the next sweep walking through that door.
 """
 
 from __future__ import annotations
@@ -75,17 +52,16 @@ from cratekit.write import rbxml
 
 logger = logging.getLogger(__name__)
 
-#: The vocal sub-playlist's STABLE IDENTIFIER, never its display name. The
-#: display lives in the declared taxonomy and is read from there, so a user who
-#: renames the playlist keeps every track that is already in it.
+#: The vocal sub-playlist's stable identifier, never its display name, so a
+#: user who renames the playlist keeps every track already in it.
 VOX_SUB_CLASS = "with_vox"
 
 #: The workflow name the database membership writer records in the session log.
 #: A name for an operation, not a verb: the CLI layer owns verb names (D2).
 MEMBERSHIP_WORKFLOW = "tree-membership"
 
-#: The workflow name the membership MOVE records in the session log. Its own,
-#: so a session that removed something is told apart from one that only added.
+#: The workflow name the membership move records, so a session that removed
+#: something is told apart from one that only added.
 MOVE_WORKFLOW = "tree-membership-move"
 
 
@@ -98,10 +74,8 @@ MOVE_WORKFLOW = "tree-membership-move"
 class RouteReport:
     """What one sweep over the bridge changed, and what it could not.
 
-    A report rather than the stream of prints the source system emitted, because
-    this layer has no console: a sweep touches many playlists, one absent folder
-    is a fact to carry to the end rather than a reason to abandon the other
-    forty writes, and only the CLI decides how any of it is shown.
+    A report, because one absent folder is a fact to carry to the end rather
+    than a reason to abandon the other writes, and only the CLI prints.
     """
 
     inserted: int = 0
@@ -113,13 +87,9 @@ class RouteReport:
 class VoxReport:
     """What the vocal sweep changed, and every folder it could not serve.
 
-    ``modified`` is the list callers read; ``warnings`` is the half that used to
-    be thrown away. A folder blocked by a wrong-type collision produced a warning
-    the emitter returned and this writer dropped on the floor, so the sweep
-    reported the same thing for "already had it" and "could not write it".
-
-    Iterable over ``modified`` so a caller that only wants the names, which is
-    every caller the goldens describe, reads the same as it always did.
+    ``warnings`` keeps "could not write it" apart from "already had it".
+    Iterable over ``modified``, so a caller that wants only the names reads it
+    as the plain list it used to be.
     """
 
     modified: tuple[str, ...] = ()
@@ -134,10 +104,8 @@ class VoxReport:
     def __eq__(self, other: object) -> bool:
         """Equal to the plain name list as well as to another report.
 
-        The nine goldens and their sibling tests compare this against a list of
-        display names, which is the whole contract a caller depends on. Keeping
-        that comparison working is what lets the warnings channel be added
-        without rewriting the byte-level tests that pin the output.
+        The goldens compare this against a list of display names, which is the
+        whole contract a caller depends on.
         """
         if isinstance(other, VoxReport):
             return (self.modified, self.warnings) == (other.modified, other.warnings)
@@ -152,10 +120,8 @@ class VoxReport:
 class MatchOutcome(str, Enum):
     """Why one requested file did or did not reach a single content row.
 
-    Four answers rather than a path-or-None, because three of these are
-    different problems with different fixes and fusing them is how a
-    configuration error gets reported as a missing file (the split
-    :mod:`cratekit.core.locations` already refuses to collapse).
+    Four answers, because three are different problems with different fixes,
+    and fusing them reports a configuration error as a missing file.
     """
 
     MATCHED = "matched"
@@ -168,9 +134,8 @@ class MatchOutcome(str, Enum):
 class RowMatch:
     """One requested file and the active row it resolved to, or why it did not.
 
-    ``content_ids`` is populated only for ``AMBIGUOUS`` and carries every active
-    row that claimed the location, because the user has to see both to decide
-    which one is the mistake.
+    ``content_ids`` is set only for ``AMBIGUOUS``, with every active row that
+    claimed the location, so the user sees both.
     """
 
     requested: str
@@ -182,45 +147,28 @@ class RowMatch:
 
 @dataclass(frozen=True)
 class ContentRow:
-    """The three columns row matching reads, and nothing else.
+    """The three columns row matching reads, as a value, so matching is pure.
 
-    A value rather than a live mapped object, so the matching below is pure and
-    testable with no database at all. ``deleted`` is rekordbox's own soft-delete
-    marker: a row carrying it is a tombstone, not a track.
+    ``deleted`` is rekordbox's soft-delete marker: a row carrying it is a
+    tombstone, not a track.
     """
 
     content_id: str
     recorded: str
-    #: NO DEFAULT, deliberately. A default of False means "active", which is the
-    #: permissive answer, so a producer that forgot to read the soft-delete
-    #: marker would hand every tombstone to the matcher as a live row. The whole
-    #: value of the active-row rule is that a removed track cannot claim a
-    #: location, and a silent default is how that rule stops being applied.
+    #: No default: False would mean "active", so a producer that forgot the
+    #: marker would hand every tombstone to the matcher as a live row.
     deleted: bool
 
 
 def soft_delete_marker(row: Any) -> bool:
     """Read rekordbox's soft-delete marker off one mapped row, or REFUSE.
 
-    THE ONE IMPLEMENTATION OF THE RULE ``ContentRow.deleted`` states above. Two
-    producers read this column now, the deferred-routing pass and the deletion
-    pass, and they ask opposite questions of it: routing wants the rows that are
-    alive, deletion wants the rows that are not. Two copies of the read would
-    agree today and disagree eventually, and the disagreement is invisible until
-    it has already placed a deleted track or trashed a live one.
-
-    A ROW THAT CANNOT REPORT IT REFUSES, in both directions. ``getattr(row,
-    "rb_local_deleted", False)`` supplies the permissive default U18 removed on
-    purpose, and the cost is concrete: a binding that stops exposing the column
-    hands every tombstone to the routing matcher as a live row, and hands the
-    deletion pass a library in which nothing was ever removed. ``None`` is
-    refused alongside a missing attribute because ``bool(None)`` is the same
-    permissive answer.
-
-    THE READ ITSELF IS ONE LAYER DOWN SINCE R-758, in
-    :func:`cratekit.core.rb_writer.soft_deleted`, because the membership
-    primitives there need it and cannot reach up to here. This keeps the words
-    a collection row is refused in, and its callers are unchanged.
+    The one implementation of the rule ``ContentRow.deleted`` states, for the
+    routing pass (rows alive) and the deletion pass (rows not). A row that
+    cannot report it refuses, ``None`` included, since a permissive default
+    would place a removed track or hide a removal. The read is
+    :func:`cratekit.core.rb_writer.soft_deleted` since R-758; this keeps the
+    words a collection row is refused in.
     """
     return rb_writer.soft_deleted(
         row,
@@ -239,10 +187,9 @@ def soft_delete_marker(row: Any) -> bool:
 class MembershipReport:
     """What one database membership session wrote, and what it skipped.
 
-    ``skipped`` carries every :class:`RowMatch` that did not reach exactly one
-    active row. They are surfaced rather than raised for the same reason a bridge
-    sweep's warnings are: one unresolvable file is not a reason to abandon the
-    session, and a silent skip is how a user comes to believe a sweep ran.
+    ``skipped`` is every :class:`RowMatch` that did not reach exactly one active
+    row, surfaced rather than raised: one unresolvable file does not abandon
+    the session, and a silent skip hides it.
     """
 
     tree_id: str
@@ -256,14 +203,8 @@ class MembershipReport:
 class TreeUnreachable(ValueError):
     """The tree a sweep was pointed at is not there, or is not a folder.
 
-    Raised rather than reported as an empty walk, because the two readings are
-    indistinguishable to a caller and only one of them is harmless. A sweep over
-    a tree that genuinely holds no folders changed nothing and is correct; a
-    sweep that could not find the tree at all changed nothing and is a mistake
-    somebody has to fix. Returning the same answer for both is how a run reports
-    success over a document it never touched, which is the failure the system
-    being ported shipped: its splicers warned and continued, and the user saw a
-    green run and an empty playlist.
+    Raised rather than reported as an empty walk, which would read as success
+    over a document the sweep never touched.
     """
 
     def __init__(self, tree_display: str, reason: str) -> None:
@@ -275,11 +216,8 @@ class TreeUnreachable(ValueError):
 class DuplicateFolders(ValueError):
     """Two folders in one tree carry one display name.
 
-    Refused rather than half served. Every writer here targets a folder BY NAME,
-    which is what lets a re-run adopt what the last run created, and with two
-    candidates a name-targeted write reaches the first one twice and the second
-    one never. A caller seeing this has a tree to repair, and doing half the job
-    silently would hide that from them until the counts stopped adding up.
+    Refused rather than half served: a writer targets a folder by name, so with
+    two it reaches the first twice and the second never.
     """
 
     def __init__(self, tree_display: str, duplicated: Sequence[str]) -> None:
@@ -306,13 +244,9 @@ def _route(
     norm_by_tid: dict | None,
     create_missing: bool,
 ) -> RouteReport:
-    """One routing sweep, in the one implementation both public entry points use.
+    """One routing sweep, the one body both entry points below use.
 
-    The two entry points below differ by exactly one flag, and the system being
-    ported expressed that difference as two whole copies of the sweep in two
-    files. They then drifted: the creating copy emitted a bare LF for the
-    existing-sub case its sibling emitted CRLF for, and only one of them
-    deduplicated. One body, two names, and the goldens for both still match.
+    The source carried two copies that drifted (a bare LF, a missing dedupe).
     """
     if rbxml.playlists_start(content) == -1:
         return RouteReport(warnings=(f"{rbxml.PLAYLISTS_SECTION} section not found",))
@@ -320,20 +254,14 @@ def _route(
     inserted = 0
     created: list[str] = []
     warnings: list[str] = []
-    # Sorted so a sweep's byte output depends on the plan's CONTENT and not on
-    # the order a caller's dict happened to be built in. A golden compares bytes.
+    # Sorted, so the bytes depend on the plan's content, not its dict order.
     for (folder_display, sub_display), track_ids in sorted(plan.items()):
         ids = list(track_ids)
         if not ids:
             continue
         result = rbxml.splice_into_subplaylist(
-            content,
-            folder_display,
-            sub_display,
-            ids,
-            tree=tree,
-            norm_by_tid=norm_by_tid,
-            create_missing=create_missing,
+            content, folder_display, sub_display, ids,
+            tree=tree, norm_by_tid=norm_by_tid, create_missing=create_missing,
         )
         if result.warning:
             warnings.append(result.warning)
@@ -353,15 +281,10 @@ def apply_playlist_changes(
 ) -> RouteReport:
     """Route tracks into sub-playlists that already exist.
 
-    An absent sub is a WARNING here rather than a creation, and that is the
-    difference from its sibling below. This sweep runs against a tree whose shape
-    a person curated, so a sub that is missing is a fact about the plan (a bucket
-    nobody made yet) rather than a licence to invent a playlist in somebody's
-    library.
+    An absent sub is a warning, not a creation: this tree's shape is curated by
+    a person, so a missing sub is a fact about the plan.
     """
-    return _route(
-        plan, content, tree=tree, norm_by_tid=norm_by_tid, create_missing=False
-    )
+    return _route(plan, content, tree=tree, norm_by_tid=norm_by_tid, create_missing=False)
 
 
 def apply_unplaced_changes(
@@ -373,25 +296,17 @@ def apply_unplaced_changes(
 ) -> RouteReport:
     """Route tracks that are in no sub-playlist yet, creating the sub when absent.
 
-    The creating half. This sweep exists to leave nothing unplaced, so a bucket
-    with no playlist yet is the ordinary case rather than a surprise, and
-    refusing to create one would leave exactly the tracks it was run for behind.
+    This sweep exists to leave nothing unplaced, so a bucket with no playlist
+    yet is the ordinary case.
     """
-    return _route(
-        plan, content, tree=tree, norm_by_tid=norm_by_tid, create_missing=True
-    )
+    return _route(plan, content, tree=tree, norm_by_tid=norm_by_tid, create_missing=True)
 
 
 def apply_rating_changes(rating_plan: Mapping[object, object], content: bytearray) -> int:
     """Patch star ratings on collection tracks. Returns how many changed.
 
-    ONE writer where the source had two identical ones in two files, which is why
-    two goldens pin it: both are compared against this, and the merge is proven
-    to have lost nothing only when both still match.
-
-    No tree is named, and that is not an omission. A rating is an attribute of a
-    track, membership of nothing, and it does not change medium when a tree cuts
-    over, so there is no tree here for a guard to be keyed on.
+    One writer where the source had two; both goldens pin it. No tree is named:
+    a rating is an attribute of a track, so no guard is keyed on one.
     """
     return rbxml.apply_rating_changes(dict(rating_plan), content)
 
@@ -400,12 +315,8 @@ def root_playlist_members(content: bytes, name: str) -> tuple[str, ...] | str:
     """The track keys a playlist directly under the playlist root holds.
 
     Empty when no such playlist exists yet. A warning string when the root has
-    no playlist tree, or when a FOLDER of that name stands there, because the
-    writer would refuse the same node and a caller planning against "empty"
-    would offer a write that cannot happen.
-
-    Only a DIRECT child is read, the child the writer replaces, so a playlist
-    of the same name inside somebody's folder is neither read nor touched.
+    no playlist tree, or a FOLDER of that name stands there, since the writer
+    would refuse that node. Only the direct child the writer replaces is read.
     """
     root = rbxml.root_node(content)
     if root is None:
@@ -422,16 +333,10 @@ def add_to_root_playlist(
     """Add tracks to a root playlist, creating it, and never remove one.
 
     Returns how many tracks the playlist gained and a warning or None.
-
-    ADD ONLY. :func:`cratekit.write.rbxml.insert_root_playlist` REPLACES the
-    playlist it finds, so the members it already holds are read first and
-    written back ahead of the new ones. Nothing the playlist held is dropped,
-    whatever the caller passed.
-
-    NOTHING NEW IS NOTHING WRITTEN, including no empty playlist, so a second
-    run over its own output leaves the bytes alone.
-
-    Takes no tree for the writer's reason: the playlist root is not a tree.
+    :func:`cratekit.write.rbxml.insert_root_playlist` REPLACES the playlist, so
+    the members it holds are written back ahead of the new ones. Nothing new is
+    nothing written, so a rerun leaves the bytes alone. No tree: the playlist
+    root is not one.
     """
     existing = root_playlist_members(content, name)
     if isinstance(existing, str):
@@ -454,18 +359,10 @@ def add_to_root_playlist(
 def _tree_folders(content: bytes, tree_display: str) -> tuple[str, ...]:
     """Every folder directly inside a named tree, by display name, in document order.
 
-    Names rather than located spans, deliberately. Each write below shifts every
-    offset after it, so a span gathered before the first write is a span that
-    describes the document as it no longer is. Re-locating by name on each write
-    is what makes the loop correct, and the duplicate check is what makes
-    re-locating by name safe.
-
-    The tree itself is found through the shared locate rather than through a
-    filter written here. Spelling ``name and type`` as one condition would be a
-    second implementation of that locate, and it would lose the answer that
-    matters: a PLAYLIST carrying the tree's name is not "no tree", it is a tree
-    this write cannot reach, and reporting it as absent means the sweep walks
-    zero folders and tells the user it changed nothing.
+    Names, not spans, since each write shifts every offset after it; the
+    duplicate check makes re-locating by name safe. The tree is found through
+    the shared locate, so a PLAYLIST wearing the tree's name refuses rather
+    than reading as no tree.
     """
     root = rbxml.root_node(content)
     if root is None:
@@ -476,9 +373,7 @@ def _tree_folders(content: bytes, tree_display: str) -> tuple[str, ...]:
     if node is None:
         raise TreeUnreachable(tree_display, "no folder of that name sits under ROOT")
     names = [
-        child.name
-        for child in rbxml.child_nodes(content, node)
-        if child.node_type == rbxml.FOLDER_TYPE
+        child.name for child in rbxml.child_nodes(content, node) if child.node_type == rbxml.FOLDER_TYPE
     ]
     duplicated = sorted({name for name in names if names.count(name) > 1})
     if duplicated:
@@ -495,23 +390,11 @@ def _governed_or_named(
 ) -> rbxml.Tree:
     """The tree a bridge write targets: governed by the registry, or named outright.
 
-    THE HOLE THIS CLOSES, because it was open and a reviewer walked through it.
-    An entry point that defaulted to ``rbxml.Tree(display=node.display)`` built an
-    UNGOVERNED tree for a node the registry exists to govern. The emitter guard
-    returns on its first line for an ungoverned tree, correctly, because most
-    playlists in a real library are somebody's own. So the sweep spliced an export
-    for a tree the database already owned, and under U9's A2 verdict importing
-    that export replaces the database-native tree outright. The guard did not
-    fail; it was never armed, and naming a tree without the registry that governs
-    it is naming nothing.
-
-    There is no ungoverned DEFAULT here, and that is the whole point.
-    :class:`rbxml.Tree` refuses half a governed tree one layer down for exactly
-    this reason, and offering the same hole through a default would be refusing
-    it in one place and handing it out in the other. A caller that has genuinely
-    loaded no records passes :data:`cratekit.core.tree_registry.EMPTY`, which is a
-    sentence somebody can check. A caller writing a playlist this product does
-    not govern still passes ``rbxml.Tree(display=...)`` itself, deliberately.
+    No ungoverned default: the emitter guard does nothing for an ungoverned
+    tree, so defaulting one for a node the registry governs would splice an
+    export for a tree the database owns. A caller with no records passes
+    :data:`cratekit.core.tree_registry.EMPTY`; one writing a playlist this
+    product does not govern passes ``rbxml.Tree(display=...)`` itself.
     """
     if tree is not None:
         return tree
@@ -537,36 +420,20 @@ def add_vox_playlists(
 ) -> tuple[bytes, VoxReport]:
     """Give every folder in a tree the vocal sub-playlist, and report which gained one.
 
-    rekordbox has no import path that creates an EMPTY playlist, and a splice can
-    only splice into a playlist that already exists. So the vocal routing that
-    follows has somewhere to write only because this ran first. It is the one
-    write here that produces a node holding nothing.
-
-    Idempotent by construction: a folder that already carries the playlist is left
-    byte-identical, so re-running after a new folder appears touches only the new
-    one and the returned list is exactly what changed.
-
-    The declared taxonomy supplies both names. It is required, and it is the
-    library's active template (R-685): a shipped default reached for here is
-    what made this wrong for a user who renamed either one.
-
-    EVERY WARNING IS CARRIED OUT, which is why this returns a report rather than
-    the bare name list it used to. A folder the emitter could not serve, because
-    a playlist of the vocal name already stands where the folder belongs, is not
-    the same fact as a folder that already had the playlist, and both looked
-    identical to a caller reading only the list of names that changed.
+    rekordbox's import cannot create an empty playlist and a splice needs one
+    to exist, so vocal routing has somewhere to write only because this ran.
+    Idempotent: a folder already holding it is left byte-identical. Both names
+    come from the declared taxonomy, the library's active template (R-685).
+    Every warning is carried out in the report.
     """
-    active = declared
-    sub_display = active.sub_class(sub_class_id).display
-    target = _governed_or_named(tree, registry, active.tree, what="the vocal sweep")
+    sub_display = declared.sub_class(sub_class_id).display
+    target = _governed_or_named(tree, registry, declared.tree, what="the vocal sweep")
 
     content = bytearray(raw)
     modified: list[str] = []
     warnings: list[str] = []
     for folder_display in _tree_folders(content, target.display):
-        result = rbxml.insert_empty_subplaylist(
-            content, folder_display, sub_display, tree=target
-        )
+        result = rbxml.insert_empty_subplaylist(content, folder_display, sub_display, tree=target)
         if result.warning:
             warnings.append(result.warning)
             continue
@@ -580,10 +447,8 @@ def _catalog_playlists(
 ) -> list[tuple[str, list[object]]]:
     """One playlist per year, newest first, with that year's ids deduplicated.
 
-    Newest first is the ordering the folder is read in, and the dedup is across
-    the whole year rather than per album: a track released on both a single and a
-    compilation is one track, and the year's playlist that listed it twice is the
-    shape the source system shipped.
+    Deduplicated across the year, not per album: a track on a single and a
+    compilation is one track.
     """
     out: list[tuple[str, list[object]]] = []
     for year in sorted(buckets, reverse=True):
@@ -602,8 +467,7 @@ def _catalog_tree(
     """The tree a catalogued source is written into, or a refusal by name."""
     if tree is not None:
         return tree
-    active = declared
-    if active.catalog is None:
+    if declared.catalog is None:
         raise cause.refuse(
             "catalog-tree-undeclared",
             "this library's taxonomy declares no catalog tree, so there is "
@@ -613,7 +477,7 @@ def _catalog_tree(
             remedy=Remedy.FIX_CONFIG_VALUES,
             scope=cause.Scope.RUN,
         )
-    return _governed_or_named(None, registry, active.catalog, what="the catalog import")
+    return _governed_or_named(None, registry, declared.catalog, what="the catalog import")
 
 
 def _insert_catalog(
@@ -624,8 +488,8 @@ def _insert_catalog(
 ) -> None:
     warning = rbxml.insert_catalog_folder(content, label, playlists, tree=tree)
     if warning is not None:
-        # Nothing is written on a refusal, including the output file. A caller
-        # that found an output document sitting there would reasonably import it.
+        # Nothing is written on a refusal, the output file included, since a
+        # caller finding an output document would reasonably import it.
         raise cause.refuse(
             "internal-error",
             f"the catalogued source {label!r} could not be written: {warning}",
@@ -644,20 +508,11 @@ def check_record_labels_tree(
     """Every refusal :func:`insert_record_labels_tree` can make, and no write.
 
     ``catalog`` is each source name and the years it would be written under.
-    For a caller that must know BEFORE it does something it cannot take back:
-    the landing engine moves files out of staging first and writes the tree
-    afterwards, and a refusal that arrived between the two would leave a batch
-    in the library with no importable file. So the same tree resolution and the
-    same byte writer run here over a copy.
-
-    EVERY YEAR IS GIVEN ONE ID NO DOCUMENT HOLDS, NOT AN EMPTY LIST. The writer
-    returns early from a held playlist it has nothing to add to, before the
-    three refusals about that playlist's own layout, so a trial with no id
-    passed a document the real write then refused after the moves. Found by
-    this unit's review.
-
-    An empty ``catalog`` asks nothing, the undeclared tree included: a caller
-    with no catalogued source has no use for the tree.
+    The landing moves files out of staging before it writes the tree, so it
+    asks first; the same resolution and byte writer run over a copy. Each year
+    gets one id no document holds, not an empty list, since the writer returns
+    early from a held playlist with nothing to add, before the refusals about
+    its layout. An empty ``catalog`` asks nothing, the undeclared tree included.
     """
     if not catalog:
         return
@@ -685,24 +540,17 @@ def insert_record_labels_trees(
 ) -> Path:
     """Write every catalogued source in ``catalog`` in ONE read and ONE write.
 
-    :func:`insert_record_labels_tree` for several sources. The document is a
-    whole collection, tens of megabytes on a real library, and a label sweep
-    lands dozens of labels at once, so a read and a rewrite per label is the
-    same bytes moved dozens of times over. ALL OR NOTHING: one source the
-    writer refuses leaves the output untouched, as one does below.
-
-    LAST NAME FIRST, because a new folder goes in at the top of the tree, so
-    writing Z before A is what leaves a new tree reading A to Z. A folder the
-    document already holds stays where it is.
+    :func:`insert_record_labels_tree` for several sources, since the document
+    is a whole collection. All or nothing: one refusal leaves the output
+    untouched. Last name first, because a new folder goes in at the top, so a
+    new tree reads A to Z; a folder already held stays where it is.
     """
     target = _catalog_tree(declared, registry, tree)
     content = bytearray(Path(xml_path).read_bytes())
     for label in sorted(catalog, reverse=True):
         _insert_catalog(content, label, _catalog_playlists(label, catalog[label]), target)
     destination = Path(out_path)
-    # Atomically, like every other artifact this product persists. A partial
-    # document at this path is not a partial success; it is a file the user is
-    # told to import into a library that has no second copy.
+    # Atomically: a partial document is a file the user is told to import.
     config.atomic_write_bytes(bytes(content), destination)
     return destination
 
@@ -719,21 +567,12 @@ def insert_record_labels_tree(
 ) -> Path:
     """Write one catalogued source's whole subtree into a copy of an export.
 
-    Reads one document and writes another, never in place, because the file this
-    reads is a fresh export the user still has to import and a partial byte
-    splice into this format is not a partial success, it is a corrupt file.
-
-    The catalog tree is CREATED when the document has none, and that is the one
-    place here a tree comes into existence rather than being found: nobody's
-    setup makes it, the first catalog import does. Which tree that is comes from
-    the declared taxonomy, and a taxonomy that declares none refuses by name
-    rather than inventing a folder in somebody's library from a default they
-    never saw.
-
-    A source whose folder the document already holds is MERGED INTO, which is
-    :func:`rbxml.insert_catalog_folder`'s rule and not this function's, so no
-    caller can forget it: writing the same source twice writes the same bytes,
-    and a document already holding two folders of its name refuses (R-129).
+    Never in place: the export is a file the user still has to import. The
+    catalog tree is CREATED when the document has none, the one place a tree
+    comes into existence here, and a taxonomy that declares none refuses by
+    name. A source whose folder is already held is merged into, by
+    :func:`rbxml.insert_catalog_folder`'s rule, and two folders of its name
+    refuse (R-129).
     """
     return insert_record_labels_trees(
         xml_path, {label: buckets}, out_path, declared=declared, registry=registry, tree=tree
@@ -750,13 +589,8 @@ def located(
 ) -> tuple[str, locations.ResolvedPath]:
     """One recorded path, decoded ONCE, with how it resolves on this machine.
 
-    PUBLIC SINCE R-500, because ``write/naming_cli`` had grown its own copy of
-    these two calls and a fix to one copy would not have reached the other. The
-    decoded path is handed back beside the resolution so a caller that also
-    needs the spelling as recorded never decodes a second time, which would be
-    the second copy again by another route. What a caller does with the answer
-    is its own: the index below drops a row that did not resolve, and ``name
-    apply`` refuses on one.
+    Public since R-500, so ``write/naming_cli`` holds no copy of these calls.
+    The decoded path comes back beside the resolution so no caller decodes twice.
     """
     decoded = locations.location_to_path(str(recorded))
     return decoded, locations.resolve_recorded_path(decoded, root=root, prefix_map=prefix_map)
@@ -765,10 +599,8 @@ def located(
 def _comparable(recorded: str, *, root: Path | str, prefix_map: Sequence[locations.PrefixRule]):
     """One recorded path, decoded and resolved into the form both sides compare in.
 
-    BOTH sides of every comparison go through this, which is the whole rule the
-    identity primitives exist to enforce: one side normalized and the other not
-    is how 144 files with accented names went missing, and the two sides here are
-    a path this machine can see and a path rekordbox wrote down years ago.
+    Both sides go through this: one side normalized and the other not is how
+    144 files with accented names went missing.
     """
     return located(recorded, root=root, prefix_map=prefix_map)[1]
 
@@ -781,17 +613,9 @@ def index_active_rows(
 ) -> dict[str, tuple[str, ...]]:
     """Every ACTIVE row, grouped by the location it resolves to.
 
-    THE ACTIVE-ROW RULE. rekordbox soft-deletes: a removed track keeps its row and
-    gains a marker. Those rows are dropped here, before anything is compared, so a
-    tombstone sitting beside the live row for the same file resolves cleanly
-    rather than looking like a collision.
-
-    Public and separate from the matching below, because a sweep matches many
-    plan entries against ONE library. Folding the walk into the match would make
-    a sweep re-read every row per entry, and it would do something worse than
-    that: a caller whose rows are a database cursor rather than a list would get
-    the whole library on the first entry and an exhausted iterator on the second,
-    with every track after that reported as absent and the run reported clean.
+    Soft-deleted rows are dropped first, so a tombstone beside the live row for
+    one file is not a collision. Separate from matching so a sweep walks the
+    library once: rows that are a cursor would be exhausted by the first entry.
     """
     by_location: dict[str, list[str]] = {}
     for row in rows:
@@ -813,22 +637,34 @@ def match_active_rows(
 ) -> tuple[RowMatch, ...]:
     """Resolve each requested file to the ONE active row that holds it.
 
-    TWO ACTIVE ROWS ON ONE LOCATION ARE SKIPPED AND SURFACED, never written to
-    both. It happens: an import that ran twice against a renamed volume leaves
-    two live rows for one file, and membership written to both puts one track in
-    a playlist twice under two identities, which the user then cannot remove by
-    removing it once.
-
-    Takes rows rather than a database handle, so the rule is testable without one
-    and this module does no input of its own. A caller matching several times
-    against one library builds the index once with :func:`index_active_rows` and
-    passes it to :func:`match_indexed_rows` instead.
+    Two active rows on one location are skipped and surfaced, never both
+    written, or one track sits in a playlist twice under two identities.
+    Several matches against one library build the index once with
+    :func:`index_active_rows` and use :func:`match_indexed_rows`.
     """
-    return match_indexed_rows(
-        requested,
-        index_active_rows(rows, root=root, prefix_map=prefix_map),
-        root=root,
-        prefix_map=prefix_map,
+    index = index_active_rows(rows, root=root, prefix_map=prefix_map)
+    return match_indexed_rows(requested, index, root=root, prefix_map=prefix_map)
+
+
+def _match(
+    text: str,
+    index: Mapping[str, Sequence[str]],
+    *,
+    root: Path | str,
+    prefix_map: Sequence[locations.PrefixRule],
+) -> RowMatch:
+    resolved = _comparable(text, root=root, prefix_map=prefix_map)
+    if resolved.path is None:
+        return RowMatch(text, MatchOutcome.UNRESOLVED, resolution=resolved.resolution)
+    candidates = tuple(index.get(resolved.path, ()))
+    if not candidates:
+        return RowMatch(text, MatchOutcome.ABSENT, resolution=resolved.resolution)
+    if len(candidates) > 1:
+        return RowMatch(
+            text, MatchOutcome.AMBIGUOUS, content_ids=candidates, resolution=resolved.resolution
+        )
+    return RowMatch(
+        text, MatchOutcome.MATCHED, content_id=candidates[0], resolution=resolved.resolution
     )
 
 
@@ -840,57 +676,15 @@ def match_indexed_rows(
     prefix_map: Sequence[locations.PrefixRule] = (),
 ) -> tuple[RowMatch, ...]:
     """Match against an index already built, so a sweep walks the library once."""
-    by_location = index
-    out: list[RowMatch] = []
-    for entry in requested:
-        text = str(entry)
-        resolved = _comparable(text, root=root, prefix_map=prefix_map)
-        if resolved.path is None:
-            out.append(
-                RowMatch(text, MatchOutcome.UNRESOLVED, resolution=resolved.resolution)
-            )
-            continue
-        candidates = tuple(by_location.get(resolved.path, ()))
-        if not candidates:
-            out.append(
-                RowMatch(text, MatchOutcome.ABSENT, resolution=resolved.resolution)
-            )
-        elif len(candidates) > 1:
-            out.append(
-                RowMatch(
-                    text,
-                    MatchOutcome.AMBIGUOUS,
-                    content_ids=candidates,
-                    resolution=resolved.resolution,
-                )
-            )
-        else:
-            out.append(
-                RowMatch(
-                    text,
-                    MatchOutcome.MATCHED,
-                    content_id=candidates[0],
-                    resolution=resolved.resolution,
-                )
-            )
-    return tuple(out)
+    return tuple(_match(str(entry), index, root=root, prefix_map=prefix_map) for entry in requested)
 
 
 def _root_row(db: Any, root_id: str) -> Any:
     """The playlist row the cutover adopted, or a refusal naming it.
 
-    Resolved through the binding's own lookup rather than by scanning, and
-    refused rather than defaulted: a missing root here means the registry and the
-    database disagree about a tree that has cut over, which is the same skew
-    ``anchored_root`` refuses one step earlier. Reaching this with no row means
-    the caller's ``root_exists`` probe and the database disagree, and writing
-    unparented would put the whole tree beside itself.
-
-    NO ``.first()`` HERE, and that is the binding's shape rather than a style
-    choice. ``get_playlist`` returns a filtered QUERY for every keyword except
-    ``ID``, where it returns the row itself, or None. A caller that reaches for
-    ``.first()`` out of habit therefore works everywhere else in this package and
-    raises an attribute error on exactly this lookup.
+    Refused rather than defaulted: writing unparented would put the tree beside
+    itself. No ``.first()``: ``get_playlist(ID=...)`` returns the row or None,
+    not a query.
     """
     row = db.get_playlist(ID=str(root_id))
     if row is None:
@@ -907,11 +701,8 @@ def _root_row(db: Any, root_id: str) -> Any:
 def attached_capture(gates: Any, cfg: config.Config, db: Any):
     """The session record and the verified capture every guarded write opens with.
 
-    ATTACHED BEFORE IT IS JUDGED. A capture that fails its check is still a
-    directory a person may go looking for, and the restore side lists an
-    unusable entry rather than answering with silence. One function for the
-    twenty two writers that open this way, so none of them can come to judge
-    a capture it never attached.
+    Attached before it is judged: a capture that fails its check is still a
+    directory a person may look for, and restore lists it.
     """
     record = gates.record
     capture = snapshot.capture(cfg, db=db)
@@ -927,21 +718,12 @@ def membership_positions(tables: Any) -> tuple[int, int, int]:
     afterwards that every membership it made is one its plan named.
     """
     columns = tables.membership_columns
-    return (
-        columns.index("PlaylistID"),
-        columns.index("ContentID"),
-        columns.index(rb_writer.SOFT_DELETE_COLUMN),
-    )
+    playlist, content, marker = ("PlaylistID", "ContentID", rb_writer.SOFT_DELETE_COLUMN)
+    return columns.index(playlist), columns.index(content), columns.index(marker)
 
 
 def rollback_quietly(db: Any) -> None:
-    """Undo pending work on the caller's handle. Never masks the original failure.
-
-    A rollback that raises on the way out of an except block would replace the
-    real cause with its own, and the real cause is the one worth reading. This is
-    the one place in the module where swallowing is right, and it swallows only
-    the cleanup.
-    """
+    """Undo pending work on the caller's handle. Never masks the original failure."""
     try:
         db.session.rollback()
     except Exception:  # noqa: BLE001 - a failed cleanup must not hide its cause
@@ -953,16 +735,9 @@ def _undo_unless_landed(
 ) -> None:
     """What a membership write does on its way out of a failure, before it re-raises.
 
-    ROLLED BACK. Nothing durable has landed, but the objects the loop created
-    are still pending on the CALLER'S handle, and the guarded commit raises on
-    two of its refusals before reaching its own rollback. Left pending, they
-    land on whatever commits next and arrive under that operation's name. A
-    cleanup, never a place that decides an error is survivable.
-
-    AN EXCEPTION IS NOT PROOF NOTHING LANDED. The binding commits the
-    transaction and THEN saves rekordbox's playlist file, so a failure there
-    arrives over durable rows. The witness is the engine's own answer, and a
-    commit it saw is recorded before the caller re-raises.
+    Rolled back, or the pending objects land on whatever commits next under
+    its name. An exception is not proof nothing landed: the binding commits and
+    then saves its playlist file, so a commit the witness saw is recorded.
     """
     rollback_quietly(db)
     if witness.landed:
@@ -974,18 +749,10 @@ def _record_membership_commit(
 ) -> None:
     """Record one tree's commit on its session record, when it added anything.
 
-    A PASS THAT ADDED NOTHING CLAIMS NO COMMIT. The inbox sweep calls the writer
-    for every native tree on every run, and most of those runs add nothing. A
-    restore reads a committed source as work it would discard, so recording the
-    no-ops would make restoring to last week refuse over a list of sessions that
-    each created nothing, and make a person name every one of them to proceed.
-    Zero is decidable here because a folder or playlist this write creates is
-    only ever created on the way to a membership: nothing new exists when
-    nothing was added. The record itself stays, closed and empty, because the
-    capture it names is real.
-
-    ``created`` is memberships added, the per-tree number ``restore list`` asks
-    for. Nothing here updates a row that was already there.
+    A pass that added nothing claims no commit, or restoring past a week of
+    no-op sweeps would make a person name each one. Nothing new exists when
+    nothing was added. ``created`` is memberships added, the per-tree number
+    ``restore list`` asks for.
     """
     if added <= 0:
         return
@@ -995,6 +762,96 @@ def _record_membership_commit(
         session.ChangeSummary((session.TreeChange(tree=tree_id, created=added),)),
         cfg,
     )
+
+
+def _watched(analysis_roots: Iterable[Path | str]) -> list[Path]:
+    """The analysis roots a write names, refused when there are none.
+
+    A watch over nothing reports any session clean (R17's fifth surface).
+    """
+    watched = [Path(root) for root in analysis_roots]
+    if not watched:
+        raise ValueError(
+            "analysis_roots is empty, so the analysis-file watch would watch "
+            "nothing and this session would report itself clean whatever "
+            "happened to the library's grids; name the roots this write could "
+            "touch (R17's fifth surface, runtime half)"
+        )
+    return watched
+
+
+def _writable_root(
+    cfg: config.Config,
+    db: Any,
+    tree_id: str,
+    registry: tree_registry.Registry,
+    root_exists: Callable[[str], bool],
+    purpose: convergence.Purpose,
+) -> str:
+    """The tree's adopted root, once the medium and the convergence gate pass.
+
+    Both through the shared assertions, and here because every database
+    membership write passes through: the convergence gate runs before the
+    session opens and refuses a tree a restore left short.
+    """
+    root_id = tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
+    convergence.assert_tree_writable(cfg, db, tree_id, registry, purpose=purpose)
+    return root_id
+
+
+@dataclass
+class _Run:
+    """One membership session's handle, record and counts, read on the way out of a failure."""
+
+    cfg: config.Config
+    db: Any
+    tree_id: str
+    record: session.SessionRecord
+    added: int = 0
+    already_present: int = 0
+    removed: int = 0
+    already_absent: int = 0
+    touched: list[str] = field(default_factory=list)
+    skipped: list[RowMatch] = field(default_factory=list)
+
+    def add(self, playlist: Any, destination: tuple[str, str], ids: list[str]) -> None:
+        """One call per playlist: which ids are new is the writer's question (R-10)."""
+        self.touched.append("/".join(destination))
+        inserted = rb_writer.add_memberships(self.db, playlist, ids)
+        self.added += len(inserted)
+        self.already_present += len(ids) - len(inserted)
+
+    def undo_unless_landed(self, witness: Any) -> None:
+        _undo_unless_landed(self.db, witness, self.record, self.tree_id, self.added, self.cfg)
+
+
+def _add_planned(
+    run: _Run,
+    anchor: Any,
+    plan: Mapping[tuple[str, str], Sequence[Path | str]],
+    index: Mapping[str, Sequence[str]],
+    rules: Sequence[locations.PrefixRule],
+) -> None:
+    """Each plan entry's matched rows into its playlist, every folder under the anchor.
+
+    One lookup per folder: every folder hangs off the one anchor, and one
+    ``ensure_folder`` just created is pending on this handle (R-10).
+    """
+    folders: dict[str, Any] = {}
+    for (folder_display, sub_display), requested in sorted(plan.items()):
+        matches = match_indexed_rows(requested, index, root=run.cfg.library.root, prefix_map=rules)
+        resolved_ids = [
+            match.content_id
+            for match in matches
+            if match.outcome is MatchOutcome.MATCHED and match.content_id
+        ]
+        run.skipped.extend(match for match in matches if match.outcome is not MatchOutcome.MATCHED)
+        if not resolved_ids:
+            continue
+        if folder_display not in folders:
+            folders[folder_display] = rb_writer.ensure_folder(run.db, folder_display, parent=anchor)
+        playlist = rb_writer.ensure_playlist(run.db, sub_display, folders[folder_display])
+        run.add(playlist, (folder_display, sub_display), resolved_ids)
 
 
 def write_tree_membership(
@@ -1014,168 +871,58 @@ def write_tree_membership(
 ) -> MembershipReport:
     """Write membership for a database-native tree, for rows that already exist.
 
-    THE MEDIUM IS CHECKED FIRST AND THROUGH THE SHARED ASSERTION.
-    :func:`cratekit.core.tree_registry.anchored_root` refuses a tree still on the
-    bridge, refuses a native record naming no root, and refuses a root this
-    library does not have, which is the restored pre-cutover database. Spelling
-    any of those checks here would be a second implementation of one rule, and
-    the cost of the two disagreeing is a user with a duplicated tree.
+    The medium is checked first through
+    :func:`cratekit.core.tree_registry.anchored_root`, which refuses a tree on
+    the bridge, a record naming no root, and a root this library lacks (the
+    restored pre-cutover database). The session spine is called, not rebuilt:
+    the gates, a verified capture, and the analysis roots NAMED. Names match
+    the XML-era names, so a cutover adopts rather than duplicates. No content
+    row, tempo or analysis column is written.
 
-    THE SESSION SPINE IS CALLED, NOT REBUILT. The three gates come from
-    :func:`cratekit.core.session.assert_gates` in their argued order, the commit
-    happens behind a capture :func:`cratekit.core.snapshot.assert_verified`
-    passed, and the analysis roots this write could touch are NAMED, so the watch
-    that is the runtime half of R17's fifth surface watches them instead of
-    watching nothing.
+    ``analysis_roots`` has no default and may not be empty, since a watch over
+    nothing reports any session clean. The session is this function's own: R29
+    is one source per run, and an outside gates factory could name no roots.
 
-    NAMES MATCH THE XML-ERA NAMES EXACTLY, which is what makes a cutover an
-    adoption rather than a duplication: the folder this finds by name is the one
-    the bridge wrote, and the tracks already in it stay in it.
-
-    THE GRID RULE IS UNTOUCHED. Nothing here creates a content row, writes a
-    tempo, or names an analysis column. Membership is rows in the playlist tables
-    the whitelist already permits, on content rows somebody else's import made.
-
-    ``analysis_roots`` HAS NO DEFAULT AND MAY NOT BE EMPTY, which is the whole
-    reason this unit was registered against U8's countdown. The watch it arms
-    watches nothing when nobody names a root, and a guard that silently watches
-    nothing is worse than an absent one: it reports a clean session either way.
-    A caller that genuinely has nowhere to watch has a library with no analysis
-    files, which is a fact worth stating rather than expressing as an omission.
-
-    THE SESSION IS THIS FUNCTION'S OWN, and no gates factory is accepted. R29
-    declares the boundary as one source per run, so sharing a session across
-    several trees is not this unit's to offer. Offering it would also reopen the
-    hole U32 already registered: a caller supplying its own factory can supply
-    one that names no analysis roots, and the argument above would be undone by
-    the parameter meant to make it flexible.
-
-    ``purpose`` IS A DECLARATION AND NOT A BYPASS. Its default is the restrictive
-    answer, and the one thing declaring a rebuild changes is the pair of
-    convergence latches whose own remedy is a rebuild. See
-    :class:`cratekit.core.convergence.Purpose`. Everything above stays: the
-    medium check, the anchored root, all three session gates, the verified
-    capture, the analysis watch, and the guarded commit.
-
-    ``intent`` IS THE SAME DECLARATION ONE LAYER DOWN, and it exists because this
-    function had no way to make it. ``assert_gates`` is where the LATCHES live,
-    and a latch that condemns its own remedy is the failure this repository has
-    already shipped once. U32 puts a second latch there: an unreconciled restore
-    refuses every ordinary destructive session, and the markers it refuses over
-    include "this tree needs rebuilding". Calling into the gates with the default
-    intent therefore meant the rebuild was refused by the latch whose refusal
-    names the rebuild, with a hand-edited state file as the only way out. It is a
-    parameter rather than something derived from ``purpose`` because the two
-    words answer different questions to different modules, and folding one into
-    the other is how a caller ends up declaring something it did not mean.
-
-    IT DOES NOT WIDEN ANYTHING BY ITSELF. A ``RECOVERY`` intent also lifts the
-    unresolved-session latch, whose remedy is a restore rather than a rebuild, so
-    the rebuild asserts that one for itself before it calls this. See
-    :func:`cratekit.write.rebuild.rebuild_tree`.
+    ``purpose`` is a declaration, not a bypass: a rebuild lifts only the
+    convergence latches whose remedy is a rebuild (see
+    :class:`cratekit.core.convergence.Purpose`). ``intent`` is the same
+    declaration for ``assert_gates``, where U32's latch would otherwise refuse
+    the rebuild it names as its remedy; a separate parameter, since the two
+    answer different questions. ``RECOVERY`` also lifts the unresolved-session
+    latch, so the rebuild asserts that one itself
+    (:func:`cratekit.write.rebuild.rebuild_tree`).
     """
-    watched = [Path(root) for root in analysis_roots]
-    if not watched:
-        raise ValueError(
-            "analysis_roots is empty, so the analysis-file watch would watch "
-            "nothing and this session would report itself clean whatever "
-            "happened to the library's grids; name the roots this write could "
-            "touch (R17's fifth surface, runtime half)"
-        )
-    root_id = tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
-    # THE CONVERGENCE GATE, and it is here rather than in a command-line module
-    # for the reason the medium check above is: this is the one call every
-    # database membership write goes through, so a guard placed here cannot be
-    # bypassed by a caller that forgot it. It runs BEFORE the session opens,
-    # takes no lock and writes nothing on the passing path, and refuses a tree a
-    # restore left short rather than quietly adding to it and reporting clean.
-    convergence.assert_tree_writable(cfg, db, tree_id, registry, purpose=purpose)
+    watched = _watched(analysis_roots)
+    root_id = _writable_root(cfg, db, tree_id, registry, root_exists, purpose)
     resolved_map = (
         [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
         if prefix_map is None
         else list(prefix_map)
     )
-
-    # ONE walk of the library, before the loop, and it is not only about speed.
-    # Rebuilding it per plan entry would re-normalize every row once per entry,
-    # and it would silently break the first caller whose rows are a database
-    # cursor rather than a list: entry one would consume the whole iterator and
-    # every entry after it would match nothing and be reported absent.
+    # ONE walk of the library, before the loop, since rows may be a cursor.
     index = index_active_rows(rows, root=cfg.library.root, prefix_map=resolved_map)
 
-    added = 0
-    already_present = 0
-    skipped: list[RowMatch] = []
-    touched: list[str] = []
-
-    # THE RECORD IS OPENED INSIDE THE GATES AND BEFORE THE CAPTURE (R-12). The
-    # capture is this write's undo, and a capture no record names is one the
-    # pruning scan is free to delete mid write and one ``restore list`` cannot
-    # show. It composes with a caller that already owns a record because it is a
-    # record of its own: a routing pass walking three trees leaves three, each
-    # naming the capture taken before that tree's commit, which is exactly the
-    # granularity a person restores at. R29's one source per run holds, and the
-    # source is the tree.
+    # The record is opened inside the gates and before the capture (R-12), so
+    # no capture goes unnamed by a record: one record per tree, the granularity
+    # a person restores at, and R29's one source per run with the tree the source.
     with session.assert_gates(
         cfg, workflow=workflow, analysis_roots=watched, intent=intent, keep=session.Keep.RECORD
     ) as gates, rb_writer.commit_witness(db) as witness:
         record, capture = attached_capture(gates, cfg, db)
-
-        # THE WRITE IS PARENTED TO THE ROOT THE CUTOVER ADOPTED. Asserting the
-        # anchored root and then resolving the folder globally by name would
-        # leave the assertion true and the write somewhere else: a folder of that
-        # name under a different parent, or a new one at the database root beside
-        # the tree instead of inside it. That is the silent parallel tree the
-        # registry exists to prevent, arriving through the check meant to prevent
-        # it. The root row is resolved once, here, and every folder hangs off it.
+        run = _Run(cfg, db, tree_id, record)
+        # Parented to the root the cutover adopted, never found globally by
+        # name, which would grow the parallel tree the registry exists to prevent.
         anchor = _root_row(db, root_id)
-        # One lookup per FOLDER rather than per plan entry. Every folder here
-        # hangs off the one anchor, so the display name alone is the key, and
-        # the answer ``ensure_folder`` gave for it holds for the rest of this
-        # session: a folder it just created is pending on this handle and a
-        # second lookup would only find the same row again (R-10).
-        folders: dict[str, Any] = {}
-
         try:
-            for (folder_display, sub_display), requested in sorted(plan.items()):
-                matches = match_indexed_rows(
-                    requested, index, root=cfg.library.root, prefix_map=resolved_map
-                )
-                resolved_ids = [
-                    match.content_id
-                    for match in matches
-                    if match.outcome is MatchOutcome.MATCHED and match.content_id
-                ]
-                skipped.extend(
-                    match
-                    for match in matches
-                    if match.outcome is not MatchOutcome.MATCHED
-                )
-                if not resolved_ids:
-                    continue
-
-                folder = folders.get(folder_display)
-                if folder is None:
-                    folder = rb_writer.ensure_folder(db, folder_display, parent=anchor)
-                    folders[folder_display] = folder
-                playlist = rb_writer.ensure_playlist(db, sub_display, folder)
-                touched.append(f"{folder_display}/{sub_display}")
-                # One call per playlist. Which ids are new is the writer's
-                # question to answer, not this loop's (R-10).
-                inserted = rb_writer.add_memberships(db, playlist, resolved_ids)
-                added += len(inserted)
-                already_present += len(resolved_ids) - len(inserted)
-
+            _add_planned(run, anchor, plan, index, resolved_map)
             rb_writer.commit_guarded(db)
         except BaseException:
-            _undo_unless_landed(db, witness, record, tree_id, added, cfg)
+            run.undo_unless_landed(witness)
             raise
 
-        # RECORDED THE INSTANT THE COMMIT RETURNS, ahead of the fingerprint. A
-        # restore reads committed sources to decide whether it would discard
-        # work, so a failure in the state write below must not close this
-        # record looking as though nothing landed.
-        _record_membership_commit(record, tree_id, added, cfg)
+        # RECORDED THE INSTANT THE COMMIT RETURNS, ahead of the fingerprint, so a
+        # failed state write below cannot close the record looking empty.
+        _record_membership_commit(record, tree_id, run.added, cfg)
 
         # THE FINGERPRINT IS TAKEN AT THE CLOSE, AFTER THE COMMIT. It is what
         # lets the next run tell a database recovered out of band from one this
@@ -1188,12 +935,8 @@ def write_tree_membership(
         convergence.record_fingerprint(cfg, db)
 
     return MembershipReport(
-        tree_id=tree_id,
-        root_id=root_id,
-        added=added,
-        already_present=already_present,
-        skipped=tuple(skipped),
-        playlists=tuple(touched),
+        tree_id=tree_id, root_id=root_id, added=run.added, already_present=run.already_present,
+        skipped=tuple(run.skipped), playlists=tuple(run.touched),
     )
 
 
@@ -1206,10 +949,9 @@ def write_tree_membership(
 class MembershipMove:
     """One track, the playlist it belongs in, and the playlists it leaves.
 
-    Display names, as the membership writer's plan is phrased, each a folder
-    and a playlist under it. ``target`` is named whether or not the track is
-    already in it, because the removal is made only once the track is proven
-    to sit there.
+    Display names, each a folder and a playlist under it. ``target`` is named
+    whether or not the track is already there, since a removal waits on proof
+    that it is.
     """
 
     content_id: str
@@ -1221,11 +963,10 @@ class MembershipMove:
 class MoveReport:
     """What one move session wrote, and what it would not.
 
-    ``skipped`` is every track with no live collection row, for which nothing
-    was added and nothing removed. ``held_back`` is every track that was not
-    in its target when the removals began, for which nothing was removed.
-    ``adds_committed`` says the first commit landed, which is what a failure
-    report reads to say a track sits in both places.
+    ``skipped``: tracks with no live collection row, untouched. ``held_back``:
+    tracks not in their target when the removals began, removed from nothing.
+    ``adds_committed``: the first commit landed, so a failure report can say a
+    track sits in both places.
     """
 
     tree_id: str
@@ -1243,10 +984,9 @@ class MoveReport:
 class MoveInterrupted(Exception):
     """The move stopped after its additions landed and before its removals did.
 
-    Carries the report as far as it got and the failure that stopped it as
-    ``__cause__``. Raised only for that window, so a caller that catches it
-    knows every track it moved is in its target and may still be in the
-    playlist it was leaving: in both, never in neither.
+    Carries the report as far as it got, the failure as ``__cause__``. Every
+    track it moved is in its target and may still be where it was leaving: in
+    both, never in neither.
     """
 
     def __init__(self, report: MoveReport) -> None:
@@ -1290,19 +1030,11 @@ def _live_playlists(db: Any, folders: Sequence[Any], sub_display: str) -> list[A
 class _Destinations:
     """The live playlists answering to each destination, resolved once each.
 
-    FOUND AMONG THE LIVE NODES, and that is where this differs from the find
-    or create the additive writer uses, which reads no marker and so can hand
-    back a playlist rekordbox removed. An addition made there lands where
-    nobody can see it, and the proof that a track sits in its target would
-    then fail for ever. So the move resolves both what it adds to and what it
-    removes from through one walk, over live nodes, and they cannot disagree.
-
-    EVERY NODE CARRYING THE NAMES, as the placement reader counts them: a
-    track holds a sub through any of them, so it leaves through all of them.
-
-    A REMOVAL NEVER CREATES. A removal has nothing to do in a playlist that is
-    not there, and a lookup that created one would leave an empty playlist
-    behind every track it looked for.
+    Found among LIVE nodes, unlike the additive writer's find or create, which
+    can hand back a removed playlist where an addition is invisible and the
+    proof of the target fails for ever; what is added to and removed from come
+    from one walk. Every node carrying the names counts, as the placement
+    reader counts them. A removal never creates.
     """
 
     def __init__(self, db: Any, anchor: Any) -> None:
@@ -1355,6 +1087,81 @@ class _Destinations:
         self._members.clear()
 
 
+def _add_targets(run: _Run, places: _Destinations, live: Sequence[MembershipMove]) -> None:
+    """The additions, every one committed before any removal is attempted."""
+    wanted: dict[tuple[str, str], list[str]] = {}
+    for move in live:
+        wanted.setdefault(move.target, []).append(move.content_id)
+    with rb_writer.commit_witness(run.db) as witness:
+        try:
+            for destination, content_ids in sorted(wanted.items()):
+                run.add(places.for_adding(destination), destination, content_ids)
+            rb_writer.commit_guarded(run.db)
+        except BaseException:
+            run.undo_unless_landed(witness)
+            raise
+
+
+def _proven_leavers(
+    places: _Destinations, live: Sequence[MembershipMove]
+) -> tuple[list[str], dict[tuple[str, str], list[str]]]:
+    """The tracks held back, and each destination's leavers, read after the additions.
+
+    A removal is made only for a track proven to sit in its target, whether
+    this call added it or found it there, since somebody may have taken it out.
+    """
+    held_back: list[str] = []
+    leaving: dict[tuple[str, str], list[str]] = {}
+    for move in live:
+        if not places.holds(move.target, move.content_id):
+            held_back.append(move.content_id)
+            continue
+        for destination in move.remove:
+            if destination != move.target:
+                leaving.setdefault(destination, []).append(move.content_id)
+    return held_back, leaving
+
+
+def _remove_leavers(
+    run: _Run,
+    places: _Destinations,
+    leaving: Mapping[tuple[str, str], list[str]],
+    interrupted: Callable[[], MoveReport],
+) -> None:
+    """The removals, in the second commit, the only one that admits a removal.
+
+    Only an ordinary failure is raised as :class:`MoveInterrupted`: a refusal
+    keeps its own type and remedy, and an interrupt or exit is not caught.
+    """
+    db = run.db
+    with rb_writer.commit_witness(db) as witness:
+        try:
+            for destination, content_ids in sorted(leaving.items()):
+                gone: set[str] = set()
+                for playlist in places.existing(destination):
+                    marked = rb_writer.remove_memberships(db, playlist, content_ids)
+                    run.removed += len(marked)
+                    gone.update(marked)
+                if gone:
+                    run.touched.append("/".join(destination))
+                run.already_absent += len(set(content_ids) - gone)
+            # The membership table alone: since U111 the removable set admits a
+            # removed playlist node too, and a membership move removes no node.
+            rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))
+        except Exception as exc:
+            rollback_quietly(db)
+            if witness.landed:
+                _record_removal_commit(run.record, run.tree_id, run.removed, run.cfg)
+                convergence.record_fingerprint(run.cfg, db)
+                raise
+            if isinstance(exc, cause.CratekitError):
+                raise
+            raise MoveInterrupted(interrupted()) from exc
+        except BaseException:
+            rollback_quietly(db)
+            raise
+
+
 def move_tree_membership(
     cfg: config.Config,
     db: Any,
@@ -1367,156 +1174,49 @@ def move_tree_membership(
 ) -> MoveReport:
     """Move tracks between the playlists of one database native tree.
 
-    THE FIRST WRITER THAT REMOVES A MEMBERSHIP, and it is treated as the
-    cutover was. Everything :func:`write_tree_membership` holds is held here
-    and for its reasons: the medium and the anchored root through the shared
-    assertion, the convergence gate, the three session gates, a record opened
-    before a capture that is verified before anything commits, the analysis
-    watch over roots the caller names, and the guarded commit.
-
-    TWO COMMITS IN ONE SESSION, THE ADDITIONS FIRST. Every addition is
-    committed before any removal is attempted, so a failure between the two
-    leaves a track in both playlists and never in neither. One commit for both
-    would roll the addition back with the removal, which is safe and is also a
-    run that did nothing; two lets a resume finish what is left.
-
-    A REMOVAL IS MADE ONLY FOR A TRACK PROVEN TO SIT IN ITS TARGET, read from
-    the database after the additions landed. That holds for a track this call
-    added and for one the plan found already there, since somebody may have
-    taken it out since.
-
-    ONLY THE SECOND COMMIT ADMITS A REMOVAL, and only in the membership table.
-    The first is an ordinary commit and refuses one, as every other writer's
-    does.
-
-    THE FINGERPRINT IS TAKEN AFTER EACH COMMIT THAT LANDED. A run stopped
-    between the two has moved the database, and a resume that then removes
-    should not do it against a reading from before the additions.
-
-    ONLY AN ORDINARY FAILURE IN THE REMOVALS IS RAISED AS
-    :class:`MoveInterrupted`. A refusal keeps its own type and its own remedy,
-    so rekordbox launched during the run is reported as that. An interrupt or
-    an exit is not caught at all, so a run a person stopped ends cancelled
-    and is not read as one that broke.
-
-    IT TAKES NO ``workflow``, ``purpose`` OR ``intent``. It is a routine write
-    by one verb, and a parameter that let a caller declare it a recovery would
-    lift two latches in front of the only writer that removes.
+    The first writer that removes a membership, held to everything
+    :func:`write_tree_membership` holds, for its reasons. Two commits in one
+    session, the additions first, so a failure between them leaves a track in
+    both playlists and never in neither, and a resume finishes the rest. The
+    fingerprint is taken after each commit that landed. No ``workflow``,
+    ``purpose`` or ``intent``: a recovery declaration would lift two latches in
+    front of the only writer that removes.
     """
-    watched = [Path(root) for root in analysis_roots]
-    if not watched:
-        raise ValueError(
-            "analysis_roots is empty, so the analysis-file watch would watch "
-            "nothing and this session would report itself clean whatever "
-            "happened to the library's grids; name the roots this write could "
-            "touch (R17's fifth surface, runtime half)"
-        )
-    root_id = tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
-    convergence.assert_tree_writable(
-        cfg, db, tree_id, registry, purpose=convergence.Purpose.ROUTINE
-    )
-
-    added = 0
-    already_present = 0
-    removed = 0
-    already_absent = 0
-    touched: list[str] = []
+    watched = _watched(analysis_roots)
+    root_id = _writable_root(cfg, db, tree_id, registry, root_exists, convergence.Purpose.ROUTINE)
 
     with session.assert_gates(
-        cfg,
-        workflow=MOVE_WORKFLOW,
-        analysis_roots=watched,
-        intent=session.Intent.WRITE,
-        keep=session.Keep.RECORD,
+        cfg, workflow=MOVE_WORKFLOW, analysis_roots=watched,
+        intent=session.Intent.WRITE, keep=session.Keep.RECORD,
     ) as gates:
         record, capture = attached_capture(gates, cfg, db)
+        run = _Run(cfg, db, tree_id, record)
 
-        anchor = _root_row(db, root_id)
-        places = _Destinations(db, anchor)
+        places = _Destinations(db, _root_row(db, root_id))
         live = [move for move in moves if _live_content(db, move.content_id)]
         skipped = tuple(
             sorted({move.content_id for move in moves} - {move.content_id for move in live})
         )
-
-        # ── the additions, and their own commit ────────────────────────────
-        wanted: dict[tuple[str, str], list[str]] = {}
-        for move in live:
-            wanted.setdefault(move.target, []).append(move.content_id)
-        with rb_writer.commit_witness(db) as witness:
-            try:
-                for destination, content_ids in sorted(wanted.items()):
-                    playlist = places.for_adding(destination)
-                    touched.append("/".join(destination))
-                    inserted = rb_writer.add_memberships(db, playlist, content_ids)
-                    added += len(inserted)
-                    already_present += len(content_ids) - len(inserted)
-                rb_writer.commit_guarded(db)
-            except BaseException:
-                _undo_unless_landed(db, witness, record, tree_id, added, cfg)
-                raise
-        _record_membership_commit(record, tree_id, added, cfg)
-        if added:
+        _add_targets(run, places, live)
+        _record_membership_commit(record, tree_id, run.added, cfg)
+        if run.added:
             convergence.record_fingerprint(cfg, db)
 
         def report(**extra: Any) -> MoveReport:
             return MoveReport(
-                tree_id=tree_id,
-                root_id=root_id,
-                added=added,
-                already_present=already_present,
-                skipped=skipped,
-                playlists=tuple(touched),
-                adds_committed=True,
-                **extra,
+                tree_id=tree_id, root_id=root_id, added=run.added,
+                already_present=run.already_present, skipped=skipped,
+                playlists=tuple(run.touched), adds_committed=True, **extra,
             )
 
-        # ── the removals, behind the additions ─────────────────────────────
         places.forget_members()
-        held_back: list[str] = []
-        leaving: dict[tuple[str, str], list[str]] = {}
-        for move in live:
-            if not places.holds(move.target, move.content_id):
-                held_back.append(move.content_id)
-                continue
-            for destination in move.remove:
-                if destination != move.target:
-                    leaving.setdefault(destination, []).append(move.content_id)
-        with rb_writer.commit_witness(db) as witness:
-            try:
-                for destination, content_ids in sorted(leaving.items()):
-                    gone: set[str] = set()
-                    for playlist in places.existing(destination):
-                        marked = rb_writer.remove_memberships(db, playlist, content_ids)
-                        removed += len(marked)
-                        gone.update(marked)
-                    if gone:
-                        touched.append("/".join(destination))
-                    already_absent += len(set(content_ids) - gone)
-                # THE MEMBERSHIP TABLE ALONE, never the whole removable set:
-                # since U111 that set admits a removed playlist node too, and
-                # a membership move removes no node.
-                rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))
-            except Exception as exc:
-                rollback_quietly(db)
-                if witness.landed:
-                    _record_removal_commit(record, tree_id, removed, cfg)
-                    convergence.record_fingerprint(cfg, db)
-                    raise
-                if isinstance(exc, cause.CratekitError):
-                    raise
-                raise MoveInterrupted(report(held_back=tuple(held_back))) from exc
-            except BaseException:
-                rollback_quietly(db)
-                raise
-        _record_removal_commit(record, tree_id, removed, cfg)
-        if removed:
+        held_back, leaving = _proven_leavers(places, live)
+        _remove_leavers(run, places, leaving, lambda: report(held_back=tuple(held_back)))
+        _record_removal_commit(record, tree_id, run.removed, cfg)
+        if run.removed:
             convergence.record_fingerprint(cfg, db)
 
-    return report(
-        removed=removed,
-        already_absent=already_absent,
-        held_back=tuple(held_back),
-    )
+    return report(removed=run.removed, already_absent=run.already_absent, held_back=tuple(held_back))
 
 
 def _record_removal_commit(
@@ -1524,8 +1224,7 @@ def _record_removal_commit(
 ) -> None:
     """Record the removals on the session record, as rows this session changed.
 
-    ``updated`` and never a negative ``created``: the row is still there and
-    carries a marker, which is what a restore would be discarding.
+    ``updated``, never a negative ``created``: the row stays and carries a marker.
     """
     if removed <= 0:
         return
