@@ -1083,37 +1083,113 @@ new = '''
         return True
 '''
 
-[[dropped]]
+[[rows]]
 id = "r835-b.T1_folder_create_never_retried"
+source = { table = "r835-b.json", id = "T1_folder_create_never_retried" }
 description = "TidalAccount.create_folder: a create that timed out after reaching the provider is retried into a second folder"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/tidal_account.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+moved = "the never retried folder create stayed in TidalAccount.create_folder in tidal_account.py, but its call to _call now sits on one line assigned to created; the same retries=0 is raised to 1"
+tests = ["tests/test_label_playlists.py"]
+old = '''
+        created = self._call(doing, lambda: self._session.user.create_folder(name), retries=0)
+'''
+new = '''
+        created = self._call(doing, lambda: self._session.user.create_folder(name), retries=1)
+'''
 
-[[dropped]]
+[[rows]]
 id = "u236.M18_ledger_placement_not_written"
+source = { table = "u236.json", id = "M18_ledger_placement_not_written" }
 description = "ledger settle: never write a placement"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/ledger.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/ledger_settle.py"
+surface = "user"
+moved = "the placement write in settle_mirror_tracks moved from ledger.py into ledger_settle.settle_mirror_tracks, with record and name now on one line; the same _place call is deleted"
+tests = ["tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits_u236.py"]
+old = '''
+            _place(
+                record, name,
+                {**_placements(record.get("placed")).get(str(name), {}), str(track): str(at)},
+            )
+            wrote = True
+'''
+new = '''
+            wrote = True
+'''
 
-[[dropped]]
+[[rows]]
 id = "u147-d.A5_source_title"
+source = { table = "u147-d.json", id = "A5_source_title" }
 description = "account_mirror.read_library: All Favorites takes the folder's prefix like every other playlist"
-reason = "unplaced: the text is gone in src/cratekit/organize/account_mirror.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+moved = "the favorites folder titler stayed in account_mirror.read_library but sits one level shallower after the function was reshaped, so only its indentation changed; the same source title exemption is dropped"
+tests = ["tests/test_organize_mirror_library.py"]
+old = '''
+                return shown if shown == source else mirror.title(name, shown)
+'''
+new = '''
+                return mirror.title(name, shown)
+'''
 
-[[dropped]]
+[[rows]]
 id = "r1031.M4_signature_dropped"
+source = { table = "r1031.json", id = "M4_signature_dropped" }
 description = "Matcher.under: drop the file signature, so a file that gains a code is never asked again"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/mirror.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+moved = "Matcher.under in mirror.py now returns its tuple on one line instead of one element per line; the same signature element is replaced by an empty string"
+tests = ["tests/test_organize_mirror_frozen.py"]
+old = '''
+        return (row.isrc, row.title, row.artist, row.path, "" if row.isrc else self._signature(row))
+'''
+new = '''
+        return (row.isrc, row.title, row.artist, row.path, "")
+'''
 
-[[dropped]]
+[[rows]]
 id = "r1032.S1_protocol_default_on"
+source = { table = "r1032.json", id = "S1_protocol_default_on" }
 description = "TidalAccount.match_track: default any_agreeing on, so the hearts, the pairs and the exports, which never pass it, break the tie R-572 refuses"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/tidal_account.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/tidal_reads.py"
+surface = "user"
+moved = "match_track moved from TidalAccount in tidal_account.py to the Reads base class in tidal_reads.py, which TidalAccount inherits, with its keyword parameters packed onto two lines; the same any_agreeing default is turned on"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''
+        agree: bool = False, album: str = "", any_agreeing: bool = False,
+    ) -> str | None:
+'''
+new = '''
+        agree: bool = False, album: str = "", any_agreeing: bool = True,
+    ) -> str | None:
+'''
 
-[[dropped]]
+[[rows]]
 id = "r879-b.T1_one_track_never_asked_to_agree"
+source = { table = "r879-b.json", id = "T1_one_track_never_asked_to_agree" }
 description = "TidalAccount.match_track: return one track under a code whether or not agree is asked"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/tidal_account.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/tidal_reads.py"
+surface = "user"
+moved = "the one track shortcut moved with match_track from TidalAccount in tidal_account.py to Reads in tidal_reads.py, one level shallower; the same not agree condition is dropped"
+tests = ["tests/test_outbound_tidal_account.py"]
+old = '''
+            if len(tracks) == 1 and not agree:
+'''
+new = '''
+            if len(tracks) == 1:
+'''
 
-[[dropped]]
+[[rows]]
 id = "r227.S6_no_stale_sentence"
+source = { table = "r227.json", id = "S6_no_stale_sentence" }
 description = "A stale export produces no warning at all"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/shell.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+moved = "age_warnings in shell.py was rewritten as one if and elif chain that sets the code and message, so the stale branch is now an elif rather than its own if returning the warning; the same stale condition is made false"
+tests = ["tests/test_outbound_workers.py"]
+old = '''
+    elif age.stale:
+'''
+new = '''
+    elif False:
+'''
