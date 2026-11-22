@@ -91,7 +91,8 @@ for a file with no title tag its name past the older naming's `_PN` tail
 (`titles.name_title`, R-1724); Discogs also takes a release only when it
 writes a mix the file's title names by its maker (`titles.named_versions`,
 U318), a maker being the mix's words that are neither version words nor
-`titles.MIX_DESCRIPTIONS`.
+`titles.MIX_DESCRIPTIONS`, folded as a name is, accents off and "ø", "æ",
+"œ", "ß", "đ", "ł" and "þ" spelled plain (U324).
 Traxsource and Bandcamp are kept off the walk, since both answer
 a bot check, and still counted in old records. Each source answers one of
 `matched`, `miss`, `unreachable`, `blocked` (bot check, block page, spent rate
@@ -362,7 +363,11 @@ removal from the collection or **kept** (held before the pass, not this pass's
 file, on another synced playlist, in a playlist of yours, named by a table
 rekordbox's removal was never measured on), or **left** when no
 single row holds it. Nothing is offered while a synced playlist is not read
-whole. Behind the explicit gate `sync.removed.confirm`, the offered rows leave
+whole, save two shapes read whole for this question (U320): the hearts short
+only by what the provider withholds, a tenth of their count and 49 hearts at
+most, and a **retired** playlist, one the account no longer lists whose id
+answered not found a day apart, or that a person retired behind
+`sync.removed.retire`, which holds nothing and stops nothing. Behind the explicit gate `sync.removed.confirm`, the offered rows leave
 the collection as rekordbox's Remove from Collection takes them out (U288): the
 row and every row naming it deleted, the lists left; the session record names
 each one, and `crate delete review` then offers its file.

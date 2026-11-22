@@ -1,0 +1,13 @@
+name = "u324-pinned"
+pass_kind = "light"
+
+# F20 of u324-rows.toml, measured again once its two cases were written.
+
+[[rows]]
+id = "F20_initial_prefix_dropped_pinned"
+description = "_runs_in: an initial stands for any word, not only one it opens"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_version.py", "tests/test_title_matcher.py", "tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        return mine == theirs or (initial(index) and theirs.startswith(mine))'''
+new = '''        return mine == theirs or initial(index)'''

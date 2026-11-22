@@ -1,0 +1,11 @@
+name = "u320-m5"
+pass_kind = "light"
+
+[[rows]]
+id = "M5_retired_holds"
+description = "Listing.holds: count a retired playlist among the holding states"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
+old = '''HOLDING = frozenset({READ, GONE, WITHHELD})'''
+new = '''HOLDING = frozenset({READ, GONE, WITHHELD, RETIRED})'''

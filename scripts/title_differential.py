@@ -11,6 +11,14 @@ commit before U280's matcher, whose `_readings` and `_meet` it reads), loaded
 from git into a module of its own, so nothing of the base is copied into the
 tree. THE TREE is `cratekit.tagging.titles` as it stands.
 
+WITH ``--titles-base REV`` (U324) the base is `src/cratekit/tagging/titles.py`
+at that revision instead, loaded the same way, so a change inside the new
+matcher is held to the matcher before it. Beside the pairs `matches` decides,
+it then compares, for every pair both sides match, what the file's title names
+as its mix (`named_versions`) and whether the row writes it (`writes_version`,
+both readings), and, for every name, the question a catalogue is asked
+(`question`): every reader of the module's name fold.
+
 THE CORPUS is every short string constant of the tagging tests (title
 positions and every other string, unfiltered, as R-1631's and R-1646's own
 differentials were), wrapped in the name shapes the naming verb and a
@@ -73,6 +81,7 @@ CORPUS_FILES = (
     "tests/test_tag_folder_copyright.py",
     "tests/test_catalogue_app.py",
     "tests/test_tags.py",
+    "tests/test_discogs_version.py",
 )
 
 #: The artists a name is wrapped with: the tag, and the credit as the name
@@ -85,6 +94,11 @@ ARTISTS = (
     ("Bernard Badie & Tide", "Bernard Badie"),
     ("The Black Madonna", "Black Madonna"),
     ("Âme", "Ame"),
+    # A letter NFKD leaves alone, written the other way each side (U324), and
+    # an initial that folds to two letters.
+    ("Trentemøller", "Trentemoller"),
+    ("Trentemoller", "Trentemøller"),
+    ("Þórður Badie", "Þ. Badie"),
     ("Tide", "Tide"),
     ("", "Bernard Badie"),
 )
@@ -161,6 +175,24 @@ def load_base(revision: str) -> ModuleType:
     return module
 
 
+def load_titles_base(revision: str) -> ModuleType:
+    """The base's ``titles`` module, loaded from git as a module of its own (U324)."""
+    source = subprocess.run(
+        ["git", "show", f"{revision}:src/cratekit/tagging/titles.py"],
+        cwd=REPO,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    name = "cratekit.tagging._differential_titles_base"
+    spec = importlib.util.spec_from_loader(name, loader=None)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    exec(compile(source, f"{revision}:titles.py", "exec"), module.__dict__)
+    return module
+
+
 def corpus() -> list[str]:
     """Every short string constant of the tagging tests, whole and once."""
     found: dict[str, None] = {}
@@ -226,7 +258,9 @@ def base_side(base: ModuleType) -> Side:
     )
 
 
-def tree_side() -> Side:
+def tree_side(module: ModuleType = titles) -> Side:
+    """A side reading through a ``titles`` module, the tree's unless another is given."""
+
     def file_keys(read: titles.FileName) -> Iterable[object]:
         keys: list[object] = []
         for title in (*read.titles, *((read.whole,) if read.whole else ())):
@@ -243,7 +277,7 @@ def tree_side() -> Side:
         keys.extend(("split", split) for split in read.splits)
         return keys
 
-    return Side(titles.read_file, titles.read_row, file_keys, row_keys, titles.matches)
+    return Side(module.read_file, module.read_row, file_keys, row_keys, module.matches)
 
 
 def matched(side: Side, names: list[tuple[str, str, str, str]], rows: list[str]) -> dict[int, set[int]]:
@@ -291,6 +325,54 @@ def beatport(base: ModuleType, names: list[tuple[str, str, str, str]], rows: lis
     return tally
 
 
+def folded_readers(
+    base: ModuleType,
+    names: list[tuple[str, str, str, str]],
+    rows: list[str],
+    old: dict[int, set[int]],
+    new: dict[int, set[int]],
+) -> Counter:
+    """Every other reader of the name fold, base against tree (U324).
+
+    For each name, the question a catalogue is asked; for each pair both
+    sides match, the mixes the file's title names and whether the row writes
+    them, read for a row that is the file's title and for a single's other
+    track. Every difference is a line: ``question``, ``named``, ``writes``
+    or ``writes-alone``, then the artist, the name, the row and both answers.
+    """
+    tally: Counter = Counter()
+    lines: list[str] = []
+    for number, (_, artist, name, _) in enumerate(names):
+        asked = (base.question(name, artist), titles.question(name, artist))
+        if (asked[0].artist, asked[0].title, asked[0].read.value) != (
+            asked[1].artist,
+            asked[1].title,
+            asked[1].read.value,
+        ):
+            tally["question"] += 1
+            lines.append(f"question\t{artist}\t{name}\t\t{asked[0]}\t{asked[1]}")
+        both = old[number] & new[number]
+        if not both:
+            continue
+        named_base = base.named_versions(base.read_file(name, artist))
+        named_tree = titles.named_versions(titles.read_file(name, artist))
+        if named_base != named_tree:
+            tally["named"] += 1
+            lines.append(f"named\t{artist}\t{name}\t\t{sorted(named_base)}\t{sorted(named_tree)}")
+        if not named_base and not named_tree:
+            continue
+        for row in sorted(both):
+            tally["pairs"] += 1
+            for kind, titled in (("writes", True), ("writes-alone", False)):
+                was = base.writes_version(rows[row], named_base, titled=titled)
+                now = titles.writes_version(rows[row], named_tree, titled=titled)
+                if was != now:
+                    tally[kind] += 1
+                    lines.append(f"{kind}\t{artist}\t{name}\t{rows[row]}\t{was}\t{now}")
+    tally["lines"] = lines  # type: ignore[assignment]
+    return tally
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--base", default=DEFAULT_BASE)
@@ -298,9 +380,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--generated", type=int, default=20000)
     parser.add_argument("--beatport", type=int, default=0)
     parser.add_argument("--shapes", default="", help="only shapes whose index is listed, comma separated")
+    parser.add_argument(
+        "--titles-base",
+        default="",
+        help="hold the tree's titles module to its own source at this revision (U324)",
+    )
     args = parser.parse_args(argv)
 
-    base = load_base(args.base)
+    if args.titles_base:
+        base = load_base(args.titles_base)
+        base_titles = load_titles_base(args.titles_base)
+        # The base's searchers read its own titles: each function looks the
+        # module up when it runs, so Beatport's scorer is held to it as well.
+        base.titles = base_titles
+        side = tree_side(base_titles)
+    else:
+        base = load_base(args.base)
+        base_titles = None
+        side = base_side(base)
     titles_found = corpus()
     rows = list(dict.fromkeys([*titles_found, *EXTRA_ROWS]))
     shapes = SHAPES
@@ -317,7 +414,7 @@ def main(argv: list[str] | None = None) -> int:
             names.append(("generated", artist, name, chance.choice(rows)))
     print(f"corpus: {len(titles_found)} strings, {len(rows)} rows, {len(names)} names")
 
-    old = matched(base_side(base), names, rows)
+    old = matched(side, names, rows)
     new = matched(tree_side(), names, rows)
     per_shape: Counter = Counter()
     lines: list[str] = []
@@ -336,6 +433,10 @@ def main(argv: list[str] | None = None) -> int:
             f"{per_shape[(shape, 'both')]:>8} both {per_shape[(shape, 'lost')]:>7} lost "
             f"{per_shape[(shape, 'gained')]:>6} gained  {shape}"
         )
+    if base_titles is not None:
+        readers = folded_readers(base_titles, names, rows, old, new)
+        lines.extend(readers.pop("lines"))
+        print(f"readers: {dict(readers)}")
     if args.beatport:
         tally = beatport(base, names, rows, args.beatport)
         beat_lines = tally.pop("lines")

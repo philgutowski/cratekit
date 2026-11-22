@@ -431,12 +431,14 @@ def test_hearts_not_read_whole_offer_nothing(
 
         account.fake.favourite_tracks = refused
     elif shape == "short":
-        served = tuple(account.fake.hearts)
 
         def short():
             # THE REAL CATALOGUE'S SHAPE: it raises the shortfall with the rows
-            # it served when the account declares more (R-504).
-            raise catalogue.HeartsShortfall(served, 5)
+            # it served when the account declares more (R-504). With no heart
+            # served at all it is short by more than what the provider
+            # withholds, so it stays partial; served hearts and a count above
+            # them read whole (U320, tests/test_sync_removed_gone.py).
+            raise catalogue.HeartsShortfall((), 5)
 
         account.fake.favourite_tracks = short
     else:
