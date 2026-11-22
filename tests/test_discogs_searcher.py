@@ -182,6 +182,24 @@ def discogs_answer(hit):
     return one
 
 
+def _releases(*pages, seen: list[str] | None = None):
+    """A fetch whose Discogs search names releases 1, 2 and so on, read as ``pages``."""
+    numbers = range(1, len(pages) + 1)
+    return routed(search=results(*numbers), releases=dict(zip(numbers, pages)), seen=seen)
+
+
+def _track(title: str, *, artist: str | None = None, kind: str = "track", **more) -> dict:
+    row = {"position": "1", "type_": kind, "title": title, **more}
+    if artist is not None:
+        row["artists"] = [{"name": artist}]
+    return row
+
+
+GONE = searchers.Fetched(note="HTTP 404", status=404)
+BAD_GATEWAY = searchers.Fetched(note="HTTP 502", status=502)
+DOWN = searchers.Fetched(note="HTTP 503", status=503)
+
+
 # A. The walk: Discogs first since U282, Beatport when it gives no genre
 
 
@@ -267,52 +285,64 @@ def test_an_empty_result_set_is_a_miss_and_two_misses_are_no_hit():
     assert hit.genre is None and hit.source == "" and hit.unread == ()
 
 
-def test_a_release_whose_artist_matches_and_title_does_not_is_no_match():
-    other = [{"position": "A1", "type_": "track", "title": "Completely Different Song"}]
-    fetch = routed(
-        search=results(9), releases={9: release(9, title="Another Record", tracks=other)}
-    )
-    hit = searcher(fetch)(ARTIST, TITLE)
-    assert discogs_answer(hit).answer == "miss"
-    assert hit.genre is None
+BRACKETED = "(Not Just) Knee Deep (Part 1)"
 
 
-def test_a_release_whose_title_matches_and_artist_does_not_is_no_match():
-    fetch = routed(search=results(9), releases={9: release(9, artist="Somebody Else Entirely")})
-    hit = searcher(fetch)(ARTIST, TITLE)
-    assert discogs_answer(hit).answer == "miss"
-
-
-def test_a_compilation_matches_on_the_tracks_own_credit():
-    tracks = [
-        {"position": "1", "type_": "track", "title": "Not This", "artists": [{"name": "Nobody"}]},
-        {"position": "2", "type_": "track", "title": TITLE, "artists": [{"name": ARTIST}]},
-    ]
-    fetch = routed(
-        search=results(11), releases={11: release(11, artist="Various", tracks=tracks)}
-    )
-    hit = searcher(fetch)(ARTIST, TITLE)
-    assert discogs_answer(hit).answer == "matched"
-
-
-def test_a_compilation_track_credited_to_another_artist_is_not_a_match():
-    tracks = [{"position": "1", "type_": "track", "title": TITLE, "artists": [{"name": "Nobody"}]}]
-    fetch = routed(search=results(12), releases={12: release(12, tracks=tracks)})
-    assert discogs_answer(searcher(fetch)(ARTIST, TITLE)).answer == "miss"
-
-
-def test_a_single_matches_on_its_own_title():
-    fetch = routed(
-        search=results(13),
-        releases={13: release(13, title=TITLE, tracks=[{"position": "A", "title": "Dub"}])},
-    )
-    assert discogs_answer(searcher(fetch)(ARTIST, TITLE)).answer == "matched"
-
-
-def test_a_heading_and_an_index_row_are_not_tracks():
-    tracks = [{"position": "", "type_": "heading", "title": TITLE}]
-    fetch = routed(search=results(14), releases={14: release(14, tracks=tracks)})
-    assert discogs_answer(searcher(fetch)(ARTIST, TITLE)).answer == "miss"
+@pytest.mark.parametrize(
+    ("artist", "title", "pages", "answer"),
+    [
+        (ARTIST, TITLE, [release(1, title="Another", tracks=[_track("Different Song")])], "miss"),
+        (ARTIST, TITLE, [release(1, artist="Somebody Else Entirely")], "miss"),
+        (
+            ARTIST,
+            TITLE,
+            [
+                release(
+                    1,
+                    artist="Various",
+                    tracks=[_track("Not This", artist="Nobody"), _track(TITLE, artist=ARTIST)],
+                )
+            ],
+            "matched",
+        ),
+        (ARTIST, TITLE, [release(1, tracks=[_track(TITLE, artist="Nobody")])], "miss"),
+        (ARTIST, TITLE, [release(1, title=TITLE, tracks=[{"position": "A", "title": "Dub"}])], "matched"),
+        (ARTIST, TITLE, [release(1, tracks=[_track(TITLE, kind="heading")])], "miss"),
+        (
+            ARTIST,
+            TITLE,
+            [release(1, tracks=[_track("Suite", kind="index", sub_tracks=[_track(TITLE)])])],
+            "matched",
+        ),
+        (ARTIST, TITLE, [release(1, tracks=[_track("(Skit)")])], "miss"),
+        ("Funkadelic", BRACKETED, [release(1, artist="Funkadelic", tracks=[_track("(Not Just) Knee Deep")])], "matched"),
+        ("The Orb", "Higher", [release(1, artist="Various", tracks=[_track("Higher", artist="Prodigy, The")])], "miss"),
+        ("Moodymann", TITLE, [release(1, artist="Moodymann (2)")], "matched"),
+        (ARTIST, TITLE, [json.dumps({"id": 1, "styles": ["Disco"]})], "parse-break"),
+        (ARTIST, TITLE, [BAD_GATEWAY, release(2, artist="Somebody Else Entirely")], "unreachable"),
+        (ARTIST, TITLE, [BAD_GATEWAY, release(2)], "matched"),
+        (ARTIST, TITLE, [GONE, release(2)], "matched"),
+        (ARTIST, TITLE, [GONE], "miss"),
+        (ARTIST, TITLE, [release(1, styles=()), DOWN], "unreachable"),
+    ],
+    ids=[
+        "title differs", "artist differs", "compilation credit", "compilation other credit",
+        "single's own title", "heading row", "index row's track", "skit row",
+        "title of brackets", "article filed last", "disambiguation numeral",
+        "no tracklist", "unread beside misses", "unread then a match", "gone then a match",
+        "only gone", "styleless beside unread",
+    ],
+)
+def test_a_release_is_taken_only_when_a_track_and_its_artist_match(artist, title, pages, answer):
+    """A wrong release is worse than a miss, a release unread is no miss, and a
+    gone one is passed over (R4: "Prodigy, The" is one artist; round two: an
+    unread pressing outranks a styleless match)."""
+    hit = searcher(_releases(*pages))(artist, title)
+    assert discogs_answer(hit).answer == answer
+    if answer == "miss":
+        assert hit.genre is None
+    if answer == "unreachable":
+        assert hit.unread == (searchers.DISCOGS,)
 
 
 def test_the_search_asks_by_artist_and_the_title_without_its_mix():
@@ -442,82 +472,33 @@ def test_a_token_that_is_not_one_printable_word_is_refused_and_never_sent():
     assert not any(url.startswith(searchers.DISCOGS_API) for url in seen)
 
 
-def test_a_403_or_a_challenge_is_blocked_not_a_miss():
-    for page in (
-        searchers.Fetched(note="HTTP 403", status=403),
-        searchers.Fetched(text="<html><title>Just a moment...</title></html>", status=200),
-    ):
-        hit = searcher(routed(search=page))(ARTIST, TITLE)
-        assert discogs_answer(hit).answer == "blocked"
-        assert hit.unread == (searchers.DISCOGS,)
-
-
-def test_a_5xx_or_a_body_that_is_not_json_is_unreachable():
-    for page in (
-        searchers.Fetched(note="HTTP 503", status=503),
-        searchers.Fetched(note="transport failure: timed out"),
-        searchers.Fetched(text="<html>captive portal</html>", status=200),
-    ):
-        hit = searcher(routed(search=page))(ARTIST, TITLE)
-        assert discogs_answer(hit).answer == "unreachable"
-        assert hit.unread == (searchers.DISCOGS,)
-
-
-def test_json_in_a_shape_this_reader_does_not_know_is_a_parse_break():
-    for page in (
-        json.dumps({"pagination": {}}),
-        json.dumps([1, 2, 3]),
-        json.dumps({"results": [{"title": "no number here"}]}),
-    ):
-        hit = searcher(routed(search=page))(ARTIST, TITLE)
-        assert discogs_answer(hit).answer == "parse-break", page
-        assert hit.unread == (searchers.DISCOGS,)
-
-
-def test_a_release_without_a_tracklist_is_held_as_a_parse_break_not_a_miss():
-    broken = json.dumps({"id": 1, "styles": ["Disco"]})
-    hit = searcher(routed(search=results(1), releases={1: broken}))(ARTIST, TITLE)
-    assert discogs_answer(hit).answer == "parse-break"
-
-
-def test_a_release_that_could_not_be_read_beside_misses_is_not_a_miss():
-    fetch = routed(
-        search=results(1, 2),
-        releases={
-            1: searchers.Fetched(note="HTTP 502", status=502),
-            2: release(2, artist="Somebody Else Entirely"),
-        },
-    )
-    hit = searcher(fetch)(ARTIST, TITLE)
-    assert discogs_answer(hit).answer == "unreachable"
-
-
-def test_a_release_read_that_could_not_be_had_gives_way_to_a_later_match():
-    fetch = routed(
-        search=results(1, 2),
-        releases={1: searchers.Fetched(note="HTTP 502", status=502), 2: release(2)},
-    )
-    assert discogs_answer(searcher(fetch)(ARTIST, TITLE)).answer == "matched"
-
-
-def test_a_gone_release_is_passed_over():
-    fetch = routed(
-        search=results(1, 2),
-        releases={1: searchers.Fetched(note="HTTP 404", status=404), 2: release(2)},
-    )
-    assert discogs_answer(searcher(fetch)(ARTIST, TITLE)).answer == "matched"
-    only_gone = routed(search=results(1), releases={1: searchers.Fetched(note="HTTP 404", status=404)})
-    assert discogs_answer(searcher(only_gone)(ARTIST, TITLE)).answer == "miss"
+@pytest.mark.parametrize(
+    ("page", "answer"),
+    [
+        (searchers.Fetched(note="HTTP 403", status=403), "blocked"),
+        (searchers.Fetched(text="<html><title>Just a moment...</title></html>", status=200), "blocked"),
+        (DOWN, "unreachable"),
+        (searchers.Fetched(note="transport failure: timed out"), "unreachable"),
+        (searchers.Fetched(text="<html>captive portal</html>", status=200), "unreachable"),
+        (GONE, "unreachable"),
+        (json.dumps({"pagination": {}}), "parse-break"),
+        (json.dumps([1, 2, 3]), "parse-break"),
+        (json.dumps({"results": [{"title": "no number here"}]}), "parse-break"),
+    ],
+)
+def test_a_search_nobody_can_read_a_result_off_is_unread_and_never_a_miss(page, answer):
+    """A refusal is blocked; an outage, a body that is not JSON, or a search that
+    is gone is unreachable; JSON in an unknown shape is a parse break."""
+    hit = searcher(routed(search=page))(ARTIST, TITLE)
+    assert discogs_answer(hit).answer == answer
+    assert hit.unread == (searchers.DISCOGS,)
 
 
 def test_a_block_on_a_release_read_ends_the_walk_over_releases():
     seen: list[str] = []
-    fetch = routed(
-        search=results(1, 2),
-        releases={1: searchers.Fetched(note="HTTP 403", status=403), 2: release(2)},
-        seen=seen,
+    hit = searcher(_releases(searchers.Fetched(note="HTTP 403", status=403), release(2), seen=seen))(
+        ARTIST, TITLE
     )
-    hit = searcher(fetch)(ARTIST, TITLE)
     assert discogs_answer(hit).answer == "blocked"
     assert f"{searchers.DISCOGS_RELEASE}2" not in seen
 
@@ -963,9 +944,6 @@ def test_a_discogs_blocked_on_every_search_is_named_like_any_shop():
 # H. Round one's fixes
 
 
-BRACKETED = "(Not Just) Knee Deep (Part 1)"
-
-
 def test_a_title_of_brackets_is_searched_whole_and_matches_no_other_track():
     """B1. The shared strip empties this title, which asked Discogs for every
     release by the artist and read the empty remainder as a match."""
@@ -979,18 +957,6 @@ def test_a_title_of_brackets_is_searched_whole_and_matches_no_other_track():
     assert hit.genre is None
     (asked,) = [url for url in seen if url.startswith(searchers.DISCOGS_SEARCH)]
     assert "track=%28Not+Just%29+Knee+Deep&" in asked
-
-
-def test_a_title_of_brackets_still_matches_its_own_track():
-    tracks = [{"position": "A1", "type_": "track", "title": "(Not Just) Knee Deep"}]
-    fetch = routed(search=results(32), releases={32: release(32, artist="Funkadelic", tracks=tracks)})
-    assert discogs_answer(searcher(fetch)("Funkadelic", BRACKETED)).answer == "matched"
-
-
-def test_a_skit_row_matches_no_searched_title():
-    tracks = [{"position": "A1", "type_": "track", "title": "(Skit)"}]
-    fetch = routed(search=results(33), releases={33: release(33, tracks=tracks)})
-    assert discogs_answer(searcher(fetch)(ARTIST, TITLE)).answer == "miss"
 
 
 def test_an_empty_title_on_either_side_matches_nothing():
@@ -1037,11 +1003,6 @@ def test_discogs_names_are_read_as_a_tag_spells_them():
     assert _discogs_name("Prodigy, The") == "The Prodigy"
     assert _discogs_name("Moodymann (2)") == "Moodymann"
     assert _discogs_name("Theo Parrish*") == "Theo Parrish"
-    tracks = [{"position": "1", "type_": "track", "title": "Higher", "artists": [{"name": "Prodigy, The"}]}]
-    fetch = routed(search=results(34), releases={34: release(34, artist="Various", tracks=tracks)})
-    assert discogs_answer(searcher(fetch)("The Orb", "Higher")).answer == "miss"
-    fetch = routed(search=results(35), releases={35: release(35, artist="Moodymann (2)")})
-    assert discogs_answer(searcher(fetch)("Moodymann", TITLE)).answer == "matched"
 
 
 def test_a_pressing_with_no_style_gives_way_to_one_with_styles():
@@ -1052,19 +1013,6 @@ def test_a_pressing_with_no_style_gives_way_to_one_with_styles():
     )
     hit = searcher(fetch)(ARTIST, TITLE)
     assert hit.source_genre == "Deep House" and hit.genre is not None
-
-
-def test_a_track_under_an_index_row_is_read():
-    tracks = [
-        {
-            "position": "A",
-            "type_": "index",
-            "title": "Suite",
-            "sub_tracks": [{"position": "A.1", "type_": "track", "title": TITLE}],
-        }
-    ]
-    fetch = routed(search=results(38), releases={38: release(38, tracks=tracks)})
-    assert discogs_answer(searcher(fetch)(ARTIST, TITLE)).answer == "matched"
 
 
 def test_a_file_searched_only_for_its_picture_is_not_counted_as_owed_discogs(monkeypatch):
@@ -1094,11 +1042,6 @@ def test_a_remaining_count_that_is_not_ascii_digits_is_no_count():
     assert _remaining({searchers.DISCOGS_REMAINING_HEADER: "²"}) is None
     assert _remaining({searchers.DISCOGS_REMAINING_HEADER: " 7 "}) == 7
     assert _remaining({}) is None
-
-
-def test_a_search_answering_404_is_unreachable_not_a_miss():
-    hit = searcher(routed(search=searchers.Fetched(note="HTTP 404", status=404)))(ARTIST, TITLE)
-    assert discogs_answer(hit).answer == "unreachable"
 
 
 def test_the_shipped_asker_sends_the_token_to_discogs_only(monkeypatch):
@@ -1141,18 +1084,6 @@ def test_discogs_chooses_only_a_named_folder_even_on_a_copy_with_no_table():
     assert searchers.choose_word(TAXONOMY, [word], source=searchers.DISCOGS, named_only=True) is None
     fetch = routed(search=results(39), releases={39: release(39, styles=(word,))})
     assert searcher(fetch)(ARTIST, TITLE).genre is None
-
-
-def test_a_styleless_match_beside_an_unread_pressing_is_unread_not_a_match():
-    """Round two: what the unread pressing held is unknown, and a match with no
-    style would let the general catalogue write over it."""
-    fetch = routed(
-        search=results(40, 41),
-        releases={40: release(40, styles=()), 41: searchers.Fetched(note="HTTP 503", status=503)},
-    )
-    hit = searcher(fetch)(ARTIST, TITLE)
-    assert discogs_answer(hit).answer == "unreachable"
-    assert hit.unread == (searchers.DISCOGS,)
 
 
 def test_a_word_resolving_to_the_fallback_is_passed_over_where_its_name_is_not_too_coarse():
