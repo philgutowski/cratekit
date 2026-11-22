@@ -8,7 +8,7 @@
   "invalid_reason": "in progress",
   "baseline_collected": 22663,
   "baseline_exit": 1,
-  "pytest_runs": 19,
+  "pytest_runs": 23,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 8,
   "known_failures": 251,
@@ -735,6 +735,104 @@
       "source": {
         "table": "r368.json",
         "id": "G4_containment_is_equality_only"
+      }
+    },
+    {
+      "id": "r368.G5_paths_compared_as_strings",
+      "description": "the review's finding, restored: compare spellings rather than places",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "466ac2942aab139c",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22663,
+      "baseline_collected": 22663,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    try:\n        return one.samefile(other)\n    except OSError:\n        return one == other\n",
+      "new": "    return one == other\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G5_paths_compared_as_strings"
+      }
+    },
+    {
+      "id": "r368.G8_target_without_the_off_machine_pull_is_allowed",
+      "description": "accept a target with no mirror pull to fill it, which silently becomes a live rollback",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0623083bb1936977",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_with_no_off_machine_pull_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not args.from_backup:\n        raise _target_invalid(\n",
+      "new": "    if False:\n        raise _target_invalid(\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G8_target_without_the_off_machine_pull_is_allowed"
+      }
+    },
+    {
+      "id": "r368.G9_target_beside_a_capture_rollback_is_allowed",
+      "description": "accept a target next to a named session or a discard, which puts two halves on two volumes",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "abb5992a3fb64aa8",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_target_beside_a_capture_rollback_is_refused[extra0]",
+        "tests/test_restore_cli.py::test_a_target_beside_a_capture_rollback_is_refused[extra1]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if args.session_id is not None or args.discard:\n        raise _target_invalid(\n",
+      "new": "    if False:\n        raise _target_invalid(\n",
+      "source": {
+        "table": "r368.json",
+        "id": "G9_target_beside_a_capture_rollback_is_allowed"
       }
     }
   ],
