@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import urlsplit
 
+from cratekit.acquire import provider_session
 from cratekit.acquire.adapter import AdapterAuthFailed, AdapterBroken
 from cratekit.acquire.provider_session import ProviderUnavailable
 from cratekit.core import config, secrets
@@ -633,11 +634,7 @@ def bound() -> bool:
     whether the adapter module imports, which includes its client library. Until
     U62 it returned a constant ``False``.
     """
-    try:
-        importlib.import_module(ADAPTER_MODULE)
-    except ImportError:
-        return False
-    return True
+    return provider_session.importable(ADAPTER_MODULE)
 
 
 #: The session module's remedy, carried into the product's vocabulary. Named per

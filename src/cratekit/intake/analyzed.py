@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from cratekit.cli.output import digest_of
-from cratekit.core import config, convergence, rb_writer, session, snapshot, taxonomy, tree_registry
+from cratekit.core import config, convergence, rb_writer, session, taxonomy, tree_registry
 from cratekit.core.cause import refuse
 from cratekit.intake import native, refill
 from cratekit.write import trees
@@ -248,10 +248,7 @@ def apply_clear(
         ) as gates,
         rb_writer.commit_witness(db) as witness,
     ):
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = trees.attached_capture(gates, cfg, db)
         try:
             playlist = db.get_playlist(ID=plan.playlist_id)
             # ONE PER ROW, though a track the playlist held twice has each of
@@ -261,7 +258,7 @@ def apply_clear(
             )
             rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))
         except BaseException:
-            trees._rollback_quietly(db)
+            trees.rollback_quietly(db)
             if witness.landed:
                 _record_clear_commit(record, plan, removed, cfg)
             raise

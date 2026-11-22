@@ -5093,23 +5093,23 @@ def test_two_spellings_of_one_directory_are_one_directory_however_they_differ(tm
     link = tmp_path / "linked-volumes"
     link.symlink_to(real, target_is_directory=True)
 
-    assert preflight._names_one_path(real, real) is True
-    assert preflight._names_one_path(link, real) is True
+    assert preflight.names_one_path(real, real) is True
+    assert preflight.names_one_path(link, real) is True
     assert preflight._is_a_volume_mount_location(link / "EP", ((real, 1),)) is True
 
     apart = tmp_path / "other"
     apart.mkdir()
-    assert preflight._names_one_path(apart, real) is False
+    assert preflight.names_one_path(apart, real) is False
     # Neither side exists, so nothing can be compared. False is the ACCEPTING
     # direction here and it is what the parts comparison answered too.
-    assert preflight._names_one_path(tmp_path / "a", tmp_path / "b") is False
+    assert preflight.names_one_path(tmp_path / "a", tmp_path / "b") is False
 
     # AND IT IS THE FILESYSTEM'S ANSWER RATHER THAN A NAME COMPARISON, which is
     # what makes it right on a case-SENSITIVE volume as well as on a folding one.
     # Two directories the filesystem calls different stay different here whatever
     # their names spell, which no amount of lower-casing could promise.
     for left, right in ((real, real), (link, real), (apart, real), (real, apart)):
-        assert preflight._names_one_path(left, right) is os.path.samefile(left, right)
+        assert preflight.names_one_path(left, right) is os.path.samefile(left, right)
 
 
 def test_a_symlinked_mount_point_pointing_out_of_the_mount_directory_still_refuses(
@@ -5170,7 +5170,7 @@ def test_a_symlinked_mount_point_that_names_a_real_mount_is_still_a_mounted_volu
 def test_a_declared_mount_directory_absent_from_this_machine_still_names_itself(
     tmp_path, monkeypatch
 ):
-    """ZERO DEATH. The equality shortcut in ``_names_one_path`` killed nothing.
+    """ZERO DEATH. The equality shortcut in ``names_one_path`` killed nothing.
 
     ``samefile`` compares two inodes, so it has to stat both sides, and a
     declared mount directory that is not on this machine has no inode. Without
@@ -5189,7 +5189,7 @@ def test_a_declared_mount_directory_absent_from_this_machine_still_names_itself(
 
     absent = tmp_path.resolve() / "run" / "media"
     assert not absent.exists()
-    assert preflight._names_one_path(absent, absent) is True
+    assert preflight.names_one_path(absent, absent) is True
 
     root = absent / "phil" / "EP_LIBRARY" / "Music"
     monkeypatch.setattr(preflight, "volume_mount_locations", lambda: ((absent, 2),))
@@ -6236,14 +6236,14 @@ def test_one_pair_of_paths_does_not_get_two_answers_decided_by_permission(
     monkeypatch.setattr(preflight, "volume_mount_locations", lambda: ((declared, 1),))
 
     # Stat-able: a real comparison, and a real answer.
-    assert preflight._names_one_path(declared, declared) is True
-    assert preflight._names_one_path(ordinary, declared) is False
+    assert preflight.names_one_path(declared, declared) is True
+    assert preflight.names_one_path(ordinary, declared) is False
 
     sealed.chmod(0o000)
     try:
         # The identical pair, and the answer may not silently become "different".
         with pytest.raises(PermissionError):
-            preflight._names_one_path(ordinary, declared)
+            preflight.names_one_path(ordinary, declared)
         # And the rule built on it refuses rather than finding no slot at all,
         # which is what fell through to the boot disk.
         with pytest.raises(PermissionError):
@@ -6253,7 +6253,7 @@ def test_one_pair_of_paths_does_not_get_two_answers_decided_by_permission(
 
     # Absent on both sides is still a real answer and still False: nothing was
     # refused, the two spellings simply are not one path.
-    assert preflight._names_one_path(tmp_path / "a", tmp_path / "b") is False
+    assert preflight.names_one_path(tmp_path / "a", tmp_path / "b") is False
 
 
 def test_the_database_probe_survives_a_recorded_path_it_cannot_stat(

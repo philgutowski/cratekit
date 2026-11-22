@@ -669,7 +669,7 @@ def _index_locked(action: str = "update"):
     sentence, and the message has to say so or the user is left guessing whether
     a value was stored.
     """
-    config._mkdir_private(_index_lock_path().parent)
+    config.mkdir_private(_index_lock_path().parent)
     handle = None
     try:
         import fcntl

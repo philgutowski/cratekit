@@ -43,7 +43,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from cratekit.cli.output import digest_of
-from cratekit.core import config, convergence, rb_writer, session, snapshot, tree_registry
+from cratekit.core import config, convergence, rb_writer, session, tree_registry
 from cratekit.core.cause import Remedy, refuse
 from cratekit.favorites import placeholders, placement
 from cratekit.write import trees
@@ -406,10 +406,7 @@ def apply(
     with session.assert_gates(
         cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
     ) as gates:
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = trees.attached_capture(gates, cfg, db)
 
         with rb_writer.commit_witness(db) as witness:
             try:
@@ -425,7 +422,7 @@ def apply(
                 if moved:
                     rb_writer.commit_guarded(db)
             except BaseException:
-                trees._rollback_quietly(db)
+                trees.rollback_quietly(db)
                 if witness.landed:
                     _record_order_commit(record, moved=len(moved), cfg=cfg)
                 raise

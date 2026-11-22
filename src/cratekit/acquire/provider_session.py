@@ -50,6 +50,7 @@ report says so.
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import re
@@ -198,6 +199,20 @@ STORE_FAILURES: tuple[type[BaseException], ...] = (
 #: reading it before and after; the class and never the words, since a
 #: credential refusal's words are written for a person setting one up.
 _UNSTORED: list[str] = []
+
+
+def importable(module: str) -> bool:
+    """Whether this build can import ``module``, its client library included.
+
+    What a queueing verb asks so it can warn a person BEFORE they confirm,
+    WITHOUT trying a login: it answers about this build and not this machine,
+    so it reads no credential.
+    """
+    try:
+        importlib.import_module(module)
+    except ImportError:
+        return False
+    return True
 
 
 def unstored() -> tuple[str, ...]:

@@ -190,11 +190,7 @@ def resolve_home(db: Any, name: str) -> Home:
 
 def members(db: Any, playlist_id: str) -> frozenset[str]:
     """The content ids a playlist holds live, the soft deleted rows left out (R-758)."""
-    return frozenset(
-        str(song.ContentID)
-        for song in db.get_playlist_songs(PlaylistID=str(playlist_id))
-        if not rb_writer.membership_removed(song)
-    )
+    return genre_favorites.live_members(db, playlist_id)
 
 
 def filed(db: Any, home: Home) -> frozenset[str]:

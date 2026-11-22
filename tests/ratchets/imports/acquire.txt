@@ -7,7 +7,4 @@
 # A line whose crossing is gone fails nothing.
 dangling labels cratekit.label.registry
 off-interface cratekit.core.binary_refusal
-private cratekit.core.config._exclusive_lock
-private cratekit.core.config._mkdir_private
-private cratekit.core.preflight._names_one_path
 top-level cratekit.label.registry

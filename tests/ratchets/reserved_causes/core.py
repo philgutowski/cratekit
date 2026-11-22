@@ -7,7 +7,6 @@ modules that moved, and put a dated comment on those entries.
 
 KEBAB_LITERALS = {
     'core/active_taxonomy.py': ['config-unusable', 'library-volume-unmounted', 'utf-8'],
-    'core/artifacts.py': ['utf-8'],
     'core/backup_facts.py': [
         'grant-path-access',
         'never-recorded',

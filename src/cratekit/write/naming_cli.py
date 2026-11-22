@@ -36,11 +36,11 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from cratekit.cli import output
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, digest_of, load_config
 from cratekit.core import config, locations, naming, rb_writer, tags
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, refuse
+from cratekit.core.cause import Cause, CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.core.naming import AUDIO_EXTS, MarkerRule, NameBudget, NameSpec, NameTemplate
+from cratekit.core.naming import AUDIO_EXTS, NameBudget, NameSpec, NameTemplate
 from cratekit.write import trees
 
 RENAME = "rename"
@@ -64,32 +64,8 @@ PLAN_SHOWN = 200
 REFERENCED_WHY = "the rekordbox collection references it"
 
 
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("write.naming_cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
-
-
 def _template(cfg: config.Config) -> NameTemplate:
-    return NameTemplate(
-        markers=(MarkerRule(field="lossy", literal=cfg.naming.lossy_marker),)
-    )
-
-
-def _budget(cfg: config.Config) -> NameBudget:
-    return NameBudget(
-        path_budget_bytes=cfg.naming.path_budget_bytes,
-        filename_max_bytes=cfg.naming.filename_max_bytes,
-    )
+    return NameTemplate.lossy(cfg.naming.lossy_marker)
 
 
 def _is_identifier(stem: str) -> bool:
@@ -619,7 +595,7 @@ def _plan_for(root: Path, *, cfg: config.Config) -> dict:
     than sending a person to tag a file whose tag can change nothing.
     """
     template = _template(cfg)
-    budget = _budget(cfg)
+    budget = NameBudget.of(cfg.naming)
     candidates: list[tuple[Path, str]] = []
     uncomposed: list[tuple[Path, str]] = []
     if root.is_dir():
@@ -870,7 +846,7 @@ def _incomplete_cause(
 
 
 def name_apply(ctx) -> Envelope:
-    cfg = _load()
+    cfg = load_config(("write.naming_cli",))
     root = root_folder(ctx.args.root, cfg, verb="name apply")
     plan = _plan_for(root, cfg=cfg)
     spec = ctx.entry.gates[0]
@@ -878,7 +854,7 @@ def name_apply(ctx) -> Envelope:
     if option == "abort":
         return ctx.envelope(data=plan, outcome=Outcome.NO_OP)
     template = _template(cfg)
-    budget = _budget(cfg)
+    budget = NameBudget.of(cfg.naming)
     renames = [item for item in plan["items"] if item["action"] == RENAME]
     # EVERY RENAME THIS RUN OWES AND DID NOT PERFORM, collected by name as it
     # happens (R-172). Each of the branches below used to be a bare ``continue``,

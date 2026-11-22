@@ -96,10 +96,9 @@ def load_config(origin: str) -> config.Config:
     ``origin`` names the shell for the cause, which is the only thing that
     differed between the two copies this replaces.
 
-    THE SAME BODY EXISTS IN ``master/cli.py`` AND ``backup/cli.py`` and is NOT
-    consolidated with them here. Those are other units' files and the shared home
-    for all four would be ``core.config``, which is a wider change than this unit
-    owns. R-232, rather than silently left at four copies.
+    THE SHARED HOME IS ``cli.output.load_config`` since U298, which gives the
+    same cause for ``(origin,)``. This one takes the origin as one string, so it
+    differs in shape and is left for the outbound area's card to fold in.
     """
     try:
         return config.load()

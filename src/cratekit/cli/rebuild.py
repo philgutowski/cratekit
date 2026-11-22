@@ -32,27 +32,12 @@ from __future__ import annotations
 from typing import Any
 
 from cratekit.cli import registry
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config, no_job
 from cratekit.core import active_taxonomy, config, convergence, jobs, tree_registry
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
+from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.write import metadata_cli
 from cratekit.write import rebuild as engine
-
-
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("cli.rebuild",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def build(parser, entry: registry.Entry) -> None:
@@ -83,25 +68,6 @@ def rebuild_argv(job) -> list[str]:
         argv.extend(["--tree", str(tree)])
     argv.extend(["--job", job.job_id])
     return argv
-
-
-def _reported(store, job) -> dict:
-    return {
-        "job_id": job.job_id,
-        "state": str(job.state),
-        "cause": job.cause.to_json() if job.cause is not None else None,
-        "progress": jobs.progress(store, job.job_id),
-    }
-
-
-def _no_op(state: str, **progress: Any) -> dict[str, Any]:
-    """A run that correctly queued nothing.
-
-    ``job_id`` is the empty string rather than None because the schema types it
-    as a string (R-234), which is the same shape ``cratekit.intake.cli`` uses for
-    the same answer.
-    """
-    return {"job_id": "", "state": state, "cause": None, "progress": dict(progress)}
 
 
 def tree_items(entries: tree_registry.Registry, tree_id: str | None) -> tuple[str, ...]:
@@ -204,7 +170,7 @@ def _resume(ctx, store, job_id: str) -> Envelope:
         )
     jobs.raise_for_state(job)
     return ctx.envelope(
-        data=_reported(store, job),
+        data=jobs.reported(store, job),
         outcome=Outcome.OK,
         code=ExitCode.OK,
         warnings=warnings,
@@ -222,7 +188,7 @@ def rebuild(ctx) -> Envelope:
             remedy=Remedy.FIX_COMMAND_LINE,
             steps=("pass the actor flag with the name of the person running this rebuild",),
         )
-    cfg = _load()
+    cfg = load_config(("cli.rebuild",))
     with jobs.open_store() as store:
         if ctx.args.job:
             # THE RESUME READS NO REGISTRY AND NO TREE FLAG. Everything this job
@@ -256,7 +222,7 @@ def rebuild(ctx) -> Envelope:
             # reports as done over a library nothing read.
             native = tree_items(entries, None)
             return ctx.envelope(
-                data=_no_op(
+                data=no_job(
                     # A NATIVE TREE THE TAXONOMY DOES NOT DERIVE IS STILL NATIVE
                     # (U219), so the count is read and the state says which zero.
                     "no-derivable-tree" if native else "no-native-tree",
@@ -275,7 +241,7 @@ def rebuild(ctx) -> Envelope:
             cfg=cfg,
         )
         return ctx.envelope(
-            data=_reported(store, job),
+            data=jobs.reported(store, job),
             outcome=Outcome.OK,
             code=ExitCode.OK,
             # Only a sweep names what it left alone (U219): a rebuild of one
@@ -339,12 +305,12 @@ def _accept_as_it_stands(ctx, cfg: config.Config, declared: Any, tree_id: str) -
         pinned={"since": str(record.since or ""), "reason": str(record.reason or "")},
     )
     if option != "accept":
-        return ctx.envelope(data=_no_op("declined"), outcome=Outcome.NO_OP, code=ExitCode.OK)
+        return ctx.envelope(data=no_job("declined"), outcome=Outcome.NO_OP, code=ExitCode.OK)
     engine.accept_as_it_stands(
         cfg, declared, tree_id, actor=ctx.gate.state.decisions[spec.name].actor
     )
     return ctx.envelope(
-        data=_no_op("accepted", tree=tree_id),
+        data=no_job("accepted", tree=tree_id),
         outcome=Outcome.OK,
         code=ExitCode.OK,
     )

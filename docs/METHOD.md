@@ -230,7 +230,8 @@ table it names, and a replay resumes only from a sidecar of the same commit.
 
 **Behaviour is compared, not argued** (U297). `scripts/behaviour_compare.py
 capture --out DIR` runs the scenarios under `tests/behaviour/`, one file per
-package, on a disposable library under the suite's own isolation with the
+package (or per package and verb where two suites' fixtures share a name), on
+a disposable library under the suite's own isolation with the
 clock and every generated id pinned, and keeps each command's output and exit
 code, every file written with its permission bits, and every database's
 schema, settings and rows. `--rev` runs the same scenarios against another

@@ -32,7 +32,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import (
     active_taxonomy,
     analysis_store,
@@ -41,7 +41,7 @@ from cratekit.core import (
     session,
     tree_registry,
 )
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
+from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.intake import rotate
 
@@ -61,22 +61,6 @@ RECORDS_UNREADABLE = "rotate-records-unreadable"
 LEAVE = "leave alone"
 
 _ORIGIN = ("intake", "rotate_cli")
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("intake.rotate_cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def build(parser, entry) -> None:
@@ -243,7 +227,7 @@ def written(cfg: config.Config, declared, plan: rotate.RotationPlan) -> rotate.R
 
 def inbox_rotate(ctx) -> Envelope:
     """Plan the rotation, ask, then move and remove and read it back."""
-    cfg = _load()
+    cfg = load_config(("intake.rotate_cli",))
     declared = active_taxonomy.load(cfg)
     spec = _approve_gate(ctx.entry)
     # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).

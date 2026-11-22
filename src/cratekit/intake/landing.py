@@ -79,6 +79,7 @@ from cratekit.core import (
 )
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.naming import AUDIO_EXTS, NameTemplate
+from cratekit.core.preflight import device_of as _device_of
 from cratekit.intake import collection_xml, ingest, native
 from cratekit.intake.ingest import PlacedTrack
 from cratekit.write import rbxml, trees
@@ -500,18 +501,6 @@ def plan(folder: Path, cfg: config.Config, batch: str) -> Plan:
 def target_dir(cfg: config.Config, batch: str) -> Path:
     """Where a batch lands, ``library.root / music_dir / <batch>``."""
     return Path(cfg.library.root) / cfg.library.music_dir / batch
-
-
-def _device_of(path: Path) -> int | None:
-    """The device of ``path``, or of its nearest existing ancestor."""
-    probe = path
-    while True:
-        try:
-            return probe.stat().st_dev
-        except OSError:
-            if probe.parent == probe:
-                return None
-            probe = probe.parent
 
 
 def _check_library(cfg: config.Config, folder: Path, target: Path) -> None:

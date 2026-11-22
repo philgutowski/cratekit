@@ -175,11 +175,7 @@ def identity(wanted: match.Wanted) -> dict[str, str]:
     something, so two titles of emoji alone by one artist are two questions:
     one answer about ``💧`` listed its track for a later ``🌊`` row.
     """
-    return {
-        "artist": match.fold(wanted.artist),
-        "title": match.title_identity(wanted.title),
-        "version": wanted.version_key,
-    }
+    return wanted.folded_row()
 
 
 def item_id(wanted: match.Wanted) -> str:

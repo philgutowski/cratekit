@@ -250,9 +250,9 @@ def probe(
     target = layout.files
     if create and not target.is_dir():
         try:
-            config._mkdir_private(target)
+            config.mkdir_private(target)
             if layout.info is not None:
-                config._mkdir_private(layout.info)
+                config.mkdir_private(layout.info)
         except OSError as exc:
             return TrashStatus(layout, False, f"{layout.root} could not be created: {exc}")
     if not target.is_dir():

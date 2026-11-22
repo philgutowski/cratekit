@@ -48,7 +48,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, approving_actor, digest_of
 from cratekit.core import (
     analysis_store,
     config,
@@ -1804,17 +1804,11 @@ def _land_native(
             declared,
             predicted,
             landed.collection,
-            actor=_gate_actor(ctx, spec),
+            actor=approving_actor(ctx, spec),
         )
         warnings.extend(filing.warnings(sorted_in))
         reported = _with_filing(reported, sorted_in)
     return ctx.envelope(data=reported, warnings=warnings)
-
-
-def _gate_actor(ctx, spec) -> str:
-    """Who the run record says answered the landing's gate, as the adopt verb reads it."""
-    decision = ctx.run.decisions.get(spec.name)
-    return decision.actor if decision is not None else ""
 
 
 def _with_filing(reported: dict, filed: filing.Filed) -> dict:

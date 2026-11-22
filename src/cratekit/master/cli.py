@@ -48,10 +48,9 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import config, jobs
-from cratekit.core.cause import Cause, CratekitError, Remediation, refuse
-from cratekit.core.exit_codes import Remedy
+from cratekit.core.cause import refuse
 from cratekit.modules.tools import mastering
 
 #: Payload keys this build freezes. Named once so the handler and the argv
@@ -69,30 +68,6 @@ PARTS = "parts"
 #: default target, which is what every job queued before this key existed asked
 #: for, so an old payload resumes as the run it was.
 TARGET_LUFS = "target_lufs"
-
-
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("master.cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
-
-
-def _reported(store, job) -> dict:
-    return {
-        "job_id": job.job_id,
-        "state": str(job.state),
-        "cause": job.cause.to_json() if job.cause is not None else None,
-        "progress": jobs.progress(store, job.job_id),
-    }
 
 
 def build(parser, entry) -> None:
@@ -299,30 +274,17 @@ def master_recording(ctx) -> Envelope:
     # known now, and queueing it would park a job whose only possible outcome is
     # that refusal, discovered by whoever resumes it.
     settings_for(ctx.args.lufs)
-    cfg = _load()
+    cfg = load_config(("master.cli",))
     with jobs.open_store() as store:
         if ctx.args.job:
             # RECONCILE FIRST. A resume arrives after something stopped, and a
             # claim left behind by a driver that died is state the queue cannot
             # see for itself.
             job = jobs.reconcile(store, ctx.args.job)
-            warnings: tuple[dict[str, str], ...] = ()
-            if job.is_open():
-                # The step that was missing until U46. Everything above this line
-                # already worked; nothing below it ever ran an item. A total
-                # failure raises out of here rather than reaching the report,
-                # which is correct: the engine has already recorded the job as
-                # failed and the refusal carries the item's own cause.
-                _, warnings = ctx.run_job(store, job)
-                job = jobs.get(store, job.job_id)
-            # A JOB THAT DID NOT END CLEANLY IS NOT AN OK EXIT, and this branch
-            # returned one for every such job until R-225 was closed here. A
-            # total failure raises out of the drive above, and nothing else did:
-            # a job already failed on entry, a cancelled one and a parked one all
-            # reached the report and exited 0. OUTSIDE the ``is_open`` branch so
-            # the second ask about a failed job answers the way the first did.
-            jobs.raise_for_state(job)
-            return ctx.envelope(data=_reported(store, job), warnings=warnings)
+            # The drive was missing until U46, and a job that did not end
+            # cleanly exited 0 here until R-225: both are ``jobs.resumed``'s now.
+            job, warnings = jobs.resumed(ctx, store, job)
+            return ctx.envelope(data=jobs.reported(store, job), warnings=warnings)
         # THE RECORDING IS NOT STATTED HERE, deliberately. Queueing needs neither
         # the file nor ffmpeg, and a stat in this handler would make the verb
         # refuse on a machine where the work would have run fine later. The cost
@@ -348,7 +310,7 @@ def master_recording(ctx) -> Envelope:
         # written: queueing opens no audio file. A warning rather than a data
         # key, because ``job_state/1`` declares its fields and refuses an extra.
         notices = (join_order_warning(frozen_parts(payload)),) if PARTS in payload else ()
-        return ctx.envelope(data=_reported(store, job), warnings=notices)
+        return ctx.envelope(data=jobs.reported(store, job), warnings=notices)
 
 
 def run_master(payload: dict[str, Any], *, runner=mastering.subprocess_runner) -> dict:
@@ -417,7 +379,7 @@ def staging_dir(final: Path, job_id: str, ordinal: int) -> Path:
     directory = final.parent / MASTER_STAGING_DIRNAME / job_id / str(ordinal)
     if directory.exists():
         shutil.rmtree(directory)
-    config._mkdir_private(directory)
+    config.mkdir_private(directory)
     return directory
 
 

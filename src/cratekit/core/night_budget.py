@@ -42,6 +42,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from cratekit.cli.output import count_of
 from cratekit.core import config, provider_gate
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import Remedy
@@ -119,12 +120,6 @@ def _unreadable(why: str, path: Path) -> CratekitError:
     )
 
 
-def _int(value: Any) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        return None
-    return value
-
-
 def read(path: Path | None = None) -> Ledger:
     """The ledger, an empty one when there is none yet, and a refusal when the
     file exists and cannot be understood."""
@@ -142,11 +137,11 @@ def read(path: Path | None = None) -> Ledger:
     if not isinstance(data, dict) or data.get("schema") != SCHEMA:
         raise _unreadable("the night budget's ledger is not one this build reads", target)
     night = data.get("night")
-    spent = _int(data.get("spent"))
+    spent = count_of(data.get("spent"))
     opened = data.get("open")
     start = None
     if opened is not None:
-        start = _int(opened.get("start")) if isinstance(opened, dict) else None
+        start = count_of(opened.get("start")) if isinstance(opened, dict) else None
         if start is None:
             raise _unreadable("the night budget's ledger holds a mark it cannot read", target)
     if spent is None or (night is not None and not isinstance(night, str)):
@@ -155,7 +150,7 @@ def read(path: Path | None = None) -> Ledger:
 
 
 def _write(ledger: Ledger, path: Path) -> None:
-    config._mkdir_private(path.parent)
+    config.mkdir_private(path.parent)
     payload = json.dumps(ledger.to_json(), indent=2, sort_keys=True) + "\n"
     config.atomic_write_bytes(payload.encode("utf-8"), path)
 

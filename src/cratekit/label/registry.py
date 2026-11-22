@@ -585,14 +585,9 @@ class RegistryStore:
             return held
 
     def _read(self) -> Registry:
-        if not self.path.exists():
+        found, raw = config.read_json(self.path, self._unusable)
+        if not found:
             return empty()
-        try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
-        except OSError as exc:
-            raise self._unusable("it could not be opened") from exc
-        except ValueError as exc:
-            raise self._unusable("it is not JSON") from exc
         if isinstance(raw, Mapping) and raw.get("version") not in (None, REGISTRY_VERSION):
             raise self._unusable(
                 f"it says version {raw.get('version')!r} and this build writes "
@@ -624,7 +619,7 @@ class RegistryStore:
         not free even when the entries are equal: ``recognize`` drops a record it
         cannot read, so saving what it loaded discards that record from the file.
         """
-        lock = config._exclusive_lock(self.lock_path)
+        lock = config.exclusive_lock(self.lock_path)
         try:
             lock.__enter__()
         except config.ConfigLockUnavailable as exc:

@@ -14,8 +14,9 @@ two captures and prints every difference (U297).
 WHAT A CAPTURE IS
 -----------------
 A scenario is a test function in a file under `tests/behaviour/`, one file per
-package, that drives real `crate` commands through the dispatcher on a library
-the suite's own fixtures build. Per command the capture holds the arguments,
+package or, where two suites' fixtures share a name, per package and verb,
+that drives real `crate` commands through the dispatcher on a library the
+suite's own fixtures build. Per command the capture holds the arguments,
 standard output, standard error and the exit code. After the scenario it holds
 every file under the scenario's temporary directory, by path and bytes, and
 every SQLite database there as a sorted dump of every table.

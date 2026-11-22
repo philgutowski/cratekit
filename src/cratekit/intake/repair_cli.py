@@ -25,10 +25,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from cratekit.cli import output
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, digest_of, load_config
 from cratekit.core import config, locations, naming, review
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, refuse
-from cratekit.core.exit_codes import Remedy
+from cratekit.core.cause import Cause, Outcome, Scope, refuse
 from cratekit.intake import repair
 from cratekit.write import naming_cli
 
@@ -50,21 +49,6 @@ _HELD = (REFERENCED, COLLIDES, UNUSABLE)
 _NEEDS_A_PERSON = (REFERENCED, UNUSABLE)
 
 
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("intake.repair_cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
-
-
 def build_repair_paths(parser, entry) -> None:
     parser.add_argument(
         "--root",
@@ -83,7 +67,7 @@ def build_repair_paths(parser, entry) -> None:
 
 
 def repair_paths(ctx) -> Envelope:
-    cfg = _load()
+    cfg = load_config(("intake.repair_cli",))
     if ctx.args.apply:
         return _apply(ctx, cfg)
     root = naming_cli.root_folder(ctx.args.root, cfg, verb="repair paths")

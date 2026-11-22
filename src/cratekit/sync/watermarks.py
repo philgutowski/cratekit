@@ -16,10 +16,9 @@ written only when it has something in it. It never holds a title (D5).
 from __future__ import annotations
 
 import json
-from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 from cratekit.cli.output import timestamp
 from cratekit.core import config
@@ -74,13 +73,10 @@ class WatermarkStore:
             detail={"problem": what, "path": str(self.path)},
         )
 
-    @contextmanager
-    def _locked(self) -> Iterator[None]:
-        lock = config._exclusive_lock(self.lock_path)
-        try:
-            lock.__enter__()
-        except config.ConfigLockUnavailable as exc:
-            raise refuse(
+    def _locked(self):
+        return config.held(
+            self.lock_path,
+            lambda exc: refuse(
                 "sync-watermark-unusable",
                 f"the source watermark could not be locked ({exc}), and "
                 f"advancing it unlocked discards whatever a second increment is "
@@ -89,21 +85,13 @@ class WatermarkStore:
                 scope=Scope.RUN,
                 origin=("sync.watermarks",),
                 detail={"lock": str(self.lock_path)},
-            ) from exc
-        try:
-            yield
-        finally:
-            lock.__exit__(None, None, None)
+            ),
+        )
 
     def _load(self) -> dict[str, SourceWatermark]:
-        if not self.path.exists():
+        found, raw = config.read_json(self.path, self._unusable)
+        if not found:
             return {}
-        try:
-            raw = json.loads(self.path.read_text(encoding="utf-8"))
-        except OSError as exc:
-            raise self._unusable("it could not be opened") from exc
-        except ValueError as exc:
-            raise self._unusable("it is not JSON") from exc
         return self._recognize(raw)
 
     def _recognize(self, raw: Any) -> dict[str, SourceWatermark]:

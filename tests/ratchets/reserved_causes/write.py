@@ -34,17 +34,17 @@ KEBAB_LITERALS = {
         'row-absent',
         'soft-delete-marker-unreadable',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'write/metadata_cli.py': [
-        'config-unusable',
         'library-paths-majority-unresolved',
         'mytags-vocals',
         'utf-8',
         'vocal-calibration-unreadable',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'write/naming_cli.py': [
         'collection-row-unmapped',
         'collection-unreadable',
-        'config-unusable',
         'rename-incomplete',
         'root-folder-missing',  # 2026-11-01, U169
     ],
@@ -64,8 +64,8 @@ KEBAB_LITERALS = {
         'unconverged-tree',
         'vocal-dimension-not-compared',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'write/routing_cli.py': [
-        'config-unusable',
         'governed-tree-absent',
         'inbox-empty',
         'inbox-export',
@@ -112,9 +112,8 @@ KEBAB_LITERALS = {
         'repair-rows',
         'whitelist-violation',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'write/row_defaults_cli.py': [
-        'config-unusable',
-        'internal-error',
         'rows-defaults-nothing-to-write',
         'rows-defaults-written',
         'rows-file-id-undecidable',
@@ -131,9 +130,8 @@ KEBAB_LITERALS = {
         'repair-link',
         'whitelist-violation',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'write/row_link_cli.py': [
-        'config-unusable',
-        'internal-error',
         'rows-link-nothing-to-write',
         'rows-link-written',
     ],
@@ -187,11 +185,12 @@ LITERAL_HOLDERS = {
         'session-committed-unverified',
     ],
     'write/metadata.py': ['rating-scale-unknown', 'refused-by-policy', 'soft-delete-marker-unreadable'],
-    'write/metadata_cli.py': ['config-unusable', 'library-paths-majority-unresolved', 'vocal-calibration-unreadable'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'write/metadata_cli.py': ['library-paths-majority-unresolved', 'vocal-calibration-unreadable'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'write/naming_cli.py': [
         'collection-row-unmapped',
         'collection-unreadable',
-        'config-unusable',
         'rename-incomplete',
         'root-folder-missing',  # 2026-11-01, U169
     ],
@@ -206,8 +205,8 @@ LITERAL_HOLDERS = {
         'routing-destination-renamed',
         'tree-unconverged',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'write/routing_cli.py': [
-        'config-unusable',
         'governed-tree-absent',
         'intake-flow-absent',
         'internal-error',
@@ -230,7 +229,6 @@ LITERAL_HOLDERS = {
         'library-directory-missing',
         'whitelist-violation',
     ],
-    'write/row_defaults_cli.py': ['config-unusable', 'internal-error'],
     'write/row_link.py': [
         'decision-stale',
         'internal-error',
@@ -241,7 +239,6 @@ LITERAL_HOLDERS = {
         'link-value-unheld',
         'whitelist-violation',
     ],
-    'write/row_link_cli.py': ['config-unusable', 'internal-error'],
     'write/trees.py': ['catalog-tree-undeclared', 'internal-error'],
 }
 

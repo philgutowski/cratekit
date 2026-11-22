@@ -16,4 +16,3 @@ dangling favorites cratekit.favorites.refresh_cli
 dangling favorites cratekit.favorites.split_cli
 dangling labels cratekit.label.catalogue
 dangling labels cratekit.label.cli
-private cratekit.write.trees._rollback_quietly

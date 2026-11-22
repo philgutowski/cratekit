@@ -201,6 +201,30 @@ class NameTemplate:
     #: padding stage cannot push a fitted name over the ceiling.
     budget_key_pad: str = "camelot2"
 
+    @classmethod
+    def lossy(cls, marker: str) -> NameTemplate:
+        """The library's shape: the lossy marker inside the head, in config's text.
+
+        One constructor for every caller, since this module imports no
+        configuration and each of them built the rule for itself. An empty
+        marker is refused, by the template's own check of its marker rules.
+        """
+        return cls(markers=(MarkerRule(field="lossy", literal=marker),))
+
+    @classmethod
+    def lossy_if_marked(cls, marker: str | None) -> NameTemplate:
+        """:meth:`lossy`, or the plain shape when configuration holds no marker text.
+
+        THE MARKER IS THE POINT. R21 makes a lossy copy carry a marker inside
+        its name, and a template that does not declare the marker cannot strip
+        it, so the marked copy and its lossless twin fold to two recordings. A
+        configuration with no marker text is one where no file carries a
+        marker, and refusing a whole run over it would turn a naming policy
+        into a reason a match cannot happen at all.
+        """
+        text = (marker or "").strip()
+        return cls.lossy(text) if text else cls()
+
     def __post_init__(self) -> None:
         for name in self.head_fields:
             if name not in HEAD_FIELDS:
@@ -263,6 +287,14 @@ class NameBudget:
     #: it lives here with a default: 6 hex characters is 24 bits of collision
     #: space against a population of one library's long titles.
     hash_len: int = 6
+
+    @classmethod
+    def of(cls, naming) -> NameBudget:
+        """The two ceilings as a configuration's ``naming`` section holds them."""
+        return cls(
+            path_budget_bytes=naming.path_budget_bytes,
+            filename_max_bytes=naming.filename_max_bytes,
+        )
 
 
 @dataclass(frozen=True)

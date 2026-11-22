@@ -32,10 +32,9 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import active_taxonomy, config, rb_writer
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
-from cratekit.core.exit_codes import Remedy
+from cratekit.core.cause import CratekitError, Outcome
 from cratekit.tagging import backlog, published, rows, searchers, suggest
 from cratekit.write import metadata_cli
 
@@ -52,22 +51,6 @@ _BLOCKED = "the needs genre backlog cannot be read"
 
 #: How many words or identifiers a sentence names. The payload carries all.
 _NAMED = 5
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("tagging.backlog_cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def build(parser, entry) -> None:
@@ -119,7 +102,8 @@ def read_plan(cfg: config.Config, declared, catalogue: bool, progress) -> backlo
         rb_writer.close_db(db)
 
 
-def _named(values: list[str]) -> str:
+def named(values: list[str]) -> str:
+    """The first few of ``values`` as a clause, and how many more there are."""
     shown = ", ".join(values[:_NAMED])
     more = len(values) - _NAMED
     return shown + (f" and {more} more" if more > 0 else "")
@@ -135,7 +119,7 @@ def advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
                 "message": (
                     f"{len(asked)} genre word(s) no folder takes are carried by "
                     f"{sum(word.rows for word in asked)} row(s): "
-                    f"{_named([f'{word.spelling} ({word.rows})' for word in asked])}; "
+                    f"{named([f'{word.spelling} ({word.rows})' for word in asked])}; "
                     f"each has one question, an alias, its own folder or left by "
                     f"hand, with the recommendation first"
                 ),
@@ -164,25 +148,25 @@ def advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
     if unread.refused:
         parts.append(
             f"the catalogues could not be read for {len(unread.refused)} row(s), "
-            f"{_named(list(unread.refused))}, so those were weighed from the library alone"
+            f"{named(list(unread.refused))}, so those were weighed from the library alone"
         )
     if unread.partly:
         parts.append(
             f"{unread.partly_by} could not be read for {len(unread.partly)} row(s) "
-            f"another catalogue answered, {_named(list(unread.partly))}, so those were "
+            f"another catalogue answered, {named(list(unread.partly))}, so those were "
             f"weighed without it"
         )
     if unread.no_token:
         parts.append(
             f"Discogs was not asked about {len(unread.no_token)} row(s), "
-            f"{_named(list(unread.no_token))}, because no Discogs token is recorded, so "
+            f"{named(list(unread.no_token))}, because no Discogs token is recorded, so "
             f"those were weighed from the library alone; to record one: "
             f"{searchers.DISCOGS_LOGIN_STEPS}"
         )
     if unread.token_unusable:
         parts.append(
             f"Discogs was not read for {len(unread.token_unusable)} row(s), "
-            f"{_named(list(unread.token_unusable))}, because the recorded Discogs token "
+            f"{named(list(unread.token_unusable))}, because the recorded Discogs token "
             f"could not be used, so those were weighed without it; to record a new one: "
             f"{searchers.DISCOGS_LOGIN_STEPS}"
         )
@@ -208,7 +192,7 @@ def advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
                 "message": (
                     f"{backlog.ROWS_VERB} would also write a genre no folder takes onto "
                     f"{len(plan.joining)} row(s) adoption files today, "
-                    f"{_named(list(plan.joining))}, moving them into needs genre; the "
+                    f"{named(list(plan.joining))}, moving them into needs genre; the "
                     f"projection counts them, and --leave holds a row out"
                 ),
             }
@@ -270,7 +254,7 @@ def _proposed_detail(plan: backlog.Backlog) -> str:
     parts = [f"{count} {genre} from {source}" for (genre, source), count in ordered]
     return (
         f"{len(plan.proposals)} row(s) with no genre have a proposal at {backlog.FLOOR} or "
-        f"better: {_named(parts)}; each item carries its votes and share"
+        f"better: {named(parts)}; each item carries its votes and share"
     )
 
 
@@ -395,7 +379,7 @@ def _payload(plan: backlog.Backlog) -> dict[str, Any]:
 
 def tag_backlog(ctx) -> Envelope:
     """Sort the needs genre backlog by cause and name the campaign. Writes nothing."""
-    cfg = _load()
+    cfg = load_config(("tagging.backlog_cli",))
     declared = active_taxonomy.load(cfg)
     plan = read_plan(
         cfg, declared, bool(getattr(ctx.args, "catalogue", False)), getattr(ctx, "progress", None)
@@ -417,6 +401,7 @@ __all__ = [
     "advisories",
     "build",
     "checks",
+    "named",
     "read_plan",
     "tag_backlog",
 ]

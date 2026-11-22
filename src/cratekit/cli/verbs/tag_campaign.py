@@ -187,21 +187,6 @@ def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
     parser.set_defaults(_handler=tag_campaign)
 
 
-def _confirm_gate(entry: registry.Entry) -> registry.GateSpec:
-    """The verb's own gate by name, never by position, as ``tag rows`` finds it."""
-    for spec in entry.gates:
-        if spec.name == CONFIRM_GATE:
-            return spec
-    raise refuse(
-        "internal-error",
-        f"{entry.name} declares no gate named {CONFIRM_GATE!r}, so there is no "
-        f"question to ask before it writes",
-        remedy=Remedy.REPORT_DEFECT,
-        origin=_ORIGIN,
-        detail={"verb": entry.name, "gate": CONFIRM_GATE},
-    )
-
-
 # ---------------------------------------------------------------------------
 # The answers
 # ---------------------------------------------------------------------------
@@ -548,7 +533,7 @@ def _notes(plan: backlog.Backlog, words: tuple[WordPlan, ...]) -> list[dict[str,
                 "message": (
                     f"{backlog.ROWS_VERB} would write a genre no folder takes onto "
                     f"{len(plan.joining)} row(s) adoption files today, "
-                    f"{_named(list(plan.joining))}, moving them into needs genre; the "
+                    f"{backlog_cli.named(list(plan.joining))}, moving them into needs genre; the "
                     f"campaign holds each of them out and writes them nothing"
                 ),
             }
@@ -825,12 +810,6 @@ def _followers(plan: backlog.Backlog, words: tuple[WordPlan, ...]) -> dict[str, 
 # ---------------------------------------------------------------------------
 
 
-def _named(values: list[str]) -> str:
-    shown = ", ".join(values[:_NAMED])
-    more = len(values) - _NAMED
-    return shown + (f" and {more} more" if more > 0 else "")
-
-
 def _report(data: dict[str, Any], steps: list[Step], before: int, after: int) -> dict[str, Any]:
     data["totals"] = {
         **data["totals"],
@@ -892,7 +871,7 @@ def _warnings(
                 "code": MOVED,
                 "message": (
                     f"{len(moved)} row(s) were not as the plan showed them once the steps "
-                    f"before reached them, {_named(moved)}, and were left; a row is "
+                    f"before reached them, {backlog_cli.named(moved)}, and were left; a row is "
                     f"written only as it was shown, and the next run shows each again"
                 ),
             }
@@ -921,7 +900,7 @@ def _warnings(
                 "code": ROWS_LEFT,
                 "message": (
                     f"{len(left)} row(s) the campaign meant to write were left ({reasons}), "
-                    f"{_named(sorted(left))}; " + "; ".join(advice)
+                    f"{backlog_cli.named(sorted(left))}; " + "; ".join(advice)
                 ),
             }
         )
@@ -945,7 +924,7 @@ def _warnings(
             {
                 "code": WORDS_LEFT,
                 "message": (
-                    f"{len(words_left)} word(s) were left for hand tagging, {_named(words_left)}; "
+                    f"{len(words_left)} word(s) were left for hand tagging, {backlog_cli.named(words_left)}; "
                     f"answer one with --alias WORD=GENRE or --folder WORD on a later run"
                 ),
             }
@@ -972,7 +951,7 @@ def tag_campaign(ctx: "Context") -> Envelope:
     """Plan the backlog, check the answers, ask once, then run each step in order."""
     cfg = tail.load_config(_ORIGIN)
     declared = active_taxonomy.load(cfg)
-    spec = _confirm_gate(ctx.entry)
+    spec = output.confirm_gate(ctx.entry, CONFIRM_GATE, origin=_ORIGIN)
     # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
     session.assert_backup_acknowledged(cfg)
 

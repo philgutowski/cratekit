@@ -1009,7 +1009,7 @@ class Gate:
             return _State()
 
     def _write(self, state: _State) -> None:
-        config._mkdir_private(self.path.parent)
+        config.mkdir_private(self.path.parent)
         payload = json.dumps(state.to_json(), indent=2, sort_keys=True) + "\n"
         config.atomic_write_bytes(payload.encode("utf-8"), self.path)
 
@@ -1039,7 +1039,7 @@ class Gate:
         holder unlinking the name while another creates a fresh file at it is
         how two processes each hold "the" lock.
         """
-        config._mkdir_private(self.lock_path.parent)
+        config.mkdir_private(self.lock_path.parent)
         fd = os.open(self.lock_path, os.O_CREAT | os.O_RDWR, config.PRIVATE_FILE_MODE)
         try:
             try:

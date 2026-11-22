@@ -1755,8 +1755,8 @@ FILESYSTEM_MUTATIONS = frozenset(
 #: the tree trips it today, which is the only reason the suite was green.
 #:
 #: A bare name is still qualified INSIDE the module that defines it, which is
-#: what ``_writer_names_of`` carries into the audit: a call to ``_mkdir_private``
-#: with no receiver, in ``config.py``, is ``config._mkdir_private``.
+#: what ``_writer_names_of`` carries into the audit: a call to ``mkdir_private``
+#: with no receiver, in ``config.py``, is ``config.mkdir_private``.
 #:
 #: None of these is reachable from correct code in this package: a report is
 #: HANDED a ``Config`` by its caller and neither loads nor saves one, and
@@ -1776,8 +1776,14 @@ FILESYSTEM_MUTATIONS = frozenset(
 QUALIFIED_MUTATIONS = frozenset(
     {
         "config._back_up_version",
-        "config._exclusive_lock",
-        "config._mkdir_private",
+        "config.exclusive_lock",
+        # U298: the lock every state store shared, in its four forms. Each
+        # creates the lock file, and the directory above it, when it is absent.
+        "config.flock_exclusive",
+        "config.held",
+        "config.lock_now",
+        "config.lock_within",
+        "config.mkdir_private",
         "config._write_lock",
         "config.load",
         "config.load_from_path",
@@ -1824,6 +1830,9 @@ QUALIFIED_MUTATIONS = frozenset(
         "rb_writer.write_lock_path",
         "rb_writer.write_session_lock",
         "reconcile._locked",
+        # U298: the mode the convergence lock is held to, handed to
+        # ``config.flock_exclusive`` as its hardening.
+        "reconcile._own_only",
         "reconcile._write",
         "reconcile.close_marker",
         "reconcile.record_markers",
@@ -1858,6 +1867,10 @@ QUALIFIED_MUTATIONS = frozenset(
         "tree_registry.record_cutover",
         "tree_registry.revert_cutover",
         "tree_registry.write",
+        # U298: the one config load every verb's shell shares. It calls
+        # ``config.load``, which writes the file back, so it is a writer by the
+        # rule above, and a report is HANDED its configuration and loads none.
+        "output.load_config",
     }
 )
 
@@ -3735,8 +3748,8 @@ def _receiver_module(
 def _writer_names_of(dotted: str) -> frozenset[str]:
     """The qualified writers one module's OWN bare names spell.
 
-    Inside ``config.py`` a call to ``_mkdir_private`` has no receiver, and it is
-    still ``config._mkdir_private``: a bare name inside a module is qualified by
+    Inside ``config.py`` a call to ``mkdir_private`` has no receiver, and it is
+    still ``config.mkdir_private``: a bare name inside a module is qualified by
     that module. Without this the audit would stop seeing the shape it exists for
     the moment the generic names became receiver qualified, which is the way a
     fix for over-restriction turns into a hole.
@@ -5355,7 +5368,7 @@ def test_the_allowlist_admits_no_writer_this_guard_cannot_name():
     nothing exercises the claim.
 
     ``cratekit.core.config`` exposes ``save``, ``load_from_path``,
-    ``atomic_write_bytes``, ``_mkdir_private`` and an ``_exclusive_lock`` that
+    ``atomic_write_bytes``, ``mkdir_private`` and an ``exclusive_lock`` that
     chmods; ``cratekit.core.naming``, which ``duplicates`` imports already,
     exposes ``claim_target``, which opens a file. A report module calling any of
     them wrote a file with no forbidden import and no forbidden call name

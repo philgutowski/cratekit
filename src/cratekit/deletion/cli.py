@@ -25,26 +25,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, digest_of, load_config
 from cratekit.core import config, rb_writer, review
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
-from cratekit.core.exit_codes import Remedy
+from cratekit.core.cause import Outcome
 from cratekit.deletion import run
-
-
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("deletion.cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def _open(cfg: config.Config) -> Any:
@@ -156,7 +140,7 @@ def review_removals(ctx) -> Envelope:
     who confirmed the set watches it go; a detached child would rebuild a plan
     that nobody digested, which is what the explicit gate exists to prevent.
     """
-    cfg = _load()
+    cfg = load_config(("deletion.cli",))
     spec = ctx.entry.gates[0]
     handle = _open(cfg)
     try:

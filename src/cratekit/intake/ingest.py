@@ -38,7 +38,7 @@ from cratekit.core import (
     tree_registry,
 )
 from cratekit.core.cause import Remedy, refuse
-from cratekit.core.naming import AUDIO_EXTS, MarkerRule, NameSpec, NameTemplate
+from cratekit.core.naming import AUDIO_EXTS, NameSpec, NameTemplate
 from cratekit.intake import collection_xml
 from cratekit.write import rbxml, routing_pass
 from cratekit.write.routing_pass import RoutingIntent
@@ -266,9 +266,7 @@ class PlacedTrack:
 
 
 def _template_for(cfg: config.Config) -> NameTemplate:
-    return NameTemplate(
-        markers=(MarkerRule(field="lossy", literal=cfg.naming.lossy_marker),)
-    )
+    return NameTemplate.lossy(cfg.naming.lossy_marker)
 
 
 def assert_not_staging(path: Path, cfg: config.Config) -> None:

@@ -67,7 +67,6 @@ from cratekit.core import (
     rb_writer,
     review,
     session,
-    snapshot,
     taxonomy,
 )
 from cratekit.core.cause import Remedy, refuse
@@ -1486,16 +1485,13 @@ def apply_alone(
         ) as gates,
         rb_writer.commit_witness(db) as witness,
     ):
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = trees.attached_capture(gates, cfg, db)
         try:
             written = write_members(db, plan)
             assert written.playlist_id, "a plan with members writes"
             rb_writer.commit_guarded(db)
         except BaseException:
-            trees._rollback_quietly(db)
+            trees.rollback_quietly(db)
             if witness.landed and written is not None:
                 _record_set_commit(record, written, plan, cfg)
             raise

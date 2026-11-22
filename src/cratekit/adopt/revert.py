@@ -152,7 +152,31 @@ LOCK_KEY = "adoption_locks"
 SCHEMA_VERSION = 1
 
 
-class RevertLedgerUnreadable(CratekitError):
+class LedgerUnreadable(CratekitError):
+    """One of adoption's two ledgers exists and cannot be understood.
+
+    One slug covers every way either file can be wrong and the REMEDY is what
+    differs. ``document`` is the state key of the ledger a subclass is about.
+    """
+
+    document: str
+
+    def __init__(self, message: str, *, path: Path, remedy: Remedy) -> None:
+        super().__init__(
+            Cause(
+                reason="adoption-ledger-unusable",
+                message=message,
+                remediation=Remediation(remedy=remedy),
+                scope=Scope.RUN,
+                origin=("adopt",),
+                detail={"path": str(path), "document": self.document},
+            )
+        )
+        self.path = path
+        self.remedy = remedy
+
+
+class RevertLedgerUnreadable(LedgerUnreadable):
     """The revert ledger exists and cannot be understood.
 
     Deliberately NOT collapsed into "no records". An empty ledger reads as
@@ -164,19 +188,7 @@ class RevertLedgerUnreadable(CratekitError):
     corrupt one asks for the doctor.
     """
 
-    def __init__(self, message: str, *, path: Path, remedy: Remedy) -> None:
-        super().__init__(
-            Cause(
-                reason="adoption-ledger-unusable",
-                message=message,
-                remediation=Remediation(remedy=remedy),
-                scope=Scope.RUN,
-                origin=("adopt",),
-                detail={"path": str(path), "document": STATE_KEY},
-            )
-        )
-        self.path = path
-        self.remedy = remedy
+    document = STATE_KEY
 
 
 class AdoptedFileUnidentifiable(CratekitError):
@@ -746,15 +758,15 @@ def read(cfg: config.Config) -> RevertLedger:
     """
     path = path_for(cfg)
     try:
-        raw = path.read_bytes()
-    except FileNotFoundError:
-        return EMPTY
+        raw = config.read_bytes_if_present(path)
     except OSError as exc:
         raise RevertLedgerUnreadable(
             f"{path} exists and could not be read: {exc}",
             path=path,
             remedy=Remedy.RUN_DOCTOR,
         ) from exc
+    if raw is None:
+        return EMPTY
 
     try:
         data = json.loads(raw.decode("utf-8"))
@@ -1726,7 +1738,7 @@ def snapshot_before_write(
     that is still held when the write happens.
     """
     resolved = Path(path)
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         _ledger, record = _record_locked(
             cfg,
             resolved,
@@ -1791,7 +1803,7 @@ def write_tag_with_record(
     reaches back into this module hangs forever rather than raising.
     """
     resolved = Path(path)
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         ledger, record = _record_locked(
             cfg,
             resolved,
@@ -2339,7 +2351,7 @@ def revert_tags(
     failed: dict[tuple[str, str], str] = {}
     forced = {(str(path), str(field)) for path, field in force}
     _bring_the_bytes_within_reach(cfg, entry_id=entry_id, forced=forced)
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         ledger = read(cfg)
         selected = tuple(
             record

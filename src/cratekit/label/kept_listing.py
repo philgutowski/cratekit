@@ -232,16 +232,6 @@ def _unusable(path: Path, what: str) -> CratekitError:
     )
 
 
-def _instant(raw: Any) -> datetime | None:
-    if not isinstance(raw, str):
-        return None
-    try:
-        moment = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    return moment if moment.tzinfo is not None else None
-
-
 def _strings(raw: Any) -> bool:
     return isinstance(raw, list) and all(isinstance(one, str) for one in raw)
 
@@ -341,16 +331,9 @@ class KeptListing:
         label_id = str(entry.label_id)
         asked = asked_for(entry)
         path = path_for(label_id)
-        if not path.exists():
+        raw = config.read_json_map(path, lambda why: _unusable(path, why))
+        if raw is None:
             return cls(label_id, asked, {}, path=path)
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except OSError as exc:
-            raise _unusable(path, "it could not be opened") from exc
-        except ValueError as exc:
-            raise _unusable(path, "it is not JSON") from exc
-        if not isinstance(raw, Mapping):
-            raise _unusable(path, f"the document is a {type(raw).__name__}, not a map")
         version = raw.get("version")
         if version != VERSION:
             raise _unusable(
@@ -371,7 +354,7 @@ class KeptListing:
             for key, value in answers.items():
                 if not isinstance(value, Mapping):
                     raise _unusable(path, f"the {section} answer {key!r} is not a map")
-                read_at = _instant(value.get("read_at"))
+                read_at = kept_reads._instant(value.get("read_at"))
                 if read_at is None:
                     raise _unusable(path, f"the {section} answer {key!r} carries no instant")
                 if not _valid(section, value.get("value")):

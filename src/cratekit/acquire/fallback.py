@@ -466,11 +466,7 @@ def identity(wanted: match.Wanted) -> dict[str, str]:
     :func:`match.title_identity`, as the provider's question reads it, so two
     titles of emoji alone by one artist are two questions.
     """
-    return {
-        "artist": match.fold(wanted.artist),
-        "title": match.title_identity(wanted.title),
-        "version": wanted.version_key,
-    }
+    return wanted.folded_row()
 
 
 def item_id(wanted: match.Wanted) -> str:

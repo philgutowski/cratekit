@@ -72,10 +72,10 @@ from typing import Any, Callable, Mapping, Sequence
 
 from cratekit.acquire import match
 from cratekit.cli import output
-from cratekit.cli.output import Envelope, PendingHumanAction
+from cratekit.cli.output import Envelope, PendingHumanAction, load_config
 from cratekit.core import config, naming, review
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
-from cratekit.core.exit_codes import ExitCode, Remedy
+from cratekit.core.exit_codes import ExitCode
 
 #: The one adjudication surface this verb produces. Assigned once at module
 #: scope so the offer below reads as one idea rather than as a queue name typed
@@ -101,6 +101,15 @@ LIST_KEYS = frozenset({"list", "origin", "tracks"})
 #: Warning codes this verb emits. Identifiers a consumer can switch on, never
 #: sentences.
 #:
+#: The word a settled row is counted under by the verbs that list what a
+#: resolve left missing. A missing row has no entry: each verb decides for
+#: itself whether to list it, and counts it then.
+SETTLED_WORDS = {
+    match.MatchState.MATCHED: "owned",
+    match.MatchState.NEEDS_REVIEW: "offered",
+    match.MatchState.SUPPRESSED: "suppressed",
+}
+
 #: NOT called ``SUPPRESSED``. ``match.MatchState.SUPPRESSED`` is a state and this
 #: is a warning code, and one name meaning two things in two modules of one unit
 #: is a defect no passing test can see.
@@ -206,17 +215,8 @@ def _refuse(message: str, *steps: str, **detail: Any) -> CratekitError:
 
 
 def _load() -> config.Config:
-    """Read config, carrying the configuration failure's own remedy through."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise refuse(
-            "config-unusable",
-            str(exc),
-            remedy=Remedy(str(exc.remedy)),
-            origin=("acquire.match",),
-            detail={"kind": type(exc).__name__},
-        ) from exc
+    """Read config, turning a configuration failure into a typed cause."""
+    return load_config(("acquire.match",))
 
 
 # ---------------------------------------------------------------------------
@@ -906,25 +906,8 @@ def _pending(result: match.MatchResult, *, run_id: str) -> PendingHumanAction | 
 
 
 def library_template(cfg: config.Config) -> naming.NameTemplate:
-    """The shape the library's own filenames are written in.
-
-    THE MARKER IS THE POINT. R21 makes a lossy copy carry a marker inside its
-    name, and a template that does not declare the marker cannot strip it, so
-    the marked copy and its lossless twin fold to two different recordings. The
-    source system's two strippers disagreed about exactly this and the result
-    was a pair of duplicates sitting in one playlist. Config owns the marker
-    text (S3) and this is where it is handed to the engine.
-    """
-    marker = (cfg.naming.lossy_marker or "").strip()
-    if not marker:
-        # A marker rule with an empty literal is refused at construction, and a
-        # configuration with no marker text is a configuration where no file
-        # carries one. Refusing the whole run over it would turn a naming policy
-        # into a reason the match cannot happen at all.
-        return naming.NameTemplate()
-    return naming.NameTemplate(
-        markers=(naming.MarkerRule(field="lossy", literal=marker),)
-    )
+    """The shape the library's own filenames are written in, the marker with it."""
+    return naming.NameTemplate.lossy_if_marked(cfg.naming.lossy_marker)
 
 
 def library_view(cfg: config.Config) -> tuple[match.LibraryIndex, Callable[..., bool], Callable[..., str]]:
@@ -1021,6 +1004,7 @@ __all__ = [
     "LIST_VERSION",
     "ListResolved",
     "QUEUE",
+    "SETTLED_WORDS",
     "READING_UNSETTLED",
     "REVIEW_VERB",
     "SUPPRESSED_WARNING",

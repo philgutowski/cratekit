@@ -28,8 +28,8 @@ KEBAB_LITERALS = {
     # THREE kebab literals joined in intake/cli.py and nothing left,
     # set-account-unnamed and set-account-unreachable (WARNING codes) plus
     # intake-set-account (the account gate's name-only digest kind).
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'intake/cli.py': [
-        'config-unusable',
         'intake-artifacts',
         'intake-hearts-withheld',
         'intake-list-unusable',
@@ -101,7 +101,6 @@ KEBAB_LITERALS = {
         'library-export-unusable',
         'tree-unconverged',
     ],
-    'intake/inspiration_cli.py': ['config-unusable'],
     # Re-pinned on the merge of main at 230f1d7 (U127) into grok/290, 2026-10-10:
     # TWO kebab literals joined in intake/land_cli.py and nothing left,
     # vox-not-written and vox-unscored, the WARNING codes a native write gives
@@ -182,11 +181,11 @@ KEBAB_LITERALS = {
     'intake/recognize.py': ['intake-recognition-unready'],
     # U166, 2026-10-28: the INBOX / Analyze clear, its engine and its verb.
     'intake/analyzed.py': ['decision-stale', 'inbox-analyzed', 'session-committed-unverified'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'intake/analyzed_cli.py': [
         'analyzed-cleared',
         'analyzed-nothing-planned',
         'analyzed-rows-waiting',
-        'config-unusable',
     ],
     # U134, 2026-10-12: the INBOX refill, its engine and its verb.
     'intake/refill.py': [
@@ -197,8 +196,8 @@ KEBAB_LITERALS = {
         'session-committed-unverified',
         'tree-unconverged',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'intake/refill_cli.py': [
-        'config-unusable',
         'refill-applied',
         'refill-left-out',
         'refill-nothing-planned',
@@ -206,7 +205,8 @@ KEBAB_LITERALS = {
         'refill-records-unreadable',
     ],
     'intake/repair.py': ['path-repair'],
-    'intake/repair_cli.py': ['config-unusable', 'path-repair', 'rename-incomplete'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'intake/repair_cli.py': ['path-repair', 'rename-incomplete'],
     'intake/rotate.py': [
         'decision-stale',
         'inbox-rotate',
@@ -214,8 +214,8 @@ KEBAB_LITERALS = {
         'internal-error',
         'tree-unconverged',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'intake/rotate_cli.py': [
-        'config-unusable',
         'internal-error',
         'report-as-of-invalid',
         'rotate-applied',
@@ -262,8 +262,8 @@ LITERAL_HOLDERS = {
         'intake-recognition-spend-bound',
         'intake-recognition-unready',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'intake/cli.py': [
-        'config-unusable',
         'intake-list-unusable',
         'intake-recognition-failed',
         'internal-error',
@@ -297,7 +297,6 @@ LITERAL_HOLDERS = {
         'library-export-unusable',
         'tree-unconverged',
     ],
-    'intake/inspiration_cli.py': ['config-unusable'],
     # 2026-10-28, U156: the native label filing joined.
     'intake/label_filing.py': [
         'catalog-tree-undeclared',
@@ -347,7 +346,6 @@ LITERAL_HOLDERS = {
     'intake/recognize.py': ['intake-recognition-unready'],
     # U166, 2026-10-28: the INBOX / Analyze clear, its engine and its verb.
     'intake/analyzed.py': ['decision-stale', 'session-committed-unverified'],
-    'intake/analyzed_cli.py': ['config-unusable'],
     # U134, 2026-10-12: the INBOX refill, its engine and its verb.
     'intake/refill.py': [
         'decision-stale',
@@ -356,15 +354,16 @@ LITERAL_HOLDERS = {
         'session-committed-unverified',
         'tree-unconverged',
     ],
-    'intake/refill_cli.py': ['config-unusable'],
-    'intake/repair_cli.py': ['config-unusable', 'rename-incomplete'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'intake/repair_cli.py': ['rename-incomplete'],
     'intake/rotate.py': [
         'decision-stale',
         'intake-old-undeclared',
         'internal-error',
         'tree-unconverged',
     ],
-    'intake/rotate_cli.py': ['config-unusable', 'internal-error', 'report-as-of-invalid'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'intake/rotate_cli.py': ['internal-error', 'report-as-of-invalid'],
     'intake/set_playlist.py': [
         'decision-stale',
         'inspiration-folder-undeclared',

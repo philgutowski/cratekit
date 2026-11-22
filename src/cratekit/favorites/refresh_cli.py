@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, declared_gate, load_config
 from cratekit.core import (
     active_taxonomy,
     analysis_store,
@@ -33,7 +33,7 @@ from cratekit.core import (
     session,
     tree_registry,
 )
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Remedy, refuse
+from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.write import genre_favorites
 
 #: The gate, explicit: a removal is the one write that takes something away.
@@ -47,31 +47,8 @@ LEFT_ALONE = "favorites-folders-left-alone"
 _ORIGIN = ("favorites", "refresh_cli")
 
 
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=_ORIGIN,
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
-
-
 def build(parser, entry) -> None:
     parser.set_defaults(_handler=favorites_refresh)
-
-
-def _approve_gate(entry):
-    for spec in entry.gates:
-        if spec.name == APPROVE_GATE:
-            return spec
-    raise RuntimeError(f"registry entry {entry.name!r} declares no gate {APPROVE_GATE!r}")
 
 
 def planned(
@@ -126,10 +103,10 @@ def _left_alone(plan: genre_favorites.RefreshPlan) -> list[dict[str, str]]:
 
 def favorites_refresh(ctx) -> Envelope:
     """Plan every folder's Favorites, ask, then add and remove and read back."""
-    cfg = _load()
+    cfg = load_config(_ORIGIN)
     declared = active_taxonomy.load(cfg)
     registry = tree_registry.read(cfg)
-    spec = _approve_gate(ctx.entry)
+    spec = declared_gate(ctx.entry, APPROVE_GATE)
     # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
     session.assert_backup_acknowledged(cfg)
 

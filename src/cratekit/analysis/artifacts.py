@@ -1,22 +1,11 @@
 """Where one analysed file's report is staged, and where it lands.
 
-The same five functions :mod:`cratekit.tagging.artifacts` carries, with the
-analysis directory names, and the reasons are that module's: ``jobs.drive``
-makes a produced file durable BEFORE the item's row flips to done, so a run
-killed after six hundred decodes has six hundred reports to show for it, and
-the report is the only record of what was deliberately NOT written, which is
-where an honest energy absence and an unscored vocal pass have to land.
-
-**THIS IS THE FOURTH COPY, RECORDED RATHER THAN HIDDEN** (KTD9x). Adoption,
-outbound and tagging each carry one, and the honest home is one module in
-``core`` taking the two directory names as arguments. That move is another
-unit's files; the residual sits beside R-240. ``cratekit.core.artifacts`` is
-now that module, landed by U57 with the directory names as parameters;
-this copy is not yet migrated onto it.
-
-**THE ROOT COMES FROM THE FROZEN CONFIGURATION, PASSED IN.** ``jobs.store_dir()``
-with no argument loads the CURRENT configuration, which is the KTD9 defect
-wearing an indirection the handler guard cannot see. Nothing here loads one.
+The base is :class:`cratekit.core.jobs.Artifacts`, which says why an item has a
+report at all, why it sits under the queue and why the configuration is passed
+in. The report is also the only record of what was deliberately NOT written,
+which is where an honest energy absence and an unscored vocal pass have to
+land. What is analysis's own is the two directory names, a staging directory
+that keeps an interrupted rename's evidence, and the record of a run's pool.
 
 Layer: modules.
 """
@@ -35,23 +24,18 @@ ARTIFACTS_DIRNAME = "analysis-artifacts"
 #: ``os.replace`` and that is atomic only within one filesystem.
 STAGING_DIRNAME = "analysis-staging"
 
-
-def _job_dir(parent: str, cfg: config.Config, job_id: str) -> Path:
-    return jobs.store_dir(cfg) / parent / job_id
-
-
-def final_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
-    """Named after the ORDINAL, never the item, which is a filename with a suffix."""
-    directory = _job_dir(ARTIFACTS_DIRNAME, cfg, job_id)
-    config._mkdir_private(directory)
-    return directory / f"{ordinal:04d}.json"
+#: The final path, the serializer and the reader of committed reports are the
+#: base's, ``core.jobs`` (U298). Staging is this module's own: it keeps an
+#: interrupted rename's evidence, which the base's cleared directory would not.
+_REPORTS = jobs.Artifacts(final=ARTIFACTS_DIRNAME, staging=STAGING_DIRNAME)
+final_path, committed, write = _REPORTS.final_path, _REPORTS.committed, _REPORTS.write
 
 
 RENAME_INTENT_FILENAME = "rename-intent.json"
 
 
 def _staging_dir(cfg: config.Config, job_id: str, ordinal: int) -> Path:
-    return _job_dir(STAGING_DIRNAME, cfg, job_id) / str(ordinal)
+    return _REPORTS.staging_dir(cfg, job_id) / str(ordinal)
 
 
 def _report_name(ordinal: int) -> str:
@@ -89,13 +73,8 @@ def staged_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
         # ``rmtree`` refuses a link and a plain file, loudly, rather than this
         # call deciding to remove or follow one.
         shutil.rmtree(directory)
-    config._mkdir_private(directory)
+    config.mkdir_private(directory)
     return directory / _report_name(ordinal)
-
-
-def write(path: Path, payload: dict[str, Any]) -> Path:
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return path
 
 
 def intent_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
@@ -122,7 +101,7 @@ def intent_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
 
 def record_rename_intent(cfg: config.Config, job, item, target: Path) -> Path:
     path = intent_path(cfg, job.job_id, item.ordinal)
-    config._mkdir_private(path.parent)
+    config.mkdir_private(path.parent)
     return write(path, {"item": item.item_id, "target": str(target)})
 
 
@@ -213,8 +192,8 @@ def record_pool(cfg: config.Config, job_id: str, record: dict[str, Any]) -> Path
     be able to say what it ran with. Written whole to a sibling and moved into
     place, so a reader never meets half of it.
     """
-    directory = _job_dir(ARTIFACTS_DIRNAME, cfg, job_id)
-    config._mkdir_private(directory)
+    directory = _REPORTS.final_dir(cfg, job_id)
+    config.mkdir_private(directory)
     target = directory / POOL_FILENAME
     staged = directory / f".{POOL_FILENAME}.writing"
     write(staged, record)
@@ -228,7 +207,7 @@ def pool_record(cfg: config.Config, job_id: str) -> dict[str, Any] | None:
     A link is no record, and neither is a file that does not parse to a
     mapping: an absent line on the answer, never an invented one.
     """
-    path = _job_dir(ARTIFACTS_DIRNAME, cfg, job_id) / POOL_FILENAME
+    path = _REPORTS.final_dir(cfg, job_id) / POOL_FILENAME
     if path.is_symlink() or not path.is_file():
         return None
     try:
@@ -236,26 +215,6 @@ def pool_record(cfg: config.Config, job_id: str) -> dict[str, Any] | None:
     except (OSError, ValueError):
         return None
     return loaded if isinstance(loaded, dict) else None
-
-
-def committed(cfg: config.Config, job_id: str) -> tuple[dict[str, Any], ...]:
-    """Every committed report for this job, in item order, read back off disk."""
-    directory = _job_dir(ARTIFACTS_DIRNAME, cfg, job_id)
-    if not directory.is_dir():
-        return ()
-    found: list[dict[str, Any]] = []
-    # Only ordinal named files are reports. A stray ``notes.json`` beside them
-    # once raised out of the sort key and took the whole resume envelope down
-    # after every item had finished.
-    reports = [path for path in directory.glob("*.json") if path.stem.isdigit()]
-    for path in sorted(reports, key=lambda item: int(item.stem)):
-        try:
-            loaded = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if isinstance(loaded, dict):
-            found.append(loaded)
-    return tuple(found)
 
 
 __all__ = [

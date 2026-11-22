@@ -1493,6 +1493,20 @@ class Wanted:
     def version_key(self) -> str:
         return version_token(self.version)
 
+    def folded_row(self) -> dict[str, str]:
+        """The three fields a review question about this row is addressed by.
+
+        The ones the exact test compares, so one line typed into two lists is
+        one question. The title is its :func:`title_identity`, the fold for
+        every title that folds to something, so two titles of emoji alone by
+        one artist are two questions.
+        """
+        return {
+            "artist": fold(self.artist),
+            "title": title_identity(self.title),
+            "version": self.version_key,
+        }
+
     @property
     def key_key(self) -> str:
         return key_token(self.key)

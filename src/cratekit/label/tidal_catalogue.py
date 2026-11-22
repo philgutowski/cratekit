@@ -901,11 +901,7 @@ class TidalCatalogue:
         # A CODE THE ISRC CACHE ANSWERS IS NOT SCREENED (U206): its lookup
         # makes no request, so a batch about it would be the one request a
         # second run over the same codes still paid.
-        country = isrc_cache.country_of(self._lookups)
-        return self._screen.screen(
-            self._lookups,
-            [code for code in codes if not self._cache.holds(str(code or ""), country)],
-        )
+        return self._screen.screen_uncached(self._lookups, self._cache, codes)
 
     def tracks_for_isrc(self, isrc: str) -> tuple[Any, ...]:
         """The provider's tracks for one ISRC, on the one retry ladder.

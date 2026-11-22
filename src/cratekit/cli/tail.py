@@ -83,6 +83,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from cratekit.cli import gates, registry, render
+from cratekit.cli.output import load_config
 from cratekit.core import config, drift, jobs, profiles, tags
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
@@ -220,20 +221,27 @@ def dispatch(argv: Sequence[str]) -> Child:
     return code, document if isinstance(document, dict) else {}
 
 
-def load_config(origin: tuple[str, ...]) -> config.Config:
-    """The configuration, or the refusal a person can act on."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=origin,
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
+def summary_of(envelope: dict[str, Any]) -> dict[str, Any]:
+    """The summary a chain's envelope carries, or an empty one."""
+    data = envelope.get("data") or {}
+    summary = data.get("summary") if isinstance(data, dict) else None
+    return summary if isinstance(summary, dict) else {}
+
+
+def changed_said(changed: CratekitError) -> str:
+    """What made the folder unsafe to keep, said as a clause (review round two, D1)."""
+    detail = changed.cause.detail or {}
+    if "arrived" not in detail:
+        return f"whether anything arrived while the tail ran cannot be read: {changed.cause.message}"
+    parts = []
+    if detail.get("arrived"):
+        parts.append(f"download job(s) {', '.join(map(str, detail['arrived']))} finished track(s) into it")
+    if detail.get("before") != detail.get("after"):
+        parts.append(
+            f"it held {detail.get('before')} file(s) a landing would take as the tail started "
+            f"and {detail.get('after')} after"
+        )
+    return "the staging folder changed while the tail ran: " + "; ".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -1081,6 +1089,7 @@ __all__ = [
     "argv_for",
     "attended",
     "cause_of",
+    "changed_said",
     "dispatch",
     "guess",
     "guess_argv",
@@ -1099,6 +1108,7 @@ __all__ = [
     "run",
     "settle",
     "succeeded",
+    "summary_of",
     "tail_step",
     "through_name",
     "vocals_on",

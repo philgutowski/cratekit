@@ -336,7 +336,7 @@ def test_a_second_process_that_migrated_first_does_not_get_its_backup_clobbered(
     v1_bytes = path.read_bytes()
     backup = tmp_path / "config.toml.v1.bak"
 
-    original_enter = config._exclusive_lock.__enter__
+    original_enter = config.exclusive_lock.__enter__
 
     def another_process_finished_while_we_waited(self):
         acquired = original_enter(self)
@@ -345,7 +345,7 @@ def test_a_second_process_that_migrated_first_does_not_get_its_backup_clobbered(
         return acquired
 
     monkeypatch.setattr(
-        config._exclusive_lock, "__enter__", another_process_finished_while_we_waited
+        config.exclusive_lock, "__enter__", another_process_finished_while_we_waited
     )
 
     cfg = config.load_from_path(path, current=3, migrations=_ladder([]))

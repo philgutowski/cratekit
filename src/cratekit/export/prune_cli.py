@@ -27,7 +27,7 @@ import the CLI registry (KTD23).
 from __future__ import annotations
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core.cause import Outcome, refuse
+from cratekit.core.cause import refuse
 from cratekit.modules.outbound import export as outbound_export
 from cratekit.modules.outbound import ledger, prune, shell, source
 
@@ -106,19 +106,16 @@ def export_prune(ctx) -> Envelope:
             **prune.shown(planned),
         },
     )
-    if option != "apply" or not planned.writes:
-        return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
-    done = prune.Pruned()
-    try:
-        prune.apply(cfg, remote, planned, done)
-    except Exception as exc:
-        raise prune.failed_part_way(
-            exc,
-            done,
-            origin=_ORIGIN,
-            again="run crate export prune again; what was taken off is recorded and never asked twice",
-        ) from exc
-    return prune.finished(ctx, payload, planned, done)
+    return prune.settle(
+        ctx,
+        cfg,
+        remote,
+        payload,
+        planned,
+        option=option,
+        origin=_ORIGIN,
+        again="run crate export prune again; what was taken off is recorded and never asked twice",
+    )
 
 
 __all__ = ["build_prune", "export_prune"]

@@ -52,33 +52,9 @@ from __future__ import annotations
 # same reason.
 from cratekit.adopt import artifacts, collection, shell
 from cratekit.adopt import scan as scan_engine
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import active_taxonomy, config, jobs
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
-from cratekit.core.exit_codes import Remedy
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause.
-
-    The remedy token is carried straight through from the configuration error
-    that raised it, so "no config at all" and "config written by a newer build"
-    keep their different answers all the way to the CLI. Flattening them here
-    would put this module back in the business of writing instructions, which is
-    what D2 removes from every layer but the outermost.
-    """
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("adopt.scan_cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
+from cratekit.core.cause import Outcome, refuse
 
 
 def build(parser, entry) -> None:
@@ -181,7 +157,7 @@ def scan(ctx) -> Envelope:
     both produce an empty census. The two warnings below are why the read happens
     here rather than one layer down.
     """
-    cfg = _load()
+    cfg = load_config(("adopt.scan_cli",))
     if ctx.args.job:
         return _resume(ctx, cfg)
 

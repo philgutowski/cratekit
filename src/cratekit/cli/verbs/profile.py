@@ -18,36 +18,12 @@ import argparse
 from typing import TYPE_CHECKING
 
 from cratekit.cli import gates, output, registry
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import config, profiles
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
-from cratekit.core.exit_codes import Remedy
+from cratekit.core.cause import Outcome
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.cli import Context
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause.
-
-    The remedy token is carried straight through from the configuration error
-    that raised it, so "no config at all" and "config written by a newer build"
-    keep their different answers all the way to the CLI. Flattening them here
-    would put this module back in the business of writing instructions, which is
-    what D2 removes from every layer but the outermost.
-    """
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("cli.verbs.profile",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def _membership(cfg: config.Config) -> profiles.Membership:
@@ -68,7 +44,7 @@ def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
 
 
 def show(ctx: "Context") -> Envelope:
-    cfg = _load()
+    cfg = load_config(("cli.verbs.profile",))
     membership = _membership(cfg)
     checks = [
         {
@@ -143,7 +119,7 @@ def _offer(cfg: config.Config, name: str) -> dict:
 
 
 def apply_profile(ctx: "Context") -> Envelope:
-    plan = _offer(_load(), ctx.args.name)
+    plan = _offer(load_config(("cli.verbs.profile",)), ctx.args.name)
 
     spec = ctx.entry.gates[0]
     if not plan["items"]:

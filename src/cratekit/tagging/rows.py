@@ -68,7 +68,6 @@ from cratekit.core import (
     locations,
     rb_writer,
     session,
-    snapshot,
     tags,
     taxonomy,
     tree_registry,
@@ -76,7 +75,7 @@ from cratekit.core import (
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.tagging import retag
-from cratekit.write import metadata, trees
+from cratekit.write import metadata, row_defaults, trees
 
 #: The name a session record carries for this write.
 WORKFLOW = "tag-rows"
@@ -147,12 +146,6 @@ LEAVE = "leave"
 #: How many word pairs a summary names.
 NAMED_PAIRS = 5
 
-#: How many offending rows a refusal's sentence names. The detail carries all.
-_NAMED_ROWS = 5
-
-#: How many identifiers one SQL statement names. Under every SQLite build's
-#: bound parameter limit, the oldest of which is 999.
-_CHUNK = 500
 
 _ORIGIN = ("tagging", "rows")
 
@@ -247,7 +240,7 @@ class RowsPlan:
 
 
 @dataclass(frozen=True, slots=True)
-class Written:
+class Written(row_defaults.RowsWritten):
     """What one apply did, and what the database says about it afterwards.
 
     ``wrong`` names each written row whose genre does not read back as its
@@ -255,12 +248,6 @@ class Written:
     genre and the bookkeeping columns changed. Both are empty on a good run and
     :func:`assert_read_back` refuses when either is not.
     """
-
-    session_id: str
-    written: int
-    read_back: int
-    wrong: tuple[str, ...] = ()
-    moved: tuple[str, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -482,49 +469,12 @@ def narrowed(plan: RowsPlan, keep: Iterable[str]) -> RowsPlan:
 # ---------------------------------------------------------------------------
 
 
-def _chunks(values: Sequence[str]) -> Iterable[Sequence[str]]:
-    for start in range(0, len(values), _CHUNK):
-        yield values[start : start + _CHUNK]
-
-
-def _columns(db: Any, content_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
-    """Every column of the named content rows, from SQL, by content identifier.
-
-    FROM SQL AND NOT FROM THE MAPPED ROWS, so what is compared across the write
-    is what the table holds and not what the session remembers setting.
-    """
-    from sqlalchemy import text
-
-    found: dict[str, dict[str, Any]] = {}
-    for chunk in _chunks(content_ids):
-        marks = ", ".join(f":id{index}" for index in range(len(chunk)))
-        result = db.session.execute(
-            text(f"SELECT * FROM {rb_writer.CONTENT_TABLE} WHERE ID IN ({marks})"),
-            {f"id{index}": value for index, value in enumerate(chunk)},
-        )
-        for row in result.mappings():
-            found[str(row["ID"])] = dict(row)
-    return found
-
-
 def _genre_names(db: Any) -> dict[str, str]:
     """Every genre lookup row's name by identifier, from SQL."""
     from sqlalchemy import text
 
     result = db.session.execute(text("SELECT ID, Name FROM djmdGenre"))
     return {str(row[0]): str(row[1] or "").strip() for row in result}
-
-
-def _mapped(db: Any, content_ids: Sequence[str]) -> dict[str, Any]:
-    """The mapped content rows the write sets a field on, by identifier."""
-    from pyrekordbox.db6 import tables
-
-    found: dict[str, Any] = {}
-    for chunk in _chunks(content_ids):
-        query = db.session.query(tables.DjmdContent).filter(tables.DjmdContent.ID.in_(chunk))
-        for row in query.all():
-            found[str(row.ID)] = row
-    return found
 
 
 def judge(
@@ -562,17 +512,6 @@ def judge(
     return tuple(wrong), tuple(moved)
 
 
-def _named(offenders: Sequence[str]) -> str:
-    """The first few offenders as a sentence, and how many more there are.
-
-    A plan of hundreds of rows that all moved would otherwise put hundreds of
-    clauses on the screen. The refusal's detail carries every one.
-    """
-    shown = "; ".join(offenders[:_NAMED_ROWS])
-    more = len(offenders) - _NAMED_ROWS
-    return shown + (f"; and {more} more, all in the detail" if more > 0 else "")
-
-
 def _empty(value: Any) -> bool:
     return value in rb_writer.FIELD_EMPTIES["GenreID"]
 
@@ -603,28 +542,11 @@ def assert_rows_as_planned(plan: RowsPlan, mapped: Mapping[str, Any]) -> None:
         raise refuse(
             "decision-stale",
             f"{len(moved)} of {len(plan.changes.changes)} row(s) to be written are "
-            f"not as the plan read them, so nothing was written: " + _named(moved),
+            f"not as the plan read them, so nothing was written: " + row_defaults.named(moved),
             steps=("run the verb again and approve the plan as it is now",),
             origin=_ORIGIN,
             detail={"moved": moved},
         )
-
-
-def _record_commit(record: session.SessionRecord, written: int, cfg: config.Config) -> None:
-    """Record this write's commit on its session record, when it wrote anything.
-
-    A RUN THAT WROTE NOTHING CLAIMS NO COMMIT, for the reason
-    :func:`cratekit.write.trees._record_membership_commit` gives: a restore
-    reads a committed source as work it would discard.
-    """
-    if written <= 0:
-        return
-    session.record_commit(
-        record,
-        CHANGE_KEY,
-        session.ChangeSummary((session.TreeChange(tree=CHANGE_KEY, updated=written),)),
-        cfg,
-    )
 
 
 def apply_rows(
@@ -684,7 +606,7 @@ def apply_rows(
         )
     writes = plan.writes
     content_ids = [item.content_id for item in writes]
-    mapped = _mapped(db, content_ids)
+    mapped = row_defaults.read_mapped(db, content_ids)
     assert_rows_as_planned(plan, mapped)
     # THE EVIDENCE IS READ BEFORE IT IS REPLACED. The fingerprint recorded after
     # the commit is what the next tree write compares against, and recording it
@@ -699,33 +621,30 @@ def apply_rows(
         ) as gates,
         rb_writer.commit_witness(db) as witness,
     ):
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = trees.attached_capture(gates, cfg, db)
 
         if narrow is not None:
             plan = narrow(plan)
             writes = plan.writes
             content_ids = [item.content_id for item in writes]
-        before = _columns(db, content_ids)
+        before = row_defaults.read_columns(db, content_ids)
         written = 0
         try:
             report = retag.apply_library(retag.LibraryPlan(plan=plan.changes), mapped)
             written = len(report.written)
             rb_writer.commit_guarded(db)
         except BaseException:
-            trees._rollback_quietly(db)
+            trees.rollback_quietly(db)
             # AN EXCEPTION IS NOT PROOF NOTHING LANDED. The witness is the
             # engine's own answer, for the reason the membership writer gives.
             if witness.landed:
-                _record_commit(record, written, cfg)
+                row_defaults.record_commit(record, CHANGE_KEY, written, cfg)
             raise
         # RECORDED THE INSTANT THE COMMIT RETURNS.
-        _record_commit(record, written, cfg)
+        row_defaults.record_commit(record, CHANGE_KEY, written, cfg)
         convergence.record_fingerprint(cfg, db)
 
-        after = _columns(db, content_ids)
+        after = row_defaults.read_columns(db, content_ids)
         names = _genre_names(db)
         session_id = record.session_id
 
@@ -759,7 +678,7 @@ def assert_read_back(written: Written) -> None:
             "whitelist-violation",
             "a row written for its genre has another column changed after the "
             "commit, which the guard should have refused before it: "
-            + _named(written.moved),
+            + row_defaults.named(written.moved),
             remedy=Remedy.REPORT_DEFECT,
             steps=undo,
             origin=_ORIGIN,
@@ -768,7 +687,7 @@ def assert_read_back(written: Written) -> None:
     raise refuse(
         "internal-error",
         f"{len(written.wrong)} of {written.written} row(s) written do not read "
-        f"back as their file's genre: " + _named(written.wrong),
+        f"back as their file's genre: " + row_defaults.named(written.wrong),
         remedy=Remedy.REPORT_DEFECT,
         steps=undo,
         origin=_ORIGIN,

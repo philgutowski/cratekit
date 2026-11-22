@@ -518,7 +518,7 @@ def record_previous(cfg: config.Config, path: Path, previous: str | None) -> boo
     write would let each discard the other's entries.
     """
     target = undo_log_path(cfg)
-    lock = config._exclusive_lock(target.with_name(target.name + ".lock"))
+    lock = config.exclusive_lock(target.with_name(target.name + ".lock"))
     try:
         lock.__enter__()
     except config.ConfigLockUnavailable as exc:

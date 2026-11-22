@@ -14,7 +14,7 @@ come from the guard and never from a write that happened to land somewhere
 harmless.
 
 The configuration document is held to the test root alone. The two primitives
-every other state writer uses, ``atomic_write_bytes`` and ``_exclusive_lock``,
+every other state writer uses, ``atomic_write_bytes`` and ``exclusive_lock``,
 also accept the system temporary directory, where shipped code keeps scratch
 files of its own, and nothing else.
 """
@@ -186,7 +186,7 @@ def test_an_append_inside_the_root_adds_to_the_file_and_never_creates_one(tmp_pa
 
 
 def test_a_lock_outside_every_temporary_folder_is_refused(unisolated):
-    lock = config._exclusive_lock(OUTSIDE / "session.lock")
+    lock = config.exclusive_lock(OUTSIDE / "session.lock")
     with pytest.raises(config.WriteOutsideTestRoot), lock:
         pass
     assert not OUTSIDE.exists()
@@ -197,7 +197,7 @@ def test_a_scratch_write_in_the_system_temporary_folder_lands_without_a_root(uni
     scratch = Path(tempfile.mkdtemp(prefix="cratekit-r926-"))
     target = scratch / "token.json"
     config.atomic_write_bytes(b"{}", target)
-    with config._exclusive_lock(scratch / "token.lock"):
+    with config.exclusive_lock(scratch / "token.lock"):
         pass
     assert target.read_bytes() == b"{}"
     for each in (target, scratch / "token.lock"):

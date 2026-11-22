@@ -73,7 +73,7 @@ from cratekit.adopt import apply as apply_engine
 from cratekit.adopt import artifacts, collection, placements, scan, shell
 from cratekit.adopt import plan as plan_engine
 from cratekit.adopt.approval import grant
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, approving_actor, load_config
 from cratekit.core import (
     active_taxonomy,
     analysis_store,
@@ -111,29 +111,6 @@ WORKFLOW = "adopt.apply"
 #: the only actor a worker could supply is one it invented, and an approval
 #: naming nobody is exactly what R34 forbids.
 ACTOR_KEY = "approved_by"
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause.
-
-    The remedy token rides through from the configuration error that raised it,
-    so "no config at all" and "config written by a newer build" keep their
-    different answers all the way out to the shell. Flattening them here would
-    put this layer back in the business of writing instructions, which is what D2
-    removes from every layer but the outermost.
-    """
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("adopt.apply_cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def census(
@@ -609,7 +586,7 @@ def apply_adoption(ctx) -> Envelope:
     answered the gate has to travel in the payload or the approval R34 requires
     could only be invented by the worker.
     """
-    cfg = _load()
+    cfg = load_config(("adopt.apply_cli",))
     declared = active_taxonomy.load(cfg)
 
     if ctx.args.job:
@@ -655,7 +632,7 @@ def apply_adoption(ctx) -> Envelope:
                 # WHO ANSWERED, read off the run record rather than off a flag.
                 # R34's whole content is that this class of decision cannot be
                 # typed onto the command that was already running.
-                ACTOR_KEY: _approving_actor(ctx, spec),
+                ACTOR_KEY: approving_actor(ctx, spec),
                 # FROZEN SO THE APPROVAL SURVIVES THE RESPAWN. See
                 # ``adopt_apply_argv``: the gate is explicit, so a resume on a
                 # fresh run can never be answered and the job would be
@@ -1185,17 +1162,6 @@ class _Item:
 
 #: An apply has exactly one item, so its artifact always has ordinal zero.
 _ITEM_ZERO = _Item(0)
-
-
-def _approving_actor(ctx, spec) -> str:
-    """Who the run record says answered the approval gate.
-
-    OFF THE RECORDED DECISION rather than off ``ctx.gate.actor``, which is the
-    default the CLI carries and is ``"cli"`` for a run nobody decided. R34 asks
-    which ACTOR asserted the decision, and the answer lives on the decision.
-    """
-    decision = ctx.run.decisions.get(spec.name)
-    return decision.actor if decision is not None else ""
 
 
 #: Public for ``crate organize`` (U112), which shows this verb's own screen as

@@ -245,7 +245,7 @@ class UnavailableRecord:
     def update(self, changes: Mapping[str, Sighting | None]) -> dict[str, Sighting]:
         """Apply ``changes`` under the lock, ``None`` dropping an entry; writes only on a change."""
         try:
-            with config._exclusive_lock(self.lock_path):
+            with config.exclusive_lock(self.lock_path):
                 return self._apply(changes)
         except config.ConfigLockUnavailable as exc:
             raise refuse(

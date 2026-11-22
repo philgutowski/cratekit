@@ -10,16 +10,16 @@ KEBAB_LITERALS = {
     'analysis/ahead.py': ['file-changed', 'raised-in-a-worker'],
     'analysis/artifacts.py': ['analysis-artifacts', 'analysis-staging', 'utf-8'],
     # 2026-10-31, U167: analyze check, its engine and its verb.
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'analysis/check_cli.py': [
         'analysis-check-nothing',
         'analysis-check-records-unread',
         'analysis-suspect',
-        'config-unusable',
     ],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'analysis/cli.py': [
         'analysis-write-failed',
         'calibration-partial-sample',
-        'config-unusable',
         'db-metadata-not-written',
         'energy-calibration-missing',
         'folder-absent',
@@ -56,10 +56,11 @@ KEBAB_LITERALS = {
 
 LITERAL_HOLDERS = {
     # 2026-10-31, U167: analyze check, its engine and its verb.
-    'analysis/check_cli.py': ['analysis-suspect', 'config-unusable'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'analysis/check_cli.py': ['analysis-suspect'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'analysis/cli.py': [
         'analysis-write-failed',
-        'config-unusable',
         'energy-calibration-missing',
         'internal-error',
         'library-volume-unmounted',

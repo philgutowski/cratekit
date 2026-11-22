@@ -10,8 +10,6 @@ dangling export cratekit.modules.outbound.source
 dangling favorites cratekit.favorites.placeholders
 dangling labels cratekit.label.catalogue
 off-interface cratekit.core.held_plan
-private cratekit.core.config._exclusive_lock
-private cratekit.write.trees._rollback_quietly
 top-level cratekit.favorites.placeholders
 top-level cratekit.label.catalogue
 top-level cratekit.label.catalogue.AccountPlaylist

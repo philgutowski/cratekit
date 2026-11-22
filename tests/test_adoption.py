@@ -4630,7 +4630,7 @@ def test_a_FIFO_at_the_recorded_path_refuses_instead_of_blocking_forever(
     ``exists`` answered True, ``stat`` answered instantly, and ``open`` never
     returned, because opening a named pipe blocks until a writer appears. The
     guard called the hash unconditionally, the hash had no bound, and the whole
-    pass sits inside ``config._exclusive_lock``, so an unrelated
+    pass sits inside ``config.exclusive_lock``, so an unrelated
     ``write_tag_with_record`` on a perfectly readable file waited behind it for
     the revert's entire life. Measured: the child was still running at 6 seconds.
 

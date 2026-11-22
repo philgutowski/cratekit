@@ -30,17 +30,16 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.cli import output
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, digest_of, load_config
 from cratekit.core import (
     analysis_store,
     config,
     locations,
     rb_writer,
     session,
-    snapshot,
     tags,
 )
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
+from cratekit.core.cause import Cause, Outcome, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import routing_pass, trees
 
@@ -76,21 +75,6 @@ VALUE_FEMALE = "female vox"
 DEFAULT_VOCAL_THRESHOLD = 12.0
 
 STATE_KEY_VOCAL_CALIBRATION = "vocal_calibration"
-
-
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=_ORIGIN,
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def vocal_tag_values(
@@ -498,7 +482,7 @@ def build_mytags_vocals(parser, entry) -> None:
 
 
 def mytags_vocals(ctx) -> Envelope:
-    cfg = _load()
+    cfg = load_config(_ORIGIN)
     writing = bool(getattr(ctx.args, "apply", False))
     db = _open(cfg, writing=writing)
     try:
@@ -525,15 +509,12 @@ def mytags_vocals(ctx) -> Envelope:
             analysis_roots=analysis_store.watch_roots(cfg),
             keep=session.Keep.RECORD,
         ) as gates, rb_writer.commit_witness(db) as witness:
-            record = gates.record
             # THE RECORD IS WHAT MAKES THE CAPTURE AN UNDO (R-375). This verb
             # took a capture and opened no record, so after a real apply the
             # only trace of the write was a snapshot directory ``restore list``
             # could not show and the pruning scan did not protect. Attached
-            # before it is judged, for the reason the membership writer gives.
-            capture = snapshot.capture(cfg, db=db)
-            session.attach_capture(record, capture.root, cfg)
-            snapshot.assert_verified(capture)
+            # before it is judged, for the reason ``trees.attached_capture`` gives.
+            record, capture = trees.attached_capture(gates, cfg, db)
             counts = {"written": 0, "already": 0}
             try:
                 counts = apply_mytags(cfg, db, plan)

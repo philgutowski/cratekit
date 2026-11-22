@@ -22,9 +22,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import analysis_store, config, jobs, rb_writer, session
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Remedy
+from cratekit.core.cause import Outcome
 from cratekit.intake import ingest, land_cli, set_playlist
 
 #: The gate, explicit: a playlist the library keeps for good is a new node
@@ -32,22 +32,6 @@ from cratekit.intake import ingest, land_cli, set_playlist
 APPROVE_GATE = "intake.inspiration.approve"
 
 _ORIGIN = ("intake", "inspiration_cli")
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("intake.inspiration_cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def build(parser, entry) -> None:
@@ -121,7 +105,7 @@ def intake_inspiration(ctx) -> Envelope:
     handle opened with write intent that takes the plan again and refuses a
     digest that moved.
     """
-    cfg = _load()
+    cfg = load_config(("intake.inspiration_cli",))
     medium = _native_or_refuse(cfg)
     declared = medium.declared
     posted = getattr(ctx.args, "posted", None)

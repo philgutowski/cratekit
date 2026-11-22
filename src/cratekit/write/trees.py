@@ -904,7 +904,37 @@ def _root_row(db: Any, root_id: str) -> Any:
     return row
 
 
-def _rollback_quietly(db: Any) -> None:
+def attached_capture(gates: Any, cfg: config.Config, db: Any):
+    """The session record and the verified capture every guarded write opens with.
+
+    ATTACHED BEFORE IT IS JUDGED. A capture that fails its check is still a
+    directory a person may go looking for, and the restore side lists an
+    unusable entry rather than answering with silence. One function for the
+    twenty two writers that open this way, so none of them can come to judge
+    a capture it never attached.
+    """
+    record = gates.record
+    capture = snapshot.capture(cfg, db=db)
+    session.attach_capture(record, capture.root, cfg)
+    snapshot.assert_verified(capture)
+    return record, capture
+
+
+def membership_positions(tables: Any) -> tuple[int, int, int]:
+    """Where a membership row holds its playlist, its content row and its removal marker.
+
+    Read off the node tables a writer took before its commit, for the check
+    afterwards that every membership it made is one its plan named.
+    """
+    columns = tables.membership_columns
+    return (
+        columns.index("PlaylistID"),
+        columns.index("ContentID"),
+        columns.index(rb_writer.SOFT_DELETE_COLUMN),
+    )
+
+
+def rollback_quietly(db: Any) -> None:
     """Undo pending work on the caller's handle. Never masks the original failure.
 
     A rollback that raises on the way out of an except block would replace the
@@ -916,6 +946,27 @@ def _rollback_quietly(db: Any) -> None:
         db.session.rollback()
     except Exception:  # noqa: BLE001 - a failed cleanup must not hide its cause
         logger.warning("could not roll back the pending session after a failed write")
+
+
+def _undo_unless_landed(
+    db: Any, witness: Any, record: session.SessionRecord, tree_id: str, added: int, cfg: config.Config
+) -> None:
+    """What a membership write does on its way out of a failure, before it re-raises.
+
+    ROLLED BACK. Nothing durable has landed, but the objects the loop created
+    are still pending on the CALLER'S handle, and the guarded commit raises on
+    two of its refusals before reaching its own rollback. Left pending, they
+    land on whatever commits next and arrive under that operation's name. A
+    cleanup, never a place that decides an error is survivable.
+
+    AN EXCEPTION IS NOT PROOF NOTHING LANDED. The binding commits the
+    transaction and THEN saves rekordbox's playlist file, so a failure there
+    arrives over durable rows. The witness is the engine's own answer, and a
+    commit it saw is recorded before the caller re-raises.
+    """
+    rollback_quietly(db)
+    if witness.landed:
+        _record_membership_commit(record, tree_id, added, cfg)
 
 
 def _record_membership_commit(
@@ -1068,13 +1119,7 @@ def write_tree_membership(
     with session.assert_gates(
         cfg, workflow=workflow, analysis_roots=watched, intent=intent, keep=session.Keep.RECORD
     ) as gates, rb_writer.commit_witness(db) as witness:
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        # ATTACHED BEFORE IT IS JUDGED. A capture that fails its check is still
-        # a directory a person may go looking for, and the restore side lists an
-        # unusable entry rather than answering with silence.
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = attached_capture(gates, cfg, db)
 
         # THE WRITE IS PARENTED TO THE ROOT THE CUTOVER ADOPTED. Asserting the
         # anchored root and then resolving the folder globally by name would
@@ -1123,20 +1168,7 @@ def write_tree_membership(
 
             rb_writer.commit_guarded(db)
         except BaseException:
-            # Nothing durable has landed, but the objects this loop created are
-            # still pending on the CALLER'S handle, and the guarded commit raises
-            # on two of its refusals before reaching its own rollback. Left
-            # pending, they land on whatever commits next and arrive under that
-            # operation's name, which is the hazard the writer's own docstring
-            # describes. Rolled back here, and re-raised unchanged: this is a
-            # cleanup, never a place that decides an error is survivable.
-            _rollback_quietly(db)
-            # AN EXCEPTION IS NOT PROOF NOTHING LANDED. The binding commits the
-            # transaction and THEN saves rekordbox's playlist file, so a failure
-            # there arrives here over durable rows. The witness is the engine's
-            # own answer, and a commit it saw is recorded before this re-raises.
-            if witness.landed:
-                _record_membership_commit(record, tree_id, added, cfg)
+            _undo_unless_landed(db, witness, record, tree_id, added, cfg)
             raise
 
         # RECORDED THE INSTANT THE COMMIT RETURNS, ahead of the fingerprint. A
@@ -1397,10 +1429,7 @@ def move_tree_membership(
         intent=session.Intent.WRITE,
         keep=session.Keep.RECORD,
     ) as gates:
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = attached_capture(gates, cfg, db)
 
         anchor = _root_row(db, root_id)
         places = _Destinations(db, anchor)
@@ -1423,9 +1452,7 @@ def move_tree_membership(
                     already_present += len(content_ids) - len(inserted)
                 rb_writer.commit_guarded(db)
             except BaseException:
-                _rollback_quietly(db)
-                if witness.landed:
-                    _record_membership_commit(record, tree_id, added, cfg)
+                _undo_unless_landed(db, witness, record, tree_id, added, cfg)
                 raise
         _record_membership_commit(record, tree_id, added, cfg)
         if added:
@@ -1470,7 +1497,7 @@ def move_tree_membership(
                 # a membership move removes no node.
                 rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))
             except Exception as exc:
-                _rollback_quietly(db)
+                rollback_quietly(db)
                 if witness.landed:
                     _record_removal_commit(record, tree_id, removed, cfg)
                     convergence.record_fingerprint(cfg, db)
@@ -1479,7 +1506,7 @@ def move_tree_membership(
                     raise
                 raise MoveInterrupted(report(held_back=tuple(held_back))) from exc
             except BaseException:
-                _rollback_quietly(db)
+                rollback_quietly(db)
                 raise
         _record_removal_commit(record, tree_id, removed, cfg)
         if removed:
@@ -1537,6 +1564,9 @@ __all__ = [
     "insert_record_labels_trees",
     "match_active_rows",
     "match_indexed_rows",
+    "membership_positions",
+    "attached_capture",
+    "rollback_quietly",
     "root_playlist_members",
     "soft_delete_marker",
     "write_tree_membership",

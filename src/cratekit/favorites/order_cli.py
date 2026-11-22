@@ -21,9 +21,9 @@ Layer: modules.
 
 from __future__ import annotations
 
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, declared_gate, load_config
 from cratekit.core import active_taxonomy, analysis_store, config, rb_writer, session
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Remedy
+from cratekit.core.cause import Outcome
 from cratekit.favorites import order, placement
 
 #: The gate, explicit: a write to the positions of the live library's playlists.
@@ -36,31 +36,8 @@ ORDERED = "favorites-ordered"
 _ORIGIN = ("favorites", "order_cli")
 
 
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=_ORIGIN,
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
-
-
 def build(parser, entry) -> None:
     parser.set_defaults(_handler=favorites_order)
-
-
-def _approve_gate(entry):
-    for spec in entry.gates:
-        if spec.name == APPROVE_GATE:
-            return spec
-    raise RuntimeError(f"registry entry {entry.name!r} declares no gate {APPROVE_GATE!r}")
 
 
 def planned(cfg: config.Config, *, source: str) -> order.OrderPlan:
@@ -87,9 +64,9 @@ def written(cfg: config.Config, approved: order.OrderPlan, *, source: str) -> or
 
 def favorites_order(ctx) -> Envelope:
     """Read the Favorites folder, ask, then put it in order newest first."""
-    cfg = _load()
+    cfg = load_config(_ORIGIN)
     source = placement.source_name(active_taxonomy.load(cfg))
-    spec = _approve_gate(ctx.entry)
+    spec = declared_gate(ctx.entry, APPROVE_GATE)
     # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
     session.assert_backup_acknowledged(cfg)
 

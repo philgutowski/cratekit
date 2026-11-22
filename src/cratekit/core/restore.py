@@ -1853,7 +1853,7 @@ def _stage_companion_aside(target: Path, staging: Path) -> None:
     AND A COLLISION IS REFUSED RATHER THAN LEFT TO THE STAMP'S WIDTH.
     :func:`_pre_restore_root` takes a fresh stamp per attempt with a 64-bit random
     tail, which makes two attempts landing on one directory vanishingly unlikely,
-    but ``_mkdir_private`` returns silently when the directory is already there and
+    but ``mkdir_private`` returns silently when the directory is already there and
     ``os.replace`` overwrites, so the consequence of the unlikely event is the
     silent destruction of the one copy of transactions in no capture. The
     probability was the whole defence and the docstring used to read as though the
@@ -1882,7 +1882,7 @@ def _stage_companion_aside(target: Path, staging: Path) -> None:
     if not os.path.lexists(target):
         return
     _assert_staging_is_free(target, staging)
-    config._mkdir_private(staging)
+    config.mkdir_private(staging)
     os.replace(target, staging / target.name)
 
 
@@ -2063,7 +2063,7 @@ def _replace_file(source: Path, target: Path) -> None:
     it, and a half-written database is the state this whole module exists to get
     somebody out of.
     """
-    config._mkdir_private(target.parent)
+    config.mkdir_private(target.parent)
     descriptor, temporary = tempfile.mkstemp(dir=str(target.parent), suffix=".tmp")
     os.close(descriptor)
     staged = Path(temporary)
@@ -2102,7 +2102,7 @@ def _replace_directory(source: Path, target: Path) -> None:
     is still removed up front, because a partial copy from a dead attempt is
     worth nothing and its only alternative use is being mistaken for a whole one.
     """
-    config._mkdir_private(target.parent)
+    config.mkdir_private(target.parent)
     staged = target.with_name(f"{target.name}.restoring")
     previous = target.with_name(f"{target.name}.replaced")
     if previous.exists() and not target.exists():
@@ -2292,20 +2292,9 @@ def shares_the_database_volume(cfg: config.Config, *, root: Path | None = None) 
     """
     store = root if root is not None else snapshot.store_root(cfg)
     database = config.state_path(snapshot.DATABASE_KEY, cfg)
-    left = _device_of(store)
-    right = _device_of(database)
+    left = preflight.device_of(store)
+    right = preflight.device_of(database)
     return left is not None and left == right
-
-
-def _device_of(path: Path) -> int | None:
-    probe = path
-    while True:
-        try:
-            return probe.stat().st_dev
-        except OSError:
-            if probe.parent == probe:
-                return None
-            probe = probe.parent
 
 
 def retention_plan(

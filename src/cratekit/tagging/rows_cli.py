@@ -55,10 +55,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, confirm_gate, load_config
 from cratekit.core import active_taxonomy, analysis_store, config, rb_writer, session
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
-from cratekit.core.exit_codes import Remedy
+from cratekit.core.cause import CratekitError, Outcome
 from cratekit.tagging import rows
 from cratekit.write import metadata_cli
 
@@ -86,22 +85,6 @@ _BLOCKED = "no row's genre can be compared with its file"
 _ORIGIN = ("tagging", "rows_cli")
 
 
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("tagging.rows_cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
-
-
 def build(parser, entry) -> None:
     """Declare the verb. It reads the whole collection, less the rows held out."""
     del entry
@@ -117,26 +100,6 @@ def build(parser, entry) -> None:
         ),
     )
     parser.set_defaults(_handler=tag_rows)
-
-
-def _confirm_gate(entry):
-    """The verb's own gate by name, never by position.
-
-    The shared cloud sync gate sits beside it and is raised by the guarded
-    writer, so indexing would bind this verb to the order the two are written
-    in.
-    """
-    for spec in entry.gates:
-        if spec.name == CONFIRM_GATE:
-            return spec
-    raise refuse(
-        "internal-error",
-        f"{entry.name} declares no gate named {CONFIRM_GATE!r}, so there is no "
-        f"question to ask before it writes",
-        remedy=Remedy.REPORT_DEFECT,
-        origin=_ORIGIN,
-        detail={"verb": entry.name, "gate": CONFIRM_GATE},
-    )
 
 
 def _payload(plan: rows.RowsPlan) -> dict[str, Any]:
@@ -313,9 +276,9 @@ def apply_plan(cfg: config.Config, plan: rows.RowsPlan) -> rows.Written:
 
 def tag_rows(ctx) -> Envelope:
     """Plan every row against its file, ask, then write the genre and read it back."""
-    cfg = _load()
+    cfg = load_config(("tagging.rows_cli",))
     declared = active_taxonomy.load(cfg)
-    spec = _confirm_gate(ctx.entry)
+    spec = confirm_gate(ctx.entry, CONFIRM_GATE, origin=_ORIGIN)
     # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
     session.assert_backup_acknowledged(cfg)
 

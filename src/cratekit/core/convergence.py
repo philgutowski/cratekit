@@ -678,10 +678,7 @@ class ConvergenceState:
     trees: tuple[TreeConvergence, ...] = ()
 
     def tree(self, tree_id: str) -> TreeConvergence | None:
-        for entry in self.trees:
-            if entry.tree_id == tree_id:
-                return entry
-        return None
+        return tree_registry.by_tree_id(self.trees, tree_id)
 
     def blocking_trees(self) -> tuple[str, ...]:
         return tuple(entry.tree_id for entry in self.trees if entry.blocking)
@@ -734,15 +731,15 @@ def read(cfg: config.Config) -> ConvergenceState:
     """
     path = path_for(cfg)
     try:
-        raw = path.read_bytes()
-    except FileNotFoundError:
-        return EMPTY
+        raw = config.read_bytes_if_present(path)
     except OSError as exc:
         raise ConvergenceStateUnreadable(
             f"{path} exists and could not be read: {exc}",
             path=path,
             remedy=Remedy.RUN_DOCTOR,
         ) from exc
+    if raw is None:
+        return EMPTY
 
     try:
         data = json.loads(raw.decode("utf-8"))
@@ -890,7 +887,7 @@ def record_fingerprint(
     the regression it hides is a real one.
     """
     taken = replace(probe(db), taken=output.timestamp(now))
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         write(cfg, read(cfg).with_fingerprint(taken))
     return taken
 
@@ -909,7 +906,7 @@ def mark_unconverged(
     not keep moving the date the damage was first seen forward to now.
     """
     stamp = output.timestamp(now)
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         state = read(cfg)
         for tree_id in tree_ids:
             current = state.tree(tree_id) or TreeConvergence(tree_id=tree_id)
@@ -955,7 +952,7 @@ def record_nodes(
     for two destinations, which is the shape :func:`assert_injective` refuses.
     Every other caller merges, because it has only looked at part of the tree.
     """
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         state = read(cfg)
         current = state.tree(tree_id) or TreeConvergence(tree_id=tree_id)
         updated = (
@@ -1013,7 +1010,7 @@ def clear_unconverged(
         )
 
     stamp = output.timestamp(now)
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         state = read(cfg)
         current = state.tree(tree_id) or TreeConvergence(tree_id=tree_id)
         if disposition is not None:

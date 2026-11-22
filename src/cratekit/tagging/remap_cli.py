@@ -39,10 +39,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from cratekit.cli.output import Envelope
-from cratekit.core import active_taxonomy, config
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
-from cratekit.core.exit_codes import Remedy
+from cratekit.cli.output import Envelope, confirm_gate, load_config
+from cratekit.core import active_taxonomy
+from cratekit.core.cause import Outcome, refuse
 from cratekit.tagging import remap
 
 #: The explicit gate a rewrite is asked behind.
@@ -75,41 +74,10 @@ _NAMED_FILES = 5
 _ORIGIN = ("tagging", "remap_cli")
 
 
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=_ORIGIN,
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
-
-
 def build(parser, entry) -> None:
     """Declare the verb. It takes no argument: it reads every tagging record."""
     del entry
     parser.set_defaults(_handler=tag_remap)
-
-
-def _confirm_gate(entry):
-    """The verb's own gate by name, never by position."""
-    for spec in entry.gates:
-        if spec.name == CONFIRM_GATE:
-            return spec
-    raise refuse(
-        "internal-error",
-        f"{entry.name} declares no gate named {CONFIRM_GATE!r}, so there is no "
-        f"question to ask before it writes",
-        remedy=Remedy.REPORT_DEFECT,
-        origin=_ORIGIN,
-        detail={"verb": entry.name, "gate": CONFIRM_GATE},
-    )
 
 
 def _payload(plan: remap.RemapPlan) -> dict[str, Any]:
@@ -355,9 +323,9 @@ def assert_written(written: remap.Written) -> None:
 
 def tag_remap(ctx) -> Envelope:
     """Plan from the tagging records, ask, then rewrite the genre and read it back."""
-    cfg = _load()
+    cfg = load_config(_ORIGIN)
     declared = active_taxonomy.load(cfg)
-    spec = _confirm_gate(ctx.entry)
+    spec = confirm_gate(ctx.entry, CONFIRM_GATE, origin=_ORIGIN)
 
     plan = remap.plan(cfg, declared)
     data = _payload(plan)

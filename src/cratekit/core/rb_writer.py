@@ -1429,7 +1429,7 @@ def snapshot_db(
     # An explicit mode on the directory as well as on the files: a private file
     # inside a world-writable directory can be unlinked and replaced by any local
     # account whatever its own mode says (P1).
-    config._mkdir_private(destination)
+    config.mkdir_private(destination)
     return _copy_file_set(source, destination)
 
 
@@ -3959,7 +3959,7 @@ def write_session_lock(path: Path | str | None = None, *, cfg: config.Config | N
     # The directory mode is part of the file mode: a private lock file inside a
     # world-writable directory can be unlinked and replaced by any local account,
     # which takes mutual exclusion with it (P1).
-    config._mkdir_private(target.parent)
+    config.mkdir_private(target.parent)
 
     handle = open(target, "a+")
     try:

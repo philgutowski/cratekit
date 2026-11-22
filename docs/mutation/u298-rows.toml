@@ -1,0 +1,288 @@
+name = "u298"
+pass_kind = "light"
+
+# The card's own table over the shared homes U298 added, 25 rows at the cap.
+# The guards each home moved from its copies are held by the kill set replay,
+# u298-replay-after-*, and these rows are the homes' own new code.
+
+[[rows]]
+id = "H1_config_cause_reason"
+description = "load_config: an unusable config ends a cause other than config-unusable"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_config.py"]
+old = '''                reason="config-unusable",
+                message=str(exc),
+                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
+                origin=origin,'''
+new = '''                reason="internal-error",
+                message=str(exc),
+                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
+                origin=origin,'''
+
+[[rows]]
+id = "H2_config_cause_origin"
+description = "load_config: the refusal no longer names the verb that met it"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_config.py"]
+old = '''                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
+                origin=origin,
+                detail={"kind": type(exc).__name__},'''
+new = '''                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
+                origin=(),
+                detail={"kind": type(exc).__name__},'''
+
+[[rows]]
+id = "H3_declared_gate_by_name"
+description = "declared_gate: the first gate on the entry is returned whatever its name"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py"]
+old = '''    for spec in entry.gates:
+        if spec.name == name:
+            return spec
+    raise RuntimeError('''
+new = '''    for spec in entry.gates:
+        return spec
+    raise RuntimeError('''
+
+[[rows]]
+id = "H4_confirm_gate_refusal"
+description = "confirm_gate: a verb with no gate of the name gets None instead of the typed refusal"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py"]
+old = '''            return spec
+    raise refuse(
+        "internal-error",
+        f"{entry.name} declares no gate named {name!r}, so there is no "'''
+new = '''            return spec
+    return None
+    raise refuse(
+        "internal-error",
+        f"{entry.name} declares no gate named {name!r}, so there is no "'''
+
+[[rows]]
+id = "H5_approving_actor_default"
+description = "approving_actor: a run nobody decided reads as the cli actor"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py"]
+old = '''    return decision.actor if decision is not None else ""'''
+new = '''    return decision.actor if decision is not None else "cli"'''
+
+[[rows]]
+id = "H6_no_job_id_string"
+description = "no_job: the job id of a run that queued nothing is null, which fails the job_state schema"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py"]
+old = '''    return {"job_id": "", "state": state, "cause": None, "progress": dict(progress)}'''
+new = '''    return {"job_id": None, "state": state, "cause": None, "progress": dict(progress)}'''
+
+[[rows]]
+id = "H7_held_translates_acquisition"
+description = "held: a lock another holder has leaves as the lock error, not the store's own refusal"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_config.py"]
+old = '''    except ConfigLockUnavailable as exc:
+        raise refused(exc) from exc'''
+new = '''    except ConfigLockUnavailable:
+        raise'''
+
+[[rows]]
+id = "H8_lock_within_takes_lock"
+description = "lock_within: reads the lock as had without taking it, so two writers interleave"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_shared_homes.py", "tests/test_config.py"]
+old = '''        had = fcntl is None'''
+new = '''        had = True'''
+
+[[rows]]
+id = "H9_lock_now_held_elsewhere"
+description = "lock_now: a lock another process holds reads as had"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_config.py", "tests/test_jobs.py"]
+old = '''        except BlockingIOError:
+            return handle, False'''
+new = '''        except BlockingIOError:
+            return handle, True'''
+
+[[rows]]
+id = "H10_flock_exclusive_hardens"
+description = "flock_exclusive: a lock file left at another mode is never hardened"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_shared_homes.py", "tests/test_config.py"]
+old = '''        handle = os.fdopen(descriptor, "r+b")
+        harden(target)'''
+new = '''        handle = os.fdopen(descriptor, "r+b")'''
+
+[[rows]]
+id = "H11_read_json_refuses_garbage"
+description = "read_json: a document that is not JSON reads as an empty record"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_config.py"]
+old = '''        return True, json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise unusable("it could not be opened") from exc
+    except ValueError as exc:
+        raise unusable("it is not JSON") from exc'''
+new = '''        return True, json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise unusable("it could not be opened") from exc
+    except ValueError:
+        return True, {}'''
+
+[[rows]]
+id = "H12_read_json_map_shape"
+description = "read_json_map: a list at the top level is handed on as a record"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_config.py"]
+old = '''    if not isinstance(raw, Mapping):
+        raise unusable(f"the document is a {type(raw).__name__}, not a map")'''
+new = ''
+
+[[rows]]
+id = "H13_capture_verified"
+description = "attached_capture: a capture that fails its check is written past"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+old = '''    session.attach_capture(record, capture.root, cfg)
+    snapshot.assert_verified(capture)
+    return record, capture'''
+new = '''    session.attach_capture(record, capture.root, cfg)
+    return record, capture'''
+
+[[rows]]
+id = "H14_capture_attached_before_judged"
+description = "attached_capture: a capture that fails its check is never attached to the session record"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_tree_writer.py", "tests/test_write_session.py"]
+old = '''    session.attach_capture(record, capture.root, cfg)
+    snapshot.assert_verified(capture)
+    return record, capture'''
+new = '''    snapshot.assert_verified(capture)
+    session.attach_capture(record, capture.root, cfg)
+    return record, capture'''
+
+[[rows]]
+id = "H15_rollback_swallows"
+description = "rollback_quietly: a rollback that raises replaces the real cause with its own"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_tree_writer.py"]
+old = '''    try:
+        db.session.rollback()
+    except Exception:  # noqa: BLE001 - a failed cleanup must not hide its cause
+        logger.warning("could not roll back the pending session after a failed write")'''
+new = '''    db.session.rollback()'''
+
+[[rows]]
+id = "H16_reported_extra_under_progress"
+description = "reported: a verb's own detail is dropped from progress"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_jobs.py"]
+old = '''    if extra:
+        counted.update(extra)'''
+new = ''
+
+[[rows]]
+id = "H17_reported_cause"
+description = "reported: a job closed on a cause reports no cause"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_jobs.py"]
+old = '''        "cause": job.cause.to_json() if job.cause is not None else None,
+        "progress": counted,'''
+new = '''        "cause": None,
+        "progress": counted,'''
+
+[[rows]]
+id = "H18_staged_path_cleared"
+description = "Artifacts.staged_path: a half written report from an attempt that died is left in staging"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_jobs.py"]
+old = '''        directory = self.staging_dir(cfg, job_id) / str(ordinal)
+        if directory.exists():
+            shutil.rmtree(directory)'''
+new = '''        directory = self.staging_dir(cfg, job_id) / str(ordinal)'''
+
+[[rows]]
+id = "H19_by_ordinal_numeric"
+description = "by_ordinal: reports sorted as text, so the ten thousandth comes before the second"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_jobs.py"]
+old = '''    return sorted((path for path in paths if path.stem.isdigit()), key=lambda item: int(item.stem))'''
+new = '''    return sorted((path for path in paths if path.stem.isdigit()), key=lambda item: item.stem)'''
+
+[[rows]]
+id = "H20_by_ordinal_filters"
+description = "by_ordinal: a stray non ordinal file reaches the sort key and raises"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_jobs.py"]
+old = '''    return sorted((path for path in paths if path.stem.isdigit()), key=lambda item: int(item.stem))'''
+new = '''    return sorted((path for path in paths), key=lambda item: int(item.stem))'''
+
+[[rows]]
+id = "H21_advance_refuses_empty"
+description = "advance: a job with no items is driven straight to succeeded"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_jobs.py"]
+old = '''    if job.is_open() and not items(store, job.job_id):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "H22_resumed_raises_state"
+description = "resumed: a job that did not end cleanly is an ok exit"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_jobs.py"]
+old = '''        job = get(store, job.job_id)
+    raise_for_state(job)
+    return job, warnings'''
+new = '''        job = get(store, job.job_id)
+    return job, warnings'''
+
+[[rows]]
+id = "H23_artifacts_names_differ"
+description = "Artifacts: a staging name equal to the final name is accepted"
+file = "src/cratekit/core/jobs.py"
+surface = "maintainer"
+tests = ["tests/test_shared_homes.py"]
+old = '''        if self.final == self.staging:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "H24_record_commit_nothing_written"
+description = "record_commit: a run that wrote nothing claims a commit a restore would discard"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py"]
+old = '''    if written <= 0:
+        return
+    session.record_commit('''
+new = '''    session.record_commit('''
+
+[[rows]]
+id = "H25_private_store_sidecars"
+description = "make_private: the write ahead log and shared memory files keep the umask's mode"
+file = "src/cratekit/core/private_store.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_jobs.py", "tests/test_review_queue.py"]
+old = '''    for sidecar in config.SQLITE_SIDECARS:
+        own_only(path.with_name(path.name + sidecar.suffix))'''
+new = ''

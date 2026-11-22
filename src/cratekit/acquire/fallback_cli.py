@@ -402,15 +402,6 @@ def fetch_argv(job) -> list[str]:
     return ["acquire", "fallback-fetch", str(payload.get(LIST) or ""), "--job", job.job_id]
 
 
-def _reported(store, job) -> dict[str, Any]:
-    return {
-        "job_id": job.job_id,
-        "state": str(job.state),
-        "cause": job.cause.to_json() if job.cause is not None else None,
-        "progress": jobs.progress(store, job.job_id),
-    }
-
-
 def accepted_rows(
     items: review.ReviewStore, missing: list[match.Wanted]
 ) -> dict[str, dict[str, str]]:
@@ -466,15 +457,11 @@ def acquire_fallback_fetch(ctx) -> Envelope:
             acquire_cli.sweep_staging(
                 Path(jobs.frozen_config(job).paths.download_staging), store
             )
-            warnings: tuple[dict[str, str], ...] = ()
-            if job.is_open():
-                _, warnings = ctx.run_job(store, job)
-                job = jobs.get(store, job.job_id)
             # The same tail as ``acquire download``, for the same two reasons: a
             # job parked on a missing ``yt-dlp`` reported ``ok`` (R-290), and a
             # list half fetched exited 0 (R-225).
-            jobs.raise_for_state(job)
-            return ctx.envelope(data=_reported(store, job), warnings=warnings)
+            job, warnings = jobs.resumed(ctx, store, job)
+            return ctx.envelope(data=jobs.reported(store, job), warnings=warnings)
     path = Path(str(ctx.args.list)).expanduser().absolute()
     subject: dict[str, Any] = {"list_in": str(path)}
     cfg, _counts, missing = missing_rows(ctx, path, subject)
@@ -496,7 +483,7 @@ def acquire_fallback_fetch(ctx) -> Envelope:
             cfg=cfg,
             item_ids=tuple(rows),
         )
-        return ctx.envelope(data=_reported(store, job))
+        return ctx.envelope(data=jobs.reported(store, job))
 
 
 def fetch_stem(artist: str, title: str) -> str:

@@ -27,9 +27,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from cratekit.cli import gates, output, registry
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import active_taxonomy, config, taxonomy, taxonomy_upgrade
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Remedy, refuse
+from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 
 if TYPE_CHECKING:  # pragma: no cover
     from cratekit.cli import Context
@@ -48,18 +48,7 @@ _ORIGIN = ("cli", "verbs", "taxonomy")
 
 def _load() -> config.Config:
     """Read config, turning a configuration failure into a typed cause."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=_ORIGIN,
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
+    return load_config(_ORIGIN)
 
 
 def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:

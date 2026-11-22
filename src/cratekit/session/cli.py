@@ -70,32 +70,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import backup_facts, config, session
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause.
-
-    The remedy token rides through from the configuration error that raised it,
-    so "no config at all" and "config written by a newer build" keep their
-    different answers all the way out to the shell (D2). Copied in shape from
-    ``session.restore_cli._load``, the sibling in this package.
-    """
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("session", "cli"),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def _gate(entry, name: str):
@@ -271,7 +249,7 @@ def record_ack(ctx) -> Envelope:
     """
     if getattr(ctx.args, "as_actor", None) == session.SESSION_ACTOR:
         return _mint_as_session(ctx)
-    cfg = _load()
+    cfg = load_config(("session", "cli"))
     now = datetime.now(timezone.utc)
     shown = _rendered_ages(cfg, now)
     spec = _gate(ctx.entry, "session.ack.backup")
@@ -392,7 +370,7 @@ def _mint_as_session(ctx) -> Envelope:
     :func:`_on_record` gives: refusing over it would leave a library whose
     record somebody damaged with no way to acknowledge again.
     """
-    cfg = _load()
+    cfg = load_config(("session", "cli"))
     now = datetime.now(timezone.utc)
     try:
         recorded = session.read_acknowledgment(cfg)
@@ -464,7 +442,7 @@ def release_lock(ctx) -> Envelope:
     matters least. The declared prompt asserts a holder that may not be there,
     which is recorded in the ledger rather than reworded here.
     """
-    cfg = _load()
+    cfg = load_config(("session", "cli"))
     path = session.lock_path(cfg)
     holder = session.read_lock_holder(path)
     # A LOCK FILE WITH NO READABLE HOLDER IS ITS OWN STATE, and the shell has to

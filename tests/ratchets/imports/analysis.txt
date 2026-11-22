@@ -10,5 +10,3 @@ off-interface cratekit.core.cores
 off-interface cratekit.core.discovery
 off-interface cratekit.core.drift
 off-interface cratekit.core.pool
-private cratekit.core.config._exclusive_lock
-private cratekit.core.config._mkdir_private

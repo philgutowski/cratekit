@@ -119,7 +119,7 @@ from typing import Any
 
 from cratekit.acquire import listdoc, match, match_cli
 from cratekit.cli.output import Envelope
-from cratekit.core import artifacts, jobs, review
+from cratekit.core import jobs, review
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.intake import candidates, land_cli, landing
@@ -310,7 +310,7 @@ def _reports_or_refuse(store, job: jobs.Job) -> tuple[dict[str, Any], ...]:
             "queue the playlist again and list the new job",
             job_id=job.job_id,
         )
-    reports = artifacts.committed(intake_cli.ARTIFACTS, jobs.frozen_config(job), job.job_id)
+    reports = intake_cli.ARTIFACTS.committed(jobs.frozen_config(job), job.job_id)
     reported = [str(report.get("item_id")) for report in reports]
     if sorted(reported) != sorted(wanted):
         absent = sorted(set(wanted) - set(reported))
@@ -1269,12 +1269,9 @@ def _missing_for_list(ctx, given: str) -> Envelope:
     missing: list[match.Wanted] = []
     seen: set[str] = set()
     for settled in resolved.matches:
-        if settled.state is match.MatchState.MATCHED:
-            counts["owned"] += 1
-        elif settled.state is match.MatchState.NEEDS_REVIEW:
-            counts["offered"] += 1
-        elif settled.state is match.MatchState.SUPPRESSED:
-            counts["suppressed"] += 1
+        word = match_cli.SETTLED_WORDS.get(settled.state)
+        if word is not None:
+            counts[word] += 1
         else:
             counts["missing"] += 1
             # THE SAME LINE TWICE IS ONE ROW, on the match identifier.

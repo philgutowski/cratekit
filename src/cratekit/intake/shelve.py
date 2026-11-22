@@ -52,7 +52,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Sequence
 
 from cratekit.cli.output import digest_of
-from cratekit.core import config, locations, rb_writer, session, snapshot
+from cratekit.core import config, locations, rb_writer, session
 from cratekit.core.cause import CratekitError, Remedy, refuse
 from cratekit.intake import batch_name, landing, native
 from cratekit.write import routing_pass, trees
@@ -614,10 +614,7 @@ def apply(
         ) as gates,
         rb_writer.commit_witness(db) as witness,
     ):
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = trees.attached_capture(gates, cfg, db)
         before = {cid: kept for cid, (_path, kept) in _select_rows(db, content_ids).items()}
         try:
             for one in plan.batches:
@@ -634,7 +631,7 @@ def apply(
                 _assert_confined(db, plan)
                 rb_writer.commit_guarded(db)
         except BaseException as exc:
-            trees._rollback_quietly(db)
+            trees.rollback_quietly(db)
             if witness.landed:
                 _record_shelve_commit(record, plan, cfg)
                 raise

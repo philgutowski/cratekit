@@ -75,6 +75,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from cratekit.cli.output import count_of
 from cratekit.favorites import placeholders
 
 #: The fields an ordering step records, by name.
@@ -183,13 +184,7 @@ def _moving(
     end = _ids(value.get(TARGET))
     if at is None or start is None or end is None:
         return None
-    return at, start, end, _count(value.get(SENT)), _count(value.get(LANDED))
-
-
-def _count(value: Any) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        return None
-    return value
+    return at, start, end, count_of(value.get(SENT)), count_of(value.get(LANDED))
 
 
 def _counts(
@@ -425,11 +420,11 @@ def stopped_writes(
 def front_moves(before: Sequence[str], order: Iterable[str]) -> list[str]:
     """The tracks the account adapter moves to the front, in the order it moves them (U220).
 
-    A copy of the adapter's rule (``_to_the_front`` in the account adapter),
-    held to it by a test: a track the playlist does not hold, or holds twice,
-    is not asked; the longest run at the tail of the asked order already
-    standing in that order stays; every asked track before that run is moved,
-    the last of them first.
+    The adapter's own rule, which it takes from here: a track the playlist
+    does not hold, or holds twice, is not asked; the longest run at the tail
+    of the asked order already standing in that order stays; every asked track
+    before that run is moved, the last of them first, so each lands in front
+    of the one after it.
     """
     counts: dict[str, int] = {}
     for one in before:

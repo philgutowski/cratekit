@@ -360,6 +360,19 @@ class TreeRecord:
                 )
 
 
+def by_tree_id(entries, tree_id: str):
+    """The one of ``entries`` recorded for ``tree_id``, or None.
+
+    A scan and never a dict keyed on the identifier, so no reader is handed a
+    mapping to be tempted to key on a name. The convergence record reads its
+    own entries through this as well.
+    """
+    for entry in entries:
+        if entry.tree_id == tree_id:
+            return entry
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class Registry:
     """Every record the registry holds. A tree with no record is on the bridge.
@@ -373,10 +386,7 @@ class Registry:
     trees: tuple[TreeRecord, ...] = ()
 
     def record(self, tree_id: str) -> TreeRecord | None:
-        for entry in self.trees:
-            if entry.tree_id == tree_id:
-                return entry
-        return None
+        return by_tree_id(self.trees, tree_id)
 
     def mode(self, tree_id: str) -> str:
         """The medium that owns ``tree_id``. Unrecorded means the bridge."""
@@ -719,7 +729,7 @@ def record_cutover(
             f"underneath this registry cannot be detected"
         )
     assert_rebuildable(tree_id, source)
-    with config._exclusive_lock(lock_path(cfg)):
+    with config.exclusive_lock(lock_path(cfg)):
         current = read(cfg)
         standing = current.record(tree_id)
         if standing is not None and standing.mode == Mode.DATABASE:
@@ -1186,7 +1196,7 @@ def revert_cutover(cfg: config.Config, tree_id: str) -> Registry:
     caller, so this may not be called from inside a destructive session:
     sessions do not nest.
     """
-    with session.session_lock(cfg), config._exclusive_lock(lock_path(cfg)):
+    with session.session_lock(cfg), config.exclusive_lock(lock_path(cfg)):
         assert_revertible(cfg, tree_id)
         updated = read(cfg).without_record(tree_id)
         write(cfg, updated)
@@ -1344,6 +1354,7 @@ __all__ = [
     "assert_cutover_ready",
     "assert_rebuildable",
     "assert_revertible",
+    "by_tree_id",
     "cutover_precheck",
     "cutover_trees",
     "flip",

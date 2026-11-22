@@ -56,10 +56,9 @@ from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from pathlib import Path
 
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import active_taxonomy, art, config, jobs, taxonomy, taxonomy_word
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
-from cratekit.core.exit_codes import Remedy
+from cratekit.core.cause import Cause, CratekitError, Outcome, rebuilt, refuse
 from cratekit.label import harvest as label_harvest
 from cratekit.label import registry as labels
 from cratekit.label import verify as label_verify
@@ -161,27 +160,6 @@ WAY_LABEL = "label"
 WAY_CATALOGUE = "catalogue"
 WAY_NONE = "none"
 WAYS: tuple[str, ...] = (WAY_LABEL, WAY_CATALOGUE, WAY_NONE)
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause.
-
-    The remedy token is carried straight through from the configuration error
-    that raised it, so "no config at all" and "config written by a newer build"
-    keep their different answers all the way to the CLI.
-    """
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("tagging.cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def build(parser, entry) -> None:
@@ -979,7 +957,7 @@ def tag_folder(ctx) -> Envelope:
     own in ``cause.REASONS``, and reusing the correction verb's would put that
     verb's name on this one's failure. Recorded as a residual.
     """
-    cfg = _load()
+    cfg = load_config(("tagging.cli",))
     if ctx.args.job:
         return _resume(ctx, cfg, ctx.args.job, typed_label=ctx.args.label)
 

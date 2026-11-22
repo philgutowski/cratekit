@@ -50,7 +50,7 @@ from typing import Any
 
 from cratekit.acquire import match
 from cratekit.cli.output import digest_of
-from cratekit.core import config, convergence, rb_writer, session, snapshot, tree_registry
+from cratekit.core import config, convergence, rb_writer, session, tree_registry
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.sync.playlists import PER_PLAYLIST_REASONS, is_taken, untaken_name
 from cratekit.write import playlist_pair, trees
@@ -670,10 +670,7 @@ def addition_violations(
                 f"the {rb_writer.PLAYLIST_TABLE} row {key!r} changed {sorted(changed - allowed)}, "
                 f"which the twins made do not explain"
             )
-    m_cols = before.membership_columns
-    owner_at = m_cols.index("PlaylistID")
-    content_at = m_cols.index("ContentID")
-    m_marker = m_cols.index(rb_writer.SOFT_DELETE_COLUMN)
+    owner_at, content_at, m_marker = trees.membership_positions(before)
     for key in sorted(set(before.memberships) - set(after.memberships)):
         violations.append(f"the {rb_writer.MEMBERSHIP_TABLE} row {key!r} disappeared")
     for key in sorted(set(before.memberships) & set(after.memberships)):
@@ -825,10 +822,7 @@ def write(
     with session.assert_gates(
         cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
     ) as gates:
-        record = gates.record
-        capture = snapshot.capture(cfg, db=db)
-        session.attach_capture(record, capture.root, cfg)
-        snapshot.assert_verified(capture)
+        record, capture = trees.attached_capture(gates, cfg, db)
         with rb_writer.commit_witness(db) as witness:
             try:
                 before = rb_writer.node_tables(db)
@@ -857,7 +851,7 @@ def write(
                 assert_confined(db, before, folders=folders_made, playlists=planned_rows)
                 rb_writer.commit_guarded(db)
             except BaseException:
-                trees._rollback_quietly(db)
+                trees.rollback_quietly(db)
                 if witness.landed:
                     _record_twins_commit(record, created=added + len(created), cfg=cfg)
                 raise

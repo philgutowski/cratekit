@@ -24,7 +24,6 @@ from cratekit.cli import jobs as cli_jobs
 from cratekit.cli import registry
 from cratekit.core import (
     active_taxonomy,
-    artifacts,
     config,
     jobs,
     locations,
@@ -711,8 +710,8 @@ def test_a_playlist_whose_reports_cannot_be_read_is_left_alone(slim, monkeypatch
     (job,) = [job for job in _playlist_jobs() if playlists.playlist_of(job) == "pl-a"]
     with jobs.open_store() as store:
         item = jobs.items(store, job.job_id)[0]
-    artifacts.final_path(
-        intake_cli.ARTIFACTS, jobs.frozen_config(job), job.job_id, item.ordinal
+    intake_cli.ARTIFACTS.final_path(
+        jobs.frozen_config(job), job.job_id, item.ordinal
     ).write_text("{", encoding="utf-8")
 
     code, done = _answered(xml)
@@ -1475,8 +1474,8 @@ def test_a_named_playlist_whose_reports_cannot_be_read_is_refused_by_name(slim, 
     (job,) = [job for job in _playlist_jobs() if playlists.playlist_of(job) == "pl-a"]
     with jobs.open_store() as store:
         item = jobs.items(store, job.job_id)[0]
-    artifacts.final_path(
-        intake_cli.ARTIFACTS, jobs.frozen_config(job), job.job_id, item.ordinal
+    intake_cli.ARTIFACTS.final_path(
+        jobs.frozen_config(job), job.job_id, item.ordinal
     ).write_text("{", encoding="utf-8")
 
     with pytest.raises(CratekitError) as refused:

@@ -169,14 +169,7 @@ def build_mark(parser, entry) -> None:
 
 
 def _blocked(message: str, *steps: str, **detail: Any) -> CratekitError:
-    return refuse(
-        "sync-marks-blocked",
-        message,
-        steps=steps,
-        scope=Scope.SOURCE,
-        origin=_ORIGIN,
-        detail=detail,
-    )
+    return marks.blocked(_ORIGIN, message, *steps, **detail)
 
 
 @dataclass

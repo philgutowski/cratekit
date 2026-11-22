@@ -240,16 +240,9 @@ class KeptReads:
     def load(cls, label_id: str) -> KeptReads:
         """The label's kept reads, an empty store when none was written, or the refusal."""
         path = path_for(label_id)
-        if not path.exists():
+        raw = config.read_json_map(path, lambda why: _unusable(path, why))
+        if raw is None:
             return cls(label_id, {}, path=path)
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except OSError as exc:
-            raise _unusable(path, "it could not be opened") from exc
-        except ValueError as exc:
-            raise _unusable(path, "it is not JSON") from exc
-        if not isinstance(raw, Mapping):
-            raise _unusable(path, f"the document is a {type(raw).__name__}, not a map")
         version = raw.get("version")
         if version != VERSION:
             raise _unusable(

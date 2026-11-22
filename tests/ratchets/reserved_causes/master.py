@@ -6,8 +6,8 @@ modules that moved, and put a dated comment on those entries.
 """
 
 KEBAB_LITERALS = {
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'master/cli.py': [
-        'config-unusable',
         'join-order',
         'source-missing',
         'target-lufs-out-of-range',
@@ -15,5 +15,6 @@ KEBAB_LITERALS = {
 }
 
 LITERAL_HOLDERS = {
-    'master/cli.py': ['config-unusable', 'source-missing', 'target-lufs-out-of-range'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'master/cli.py': ['source-missing', 'target-lufs-out-of-range'],
 }

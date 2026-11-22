@@ -39,7 +39,8 @@ from datetime import datetime, timezone
 from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
-from cratekit.core.cause import Cause, Outcome, Remediation, Scope
+from cratekit.core import config
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 
 #: The outer contract version. Bumped only when the frame itself changes, which
@@ -239,6 +240,17 @@ def _matches_type(value: Any, declared: str) -> bool:
         if isinstance(value, expected):
             return True
     return False
+
+
+def count_of(value: Any) -> int | None:
+    """A count as a stored document carries one, or None for anything else.
+
+    A whole number that is not negative. A boolean is an int in Python and is
+    never a count here, the rule :func:`payload_problems` holds a payload to.
+    """
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -573,6 +585,84 @@ def from_cause(
     )
 
 
+# ---------------------------------------------------------------------------
+# What every verb's shell needs, written once (U298)
+# ---------------------------------------------------------------------------
+#
+# Here and not in a module of the shell proper, because a verb that lives
+# beside its domain may import this module and no other part of the shell.
+
+
+def load_config(origin: Sequence[str]) -> config.Config:
+    """Read config, turning a configuration failure into the typed cause.
+
+    ``origin`` is the verb's own, so the refusal names the verb that met it.
+    """
+    try:
+        return config.load()
+    except config.ConfigError as exc:
+        raise CratekitError(
+            Cause(
+                reason="config-unusable",
+                message=str(exc),
+                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
+                origin=origin,
+                detail={"kind": type(exc).__name__},
+            )
+        ) from exc
+
+
+def declared_gate(entry, name: str):
+    """The verb's own gate by name, never by position, or a ``RuntimeError``.
+
+    By name because a shared gate may sit beside it on the entry, and an index
+    would bind the verb to the order the two are written in.
+    """
+    for spec in entry.gates:
+        if spec.name == name:
+            return spec
+    raise RuntimeError(f"registry entry {entry.name!r} declares no gate {name!r}")
+
+
+def confirm_gate(entry, name: str, *, origin: Sequence[str]):
+    """The gate a verb asks before it writes, by name, or the typed refusal.
+
+    A second shape beside :func:`declared_gate` and not merged with it: the
+    verbs that call this one end ``internal-error`` with a remedy when the gate
+    is missing, and the others end in a traceback.
+    """
+    for spec in entry.gates:
+        if spec.name == name:
+            return spec
+    raise refuse(
+        "internal-error",
+        f"{entry.name} declares no gate named {name!r}, so there is no "
+        f"question to ask before it writes",
+        remedy=Remedy.REPORT_DEFECT,
+        origin=origin,
+        detail={"verb": entry.name, "gate": name},
+    )
+
+
+def approving_actor(ctx, spec) -> str:
+    """Who the run record says answered ``spec``'s gate, or the empty string.
+
+    Off the recorded decision and not off ``ctx.gate.actor``, which is the
+    default the shell carries and reads ``"cli"`` for a run nobody decided.
+    """
+    decision = ctx.run.decisions.get(spec.name)
+    return decision.actor if decision is not None else ""
+
+
+def no_job(state: str, **progress: Any) -> dict[str, Any]:
+    """The ``job_state`` payload for a run that correctly queued nothing.
+
+    ``job_id`` is the empty string and not None, because the declared surface
+    types it as a string and a null fails the verb's own schema (R-234).
+    """
+    return {"job_id": "", "state": state, "cause": None, "progress": dict(progress)}
+
+
 __all__ = [
     "ENVELOPE_KEYS",
     "ENVELOPE_VERSION",
@@ -580,14 +670,20 @@ __all__ = [
     "Envelope",
     "PendingHumanAction",
     "SchemaError",
+    "approving_actor",
     "build",
     "canonical_json",
+    "confirm_gate",
+    "count_of",
     "current_schema",
+    "declared_gate",
     "digest_of",
     "envelope_problems",
     "from_cause",
+    "load_config",
     "new_pending_id",
     "new_run_id",
+    "no_job",
     "payload_problems",
     "schema_document",
     "schema_fingerprint",

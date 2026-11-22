@@ -409,7 +409,7 @@ def test_a_job_whose_record_is_gone_says_it_does_not_know(cfg, silence, tmp_path
     machine(monkeypatch)
     code, done = drive(["analyze", "run", str(folder)])
     assert code == int(ExitCode.OK), done
-    record = artifacts._job_dir(artifacts.ARTIFACTS_DIRNAME, cfg, job_of(done)) / "pool.json"
+    record = jobs.store_dir(cfg) / artifacts.ARTIFACTS_DIRNAME / job_of(done) / "pool.json"
     assert record.is_file()
     record.unlink()
     code, again = drive(resume_argv(job_of(done)))
@@ -519,7 +519,7 @@ def test_the_restamp_shares_the_resume_and_opens_no_run_ahead(cfg, silence, tmp_
 
 def test_a_linked_or_malformed_pool_record_is_no_record(cfg, tmp_path):
     """An absent line on the answer, never one read through a link or out of a list."""
-    directory = artifacts._job_dir(artifacts.ARTIFACTS_DIRNAME, cfg, "job-z")
+    directory = jobs.store_dir(cfg) / artifacts.ARTIFACTS_DIRNAME / "job-z"
     assert artifacts.pool_record(cfg, "job-z") is None
     written = artifacts.record_pool(cfg, "job-z", {"workers": 3, "detail": "three"})
     assert written == directory / artifacts.POOL_FILENAME

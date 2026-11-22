@@ -44,7 +44,7 @@ Layer: modules.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -635,6 +635,32 @@ def finished(ctx, payload: dict[str, Any], planned: Plan, done: Pruned) -> Any:
     return ctx.envelope(data={**payload, "totals": totals}, outcome=Outcome.OK)
 
 
+def settle(
+    ctx,
+    cfg: config.Config,
+    account: RemoteAccount,
+    payload: dict[str, Any],
+    planned: Plan,
+    *,
+    option: str,
+    origin: Sequence[str],
+    again: str,
+) -> Any:
+    """Apply an approved prune and report it, or report the plan alone.
+
+    The tail ``export prune`` and ``label prune`` both end on. ``again`` is
+    the command a person runs after a failure part way, in the verb's own name.
+    """
+    if option != "apply" or not planned.writes:
+        return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
+    done = Pruned()
+    try:
+        apply(cfg, account, planned, done)
+    except Exception as exc:
+        raise failed_part_way(exc, done, origin=origin, again=again) from exc
+    return finished(ctx, payload, planned, done)
+
+
 __all__ = [
     "CHUNK",
     "EXPORTED",
@@ -646,6 +672,7 @@ __all__ = [
     "apply",
     "failed_part_way",
     "finished",
+    "settle",
     "payload",
     "plan_export",
     "plan_label",

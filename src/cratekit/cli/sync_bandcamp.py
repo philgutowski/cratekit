@@ -194,12 +194,6 @@ def _report(progress: Callable[[str], None] | None, again: str) -> tail.Chain:
     )
 
 
-def _summary_of(envelope: dict[str, Any]) -> dict[str, Any]:
-    data = envelope.get("data") or {}
-    summary = data.get("summary") if isinstance(data, dict) else None
-    return summary if isinstance(summary, dict) else {}
-
-
 def _release(row: Mapping[str, Any]) -> str:
     return f"{row.get('artist', '')} - {row.get('title', '')} ({row.get('seller', '')})"
 
@@ -218,7 +212,7 @@ def _plan(report: tail.Chain, sellers: Sequence[str] | None) -> bool:
     library files each owned track resolved to.
     """
     envelope = tail.required(report, PLAN, ["acquire", "bandcamp", *_sellers(sellers)])
-    summary = _summary_of(envelope)
+    summary = tail.summary_of(envelope)
     for row in summary.get("rows") or ():
         if not isinstance(row, dict):
             continue

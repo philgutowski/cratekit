@@ -97,9 +97,9 @@ from typing import Any, NoReturn
 # what an engine refusal's remediation is looked up in;
 # ``cratekit.core.exit_codes`` is the status vocabulary and the remedy tokens.
 from cratekit.cli import exit_codes as reservations
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import backup_facts, config, jobs
-from cratekit.core.cause import Cause, CratekitError, Remediation, rebuilt, refuse
+from cratekit.core.cause import Cause, CratekitError, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.modules.tools import backup
 
@@ -147,21 +147,6 @@ REHEARSAL = "backup-rehearsal"
 #: The ``progress`` key carrying each item's recorded outcome (R-349). Named in
 #: core because ``job show`` renders the same key without importing this module.
 OUTCOMES = backup_facts.OUTCOMES_FIELD
-
-
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("backup.cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def _engine_refusal(refusal: backup.Refusal, message: str, **detail: Any) -> CratekitError:
@@ -240,20 +225,6 @@ def _outcome_row(outcomes, portion: backup_facts.Portion) -> tuple[dict | None, 
         if isinstance(row, dict) and row.get("portion") == str(portion):
             found = row
     return found, bool(recorded.get("dry_run"))
-
-
-def _took(seconds: object) -> str:
-    """How long a recorded run took, as the words after a verb, or nothing.
-
-    Spelled as doctor's ``backup_facts.took`` spells it, and a test holds the
-    two equal: this layer reaches the fact file through the names it already
-    uses, the ages among them.
-    """
-    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
-        return ""
-    if seconds < 1:
-        return " in under a second"
-    return f" in {seconds:.0f} seconds"
 
 
 def kind_warning(outcomes, ages: list[dict] | None) -> tuple[dict[str, str], ...]:
@@ -338,7 +309,7 @@ def _files_sentence(row: dict, rehearsed: bool) -> str:
         for name in ("added", "changed", "rewritten", "removed")
     )
     seconds = row.get("seconds")
-    took = _took(seconds)
+    took = backup_facts.took(seconds)
     if kind == backup.KIND_SKIPPED:
         return (
             f"the files are what the last completed backup left, checked{took} "
@@ -897,7 +868,7 @@ def backup_library(ctx) -> Envelope:
     volume, and the entry's two doctor checks are what tell a person about those
     before they type the verb.
     """
-    cfg = _load()
+    cfg = load_config(("backup.cli",))
     with jobs.open_store() as store:
         if ctx.args.job:
             # RECONCILE FIRST. A resume arrives after something stopped, and a
@@ -1306,7 +1277,7 @@ def perform_backup(
     cause that is retryable, which :func:`refusal_for` marks a transfer exit
     as. The success channel is :func:`handle`'s ``Produced``.
     """
-    cfg = _load() if cfg is None else cfg
+    cfg = load_config(("backup.cli",)) if cfg is None else cfg
     dry_run = bool(payload.get(DRY_RUN))
     try:
         plan = backup.plan_backup(

@@ -83,8 +83,9 @@ from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from cratekit.cli.output import canonical_json, timestamp
 from cratekit.core import config
-from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, name_the_database, refuse
+from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
 from cratekit.core.exit_codes import Remedy
+from cratekit.core.private_store import PrivateStore
 
 #: The queue's own schema version. A cross version read REFUSES rather than
 #: guessing, for the reason the job engine states: an unversioned state file
@@ -886,76 +887,17 @@ def _own_only(path: Path) -> None:
         ) from exc
 
 
-def _make_private(path: Path) -> None:
-    """The database AND its sidecars, with the suffixes taken from the inventory.
+class ReviewStore(PrivateStore):
+    """The connection to the queue, on the job engine's pragmas, deliberately.
 
-    The suffix set comes from the config module rather than from a pair of
-    literals here. A private copy of that list is a copy that forgets the write
-    ahead log, which is where the queue's contents actually are until a
-    checkpoint.
-    """
-    _own_only(path)
-    for sidecar in config.SQLITE_SIDECARS:
-        _own_only(path.with_name(path.name + sidecar.suffix))
-
-
-class ReviewStore:
-    """The connection to the queue, and the one place its pragmas are decided.
-
-    The pragmas are the job engine's, deliberately: ``synchronous=FULL`` because a
-    verdict lost to a power cut is a question a person is asked again, and the
-    whole unit exists so that does not happen; a busy timeout because two
-    processes writing verdicts should serialize rather than raise at a user.
+    ``synchronous=FULL`` because a verdict lost to a power cut is a question a
+    person is asked again, and a busy timeout because two processes writing
+    verdicts should serialize rather than raise at a user. Every write here is
+    a read then write, allocate the next ordinal or read a verdict before
+    replacing it, which is what the immediate transaction is for.
     """
 
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        # Named for the same reason the job queue's connection is named: the
-        # driver's refusal is not an ``OSError``, so it carries no errno, no
-        # filename and no ``__cause__``, and a store this account cannot open
-        # left the classification with nothing to work from and the user with a
-        # request to report a defect. The path is recorded on the exception and
-        # the exception is re-raised untouched.
-        try:
-            self.conn = sqlite3.connect(str(path), isolation_level=None, timeout=30.0)
-            self.conn.row_factory = sqlite3.Row
-            # The mode goes on BEFORE the write ahead log pragma: SQLite gives
-            # the log and shared memory files the permissions the database file
-            # has when it creates them, so doing this afterwards leaves two umask
-            # moded sidecars beside a correctly moded database.
-            _make_private(path)
-            self.conn.execute("PRAGMA journal_mode=WAL")
-            self.conn.execute("PRAGMA synchronous=FULL")
-            self.conn.execute("PRAGMA busy_timeout=30000")
-        except sqlite3.Error as exc:
-            name_the_database(exc, path)
-            raise
-
-    def close(self) -> None:
-        self.conn.close()
-
-    def __enter__(self) -> ReviewStore:
-        return self
-
-    def __exit__(self, *exc_info) -> None:
-        self.close()
-
-    @contextmanager
-    def immediate(self) -> Iterator[sqlite3.Connection]:
-        """A transaction that takes the write lock UP FRONT.
-
-        Every write here is a read then write: allocate the next ordinal, or read
-        a verdict before replacing it. Under a deferred transaction two processes
-        both read first and SQLite resolves it by failing one of them at COMMIT,
-        after the decision has already been taken.
-        """
-        self.conn.execute("BEGIN IMMEDIATE")
-        try:
-            yield self.conn
-        except BaseException:
-            self.conn.execute("ROLLBACK")
-            raise
-        self.conn.execute("COMMIT")
+    _own_only = staticmethod(_own_only)
 
 
 def store_dir(cfg: config.Config) -> Path:
@@ -975,7 +917,7 @@ def open_store(cfg: config.Config | None = None, *, path: Path | None = None) ->
     given and creates intermediate levels at 0777 regardless.
     """
     resolved = path or queue_path(cfg or config.load())
-    config._mkdir_private(resolved.parent)
+    config.mkdir_private(resolved.parent)
     store = ReviewStore(resolved)
     _initialize(store)
     return store
@@ -2679,26 +2621,10 @@ class DecisionStore:
         fixed, so degrading to it on the platform where the fix cannot be applied
         would leave exactly the defect, reachable by anybody on that platform.
         """
-        config._mkdir_private(self.lock_path.parent)
-        handle = None
+        config.mkdir_private(self.lock_path.parent)
         try:
-            import fcntl
-
-            # os.open with an explicit mode rather than the builtin open(), which
-            # creates at 0666 masked by the umask (P1).
-            descriptor = os.open(
-                self.lock_path, os.O_CREAT | os.O_RDWR, config.PRIVATE_FILE_MODE
-            )
-            handle = os.fdopen(descriptor, "r+b")
-            # O_CREAT applies the mode only when it CREATES the file, so a lock
-            # left behind at another mode keeps it without this.
-            _own_only(self.lock_path)
-            fcntl.flock(handle, fcntl.LOCK_EX)
-        except BaseException as exc:
-            if handle is not None:
-                handle.close()
-            if not isinstance(exc, (ImportError, OSError)):
-                raise
+            handle = config.flock_exclusive(self.lock_path, _own_only)
+        except (ImportError, OSError) as exc:
             raise refuse(
                 "review-file-unusable",
                 f"the {self.key} store could not be locked ({exc}), and writing it "
@@ -2731,16 +2657,9 @@ class DecisionStore:
         suppressed nothing, and the empty result was then handed to the writer, so
         ONE further record deleted every prior decline from the disk.
         """
-        if not self.path.exists():
+        found, raw = config.read_json_as_text(self.path, self._unusable)
+        if not found:
             return {}
-        try:
-            text = self.path.read_text()
-        except OSError as exc:
-            raise self._unusable("it could not be opened") from exc
-        try:
-            raw = json.loads(text)
-        except ValueError as exc:
-            raise self._unusable("it is not JSON") from exc
         return self._recognize(raw)
 
     def _recognize(self, raw: Any) -> dict[str, Suppression]:

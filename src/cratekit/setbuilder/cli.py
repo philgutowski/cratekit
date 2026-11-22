@@ -67,11 +67,10 @@ import math
 from collections.abc import Sequence
 from pathlib import Path
 
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, digest_of, load_config
 from cratekit.core import active_taxonomy, config, taxonomy
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
-from cratekit.core.exit_codes import Remedy
-from cratekit.core.naming import MarkerRule, NameTemplate
+from cratekit.core.cause import Outcome, refuse
+from cratekit.core.naming import NameTemplate
 from cratekit.modules.tools import setbuilder
 
 #: The sides of the anchor a person may narrow the answer to. Taken from the
@@ -80,30 +79,9 @@ from cratekit.modules.tools import setbuilder
 ROLES: tuple[str, ...] = ("before", "after")
 
 
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("setbuilder.cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
-
-
 def _template(cfg: config.Config) -> NameTemplate:
-    """The declared name shape, built from config the way five other sites do.
-
-    ``core.naming`` takes configuration as parameters and imports none, so every
-    caller constructs this itself. Following the house pattern rather than
-    inventing a sixth answer; that there are now six copies is filed as a
-    residual rather than fixed here.
-    """
-    return NameTemplate(markers=(MarkerRule(field="lossy", literal=cfg.naming.lossy_marker),))
+    """The declared name shape, with configuration's lossy marker."""
+    return NameTemplate.lossy(cfg.naming.lossy_marker)
 
 
 def positive_count(text: str) -> int:
@@ -543,7 +521,7 @@ def set_build(ctx) -> Envelope:
     The unowned form is decided first and the flag check after it, both before
     the scan, so a refused invocation never pays for a walk of the library.
     """
-    cfg = _load()
+    cfg = load_config(("setbuilder.cli",))
     root = Path(cfg.library.root)
     if not root.is_dir():
         raise refuse(

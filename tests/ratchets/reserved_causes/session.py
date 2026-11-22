@@ -6,9 +6,10 @@ modules that moved, and put a dated comment on those entries.
 """
 
 KEBAB_LITERALS = {
-    'session/cli.py': ['backup-facts-unreadable', 'config-unusable', 'internal-error'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'session/cli.py': ['backup-facts-unreadable', 'internal-error'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'session/restore_cli.py': [
-        'config-unusable',
         'internal-error',
         'off-machine',
         'restore-flag-needs-pull',
@@ -19,9 +20,10 @@ KEBAB_LITERALS = {
 }
 
 LITERAL_HOLDERS = {
-    'session/cli.py': ['backup-facts-unreadable', 'config-unusable', 'internal-error'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
+    'session/cli.py': ['backup-facts-unreadable', 'internal-error'],
+    # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'session/restore_cli.py': [
-        'config-unusable',
         'internal-error',
         'restore-flag-needs-pull',
         'restore-record-unusable',

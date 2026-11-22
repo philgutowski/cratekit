@@ -357,6 +357,15 @@ def _assert_library_is_writable(cfg: config.Config) -> None:
     )
 
 
+def _own_only(target: Path) -> None:
+    """Set the lock file's mode, passing over a filesystem that will not take one."""
+    if hasattr(os, "chmod"):
+        try:
+            os.chmod(target, config.PRIVATE_FILE_MODE)
+        except OSError as exc:
+            logger.debug("could not set the mode on %s: %s", target, exc)
+
+
 @contextmanager
 def _locked(cfg: config.Config) -> Iterator[None]:
     """Hold the sibling lock across one read then write cycle.
@@ -380,28 +389,10 @@ def _locked(cfg: config.Config) -> Iterator[None]:
     # library will ever see it.
     _assert_library_is_writable(cfg)
     target = lock_path(cfg)
-    config._mkdir_private(target.parent)
-    handle = None
+    config.mkdir_private(target.parent)
     try:
-        import fcntl
-
-        # os.open with an explicit mode rather than the builtin open(), which
-        # creates at 0666 masked by the umask (P1).
-        descriptor = os.open(target, os.O_CREAT | os.O_RDWR, config.PRIVATE_FILE_MODE)
-        handle = os.fdopen(descriptor, "r+b")
-        if hasattr(os, "chmod"):
-            try:
-                # O_CREAT applies the mode only when it CREATES the file, so a
-                # lock left behind at another mode would keep it without this.
-                os.chmod(target, config.PRIVATE_FILE_MODE)
-            except OSError as exc:
-                logger.debug("could not set the mode on %s: %s", target, exc)
-        fcntl.flock(handle, fcntl.LOCK_EX)
-    except BaseException as exc:
-        if handle is not None:
-            handle.close()
-        if not isinstance(exc, (ImportError, OSError)):
-            raise
+        handle = config.flock_exclusive(target, _own_only)
+    except (ImportError, OSError) as exc:
         raise refuse(
             "restore-record-unusable",
             f"the restore reconciliation record could not be locked ({exc}), and "

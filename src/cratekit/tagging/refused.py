@@ -35,10 +35,8 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
-from collections.abc import Callable, Iterable, Iterator, Mapping
-from contextlib import contextmanager
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -127,37 +125,9 @@ def since(sources: Iterable[str]) -> dict[str, str]:
     return {source: held[source].since if source in held else "" for source in sources}
 
 
-@contextmanager
-def _locked(lock: Path, sleep: Callable[[float], None]) -> Iterator[bool]:
-    """Hold the sibling lock and yield True, or yield False when it was not had in time.
-
-    THE LOCK FILE IS NEVER UNLINKED, for the ISRC cache's reason: one holder
-    unlinking the name while another creates a fresh file at it is how two
-    processes each hold "the" lock.
-    """
-    try:
-        config._mkdir_private(lock.parent)
-        fd = os.open(lock, os.O_CREAT | os.O_RDWR, config.PRIVATE_FILE_MODE)
-    except OSError:
-        yield False
-        return
-    try:
-        try:
-            import fcntl  # noqa: PLC0415 - POSIX only, see the except
-        except ImportError:  # pragma: no cover - no advisory locks here
-            fcntl = None
-        had = fcntl is None
-        polls = 0
-        while not had and polls * LOCK_POLL_S < LOCK_WAIT_S:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                had = True
-            except BlockingIOError:
-                polls += 1
-                sleep(LOCK_POLL_S)
-        yield had
-    finally:
-        os.close(fd)  # closing the descriptor releases the lock; the file stays
+def _locked(lock: Path, sleep: Callable[[float], None]):
+    """Hold the sibling lock and yield True, or yield False when it was not had in time."""
+    return config.lock_within(lock, wait_s=LOCK_WAIT_S, poll_s=LOCK_POLL_S, sleep=sleep)
 
 
 def _write(path: Path, held: Mapping[str, Standing]) -> None:

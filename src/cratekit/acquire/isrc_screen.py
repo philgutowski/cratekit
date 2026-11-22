@@ -52,7 +52,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from cratekit.acquire import catalogue_api, match
+from cratekit.acquire import catalogue_api, isrc_cache, match
 
 #: The fewest codes worth a batch request. One code's own lookup costs the
 #: same request and answers every release, so a batch of one buys nothing.
@@ -109,6 +109,18 @@ class Screen:
                 continue
             self._absent.update(code for code in batch if code not in held)
         return made
+
+    def screen_uncached(self, client: object, cache, codes: Iterable[str]) -> int:
+        """:meth:`screen`, leaving out every code ``cache`` already answers (U206).
+
+        A code the ISRC cache answers makes no request at its lookup, so a
+        batch about it would be the one request a second run over the same
+        codes still paid.
+        """
+        country = isrc_cache.country_of(client)
+        return self.screen(
+            client, [code for code in codes if not cache.holds(str(code or ""), country)]
+        )
 
 
 __all__ = ["MIN_BATCH", "Screen"]

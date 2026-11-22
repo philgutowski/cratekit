@@ -31,30 +31,13 @@ from typing import Any
 
 from cratekit.adopt import collection
 from cratekit.adopt import genres as genres_engine
-from cratekit.cli.output import Envelope
-from cratekit.core import active_taxonomy, config
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
-from cratekit.core.exit_codes import Remedy
+from cratekit.cli.output import Envelope, load_config
+from cratekit.core import active_taxonomy
+from cratekit.core.cause import Outcome
 
 #: The status every row here carries. A genre without a folder is worth
 #: knowing and is nothing to fix, which is what doctor's INFO means.
 _INFO = "info"
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause."""
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("adopt.genres_cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def build(parser, entry) -> None:
@@ -80,7 +63,7 @@ def _check(genre: genres_engine.GenreCount, threshold: int) -> dict[str, Any]:
 
 def report_genres(ctx) -> Envelope:
     """Count the collection by genre and name what has no folder. Writes nothing."""
-    cfg = _load()
+    cfg = load_config(("adopt.genres_cli",))
     declared = active_taxonomy.load(cfg)
     report = genres_engine.count(collection.read_collection(cfg), declared)
 

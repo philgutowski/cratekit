@@ -95,16 +95,9 @@ def _empty() -> dict[str, Any]:
 
 def _load(cfg: config.Config) -> dict[str, Any]:
     path = config.state_path("outbound_writes", cfg)
-    if not path.exists():
+    raw = config.read_json_map(path, lambda why: _unusable(path, why))
+    if raw is None:
         return _empty()
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise _unusable(path, "it could not be opened") from exc
-    except ValueError as exc:
-        raise _unusable(path, "it is not JSON") from exc
-    if not isinstance(raw, Mapping):
-        raise _unusable(path, f"the document is a {type(raw).__name__}, not a map")
     version = raw.get("version")
     if version not in (None, LEDGER_VERSION):
         raise _unusable(
@@ -282,7 +275,7 @@ def _write(cfg: config.Config, document: Mapping[str, Any]) -> None:
 
 
 def _locked(cfg: config.Config):
-    lock = config._exclusive_lock(config.state_path("outbound_writes_lock", cfg))
+    lock = config.exclusive_lock(config.state_path("outbound_writes_lock", cfg))
     try:
         lock.__enter__()
     except config.ConfigLockUnavailable as exc:

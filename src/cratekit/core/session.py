@@ -943,7 +943,7 @@ def _open_lock_file(target: Path) -> Any:
     world-writable directory can be unlinked and replaced by any local account,
     and that takes the mutual exclusion with it (P1).
     """
-    config._mkdir_private(target.parent)
+    config.mkdir_private(target.parent)
     # Opened through the low-level call with an explicit mode rather than the
     # builtin, which creates at 0666 masked by the umask, and in read-write
     # rather than append mode, because the holder record is REPLACED on every

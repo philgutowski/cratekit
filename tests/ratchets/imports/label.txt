@@ -8,5 +8,3 @@
 dangling export cratekit.modules.outbound.folders
 dangling export cratekit.modules.outbound.ledger
 dangling export cratekit.modules.outbound.prune
-off-interface cratekit.core.artifacts
-private cratekit.core.config._exclusive_lock

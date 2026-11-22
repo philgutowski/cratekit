@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import signal
 import sqlite3
 import subprocess
@@ -52,7 +53,7 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, Iterator, Mapping, Sequence
+from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence
 
 from cratekit.cli.output import new_run_id, timestamp
 from cratekit.core import config
@@ -63,10 +64,10 @@ from cratekit.core.cause import (
     JobCancelled,
     Remediation,
     Scope,
-    name_the_database,
     refuse,
 )
 from cratekit.core.exit_codes import Remedy
+from cratekit.core.private_store import PrivateStore
 
 #: The queue's own schema version. A cross-version resume REFUSES rather than
 #: guessing: the source system versions exactly one of its twenty-one state
@@ -268,95 +269,10 @@ def _own_only(path: Path) -> None:
         pass
 
 
-def _make_private(path: Path) -> None:
-    """The database AND its sidecars, because the log is where the data actually is.
+class JobStore(PrivateStore):
+    """The connection to the queue, and the one place its pragmas are decided."""
 
-    The suffixes come from the config module's declared set rather than from a
-    pair of literals here. That set exists precisely so nobody keeps a second copy
-    of it, and a copy that forgets the write-ahead log is a copy that leaves the
-    queue's real contents unprotected until the next checkpoint.
-    """
-    _own_only(path)
-    for sidecar in config.SQLITE_SIDECARS:
-        _own_only(path.with_name(path.name + sidecar.suffix))
-
-
-class JobStore:
-    """The connection to the queue, and the one place its pragmas are decided.
-
-    ``synchronous=FULL`` rather than the write-ahead log's default of NORMAL.
-    NORMAL lets a commit be lost on a power cut, and the commit that matters here
-    is the one flipping an item to done AFTER its artifact is durable. Losing that
-    ordering re-opens exactly the window ``commit_artifact`` exists to close, and
-    a job queue is not hot enough for the difference to be worth measuring.
-    """
-
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        # isolation_level=None turns OFF the driver's implicit transaction
-        # management, which is what makes BEGIN IMMEDIATE below the real thing.
-        # Left on, the driver opens a DEFERRED transaction that takes its write
-        # lock at the first WRITE, which is after the SELECT that chose the item,
-        # and that gap is precisely how two drivers claim the same item.
-        #
-        # THE DRIVER'S ERROR CARRIES NO PATH AND NO ERRNO, so the whole opening
-        # sequence is named. A queue file this account cannot open raises
-        # ``sqlite3.OperationalError("unable to open database file")``, which is
-        # not an ``OSError``: no errno, no filename, no ``__cause__``. Every
-        # errno-shaped classification in the package was blind to it, and the
-        # verb exited "this is a defect; report it" over a chmod on the file this
-        # program keeps its own state in. The pragmas are inside the same block
-        # because a database on a read only volume connects and then refuses the
-        # write-ahead-log pragma with SQLITE_READONLY.
-        #
-        # It records the path on the SAME exception and re-raises it untouched,
-        # so the traceback, the class and every existing catcher are unaffected.
-        try:
-            self.conn = sqlite3.connect(str(path), isolation_level=None, timeout=30.0)
-            self.conn.row_factory = sqlite3.Row
-            # The mode goes on BEFORE the write-ahead-log pragma, because SQLite
-            # gives the log and shared-memory files the permissions the database
-            # file has when it creates them. Doing it afterwards would leave two
-            # umask-moded sidecars beside a correctly moded database, which is
-            # the "file mode without the directory mode" defect one level along:
-            # the queue's real contents live in the log until a checkpoint.
-            _make_private(path)
-            self.conn.execute("PRAGMA journal_mode=WAL")
-            self.conn.execute("PRAGMA synchronous=FULL")
-            # A concurrent writer holds the database for one small transaction,
-            # so waiting is right and failing immediately is not. The busy
-            # timeout is the difference between two processes serializing and one
-            # of them raising "database is locked" at the user.
-            self.conn.execute("PRAGMA busy_timeout=30000")
-        except sqlite3.Error as exc:
-            name_the_database(exc, path)
-            raise
-
-    def close(self) -> None:
-        self.conn.close()
-
-    def __enter__(self) -> JobStore:
-        return self
-
-    def __exit__(self, *exc_info) -> None:
-        self.close()
-
-    @contextmanager
-    def immediate(self) -> Iterator[sqlite3.Connection]:
-        """A transaction that takes the write lock UP FRONT.
-
-        KTD8 says items are claimed in an immediate transaction, and this is why:
-        a read-then-write under a deferred transaction lets two drivers both read
-        the same pending row before either writes, and SQLite resolves that by
-        failing one of them at COMMIT, after the work has already been decided.
-        """
-        self.conn.execute("BEGIN IMMEDIATE")
-        try:
-            yield self.conn
-        except BaseException:
-            self.conn.execute("ROLLBACK")
-            raise
-        self.conn.execute("COMMIT")
+    _own_only = staticmethod(_own_only)
 
 
 def store_dir(cfg: config.Config | None = None) -> Path:
@@ -381,11 +297,11 @@ def open_store(path: Path | None = None) -> JobStore:
     rather than through ``Path.mkdir``. That is deliberate reuse, not convenience:
     a 0600 file inside a 0777 directory is not private, because unlink and rename
     are governed by the DIRECTORY's mode, and a second careful implementation here
-    is the copy that later drifts. See ``config._mkdir_private`` for why the
+    is the copy that later drifts. See ``config.mkdir_private`` for why the
     obvious ``mode=`` argument does not fix it.
     """
     resolved = path or queue_path()
-    config._mkdir_private(resolved.parent)
+    config.mkdir_private(resolved.parent)
     store = JobStore(resolved)
     _initialize(store)
     return store
@@ -589,6 +505,26 @@ def progress(store: JobStore, job_id: str) -> dict[str, Any]:
         + counts[str(ItemState.SKIPPED)]
     )
     return {"total": total, "settled": settled, "counts": counts}
+
+
+def reported(store: JobStore, job: Job, extra: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """One job as the ``job_state`` payload every queued verb emits.
+
+    ``extra`` rides UNDER ``progress``, never beside it. ``cli.output`` closes
+    the ``job_state/1`` surface with ``additionalProperties: false``, so a top
+    level key is an undeclared field and a consumer generated from the
+    committed schema rejects the envelope; ``progress`` is declared ``object``
+    with no inner constraint, which is where a per verb detail belongs (U51).
+    """
+    counted = dict(progress(store, job.job_id))
+    if extra:
+        counted.update(extra)
+    return {
+        "job_id": job.job_id,
+        "state": str(job.state),
+        "cause": job.cause.to_json() if job.cause is not None else None,
+        "progress": counted,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1109,13 +1045,154 @@ def commit_artifact(staged: Path, final: Path) -> Path:
     does not exist, and that is a false success no later run can detect, because
     "done" is exactly what a resume trusts.
     """
-    config._mkdir_private(final.parent)
+    config.mkdir_private(final.parent)
     with open(staged, "rb+") as handle:
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(staged, final)
     _fsync_directory(final.parent)
     return final
+
+
+# ---------------------------------------------------------------------------
+# Item reports: where one is staged, and where it lands (U57, U298)
+# ---------------------------------------------------------------------------
+#
+# ``drive`` makes a handler's produced file durable BEFORE it flips the item's
+# row to done, and the report is the only record of the items deliberately NOT
+# written (R16). It lives under the queue root, beside the job's lock and log;
+# under the library it would be a new kind of file for a rollback to classify.
+# The configuration is a parameter everywhere here: ``store_dir()`` with no
+# argument loads the CURRENT one, the KTD9 defect behind an indirection the
+# handler guard in ``tests/test_handlers.py`` cannot see.
+
+
+def read_reports(paths: Iterable[Path]) -> tuple[dict[str, Any], ...]:
+    """The reports at ``paths`` that parse to a mapping, in the order given.
+
+    One that cannot be parsed is SKIPPED, never raised on: the summary is a
+    display over work whose artifacts are already committed, and refusing would
+    turn one unreadable file into a verb that can say nothing about the rest.
+    """
+    found: list[dict[str, Any]] = []
+    for path in paths:
+        try:
+            parsed = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(parsed, dict):
+            found.append(parsed)
+    return tuple(found)
+
+
+def by_ordinal(paths: Iterable[Path]) -> list[Path]:
+    """The ordinal named files among ``paths``, in item order.
+
+    ONLY ORDINAL NAMED FILES ARE REPORTS, filtered before the sort key runs: a
+    stray ``notes.json`` once raised out of the key and took a whole resume
+    envelope down. SORTED AS A NUMBER, since four digits sort as text in item
+    order and the ten thousandth does not.
+    """
+    return sorted((path for path in paths if path.stem.isdigit()), key=lambda item: int(item.stem))
+
+
+@dataclass(frozen=True, slots=True)
+class Artifacts:
+    """The two directory names under the queue root one feature's item reports use.
+
+    ``final`` holds committed reports and ``staging`` holds attempts, a SIBLING
+    of the final directory and never a temp directory, because
+    :func:`commit_artifact` is an ``os.replace`` and that is atomic only within
+    one filesystem. The names are arguments because a core module may not name
+    a feature package, even as a string (KTD23).
+    """
+
+    final: str
+    staging: str
+
+    def __post_init__(self) -> None:
+        for name in (self.final, self.staging):
+            if not name or "/" in name or name in {".", ".."}:
+                raise ValueError(
+                    f"{name!r} is not a directory name; a report location is one "
+                    f"path component under the queue root"
+                )
+        if self.final == self.staging:
+            raise ValueError(
+                "the staging and final directories must differ, or a commit is an "
+                "os.replace of a file onto itself"
+            )
+
+    def final_dir(self, cfg: config.Config, job_id: str) -> Path:
+        """Where one job's committed reports sit."""
+        return store_dir(cfg) / self.final / job_id
+
+    def staging_dir(self, cfg: config.Config, job_id: str) -> Path:
+        """Where one job's attempts are staged, a directory per item."""
+        return store_dir(cfg) / self.staging / job_id
+
+    @staticmethod
+    def write(path: Path, payload: dict[str, Any]) -> Path:
+        """Serialize one item's report. Sorted keys so two runs produce one file."""
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return path
+
+    def final_path(self, cfg: config.Config, job_id: str, ordinal: int) -> Path:
+        """Where this item's report belongs once the engine has committed it.
+
+        Named for the ORDINAL, an integer this queue assigned. An item
+        identifier is whatever the queueing verb chose, a path or a database
+        row identifier, and a filename built from it is a path traversal
+        wearing a report.
+        """
+        directory = self.final_dir(cfg, job_id)
+        config.mkdir_private(directory)
+        return directory / f"{ordinal:04d}.json"
+
+    def staged_path(self, cfg: config.Config, job_id: str, ordinal: int) -> Path:
+        """A cleared staging directory for one attempt at one item.
+
+        CLEARED, because whatever is in it belongs to an attempt that did not
+        finish, and a half written report left behind would be committed by
+        the next attempt as though it described that attempt.
+        """
+        directory = self.staging_dir(cfg, job_id) / str(ordinal)
+        if directory.exists():
+            shutil.rmtree(directory)
+        config.mkdir_private(directory)
+        return directory / f"{ordinal:04d}.json"
+
+    def produced(self, cfg: config.Config, job, item, report: dict[str, Any]) -> Produced:
+        """Stage one item's report and hand the engine both paths.
+
+        One function, so the staging path and the destination cannot come to
+        disagree about the job and the ordinal. The engine owns the
+        flush-then-rename between the two.
+        """
+        return Produced(
+            staged=self.write(self.staged_path(cfg, job.job_id, item.ordinal), report),
+            final=self.final_path(cfg, job.job_id, item.ordinal),
+        )
+
+    def committed(
+        self,
+        cfg: config.Config,
+        job_id: str,
+        *,
+        ordered: Callable[[Iterable[Path]], Iterable[Path]] = by_ordinal,
+    ) -> tuple[dict[str, Any], ...]:
+        """Every committed report for this job, in item order.
+
+        READ BACK, never accumulated in memory, which is what makes a report
+        true across a resume: the person asking what the run did means every
+        item, the ones a previous process finished included. ``ordered`` says
+        which files are reports and in what order, for the features that
+        decided that before this was shared.
+        """
+        directory = self.final_dir(cfg, job_id)
+        if not directory.is_dir():
+            return ()
+        return read_reports(ordered(directory.glob("*.json")))
 
 
 def complete_item(
@@ -1265,26 +1342,13 @@ def driver_lock(job_id: str, *, root: Path | None = None) -> Iterator[Path]:
     refusal message; it is never the liveness test.
     """
     path = lock_path(job_id, root=root)
-    config._mkdir_private(path.parent)
-    # os.open with an explicit mode rather than the builtin open(), which creates
-    # at 0666 masked by the umask and would leave a world-writable lock any local
-    # account could hold, making every future drive of this job refuse.
-    handle = os.fdopen(os.open(path, os.O_CREAT | os.O_RDWR, config.PRIVATE_FILE_MODE), "r+")
+    # No advisory locks on a platform reads as had: a claim is still a
+    # transaction, so duplicate work is prevented even with the lock absent.
+    handle, had = config.lock_now(path)
     try:
-        try:
-            import fcntl
-        except ImportError:  # pragma: no cover - POSIX only in practice
-            # No advisory locks here. Proceeding unlocked is the honest
-            # degradation: refusing would make the product unusable on that
-            # platform, and a claim is still a transaction, so duplicate work is
-            # prevented even with the lock absent.
-            fcntl = None
-        if fcntl is not None:
-            try:
-                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                handle.seek(0)
-                raise DriverHeld(_held_cause(job_id, handle.read(), path)) from None
+        if not had:
+            handle.seek(0)
+            raise DriverHeld(_held_cause(job_id, handle.read(), path)) from None
         handle.seek(0)
         handle.truncate()
         json.dump({"pid": os.getpid(), "acquired": timestamp()}, handle)
@@ -2014,7 +2078,7 @@ def spawn(
     lock, because a pid is reused and a lock is not.
     """
     target = log_path(job.job_id, root=root)
-    config._mkdir_private(target.parent)
+    config.mkdir_private(target.parent)
     with open(target, "ab") as sink:
         _own_only(target)
         child = subprocess.Popen(
@@ -2030,12 +2094,70 @@ def spawn(
     return child.pid
 
 
+# ---------------------------------------------------------------------------
+# The shell a queued verb drives its job through (U298)
+# ---------------------------------------------------------------------------
+
+
+def advance(ctx, store: JobStore, job: Job, *, origin: Sequence[str], nothing_to_run: str):
+    """Reconcile, refuse an empty job, drive it, and raise if it did not finish.
+
+    NOT CALLED ``drive``, and the name is load bearing: ``tests/test_handlers.py``
+    asserts that exactly one place in the package calls the job driver, and it
+    counts every ``ast.Call`` whose callee is NAMED ``drive``.
+
+    RECONCILE FIRST. A resume arrives after something stopped, and a claim left
+    behind by a driver that died is state the queue cannot see for itself.
+
+    A JOB WITH NO ITEMS IS REFUSED, NOT DRIVEN. :func:`drive` treats attempting
+    nothing as a genuine no-op, so a job frozen by a build that recorded no
+    items would drive straight to SUCCEEDED over work it never did;
+    ``nothing_to_run`` is what a person is told about one.
+
+    Returns the job as it stands after the drive, and the driver's warnings.
+    Raises through :func:`raise_for_state` when the job did not end cleanly: a
+    job closed carrying a cause leaves through that cause, and a PARKED job,
+    which is open, leaves as ``JobBlocked``.
+    """
+    job = reconcile(store, job.job_id)
+    if job.is_open() and not items(store, job.job_id):
+        raise refuse(
+            "internal-error",
+            f"job {job.job_id} has no items to run, so driving it would "
+            f"{nothing_to_run}. It was queued by a build that did not record "
+            f"what its items were",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=tuple(origin),
+            detail={"job_id": job.job_id},
+        )
+    return resumed(ctx, store, job)
+
+
+def resumed(ctx, store: JobStore, job: Job):
+    """Drive a reconciled job if it is still open, and raise if it did not end cleanly.
+
+    The tail of every resume, and of :func:`advance`. A JOB THAT DID NOT END
+    CLEANLY IS NOT AN OK EXIT (R-225): the raise is OUTSIDE the ``is_open``
+    branch, so a job already failed on entry, a cancelled one and a parked one
+    leave through their cause, and the second ask about a failed job answers
+    the way the first did. Returns the job as it stands, and the driver's
+    warnings.
+    """
+    warnings: tuple[dict[str, str], ...] = ()
+    if job.is_open():
+        _result, warnings = ctx.run_job(store, job)
+        job = get(store, job.job_id)
+    raise_for_state(job)
+    return job, warnings
+
+
 __all__ = [
     "ENTRY_MODULE",
     "GATE_RUN_KEY",
     "QUEUE_FILENAME",
     "SCHEMA_VERSION",
     "TERMINAL_STATES",
+    "Artifacts",
     "BatchHandler",
     "Batching",
     "DriveResult",
@@ -2051,7 +2173,9 @@ __all__ = [
     "JobState",
     "JobStore",
     "Produced",
+    "advance",
     "block",
+    "by_ordinal",
     "cancel",
     "child_command",
     "claim",
@@ -2077,9 +2201,12 @@ __all__ = [
     "progress",
     "queue_path",
     "raise_for_state",
+    "read_reports",
     "reconcile",
     "release_claims",
     "reopen",
+    "reported",
+    "resumed",
     "retry",
     "spawn",
     "states_of",

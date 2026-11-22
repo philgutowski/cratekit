@@ -96,18 +96,21 @@ from __future__ import annotations
 import copy
 import errno
 import hashlib
+import json
 import math
 import os
 import re
 import sys
 import tempfile
 import tomllib
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass, field, fields, is_dataclass, replace
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
+from typing import Any
 
 import platformdirs
 import tomli_w
@@ -278,18 +281,25 @@ class Remedy(StrEnum):
     RECORD_REKORDBOX_PIN = "record-rekordbox-pin"
 
 
-class ConfigError(Exception):
+class RemediedError(Exception):
+    """An exception that always carries a structured remedy token.
+
+    Its class's own, or the one a raise names, for the case where one type
+    covers two remediations: an unrecorded rekordbox pin is a ConfigInvalid
+    whose answer is one specific decision, not "go read your config file".
+    The acquisition adapter's errors are this as well, with their own tokens.
+    """
+
+    def __init__(self, message: str, *, remedy=None) -> None:
+        super().__init__(message)
+        if remedy is not None:
+            self.remedy = remedy
+
+
+class ConfigError(RemediedError):
     """Base for every configuration failure. Always carries a structured remedy."""
 
     remedy: Remedy = Remedy.FIX_CONFIG_VALUES
-
-    def __init__(self, message: str, *, remedy: Remedy | None = None) -> None:
-        super().__init__(message)
-        if remedy is not None:
-            # Per-raise override, for the case where one type covers two
-            # remediations. An unrecorded rekordbox pin is a ConfigInvalid whose
-            # answer is one specific decision, not "go read your config file".
-            self.remedy = remedy
 
 
 class ConfigMissing(ConfigError):
@@ -3517,7 +3527,7 @@ class Config:
         ago is reminded that their snapshots are copies rather than atomic
         commits.
         """
-        return _is_inside(self.library.db_path, self.library.root)
+        return is_inside(self.library.db_path, self.library.root)
 
     # -- preconditions -----------------------------------------------------
 
@@ -3635,7 +3645,7 @@ def _apply_env_overrides(data: Mapping) -> dict:
             if (
                 isinstance(db_path, str)
                 and db_path.strip()
-                and _is_inside(Path(db_path), Path(configured_root))
+                and is_inside(Path(db_path), Path(configured_root))
             ):
                 relative = os.path.relpath(
                     os.path.normpath(db_path), os.path.normpath(configured_root)
@@ -4142,7 +4152,7 @@ def _validate_recognition(data: Mapping) -> list[str]:
     return problems
 
 
-def _is_inside(child: Path, parent: Path) -> bool:
+def is_inside(child: Path, parent: Path) -> bool:
     """True when ``child`` is ``parent`` or sits under it. PURELY TEXTUAL.
 
     No ``resolve()`` and no ``exists()``: Rule 1 forbids this module from touching
@@ -4224,7 +4234,7 @@ def _validate_db_containment(data: Mapping) -> list[str]:
         return problems  # a missing required key is already reported by the caller
     if not root.strip() or not db_path.strip():
         return problems
-    if _is_inside(Path(db_path), Path(root)):
+    if is_inside(Path(db_path), Path(root)):
         return problems
     if accepted:
         return problems
@@ -4659,7 +4669,7 @@ def load_from_path(
     return config
 
 
-def _write_lock(path: Path) -> _exclusive_lock:
+def _write_lock(path: Path) -> exclusive_lock:
     """The ONE lock every writer of the configuration document takes.
 
     It is the lock the migration has always taken, under the name it has always
@@ -4678,7 +4688,7 @@ def _write_lock(path: Path) -> _exclusive_lock:
     (R-926), before the lock file exists, because every writer comes here first.
     """
     _refuse_write_outside_test_root(path)
-    return _exclusive_lock(path.with_name(path.name + ".migrate.lock"))
+    return exclusive_lock(path.with_name(path.name + ".migrate.lock"))
 
 
 #: Where a state write may land while this process runs under pytest.
@@ -4704,14 +4714,14 @@ def _refuse_write_outside_test_root(path: Path, *, system_temporary: bool = Fals
     that skips the conftest, a test that undoes its patches, or a mutant of the
     path resolution all fail loudly here instead of writing the user's file.
 
-    Resolved on both sides, unlike ``_is_inside`` alone, because the temporary
+    Resolved on both sides, unlike ``is_inside`` alone, because the temporary
     folder is reached through a symlink on macOS and a link inside the root can
     point anywhere. A process without pytest loaded is never checked.
 
     Called from the four primitives every state writer in the package goes
     through, ``_write_lock`` for the configuration document, then
     ``atomic_write_bytes``, ``append_durable_bytes`` (U254) and
-    ``_exclusive_lock``, so a ledger, a watermark or a session lock written by
+    ``exclusive_lock``, so a ledger, a watermark or a session lock written by
     an unisolated test is refused the same way, and a link swapped in after the
     configuration check is caught again at the write.
 
@@ -4731,7 +4741,7 @@ def _refuse_write_outside_test_root(path: Path, *, system_temporary: bool = Fals
     if system_temporary:
         allowed.append(Path(tempfile.gettempdir()).resolve())
     target = path.resolve()
-    if any(_is_inside(target, each) for each in allowed):
+    if any(is_inside(target, each) for each in allowed):
         return
     if root is None:
         raise WriteOutsideTestRoot(
@@ -4801,8 +4811,8 @@ def save(config: Config, path: Path | None = None) -> Path:
     them at once, and costs one pure function call on a path that runs at setup.
 
     DIRECTORY CREATION. This is one of three places in the module that creates a
-    directory (the others are ``atomic_write_bytes`` and ``_exclusive_lock``),
-    and all three go through ``_mkdir_private`` so no state directory's
+    directory (the others are ``atomic_write_bytes`` and ``exclusive_lock``),
+    and all three go through ``mkdir_private`` so no state directory's
     permissions depend on the user's umask. Each creates immediately before a
     write, never at import (Rule 1).
 
@@ -4822,7 +4832,7 @@ def save(config: Config, path: Path | None = None) -> Path:
     # Created under the lock rather than before it, so a write the test root
     # refuses (see ``_write_lock``) leaves no directory behind either.
     with _write_lock(target):
-        _mkdir_private(target.parent)
+        mkdir_private(target.parent)
         atomic_write_bytes(config.to_toml_bytes(), target)
     reset_cache()
     return target
@@ -4980,7 +4990,7 @@ PRIVATE_DIR_MODE = 0o700
 _CAN_SET_MODE = hasattr(os, "chmod")
 
 
-def _mkdir_private(path: Path) -> None:
+def mkdir_private(path: Path) -> None:
     """Create ``path`` and any missing parent, owner-only, on any umask.
 
     NOT ``Path.mkdir(mode=...)``, and the difference is the whole reason this
@@ -5042,12 +5052,12 @@ def atomic_write_bytes(payload: bytes, path: Path, *, mode: int = PRIVATE_FILE_M
     world-writable directory is not private: unlink and rename are governed by
     the DIRECTORY's permissions, so anyone who can write the directory can
     replace the file whatever its own mode says. The mkdir here therefore goes
-    through ``_mkdir_private`` rather than through ``Path.mkdir``, which would
+    through ``mkdir_private`` rather than through ``Path.mkdir``, which would
     take its mode from the umask (see that function for why the obvious
     ``mode=`` argument does not fix it).
     """
     _refuse_write_outside_test_root(path, system_temporary=True)
-    _mkdir_private(path.parent)
+    mkdir_private(path.parent)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as handle:
@@ -5170,7 +5180,7 @@ def _flush_descriptor(fd: int) -> None:
     os.fsync(fd)
 
 
-class _exclusive_lock:
+class exclusive_lock:
     """An exclusive advisory lock that REFUSES rather than proceeding unlocked.
 
     The source system's equivalent tolerates a failed ``flock`` and carries on,
@@ -5201,7 +5211,7 @@ class _exclusive_lock:
 
     def __enter__(self):
         _refuse_write_outside_test_root(self.path, system_temporary=True)
-        _mkdir_private(self.path.parent)
+        mkdir_private(self.path.parent)
         try:
             import fcntl
 
@@ -5234,6 +5244,188 @@ class _exclusive_lock:
         if self.handle is not None:
             self.handle.close()
             self.handle = None
+
+
+# ---------------------------------------------------------------------------
+# What every state document's store did for itself, once (U298)
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def held(lock_path: Path, refused: Callable[[ConfigLockUnavailable], BaseException]) -> Iterator[None]:
+    """Hold the exclusive lock at ``lock_path`` across one read then write cycle.
+
+    ONLY THE ACQUISITION is translated, by ``refused``, into the store's own
+    refusal. A failure raised by the body keeps its own identity.
+    """
+    lock = exclusive_lock(lock_path)
+    try:
+        lock.__enter__()
+    except ConfigLockUnavailable as exc:
+        raise refused(exc) from exc
+    try:
+        yield
+    finally:
+        lock.__exit__(None, None, None)
+
+
+@contextmanager
+def lock_within(
+    lock_path: Path, *, wait_s: float, poll_s: float, sleep: Callable[[float], None]
+) -> Iterator[bool]:
+    """Hold the lock at ``lock_path`` and yield True, or yield False when it was not had in time.
+
+    For a writer that would rather skip one write than wait on another process,
+    a cache or a tally. THE LOCK FILE IS NEVER UNLINKED, for the reason
+    :class:`exclusive_lock`'s is not: one holder unlinking the name while another
+    creates a fresh file at it is how two processes each hold "the" lock.
+    """
+    try:
+        mkdir_private(lock_path.parent)
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, PRIVATE_FILE_MODE)
+    except OSError:
+        yield False
+        return
+    try:
+        try:
+            import fcntl  # noqa: PLC0415 - POSIX only, see the except
+        except ImportError:  # pragma: no cover - no advisory locks here
+            fcntl = None
+        had = fcntl is None
+        polls = 0
+        while not had and polls * poll_s < wait_s:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                had = True
+            except BlockingIOError:
+                polls += 1
+                sleep(poll_s)
+        yield had
+    finally:
+        os.close(fd)  # closing the descriptor releases the lock; the file stays
+
+
+def lock_now(path: Path) -> tuple[Any, bool]:
+    """Open the lock file at ``path`` and take its lock WITHOUT WAITING.
+
+    Returns the open handle, whose close releases the lock, and whether the
+    lock was had. A lock another process holds is ``False`` with the handle
+    still open: the holder's own words are in the file, and the caller refuses
+    with them. ``os.open`` with an explicit mode and never the builtin
+    ``open``, which creates at 0666 masked by the umask and would leave a lock
+    any local account could hold, refusing every later run.
+
+    A platform with no advisory locks reads as had. Refusing there would make
+    the product unusable on it, and what each caller guards is a transaction
+    of its own. The handle is closed on any other failure, which leaves as
+    itself.
+    """
+    mkdir_private(path.parent)
+    handle = os.fdopen(os.open(path, os.O_CREAT | os.O_RDWR, PRIVATE_FILE_MODE), "r+")
+    try:
+        try:
+            import fcntl  # noqa: PLC0415 - POSIX only, see the except
+        except ImportError:  # pragma: no cover - POSIX only in practice
+            return handle, True
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return handle, False
+    except BaseException:
+        handle.close()
+        raise
+    return handle, True
+
+
+def flock_exclusive(target: Path, harden: Callable[[Path], None]):
+    """Open ``target`` owner only, harden it, and take its exclusive lock.
+
+    Returns the open handle, whose close releases the lock. THE HANDLE IS
+    CLOSED ON ANY FAILURE, an interrupt included, and the failure leaves as
+    itself, so the caller decides which of them is its own refusal.
+    ``os.open`` with an explicit mode and never the builtin ``open``, which
+    creates at 0666 masked by the umask (P1). ``harden`` is the caller's,
+    because ``O_CREAT`` applies the mode only when it CREATES the file and each
+    caller decides what a lock left behind at another mode means.
+    """
+    handle = None
+    try:
+        import fcntl  # noqa: PLC0415 - POSIX only; the caller turns its absence into a refusal
+
+        descriptor = os.open(target, os.O_CREAT | os.O_RDWR, PRIVATE_FILE_MODE)
+        handle = os.fdopen(descriptor, "r+b")
+        harden(target)
+        fcntl.flock(handle, fcntl.LOCK_EX)
+    except BaseException:
+        if handle is not None:
+            handle.close()
+        raise
+    return handle
+
+
+def read_bytes_if_present(path: Path) -> bytes | None:
+    """A state file's bytes, or None when there is no file.
+
+    Absent is an answer, the empty record every ledger names. Any other
+    failure to read leaves as the ``OSError`` it is, for the caller to refuse
+    in its own words.
+    """
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+
+
+def read_json(path: Path, unusable: Callable[[str], BaseException]) -> tuple[bool, Any]:
+    """Whether a state document exists at ``path``, and what it parses to.
+
+    A DOCUMENT THAT EXISTS AND CANNOT BE READ IS REFUSED, never read as empty:
+    an unreadable record read as unset asks every question again, and the next
+    write then persists that emptiness over the real one. ``unusable`` builds
+    the store's own refusal from the clause that says what was wrong. An
+    absent file is ``(False, None)``, which is not a document holding ``null``.
+    """
+    if not path.exists():
+        return False, None
+    try:
+        return True, json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise unusable("it could not be opened") from exc
+    except ValueError as exc:
+        raise unusable("it is not JSON") from exc
+
+
+def read_json_map(path: Path, unusable: Callable[[str], BaseException]) -> Mapping[str, Any] | None:
+    """:func:`read_json` for a document that must be a map, None when the file is absent.
+
+    Anything else at the top level is refused in the store's own words, since
+    a list or a scalar read as an empty record is deleted by the next write.
+    """
+    found, raw = read_json(path, unusable)
+    if not found:
+        return None
+    if not isinstance(raw, Mapping):
+        raise unusable(f"the document is a {type(raw).__name__}, not a map")
+    return raw
+
+
+def read_json_as_text(path: Path, unusable: Callable[[str], BaseException]) -> tuple[bool, Any]:
+    """:func:`read_json`, for the two stores that read the file in the platform's encoding.
+
+    Not merged with it, because the two differ in what a person sees: here a
+    file that is not text in that encoding leaves as the ``UnicodeDecodeError``
+    it is, where :func:`read_json` refuses it as not JSON.
+    """
+    if not path.exists():
+        return False, None
+    try:
+        text = path.read_text()
+    except OSError as exc:
+        raise unusable("it could not be opened") from exc
+    try:
+        return True, json.loads(text)
+    except ValueError as exc:
+        raise unusable("it is not JSON") from exc
 
 
 __all__ = [
@@ -5274,6 +5466,7 @@ __all__ = [
     "PrefixMapping",
     "ProfileConfig",
     "RekordboxConfig",
+    "RemediedError",
     "Remedy",
     "RollbackEffect",
     "Sidecar",
@@ -5301,8 +5494,19 @@ __all__ = [
     "load_from_path",
     "merge_changes",
     "migrate",
+    "exclusive_lock",
+    "flock_exclusive",
+    "held",
+    "is_inside",
+    "lock_now",
+    "lock_within",
+    "mkdir_private",
     "out_of_band_effects",
     "provider_gate_dir",
+    "read_bytes_if_present",
+    "read_json",
+    "read_json_as_text",
+    "read_json_map",
     "rekey_records",
     "reset_cache",
     "save",

@@ -74,7 +74,7 @@ from typing import Any
 
 from cratekit.acquire import match_cli
 from cratekit.cli import prompt
-from cratekit.cli.output import Envelope, from_cause, timestamp
+from cratekit.cli.output import Envelope, count_of, from_cause, timestamp
 from cratekit.core import active_taxonomy, config, provider_gate, review
 from cratekit.core.cause import Cause, CratekitError, Outcome, Scope, refuse
 from cratekit.core.review import Queue, Verdict
@@ -204,16 +204,9 @@ def load_record(cfg: config.Config) -> dict[str, Any]:
     asks every question again.
     """
     path = config.state_path("label_sync", cfg)
-    if not path.exists():
+    raw = config.read_json_map(path, lambda why: _unusable(path, why))
+    if raw is None:
         return _empty()
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise _unusable(path, "it could not be opened") from exc
-    except ValueError as exc:
-        raise _unusable(path, "it is not JSON") from exc
-    if not isinstance(raw, Mapping):
-        raise _unusable(path, f"the document is a {type(raw).__name__}, not a map")
     version = raw.get("version")
     if version != RECORD_VERSION:
         raise _unusable(
@@ -241,7 +234,7 @@ def _write_record(cfg: config.Config, document: Mapping[str, Any]) -> None:
 
 @contextmanager
 def _locked(cfg: config.Config, doing: str) -> Iterator[None]:
-    lock = config._exclusive_lock(config.state_path("label_sync_lock", cfg))
+    lock = config.exclusive_lock(config.state_path("label_sync_lock", cfg))
     try:
         lock.__enter__()
     except config.ConfigLockUnavailable as exc:
@@ -383,8 +376,8 @@ class Offered:
             artist=str(raw.get("artist") or ""),
             title=str(raw.get("title") or ""),
             year=str(raw.get("year") or ""),
-            tracks=_count(raw.get("tracks")),
-            size=_count(raw.get("size")),
+            tracks=count_of(raw.get("tracks")),
+            size=count_of(raw.get("size")),
             item_id=str(raw["item_id"]) if raw.get("item_id") else None,
             payload=dict(payload) if isinstance(payload, Mapping) else {},
             short=_short_of(raw.get("shortfall")),
@@ -395,16 +388,10 @@ def _short_of(raw: Any) -> dict[str, int] | None:
     """A saved shortfall block read back, or None when there is none to trust."""
     if not isinstance(raw, Mapping):
         return None
-    block = {key: _count(raw.get(key)) for key in ("declared", "listed", "withheld")}
+    block = {key: count_of(raw.get(key)) for key in ("declared", "listed", "withheld")}
     if any(value is None for value in block.values()) or not block["withheld"]:
         return None
     return {key: int(value or 0) for key, value in block.items()}
-
-
-def _count(value: Any) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        return None
-    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -477,8 +464,8 @@ class Question:
     @classmethod
     def from_json(cls, raw: Mapping[str, Any]) -> Question:
         releases = raw.get("releases")
-        beyond = _count(raw.get("beyond")) or 0
-        unchecked = _count(raw.get("beyond_unchecked"))
+        beyond = count_of(raw.get("beyond")) or 0
+        unchecked = count_of(raw.get("beyond_unchecked"))
         return cls(
             label_id=str(raw.get("label_id") or ""),
             label_name=str(raw.get("label_name") or ""),
@@ -495,9 +482,9 @@ class Question:
             # as unchecked, so it is said as a bound and never as the label's,
             # and so is a split that is present and unreadable.
             beyond_unchecked=beyond if unchecked is None else min(beyond, unchecked),
-            unread=_count(raw.get("unread")) or 0,
-            withheld=_count(raw.get("withheld")) or 0,
-            unjudged=_count(raw.get("unjudged")) or 0,
+            unread=count_of(raw.get("unread")) or 0,
+            withheld=count_of(raw.get("withheld")) or 0,
+            unjudged=count_of(raw.get("unjudged")) or 0,
         )
 
 

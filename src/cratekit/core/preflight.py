@@ -456,7 +456,7 @@ def is_mount_point(path: Path) -> bool:
         # An unrepresentable path, an embedded null among them. ``os.path.ismount``
         # answers False for one and this function raised, which made it the only
         # caller in the module that could not survive an input the standard
-        # library already handles. ``_names_one_path``, written in the same round
+        # library already handles. ``names_one_path``, written in the same round
         # ninety lines below, catches exactly this and says exactly this: the
         # question was asked and the answer is no; nothing was refused.
         return False
@@ -491,7 +491,7 @@ def slot_holds_a_volume(slot: Path) -> bool:
         behind = Path(slot).resolve()
     except ValueError:
         # An unrepresentable path, an embedded null among them. The same answer
-        # ``is_mount_point`` gives above and ``_names_one_path`` gives below: the
+        # ``is_mount_point`` gives above and ``names_one_path`` gives below: the
         # question was asked and the answer is no. ``Path.resolve`` reaches
         # ``lstat`` for every component, so guarding the seam alone left this
         # caller raising over an input the seam already handles.
@@ -499,7 +499,23 @@ def slot_holds_a_volume(slot: Path) -> bool:
     return behind != Path(slot) and is_mount_point(behind)
 
 
-def _names_one_path(left: Path, right: Path) -> bool:
+def device_of(path: Path) -> int | None:
+    """The device ``path`` is on, read off its nearest ancestor that exists.
+
+    None when nothing up to the root can be read, so a caller comparing two
+    devices never takes two unreadable paths for one volume.
+    """
+    probe = path
+    while True:
+        try:
+            return probe.stat().st_dev
+        except OSError:
+            if probe.parent == probe:
+                return None
+            probe = probe.parent
+
+
+def names_one_path(left: Path, right: Path) -> bool:
     """Whether two paths name ONE thing on this filesystem, as the filesystem sees it.
 
     IT IS NAMED FOR WHAT IT ANSWERS. It was ``_names_one_directory`` and it never
@@ -561,7 +577,7 @@ def _is_a_volume_mount_location(
 
     Asked by walking UP the declared number of levels and then asking the
     filesystem whether what is standing there is the declared directory, rather
-    than by subtracting one string from another. See :func:`_names_one_path`
+    than by subtracting one string from another. See :func:`names_one_path`
     for what that cost.
     """
     for directory, depth in locations:
@@ -571,7 +587,7 @@ def _is_a_volume_mount_location(
                 break
             ancestor = ancestor.parent
         else:
-            if _names_one_path(ancestor, directory):
+            if names_one_path(ancestor, directory):
                 return True
     return False
 

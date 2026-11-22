@@ -16,9 +16,9 @@ from collections.abc import Callable, Container, Sequence
 from pathlib import Path
 
 from cratekit.acquire import listing, match_cli
-from cratekit.cli.output import Envelope
+from cratekit.cli.output import Envelope, load_config
 from cratekit.core import active_taxonomy, config, jobs, review, routing, taxonomy
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
+from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.label import catalogue, harvest, sweep
 from cratekit.label import gate as genre_gate
@@ -33,27 +33,8 @@ LABEL_KEYS: frozenset[str] = frozenset({"sync.labels", "label.import"})
 
 
 def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("label.cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
-
-
-def _reported(store, job) -> dict:
-    return {
-        "job_id": job.job_id,
-        "state": str(job.state),
-        "cause": job.cause.to_json() if job.cause is not None else None,
-        "progress": jobs.progress(store, job.job_id),
-    }
+    """Read config, turning a configuration failure into a typed cause."""
+    return load_config(("label.cli",))
 
 
 def positive_limit(text: str) -> int:
@@ -654,9 +635,9 @@ def queue_warnings() -> tuple[dict[str, str], ...]:
     THE NAME IS SHARED WITH ``cratekit.modules.outbound.shell.queue_warnings``
     ON PURPOSE, and ``docs/METHOD.md`` warns about exactly one symbol meaning two
     things in two modules, so this is the line that says which of the two this
-    is. It is the SAME thing on a second seam, the way ``_load`` and ``_reported``
-    are already spelled once per queueing shell, rather than a second meaning for
-    one word. What differs is only what each one has to look at: the outbound
+    is. It is the SAME thing on a second seam, the way the config load and the
+    job report each have one home every queueing shell calls (U298), rather than a
+    second meaning for one word. What differs is only what each one has to look at: the outbound
     shell also reports the export rows it could not resolve, and a label sweep
     resolves nothing at enqueue by construction (KTD2), so this one asks a single
     question and takes no arguments at all.
@@ -700,7 +681,7 @@ def _queue(ctx, *, payload: dict, item_ids: tuple[str, ...]) -> Envelope:
             item_ids=item_ids,
             cfg=cfg,
         )
-        return ctx.envelope(data=_reported(store, job), warnings=queue_warnings())
+        return ctx.envelope(data=jobs.reported(store, job), warnings=queue_warnings())
 
 
 def _refuse_an_itemless_job(store, job) -> None:
@@ -844,7 +825,7 @@ def _resume(ctx, job_id: str) -> Envelope:
         # an open state (R-290). The predicate now has one owner,
         # ``jobs.raise_for_state``, which every queued verb's shell calls.
         jobs.raise_for_state(job)
-        return ctx.envelope(data=_reported(store, job), warnings=warnings)
+        return ctx.envelope(data=jobs.reported(store, job), warnings=warnings)
 
 
 #: The verb that took the sweep's place (U109), as a person types it. Read off

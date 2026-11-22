@@ -75,13 +75,11 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Mapping, Sequence
 
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, digest_of, load_config
 from cratekit.core import active_taxonomy, config, jobs, review, tags
 from cratekit.core.cause import (
-    Cause,
     CratekitError,
     Outcome,
-    Remediation,
     rebuilt,
     refuse,
 )
@@ -214,21 +212,6 @@ REASONS: tuple[str, ...] = (
     retag.ANSWER_TOO_COARSE,
     retag.DECLINED_IN_REVIEW,
 )
-
-
-def _load() -> config.Config:
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=("tagging.retag_cli",),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
 
 
 def _plan_gate(ctx):
@@ -412,7 +395,7 @@ def retag_genres(ctx) -> Envelope:
             steps=("pass the folder after the verb",),
             origin=("tagging", "retag_cli"),
         )
-    cfg = _load()
+    cfg = load_config(("tagging.retag_cli",))
     if ctx.args.job:
         return _resume(ctx, cfg)
 
