@@ -127,7 +127,8 @@ def _exits(expected: ExitCode, result: tuple[int, dict]) -> dict:
 
 def _refused(argv: list[str], reason: str) -> dict:
     """The envelope of a drive refused as a precondition, having asserted its reason."""
-    refused = _refused(argv, reason)
+    refused = _exits(ExitCode.PRECONDITION, drive(argv))
+    assert refused["cause"]["reason"] == reason
     return refused
 
 

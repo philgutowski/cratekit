@@ -1,9 +1,5 @@
-"""The gate layer shows a digested plan's items whenever one is passed (R-693).
-
-:func:`cratekit.cli.gates.shown_plan` is the one body a digest bound gate shows
-through, :meth:`Gates.require` calls it for any plan it is handed, and a sweep
-of every ``gate.require`` call in ``src`` guards the class below.
-"""
+"""The gate layer shows a digested plan's items whenever one is passed, through
+``gates.shown_plan``, and a sweep of every ``gate.require`` call guards the class (R-693)."""
 
 from __future__ import annotations
 
@@ -13,20 +9,14 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.cli import gates, registry, render
+from cratekit.cli import gates, render
+from tests.test_gate_not_reached import _state, digest_spec
 
 SRC = Path(__file__).resolve().parent.parent / "src" / "cratekit"
 
 
-def _spec(*, explicit: bool = False) -> registry.GateSpec:
-    return registry.GateSpec(
-        name="shown.probe", options=("apply", "abort"), prompt="Apply this plan?",
-        explicit=explicit, digest_source="plan",
-    )
-
-
-def _state() -> gates.RunState:
-    return gates.RunState(run_id="r", verb="probe", created="now")
+def _spec(*, explicit: bool = False):
+    return digest_spec("shown.probe", explicit=explicit)
 
 
 def _plan(*items: dict) -> dict:
@@ -52,16 +42,13 @@ def test_shown_plan_carries_the_facts_then_the_digest_the_count_and_every_item()
 
 
 def test_shown_plan_counts_the_items_and_not_a_narrower_total():
-    """``totals.count`` is a verb's own number, the renames it can perform or
-    the tracks it routes. The count on the screen is how many items the digest
-    covers, since that is what the person is approving."""
+    """``totals.count`` is a verb's own number; the screen counts what the digest covers."""
     plan = {"digest": "d", "items": [{"n": 1}, {"n": 2}, {"n": 3}], "totals": {"count": 1}}
     assert gates.shown_plan(plan)["count"] == 3
 
 
 def test_shown_plan_refuses_a_fact_it_would_overwrite():
-    """A fact under digest, count or items would be replaced by the plan's
-    value without a word, so the collision is refused rather than resolved."""
+    """A fact under digest, count or items would be replaced without a word, so it is refused."""
     for name in gates.SHOWN_PLAN_KEYS:
         with pytest.raises(ValueError, match=name):
             gates.shown_plan(_plan(), {name: "anything"})
@@ -77,8 +64,7 @@ def test_shown_plan_has_no_bound():
 
 
 def test_shown_plan_says_none_for_an_empty_plan_rather_than_nothing():
-    """An empty plan is still a plan a person can abort, and its screen has to
-    say the list is empty rather than print a bare header (R-686)."""
+    """An empty plan can still be aborted, so its screen says the list is empty (R-686)."""
     shown = gates.shown_plan({"digest": "d", "items": []})
     assert shown["items"] == [] and shown["count"] == 0
     cause = _refused(plan={"digest": "d", "items": []})
@@ -108,8 +94,7 @@ def test_require_records_the_offer_off_the_plan_it_showed():
 
 
 def test_require_shows_the_plan_on_the_explicit_refusal_as_well():
-    """Both refusals carry it, so what a person sees does not depend on
-    whether they typed a flag."""
+    """Both refusals carry it, so what a person sees does not depend on a flag."""
     state = _state()
     resolver = gates.Gates(state=state, supplied={"shown.probe": "apply"})
     with pytest.raises(gates.DecisionRequired) as raised:
@@ -132,8 +117,7 @@ def test_require_answers_from_the_plan_and_records_its_digest():
 
 
 def test_require_with_no_plan_and_no_context_still_carries_no_shown_key():
-    """Absent and empty stay different: the new keyword adds nothing to a call
-    that passes neither."""
+    """Absent and empty stay different: a call passing neither carries no shown key."""
     assert "shown" not in _refused(digest="d")
 
 
@@ -163,14 +147,17 @@ def _cause(detail: dict):
 
 @functools.cache
 def _require_calls() -> tuple[tuple[Path, int, set[str]], ...]:
-    """Every ``<something>.gate.require(...)`` call in the package, with its
-    keyword names and where it is, read once for the three guards below."""
+    """Every ``<something>.gate.require(...)`` call in the package, with its keyword
+    names and where it is, read once for the three guards below."""
     return tuple(_calls())
 
 
 def _calls():
     for path in sorted(SRC.rglob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        text = path.read_text(encoding="utf-8")
+        if "gate" not in text or "require" not in text:
+            continue  # such a call spells both names, so the file holds none
+        tree = ast.parse(text, filename=str(path))
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
@@ -185,17 +172,13 @@ def _calls():
 
 
 def test_the_population_this_guard_sweeps_is_the_one_the_ledger_counted():
-    """The sweep sees the whole package, or it guards nothing. Every gate the
-    product declares is asked through ``ctx.gate.require``."""
+    """The sweep sees the whole package, or it guards nothing."""
     found = list(_require_calls())
     assert len(found) >= 19, found
 
 
-#: Digest bound gates that show their plan through a body of their own rather
-#: than through ``plan=``, by file, with how many such calls the file holds and
-#: why each is allowed. A new call in one of these files, or in any other file,
-#: fails the guard below until it hands the gate layer its plan or is named here
-#: with a reason.
+#: Digest bound gates showing their plan through a body of their own rather than
+#: ``plan=``, by file, with how many such calls the file holds and why each is allowed.
 SHOWS_ITS_OWN_WAY: dict[str, tuple[int, str]] = {
     "src/cratekit/write/naming_cli.py": (
         1,
@@ -208,9 +191,7 @@ SHOWS_ITS_OWN_WAY: dict[str, tuple[int, str]] = {
         "batch, the screen R-670 was written to match",
     ),
     "src/cratekit/sync/mark_cli.py": (
-        # ONE since U112: the no pass branch and the pass branch ask through
-        # one call, after ``plan_pass`` has made either plan.
-        1,
+        1,  # Both branches ask through one call, after ``plan_pass`` (U112).
         "shows each item as renamed on the account or left alone with its "
         "reason, one line per fact",
     ),
@@ -233,11 +214,7 @@ SHOWS_ITS_OWN_WAY: dict[str, tuple[int, str]] = {
 
 
 def test_every_digest_bound_gate_shows_the_plan_it_binds_to():
-    """R-693's class, closed: a gate that binds a decision to a digest hands
-    the plan to the gate layer, which shows every item the digest covers, or
-    is named above with the reason it shows its items some other way. A
-    digest and a fact or two beside it is not enough, since that is the
-    screen the outbound first asks had, an age and no track."""
+    """A digest bound gate hands its plan to the gate layer, or is named above (R-693)."""
     allowed = {path: count for path, (count, _why) in SHOWS_ITS_OWN_WAY.items()}
     seen: dict[str, int] = {}
     blind = []

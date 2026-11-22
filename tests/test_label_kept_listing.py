@@ -281,6 +281,14 @@ def test_an_artist_with_no_identifier_is_listed_and_not_kept(entry, clock, budge
 
 
 # The store itself
+def _store(**sections: dict) -> str:
+    """A kept listing document, every section empty but those given."""
+    return json.dumps({
+        "version": 1, "label_id": "kept-recordings", "asked_for": {}, "named": {},
+        "identified": {}, "searched": {}, "listed": {}, **sections,
+    })
+
+
 @pytest.mark.parametrize(
     "written",
     [
@@ -289,27 +297,9 @@ def test_an_artist_with_no_identifier_is_listed_and_not_kept(entry, clock, budge
         json.dumps({"version": 2}),
         json.dumps({"version": 1, "label_id": "another"}),
         json.dumps({"version": 1, "label_id": "kept-recordings"}),
-        json.dumps(
-            {
-                "version": 1, "label_id": "kept-recordings", "asked_for": {}, "named": {},
-                "identified": {},
-                "searched": {"q": {"read_at": "2026-11-05T12:00:00", "value": []}}, "listed": {},
-            }
-        ),
-        json.dumps(
-            {
-                "version": 1, "label_id": "kept-recordings", "asked_for": {}, "named": {},
-                "identified": {}, "searched": {"q": {"read_at": "yesterday", "value": []}},
-                "listed": {},
-            }
-        ),
-        json.dumps(
-            {
-                "version": 1, "label_id": "kept-recordings", "asked_for": {}, "named": {},
-                "identified": {}, "searched": {},
-                "listed": {"1 get_albums": {"read_at": NOW.isoformat(), "value": [{"id": 1}]}},
-            }
-        ),
+        _store(searched={"q": {"read_at": "2026-11-05T12:00:00", "value": []}}),
+        _store(searched={"q": {"read_at": "yesterday", "value": []}}),
+        _store(listed={"1 get_albums": {"read_at": NOW.isoformat(), "value": [{"id": 1}]}}),
     ],
 )
 def test_a_kept_listing_that_cannot_be_read_refuses_before_any_call(entry, clock, written):

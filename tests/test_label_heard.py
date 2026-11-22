@@ -60,6 +60,10 @@ def _writes(account) -> tuple[int, int, int, int]:
     return len(account.chunks), len(account.taken), len(account.deleted), len(account.created)
 
 
+def _state(cfg, account) -> tuple:
+    return _writes(account), config.state_path("label_sync", cfg).read_bytes()
+
+
 def _codes(envelope: dict) -> list[str]:
     return [one["code"] for one in envelope.get("warnings") or ()]
 
@@ -108,11 +112,11 @@ def test_heard_writes_the_ids_merges_and_removes_and_a_second_run_is_a_no_op(kom
     assert _years(account, folder_id)[YEAR] == ["t4", "t5", "t6", "t7"]
     assert envelope["data"]["totals"]["applied"]["removed"] is True
     assert not ledger.product_made(cfg, dated_id), "the removed playlist is still vouched for"
-    before = _writes(account), config.state_path("label_sync", cfg).read_bytes()
+    before = _state(cfg, account)
     again = _exits(ExitCode.OK, _two_acts(VERB))
     assert again["outcome"] == "no_op"
     assert again["data"]["totals"]["writes"] is False
-    assert (_writes(account), config.state_path("label_sync", cfg).read_bytes()) == before
+    assert _state(cfg, account) == before
 
 
 def test_the_merge_adds_only_what_the_year_lacks_and_never_a_duplicate(kompakt):
@@ -133,14 +137,14 @@ def test_the_merge_adds_only_what_the_year_lacks_and_never_a_duplicate(kompakt):
 def test_a_release_not_in_the_dated_playlist_is_refused_by_name(kompakt):
     cfg, fake, account = kompakt
     _made(cfg, fake, account, [_answer(["r3", "r4"], DAY), _answer(["r1"], DAY)])
-    before = _writes(account), config.state_path("label_sync", cfg).read_bytes()
+    before = _state(cfg, account)
     code, refused = drive([*VERB, "--release", "r3", "--release", "r1"])
     assert code != int(ExitCode.OK)
     cause = refused["cause"]
     assert cause["reason"] == "label-heard-not-in-playlist"
     assert "r1" in cause["message"] and cause["detail"]["outside"] == ["r1"]
     assert cause["detail"]["releases"] == ["r3", "r4"]
-    assert (_writes(account), config.state_path("label_sync", cfg).read_bytes()) == before
+    assert _state(cfg, account) == before
 
 
 def test_some_releases_heard_take_their_tracks_off_and_the_last_removes_it(kompakt):
@@ -173,10 +177,10 @@ def test_a_named_release_already_heard_is_said_and_writes_nothing(kompakt):
 def test_declined_nothing_is_written(kompakt):
     cfg, fake, account = kompakt
     _made(cfg, fake, account, [_answer(["r3", "r4"], DAY)])
-    before = _writes(account), config.state_path("label_sync", cfg).read_bytes()
+    before = _state(cfg, account)
     envelope = _exits(ExitCode.OK, _two_acts(VERB, option="abort"))
     assert envelope["outcome"] == "no_op"
-    assert (_writes(account), config.state_path("label_sync", cfg).read_bytes()) == before
+    assert _state(cfg, account) == before
 
 
 def test_no_dated_playlist_on_the_account_marks_heard_and_touches_nothing(kompakt):
@@ -211,10 +215,10 @@ def test_a_dated_playlist_the_ledger_does_not_vouch_for_is_refused(kompakt):
     account.move_to_folder(account.create_playlist(DATED), folder_id)
     _record(cfg, [_answer(["r3"], DAY)])
     dated.apply(cfg, account, _plan(cfg, fake, account))
-    before = _writes(account), config.state_path("label_sync", cfg).read_bytes()
+    before = _state(cfg, account)
     code, refused = drive(VERB)
     assert refused["cause"]["reason"] == "label-heard-not-product-made"
-    assert (_writes(account), config.state_path("label_sync", cfg).read_bytes()) == before
+    assert _state(cfg, account) == before
 
 
 def test_a_date_no_go_took_anything_on_is_refused(kompakt):
@@ -391,6 +395,10 @@ class _Client:
         return _Gone(self, playlist_id)
 
 
+def _removed(client, cfg) -> None:
+    tidal_account.TidalAccount(client, sleep=lambda seconds: None, cfg=cfg).remove_playlist("pl-1")
+
+
 def _vouched(cfg, playlist_id: str) -> None:
     ledger.reserve_label_dated(cfg, LABEL_ID, DATED, lambda: playlist_id)
 
@@ -411,7 +419,7 @@ def test_the_adapter_refuses_a_playlist_the_ledger_does_not_vouch_for_unasked(in
 def test_the_adapter_removes_a_vouched_playlist_and_reads_it_back_gone(installed):
     _vouched(installed, "pl-1")
     client = _Client({"pl-1"})
-    tidal_account.TidalAccount(client, sleep=lambda seconds: None, cfg=installed).remove_playlist("pl-1")
+    _removed(client, installed)
     assert client.deletes == ["pl-1"]
     assert client.opened == ["pl-1", "pl-1"]
 
@@ -419,7 +427,7 @@ def test_the_adapter_removes_a_vouched_playlist_and_reads_it_back_gone(installed
 def test_a_playlist_already_gone_is_removed_with_no_delete(installed):
     _vouched(installed, "pl-1")
     client = _Client(set())
-    tidal_account.TidalAccount(client, sleep=lambda seconds: None, cfg=installed).remove_playlist("pl-1")
+    _removed(client, installed)
     assert client.deletes == []
 
 
@@ -427,9 +435,7 @@ def test_a_delete_the_client_answers_false_is_a_failure(installed):
     _vouched(installed, "pl-1")
     client = _Client({"pl-1"}, answer=False)
     with pytest.raises(CratekitError):
-        tidal_account.TidalAccount(client, sleep=lambda seconds: None, cfg=installed).remove_playlist(
-            "pl-1"
-        )
+        _removed(client, installed)
     assert client.deletes == ["pl-1"]
 
 
@@ -437,9 +443,7 @@ def test_a_playlist_still_served_after_its_delete_is_refused_not_reported_remove
     _vouched(installed, "pl-1")
     client = _Client({"pl-1"}, stays=True)
     with pytest.raises(CratekitError) as caught:
-        tidal_account.TidalAccount(client, sleep=lambda seconds: None, cfg=installed).remove_playlist(
-            "pl-1"
-        )
+        _removed(client, installed)
     assert caught.value.cause.detail["problem"] == "read-back-differs"
     assert client.deletes == ["pl-1"]
 
@@ -456,9 +460,7 @@ def test_a_playlist_the_client_does_not_serve_as_owned_is_refused_in_words(insta
     _vouched(installed, "pl-1")
     client = _NotOwned({"pl-1"})
     with pytest.raises(CratekitError) as caught:
-        tidal_account.TidalAccount(client, sleep=lambda seconds: None, cfg=installed).remove_playlist(
-            "pl-1"
-        )
+        _removed(client, installed)
     assert caught.value.cause.detail["problem"] == "not-owned"
     assert client.deletes == []
 

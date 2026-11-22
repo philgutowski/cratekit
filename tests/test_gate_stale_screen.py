@@ -1,38 +1,26 @@
-"""A stale answer's refusal shows the plan an answer recorded after it applies (R-1334).
-
-An answer recorded after a ``decision-stale`` refusal is taken over the MOVED
-plan, so the refusal carries that plan exactly as an open gate shows it, and so
-does an unknown option inside ``require`` after the offer was recorded. D1 applies.
-"""
+"""A stale answer's refusal shows the moved plan an answer recorded after it applies, as
+an open gate shows it, and so does an unknown option after the offer (R-1334)."""
 
 from __future__ import annotations
 
-import io
 import json
 
 import pytest
 
-from cratekit import cli
 from cratekit.cli import gates, registry, render
 from cratekit.core import config
 from cratekit.core.exit_codes import ExitCode
 from tests.test_cli_contract import _trap_standard_input as _trap_standard_input  # noqa: PLC0414
 from tests.test_cli_contract import configured as configured  # noqa: PLC0414
 from tests.test_cli_contract import library as library  # noqa: PLC0414
+from tests.test_gate_not_reached import _drive, _state, digest_spec
 
 SHOWN = "sha256:shown"
 MOVED = "sha256:moved"
 
 
 def _spec(*, explicit: bool = True) -> registry.GateSpec:
-    return registry.GateSpec(
-        name="stale.probe", options=("apply", "abort"), prompt="Apply this plan?",
-        explicit=explicit, digest_source="plan",
-    )
-
-
-def _state() -> gates.RunState:
-    return gates.RunState(run_id="r", verb="probe", created="now")
+    return digest_spec("stale.probe", explicit=explicit)
 
 
 def _plan(digest: str, *names: str) -> dict:
@@ -91,7 +79,7 @@ def test_a_plan_that_moves_again_after_the_second_answer_is_stale_and_shows_the_
 
 
 def test_a_stale_refusal_and_its_message_are_otherwise_the_gates_own():
-    """Every existing refusal stays: the code, the reason, the remedy and the message."""
+    """The code, the reason, the remedy and the message stay the gate's own."""
     state = _answered()
     with pytest.raises(gates.DecisionStale) as raised:
         gates.Gates(state=state).require(_spec(), plan=_plan(MOVED, "Two"))
@@ -102,8 +90,7 @@ def test_a_stale_refusal_and_its_message_are_otherwise_the_gates_own():
     assert cause.message == (
         "the decision on 'stale.probe' was made against a plan that has since changed"
     )
-    # The answer recorded before is kept as it was: the refusal decides nothing.
-    assert state.decisions["stale.probe"].digest == SHOWN
+    assert state.decisions["stale.probe"].digest == SHOWN, "the refusal decided something"
 
 
 def test_a_digest_gate_with_nothing_to_show_says_so_as_its_open_gate_does():
@@ -147,7 +134,6 @@ def test_an_unknown_inline_option_shows_the_plan_its_offer_recorded():
     assert detail["shown"] == gates.shown_plan(plan)
     assert state.offers[spec.name] == detail["shown"]["digest"]
     assert detail["options"] == ["apply", "abort"]
-    # Its message is the one it had.
     assert raised.value.cause.message == "'bogus' is not an option for 'stale.probe'; it offers apply, abort"
 
 
@@ -194,12 +180,6 @@ def test_the_open_gates_screen_is_unchanged():
 
 
 # Through the dispatcher
-
-
-def _drive(argv: list[str]) -> tuple[int, str, str]:
-    out, err = io.StringIO(), io.StringIO()
-    code = cli.run(argv, stdout=out, stderr=err)
-    return code, out.getvalue(), err.getvalue()
 
 
 def _switch_off_by_hand(module: str) -> None:

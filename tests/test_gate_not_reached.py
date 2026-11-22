@@ -15,6 +15,7 @@ from tests.test_cli_contract import _trap_standard_input as _trap_standard_input
 from tests.test_cli_contract import configured as configured  # noqa: PLC0414
 from tests.test_cli_contract import library as library  # noqa: PLC0414
 
+
 def digest_spec(name: str, *, explicit: bool = True, prompt: str = "Apply this plan?"):
     """A gate offering apply or abort whose answer binds the plan's digest."""
     return registry.GateSpec(

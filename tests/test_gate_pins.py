@@ -1,9 +1,5 @@
-"""A gate's answer binds to the facts it pins outside the digest (U161).
-
-The native landing's digest names the library and not the database file, so the
-file is pinned on the run beside the digest when the gate opens and compared
-when the recorded answer is used.
-"""
+"""A gate's answer binds to the facts it pins outside the digest, such as the database
+file the native landing's digest does not name (U161)."""
 
 from __future__ import annotations
 
@@ -11,25 +7,19 @@ import json
 
 import pytest
 
-from cratekit.cli import gates, registry
+from cratekit.cli import gates
+from tests.test_gate_not_reached import _state, digest_spec
 
 LIVE = "/library/db/master.db"
 COPY = "/library/rehearsal/master.db"
 
 
-def _spec() -> registry.GateSpec:
-    return registry.GateSpec(
-        name="pinned.probe", options=("apply", "abort"), prompt="Apply this plan?",
-        explicit=True, digest_source="plan",
-    )
+def _spec():
+    return digest_spec("pinned.probe")
 
 
 def _plan() -> dict:
     return {"digest": "sha256:same", "items": [{"a": 1}], "totals": {"count": 1}}
-
-
-def _state() -> gates.RunState:
-    return gates.RunState(run_id="r", verb="probe", created="now")
 
 
 def _offered(pinned: dict[str, str] | None) -> gates.RunState:
@@ -68,13 +58,11 @@ def test_another_pin_with_the_same_digest_is_stale_and_names_both_values():
     assert cause.detail["pinned"] == "database"
     assert cause.detail["expected"] == LIVE and cause.detail["actual"] == COPY
     assert LIVE in cause.message and COPY in cause.message
-    # The pin the person answered over is never replaced by the one refused.
-    assert state.pins == {"pinned.probe": {"database": LIVE}}
+    assert state.pins == {"pinned.probe": {"database": LIVE}}, "the refused pin replaced it"
 
 
 def test_an_answer_whose_run_pinned_nothing_is_stale_to_a_gate_that_now_pins():
-    """Absence is not agreement: a run recorded with no pin has no file the
-    answer was given over, so it is not taken as given over this one."""
+    """Absence is not agreement: a run recorded with no pin answered over no file."""
     state = _offered(None)
     with pytest.raises(gates.DecisionStale) as raised:
         gates.Gates(state=state).require(_spec(), plan=_plan(), pinned={"database": LIVE})
