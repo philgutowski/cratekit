@@ -30,7 +30,7 @@ from cratekit.cli import tail
 from cratekit.core import config, jobs, tags
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.tagging import artifacts, searchers, tag
+from cratekit.tagging import artifacts, searchers, summary, tag
 from cratekit.tagging import cli as tag_cli
 from cratekit.tagging.tag import LabelAnswer, SearchHit
 from tests._containers import synth_container
@@ -444,8 +444,8 @@ def test_a_sublabel_beside_a_third_label_settles_nothing():
 
 def test_two_labels_sharing_a_display_name_are_two_in_the_ambiguous_count():
     counted: dict[str, int] = {}
-    tag_cli._count_ambiguous(counted, ["Alpha", "Alpha"])
-    tag_cli._count_ambiguous(counted, ["Gettraum"])
+    summary._count_ambiguous(counted, ["Alpha", "Alpha"])
+    summary._count_ambiguous(counted, ["Gettraum"])
     assert counted == {"Alpha, Alpha": 1}
 
 
