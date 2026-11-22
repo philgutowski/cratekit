@@ -114,7 +114,8 @@ none, so a first review does not accept the removal as history.
 real tracks in a playlist made by hand, taken out with Remove from Collection,
 leaves **the member after it renumbered**, `TrackNo` 3 to 2 (R-1830); a playlist
 deleted by hand in the sidebar is **deleted outright** from `djmdPlaylist`, no
-`rb_local_deleted` marker (R-1844). On its next launch rekordbox also deleted an
+`rb_local_deleted` marker (R-1844; since #926 the deletion pass tells such a
+landing from a rollback by a row it made, held under its recorded UUID). On its next launch rekordbox also deleted an
 album row and a genre row that no track carried any more (the album a `sync
 removed` removal left, a genre a retag had emptied), so orphan album and genre
 rows are pruned by rekordbox itself at launch.
