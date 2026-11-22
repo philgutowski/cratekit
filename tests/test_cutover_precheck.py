@@ -152,9 +152,8 @@ def test_an_unverified_capture_does_not_count_as_a_snapshot(cfg):
 
 
 def test_the_intake_tree_flips_on_a_rebuildable_source_like_any_other(cfg):
-    """R-746. The intake tree's own refusal is gone: the landing chooses its
-    medium by the tree's mode, so a native intake tree refuses no splice that
-    anything still owes. The precheck and the rebuildability rule still hold."""
+    """The intake tree flips on a rebuildable source like any other, since the
+    landing chooses its medium by the tree's mode (R-746)."""
     export = _ready(cfg)
     tree_registry.flip(
         cfg,
@@ -299,7 +298,7 @@ def test_a_session_that_wrote_nothing_to_this_tree_leaves_the_revert_open(cfg):
 
 
 # ---------------------------------------------------------------------------
-# What the review of R-235 found, closed
+# Edge cases of the report and the revert guard
 # ---------------------------------------------------------------------------
 
 

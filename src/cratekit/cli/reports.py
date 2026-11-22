@@ -5,39 +5,14 @@
     report.library        what this library actually contains
     report.intake-aging   which intake groupings have gone stale
 
-**One input, and it is a file rather than the database.** Every verb here takes a
-rekordbox collection export and reads it through
-:mod:`cratekit.modules.reports.export`. Nothing in this module opens the
-rekordbox database, and that is structural rather than careful: the reports
-package is held to an import allowlist that admits no database module at all, so
-a report cannot acquire a handle that could commit even by mistake.
-
-**The export is a POSITIONAL argument and there is no configured default.** The
-product has no recorded location for an export, and inventing one would mean
-picking a filename in somebody's library and then reading whatever is at it. A
-stale export answers every question here confidently and wrongly, so the path a
-person types is the path they last wrote, which is the only way this surface can
-tell them which library they are looking at.
-
-**Three of the four emit ``diagnostic/1``, which is doctor's surface**, and they
-build it out of doctor's own :class:`~cratekit.cli.doctor.Finding` rather than a
-second shape that happens to serialize the same keys today. One report inventing
-its own check row is how two consumers of one schema come to disagree about what
-``status`` may contain.
-
-**The fourth adjudicates, so its answers are persisted rather than printed.** A
-duplicate pair is a question only a person can settle, and settling it has to
-outlive the run or the same pair is offered forever (R12). That is
-``review.Queue.DUPLICATES`` and a REJECTED verdict in it, never a file beside the
-report.
-
-**Truncation is reported, never silent.** ``audit.coverage`` over a library
-nobody has swept can name ten thousand tracks, so it takes a limit. The summary
-carries the true total beside the number listed, and a run that dropped rows says
-so in a check row of its own. A capped list that reads as a complete one is worse
-than no list.
-
-Layer: cli.
+Every verb reads a rekordbox collection export through
+:mod:`cratekit.modules.reports.export`, never the database; the reports package's
+import allowlist admits no database module, so a report cannot commit by
+mistake. The export is a positional argument with no default, since a stale
+export answers confidently and wrongly. Three verbs emit doctor's
+``diagnostic/1`` built from its own :class:`~cratekit.cli.doctor.Finding`. The
+duplicates audit persists its answers in ``review.Queue.DUPLICATES`` (R12).
+Truncation is always reported, never silent.
 """
 
 from __future__ import annotations
@@ -57,9 +32,8 @@ from cratekit.core.naming import NameTemplate
 if TYPE_CHECKING:  # pragma: no cover - typing only; the reports module is toggleable
     from cratekit.modules.reports import export
 
-#: The report engines, read as attributes of this module and imported on that
-#: first read: the reports module is toggleable, so the shell imports none of
-#: them when it loads (U303).
+#: The report engines, imported on first attribute read, since the reports
+#: module is toggleable and the shell loads none of them (U303).
 _ENGINES = {
     "aging": "aging",
     "coverage": "coverage",
@@ -77,18 +51,17 @@ def __getattr__(name: str):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-#: How many uncovered tracks a coverage run lists before it says it stopped.
-#: A number rather than everything, because the diagnostic surface is one JSON
-#: object and a library that has never been swept puts its whole collection in
-#: it. Overridable per run, and the summary reports both numbers either way.
+#: How many uncovered tracks a coverage run lists before it says it stopped,
+#: since the diagnostic surface is one JSON object. The summary reports both
+#: numbers either way.
 DEFAULT_COVERAGE_LIMIT = 200
 
 
 def _template(cfg: config.Config) -> NameTemplate:
     """The declared naming shape, with the marker text config owns (S3).
 
-    ``acquire.match_cli.library_template``'s rule: a configuration with no
-    marker text is one where no file carries a marker, so the plain shape.
+    With no marker text configured, no file carries a marker, so the plain
+    shape.
     """
     return NameTemplate.lossy_if_marked(cfg.naming.lossy_marker)
 
@@ -96,9 +69,8 @@ def _template(cfg: config.Config) -> NameTemplate:
 def _view(ctx) -> export.LibraryView:
     """The export named on the command line, read once.
 
-    The refusal for a path that is not readable, is not an export, or is a
-    truncated one comes from ``export`` itself, so every verb here says the same
-    sentence about the same file.
+    The refusal for an unusable file comes from ``export`` itself, so every
+    verb says the same sentence about it.
     """
     from cratekit.modules.reports import export
 
@@ -108,20 +80,13 @@ def _view(ctx) -> export.LibraryView:
 def _as_of(ctx) -> date:
     """The day the aging report is run FOR, defaulting to today.
 
-    A flag rather than only a clock read, because the engine takes ``today`` as a
-    parameter precisely so an answer can be asserted against a fixture, and a
-    shell that only ever passed ``date.today()`` would put the untestable shape
-    back one layer up.
+    A flag so an answer can be asserted against a fixture.
     """
     written = getattr(ctx.args, "as_of", None)
     if written is None:
         return datetime.now(timezone.utc).date()
-    # ``is None`` RATHER THAN FALSINESS, and the difference is the whole point of
-    # the refusal below. An empty string is something a person TYPED, so treating
-    # it as an absent flag answers for a day nobody named, which is the exact
-    # outcome the refusal exists to prevent. The first version of this function
-    # wrote ``if not written`` and argued in its own docstring against the
-    # behaviour it then had.
+        # ``is None``, not falsiness: an empty string was typed, and is refused
+        # rather than read as today.
     try:
         return date.fromisoformat(written)
     except ValueError as exc:
@@ -166,10 +131,8 @@ def build_coverage(parser, entry: registry.Entry) -> None:
 def audit_coverage(ctx) -> Envelope:
     """What the governed tree does not file, listed and counted.
 
-    THE COUNT IS NOT DERIVED FROM THE LIST. ``uncovered`` comes off the report and
-    ``listed`` off the slice, so a limit can never make the total agree with a
-    truncated list, which is the one arithmetic that would hide the truncation
-    from a consumer reading only the summary.
+    The count is not derived from the list, so a limit can never hide the
+    truncation from a consumer reading only the summary.
     """
     from cratekit.modules.reports import coverage
 
@@ -245,11 +208,8 @@ def build_duplicates(parser, entry: registry.Entry) -> None:
 def audit_duplicates(ctx) -> Envelope:
     """Offer every repeated recording into the review queue and report the queue.
 
-    IDEMPOTENT BECAUSE THE ENGINE IS. A second run over the same library re-offers
-    the same items, finds them already there, and leaves any verdict alone, so a
-    pair somebody rejected comes back suppressed rather than as a question. That
-    is the persistent ignore, and this verb keeps no state of its own to make it
-    true.
+    Idempotent because the engine is: a rerun leaves verdicts alone, so a
+    rejected pair comes back suppressed, with no state kept here.
     """
     from cratekit.modules.reports import duplicates
 
@@ -284,10 +244,8 @@ def build_library(parser, entry: registry.Entry) -> None:
 def report_library(ctx) -> Envelope:
     """Genres, tempo spread, tree shape and gaps, as one diagnostic.
 
-    Every row is INFO. Nothing here is a failure: an unused bucket is a taxonomy
-    somebody has not grown into and a shallow tree is a library somebody is still
-    building, and a report that painted either red would be this module deciding
-    what a person's library should look like.
+    Every row is INFO: an unused bucket or a shallow tree is a library still
+    growing, not a failure.
     """
     from cratekit.modules.reports import library as library_report
 
@@ -339,13 +297,8 @@ def report_library(ctx) -> Envelope:
         )
     )
     if stats.shape.folders == 0:
-        # ONE ROW, NOT ONE PER DECLARED BUCKET. This engine reports rather than
-        # refuses when the governed tree is absent, which is the right call and is
-        # argued where it is made: an empty count is a true answer. Rendering it
-        # as a gap row per bucket was not. Driven on an export with no tree, the
-        # shipped template produced eighteen "this bucket has no folder" rows,
-        # every one of them true and none of them the thing that had gone wrong,
-        # which is the shape doctor's own INFO status exists to avoid.
+        # One row, not one per declared bucket: an absent tree is the one thing
+        # that went wrong.
         findings.append(
             Finding(
                 key="gap.tree",
@@ -413,10 +366,8 @@ def build_intake_aging(parser, entry: registry.Entry) -> None:
 def report_intake_aging(ctx) -> Envelope:
     """Every intake grouping in exactly one band, oldest first.
 
-    The thresholds come from configuration through ``aging.thresholds_from`` and
-    from nowhere else. A default written here would be a second answer to a
-    question the config file already answers, and it would be the copy nobody
-    looks at.
+    The thresholds come only from configuration, through
+    ``aging.thresholds_from``, so there is no second answer here.
     """
     from cratekit.modules.reports import aging
 

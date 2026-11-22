@@ -256,187 +256,26 @@ POLICY_ROWS: Mapping[int, str] = MappingProxyType(
     {7: "R21 makes this acquisition.lossless_policy, not a module toggle"}
 )
 
-#: Module toggles that exist with no verb behind them, and why that is correct.
-#:
-#: Feature 32 is deferred: the CLI is the launch product. The toggles and the
-#: extras groups stay declared because deferring is not deleting, and a user who
-#: installs the full profile should not have a setting appear later that was
-#: silently absent. Named here so the "every toggle is used" check can tell a
-#: deferred module from one whose verb somebody forgot to gate.
+#: Module toggles with no verb behind them: Feature 32 is deferred, not deleted.
+#: Named so the "every toggle is used" check can tell them from a forgotten gate.
 DEFERRED_MODULES: frozenset[str] = frozenset({"web", "desktop"})
 
-#: The unit that lands ``cratekit.write.routing_cli``, named ONCE so all four
-#: entries that carry it move together.
-#:
-#: IT WAS U19 AND IT IS NOW U20, and the reasoning is written down rather than
-#: implied, because it is a judgement somebody may want to move again. U19 built
-#: the deferred-routing ENGINE and its declared file list never contained a
-#: command-line module. It could not have landed one either: conformance 3
-#: requires a landed gated verb to exit OK once its gate is answered, and every
-#: verb here writes ``db_tree`` and is destructive, which cannot exit OK on a
-#: machine with no database. U20 flips trees to database-native, so it is the
-#: first unit that must ship a destructive database surface anyway, and these
-#: four ride with it.
-#:
-#: THE MARKER IS NOT THE ONLY RECORD, and as of 2026-08-02 it is read. It used
-#: to say ``scripts/board.py`` reads ``tests/_pending.py`` "and nothing else",
-#: which was true when it was written and is now false: ``planned_units()``
-#: parses these markers, so a closed unit still carrying one is a contradiction
-#: the board reports. The obligation stays registered in ``tests/_pending.py`` as
-#: well, against U20, because that file is what a person reads (P5).
+#: The unit that lands ``cratekit.write.routing_cli``, named once so its four
+#: entries move together. U20, the first unit to ship a destructive database
+#: surface; ``tests/_pending.py`` holds the obligation (P5).
 ROUTING_CLI_UNIT = "U20"
 
-#: The unit that lands ``cratekit.cli.rebuild``, named ONCE so anything that
-#: carries it moves with it.
-#:
-#: ONE VERB IS BEHIND THIS WALL AND ONE IS NOT, and the correction is worth
-#: recording because U36 first parked both. The two verbs were declared against
-#: ONE module, so the countdown, which keys on the module, held the read-only
-#: verb behind the destructive one. ``converge`` declares no gates, writes
-#: nothing and is destructive of nothing: conformance 3's loop body never
-#: executes for it, conformance 5 and 6 filter it out, and 1 and 8 assert over
-#: every entry landed or not. Nothing about the wall applied to it, and both of
-#: this unit's refusals name it as remediation step one, so parking it parked
-#: the remedy. It landed with U36 as ``cratekit.cli.converge``.
-#:
-#: ``rebuild`` genuinely is behind the wall: it writes ``db_tree``, it is
-#: destructive, and conformance 3 requires a landed gated verb to exit OK once
-#: its gate is answered, which it cannot do on a machine with no rekordbox
-#: database at all. U20 flips trees to database-native, so it is the first unit
-#: that must ship a destructive database surface anyway, and this rides with it
-#: exactly as the four route verbs already do.
-#:
-#: THE MARKER IS NOT THE RECORD. ``scripts/board.py`` reads ``tests/_pending.py``
-#: and nothing else, so this constant is a convenience for the reader and the
-#: obligation itself is registered there, against U20 (P5). Leaving the marker
-#: pointing at a unit that has closed would leave the obligation owned by nobody.
+#: The unit that lands ``cratekit.cli.rebuild``. ``rebuild`` writes ``db_tree``
+#: and rides with U20 as the route verbs do; ``converge`` landed apart (U36).
 REBUILD_CLI_UNIT = "U20"
-#: The unit that lands ``cratekit.cli.reports``, named ONCE so all four entries
-#: that carry it move together, in the same shape as the constant above.
-#:
-#: IT WAS U34 AND IT IS NOW U27, and there are two separate reasons, both of
-#: which somebody may want to revisit.
-#:
-#: THE MODULE PATH WAS UNBUILDABLE AS SPELLED. These entries named
-#: ``cratekit.reports.cli``, which ``tests/test_layering.py`` ranks ``modules``
-#: while this registry ranks ``cli``, so the module that must dispatch through
-#: this table could not have imported it without an upward import. That is the
-#: same correction U10 and U11 each made on landing, and the comments above the
-#: job and review blocks record both. It is corrected here rather than left for
-#: whoever picks the verbs up, because a path nobody can build is a fact worth
-#: one line now and an afternoon later.
-#:
-#: THE OWNER MOVED BECAUSE U34 NEVER OWED A CLI. U34's declared file list is
-#: ``src/cratekit/modules/reports/`` and its test module, and it landed exactly
-#: that: the duplicate audit and the intake aging engines. Left marked U34, all
-#: four markers would have named a closed unit the moment #34 merged, and
-#: nothing would have noticed, because ``test_cli_contract`` only fires once the
-#: module APPEARS and ``scripts/board.py`` reads ``tests/_pending.py`` alone.
-#: That is R-13 verbatim, one wave later.
-#:
-#: U27 IS THE OWNER, on three grounds. It is the only open unit whose declared
-#: file list already lands modules in this directory, ``cli/setup.py`` and
-#: ``cli/doctor.py``, so ``cli/reports.py`` is the same act in the same place
-#: rather than a new kind of work for a unit that does none of it. Three of the
-#: four verbs emit ``diagnostic/1``, which is doctor's own output surface, and
-#: U27 owns the check registry that surface is rendered against. And U27 is
-#: unblocked today, so the obligation can be discharged next rather than parked
-#: behind a dependency chain. What U27 inherits with it is real and is stated
-#: rather than hidden: ``audit.coverage`` and ``report.library`` have no engine
-#: anywhere in the tree, so that unit lands two report engines as well as the
-#: shell. ``audit.duplicates`` and ``report.intake-aging`` are thin over engines
-#: U34 already landed.
-#:
-#: THE MARKER IS NOT THE RECORD, exactly as above. The obligation is registered
-#: in ``tests/_pending.py`` against U27, which is the file the board audit reads
-#: (P5), and this constant is a convenience for the reader.
-#:
-#: IT HAS LANDED. ``cratekit.cli.reports`` shipped under U27 with the four
-#: handlers, the coverage engine and the library-statistics engine the paragraph
-#: above says the unit inherits, so none of the four entries carries a
-#: ``planned_in`` any more and all nine conformance properties now drive them.
-#: The constant stays, exactly as ``ROUTING_CLI_UNIT`` and ``REBUILD_CLI_UNIT``
-#: stayed after their own modules landed: the reasoning above is why these verbs
-#: are spelled and owned the way they are, and deleting the name would take the
-#: record of that decision with it.
+#: The unit that landed ``cratekit.cli.reports``, kept as the record of why its
+#: four verbs live under ``cli`` (a modules path would import upward) and U27.
 REPORTS_CLI_UNIT = "U27"
-#: The unit that lands ``cratekit.adopt.apply_cli``, named ONCE for the same
-#: reason ``ROUTING_CLI_UNIT`` is, and carrying the judgement rather than only
-#: the answer.
-#:
-#: BOTH ADOPTION VERBS USED TO NAME ``cratekit.adoption.cli``, which is a package
-#: that does not exist and no unit's file list has ever declared. Every other
-#: authority says ``adopt``: issue #23's brief, ``docs/HANDOFF.md``, the pending
-#: register, and the landed ``src/cratekit/adopt/``. The typo was not merely
-#: cosmetic. ``test_a_planned_verb_whose_module_has_landed_must_lose_its_marker``
-#: probes with ``find_spec`` inside ``except ModuleNotFoundError``, and
-#: ``find_spec("cratekit.adoption.cli")`` raises on the MISSING PARENT
-#: ``cratekit.adoption``, which the probe caught and read as "not present yet".
-#: So the countdown could never fire, in this build or in any future one, and
-#: closing #23 would have left two verbs shipping with no conformance coverage
-#: and nothing on the board saying so. That is R-13's failure verbatim, and it is
-#: already live three times over.
-#:
-#: THE TWO VERBS THEN SPLIT, because they were never in the same position.
-#: ``adopt.scan`` declares no gate, writes nothing, and is not destructive, so
-#: conformance 3 is an empty loop for it and it lands here. Only ``adopt.apply``
-#: stays behind the wall, and it now names a module of its own so its countdown
-#: is about itself.
-#:
-#: THE MARKER IS NOT THE RECORD. ``scripts/board.py`` reads ``tests/_pending.py``
-#: and nothing else, so this constant is a convenience for the reader and the
-#: obligation itself is registered there, against the same unit (P5). What the
-#: wall actually is, which R-13 currently states wrongly, is written down in that
-#: entry rather than here.
-#:
-#: IT HAS LANDED. ``cratekit.adopt.apply_cli`` shipped under U27 with the shell,
-#: the plan-digested approval gate, and the one destructive session the residual
-#: titled "Adoption's tag write takes no destructive session and no library lock"
-#: asked for, so the entry no longer carries a ``planned_in`` and all nine
-#: conformance properties drive it. The constant stays, exactly as
-#: ``ROUTING_CLI_UNIT`` and ``REPORTS_CLI_UNIT`` stayed after their own modules
-#: landed: the paragraphs above are why these two verbs are spelled and split the
-#: way they are, and deleting the name would take the record of that with it.
-#:
-#: THE WALL WAS ALREADY DOWN when the marker was cleared, and the pending entry
-#: still described it as standing. Conformance 3 answers an explicit gate through
-#: ``crate run decide`` and resumes the same run for the next gate, and
-#: ``write.cloudsync.unreadable`` is named in the suite's unreachable set, so this
-#: verb's two gates are one reachable question and one exemption.
+#: The unit that landed ``cratekit.adopt.apply_cli``. ``adopt.apply`` has a module
+#: of its own so its countdown is about itself; ``adopt.scan`` landed apart.
 ADOPT_APPLY_CLI_UNIT = "U27"
-#: Where ``repair.paths`` lives, and the unit that lands it.
-#:
-#: U102 OVERTOOK THE REASON BELOW AND NOT THE DECISION. The verb no longer
-#: declares the cloud-sync gate or a database write, since it never performed
-#: one, so the wall described here is gone. The module and the unit stay where
-#: they are, because the path repair obligation still lives with U37.
-#:
-#: IT WAS ``cratekit.cli.doctor`` AND U27, AND IT IS NOW NEITHER. The reasoning is
-#: written down rather than implied, in the same shape and for the same reason as
-#: ``ROUTING_CLI_UNIT`` above, because it is a judgement somebody may want to move
-#: again.
-#:
-#: The MODULE moved because the countdown that expires a ``planned_in`` marker
-#: keys on the module, not on the verb: the moment ``cratekit.cli.doctor`` exists,
-#: every entry naming it must lose its marker and satisfy the whole conformance
-#: suite. Doctor and status can; this one cannot, and not for a reason effort
-#: fixes. It declares the cloud-sync gate, which is ``explicit``, and conformance
-#: 3 requires a declared gate to refuse once and then to exit OK when it is
-#: answered. R34 makes an explicit gate answerable only by a separate recorded
-#: act, never inline in the invocation that discovered it, so the second drive
-#: refuses exactly like the first. It also writes ``db_metadata`` against a
-#: database that does not exist on a machine with no library, which is the same
-#: wall U19 hit and the reason the four routing verbs moved to U20.
-#:
-#: The UNIT is U37 because that is where path repair already lives:
-#: ``tests/_pending.py`` registers, against U37 and ``cratekit.intake``, that a
-#: path repair proposal is offered into the review queue rather than applied.
-#: Splitting the verb from the obligation that governs it would leave two units
-#: owning one feature row.
-#:
-#: THE MARKER IS NOT THE RECORD. ``scripts/board.py`` reads ``tests/_pending.py``
-#: and nothing else, and that file already carries U37's path-repair obligation,
-#: so this constant is a convenience for the reader (P5).
+#: Where ``repair.paths`` lives and the unit that owns it: path repair is U37's,
+#: and its own module keeps the doctor module's countdown off it.
 REPAIR_CLI_MODULE = "cratekit.intake.repair_cli"
 REPAIR_CLI_UNIT = "U37"
 
@@ -445,8 +284,8 @@ REPAIR_CLI_UNIT = "U37"
 # The verbs
 # ---------------------------------------------------------------------------
 #
-# Ordered by the surface they belong to rather than alphabetically, because the
-# reader's question is almost always "what can this product do about X".
+# Ordered by surface, not alphabetically, since a reader asks what the product
+# can do about X. Later blocks are appended so concurrent branches conflict.
 
 ENTRIES: tuple[Entry, ...] = (
     # ── Setup, profiles, and the run's own state (this unit) ────────────────
@@ -489,10 +328,8 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="run.retire.confirm", options=("apply", "abort"),
                 prompt="Answer abort, as session, on each of these open gates?",
-                #: ORDINARY, as ``profile.set.apply`` is (U170). What it writes
-                #: is run state, and only ever the answer no, so it is answered
-                #: on the same line; the digest binds the answer to the gates
-                #: shown.
+                #: Ordinary (U170): it writes only run state, only the answer no,
+                #: and the digest binds the answer to the gates shown.
                 digest_source="plan",
             ),
         ),
@@ -501,9 +338,8 @@ ENTRIES: tuple[Entry, ...] = (
         name="setup", summary="first-run wizard: library, credentials, taxonomy, profile",
         module="cratekit.cli.setup", builder="build", handler_key="setup", feature_rows=(27,),
         source_scripts=(),
-        # The ONE interactive verb, and the only exemption from the no-standard-
-        # input assertion. Its interactivity is confined to one module so the
-        # static guard can allow exactly one file rather than a directory.
+        # Interactive, confined to one module so the static guard on standard
+        # input can allow exactly one file.
         interactive=True, emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
     ),
     Entry(
@@ -517,17 +353,8 @@ ENTRIES: tuple[Entry, ...] = (
         module=REPAIR_CLI_MODULE, builder="build_repair_paths", handler_key="repair.paths",
         feature_rows=(17,), source_scripts=("dj-path-repair",), module_id="repair",
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: Files only, corrected in U102, the same correction U39 made to
-        #: ``name.apply``. The entry claimed ``db_metadata`` and the cloud sync
-        #: decision from the design in which this verb re-pointed database rows,
-        #: and no handler ever did: it offered proposals and wrote nothing. Since
-        #: U102 ``--apply`` renames the files whose proposal a person accepted,
-        #: which is a write to files. It READS the database, through the guard
-        #: ``name.apply`` built, with ``require_closed`` False, so it never
-        #: reaches the guarded writer or the decision that binds to write
-        #: intent, and the conformance suite refuses a declared decision a verb
-        #: cannot reach, in both directions. Rewriting the locations inside an
-        #: export is not built, and whoever builds it declares what it writes.
+        #: Files only (U102): ``--apply`` renames accepted files. The database is
+        #: only read, so no cloud sync decision, which a verb must reach to declare.
         writes=frozenset({"files"}), adjudicates=True, destructive=True,
         doctor_checks=("library.mounted", "rekordbox.pins"),
         gates=(
@@ -542,14 +369,10 @@ ENTRIES: tuple[Entry, ...] = (
         name="repair.rows",
         summary="give each live library row rekordbox's own defaults where a " "column is empty, and its file's inode where the file id is random, so " "it loads to a deck; writes no file",
         module="cratekit.write.row_defaults_cli", builder="build", handler_key="repair.rows",
-        # NO FEATURE ROW AND NO SOURCE SCRIPT. The source system never created a
-        # content row, so nothing there left one without rekordbox's defaults.
-        #
-        # GATED BY ``repair``, as ``repair.paths`` and ``tag.rows`` are: a
-        # corrective pass over rows the library already holds.
+        # No feature row or source script: the source never created a row.
+        # Gated by ``repair``, a corrective pass over rows the library holds.
         module_id="repair", emits=frozenset({"plan"}), output_schema="plan/1",
-        #: THE ROW AND ONLY THE ROW, and of it only the columns
-        #: ``rb_writer.CONTENT_ROW_DEFAULTS`` names, each only where NULL, and
+        #: The row only: ``rb_writer.CONTENT_ROW_DEFAULTS`` where NULL, and
         #: ``rb_writer.FILE_ID_COLUMN`` where the binding minted it (U115).
         writes=frozenset({"db_metadata"}), destructive=True,
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
@@ -557,8 +380,7 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="repair.rows.confirm", options=("apply", "abort"),
                 prompt="Give these rows rekordbox's own defaults?",
-                #: EXPLICIT (R34). A write to rows of a live library is answered
-                #: by a separate recorded act with an actor.
+                #: Explicit (R34): a write to rows of a live library.
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
@@ -569,22 +391,16 @@ ENTRIES: tuple[Entry, ...] = (
         name="repair.link",
         summary="write chosen values into the row probe columns, ContentLink " "and ISRC, of chosen live library rows, the experiment that asks which " "column keeps a landed row off a deck; writes no file",
         module="cratekit.write.row_link_cli", builder="build", handler_key="repair.link",
-        # NO FEATURE ROW AND NO SOURCE SCRIPT. The source system never created a
-        # content row, so it never had a column to probe.
-        #
-        # GATED BY ``repair``, as ``repair.rows`` is: a write over a row the
-        # library already holds.
+        # No feature row or source script; gated by ``repair`` as ``repair.rows`` is.
         module_id="repair", emits=frozenset({"plan"}), output_schema="plan/1",
-        #: THE NAMED ROWS AND ONLY THEM, and of each only the columns of
-        #: ``rb_writer.ROW_PROBE_COLUMNS`` its triples name.
+        #: The named rows only, and only the ``rb_writer.ROW_PROBE_COLUMNS`` named.
         writes=frozenset({"db_metadata"}), destructive=True,
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
         gates=(
             GateSpec(
                 name="repair.link.confirm", options=("apply", "abort"),
                 prompt="Write these probe values onto these rows?",
-                #: EXPLICIT (R34). A write to a row of a live library is
-                #: answered by a separate recorded act with an actor.
+                #: Explicit (R34): a write to a row of a live library.
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
@@ -611,24 +427,11 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="session.ack.backup", options=("acknowledged", "abort"),
                 prompt="Database and music files are backed up; proceed?",
-                # R34: no blanket flag, config key, or environment variable
-                # satisfies this. It is asserted per session, by a named actor.
+                # Explicit (R34): asserted per session by a named actor.
                 explicit=True,
             ),
         ),
-        # U49 LANDED IT, and it landed BOTH. The countdown keys on the module
-        # string rather than on the verb name, so ``cratekit.session.cli``
-        # appearing expires this marker and ``session.release``'s together;
-        # dropping one would leave the other claiming a module that exists.
-        # Until it landed, nothing in the product could mint the acknowledgment
-        # ``assert_backup_acknowledged`` demands, so every destructive verb
-        # refused and the suite was green because tests minted through the core
-        # API. THREE properties arm against each of the two entries, not nine,
-        # measured by differencing collected identifiers across the marker drop:
-        # conformance 1's emission check, conformance 2's exit-code check and
-        # conformance 3's gate walk, six cases across the pair, against the two
-        # countdown cases that left. That is the same answer ``restore.list``
-        # records below, and the "all nine" claim above is wrong for every entry.
+        # Landed with ``session.release`` (U49): one module string, one countdown.
     ),
     Entry(
         name="session.release", summary="release a library lock whose holder is gone, explicitly",
@@ -640,29 +443,15 @@ ENTRIES: tuple[Entry, ...] = (
                 prompt="Release the lock held by another installation?", explicit=True,
             ),
         ),
-        # U49 landed it, in the same commit and for the same reason as
-        # ``session.ack`` above: one module string, one file, both markers. The
-        # prompt is asked even when no lock is recorded, because conformance 3
-        # holds every declared gate to firing, so it asserts a holder the verb
-        # may already know is absent. That wording was left alone deliberately
-        # and the observation is in the ledger: a unit that lands a declared
-        # module and edits the declaration at once cannot say afterwards which
-        # half its tests were measuring.
+        # The prompt is asked even with no lock recorded, since conformance 3
+        # holds every declared gate to firing (U49).
     ),
     Entry(
         name="restore.list",
         summary="list write sessions with their timestamp, workflow, and change summary",
         module="cratekit.session.restore_cli", builder="build_list", handler_key="restore.list",
         feature_rows=(12,), emits=frozenset({"review_set"}), output_schema="review_set/1",
-        # U27 LANDED IT. The marker was U32's, then U27's, and it is now gone
-        # because ``cratekit.session.restore_cli`` exists, which is what starts
-        # the conformance properties driving this verb rather than skipping it.
-        # THREE of the nine arm against it, not nine, measured by differencing the
-        # collected identifiers: the claim "all nine" was made here first and is
-        # wrong for every entry, because several properties are AST sweeps over
-        # the package and others are parametrized over populations most entries
-        # are not in. The register entry the marker had to agree with went in the
-        # same commit.
+        # Landed (U27); three of the nine conformance properties arm against it.
     ),
     Entry(
         name="restore.run",
@@ -679,8 +468,7 @@ ENTRIES: tuple[Entry, ...] = (
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
-        # Landed with its sibling above, and by construction: both verbs name one
-        # module, so landing either lands both.
+        # Landed with its sibling above: one module.
     ),
     Entry(
         name="restore.bare-metal",
@@ -689,34 +477,12 @@ ENTRIES: tuple[Entry, ...] = (
         handler_key="restore.bare-metal", feature_rows=(12,), emits=frozenset({"plan"}),
         output_schema="plan/1", writes=frozenset({"files"}), destructive=True,
         doctor_checks=("rekordbox.closed",),
-        # U96. THE CASE ``restore.run`` CANNOT SERVE, which is why it is a verb
-        # and not a flag on that one: the library volume is gone, and every gate
-        # that verb passes is read from beside the library.
-        #
-        # ``library.mounted`` AND ``library.identity`` ARE ABSENT ON PURPOSE.
-        # Both are checks this verb requires to FAIL, since the engine refuses
-        # a recovery while the recorded volume can be read, so declaring them
-        # would tell a person their machine is unfit for the one verb that
-        # needs it that way.
-        #
-        # IT DECLARES NO GATE, on ``master``'s precedent and for a harder
-        # reason. An explicit gate is a decision recorded against a run, which
-        # conformance 3 requires to end in OK on a machine whose library is
-        # present, and this verb refuses on exactly that machine.
-        # ``--accept-replacement`` is the explicit act, and the engine refuses
-        # it from an invocation with no controlling terminal, so the flag
-        # cannot be answered by a detached job. What that substitute is worth
-        # is written at ``core.restore.bare_metal_session``.
-        #
-        # ``binary.rclone`` IS ABSENT TOO, on ``restore.run``'s precedent, and
-        # the cost is known. This verb is core, and a core verb declaring that
-        # check turns a missing rclone from a note into a failure on a slim
-        # install that never asked for backups, which doctor's own suite
-        # refuses. A recovery without the program still refuses by name, with
-        # the install token, before anything is written.
-        #
-        # ``files`` AND NOT ``db_tree``. The database arrives as a file copied
-        # from the remote; no row is written through the guarded writer.
+        # U96, a verb of its own because the library volume is gone. The library
+        # checks are absent since this verb needs them to fail. No gate: one
+        # could not end OK where the library is present, so
+        # ``--accept-replacement``, refused without a terminal, is the explicit
+        # act. No ``binary.rclone``, which would fail a slim core install; the
+        # engine refuses by name instead. ``files``: the database is a copied file.
     ),
     Entry(
         name="converge",
@@ -737,47 +503,29 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="rebuild.accept", options=("accept", "abort"),
                 prompt="Accept this tree as it stands? No rebuild can reproduce it.",
-                #: U219. EXPLICIT, because the answer is a named person
-                #: disposing of a convergence refusal (R34): the recorded actor
-                #: is who the disposition names. Asked only for a tree no
-                #: rebuild can reproduce that a restore marked, the intake tree
-                #: above all, which nothing else can release.
+                #: Explicit (U219, R34): a named person disposes of a convergence
+                #: refusal for a restored tree no rebuild can reproduce.
                 explicit=True,
             ),
         ),
     ),
-    # R-235. The two verbs over ``core.tree_registry``, which held the precheck,
-    # the record and the revert since U20 with no caller under ``src``.
-    #
-    # ``writes`` IS EMPTY ON BOTH, on ``profile.set``'s precedent. What they
-    # write is this product's own registry file, which is none of the declared
-    # surfaces, and the database is only ever READ, through a disposable copy.
-    # So neither reaches the guarded writer, neither declares the cloud sync
-    # decision, and the conformance suite refuses a declared decision a verb
-    # cannot reach.
-    #
-    # NOT ``destructive``, for the same reason and with its cost stated. The
-    # destructive-session gates bind to that flag, so a cutover asks for no
-    # backup acknowledgment. What stands in their place is the precheck, which
-    # refuses without a verified snapshot and a Fresh Export, and the explicit
-    # gate, which is the per-run act by a named actor R34 asks for.
+    # The two verbs over ``core.tree_registry`` (R-235). ``writes`` is empty:
+    # they write this product's registry file and only read a database copy, so
+    # no cloud sync decision. Not destructive, so no backup acknowledgment; the
+    # precheck (verified snapshot, Fresh Export) and the explicit gate stand in.
     Entry(
         name="tree.cutover",
         summary="record one tree's cutover from the XML bridge to the database",
         module="cratekit.cli.cutover", builder="build", handler_key="tree.cutover",
         feature_rows=(12,), emits=frozenset({"plan"}), output_schema="plan/1",
-        # ``tree.registry`` IS NOT DECLARED, here or on the revert. That check
-        # is the REPORT of what these verbs recorded, and conformance 8 holds a
-        # declared precondition to refusing on a broken machine, where it says
-        # instead that the volume is its own checks' to report. A registry
-        # nobody can read still refuses both verbs, through the read itself.
+        # ``tree.registry`` is not declared: it reports what these verbs record,
+        # and an unreadable registry refuses both through the read itself.
         doctor_checks=("library.mounted", "rekordbox.closed"),
         gates=(
             GateSpec(
                 name="tree.cutover.approve", options=("approve", "abort"),
                 prompt="Record this tree as database native, anchored to this root?",
-                # The one way door. A revert is a complete undo only until the
-                # tree takes its first native write.
+                # One way: a revert undoes it only until the first native write.
                 explicit=True, digest_source="plan",
             ),
         ),
@@ -797,12 +545,7 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     # ── Jobs ────────────────────────────────────────────────────────────────
-    # U10 landed these against ``cratekit.cli.jobs`` rather than the
-    # ``cratekit.core.jobs_cli`` this table originally named. A verb module is a
-    # CLI module: it imports this registry, and KTD23 ranks anything under
-    # ``core`` below the CLI layer, so the original path could not have been
-    # written without an upward import. The plan's own file list for U10 says
-    # ``src/cratekit/cli/jobs.py``, which is what landed.
+    # Under ``cli``, not ``core``: a verb module imports this registry (KTD23, U10).
     Entry(
         name="job.list", summary="list queued, running, blocked, and finished jobs",
         module="cratekit.cli.jobs", builder="build_list", handler_key="job.list",
@@ -817,10 +560,8 @@ ENTRIES: tuple[Entry, ...] = (
         name="job.resume", summary="resume an interrupted job without repeating completed work",
         module="cratekit.cli.jobs", builder="build_resume", handler_key="job.resume",
         feature_rows=(26,),
-        # A resume re-invokes the job's OWN verb, so the argv it needs is that
-        # verb's, not this one's. The builder is declared because the registry
-        # requires one of anything long-running; it is the identity case, and
-        # ``cli.jobs.argv_for`` is what actually resolves the queued handler.
+        # The builder is declared because long running work needs one; a resume
+        # re-invokes the job's own verb, resolved by ``cli.jobs.argv_for``.
         argv_builder="resume_argv", long_running=True, emits=frozenset({"job_state"}),
         output_schema="job_state/1",
     ),
@@ -830,13 +571,7 @@ ENTRIES: tuple[Entry, ...] = (
         feature_rows=(26,), emits=frozenset({"job_state"}), output_schema="job_state/1",
     ),
     # ── Review ──────────────────────────────────────────────────────────────
-    #
-    # U11 landed these against ``cratekit.cli.review`` rather than the
-    # ``cratekit.core.review_cli`` this table originally named, for the same
-    # reason U10 moved the job verbs: a verb module imports this registry, and
-    # KTD23 ranks anything under ``core`` below the CLI, so the original path
-    # could not have been written without an upward import. The plan's own file
-    # list for U11 says ``src/cratekit/cli/review.py``, which is what landed.
+    # Under ``cli``, not ``core``, for the job verbs' reason (U11).
     Entry(
         name="review.list", summary="list every item awaiting a person's decision",
         module="cratekit.cli.review", builder="build_list", handler_key="review.list",
@@ -856,20 +591,11 @@ ENTRIES: tuple[Entry, ...] = (
         feature_rows=(1, 2), source_scripts=("dj-pipeline",), module_id="identify",
         argv_builder="set_argv", long_running=True, emits=frozenset({"job_state"}),
         output_schema="job_state/1",
-        # U129. The account playlist is a remote write behind its own gate; the
-        # worker still acquires nothing, and a machine without a provider session
-        # still identifies and queues, the playlist step soft skipping.
+        # The account playlist is a remote write behind its own gate, soft
+        # skipped without a provider session (U129).
         writes=frozenset({"xml", "files", "remote"}), adjudicates=True, destructive=True,
-        # THE CHECKS ARE THE GATE'S. ``recognize.recognition_ready`` refuses on
-        # the two recognition keys, ffmpeg and ffprobe, so doctor has to fail on
-        # exactly those or a machine doctor passes refuses at the verb.
-        # ``credential.provider`` is declared for the account playlist (U129);
-        # the playlist step soft skips when the account is unreachable so a
-        # queued set is never lost. ``binary.yt-dlp`` IS DELIBERATELY ABSENT
-        # (U104). Only a mix URL needs the downloader, so declaring it would
-        # fail doctor on a machine that identifies every recording it is handed.
-        # A URL without it refuses with ``yt-dlp-missing`` and the install hint,
-        # before any spend.
+        # Doctor fails on exactly what ``recognize.recognition_ready`` refuses on.
+        # No ``binary.yt-dlp``: only a mix URL needs it, and refuses without it (U104).
         doctor_checks=(
             "library.mounted", "binary.ffmpeg", "binary.ffprobe", "credential.recognition",
             "credential.provider",
@@ -878,7 +604,7 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="intake.set.account.confirm", options=("apply", "abort"),
                 prompt="Save this set as a private playlist on the streaming account?",
-                # EXPLICIT, as export.set's is (R34): an account write.
+                # Explicit (R34): an account write.
                 explicit=True, digest_source="plan",
             ),
         ),
@@ -888,14 +614,10 @@ ENTRIES: tuple[Entry, ...] = (
         summary="identify the tracks in a set recording or a mix URL and stop; acquire nothing",
         module="cratekit.intake.cli", builder="build_identify", handler_key="intake.identify",
         feature_rows=(5,), source_scripts=("dj-setid",), module_id="identify",
-        # U103. The identified rows are asked of the library, and a version the
-        # library may already hold is offered to the review queue under this
-        # verb's own key. It writes a tracklist text file into a folder of its
-        # own and declares no write surface, on the precedent ``intake
-        # missing`` sets.
+        # A version the library may hold is offered for review (U103). Its own
+        # tracklist file is no write surface, as for ``intake missing``.
         adjudicates=True, emits=frozenset({"match"}), output_schema="match/1",
-        # The library is asked, so a machine with no library mounted is one
-        # doctor has to fail, or doctor passes a verb that refuses.
+        # The library is asked, so doctor must require it.
         doctor_checks=("library.mounted", "binary.ffmpeg", "binary.ffprobe", "credential.recognition"),
     ),
     Entry(
@@ -911,40 +633,26 @@ ENTRIES: tuple[Entry, ...] = (
         summary="write the list acquire download reads from the missing tracks of a " "finished intake job, a whole sync pass, or a text list searched on " "the provider",
         module="cratekit.intake.missing_cli", builder="build_missing",
         handler_key="intake.missing", feature_rows=(3, 35),
-        # U79. ``--list`` offers provider candidates, and a version question the
-        # library raises, into the review queue under this verb's own key.
+        # ``--list`` offers candidates and version questions for review (U79).
         adjudicates=True,
-        # ``diagnostic/1`` because the default human renderer shows checks and
-        # nothing else, and the one thing a person needs from this verb is the
-        # list's path and the command that downloads it (R-400).
+        # ``diagnostic/1``: the human renderer shows checks, and a person needs
+        # the list's path and the download command (R-400).
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
-        # NO WRITE SURFACE, and therefore not destructive, on the precedent
-        # ``review export`` sets: it adds two new files beside nothing and
-        # ``listdoc.write`` refuses rather than replaces a file holding anything
-        # else, so there is nothing a destructive session's gates would protect.
-        # R-502: every listing asks its missing rows of the library again, and
-        # refuses an absent music folder, so doctor has to require it too.
+        # No write surface, so not destructive: two new files, never a replace.
+        # The library is asked again, so doctor requires it (R-502).
         doctor_checks=("library.mounted",),
     ),
     Entry(
         name="intake.file", summary="ingest one audio file already on disk",
         module="cratekit.intake.file_cli", builder="build_file", handler_key="intake.file",
         feature_rows=(4,), emits=frozenset({"plan"}), output_schema="plan/1",
-        #: AND THE COLLECTION, SINCE R-770. On a library whose intake tree is
-        #: database native the file becomes one content row and one batch
-        #: playlist under the adopted intake root, through the engine the
-        #: landing uses and behind the explicit gate below. The intake tree's
-        #: mode chooses, through the switch the landing reads. On the bridge
-        #: the write is the intake file it always was.
+        #: On a database native intake tree the file becomes a content row and a
+        #: batch playlist (R-770); on the bridge, an intake file.
         writes=frozenset({"xml", "files", "db_tree"}), destructive=True,
-        #: The database checks hold for the native medium only, and doctor
-        #: already requires all three, for the reason the landing's entry gives.
+        #: The database checks hold for the native medium only.
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved"),
         gates=(
-            # R-770. One content row is the same new kind of write the native
-            # landing makes, so it is answered the same way: by a separate
-            # recorded act, never inline (R34), over a plan naming every
-            # column the row sets.
+            # A content row, answered by a separate recorded act (R34, R-770).
             GateSpec(
                 name="intake.file.native", options=("apply", "abort"),
                 prompt="Add this file to the collection?", explicit=True, digest_source="plan",
@@ -957,16 +665,11 @@ ENTRIES: tuple[Entry, ...] = (
         summary="file an imported batch folder into the processed tree, by year and date, " "and point its rows at it",
         module="cratekit.intake.shelve_cli", builder="build_shelve", handler_key="intake.shelve",
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: ONE FOLDER RENAME AND ONE COLUMN ON THE ROWS IT HOLDS (U154). The
-        #: path column is a metadata column rekordbox keys the file by, written
-        #: through a field policy registered for this commit alone, so the
-        #: surface is the metadata one and the files one, and never the tree.
+        #: One folder rename and the path column of its rows, never the tree (U154).
         writes=frozenset({"files", "db_metadata"}), destructive=True,
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved"),
         gates=(
-            # A path write on the collection is answered by a separate recorded
-            # act, never inline (R34), over a plan naming every batch, every
-            # row and the path each one will carry.
+            # A path write on the collection, answered by a recorded act (R34).
             GateSpec(
                 name="intake.shelve.native", options=("apply", "abort"),
                 prompt="Move these batches into the processed tree and point their rows at it?",
@@ -987,54 +690,22 @@ ENTRIES: tuple[Entry, ...] = (
         summary="replace a genre too coarse to be a final tag with a specific one",
         module="cratekit.tagging.retag_cli", builder="build", handler_key="tag.retag",
         feature_rows=(18,),
-        #: NO SOURCE SCRIPT. ``dj-split-genre-folders`` and ``dj-genre-research``
-        #: stay cut in ``CUT.md`` and this verb does not resurrect either: both
-        #: were one-time migrations between two named folders in one library, and
-        #: the lookup engine inside the second one folded into tagging already.
-        #: Claiming them here would reopen two decisions this unit did not reverse.
+        #: No source script: the two cut genre migrations stay cut (``CUT.md``).
         source_scripts=(),
-        #: Gated by ``repair`` rather than by a module of its own. A corrective
-        #: pass over metadata the library ALREADY holds is the same job
-        #: ``repair.paths`` does for a location the library already recorded, and
-        #: the slim install is "bring music in and route it", where correcting what
-        #: is already there is a second job a person opts into. A module gating one
-        #: verb would also put a switch in every user's configuration that means
-        #: nothing to anyone who has not met this exact failure.
+        #: Gated by ``repair``: correcting metadata the library already holds is
+        #: an opt in second job, as ``repair.paths`` is for locations.
         module_id="repair", argv_builder="retag_argv", long_running=True,
         emits=frozenset({"job_state"}), output_schema="job_state/1",
-        #: ONE SURFACE, THE FILE, AND THE NARROWING IS THE FIX FOR R-246. This
-        #: entry declared ``db_metadata`` as well, after the row's ``GenreID``
-        #: relink that ``write.metadata.plan_genre_retag`` performs under the
-        #: ``RETAG_GENRE`` policy. This verb does not call it:
-        #: ``tagging.retag.plan_library`` has no caller and
-        #: ``tagging.retag.apply_library`` is called by ``tag.rows`` alone, which
-        #: ``tests/test_tag_workers.py`` pins by walking the tree. So the verb
-        #: rewrites the genre through ``core.tags.write_genre`` and stops, and a
-        #: person who read the declaration was promised a write that never
-        #: happened. The deferral itself is R-185 and is still open; what closes
-        #: with this line is the claim about it. The verb now ends by naming
-        #: ``tag.rows``, which brings the row back into agreement, see
-        #: ``tagging.retag_cli.library_row_warning``.
-        #:
-        #: NO CLOUD SYNC DECISION EITHER, and that follows rather than being a
-        #: second judgement. That gate binds to WRITE INTENT on the guarded
-        #: writer, this verb opens no database at all, and the conformance suite
-        #: refuses a declared decision a verb cannot reach in both directions.
-        #: ``name.apply`` is the same shape already landed, for R-165.
+        #: The file only (R-246): the row follows by ``tag.rows``, which the run
+        #: names. No database is opened, so no cloud sync decision.
         writes=frozenset({"files"}), adjudicates=True, destructive=True,
         doctor_checks=("library.mounted", "rekordbox.pins"),
         gates=(
             GateSpec(
                 name="tag.retag.confirm", options=("apply", "abort"),
                 prompt="Correct the genre on these files?",
-                #: EXPLICIT, and the reason is the resume rather than the blast
-                #: radius. This verb queues, so the confirmed work runs in a
-                #: detached child; R34's separate recorded act is what gives that
-                #: child a run to name, and ``tests/test_queued_resume_contract.py``
-                #: derives its guard from exactly this combination. An ordinary
-                #: gate would put the verb outside that guard while leaving the
-                #: same permanent-stall shape in place, since a resume argv carries
-                #: no inline answer either.
+                #: Explicit because the verb queues: the recorded act gives the
+                #: detached child a run to name (``test_queued_resume_contract``).
                 explicit=True, digest_source="plan",
             ),
         ),
@@ -1044,27 +715,9 @@ ENTRIES: tuple[Entry, ...] = (
         module="cratekit.write.naming_cli", builder="build", handler_key="name.apply",
         feature_rows=(11,), source_scripts=("dj-pad-camelot",), emits=frozenset({"plan"}),
         output_schema="plan/1",
-        #: Files only, corrected in U39. The handler renames on disk and
-        #: rewrites the title tag. Since U67 it READS the database, to hold back
-        #: every file the collection references, and that open is a read with
-        #: ``require_closed`` False, so it never reaches the guarded writer or
-        #: the cannot-read cloud sync DECISION, which binds to write intent
-        #: only, and the conformance suite refuses a declared decision a verb
-        #: cannot reach, in both directions. The read open DOES still refuse a
-        #: library whose cloud sync is ON, and that refusal, like every other
-        #: failed read, reaches a person as ``collection-unreadable`` carrying
-        #: the inner cause's message and its ``disable-cloud-sync`` remedy. A
-        #: collection that READ, consulted because something would be renamed,
-        #: and holding a row under a volume no prefix rule names whose recorded
-        #: file is absent too, refuses as ``collection-row-unmapped`` (R-500),
-        #: since that row could name any file. A run that carried out part of its
-        #: plan answers ``rename-incomplete`` on THIS surface rather than the
-        #: diagnostic one (R-172), so the plan travels with the failure: two files
-        #: rendering to one name are held back in the plan as ``collides``, and
-        #: anything the apply pass could not do is named with its reason. It is
-        #: the only non-success answer here that is not a refusal. The
-        #: rekordbox Name half of the padding convention is
-        #: ``write/metadata.plan_title_padding``, which no verb calls (R-165).
+        #: Files only (U39). The database is only read, to hold back referenced
+        #: files (U67), so no cloud sync decision. A partial run answers
+        #: ``rename-incomplete`` on the plan surface (R-172).
         writes=frozenset({"files"}), destructive=True,
         doctor_checks=("library.mounted", "rekordbox.pins", "library.paths_resolved"),
         gates=(
@@ -1073,9 +726,7 @@ ENTRIES: tuple[Entry, ...] = (
                 prompt="Apply these renames?", digest_source="plan",
             ),
         ),
-        #: U21 landed the per-field policy this verb applies, not the verb. The
-        #: shell renames files on disk and rewrites name fields, which is the
-        #: naming half of intake, so it travels with U37 beside the verb above it.
+        #: The naming half of intake; U21 landed only its per field policy.
     ),
     # ── Acquisition ─────────────────────────────────────────────────────────
     Entry(
@@ -1084,31 +735,23 @@ ENTRIES: tuple[Entry, ...] = (
         feature_rows=(6, 7), argv_builder="download_argv", long_running=True,
         emits=frozenset({"job_state"}), output_schema="job_state/1", writes=frozenset({"files"}),
         destructive=True, doctor_checks=("credential.provider", "binary.ffmpeg"),
-        # U42 LANDED IT. The marker was U15's, and U15 shipped the ENGINES in
-        # ``cratekit.acquire`` without ever shipping a shell, so this entry named
-        # a closed unit while rows 6 and 7 sat uncovered in the cutover backlog.
-        # The verb declares no gate, and ``cratekit.acquire.cli`` argues why in
-        # its module docstring rather than leaving the absence to be read as an
-        # oversight the next person quietly corrects.
+        # Landed (U42). No gate, argued in ``cratekit.acquire.cli``'s docstring.
     ),
     Entry(
         name="acquire.audit",
         summary="report existing files that do not match the lossless policy",
         module="cratekit.acquire.cli", builder="build_audit", handler_key="acquire.audit",
         feature_rows=(7,), emits=frozenset({"review_set"}), output_schema="review_set/1",
-        # U42 LANDED IT, beside the verb above and for the same reason.
+        # Landed (U42), beside the verb above.
     ),
     Entry(
         name="acquire.fallback",
         summary="search SoundCloud and YouTube for a list's missing tracks and offer " "what they hold for review; downloads nothing",
         module="cratekit.acquire.fallback_cli", builder="build", handler_key="acquire.fallback",
         feature_rows=(7,),
-        # U80. Second source candidates go into the fallback source queue, and
-        # a version question the library raises into the match queue, both
-        # under this verb's own key.
+        # Offers candidates and version questions for review (U80).
         adjudicates=True,
-        # ``diagnostic/1`` for the reason ``intake.missing`` gives: what a
-        # person needs is which rows were offered and where to answer them.
+        # ``diagnostic/1``, for ``intake.missing``'s reason.
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
         # NO WRITE SURFACE: it writes review items and nothing else.
         doctor_checks=("library.mounted", "binary.yt-dlp"),
@@ -1119,23 +762,20 @@ ENTRIES: tuple[Entry, ...] = (
         module="cratekit.acquire.fallback_cli", builder="build_fetch",
         handler_key="acquire.fallback-fetch", feature_rows=(7,), argv_builder="fetch_argv",
         long_running=True,
-        # U81. It resolves the list exactly as ``acquire.fallback`` does, and
-        # that resolution raises a version question into the match queue.
+        # Resolving the list raises version questions, as ``acquire.fallback`` (U81).
         adjudicates=True, emits=frozenset({"job_state"}), output_schema="job_state/1",
         writes=frozenset({"files"}), destructive=True,
         doctor_checks=("library.mounted", "binary.yt-dlp", "binary.ffmpeg"),
-        # No gate, for the reason ``acquire.download`` declares none: it adds
-        # files into download staging, and every upload was chosen in review.
+        # No gate: it adds files to staging, each chosen in review.
     ),
     Entry(
         name="acquire.bandcamp",
         summary="list the Bandcamp account's purchases, newest first, each with what " "the library already owns; downloads nothing",
         module="cratekit.acquire.bandcamp_cli", builder="build", handler_key="acquire.bandcamp",
         feature_rows=(6,),
-        # U176. A plan a person reads, so the diagnostic surface: one check per
-        # disposition and every purchase in the summary.
+        # A plan a person reads, so the diagnostic surface (U176).
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
-        # NO WRITE SURFACE: it reads the account, the library and the record.
+        # No write surface: it only reads.
         doctor_checks=("library.mounted", "keychain.reachable"),
     ),
     Entry(
@@ -1146,9 +786,7 @@ ENTRIES: tuple[Entry, ...] = (
         long_running=True, emits=frozenset({"job_state"}), output_schema="job_state/1",
         writes=frozenset({"files"}), destructive=True,
         doctor_checks=("library.mounted", "keychain.reachable"),
-        # No gate, for the reason ``acquire.download`` declares none: it adds
-        # files into its own batch folder under download staging and replaces
-        # nothing, and the purchases are the account's own.
+        # No gate: it adds owned purchases to its own staging folder.
     ),
     Entry(
         name="match.run",

@@ -1,10 +1,8 @@
-"""R-395: the printed install command installs where ``crate`` actually runs.
+"""The printed install command installs where ``crate`` actually runs (R-395).
 
-The command used to be a bare ``pip install 'cratekit[analysis]'``. Under pipx,
-which is how the README installs Cratekit, a bare pip runs against whichever
-Python the shell finds first, so the extra landed where ``crate`` never reads it
-and the same refusal came back. These pin the two environment shapes and the
-one source every surface reads.
+Under pipx, a bare pip runs against whichever Python the shell finds first, so
+the extra lands where ``crate`` never reads it. These pin the two environment
+shapes and the one source every surface reads.
 """
 
 from __future__ import annotations
@@ -47,11 +45,8 @@ def test_a_pipx_environment_gets_pipx_against_the_recorded_clone(tmp_path, monke
 
 
 def test_a_pipx_force_install_keeps_the_extras_already_chosen(tmp_path, monkeypatch):
-    """``--force`` reinstalls from exactly the spec given.
-
-    A command naming only the missing extra would drop the one already there,
-    and the next verb would refuse for that one instead.
-    """
+    """``--force`` reinstalls from exactly the spec given, so the extras already
+    chosen must be named or the next verb refuses for the one dropped."""
     clone = tmp_path / "cratekit"
     clone.mkdir()
     prefix = _pipx_prefix(tmp_path, f"{clone}[analysis]")
@@ -105,10 +100,8 @@ def test_the_parser_stub_and_the_workers_read_one_source(tmp_path, monkeypatch):
 def test_a_release_install_pipx_recorded_as_a_direct_reference_keeps_it_and_its_extras(
     tmp_path, monkeypatch
 ):
-    """U181. ``pipx install "cratekit[analysis] @ git+...@v0.3.0"`` is recorded
-    as that reference, and the clone form fell back to ``.`` and dropped the
-    analysis extra, so the refusal's command reinstalled from whatever folder
-    the shell was in and lost what was already chosen."""
+    """A direct reference pipx recorded is kept with its extras, never replaced
+    by ``.``, which would install from whatever folder the shell is in (U181)."""
     url = "git+https://github.com/philgutowski/cratekit@v0.3.0"
     monkeypatch.setattr(sys, "prefix", str(_pipx_prefix(tmp_path, f"cratekit[analysis] @ {url}")))
     assert extras.install_command("vocals") == shlex.join(

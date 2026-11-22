@@ -1,17 +1,10 @@
 """U46: the job handler registry, and the one site that drives a queued job.
 
-WHAT THIS FILE GUARDS THAT THE ENGINE'S OWN SUITE CANNOT. ``tests/test_jobs.py``
-proves ``jobs.drive`` keeps its promises when called directly. It has always
-passed, and until this unit nothing in ``src`` called ``drive`` at all, so a green
-run of that file said nothing about whether the product ever ran a queued item.
-This file is about the binding: that a handler key resolves to a real function,
-that resolving one does not drag a feature module into a process that is only
-supervising, that a verb added later without a handler fails HERE rather than at
-somebody's queue, and that the configuration reaching a handler is the frozen one.
-
-THE POPULATION IS DERIVED, NEVER LISTED (Part 5, P3). Every quantified assertion
-below walks ``registry.ENTRIES`` or the tables themselves, so the verb somebody
-adds next month is inside the assertion the day it lands.
+``tests/test_jobs.py`` proves ``jobs.drive`` directly; this file guards the
+binding. A handler key resolves to a real function, resolving it imports no
+feature module, a queued verb without a handler fails here, and a handler gets
+the frozen configuration. Every population is derived from ``registry.ENTRIES``
+or the tables, never listed (Part 5, P3).
 """
 
 from __future__ import annotations
@@ -154,16 +147,10 @@ def test_a_broken_declaration_refuses_rather_than_returning_something(
 
 
 def test_resolving_a_handler_key_imports_nothing_a_supervisor_does_not_need():
-    """KTD26's property, measured where it can differ.
+    """KTD26: answering ``is_known`` imports no feature module.
 
-    A FRESH INTERPRETER and a PER-CALL DELTA, both load bearing. In this process
-    every feature module is already in ``sys.modules`` by the time the suite gets
-    here, so an in-process before-and-after difference is empty whatever the code
-    does; ``tests/test_cli_contract.py`` records a mutation table proving exactly
-    that about the same property one seam over. A total-set assertion would fail
-    for an unrelated reason too, because importing ``cratekit.cli.handlers`` runs
-    the package ``__init__``. So: one clean process, and the only thing measured is
-    what each individual ``is_known`` call pulled in.
+    Measured per call in a fresh interpreter, because in this process every feature
+    module is already imported, so an in-process delta is empty whatever the code does.
     """
     measured = _import_probe.run_probe(
         """
@@ -209,13 +196,8 @@ def _drive_calls(tree: ast.AST) -> int:
 
 
 def test_exactly_one_place_in_the_package_calls_the_job_driver():
-    """One driver, and it is found by parsing rather than by searching for text.
-
-    A text search cannot answer this: ``core/jobs.py`` names ``jobs.drive`` in two
-    ``origin`` tuples and ``backup/cli.py`` names it in prose, so a grep returns
-    four lines that are not calls. Counting ``ast.Call`` nodes is the difference
-    between measuring the code and measuring the comments.
-    """
+    """Exactly one ``drive`` call, counted as ``ast.Call`` nodes because the name
+    also appears in tuples and prose a text search would count."""
     sites = {}
     for path in sorted((SRC_ROOT / "cratekit").rglob("*.py")):
         if "_vendor" in path.parts:
@@ -227,14 +209,8 @@ def test_exactly_one_place_in_the_package_calls_the_job_driver():
 
 
 def test_a_job_whose_key_has_no_handler_refuses_rather_than_reporting_success(cfg, queue):
-    """The subject is DERIVED from the unbound table rather than named.
-
-    It was named, and the name was ``rebuild``. U53 bound that key, so the test
-    went on passing for a reason that had nothing to do with the property: the
-    resolve succeeded, the handler ran, the item failed for want of a library and
-    ``drive`` raised ``no-evidence``, which is a different refusal entirely. A
-    fixed name here expires silently the day somebody binds it.
-    """
+    """The subject is derived from the unbound table, since a fixed name silently
+    stops testing this the day somebody binds it."""
     store, _ = queue
     unbound = sorted(handlers.HANDLERS_NOT_YET_BOUND)[0]
     job = jobs.enqueue(
@@ -342,22 +318,16 @@ def json_roundtrip(cfg: config.Config) -> dict:
 # ---------------------------------------------------------------------------
 
 
-#: Every spelling of "load the configuration fresh" this guard recognises. A
-#: checker that models its target's grammar only ever knows the spellings somebody
-#: thought of, so the ones it does NOT know are named in the docstring below rather
-#: than left for a reader to discover by writing one.
+#: Every spelling of "load the configuration fresh" this guard recognises. The
+#: spellings it cannot see are named in the guard's docstring.
 _RELOAD_ATTRS = frozenset({"load", "load_from_path"})
 
 
 def _reload_calls(tree: ast.AST, *, aliases: frozenset[str]) -> list[str]:
     """Calls in ``tree`` that reload configuration, by any spelling this knows.
 
-    Three, and each is a different node shape: ``config.load()`` reads as an
-    attribute on a name, ``cfg.load()`` the same once ``aliases`` carries the alias
-    the module actually bound, and a bare ``load()`` after
-    ``from cratekit.core.config import load`` reads as a plain name with no
-    attribute at all. The first was the only one the first version of this guard
-    knew.
+    Three node shapes: ``config.load()``, the same under an alias in ``aliases``, and
+    a bare ``load()`` imported from ``cratekit.core.config``.
     """
     found: list[str] = []
     for node in ast.walk(tree):
@@ -377,13 +347,8 @@ def _reload_calls(tree: ast.AST, *, aliases: frozenset[str]) -> list[str]:
 
 
 def _config_aliases(tree: ast.AST) -> frozenset[str]:
-    """Every local name in ``tree`` that refers to the configuration module.
-
-    Derived from the module's own imports rather than assumed to be ``config``,
-    because ``import cratekit.core.config as cfg`` binds a different name for the
-    identical thing and a guard that only knows one of them is a guard the next
-    author walks around without meaning to.
-    """
+    """Every local name in ``tree`` bound to the configuration module, read from its
+    imports, since an aliased import names the same module differently."""
     names: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and (node.module or "").endswith(
@@ -400,27 +365,18 @@ def _config_aliases(tree: ast.AST) -> frozenset[str]:
 
 
 def test_no_declared_handler_loads_a_fresh_configuration():
-    """The guard that makes the frozen-config parameter more than a convention.
+    """No handler, or the batch form it names, reloads configuration (KTD9).
 
-    A three-argument handler can still load a configuration in its body; the
-    signature removes the NEED, not the ability. This narrows the ability, and the
-    verb matters: this is a CHECKER THAT MODELS ITS TARGET'S GRAMMAR, so it knows
-    the spellings it was taught and no others. It reads three, listed in
-    ``_reload_calls``. What it cannot see is an indirection, a handler that calls a
-    helper in its own module which loads underneath it. Said here because the first
-    version of this guard claimed to remove the ability outright while recognising
-    exactly one spelling, and a false claim in a place a reader trusts is its own
-    failure class in this repository.
-
-    The population is derived from the table rather than from a list of modules.
+    The three argument signature removes the need, not the ability. This checker
+    models its target's grammar, so it knows only the spellings in ``_reload_calls``,
+    and it cannot see a reload hidden behind a helper the handler calls.
     """
     problems: list[str] = []
     for key, declaration in handlers.HANDLERS.items():
         dotted, _, attribute = declaration.partition(":")
         path = SRC_ROOT / (dotted.replace(".", "/") + ".py")
         assert path.is_file(), f"{key} declares {dotted}, which is not a module file"
-        # THE BATCH FORM A WORKER NAMES IS A HANDLER TOO (U270), handed the same
-        # frozen configuration, so it is read by the same guard.
+        # A worker's batch form is a handler too (U270), so it is read by the same guard.
         names = {attribute}
         batched = handlers.batching_of(handlers.resolve(key))
         if batched is not None:
@@ -450,11 +406,7 @@ def test_no_declared_handler_loads_a_fresh_configuration():
     ids=["dotted", "aliased-module", "bare-name", "load-from-path"],
 )
 def test_the_fresh_configuration_guard_catches_every_spelling_it_claims(body):
-    """The guard proved against handlers that do the thing, not just asserted.
-
-    One case per spelling the docstring above claims to recognise, because a
-    checker's claim about its own coverage is exactly the thing that drifts.
-    """
+    """The guard fires on a handler using each spelling it claims to recognise."""
     tree = ast.parse(textwrap.dedent(body))
     found = [
         spelling

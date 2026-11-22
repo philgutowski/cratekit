@@ -1,10 +1,9 @@
-"""R-678: the renderer's job and import proof cases, and the gates that bound them.
+"""The renderer's job and import proof cases, and the gates that bound them (R-678).
 
-The verbs themselves are driven in human mode beside their own fixtures, in
-``tests/intake/test_workers.py``, ``tests/test_acquire_workers.py``,
-``tests/test_tag_workers.py`` and ``tests/test_intake_imported.py``. This file
-holds what a verb cannot reach: a payload of the right schema from a verb the
-case was not written for, and the dispatcher's refusal to name a second driver.
+The verbs themselves are driven in human mode beside their own fixtures. This
+file holds what a verb cannot reach: a payload of the right schema from a verb
+the case was not written for, and the dispatcher's refusal to name a second
+driver.
 """
 
 from __future__ import annotations
@@ -39,7 +38,7 @@ FROZEN_ROWS = [
 
 
 def test_job_show_lists_the_frozen_tracks_and_a_payload_without_them_prints_none():
-    """R-925. Read by field, and the field is not ``tracks``, which counts elsewhere."""
+    """Read by field, and the field is not ``tracks``, which counts elsewhere (R-925)."""
     shown = render.render_job_state(job_state(verb="job.show", progress={"intake_tracks": FROZEN_ROWS}))
     assert shown[-3:] == ["  tracks: 2", "    1. Aurora Bloom - Sun Path, isrc X1", "    2. item rc_2, no isrc"]
     other = render.render_job_state(job_state(verb="job.show", progress={"tracks": FROZEN_ROWS}))
@@ -78,11 +77,8 @@ def test_an_empty_job_id_is_a_queue_that_held_nothing_and_renders_nothing():
 
 
 def test_the_job_case_is_gated_on_the_schema_not_a_job_id_key():
-    """A job identifier at the TOP of another surface's data, where the job case reads it.
-
-    Nested under ``summary`` it was stopped by the empty identifier gate instead,
-    and the mutation table measured this gate at zero until the key was lifted.
-    """
+    """A job identifier at the top of another surface's data, where the job case
+    reads it, so the schema gate alone stops it rather than the empty identifier gate."""
     review_set = envelope(
         "review.list",
         "review_set",
@@ -115,7 +111,7 @@ def test_a_resolution_word_the_progress_does_not_carry_is_not_printed_as_zero():
 
 
 def test_the_reasons_follow_their_count_most_rows_first_and_ties_by_slug():
-    """R-682. The order is the count's, then the slug's, so two runs print alike."""
+    """The order is the count's, then the slug's, so two runs print alike (R-682)."""
     progress = {
         "owned": 6,
         "missing": 1,
@@ -148,7 +144,7 @@ def test_the_reasons_follow_their_count_most_rows_first_and_ties_by_slug():
     ids=["absent", "not-a-mapping", "state-not-a-mapping", "other-state"],
 )
 def test_reasons_an_older_or_malformed_progress_cannot_state_print_no_line(by_reason):
-    """A build before R-682 carried no ``by_reason``; nothing is printed as if counted."""
+    """A progress with no ``by_reason`` prints no line rather than a false count."""
     progress = {"owned": 3} | ({} if by_reason is None else {"by_reason": by_reason})
     lines = render.render_job_state(
         job_state(verb="intake.set", state="succeeded", progress=progress)
@@ -308,11 +304,10 @@ def test_the_proven_run_count_is_the_verbs_own_total():
 
 
 def test_a_shown_item_value_that_would_break_its_line_is_quoted():
-    """R-692: an artist with a comma, a title with an equals sign, or a value
-    holding either line break would otherwise read as a field of its own or
-    split the item. Each breaker is alone in its value, so dropping one from
-    the set is seen. A quoted value keeps its letters, and a plain value and a
-    non string one print as they always did."""
+    """A value with a comma, an equals sign or a line break is quoted, since it
+    would otherwise read as a field of its own or split the item (R-692). Each
+    breaker is alone in its value, so dropping one from the set is seen; a plain
+    value and a non string one print unquoted."""
     (header, line) = render._shown_lines({
         "items": [{
             "artist": "\u00c2me, Dixon",
@@ -363,7 +358,7 @@ def test_a_queued_export_prints_no_counts_since_it_has_written_nothing_yet():
 
 
 def test_a_favourites_answer_counts_in_its_own_words_and_names_each_unhearted_row():
-    """R-856: the sweep's counts are printed as hearts, not as playlist writes."""
+    """The sweep's counts are printed as hearts, not as playlist writes (R-856)."""
     lines = render.render_job_state(
         job_state(
             "sync.favorites",
@@ -383,8 +378,8 @@ def test_a_favourites_answer_counts_in_its_own_words_and_names_each_unhearted_ro
 
 
 def test_an_outbound_summary_that_does_not_count_prints_no_track_line():
-    """A summary carrying lists and no ``counts``, the favourites sweep's shape
-    before R-856 and what any outbound verb that does not count still is."""
+    """A summary carrying lists and no ``counts``, as any outbound verb that
+    does not count still answers."""
     lines = render.render_job_state(
         _exported(hearted=["1"], already=[], unmatched=["2"], reasons=[])
     )
@@ -439,7 +434,7 @@ def _job_list(rows: list[dict], **counts) -> output.Envelope:
 
 
 def test_job_list_prints_one_line_per_job_with_its_verb_state_progress_and_cause():
-    """Sitting 47: 22 jobs queued and four run, and the human output was a run id."""
+    """One line per job, not only a run id."""
     refused = {"reason": "lossy-refused", "message": "the provider offers it lossy only"}
     rows = [
         _listed("acquire.download", "failed", settled=117, total=117, cause=refused),
@@ -461,8 +456,7 @@ def test_job_list_prints_one_line_per_job_with_its_verb_state_progress_and_cause
 
 
 def test_job_list_says_how_many_tracks_a_succeeded_job_skipped():
-    """Review round one: a skipped track is settled, not landed, and the line
-    said only ``3 of 3 settled`` over it."""
+    """A skipped track is settled, not landed, and the line says so."""
     progress = {"total": 3, "settled": 3, "counts": {"done": 2, "skipped": 1, "failed": 0}}
     rows = [_listed("acquire.download", "succeeded", progress=progress)]
     lines = render.render_job_list(_job_list(rows, succeeded=1))

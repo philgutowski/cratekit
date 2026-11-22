@@ -1,26 +1,14 @@
-"""U179: ``crate sync bandcamp`` takes new Bandcamp purchases to their landing gate in one verb.
+"""``crate sync bandcamp`` takes new Bandcamp purchases to their landing gate in one verb (U179).
 
-WHAT THIS FILE GUARDS. Sitting 46 took 96 tracks from one seller to filed in
-about two hours and 25 messages, each step typed by hand. The properties here
-make the one verb real: it plans before it fetches, so an expired session ends
-before anything downloads; it fetches into one batch folder, continuing an
-open fetch there rather than queueing a second; it runs the shared tail in its
-order and never plans a landing over files the tail has not run on; it names
-the batch from the files' label tags and passes ``--label-from-tags`` only
-when one carries a label; it rehearses the landing with the very arguments the
-landing then takes; and it ends at the landing's own gate naming what the
-session does next, with a closing report of what was held as owned, refused,
-staged, left without a genre and which sellers no label names.
-
-WHAT IS REAL AND WHAT STANDS IN. The plan and the fetch run through the real
-dispatcher over U176's fake account, as ``tests/test_bandcamp_cli.py`` runs
-them: everything but the transport is real. The tail, the rehearsal and the
-landing stand in through the chain's one seam, ``cratekit.cli.tail.dispatch``,
-with ``sync land``'s own stand in, which queues and drives a real job for
-each tail step. ``tests/test_sync_bandcamp_native.py`` lets the rehearsal and
-the landing run for real on the native fixture database.
-
-D1 applies. No real person, seller or release is named; ``pulsromania`` and
+It plans before it fetches, so an expired session ends before anything
+downloads; fetches into one batch folder, continuing an open fetch there;
+runs the shared tail in order and never plans a landing over files the tail
+has not run on; names the batch from the files' label tags and passes
+``--label-from-tags`` only when one carries a label; rehearses with the very
+arguments the landing takes; and ends at the landing's gate with a closing
+report. The plan and the fetch run through the real dispatcher over the fake
+account; the tail, the rehearsal and the landing stand in through
+``cratekit.cli.tail.dispatch``. D1 applies; ``pulsromania`` and
 ``otherlabel`` are the fake account's sellers.
 """
 
@@ -236,11 +224,8 @@ def test_a_labels_new_release_and_its_owned_one_reach_the_gate_named_for_the_lab
 def test_the_labels_release_reaches_the_same_gate_with_rekordbox_open_on_the_host(
     rekordbox_on_the_host, signed_in, account, puls, chain, library
 ):
-    """U232: the v0.13.0 cut was refused because this exited 21 on a Mac with rekordbox open.
-
-    The same scenario over a host whose process table lists rekordbox and its
-    agent, at psutil itself, so the suite's stubs are what keeps it at 12.
-    """
+    """The release reaches the same gate on a host whose process table lists
+    rekordbox and its agent, so the suite's stubs keep it at 12 (U232)."""
     test_a_labels_new_release_and_its_owned_one_reach_the_gate_named_for_the_label(
         signed_in, account, puls, chain, library
     )

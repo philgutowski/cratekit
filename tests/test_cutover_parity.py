@@ -1,39 +1,12 @@
-"""U29's parity table: every Feature Inventory row, and the verb that covers it.
+"""U29's parity table: every Feature Inventory row, and the landed verb that covers it.
 
-WHY THIS EXISTS BEFORE U29 DOES. U29 is the cutover, and its own test scenario is
-"the parity table is generated from the CLI verb inventory and fails when a row
-has no covering verb". The cutover itself is attended and runs against the live
-library, which no agent may touch, but the TABLE is derived from the registry and
-touches nothing. So the part that can be mechanised is mechanised, and what is
-left for a person is the part that genuinely needs one.
-
-WHAT THIS ADDS OVER THE CONTRACT SUITE, WHICH IS THE ONLY REASON IT IS A SECOND
-FILE. ``tests/test_cli_contract.py`` already asserts that every row is claimed at
-its stated disposition, and that a cut or deferred row is claimed by nothing. It
-counts a DECLARED verb as a claim, which is correct for the question it asks: is
-the product's shape faithful to the plan. It is the wrong answer to the cutover
-question, because a verb that is declared and not built replaces nothing a person
-can run. Everything here turns on ``entry.landed``, and that is the whole of the
-difference.
-
-THE INVENTORY IS NOT COPIED HERE, AND THE FIRST VERSION OF THIS FILE COPIED IT.
-``registry.FEATURES`` is already the plan's table transcribed into the package,
-already carries each row's disposition, and is already what the contract suite
-reads. Vendoring a second copy alongside it put two transcriptions of one table
-in one repository, which is the defect this file exists to prevent, one level up.
-Worse, the copy dropped the disposition column, so three rows the plan CUT and
-two it DEFERRED were reported as an open backlog with a note reading "cited by no
-registry entry at all". That sentence states a mechanical fact and buries a
-decision, and it cost a session's work to discover that the decision had been
-made on 2026-08-01 and written down.
-
-WHAT A DISPOSITION MEANS, since the whole file turns on it. ``core``, ``module``
-and ``reshaped`` are rows the product replaces, so a missing verb is backlog.
-``cut`` is a row the product deliberately does not replace, so the capability
-ends when the source system is retired, and ``CUT.md`` carries the reason per
-entry point. ``defer`` is a row that comes back after launch. Neither is backlog,
-and counting them as backlog makes the cutover look further away than it is while
-hiding the rows that genuinely block it.
+The cutover is attended, but the table derives from the registry and touches
+nothing, so it is mechanised here. Unlike ``tests/test_cli_contract.py``, which
+counts a declared verb as a claim, everything here turns on ``entry.landed``,
+because a declared verb replaces nothing a person can run. The inventory is read
+from ``registry.FEATURES`` and never copied, so the plan has one transcription.
+``core``, ``module`` and ``reshaped`` rows are owed, so a missing verb is backlog;
+``cut`` and ``defer`` rows are decisions and never backlog.
 """
 
 from __future__ import annotations
@@ -50,9 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 OWED = frozenset({"core", "module", "reshaped"})
 
 #: Where the plan lives when the sibling repository is checked out beside this
-#: one. Absent is a normal state and is handled by asserting less about DRIFT,
-#: never by asserting less about parity: every assertion below except the drift
-#: check reads ``registry.FEATURES`` and needs no file outside this repository.
+#: one. Only the drift check reads it, and asserts nothing when it is absent.
 PLAN = (
     REPO_ROOT.parent
     / "DJ_tools"
@@ -78,10 +49,8 @@ def titles() -> dict[int, str]:
 def plan_dispositions() -> dict[int, str] | None:
     """The plan's own dispositions, or None when the sibling repository is absent.
 
-    NORMALISED, because the plan's column is prose and the package's is an enum.
-    "Module, off by default" and "Module, on by default" are both ``module``: the
-    qualifier says which way the toggle ships, which is R5's business and is
-    asserted in the contract suite, not this row's disposition.
+    Normalised to the first word of the prose column, so "Module, off by default"
+    is ``module``; the toggle default is the contract suite's business.
     """
     if not PLAN.is_file():
         return None
@@ -94,18 +63,11 @@ def plan_dispositions() -> dict[int, str] | None:
 
 
 def test_the_transcribed_dispositions_match_the_plan_when_it_is_reachable():
-    """The drift check that makes the transcription legitimate.
+    """The transcribed dispositions and row numbers match the plan.
 
-    DISPOSITIONS AND ROW NUMBERS, NOT TITLES. ``registry.FEATURES`` deliberately
-    retitles rows in the product's own vocabulary, "label to streaming playlist
-    folders" where the plan names one service, so comparing the prose would fail
-    on a rewording that was intentional and would be silenced by copying the
-    plan's words back, which is the wrong repair. The disposition is the load
-    bearing cell: it decides whether a row is a debt or a decision.
-
-    It asserts nothing when the sibling repository is absent, and that is the ONE
-    thing here allowed to depend on it. No skip, because a skip outside the
-    pending register is a guard switched off with no record of when it comes back.
+    Titles are not compared, because the registry retitles rows on purpose. With the
+    sibling repository absent it asserts nothing rather than skipping, since a skip
+    outside the pending register is a guard switched off with no record.
     """
     original = plan_dispositions()
     if original is None:
@@ -120,12 +82,10 @@ def test_the_transcribed_dispositions_match_the_plan_when_it_is_reachable():
 
 
 def covering_verbs() -> dict[int, list[str]]:
-    """Feature row to the LANDED verbs that cover it, from the registry itself.
+    """Feature row to the LANDED verbs that cover it.
 
-    Landed only, and this is the line that separates this file from the contract
-    suite. A verb that is declared and not built covers nothing a person can run,
-    and counting it would make the parity table report a cutover as possible while
-    the workflow it replaces has no replacement.
+    A declared verb covers nothing a person can run, so counting it would report a
+    cutover as possible with no replacement in place.
     """
     found: dict[int, list[str]] = {}
     for entry in registry.entries():
@@ -146,12 +106,7 @@ def citing_verbs() -> dict[int, list[str]]:
 
 
 def backlog() -> dict[int, str]:
-    """Rows the product OWES and has not landed. The cutover backlog, derived.
-
-    Nothing here is written down by hand. A verb landing shrinks this with no
-    edit, a row changing disposition moves in or out of it with no edit, and a row
-    nobody has looked at cannot quietly drop off it.
-    """
+    """Rows the product owes and has not landed, derived with no hand written list."""
     covered = covering_verbs()
     return {
         row: disposition
@@ -161,25 +116,14 @@ def backlog() -> dict[int, str]:
 
 
 def test_the_inventory_is_complete_and_contiguous():
-    """Anti-vacuity, and a missing row number would hide a whole feature.
-
-    Contiguity matters more than the count: the rows are numbered from one with
-    no gaps in the plan, so a gap means a row was dropped in transcription and the
-    parity table would report a feature nobody has to cover.
-    """
+    """Rows run 1 to 37 with no gap, since a gap is a feature dropped in transcription."""
     rows = dispositions()
     assert len(rows) == 37, f"the inventory holds {len(rows)} rows rather than 37"
     assert sorted(rows) == list(range(1, 38)), "the inventory row numbers have a gap"
 
 
 def test_every_declared_disposition_is_one_this_file_understands():
-    """A sixth disposition would fall through OWED and be silently not-a-debt.
-
-    ``backlog`` asks whether a disposition is in ``OWED``, so anything unrecognised
-    lands in the complement and the row leaves the backlog without anybody
-    deciding it should. That is the same silence this file was rewritten to close,
-    so it is asserted rather than assumed.
-    """
+    """Every disposition is owed, cut or defer, so none silently leaves the backlog."""
     known = OWED | {"cut", "defer"}
     unknown = sorted(
         {d for d in dispositions().values() if d not in known}
@@ -192,11 +136,7 @@ def test_every_declared_disposition_is_one_this_file_understands():
 
 
 def test_every_covered_row_names_a_real_inventory_row():
-    """The registry cannot cite a feature row the inventory does not declare.
-
-    This is the direction that rots silently: a verb carrying `feature_rows=(99,)`
-    would look covered and cover nothing.
-    """
+    """No verb cites a feature row the inventory lacks, which would look covered."""
     rows = dispositions()
     unknown = sorted(set(citing_verbs()) - set(rows))
     assert not unknown, (
@@ -206,15 +146,10 @@ def test_every_covered_row_names_a_real_inventory_row():
 
 
 def test_a_row_cited_by_nothing_is_a_decision_and_not_an_oversight():
-    """THE GUARD THAT WOULD HAVE CAUGHT THE FIRST VERSION OF THIS FILE.
+    """A row cited by no verb, landed or declared, must be cut or deferred.
 
-    A row no verb cites at all, landed or declared, is either a row the plan cut
-    or deferred, which is a decision, or a row the product owes and nobody has
-    even declared a verb for, which is an oversight nothing else reports. The
-    contract suite asserts the same property from the other end and counts
-    declared verbs as claims; this states it in the cutover's own terms so the
-    two halves of "uncovered" can never be collapsed into one undifferentiated
-    list again.
+    An owed row nobody has declared a verb for is an oversight nothing else reports,
+    so it is kept apart from a decision.
     """
     cited = set(citing_verbs())
     rows = dispositions()
@@ -232,13 +167,7 @@ def test_a_row_cited_by_nothing_is_a_decision_and_not_an_oversight():
 
 
 def test_the_backlog_is_every_owed_row_without_a_landed_verb():
-    """THE PARITY TABLE. It fails when an owed row has no landed verb.
-
-    Derived in both directions, so there is no table to keep in step. The
-    assertion is that every row in the backlog is genuinely owed and genuinely
-    unlanded, which is true by construction, and the value is the message: it
-    names the rows and the units they are waiting on.
-    """
+    """The parity table: every backlog row is owed, unlanded and awaits a declared verb."""
     owed = backlog()
     covered = covering_verbs()
     cited = citing_verbs()
@@ -254,27 +183,12 @@ def test_the_backlog_is_every_owed_row_without_a_landed_verb():
 
 
 def test_the_cutover_is_mechanically_possible_and_says_what_is_left():
-    """The headline U29 answers, and it FLIPPED on U45, 2026-08-29.
+    """Every owed row has a landed verb, so the cutover is mechanically possible (U45).
 
-    This test used to assert the opposite, and its own docstring named the day it
-    would fail: "when this test starts failing, every owed inventory row has a
-    landed verb". It failed on the U45 branch, which landed the backup shell and
-    cleared row 31, the last owed row with no landed verb. The assertion was
-    turned around rather than deleted, because the property is still worth
-    holding in the other direction: a row that later loses its verb, or a
-    disposition that changes to an owed one, has to reopen the backlog loudly.
-
-    ANTI-VACUITY IS THE WHOLE DIFFICULTY NOW, and it was not before. An empty
-    backlog is what completion looks like, and it is also what a broken derivation
-    looks like: an ``OWED`` set that stopped matching any disposition spelling, or
-    a covering map that claimed every row, produces an empty dict just as readily.
-    So the emptiness is never asserted alone. It is asserted beside the two
-    populations it is a statement about, and neither of those may be empty.
-
-    WHAT THIS PASSING DOES NOT SETTLE. Mechanically possible is not done. U29 is
-    attended, one workflow at a time, against the live library, which is a
-    person's job and not an agent's for a reason that does not expire.
-    ``docs/METHOD.md``'s do-not-touch note is where that is argued.
+    A broken derivation also yields an empty backlog, so the emptiness is asserted
+    beside the owed and covered populations, neither of which may be empty.
+    Mechanically possible is not done: U29 stays attended, as ``docs/METHOD.md``
+    argues.
     """
     owed = {row for row, disposition in dispositions().items() if disposition in OWED}
     covered = covering_verbs()
@@ -309,13 +223,8 @@ def test_the_parity_table_renders_for_a_person():
         lines.append(f"{number:3d}  {disposition[number]:9}  {rows[number][:40]:40}  {state}")
     rendered = "\n".join(lines)
     assert rendered.count("\n") + 1 == len(rows)
-    # Re-pointed on U45, 2026-08-29. This asserted "AWAITING" was PRESENT, which
-    # was the render-side statement of the backlog being non-empty. Row 31 was the
-    # last one, so the marker is now absent and the assertion is the other way
-    # round. NO COVERING VERB is asserted separately rather than folded in: the
-    # two states are different failures, one being a row whose verb is declared
-    # and not landed and the other a row nothing declares at all, and only the
-    # second of those means an inventory row that no unit owns.
+    # AWAITING is a declared but unlanded verb and NO COVERING VERB a row nothing
+    # declares, two different failures, so each is asserted on its own.
     assert "AWAITING" not in rendered, (
         "an owed row's verb is declared and not landed, so the cutover backlog is "
         "no longer empty; see the test above"
@@ -323,10 +232,7 @@ def test_the_parity_table_renders_for_a_person():
     assert "NO COVERING VERB" not in rendered, (
         "an owed inventory row is cited by no verb at all, so no unit owns it"
     )
-    # Every owed row names a verb rather than a marker, which is the same claim
-    # taken off the RENDER rather than off the derivation the two assertions above
-    # share with it. A render built from a stale copy of either map would satisfy
-    # them and still print a table that does not describe this build.
+    # The same claim taken off the render, so a render from a stale map still fails.
     for number, disposition in sorted(dispositions().items()):
         if disposition in OWED:
             assert sorted(covered.get(number, [])), number

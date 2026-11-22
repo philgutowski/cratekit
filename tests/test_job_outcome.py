@@ -1,22 +1,11 @@
 """R-290 and R-225: how a job ended decides how its verb exits, in every queued verb.
 
-A queued verb's resume drives the job and then reports it. Two endings used to
-leave through a normal envelope the dispatcher exits 0 over. A PARKED job, because
-``jobs.drive`` returns normally with the job ``blocked`` and a blocked job is open,
-so the "closed and carrying a cause" predicate every shell copied never saw it
-(R-290). And a job that closed FAILED, in the three shells that never copied that
-predicate at all (R-225). Anything wrapping the verb read a clean success while
-the provider had just walled the account.
-
-THE POPULATION IS ``handlers.HANDLERS`` AND NOT A LIST TYPED HERE. Every key bound
-to a worker is driven through the command line its own verb declares for a resume,
-with the worker swapped for one that parks or fails. A verb bound tomorrow is in
-the population the moment it is bound, so it cannot forget the mapping and stay
-green.
-
-EVERY DRIVEN CASE ASSERTS THE STATE THE JOB REACHED, before it asserts the exit.
-A verb that refused on a precondition also exits non zero, and without the state
-check that refusal would pass as the property under test.
+A parked (blocked) or failed job must not leave through a normal envelope that
+exits 0, or anything wrapping the verb reads success while the provider has
+walled the account. The population is ``handlers.HANDLERS``, never a typed list,
+so a verb bound later is covered the moment it is bound. Every driven case
+asserts the job's state before the exit, because a precondition refusal also
+exits non zero and would otherwise pass as the property.
 """
 
 from __future__ import annotations
@@ -47,27 +36,22 @@ SRC = Path(__file__).resolve().parents[1] / "src" / "cratekit"
 #: ``job.resume`` is the supervisor's own key: it spawns a child and drives nothing.
 SUPERVISOR = "job.resume"
 
-#: Driven in its own suite, and why. ``adopt apply`` opens a destructive session
-#: before it looks at the job, which needs a rekordbox database, a recorded
-#: acknowledgment and a pinned application version. That machine lives in
-#: ``tests/test_adopt_workers.py`` and so does this key's parked test. The guard
-#: below keeps this table from outliving the reason for it.
+#: Keys whose parked test lives in another suite, because their verb needs a
+#: machine this file does not build before it reads the job. The guard below
+#: keeps this table from outliving the reason.
 DRIVEN_ELSEWHERE = {
     "adopt.apply": "tests/test_adopt_workers.py::test_a_parked_adoption_leaves_blocked_and_non_zero",
-    # R-758. It reads the backup acknowledgment before it looks at the job, and
-    # its resume answers the gate from the plan the job froze, so it needs that
-    # file's machine and a job its own verb queued.
+    # R-758: it reads the backup acknowledgment and answers its gate from the
+    # job's frozen plan, so it needs that file's machine.
     "adopt.move": "tests/test_adopt_move.py::test_a_parked_move_leaves_blocked_and_non_zero",
 }
 
-#: What each verb's argv builder reads off the frozen payload before it can name
-#: the verb at all. Only what the BUILDER or the shell's argument check needs:
-#: nothing here is a file that exists, because no worker in this suite is real.
+#: What each verb's argv builder or argument check reads off the frozen
+#: payload. No file named here exists, because no worker in this suite is real.
 PAYLOADS: dict[str, dict[str, object]] = {
     "master": {"source": "set.wav"},
     "rebuild": {"actor": "a-person"},
-    # U219. A resort's resume answers its gate from the adds the job froze and
-    # refuses a job that froze none, so an empty approved plan is frozen here.
+    # U219: a resort refuses a job that froze no adds, so an empty plan is frozen.
     "route.resort": {"adds": []},
     "tag.retag": {"folder": "Music"},
 }
@@ -104,8 +88,8 @@ def parks(job, item, cfg):
 
 
 def fails_the_second(job, item, cfg):
-    """One item completes and one does not, which is the shape ``drive`` returns
-    normally over with the job recorded failed."""
+    """One item completes and one does not, which ``drive`` returns normally over
+    with the job recorded failed."""
     if item.item_id == "two":
         raise refuse("source-missing", "the second item is not there", origin=("test",))
     return None
@@ -130,11 +114,8 @@ def job_of(job_id: str) -> jobs.Job:
 def resumed(job: jobs.Job) -> tuple[int, dict]:
     """Drive the verb's own resume command line, answering its gate if it has one.
 
-    R34'S TWO ACTS, NOT A FLAG. A verb with an explicit gate refuses the first
-    drive with ``decision-required`` and names the run. The decision is recorded
-    against that run as a separate act, and the resume is driven again naming it,
-    which is what a person does and what ``cli_drive.approve_and_queue`` does for
-    the queueing side.
+    A gated verb refuses with ``decision-required``; the decision is recorded as a
+    separate act and the resume driven again naming the run (R34).
     """
     argv = cli_jobs.argv_for(job)
     code, envelope = drive(argv)
@@ -175,9 +156,8 @@ def test_a_blocked_job_raises_the_blocked_type_carrying_the_jobs_own_cause(machi
 
 
 def test_a_blocked_job_recording_no_reason_is_still_not_a_success(machine):
-    """``transition`` refuses to park without a cause, so this row was written by
-    something other than the engine. The mapping must not read a missing reason
-    as a missing problem, which is the first defect pattern METHOD lists."""
+    """A blocked row with no cause, which only a writer other than the engine can
+    make, is still not a success: a missing reason is not a missing problem."""
     job = dataclasses.replace(
         _job_in(machine, jobs.JobState.BLOCKED, cause=_block().cause), cause=None
     )
@@ -185,17 +165,15 @@ def test_a_blocked_job_recording_no_reason_is_still_not_a_success(machine):
     with pytest.raises(JobBlocked) as caught:
         jobs.raise_for_state(job)
 
-    # THE TYPE AS WELL AS THE REASON, which the first version of this test did not
-    # pin. A plain refusal here reads ``failed`` in the envelope over a row whose
-    # state reads ``blocked``, the disagreement the type exists to remove.
+    # The type as well as the reason, since a plain refusal would read ``failed``
+    # over a row whose state reads ``blocked``.
     assert caught.value.cause.reason == "internal-error"
     assert job.job_id in caught.value.cause.message
 
 
 def test_a_failed_job_raises_its_own_cause_as_neither_carried_type(machine):
-    """The answers differ. ``failed`` sends a person to look at what broke,
-    ``blocked`` sends them to their account, and a closed job reported as blocked
-    would send them to the wrong place."""
+    """A failed job is not reported as blocked, which would send a person to their
+    account rather than to what broke."""
     cause = refuse("source-missing", "it is gone", origin=("test",)).cause
     job = _job_in(machine, jobs.JobState.FAILED, cause=cause)
 
@@ -207,9 +185,7 @@ def test_a_failed_job_raises_its_own_cause_as_neither_carried_type(machine):
 
 
 def test_a_cancelled_job_raises_the_cancelled_type_carrying_its_own_cause(machine):
-    """``Outcome.CANCELLED`` was declared and nothing produced it, which is the
-    state ``Outcome.BLOCKED`` was in when R-290 was filed. A person who stopped a
-    run is not told it broke."""
+    """A person who stopped a run is told it was cancelled, not that it broke."""
     with jobs.open_store() as store:
         job = jobs.cancel(store, queued(machine, "master", ("one",)).job_id)
 
@@ -221,16 +197,16 @@ def test_a_cancelled_job_raises_the_cancelled_type_carrying_its_own_cause(machin
 
 @pytest.mark.parametrize("state", [jobs.JobState.QUEUED, jobs.JobState.SUCCEEDED])
 def test_a_job_that_is_waiting_or_done_is_reported_and_not_refused(machine, state):
-    """The queueing side of every verb reports a job that is merely queued through
-    this same envelope, so the mapping must leave it alone."""
+    """A merely queued job is reported through this same envelope, so the mapping
+    leaves it alone."""
     jobs.raise_for_state(_job_in(machine, state))
 
 
 def test_the_dispatcher_reads_the_blocked_type_as_the_blocked_outcome(machine, monkeypatch):
-    """The other half of the mapping, asserted apart from any shell.
+    """The dispatcher reads the blocked type as the blocked outcome.
 
-    ``resumable`` STAYS FALSE. That field names the gate run, which ``crate run``
-    can continue, and a parked job continues through its verb with the job id.
+    ``resumable`` stays false: it names a gate run ``crate run`` can continue, and a
+    parked job continues through its verb with the job id.
     """
     monkeypatch.setattr(handlers, "resolve", lambda _key: parks)
     job = queued(machine, "master", ("one",))
@@ -256,17 +232,16 @@ def _gate_coded_park(job, item, cfg):
 def test_a_park_on_a_gate_coded_cause_is_still_not_resumable_through_the_run(
     machine, monkeypatch
 ):
-    """``resumable`` was derived from the cause's code alone, so the claim above
-    held only while no worker parked on a gate coded cause, and ``transition``'s
-    own text names a missing acknowledgment as a reason to park. The code must be
-    a gate code here or this drives nothing: asserted, not assumed."""
+    """``resumable`` stays false even when the park's cause carries a gate code,
+    since ``transition`` names a missing acknowledgment as a reason to park. The
+    code is asserted to be a gate code, or this drives nothing."""
     from cratekit.cli import gates
 
     monkeypatch.setattr(handlers, "resolve", lambda _key: _gate_coded_park)
     job = queued(machine, "master", ("one",))
 
-    # NOT ``resumed``, which reads this very exit code as a gate to answer.
-    # ``master`` has no gate, so the code can only have come from the park.
+    # Not ``resumed``, which reads this exit code as a gate to answer; ``master``
+    # has no gate, so the code can only come from the park.
     code, envelope = drive(cli_jobs.argv_for(job))
 
     assert job_of(job.job_id).state is jobs.JobState.BLOCKED, envelope
@@ -277,8 +252,7 @@ def test_a_park_on_a_gate_coded_cause_is_still_not_resumable_through_the_run(
 
 @pytest.mark.parametrize("key", QUEUED_KEYS)
 def test_a_cancelled_job_leaves_every_queued_verb_cancelled_and_non_zero(machine, key):
-    """The third ending, over the whole population. A cancelled job is closed, so
-    no worker runs and none is swapped in."""
+    """A cancelled job is closed, so no worker runs and none is swapped in."""
     with jobs.open_store() as store:
         job = jobs.cancel(store, queued(machine, key, ("one",)).job_id)
 
@@ -315,8 +289,8 @@ def test_a_parked_job_leaves_every_queued_verb_blocked_and_non_zero(
 def test_a_parked_job_answers_the_same_way_the_second_time_it_is_asked(
     machine, monkeypatch, key
 ):
-    """A blocked job is open, so the second ask drives it again, and a provider
-    still refusing must read as blocked again rather than as a report."""
+    """A blocked job is open, so a second ask drives it again and must read as
+    blocked again rather than as a report."""
     monkeypatch.setattr(handlers, "resolve", lambda _key: parks)
     job = queued(machine, key, ("one",))
     resumed(job)
@@ -331,8 +305,8 @@ def test_a_parked_job_answers_the_same_way_the_second_time_it_is_asked(
 def test_a_half_failed_job_leaves_every_queued_verb_failed_and_non_zero(
     machine, monkeypatch, key
 ):
-    """R-225 over the whole population. ``drive`` raises only when EVERY item
-    failed, so this is the ending only the shell can refuse."""
+    """R-225 over the whole population. ``drive`` raises only when every item
+    failed, so this ending is the shell's to refuse."""
     monkeypatch.setattr(handlers, "resolve", lambda _key: fails_the_second)
     job = queued(machine, key, ("one", "two"))
 
@@ -347,8 +321,8 @@ def test_a_half_failed_job_leaves_every_queued_verb_failed_and_non_zero(
 def test_a_half_failed_job_is_still_refused_the_second_time_it_is_asked(
     machine, monkeypatch, key
 ):
-    """The placement ``backup`` paid for. A job failed on entry is not open, so
-    the drive is skipped, and a check inside that branch is skipped with it."""
+    """A job failed on entry is not open, so the drive is skipped, and a check
+    inside that branch would be skipped with it."""
     monkeypatch.setattr(handlers, "resolve", lambda _key: fails_the_second)
     job = queued(machine, key, ("one", "two"))
     resumed(job)
@@ -360,8 +334,7 @@ def test_a_half_failed_job_is_still_refused_the_second_time_it_is_asked(
 
 
 def test_the_tables_name_only_keys_that_are_bound():
-    """A key unbound or renamed leaves its exemption behind otherwise, and an
-    exemption nothing matches reads as coverage."""
+    """An exemption naming no bound key reads as coverage, so none may outlive its key."""
     assert set(DRIVEN_ELSEWHERE) <= set(handlers.HANDLERS)
     assert set(PAYLOADS) <= set(handlers.HANDLERS)
     for where in DRIVEN_ELSEWHERE.values():
@@ -472,13 +445,9 @@ def _leaves(handler: ast.ExceptHandler, never_returns: frozenset[str]) -> bool:
 def _is_the_mapping(statement: ast.stmt, never_returns: frozenset[str] = frozenset()) -> bool:
     """The mapping as a plain statement, or wrapped by a verb that words its exit.
 
-    THE SECOND SHAPE IS ``backup``'s. Its refusals leave through a helper that
-    adds the rehearsal sentence, so the mapping sits alone in a ``try`` whose
-    handler re-raises what it caught, extended. That is still the mapping ONLY IF
-    NO HANDLER CAN SWALLOW IT: a handler that falls through turns the refusal
-    back into the normal envelope this file exists to forbid. So every handler
-    must end in a ``raise`` or in a call to a function the same module annotates
-    ``NoReturn``, and the ``try`` may carry nothing but the call.
+    The wrapped form, ``backup``'s, is a ``try`` holding only the call, whose every
+    handler ends in a ``raise`` or a call the module annotates ``NoReturn``, since a
+    handler that falls through turns the refusal back into a normal envelope.
     """
     if _is_the_call(statement):
         return True
@@ -498,13 +467,9 @@ def unmapped_reason(
 ) -> str | None:
     """Why this function's drive can reach a report unmapped, or None.
 
-    BY CONTROL FLOW AND NOT BY LINE NUMBER, which is what the first version of
-    this guard compared and what the review drove a hole through: a mapping call
-    in a later ``else``, or after a ``return`` inside the driving branch, sits on
-    a greater line and is never reached. The rule here is the shape every shell
-    actually has. Walking OUT from the drive, no enclosing block may return
-    before the mapping is met, and the mapping must be a plain statement of one
-    of those enclosing blocks, after the drive.
+    Judged by control flow, not line number, because a later line is not a later
+    point in the run. Walking out from the drive, no enclosing block may return
+    before the mapping, which must be a plain statement of one of those blocks.
     """
     for call in _calls(function, "run_job"):
         path = _path_to(function.body, call)
@@ -518,9 +483,8 @@ def unmapped_reason(
                 if any(isinstance(node, ast.Return) for node in ast.walk(later)):
                     return f"returns at line {later.lineno} before the mapping is reached"
             if mapped:
-                # INSIDE THE DRIVING BRANCH IS NOT ENOUGH. ``depth`` zero is the
-                # block the drive itself sits in, and when that block is the
-                # ``is_open`` branch a job already failed on entry skips it whole.
+                # Inside the driving branch is not enough: when that block is the
+                # ``is_open`` branch, a job already failed on entry skips it whole.
                 owner = path[-depth - 2] if depth + 2 <= len(path) else None
                 if depth == 0 and owner is not None:
                     holder = owner[0][owner[1]]
@@ -533,18 +497,11 @@ def unmapped_reason(
 
 
 def test_every_function_that_drives_a_job_maps_its_ending_afterwards():
-    """The static half, for the verb the driven half cannot reach.
-
-    A shell whose resume refuses on a precondition this file does not build, as
-    ``adopt apply`` does, is invisible to the driven tests. It is not invisible
-    here.
-    """
+    """The static half, which reaches a verb whose resume refuses on a
+    precondition the driven tests do not build, such as ``adopt apply``."""
     shells = _shells()
-    # ELEVEN SINCE U298, fourteen before it. The adoption and the tagging
-    # shells, ``acquire fallback`` and ``master`` drove a job each and now
-    # leave through ``jobs.resumed``, the one tail they wrote four times. That
-    # function is a shell like any other to this walk, so it is read below,
-    # and it is named here so a walk that stopped finding it says so.
+    # Eleven since U298, and ``jobs.resumed``, the shared resume tail, is named so
+    # a walk that stopped finding it says so.
     assert len(shells) >= 11, "the walk stopped finding the shells it exists to read"
     assert ("core/jobs.py", "resumed") in {
         (path.relative_to(SRC).as_posix(), function.name) for path, function, _ in shells
@@ -624,11 +581,9 @@ _WORDED = (
     ],
 )
 def test_the_static_guard_refuses_the_shapes_it_exists_for(source, expected):
-    """The guard's own teeth, because a guard that reads source is only as good as
-    the shapes it has been shown. The fourth and fifth are the review's: a later
-    line is not a later point in the run. The last four are ``backup``'s exit, a
-    mapping wrapped so the verb can word its refusal, which holds only while no
-    handler can swallow what the mapping raised."""
+    """The guard refuses a mapping a later line places after a return, or in a
+    branch the run skips, and accepts ``backup``'s wrapped mapping only while no
+    handler can swallow what it raised."""
     reason = unmapped_reason(_shell(source), frozenset({"_raise_refusal"}))
     if expected is None:
         assert reason is None
@@ -637,13 +592,11 @@ def test_the_static_guard_refuses_the_shapes_it_exists_for(source, expected):
 
 
 def test_no_shell_keeps_a_hand_rolled_copy_of_the_mapping():
-    """The copy is what R-290 was. It could not know about a state added after it
-    was written, and ten of them were wrong at once.
+    """No shell keeps its own copy of the mapping, which cannot know a state added
+    later (R-290).
 
-    THE PREDICATE IS MATCHED, NOT ONE SPELLING OF THE RAISE. Shells name their job
-    ``job``, ``queued`` and ``current``, so a guard matching the text of one raise
-    passes every other name. What all copies share is a condition reading both
-    ``is_open()`` and ``cause``.
+    The predicate is matched, a condition reading both ``is_open()`` and ``cause``,
+    because shells name their job differently and one spelling would miss the rest.
     """
     offenders = []
     for path in sorted(SRC.rglob("*.py")):
@@ -664,13 +617,11 @@ def test_no_shell_keeps_a_hand_rolled_copy_of_the_mapping():
 # The hop between a shell and the dispatcher
 # ═══════════════════════════════════════════════════════════════════════════
 
-#: A refusal built from a cause where NO EXCEPTION IS IN HAND, so there is no type
-#: to keep. ``sync`` collects the causes of sources that refused at the queue and
-#: raises the first one over the whole pass. It drives no job.
+#: Refusals built from a cause with no exception in hand, so no type to keep.
+#: ``sync`` raises the first queue refusal over the whole pass and drives no job.
 NO_ERROR_IN_HAND = {
     "sync/cli.py": "compose",
-    # U293: the night pass rebuilds the cause of the pass it ran, read off that
-    # pass's envelope as JSON, so no exception is in hand to rebuild.
+    # U293: the night pass rebuilds its cause from the pass's JSON envelope.
     "cli/sync_night.py": "_ended",
 }
 
@@ -683,11 +634,9 @@ def _is_a_replace(node: ast.expr) -> bool:
 
 
 def test_a_reworded_refusal_is_rebuilt_in_one_place_only():
-    """The blocked and cancelled bits ride the exception's TYPE, so every hop that
-    rewords a refusal on its way out has to keep it, and two shells in a row got
-    that wrong by building ``CratekitError(replace(...))``. ``cause.rebuilt`` owns
-    the choice now. This refuses the two ways of going round it: the rebuild
-    spelled by hand, and either carried type constructed outside the mapping."""
+    """A reworded refusal keeps its carried type, so ``cause.rebuilt`` is the only
+    rebuild. Refused: ``CratekitError(replace(...))`` by hand, and either carried
+    type constructed outside the mapping."""
     by_hand, constructed = [], []
     for path in sorted(SRC.rglob("*.py")):
         where = str(path.relative_to(SRC))
@@ -726,6 +675,5 @@ def test_a_rebuilt_refusal_keeps_a_carried_type_and_takes_the_new_cause(kind):
 
 
 def test_a_rebuilt_refusal_of_any_other_type_is_the_plain_one():
-    """``Parked`` takes a cause like the base type, and it is still not carried:
-    only the two types the dispatcher reads are, and the docstring says why."""
+    """``Parked`` is not carried: only the two types the dispatcher reads are."""
     assert type(rebuilt(jobs.Parked(_block().cause), _block().cause)) is CratekitError

@@ -1,15 +1,11 @@
-"""U179: one new PULS release and one owned release land one batch filed under ``Record Labels / PULS``.
+"""One new PULS release and one owned release land one batch filed under ``Record Labels / PULS`` (U179).
 
-The brief's first test scenario, end to end. ``crate sync bandcamp`` plans
-and fetches over U176's fake account through the real dispatcher, the tail
-stands in at the chain's seam (analysis needs an extra and a real collection
-this fixture does not hold), and the rehearsal and the landing run FOR REAL on
-the disposable native database ``tests/test_intake_land_native.py`` builds.
-The verb ends at the landing's gate; the session's two acts then answer and
-apply it, and SQL reads the batch back filed under its label and year.
-
-D1 applies. No real person, seller or release is named; ``pulsromania`` is
-the fake account's seller.
+``crate sync bandcamp`` plans and fetches over the fake account through the
+real dispatcher; the tail stands in at the chain's seam, since analysis needs
+an extra and a real collection; the rehearsal and the landing run for real on
+the disposable native database. The session's two acts answer and apply the
+gate, and SQL reads the batch back. D1 applies; ``pulsromania`` is the fake
+account's seller.
 """
 
 from __future__ import annotations
@@ -113,15 +109,15 @@ def test_one_new_puls_release_and_one_owned_land_one_batch_filed_under_its_label
     assert summary["landing_name"] == NAME
     assert [one["release"] for one in summary["owned"]] == ["Nova Reef - Low Light (pulsromania)"]
     assert summary["fetched"] == ["Aurora Bloom - Sun Path (pulsromania)"]
-    # THE REHEARSAL RAN FOR REAL, on its own copy, and left no area behind.
+    # The rehearsal ran for real, on its own copy, and left no area behind.
     assert summary["rehearsal"]
     assert _areas(cfg) == []
     run_id = summary["gate_run"]
     folder = Path(summary["staging"])
     assert folder == (Path(cfg.paths.download_staging) / BATCH).absolute()
 
-    # THE SESSION'S TWO ACTS, AS THE VERB NAMES THEM, pasted as a shell reads
-    # them: the batch folder and the name both hold spaces.
+    # The session's two acts, pasted as a shell reads them, since the batch
+    # folder and the name both hold spaces.
     decide, apply = envelope["pending_human_action"]["steps"][:2]
     decide_argv = shlex.split(decide.split(": ", 1)[1])
     apply_argv = shlex.split(apply.split(": ", 1)[1])

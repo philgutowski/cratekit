@@ -503,10 +503,8 @@ def _provider_spend() -> provider_gate.Spend:
 def _with_provider_spend(envelope: Envelope, before: provider_gate.Spend) -> Envelope:
     """The envelope with one spend line added when this run reached the provider.
 
-    THE TWO IDENTITIES ARE NAMED APART (U205): how many calls went under the
-    person's account session and how many under Cratekit's own app
-    credentials, so a run whose catalogue lookups were meant to leave the
-    account shows whether they did.
+    Account calls and app credential calls are named apart (U205), so a run
+    shows whether its catalogue lookups left the account.
     """
     spent = _provider_spend().since(before)
     if spent.calls == 0:
@@ -541,10 +539,8 @@ def _with_provider_spend(envelope: Envelope, before: provider_gate.Spend) -> Env
 def _isrc_lookups() -> tuple[int, int]:
     """Lookups the ISRC cache settled and lookups asked of the provider, so far (U206).
 
-    READ OFF THE MODULE ONLY WHEN SOMETHING LOADED IT, rather than imported
-    here: the dispatcher imports nothing a verb does not need, and the counts
-    move only inside that module, so a run that never loaded it looked
-    nothing up. This process's own counts, for the reason the spend line gives.
+    Read off the module only when something loaded it, so the dispatcher
+    imports nothing a verb does not need; unloaded means nothing looked up.
     """
     module = sys.modules.get("cratekit.acquire.isrc_cache")
     if module is None:
@@ -571,8 +567,7 @@ def _with_isrc_lookups(envelope: Envelope, before: tuple[int, int]) -> Envelope:
 def _unstored() -> int:
     """How many store failures a login in this process has met so far (R-1694).
 
-    READ OFF THE MODULE ONLY WHEN SOMETHING LOADED IT, as the ISRC count is:
-    a run that never loaded the provider session never logged in.
+    Read off the module only when something loaded it, as the ISRC count is.
     """
     module = sys.modules.get("cratekit.acquire.provider_session")
     return 0 if module is None else len(module.unstored())
@@ -582,10 +577,8 @@ def _with_unstored(envelope: Envelope, before: int) -> Envelope:
     """The envelope with one line added when this run's login refreshed a
     session the keychain could not take (R-1694).
 
-    The login went on, so the verb's own answer stands, on every branch: a
-    person on the opt in for a machine with no keychain is told the refresh
-    was not kept, and that the next run logs in again, rather than being
-    blocked from the verb. The failure's class is named and never its words.
+    The login went on, so the verb's answer stands. The failure's class is
+    named, never its words.
     """
     module = sys.modules.get("cratekit.acquire.provider_session")
     if module is None:
@@ -607,26 +600,10 @@ def _with_unstored(envelope: Envelope, before: int) -> Envelope:
 def _unhandled_cause(exc: BaseException) -> Cause:
     """The cause for anything that reached the boundary unconverted.
 
-    THIS IS THE BLANKET, NOT THE CLASSIFICATION. It covers exactly what nobody
-    caught, which was the mistake the round before this one made: the same rule
-    was put here and in doctor's check runner on the stated property that "a site
-    nobody has converted now comes out right", while eighteen of the nineteen
-    sites in the package ARE converted and never reach either blanket. The
-    decision now lives in ``cause.classified``, at the constructor every
-    structured refusal passes through, and this function asks the SAME question
-    of the unstructured remainder.
-
-    The remainder is not small. ``Path.exists`` re raises under EPERM instead of
-    answering False, so every ordinary looking filesystem question in the package
-    is a site nobody has guarded, and this program keeps its own state in SQLite,
-    whose refusals are not ``OSError`` at all.
-
-    Everything else keeps ``internal-error``, which is the honest answer for a
-    failure this program did not anticipate, and keeps ``report-defect`` with it.
-    A kernel refusal carrying no path at all, which a bind to a privileged port
-    and ``os.setuid`` both produce, is part of that remainder ON PURPOSE: there
-    is nothing for the user to grant access TO, so claiming a path would be a
-    confident wrong answer rather than a missed one.
+    The blanket, not the classification, which lives in ``cause.classified``;
+    this asks the same access question of the unstructured remainder. Anything
+    else is ``internal-error`` with ``report-defect``, a kernel refusal with no
+    path included, since there is nothing to grant access to.
     """
     refusal = access_refusal(exc)
     if refusal is not None:
@@ -648,9 +625,7 @@ def _unhandled_cause(exc: BaseException) -> Cause:
 def _verb_argv(argv: Sequence[str], entry: Entry) -> tuple[str, ...] | None:
     """The verb's path and every argument after it, out of the whole command line (U168).
 
-    The global options come before the verb, so the verb's own words start at
-    the first place its path appears. None when it cannot be found, which a
-    caller reads as a command line it cannot give back.
+    The verb's words start where its path first appears. None when not found.
     """
     path = list(entry.path)
     tokens = list(argv)
@@ -663,10 +638,8 @@ def _verb_argv(argv: Sequence[str], entry: Entry) -> tuple[str, ...] | None:
 def dispatch(argv: Sequence[str], *, stderr) -> Envelope:
     """Parse and run one command line and answer its envelope, without writing it (U168).
 
-    What ``run decide --continue`` calls to continue the verb that owns a run
-    in this same process, so the one envelope the caller writes is that verb's.
-    A command line argparse refuses is a defect here, since it is a recorded
-    one given back.
+    ``run decide --continue`` calls it to continue a run in this process. A
+    command line argparse refuses is a defect, since it was recorded.
     """
     parser = build_parser()
     try:
@@ -700,19 +673,17 @@ def dispatch(argv: Sequence[str], *, stderr) -> Envelope:
 #: caught the park and answered normally (U193).
 CALL_CEILING = provider_gate.CEILING
 
-#: The write surfaces whose verbs may spend the hour's reserve (U278): a verb
-#: that writes the account, or downloads, which writes files. Read off the
-#: registry, so a verb added later is classed by what it declares it writes.
+#: The write surfaces whose verbs may spend the hour's reserve (U278), read
+#: off what each verb declares it writes.
 RESERVE_WRITES: frozenset[str] = frozenset({"remote", "files"})
 
 
 def spends_reserve(entry: Entry, args: argparse.Namespace) -> bool:
     """Whether this command may spend the hour's reserve (U278).
 
-    A verb that declares a write to the account or to files, unless it runs a
-    report, which reads and plans and writes nothing. A verb with a read mode
-    of its own narrows itself with ``provider_gate.reading``, as ``label sync``
-    does for everything but ``--go``. Nothing widens a command past its verb.
+    A verb declaring a write to the account or to files, unless it runs a
+    report. A verb with its own read mode narrows itself with
+    ``provider_gate.reading``.
     """
     if getattr(args, "report", False):
         return False
@@ -720,9 +691,8 @@ def spends_reserve(entry: Entry, args: argparse.Namespace) -> bool:
 
 
 def _gate_settings() -> provider_gate.GateSettings | None:
-    """The configured gate numbers, or None when the configuration cannot be
-    loaded, in which case the gate refuses the same ``--calls`` at its first
-    call instead, off the configuration the verb loads."""
+    """The configured gate numbers, or None when the config cannot be loaded,
+    and the gate refuses at its first call instead."""
     try:
         return provider_gate.GateSettings.from_config(config.load())
     except Exception:  # noqa: BLE001 - see the docstring, the gate is the backstop
@@ -747,8 +717,7 @@ def _without(tokens: Sequence[str], flags: tuple[str, ...]) -> list[str]:
 
 
 def _without_calls(tokens: Sequence[str]) -> list[str]:
-    """The global options with any ``--calls`` and ``--calls-per-hour`` taken
-    out, so each is given once (U278: the continue names the hour it needs)."""
+    """The tokens without ``--calls`` and ``--calls-per-hour``, so each is given once (U278)."""
     return _without(tokens, ("--calls", "--calls-per-hour"))
 
 
@@ -760,26 +729,16 @@ def _without_run(tokens: Sequence[str]) -> list[str]:
 def continue_command(argv: Sequence[str], entry: Entry, cause: Cause) -> str:
     """The exact command that continues a run the call ceiling stopped (U193).
 
-    A job it was driving is parked with its remaining items pending, and the
-    job engine names the job on the cause, so the command resumes THAT job: a
-    verb run again would queue a second one. Anything else is this command line
-    again with ``--calls`` raised, the global options kept, since a run that
-    stopped at a gate continues by the same words.
-
-    A verb whose write records its steps under its run names the run on the
-    cause (U210), and the command carries ``--run`` for it when the command
-    line did not already, so the continue is that run and not a new one. A
-    verb that says its run cannot be continued (``fresh``) is named without
-    the command line's own ``--run``, so the command starts a new run rather
-    than one that refuses, or, when the cause names a run as well, continues
-    THAT run in its place: ``label sync --go`` names the run whose go queued
-    the download it stopped in, whichever run was driving it (U239).
+    A parked job named on the cause is resumed, since running the verb again
+    would queue a second one. Otherwise it is this command line with
+    ``--calls`` raised, plus ``--run`` for a run the cause names (U210). A
+    ``fresh`` cause drops the command line's own ``--run``, so the command
+    starts anew or continues the run the cause names instead (U239).
     """
     detail = cause.detail or {}
     higher = str(detail.get("higher") or 2 * int(detail.get("ceiling") or 1))
-    # THE HOUR IT NEEDS, NAMED BESIDE THE CEILING (U278): a ``--calls`` above
-    # the configured hour is refused as printed without it, and a run whose
-    # hour was raised continues with that hour.
+    # The hour it needs goes beside the ceiling (U278), or a ``--calls`` above
+    # the configured hour is refused.
     hour = detail.get("calls_per_hour")
     raised = ["--calls", higher, *(["--calls-per-hour", str(hour)] if hour else [])]
     job_id = detail.get("job_id")
@@ -813,9 +772,8 @@ def _with_continue(cause: Cause, argv: Sequence[str], entry: Entry) -> Cause:
 def _with_run_continue(cause: Cause, state: gates.RunState) -> Cause:
     """A kept refusal's cause with its first step naming the command that continues the run.
 
-    The step REPLACES the cause's first one, as the call ceiling's does,
-    because that one says to run it again, and a person who follows it
-    literally starts a fresh run and loses the answers this run keeps.
+    It replaces the first step, which says to run it again and would lose this
+    run's answers.
     """
     command = gates.continue_command(state)
     steps = (
@@ -835,11 +793,9 @@ def _dispatched(
 ) -> Envelope:
     """Run one parsed verb inside one command's call ceiling scope (U193).
 
-    The scope is opened HERE, around every verb, so a verb added later is under
-    the ceiling without knowing about it. A run the ceiling stopped whose verb
-    caught the park and answered normally carries a warning saying so, since a
-    clean report over a run the ceiling cut short is a report over reads that
-    were never made.
+    Opened around every verb, so a new verb is under the ceiling unawares. A
+    verb that caught the park and answered normally gets a warning, since its
+    report covers reads never made.
     """
     with provider_gate.command(
         getattr(args, "calls", None),
@@ -856,8 +812,8 @@ def _dispatched(
             command = continue_command(argv, entry, stopped)
             then = f"Continue with: {command}"
         else:
-            # THE HOUR'S LINE (U278): continued by waiting, which no command
-            # line can say, so the cause's own first step is the instruction.
+            # The hour's line is continued by waiting (U278), so the cause's
+            # first step is the instruction.
             steps = stopped.remediation.steps
             then = steps[0][:1].upper() + steps[0][1:] if steps else ""
         entry_warning = {
@@ -888,16 +844,14 @@ def _dispatched_in_scope(
 
         supplied = gates.parse_decision_flags(args.decision)
         state = _run_state_for(entry, args)
-        # THE COMMAND LINE, ON A NEW RUN ONLY (U168): what ``run decide
-        # --continue`` dispatches again. A continued run keeps its first one.
+        # A new run records its command line for ``run decide --continue`` (U168).
         if not args.run:
             state.argv = _verb_argv(argv, entry)
         blocked = gates.blocked_by(state, entry.name)
         if blocked is not None:
             raise CratekitError(blocked)
-        # A ``--calls`` THE HOUR CANNOT HOLD IS REFUSED BEFORE THE VERB RUNS
-        # (U278), never capped in silence: a command line that says one ceiling
-        # and runs another is a report over a run nobody asked for.
+        # A ``--calls`` the hour cannot hold is refused before the verb runs,
+        # never capped in silence (U278).
         if getattr(args, "calls", None) is not None:
             settings = _gate_settings()
             if settings is not None:
@@ -921,35 +875,20 @@ def _dispatched_in_scope(
         ceiling_stop = cause.reason == provider_gate.CEILING
         if ceiling_stop:
             cause = _with_continue(cause, argv, entry)
-        # THE HOUR'S LINE IS A PARK TOO (U278) when the gate raised it as one:
-        # what the run did is kept and it continues once the line frees. The
-        # same reason refused before the verb ran, over ``--calls``, is a
-        # command line to fix and stays a failure.
+        # The hour's line raised as a park is a park (U278); refused before the
+        # verb ran, over ``--calls``, it stays a failure.
         from cratekit.core.jobs import Parked  # noqa: PLC0415 - the engine imports this package
 
         budget_stop = cause.reason == provider_gate.BUDGET and isinstance(exc, Parked)
-        # A PARKED JOB IS BLOCKED TOO, AND IT IS NOT RESUMABLE IN THIS FIELD'S
-        # SENSE (R-290). ``resumable`` names the GATE RUN: it tells a caller that
-        # ``crate run`` can continue this run id, and it is what saves the run
-        # state below. A parked job continues through its own verb with the job
-        # id, never through the run, so setting it here would send a wrapper to a
-        # command that cannot advance the work. The outcome carries the block.
-        #
-        # ``and not parked`` IS WHAT MAKES THAT TRUE. The flag came off the
-        # cause's code alone, and ``jobs.transition`` names a missing
-        # acknowledgment among the reasons to park, which is a gate code. The
-        # comment above was a claim about every worker until this enforced it.
-        # THE CALL CEILING IS A PARK TOO (U193), raised as ``Parked`` straight
-        # out of a verb that drives no job. What the run did is kept, so it is
-        # blocked at a line the person set and not failed.
+        # A parked job is blocked but never resumable (R-290): ``resumable``
+        # names the gate run, and a parked job continues through its own verb,
+        # even when it parked on a gate code. The call ceiling is a park too
+        # (U193), so the run is blocked, not failed.
         parked = isinstance(exc, JobBlocked) or ceiling_stop or budget_stop
-        # A REFUSAL THAT KEEPS ITS RUN (U211). Raised before the step it
-        # guards and clearing on its own, so the run is saved with its answers
-        # and the cause names the command that continues it. ONLY THE SCAN'S
-        # OWN REFUSAL, by its type (from review round two): a job that records
-        # the same reason on a failed item and summarises it on the job's
-        # cause cannot be continued by running the verb again, so that keeps
-        # the job's own verdict and its honest step.
+        # A refusal that keeps its run (U211): saved with its answers, and the
+        # cause names the command that continues it. Only the scan's own
+        # refusal, by type, since a job carrying the same reason cannot be
+        # continued by running the verb again.
         kept = (
             isinstance(exc, processes.AbsenceUnconfirmed)
             and cause.reason in gates.KEPT_RUN_REASONS
@@ -977,18 +916,9 @@ def _dispatched_in_scope(
         if state is not None and resumable:
             envelope = _with_sibling_runs(envelope, state)
     except config.ConfigError as exc:
-        # U2 already models configuration failures as five types with five
-        # remediation TOKENS. Converting here rather than in each verb means a
-        # verb that simply calls ``config.load()`` still refuses with the right
-        # code and the right remedy, instead of surfacing as an internal defect.
-        #
-        # THROUGH THE CLASSIFICATION, because a config file this account cannot
-        # read is not a config file to repair. "Repair or recreate it" over a
-        # document that is byte for byte intact sends a user to rewrite work they
-        # still have, and an untraversable PARENT fails the same way without
-        # establishing that the file is there at all. ``ConfigError`` is not a
-        # ``CratekitError``, so the constructor's own correction never sees it;
-        # this is the one hop where it can.
+        # Converted here, so a verb calling ``config.load()`` refuses with the
+        # right code and remedy. Through the classification, because a config
+        # this account cannot read is an access problem, not a file to repair.
         envelope = output.from_cause(
             verb=entry.name,
             run_id=state.run_id if state is not None else output.new_run_id(),
@@ -1005,9 +935,7 @@ def _dispatched_in_scope(
             ),
         )
     except SystemExit as exc:
-        # A verb, or something it called, tried to exit the process. Convert it
-        # rather than letting it through: an escaped SystemExit(2) is how the
-        # source system's three meanings of code 2 collide inside one process.
+        # A verb tried to exit the process; converted so status 2 keeps one meaning.
         envelope = output.from_cause(
             verb=entry.name,
             run_id=state.run_id if state is not None else output.new_run_id(),
@@ -1027,8 +955,7 @@ def _dispatched_in_scope(
             cause=_unhandled_cause(exc),
         )
 
-    # AFTER EVERY BRANCH ABOVE, the refusals included: the sitting's failed
-    # downloads spent calls into a live limit and nothing on the screen said so.
+    # After every branch, refusals included, since a failed run spends calls too.
     envelope = _with_provider_spend(envelope, spent_before)
     envelope = _with_isrc_lookups(envelope, looked_before)
     envelope = _with_unstored(envelope, unstored_before)
@@ -1038,10 +965,7 @@ def _dispatched_in_scope(
 def main(argv: list[str] | None = None) -> int:
     """Parse, dispatch, and return the process status.
 
-    The console-script wrapper turns the return value into the exit status, so
-    this returning an ``ExitCode`` is what gives every verb a real status. It
-    returns rather than exiting: a caller inside a test, and the job engine
-    reading a child's result, both get an integer instead of an exception.
+    Returns rather than exits, so a test or the job engine gets an integer.
     """
     return run(sys.argv[1:] if argv is None else argv, stdout=sys.stdout, stderr=sys.stderr)
 
@@ -1052,8 +976,7 @@ def run(argv: list[str], *, stdout, stderr) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
-        # argparse owns status 2, and this is the boundary that keeps it owning
-        # it. Its --help and --version paths exit 0 and pass straight through.
+        # argparse owns status 2; --help and --version exit 0 and pass through.
         return int(exc.code or 0)
 
     entry = getattr(args, "_entry", None)

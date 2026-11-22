@@ -1,22 +1,10 @@
 """``crate taxonomy upgrade``: the shipped classes, buckets and vocabulary tables a library's copy lacks, added (U132, U244).
 
-Setup copies the shipped template beside the database once, and nothing the
-shipped template gains afterwards reaches the library on its own. This verb
-plans what the copy lacks through ``core.taxonomy_upgrade``, shows each entry
-it adds and each it holds at an explicit gate, and writes the copy with them
-added, keeping the copy as it was in a dated file beside it.
-
-THE ORDER IS THE PROFILE VERB'S, with a backup: the plan from the copy as it
-stands, the gate over the digested plan, the plan taken again and refused as
-stale when its digest moved, the copy as it was written beside it under the
-date, the new copy written atomically, and the copy read back through the one
-loader every verb reads it with, so a copy that would not route is reported
-here and not by the next verb.
-
-THE DIGEST COVERS THE TWO TEXTS AND THE ITEMS, never the path, so a rehearsal
-on a disposable copy of the same file matches the live plan.
-
-Layer: cli.
+Plans what the copy lacks, asks at an explicit gate, plans again and refuses
+a stale answer, keeps a dated backup, writes atomically and reads the copy
+back through the loader, so a copy that would not route is reported here. The
+digest covers the two texts and the items, never the path, so a rehearsal on
+a disposable copy matches the live plan.
 """
 
 from __future__ import annotations
@@ -193,25 +181,12 @@ def write_copy(
 ) -> tuple[Path, str, bytes]:
     """Keep the copy as it was, write ``after`` over it, and read it back through the loader.
 
-    ONE WRITE FOR EVERY VERB THAT EDITS THE COPY, the upgrade and the answers
-    to an off taxonomy word (U194), so each keeps the same backup, the same
-    stale check on the bytes and the same restore. Returns the backup's path,
-    the line ending written, and the bytes the copy held.
-
-    THE BYTES ON DISK ARE WHAT IS KEPT AND PUT BACK. The planner reads the
-    copy as text, which folds CRLF to LF, so the copy is read again as bytes:
-    the backup and any restore are those bytes exactly, and the new copy keeps
-    their line ending. Bytes that no longer read as the planned ``before`` are
-    an edit made after the second plan, refused as stale like one made before
-    it.
-
-    READ BACK THROUGH THE LOADER every verb reads the copy with, so what was
-    written is what routes. A copy that does not read back is replaced by the
-    one it replaced, from the bytes this holds, so the library is never left
-    with a declaration every routing verb refuses. That restore is read back
-    too, and the refusal says whether it took: a disk that fills or a volume
-    that drops after the write can fail it, and then the person needs the
-    backup's path more than anything else the verb says.
+    The one write for every verb that edits the copy (U194). Returns the
+    backup's path, the line ending written, and the bytes the copy held. The
+    backup and any restore are the exact bytes on disk, and the new copy keeps
+    their line ending; bytes that no longer read as ``before`` are refused as
+    stale. A copy that does not read back is restored, so no declaration every
+    routing verb refuses is left, and the refusal says whether the restore took.
     """
     raw = path.read_bytes()
     if as_read(raw) != before:
@@ -254,8 +229,7 @@ def taxonomy_upgrade_verb(ctx: "Context") -> Envelope:
     data = payload(found)
     warnings = _held(found)
     if not found.writes:
-        # Nothing to decide, the profile verb's rule: a gate that asks about an
-        # empty change trains people to answer without reading.
+        # No gate over an empty change, which trains people to answer unread.
         return ctx.envelope(
             data=data,
             outcome=Outcome.NO_OP,
@@ -281,9 +255,7 @@ def taxonomy_upgrade_verb(ctx: "Context") -> Envelope:
     if ctx.gate.require(spec, plan=data, context=context) != "approve":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
 
-    # TAKEN AGAIN AFTER THE ANSWER. A copy edited by hand between the screen
-    # and the answer is another plan, and an answer given to the first one is
-    # refused as stale rather than written over the edit.
+    # Planned again after the answer, so a hand edit in between makes it stale.
     _, fresh = taxonomy_upgrade.planned(cfg)
     moved = payload(fresh)
     if moved["digest"] != data["digest"]:

@@ -1,32 +1,12 @@
 """The versioned output envelope: one machine contract for every verb (R32).
 
-The source system has all five surfaces R32 names, and not one of them is
-versioned. Plans are a side file with no schema field, matches are two CSVs
-whose column order is the contract, review sets are fourteen more CSVs a human
-hand-edits, job state derives its whole status from an exit code, and
-diagnostics exist only as a list of dictionaries rendered into one HTML page.
-The single versioned artifact in the entire repository is the run manifest.
-
-So three decisions are made here, before any verb exists to disagree with them:
-
-1. **Two version numbers, not one.** ``envelope`` versions the outer frame,
-   which changes rarely. ``schema`` versions the payload, per surface, as
-   ``"<name>/<major>"``. One shared integer would force every payload to bump
-   when one of them changed, and that is exactly the pressure that makes people
-   skip a bump.
-2. **Human rendering is a separate function, never a field.** The source system
-   stores its rendered gate text INSIDE the plan JSON, which makes every wording
-   change a schema change. Here ``cratekit.cli.render`` consumes an envelope; the
-   envelope never carries prose meant for a screen.
-3. **``pending_human_action`` and ``cause`` are REQUIRED KEYS with nullable
-   values.** A consumer never has to tell absent from empty. The pending field
-   exists because the XML half of a run completes only after a person imports,
-   and the source system says so eleven different ways in eleven different
-   places, three of them on stdout, four on stderr, and one on both.
-
-Layer note: FOUNDATION, and ``tests/test_layering.py`` pins it there explicitly.
-Every layer emits envelopes, so ranking this as CLI would forbid every layer
-from using the one output contract they are all required to use.
+Two version numbers: ``envelope`` versions the outer frame and ``schema``
+versions each payload surface as ``"<name>/<major>"``, so one payload changing
+never forces the others to bump. Human rendering lives in ``cratekit.cli.render``
+and never in a field, so a wording change is never a schema change.
+``pending_human_action`` and ``cause`` are required keys with nullable values,
+so a consumer never has to tell absent from empty. Ranked FOUNDATION, because
+every layer emits envelopes.
 """
 
 from __future__ import annotations
@@ -43,43 +23,28 @@ from cratekit.core import config
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 
-#: The outer contract version. Bumped only when the frame itself changes, which
-#: should be close to never.
+#: The outer contract version, bumped only when the frame itself changes.
 ENVELOPE_VERSION = 1
 
-#: The five payload surfaces R32 names, shipped here as versioned contracts even
-#: though their producers land in later units. Reserving them now is what stops
-#: six units inventing six shapes for "a plan" and then discovering they
-#: disagree at the boundary where a job engine has to read one.
-#:
-#: Each value is the field name mapped to a JSON type name. Deliberately a plain
-#: declaration rather than a generated model: this file is imported on every
-#: ``crate`` invocation including ``--help``, so it stays cheap and dependency
-#: free, and a hand-written declaration that a test hashes is as tamper-evident
-#: as a generated one.
+#: The five payload surfaces R32 names, reserved here so no unit invents its own
+#: shape. Each maps a field name to a JSON type name, a plain declaration that a
+#: test hashes, since this module is imported on every ``crate`` invocation.
 _PAYLOAD_FIELDS: Mapping[str, Mapping[str, str]] = MappingProxyType(
     {
         "plan": MappingProxyType(
             {
-                # The digest is what makes a decision refuse when the world moved
-                # between the preview and the answer. Ported from the source
-                # system's plan digest, which is the one part of that machinery
-                # worth keeping verbatim.
+                # Makes a decision refuse when the world moved since the preview.
                 "digest": "string",
                 "items": "array",
                 "totals": "object",
-                # Non-null when the plan was offered in pieces, so a decision can
-                # name which piece it is answering.
+                # Non-null when the plan was offered in pieces.
                 "chunk": "object|null",
             }
         ),
         "match": MappingProxyType(
             {
-                # THREE states from version 1, not two (R11). The source writes
-                # owned.csv and missing.csv and has no representation at all for
-                # "this is a different version of the same track, a person must
-                # look". Adding it later would be a schema break for every
-                # consumer; reserving it now costs an empty array.
+                # Three states from version 1, since adding one later is a
+                # schema break (R11).
                 "matched": "array",
                 "needs_review": "array",
                 "missing": "array",
@@ -96,17 +61,16 @@ _PAYLOAD_FIELDS: Mapping[str, Mapping[str, str]] = MappingProxyType(
             {
                 "job_id": "string",
                 "state": "string",
-                # Present so the engine reads a CAUSE rather than deriving status
-                # from a child's exit code, which is the collapse KTD25 is about.
+                # The engine reads a cause rather than a child's exit code
+                # (KTD25).
                 "cause": "object|null",
                 "progress": "object",
             }
         ),
         "diagnostic": MappingProxyType(
             {
-                # {key, title, status, detail, remedy} per check: the source
-                # system's doctor shape, with its ``fix`` string replaced by a
-                # remediation token the CLI renders (D2).
+                # {key, title, status, detail, remedy} per check, the remedy a
+                # token the CLI renders (D2).
                 "checks": "array",
                 "summary": "object",
             }
@@ -120,9 +84,8 @@ _PAYLOAD_MAJORS: Mapping[str, int] = MappingProxyType(
     {"plan": 1, "match": 1, "review_set": 1, "job_state": 1, "diagnostic": 1}
 )
 
-#: The envelope's own required keys, in the order they serialize. Derived by the
-#: conformance suite rather than restated there, so a key added here is a key the
-#: suite immediately requires of every verb.
+#: The envelope's required keys, in serialization order. The conformance suite
+#: derives its requirements from this.
 ENVELOPE_KEYS: tuple[str, ...] = (
     "envelope",
     "schema",
@@ -169,10 +132,8 @@ def current_schema(name: str) -> str:
 def schema_document(name: str) -> dict[str, Any]:
     """The machine description of one payload surface, at its current major.
 
-    Deliberately plain: a type per field plus the required list. It is the
-    artifact the lock file hashes, so what matters is that it changes whenever
-    the payload changes and not that it is expressible in any particular schema
-    dialect.
+    A type per field plus the required list; it is what the lock file hashes,
+    so it must change whenever the payload does.
     """
     fields = _PAYLOAD_FIELDS[name] if name in _PAYLOAD_FIELDS else None
     if fields is None:
@@ -199,9 +160,7 @@ def schema_fingerprint(name: str) -> str:
 def payload_problems(name: str, data: Mapping[str, Any]) -> list[str]:
     """Validate a payload against its declared surface. Empty means valid.
 
-    Returns every problem rather than the first, for the same reason config
-    validation does: one round trip per missing field turns a fix into a
-    conversation.
+    Returns every problem, so one fix is not one round trip per field.
     """
     fields = _PAYLOAD_FIELDS.get(name)
     if fields is None:
@@ -233,8 +192,8 @@ def _matches_type(value: Any, declared: str) -> bool:
             if value is None:
                 return True
             continue
-        # A boolean is an int in Python and is never an integer here: writing
-        # True where a count belongs is a defect the type check should catch.
+        # A boolean is never an integer here: True where a count belongs is a
+        # defect.
         if isinstance(value, bool) and expected == (int,):
             continue
         if isinstance(value, expected):
@@ -245,8 +204,8 @@ def _matches_type(value: Any, declared: str) -> bool:
 def count_of(value: Any) -> int | None:
     """A count as a stored document carries one, or None for anything else.
 
-    A whole number that is not negative. A boolean is an int in Python and is
-    never a count here, the rule :func:`payload_problems` holds a payload to.
+    A whole number that is not negative, and never a boolean, the rule
+    :func:`payload_problems` holds a payload to.
     """
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         return None
@@ -261,25 +220,11 @@ def count_of(value: Any) -> int | None:
 def new_run_id(now: datetime | None = None) -> str:
     """A stable, sortable, addressable identifier for one run.
 
-    A second's timestamp plus a random tail. The random tail exists because two
-    runs can start inside the same second, and a collision would let one run's
-    decisions answer another run's gate.
-
-    SIXTY FOUR BITS OF TAIL, NOT SIXTEEN, widened by U235 (R-22). A second is
-    not a rare place for two identifiers: ``jobs.enqueue`` names every job with
-    this function too, and one ``sync land`` pass mints a dozen or more run
-    and job identifiers inside one second. At sixteen bits two of them met
-    about once in 4,700 runs of one test, measured by forcing each pair, and a
-    meeting either read an earlier pass's run as the new one's or refused a
-    second job at enqueue as a duplicate key. Sixty four bits is the width
-    ``snapshot.new_stamp`` already carries, so a change to either width is a
-    change to read both, and ``tests/test_cli_contract.py`` pins it. The stamp
-    before the tail is unchanged, colons included, so an identifier written
-    before the widening reads, sorts and names a file as one written after it
-    does; ``intake.shelve`` reads a batch named for a run at either width.
-
-    U5 ships before the job engine, so this is the identifier space U10 adopts
-    rather than a second one it invents.
+    A second's timestamp plus a random tail, so two runs in the same second
+    never collide and answer each other's gates. The tail is sixty four bits,
+    the width ``snapshot.new_stamp`` carries, because one ``sync land`` pass
+    mints many identifiers inside a second (U235, R-22). The stamp is
+    unchanged, so an older narrower identifier still reads and sorts.
     """
     moment = now or datetime.now(timezone.utc)
     return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(8)}"
@@ -296,11 +241,8 @@ def timestamp(now: datetime | None = None) -> str:
 def digest_of(identity: Any) -> str:
     """The stable digest of whatever a gate showed the user.
 
-    Ported in substance from the source system's plan digest, which hashes a
-    canonical projection of the plan (slugs with counts, identifiers with sizes,
-    totals) rather than the whole rendered object. That is the load-bearing part:
-    the digest has to move when the world moves and stay put when only the
-    wording does, or a decision refuses for no reason a user can see.
+    Hash a canonical projection, never rendered text, so the digest moves when
+    the world moves and stays put when only the wording does.
     """
     return hashlib.sha256(
         json.dumps(identity, sort_keys=True, default=str).encode()
@@ -316,15 +258,10 @@ def digest_of(identity: Any) -> str:
 class PendingHumanAction:
     """Something a person must do outside the tool before the run is complete.
 
-    ``verify_verb`` is mandatory and names a registered verb. A pending action
-    nobody can verify is precisely what the source system's eleven printed
-    instructions already are: the tool says something and forgets. Making the
-    verification a command is what turns the field from advice into a state.
-
-    ``blocks`` is what makes it load-bearing rather than advisory. A verb whose
-    name appears in an unverified pending action's ``blocks`` refuses before
-    doing anything, so an unimported XML cannot be silently overtaken by the
-    next run.
+    ``verify_verb`` is mandatory, so the action is a state a command can prove
+    rather than a printed instruction. A verb named in an unverified action's
+    ``blocks`` refuses before doing anything, so an unimported XML is never
+    overtaken by the next run.
     """
 
     kind: str
@@ -384,10 +321,8 @@ def new_pending_id(run_id: str) -> str:
 class Envelope:
     """One verb's machine-readable result. Constructed once, at the boundary.
 
-    ``exit_code`` is carried here AND is the integer the process exits with, and
-    a test asserts the two agree. Without it, a caller that reads an envelope
-    from a file has no status, and a caller that reads the process status has no
-    cause: exactly the split the source system's job records live with.
+    ``exit_code`` is also the integer the process exits with, and a test
+    asserts they agree, so a reader of either half gets status and cause.
     """
 
     schema: str
@@ -432,11 +367,10 @@ class Envelope:
 def envelope_problems(document: Mapping[str, Any]) -> list[str]:
     """Validate a serialized envelope. Empty means valid.
 
-    Two rules here are the whole reason the function exists, and both are
-    two-directional so neither half can rot:
+    Both central rules run in both directions:
 
     * a non-null ``pending_human_action`` implies outcome ``pending`` and status
-      ``PENDING_HUMAN``, AND the converse;
+      ``PENDING_HUMAN``, and the converse;
     * a ``cause`` is present exactly when the outcome is not a success.
     """
     problems = [f"missing required key {key!r}" for key in ENVELOPE_KEYS if key not in document]
@@ -515,12 +449,9 @@ def build(
 ) -> Envelope:
     """Assemble an envelope, filling in the fields nobody should have to repeat.
 
-    A pending action with no cause supplied gets one, because a pending outcome
-    is a non-success outcome and KTD25 admits no non-success result without a
-    structured cause. The default is not a guess: the cause for "a person has to
-    do something" is always the same, and its remediation is the steps the
-    pending action already carries. Leaving each verb to build it by hand is how
-    eleven printed variants of one instruction happen.
+    A pending action with no cause gets the standard one, since KTD25 admits no
+    non-success result without a structured cause, and its remediation is the
+    pending action's own steps.
     """
     if pending is not None and cause is None:
         cause = Cause(
@@ -563,14 +494,9 @@ def from_cause(
 ) -> Envelope:
     """The failure envelope, with the exit code taken FROM the cause.
 
-    This is boundary 5, the only place a cause becomes a status. Everywhere
-    upstream it is a value that gets carried, and that is the difference between
-    a failure that can be recovered downstream and one that cannot.
-
-    A refusal reports on the DIAGNOSTIC surface unless the caller names another,
-    even when the verb would have emitted a plan. There is no plan: the verb
-    refused before producing one, and emitting an empty plan payload would tell a
-    consumer that a plan was computed and came back empty.
+    Boundary 5, the only place a cause becomes a status. A refusal reports on
+    the DIAGNOSTIC surface unless the caller names another, because an empty
+    plan would claim a plan was computed.
     """
     return build(
         verb=verb,
@@ -589,9 +515,8 @@ def from_cause(
 # What every verb's shell needs, written once (U298)
 # ---------------------------------------------------------------------------
 #
-# Here and not in a module of the shell proper, because a verb that lives
-# beside its domain may import this module and no other part of the shell.
-
+# Here because a verb beside its domain may import this module and no other
+# part of the shell.
 
 def load_config(origin: Sequence[str]) -> config.Config:
     """Read config, turning a configuration failure into the typed cause.
@@ -614,9 +539,7 @@ def load_config(origin: Sequence[str]) -> config.Config:
 
 def declared_gate(entry, name: str):
     """The verb's own gate by name, never by position, or a ``RuntimeError``.
-
-    By name because a shared gate may sit beside it on the entry, and an index
-    would bind the verb to the order the two are written in.
+    By name, because a shared gate may sit beside it on the entry.
     """
     for spec in entry.gates:
         if spec.name == name:
@@ -627,9 +550,8 @@ def declared_gate(entry, name: str):
 def confirm_gate(entry, name: str, *, origin: Sequence[str]):
     """The gate a verb asks before it writes, by name, or the typed refusal.
 
-    A second shape beside :func:`declared_gate` and not merged with it: the
-    verbs that call this one end ``internal-error`` with a remedy when the gate
-    is missing, and the others end in a traceback.
+    Kept apart from :func:`declared_gate` because these callers end
+    ``internal-error`` with a remedy rather than a traceback.
     """
     for spec in entry.gates:
         if spec.name == name:
@@ -647,8 +569,8 @@ def confirm_gate(entry, name: str, *, origin: Sequence[str]):
 def approving_actor(ctx, spec) -> str:
     """Who the run record says answered ``spec``'s gate, or the empty string.
 
-    Off the recorded decision and not off ``ctx.gate.actor``, which is the
-    default the shell carries and reads ``"cli"`` for a run nobody decided.
+    Off the recorded decision, not ``ctx.gate.actor``, which reads ``"cli"``
+    for a run nobody decided.
     """
     decision = ctx.run.decisions.get(spec.name)
     return decision.actor if decision is not None else ""
@@ -657,8 +579,8 @@ def approving_actor(ctx, spec) -> str:
 def no_job(state: str, **progress: Any) -> dict[str, Any]:
     """The ``job_state`` payload for a run that correctly queued nothing.
 
-    ``job_id`` is the empty string and not None, because the declared surface
-    types it as a string and a null fails the verb's own schema (R-234).
+    ``job_id`` is the empty string, since the surface types it as a string
+    (R-234).
     """
     return {"job_id": "", "state": state, "cause": None, "progress": dict(progress)}
 

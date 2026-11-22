@@ -1,34 +1,12 @@
 """The six review verbs: one addressable queue instead of a folder of spreadsheets.
 
-R12 says a review item is persisted, addressable, and resolvable in a later
-session or a different process. The queue underneath provides all three; these
-verbs are what makes them reachable, and each one answers a specific thing the
-source system cannot do:
-
-* ``list`` shows what is OUTSTANDING, so re-entry after quitting partway through
-  a set presents what is left rather than the whole set again;
-* ``show`` addresses one item by its identifier, which the source system has no
-  concept of at all because its rows are addressed by position in a file;
-* ``resolve`` records a verdict against an identifier or against a PREDICATE, so
-  a hundred items of one kind are one decision rather than a hundred edits;
-* ``clear`` revokes a verdict, which is what makes a rejection a decision rather
-  than a one way door;
-* ``export`` and ``import`` are for anyone who genuinely wants a file, and they
-  carry a versioned JSON document rather than a comma separated one, because the
-  thing being replaced is a format where a stray column break silently changes
-  what somebody decided.
-
-**Why the destination of an export is not in the payload.** The ``review_set``
-surface is closed at version 1 with three fields, and a verb that needed a fourth
-would be a schema bump for every consumer of every review set. The user typed the
-path, so the confirmation a person needs is that the export succeeded and how
-many items it carried, which is what the payload reports.
-
-**Why a conflict on import is a warning rather than a refusal.** Two people
-resolving one item differently is a real situation, not a malformed file. The
-local verdict stands, the incoming one is reported, and the import applies
-everything else. Refusing the whole document would mean one disagreement blocks a
-hundred agreements.
+R12: a review item is persisted, addressable and resolvable in a later session.
+``list`` shows what is outstanding, ``show`` addresses one item, ``resolve``
+settles an item or a predicate's subset in one decision, ``clear`` revokes a
+verdict, and ``export`` and ``import`` carry a versioned JSON document rather
+than CSV. An export's destination is not in the payload, since ``review_set/1``
+is closed at three fields. An import conflict is a warning, not a refusal, so
+one disagreement never blocks the rest.
 """
 
 from __future__ import annotations
@@ -46,28 +24,19 @@ from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scop
 if TYPE_CHECKING:  # pragma: no cover - typing only, and a cycle if imported for real
     from cratekit.cli import Context
 
-#: What the ``queue`` field carries when a result is not scoped to one queue. A
-#: named constant rather than a bare empty string, for the reason the job engine
-#: names its own: a consumer reading the first row's queue as the envelope's
-#: subject would be wrong in a way nothing tells it about.
+#: The ``queue`` value when a result is not scoped to one queue, named so no
+#: consumer mistakes the first row's queue for the envelope's subject.
 EVERY_QUEUE = ""
 
-#: The prefix a predicate uses to match on a payload field, so ``kind=x`` and
-#: ``payload.confidence=low`` are unambiguous in one flag.
+#: The prefix a predicate uses to match on a payload field.
 PAYLOAD_PREFIX = "payload."
 
 
 def _summary(item: review.Item) -> dict[str, Any]:
     """One item projected for a LISTING: what it is and what was decided.
 
-    Deliberately not the whole record. A listing of a large queue that carried
-    every payload would put megabytes on standard output for a person who wanted
-    to know what is outstanding, and ``show`` exists for the whole record.
-
-    The actor rides with the verdict because for the third verdict it IS the
-    decision: a superseded item's actor is the rule that owned its row, and a
-    listing that said "superseded" and not by what would send a person to
-    ``show`` for every one of eighty five.
+    Not the whole record, which ``show`` gives. The actor rides with the verdict
+    because for a superseded item it names the rule that owned its row.
     """
     return {
         "id": item.item_id,
@@ -88,9 +57,8 @@ def _payload(
 ) -> dict[str, Any]:
     """The ``review_set`` payload, with the outstanding count taken from a query.
 
-    ``unresolved`` is what is OPEN in the queue, never the length of ``items``.
-    The two differ on every verb here except a plain listing, and reporting the
-    page size as the backlog is how a person concludes they are finished.
+    ``unresolved`` is what is open in the queue, never the length of ``items``,
+    so a page is never read as the whole backlog.
     """
     return {
         "queue": str(queue) if queue else EVERY_QUEUE,
@@ -120,10 +88,8 @@ def _refuse_selection(message: str, **detail: Any) -> CratekitError:
 def _parse_where(values: Sequence[str]) -> review.Predicate:
     """Turn ``--where`` arguments into a declarative predicate.
 
-    Refusing a malformed one rather than ignoring it, for the same reason a
-    malformed decision is refused upstream: a filter that silently matches
-    nothing looks exactly like a queue that is already empty, and the next thing
-    the user does is conclude the work is done.
+    A malformed one is refused, since a filter matching nothing looks exactly
+    like an empty queue.
     """
     queue: str | None = None
     kind: str | None = None
@@ -249,8 +215,8 @@ def list_items(ctx: "Context") -> Envelope:
             kinds=tuple(ctx.args.kind) or None,
             include_resolved=ctx.args.all,
             include_suppressed=ctx.args.suppressed,
-            # NONE IS THE PAGE DEFAULT HERE, never "every item": the parser
-            # leaves it unset so ``--group-by`` can tell a typed limit apart.
+            # None means the page default; the parser leaves it unset so
+            # ``--group-by`` can tell a typed limit apart.
             limit=ctx.args.limit if ctx.args.limit is not None else review.DEFAULT_PAGE,
             after=ctx.args.after,
         )
@@ -263,14 +229,10 @@ def list_items(ctx: "Context") -> Envelope:
 def _list_grouped(ctx: "Context", cfg: config.Config, group_by: str) -> Envelope:
     """``review list --group-by``: the same ``review_set/1``, one row per group.
 
-    THE SURFACE DOES NOT CHANGE. ``items`` is an array of rows in every
-    version of the schema, and a grouping row is a row; a fourth field would
-    be a schema bump for every consumer of every review set.
-
-    A QUEUE IS REQUIRED, and ``--after`` and ``--limit`` are refused, because
-    a grouping is a count over a whole selection and neither a page of one nor
-    a mixture of queues whose groups mean different things. A page flag
-    silently ignored would read as a count of the page.
+    A grouping row is a row, so the surface does not change. A queue is
+    required and ``--after`` and ``--limit`` are refused, because a grouping
+    counts a whole selection of one queue and a silently ignored page flag
+    would read as a count of the page.
     """
     if not ctx.args.queue or ctx.args.after is not None or ctx.args.limit is not None:
         raise refuse(
@@ -330,9 +292,8 @@ def build_resolve(parser: argparse.ArgumentParser, entry: registry.Entry) -> Non
     parser.add_argument(
         "--verdict",
         required=True,
-        # A PERSON'S vocabulary and not the enum's. The third verdict records
-        # that a later resolution owned the row, and a person typing it would
-        # record something that did not happen.
+        # A person's vocabulary, not the enum's: the third verdict records that
+        # a later resolution owned the row.
         choices=tuple(str(member) for member in review.PERSON_VERDICTS),
         help="settle in favour of a candidate, or against all of them",
     )
@@ -364,10 +325,8 @@ def resolve(ctx: "Context") -> Envelope:
             "predicate selecting a subset"
         )
     if ctx.args.option and ctx.args.where:
-        # Refused rather than ignored. Each item offers its own candidates, so
-        # one candidate identifier cannot mean the same thing across a subset,
-        # and accepting the argument and dropping it is how a person believes a
-        # choice was recorded that never was.
+        # Refused rather than ignored: a candidate belongs to one item, and
+        # dropping it would fake a recorded choice.
         raise _refuse_selection(
             "a candidate belongs to one item, so a batch resolution cannot name "
             "one; resolve the subset without a candidate, or name items one at a time",
@@ -430,9 +389,7 @@ def build_export(parser: argparse.ArgumentParser, entry: registry.Entry) -> None
 def export(ctx: "Context") -> Envelope:
     target = Path(ctx.args.path)
     if target.exists():
-        # Refusing rather than overwriting keeps this verb out of the destructive
-        # class entirely. An export that could silently replace a file the user
-        # named would be a file write with no session gate behind it.
+        # Never overwrite, which keeps this verb out of the destructive class.
         raise CratekitError(
             Cause(
                 reason="review-file-unusable",
@@ -482,13 +439,9 @@ def build_import(parser: argparse.ArgumentParser, entry: registry.Entry) -> None
     parser.set_defaults(_handler=import_items)
 
 
-#: What each conflict reason means to the person who ran the verb. One sentence
-#: each, because the remedies genuinely differ: re-export from the build that
-#: wrote the file, repair the file, or settle a disagreement by hand.
-#:
-#: Every reason the core can report has an entry, and ``tests/test_review_queue``
-#: derives that set rather than listing it, so a fifth reason cannot arrive
-#: without a sentence.
+#: What each conflict reason means to the person who ran the verb, one sentence
+#: each since the remedies differ. ``tests/test_review_queue`` derives the set of
+#: reasons, so a new one cannot arrive without a sentence.
 CONFLICT_SENTENCES: Mapping[str, str] = {
     review.CONFLICT_LOCAL_VERDICT_STANDS: (
         "is already settled here and the export disagrees; the local verdict "
@@ -513,22 +466,14 @@ CONFLICT_SENTENCES: Mapping[str, str] = {
 def import_items(ctx: "Context") -> Envelope:
     """Take an export back in, and report what landed rather than what was tried.
 
-    WHAT THIS USED TO DO. It concatenated the inserted, the resolved and the
-    CONFLICTED identifiers and looked each one up locally. A conflict need not
-    exist locally at all: an item carrying a verdict this build cannot read is
-    reported before anything is inserted. So a document with one applicable
-    verdict and one item from a newer build applied the good verdict and then
-    exited 30 with "no review item has that identifier" and a remediation telling
-    the user to list the queue and take an identifier from it. Verdicts written,
-    failure reported, nothing said about what landed, and re-running could never
-    succeed because the good half was already in.
+    A conflict need not exist locally, so only applied identifiers are looked
+    up; the good half lands and every conflict is a warning.
     """
     document = _read_document(ctx.args.path)
     cfg = config.load()
     with review.open_store(cfg) as store:
         result = review.import_document(store, document, actor=ctx.args.actor)
-        # What CHANGED, each identifier once. An item that was inserted and whose
-        # verdict then could not be applied is in both lists, and it is one item.
+        # What changed, each identifier once, though it may be in both lists.
         data = _payload(
             store,
             queue=None,

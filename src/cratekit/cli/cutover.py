@@ -1,51 +1,15 @@
 """``crate tree cutover`` and ``crate tree revert``: the verbs over the registry (R-235).
 
-WHAT WAS MISSING. :mod:`cratekit.core.tree_registry` has held the precheck, the
-record and the revert since U20, and nothing under ``src`` called any of them.
-Every database membership writer asserts ``anchored_root`` first, which refuses
-a tree still on the bridge, and a tree with no record IS on the bridge. So an
-approved adoption refused on every real library and named a remedy no shipped
-verb could perform. These two verbs are that remedy.
-
-THE ROOT IS FOUND, NEVER CREATED, and that is the whole difference between a
-cutover and a duplication. The tree's root folder is the one the XML bridge
-wrote, under the display name the taxonomy declares, and the tracks already in
-it stay in it because the identifier recorded here is that folder's. A verb that
-created the folder when it found none would anchor the registry to an empty
-twin beside the real tree, which is the silent parallel tree ``anchored_root``
-exists to refuse, arriving through the verb meant to prevent it. None refuses.
-More than one refuses too, because choosing between two is a guess every later
-write would be parented to.
-
-THE DATABASE IS READ THROUGH A DISPOSABLE COPY. The live file is protected by
-standing constraint and this verb wants one fact off it, which rows are folders
-of one name directly under the playlist root. ``rb_writer.read_only_copy``
-copies, opens the copy, and refuses while rekordbox or its agent is running.
-
-PLAN, THEN APPROVE, AND AN UNREADY LIBRARY IS NEVER ASKED. Both gates are
-``explicit``, so R34 makes them answerable only by a separate recorded act. The
-plan names the tree, the root row it would anchor, the derivation source, the
-registry file it would write, the database it read, and each precheck result. A
-library that is not ready refuses BEFORE the question, with the refusal the
-precheck itself gives: asking a person to approve a cutover that cannot be
-performed spends the one deliberate act they have on nothing. The approving
-invocation rebuilds the whole plan, so a library that moved between the offer
-and the answer moves the digest and the decision is refused as stale, and
-``tree_registry.flip`` asserts the precheck again at the moment it records.
-
-APPROVING A CUTOVER IS THE ONE WAY DOOR. A revert is a complete undo only until
-the tree takes its first native write. After that the database holds rows the
-last export never held, and the revert refuses.
-
-THE PLAN NAMES THE REGISTRY FILE AND THE DATABASE, both, because they can be
-two different libraries' and that was paid for at sitting 13. The registry is
-LIBRARY state, beside the library root, and a rehearsal that redirects the
-configuration and the database and leaves the library root alone records a
-cutover in the real library's registry, anchored to a root identifier read off
-the copy. Nothing here can tell a rehearsal from the real thing, so the two
-paths are put in front of the person who can.
-
-Layer: cli, beside ``converge`` and ``rebuild``.
+A tree with no registry record is on the XML bridge and every database
+membership writer refuses it, so these verbs record and undo a cutover through
+:mod:`cratekit.core.tree_registry`. The root is found, never created: a created
+folder would anchor the tree to an empty twin beside the real one, so none or
+several refuse. The database is read through a disposable copy. Both gates are
+explicit (R34), an unready library refuses before the question, and the
+approving run rebuilds the plan so a moved library is refused as stale. A
+cutover is the one way door: a revert undoes it only until the first native
+write. The plan names both the registry file and the database, since a
+rehearsal can point them at two different libraries.
 """
 
 from __future__ import annotations
@@ -105,9 +69,8 @@ def _plan_gate(entry: registry.Entry) -> registry.GateSpec:
 def _digested(kind: str, item: dict[str, Any], totals: dict[str, Any]) -> dict[str, Any]:
     """One item as a ``plan/1`` payload, digested over what a person is shown.
 
-    THE TOTALS ARE NOT IN THE DIGEST. They are where the report says what was
-    recorded and on which day, and a digest that moved when the report was
-    written would differ from the one the decision was recorded against.
+    The totals are not in the digest, since the report writes them after the
+    decision was recorded against it.
     """
     return {
         "digest": digest_of({"kind": kind, "items": [item]}),
@@ -144,14 +107,10 @@ class Root:
 def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
     """Declare the cutover's arguments.
 
-    THERE IS NO ``--root``, NO ``--source`` AND NO ``--approve``. The root is
-    found in the database, the source comes off the taxonomy, and the approval
-    is the recorded answer to the explicit gate (R34). A flag for any of them
-    would be a second opinion about a value this verb exists to establish.
-
-    ``--export`` IS REQUIRED AND HAS NO DEFAULT, which is the precheck's own
-    rule carried to the surface: a hunt for the newest XML would pick the
-    pending intake file the same precheck refuses.
+    No ``--root``, ``--source`` or ``--approve``: the root is found, the source
+    read off the taxonomy, and the approval is the explicit gate's answer (R34).
+    ``--export`` is required with no default, since a hunt for the newest XML
+    would pick the pending intake file the precheck refuses.
     """
     del entry
     parser.add_argument(
@@ -175,25 +134,12 @@ def derivation_source(
 ) -> tree_registry.DerivationSource:
     """Where a rebuild of ``tree_id`` would come from, read off the declaration.
 
-    OFF THE TAXONOMY AND NEVER OFF A FLAG. ``record_cutover`` takes the source
-    with no default so that nobody answers "yes, this can be rebuilt" about a
-    tree nobody checked, and a flag a person types is that answer typed. The
-    routing tree is the one tree the declared taxonomy reproduces from what is
-    on disk. The catalogue tree is declared and is NOT reproducible, so it is
-    named with its real source and ``assert_rebuildable`` refuses it. The intake
-    tree cuts over on the same answer as the routing tree since R-746: its
-    batches are one folder of playlists the taxonomy declares, and once it is
-    native the landing adds rows to the collection through the database and
-    no splice is owed the bridge.
-
-    WHICH TREES ANSWER TAXONOMY IS ``tree_registry.cutover_trees``'S, never a
-    list here, because doctor judges a native record by the same set and a
-    second spelling is how the two disagreed (R-787).
-
-    A TREE THE TAXONOMY DOES NOT DECLARE IS REFUSED rather than called curated.
-    An identifier nobody declared is far more often a misspelling than a
-    playlist a person keeps by hand, and both end in a refusal, so the refusal
-    names the identifiers that would have been accepted.
+    Off the taxonomy, never a flag, so nobody types "yes, this can be rebuilt"
+    about a tree nobody checked. Trees that answer taxonomy are
+    ``tree_registry.cutover_trees``'s, the set doctor also judges by (R-787);
+    the intake tree is among them (R-746). The catalogue tree is named with its
+    real source and refused by ``assert_rebuildable``. An undeclared tree is
+    refused, naming the accepted identifiers, since it is most often a typo.
     """
     accepted = tree_registry.cutover_trees(declared)
     if tree_id in accepted:
@@ -226,13 +172,9 @@ def _display(declared: taxonomy.Taxonomy, tree_id: str) -> str:
 def find_roots(db: Any, display: str) -> tuple[Root, ...]:
     """Every folder named ``display`` sitting directly under the playlist root.
 
-    THROUGH ``rb_writer.top_level_folders``, which owns what a top level folder
-    is, so the root this verb anchors to is found by the rule the writers'
-    lookups are written beside and not by a second spelling of it here.
-
-    THE SOFT DELETE MARKER IS NOT READ, which is that module's rule. The cost, a
-    marked namesake a person cannot see in rekordbox refusing the cutover, is
-    recorded in the ledger with its reachability unmeasured.
+    Through ``rb_writer.top_level_folders``, which owns what a top level folder
+    is. The soft delete marker is not read, that module's rule, with its cost
+    recorded in the ledger.
     """
     found = [
         Root(root_id=str(row.ID), name=str(row.Name))
@@ -302,10 +244,8 @@ def _precheck_rows(results: tuple[tree_registry.PrecheckResult, ...]) -> list[di
 def _refuse_unready(results: tuple[tree_registry.PrecheckResult, ...]) -> None:
     """Raise the first precheck refusal, carrying every result beside it.
 
-    THE REFUSAL IS THE PRECHECK'S OWN, slug, sentence and steps, which is what
-    ``tree_registry.flip`` would have raised. What is added is the rest of the
-    table, so a person with two things to fix is told about both on one run
-    rather than one per attempt.
+    The refusal is the precheck's own, with every result added so a person with
+    two things to fix hears of both on one run.
     """
     for result in results:
         if result.refusal is None:
@@ -324,15 +264,9 @@ def _refuse_unready(results: tuple[tree_registry.PrecheckResult, ...]) -> None:
 def cutover(ctx: "Context") -> Envelope:
     """Plan one tree's cutover, ask, and record it through ``tree_registry.flip``.
 
-    THE ORDER IS CHEAPEST REFUSAL FIRST. What the taxonomy says about the tree
-    needs no disk beyond the template. The registry and the precheck read this
-    product's own state. The root needs a copy of the database, which is the
-    expensive read and the one that refuses while rekordbox is open, so it is
-    asked last and only of a library that is otherwise ready.
-
-    A TREE ALREADY DATABASE NATIVE RECORDS NOTHING AND ASKS NOTHING. Recording
-    over it would move its cutover date and could move its anchor, on a tree
-    that may already have taken writes under the first one.
+    Cheapest refusal first: the database copy is read last, only for a library
+    otherwise ready. A tree already database native records and asks nothing,
+    since recording over it could move its date and anchor after writes.
     """
     cfg = config.load()
     declared = active_taxonomy.load(cfg)
@@ -343,8 +277,7 @@ def cutover(ctx: "Context") -> Envelope:
     try:
         tree_registry.assert_rebuildable(tree_id, source)
     except tree_registry.TreeModeRefused as exc:
-        # The registry's own refusal, carrying the set a cutover does accept,
-        # so a person told "not this tree" is also told which trees.
+        # The registry's own refusal, with the set a cutover does accept.
         cause = exc.cause
         raise rebuilt(
             exc,
@@ -380,10 +313,8 @@ def cutover(ctx: "Context") -> Envelope:
     display = _display(declared, tree_id)
     root = _one_root(cfg, tree_id, display)
 
-    # FLAT, so the screen reads as fields and not as the serializer's output.
-    # The gate prints an item as one line of ``k=v`` pairs and a fact as a line
-    # of its own, so everything a person has to read before the one way door is
-    # a fact below, and the item is the same values as the digest covers them.
+    # Flat, so the gate shows each value as a field, the same values the digest
+    # covers.
     item = {
         "tree": tree_id,
         "display": display,
@@ -439,14 +370,10 @@ def build_revert(parser: argparse.ArgumentParser, entry: registry.Entry) -> None
 def revert(ctx: "Context") -> Envelope:
     """Plan one tree's revert, ask, and perform it through ``revert_cutover``.
 
-    THE TREE IS NOT CHECKED AGAINST THE TAXONOMY. A record for a tree the
-    declaration has since dropped is exactly the record somebody needs to be
-    able to remove, and the registry is what says whether there is one.
-
-    THE NATIVE WRITE GUARD IS ASKED TWICE AND OWNED ONCE. It is asked here so a
-    tree that cannot revert refuses before the question, and
-    ``tree_registry.revert_cutover`` asserts it again under the registry lock,
-    which is the one that holds.
+    The tree is not checked against the taxonomy, since a dropped tree's record
+    is exactly one somebody needs to remove. The native write guard is asked
+    here to refuse before the question, and ``revert_cutover`` asserts it again
+    under the registry lock, which is the check that holds.
     """
     cfg = config.load()
     tree_id = ctx.args.tree

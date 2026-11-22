@@ -1,10 +1,8 @@
-"""U154: ``library.processed_dir`` is a setup answer under the four source rule.
+"""``library.processed_dir`` is a setup answer under the four source rule (U154).
 
-A flag is recorded, a recorded answer survives a re-run that does not name it,
-an absent answer in a pipe falls to the default rather than prompting, and the
-key composes with the music folder wherever the processed tree is read.
-
-D1 applies. Nothing here names a real volume, a real person or a real track.
+A flag is recorded, a recorded answer survives a re-run, an absent answer in a
+pipe takes the default rather than prompting, and the key composes with the
+music folder wherever the processed tree is read. D1 applies.
 """
 
 from __future__ import annotations
@@ -41,11 +39,10 @@ def test_a_recorded_answer_survives_a_rerun_that_does_not_name_it(configured):
 
 
 def test_an_absent_answer_falls_to_the_default_in_a_pipe(configured):
-    """The wizard runs with standard input trapped, so a question it cannot ask
-    takes the derived default, which is the tree the author kept by hand."""
-    # THE RAW FILE, because every writer this product has puts the dataclass
-    # back whole, defaults included, so the one way to a file without the key
-    # is to take the line out of the text the way a hand edit would.
+    """With standard input trapped, a question the wizard cannot ask takes the
+    derived default."""
+    # Edit the raw text, since every writer puts the dataclass back whole,
+    # defaults included.
     path = config.config_path()
     kept = [
         line
@@ -75,9 +72,8 @@ def test_the_processed_root_composes_from_the_two_keys(configured):
 
 
 def test_a_clean_machine_records_the_default_when_no_flag_names_one(tmp_path, monkeypatch):
-    """The four source rule's last two sources, on the one run where no answer is
-    recorded yet: no flag, nothing on disk, standard input trapped, so the
-    derived default is what reaches the file."""
+    """On a clean machine with no flag and standard input trapped, the derived
+    default is what reaches the file."""
     from cratekit.cli import doctor
     from tests.test_doctor import VOLUME, probes
 
