@@ -253,9 +253,10 @@ def _month_item(shown: dict, month: str = "2026-11") -> None:
 
 
 def test_the_plan_lists_exactly_the_landed_hearts_and_the_approval_places_them(given):
-    three = ["Find My Way", "Fractals", "Same Girl"]
-    dates = {**{title: SEP for title in three}, "Elsewhere": NOV}
-    cfg, folder_id, source_id, fake = given(dict.fromkeys(three), dates, hearted={"land": True})
+    landed = ("Same Girl", "Fractals", "Find My Way")
+    three = sorted(landed)
+    dates = {**{title: SEP for title in landed}, "Elsewhere": NOV}
+    cfg, folder_id, source_id, fake = given(dict.fromkeys(landed), dates, hearted={"land": True})
     assert _favorites(cfg, folder_id) == {SOURCE: []}, "nothing placed them as they landed"
     acted, shown = _approved()
     assert sorted(_titles(shown)) == [f"Probe - {title}" for title in three]
