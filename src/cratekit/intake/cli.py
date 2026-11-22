@@ -32,6 +32,7 @@ from cratekit.intake.cli_identify import (
     _fetch_notes,
     _load,
     _local_or_none,
+    _note,
     _parts_notes,
     _recording,
     _set_tracklist,
@@ -88,14 +89,7 @@ def frozen(row: Wanted) -> dict[str, Any]:
     option through the same freeze, so a field added here reaches both.
     """
     return {
-        "artist": row.artist,
-        "title": row.title,
-        "version": row.version,
-        "key": row.key,
-        "isrc": row.isrc,
-        "origin": row.origin,
-        "ref": row.ref,
-        "spelled": row.spelled,
+        **{name: getattr(row, name) for name in _FROZEN},
         # The other reading travels, or the worker would resolve a narrower
         # question than the reader built, on exactly the ambiguous titles.
         "other_reading": list(row.other_reading) if row.other_reading else None,
@@ -103,6 +97,10 @@ def frozen(row: Wanted) -> dict[str, Any]:
         # could withhold the companion of a deletion that credited somebody else.
         "several_artists": row.several_artists,
     }
+
+
+#: The fields a freeze copies as they are, in the payload's key order.
+_FROZEN = ("artist", "title", "version", "key", "isrc", "origin", "ref", "spelled")
 
 
 def _refuse_unidentified(missing: list[int]) -> None:
@@ -148,14 +146,9 @@ def thawed(said: Mapping[str, Any]) -> Wanted:
         else None
     )
     return Wanted(
-        artist=str(said.get("artist") or ""),
-        title=str(said.get("title") or ""),
-        version=str(said.get("version") or ""),
-        key=str(said["key"]) if said.get("key") else None,
-        isrc=str(said["isrc"]) if said.get("isrc") else None,
+        **{n: str(said.get(n) or "") for n in ("artist", "title", "version", "ref", "spelled")},
+        **{name: str(said[name]) if said.get(name) else None for name in ("key", "isrc")},
         origin=str(said.get("origin") or match.TEXT),
-        ref=str(said.get("ref") or ""),
-        spelled=str(said.get("spelled") or ""),
         other_reading=reading,
         # An older payload did not look, so its absence reads as "may have
         # billed several": one missed suppression rather than a withheld track.
@@ -178,9 +171,7 @@ def list_playlist(found: catalogue.Catalogue, reference: str) -> dict[str, dict[
     ``label-playlist-unreadable`` means one thing wherever a playlist could not
     be read. A playlist only: the hearts are :func:`list_favorites`.
     """
-    from cratekit.label import cli as label_cli  # noqa: PLC0415 - labels is toggleable
-
-    return frozen_rows(_read_rows(label_cli.playlist_tracks_or_refuse(found, reference), reference))
+    return list_playlist_declared(found, reference)[0]
 
 
 def list_playlist_declared(
@@ -286,16 +277,12 @@ def list_playlist_readable(
         try:
             read.append(match.read_row(row, origin=match.TIDAL, position=position))
         except match.UnreadableList:
-            if ref not in refused:
-                refused[ref] = set_aside(row)
+            refused.setdefault(ref, set_aside(row))
     _refuse_unidentified(nameless)
     tracks = frozen_rows(tuple(read))
     unread = {ref: one for ref, one in refused.items() if ref not in tracks}
     return Readable(
-        tracks=tracks,
-        short=short,
-        unread=unread,
-        order=tuple(order),
+        tracks, short, unread, tuple(order),
         dates=_added_dates(rows, tracks),
         window=window,
     )
@@ -314,10 +301,8 @@ def _added_dates(rows: Sequence[object], frozen: Mapping[str, Any]) -> dict[str,
     dates: dict[str, str] = {}
     for row in rows:
         key = _row_id(row)
-        if key in frozen and key not in dates:
-            moment = hearted_on(row)
-            if moment:
-                dates[key] = moment
+        if key in frozen and key not in dates and (moment := hearted_on(row)):
+            dates[key] = moment
     return dates
 
 
@@ -480,15 +465,12 @@ def set_argv(job) -> list[str]:
     every time. The flag goes before the verb path, since the root parser owns it.
     """
     payload = job.payload or {}
-    source = str(payload.get(SOURCE) or "")
-    gate_run = payload.get(jobs.GATE_RUN_KEY)
-    resume = ["--run", str(gate_run)] if gate_run else []
-    return [*resume, "intake", "set", source, "--job", job.job_id]
+    resume = ["--run", str(gate_run)] if (gate_run := payload.get(jobs.GATE_RUN_KEY)) else []
+    return [*resume, "intake", "set", str(payload.get(SOURCE) or ""), "--job", job.job_id]
 
 
 def playlist_argv(job) -> list[str]:
-    source = job.payload.get(SOURCE, "")
-    return ["intake", "playlist", source, "--job", job.job_id]
+    return ["intake", "playlist", job.payload.get(SOURCE, ""), "--job", job.job_id]
 
 
 # ---------------------------------------------------------------------------
@@ -608,32 +590,22 @@ def _set_playlist_name(
     from cratekit.export import set_cli
     from cratekit.intake import set_playlist
 
+    page = page if isinstance(page, Mapping) else {}
     try:
-        words = set_playlist.words_from_page(
-            page, dj=dj, set_name=set_name, set_date=set_date
-        )
+        words = set_playlist.words_from_page(page, dj=dj, set_name=set_name, set_date=set_date)
     except CratekitError as exc:
         if exc.cause.reason != set_playlist.UNNAMED:
             raise
-        page = page if isinstance(page, Mapping) else {}
-        asked = (
-            bool(page)
-            or from_url
-            or any(v is not None for v in (dj, set_name, set_date, posted))
-        )
-        if not asked:
+        if not (page or from_url or any(v is not None for v in (dj, set_name, set_date, posted))):
             return _PlaylistName()
         return _PlaylistName(
-            warning={
-                "code": ACCOUNT_UNNAMED,
-                "message": (
-                    f"{exc.cause.message}; the set is queued and no account "
-                    f"playlist was planned. Pass the missing flag(s) on a later "
-                    f"crate export set, or on crate intake inspiration"
-                ),
-            }
+            warning=_note(
+                ACCOUNT_UNNAMED,
+                f"{exc.cause.message}; the set is queued and no account "
+                f"playlist was planned. Pass the missing flag(s) on a later "
+                f"crate export set, or on crate intake inspiration",
+            )
         )
-    page = page if isinstance(page, Mapping) else {}
     day, fallback = set_playlist.naming_day(
         posted=posted,
         page_upload_date=str(page.get(fetch.PAGE_UPLOAD_DATE) or ""),
@@ -647,7 +619,7 @@ def _set_playlist_name(
 
 def _skipped(message: str) -> tuple[tuple[dict[str, str], ...], None]:
     """The account step soft skipped: its one warning, and no gate answer or plan."""
-    return ({"code": ACCOUNT_UNREACHABLE, "message": message},), None
+    return (_note(ACCOUNT_UNREACHABLE, message),), None
 
 
 def _ask_account_gate(ctx, *, name: str) -> tuple[tuple, str | None]:
@@ -710,7 +682,6 @@ def _apply_account_playlist(cfg, built, option: str | None):
     notes = ()
     if option != "apply" or not built.writes:
         return notes, built.payload
-
     data, more, _wrote = set_cli.apply_planned(cfg, built)
     return tuple(more), data
 
@@ -743,11 +714,10 @@ def intake_set(ctx) -> Envelope:
         source = str(ctx.args.source)
         local = _local_or_none(source)
         words = {k: getattr(ctx.args, k, None) for k in ("dj", "set_name", "set_date", "posted")}
-        posted = words["posted"]
         # Named from the flags alone only when the day is locked by --posted,
         # since otherwise the page's upload_date names it (U136).
         early = _set_playlist_name({}, **words)
-        locked = bool(early.name) and posted is not None
+        locked = bool(early.name) and words["posted"] is not None
         account_notes: tuple = ()
         option: str | None = None
         if locked:
@@ -755,7 +725,6 @@ def intake_set(ctx) -> Envelope:
         recognize.assert_recognition_ready()
         out = _tracklist_dir(cfg, ctx.args.out, local if local is not None else source.strip())
         job = None
-        built = None
         with _recording(cfg, source, local, ctx.progress) as held:
             playlist = (
                 early if locked else _set_playlist_name(held.page, **words, from_url=local is None)
@@ -821,9 +790,8 @@ def intake_set(ctx) -> Envelope:
             "unreached": result.unreached,
             "parts": result.parts,
             TRACKLIST: str(listed) if listed is not None else None,
+            **({"account_playlist": account_data} if account_data is not None else {}),
         }
-        if account_data is not None:
-            extra["account_playlist"] = account_data
         return ctx.envelope(
             data=jobs.reported(store, job, extra=extra),
             warnings=(note, *warnings, *account_notes, *apply_notes),
@@ -861,14 +829,12 @@ def withheld_warning(short: catalogue.HeartsShortfall) -> dict[str, str]:
 
 def playlist_withheld_warning(short: catalogue.ListingShortfall, reference: str) -> dict[str, str]:
     """The words a person reads for a short playlist listing (R-515), one spelling of them."""
-    return {
-        "code": PLAYLIST_WITHHELD,
-        "message": (
-            f"the playlist {reference!r} listed short: {short.summary()}. The "
-            f"provider counts tracks it will not serve and does not say which, so "
-            f"the {short.withheld} withheld are in no report this job makes"
-        ),
-    }
+    return _note(
+        PLAYLIST_WITHHELD,
+        f"the playlist {reference!r} listed short: {short.summary()}. The "
+        f"provider counts tracks it will not serve and does not say which, so "
+        f"the {short.withheld} withheld are in no report this job makes",
+    )
 
 
 def queue_playlist(
@@ -890,10 +856,8 @@ def queue_playlist(
     only a sweep has (U113); without it the job lands in its batch's playlist.
     """
     payload: dict[str, Any] = {SOURCE: reference, TRACKS: dict(tracks)}
-    if run_id is not None:
-        payload["run_id"] = run_id
-    if source_id is not None:
-        payload["source_id"] = source_id
+    given = (("run_id", run_id), ("source_id", source_id))
+    payload.update((key, value) for key, value in given if value is not None)
     if name:
         payload[PLAYLIST_NAME] = name
     return jobs.enqueue(
@@ -925,10 +889,7 @@ def intake_playlist(ctx) -> Envelope:
             warned = withheld_warning
         else:
             tracks, short = list_playlist_declared(found, reference)
-
-            def warned(short):
-                return playlist_withheld_warning(short, reference)
-
+            warned = lambda short: playlist_withheld_warning(short, reference)
         # A short listing is said whatever else the run does (R-504, R-515).
         extra = {"shortfall": short.block()} if short is not None else {}
         warnings = (warned(short),) if short is not None else ()
@@ -954,21 +915,11 @@ def intake_playlist(ctx) -> Envelope:
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True, slots=True)
-class _Resolved:
-    """One drive's view of the library and the tombstones, built once."""
-
-    index: match.LibraryIndex
-    suppresses: Any
-    suppression_id: Any
-
-
-#: ONE INDEX PER DRIVE, not one per item, keyed by the job and its attempt so a
-#: resume walks again and sees what the previous drive's offers changed. A
-#: module global older than the job engine's per drive seam (U274), so
-#: ``reset_cache`` is what a suite calls between libraries. Since U249 a walk
-#: opens only a file the index reader cannot answer from memory.
-_RESOLVED: dict[tuple[str, int], _Resolved] = {}
+#: ONE INDEX PER DRIVE, not one per item: the library view and the tombstones,
+#: keyed by the job and its attempt so a resume walks again and sees what the
+#: previous drive's offers changed. ``reset_cache`` is what a suite calls
+#: between libraries.
+_RESOLVED: dict[tuple[str, int], tuple[match.LibraryIndex, Any, Any]] = {}
 
 
 def reset_cache() -> None:
@@ -978,16 +929,12 @@ def reset_cache() -> None:
     match.reset_cache()
 
 
-def _resolved_for(job: jobs.Job, cfg: config.Config) -> _Resolved:
+def _resolved_for(job: jobs.Job, cfg: config.Config) -> tuple[match.LibraryIndex, Any, Any]:
     key = (job.job_id, job.attempts)
-    held = _RESOLVED.get(key)
-    if held is not None:
-        return held
-    index, suppresses, identify_one = match_cli.library_view(cfg)
-    built = _Resolved(index=index, suppresses=suppresses, suppression_id=identify_one)
-    _RESOLVED.clear()
-    _RESOLVED[key] = built
-    return built
+    if key not in _RESOLVED:
+        _RESOLVED.clear()
+        _RESOLVED[key] = match_cli.library_view(cfg)
+    return _RESOLVED[key]
 
 
 def resolve_track(wanted: Wanted, job: jobs.Job, cfg: config.Config) -> match.TrackMatch:
@@ -998,10 +945,8 @@ def resolve_track(wanted: Wanted, job: jobs.Job, cfg: config.Config) -> match.Tr
     offer is idempotent. The review store opens only for a row that touches
     it, a question or a row a rule owns whose earlier question is retired.
     """
-    view = _resolved_for(job, cfg)
-    found = match.resolve_one(
-        wanted, view.index, suppresses=view.suppresses, suppression_id=view.suppression_id
-    )
+    index, suppresses, suppression_id = _resolved_for(job, cfg)
+    found = match.resolve_one(wanted, index, suppresses=suppresses, suppression_id=suppression_id)
     if not match_cli.touches_the_queue(found):
         return found
     with review.open_store(cfg) as items:
@@ -1009,8 +954,8 @@ def resolve_track(wanted: Wanted, job: jobs.Job, cfg: config.Config) -> match.Tr
             items,
             match.MatchResult(matches=(found,)),
             handler_key=job.handler_key,
-            suppresses=view.suppresses,
-            suppression_id=view.suppression_id,
+            suppresses=suppresses,
+            suppression_id=suppression_id,
         )
     return result.matches[0]
 

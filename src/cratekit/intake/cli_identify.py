@@ -54,11 +54,7 @@ def _load() -> config.Config:
 
 def _unusable(message: str, *steps: str, **detail: Any) -> CratekitError:
     return refuse(
-        "intake-list-unusable",
-        message,
-        steps=steps,
-        origin=("intake.cli",),
-        detail=detail,
+        "intake-list-unusable", message, steps=steps, origin=("intake.cli",), detail=detail
     )
 
 
@@ -66,31 +62,21 @@ def _note(code: str, message: str) -> dict[str, str]:
     return {"code": code, "message": message}
 
 
-def _recording_or_refuse(source: str) -> Path:
-    """The recording as a file on this machine, absolute, or why not.
-
-    Expanded before it is checked, since an unexpanded tilde is the input the
-    expansion exists for. Absolute, because the child a resume spawns inherits
-    the resuming process's directory.
-    """
-    path = Path(source).expanduser()
-    if not path.is_file():
-        raise _unusable(
-            f"{source} is not a file on this machine",
-            source=source,
-        )
-    return path.absolute()
-
-
 def _local_or_none(source: str) -> Path | None:
-    """The recording when ``source`` is a path, and None when it is a mix URL.
+    """The recording when ``source`` is a path, absolute, and None when it is a mix URL.
 
     A path naming nothing is refused here, before the gate; an address costs a
-    download, so it waits until every free refusal has had its turn.
+    download, so it waits until every free refusal has had its turn. Expanded
+    before it is checked, since an unexpanded tilde is the input the expansion
+    exists for; absolute, because the child a resume spawns inherits the
+    resuming process's directory.
     """
     if normalize.is_url(source):
         return None
-    return _recording_or_refuse(source)
+    path = Path(source).expanduser()
+    if not path.is_file():
+        raise _unusable(f"{source} is not a file on this machine", source=source)
+    return path.absolute()
 
 
 @dataclass(slots=True)
@@ -122,14 +108,12 @@ def _fetch_notes(held: SetRecording) -> tuple[dict[str, str], ...]:
     """A scratch folder that outlived its pass, said where a person reads it."""
     if held.leftover is None:
         return ()
-    return (
-        _note(
-            MIX_SCRATCH_LEFT,
-            f"the fetched mix could not be removed from {held.leftover}; it is "
-            f"outside the library and is cleared the next time this address is "
-            f"fetched, or delete the folder by hand",
-        ),
-    )
+    return (_note(
+        MIX_SCRATCH_LEFT,
+        f"the fetched mix could not be removed from {held.leftover}; it is "
+        f"outside the library and is cleared the next time this address is "
+        f"fetched, or delete the folder by hand",
+    ),)
 
 
 @contextmanager
@@ -261,19 +245,13 @@ def _coverage_or_refuse(
             remedy=Remedy.RETRY_LATER,
             retryable=True,
             origin=("intake.cli",),
-            detail={
-                "source": held.ref,
-                "calls": result.calls,
-                "unreached": result.unreached,
-            },
+            detail={"source": held.ref, "calls": result.calls, "unreached": result.unreached},
         )
-    return (
-        _note(
-            "recognition-incomplete",
-            f"{result.unreached} of {result.chunks} chunk(s) got no answer, so "
-            f"this tracklist has gaps; identify the recording again to fill them",
-        ),
-    )
+    return (_note(
+        "recognition-incomplete",
+        f"{result.unreached} of {result.chunks} chunk(s) got no answer, so "
+        f"this tracklist has gaps; identify the recording again to fill them",
+    ),)
 
 
 def _parts_notes(
@@ -286,18 +264,15 @@ def _parts_notes(
     if result.parts <= 1:
         return ()
     still = (
-        "its tracks queue as one job and land as one batch"
-        if queued
+        "its tracks queue as one job and land as one batch" if queued
         else "its tracklist is one list"
     )
-    return (
-        _note(
-            IN_PARTS,
-            f"this recording is longer than one recognition run's bound, so it "
-            f"was identified in {result.parts} even parts, {result.chunks} "
-            f"chunk(s) in all; it is still one set, and {still}",
-        ),
-    )
+    return (_note(
+        IN_PARTS,
+        f"this recording is longer than one recognition run's bound, so it "
+        f"was identified in {result.parts} even parts, {result.chunks} "
+        f"chunk(s) in all; it is still one set, and {still}",
+    ),)
 
 
 def _cache_notes(result: pipeline.IdentifyResult) -> tuple[dict[str, str], ...]:
@@ -309,23 +284,19 @@ def _cache_notes(result: pipeline.IdentifyResult) -> tuple[dict[str, str], ...]:
     """
     notes: list[dict[str, str]] = []
     if result.cached:
-        notes.append(
-            _note(
-                CACHE_SERVED,
-                f"{result.cached} of {result.chunks} chunk(s) were answered from "
-                f"what the service said about this recording before and cost "
-                f"nothing; pass --refresh to ask it again, which spends",
-            )
-        )
+        notes.append(_note(
+            CACHE_SERVED,
+            f"{result.cached} of {result.chunks} chunk(s) were answered from "
+            f"what the service said about this recording before and cost "
+            f"nothing; pass --refresh to ask it again, which spends",
+        ))
     if result.cache_unwritten:
-        notes.append(
-            _note(
-                CACHE_UNWRITTEN,
-                f"the {result.calls} recognition answer(s) this pass paid for "
-                f"could not be kept ({result.cache_unwritten}), so another pass "
-                f"over this recording pays for them again",
-            )
-        )
+        notes.append(_note(
+            CACHE_UNWRITTEN,
+            f"the {result.calls} recognition answer(s) this pass paid for "
+            f"could not be kept ({result.cache_unwritten}), so another pass "
+            f"over this recording pays for them again",
+        ))
     return tuple(notes)
 
 
@@ -335,8 +306,7 @@ def _library_or_refuse(cfg: config.Config, source: Path | str) -> None:
     An absent library is not an empty one: every track would resolve missing
     with a clean exit. Asked first because the answer is free now.
     """
-    music = Path(cfg.library.root) / cfg.library.music_dir
-    if music.is_dir():
+    if (music := Path(cfg.library.root) / cfg.library.music_dir).is_dir():
         return
     raise refuse(
         "library-volume-unmounted",
@@ -437,14 +407,12 @@ def _set_tracklist(
         path = _write_tracklist(out, held, result)
     except OSError as exc:
         failed = _tracklist_path(out, held, result)
-        return None, {
-            "code": TRACKLIST_UNWRITTEN,
-            "message": (
-                f"the tracklist could not be written to {failed} ({type(exc).__name__}: "
-                f"{exc.strerror or exc}); the job is queued, and its tracks are listed "
-                f"by: crate job show {job_id}"
-            ),
-        }
+        return None, _note(
+            TRACKLIST_UNWRITTEN,
+            f"the tracklist could not be written to {failed} ({type(exc).__name__}: "
+            f"{exc.strerror or exc}); the job is queued, and its tracks are listed "
+            f"by: crate job show {job_id}",
+        )
     return path, _written_note(path, result)
 
 
@@ -486,9 +454,7 @@ def intake_identify(ctx) -> Envelope:
             written = _tracklist_written(out, held, result)
     warnings += _fetch_notes(held)
     if written is None:
-        return ctx.envelope(
-            data=match.MatchResult(matches=()).payload(), warnings=warnings
-        )
+        return ctx.envelope(data=match.MatchResult(matches=()).payload(), warnings=warnings)
     resolved = match_cli.resolve_list(
         cfg, result.rows, handler_key=ctx.entry.handler_key, run_id=ctx.run.run_id
     )
