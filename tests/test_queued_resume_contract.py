@@ -1,15 +1,9 @@
 """The contract a queued verb owes its own resume, derived rather than listed.
 
-A verb with an ``explicit`` gate that queues a job is re-invoked by
-:mod:`cratekit.core.jobs` as a SUBPROCESS, and ``cli.run`` mints a NEW run when
-``--run`` is absent, so a resume naming only the job meets the gate with nothing
-recorded and exits DECISION_REQUIRED on every respawn: queued work nothing can
-advance. ``export.playlist`` and ``sync.favorites`` shipped that way (2026-08-23).
-
-DERIVED FROM THE REGISTRY, since the defect is a combination any future verb can
-arrive at (``long_running``, an ``argv_builder``, a non exempt ``explicit``
-gate), and THE TOKEN IS MATCHED WHOLE, since ``--run-id``, the intake run,
-contains ``--run`` and restores no gate state.
+A queued verb behind an ``explicit`` gate is respawned as a subprocess, and with
+no ``--run`` it meets the gate with nothing recorded on every respawn (2026-08-23).
+Derived from the registry, since any future verb can arrive at the combination,
+and the token matched whole, since ``--run-id`` contains ``--run``.
 """
 
 from __future__ import annotations
@@ -59,9 +53,7 @@ def test_the_population_this_file_guards_is_not_empty():
 @pytest.mark.parametrize("entry", QUEUED_GATED, ids=lambda e: e.name)
 def test_a_queued_gated_verb_emits_the_run_its_decision_was_recorded_against(entry):
     """The resume argv carries the gate run as the root ``--run`` flag, a whole token."""
-    argv = _argv(
-        entry, {jobs.GATE_RUN_KEY: "gate-run-1", "playlist": "pl-1", "run_id": "intake-1"}
-    )
+    argv = _argv(entry, {jobs.GATE_RUN_KEY: "gate-run-1", "playlist": "pl-1", "run_id": "intake-1"})
     assert "--run" in argv, (
         f"{entry.name} queues behind an explicit gate and its resume argv {argv} does not "
         f"carry --run, so every respawn meets the gate with nothing recorded"
@@ -131,9 +123,7 @@ def catalogue(monkeypatch):
 @pytest.fixture
 def remote(monkeypatch):
     """A fake account matching every track of the shared export, so a job reaches done."""
-    account = outbound_fakes.FakeAccount(
-        catalog={str(index): f"tid-{index}" for index in range(1, 6)}
-    )
+    account = outbound_fakes.FakeAccount(catalog={str(index): f"tid-{index}" for index in range(1, 6)})
     monkeypatch.setattr(account_module, "resolve", outbound_fakes.account_factory(account))
     # The parsed export is memoized per process by absolute path, so cleared at both ends.
     outbound_source.forget_libraries()
@@ -178,7 +168,6 @@ def test_the_resume_the_job_driver_spawns_can_actually_proceed(
         job = jobs.get(store, job_id)
     argv = cli_jobs.argv_for(job)
     assert "--run" in argv, argv
-
     code, resumed = _drive(argv)
     assert code == int(ExitCode.OK), (
         f"the resume the driver spawns refuses: {resumed.get('cause')}, so nothing can "
@@ -187,9 +176,7 @@ def test_the_resume_the_job_driver_spawns_can_actually_proceed(
     assert resumed["data"]["job_id"] == job_id
 
 
-def test_the_favorites_intake_run_and_its_gate_run_are_separate_fields(
-    installed, no_rekordbox, remote
-):
+def test_the_favorites_intake_run_and_its_gate_run_are_separate_fields(installed, no_rekordbox, remote):
     """``--run-id`` is the intake run and ``--run`` the gate's. They default to one
     value, so a DIFFERENT intake run is what shows them as two fields."""
     exported = str(outbound_fakes.write_export(config.load().library.root / "outbound"))
@@ -204,12 +191,10 @@ def test_the_favorites_intake_run_and_its_gate_run_are_separate_fields(
     assert decided == int(ExitCode.OK)
     code, queued = _drive(["--run", gate_run, *verb])
     assert code == int(ExitCode.OK), queued
-
     with jobs.open_store() as store:
         job = jobs.get(store, queued["data"]["job_id"])
     assert job.payload["run_id"] == "an-intake-run"
     assert job.payload[jobs.GATE_RUN_KEY] == gate_run
-
     argv = cli_jobs.argv_for(job)
     assert argv[argv.index("--run") + 1] == gate_run
     assert argv[argv.index("--run-id") + 1] == "an-intake-run"

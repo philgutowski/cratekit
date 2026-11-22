@@ -1,9 +1,8 @@
 """U173: the rekordbox visit skill says what the code it drives says.
 
-The skill is text, so nothing breaks when it rots: every value it spells is
-read here from the module that owns it, and the skill goes through the shipped
-skills lint. The settings table is pinned against the brief and against the
-step ``crate sync land`` prints, the same standard written twice.
+Every value it spells is read from the module that owns it, it passes the
+shipped skills lint, and its settings table is pinned to the brief and to
+``crate sync land``.
 """
 
 from __future__ import annotations
@@ -197,7 +196,6 @@ def test_the_acknowledgment_it_mints_is_the_sessions_one_command(flat):
     """U184: minted as the session in one command, a flag the verb takes."""
     from cratekit.cli import build_parser
     from cratekit.core import session as core_session
-
     named = re.search(r"`crate session ack --as ([a-z]+)`", flat)
     assert named and named.group(1) == core_session.SESSION_ACTOR
     args = build_parser().parse_args(["session", "ack", "--as", named.group(1)])
