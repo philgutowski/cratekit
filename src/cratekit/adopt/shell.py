@@ -1,8 +1,8 @@
-"""What the two adoption verbs share: how a queued job is resumed and reported.
+"""How a queued adoption job is resumed and reported, under its older names.
 
-The names its package imports them by, each with one home since U298:
+``adopt.move_cli`` and ``organize`` import these; each has one home since U298,
 :func:`cratekit.core.jobs.advance`, :func:`cratekit.core.jobs.reported` and
-:func:`cratekit.cli.output.no_job`. Each verb's summary and gate stay its own.
+:func:`cratekit.cli.output.no_job`, which the scan and apply verbs call directly.
 
 Layer: modules.
 """
