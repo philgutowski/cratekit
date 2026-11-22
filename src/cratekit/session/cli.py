@@ -1,68 +1,19 @@
 """``crate session ack`` and ``crate session release``: minting and unsticking.
 
-WHAT THIS MODULE IS FOR. Every destructive thing this product does goes through
-:func:`cratekit.core.session.assert_gates`, which calls
-:func:`cratekit.core.session.assert_backup_acknowledged`, which refuses unless a
-recorded acknowledgment is inside its validity window. Until this file existed,
-:func:`cratekit.core.session.record_acknowledgment` had no caller anywhere in
-``src`` or ``scripts``, so nothing a person could type could produce that record
-and every write, every trash and every restore in the product refused. The suite
-was green the whole time because tests mint through the core API directly, which
-is the shape ``docs/solutions/workflow-issues/a-guard-safe-only-because-its-
-subject-is-unimplemented-expires-when-it-lands.md`` was written about: a guard
-measured in a world where its premise could not fail.
-:func:`cratekit.core.session.release_stale_lock` was in the same state, so a lock
-left behind by an installation that is gone could only be cleared by editing a
-file by hand.
+``session ack`` is the only caller of :func:`cratekit.core.session.record_acknowledgment`,
+which every destructive verb's gate consults. ``session release`` releases the
+LIBRARY LOCK, not the acknowledgment, when its holder is gone, and since R-598
+also ends the open session records such a dead holder left. The verbs, gates and
+prompts are the registry's declaration, implemented here unchanged.
 
-THE VERBS ARE THE REGISTRY'S, NOT THIS FILE'S. Both entries have been declared
-since U8 with their module path, their builder names, their handler keys, their
-emitted schema and one explicit gate each. This unit implements that declaration
-and changes none of it, including a gate prompt that asks about a holder the
-release path may already know is absent. A unit that lands a declared module and
-edits the declaration in the same commit cannot say afterwards which half its
-tests were measuring, so the wording stands and the observation is in the ledger
-instead.
-
-WHAT ``session.release`` IS. It releases the LIBRARY LOCK, not the
-acknowledgment. The registry's summary says "release a library lock whose holder
-is gone, explicitly", its gate prompt says "Release the lock held by another
-installation?", and ``release_stale_lock`` is the engine that answers exactly
-that. The issue this unit came from described the verb as releasing what ``ack``
-recorded; the registry is what the dispatcher reads and the issue is a
-description of it, so the registry wins. The consequence, that no verb withdraws
-an acknowledgment inside its window, is recorded rather than left in a closed
-issue.
-
-THE FACTS ARE READ BEFORE THE GATE IS ASKED, in both verbs, and the ordering is
-forced. A gate's prompt is fixed at declaration and cannot name a backup age or
-a lock holder, so what a person is deciding over has to ride on the refusal
-(:class:`cratekit.cli.gates.DecisionRequired`). Reading after the answer would
-put the facts in the report of a decision already made. It also means an ABSENT
-fact file must not refuse here, or the verb would be unreachable on exactly the
-library that has never been backed up, which is every library before its first
-backup. An UNREADABLE one does refuse, carrying the remedy the exception raised
-rather than a token chosen here, because ``backup_facts.Remedy`` declares three
-and one of them is a permission on a directory, which repairing a file does not
-touch.
-
-NEITHER VERB OPENS A SESSION AND NEITHER DECLARES A WRITE. ``session.ack``
-opening one would need the acknowledgment it exists to create, which is a verb
-that can never run on the library it is for. ``session.release`` acquires the
-lock file directly through the engine and gives it straight back.
-
-``session.release`` ALSO ENDS WHAT A DEAD HOLDER LEFT OPEN (R-598). A gated
-write that was hard killed ran no exit code, so its session record stays open,
-keeps its capture from retention and refuses every cutover. The record names the
-process that held the lock, and once that process is provably gone the record is
-abandoned here, through the ungated close. It is the same proof this verb
-already makes about the lock, so it is the same verb.
+The facts are read before the gate is asked, because a gate's prompt is fixed
+and what a person decides over rides on the refusal. An absent fact file must
+not refuse, or the verb would be unreachable before the first backup; an
+unreadable one refuses with the remedy its exception carries. Neither verb opens
+a session or declares a write.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
-command-line layer, and that one is foundation-ranked under KTD25 for the reason
-``session.restore_cli`` gives beside it: a modules-layer file reaching for
-``registry.Entry`` to annotate a builder is the layering violation KTD23
-refuses, while the output contract is ranked below every verb on purpose.
+command-line layer, which is foundation-ranked under KTD25.
 """
 
 from __future__ import annotations
@@ -77,13 +28,7 @@ from cratekit.core.exit_codes import Remedy
 
 
 def _gate(entry, name: str):
-    """The gate this verb asks, looked up BY NAME off the entry.
-
-    By name rather than by index, because ``gates[0]`` binds a handler to the
-    order the specs happen to be written in and asks the wrong question the day
-    somebody adds a second one. ``entry`` is unannotated for the layering reason
-    the module docstring gives.
-    """
+    """The gate this verb asks, looked up by name off the entry, never by index."""
     for spec in entry.gates:
         if spec.name == name:
             return spec
@@ -107,25 +52,12 @@ def _gate(entry, name: str):
 
 
 def build_ack(parser, entry) -> None:
-    """Declare the verb's arguments, which are none. Parameters unannotated.
+    """Declare the verb's one flag. Parameters unannotated.
 
-    THERE IS NO ``--yes``, NO ``--actor`` AND NO ``--hours``. R34's sharpest
-    clause is that a caller must not be able to name who acknowledged or to
-    assert the answer, because an agent driving the command line would then mint
-    the gate protecting the one operation that removes files and the audit trail
-    would record whatever name it chose. ``record_acknowledgment`` has no
-    parameter that could carry either, and this shell adds none. What it is
-    handed since U138 is who answered the gate, from the run record, which
-    selects the rule and is recorded beside the derived actor, never as it.
-
-    ``--as session`` (U184) IS NOT AN ACTOR EITHER, and it is the one flag. It
-    accepts exactly one value, so no caller can name a person with it, and what
-    it selects is the session's rule, which is NARROWER than the terminal rule
-    it replaces: the engine mints over young backup ages only, where a person at
-    a terminal mints over any. The author decided on 2026-10-09 that a session
-    may mint on those ages, and U138 put that check in the engine; the flag only
-    takes away the round trip through a gate the session would answer itself.
-    The recorded actor is still derived.
+    No ``--yes``, ``--actor`` or ``--hours``: a caller must never name who
+    acknowledged (R34). ``--as session`` (U184) takes one value only and selects
+    the session's rule, which is narrower than a person's: the engine mints only
+    over young backup ages. The recorded actor is still derived.
     """
     del entry
     parser.add_argument(
@@ -143,22 +75,10 @@ def build_ack(parser, entry) -> None:
 
 
 def _rendered_ages(cfg: config.Config, now: datetime) -> list[dict[str, Any]]:
-    """The published backup ages, read from the FACT FILE and rendered for here.
+    """The published backup ages, read from the fact file and rendered for here.
 
-    ONE SOURCE, PER SURFACE RENDERING, which is the rule
-    ``cratekit.backup.cli.published_ages`` states for itself: "The SOURCE is
-    shared with :func:`cratekit.core.session._shown_ages`, which is the thing
-    that must not be duplicated. The rendering is per surface." This is the
-    fourth consumer of :func:`cratekit.core.backup_facts.ages` and it answers
-    from the same file as the other three, so what this refusal shows and what
-    the acknowledgment records cannot disagree about where they came from.
-
-    AND THE REMEDY TRAVELS. ``read_facts`` distinguishes a permission from a
-    damaged file from a newer schema at three separate raise sites, and naming
-    one token over all three is the defect R-201 recorded on this exact path: a
-    person whose configuration directory this account cannot traverse being told
-    to repair or reset the record of when their music was last protected. This
-    is spelled the way ``cli.doctor`` and the backup shell spell it.
+    The remedy travels from the exception, since ``read_facts`` tells a
+    permission from a damaged file from a newer schema (R-201).
     """
     try:
         reported = backup_facts.ages(cfg, now=now)
@@ -186,26 +106,10 @@ def _rendered_ages(cfg: config.Config, now: datetime) -> list[dict[str, Any]]:
 
 
 def _on_record(cfg: config.Config, now: datetime) -> dict[str, Any] | None:
-    """The acknowledgment currently on record, or None when there is none.
+    """The acknowledgment on record, None when absent, or what made it unreadable.
 
-    FOUR STATES AND NOT TWO. Absent, live, expired and unreadable are different
-    facts with different next moves, and a person deciding whether to
-    acknowledge again is entitled to know which one they are in before they
-    answer rather than after. Expired is reported with the moment it lapsed
-    rather than as absent, for the reason ``read_acknowledgment`` gives about its
-    own file: reporting one condition as another sends somebody to redo
-    something already done.
-
-    AN UNREADABLE RECORD IS DESCRIBED HERE AND NOT RAISED, which is the opposite
-    of what this function does with an unreadable BACKUP FACT file, and the
-    asymmetry is the point. The ages are the thing a person is being asked to
-    decide over, so showing a clean sheet nobody saw would be a lie. This record
-    is not being decided over at all: it is context, and this verb OVERWRITES it
-    unconditionally a few lines later. Letting the read raise would mean a
-    library whose acknowledgment file somebody corrupted could never be
-    acknowledged again, because the one command that replaces the file refuses
-    before it gets there. That is a trap with no exit, and it costs more than the
-    thing it protects.
+    An unreadable record is described and not raised: this verb overwrites it,
+    so refusing would leave a damaged record that can never be replaced.
     """
     try:
         recorded = session.read_acknowledgment(cfg)
@@ -224,28 +128,10 @@ def _on_record(cfg: config.Config, now: datetime) -> dict[str, Any] | None:
 def record_ack(ctx) -> Envelope:
     """Show the ages, ask the question, and record the answer as a separate act.
 
-    THE SHAPE IS TWO INVOCATIONS AND THAT IS R34, not an ergonomic accident. The
-    gate is ``explicit``, so the invocation that discovers it cannot answer it:
-    it exits DECISION_REQUIRED naming the run, a person answers with ``crate run
-    decide``, and a later invocation resumes with ``--run``. An affirmative that
-    could be typed on the command that raised the question is a blanket flag
-    wearing a different name.
-
-    IT RE-MINTS ON EVERY ANSWERED DRIVE and does not refuse because a live
-    record exists. ``record_acknowledgment`` overwrites unconditionally, and a
-    freshness check added here would be a second rule about one record living in
-    a different file from the rule it copies.
-
-    THE ACT NEEDS A PERSON AT A TERMINAL, and that refusal comes from the engine
-    rather than from anything here. It is what stops a detached job from minting
-    the gate that protects every destructive verb. UNLESS THE ANSWER IS THE
-    SESSION'S (U138): the actor the run record holds for this gate is handed
-    down, never read off this command line, and when it is ``session`` the
-    engine mints on the backup ages instead, refusing unless every portion is
-    under five days old.
-
-    ``--as session`` TAKES THE OTHER ROAD, :func:`_mint_as_session`, before
-    anything here asks the gate, so the default road below is unchanged.
+    The gate is explicit, so the invocation that raises it cannot answer it
+    (R34). Every answered drive re-mints. The engine refuses without a terminal
+    unless the recorded answer is the session's (U138), in which case it mints
+    only over young ages. ``--as session`` takes :func:`_mint_as_session`.
     """
     if getattr(ctx.args, "as_actor", None) == session.SESSION_ACTOR:
         return _mint_as_session(ctx)
@@ -261,46 +147,22 @@ def record_ack(ctx) -> Envelope:
             data={"checks": [], "summary": {"recorded": False, "ages": shown}},
             outcome=Outcome.NO_OP,
         )
-    # THE SAME MOMENT, handed down rather than taken again. Without it
-    # ``record_acknowledgment`` reads its own clock and derives the record's
-    # ``shown`` list from that instant instead of this one. ``now`` is the ONLY
-    # thing handed over: there is deliberately no way to tell that function what
-    # a person was shown, because a caller that could say so could say anything,
-    # which is the same clause that keeps the actor out of its signature.
-    # WHO ANSWERED, FROM THE RUN RECORD (U138), read before the decision is
-    # spent below. An explicit gate is never answered on this command line, so
-    # the recorded decision is the only place the actor comes from.
+
+    # The same moment is handed down, and nothing else about what was shown.
+    # Who answered comes from the run record (U138), read before it is spent.
     answered = ctx.run.decisions.get(spec.name)
     acknowledgment = session.record_acknowledgment(
         cfg, now=now, decided_by=answered.actor if answered is not None else None
     )
-    # AND THE REPORT COMES FROM THE RECORD, not from the read above it. Both
-    # describe the same portions and after ``now=now`` they agree, but they are
-    # two reads of one file and only one of them is the thing that was written
-    # down. Rendering ``checks`` from ``shown`` and ``summary`` from the record
-    # would put two answers to one question in one payload, separated by however
-    # long the write took, and that is the drift this whole layer exists to
-    # remove. What the person is told is what a destructive session will consult.
+    # The report comes from the record written, not the read above it.
     recorded_ages = [entry.to_json() for entry in acknowledgment.shown]
-    # THE DECISION IS SPENT. R34 asks for a deliberate act per acknowledgment,
-    # and a recorded answer that survives the mint is not that: a run identifier
-    # kept from an earlier session could be re-driven at any later time and each
-    # drive would restart the validity window with nobody asked again, which
-    # ``DEFAULT_ACK_VALIDITY`` calls "a permanent affirmative wearing a
-    # timestamp". Popped HERE rather than in the resolver, so what a recorded
-    # answer means for every other gate in the product is untouched: this is one
-    # verb deciding that its own authorisation is single use, which is a
-    # property of what it mints rather than of the gate machinery.
+    # The decision is spent: a kept run identifier must not re-mint later.
     ctx.run.decisions.pop(spec.name, None)
     return ctx.envelope(
         data={
             "checks": [
                 {
-                    # ``key``, because that is the field ``cli.render``'s check
-                    # table reads. A row keyed ``name`` renders as "[ok] ?" and
-                    # the person is shown a question mark where the portion
-                    # should be, on the one surface they read without asking for
-                    # JSON.
+                    # ``key`` is the field ``cli.render``'s check table reads.
                     "key": f"backup.age.{entry['portion']}",
                     "status": "ok",
                     "detail": entry["state"],
@@ -321,12 +183,7 @@ def record_ack(ctx) -> Envelope:
 
 
 def _expiry_row(acknowledgment: session.Acknowledgment, *, minted: bool) -> dict[str, Any]:
-    """The check row a person reads the acknowledgment's window from.
-
-    A ROW AND NOT ONLY A SUMMARY KEY, because the default renderer prints a
-    diagnostic payload's ``checks`` and never its ``summary``: an expiry carried
-    only in the summary is one a person at a terminal is never shown.
-    """
+    """The check row carrying the window, since the renderer never prints ``summary``."""
     said = "recorded now" if minted else "already on record, not minted again"
     return {
         "key": "backup.acknowledgment",
@@ -355,20 +212,9 @@ def _summary(acknowledgment: session.Acknowledgment, *, minted: bool) -> dict[st
 def _mint_as_session(ctx) -> Envelope:
     """``crate session ack --as session`` (U184): the session's mint, in one command.
 
-    NO GATE IS ASKED, so no run is left waiting on an answer nobody else would
-    give. The session would answer ``session.ack.backup`` itself, and under the
-    author's rule of 2026-10-09 its answer is worth exactly what the ages say,
-    which the engine checks: ``record_acknowledgment`` with the actor
-    ``session`` refuses unless every backup portion is under five days old,
-    naming each that is not, and records nothing. That is the only age check;
-    a second one here would be a second rule about one record (the brief says
-    so in as many words).
-
-    A VALID ACKNOWLEDGMENT ON RECORD IS REPORTED AND NOT MINTED AGAIN, whatever
-    rule minted it, because it is exactly what every destructive verb's gate
-    accepts. An unreadable record is not valid, and is replaced, for the reason
-    :func:`_on_record` gives: refusing over it would leave a library whose
-    record somebody damaged with no way to acknowledge again.
+    No gate is asked. The engine's session rule is the only age check. A valid
+    acknowledgment on record is reported and not minted again; an unreadable one
+    is not valid and is replaced.
     """
     cfg = load_config(("session", "cli"))
     now = datetime.now(timezone.utc)
@@ -391,11 +237,7 @@ def _mint_as_session(ctx) -> Envelope:
         data={
             "checks": [
                 *(
-                    {
-                        "key": f"backup.age.{entry.portion}",
-                        "status": "ok",
-                        "detail": entry.state,
-                    }
+                    {"key": f"backup.age.{entry.portion}", "status": "ok", "detail": entry.state}
                     for entry in acknowledgment.shown
                 ),
                 _expiry_row(acknowledgment, minted=True),
@@ -411,12 +253,7 @@ def _mint_as_session(ctx) -> Envelope:
 
 
 def build_release(parser, entry) -> None:
-    """Declare the verb's arguments, which are none. Parameters unannotated.
-
-    No ``--force``. Which holders are releasable is the engine's judgment, made
-    from whether the recorded process is still running, and a flag that overrode
-    it would be one run clearing another run's claim on the library mid-write.
-    """
+    """Declare the verb's arguments, which are none, and no ``--force``."""
     del entry
     parser.set_defaults(_handler=release_lock)
 
@@ -424,37 +261,17 @@ def build_release(parser, entry) -> None:
 def release_lock(ctx) -> Envelope:
     """Show the holder, ask the question, and clear a claim whose owner is gone.
 
-    FOUR OUTCOMES, because ``release_stale_lock`` has four and a shell that
-    reported three would collapse two of them. Nothing recorded is a no-op. A
-    holder still running refuses ``session-lock-held`` with WAIT_FOR_HOLDER. A
-    holder that is gone whose lock file still cannot be taken refuses the same
-    way, and it is the least obvious of the four: the record is stale and
-    something else is holding the file anyway. Only the fourth clears anything.
-
-    NOTHING RECORDED IS AN OUTCOME, NOT A FAILURE. It is the state of every
-    healthy library, and refusing there would report a working machine as a
-    broken one and hand a person a remedy for a condition with no remedy. That
-    is ``restore_cli.perform_restore``'s decision for the same shape.
-
-    THE GATE STILL FIRES WHEN THERE IS NOTHING TO RELEASE. Conformance 3 holds
-    every declared gate to firing, and a verb that skipped its question on the
-    quiet path would be a verb whose question is asked only when the answer
-    matters least. The declared prompt asserts a holder that may not be there,
-    which is recorded in the ledger rather than reworded here.
+    Nothing recorded is a no-op, not a failure. A running holder, or a gone one
+    whose lock file still cannot be taken, refuses ``session-lock-held``. The
+    gate fires even when there is nothing to release (conformance 3).
     """
     cfg = load_config(("session", "cli"))
     path = session.lock_path(cfg)
     holder = session.read_lock_holder(path)
-    # A LOCK FILE WITH NO READABLE HOLDER IS ITS OWN STATE, and the shell has to
-    # say so because the engine cannot. ``read_lock_holder`` answers None for
-    # "nobody holds this" and None again for "there is a file here I could not
-    # understand", and those have different next moves: the first is a healthy
-    # library and the second is a record somebody should look at. Reporting the
-    # second as the first tells a person nothing is wrong on the one surface
-    # that could have told them something is.
+    # ``read_lock_holder`` answers None for no holder and for a file it could
+    # not understand; the second is told apart here.
     unreadable = holder is None and path.exists() and bool(path.read_bytes().strip())
-    # THE OPEN RECORDS A DEAD HOLDER LEFT ARE SHOWN BEFORE THE QUESTION (R-598),
-    # for the reason the holder is: the person decides over what will be ended.
+    # The open records a dead holder left are shown before the question (R-598).
     orphans = [record for record in session.records(cfg) if session.orphaned(record)]
     spec = _gate(ctx.entry, "session.release.confirm")
     option = ctx.gate.require(
@@ -473,11 +290,8 @@ def release_lock(ctx) -> Envelope:
             data={"checks": [], "summary": {"released": False, "aborted": True}},
             outcome=Outcome.NO_OP,
         )
-    # THE LOCK FIRST, so a holder still running refuses before any record is
-    # ended behind it. The records are judged again, since the answer may come
-    # long after the question, and only among those this invocation listed. The
-    # answer is not bound to what the ASKING invocation listed, for orphans as
-    # for the holder above, and that is R-648.
+    # The lock first, so a running holder refuses before any record is ended.
+    # Records are judged again, only among those this invocation listed (R-648).
     cleared = session.release_stale_lock(cfg)
     abandoned = [
         record.session_id
@@ -486,15 +300,9 @@ def release_lock(ctx) -> Envelope:
         )
     ]
     kept = [record.session_id for record in session.records(cfg) if not record.terminal]
-    # ``key``, for the reason the acknowledgment's rows give: it is the field the
-    # check table renders and ``name`` prints as a question mark.
     checks = [
-        {
-            "key": "session.record",
-            "status": "ok",
-            "detail": f"abandoned {session_id}, its holder is gone",
-        }
-        for session_id in abandoned
+        {"key": "session.record", "status": "ok", "detail": f"abandoned {sid}, its holder is gone"}
+        for sid in abandoned
     ]
     if cleared is None:
         return ctx.envelope(
@@ -527,8 +335,5 @@ def release_lock(ctx) -> Envelope:
 
 
 __all__ = [
-    "build_ack",
-    "build_release",
-    "record_ack",
-    "release_lock",
+    "build_ack", "build_release", "record_ack", "release_lock",
 ]
