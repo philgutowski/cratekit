@@ -1,0 +1,212 @@
+name = "r1830"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_tie_counted_as_below"
+description = "renumbered_positions: a removed row tying a survivor lowers it too"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py"]
+old = '''        below = sum(1 for one in deleted.get(playlist, ()) if one < int(number))'''
+new = '''        below = sum(1 for one in deleted.get(playlist, ()) if one <= int(number))'''
+
+[[rows]]
+id = "M2_marked_removed_row_counted"
+description = "renumbered_positions: a removed row marked removed counts, review round one's B1"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''        if content in gone and live and number is not None:'''
+new = '''        if content in gone and number is not None:'''
+
+[[rows]]
+id = "M3_marked_survivor_moved"
+description = "renumbered_positions: a marked surviving row is lowered too"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''        if content in gone or not live or number is None:'''
+new = '''        if content in gone or number is None:'''
+
+[[rows]]
+id = "M4_one_place_whatever_removed"
+description = "renumbered_positions: a row moves one place however many removed rows sit below it"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''            moved[key] = (playlist, int(number), int(number) - below)'''
+new = '''            moved[key] = (playlist, int(number), int(number) - 1)'''
+
+[[rows]]
+id = "M5_any_playlist_counts"
+description = "renumbered_positions: a removed row in any playlist lowers rows in every playlist"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''        below = sum(1 for one in deleted.get(playlist, ()) if one < int(number))'''
+new = '''        below = sum(1 for numbers in deleted.values() for one in numbers if one < int(number))'''
+
+[[rows]]
+id = "M6_prepare_plans_no_renumbering"
+description = "CollectionRemoval.prepare: plan no renumbering, so the gap stays"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        return cls(db, ids, identity, columns, database_reading(db), removal_renumbering(db, ids))'''
+new = '''        return cls(db, ids, identity, columns, database_reading(db), {})'''
+
+[[rows]]
+id = "M7_commit_skips_the_renumbering"
+description = "CollectionRemoval.commit: delete and never write the renumbering"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        renumber_memberships(self.db, self.renumbered)
+'''
+new = ''''''
+
+[[rows]]
+id = "M8_renumbering_stamps_updated_at"
+description = "renumber_memberships: write updated_at beside TrackNo, a byte rekordbox did not write"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        f'UPDATE "{MEMBERSHIP_TABLE}" SET "{TRACK_NUMBER_COLUMN}" = :after ''''
+new = '''        f'UPDATE "{MEMBERSHIP_TABLE}" SET "{TRACK_NUMBER_COLUMN}" = :after, "updated_at" = CURRENT_TIMESTAMP ''''
+
+[[rows]]
+id = "M9_moved_row_not_refused"
+description = "renumber_memberships: a row that moved since the prepare is passed over silently"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        if result.rowcount != 1:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M10_planned_number_not_asked"
+description = "renumber_memberships: write the new number whatever the row holds now"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        f'WHERE "ID" = :key AND "{TRACK_NUMBER_COLUMN}" = :before''''
+new = '''        f'WHERE "ID" = :key AND :before = :before''''
+
+[[rows]]
+id = "M11_held_object_left_stale"
+description = "renumber_memberships: leave the session's mapped rows holding the old number"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''            session.expire(held)'''
+new = '''            pass'''
+
+[[rows]]
+id = "M12_unreadable_marker_reads_live"
+description = "_live: a marker that cannot be read reads live"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''    return marker is not None and not bool(marker)'''
+new = '''    return not bool(marker)'''
+
+[[rows]]
+id = "M13_planned_rows_admitted_unjudged"
+description = "collection_removal_violations: admit any change to a row the rule renumbers"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''                violations.extend(_renumbering_violations(key, planned[key], before, after))'''
+new = '''                pass'''
+
+[[rows]]
+id = "M14_other_columns_not_compared"
+description = "_renumbering_violations: a renumbered row may change any other column"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''    if (now[0], now[1], now[3], now[4]) != (then[0], then[1], then[3], then[4]):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M15_number_not_compared"
+description = "_renumbering_violations: a renumbered row may hold any number"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''    if now[2] != wanted:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M16_marker_change_not_compared"
+description = "_renumbering_violations: a renumbered row's marker may move"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_writer_guard.py", "tests/test_sync_removed.py"]
+old = '''    if (now[0], now[1], now[3], now[4]) != (then[0], then[1], then[3], then[4]):'''
+new = '''    if (now[0], now[1], now[3]) != (then[0], then[1], then[3]):'''
+
+[[rows]]
+id = "M17_positions_never_read"
+description = "database_reading: read no membership positions, so the confinement plans nothing"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''            if placed is not None:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M18_plan_counts_nothing"
+description = "plan_removed: count no renumbering, so the screen shows none"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        renumbered=len(rb_writer.removal_renumbering(db, offered)) if offered else 0,'''
+new = '''        renumbered=0,'''
+
+[[rows]]
+id = "M19_digest_omits_the_count"
+description = "identity: leave the renumbering count out of the digest"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        "renumbered": plan.renumbered,
+    }'''
+new = '''    }'''
+
+[[rows]]
+id = "M20_screen_omits_the_count"
+description = "facts: the gate's screen shows no renumbering"
+file = "src/cratekit/sync/removed_cli.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        "kept or left": len(plan.answers) - len(plan.offered),
+        "memberships renumbered": plan.renumbered,'''
+new = '''        "kept or left": len(plan.answers) - len(plan.offered),
+        "memberships renumbered": 0,'''
+
+[[rows]]
+id = "M21_record_omits_the_rows"
+description = "write_into: name no renumbered row in the session record"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        if self.renumbered:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M22_applied_message_counts_nothing"
+description = "apply_removed: the result counts no renumbered membership, so the applied message says none"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        renumbered=len(removal.renumbered),'''
+new = '''        renumbered=0,'''
+[[rows]]
+id = "M23_unreadable_marker_passed_over"
+description = "removal_renumbering: plan around a NULL marker rather than refusing it, review round two's X1"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''    if unreadable:'''
+new = '''    if False:'''
