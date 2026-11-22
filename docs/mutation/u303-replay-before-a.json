@@ -1,0 +1,605 @@
+{
+  "name": "u303-replay-before-a",
+  "pass_kind": "replay",
+  "branch": "HEAD",
+  "head": "fd8173d3",
+  "when": "2026-11-22 18:45 UTC",
+  "valid": true,
+  "invalid_reason": "in progress",
+  "baseline_collected": 22933,
+  "baseline_exit": 1,
+  "pytest_runs": 66,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 251,
+  "known_source": "/tmp/claude-0/-home-user-cratekit/ce20fa78-0ba8-5393-bea1-e47f9b749a43/scratchpad/known-replay.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "measured",
+  "baseline_note": "the battery's verdict was not read: no battery verdict at `.cloud-battery/verdict.json`",
+  "subset_baselines": 48,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/cli/converge.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/cli/converge.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "aa5bceeb83dc373d",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 22933,
+    "baseline_collected": 22933,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "r239-b.S5_converge_key_off",
+      "description": "converge passes unlock=False again, so every native tree reads not compared on a real library",
+      "file": "src/cratekit/cli/converge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a2f66f9aa981ea4f",
+      "subset": [
+        "tests/test_rb_writer_db.py",
+        "tests/test_routing_workers.py",
+        "tests/test_adopt_collection.py",
+        "tests/test_deletion.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_naming_apply_cli.py",
+        "tests/test_adopt_apply_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 733,
+      "baseline_collected": 733,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rb_writer_db.py::test_no_caller_in_src_answers_the_key_question_for_itself",
+        "tests/test_routing_workers.py::test_converge_compares_a_native_tree_on_an_encrypted_library"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            handle = rb_writer.open_db(cfg=cfg)",
+      "new": "            handle = rb_writer.open_db(cfg=cfg, unlock=False)",
+      "source": {
+        "table": "r239-b.json",
+        "id": "S5_converge_key_off"
+      }
+    },
+    {
+      "id": "r685-b.C1_converge_opens_before_it_reads",
+      "description": "Converge opens the database before reading the declaration, the order the review found",
+      "file": "src/cratekit/cli/converge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "218cc534cb771749",
+      "subset": [
+        "tests/test_rebuild.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 108,
+      "baseline_collected": 108,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rebuild.py::test_an_active_taxonomy_that_cannot_be_read_is_not_compared_and_opens_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            declared = active_taxonomy.load(cfg)\n            handle = rb_writer.open_db(cfg=cfg)\n",
+      "new": "            handle = rb_writer.open_db(cfg=cfg)\n            declared = active_taxonomy.load(cfg)\n",
+      "source": {
+        "table": "r685-b.json",
+        "id": "C1_converge_opens_before_it_reads"
+      }
+    },
+    {
+      "id": "r685-b.C2_converge_lets_the_refusal_escape",
+      "description": "The declaration is read outside the try, so a refusal escapes instead of reading NOT COMPARED",
+      "file": "src/cratekit/cli/converge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "db260afc35bded69",
+      "subset": [
+        "tests/test_rebuild.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 108,
+      "baseline_collected": 108,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_rebuild.py::test_an_active_taxonomy_that_cannot_be_read_is_not_compared_and_opens_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        handle = declared = None\n        try:\n            declared = active_taxonomy.load(cfg)\n            handle = rb_writer.open_db(cfg=cfg)\n",
+      "new": "        handle = declared = None\n        declared = active_taxonomy.load(cfg)\n        try:\n            handle = rb_writer.open_db(cfg=cfg)\n",
+      "source": {
+        "table": "r685-b.json",
+        "id": "C2_converge_lets_the_refusal_escape"
+      }
+    },
+    {
+      "id": "u89.C1_converge_threshold",
+      "description": "converge _compare: pass None instead of the loaded cut",
+      "file": "src/cratekit/cli/converge.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4a80655784c3768a",
+      "subset": [
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 197,
+      "baseline_collected": 197,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_routing_workers.py::test_a_corrupt_calibration_is_converge_not_comparing_rather_than_a_match",
+        "tests/test_routing_workers.py::test_converge_compares_the_vocal_sub_once_calibrated"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            vocal_threshold=metadata_cli.load_vocal_threshold(cfg),",
+      "new": "            vocal_threshold=None,",
+      "source": {
+        "table": "u89.json",
+        "id": "C1_converge_threshold"
+      }
+    },
+    {
+      "id": "r235-a.M10_verb_guard_removed",
+      "description": "the revert verb no longer asks before the gate, leaving only the library's check after the approval",
+      "file": "src/cratekit/cli/cutover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2ef62bd1d00f2bc1",
+      "subset": [
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_cli.py::test_a_revert_after_a_native_write_refuses_and_the_tree_stays_native"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    tree_registry.assert_revertible(cfg, tree_id)\n    item = {**_recorded(standing), \"registry\": str(tree_registry.path_for(cfg))}",
+      "new": "    item = {**_recorded(standing), \"registry\": str(tree_registry.path_for(cfg))}",
+      "source": {
+        "table": "r235-a.json",
+        "id": "M10_verb_guard_removed"
+      }
+    },
+    {
+      "id": "r235-b.M15_first_of_several_roots",
+      "description": "more than one root no longer refuses, the first is adopted",
+      "file": "src/cratekit/cli/cutover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4c00e0c98b508fe4",
+      "subset": [
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_cli.py::test_two_roots_of_one_name_are_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if len(roots) == 1:\n        return roots[0]",
+      "new": "    if len(roots) >= 1:\n        return roots[0]",
+      "source": {
+        "table": "r235-b.json",
+        "id": "M15_first_of_several_roots"
+      }
+    },
+    {
+      "id": "r235-b.M16_native_tree_offered_again",
+      "description": "the verb no longer answers a tree already native before it asks",
+      "file": "src/cratekit/cli/cutover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "78c0dac216169cc9",
+      "subset": [
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_cli.py::test_a_tree_already_native_records_nothing_and_asks_nothing",
+        "tests/test_cutover_cli.py::test_two_cutovers_offered_before_either_was_approved_record_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if standing is not None and standing.mode == tree_registry.Mode.DATABASE:\n        return ctx.envelope(\n            data=_digested(\"tree.cutover\", _recorded(standing), {\"recorded\": False}),",
+      "new": "    if False:\n        return ctx.envelope(\n            data=_digested(\"tree.cutover\", _recorded(standing), {\"recorded\": False}),",
+      "source": {
+        "table": "r235-b.json",
+        "id": "M16_native_tree_offered_again"
+      }
+    },
+    {
+      "id": "r235-b.M19_unready_library_asked",
+      "description": "a library that fails its precheck is offered the plan instead of being refused",
+      "file": "src/cratekit/cli/cutover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "aff8f758754d0085",
+      "subset": [
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_cli.py::test_an_empty_export_is_no_export",
+        "tests/test_cutover_cli.py::test_each_precheck_failure_refuses_before_anything_is_recorded[_leave_intake_xml-cutover-xml-pending-no-pending-intake-xml]",
+        "tests/test_cutover_cli.py::test_each_precheck_failure_refuses_before_anything_is_recorded[_open_a_run-cutover-open-run-no-open-run]",
+        "tests/test_cutover_cli.py::test_each_precheck_failure_refuses_before_anything_is_recorded[_remove_the_export-cutover-export-missing-fresh-export]",
+        "tests/test_cutover_cli.py::test_each_precheck_failure_refuses_before_anything_is_recorded[_remove_the_snapshot-cutover-snapshot-missing-verified-snapshot]",
+        "tests/test_cutover_cli.py::test_two_failing_prechecks_are_both_named_on_one_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    results = tree_registry.cutover_precheck(cfg, export=export)\n    _refuse_unready(results)",
+      "new": "    results = tree_registry.cutover_precheck(cfg, export=export)",
+      "source": {
+        "table": "r235-b.json",
+        "id": "M19_unready_library_asked"
+      }
+    },
+    {
+      "id": "r235-b.M20_refusal_without_the_table",
+      "description": "the precheck refusal no longer carries every check's result",
+      "file": "src/cratekit/cli/cutover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "17005874fe61c35f",
+      "subset": [
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_cli.py::test_each_precheck_failure_refuses_before_anything_is_recorded[_leave_intake_xml-cutover-xml-pending-no-pending-intake-xml]",
+        "tests/test_cutover_cli.py::test_each_precheck_failure_refuses_before_anything_is_recorded[_open_a_run-cutover-open-run-no-open-run]",
+        "tests/test_cutover_cli.py::test_each_precheck_failure_refuses_before_anything_is_recorded[_remove_the_export-cutover-export-missing-fresh-export]",
+        "tests/test_cutover_cli.py::test_each_precheck_failure_refuses_before_anything_is_recorded[_remove_the_snapshot-cutover-snapshot-missing-verified-snapshot]",
+        "tests/test_cutover_cli.py::test_two_failing_prechecks_are_both_named_on_one_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                detail={**cause.detail, \"precheck\": _precheck_rows(results)},",
+      "new": "                detail=dict(cause.detail),",
+      "source": {
+        "table": "r235-b.json",
+        "id": "M20_refusal_without_the_table"
+      }
+    },
+    {
+      "id": "r235-b.M21_digest_blind_to_the_plan",
+      "description": "the digest covers the kind of plan and not its item, so a root that changed leaves the approval standing",
+      "file": "src/cratekit/cli/cutover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "83ae590de74aa3e5",
+      "subset": [
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_cli.py::test_a_root_that_changed_after_the_offer_makes_the_approval_stale"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"digest\": digest_of({\"kind\": kind, \"items\": [item]}),",
+      "new": "        \"digest\": digest_of({\"kind\": kind}),",
+      "source": {
+        "table": "r235-b.json",
+        "id": "M21_digest_blind_to_the_plan"
+      }
+    },
+    {
+      "id": "r787.V1_verb_own_list",
+      "description": "derivation_source keeps a list of its own, the routing tree and intake tree spelled inline, instead of asking cutover_trees",
+      "file": "src/cratekit/cli/cutover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c507074da24405f1",
+      "subset": [
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_cli.py::test_doctor_and_the_verb_read_one_set_of_cutover_trees"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if tree_id in accepted:\n        return tree_registry.DerivationSource.TAXONOMY",
+      "new": "    if tree_id in (declared.tree.id, declared.intake.id):\n        return tree_registry.DerivationSource.TAXONOMY",
+      "source": {
+        "table": "r787.json",
+        "id": "V1_verb_own_list"
+      }
+    },
+    {
+      "id": "r787.V2_undeclared_step_routing_only",
+      "description": "the undeclared refusal's step names the routing tree alone rather than the set",
+      "file": "src/cratekit/cli/cutover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "55ad091f4ed8897f",
+      "subset": [
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_cli.py::test_a_tree_the_taxonomy_does_not_declare_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            f\"name a tree a cutover records, which this library declares as \"\n            f\"{', '.join(repr(t) for t in named)}\",",
+      "new": "            f\"name a tree a cutover records, which this library declares as \"\n            f\"{declared.tree.id!r}\",",
+      "source": {
+        "table": "r787.json",
+        "id": "V2_undeclared_step_routing_only"
+      }
+    },
+    {
+      "id": "r787.V3_catalogue_refusal_loses_set",
+      "description": "the catalogue refusal carries the registry's detail alone, without the set a cutover accepts",
+      "file": "src/cratekit/cli/cutover.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0569b25c05e2c5c1",
+      "subset": [
+        "tests/test_cutover_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 40,
+      "baseline_collected": 40,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_cli.py::test_the_catalogue_tree_is_refused_as_not_rebuildable"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                detail={\n                    **cause.detail,\n                    \"cutover_trees\": sorted(tree_registry.cutover_trees(declared)),\n                },",
+      "new": "                detail={**cause.detail},",
+      "source": {
+        "table": "r787.json",
+        "id": "V3_catalogue_refusal_loses_set"
+      }
+    },
+    {
+      "id": "r-1.E1_dispatch_impl",
+      "description": "Existing guard, sample: drop the requirement that the hook invokes hook-impl",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "48396cdd928390a1",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_hook_that_does_not_dispatch_to_this_repository_is_refused[#!/bin/sh\\n# pre-commit\\nexit 0\\n-True-hook-impl]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if _HOOK_DISPATCH not in body:\n        return f\"it never invokes pre-commit's {_HOOK_DISPATCH}\"\n",
+      "new": "",
+      "source": {
+        "table": "r-1.json",
+        "id": "E1_dispatch_impl"
+      }
+    },
+    {
+      "id": "r-1.E2_config_inside_checkout",
+      "description": "Existing guard, sample: drop the requirement that the named configuration is inside the checkout",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "926ff0e938946802",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_hook_that_does_not_dispatch_to_this_repository_is_refused[ARGS=(hook-impl --config=/elsewhere/.pre-commit-config.yaml --hook-type=pre-commit)\\n-True-outside]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if root.resolve() not in resolved.parents and resolved != root.resolve():",
+      "new": "    if False:",
+      "source": {
+        "table": "r-1.json",
+        "id": "E2_config_inside_checkout"
+      }
+    },
+    {
+      "id": "r-1.T10_no_yaml_falls_back",
+      "description": "PyYAML missing falls back to the pre-commit floor instead of a sentence",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "200aeef5debf7e87",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_no_yaml_reader_is_unknown_rather_than_one_hook_type"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except ImportError:\n        return (\n            (),\n            (\n                f\"PyYAML is not importable from this interpreter, so the hook types \"\n                f\"{config_file.name} configures could not be read. Install the dev \"\n                f\"extra, `pip install -e '.[dev]'`\"\n            ),\n            None,\n        )\n",
+      "new": "    except ImportError:\n        return (\"pre-commit\",), None, None\n",
+      "source": {
+        "table": "r-1.json",
+        "id": "T10_no_yaml_falls_back"
+      }
+    }
+  ],
+  "dropped": [],
+  "mapped": []
+}
