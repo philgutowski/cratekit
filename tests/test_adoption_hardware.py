@@ -1,29 +1,13 @@
 """U23 on real removable media: the volume proofs this unit deferred.
 
-WHY A REAL VOLUME AND NOT A TEMP DIRECTORY, which is the reason these were
-deferred rather than written against ``tmp_path`` five sessions ago. rekordbox
-exports live on FAT. Adoption reads and classifies a library that is sitting on
-a removable volume, and the revert ledger records identities and vacancies about
-files on that volume, so the filesystem's own behaviour is part of the contract
-rather than a detail underneath it. A temp directory on APFS does not stand in:
-it has different identity semantics, it is never unmounted, and its directories
-never vanish underneath a recorded path.
-
-WHAT THE HARNESS ALREADY PAID FOR, restated here so nobody re-learns it.
-FAT32 refuses to format under about 33 MB and ``hdiutil`` reports that refusal
-as a permissions error, which sends you looking at entitlements instead of at
-the size; :func:`tests._hardware.fat_volume` refuses first and says so. And the
-macOS msdos driver ALLOWS symlinks, so a behavioural probe cannot tell you which
-filesystem you are on. :func:`tests._hardware.filesystem_kind` reads the mount
-table instead, and that is what these tests ask.
-
-THESE FAIL RATHER THAN SKIP when ``hdiutil`` is absent. A skipped hardware proof
-is indistinguishable from a passing one in every summary anybody reads, and this
-whole file exists because the proofs that were deferred read as covered.
-
-D1 APPLIES TO EVERY NAME HERE. Nothing below names a real volume, a real person,
-or a real track, and nothing here opens, copies, or names the live rekordbox
-database.
+rekordbox exports live on FAT, and the revert ledger records identities and
+vacancies about files on that volume, so the filesystem's behaviour is part of
+the contract; a temp directory on APFS has other identity semantics and is never
+unmounted. :func:`tests._hardware.fat_volume` refuses below FAT32's 33 MB floor,
+and :func:`tests._hardware.filesystem_kind` reads the mount table because the
+msdos driver allows symlinks. These FAIL rather than skip without ``hdiutil``,
+since a skipped proof reads as a passing one. D1 applies to every name here, and
+nothing here touches the live rekordbox database.
 """
 
 from __future__ import annotations
@@ -127,8 +111,7 @@ def test_a_cloud_backed_track_on_a_fat_volume_is_EXCLUDED_and_never_applicable(f
     assert found["evicted"].readability is adopt_scan.Readability.ONLINE_ONLY
 
     assert found["evicted"].disposition is adopt_scan.Disposition.EXCLUDED, (
-        "the row is named online-only and then routed anyway, so the plan "
-        "proposes writing a tag to a file whose bytes are not on this machine"
+        "the row is named online-only and then routed anyway"
     )
     assert found["present"].disposition is adopt_scan.Disposition.ROUTE
 
@@ -163,8 +146,7 @@ def test_an_absent_genre_on_a_fat_file_comes_back_ABSENT(fat, cfg):
     report = adopt_revert.revert_tags(cfg)
     assert report.failed == {}
     assert tags.read_tag_values(path, "genre") is None, (
-        "the field came back as a value rather than as an absence, which "
-        "leaves a tag on the file that was never there"
+        "the field came back as a value rather than as an absence"
     )
 
 
@@ -190,13 +172,9 @@ def test_a_deleted_fat_file_strands_its_record_for_a_byte_identical_copy(fat, cf
     )
 
     snapshots = adopt_revert.read(cfg).snapshots
-    assert len(snapshots) == 1, (
-        "a second record was written beside the first, so one of the two "
-        "originals is now unreachable"
-    )
+    assert len(snapshots) == 1, "a second record was written beside the first"
     assert snapshots[0].original == ("Original Genre",), (
-        "the surviving record stores adoption's OWN value as the original, "
-        "which puts the user's value in no file and no record"
+        "the surviving record stores adoption's OWN value as the original"
     )
     assert Path(snapshots[0].path) == moved
 
@@ -231,11 +209,7 @@ def test_a_record_whose_directory_is_gone_is_NOT_treated_as_a_deleted_file(fat, 
 
     snapshots = adopt_revert.read(cfg).snapshots
     by_path = {Path(record.path): record for record in snapshots}
-    assert len(snapshots) == 2, (
-        "the byte identical copy was handed the vanished directory's record, "
-        "which is the defect: when that directory comes back its file is "
-        "adopted afresh with adoption's own value stored as its original"
-    )
+    assert len(snapshots) == 2, "the byte identical copy was handed the vanished directory's record"
     assert by_path[path].original == ("Original Genre",), (
         "the original record's own value has to survive untouched"
     )

@@ -1,18 +1,10 @@
 """U254: the applied ledger is written in proportion to the entries applied.
 
-Before U254 every mark took the lock, parsed and validated the whole applied
-ledger and wrote the whole of it back, so N marks wrote about 127 x N squared
-bytes: half a gigabyte for two thousand entries. A mark now appends one synced
-record line to a journal, and the whole file is rewritten only when it is
-created, when a ledger written before U254 is met, and when a torn last record
-has to be cut away.
-
-What these tests hold, beside the saving itself, is everything the saving must
-not cost: a mark is durable before the next entry is touched, an apply killed at
-any mark resumes with exactly the marks that landed, a ledger written by the
-code before U254 still reads, a torn last record is read as the mark that did
-not finish and never as an empty ledger, and the lock still surrounds every
-write. The byte count is the assertion, never a wall clock.
+A mark appends one synced line to a journal, rewritten whole only to create it,
+to convert an older ledger, or to cut a torn last record away. Beside the saving,
+these hold what it must not cost: a durable mark, a resume with exactly the marks
+that landed, older ledgers still read, a torn last record read as the mark that
+did not finish, and the lock around every write. Bytes are asserted, never time.
 """
 
 from __future__ import annotations
