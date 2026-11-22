@@ -1,21 +1,13 @@
 """U246: a rebuild's second pass costs in proportion to its placements, not their square.
 
-The speed survey of 2026-11-12 profiled ``crate rebuild --job`` on ten thousand
-tracks and counted 106,781,222 calls of ``DeclaredPlacement.__hash__``, the
-derived placement count squared, every one under the comprehension that picked
-the second pass's favourites out of the placements: it built a set of every
-derived placement once for each placement it tested. ``crate route resort``
-runs the same worker and paid the same.
+The second pass's favourites comprehension built a set of every derived
+placement once per placement (106,781,222 hash calls on ten thousand tracks).
+The proof is a call count at two sizes, never a wall clock: work that grows
+with the placements doubles, while the old shape, or a tuple scan per
+placement, quadruples. Expected memberships are spelled from the brief and
+read from the file, never from the worker's report.
 
-The proof here is a call count, never a wall clock: the worker is driven on a
-disposable database at two sizes, the second twice the first, and the hash
-and equality calls it makes on placements are counted. Work that grows with
-the placements doubles; the old shape quadrupled, and so would a scan of the
-derived tuple per placement, which hashes nothing. Every expected membership is spelled from the brief, a
-track in its band playlist and, being a favourite, in its folder's Favorites,
-and read straight from the file, never from the worker's own report.
-
-D1 applies. Nothing here names a real volume, a real person or a real track.
+D1 applies: nothing here names a real volume, person or track.
 """
 
 from __future__ import annotations
@@ -36,9 +28,7 @@ DECLARED = taxonomy.default_taxonomy()
 TREE = DECLARED.tree.id
 FAVORITES = DECLARED.sub_class("favorites")
 #: The genres the tracks are tagged with, so the placements spread over several
-#: folders rather than one, as a real library's do. Each genre's folder in the
-#: shipped template is named as the genre is, and every track is at the top of
-#: the energy scale, so each lands in its folder's "High" band.
+#: folders named as the genres are; every track is top energy, so "High".
 GENRES = ("Deep House", "Tech House", "Afro House", "Organic House")
 TOP_BAND = "High"
 FAVOURITES_PLAYLIST = "Favorites"
@@ -49,12 +39,9 @@ SMALL = 24
 def _drive(base: Path, monkeypatch, tracks: int) -> tuple[int, dict[tuple[str, str], set[str]]]:
     """Rebuild a library of ``tracks`` favourites; the placement comparisons and what was written.
 
-    A comparison is a call of ``DeclaredPlacement.__hash__`` or ``__eq__``, so a
-    set rebuilt per placement is counted and so is a scan of a tuple per
-    placement, which hashes nothing and compares every pair.
-
-    Each size is its own library, configuration and state, under its own
-    directory, so the second rebuild reads nothing the first one recorded.
+    A comparison is a ``DeclaredPlacement.__hash__`` or ``__eq__`` call. Each size
+    has its own library, configuration and state, so the second reads nothing
+    the first recorded.
     """
     with monkeypatch.context() as patch:
         root = base / f"library-{tracks}"
@@ -101,9 +88,7 @@ def _drive(base: Path, monkeypatch, tracks: int) -> tuple[int, dict[tuple[str, s
             conn.close()
         real_integrity_ok = rb_writer.integrity_ok
         patch.setattr(
-            rb_writer,
-            "integrity_ok",
-            lambda target, **kwargs: real_integrity_ok(target, unlock=False),
+            rb_writer, "integrity_ok", lambda target, **kwargs: real_integrity_ok(target, unlock=False)
         )
 
         db = rb_writer.open_db(path, unlock=False, cfg=cfg)
@@ -115,17 +100,14 @@ def _drive(base: Path, monkeypatch, tracks: int) -> tuple[int, dict[tuple[str, s
             for one in ids:
                 db.add_to_playlist(source, one)
             db.session.commit()
-            registry = tree_registry.Registry(
-                (
-                    tree_registry.TreeRecord(
-                        tree_id=TREE,
-                        mode=tree_registry.Mode.DATABASE,
-                        cutover_on=date(2026, 10, 9),
-                        root_id=str(tree_root.ID),
-                        source=tree_registry.DerivationSource.TAXONOMY,
-                    ),
-                )
+            record = tree_registry.TreeRecord(
+                tree_id=TREE,
+                mode=tree_registry.Mode.DATABASE,
+                cutover_on=date(2026, 10, 9),
+                root_id=str(tree_root.ID),
+                source=tree_registry.DerivationSource.TAXONOMY,
             )
+            registry = tree_registry.Registry((record,))
             tree_registry.write(cfg, registry)
             truth = [
                 rebuild.Truth(
@@ -176,10 +158,7 @@ def _drive(base: Path, monkeypatch, tracks: int) -> tuple[int, dict[tuple[str, s
 
 
 def _written(path: Path, root_id: str) -> dict[tuple[str, str], set[str]]:
-    """Every playlist two levels under the root, by its folder and name, and its rows.
-
-    Read straight from the file with sqlite, never through the worker's walk.
-    """
+    """Every playlist two levels under the root, by folder and name, read with sqlite."""
     conn = sqlite3.connect(path)
     try:
         held: dict[tuple[str, str], set[str]] = {}
