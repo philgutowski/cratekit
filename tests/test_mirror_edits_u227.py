@@ -76,6 +76,14 @@ def test_a_second_band_added_in_rekordbox_after_the_landing_stands():
     assert one.outcome == edits.REKORDBOX and not one.landed
 
 
+def test_another_genres_band_of_the_landings_name_is_not_the_landings():
+    """A landing filed into Afro House High; Jazz High is rekordbox's place, not the landing's."""
+    jzh = edits.Place("Jazz High", "Jazz", "High", True)
+    jazz_med = _m(JZM, account=True, account_added={"t9": ACCOUNT_AT})
+    one = _one([jazz_med, _m(jzh, rekordbox=True, rekordbox_added={"t9": LANDED_AT})])
+    assert one.outcome == edits.REKORDBOX and not one.landed
+
+
 def test_a_track_a_snapshot_held_is_read_by_the_later_change_rule_alone():
     """ONCE: the snapshot holds the carried track and the account is unchanged, so no landing is read."""
     playlists = [_m(JZM, account=True, agreed=True), _m(AHH, rekordbox=True, rekordbox_added={"t9": LANDED_AT})]
