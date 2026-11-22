@@ -1,11 +1,7 @@
 """U135: a set landed in several INBOX batches is one playlist under the set's name.
 
-Driven against the disposable database the native landing suite builds. A set
-job is queued and landed in two parts on two days; the second landing adds to
-the INBOX playlist the first recorded, under its first name, beside the
-INSPIRATION join U121 already pins.
-
-D1 applies. Nothing here names a real volume, a real person or a real track.
+A set landed in two parts on two days: the second landing adds to the INBOX
+playlist the first recorded, under its first name. D1 applies.
 """
 
 from __future__ import annotations
@@ -42,8 +38,8 @@ from tests.test_set_inspiration_playlist import (
 # The native landing suite's fixtures, on the set suite's machine and seams.
 _platform_seams = land_native._platform_seams
 _release_process_locks = land_native._release_process_locks
-acknowledged, library, silence = land_native.acknowledged, land_native.library, land_native.silence
-native_library = land_native.native_library
+acknowledged, library = land_native.acknowledged, land_native.library
+native_library, silence = inspiration.native_library, inspiration.silence
 fresh_cache, machine, pinned_day = inspiration.fresh_cache, inspiration.machine, inspiration.pinned_day
 
 SECOND = ["intake", "land", "--name", "2026-10-10 Set"]
@@ -125,9 +121,7 @@ def test_one_landing_of_a_set_files_its_inbox_playlist_in_set_order_not_name_ord
     apart. The one INBOX playlist is named for the set and recorded for its job."""
     cfg, root_id = native_library
     job_id = _set(cfg, silence, ("Zebra", "Apple"), "Apple", "Zebra")
-
     shown = _shown(_land("--set", job_id, *WORDS))
-
     assert shown["inbox playlist"] == NAME
     assert shown["inbox"] == "made"
     assert "inbox leftovers" not in shown
@@ -156,9 +150,7 @@ def test_two_landings_of_one_set_make_one_inbox_playlist_in_set_order(
     assert _shown(_land("--set", job_id, *WORDS))["inbox playlist"] == NAME
     ((playlist_id, *_rest),) = _inbox_rows(cfg, root_id)
     ((insp_id, *_),) = _inspiration_rows(cfg, root_id)
-
     shown = _next_day(monkeypatch, cfg, silence, job_id, "Apple")
-
     assert shown["inbox"].startswith("adds to the playlist an earlier landing")
     assert shown["inbox playlist"] == NAME
     assert str(playlist_id) in shown["inbox"]
@@ -180,7 +172,6 @@ def test_two_landings_of_one_set_make_one_inbox_playlist_in_set_order(
 def test_a_landing_without_set_keeps_todays_dated_name(native_library, silence):
     cfg, root_id = native_library
     _stage(cfg, silence, "Loose")
-
     assert "inbox playlist" not in _shown(["intake", "land"])
     assert any(batch_name.is_default_shape(name) for name in _inbox_under(cfg, root_id))
     (kept,) = _batch_records(cfg)
@@ -203,9 +194,7 @@ def test_a_numbered_leftover_inbox_playlist_is_named_on_the_screen_and_not_joine
     finally:
         rb_writer.close_db(handle)
     job_id = _set(cfg, silence, ("One",), "One")
-
     shown = _shown(_land("--set", job_id, *WORDS))
-
     assert twin in shown["inbox leftovers"]
     assert shown["inbox"] == "made"
     assert _members(cfg, folder_id) == []
@@ -223,7 +212,6 @@ def test_a_dated_batch_from_before_the_unit_is_named_as_a_leftover_and_not_joine
     cfg, root_id = native_library
     job_id = _set(cfg, silence, ("One", "Two"), "One")
     _shown(_land("--set", job_id, *WORDS))
-
     records, _ = session.scan_log(cfg)
     closed = [r for r in records if isinstance(r.detail.get(native.BATCH_PLAYLIST_KEY), dict)]
     assert closed
@@ -241,7 +229,6 @@ def test_a_dated_batch_from_before_the_unit_is_named_as_a_leftover_and_not_joine
     batch.pop(native.INBOX_JOB_KEY, None)
     batch["name"] = BATCH
     path.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n")
-
     handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
     try:
         assert native.recorded_inbox_playlist(cfg, handle, job_id, root_id) is None
@@ -249,10 +236,8 @@ def test_a_dated_batch_from_before_the_unit_is_named_as_a_leftover_and_not_joine
     finally:
         rb_writer.close_db(handle)
     assert BATCH in leftovers
-
     _stage(cfg, silence, "Two")
     shown = _shown([*SECOND, "--set", job_id, *WORDS])
-
     assert BATCH in shown["inbox leftovers"]
     assert shown["inbox"] == "made"
     assert shown["inbox playlist"] == NAME
@@ -271,9 +256,7 @@ def test_a_removed_set_named_inbox_playlist_is_not_written_into(native_library, 
     removed_id = _make_playlist(cfg, NAME, under=root_id)
     _soft_delete_playlist(cfg, removed_id)
     job_id = _set(cfg, silence, ("One",), "One")
-
     assert _shown(_land("--set", job_id, *WORDS))["inbox"] == "made"
-
     assert _members(cfg, removed_id) == []
     ((live_id, *_r),) = [row for row in _inbox_rows(cfg, root_id) if not row[3]]
     assert str(live_id) != removed_id
@@ -290,9 +273,7 @@ def test_a_hand_made_inbox_playlist_of_the_set_name_is_named_found_not_recorded(
     cfg, root_id = native_library
     handmade_id = _make_playlist(cfg, NAME, under=root_id)
     job_id = _set(cfg, silence, ("One",), "One")
-
     shown = _shown(_land("--set", job_id, *WORDS))
-
     assert shown["inbox"] == "found live by name, not recorded"
     assert shown["inbox playlist"] == NAME
     assert _members(cfg, handmade_id) == [_row_ids_by_name(cfg)["One"]]
@@ -317,18 +298,14 @@ def test_a_recorded_inbox_playlist_removed_before_the_next_landing_is_not_joined
     ((removed_id, *_rest),) = _inbox_rows(cfg, root_id)
     _soft_delete_playlist(cfg, str(removed_id))
     before = _members(cfg, str(removed_id))
-
     shown = _next_day(monkeypatch, cfg, silence, job_id, "Two")
-
     assert shown["inbox"] == "made"
     assert _members(cfg, str(removed_id)) == before
     # Made afresh, so named for the set on this landing's day.
     assert _inbox_under(cfg, root_id) == {shown["inbox playlist"]: ["Two"]}
 
 
-def test_a_recorded_inbox_playlist_removed_after_the_plan_is_refused_at_the_write(
-    native_library,
-):
+def test_a_recorded_inbox_playlist_removed_after_the_plan_is_refused_at_the_write(native_library):
     """A11. The plan named a recorded playlist live; by the write it was removed.
     Asked of the write's own row lookup, since between two drives the landing
     plans again and refuses on the digest before the write is reached."""

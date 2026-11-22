@@ -49,11 +49,7 @@ BACKFILL = [
 ]
 
 # Matches ``three_tracks`` in the worker suite.
-ROWS = (
-    ("Aurora Bloom", "Sun Path"),
-    ("Nova Reef", "Tide"),
-    ("Mira Vale", "Glass Hour"),
-)
+ROWS = (("Aurora Bloom", "Sun Path"), ("Nova Reef", "Tide"), ("Mira Vale", "Glass Hour"))
 SEARCHES = {
     (artist, title): [Hit(f"tid-{index}", artist, title)]
     for index, (artist, title) in enumerate(ROWS, start=1)
@@ -80,11 +76,7 @@ def _two_acts(argv: list[str], gate: str, option: str = "apply") -> tuple[int, d
 
 
 def _page() -> dict:
-    return {
-        "title": "Probe - Friday Night Mix",
-        "uploader": "Probe",
-        "upload_date": "20260503",
-    }
+    return {"title": "Probe - Friday Night Mix", "uploader": "Probe", "upload_date": "20260503"}
 
 
 def _tracklist(cfg, rows=ROWS, name: str = "set.txt") -> Path:
@@ -126,9 +118,7 @@ def _jobs() -> tuple:
 
 
 def _transient(message: str):
-    return refuse(
-        "unavailable-transient", message, remedy=Remedy.RETRY_LATER, origin=("test",)
-    )
+    return refuse("unavailable-transient", message, remedy=Remedy.RETRY_LATER, origin=("test",))
 
 
 def test_intake_set_declares_the_account_gate_and_remote_write():
@@ -152,7 +142,6 @@ def test_intake_set_with_all_three_words_freezes_the_page_upload_date(
     before the fetch, kept early, and landed under 10_12_26."""
     cfg, _fake, held = account
     _paged(monkeypatch, recognised, date(2026, 10, 12))
-
     words = ["--dj", "Probe", "--set-name", "Friday Night Mix", "--set-date", "2026-05"]
     code, done = _two_acts(["intake", "set", URL, *words], ACCOUNT_GATE)
     assert code == int(ExitCode.OK), done
@@ -167,13 +156,11 @@ def test_a_set_intake_plans_and_makes_the_account_playlist(account, recognised, 
     """And a second identification of the same set plans nothing on it."""
     cfg, _fake, held = account
     _paged(monkeypatch, recognised)
-
     code, refused = drive(["intake", "set", URL])
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     assert refused["cause"]["detail"]["gate"] == ACCOUNT_GATE
     assert held.created == []
     assert _jobs() == (), "the gate must fire before any set is queued"
-
     code, done = _two_acts(["intake", "set", URL], ACCOUNT_GATE)
     assert code == int(ExitCode.OK), done
     assert nothing_left()
@@ -185,7 +172,6 @@ def test_a_set_intake_plans_and_makes_the_account_playlist(account, recognised, 
     assert ledger.set_playlist(cfg, NAME) is not None
     assert held.created == [NAME]
     assert len(held.added) == 3
-
     # The account playlist already holds every matched track, so the plan writes nothing.
     code, again = _two_acts(["intake", "set", URL], ACCOUNT_GATE)
     assert code == int(ExitCode.OK), again
@@ -198,7 +184,6 @@ def test_a_set_with_no_matches_makes_nothing_and_says_so(account, recognised, mo
     cfg, fake, held = account
     fake.searches.clear()
     _paged(monkeypatch, recognised)
-
     code, done = _two_acts(["intake", "set", URL], ACCOUNT_GATE)
     assert code == int(ExitCode.OK), done
     assert held.created == []
@@ -209,9 +194,7 @@ def test_a_set_with_no_matches_makes_nothing_and_says_so(account, recognised, mo
     assert any(w["code"] == "export-tracks-unmatched" for w in done["warnings"])
 
 
-def test_a_local_set_without_name_words_queues_and_skips_the_account_playlist(
-    account, recognised
-):
+def test_a_local_set_without_name_words_queues_and_skips_the_account_playlist(account, recognised):
     """No page and no name flags means the account step was never expected, so
     the skip is silent rather than a ``set-account-unnamed`` warning."""
     cfg, _fake, held = account
@@ -264,7 +247,6 @@ def test_plan_archive_named_skips_the_intake_file_check(account):
     assert archived.writes
     assert archived.planned is not None
     assert archived.planned.mark and not archived.planned.taken
-
     base = {
         "digest": "land-only",
         "items": [{"id": "row", "kind": "track", "action": "add"}],
@@ -332,7 +314,6 @@ def test_landing_archive_failure_after_write_is_a_warning(account, monkeypatch, 
     def soft(_cfg, _archived):
         said = f"{NAME} was retitled by somebody, so it was not renamed"
         return archived.payload, [{"code": "export-archive-changed-since-plan", "message": said}], False
-
     monkeypatch.setattr(set_cli, "apply_archive", boom if failure == "transient" else soft)
     notes = land_cli._apply_landing_archive(cfg, archived)
     if failure == "transient":
@@ -349,12 +330,10 @@ def test_an_abort_on_the_account_gate_queues_the_set_and_writes_no_playlist(
 ):
     cfg, _fake, held = account
     _paged(monkeypatch, recognised)
-
     code, refused = drive(["intake", "set", URL])
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     run_id = refused["run_id"]
     assert _jobs() == ()
-
     code, decided = drive(["run", "decide", run_id, ACCOUNT_GATE, "abort", "--actor", "a-person"])
     assert code == int(ExitCode.OK), decided
     code, done = drive(["--run", run_id, "intake", "set", URL])
@@ -391,7 +370,6 @@ def _failing_once(monkeypatch, name: str, raised) -> None:
         if wrote:
             applied.append(built.name)
         return data, more, wrote
-
     monkeypatch.setattr(set_cli, name, once)
 
 
@@ -438,9 +416,7 @@ def test_export_set_backfill_names_playlists_already_made_when_one_fails(
         else _transient("the account dropped the second write")
     )
     _failing_once(monkeypatch, "apply_planned", raised)
-
     done, message = _backfill_refused("set", BUILD)
-
     assert BACKFILL[0] in message
     assert "already made" in message
     if credential:
@@ -460,7 +436,6 @@ def test_export_archive_backfill_soft_skips_cratekit_errors(account, monkeypatch
             remedy=Remedy.FIX_COMMAND_LINE,
             origin=("test",),
         )
-
     monkeypatch.setattr(set_cli, "plan_archive", boom)
     monkeypatch.setattr(set_cli, "_proof_for_set", lambda _cfg, _name: xml)
     code, done = _two_acts(["export", "archive"], ARCHIVE)
@@ -478,7 +453,6 @@ def test_export_archive_backfill_refuses_a_credential_error(account, monkeypatch
 
     def boom(_cfg, _name, _xml):
         raise secrets.CredentialError("no provider session is recorded")
-
     monkeypatch.setattr(set_cli, "plan_archive", boom)
     monkeypatch.setattr(set_cli, "_proof_for_set", lambda _cfg, _name: xml)
     # CredentialError is raised while planning, before the gate: the first drive
@@ -509,9 +483,7 @@ def test_export_archive_backfill_names_playlists_already_archived_when_one_fails
         else _transient("the account dropped the second archive")
     )
     _failing_once(monkeypatch, "apply_archive", raised)
-
     done, message = _backfill_refused("archive", ARCHIVE)
-
     assert names[0] in message
     assert "already archived" in message
     if credential:
@@ -519,9 +491,7 @@ def test_export_archive_backfill_names_playlists_already_archived_when_one_fails
     assert held.renamed == [] and mark_record.MarkRecord(cfg).taken_ids()
 
 
-def test_job_for_inspiration_name_uses_the_local_day_at_half_past_eleven(
-    account, monkeypatch
-):
+def test_job_for_inspiration_name_uses_the_local_day_at_half_past_eleven(account, monkeypatch):
     """A set queued at 23:30 Eastern is that local day, not the next UTC day."""
     cfg, _fake, _held = account
     # MonkeyPatch.context restores TZ, then the outer finally calls tzset so the

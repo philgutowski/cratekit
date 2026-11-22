@@ -158,7 +158,6 @@ def test_a_missing_yt_dlp_refuses_a_url_with_the_install_hint(
             remedy=binaries.Remedy.INSTALL_BINARY,
             hint=binaries.InstallHint(binaries.PackageManager.HOMEBREW, ("yt-dlp",)),
         )
-
     monkeypatch.setattr(fetch, "fetcher", absent)
     code, envelope = drive(["intake", "set", URL])
     assert code == int(ExitCode.PRECONDITION), envelope
@@ -319,14 +318,8 @@ def test_the_library_guard_reads_resolved_paths(tmp_path, where):
 
 
 def test_the_library_guard_asks_the_filesystem_and_not_only_the_strings(tmp_path, monkeypatch):
-    """Two spellings of one folder that ``resolve`` does not settle.
-
-    Found on a case insensitive volume, where ``resolve`` leaves the letter
-    case as typed, so a lower case spelling of a mixed case library is not
-    textually inside it. Built here so it holds on any volume: where the other
-    spelling is not already the same folder it is made one, and ``resolve`` is
-    held still so only the ``samefile`` layer can answer.
-    """
+    """Two spellings of one folder that ``resolve`` does not settle, as on a case
+    insensitive volume; ``resolve`` is held still so only ``samefile`` can answer."""
     root = tmp_path / "Library"
     (root / "Music" / "state").mkdir(parents=True)
     other = tmp_path / "library"
@@ -526,7 +519,6 @@ def test_the_shipped_fetcher_runs_u80s_download_under_a_mix_sized_bound(tmp_path
         calls.append((argv, kwargs))
         (tmp_path / "fetched-00001.mp3").write_bytes(b"ID3")
         return SimpleNamespace(returncode=0, stderr="")
-
     landed = _shipped(run).fetch(URL, tmp_path)
     assert landed == tmp_path / "fetched-00001.mp3"
     argv, kwargs = calls[0]
@@ -572,7 +564,6 @@ def test_the_shipped_fetcher_says_every_failure_in_this_seams_own_exception(tmp_
 def test_the_shipped_fetcher_says_a_timeout_as_the_one_retryable_kind(tmp_path):
     def run(argv, **kwargs):
         raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
-
     with pytest.raises(fetch.SetFetchTimedOut, match="did not finish within 5 seconds"):
         _shipped(run, timeout=5).fetch(URL, tmp_path)
 
@@ -582,7 +573,6 @@ def test_the_shipped_fetcher_refuses_a_playlist_that_landed_two_recordings(tmp_p
         (tmp_path / "fetched-00001.mp3").write_bytes(b"ID3")
         (tmp_path / "fetched-00002.mp3").write_bytes(b"ID3")
         return SimpleNamespace(returncode=0, stderr="")
-
     with pytest.raises(fetch.SeveralRecordings, match="fetched-00001.mp3, fetched-00002.mp3"):
         _shipped(run).fetch(URL, tmp_path)
 

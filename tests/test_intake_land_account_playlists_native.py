@@ -1,13 +1,8 @@
 """U113 on the native medium: each account playlist is its own INBOX playlist row.
 
-The same scenarios ``tests/test_intake_land_account_playlists.py`` drives on the
-bridge, driven here against the disposable database the native landing suite
-builds, so both media are held to one behaviour. The rotation is then planned
-over what the landing wrote, which is how it is shown to age an account
-playlist by its landing record rather than by its name, whose date at the
-end (U175) is for a person to read.
-
-D1 applies. Nothing here names a real volume, a real person or a real track.
+The bridge suite's scenarios on the disposable database, so both media are
+held to one behaviour, and the rotation planned over what the landing wrote,
+which ages an account playlist by its landing record, not its name. D1 applies.
 """
 
 from __future__ import annotations
@@ -101,7 +96,6 @@ def _machine(library: Path, monkeypatch, **data) -> config.Config:
     def build() -> None:
         adopt_fixtures.build(resolved, ())
         _seed_binding_rows(resolved)
-
     _templated(f"machine {resolved.profile.name}", resolved, build)
     monkeypatch.setattr(
         preflight, "default_identity_provider", lambda: (lambda _path: resolved.library.volume_id)
@@ -274,9 +268,7 @@ def test_two_swept_playlists_land_as_two_playlist_rows_under_their_exact_names(
     cfg, root_id = native_library
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One", "Two")), "pl-b": ("Deep Cuts", ("Three", "Two"))})
     _staged(cfg, silence, "One", "Two", "Three")
-
     acted = _landed(cfg)
-
     folder = _music(cfg, BATCH)
     assert sorted(p.name for p in folder.iterdir()) == ["One.flac", "Three.flac", "Two.flac"]
     assert _inbox(cfg, root_id) == {
@@ -298,13 +290,11 @@ def test_a_second_landing_of_one_playlist_the_next_week_takes_its_own_date(
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _stage(cfg, silence, "One")
     _landed(cfg)
-
     run = "2026-10-10T101500Z-ef56"
     swept(cfg, {"pl-a": ("Sunset Warmup", ("Two",))}, run_id=run)
     _stage(cfg, silence, "Two")
     monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 10))
     code, acted, _ = _two_acts(_land(missing_cli.synced_name(run)))
-
     assert code == int(ExitCode.OK), acted
     # Its own landing's date tells the two passes apart, so no `` 2`` is needed (U175).
     assert _inbox(cfg, root_id) == {
@@ -318,9 +308,7 @@ def test_a_file_no_account_playlist_claimed_stays_in_the_batch_playlist(native_l
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     swept(cfg, {"favorites": (None, ("Hearted",))}, source_id=intake_cli.FAVORITES_SOURCE_ID)
     _staged(cfg, silence, "One", "Hearted")
-
     acted = _landed(cfg)
-
     batch = "2026-10-03 Tidal playlists and Favorites"
     assert _inbox(cfg, root_id) == {batch: ["Hearted"], "Sunset Warmup 2026-10-03": ["One"]}
     (warning,) = [w for w in acted["warnings"] if w["code"] == "rows-await-analysis"]
@@ -334,9 +322,7 @@ def test_a_job_queued_with_no_name_lands_in_the_batch_playlist_as_before(native_
     cfg, root_id = native_library
     swept(cfg, {"pl-a": (None, ("One",))})
     _stage(cfg, silence, "One")
-
     acted = _landed(cfg)
-
     assert _inbox(cfg, root_id) == {BATCH: ["One"]}
     assert [item["playlist"] for item in _written(acted)] == [BATCH]
 
@@ -355,9 +341,7 @@ def test_a_name_inbox_came_to_hold_after_the_plan_is_refused_and_nothing_is_writ
     monkeypatch.setattr(
         account_playlists, "named", lambda claimed, held, batch: chosen(claimed, (), batch=batch)
     )
-
     code, acted, _ = _two_acts(_land())
-
     assert code != int(ExitCode.OK), acted
     assert acted["cause"]["reason"] == "decision-stale", acted
     assert "nothing was written" in acted["cause"]["message"]
@@ -377,9 +361,7 @@ def test_the_record_names_each_account_playlist_by_identifier(native_library, si
     cfg, root_id = native_library
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _stage(cfg, silence, "One")
-
     (written,) = _written(_landed(cfg))
-
     landings = [r for r in session.records(cfg) if native.INBOX_PLAYLISTS_KEY in r.detail]
     (record,) = landings
     assert record.detail[native.INBOX_PLAYLISTS_KEY] == [
@@ -387,7 +369,6 @@ def test_the_record_names_each_account_playlist_by_identifier(native_library, si
     ]
     # Every row went into the account playlist, so no batch playlist was written.
     assert native.BATCH_PLAYLIST_KEY not in record.detail
-
     landed = rotate.landings(cfg).by_id[written["id"]]
     (planned,) = _plans(cfg, landed + timedelta(days=cfg.reports.intake_stale_days + 1))
     (batch,) = [b for b in planned.moves if b.name == "Sunset Warmup 2026-10-03"]
@@ -408,7 +389,6 @@ def test_a_pass_batch_and_its_dated_playlists_move_together_and_expire_together(
     landed = rotate.landings(cfg).by_id[written["id"]]
     pass_playlists = {BATCH, "Sunset Warmup 2026-10-03", "Deep Cuts 2026-10-03"}
     stale, expired = cfg.reports.intake_stale_days, cfg.reports.intake_expired_days
-
     # Every day from the landing to past expiry, the three are planned alike.
     days = [landed + timedelta(days=age) for age in range(0, expired + 2)]
     for age, plan in enumerate(_plans(cfg, *days)):
@@ -417,7 +397,6 @@ def test_a_pass_batch_and_its_dated_playlists_move_together_and_expire_together(
         assert len({planned[name] for name in pass_playlists}) == 1, (age, planned)
     (moving,) = _plans(cfg, landed + timedelta(days=stale + 1))
     assert set(_actions(moving).values()) == {rotate.MOVE}
-
     # Moved into Old together, they are removed together.
     handle = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
     try:
@@ -436,9 +415,7 @@ def test_the_gate_screen_names_each_playlist_as_the_bridge_does(native_library, 
     _made(cfg, root_id, "Sunset Warmup 2026-10-03")
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _staged(cfg, silence, "One", "Loose")
-
     code, refused = drive(_land())
-
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     shown = refused["cause"]["detail"]["shown"]
     assert shown["account playlists"] == [
@@ -453,18 +430,14 @@ def test_an_undated_playlist_from_before_u175_is_left_as_it_is(native_library, s
     before_id = _made(cfg, root_id, "Sunset Warmup")
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _stage(cfg, silence, "One")
-
     _landed(cfg)
-
     assert _inbox(cfg, root_id) == {"Sunset Warmup": [], "Sunset Warmup 2026-10-03": ["One"]}
     assert _query(cfg, "SELECT Name FROM djmdPlaylist WHERE ID = ?", before_id) == [
         ("Sunset Warmup",)
     ]
 
 
-def test_a_playlist_the_rotation_removed_never_takes_a_new_landings_tracks(
-    native_library, silence
-):
+def test_a_playlist_the_rotation_removed_never_takes_a_new_landings_tracks(native_library, silence):
     cfg, root_id = native_library
     gone_id = _made(cfg, root_id, "Sunset Warmup 2026-10-03")
     # Soft removed, the way the rotation removes an expired batch.
@@ -476,9 +449,7 @@ def test_a_playlist_the_rotation_removed_never_takes_a_new_landings_tracks(
     conn.close()
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _stage(cfg, silence, "One")
-
     _landed(cfg)
-
     # A removed node holds no name, so the exact name is free, and the new
     # playlist is a new live row: the removed one gains nothing.
     assert _inbox(cfg, root_id) == {"Sunset Warmup 2026-10-03": ["One"]}
@@ -512,9 +483,7 @@ def test_a_playlist_of_three_owned_and_two_new_lands_all_five_in_account_order(
         },
     )
     _staged(cfg, silence, "New1", "New2")
-
     acted = _landed(cfg)
-
     inbox = _inbox(cfg, root_id)
     assert inbox["Sunset Warmup 2026-10-03"] == ["Held1", "New1", "Held2", "New2", "Held3"]
     assert inbox["Deep Cuts 2026-10-03"] == ["New1", "Held1"]
@@ -534,9 +503,7 @@ def test_an_owned_track_whose_row_cannot_be_found_by_path_is_warned(native_libra
     _stage(cfg, silence, "Held1").rename(loose / "Held1.flac")
     swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})
     _stage(cfg, silence, "New1")
-
     acted = _landed(cfg)
-
     assert _inbox(cfg, root_id) == {"Sunset Warmup 2026-10-03": ["New1"]}
     (warning,) = _left(acted)
     assert "Sunset Warmup 2026-10-03 1. Probe - Held1" in warning["message"]
@@ -552,18 +519,15 @@ def test_a_rerun_of_the_same_pass_adds_nothing_twice(native_library, silence, mo
     # Late never arrived the first time, so the first landing named it.
     (warning,) = _left(first)
     assert "Probe - Late" in warning["message"]
-
     # Nothing staged: the same pass again is a plan of nothing and writes nothing.
     code, again = drive(_land())
     assert code == int(ExitCode.OK), again
     assert again["outcome"] == "no_op", again
-
     # Late arrives and the same pass is landed again: the account playlist
     # this pass already mirrored is not mirrored a second time, and the new
     # landing's playlist holds only what it brought.
     _stage(cfg, silence, "Late")
     later = _landed(cfg)
-
     inbox = _inbox(cfg, root_id)
     assert inbox["Sunset Warmup 2026-10-03"] == ["Held1", "New1"]
     assert inbox["Sunset Warmup 2026-10-03 2"] == ["Late"]
@@ -584,12 +548,10 @@ def test_a_rerun_is_read_from_the_record_of_this_pass_alone(native_library, sile
     assert refused["cause"]["detail"]["shown"]["account playlists"] == [
         "Sunset Warmup 2026-10-03 (2 file(s), 1 already in the library), the account's Sunset Warmup"
     ]
-
     run = "2026-10-03T201500Z-ab78"
     swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New2"))}, run_id=run)
     _stage(cfg, silence, "New2")
     code, acted, _ = _two_acts(_land(missing_cli.synced_name(run)))
-
     assert code == int(ExitCode.OK), acted
     assert _inbox(cfg, root_id)["Sunset Warmup 2026-10-03 2"] == ["Held1", "New2"]
 
@@ -602,7 +564,6 @@ def test_another_owned_row_is_another_plan():
     def planned(*members: native.PlaylistMember) -> dict:
         one = native.PlaylistPlan(name="Sunset Warmup", account="pl-a", members=members)
         return native._playlist_identity(one)
-
     first = planned(native.PlaylistMember(content_id="101"), new)
     assert first != planned(native.PlaylistMember(content_id="102"), new)
     assert first["members"] == ["row 101", str(target)]
@@ -630,8 +591,6 @@ def test_a_playlist_whose_only_file_is_unsupported_still_names_it_as_left():
         account="pl-b",
         members=(native.PlaylistMember(target=target, member=member),),
     )
-
     kept, dropped = native._supported_only([one], [row])
-
     assert kept == ()
     assert dropped == (("Deep Cuts", member.left(account_playlists.NOT_LANDED)),)

@@ -1,12 +1,8 @@
 """U121: a set intake leaves a permanent playlist of the set under INSPIRATION.
 
-Driven against the disposable database the native landing suite builds. A set
-job is queued the way ``intake set`` queues one, run to the end so its reports
-say which tracks the library owns and which are missing, and the landing is
-given the job with ``--set``. The backfill verb is driven over a set that
-landed without it.
-
-D1 applies. Nothing here names a real volume, a real person or a real track.
+A set job is queued as ``intake set`` queues one and run, so its reports say
+what the library owns, then landed with ``--set`` on the disposable database,
+or backfilled after a landing without it. D1 applies.
 """
 
 from __future__ import annotations
@@ -22,15 +18,19 @@ import pytest
 
 from cratekit.acquire import match
 from cratekit.cli import jobs as cli_jobs
-from cratekit.core import active_taxonomy, config, jobs, preflight, rb_writer, review, session, tags
-from cratekit.core.cause import CratekitError
+from cratekit.core import active_taxonomy, config, jobs, rb_writer, review, session, tags
+from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
+from cratekit.export import set_cli
 from cratekit.intake import batch_name, inspiration_cli, land_cli, native, set_playlist
 from cratekit.intake import cli as intake_cli
-from tests import adopt_fixtures, cutover_fixtures
+from cratekit.modules.outbound import ledger
+from cratekit.sync import mark_record
+from tests import cutover_fixtures
+from tests import test_intake_land_account_playlists_native as account_native
 from tests import test_intake_land_native as land_native
 from tests.cli_drive import drive
-from tests.test_config import valid_data
+from tests.test_intake_land_account_playlists_native import _cut_over, _machine, _templated
 from tests.test_intake_land_native import (
     DECLARED,
     GATE,
@@ -40,16 +40,14 @@ from tests.test_intake_land_native import (
     _members,
     _music,
     _query,
-    _seed_binding_rows,
     _two_acts,
 )
-from tests.test_rb_writer_db import RECORDED_APP_VERSION
 
 # The native landing suite's fixtures, bound so pytest finds them here.
 _platform_seams = land_native._platform_seams
 _release_process_locks = land_native._release_process_locks
-acknowledged, library, silence = land_native.acknowledged, land_native.library, land_native.silence
-native_library = land_native.native_library
+acknowledged, library = land_native.acknowledged, land_native.library
+silence = account_native.silence
 
 DAY = date(2026, 10, 9)
 BATCH = "2026-10-09 Set"
@@ -65,27 +63,16 @@ APPROVE = inspiration_cli.APPROVE_GATE
 def machine(library, monkeypatch):
     """The native landing suite's machine on the FULL profile, which carries ``intake set``.
 
-    The landing suite's own machine is on the default profile, where the set
-    verb is not enabled and a set job cannot be resumed through the driver.
-    Everything else is that fixture's: the disposable database, the binding
-    rows, the identity seams.
+    On the default profile the set verb is not enabled and a set job cannot be
+    resumed through the driver.
     """
-    resolved = config.from_dict(
-        valid_data(
-            library,
-            profile={"name": "full"},
-            rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"},
-        )
-    )
-    config.save(resolved)
-    config.reset_cache()
-    adopt_fixtures.build(resolved, ())
-    _seed_binding_rows(resolved)
-    monkeypatch.setattr(
-        preflight, "default_identity_provider", lambda: (lambda _path: resolved.library.volume_id)
-    )
-    monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
-    return resolved
+    return _machine(library, monkeypatch, profile={"name": "full"})
+
+
+@pytest.fixture
+def native_library(acknowledged):
+    """The acknowledged machine with its intake tree cut over. Answers (cfg, root id)."""
+    return _cut_over(acknowledged)
 
 
 @pytest.fixture(autouse=True)
@@ -116,50 +103,62 @@ def _stage(cfg: config.Config, silence: Path, title: str) -> Path:
     return _tagged(Path(cfg.paths.download_staging) / f"{title}.flac", silence, title)
 
 
+def _staged(cfg: config.Config, silence: Path, *titles: str) -> None:
+    for title in titles:
+        _stage(cfg, silence, title)
+
+
 def _owned(cfg: config.Config, silence: Path, title: str, *, content_id: str) -> Path:
     """A file the library holds under its own folder, with the collection row rekordbox gave it."""
     path = _tagged(Path(cfg.library.root) / cfg.library.music_dir / "Owned" / f"{title}.flac", silence, title)
-    conn = sqlite3.connect(cfg.library.db_path)
-    conn.execute(
+    _sql(
+        cfg,
         "INSERT INTO djmdContent (ID, Title, FolderPath, rb_local_deleted, created_at, "
         "updated_at) VALUES (?, ?, ?, 0, '2026-01-01', '2026-01-01')",
-        (content_id, title, str(path)),
+        content_id,
+        title,
+        str(path),
     )
-    conn.commit()
-    conn.close()
     return path
+
+
+def _queued(cfg: config.Config, tracks: dict, **payload) -> jobs.Job:
+    with jobs.open_store() as store:
+        return jobs.enqueue(
+            store,
+            handler_key=set_playlist.SET_KEY,
+            payload={intake_cli.TRACKS: tracks, **payload},
+            cfg=cfg,
+            item_ids=tuple(tracks),
+        )
+
+
+def _run(job: jobs.Job) -> str:
+    code, resumed = drive(cli_jobs.argv_for(job))
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
+    return job.job_id
+
+
+def _track(title: str, **more) -> dict:
+    return {"artist": "Probe", "title": title, **more, "origin": match.TEXT, "spelled": f"Probe - {title}"}
 
 
 def set_job(cfg: config.Config, titles: tuple[str, ...], *, page: dict | None = None) -> str:
     """One set job over ``titles`` in that order, queued as ``intake set`` queues one and run."""
-    tracks = {
-        f"rc_{title}": {
-            "artist": "Probe",
-            "title": title,
-            "origin": match.TEXT,
-            "spelled": f"Probe - {title}",
-        }
-        for title in titles
-    }
-    with jobs.open_store() as store:
-        job = jobs.enqueue(
-            store,
-            handler_key=set_playlist.SET_KEY,
-            payload={
+    return _run(
+        _queued(
+            cfg,
+            {f"rc_{title}": _track(title) for title in titles},
+            **{
                 intake_cli.SOURCE: "https://example.invalid/a-set",
-                intake_cli.TRACKS: tracks,
                 intake_cli.CALLS: len(titles),
                 intake_cli.UNREACHED: 0,
                 intake_cli.PARTS: 1,
                 intake_cli.PAGE: dict(page or {}),
             },
-            cfg=cfg,
-            item_ids=tuple(tracks),
         )
-    code, resumed = drive(cli_jobs.argv_for(job))
-    assert code == int(ExitCode.OK), resumed
-    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
-    return job.job_id
+    )
 
 
 def _land(*extra: str) -> list[str]:
@@ -170,17 +169,33 @@ def _inspiration(job_id: str, *extra: str) -> list[str]:
     return ["intake", "inspiration", "--job", job_id, *extra]
 
 
-def _two_acts_approve(verb: list[str]) -> tuple[int, dict, dict]:
-    """R34's two acts against the backfill's explicit gate, then the acting drive."""
+def _decided(verb: list[str], gate: str = APPROVE, answer: str = "apply") -> dict:
+    """The first act refused at the gate and the person's answer recorded: its refusal."""
     code, refused = drive(verb)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
+    decided, _ = drive(["run", "decide", refused["run_id"], gate, answer, "--actor", "a-person"])
+    assert decided == int(ExitCode.OK)
+    return refused
+
+
+def _two_acts_approve(verb: list[str]) -> tuple[int, dict, dict]:
+    """R34's two acts against the backfill's explicit gate, then the acting drive."""
+    refused = _decided(verb)
     detail = refused["cause"]["detail"]
     assert detail["gate"] == APPROVE and detail["explicit"] is True
-    run_id = refused["run_id"]
-    decided, envelope = drive(["run", "decide", run_id, APPROVE, "apply", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), envelope
-    code, acted = drive(["--run", run_id, *verb])
+    code, acted = drive(["--run", refused["run_id"], *verb])
     return code, acted, refused
+
+
+def _ok(verb: list[str], acts=_two_acts) -> tuple[dict, dict]:
+    """The verb's two acts, applied without a refusal: its envelope and what its gate showed."""
+    code, acted, refused = acts(verb)
+    assert code == int(ExitCode.OK), acted
+    return acted, refused["cause"]["detail"]["shown"]
+
+
+def _backfilled(job_id: str, *extra: str) -> tuple[dict, dict]:
+    return _ok(_inspiration(job_id, *WORDS, *extra), _two_acts_approve)
 
 
 def _row_ids_by_name(cfg: config.Config) -> dict[str, str]:
@@ -201,6 +216,10 @@ def _under_parent(cfg: config.Config, name: str, parent_id: str) -> list[tuple]:
     return [row for row in _playlists_named(cfg, name) if str(row[1]) == str(parent_id)]
 
 
+def _under_folder(cfg: config.Config, name: str = NAME) -> list[tuple]:
+    return _under_parent(cfg, name, _inspiration_folder_id(cfg))
+
+
 def _inspiration_folder_id(cfg: config.Config) -> str:
     ((folder_id,),) = _root_folders(cfg, FOLDER)
     return str(folder_id)
@@ -216,14 +235,10 @@ def _root_folders(cfg: config.Config, name: str) -> list[tuple]:
 
 
 def _children(cfg: config.Config, parent_id: str) -> list[str]:
-    return [
-        str(row[0])
-        for row in _query(
-            cfg,
-            "SELECT ID FROM djmdPlaylist WHERE ParentID = ? AND rb_local_deleted = 0",
-            parent_id,
-        )
-    ]
+    rows = _query(
+        cfg, "SELECT ID FROM djmdPlaylist WHERE ParentID = ? AND rb_local_deleted = 0", parent_id
+    )
+    return [str(row[0]) for row in rows]
 
 
 def _content_table(cfg: config.Config) -> list[tuple]:
@@ -238,37 +253,41 @@ def _sql(cfg: config.Config, statement: str, *args: object) -> None:
 
 
 def _with_folder(native_library) -> config.Config:
+    """The fresh native library with the INSPIRATION folder made at its root."""
     cfg, _root_id = native_library
-    cutover_fixtures.add_folder(cfg, FOLDER)
+    _templated("inspiration", cfg, lambda: cutover_fixtures.add_folder(cfg, FOLDER))
     return cfg
 
 
-def _set_item(acted: dict) -> dict:
+def _set_item(acted: dict, name: str = NAME) -> dict:
     """The landing's or the backfill's item for the set playlist written."""
     (item,) = [
-        i for i in acted["data"]["items"] if i.get("playlist") == NAME and "playlist_created" in i
+        i for i in acted["data"]["items"] if i.get("playlist") == name and "playlist_created" in i
     ]
     return item
 
 
 def _set_playlist_id(cfg: config.Config) -> str:
-    ((playlist_id, *_rest),) = _under_parent(cfg, NAME, _inspiration_folder_id(cfg))
+    ((playlist_id, *_rest),) = _under_folder(cfg)
     return playlist_id
 
 
-def _decided(verb: list[str], gate: str = APPROVE, answer: str = "apply") -> str:
-    """The first act refused at the gate and the person's answer recorded: the run."""
-    code, refused = drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    decided, _ = drive(["run", "decide", refused["run_id"], gate, answer, "--actor", "a-person"])
-    assert decided == int(ExitCode.OK)
-    return refused["run_id"]
+def _warned(acted: dict, code: str) -> list[dict]:
+    return [w for w in acted["warnings"] if w["code"] == code]
+
+
+def _set_records(cfg: config.Config) -> list:
+    return [r for r in session.records(cfg) if r.workflow == set_playlist.WORKFLOW]
+
+
+def _still_staged(cfg: config.Config, title: str = "One") -> bool:
+    return (Path(cfg.paths.download_staging) / f"{title}.flac").is_file()
 
 
 def _refused_before_the_gate(cfg: config.Config, code: int, envelope: dict, reason: str) -> None:
     assert code != int(ExitCode.OK) and code != int(ExitCode.DECISION_REQUIRED), envelope
     assert envelope["cause"]["reason"] == reason, envelope
-    assert not [r for r in session.records(cfg) if r.workflow == set_playlist.WORKFLOW]
+    assert not _set_records(cfg)
 
 
 # ---------------------------------------------------------------------------
@@ -277,23 +296,20 @@ def _refused_before_the_gate(cfg: config.Config, code: int, envelope: dict, reas
 
 
 def test_the_name_is_the_source_systems_form_to_the_character():
-    words = set_playlist.SetWords("Public Service NYC", "Live at Vonking", date(2026, 5, 1))
-    assert (
-        set_playlist.playlist_name(words, on=date(2026, 10, 9))
-        == "10_09_26 Public Service NYC Live at Vonking 5-26"
-    )
-    # The folder's own examples: month without a leading zero, day with one.
-    assert set_playlist.playlist_name(
-        set_playlist.SetWords("oshe", "GOATCHELLA Radio Mix", date(2026, 4, 1)), on=date(2026, 5, 28)
-    ) == "5_28_26 oshe GOATCHELLA Radio Mix 4-26"
-    assert set_playlist.playlist_name(
-        set_playlist.SetWords("Pepofit", "PEPOFIT LIB JUNKYARD", date(2026, 5, 1)),
-        on=date(2026, 6, 16),
-    ) == "6_16_26 Pepofit PEPOFIT LIB JUNKYARD 5-26"
-    # December and a two digit month in the set's half.
-    assert set_playlist.playlist_name(
-        set_playlist.SetWords("A", "B", date(2025, 12, 1)), on=date(2026, 1, 3)
-    ) == "1_03_26 A B 12-25"
+    named = [
+        # The folder's own examples: month without a leading zero, day with one.
+        (("Public Service NYC", "Live at Vonking", date(2026, 5, 1)), date(2026, 10, 9)),
+        (("oshe", "GOATCHELLA Radio Mix", date(2026, 4, 1)), date(2026, 5, 28)),
+        (("Pepofit", "PEPOFIT LIB JUNKYARD", date(2026, 5, 1)), date(2026, 6, 16)),
+        # December and a two digit month in the set's half.
+        (("A", "B", date(2025, 12, 1)), date(2026, 1, 3)),
+    ]
+    assert [set_playlist.playlist_name(set_playlist.SetWords(*w), on=on) for w, on in named] == [
+        "10_09_26 Public Service NYC Live at Vonking 5-26",
+        "5_28_26 oshe GOATCHELLA Radio Mix 4-26",
+        "6_16_26 Pepofit PEPOFIT LIB JUNKYARD 5-26",
+        "1_03_26 A B 12-25",
+    ]
 
 
 def _job_with(page: dict) -> jobs.Job:
@@ -333,6 +349,8 @@ def test_a_flag_wins_over_the_page_and_a_day_is_read_as_its_month():
         ({"title": "A Set"}, {}, ["--dj", "--set-date"]),
         ({"uploader": "Probe"}, {"set_name": "A Set"}, ["--set-date"]),
         ({"uploader": "Probe", "title": "Probe", "upload_date": "2026-05-03"}, {}, ["--set-date"]),
+        # A page date that is not a date names no month, and the flag is asked for.
+        ({**PAGE, "upload_date": "20261300"}, {}, ["--set-date"]),
     ],
 )
 def test_a_word_neither_the_page_nor_a_flag_gives_is_refused_naming_the_flag(page, flags, missing):
@@ -352,14 +370,11 @@ def test_a_set_date_that_is_not_a_month_is_refused_by_name(given):
     assert caught.value.cause.remediation.remedy is Remedy.FIX_COMMAND_LINE
 
 
-def test_a_page_date_that_is_not_a_date_names_no_month_and_the_flag_is_asked_for():
-    with pytest.raises(CratekitError) as caught:
-        set_playlist.words_for(_job_with({**PAGE, "upload_date": "20261300"}))
-    assert caught.value.cause.detail["missing"] == ["--set-date"]
-
-
 def test_the_naming_day_is_the_posted_flag_then_the_page_then_the_landing_day():
-    """U136: the page's upload day names the set whatever day it lands (R-949), the flag wins."""
+    """U136: the page's upload day names the set whatever day it lands (R-949), the flag wins.
+
+    INBOX still ages by the landing day, so the batch name keeps its own shape.
+    """
     words = set_playlist.SetWords("Public Service NYC", "Live at Signal", date(2026, 2, 1))
     named = "3_25_26 Public Service NYC Live at Signal 2-26"
     for landing in (date(2026, 10, 10), date(2026, 10, 17), None):
@@ -387,14 +402,9 @@ def test_the_naming_day_is_the_posted_flag_then_the_page_then_the_landing_day():
     day, warn = set_playlist.naming_day(page_upload_date="", landing=date(2026, 10, 10))
     assert day == date(2026, 10, 10)
     assert warn["code"] == set_playlist.POSTED_FALLBACK and "10_10_26" in warn["message"]
-
-
-def test_the_inbox_batch_name_is_unchanged_by_the_posted_day():
-    """INBOX still ages by the landing day; U136 does not retarget batch_name.readable."""
     assert batch_name.is_default_shape("2026-10-10 Set")
-    # The set playlist form is a different shape and lives beside readable.
     assert batch_name.set_day_word(date(2026, 3, 25)) == "3_25_26"
-    assert not batch_name.is_default_shape("3_25_26 Public Service NYC Live at Signal 2-26")
+    assert not batch_name.is_default_shape(named)
 
 
 @pytest.mark.parametrize("given", ["April 17", "2026-4-17", "2026-04", "2026-04-17T12:00:00"])
@@ -413,38 +423,36 @@ def test_a_posted_flag_that_is_not_a_day_is_refused_by_name(given):
 def test_a_landing_from_a_set_job_writes_the_set_playlist_with_owned_and_landed_rows_in_job_order(
     native_library, silence
 ):
+    """In the set's order, which here is not the titles', so a sort by title shows.
+
+    No beat grid, tempo or rating is written: the owned row is untouched to the
+    byte, and the landed rows are the landing's own.
+    """
     cfg, root_id = native_library
-    folder_id = cutover_fixtures.add_folder(cfg, FOLDER)
+    folder_id = _inspiration_folder_id(_with_folder(native_library))
     _owned(cfg, silence, "Three", content_id="held-3")
-    job_id = set_job(cfg, ("One", "Three", "Two"))
-    _stage(cfg, silence, "One")
-    _stage(cfg, silence, "Two")
-
-    code, acted, refused = _two_acts(_land("--set", job_id, *WORDS))
-
-    assert code == int(ExitCode.OK), acted
-    shown = refused["cause"]["detail"]["shown"]
+    job_id = set_job(cfg, ("Two", "One", "Three"))
+    _staged(cfg, silence, "One", "Two")
+    before = {row[0]: row for row in _content_table(cfg)}
+    acted, shown = _ok(_land("--set", job_id, *WORDS))
     assert shown["set playlist"] == NAME
     assert shown["set tracks"] == 3 and shown["set left out"] == 0
     assert shown["under"] == f"{FOLDER} (row {folder_id})"
     # The plan the person approved is the plan that was applied, set included.
     assert shown["digest"] == acted["data"]["digest"]
-
     ((playlist_id, parent, attribute, removed),) = _under_parent(cfg, NAME, folder_id)
     assert str(parent) == folder_id and int(attribute or 0) == 0 and not removed
     rows = _row_ids_by_name(cfg)
     # Owned and landed alike, in the order the set played them.
-    assert _members(cfg, str(playlist_id)) == [rows["One"], "held-3", rows["Two"]]
-
+    assert _members(cfg, str(playlist_id)) == [rows["Two"], rows["One"], "held-3"]
     # The INBOX playlist is named for the set (U135), holding the landed files only.
     ((batch_id, batch_parent, _a, _r),) = _under_parent(cfg, NAME, root_id)
     assert str(batch_parent) == root_id
-    assert _members(cfg, str(batch_id)) == [rows["One"], rows["Two"]]
+    assert _members(cfg, str(batch_id)) == [rows["Two"], rows["One"]]
     # And INBOX / Analyze (U166), which holds every row the landing made.
     ((analyze_id, _p, _a, _r),) = _under_parent(cfg, native.ANALYZE, root_id)
     assert sorted(_children(cfg, root_id)) == sorted([str(batch_id), str(analyze_id)])
     assert _members(cfg, str(analyze_id)) == [rows["One"], rows["Two"]]
-
     totals = acted["data"]["totals"]
     assert totals["memberships"] == 2, "the set's memberships are not the batch's"
     assert totals["set playlist tracks"] == 3 and totals["set playlist left out"] == 0
@@ -453,7 +461,6 @@ def test_a_landing_from_a_set_job_writes_the_set_playlist_with_owned_and_landed_
     assert item["folder"] == folder_id and item["folder_created"] is False
     codes = [w["code"] for w in acted["warnings"]]
     assert codes == [land_cli.AWAITING_ANALYSIS, land_cli.VOX_NOT_WRITTEN, set_playlist.WRITTEN]
-
     # The one record names both, and counts the set's memberships under the
     # folder's own id, apart from the intake tree's.
     (record,) = session.records(cfg)
@@ -471,15 +478,13 @@ def test_a_landing_from_a_set_job_writes_the_set_playlist_with_owned_and_landed_
         DECLARED.inspiration.id: 3,
     }
     assert record.sources[DECLARED.inspiration.id] == "committed"
-
-
-def test_the_words_come_off_the_jobs_page_when_no_flag_is_given(native_library, silence):
-    cfg, _root_id = native_library
-    job_id = set_job(cfg, ("One",), page=PAGE)
-    _stage(cfg, silence, "One")
-    code, acted, _ = _two_acts(_land("--set", job_id))
-    assert code == int(ExitCode.OK), acted
-    assert _playlists_named(cfg, "5_03_26 Probe DJ Live at Probe 05.03.26 5-26")
+    after = {row[0]: row for row in _content_table(cfg)}
+    assert after["held-3"] == before["held-3"]
+    assert set(after) - set(before) == {rows["One"], rows["Two"]}
+    for table in ("djmdBeatGrid", "djmdCue", "djmdHotCueBanklist"):
+        found = _query(cfg, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", table)
+        if found:
+            assert _query(cfg, f"SELECT COUNT(*) FROM {table}") == [(0,)]
 
 
 @pytest.mark.parametrize(
@@ -488,14 +493,13 @@ def test_the_words_come_off_the_jobs_page_when_no_flag_is_given(native_library, 
 def test_a_landing_names_the_playlist_for_the_posted_day(native_library, silence, page, posted):
     """U136: the page's upload_date, or ``--posted`` on a pre freeze job, wins over the landing day."""
     cfg, root_id = native_library
-    cutover_fixtures.add_folder(cfg, FOLDER)
+    _with_folder(native_library)
     job_id = set_job(cfg, ("One",), page=page)
     _stage(cfg, silence, "One")
-    code, acted, refused = _two_acts(_land("--set", job_id, *WORDS, *posted))
-    assert code == int(ExitCode.OK), acted
-    assert refused["cause"]["detail"]["shown"]["set playlist"] == POSTED_NAME
-    assert _under_parent(cfg, POSTED_NAME, _inspiration_folder_id(cfg))
-    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
+    _acted, shown = _ok(_land("--set", job_id, *WORDS, *posted))
+    assert shown["set playlist"] == POSTED_NAME
+    assert _under_folder(cfg, POSTED_NAME)
+    assert _under_folder(cfg) == []
     # The INBOX batch keeps the landing day, named for the set since U135.
     assert _under_parent(cfg, NAME, root_id)
 
@@ -510,17 +514,11 @@ def test_posted_on_a_frozen_job_names_another_day_and_the_frozen_name_wins_with_
     job_id = set_job(cfg, ("One",), page=PAGE)
     _freeze_name(job_id, NAME)
     _stage(cfg, silence, "One")
-
-    code, acted, refused = _two_acts(
-        _land("--set", job_id, *WORDS, "--posted", "2026-05-03")
-    )
-
-    assert code == int(ExitCode.OK), acted
-    shown = refused["cause"]["detail"]["shown"]
+    acted, shown = _ok(_land("--set", job_id, *WORDS, "--posted", "2026-05-03"))
     assert shown["set playlist"] == NAME
-    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg))
+    assert _under_folder(cfg)
     assert _playlists_named(cfg, POSTED_NAME) == []
-    ignored = [w for w in acted["warnings"] if w["code"] == set_playlist.POSTED_IGNORED]
+    ignored = _warned(acted, set_playlist.POSTED_IGNORED)
     assert len(ignored) == 1, acted["warnings"]
     (warning,) = ignored
     assert "--posted 2026-05-03" in warning["message"]
@@ -528,77 +526,55 @@ def test_posted_on_a_frozen_job_names_another_day_and_the_frozen_name_wins_with_
     assert NAME.split()[0] in warning["message"]
     assert "the frozen name wins" in warning["message"]
     assert shown["posted day"] == warning["message"]
-    assert not any(w["code"] == set_playlist.POSTED_FALLBACK for w in acted["warnings"])
-
-
-def test_posted_equal_to_landing_day_on_a_pageless_job_is_not_decision_stale(
-    native_library, silence
-):
-    """U136: --posted equal to today must not flip posted_fallback on re-plan."""
-    cfg = _with_folder(native_library)
-    _owned(cfg, silence, "Three", content_id="held-3")
-    job_id = set_job(cfg, ("Three",))
-    code, acted, refused = _two_acts_approve(
-        _inspiration(job_id, *WORDS, "--posted", "2026-10-09")
-    )
-    assert code == int(ExitCode.OK), acted
-    assert acted["outcome"] != "error"
-    assert refused["cause"]["detail"]["shown"]["set playlist"] == NAME
-    assert _playlists_named(cfg, NAME)
-    assert not any(w["code"] == set_playlist.POSTED_FALLBACK for w in acted["warnings"])
+    assert not _warned(acted, set_playlist.POSTED_FALLBACK)
 
 
 def test_a_backfill_a_week_later_adds_to_a_playlist_pre_made_under_the_posted_name(
     native_library, silence, monkeypatch
 ):
     """Driven R-949: playlist pre-made under the posted name; a week on, one playlist."""
-    cfg, _root_id = native_library
-    folder_id = cutover_fixtures.add_folder(cfg, FOLDER)
+    cfg = _with_folder(native_library)
     _owned(cfg, silence, "Three", content_id="held-3")
     job_id = set_job(cfg, ("Three",), page=PAGE)
-    _make_playlist(cfg, POSTED_NAME, under=folder_id)
+    _make_playlist(cfg, POSTED_NAME, under=_inspiration_folder_id(cfg))
     monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 16))
-    code, acted, refused = _two_acts_approve(_inspiration(job_id, *WORDS))
-    assert code == int(ExitCode.OK), acted
-    assert refused["cause"]["detail"]["shown"]["set playlist"] == POSTED_NAME
+    acted, shown = _backfilled(job_id)
+    assert shown["set playlist"] == POSTED_NAME
     assert len(_playlists_named(cfg, POSTED_NAME)) == 1
     assert _playlists_named(cfg, "10_16_26 Probe DJ Live at Probe 5-26") == []
     assert acted["data"]["totals"]["added"] == 1
-    (item,) = [i for i in acted["data"]["items"] if i.get("playlist") == POSTED_NAME]
-    assert item.get("playlist_created") is False
+    assert _set_item(acted, POSTED_NAME)["playlist_created"] is False
 
 
 def test_a_landing_creates_the_declared_folder_at_the_root_when_the_library_lacks_it(
     native_library, silence
 ):
+    """With no flag given, the words come off the job's page."""
     cfg, _root_id = native_library
     assert _root_folders(cfg, FOLDER) == []
-    job_id = set_job(cfg, ("One",))
+    job_id = set_job(cfg, ("One",), page=PAGE)
     _stage(cfg, silence, "One")
-    code, acted, refused = _two_acts(_land("--set", job_id, *WORDS))
-    assert code == int(ExitCode.OK), acted
-    assert refused["cause"]["detail"]["shown"]["under"] == f"{FOLDER}, created at the playlist root"
+    acted, shown = _ok(_land("--set", job_id))
+    named = "5_03_26 Probe DJ Live at Probe 05.03.26 5-26"
+    assert shown["under"] == f"{FOLDER}, created at the playlist root"
     ((folder_id,),) = _root_folders(cfg, FOLDER)
-    ((_pid, parent, _a, _r),) = _under_parent(cfg, NAME, _inspiration_folder_id(cfg))
+    ((_pid, parent, _a, _r),) = _under_folder(cfg, named)
     assert str(parent) == str(folder_id)
-    item = _set_item(acted)
-    assert item["folder_created"] is True
+    assert _set_item(acted, named)["folder_created"] is True
 
 
 def test_a_landing_from_a_playlist_job_or_no_job_writes_no_set_playlist(native_library, silence):
-    cfg, root_id = native_library
-    cutover_fixtures.add_folder(cfg, FOLDER)
+    cfg = _with_folder(native_library)
     _stage(cfg, silence, "One")
-    code, acted, _ = _two_acts(_land())
-    assert code == int(ExitCode.OK), acted
-    ((folder_id,),) = _root_folders(cfg, FOLDER)
-    assert _children(cfg, str(folder_id)) == []
+    acted, _shown = _ok(_land())
+    assert _children(cfg, _inspiration_folder_id(cfg)) == []
     assert "set playlist tracks" not in acted["data"]["totals"]
     (record,) = session.records(cfg)
     assert set_playlist.RECORD_KEY not in record.detail
 
 
 def test_a_playlist_job_named_with_set_is_refused_before_anything_moves(native_library, silence):
+    """So is a set the page and the flags cannot name, and a word flag without --set."""
     cfg, _root_id = native_library
     _stage(cfg, silence, "One")
     with jobs.open_store() as store:
@@ -612,26 +588,24 @@ def test_a_playlist_job_named_with_set_is_refused_before_anything_moves(native_l
     code, envelope = drive(_land("--set", job.job_id, *WORDS))
     assert envelope["cause"]["reason"] == "job-unknown", envelope
     assert code != int(ExitCode.DECISION_REQUIRED)
-    assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
-
-
-def test_a_set_the_page_and_the_flags_cannot_name_is_refused_before_the_gate(
-    native_library, silence
-):
-    cfg, _root_id = native_library
-    job_id = set_job(cfg, ("One",))
-    _stage(cfg, silence, "One")
-    code, envelope = drive(_land("--set", job_id, "--dj", "Probe DJ"))
+    assert _still_staged(cfg)
+    code, envelope = drive(_land("--set", set_job(cfg, ("One",)), "--dj", "Probe DJ"))
     assert code != int(ExitCode.DECISION_REQUIRED), envelope
     assert envelope["cause"]["reason"] == set_playlist.UNNAMED
     assert envelope["cause"]["detail"]["missing"] == ["--set-name", "--set-date"]
-    assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
+    code, envelope = drive(_land("--dj", "Probe DJ", "--set-date", "2026-05"))
+    assert code != int(ExitCode.DECISION_REQUIRED), envelope
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert envelope["cause"]["detail"]["given"] == ["--dj", "--set-date"]
+    assert "--set JOB" in envelope["cause"]["message"]
+    assert _still_staged(cfg)
     assert session.records(cfg) == ()
 
 
 def test_a_taxonomy_with_no_inspiration_folder_is_refused_by_name_before_the_gate(
     native_library, silence, monkeypatch
 ):
+    """The landing and the backfill alike."""
     cfg, _root_id = native_library
     monkeypatch.setattr(active_taxonomy, "load", lambda _cfg: replace(DECLARED, inspiration=None))
     job_id = set_job(cfg, ("One",))
@@ -640,8 +614,10 @@ def test_a_taxonomy_with_no_inspiration_folder_is_refused_by_name_before_the_gat
     assert code != int(ExitCode.DECISION_REQUIRED), envelope
     assert envelope["cause"]["reason"] == set_playlist.FOLDER_UNDECLARED
     assert any("[inspiration]" in step for step in envelope["cause"]["remediation"]["steps"])
-    assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
+    assert _still_staged(cfg)
     assert session.records(cfg) == ()
+    code, envelope = drive(_inspiration(job_id, *WORDS))
+    _refused_before_the_gate(cfg, code, envelope, set_playlist.FOLDER_UNDECLARED)
 
 
 def test_two_root_folders_of_the_name_are_refused_rather_than_one_chosen(native_library, silence):
@@ -655,24 +631,24 @@ def test_two_root_folders_of_the_name_are_refused_rather_than_one_chosen(native_
 
 
 def test_a_row_neither_owned_nor_landed_is_counted_and_named_and_not_added(native_library, silence):
+    """And a row that resolves only to a different version is not guessed: the
+    account playlists' rule (U113), a file that is only close claims nothing, so
+    the batch lands the extended mix and the set leaves its row out."""
     cfg = _with_folder(native_library)
-    job_id = set_job(cfg, ("One", "Four", "Two"))
-    _stage(cfg, silence, "One")
-    _stage(cfg, silence, "Two")
-
-    code, acted, refused = _two_acts(_land("--set", job_id, *WORDS))
-
-    assert code == int(ExitCode.OK), acted
-    shown = refused["cause"]["detail"]["shown"]
-    assert shown["set tracks"] == 2 and shown["set left out"] == 1
-    playlist_id = _set_playlist_id(cfg)
+    job_id = set_job(cfg, ("One", "Four", "Two", "Six"))
+    _staged(cfg, silence, "One", "Two", "Six (Extended Mix)")
+    acted, shown = _ok(_land("--set", job_id, *WORDS))
+    assert shown["set tracks"] == 2 and shown["set left out"] == 2
+    assert acted["data"]["totals"]["added"] == 3, "the batch did not land every file"
     rows = _row_ids_by_name(cfg)
-    assert _members(cfg, str(playlist_id)) == [rows["One"], rows["Two"]]
-    (left,) = [w for w in acted["warnings"] if w["code"] == set_playlist.LEFT_OUT]
+    assert _members(cfg, str(_set_playlist_id(cfg))) == [rows["One"], rows["Two"]]
+    (left,) = _warned(acted, set_playlist.LEFT_OUT)
     assert "2. Probe - Four" in left["message"] and set_playlist.NOT_RESOLVED in left["message"]
-    item = _set_item(acted)
-    assert item["left"] == [
-        {"position": 2, "artist": "Probe", "title": "Four", "state": "missing", "why": set_playlist.NOT_RESOLVED}
+    assert "4. Probe - Six" in left["message"]
+    missing = {"artist": "Probe", "state": "missing", "why": set_playlist.NOT_RESOLVED}
+    assert _set_item(acted)["left"] == [
+        {"position": 2, **missing, "title": "Four"},
+        {"position": 4, **missing, "title": "Six"},
     ]
 
 
@@ -680,9 +656,8 @@ def test_a_set_with_nothing_owned_or_landed_writes_no_playlist_and_says_so(nativ
     cfg = _with_folder(native_library)
     job_id = set_job(cfg, ("Four",))
     _stage(cfg, silence, "One")
-    code, acted, _ = _two_acts(_land("--set", job_id, *WORDS))
-    assert code == int(ExitCode.OK), acted
-    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
+    acted, _shown = _ok(_land("--set", job_id, *WORDS))
+    assert _under_folder(cfg) == []
     codes = [w["code"] for w in acted["warnings"]]
     assert set_playlist.NOTHING in codes and set_playlist.LEFT_OUT in codes
     (record,) = session.records(cfg)
@@ -702,37 +677,7 @@ def test_a_landing_on_the_bridge_given_set_is_refused_by_name_before_anything_mo
     steps = envelope["cause"]["remediation"]["steps"]
     assert any("without --set" in step for step in steps)
     assert any("tree cutover" in step for step in steps)
-    assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
-
-
-def test_a_word_flag_without_set_is_refused_rather_than_ignored(native_library, silence):
-    cfg, _root_id = native_library
-    _stage(cfg, silence, "One")
-    code, envelope = drive(_land("--dj", "Probe DJ", "--set-date", "2026-05"))
-    assert code != int(ExitCode.DECISION_REQUIRED), envelope
-    assert envelope["cause"]["reason"] == "intake-list-unusable"
-    assert envelope["cause"]["detail"]["given"] == ["--dj", "--set-date"]
-    assert "--set JOB" in envelope["cause"]["message"]
-    assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
-
-
-def test_no_beat_grid_tempo_or_rating_is_written_for_the_set_playlist(native_library, silence):
-    cfg = _with_folder(native_library)
-    _owned(cfg, silence, "Three", content_id="held-3")
-    job_id = set_job(cfg, ("Three", "One"))
-    _stage(cfg, silence, "One")
-    before = {row[0]: row for row in _content_table(cfg)}
-    code, acted, _ = _two_acts(_land("--set", job_id, *WORDS))
-    assert code == int(ExitCode.OK), acted
-    after = {row[0]: row for row in _content_table(cfg)}
-    # The owned row is untouched to the byte; the landed row is the landing's
-    # own, whose analysis columns the engine reads back empty and asserts.
-    assert after["held-3"] == before["held-3"]
-    assert set(after) - set(before) == {_row_ids_by_name(cfg)["One"]}
-    for table in ("djmdBeatGrid", "djmdCue", "djmdHotCueBanklist"):
-        found = _query(cfg, "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?", table)
-        if found:
-            assert _query(cfg, f"SELECT COUNT(*) FROM {table}") == [(0,)]
+    assert _still_staged(cfg)
 
 
 # ---------------------------------------------------------------------------
@@ -744,23 +689,17 @@ def test_the_backfill_over_a_landed_set_adds_the_playlist_and_nothing_to_inbox(
     native_library, silence
 ):
     cfg, root_id = native_library
-    folder_id = cutover_fixtures.add_folder(cfg, FOLDER)
+    folder_id = _inspiration_folder_id(_with_folder(native_library))
     _owned(cfg, silence, "Three", content_id="held-3")
     job_id = set_job(cfg, ("One", "Three", "Two"))
-    _stage(cfg, silence, "One")
-    _stage(cfg, silence, "Two")
-    code, landed, _ = _two_acts(_land())
-    assert code == int(ExitCode.OK), landed
+    _staged(cfg, silence, "One", "Two")
+    _ok(_land())
     inbox_before = _children(cfg, root_id)
     content_before = _content_table(cfg)
-
-    code, acted, refused = _two_acts_approve(_inspiration(job_id, *WORDS))
-
-    assert code == int(ExitCode.OK), acted
-    shown = refused["cause"]["detail"]["shown"]
+    acted, shown = _backfilled(job_id)
     assert shown["set playlist"] == NAME and shown["set tracks"] == 3 and shown["set left out"] == 0
     assert shown["digest"] == acted["data"]["digest"]
-    ((playlist_id, parent, _a, _r),) = _under_parent(cfg, NAME, _inspiration_folder_id(cfg))
+    ((playlist_id, parent, _a, _r),) = _under_folder(cfg)
     assert str(parent) == folder_id
     rows = _row_ids_by_name(cfg)
     assert _members(cfg, str(playlist_id)) == [rows["One"], "held-3", rows["Two"]]
@@ -779,8 +718,7 @@ def test_the_backfill_over_a_landed_set_adds_the_playlist_and_nothing_to_inbox(
     # Nothing under INBOX moved and no content row changed.
     assert _children(cfg, root_id) == inbox_before
     assert _content_table(cfg) == content_before
-    records = [r for r in session.records(cfg) if r.workflow == set_playlist.WORKFLOW]
-    (record,) = records
+    (record,) = _set_records(cfg)
     assert record.state is session.SessionState.CLOSED
     assert record.detail[set_playlist.RECORD_KEY]["id"] == str(playlist_id)
     assert {c.tree: c.created for c in record.change.trees} == {DECLARED.inspiration.id: 3}
@@ -791,16 +729,15 @@ def test_the_backfill_over_a_set_with_nothing_owned_asks_and_then_writes_nothing
 ):
     cfg = _with_folder(native_library)
     job_id = set_job(cfg, ("Four",))
-    code, acted, _ = _two_acts_approve(_inspiration(job_id, *WORDS))
-    assert code == int(ExitCode.OK), acted
+    acted, _shown = _backfilled(job_id)
     assert acted["outcome"] == "no_op"
-    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
+    assert _under_folder(cfg) == []
     assert [w["code"] for w in acted["warnings"]] == [
         set_playlist.POSTED_FALLBACK,
         set_playlist.NOTHING,
         set_playlist.LEFT_OUT,
     ]
-    assert not [r for r in session.records(cfg) if r.workflow == set_playlist.WORKFLOW]
+    assert not _set_records(cfg)
 
 
 def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(machine):
@@ -821,100 +758,37 @@ def test_the_backfill_refuses_a_job_that_is_not_a_set_and_an_unfinished_one(nati
     cfg, _root_id = native_library
     code, envelope = drive(_inspiration("no-such-job", *WORDS))
     _refused_before_the_gate(cfg, code, envelope, "job-unknown")
-    with jobs.open_store() as store:
-        queued = jobs.enqueue(
-            store,
-            handler_key=set_playlist.SET_KEY,
-            payload={intake_cli.SOURCE: "x", intake_cli.TRACKS: {"rc_a": {"artist": "P", "title": "A"}}},
-            cfg=cfg,
-            item_ids=("rc_a",),
-        )
+    queued = _queued(cfg, {"rc_a": {"artist": "P", "title": "A"}}, **{intake_cli.SOURCE: "x"})
     code, envelope = drive(_inspiration(queued.job_id, *WORDS))
     _refused_before_the_gate(cfg, code, envelope, "intake-list-unusable")
     assert envelope["cause"]["detail"]["state"] == "queued"
 
 
-def test_a_taxonomy_with_no_inspiration_folder_refuses_the_backfill_by_name(
-    native_library, monkeypatch
-):
-    cfg, _root_id = native_library
-    monkeypatch.setattr(active_taxonomy, "load", lambda _cfg: replace(DECLARED, inspiration=None))
-    job_id = set_job(cfg, ("One",))
-    code, envelope = drive(_inspiration(job_id, *WORDS))
-    _refused_before_the_gate(cfg, code, envelope, set_playlist.FOLDER_UNDECLARED)
-
-
+@pytest.mark.parametrize("verb", ["backfill", "landing"])
 def test_a_folder_that_went_between_the_plan_and_the_write_is_refused_as_stale(
-    native_library, silence
+    native_library, silence, verb
 ):
-    cfg, _root_id = native_library
-    folder_id = cutover_fixtures.add_folder(cfg, FOLDER)
-    job_id = set_job(cfg, ("One",))
-    _stage(cfg, silence, "One")
-    code, _landed, _ = _two_acts(_land())
-    assert code == int(ExitCode.OK)
-    verb = _inspiration(job_id, *WORDS)
-    run_id = _decided(verb)
-    _sql(cfg, "UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", folder_id)
-    code, acted = drive(["--run", run_id, *verb])
-    assert acted["cause"]["reason"] == "decision-stale", acted
-    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
-
-
-# ---------------------------------------------------------------------------
-# What the hunt after the suite added: a guess, a moved collection, a gone folder
-# ---------------------------------------------------------------------------
-
-
-def test_a_row_that_resolves_only_to_a_different_version_is_not_guessed(native_library, silence):
-    """The account playlists' rule (U113): a file that is only close, a different
-    version, claims nothing. The set wants the original and staging holds the
-    extended mix, so the batch lands the file and the set playlist leaves the
-    row out, written for nobody rather than for a guess."""
-    cfg = _with_folder(native_library)
-    job_id = set_job(cfg, ("One",))
-    _stage(cfg, silence, "One (Extended Mix)")
-    code, acted, refused = _two_acts(_land("--set", job_id, *WORDS))
-    assert code == int(ExitCode.OK), acted
-    assert refused["cause"]["detail"]["shown"]["set tracks"] == 0
-    assert acted["data"]["totals"]["added"] == 1, "the batch did not land the file"
-    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
-    (left,) = [w for w in acted["warnings"] if w["code"] == set_playlist.LEFT_OUT]
-    assert "1. Probe - One" in left["message"]
-
-
-def test_a_collection_that_moved_between_the_plan_and_the_write_is_refused_as_stale(
-    native_library, silence
-):
-    cfg = _with_folder(native_library)
-    _owned(cfg, silence, "Three", content_id="held-3")
-    job_id = set_job(cfg, ("Three",))
-    verb = _inspiration(job_id, *WORDS)
-    run_id = _decided(verb)
-    _sql(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = 'held-3'")
-    code, acted = drive(["--run", run_id, *verb])
-    assert acted["cause"]["reason"] == "decision-stale", acted
-    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
-    assert not [r for r in session.records(cfg) if r.workflow == set_playlist.WORKFLOW]
-
-
-def test_a_landing_whose_folder_went_between_the_two_acts_moves_nothing(native_library, silence):
     """The acting drive plans again on the write handle and the gate compares
     the digest, so a folder rekordbox removed after the approval is a changed
-    plan: refused before the first move, the files still in staging."""
-    cfg, _root_id = native_library
-    folder_id = cutover_fixtures.add_folder(cfg, FOLDER)
+    plan. A landing is refused before the first move, the files still in staging."""
+    cfg = _with_folder(native_library)
     job_id = set_job(cfg, ("One",))
     _stage(cfg, silence, "One")
-    verb = _land("--set", job_id, *WORDS)
-    run_id = _decided(verb, gate=GATE)
-    _sql(cfg, "UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", folder_id)
-    code, acted = drive(["--run", run_id, *verb])
+    if verb == "backfill":
+        _ok(_land())
+        argv, gate = _inspiration(job_id, *WORDS), APPROVE
+    else:
+        argv, gate = _land("--set", job_id, *WORDS), GATE
+    run_id = _decided(argv, gate=gate)["run_id"]
+    _soft_delete_playlist(cfg, _inspiration_folder_id(cfg))
+    code, acted = drive(["--run", run_id, *argv])
     assert acted["cause"]["reason"] == "decision-stale", acted
-    assert "has since changed" in acted["cause"]["message"]
-    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
-    assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
-    assert _query(cfg, "SELECT COUNT(*) FROM djmdContent WHERE FolderPath LIKE ?", f"%{BATCH}%") == [(0,)]
+    assert _under_folder(cfg) == []
+    if verb == "landing":
+        assert "has since changed" in acted["cause"]["message"]
+        assert _still_staged(cfg)
+        landed = _query(cfg, "SELECT COUNT(*) FROM djmdContent WHERE FolderPath LIKE ?", f"%{BATCH}%")
+        assert landed == [(0,)]
 
 
 # ---------------------------------------------------------------------------
@@ -925,8 +799,7 @@ def test_a_landing_whose_folder_went_between_the_two_acts_moves_nothing(native_l
 def _offered_item(cfg: config.Config, job_id: str, title: str) -> tuple[str, str]:
     """The review item the worker offered for ``title`` and its first option."""
     with jobs.open_store() as store:
-        job = jobs.get(store, job_id)
-        reports = set_playlist.reports_of(store, job)
+        reports = set_playlist.reports_of(store, jobs.get(store, job_id))
     (report,) = [r for r in reports if r["track"]["title"] == title]
     assert report["state"] == "offered", report
     with review.open_store(cfg) as items:
@@ -953,14 +826,9 @@ def test_a_track_accepted_at_review_as_a_library_file_joins_the_playlist_at_a_la
     code, answered = drive(["review", "resolve", item_id, "--verdict", "accepted", "--option", option])
     assert code == int(ExitCode.OK), answered
     _stage(cfg, silence, "Two")
-
-    code, acted, refused = _two_acts(_land("--set", job_id, *WORDS))
-
-    assert code == int(ExitCode.OK), acted
-    assert refused["cause"]["detail"]["shown"]["set tracks"] == 2
-    playlist_id = _set_playlist_id(cfg)
-    rows = _row_ids_by_name(cfg)
-    assert _members(cfg, str(playlist_id)) == ["held-1x", rows["Two"]]
+    _acted, shown = _ok(_land("--set", job_id, *WORDS))
+    assert shown["set tracks"] == 2
+    assert _members(cfg, str(_set_playlist_id(cfg))) == ["held-1x", _row_ids_by_name(cfg)["Two"]]
 
 
 def test_an_unanswered_question_is_left_out_and_the_plan_offers_nothing(native_library, silence):
@@ -973,9 +841,7 @@ def test_an_unanswered_question_is_left_out_and_the_plan_offers_nothing(native_l
     _offered_item(cfg, job_id, "One")
     before = _unresolved(cfg)
     assert before == 1
-
     code, refused = drive(_inspiration(job_id, *WORDS))
-
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     shown = refused["cause"]["detail"]["shown"]
     assert shown["set tracks"] == 0 and shown["set left out"] == 1
@@ -986,7 +852,7 @@ def test_an_unanswered_question_is_left_out_and_the_plan_offers_nothing(native_l
     code, acted = drive(["--run", run_id, *_inspiration(job_id, *WORDS)])
     assert code == int(ExitCode.OK) and acted["outcome"] == "no_op", acted
     assert _unresolved(cfg) == before
-    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
+    assert _under_folder(cfg) == []
 
 
 def test_a_file_two_collection_rows_claim_is_left_out_rather_than_one_row_picked(
@@ -994,69 +860,63 @@ def test_a_file_two_collection_rows_claim_is_left_out_rather_than_one_row_picked
 ):
     cfg = _with_folder(native_library)
     path = _owned(cfg, silence, "Three", content_id="held-3a")
-    conn = sqlite3.connect(cfg.library.db_path)
-    conn.execute(
+    _sql(
+        cfg,
         "INSERT INTO djmdContent (ID, Title, FolderPath, ContentLink, rb_local_deleted, "
         "created_at, updated_at) VALUES ('held-3b', 'Three', ?, ?, 0, '2026-01-01', "
         "'2026-01-01')",
         # rekordbox's value, so the library's rows still hold a majority (U126).
-        (str(path), LIBRARY_LINK),
+        str(path),
+        LIBRARY_LINK,
     )
-    conn.commit()
-    conn.close()
     job_id = set_job(cfg, ("Three", "One"))
     _stage(cfg, silence, "One")
-
-    code, acted, _ = _two_acts(_land("--set", job_id, *WORDS))
-
-    assert code == int(ExitCode.OK), acted
-    playlist_id = _set_playlist_id(cfg)
-    assert _members(cfg, str(playlist_id)) == [_row_ids_by_name(cfg)["One"]]
-    item = _set_item(acted)
-    assert [one["why"] for one in item["left"]] == [set_playlist.AMBIGUOUS_ROWS]
+    acted, _shown = _ok(_land("--set", job_id, *WORDS))
+    assert _members(cfg, str(_set_playlist_id(cfg))) == [_row_ids_by_name(cfg)["One"]]
+    assert [one["why"] for one in _set_item(acted)["left"]] == [set_playlist.AMBIGUOUS_ROWS]
 
 
 def test_a_second_write_that_fills_a_gap_mid_set_is_not_a_failed_write(native_library, silence):
     """The playlist is found by its name and rekordbox appends what it lacked,
     so the track that became owned since sits last; every asked id is read
-    back live and the write is reported as what it was, one track added."""
+    back live and the write is reported as what it was, one track added.
+
+    The first write is given ``--posted`` equal to the landing day on a
+    pageless job, which must not flip the posted fallback on the re-plan, and a
+    rerun on one day adds nothing and records no commit.
+    """
     cfg = _with_folder(native_library)
     _owned(cfg, silence, "One", content_id="held-1")
     _owned(cfg, silence, "Two", content_id="held-2")
     job_id = set_job(cfg, ("One", "Three", "Two"))
-    code, first, _ = _two_acts_approve(_inspiration(job_id, *WORDS))
-    assert code == int(ExitCode.OK), first
+    first, shown = _backfilled(job_id, "--posted", "2026-10-09")
+    assert first["outcome"] != "error"
+    assert shown["set playlist"] == NAME
+    assert not _warned(first, set_playlist.POSTED_FALLBACK)
     playlist_id = _set_playlist_id(cfg)
     assert _members(cfg, str(playlist_id)) == ["held-1", "held-2"]
-
     _owned(cfg, silence, "Three", content_id="held-3")
-    code, again, _ = _two_acts_approve(_inspiration(job_id, *WORDS))
-
-    assert code == int(ExitCode.OK), again
+    again, _shown = _backfilled(job_id)
     assert again["data"]["totals"]["added"] == 1 and again["data"]["totals"]["read back"] == 3
     assert _members(cfg, str(playlist_id)) == ["held-1", "held-2", "held-3"]
     # The second write finds the recorded playlist, so the posted fallback is not re-warned.
     assert [w["code"] for w in again["warnings"]] == [set_playlist.WRITTEN]
+    rerun, _shown = _backfilled(job_id)
+    assert rerun["data"]["totals"]["added"] == 0 and rerun["data"]["totals"]["read back"] == 3
+    assert len(_members(cfg, str(playlist_id))) == 3
+    # Records inside one second sort either way, so each is found by what it holds.
+    records = _set_records(cfg)
+    assert len(records) == 3
+    committed = [r for r in records if r.sources]
+    assert [r.sources for r in committed] == [{DECLARED.inspiration.id: "committed"}] * 2
+    (nothing,) = [r for r in records if not r.sources]
+    assert nothing.change.trees == ()
+    assert set_playlist.RECORD_KEY not in nothing.detail
 
 
 # ---------------------------------------------------------------------------
-# What the table added: an order that is not alphabetical, and the engine's own stale checks
+# What the table added: the engine's own stale checks
 # ---------------------------------------------------------------------------
-
-
-def test_members_keep_the_sets_order_when_it_is_not_alphabetical(native_library, silence):
-    """The first table's order row was inert: every set until now played its
-    tracks in title order, so a sort by title changed nothing. This set does not."""
-    cfg = _with_folder(native_library)
-    _owned(cfg, silence, "Three", content_id="held-3")
-    job_id = set_job(cfg, ("Two", "One", "Three"))
-    _stage(cfg, silence, "One")
-    _stage(cfg, silence, "Two")
-    code, acted, _ = _two_acts(_land("--set", job_id, *WORDS))
-    assert code == int(ExitCode.OK), acted
-    playlist_id = _set_playlist_id(cfg)
-    rows = _row_ids_by_name(cfg)
-    assert _members(cfg, str(playlist_id)) == [rows["Two"], rows["One"], "held-3"]
 
 
 def _backfill_inputs(cfg: config.Config, job_id: str):
@@ -1073,11 +933,13 @@ def test_the_engine_refuses_a_plan_whose_collection_moved_even_with_no_gate_in_f
 ):
     """The gate re-plans on every drive and catches this first, so the engine's
     own re-plan on the write handle is reached only by a caller with no gate.
-    Driven here as that caller, since a guard held by another guard is a
-    guard nothing covers."""
+    Driven here as that caller, since a guard held by another guard is a guard
+    nothing covers; and then through the gate, whose answer is stale."""
     cfg = _with_folder(native_library)
     _owned(cfg, silence, "Three", content_id="held-3")
     job_id = set_job(cfg, ("Three",))
+    verb = _inspiration(job_id, *WORDS)
+    run_id = _decided(verb)["run_id"]
     declared, job, words, reports = _backfill_inputs(cfg, job_id)
     plan = inspiration_cli.planned(cfg, declared, job, words, reports)
     assert [one.content_id for one in plan.members] == ["held-3"]
@@ -1085,14 +947,17 @@ def test_the_engine_refuses_a_plan_whose_collection_moved_even_with_no_gate_in_f
     with pytest.raises(CratekitError) as caught:
         inspiration_cli.written(cfg, declared, plan, job, words, reports)
     assert caught.value.cause.reason == "decision-stale"
-    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
+    code, acted = drive(["--run", run_id, *verb])
+    assert acted["cause"]["reason"] == "decision-stale", acted
+    assert _under_folder(cfg) == []
+    assert not _set_records(cfg)
 
 
 def test_the_engine_refuses_a_folder_removed_after_the_plan_even_with_no_gate_in_front(
     native_library, silence
 ):
-    cfg, _root_id = native_library
-    folder_id = cutover_fixtures.add_folder(cfg, FOLDER)
+    cfg = _with_folder(native_library)
+    folder_id = _inspiration_folder_id(cfg)
     _owned(cfg, silence, "Three", content_id="held-3")
     job_id = set_job(cfg, ("Three",))
     declared, job, words, reports = _backfill_inputs(cfg, job_id)
@@ -1109,7 +974,7 @@ def test_the_engine_refuses_a_folder_removed_after_the_plan_even_with_no_gate_in
         db.session.rollback()
     finally:
         rb_writer.close_db(db)
-    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
+    assert _under_folder(cfg) == []
 
 
 # ---------------------------------------------------------------------------
@@ -1135,21 +1000,15 @@ def test_two_landings_of_one_set_on_two_days_make_one_playlist(native_library, s
     """The second landing reads the first's session record, adds to the playlist
     it made and keeps its name, so a set landed in two parts is one playlist."""
     cfg, root_id = native_library
-    cutover_fixtures.add_folder(cfg, FOLDER)
+    folder_id = _inspiration_folder_id(_with_folder(native_library))
     job_id = set_job(cfg, ("One", "Two"))
     _stage(cfg, silence, "One")
-    code, first, _ = _two_acts(_land("--set", job_id, *WORDS))
-    assert code == int(ExitCode.OK), first
-    folder_id = _inspiration_folder_id(cfg)
+    _ok(_land("--set", job_id, *WORDS))
     ((playlist_id, *_rest),) = _under_parent(cfg, NAME, folder_id)
-
     monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 10))
     _stage(cfg, silence, "Two")
-    verb = ["intake", "land", "--name", "2026-10-10 Set", "--set", job_id, *WORDS]
-    code, second, refused = _two_acts(verb)
-
-    assert code == int(ExitCode.OK), second
-    assert refused["cause"]["detail"]["shown"]["playlist"].startswith("adds to the playlist")
+    second, shown = _ok(["intake", "land", "--name", "2026-10-10 Set", "--set", job_id, *WORDS])
+    assert shown["playlist"].startswith("adds to the playlist")
     assert _under_parent(cfg, "10_10_26 Probe DJ Live at Probe 5-26", folder_id) == []
     assert len(_under_parent(cfg, NAME, folder_id)) == 1
     assert len(_under_parent(cfg, NAME, root_id)) == 1
@@ -1167,41 +1026,31 @@ def test_a_recorded_playlist_that_was_removed_is_not_added_to_and_a_live_one_is_
     cfg = _with_folder(native_library)
     job_id = set_job(cfg, ("One",))
     _stage(cfg, silence, "One")
-    code, first, _ = _two_acts(_land("--set", job_id, *WORDS))
-    assert code == int(ExitCode.OK), first
-    folder_id = _inspiration_folder_id(cfg)
-    ((removed_id, *_rest),) = _under_parent(cfg, NAME, folder_id)
+    _ok(_land("--set", job_id, *WORDS))
+    ((removed_id, *_rest),) = _under_folder(cfg)
     _soft_delete_playlist(cfg, str(removed_id))
-
-    code, acted, refused = _two_acts_approve(_inspiration(job_id, *WORDS))
-
-    assert code == int(ExitCode.OK), acted
-    assert refused["cause"]["detail"]["shown"]["playlist"].startswith("found live")
-    live = [row for row in _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) if not row[3]]
-    ((live_id, *_r),) = live
+    _acted, shown = _backfilled(job_id)
+    assert shown["playlist"].startswith("found live")
+    ((live_id, *_r),) = [row for row in _under_folder(cfg) if not row[3]]
     assert str(live_id) != str(removed_id)
-    assert _members(cfg, str(live_id)) == [_row_ids_by_name(cfg)["One"]]
-    assert _members(cfg, str(removed_id)) == [_row_ids_by_name(cfg)["One"]], "the removed one kept its own"
+    one = _row_ids_by_name(cfg)["One"]
+    assert _members(cfg, str(live_id)) == [one]
+    assert _members(cfg, str(removed_id)) == [one], "the removed one kept its own"
 
 
 def test_a_removed_namesake_under_the_folder_is_not_written_into(native_library, silence):
-    cfg, _root_id = native_library
-    folder_id = cutover_fixtures.add_folder(cfg, FOLDER)
+    cfg = _with_folder(native_library)
+    folder_id = _inspiration_folder_id(cfg)
     removed_id = _make_playlist(cfg, NAME, under=folder_id)
     _soft_delete_playlist(cfg, removed_id)
     _owned(cfg, silence, "Three", content_id="held-3")
     job_id = set_job(cfg, ("Three",))
-
-    code, acted, _ = _two_acts_approve(_inspiration(job_id, *WORDS))
-
-    assert code == int(ExitCode.OK), acted
+    acted, _shown = _backfilled(job_id)
     assert _members(cfg, removed_id) == []
-    live = [row for row in _under_parent(cfg, NAME, folder_id) if not row[3]]
-    ((live_id, parent, _a, _r),) = live
+    ((live_id, parent, _a, _r),) = [row for row in _under_parent(cfg, NAME, folder_id) if not row[3]]
     assert str(parent) == folder_id and str(live_id) != removed_id
     assert _members(cfg, str(live_id)) == ["held-3"]
-    item = _set_item(acted)
-    assert item["playlist_created"] is True
+    assert _set_item(acted)["playlist_created"] is True
 
 
 def test_when_every_landed_members_file_is_refused_the_left_list_names_them(
@@ -1216,26 +1065,21 @@ def test_when_every_landed_members_file_is_refused_the_left_list_names_them(
     # The batch landed into again by its own name goes back to its filed
     # folder (U164), so an earlier landing makes it and its names are held.
     _stage(cfg, silence, "Zero")
-    code, first, _refused = _two_acts(_land())
-    assert code == int(ExitCode.OK), first
-    _stage(cfg, silence, "One")
-    _stage(cfg, silence, "Two")
-    _stage(cfg, silence, "Extra")
+    _ok(_land())
+    _staged(cfg, silence, "One", "Two", "Extra")
     occupied = _music(cfg, BATCH)
     (occupied / "One.flac").write_bytes(b"taken")
     (occupied / "Two.flac").write_bytes(b"taken")
-
-    code, acted, refused = _two_acts(_land("--set", job_id, *WORDS))
-
-    assert code == int(ExitCode.OK), acted
-    assert refused["cause"]["detail"]["shown"]["set tracks"] == 2
-    assert acted["data"]["totals"]["landed"] == 1 and acted["data"]["totals"]["refused"] == 2
-    assert acted["data"]["totals"]["set playlist left out"] == 2
-    assert acted["data"]["totals"]["set playlist tracks"] == 0
-    assert _under_parent(cfg, NAME, _inspiration_folder_id(cfg)) == []
-    (nothing,) = [w for w in acted["warnings"] if w["code"] == set_playlist.NOTHING]
+    acted, shown = _ok(_land("--set", job_id, *WORDS))
+    assert shown["set tracks"] == 2
+    totals = acted["data"]["totals"]
+    assert totals["landed"] == 1 and totals["refused"] == 2
+    assert totals["set playlist left out"] == 2
+    assert totals["set playlist tracks"] == 0
+    assert _under_folder(cfg) == []
+    (nothing,) = _warned(acted, set_playlist.NOTHING)
     assert "2 track(s) are listed as left out" in nothing["message"]
-    (left,) = [w for w in acted["warnings"] if w["code"] == set_playlist.LEFT_OUT]
+    (left,) = _warned(acted, set_playlist.LEFT_OUT)
     assert "1. Probe - One (its file did not land)" in left["message"]
     assert "2. Probe - Two (its file did not land)" in left["message"]
     # The first landing's record, then this one's.
@@ -1246,55 +1090,14 @@ def test_when_every_landed_members_file_is_refused_the_left_list_names_them(
 def test_two_rows_of_the_set_resolving_to_one_track_are_one_member(native_library, silence):
     cfg = _with_folder(native_library)
     _owned(cfg, silence, "Three", content_id="held-3")
-    tracks = {
-        "rc_a": {"artist": "Probe", "title": "Three", "origin": match.TEXT, "spelled": "Probe - Three"},
-        "rc_b": {
-            "artist": "Probe",
-            "title": "Three",
-            "isrc": "X1",
-            "origin": match.TEXT,
-            "spelled": "Probe - Three",
-        },
-    }
-    with jobs.open_store() as store:
-        job = jobs.enqueue(
-            store,
-            handler_key=set_playlist.SET_KEY,
-            payload={intake_cli.SOURCE: "x", intake_cli.TRACKS: tracks, intake_cli.PAGE: {}},
-            cfg=cfg,
-            item_ids=tuple(tracks),
-        )
-    code, resumed = drive(cli_jobs.argv_for(job))
-    assert code == int(ExitCode.OK), resumed
-
-    code, acted, refused = _two_acts_approve(_inspiration(job.job_id, *WORDS))
-
-    assert code == int(ExitCode.OK), acted
-    assert refused["cause"]["detail"]["shown"]["set tracks"] == 2, "both positions are shown"
+    tracks = {"rc_a": _track("Three"), "rc_b": _track("Three", isrc="X1")}
+    job_id = _run(_queued(cfg, tracks, **{intake_cli.SOURCE: "x", intake_cli.PAGE: {}}))
+    acted, shown = _backfilled(job_id)
+    assert shown["set tracks"] == 2, "both positions are shown"
     item = _set_item(acted)
     assert item["count"] == 1 and item["added"] == 1
     assert acted["data"]["totals"]["read back"] == 1
     assert _members(cfg, item["id"]) == ["held-3"]
-
-
-def test_a_backfill_rerun_on_one_day_adds_nothing_and_records_no_commit(native_library, silence):
-    cfg = _with_folder(native_library)
-    _owned(cfg, silence, "Three", content_id="held-3")
-    job_id = set_job(cfg, ("Three",))
-    code, first, _ = _two_acts_approve(_inspiration(job_id, *WORDS))
-    assert code == int(ExitCode.OK), first
-    code, again, _ = _two_acts_approve(_inspiration(job_id, *WORDS))
-    assert code == int(ExitCode.OK), again
-    assert again["data"]["totals"]["added"] == 0 and again["data"]["totals"]["read back"] == 1
-    assert len(_members(cfg, str(_set_playlist_id(cfg)))) == 1
-    # Two records inside one second sort either way, so each is found by what it holds.
-    records = [r for r in session.records(cfg) if r.workflow == set_playlist.WORKFLOW]
-    assert len(records) == 2
-    (first_record,) = [r for r in records if r.sources]
-    (second_record,) = [r for r in records if not r.sources]
-    assert first_record.sources == {DECLARED.inspiration.id: "committed"}
-    assert second_record.change.trees == ()
-    assert set_playlist.RECORD_KEY not in second_record.detail
 
 
 def test_the_backfill_creates_the_declared_folder_at_the_root_when_the_library_lacks_it(
@@ -1304,15 +1107,14 @@ def test_the_backfill_creates_the_declared_folder_at_the_root_when_the_library_l
     assert _root_folders(cfg, FOLDER) == []
     _owned(cfg, silence, "Three", content_id="held-3")
     job_id = set_job(cfg, ("Three",))
-    code, acted, refused = _two_acts_approve(_inspiration(job_id, *WORDS))
-    assert code == int(ExitCode.OK), acted
-    assert refused["cause"]["detail"]["shown"]["under"] == f"{FOLDER}, created at the playlist root"
+    acted, shown = _backfilled(job_id)
+    assert shown["under"] == f"{FOLDER}, created at the playlist root"
     ((folder_id,),) = _root_folders(cfg, FOLDER)
-    ((_pid, parent, _a, _r),) = _under_parent(cfg, NAME, _inspiration_folder_id(cfg))
+    ((_pid, parent, _a, _r),) = _under_folder(cfg)
     assert str(parent) == str(folder_id)
     item = _set_item(acted)
     assert item["folder_created"] is True and item["playlist_created"] is True
-    (record,) = [r for r in session.records(cfg) if r.workflow == set_playlist.WORKFLOW]
+    (record,) = _set_records(cfg)
     assert record.detail[set_playlist.RECORD_KEY]["folder"] == str(folder_id)
 
 
@@ -1329,7 +1131,6 @@ def account_on_native(native_library, monkeypatch):
     from tests import outbound_fakes
     from tests.label_fakes import FakeCatalogue, catalogue_factory
     from tests.test_outbound_workers import bind as bind_account
-
     cfg, root_id = native_library
     # Doctor's credential.provider check reads the keychain before the verb;
     # the account and catalogue seams are substituted for the writes themselves.
@@ -1345,8 +1146,6 @@ def account_on_native(native_library, monkeypatch):
 
 def _record_account_set(cfg, held, name: str, *, year: str = "2026") -> str:
     """Record a set playlist on the ledger and create it on the fake account."""
-    from cratekit.modules.outbound import ledger
-
     remote_id, _created = ledger.reserve_set_playlist(
         cfg, name, year, lambda: held.create_playlist(name)
     )
@@ -1356,15 +1155,10 @@ def _record_account_set(cfg, held, name: str, *, year: str = "2026") -> str:
 def _freeze_name(job_id: str, name: str) -> None:
     """Put the INSPIRATION name on a succeeded set job the way intake set freezes it."""
     with jobs.open_store() as store:
-        job = jobs.get(store, job_id)
-        payload = dict(job.payload)
-        payload[intake_cli.PLAYLIST_NAME] = name
+        payload = {**jobs.get(store, job_id).payload, intake_cli.PLAYLIST_NAME: name}
         with store.immediate() as conn:
-            import json as _json
-
             conn.execute(
-                "UPDATE jobs SET payload = ? WHERE job_id = ?",
-                (_json.dumps(payload), job_id),
+                "UPDATE jobs SET payload = ? WHERE job_id = ?", (json.dumps(payload), job_id)
             )
 
 
@@ -1378,95 +1172,43 @@ def _frozen_set(cfg, held, silence, *, record: bool = True) -> tuple[str, str]:
     return job_id, remote_id
 
 
-def test_a_landing_archives_the_account_playlist_as_taken_in_its_year_folder(
-    account_on_native, silence
-):
-    cfg, _root_id, held = account_on_native
-    job_id, remote_id = _frozen_set(cfg, held, silence)
-
-    code, acted, _refused = _two_acts(_land("--set", job_id, *WORDS))
-
-    assert code == int(ExitCode.OK), acted
-    # U242: held as taken under the pass, no title written.
-    from cratekit.sync import mark_record
-
-    assert held.renamed == [], held.renamed
-    assert remote_id in mark_record.MarkRecord(cfg).taken_ids()
-    # U142: the set's folder is Downloaded Sets <year>, never the plain year.
-    assert "Downloaded Sets 2026" in held.folders_created or any(
-        name == "Downloaded Sets 2026" for name in held.folder_names.values()
-    ), held.folders_created
-    assert "2026" not in held.folders_created
-    assert not any(w["code"] == land_cli.LAND_ARCHIVE_FAILED for w in acted["warnings"])
+def _transient(_cfg, _archived):
+    raise refuse(
+        "unavailable-transient",
+        "the account could not be reached",
+        remedy=Remedy.RETRY_LATER,
+        origin=("test",),
+    )
 
 
+@pytest.mark.parametrize("failure", ["raised", "not-renamed"])
 def test_a_landing_archive_failure_is_a_warning_on_the_envelope(
-    account_on_native, silence, monkeypatch
+    account_on_native, silence, monkeypatch, failure
 ):
+    """A raise after the landing wrote is a warning, and so is a not-renamed return."""
     cfg, _root_id, held = account_on_native
     job_id, _remote_id = _frozen_set(cfg, held, silence)
-
-    from cratekit.core.cause import refuse
-    from cratekit.core.exit_codes import Remedy
-    from cratekit.export import set_cli
-
-    def boom(_cfg, _archived):
-        raise refuse(
-            "unavailable-transient",
-            "the account could not be reached",
-            remedy=Remedy.RETRY_LATER,
-            origin=("test",),
-        )
-
-    monkeypatch.setattr(set_cli, "apply_archive", boom)
-
-    code, acted, _refused = _two_acts(_land("--set", job_id, *WORDS))
-
-    assert code == int(ExitCode.OK), acted
-    assert any(w["code"] == land_cli.LAND_ARCHIVE_FAILED for w in acted["warnings"])
-    assert any("could not finish after the landing wrote" in w["message"] for w in acted["warnings"])
-    assert held.renamed == []
-
-
-def test_a_landing_archive_not_renamed_is_a_warning_on_the_envelope(
-    account_on_native, silence, monkeypatch
-):
-    cfg, _root_id, held = account_on_native
-    job_id, _remote_id = _frozen_set(cfg, held, silence)
-
-    from cratekit.export import set_cli
-
-    archived_holder = {}
-
+    planned = []
     real_plan = land_cli._plan_set_archive
 
     def capture(cfg_arg, **kwargs):
-        planned = real_plan(cfg_arg, **kwargs)
-        archived_holder["planned"] = planned
-        return planned
-
-    monkeypatch.setattr(land_cli, "_plan_set_archive", capture)
+        planned.append(real_plan(cfg_arg, **kwargs))
+        return planned[-1]
 
     def soft(_cfg, archived):
-        return (
-            archived.payload,
-            [
-                {
-                    "code": "export-archive-changed-since-plan",
-                    "message": f"{NAME} was retitled by somebody, so it was not renamed",
-                }
-            ],
-            False,
-        )
-
-    monkeypatch.setattr(set_cli, "apply_archive", soft)
-
-    code, acted, _refused = _two_acts(_land("--set", job_id, *WORDS))
-
-    assert code == int(ExitCode.OK), acted
-    assert archived_holder.get("planned") is not None
-    assert any(w["code"] == "export-archive-changed-since-plan" for w in acted["warnings"])
-    assert any("not renamed" in w["message"] for w in acted["warnings"])
+        said = f"{NAME} was retitled by somebody, so it was not renamed"
+        return archived.payload, [{"code": "export-archive-changed-since-plan", "message": said}], False
+    monkeypatch.setattr(land_cli, "_plan_set_archive", capture)
+    monkeypatch.setattr(set_cli, "apply_archive", _transient if failure == "raised" else soft)
+    acted, _shown = _ok(_land("--set", job_id, *WORDS))
+    assert planned and planned[-1] is not None
+    if failure == "raised":
+        assert _warned(acted, land_cli.LAND_ARCHIVE_FAILED)
+        said = "could not finish after the landing wrote"
+    else:
+        assert _warned(acted, "export-archive-changed-since-plan")
+        said = "not renamed"
+    assert any(said in w["message"] for w in acted["warnings"])
     assert held.renamed == []
 
 
@@ -1474,38 +1216,21 @@ def test_export_set_backfill_lists_inspiration_playlists_from_the_disposable_dat
     account_on_native, monkeypatch
 ):
     """Drive ``_inspiration_playlists`` against the disposable DB, never a stub."""
-    from cratekit.acquire import match
-    from cratekit.core import rb_writer
-    from cratekit.export import set_cli
-    from cratekit.modules.outbound import ledger
-
+    from tests.test_u129_set_account_playlist import _succeeded_set_job
     cfg, _root_id, held = account_on_native
     folder_id = cutover_fixtures.add_folder(cfg, FOLDER)
     names = [
         "10_09_26 Public Service NYC Live at Vonking 5-26",
         "10_10_26 Public Service NYC Live at Signal 5-26",
     ]
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
-    try:
-        parent = handle.get_playlist(ID=folder_id)
-        for name in names:
-            handle.create_playlist(name, parent=parent)
-        handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
-
+    for name in names:
+        _make_playlist(cfg, name, under=folder_id)
     # Succeeded set jobs whose frozen names match the playlists above.
-    from tests.test_u129_set_account_playlist import _succeeded_set_job
-
     _succeeded_set_job(cfg, names[0], created="2026-10-09T15:00:00+00:00")
     _succeeded_set_job(cfg, names[1], created="2026-10-10T15:00:00+00:00")
-
     wanted = (match.Wanted(artist="Probe", title="One", origin=match.TEXT),)
     monkeypatch.setattr(set_cli, "_wanted_from_job", lambda _cfg, _job: wanted)
-
-    listed = set_cli._inspiration_playlists(cfg)
-    assert [name for name, _pid in listed] == names
-
+    assert [name for name, _pid in set_cli._inspiration_playlists(cfg)] == names
     code, refused = drive(["export", "set"])
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     message = json.dumps(refused)
@@ -1520,38 +1245,33 @@ def test_export_set_backfill_lists_inspiration_playlists_from_the_disposable_dat
 # ---------------------------------------------------------------------------
 
 
-def _rename_row(cfg: config.Config, playlist_id: str, name: str) -> None:
-    """A person's rename in rekordbox, as the attended tail made it."""
-    _sql(cfg, "UPDATE djmdPlaylist SET Name = ? WHERE ID = ?", name, playlist_id)
+def _landed_and_renamed(cfg, held, silence, *, record_first: bool) -> tuple[str, str, dict]:
+    """A set landed under NAME, its account playlist recorded, its INSPIRATION renamed.
 
-
-def _landed_and_renamed(cfg, held, silence, *, record_first: bool) -> tuple[str, str]:
-    """A set landed under NAME, its account playlist recorded, its INSPIRATION renamed."""
+    A person's rename in rekordbox, as the attended tail made it.
+    """
     job_id, remote_id = _frozen_set(cfg, held, silence, record=record_first)
-    code, landed, _refused = _two_acts(_land("--set", job_id, *WORDS))
-    assert code == int(ExitCode.OK), landed
+    landed, _shown = _ok(_land("--set", job_id, *WORDS))
     if not record_first:
         remote_id = _record_account_set(cfg, held, NAME)
-    playlist_id = _set_playlist_id(cfg)
-    _rename_row(cfg, str(playlist_id), POSTED_NAME)
-    return job_id, remote_id
+    _sql(cfg, "UPDATE djmdPlaylist SET Name = ? WHERE ID = ?", POSTED_NAME, str(_set_playlist_id(cfg)))
+    return job_id, remote_id, landed
+
+
+def _renamed(job_id: str) -> dict:
+    argv = ["export", "set", "--rename", job_id]
+    code, acted = drive(["--run", _decided(argv, gate=set_cli.RENAME_GATE)["run_id"], *argv])
+    assert code == int(ExitCode.OK), acted
+    return acted
 
 
 def test_export_set_rename_follows_the_live_inspiration_row_on_the_disposable_database(
     account_on_native, silence
 ):
     """U140's read of the INSPIRATION playlist driven against the database, never a stub."""
-    from cratekit.export import set_cli
-    from cratekit.modules.outbound import ledger
-
     cfg, _root_id, held = account_on_native
-    job_id, remote_id = _landed_and_renamed(cfg, held, silence, record_first=False)
-    argv = ["export", "set", "--rename", job_id]
-
-    run_id = _decided(argv, gate=set_cli.RENAME_GATE)
-    code, acted = drive(["--run", run_id, *argv])
-
-    assert code == int(ExitCode.OK), acted
+    job_id, remote_id, _landed = _landed_and_renamed(cfg, held, silence, record_first=False)
+    _renamed(job_id)
     assert held.renamed == [(remote_id, POSTED_NAME)]
     assert ledger.set_playlist_names(cfg) == (POSTED_NAME,)
     with jobs.open_store() as store:
@@ -1563,41 +1283,37 @@ def test_export_set_rename_follows_the_live_inspiration_row_on_the_disposable_da
     assert held.created == [NAME]
 
 
-def test_export_set_rename_renames_a_set_the_landing_archived_and_it_stays_taken(
+def test_a_landing_archives_the_account_playlist_as_taken_in_its_year_folder(
     account_on_native, silence
 ):
-    """U242: the archive wrote no title, so the rename has no mark to take off,
-    and the record holds the set by its id whatever it is now called."""
-    from cratekit.export import set_cli
-    from cratekit.sync import mark_record
-
+    """U242: held as taken under the pass, no title written. So the rename that
+    follows has no mark to take off, and the record holds the set by its id
+    whatever it is now called."""
     cfg, _root_id, held = account_on_native
-    job_id, remote_id = _landed_and_renamed(cfg, held, silence, record_first=True)
-    assert held.renamed == [] and remote_id in mark_record.MarkRecord(cfg).taken_ids()
-    argv = ["export", "set", "--rename", job_id]
-    run_id = _decided(argv, gate=set_cli.RENAME_GATE)
-    code, acted = drive(["--run", run_id, *argv])
-    assert code == int(ExitCode.OK), acted
+    job_id, remote_id, landed = _landed_and_renamed(cfg, held, silence, record_first=True)
+    assert held.renamed == [], held.renamed
+    assert remote_id in mark_record.MarkRecord(cfg).taken_ids()
+    # U142: the set's folder is Downloaded Sets <year>, never the plain year.
+    assert "Downloaded Sets 2026" in held.folders_created or any(
+        name == "Downloaded Sets 2026" for name in held.folder_names.values()
+    ), held.folders_created
+    assert "2026" not in held.folders_created
+    assert not _warned(landed, land_cli.LAND_ARCHIVE_FAILED)
+    _renamed(job_id)
     assert held.renamed == [(remote_id, POSTED_NAME)]
     assert remote_id in mark_record.MarkRecord(cfg).taken_ids()
 
 
 def test_export_set_rename_refuses_a_playlist_a_legacy_archive_prefixed(account_on_native, silence):
     """An archive before U242 marked the set's title; the rename leaves that mark alone."""
-    from cratekit.export import set_cli
-    from cratekit.modules.outbound import ledger
-    from cratekit.sync import mark_record
-
     cfg, _root_id, held = account_on_native
-    job_id, remote_id = _landed_and_renamed(cfg, held, silence, record_first=True)
+    job_id, remote_id, _landed = _landed_and_renamed(cfg, held, silence, record_first=True)
     mark_record.MarkRecord(cfg).record_marked(
         "2026-10-09 Set", {remote_id: (NAME, f"DOWNLOADED {NAME}")}
     )
     held.titles[remote_id] = f"DOWNLOADED {NAME}"
     before = list(held.renamed)
-
     code, refused = drive(["export", "set", "--rename", job_id])
-
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == set_cli.RENAME_UNRESOLVED
     assert "the pass 2026-10-09 Set" in refused["cause"]["message"]

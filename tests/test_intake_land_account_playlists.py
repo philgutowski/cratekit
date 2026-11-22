@@ -1,13 +1,8 @@
 """U113: a playlist the author made on the account lands as its own INBOX playlist.
 
-Every landing here drives the real dispatcher on the xml bridge, with the
-fixtures ``tests/test_intake_land.py`` keeps, over a pass whose jobs are queued
-with the account's names the way ``crate sync all`` queues them and then RUN by
-the real worker, so the reports the landing reads are the ones the product
-writes. The native medium is pinned in
-``tests/test_intake_land_account_playlists_native.py``.
-
-D1 applies. Nothing here names a real person or a real track.
+Driven on the xml bridge over a pass whose jobs are queued the way ``crate
+sync all`` queues them and run by the real worker, so the landing reads the
+reports the product writes. D1 applies: no real person or track is named.
 """
 
 from __future__ import annotations
@@ -29,7 +24,9 @@ from cratekit.sync import playlists
 from tests.test_intake_land import GATE, _drive, _land, _manifest, _music, _stage
 from tests.test_intake_land import cfg as cfg  # noqa: PLC0414 - the fixture, re-exported
 from tests.test_intake_land import export as export  # noqa: PLC0414 - the fixture
-from tests.test_intake_land import silence as silence  # noqa: PLC0414 - the fixture
+from tests.test_intake_land_account_playlists_native import (  # noqa: PLC0414 - made once
+    silence as silence,
+)
 from tests.test_sync_all import _playlist, _playlist_jobs, _tracks, bind_playlists
 from tests.test_sync_all import slim as slim  # noqa: PLC0414 - the fixture
 
@@ -57,11 +54,9 @@ def swept(
     run_id: str = RUN,
     source_id: str = playlists.SOURCE_ID,
 ) -> list[jobs.Job]:
-    """One job per playlist, ``id -> (account name, titles)``, queued and run.
+    """One job per playlist, ``id -> (account name, titles)``, queued as a sweep does and run.
 
-    Queued through the one spelling ``crate sync all`` uses, then driven by the
-    real worker against the library, which holds none of the titles, so every
-    report says missing, which is what a download is made from.
+    The library holds none of the titles, so every report says missing.
     """
     with jobs.open_store() as store:
         queued = [
@@ -168,9 +163,7 @@ def test_two_swept_playlists_land_as_two_inbox_playlists_under_their_exact_names
     """A track both playlists brought in is a member of both."""
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One", "Two")), "pl-b": ("Deep Cuts", ("Three", "Two"))})
     _staged(cfg, silence, "One", "Two", "Three")
-
     envelope = _applied(export, "--pass", PASS)
-
     # The files still land in the one batch folder U110 names.
     assert sorted(p.name for p in _music(cfg, BATCH).iterdir()) == [
         "One.flac",
@@ -194,7 +187,6 @@ def test_a_second_landing_of_one_playlist_the_next_week_takes_its_own_date(
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _staged(cfg, silence, "One")
     first = _intake(_applied(export, "--pass", PASS))
-
     # A week on: the next pass of the same playlist, landed against an export
     # that holds the first landing's playlist under INBOX, as one taken after
     # its import does.
@@ -203,7 +195,6 @@ def test_a_second_landing_of_one_playlist_the_next_week_takes_its_own_date(
     _staged(cfg, silence, "Two")
     monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 10))
     held = _held(_applied(first, "--pass", missing_cli.synced_name(run)))
-
     assert held["Sunset Warmup 2026-10-03"] == ["One"]
     # Its own landing's date tells the two passes apart, so no `` 2`` is needed.
     assert held["Sunset Warmup 2026-10-10"] == ["Two"]
@@ -214,20 +205,16 @@ def test_a_name_an_unimported_intake_file_holds_is_not_given_again(cfg, silence,
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _staged(cfg, silence, "One")
     _applied(export, "--pass", PASS)
-
     # The first intake file is still waiting on its import, so the export the
     # second landing is handed holds neither of its playlists.
     run = "2026-10-03T201500Z-ab78"
     swept(cfg, {"pl-a": ("Sunset Warmup", ("Two",))}, run_id=run)
     _staged(cfg, silence, "Two")
     envelope = _applied(export, "--pass", missing_cli.synced_name(run))
-
     assert _held(envelope) == {"Sunset Warmup 2026-10-03 2": ["Two"]}
 
 
-def test_a_name_at_the_playlist_root_is_not_given_since_an_import_lands_there(
-    cfg, silence, export
-):
+def test_a_name_at_the_playlist_root_is_not_given_since_an_import_lands_there(cfg, silence, export):
     body = export.read_text(encoding="utf-8").replace(
         INBOX_NODE,
         '<NODE Name="Sunset Warmup 2026-10-03" Type="1" KeyType="0" Entries="0">\r\n'
@@ -236,18 +223,14 @@ def test_a_name_at_the_playlist_root_is_not_given_since_an_import_lands_there(
     export.write_text(body, encoding="utf-8")
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _staged(cfg, silence, "One")
-
     envelope = _applied(export, "--pass", PASS)
-
     assert _held(envelope) == {"Sunset Warmup 2026-10-03 2": ["One"]}
 
 
 def test_a_label_landing_keeps_the_name_u110_gives_it(cfg, silence, export, tmp_path):
     _staged(cfg, silence, "One")
     manifest = _manifest(tmp_path, [("1", "Probe", "One", "Kompakt", 2025)])
-
     envelope = _applied(export, "--manifest", str(manifest))
-
     assert _music(cfg, "2026-10-03 Kompakt").is_dir()
     assert next(iter(_held(envelope))) == "2026-10-03 Kompakt"
     assert not _written(envelope)
@@ -262,9 +245,7 @@ def test_a_file_no_account_playlist_claimed_stays_in_the_batch_playlist(cfg, sil
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     swept(cfg, {"favorites": (None, ("Hearted",))}, source_id=intake_cli.FAVORITES_SOURCE_ID)
     _staged(cfg, silence, "One", "Hearted")
-
     envelope = _applied(export, "--pass", PASS)
-
     batch = "2026-10-03 Tidal playlists and Favorites"
     assert _held(envelope) == {batch: ["Hearted"], "Sunset Warmup 2026-10-03": ["One"]}
     steps = " ".join(envelope["pending_human_action"]["steps"])
@@ -274,9 +255,7 @@ def test_a_file_no_account_playlist_claimed_stays_in_the_batch_playlist(cfg, sil
 def test_a_job_queued_with_no_name_lands_in_the_batch_playlist_as_before(cfg, silence, export):
     swept(cfg, {"pl-a": (None, ("One",))})
     _staged(cfg, silence, "One")
-
     envelope = _applied(export, "--pass", PASS)
-
     assert _held(envelope) == {BATCH: ["One"]}
     assert not _written(envelope)
 
@@ -286,9 +265,7 @@ def test_an_account_playlist_whose_dated_name_is_the_batchs_takes_two(cfg, silen
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     swept(cfg, {"favorites": (None, ("Hearted",))}, source_id=intake_cli.FAVORITES_SOURCE_ID)
     _staged(cfg, silence, "One", "Hearted")
-
     envelope = _applied(export, "--pass", PASS, "--name", "Sunset Warmup 2026-10-03")
-
     assert _held(envelope) == {
         "Sunset Warmup 2026-10-03": ["Hearted"],
         "Sunset Warmup 2026-10-03 2": ["One"],
@@ -298,9 +275,7 @@ def test_an_account_playlist_whose_dated_name_is_the_batchs_takes_two(cfg, silen
 def test_a_landing_with_no_pass_splits_nothing(cfg, silence, export):
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _staged(cfg, silence, "One")
-
     envelope = _applied(export, "--name", "by hand")
-
     assert _held(envelope) == {"by hand": ["One"]}
 
 
@@ -313,9 +288,7 @@ def test_an_owned_track_whose_row_the_export_does_not_hold_is_warned(cfg, silenc
     _stage(cfg, silence, "Held.flac").rename(owned / "Held.flac")
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One", "Held"))})
     _staged(cfg, silence, "One")
-
     envelope = _applied(export, "--pass", PASS)
-
     assert _held(envelope) == {"Sunset Warmup 2026-10-03": ["One"]}
     (warning,) = _left(envelope)
     assert "Sunset Warmup 2026-10-03 2. Probe - Held" in warning["message"]
@@ -328,13 +301,7 @@ def test_an_owned_track_whose_row_the_export_does_not_hold_is_warned(cfg, silenc
 
 
 def _owned_export(cfg, silence, export: Path, titles: tuple[str, ...]) -> Path:
-    """An export whose collection holds ``titles``, landed earlier into the library.
-
-    Landed by the product itself under a name of its own and no pass, so each
-    is a file under the music folder and an entry of the intake file, which is
-    then the export the next landing is spliced into, as one taken after the
-    import is.
-    """
+    """The intake file of an earlier landing of ``titles``, as the export taken after its import."""
     _staged(cfg, silence, *titles)
     return _intake(_applied(export, "--name", "older batch"))
 
@@ -352,9 +319,7 @@ def test_a_playlist_of_three_owned_and_two_new_lands_all_five_in_account_order(
         },
     )
     _staged(cfg, silence, "New1", "New2")
-
     envelope = _applied(held, "--pass", PASS)
-
     inbox = _held(envelope)
     assert inbox["Sunset Warmup 2026-10-03"] == ["Held1", "New1", "Held2", "New2", "Held3"]
     assert inbox["Deep Cuts 2026-10-03"] == ["New1", "Held1"]
@@ -375,9 +340,7 @@ def test_a_track_neither_owned_nor_brought_is_named_in_the_warnings(cfg, silence
     # not bring it.
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One", "Gone"))})
     _staged(cfg, silence, "One")
-
     envelope = _applied(export, "--pass", PASS)
-
     assert _held(envelope) == {"Sunset Warmup 2026-10-03": ["One"]}
     (warning,) = _left(envelope)
     assert "Sunset Warmup 2026-10-03 2. Probe - Gone" in warning["message"]
@@ -391,9 +354,7 @@ def test_a_rerun_of_the_same_pass_is_a_no_op(cfg, silence, export):
     _staged(cfg, silence, "New1")
     first = _intake(_applied(held, "--pass", PASS))
     before = first.read_bytes()
-
     code, again = _drive(["-d", f"{GATE}=apply", *_land(first, "--pass", PASS)])
-
     assert code == int(ExitCode.OK), again
     assert again["outcome"] == "no_op", again
     assert again["data"]["items"] == []
@@ -414,13 +375,10 @@ def test_a_row_that_only_resembles_a_file_does_not_claim_it(cfg, silence, export
 
     def versioned(title: str) -> dict:
         return {**real(title), "version": "Extended Mix"} if title == "One" else real(title)
-
     monkeypatch.setattr(sys.modules[__name__], "_track", versioned)
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One", "Two"))})
     _staged(cfg, silence, "One", "Two")
-
     envelope = _applied(export, "--pass", PASS)
-
     assert _held(envelope) == {BATCH: ["One"], "Sunset Warmup 2026-10-03": ["Two"]}
 
 
@@ -432,9 +390,7 @@ def test_a_row_that_only_resembles_a_file_does_not_claim_it(cfg, silence, export
 def test_the_gate_screen_names_each_playlist_before_anything_moves(cfg, silence, export):
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",)), "pl-b": ("Deep Cuts", ("Two",))})
     _staged(cfg, silence, "One", "Two", "Three")
-
     code, refused = _drive(_land(export, "--pass", PASS))
-
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     shown = refused["cause"]["detail"]["shown"]
     assert shown["account playlists"] == [
@@ -455,12 +411,10 @@ def test_an_answer_given_for_one_split_is_stale_for_another(cfg, silence, export
     _staged(cfg, silence, "One")
     argv = _land(export, "--pass", PASS)
     run_id = _decided(argv)["run_id"]
-
     # The same files, folder and batch, but the account playlist now lands
     # under another name, because INBOX came to hold its own.
     _inbox_holds(export, "Sunset Warmup 2026-10-03")
     code, envelope = _drive(["--run", run_id, *argv])
-
     assert envelope["cause"]["reason"] == "decision-stale", envelope
     assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
 
@@ -469,9 +423,7 @@ def test_the_intake_record_names_each_playlist_and_its_batch_folder(cfg, silence
     """And a person who discarded the intake file discarded its playlists too."""
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     _staged(cfg, silence, "One")
-
     envelope = _applied(export, "--pass", PASS)
-
     assert envelope["outcome"] == "pending"
     (record,) = session.records(cfg)
     # The account and the pass beside the name since U128, which a rerun of
@@ -492,7 +444,6 @@ def test_a_name_the_export_came_to_hold_after_the_gate_is_refused_and_moves_noth
     argv = _land(export, "--pass", PASS)
     code, refused = _drive(argv)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
-
     # The export is rewritten after the screen to hold the name, under the
     # same path; the verb is then handed the names it chose before.
     chosen = account_playlists.named
@@ -500,9 +451,7 @@ def test_a_name_the_export_came_to_hold_after_the_gate_is_refused_and_moves_noth
         account_playlists, "named", lambda claimed, held, batch: chosen(claimed, (), batch=batch)
     )
     _inbox_holds(export, "Sunset Warmup 2026-10-03")
-
     code, envelope = _drive(["-d", f"{GATE}=apply", *argv])
-
     assert code != int(ExitCode.PENDING_HUMAN), envelope
     assert envelope["cause"]["reason"] == "decision-stale"
     assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
@@ -521,7 +470,6 @@ def test_sync_all_records_the_name_the_account_listed_on_each_playlist_job(slim,
     )
     code, passed = _drive(["sync", "all"])
     assert code == int(ExitCode.OK), passed
-
     recorded = {
         str(job.payload[intake_cli.SOURCE]): job.payload.get(intake_cli.PLAYLIST_NAME)
         for job in _playlist_jobs()
@@ -549,9 +497,7 @@ def test_inbox_names_counts_past_every_name_inbox_holds_and_this_landing_took():
 def test_inbox_names_puts_the_landing_date_at_the_end_of_the_accounts_name(monkeypatch):
     """U175: INBOX stays flat and the date goes after the name, never before it."""
     monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 27))
-    assert batch_name.inbox_names(["Lisa_10_27_26"], (), batch="b") == (
-        "Lisa_10_27_26 2026-10-27",
-    )
+    assert batch_name.inbox_names(["Lisa_10_27_26"], (), batch="b") == ("Lisa_10_27_26 2026-10-27",)
     monkeypatch.setattr(batch_name, "today", lambda: DAY)
     # An undated name INBOX holds, one landed before U175, takes nothing from a
     # dated one, and is never renamed.
@@ -573,10 +519,8 @@ def test_an_export_rewritten_after_the_gate_moves_nothing(cfg, silence, export):
     assert refused["cause"]["detail"]["shown"]["account playlists"] == [
         "Sunset Warmup 2026-10-03 (2 file(s), 1 already in the library), the account's Sunset Warmup"
     ]
-
     _renumber_held1(held)
     code, envelope = _drive(["--run", refused["run_id"], *argv])
-
     # The gate's digest covers each owned track's TrackID, so the answer is stale.
     assert envelope["cause"]["reason"] == "decision-stale", envelope
     assert (Path(cfg.paths.download_staging) / "New1.flac").is_file()
@@ -585,7 +529,6 @@ def test_an_export_rewritten_after_the_gate_moves_nothing(cfg, silence, export):
 def test_the_engine_reads_the_owned_entries_again_before_the_first_move(cfg, silence, export):
     """Between the plan and the moves, the engine's own check, not only the gate's."""
     from cratekit.intake import landing
-
     held = _owned_export(cfg, silence, export, ("Held1",))
     swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})
     staged = _stage(cfg, silence, "New1.flac")
@@ -595,9 +538,7 @@ def test_the_engine_reads_the_owned_entries_again_before_the_first_move(cfg, sil
     split, _emptied = landing.owned_in_export(cfg, named, held)
     (one,) = split
     assert [m.row for m in one.members if m.file is None] != [""]
-
     _renumber_held1(held)
-
     with pytest.raises(CratekitError) as refused:
         landing.apply(
             planned,
@@ -607,7 +548,6 @@ def test_the_engine_reads_the_owned_entries_again_before_the_first_move(cfg, sil
             split=split,
             pass_name=PASS,
         )
-
     assert refused.value.cause.reason == "decision-stale"
     assert "no longer lists the owned tracks" in refused.value.cause.message
     assert staged.is_file()
@@ -622,9 +562,7 @@ def test_an_export_entry_on_another_machine_is_no_owned_row(cfg, silence, export
     held.write_text(body, encoding="utf-8")
     swept(cfg, {"pl-a": ("Sunset Warmup", ("Held1", "New1"))})
     _staged(cfg, silence, "New1")
-
     envelope = _applied(held, "--pass", PASS)
-
     assert _held(envelope)["Sunset Warmup 2026-10-03"] == ["New1"]
     (warning,) = _left(envelope)
     assert "Probe - Held1" in warning["message"]
@@ -641,17 +579,14 @@ def _one_owned(name: str, paths: tuple[str, ...], *more) -> account_playlists.Cl
 
 def test_a_file_two_active_rows_claim_is_no_owned_row(cfg):
     from cratekit.write import trees
-
     held = Path(cfg.library.root) / cfg.library.music_dir / "b" / "Held1.flac"
     rows = [
         trees.ContentRow(content_id=one, recorded=str(held), deleted=False) for one in ("7", "8")
     ]
     new = account_playlists.Member(position=2, file=Path("New1.flac"))
-
     (kept,), emptied = account_playlists.resolve_owned(
         cfg, [_one_owned("Sunset Warmup", (str(held),), new)], rows
     )
-
     assert kept.members == (new,)
     assert [one.why for one in kept.left] == [account_playlists.AMBIGUOUS_ROWS]
     assert emptied == ()
@@ -659,11 +594,9 @@ def test_a_file_two_active_rows_claim_is_no_owned_row(cfg):
 
 def test_a_claim_left_holding_nothing_still_answers_its_left_rows(cfg):
     held = Path(cfg.library.root) / cfg.library.music_dir / "b" / "Held1.flac"
-
     kept, emptied = account_playlists.resolve_owned(
         cfg, [_one_owned("Deep Cuts", (str(held),))], []
     )
-
     assert kept == ()
     assert [(name, one.title, one.why) for name, one in emptied] == [
         ("Deep Cuts", "Held1", account_playlists.NO_ROW)
