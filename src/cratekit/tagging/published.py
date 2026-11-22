@@ -1,114 +1,43 @@
 """Ask a general music catalogue what genre a track was published under, by its ISRC.
 
-WHY A SECOND KIND OF SOURCE (R-796). The record shops in
-:mod:`cratekit.tagging.searchers` sell dance music and are asked by artist and
-title. They do not carry funk, rock or soul, and two of them refused this machine
-with bot checks (both off the default walk since U244, which asks Discogs), so every such file waited for a genre by hand while the
-taxonomy already had folders for it. A general catalogue knows those records,
-and it can be asked by the one identifier a download already carries, so no
-search result needs interpreting and nothing here is a guess.
+WHY (R-796). The record shops sell dance music and are asked by artist and
+title, so funk, rock or soul waited for a genre by hand. A general catalogue
+knows those records and is asked by the identifier a download already
+carries, so nothing here is a guess. It is Deezer, asked with no key: the
+track by its ISRC, then its album, where the genre is published.
 
-THE CATALOGUE IS DEEZER, ASKED WITH NO KEY. Two requests a track: the track by
-its ISRC, then that track's album, because the genre is published on the album
-and not on the track. Measured on 2026-10-01: an ISRC it knows answers an object
-carrying ``isrc`` and ``album.id``, the album answers ``genres.data``, a list of
-named genres, and an ISRC it does not know answers HTTP 200 with an ``error``
-object whose code is 800.
+THE LOOKUP KNOWS NO TAXONOMY, so it is shared: :func:`genre_lookup` answers
+the catalogue's words, :func:`choose` which of them a taxonomy has a folder
+for, :func:`second_opinion` the tagger's use of both. The label genre gate
+calls the first alone.
 
-THE LOOKUP KNOWS NO TAXONOMY, AND THAT IS WHAT MAKES IT SHARED. :func:`genre_lookup`
-answers the catalogue's own words for an ISRC. :func:`choose` is the separate
-question of which of them a declared taxonomy has a folder for, and
-:func:`second_opinion` is the tagger's use of both. The label genre gate judges
-a release with its own rules and calls the first alone.
+THE ANSWER HAS THE SEARCHERS' VALUES AND ``no-isrc``, nothing asked. A file
+with no ISRC, a track not known and a catalogue not read are three facts a
+person acts on three ways. A refusal is BLOCKED, read through the shared check
+(R-791), never retried, and remembered for the run, so the lookup is one per
+process, :func:`for_lookup`. The request names this tool: this is an API, and
+a client disguised to one is what this module never does. An unknown error,
+which arrives inside a 200, is a parse break, never a miss; a body that is not
+JSON did not come from the API and is unreachable. An answer naming another
+ISRC is not this track's.
 
-THE ANSWER HAS THE SEARCHERS' VALUES AND ONE MORE. MATCHED, MISS, UNREACHABLE,
-BLOCKED and PARSE_BREAK mean here what they mean there, and only MISS says the
-catalogue does not know the track. ``no-isrc`` is the sixth: the value handed in
-was empty or does not read as an ISRC, so nothing was asked. A file with no
-ISRC, a track the catalogue does not know and a catalogue that could not be read
-are three facts a person acts on in three ways, and folding any two together is
-absence read as evidence of absence.
+NO PICTURE IS READ HERE: pictures stay the record shops' rows.
 
-A REFUSAL IS AN ANSWER AND NOTHING TRIES TO GET PAST ONE. A 403, a 429 that
-outlasted the shared backoff, a challenge page and the catalogue's own quota
-error are BLOCKED, read through the same check the fallbacks use (R-791). The
-quota error is not retried at all. The request names this tool rather than a
-browser, because this is a public API and not a page, and a client that
-disguised itself to one would be the first step of the thing this module never
-does.
+THE GENRE IS THE ALBUM'S, a limit accepted on 2026-10-01, which is why the
+record catalogues are asked first and a usable answer is never replaced.
 
-A REFUSAL IS REMEMBERED FOR THE REST OF THE RUN. Once the catalogue has
-answered BLOCKED, the lookup asks it nothing further and answers BLOCKED for
-every later ISRC, saying so. A worker builds its seam per file, and without the
-memory a rate limited sweep would spend the whole backoff on every file and
-keep sending requests to a catalogue that had said stop. So the worker's lookup
-is one per process, :func:`for_lookup`, and the next run asks again.
+BEATPORT MUST HAVE ANSWERED FIRST, a match or a miss, and a Discogs that was
+asked must not be unread (U244's review): a genre is written once, so an album
+word written meanwhile would stand in for theirs for good. Discogs unasked for
+want of a token holds nothing back. The suggest verbs' binder,
+:func:`for_suggestions`, asks past a Beatport that refused this client once
+Discogs answered (U322); ``tag folder`` keeps the gate (#796).
 
-NO PICTURE IS READ OFF THIS CATALOGUE. Pictures stay the record shops' rows.
-A first draft took the album cover and the review found two faults in one
-sitting, a placeholder image for an album with no artwork and a fetch that
-went out under the browser identity, so the cover was dropped rather than
-patched. A picture a record shop's row already named is kept and says whose
-it is.
-
-AN ERROR THIS READER DOES NOT KNOW IS A PARSE BREAK, NOT A MISS. The catalogue
-answers errors inside a 200, so the status says nothing, and reading an unknown
-error as "no such track" would report a catalogue that changed its rules as a
-library of tracks nobody carries.
-
-AN ANSWER THAT IS NOT JSON IS UNREACHABLE, NOT A PARSE BREAK. This is an API,
-and a body that is not JSON at all did not come from it: a captive portal, a
-proxy or a block page in a wording nothing here knows. A parse break tells a
-person to report a defect in this software, so it is claimed only on positive
-evidence, JSON that parsed and is not the shape this reader knows.
-
-THE ANSWER IS CHECKED AGAINST THE QUESTION. The track that comes back carries
-its own ISRC, and one that names a different recording, or none, is not read as
-this track's genre. The album identifier becomes a URL, so it is an integer or
-it is nothing.
-
-THE GENRE IS THE ALBUM'S, NOT THE TRACK'S, and that limit is accepted rather
-than hidden. A dance remix of a non dance artist that the record catalogues
-miss files as non dance. The author took that on 2026-10-01, and it is why the
-record catalogues are asked first and a usable answer from one is never
-replaced.
-
-BEATPORT MUST HAVE ANSWERED BEFORE THIS CATALOGUE IS ASKED. A genre is written
-once, fill if empty, so an album level answer written while Beatport was
-unreachable would stand in for Beatport's for good. When Beatport's answer is
-anything but a match or a miss, this catalogue is recorded as not asked and the
-file stays askable. DISCOGS IS WAITED FOR THE SAME WAY (U244's review): asked
-and unread, blocked, unreachable or unparsable, this catalogue
-is recorded as not asked, since its album word written then would stand in for
-Discogs' style for good. Discogs not asked at all, for want of a token, does
-not hold it back, or a library with no token would never be asked here; nor do
-the two scraped fallbacks, off the walk and refusing this machine on every
-search when they were on it.
-
-THE TWO SUGGEST VERBS ASK PAST A REFUSING BEATPORT (U322). ``tag suggest
---catalogue`` and ``tag backlog --catalogue``, and ``tag campaign`` through
-them, weigh a row's answers as votes shown at a gate, and while Beatport
-refused this client on every lookup the gate above kept this catalogue from
-every row. So their binder, :func:`for_suggestions`, asks it on a row Beatport
-refused, sent or passed over, once Discogs was asked and answered, a match or
-a miss. A Beatport that is down or unparsable still holds it back, and so does
-a Discogs that did not answer. ``tag folder`` keeps the gate as it was, which
-#796's question asked about and nobody has answered.
-
-A WORD NOTHING DECLARES IS A DECLINE HERE AND A WRITE FOR BEATPORT, on purpose.
-The resolver's last tier passes an unknown word through so a new dance genre
-survives long enough to be noticed. A general catalogue's vocabulary is a
-different one, a few dozen broad words, and passing those through would file
-every track it calls by a broad name under a word no folder holds. So an answer
-is written only when it maps to a folder, and the first of an album's genres
-that does is the one used.
-
-THIS CATALOGUE'S WORDS HAVE A TABLE OF THEIR OWN IN THE TAXONOMY (R-799), under
-:data:`SOURCE`. The buckets' aliases were written for the record shops, where
-Pop is a dance genre, and read through them this catalogue's Pop was written as
-the dance bucket's name and its Alternative as a bucket's bare name. Where the
-table is declared it is asked first. A word with no row goes on to the
-aliases, and what they answer is written only when it names a folder.
+A WORD NOTHING DECLARES IS A DECLINE HERE, unlike a record shop's: this
+catalogue's few dozen broad words passed through would file tracks under words
+no folder holds. Its words have a table of their own in the taxonomy (R-799),
+under :data:`SOURCE`, asked before the buckets' aliases, which were written for
+the record shops.
 
 Layer: modules.
 """
@@ -129,16 +58,14 @@ from cratekit.tagging import searchers
 from cratekit.tagging.searchers import Answer, Fetch, Pacer
 from cratekit.tagging.tag import NO_ISRC, PublishedGenre, SearchHit, SourceAnswer
 
-#: The general catalogue, as a file's record names it. One, on the measurement
-#: the plan records: of the two others tried, one published no genre for any of
-#: 79 tracks and the other found none of 30.
+#: The general catalogue, as a file's record names it: of two others tried, one
+#: published no genre for 79 tracks and the other found none of 30.
 SOURCE = "deezer"
 
 TRACK_BY_ISRC = "https://api.deezer.com/track/isrc:"
 ALBUM = "https://api.deezer.com/album/"
 
-#: What every request here says about itself. This tool, by name, asking for
-#: JSON. Never the browser identity the record shops are asked with.
+#: This tool, by name, asking for JSON, never the browser identity.
 HEADERS = {
     "User-Agent": f"cratekit/{__version__} (published genre lookup by ISRC)",
     "Accept": "application/json",
@@ -147,31 +74,28 @@ HEADERS = {
 #: The answers that leave the question open, the searchers' own tuple.
 UNREAD: tuple[str, ...] = searchers.UNREAD_ANSWERS
 
-#: Every word a file's record may carry for the general catalogue. A closed set,
-#: so a summary can zero fill it.
+#: Every word a file's record may carry for the general catalogue, closed so a
+#: summary can zero fill it.
 ANSWERS: tuple[str, ...] = (
     *(answer.value for answer in Answer),
     NO_ISRC,
     searchers.NOT_ASKED,
 )
 
-#: The codes of the catalogue's published error table this reader acts on. An
-#: error arrives inside a 200, so the code is the only thing that tells a track
-#: nobody listed from a refusal of this client.
+#: The catalogue's error codes this reader acts on. An error arrives inside a
+#: 200, so the code alone tells a track nobody listed from a refusal.
 _NO_DATA = 800
 _QUOTA = 4
 _BUSY = 700
 
-#: The error type the catalogue gives a client it will not serve without
-#: credentials. A refusal of this client, whatever its code.
+#: The error type of a client not served without credentials, a refusal
+#: whatever its code.
 _PERMISSION = "OAuthException"
 
-#: Beatport's answers that count as Beatport having ANSWERED. Anything else and
-#: the general catalogue is not asked, see the module docstring.
+#: Beatport's answers that count as Beatport having ANSWERED.
 _BEATPORT_ANSWERED = (Answer.MATCHED.value, Answer.MISS.value)
 
-#: Discogs' answers that let the suggest verbs ask this catalogue past a
-#: refusing Beatport (U322): Discogs answered about the track.
+#: Discogs' answers that let the suggest verbs ask past a refusing Beatport (U322).
 _DISCOGS_ANSWERED = (Answer.MATCHED.value, Answer.MISS.value)
 
 
@@ -179,10 +103,9 @@ _DISCOGS_ANSWERED = (Answer.MATCHED.value, Answer.MISS.value)
 class Published:
     """What the general catalogue said about one ISRC.
 
-    ``answer`` is one of :data:`ANSWERS` other than ``not-asked``. ``genres`` is
-    every genre the catalogue lists for the track's album, in its own order and
-    its own words, and is empty for every answer but a match. A match with no
-    genres is a track the catalogue knows and publishes no genre for.
+    ``genres`` is every genre listed for the track's album, in the catalogue's
+    order and words, empty for every answer but a match; a match with none is
+    a known track published with no genre.
     """
 
     source: str
@@ -196,11 +119,6 @@ class Published:
 Lookup = Callable[[object], Published]
 
 
-# ---------------------------------------------------------------------------
-# Reading one answer
-# ---------------------------------------------------------------------------
-
-
 def _said(answer: Answer, note: str = "") -> Published:
     return Published(SOURCE, answer.value, note=note)
 
@@ -208,11 +126,8 @@ def _said(answer: Answer, note: str = "") -> Published:
 def _error(payload: dict[str, Any]) -> Published | None:
     """The answer an ``error`` object is, or None when the payload carries none.
 
-    FOUR ERRORS ARE KNOWN AND EVERY OTHER ONE IS A PARSE BREAK. "No data" is the
-    only one that says the catalogue does not list what was asked for. The quota
-    error and a permission error are refusals of this client. "Service busy" is
-    the catalogue saying try later. An error outside those is one this reader
-    was never written against, and calling it a miss would be a guess.
+    "No data" is a miss, quota and permission errors are refusals, "service
+    busy" is unreachable, and any other error is a parse break, never a guess.
     """
     error = payload.get("error")
     if error is None:
@@ -238,11 +153,8 @@ def _error(payload: dict[str, Any]) -> Published | None:
 
 
 def _read(url: str, *, fetch: Fetch, pacer: Pacer) -> dict[str, Any] | Published:
-    """One paced touch: the JSON object it answered, or the answer its absence is.
-
-    The refusal check is the fallbacks' own, so a block is recognised here on
-    exactly the evidence it is recognised on there, and is never answered.
-    """
+    """One paced touch: the JSON object it answered, or the answer its absence
+    is, a block recognised by the record shops' own check."""
     pacer.wait()
     page = fetch(url)
     refused = searchers.unread_outcome(SOURCE, page)
@@ -265,11 +177,8 @@ def _read(url: str, *, fetch: Fetch, pacer: Pacer) -> dict[str, Any] | Published
 def _genre_names(listing: dict[str, Any]) -> tuple[str, ...] | None:
     """The album's genre names in the catalogue's order, or None for an unknown shape.
 
-    None and an empty tuple are different answers. Empty is an album the
-    catalogue publishes no genre for. None is a listing this reader cannot
-    read: no genre list at all, or entries present and none of them carrying a
-    name, which is the only evidence that separates a redesign from an album
-    with no genre.
+    Empty is an album published with no genre; None is no list at all, or
+    entries none of which carries a name, the only evidence of a redesign.
     """
     genres = listing.get("genres")
     entries = genres.get("data") if isinstance(genres, dict) else None
@@ -292,10 +201,8 @@ def _ask(
 ) -> Published:
     """Ask the catalogue about one well formed ISRC. Two touches at most.
 
-    ``albums`` is the lookup's memory of the genre lists it has already read,
-    by album identifier. A release's tracks share an album, so the second track
-    asks for the track alone. Only a list that was READ is remembered: a
-    refusal or an unreadable album is asked about again by the next track.
+    ``albums`` remembers the genre lists already read, by album, so a release's
+    second track asks for the track alone. Only a list READ is remembered.
     """
     track = _read(f"{TRACK_BY_ISRC}{isrc}", fetch=fetch, pacer=pacer)
     if isinstance(track, Published):
@@ -326,8 +233,7 @@ def _ask(
         if refused is not None:
             if refused.answer != Answer.MISS.value:
                 return refused
-            # THE TRACK IS KNOWN AND ITS ALBUM IS NOT LISTED. Not a miss, which
-            # would say the catalogue does not know the track it just named.
+            # Not a miss: the catalogue just named the track.
             return Published(
                 SOURCE,
                 Answer.MATCHED.value,
@@ -348,9 +254,8 @@ def _ask(
     )
 
 
-#: An ISRC as it can sit inside a longer value: twelve characters, hyphens
-#: allowed at its three joints, and nothing alphanumeric on either side, so a
-#: thirteen character catalogue number is not read as an ISRC with a tail.
+#: An ISRC inside a longer value, hyphens allowed at its joints, with nothing
+#: alphanumeric either side, so a longer catalogue number is not one.
 _ISRC_WITHIN = re.compile(
     r"(?<![A-Za-z0-9])[A-Za-z]{2}-?[A-Za-z0-9]{3}-?[0-9]{2}-?[0-9]{5}(?![A-Za-z0-9])"
 )
@@ -359,13 +264,8 @@ _ISRC_WITHIN = re.compile(
 def _first_isrc(value: object) -> str:
     """The folded ISRC a value holds, the first when it holds several, or empty.
 
-    The whole value is tried first, through the one fold the rest of the product
-    matches ISRCs with. Then the first ISRC found inside it, because driven on
-    2026-10-01 an ID3 frame written with two values came back as one string
-    joined by a null, which folds to nothing, and the file would have been
-    reported as carrying no ISRC while it carried two. Whatever separates them,
-    a null, a space or a label somebody typed in front, is not this function's
-    to list.
+    The whole value first, then the first ISRC inside it: an ID3 frame of two
+    values reads as one string joined by a null, which folds to nothing.
     """
     whole = isrc_token(value)
     if whole:
@@ -378,12 +278,8 @@ def _first_isrc(value: object) -> str:
 
 
 def _no_isrc(value: object) -> Published | None:
-    """The ``no-isrc`` answer for a value that holds no ISRC, or None when it does.
-
-    One place builds it, for the lookup and for the tagger's seam, which says
-    it before anything else is weighed so the count of such files does not
-    depend on what the record shops answered.
-    """
+    """The ``no-isrc`` answer for a value that holds no ISRC, or None when it
+    does, built once for the lookup and the tagger's seam."""
     if _first_isrc(value):
         return None
     given = str(value or "").strip()
@@ -402,22 +298,10 @@ def genre_lookup(
 ) -> Lookup:
     """Build the lookup: an ISRC in, what the general catalogue published out.
 
-    The seams are the searcher's own shapes, a fetch, a sleep and a pacer, so
-    the suite drives every answer with nothing on the network. Every touch is
-    paced, the first included, at the searchers' interval, which is far inside
-    the catalogue's published limit.
-
-    THE ISRC IS FOLDED AND CHECKED BEFORE IT BECOMES A URL. A tag is text
-    somebody else wrote, and one that does not read as an ISRC is ``no-isrc``
-    and never a request.
-
-    ONE LOOKUP REMEMBERS TWO THINGS, both for its own lifetime. The genre lists
-    it has read, by album, so a release is asked about once. And the first
-    BLOCKED answer: from then on nothing is asked and every ISRC is answered
-    BLOCKED, with a note saying it was not asked and why. Waiting out a rate
-    limit on every file is the nearest this module could come to arguing with
-    one, so it does not. An unreachable answer is not remembered: that is a
-    network, and the next file may find it back.
+    The seams are the searcher's shapes, and every touch is paced, the first
+    included. The ISRC is folded and checked before it becomes a URL. A lookup
+    remembers the albums it read and its first BLOCKED answer, after which
+    nothing is asked; an unreachable answer is a network, not remembered.
     """
     naps = time.sleep if sleep is None else sleep
     pacer = Pacer(sleep=naps) if pacing is None else pacing
@@ -444,52 +328,14 @@ def genre_lookup(
     return lookup
 
 
-# ---------------------------------------------------------------------------
-# Choosing among an album's genres, for one declared taxonomy
-# ---------------------------------------------------------------------------
-
-
 def choose(declared: Taxonomy, genres: Sequence[str]) -> tuple[str, str] | None:
     """The first published genre that maps to a folder, with the tag to write.
 
-    The catalogue's word and the taxonomy's tag for it, or None when no word of
-    the album's maps anywhere. "Maps to a folder" is the shipped resolver
-    answering with a BUCKET, or with a word that is a bucket's own name, not
-    declining, and not a name the taxonomy lists as too coarse to be a final
-    tag. So the resolver's pass through of a word nothing declares and a rule
-    that declares a tag with no bucket are both passed over: each would put a
-    word on the file that no folder holds.
-
-    A BUCKET'S OWN NAME IS A FOLDER EVEN WITH NO ALIAS NAMING IT. The resolver
-    answers such a word with no bucket identifier, because its alias table has
-    no row for it, and routing still files it exactly, by display. Asking only
-    for a bucket identifier declined a word whose folder exists, which the
-    review drove.
-
-    IN THE CATALOGUE'S ORDER, because that order is the only ranking it
-    publishes, and a chooser that preferred the narrowest or the rarest word
-    would be this module forming an opinion about music.
-
-    THE WORD IS RESOLVED AS THIS CATALOGUE'S (R-799). The resolver is told
-    whose word it is, and a taxonomy that declares a vocabulary for this
-    catalogue answers from that table first, so its Pop is not filed by an
-    alias written for a record shop's Pop. The tag is still the resolver's
-    answer and nothing here adjusts it.
-
-    ON A COPY THAT DECLARES THE TABLE, A WRITTEN GENRE NAMES A FOLDER. A word
-    with no row is answered by the buckets' aliases, and those can answer with
-    the bare name of a bucket that files by source genre, which lands in that
-    bucket's default sub with the word lost. That is how this catalogue's
-    Alternative was filed. So such an answer is passed over, by the test the
-    loader holds a row's tag to. A copy that declares no table has not taken
-    the rule and answers exactly as it did before that unit.
-
-    ONE CHOOSER WITH DISCOGS (U244). The tests above are
-    :func:`cratekit.tagging.searchers.choose_word`'s, which Discogs' styles are
-    chosen by too, so the two sources that answer several words cannot come to
-    mean two things by "maps to a folder". It also passes over a word that
-    resolves to the fallback bucket, which the too coarse test already refused
-    on the shipped template.
+    :func:`cratekit.tagging.searchers.choose_word`, Discogs' chooser too (U244),
+    so the two sources that answer several words mean one thing by "maps to a
+    folder". The word is resolved as this catalogue's (R-799), and on a copy
+    that declares its table the tag must name a folder, or an alias's bare
+    bucket name would land in a default sub with the word lost.
     """
     return searchers.choose_word(
         declared,
@@ -499,59 +345,29 @@ def choose(declared: Taxonomy, genres: Sequence[str]) -> tuple[str, str] | None:
     )
 
 
-# ---------------------------------------------------------------------------
-# The tagger's use of it
-# ---------------------------------------------------------------------------
-
-
 def second_opinion(
     declared: Taxonomy, *, lookup: Lookup | None = None, past_a_refusing_shop: bool = False
 ) -> PublishedGenre:
     """Build the seam :func:`cratekit.tagging.tag.tag_one` offers a hit to.
 
-    Given the searcher's hit and the file's ISRC tag, it returns the hit to act
-    on, with the general catalogue's answer appended to the hit's record. Every
-    rule of when the catalogue is asked lives here, in one place:
+    It returns the hit to act on, the catalogue's answer appended to its record.
+    Every rule of when the catalogue is asked lives here:
 
-    * a hit that carries no per source answers is returned untouched. Whether
-      Beatport answered cannot be read off it, so nothing is asked on its
-      strength;
-    * a hit that already has a genre, and a file that needs none (an ISRC of
-      None), are recorded ``not-asked``. That is R4: a usable answer from a
-      record shop is never replaced;
-    * a file whose ISRC tag holds no ISRC is recorded ``no-isrc``, before
-      Beatport's answer is weighed, so every such file is counted whatever the
-      record shops did;
-    * a hit whose Beatport answer is not a match or a miss is recorded
-      ``not-asked`` with the reason, and the file stays as the searcher left it;
-      so is one whose Discogs was asked and went unread (U244). With
-      ``past_a_refusing_shop``, the suggest verbs' binder, a Beatport that
-      refused this client does not hold it back once Discogs answered (U322);
-    * otherwise the catalogue is asked. A genre that maps to a folder becomes
-      the hit's genre, with no flag saying it was inferred, because it was not.
-      Anything else leaves the hit a decline that says what was answered.
+    * a hit with no per source answers is returned untouched;
+    * a hit with a genre, or a file that needs none (ISRC None), is
+      ``not-asked``: a usable answer is never replaced (R4);
+    * an ISRC tag holding no ISRC is ``no-isrc``, whatever the shops did;
+    * a Beatport answer not a match or a miss, or a Discogs asked and unread
+      (U244), is ``not-asked``, save that with ``past_a_refusing_shop`` a
+      refusing Beatport gives way once Discogs answered (U322);
+    * otherwise the catalogue is asked, and a genre that maps to a folder is
+      the hit's genre; anything else leaves a decline saying what was answered.
 
-    A DECLINE KEEPS THE RECORD SHOP'S WORD WHEN THERE IS ONE. Beatport calling a
-    track by a catch-all and this catalogue calling it by another are both in
-    the answers, and the file's own ``source_genre`` stays the first, since the
-    alias a person would add is against the catalogue that sells the record.
-
-    A DECLINED WORD OF THIS CATALOGUE'S OWN BECOMES THE FILE'S, and the file is
-    then ``unmapped-genre`` even beside fallbacks that could not be read. That
-    is the engine's existing precedence, a declined word outranks an unread
-    source, and it is kept on purpose: the word is what a person can act on,
-    it reaches the summary's unresolved list, and the unread fallbacks are
-    still in the file's record and in the warning that names a catalogue
-    refused throughout.
-
-    A MATCH THAT PUBLISHES NO GENRE CHANGES NOTHING BUT THE RECORD. The hit's
-    source stays what the searcher left, since a catalogue that supplied no
-    word is not where anything on the file came from.
-
-    THE PICTURE STAYS THE RECORD SHOP'S. When this catalogue becomes the hit's
-    source, ``art_source`` names the shop whose row matched, or is empty when
-    none did, so the report about the picture is never written about a
-    catalogue that is not asked for one.
+    A decline keeps the record shop's word when there is one, since a person's
+    alias is against the catalogue that sells the record. A declined word of
+    this catalogue's own becomes the file's, a word outranking an unread source.
+    A match publishing no genre changes only the record. ``art_source`` stays
+    the record shop's whose row matched, or nobody's.
     """
     ask = genre_lookup() if lookup is None else lookup
 
@@ -605,9 +421,7 @@ def second_opinion(
         entry = SourceAnswer(SOURCE, said.answer, source_genre=word, note=note)
         if picked is None and (hit.source_genre or not word):
             return recorded(entry)
-        # THIS CATALOGUE BECOMES THE HIT'S SOURCE, for a genre to write or for a
-        # declined word of its own. The picture question stays with the record
-        # shop whose row matched, or with nobody when none did.
+        # This catalogue becomes the hit's source; the picture stays the shop's.
         return recorded(
             entry,
             genre=picked[1] if picked else None,
@@ -628,27 +442,16 @@ def _refused_beside_discogs(beatport: SourceAnswer, hit: SearchHit) -> bool:
     return discogs is not None and discogs.answer in _DISCOGS_ANSWERED
 
 
-# ---------------------------------------------------------------------------
-# The binders, looked up at call time
-# ---------------------------------------------------------------------------
-
 #: The one lookup this process asks the catalogue through, built on first use.
 _shared: list[Lookup] = []
 
 
 def for_lookup() -> Lookup:
-    """The lookup a caller should use, looked up rather than constructed.
+    """The lookup a caller should use, looked up so a test can replace it here.
 
-    The same shape and the same reason as
-    :func:`cratekit.tagging.searchers.for_taxonomy`: a test replaces this
-    attribute on this module, and a caller that built its own lookup inline
-    would leave it nowhere to hand a fake in. Building one touches no network.
-    This is the entry the label genre gate calls for a release's ISRC.
-
-    ONE PER PROCESS, unlike the searcher's binder. A worker asks for its seam
-    once per file, and the lookup's memory of a refusal and of the albums it
-    has read is only worth having if the next file meets the same lookup. A job
-    is driven in one process, so the memory lasts the run and no longer.
+    One per process, so the next file meets the memory of a refusal and of the
+    albums read. Building one touches no network. The label genre gate calls
+    this for a release's ISRC.
     """
     if not _shared:
         _shared.append(genre_lookup())
@@ -656,23 +459,15 @@ def for_lookup() -> Lookup:
 
 
 def for_taxonomy(declared: Taxonomy) -> PublishedGenre:
-    """The seam a tagging worker should hand :func:`cratekit.tagging.tag.tag_one`.
-
-    Built over :func:`for_lookup`, read off this module at call time, so
-    replacing the lookup replaces what the worker asks. The in process limit
-    R-226 records for the searcher's binder applies here too.
-    """
+    """The seam a tagging worker hands :func:`cratekit.tagging.tag.tag_one`,
+    over :func:`for_lookup` read at call time (in process only, R-226)."""
     return second_opinion(declared, lookup=for_lookup())
 
 
 def for_suggestions(declared: Taxonomy) -> PublishedGenre:
-    """The seam ``tag suggest --catalogue`` and ``tag backlog --catalogue`` ask through.
-
-    :func:`for_taxonomy`'s, asking past a Beatport that refused this client once
-    Discogs answered (U322), so a refusing record shop does not keep this
-    catalogue from every row a suggest walk weighs. Built over
-    :func:`for_lookup` the same way.
-    """
+    """The seam ``tag suggest --catalogue`` and ``tag backlog --catalogue`` ask
+    through: :func:`for_taxonomy`'s, past a refusing Beatport once Discogs
+    answered (U322)."""
     return second_opinion(declared, lookup=for_lookup(), past_a_refusing_shop=True)
 
 

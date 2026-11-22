@@ -1,34 +1,19 @@
 """When each record shop began refusing this client, kept from run to run (U284).
 
-WHY IT IS KEPT. A sweep counts a catalogue's refusals in a row for its own run
-and forgets them when the run ends (U281), so nothing could say how long a
-catalogue had refused. Sitting 94's sync pass stopped at its tag step over a
-Beatport that had refused every lookup since sitting 93, three days earlier,
-and the refusal said nothing of it. A block of minutes and a block of days ask
-different things of a person, so the date a refusal began is kept here, read
-by the sweep's report and by the refusal a pass stops on.
+A sweep's run count forgets its refusals when the run ends (U281), and a block
+of minutes and a block of days ask different things of a person, so the date
+a refusal began is kept here, for the sweep's report and a pass's refusal.
 
-WHAT MOVES IT. A refusal the catalogue was SENT and answered, a 403, a spent
-rate limit or a challenge page, sets ``since`` once and moves ``last``. A match
-or a miss means the catalogue answered this client, and clears it. An outage or
-a parse break says nothing about whether it would refuse, and a refusal the run
-answered from its own count (U281's ``not asked``) was never sent, so neither
-moves it.
+A refusal the catalogue was SENT sets ``since`` once and moves ``last``; a
+match or a miss clears it. An outage, a parse break or a refusal answered from
+the run's own count says nothing, so moves nothing. Only a sweep's run count,
+:func:`cratekit.tagging.searchers.for_run`, writes it; Discogs keeps its own
+memory and is not recorded.
 
-WHO WRITES IT. The ``tag folder`` worker's run count, :func:`cratekit.tagging.
-searchers.for_run`, and nothing else: a searcher a test or a library caller
-builds with no run count keeps no record, so nothing but a sweep touches this
-file. Discogs is not under the run count (U244 keeps its own memory) and is not
-recorded here.
-
-THE READ, MERGE AND REPLACE IS HELD UNDER A SIBLING LOCK, the ISRC cache's
-pattern: two sweeps in two processes never lose each other's dates, and a lock
-not had in time skips the write rather than waiting on a holder that is not
-moving.
-
-IT NEVER RAISES. A record that cannot be read reads as none, and one that
-cannot be written is left as it was: the cost is the words "since" in a
-sentence, never a file left untagged or a sweep that fails.
+The read, merge and replace is held under a sibling lock, so two sweeps never
+lose each other's dates, and a lock not had in time skips the write. It never
+raises: the cost of a record unread or unwritten is the word "since" in a
+sentence, never a sweep that fails.
 """
 
 from __future__ import annotations
@@ -89,9 +74,7 @@ def _parse(text: str) -> dict[str, Standing]:
     try:
         document = json.loads(text)
     except (ValueError, RecursionError):
-        # A RECORD NESTED PAST THE PARSER'S DEPTH (round one): only a hand
-        # edit or a damaged disk writes one, and it reads as none like any
-        # other record that does not parse.
+        # A RECORD NESTED past the parser's depth reads as none.
         return {}
     held = document.get("catalogues") if isinstance(document, dict) else None
     if not isinstance(held, dict):
@@ -107,11 +90,8 @@ def _parse(text: str) -> dict[str, Standing]:
 
 
 def read(path: Path | None = None) -> dict[str, Standing]:
-    """Every catalogue the record says is refusing this client, or none.
-
-    Never raises: a missing file, one that cannot be read and one that does
-    not parse all read as no catalogue refusing.
-    """
+    """Every catalogue the record says is refusing this client, or none; a
+    missing, unreadable or unparsed file is none."""
     try:
         text = (path or _path()).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError, ValueError):
@@ -155,8 +135,7 @@ def _change(
     at = path or _path()
     try:
         if not refused and source not in read(at):
-            # NOTHING TO CLEAR, which is every answer of a catalogue that is
-            # not refusing: no lock is taken and nothing is written.
+            # Nothing to clear: no lock is taken and nothing is written.
             return
         with _locked(lock or _lock_path(), sleep) as had:
             if not had:

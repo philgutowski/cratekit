@@ -1,17 +1,14 @@
 """The Cyanite trial: what a service that reads the audio says, beside the folder (U245).
 
-WHAT THIS IS, AND WHAT IT IS NOT. Cyanite is a paid service that analyses a
-track's audio and answers with genre, sub genre, mood and energy words. Phillip
-asked for a measured trial before any of it is built into the tagging verbs
-(his answer on the card, 2026-11-13): send a small set of tracks he already
-filed by hand, and put what Cyanite says beside the folder each one is filed in
-today, with the agreement per folder. This module is that trial and nothing
-more. It is not a source of the searchers, writes no tag, no record and no
-library, and its answers feed nothing; the source is a later card, once the
-table is read. ``scripts/cyanite_trial.py`` is the command over it.
+Cyanite is a paid service that analyses a track's audio and answers genre, sub
+genre, mood and energy words. This is the measured trial Phillip asked for
+before any of it is built in (2026-11-13): tracks he filed by hand, what
+Cyanite says beside each one's folder, and the agreement per folder. It writes
+no tag, no record and no library, and its answers feed nothing.
+``scripts/cyanite_trial.py`` is the command over it.
 
-AUDIO LEAVES THE MACHINE AND IT COSTS MONEY, so every way to send is guarded,
-and in this order, before the first request:
+AUDIO LEAVES THE MACHINE AND IT COSTS MONEY, so sending is guarded, in this
+order, before the first request:
 
 1. the person opts in by name, per run (``send=True``, the script's
    ``--send-to-cyanite``); without it the run is a plan that sends nothing;
@@ -23,49 +20,30 @@ and in this order, before the first request:
 5. the key is in the keychain, and a free query proves it and the query's own
    shape before any upload.
 
-THE KEY. A Cyanite integration access token, recorded with ``crate login
-cyanite-key`` in the OS keychain through :mod:`cratekit.core.secrets`. It is
-sent in the ``Authorization`` header of the requests to the API and nowhere
-else: not to the upload address, which is a presigned storage address that
-needs no key, not in a URL, and not in the ``repr`` of anything that holds it.
-Every note is scrubbed of it, and a transport failure is described by its
-type, never by its text, which can carry the address. The presigned upload
-address is a credential of its own for fifteen minutes and is never written.
+THE KEY, recorded with ``crate login cyanite-key``, goes only in the
+``Authorization`` header of requests to the API: never to the presigned upload
+address, a credential of its own that is never written, nor a URL or a
+``repr``. Every note is scrubbed of it, and a transport failure is described by
+its type, since its text can carry the address.
 
-NOTHING TEMPO SHAPED. The queries ask for four words of the result,
-``genreTags``, ``subgenreTags``, ``moodTags`` and ``energyLevel``, and no
-other: Cyanite also answers a tempo, a key and a time signature, and none of
-them is asked for, read or written (CLAUDE.md, never a beat grid). A reply's
-other fields are dropped unread. Mood and energy are read for the table only;
-whether Cyanite's energy ever feeds Cratekit's own energy reading is a separate
-decision of Phillip's.
+NOTHING TEMPO SHAPED: the queries ask for ``genreTags``, ``subgenreTags``,
+``moodTags`` and ``energyLevel`` alone, never Cyanite's tempo, key or time
+signature (never a beat grid); other fields are dropped unread.
 
-THE WORDS ARE RESOLVED BY THE SHIPPED RESOLVER. Cyanite answers identifiers,
-``deepHouse``, which are read as the words they spell, ``deep house``, and
-offered sub genres first, then genres, to :func:`searchers.choose_word` with
-the source ``cyanite``: a ``[vocabulary.cyanite]`` table answers first when the
-taxonomy copy declares one, and the buckets' aliases otherwise. No map of
-Cyanite's words lives here (R19, R-799). Spelling an identifier is not a map.
-The folder each side names is :func:`routing.folder_of`'s answer, the file's
-own genre tag for where it is filed today and the chosen word for Cyanite.
+THE WORDS ARE RESOLVED BY THE SHIPPED RESOLVER: an identifier, ``deepHouse``,
+is read as the words it spells and offered, sub genres first, to
+:func:`searchers.choose_word` as ``cyanite``'s word, so no map lives here (R19,
+R-799).
 
-WHAT STOPS A RUN AND WHAT IS ONE FILE'S. An answer about the service, a
-rejected key, a query it refuses, a block, an outage, its library size limit,
-or an analysis it never starts (the account's analysis limit), stops the run
-before another file is uploaded, since every later upload would meet it too.
-An answer about one file, an upload refused, a create refused, an analysis
-that failed or did not finish in the polling window, is written on its row and
-the run goes on.
+An answer about the service, a rejected key, a refused query, a block, an
+outage, a full library or an analysis never started, stops the run, since
+every later upload would meet it. An answer about one file is written on its
+row and the run goes on.
 
-THE TABLE IS WRITTEN ROW BY ROW, so a run cut short keeps what it paid for, and
-a resumed run reads it back and uploads only the files it has no answer for.
-A file is known by the SHA-256 of its audio, not by its path or its tags, so a
-folder moved or a file retagged between the two runs is not paid for again.
-The moment Cyanite answers the create, the file's row is written with its
-library track, ahead of the wait, so a run that ends while waiting, by an
-error, an interrupt or a signal, has kept it, and a resumed run asks about it
-again without a second upload. What is not kept is a run killed between
-Cyanite making the track and its answer reaching here (a residual).
+THE TABLE IS WRITTEN ROW BY ROW, a file known by the SHA-256 of its audio, so
+a run cut short keeps what it paid for and a resumed run uploads only what it
+has no answer for. A made track's row is written ahead of the wait, so a
+resumed run asks about it again without a second upload.
 
 Layer: modules.
 """
@@ -88,10 +66,6 @@ from cratekit.core import routing, secrets, tags
 from cratekit.core.taxonomy import Taxonomy
 from cratekit.tagging import searchers
 
-# ---------------------------------------------------------------------------
-# The service, as its documentation names it
-# ---------------------------------------------------------------------------
-
 #: The source name a vocabulary table is declared under, ``[vocabulary.cyanite]``.
 CYANITE = "cyanite"
 
@@ -108,13 +82,11 @@ LOGIN_STEPS = (
     "crate login cyanite-key --from-file PATH"
 )
 
-#: What Cyanite's API takes as an upload: MP3 only, up to fifteen minutes, by
-#: its documentation. Any other file is listed as skipped and never sent.
+#: What Cyanite's API takes as an upload, by its documentation: MP3 only.
 UPLOADABLE: frozenset[str] = frozenset({".mp3"})
 
-#: How long to wait between asks about one analysis, and how many asks. Cyanite
-#: analyses a track in about a minute; five minutes is the window, and a file
-#: still unfinished is recorded with its library track for a resumed run.
+#: The wait between asks about one analysis, and how many: a track takes about
+#: a minute, and one unfinished in five is kept for a resumed run.
 POLL_WAIT_S = 10.0
 POLL_ATTEMPTS = 30
 
@@ -125,12 +97,12 @@ UPLOAD_TIMEOUT_S = 120.0
 #: The four words of the result this trial reads, and the only ones it asks.
 READ_FIELDS: tuple[str, ...] = ("genreTags", "subgenreTags", "moodTags", "energyLevel")
 
-#: What a tempo or key shaped name looks like, held against every query, every
-#: field read and every output column by the suite.
+#: A tempo or key shaped name, held by the suite against every query, field
+#: read and output column.
 TEMPO_SHAPED = re.compile(r"bpm|tempo|key|beat|grid|signature", re.IGNORECASE)
 
-#: The library track the free preflight asks about. No upload names it, so the
-#: answer is that it does not exist, which proves the key and the query.
+#: The library track the free preflight asks about: none, which proves the key
+#: and the query.
 PREFLIGHT_TRACK = "0"
 
 _ANALYSIS = (
@@ -158,26 +130,18 @@ TRACK_CREATE = (
 
 QUERIES: tuple[str, ...] = (TRACK_QUERY, UPLOAD_REQUEST, TRACK_CREATE)
 
-#: The create error that says the account's library is full: every later
-#: create would meet it, so it stops the run.
+#: The create error of a full library, which every later create would meet.
 LIBRARY_FULL = "librarySizeLimitExceededError"
 
-#: What stands in for the key in any text that might have carried it.
 _SCRUBBED = "[key]"
 
-#: GraphQL error codes and words that mean the key was not accepted. Cyanite
-#: does not document its answer to a bad key, so a 401 and these both read as
-#: a rejection; anything else unexplained stops the run as a refused query.
+#: GraphQL error codes and words read as a rejected key, which Cyanite does not
+#: document; anything else unexplained stops the run as a refused query.
 _AUTH_CODES = frozenset({"UNAUTHENTICATED", "UNAUTHORIZED", "FORBIDDEN"})
 _AUTH_WORDS = re.compile(
     r"unauthori[sz]ed|unauthenticated|not authenticated|access token|invalid token",
     re.IGNORECASE,
 )
-
-
-# ---------------------------------------------------------------------------
-# The send seam, and the only function that names ``requests``
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,12 +169,8 @@ Send = Callable[[Request], Reply]
 
 
 def _requests_send(request: Request) -> Reply:
-    """THE ONE PLACE ``requests`` IS NAMED. The suite detonates it.
-
-    A transport failure is described by its type and never by its text: a
-    client library's message names the address, and the upload's address
-    carries a signature.
-    """
+    """The one place ``requests`` is named; the suite detonates it. A failure is
+    described by its type, since its text names the signed upload address."""
     import requests  # noqa: PLC0415
 
     try:
@@ -226,11 +186,6 @@ def _requests_send(request: Request) -> Reply:
     except Exception as exc:  # noqa: BLE001
         return Reply(None, None, f"transport failure ({type(exc).__name__})")
     return Reply(response.status_code, response.text)
-
-
-# ---------------------------------------------------------------------------
-# What a run can be told
-# ---------------------------------------------------------------------------
 
 
 class TrialRefused(Exception):
@@ -299,22 +254,14 @@ def read_words(result: object) -> Words:
     )
 
 
-# ---------------------------------------------------------------------------
-# The asker
-# ---------------------------------------------------------------------------
-
-
 @dataclass
 class CyaniteAsker:
     """One run's way of asking Cyanite, the key held out of its ``repr``.
 
-    ``rejected`` is why the key was refused, after which it is never sent again
-    in this process. ``made`` is the library track the last :meth:`analyse`
-    created, empty until Cyanite answers the create, and ``on_made`` is told
-    it the moment it is known, before the wait, so the run writes the track
-    down AHEAD of waiting on it: a run killed by a signal mid wait, which no
-    handler sees, has still kept it, and a resumed run asks about it rather
-    than paying for the upload again.
+    After ``rejected`` the key is never sent again in this process. ``made`` is
+    the library track the last :meth:`analyse` created, and ``on_made`` is told
+    it before the wait, so the run writes it down first and a run killed mid
+    wait has kept it.
     """
 
     key: str = field(repr=False)
@@ -500,13 +447,8 @@ def recorded_key() -> str:
         raise missing from None
 
 
-# ---------------------------------------------------------------------------
-# The trial: the plan, the table and the run
-# ---------------------------------------------------------------------------
-
-#: The table's columns, one row per file asked about. Nothing tempo shaped.
-#: ``audio_sha256`` is what a resumed run knows a file by, so a folder moved or
-#: renamed between two runs is not paid for twice.
+#: The table's columns, one row per file asked about, nothing tempo shaped;
+#: a resumed run knows a file by ``audio_sha256``.
 COLUMNS: tuple[str, ...] = (
     "file",
     "audio_sha256",
@@ -540,17 +482,15 @@ SUMMARY_COLUMNS: tuple[str, ...] = (
 SAME_FOLDER = "same folder"
 SAME_BUCKET = "same bucket"
 DIFFERENT = "different folder"
-#: Cyanite answered and none of its words names a folder, which is a word this
-#: taxonomy cannot place and not a disagreement, so the share leaves it out.
+#: None of Cyanite's words names a folder: not a disagreement, left out of the share.
 NO_FOLDER = "no folder"
 #: The file's own genre names no folder, so there is nothing to agree with.
 NOT_FILED = "not filed"
-#: Cyanite gave no words for the file.
 NOT_READ = "not read"
 AGREEMENTS: tuple[str, ...] = (SAME_FOLDER, SAME_BUCKET, DIFFERENT, NO_FOLDER, NOT_FILED, NOT_READ)
 
-#: What the folder columns say when there is no folder to name, and when the
-#: file's genre tag could not be read, which is not the same as having none.
+#: The folder cells for no folder, and for a genre tag that could not be read,
+#: which is not having none.
 NONE_SHOWN = "(none)"
 UNREADABLE_SHOWN = "(tag unreadable)"
 
@@ -568,12 +508,8 @@ class Planned:
 
 
 def _audio_span(data: bytes) -> tuple[int, int]:
-    """Where an MP3's audio lies: past every ID3v2 tag ahead of it, short of an ID3v1 tag.
-
-    Each ID3v2 tag says its own size, ten bytes of header and four synchsafe
-    bytes, and a footer of ten more when its flags say so. An ID3v1 tag is the
-    last 128 bytes, opening ``TAG``. An APE tag is not stripped (a residual).
-    """
+    """Where an MP3's audio lies: past every ID3v2 tag ahead of it, short of an
+    ID3v1 tag. An APE tag is not stripped (a residual)."""
     start = 0
     while data[start : start + 3] == b"ID3" and len(data) >= start + 10:
         size = 0
@@ -588,12 +524,8 @@ def _audio_span(data: bytes) -> tuple[int, int]:
 
 
 def audio_digest(path: Path) -> str:
-    """The SHA-256 of a file's audio, its tags left out: what a table knows it by.
-
-    THE TAGS ARE LEFT OUT so a file retagged between two runs, a genre edited
-    by hand or by a verb, is still the track the table answered, and is not
-    uploaded and paid for again.
-    """
+    """The SHA-256 of a file's audio, its tags left out so a file retagged
+    between two runs is not paid for again."""
     data = path.read_bytes()
     start, end = _audio_span(data)
     return hashlib.sha256(data[start:end]).hexdigest()
@@ -602,10 +534,9 @@ def audio_digest(path: Path) -> str:
 def plan_files(paths: Iterable[Path]) -> list[Planned]:
     """Every file under the paths given, once each, MP3s to send and the rest skipped.
 
-    A folder is read whole, beneath it included, in name order. A file whose
-    name starts with a dot is passed over unlisted: a volume's resource fork
-    files are not tracks. A path that is not there refuses the run. Two files
-    holding the same audio are one track, sent once.
+    A folder is read whole, in name order; a dot file, a resource fork, is
+    passed over unlisted; a path not there refuses the run; two files of the
+    same audio are sent once.
     """
     seen: set[Path] = set()
     digests: dict[str, Path] = {}
@@ -666,10 +597,8 @@ def _shown(place: routing.GenreFolder | None, declared: Taxonomy) -> str:
 
 
 def filed_place(declared: Taxonomy, path: Path) -> tuple[str, routing.GenreFolder | None, str]:
-    """The file's own genre tag, the folder routing files it in today, and a note.
-
-    READ ONLY. A tag that could not be read is said, never read as no genre.
-    """
+    """The file's own genre tag, the folder routing files it in today, and a
+    note. Read only; a tag that could not be read is said, never no genre."""
     try:
         genre = (tags.read_tags_checked(path, ("genre",))["genre"] or "").strip()
     except tags.TagReadFailed:
@@ -681,12 +610,8 @@ def filed_place(declared: Taxonomy, path: Path) -> tuple[str, routing.GenreFolde
 
 
 def cyanite_place(declared: Taxonomy, words: Words) -> tuple[str, routing.GenreFolder | None]:
-    """The first of Cyanite's words that names a folder, sub genres first, and that folder.
-
-    Through :func:`searchers.choose_word` with the source ``cyanite``, the
-    chooser the Discogs source uses, so a ``[vocabulary.cyanite]`` table answers
-    first and nothing here forms an opinion about music.
-    """
+    """The first of Cyanite's words that names a folder, sub genres first, and
+    that folder, through :func:`searchers.choose_word` as ``cyanite``'s word."""
     offered = [spelled(word) for word in (*words.subgenres, *words.genres)]
     picked = searchers.choose_word(declared, offered, source=CYANITE, named_only=True)
     if picked is None:
@@ -745,13 +670,8 @@ def _flat(value: str) -> str:
 
 
 def _line(cells: Iterable[str]) -> str:
-    """One line of a table, tab separated.
-
-    WRITTEN BY HAND, NOT BY ``csv``. The package builds no csv writer, since
-    R12's anti-pattern is a file a person is asked to edit by hand. This table
-    is a report nobody edits, read back only by a resumed run, and a cell
-    carries no tab or line break (:func:`_flat`), so a line is its cells joined.
-    """
+    """One line of a table, tab separated, written by hand: the package builds
+    no csv writer (R12), and a cell carries no tab or line break."""
     return "\t".join(_flat(cell) for cell in cells) + "\n"
 
 
@@ -775,13 +695,8 @@ def read_table(path: Path) -> dict[str, dict[str, str]]:
 
 
 def summarise(rows: Iterable[Mapping[str, str]]) -> list[dict[str, str]]:
-    """The agreement per folder the files are filed in, and over all of them.
-
-    ``agreement`` is the files Cyanite put in the same folder out of those it
-    placed in a folder, the share a person reads. A file Cyanite answered with
-    words this taxonomy places nowhere is counted as ``no_folder`` and left out
-    of the share, since it says nothing about whether Cyanite agrees.
-    """
+    """The agreement per folder the files are filed in, and over all of them:
+    the same folder out of those Cyanite placed in one, ``no_folder`` left out."""
     counts: dict[str, dict[str, int]] = {}
     total = dict.fromkeys(AGREEMENTS, 0)
     for row in rows:
@@ -851,10 +766,8 @@ def run(
 ) -> Ran:
     """Plan the trial, say what it would send and cost, and send only when asked.
 
-    Refusals raise :class:`TrialRefused`, :class:`TrialStopped` or a
-    ``secrets`` credential error, every one of them before any audio is
-    uploaded; the preflight's own refusals come after one free request. A stop
-    after the first upload is returned in :attr:`Ran.stopped`, the table kept.
+    Every refusal raises before any audio is uploaded, the preflight's after
+    one free request; a stop after the first upload is :attr:`Ran.stopped`.
     """
     output = settings.output
     summary = summary_path(output)
@@ -937,13 +850,11 @@ def run(
         try:
             ran = _ask(settings, declared, asker, again, upload, rows, say)
         finally:
-            # WHATEVER ENDS THE RUN, an interrupt included, the summary is
-            # written over what the table holds, so the two never disagree.
+            # Whatever ends the run, the summary is written over the table.
             _write_summary(summary, summarise(rows.values()), fresh=not summary.exists())
     else:
         if not settings.resume:
-            # A run with nothing to send still leaves its table, so the output a
-            # person named is there for a later --resume to read.
+            # The table is left for a later --resume.
             with output.open("x", encoding="utf-8") as handle:
                 handle.write(_line(COLUMNS))
         _write_summary(summary, summarise(rows.values()), fresh=not summary.exists())
@@ -968,20 +879,13 @@ def _ask(
     rows: dict[str, dict[str, str]],
     say: Callable[[str], None],
 ) -> Ran:
-    """Ask about every file, writing each row as it is answered.
-
-    A TRACK CYANITE MADE IS WRITTEN DOWN BEFORE IT IS WAITED ON. The asker
-    tells the run the moment the create answers, and the row is written then,
-    pending, with its library track, so whatever ends the wait, a stop, an
-    interrupt or a signal no handler sees, a resumed run asks about the track
-    again and never uploads it a second time.
-    """
+    """Ask about every file, writing each row as it is answered, and a made
+    track's row before it is waited on."""
     uploaded = 0
     asked = 0
     stopped = ""
     fresh = not settings.resume
-    # BACKSLASHREPLACE: a cell the encoding cannot carry, a lone surrogate in an
-    # answer, is written escaped rather than losing a paid row.
+    # A lone surrogate in an answer is written escaped, not a lost paid row.
     with settings.output.open(
         "x" if fresh else "a", encoding="utf-8", errors="backslashreplace"
     ) as handle:
@@ -1047,8 +951,7 @@ def _keep(
 ) -> None:
     """Write one row, every cell scrubbed of the key, and say it."""
     row = {name: asker.scrub(value) for name, value in row_for(declared, entry, analysis).items()}
-    # WRITTEN BEFORE IT IS REMEMBERED, so the summary never counts a row the
-    # table could not take.
+    # Written before it is remembered, so the summary counts only rows written.
     handle.write(_line(row[name] for name in COLUMNS))
     handle.flush()
     rows[row["audio_sha256"]] = row
