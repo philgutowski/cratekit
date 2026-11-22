@@ -243,11 +243,7 @@ def test_the_auto_analysis_path_comes_before_the_analyze_tracks_path(text):
         "answer its Auto Analysis dialog when it shows every field of Phillip's standard "
         "and nothing else, or else analyse INBOX / Analyze with Analyze Tracks"
     ) in description
-
-
-def test_today_the_visit_is_the_analyze_tracks_path_until_phillip_chooses(text):
-    """The brief: his decision, and until it the visit keeps today's path."""
-    head = _flat(text.split("\n## 1.", 1)[0])
+    # Today the visit keeps the Analyze Tracks path, until Phillip decides.
     assert "**Phillip has not yet chosen to keep Auto Analysis on**" in head
     assert "so today the launch raises no dialog and the visit is the Analyze Tracks path" in head
     assert "the visit itself never does" in head
@@ -346,15 +342,12 @@ def test_a_cancel_rekordbox_ignores_is_counted_from_before_the_launch(text, flat
     assert "Wait as step 4 says with `marker` the path step 2.1 printed" in flat
 
 
-def test_the_marker_is_written_before_each_ok(text):
-    three = _flat(_step(text, 3))
-    assert three.index("Just before pressing OK, write the marker") < three.index("Then press OK.")
-    assert "On the Auto Analysis path the same line is run just before that dialog's OK." in three
-
-
 def test_a_wrong_run_restarts_from_the_check(text):
     """Restarting at step 2 would meet a stale check and the Auto path's OK."""
     three = _flat(_step(text, 3))
+    # The marker is written before each OK.
+    assert three.index("Just before pressing OK, write the marker") < three.index("Then press OK.")
+    assert "On the Auto Analysis path the same line is run just before that dialog's OK." in three
     assert "and start again from step 1.5, so the check is read again before step 2" in three
     assert "start again from step 2." not in three
 

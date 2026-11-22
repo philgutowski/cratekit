@@ -52,6 +52,7 @@ from tests.test_intake_land_native import (
 )
 from tests.test_intake_land_native import library as library  # noqa: PLC0414
 from tests.test_intake_missing import Track
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414 - fixture
 from tests.test_outbound_workers import bind as bind_account
 from tests.test_rb_writer_db import RECORDED_APP_VERSION
 
@@ -166,38 +167,23 @@ def _query(cfg: config.Config, sql: str, *params) -> list[tuple]:
         conn.close()
 
 
+LIVE = "AND COALESCE(rb_local_deleted, 0) = 0"
+
+
 def _inspiration_id(cfg: config.Config) -> str:
-    ((folder_id,),) = _query(
-        cfg,
-        "SELECT ID FROM djmdPlaylist WHERE Name = ? AND Attribute = 1 "
-        "AND COALESCE(rb_local_deleted, 0) = 0",
-        FOLDER,
-    )
+    sql = f"SELECT ID FROM djmdPlaylist WHERE Name = ? AND Attribute = 1 {LIVE}"
+    ((folder_id,),) = _query(cfg, sql, FOLDER)
     return str(folder_id)
 
 
 def _playlists_under(cfg: config.Config, folder_id: str) -> dict[str, str]:
-    return {
-        str(name): str(playlist_id)
-        for playlist_id, name in _query(
-            cfg,
-            "SELECT ID, Name FROM djmdPlaylist WHERE ParentID = ? AND Attribute = 0 "
-            "AND COALESCE(rb_local_deleted, 0) = 0",
-            folder_id,
-        )
-    }
+    sql = f"SELECT ID, Name FROM djmdPlaylist WHERE ParentID = ? AND Attribute = 0 {LIVE}"
+    return {str(name): str(playlist_id) for playlist_id, name in _query(cfg, sql, folder_id)}
 
 
 def _members(cfg: config.Config, playlist_id: str) -> list[str]:
-    return [
-        str(row[0])
-        for row in _query(
-            cfg,
-            "SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? "
-            "AND COALESCE(rb_local_deleted, 0) = 0 ORDER BY TrackNo",
-            playlist_id,
-        )
-    ]
+    sql = f"SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? {LIVE} ORDER BY TrackNo"
+    return [str(row[0]) for row in _query(cfg, sql, playlist_id)]
 
 
 def _report() -> dict:
@@ -259,10 +245,7 @@ def _inspiration_playlist(cfg: config.Config, name: str, folder_id: str) -> None
 #: Fifteen the library holds, and three it does not whose titles share no word
 #: with any held, so the engine answers missing rather than asking a question.
 TITLES = (
-    *(f"Cut {number:02d}" for number in range(1, 16)),
-    "Absent Harbor",
-    "Absent Lantern",
-    "Absent Meadow",
+    *(f"Cut {number:02d}" for number in range(1, 16)), "Absent Harbor", "Absent Lantern", "Absent Meadow"
 )
 
 
@@ -274,9 +257,7 @@ def test_the_step_is_a_kind_of_the_rekordbox_area_that_only_may_name():
     assert rekordbox.INSPIRATION in organize_cli.KINDS
     entry = registry.entry("organize")
     assert "inspiration" in entry.taxonomy_terms and "db_tree" in entry.writes
-
-
-def test_the_prefix_is_the_one_the_mark_and_the_sweep_spell():
+    # The prefix is the one the mark and the sweep spell.
     assert inspiration.PREFIX == folders.MARK_PREFIX == sync_playlists.SWEPT_PREFIX
 
 

@@ -33,6 +33,7 @@ from tests.test_organize import (
     _report,
     _steps,
 )
+from tests.test_organize import _less_work as _less_work  # noqa: PLC0414
 from tests.test_organize import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_organize import (
     _release_process_locks as _release_process_locks,  # noqa: PLC0414

@@ -51,6 +51,7 @@ from tests.test_export_set import NAME as SET_NAME
 from tests.test_export_set import ROWS, SEARCHES
 from tests.test_label_playlists import LABEL, LABEL_ID, LISTED, RELEASES
 from tests.test_label_workers import register
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414 - fixture
 from tests.test_outbound_workers import bind as bind_account
 from tests.test_rb_writer_db import RECORDED_APP_VERSION
 
@@ -184,10 +185,7 @@ def _node(cfg, name: str, *, under: str | None, age: int | None = None, tracks=(
 
 
 def _cut_over(cfg: config.Config, *specs: tuple) -> tuple[str, list[str]]:
-    """Both trees database native and ``specs`` made, in one open; ``...`` as under is INBOX.
-
-    Answers the intake root's identifier and each playlist's.
-    """
+    """Both trees native and ``specs`` made, ``...`` under meaning INBOX; answers both ids."""
     handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
     try:
         tree_root = str(rb_writer.ensure_folder(handle, DECLARED.tree.display).ID)
@@ -374,9 +372,7 @@ def test_the_verb_declares_one_explicit_gate_per_area_and_every_surface_its_step
     assert registry.CLOUD_SYNC_UNREADABLE_GATE in entry.gates
     assert entry.writes == frozenset({"db_tree", "db_metadata", "remote"})
     assert entry.destructive is True
-
-
-def test_the_adoption_step_queues_under_the_handler_key_adopt_apply_owns():
+    # The adoption step queues under the handler key adopt.apply owns.
     assert rekordbox.ADOPT_HANDLER == registry.entry("adopt.apply").handler_key
 
 
@@ -490,10 +486,7 @@ def eastern():
 
 
 def _readings() -> tuple[dict[str, object], dict]:
-    """What organize's report, converge and doctor answer, minus what moves per run.
-
-    Answers those and the report's rekordbox area whole.
-    """
+    """Organize's report, converge and doctor, minus what moves per run; and the area whole."""
     whole = _areas(_report())[rekordbox.AREA]
     area = dict(whole)
     area["facts"] = {key: value for key, value in area["facts"].items() if key != rekordbox.FOREIGN_FACT}
@@ -655,11 +648,8 @@ def test_an_account_home_is_a_label_then_a_year_and_otherwise_none(name, home):
     assert own.account_home(name, ("Kompakt",)) == home
 
 
-def test_the_longest_followed_label_wins():
+def test_the_longest_followed_label_wins_and_a_rekordbox_home_needs_a_declared_label_tree():
     assert own.label_of("Kompakt Extra 2", ("Kompakt", "Kompakt Extra")) == "Kompakt Extra"
-
-
-def test_a_rekordbox_home_needs_a_declared_label_tree():
     assert own.rekordbox_home("Kompakt faves", ("Kompakt",), None) is None
     assert own.rekordbox_home("Kompakt faves", ("Kompakt",), "Record Labels") == (
         "Record Labels / Kompakt"
@@ -1438,8 +1428,7 @@ def test_a_set_archived_by_its_inspiration_proof_stays_archived_once_that_playli
 
 
 def test_a_set_found_prefixed_by_the_migration_is_still_filed_by_the_archive(world):
-    """U242, round two: a prefix a person put on a set says only that it was
-    prefixed, never that the archive filed it, so the step still plans it."""
+    """U242, round two: a prefix a person put on a set never says the archive filed it."""
     cfg, _fake, held, _inbox, _ids = world
     _proven_by_inspiration(cfg)
     recorded = ledger.set_playlist(cfg, SET_NAME)
@@ -1527,9 +1516,8 @@ LEGACY_NAME = "2026 Custom Playlists"
 
 
 def _root_world(world) -> tuple:
-    """The 2026-10-13 root in small: debris copies whose tracks the label folder
-    holds, an empty playlist, a legacy year folder, a working custom playlist,
-    and two folders of the author's that no step may name."""
+    """The 2026-10-13 root in small: debris, an empty, a legacy year folder, a working
+    custom playlist, and two folders of the author's that no step may name."""
     cfg, fake, held, _inbox, _ids = world
 
     def playlist(playlist_id, name, tracks, folder=""):
@@ -1755,8 +1743,7 @@ def test_an_account_answer_ahead_continued_is_refused_before_the_verb_runs(world
     """``--continue`` does not carry an early answer past the gate it was refused at."""
     cfg, _fake, held, _inbox, ids = world
     before = _account_side(held)
-    collection.reset_cache()
-    run_id = drive(VERB)[1]["run_id"]
+    run_id = _refused(VERB)["run_id"]
     _decided(run_id, DB_GATE, "approve")
     reached = _parent(cfg, ids["batch"])
     # The run waits at nothing now (the database answer is recorded, the
@@ -1775,8 +1762,7 @@ def test_an_account_answer_ahead_continued_is_refused_before_the_verb_runs(world
 
 
 def test_an_account_answer_after_its_gate_is_shown_binds_the_digest_it_showed(world):
-    collection.reset_cache()
-    run_id = drive(VERB)[1]["run_id"]
+    run_id = _refused(VERB)["run_id"]
     _decided(run_id, DB_GATE, "approve")
     code, second = _again(run_id)
     assert code == ASKED, second
@@ -1789,8 +1775,7 @@ def test_a_gate_with_no_digest_source_still_takes_an_answer_before_it_is_reached
     """The cloud sync gate binds no plan, so an answer ahead of it is what it always was."""
     (cloud,) = [g for g in registry.entry("organize").gates if g.name == "write.cloudsync.unreadable"]
     assert cloud.digest_source is None
-    collection.reset_cache()
-    run_id = drive(VERB)[1]["run_id"]
+    run_id = _refused(VERB)["run_id"]
     _decided(run_id, cloud.name, "abort")
     state = gates.load(run_id)
     assert state.decisions[cloud.name].option == "abort"
@@ -1799,12 +1784,8 @@ def test_a_gate_with_no_digest_source_still_takes_an_answer_before_it_is_reached
 
 
 def test_an_answer_ahead_of_a_gate_the_continue_may_not_reach_promises_no_stop_there(world):
-    """Round one's drive: the acknowledgment lapsed, so the rekordbox area refuses before it plans.
-
-    The run stops at the account gate alone, and a decide on the rekordbox gate
-    is refused; its steps no longer promise a stop at the rekordbox gate, which
-    the continued run never reaches.
-    """
+    """Round one's drive: with the acknowledgment lapsed the rekordbox area refuses before it
+    plans, so the refused decide's steps promise no stop at a gate the run never reaches."""
     session.ack_path(world[0]).unlink()
     run_id = _refused(VERB, ACCOUNT_GATE)["run_id"]
     code, early = _decide(run_id, DB_GATE, "approve")

@@ -28,6 +28,7 @@ from tests.cli_drive import approve_and_queue as _approve_and_queue
 from tests.cli_drive import drive as _drive
 from tests.test_cli_contract import UNREACHABLE_GATES
 from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414 - fixture
 
 #: Every landed verb that queues work behind a gate only a person can answer,
 #: the exemption taken from the conformance suite's own map.
@@ -74,8 +75,7 @@ def test_a_payload_from_an_older_build_still_builds_a_valid_command_line(entry):
 
 
 def test_the_gate_run_key_is_one_name_and_every_shell_uses_it():
-    """``sync.favorites`` froze the INTAKE run as ``run_id`` and looked correct while
-    restoring nothing, so the gate run has a name of its own, never re-spelled."""
+    """The gate run has a name of its own, since ``sync.favorites`` froze the intake run's."""
     assert jobs.GATE_RUN_KEY == "gate_run_id"
     for entry in QUEUED_GATED:
         source = Path("src", *entry.module.split(".")).with_suffix(".py").read_text()
@@ -102,8 +102,7 @@ def _silence(tmp_path_factory) -> Path:
 
 @pytest.fixture
 def coarse_folder(installed, _silence):
-    """One file whose genre the declared taxonomy would correct, since ``tag.retag``
-    refuses to queue a plan with no rows (U56)."""
+    """One file whose genre the taxonomy would correct, since ``tag.retag`` queues no empty plan."""
     catch_all = taxonomy.default_taxonomy().fallback.too_coarse_as_source[1]
     path = installed.library.root / "Music" / "too-coarse.flac"
     shutil.copy2(_silence, path)
@@ -159,8 +158,7 @@ def _resolved(verb: list[str]) -> list[str]:
 def test_the_resume_the_job_driver_spawns_can_actually_proceed(
     installed, no_rekordbox, remote, catalogue, request, verb, gate
 ):
-    """The real ``argv_for`` output through the real dispatcher. Since U51 and U56
-    each verb has a worker, so OK means the gate was answerable AND the work ran."""
+    """The real ``argv_for`` through the real dispatcher: OK means answerable and the work ran."""
     if gate == "tag.retag.confirm":
         request.getfixturevalue("coarse_folder")
     _run_id, job_id = _approve_and_queue(_resolved(verb), gate)
@@ -177,8 +175,7 @@ def test_the_resume_the_job_driver_spawns_can_actually_proceed(
 
 
 def test_the_favorites_intake_run_and_its_gate_run_are_separate_fields(installed, no_rekordbox, remote):
-    """``--run-id`` is the intake run and ``--run`` the gate's. They default to one
-    value, so a DIFFERENT intake run is what shows them as two fields."""
+    """``--run-id`` is the intake run and ``--run`` the gate's, shown apart by a different one."""
     exported = str(outbound_fakes.write_export(config.load().library.root / "outbound"))
     verb = ["sync", "favorites", "--run-id", "an-intake-run", "--export", exported]
     code, refused = _drive(verb)

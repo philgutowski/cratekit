@@ -31,6 +31,7 @@ from tests.test_inbox_rotate import machine as machine  # noqa: PLC0414 - fixtur
 from tests.test_inbox_rotate import native_library as native_library  # noqa: PLC0414 - fixture
 from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
 from tests.test_organize_mirror import World, row
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414 - fixture
 
 BATCH = "2026-09-23 Tidal playlists"
 LABELS = "2026-10-08 Labels"
@@ -49,8 +50,7 @@ KINDS = {
 
 @pytest.fixture
 def brief(native_library):
-    """The brief's INBOX, made in one open: a dated batch, Old, Analyze, a folder, a label
-    playlist and a smart one, each node as ``_node`` makes it."""
+    """The brief's INBOX in one open: a batch, Old, Analyze, a folder, a label and a smart one."""
     cfg, root_id = native_library
     ids: dict[str, str] = {}
     with _opened(cfg) as handle:
@@ -178,8 +178,7 @@ def test_a_playlist_whose_record_cannot_be_read_is_never_said_to_have_none(nativ
 
 
 def _refuse_under(monkeypatch, call: str, under: Path) -> None:
-    """Refuse one os call for every path at or under ``under``, as an account the
-    directory is closed to is refused; the container runs as root, which no mode bars."""
+    """Refuse one os call at or under ``under``, since no mode bars the container's root."""
     real = getattr(os, call)
 
     def refused(path, *args, **kwargs):
