@@ -13,14 +13,14 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import Any
 
 from cratekit.acquire import match, match_cli
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, digest_of, load_config
 from cratekit.core import binaries, binary_refusal, config
 from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import fetch, normalize, pipeline, recognize
-from cratekit.intake.cli_listing import _load, _unusable
 
 #: The folder under download staging a tracklist lands in when ``--out`` is
 #: not given, and what its file name ends in: 'Artist - Title' lines, the door
@@ -45,6 +45,21 @@ CACHE_SERVED = "recognition-cached"
 #: one set: one tracklist, one job, one batch (R-706).
 IN_PARTS = "recognition-in-parts"
 MIX_SCRATCH_LEFT = "mix-scratch-left"
+
+
+def _load() -> config.Config:
+    """Read config, turning a configuration failure into a typed cause."""
+    return load_config(("intake.cli",))
+
+
+def _unusable(message: str, *steps: str, **detail: Any) -> CratekitError:
+    return refuse(
+        "intake-list-unusable",
+        message,
+        steps=steps,
+        origin=("intake.cli",),
+        detail=detail,
+    )
 
 
 def _note(code: str, message: str) -> dict[str, str]:
