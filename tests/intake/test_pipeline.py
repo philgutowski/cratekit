@@ -50,7 +50,9 @@ def test_a_tracklist_and_a_file_become_the_same_wanted_shape(tmp_path):
     assert file_rows[0].ref == str(audio.resolve())
 
 
-def test_identification_only_downloads_nothing_and_writes_a_tracklist(tmp_path, monkeypatch):
+def test_identification_only_downloads_nothing_and_writes_a_tracklist(
+    tmp_path, monkeypatch
+):
     source = tmp_path / "set.mp3"
     source.write_bytes(b"ID3")
 
@@ -61,9 +63,11 @@ def test_identification_only_downloads_nothing_and_writes_a_tracklist(tmp_path, 
     with pytest.raises(CratekitError) as excinfo:
         pipeline.identify_only(source, identifier=fake_identifier)
     assert excinfo.value.cause.reason == "intake-recognition-unready"
+
     monkeypatch.setattr(recognize.secrets, "exists", lambda name: True)
-    # BOTH binaries, because the gate names both: a build that could carve
-    # but not measure would spend before it knew how much.
+    # BOTH binaries, because the gate names both: ffmpeg carves and ffprobe
+    # measures, and a build that could carve but not measure would spend
+    # before it knew how much.
     monkeypatch.setattr(
         recognize.binaries,
         "find",
@@ -109,7 +113,9 @@ def test_slim_analysis_off_omits_key_and_bpm_from_the_name():
 
 def test_strict_lossy_is_reported_unacquired():
     with pytest.raises(CratekitError) as excinfo:
-        pipeline.acquire_lossy_or_refuse(policy=LosslessPolicy.STRICT, source_is_lossless=False)
+        pipeline.acquire_lossy_or_refuse(
+            policy=LosslessPolicy.STRICT, source_is_lossless=False
+        )
     assert excinfo.value.cause.reason == "lossy-refused"
 
 

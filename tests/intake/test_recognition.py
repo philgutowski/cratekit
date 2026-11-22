@@ -29,9 +29,7 @@ from cratekit.intake.recognize import Identified
 # Fakes
 
 
-def hit(
-    artist: str, title: str, *, isrc: str = "", score: int = 90, extra_artist: str = ""
-) -> dict:
+def hit(artist: str, title: str, *, isrc: str = "", score: int = 90, extra_artist: str = "") -> dict:
     """A MATCH answer naming one recording, in the service's own shape."""
     artists = [{"name": artist}] + ([{"name": extra_artist}] if extra_artist else [])
     music = {
@@ -176,9 +174,7 @@ def refused(transport: FakeTransport, **kwargs):
 
 def test_the_signature_is_the_protocols_hmac_over_the_line_joined_tuple():
     line = "\n".join(["POST", "/v1/identify", "an-access-key", "audio", "1", "1700000000"])
-    expected = base64.b64encode(
-        hmac.new(b"a-signing-key", line.encode(), hashlib.sha1).digest()
-    ).decode()
+    expected = base64.b64encode(hmac.new(b"a-signing-key", line.encode(), hashlib.sha1).digest()).decode()
     # The pair arrives through the fixture rather than as keyword literals,
     # because the repository scan reads ``access_key="..."`` as a credential.
     access, signing = fixed_credentials()
@@ -292,17 +288,11 @@ def test_a_match_becomes_a_wanted_row_with_the_version_split_and_the_isrc_kept()
     assert found is not None
     assert (found.offset_s, found.score) == (25, 87)
     wanted = found.wanted
-    assert (wanted.artist, wanted.title, wanted.version) == (
-        "Aurora Bloom",
-        "Sun Path",
-        "Someone Remix",
-    )
+    assert (wanted.artist, wanted.title, wanted.version) == ("Aurora Bloom", "Sun Path", "Someone Remix")
     assert wanted.isrc == "QZABC2600001"
     assert wanted.spelled == "Sun Path (Someone Remix)"
     assert wanted.ref == "", "a recognised track carries no provider identifier"
-    joined = acrcloud.parse_match(
-        hit("Aurora Bloom", "Sun Path", extra_artist="Nova Reef"), offset_s=0
-    )
+    joined = acrcloud.parse_match(hit("Aurora Bloom", "Sun Path", extra_artist="Nova Reef"), offset_s=0)
     assert joined is not None
     assert joined.wanted.artist == "Aurora Bloom", "the primary artist is the first named"
 
@@ -399,12 +389,7 @@ def test_identification_returns_the_folded_rows_and_counts_every_call(ledger):
     assert (result.calls, result.chunks, result.misses, result.unreached) == (4, 4, 1, 0)
     assert ledger.used("2026-09") == 4
     assert [r.fields["access_key"] for r in transport.requests] == ["an-access-key"] * 4
-    assert [r.sample for r in transport.requests] == [
-        b"chunk@0",
-        b"chunk@25",
-        b"chunk@50",
-        b"chunk@75",
-    ]
+    assert [r.sample for r in transport.requests] == [b"chunk@0", b"chunk@25", b"chunk@50", b"chunk@75"]
 
 
 def test_a_set_nobody_recognised_is_zero_rows_with_the_misses_counted_not_a_refusal(ledger):
@@ -466,11 +451,7 @@ def test_a_provider_quota_answer_is_a_spend_refusal_and_never_a_miss(ledger):
     transport = FakeTransport(hit("Aurora Bloom", "Sun Path", isrc="X1"), quota, miss())
     cause = refused(transport, duration_s=60.0, ledger=ledger)
     assert cause.reason == "intake-recognition-spend-bound"
-    assert (cause.detail["kind"], cause.detail["code"], cause.detail["calls"]) == (
-        "provider-quota",
-        3003,
-        2,
-    )
+    assert (cause.detail["kind"], cause.detail["code"], cause.detail["calls"]) == ("provider-quota", 3003, 2)
     assert cause.remediation.remedy == Remedy.RETRY_LATER
     assert len(transport.requests) == 2, "a call was made after the quota answer"
     assert ledger.used("2026-09") == 2, "the calls made before the refusal were not counted"
@@ -626,10 +607,7 @@ def test_a_keychain_that_cannot_be_reached_keeps_the_stores_own_remedy(monkeypat
 def test_the_gate_names_both_binaries_and_both_keys():
     assert recognize.BINARIES == ("ffmpeg", "ffprobe")
     missing = recognize.recognition_ready()
-    for name in (
-        str(secrets.Credential.IDENTIFY_KEY),
-        str(secrets.Credential.IDENTIFY_SIGNING_KEY),
-    ):
+    for name in (str(secrets.Credential.IDENTIFY_KEY), str(secrets.Credential.IDENTIFY_SIGNING_KEY)):
         assert name in missing
 
 
@@ -642,9 +620,7 @@ def test_the_seam_binds_this_identifier_when_none_is_injected(monkeypatch, tmp_p
     transport = FakeTransport(hit("Aurora Bloom", "Sun Path", isrc="X1"))
     shipped_seams(monkeypatch, transport)
     monkeypatch.setattr(acrcloud, "Ledger", lambda: ledger)
-    found = recognize.identify(
-        source, recognition=config.RecognitionConfig(host="identify-x.acrcloud.com")
-    )
+    found = recognize.identify(source, recognition=config.RecognitionConfig(host="identify-x.acrcloud.com"))
     assert isinstance(found, Identified)
     assert [(row.artist, row.title) for row in found.rows] == [("Aurora Bloom", "Sun Path")]
     assert (found.calls, found.chunks, found.misses, found.unreached) == (1, 1, 0, 0)
@@ -654,9 +630,7 @@ def test_the_seam_binds_this_identifier_when_none_is_injected(monkeypatch, tmp_p
 
 
 @pytest.mark.parametrize("keys", [True, False], ids=["no-section", "no-credentials"])
-def test_the_paid_path_will_not_run_without_the_section_and_the_gate_runs_first(
-    monkeypatch, tmp_path, keys
-):
+def test_the_paid_path_will_not_run_without_the_section_and_the_gate_runs_first(monkeypatch, tmp_path, keys):
     """R-301. A caller that forgot the section is told, rather than sent to a
     region and a month nobody chose; with no key the gate refuses first."""
     source = tmp_path / "set.mp3"
@@ -688,9 +662,7 @@ def test_the_bound_identifier_resolves_its_seams_at_call_time(monkeypatch, ledge
 def test_a_fake_identifier_answering_bare_rows_is_normalised_by_the_seam(monkeypatch, tmp_path):
     monkeypatch.setattr(recognize.secrets, "exists", lambda name: True)
     monkeypatch.setattr(recognize.binaries, "find", lambda name: f"/usr/bin/{name}")
-    found = recognize.identify(
-        tmp_path / "x.mp3", identifier=lambda path: (Wanted(artist="A", title="T"),)
-    )
+    found = recognize.identify(tmp_path / "x.mp3", identifier=lambda path: (Wanted(artist="A", title="T"),))
     assert isinstance(found, Identified)
     assert [row.title for row in found.rows] == ["T"]
     assert (found.calls, found.chunks, found.misses, found.unreached) == (0, 0, 0, 0)
@@ -711,9 +683,7 @@ def test_five_unanswered_calls_in_a_row_stop_the_run_and_count_what_was_spent(le
 
 
 def test_an_answer_resets_the_streak_so_a_blip_does_not_end_the_run(ledger):
-    answers = (
-        [ConnectionError("blip")] * 4 + [miss()] + [ConnectionError("blip")] * 4 + [hit("A", "T")]
-    )
+    answers = [ConnectionError("blip")] * 4 + [miss()] + [ConnectionError("blip")] * 4 + [hit("A", "T")]
     result = run(FakeTransport(*answers), duration_s=250.0, ledger=ledger)
     assert (result.calls, result.unreached, result.misses) == (10, 8, 1)
     assert [row.title for row in result.rows] == ["T"]
@@ -865,9 +835,7 @@ def test_the_digest_is_the_sha256_of_the_bytes(tmp_path):
     assert acrcloud.content_digest(source) == hashlib.sha256(b"exactly these bytes").hexdigest()
 
 
-def test_a_chunk_that_got_no_answer_is_never_kept_so_only_the_gap_is_paid_again(
-    tmp_path, cache, ledger
-):
+def test_a_chunk_that_got_no_answer_is_never_kept_so_only_the_gap_is_paid_again(tmp_path, cache, ledger):
     source = real_recording(tmp_path)
     assert cached_run(a_gap(), source, cache, ledger).unreached == 2
     fill = FakeTransport(miss(), hit("Nova Reef", "Tide"))
@@ -914,9 +882,7 @@ def test_refresh_reads_nothing_kept_and_lays_the_new_answers_over_the_document(
     tmp_path, cache, ledger
 ):
     source = real_recording(tmp_path)
-    cached_run(
-        FakeTransport(hit("Aurora Bloom", "Sun Path"), miss(), miss()), source, cache, ledger
-    )
+    cached_run(FakeTransport(hit("Aurora Bloom", "Sun Path"), miss(), miss()), source, cache, ledger)
     asked = FakeTransport(hit("Aurora Bloom", "Sun Path"), hit("Nova Reef", "Tide"), miss())
     refreshed = cached_run(asked, source, cache, ledger, refresh=True)
     assert len(asked.requests) == 3
@@ -933,9 +899,7 @@ def plan_of(source: Path, duration_s: float = 85.0) -> acrcloud.ChunkPlan:
     )
 
 
-def test_the_write_is_a_merge_so_an_overlapping_pass_does_not_drop_what_another_paid_for(
-    tmp_path, cache
-):
+def test_the_write_is_a_merge_so_an_overlapping_pass_does_not_drop_what_another_paid_for(tmp_path, cache):
     plan = plan_of(real_recording(tmp_path))
     cache.write(plan, {0: hit("Aurora Bloom", "Sun Path")})
     # A second pass that began before that write knows only its own answer.
@@ -1014,9 +978,7 @@ def test_a_pass_that_paid_for_nothing_writes_nothing_and_reports_nothing_unwritt
     assert cached_run(FakeTransport(), source, cache, ledger).cache_unwritten == ""
 
 
-def test_the_monthly_bound_reads_what_is_owed_and_the_parts_ceiling_reads_the_grid(
-    tmp_path, cache, ledger
-):
+def test_the_monthly_bound_reads_what_is_owed_and_the_parts_ceiling_reads_the_grid(tmp_path, cache, ledger):
     """The ceiling reads the grid (R-706), and the run bound reads only what a
     part owes (`docs/mutation/u103-a.md` row A16 names the older property)."""
     source = real_recording(tmp_path)
@@ -1028,9 +990,7 @@ def test_the_monthly_bound_reads_what_is_owed_and_the_parts_ceiling_reads_the_gr
     # and the ceiling still refuses a grid over it before anything is read.
     served = cached_run(FakeTransport(), source, cache, ledger, budget=Budget(per_run=1))
     assert (served.cached, served.parts, served.calls) == (3, 3, 0)
-    over = cached_refusal(
-        FakeTransport(), source, cache, ledger, budget=Budget(per_run=1), duration_s=100.0
-    )
+    over = cached_refusal(FakeTransport(), source, cache, ledger, budget=Budget(per_run=1), duration_s=100.0)
     assert (over.detail["kind"], over.detail["ceiling"]) == ("per-run", 3)
     # And a recording that owes calls into a spent month is refused for them.
     other = real_recording(tmp_path, b"another recording", name="other.mp3")
@@ -1157,15 +1117,10 @@ def test_the_month_is_asked_once_over_the_whole_set_before_the_first_part(ledger
 
 @pytest.mark.parametrize(
     "cut",
-    [
-        lambda offsets: (tuple(offsets),),
-        lambda offsets: (tuple(offsets[:1]), tuple(offsets[1:])),
-    ],
+    [lambda offsets: (tuple(offsets),), lambda offsets: (tuple(offsets[:1]), tuple(offsets[1:]))],
     ids=["one-oversize-part", "oversize-second-part"],
 )
-def test_a_partition_that_hands_back_an_oversize_part_is_refused_before_any_call(
-    ledger, monkeypatch, cut
-):
+def test_a_partition_that_hands_back_an_oversize_part_is_refused_before_any_call(ledger, monkeypatch, cut):
     """The run bound is a property of the spend, not of the cut. A partition
     that returned an oversize part, first or LAST, meets the guard before the
     transport, so the parts before it are not paid for either."""
@@ -1191,9 +1146,7 @@ def test_a_split_set_is_served_from_the_cache_as_one_plan(tmp_path, cache, ledge
     assert (second.parts, second.calls, second.cached) == (2, 0, 4)
 
 
-def test_a_split_set_that_owes_only_a_gap_meets_the_run_bound_on_what_is_owed(
-    tmp_path, cache, ledger
-):
+def test_a_split_set_that_owes_only_a_gap_meets_the_run_bound_on_what_is_owed(tmp_path, cache, ledger):
     source, split = real_recording(tmp_path), {"duration_s": 100.0, "budget": Budget(per_run=2)}
     gap = FakeTransport(miss(), ConnectionError("down"), ConnectionError("down"), miss())
     cached_run(gap, source, cache, ledger, **split)
