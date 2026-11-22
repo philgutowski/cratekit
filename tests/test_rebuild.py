@@ -1,35 +1,24 @@
-"""U36: the tree rebuild, the convergence check, and the record between them.
+"""The tree rebuild, the convergence check, and the record between them (U36).
 
 A tree that has cut over lives only in the database, so a restore leaves it
-short and nothing else notices. This file covers noticing, reporting and
-repairing. The plan's five scenarios:
-
-1. a stripped tree rebuilds to match a never-damaged control
-   -> ``test_a_tree_stripped_of_its_membership_rebuilds_to_match_the_control``
-2. a second rebuild changes nothing
-   -> ``test_a_second_rebuild_writes_nothing``
-3. the check reports a difference in BOTH directions
-   -> ``test_the_check_reports_a_difference_in_both_directions``
-4. a flag cannot be cleared while a difference stands
-   -> ``test_a_flag_cannot_be_cleared_while_the_check_still_differs``
-5. a rebuild refuses without the acknowledgment and without the lock
-   -> ``test_a_rebuild_refuses_without_the_acknowledgment``
-   and ``test_a_rebuild_refuses_while_the_lock_is_held_elsewhere``
-
-Supplemented by the rename (which doubles a library), the reader (a wrong
-document is not an empty one), the lock, and the latch that must not condemn
-its own remedy.
-
-D1 applies: nothing below names a real volume, person or track.
+short and nothing else notices; these tests cover noticing, reporting and
+repairing. D1: nothing below names a real volume, person or track.
 """
 
 from __future__ import annotations
 
 import contextlib
+import importlib
+import importlib.util
+import inspect
 import json
 import os
 import sqlite3
+import subprocess
+import sys
+import textwrap
 import unicodedata
+import unittest.mock
 from dataclasses import dataclass, replace
 from datetime import date
 from enum import StrEnum
@@ -46,6 +35,7 @@ from cratekit.core import (
     rb_writer,
     routing,
     session,
+    tags,
     taxonomy,
     tree_registry,
 )
@@ -53,10 +43,9 @@ from cratekit.core.cause import REASONS, CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.write import metadata_cli, rebuild, routing_pass, trees
 from tests import deadca7_fixtures
+from tests.test_active_taxonomy import write_active
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database
-
-# ── synthesized names (D1) ───────────────────────────────────────────────────
 
 TREE_ID = "shelf_stack"
 TREE_DISPLAY = "Shelf & Stack"
@@ -67,15 +56,11 @@ COMPOSED = "Café One.flac"
 DECOMPOSED = unicodedata.normalize("NFD", COMPOSED)
 PLAIN = "Second Track.flac"
 
-#: A folder name a person might rename a bucket folder to. It carries a space
-#: and an exclamation mark, which is the character coverage the locate needs.
+#: A folder a person might rename a bucket to, with the space and "!" the locate must cover.
 RENAMED_FOLDER = "Loud! Room"
 
 #: A playlist nobody declared under the governed root: never a difference (P7).
 CURATED_PLAYLIST = "Quiet? Corner"
-
-
-# ── Fixtures
 
 
 @pytest.fixture
@@ -108,11 +93,7 @@ def cfg(library, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _platform_seams(monkeypatch):
-    """Everything about THIS machine a temporary library cannot speak for.
-
-    The four seams the sibling write suites patch; that these guards refuse is
-    proved in ``tests/test_rb_writer_db.py``.
-    """
+    """Everything about THIS machine a temporary library cannot speak for."""
     from pyrekordbox.db6 import database as binding
 
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
@@ -157,11 +138,7 @@ def _music(cfg, name: str) -> str:
 
 
 def _record_locations(db_path: Path, recorded: dict[str, str]) -> None:
-    """Give the disposable database's rows the paths this run decided on.
-
-    Written into the file before the guarded writer opens it, since creating a
-    collection row is what the additive whitelist forbids.
-    """
+    """Give the rows this run's paths, before the guarded writer opens the file."""
     conn = sqlite3.connect(db_path)
     try:
         for content_id, path in recorded.items():
@@ -227,25 +204,15 @@ def _registry(root_id: str, *others, source=tree_registry.DerivationSource.TAXON
 
 
 def _destination(declared_taxonomy):
-    """Where the declared rules put an untagged, top-energy file.
-
-    Asked of the rules rather than spelled, so it agrees with the rebuild by
-    construction and survives a change to the shipped default (R19).
-    """
+    """Where the declared rules put an untagged, top-energy file, asked of the rules (R19)."""
     bucket_id = routing.resolve_bucket(declared_taxonomy, None).bucket_id
-    sub = routing.energy_sub(
-        declared_taxonomy, bucket_id, declared_taxonomy.energy.scale_max
-    )
+    sub = routing.energy_sub(declared_taxonomy, bucket_id, declared_taxonomy.energy.scale_max)
     assert sub is not None, "the shipped template declares no sub for the fallback"
     return bucket_id, sub.id
 
 
 def _truth(cfg, declared_taxonomy, *names, voxlevel=None):
-    """The tag readings for files the rules route to one destination.
-
-    Readings, not placements: the rebuild derives its own placements and will not
-    take a list.
-    """
+    """The tag readings for files the rules route to one destination."""
     return [
         rebuild.Truth(
             location=_music(cfg, name),
@@ -259,10 +226,7 @@ def _truth(cfg, declared_taxonomy, *names, voxlevel=None):
 
 def _placements(cfg, declared_taxonomy, *names):
     bucket_id, sub_id = _destination(declared_taxonomy)
-    return [
-        rebuild.DeclaredPlacement(_music(cfg, name), bucket_id, sub_id)
-        for name in names
-    ]
+    return [rebuild.DeclaredPlacement(_music(cfg, name), bucket_id, sub_id) for name in names]
 
 
 def _rows(cfg):
@@ -342,17 +306,11 @@ def _out_of_band(cfg, db, statement: str, *params) -> None:
 
 
 def _membership_ids(db, playlist_id: str) -> set[str]:
-    return {
-        str(row.ContentID)
-        for row in db.get_playlist_songs(PlaylistID=str(playlist_id))
-    }
+    return {str(row.ContentID) for row in db.get_playlist_songs(PlaylistID=str(playlist_id))}
 
 
 def _state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
-    """Size and modification time of every file under each root.
-
-    Only a fingerprint either side of a call sees a refusal that already wrote.
-    """
+    """Size and modification time of every file under each root, to see a refusal that wrote."""
     found: dict[str, tuple[int, int]] = {}
     for root in roots:
         base = Path(root)
@@ -369,15 +327,8 @@ def _state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
     return found
 
 
-# ── Part 1: rebuildability is a precondition of cutover (approach 5)
-
-
 def test_a_tree_may_not_flip_on_a_source_no_rebuild_can_reproduce(cfg):
-    """R39's precondition, asked before the flip and never after the damage.
-
-    A tree that has taken a native write cannot be imported over, so one whose
-    membership no source can reproduce has no repair path.
-    """
+    """R39: a native tree cannot be imported over, so one no source reproduces has no repair."""
     for source in sorted(tree_registry.NOT_REBUILDABLE):
         with pytest.raises(tree_registry.TreeModeRefused) as excinfo:
             tree_registry.record_cutover(
@@ -416,28 +367,19 @@ def test_a_rebuild_of_a_tree_with_a_non_derivable_source_refuses(
         _rebuild(cfg, db, adopted_root, declared, [PLAIN], registry=registry)
 
 
-# ── Part 2: the derivation. Declared taxonomy plus what is on disk, no watermark.
-
-
 def test_the_derivation_routes_a_file_through_the_declared_rules(declared):
     """The rules are CALLED rather than restated, so there is one answer."""
     truth = [rebuild.Truth(location="/x/one.flac", genre=None, energy=None)]
-    placements, gaps = rebuild.derive_from_taxonomy(
-        declared, truth, vocal_threshold=None
-    )
+    placements, gaps = rebuild.derive_from_taxonomy(declared, truth, vocal_threshold=None)
     expected_bucket = routing.resolve_bucket(declared, None).bucket_id
     assert [entry.bucket for entry in placements] == [expected_bucket]
     assert rebuild.VOCAL_DIMENSION in gaps
 
 
 def test_a_vocal_track_lands_in_its_energy_sub_AND_the_additive_one(declared):
-    """Additive means two placements, so "missing from one of its two playlists"
-    stays expressible.
-    """
+    """Additive means two placements, so "missing from one of its two" stays expressible."""
     truth = [rebuild.Truth(location="/x/one.flac", genre=None, energy=9, voxlevel=90)]
-    placements, gaps = rebuild.derive_from_taxonomy(
-        declared, truth, vocal_threshold=5.0
-    )
+    placements, gaps = rebuild.derive_from_taxonomy(declared, truth, vocal_threshold=5.0)
     subs = {entry.sub for entry in placements}
     assert trees.VOX_SUB_CLASS in subs
     assert len(subs) == 2
@@ -463,8 +405,6 @@ def test_an_additive_sub_playlist_with_no_signal_refuses_rather_than_being_skipp
 
 def test_the_walk_reads_every_container_the_tag_module_supports(cfg, tmp_path):
     """The suffix set comes from the tag module, so no format is silently absent (P3)."""
-    from cratekit.core import tags
-
     music = Path(cfg.library.root) / "Music"
     for suffix in tags.SUPPORTED_SUFFIXES:
         (music / f"track{suffix}").write_bytes(b"")
@@ -491,35 +431,24 @@ def test_the_walk_is_sorted_so_two_runs_over_one_library_agree(cfg):
     assert first == second == sorted(first)
 
 
-# ── Part 3: the convergence check
-
-
 def test_the_check_reports_a_difference_in_both_directions(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """The plan's third scenario: R39 asks for both directions.
-
-    One track placed and not held, one held in a declared destination and not
-    placed there.
-    """
+    """R39: one track placed and not held, one held and not placed there."""
     both = _placements(cfg, declared, COMPOSED, PLAIN)
     _rebuild(cfg, db, adopted_root, declared, [COMPOSED, PLAIN])
 
-    # The declaration now names only one of the two. The other is still in the
-    # playlist, which is the second direction.
+    # The declaration now names one of the two; the other still held is the second direction.
     report = _check(cfg, db, adopted_root, declared, _placements(cfg, declared, COMPOSED))
     assert report.missing == ()
     assert [entry.content_id for entry in report.unexpected] == ["2"]
-    # NAMED BY ITS FILE AS WELL (R-312). Only a person can settle this direction,
-    # and a person finds a track by its file, never by its row identifier.
+    # Named by its file as well (R-312): a person finds a track by its file, not its row.
     (leftover,) = report.unexpected
     assert leftover.location is not None and leftover.location.endswith(PLAIN), leftover
 
     # And the first direction: a widened declaration makes the database short.
     assert _check(cfg, db, adopted_root, declared, both).converged
-    third = rebuild.DeclaredPlacement(
-        _music(cfg, "Third Track.flac"), *_destination(declared)
-    )
+    third = rebuild.DeclaredPlacement(_music(cfg, "Third Track.flac"), *_destination(declared))
     rows = [*_rows(cfg), trees.ContentRow("3", third.location, deleted=False)]
     widened = _check(cfg, db, adopted_root, declared, [*both, third], rows=rows)
     assert [entry.content_id for entry in widened.missing] == ["3"]
@@ -528,14 +457,8 @@ def test_the_check_reports_a_difference_in_both_directions(
 def test_a_declared_file_the_library_has_no_row_for_is_surfaced_and_is_not_a_difference(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """A playlist cannot hold a row the library does not have.
-
-    Counting it would make convergence unreachable for any library with a track
-    not yet imported.
-    """
-    absent = rebuild.DeclaredPlacement(
-        _music(cfg, "Never Imported.flac"), *_destination(declared)
-    )
+    """Counting a row the library lacks would make convergence unreachable before an import."""
+    absent = rebuild.DeclaredPlacement(_music(cfg, "Never Imported.flac"), *_destination(declared))
     report = _check(cfg, db, adopted_root, declared, [absent])
     assert report.converged
     assert [match.outcome for match in report.unmatched] == [trees.MatchOutcome.ABSENT]
@@ -544,11 +467,7 @@ def test_a_declared_file_the_library_has_no_row_for_is_surfaced_and_is_not_a_dif
 def test_a_membership_pointing_at_a_soft_deleted_row_is_not_a_difference_either(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """The active-row rule from the other end.
-
-    A membership on a deleted track is a leftover nobody can act on, and counting
-    it would make the flag permanent.
-    """
+    """A membership on a deleted track is a leftover nobody can act on; counting it latches forever."""
     _rebuild(cfg, db, adopted_root, declared, [COMPOSED, PLAIN])
 
     tombstoned = [
@@ -591,9 +510,6 @@ def test_the_check_walks_down_from_the_adopted_root_and_ignores_a_namesake(
     assert not report.converged
 
 
-# ── Part 4: the rebuild
-
-
 def test_a_tree_stripped_of_its_membership_rebuilds_to_match_the_control(
     cfg, gates_pass, db, adopted_root, declared
 ):
@@ -620,8 +536,6 @@ def test_the_rebuild_derives_its_own_placements_and_will_not_take_a_list(
     cfg, gates_pass, db, adopted_root, declared
 ):
     """No ``placements`` parameter: the seam is the tag READINGS, never the answer."""
-    import inspect
-
     accepted = set(inspect.signature(rebuild.rebuild_tree).parameters)
     assert "placements" not in accepted
     assert {"truth", "vocal_threshold"} <= accepted
@@ -635,9 +549,7 @@ def test_the_rebuild_derives_its_own_placements_and_will_not_take_a_list(
 def test_a_vocal_track_reaches_both_of_its_playlists_through_a_rebuild(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """The additive dimension end to end: the vocal sub is a destination a rebuild
-    routinely has to create.
-    """
+    """The additive dimension end to end: the vocal sub is a destination a rebuild creates."""
     truth = _truth(cfg, declared, PLAIN, voxlevel=90)
     _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=truth, vocal_threshold=5.0)
     landed = {node.playlist_display for node in rebuild.read_tree(db, str(adopted_root.ID))}
@@ -648,9 +560,7 @@ def test_a_vocal_track_reaches_both_of_its_playlists_through_a_rebuild(
 def test_a_genre_sub_is_created_once_beside_the_band_and_a_second_rebuild_plans_nothing(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """U155 end to end: a Rominimal track lands in its band and its genre sub, a
-    Minimal one in the band alone, and a second rebuild writes nothing.
-    """
+    """U155: a Rominimal track lands in its band and genre sub, a Minimal one in the band alone."""
     truth = [
         rebuild.Truth(location=_music(cfg, COMPOSED), genre="Rominimal", energy=3, voxlevel=None),
         rebuild.Truth(location=_music(cfg, PLAIN), genre="Minimal", energy=3, voxlevel=None),
@@ -683,26 +593,16 @@ def test_a_library_with_no_vocal_calibration_reports_what_it_did_not_compare(
 def test_a_vocal_playlist_nothing_compared_is_not_named_as_left_behind(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """"I could not observe" must not reach a person as "take this out" (R-312).
-
-    With no calibration the recorded vocal destination is still compared and its
-    track reads as unexpected; what a verb offers for removal leaves it out, and
-    keeps a leftover that IS comparable.
-    """
+    """"I could not observe" must not reach a person as "take this out" (R-312)."""
     truth = _truth(cfg, declared, PLAIN, voxlevel=90)
     _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=truth, vocal_threshold=5.0)
-    report = _rebuild(
-        cfg, db, adopted_root, declared, [PLAIN], truth=truth, vocal_threshold=None
-    )
+    report = _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=truth, vocal_threshold=None)
     assert [entry.sub for entry in report.after.unexpected] == [trees.VOX_SUB_CLASS]
     assert rebuild.left_behind(report.after, declared) == ()
 
-    # The calibration is back and the track no longer clears it: NOW it is a
-    # leftover somebody can act on, and it is named.
+    # Calibrated again and below the cut, it is a leftover somebody can act on, and named.
     quiet = _truth(cfg, declared, PLAIN, voxlevel=0)
-    report = _rebuild(
-        cfg, db, adopted_root, declared, [PLAIN], truth=quiet, vocal_threshold=5.0
-    )
+    report = _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=quiet, vocal_threshold=5.0)
     assert [entry.sub for entry in rebuild.left_behind(report.after, declared)] == [
         trees.VOX_SUB_CLASS
     ]
@@ -719,7 +619,7 @@ def test_the_read_only_report_derives_through_the_registrys_recorded_source(
 
 
 def test_a_second_rebuild_writes_nothing(cfg, gates_pass, db, adopted_root, declared):
-    """The plan's second scenario: re-running is the recovery procedure."""
+    """Re-running is the recovery procedure."""
     names = [COMPOSED, PLAIN]
     first = _rebuild(cfg, db, adopted_root, declared, names)
     second = _rebuild(cfg, db, adopted_root, declared, names)
@@ -732,11 +632,7 @@ def test_a_second_rebuild_writes_nothing(cfg, gates_pass, db, adopted_root, decl
 
 @pytest.fixture(params=["ordinary", "zero-date-west-of-utc"])
 def pushed(request, cfg, monkeypatch):
-    """The disposable database with a DEADCA7 push of both tracks, opened after it.
-
-    With an ordinary stamp and with the real app's zero date west of UTC (U285),
-    pinning that the rebuild leaves the producer's own value byte for byte.
-    """
+    """The database with a DEADCA7 push of both tracks, ordinary or zero dated west of UTC (U285)."""
     zero = request.param != "ordinary"
     stamp = deadca7_fixtures.ZERO_STAMP if zero else deadca7_fixtures.STAMP
     with deadca7_fixtures.west_of_utc() if zero else contextlib.nullcontext():
@@ -749,11 +645,7 @@ def pushed(request, cfg, monkeypatch):
 def test_a_rebuild_and_its_check_beside_deadca7s_folder_leave_it_and_report_no_drift(
     cfg, gates_pass, pushed, declared
 ):
-    """U185: the push holds the tracks the tree places, in its own folder.
-
-    Two rebuilds and a check converge, and every row, cue, analysis column and
-    analysis file the push wrote is byte for byte what it was.
-    """
+    """U185: beside the push's own folder, rebuilds converge and leave all it wrote byte for byte."""
     db, path, push = pushed
     before = deadca7_fixtures.written(path, push)
     # The push's grid and waveform files, under the root the rebuild watches.
@@ -779,18 +671,13 @@ def test_a_rebuild_and_its_check_beside_deadca7s_folder_leave_it_and_report_no_d
 def test_a_rebuild_after_a_rename_converges_rather_than_doubling_the_tree(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """THE ONE THAT DOUBLES A LIBRARY, and why node identifiers are persisted.
-
-    Asserted by COUNTING nodes under the root: a lookup by name finds the first
-    one either way.
-    """
+    """The one that doubles a library, so node identifiers persist; counted, since a name lookup hides it."""
     names = [COMPOSED, PLAIN]
     _rebuild(cfg, db, adopted_root, declared, names)
     before = rebuild.read_tree(db, str(adopted_root.ID))
     assert len(before) == 1
 
-    # Somebody renames the bucket folder in rekordbox. The taxonomy still says
-    # what it always said; the library no longer agrees.
+    # Somebody renames the bucket folder in rekordbox; the taxonomy does not change.
     folder = db.get_playlist(ID=before[0].folder_id)
     folder.Name = RENAMED_FOLDER
     db.session.commit()
@@ -830,15 +717,10 @@ def test_a_recorded_node_that_no_longer_exists_falls_back_rather_than_refusing(
 ):
     """The operation that repairs a damaged tree must not be broken by the damage."""
     bucket_id, sub_id = _destination(declared)
-    convergence.record_nodes(
-        cfg,
-        TREE_ID,
-        [
-            convergence.DestinationNode(
-                bucket=bucket_id, sub=sub_id, folder_id="gone-1", playlist_id="gone-2"
-            )
-        ],
+    gone = convergence.DestinationNode(
+        bucket=bucket_id, sub=sub_id, folder_id="gone-1", playlist_id="gone-2"
     )
+    convergence.record_nodes(cfg, TREE_ID, [gone])
     report = _rebuild(cfg, db, adopted_root, declared, [PLAIN])
     assert report.after.converged
     assert rebuild.read_tree(db, str(adopted_root.ID))[0].content_ids == frozenset({"2"})
@@ -857,17 +739,10 @@ def test_a_rebuild_never_removes_a_membership_the_declaration_does_not_place(
     assert not report.cleared
 
 
-# ── Part 5: the destructive-session gates (approach 3, scenario 5)
-
-
 def test_a_rebuild_refuses_without_the_acknowledgment(
     cfg, db, adopted_root, declared, monkeypatch
 ):
-    """A rebuild is a destructive session and passes the same gates.
-
-    Asserted against the state tree either side: a refusal that leaves a trace
-    has already done something.
-    """
+    """A rebuild is a destructive session, and its refusal leaves no trace in the state tree."""
     _volume_agrees(cfg, monkeypatch)
     roots = (cfg.library.root, config.installation_state_dir(), config.config_dir())
     before = _state_fingerprint(*roots)
@@ -899,15 +774,10 @@ def test_a_rebuild_refuses_on_a_volume_whose_identity_does_not_match(
     cfg, gates_pass, db, adopted_root, declared, monkeypatch
 ):
     """The one gate that must fire before any path is resolved."""
-    monkeypatch.setattr(
-        preflight, "default_identity_provider", lambda: (lambda _path: "0000-0000")
-    )
+    monkeypatch.setattr(preflight, "default_identity_provider", lambda: (lambda _path: "0000-0000"))
     with pytest.raises(CratekitError) as excinfo:
         _rebuild(cfg, db, adopted_root, declared, [PLAIN])
     assert excinfo.value.cause.code is ExitCode.LIBRARY_UNAVAILABLE
-
-
-# ── Part 6: detecting a database that came back from somewhere else (approach 4)
 
 
 #: What a restore outside this product does to the database's update count.
@@ -944,9 +814,7 @@ def test_a_database_that_went_backward_is_detected(current, expected):
 
 
 def test_the_probe_reads_the_three_numbers_out_of_a_real_database(cfg, db):
-    """The row count is filtered AT THE DATABASE, which filters or raises, never
-    defaults a tombstone to "not deleted".
-    """
+    """The row count is filtered at the database, never defaulting a tombstone to "not deleted"."""
     taken = convergence.probe(db)
     assert taken.active_rows == 2
     assert taken.local_usn == db.get_local_usn()
@@ -991,7 +859,6 @@ def test_an_out_of_band_restore_marks_every_native_tree_and_refuses_the_next_wri
     recorded = convergence.read(cfg).fingerprint
     assert recorded is not None
 
-    # The recovery: the same library from an older copy, written into the file.
     _out_of_band(cfg, db, _SET_USN, recorded.local_usn - 5)
 
     with pytest.raises(CratekitError) as excinfo:
@@ -1005,9 +872,7 @@ def test_an_out_of_band_restore_marks_every_native_tree_and_refuses_the_next_wri
 
 
 def test_a_library_with_nothing_flipped_never_probes_at_all(cfg, declared):
-    """Every library until the first cutover: a handle that raises on any read
-    tells "did not probe" from "probed and found nothing".
-    """
+    """A handle that raises on any read tells "did not probe" from "probed and found nothing"."""
 
     class _Exploding:
         def __getattr__(self, name):  # pragma: no cover - the point is it is unused
@@ -1043,11 +908,16 @@ def test_the_rebuild_purpose_sheds_the_convergence_latches_and_nothing_else(
     assert excinfo.value.cause.code is ExitCode.ACK_REQUIRED
 
 
-# ── Part 7: clearing the flag, and the one escape from a permanent refusal
+def _dispose(cfg, actor="an operator", **note) -> None:
+    """A named person disposes of TREE_ID's one unexpected difference."""
+    disposition = convergence.Disposition(actor=actor, **note)
+    convergence.clear_unconverged(
+        cfg, TREE_ID, differences=["unexpected:a/b:7"], disposition=disposition
+    )
 
 
 def test_a_flag_cannot_be_cleared_while_the_check_still_differs(cfg):
-    """The plan's fourth scenario: the refusal repeats the check's own list."""
+    """The refusal repeats the check's own list."""
     convergence.mark_unconverged(cfg, [TREE_ID], reason="a restore")
     with pytest.raises(CratekitError) as excinfo:
         convergence.clear_unconverged(cfg, TREE_ID, differences=["missing:a/b:7"])
@@ -1057,16 +927,9 @@ def test_a_flag_cannot_be_cleared_while_the_check_still_differs(cfg):
 
 
 def test_a_named_person_can_dispose_of_a_difference_nothing_derives(cfg):
-    """The one escape: the flag STAYS SET and stops refusing, so a report still
-    shows the difference.
-    """
+    """The one escape: the flag stays set and stops refusing, so a report still shows it."""
     convergence.mark_unconverged(cfg, [TREE_ID], reason="a restore")
-    convergence.clear_unconverged(
-        cfg,
-        TREE_ID,
-        differences=["unexpected:a/b:7"],
-        disposition=convergence.Disposition(actor="an operator", note="filed by hand"),
-    )
+    _dispose(cfg, note="filed by hand")
     record = convergence.read(cfg).tree(TREE_ID)
     assert record.unconverged and not record.blocking
     assert record.disposition.actor == "an operator"
@@ -1082,12 +945,7 @@ def test_a_disposition_with_no_actor_is_refused():
 def test_a_disposition_is_scoped_to_one_tree(cfg):
     """Answering for one tree must not wave through the next restore of another."""
     convergence.mark_unconverged(cfg, [TREE_ID, "other_tree"], reason="a restore")
-    convergence.clear_unconverged(
-        cfg,
-        TREE_ID,
-        differences=["unexpected:a/b:7"],
-        disposition=convergence.Disposition(actor="an operator"),
-    )
+    _dispose(cfg)
     state = convergence.read(cfg)
     assert not state.tree(TREE_ID).blocking
     assert state.tree("other_tree").blocking
@@ -1097,12 +955,7 @@ def test_a_disposition_is_scoped_to_one_tree(cfg):
 def test_a_new_refusal_clears_an_old_disposition(cfg):
     """An acceptance covers the difference shown, never a later restore."""
     convergence.mark_unconverged(cfg, [TREE_ID], reason="first")
-    convergence.clear_unconverged(
-        cfg,
-        TREE_ID,
-        differences=["unexpected:a/b:7"],
-        disposition=convergence.Disposition(actor="an operator"),
-    )
+    _dispose(cfg)
     convergence.mark_unconverged(cfg, [TREE_ID], reason="second")
     record = convergence.read(cfg).tree(TREE_ID)
     assert record.disposition is None and record.blocking
@@ -1116,7 +969,11 @@ def test_marking_twice_for_one_reason_keeps_the_date_the_damage_was_first_seen(c
     assert convergence.read(cfg).tree(TREE_ID).since == first
 
 
-# ── Part 8: the record itself. A wrong document is not an empty one.
+def _write_record(cfg, payload) -> None:
+    """Write the convergence record by hand, as text or as data to serialise."""
+    path = convergence.path_for(cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(payload if isinstance(payload, str) else json.dumps(payload), encoding="utf-8")
 
 
 def test_an_absent_record_is_the_empty_one(cfg):
@@ -1166,24 +1023,15 @@ def test_an_absent_record_is_the_empty_one(cfg):
     ],
 )
 def test_a_wrong_document_is_refused_rather_than_read_as_nothing_unconverged(cfg, payload):
-    """A damaged record read as empty would report a damaged tree as fine and
-    then write that down.
-    """
-    path = convergence.path_for(cfg)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(payload, encoding="utf-8")
+    """A damaged record read as empty would report a damaged tree as fine and write that down."""
+    _write_record(cfg, payload)
     with pytest.raises(convergence.ConvergenceStateUnreadable):
         convergence.read(cfg)
 
 
 def test_a_record_from_a_newer_build_asks_for_an_upgrade_rather_than_the_doctor(cfg):
     """One slug covers every way the file is unusable; the REMEDY is what differs."""
-    path = convergence.path_for(cfg)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps({"schema_version": convergence.SCHEMA_VERSION + 1, "trees": []}),
-        encoding="utf-8",
-    )
+    _write_record(cfg, {"schema_version": convergence.SCHEMA_VERSION + 1, "trees": []})
     with pytest.raises(convergence.ConvergenceStateUnreadable) as excinfo:
         convergence.read(cfg)
     assert excinfo.value.remedy is not None
@@ -1200,24 +1048,17 @@ def test_the_version_this_build_writes_is_the_version_it_reads_back(cfg):
 
 def test_the_record_is_keyed_on_the_identifier_and_never_on_a_display_name(cfg):
     """R19 and D5, against the BYTES: a record keyed on a name is orphaned by a rename."""
-    convergence.record_nodes(
-        cfg,
-        TREE_ID,
-        [
-            convergence.DestinationNode(
-                bucket="a_bucket", sub="a_sub", folder_id="f-1", playlist_id="p-1"
-            )
-        ],
+    node = convergence.DestinationNode(
+        bucket="a_bucket", sub="a_sub", folder_id="f-1", playlist_id="p-1"
     )
+    convergence.record_nodes(cfg, TREE_ID, [node])
     raw = convergence.path_for(cfg).read_text(encoding="utf-8")
     assert TREE_ID in raw and "a_bucket" in raw
     assert TREE_DISPLAY not in raw and RENAMED_FOLDER not in raw
 
 
 def test_the_record_and_its_lock_are_declared_state_with_the_right_roles():
-    """A fingerprint or node map that survived a rollback would mislead the next
-    run, and a lock inside the coupled set would have its inode swapped.
-    """
+    """A record surviving a rollback would mislead; a lock in the coupled set would swap inodes."""
     entry = config.state_file(convergence.STATE_KEY)
     assert entry.snapshot is config.SnapshotRole.COUPLED
     assert entry.root is config.StateRoot.LIBRARY
@@ -1229,14 +1070,7 @@ def test_the_record_and_its_lock_are_declared_state_with_the_right_roles():
 
 
 def test_the_lock_serializes_a_read_modify_write_across_processes(cfg):
-    """A rename is atomic; the read-modify-write cycle around it is not.
-
-    Driven with real second processes, since a lock this one holds proves nothing.
-    """
-    import subprocess
-    import sys
-    import textwrap
-
+    """A rename is atomic and the cycle around it is not; real processes, as a held lock proves nothing."""
     workers, per_worker = 4, 25
     convergence.mark_unconverged(cfg, ["tree_seed"], reason="a restore")
     source = textwrap.dedent(
@@ -1253,21 +1087,14 @@ def test_the_lock_serializes_a_read_modify_write_across_processes(cfg):
             )
         """
     )
-    # EVERY WORKER WRITES NAMES NO OTHER WORKER WRITES: over one shared set a lost
-    # write would be hidden by another worker's, and this would pass unlocked.
-    running = [
-        subprocess.Popen([sys.executable, "-c", source, str(index)])
-        for index in range(workers)
-    ]
+    # Disjoint names per worker: over one shared set a lost write would hide behind another's.
+    running = [subprocess.Popen([sys.executable, "-c", source, str(index)]) for index in range(workers)]
     for worker in running:
         assert worker.wait() == 0
 
     recorded = convergence.read(cfg).blocking_trees()
-    assert len(recorded) == workers * per_worker + 1, (
-        f"{workers * per_worker + 1 - len(recorded)} record(s) were lost to an "
-        f"interleaved read-modify-write, and every losing call returned a record "
-        f"reporting success"
-    )
+    lost = workers * per_worker + 1 - len(recorded)
+    assert lost == 0, f"{lost} record(s) were lost to an interleaved read-modify-write"
 
 
 def _config_payload(cfg) -> dict:
@@ -1297,27 +1124,15 @@ def test_the_two_composition_forms_of_one_filename_are_one_track(
     """The 144-file loss at the check: macOS decomposes, rekordbox precomposes."""
     bucket_id, sub_id = _destination(declared)
     _rebuild(cfg, db, adopted_root, declared, [COMPOSED])
-    report = _check(
-        cfg,
-        db,
-        adopted_root,
-        declared,
-        [rebuild.DeclaredPlacement(_music(cfg, DECOMPOSED), bucket_id, sub_id)],
-    )
+    decomposed = rebuild.DeclaredPlacement(_music(cfg, DECOMPOSED), bucket_id, sub_id)
+    report = _check(cfg, db, adopted_root, declared, [decomposed])
     assert report.converged
     assert report.unmatched == ()
 
 
-# ── Part 9: what an EMPTY answer means, and what a NAME COLLISION costs.
-# Reviewers' reproductions of one defect: absence read as evidence of absence.
-
-
 def _energy_truth(cfg, declared_taxonomy, pairs):
     """Readings that place named files at named energies, so two subs are used."""
-    return [
-        rebuild.Truth(location=_music(cfg, name), genre=None, energy=energy)
-        for name, energy in pairs
-    ]
+    return [rebuild.Truth(location=_music(cfg, name), genre=None, energy=energy) for name, energy in pairs]
 
 
 def _two_destinations(declared_taxonomy):
@@ -1332,18 +1147,13 @@ def _two_destinations(declared_taxonomy):
 def test_a_rebuild_that_derived_nothing_refuses_instead_of_reporting_converged(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """THE DOMINANT DEFECT SHAPE: an empty music directory gave zero placements,
-    zero differences, CONVERGED and a cleared flag, with every gate skipped.
-    """
+    """An empty music directory once gave zero placements, CONVERGED and a cleared flag."""
     _rebuild(cfg, db, adopted_root, declared, [COMPOSED, PLAIN])
-    convergence.mark_unconverged(
-        cfg, [TREE_ID], reason=str(convergence.Regression.SEQUENCE_WENT_BACKWARD)
-    )
+    convergence.mark_unconverged(cfg, [TREE_ID], reason=str(convergence.Regression.SEQUENCE_WENT_BACKWARD))
     assert convergence.read(cfg).tree(TREE_ID).blocking
 
     with pytest.raises(CratekitError) as excinfo:
-        # An empty music directory, read live rather than supplied. The seam is
-        # the readings, and here there are none to read.
+        # The empty music directory is read live rather than supplied.
         _rebuild(cfg, db, adopted_root, declared, [], truth=None)
 
     assert excinfo.value.cause.reason == "rebuild-derivation-empty"
@@ -1371,9 +1181,7 @@ def test_a_music_directory_that_is_not_there_refuses_rather_than_walking_nothing
 def test_a_destination_that_lost_every_track_is_still_compared(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """THE PARTIAL SHRINK: a destination that lost every placement fell into
-    ``foreign`` and the tree read converged. The recorded destinations carry it.
-    """
+    """A destination that lost every placement once fell into ``foreign`` and read converged."""
     bucket_id, low_id, high_id = _two_destinations(declared)
     both = _energy_truth(cfg, declared, [(COMPOSED, 1), (PLAIN, declared.energy.scale_max)])
     first = _rebuild(cfg, db, adopted_root, declared, [], truth=both)
@@ -1384,8 +1192,7 @@ def test_a_destination_that_lost_every_track_is_still_compared(
     assert recorded.node(bucket_id, low_id) is not None
     assert recorded.node(bucket_id, high_id) is not None
 
-    # The library shrinks: the low-energy track is gone from the derivation
-    # entirely, so that destination has no declared placements this run.
+    # The low-energy track leaves the derivation, so its destination has no placements.
     shrunk = _energy_truth(cfg, declared, [(PLAIN, declared.energy.scale_max)])
     report = _rebuild(cfg, db, adopted_root, declared, [], truth=shrunk)
 
@@ -1398,19 +1205,14 @@ def test_a_destination_that_lost_every_track_is_still_compared(
 def test_two_declared_destinations_on_one_display_pair_refuse(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """THE COLLISION THAT CORRUPTS A TREE PERMANENTLY.
-
-    Two destinations on one display pair filed both buckets into one playlist and
-    recorded one node for both. Refused as ``trees.DuplicateFolders`` refuses it
-    on the XML side (U18), by the rebuild and by the read-only check.
-    """
+    """Two destinations on one display pair would file into one playlist for good; refused as
+    the XML side refuses it (U18), by the rebuild and by the read-only check."""
     both = _energy_truth(cfg, declared, [(COMPOSED, 1), (PLAIN, declared.energy.scale_max)])
     _rebuild(cfg, db, adopted_root, declared, [], truth=both)
     nodes = rebuild.read_tree(db, str(adopted_root.ID))
     assert len(nodes) == 2
 
-    # The consolidation: one playlist is renamed to the other one's name, so two
-    # declared destinations now resolve to one display pair.
+    # One playlist renamed to the other's name: two destinations, one display pair.
     victim = db.get_playlist(ID=nodes[0].playlist_id)
     victim.Name = nodes[1].playlist_display
     db.session.commit()
@@ -1425,8 +1227,6 @@ def test_two_declared_destinations_on_one_display_pair_refuse(
     for node in after:
         assert len(node.content_ids) == 1, "a track was filed into two playlists"
 
-    # And the read-only check refuses the same condition, so somebody can see it
-    # without writing anything.
     with pytest.raises(CratekitError):
         _report(cfg, db, adopted_root, declared, both)
 
@@ -1488,9 +1288,7 @@ def test_the_recorded_node_is_the_one_the_destination_resolved_to(
 def test_a_track_held_twice_in_one_playlist_is_a_difference_the_flag_stays_shut_on(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """A doubled row is invisible to set comparison and beyond an additive repair,
-    so it holds the flag shut.
-    """
+    """A doubled row is invisible to set comparison and beyond an additive repair."""
     _rebuild(cfg, db, adopted_root, declared, [PLAIN])
     node = rebuild.read_tree(db, str(adopted_root.ID))[0]
 
@@ -1526,22 +1324,18 @@ def test_a_track_held_twice_in_one_playlist_is_a_difference_the_flag_stays_shut_
 def test_a_rebuild_runs_the_restore_detection_it_is_merely_not_refused_by(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """BLOCKING 3: a rebuild recorded the fingerprint without running the detection,
-    blessing a recovered database and leaving a second emptied tree unflagged.
-    """
+    """A fingerprint recorded without the detection would bless a recovered database."""
     second_tree = "second_shelf"
     registry = _registry(str(adopted_root.ID), (second_tree, "root-row-other"))
     _rebuild(cfg, db, adopted_root, declared, [PLAIN], registry=registry)
     recorded = convergence.read(cfg).fingerprint
     assert recorded is not None
 
-    # The out-of-band recovery, written straight into the file.
     _out_of_band(cfg, db, _SET_USN, recorded.local_usn - 40)
 
     report = _rebuild(cfg, db, adopted_root, declared, [PLAIN], registry=registry)
 
-    # The tree that was rebuilt converged on a real check, so its own flag is
-    # cleared. Every OTHER native tree the same database owns stays flagged.
+    # The rebuilt tree's flag is cleared on a real check; every other native tree stays flagged.
     assert report.after.converged and report.cleared
     assert convergence.read(cfg).blocking_trees() == (second_tree,)
     assert convergence.read(cfg).tree(second_tree).reason == str(
@@ -1560,41 +1354,26 @@ def test_the_detection_marks_every_native_tree_on_disk_not_only_the_argument(
     _out_of_band(cfg, db, _SET_USN, 1)
 
     with pytest.raises(CratekitError):
-        convergence.assert_no_out_of_band_restore(
-            cfg, db, _registry(str(adopted_root.ID))
-        )
+        convergence.assert_no_out_of_band_restore(cfg, db, _registry(str(adopted_root.ID)))
     assert set(convergence.read(cfg).blocking_trees()) == {TREE_ID, "third_shelf"}
 
 
 def test_the_rebuild_reports_that_the_other_record_was_not_reached(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """None where ``cratekit.core.reconcile`` is absent, a boolean where present.
-
-    Written to survive the merge: never a boolean for an unasked question.
-    """
-    import importlib.util
-
+    """None where ``cratekit.core.reconcile`` is absent, False where nothing was marked to close."""
     present = importlib.util.find_spec("cratekit.core.reconcile") is not None
     report = _rebuild(cfg, db, adopted_root, declared, [PLAIN])
     assert report.cleared
-
-    if present:
-        # Nothing was ever marked here, so there is nothing to close, and False
-        # is the answer to a question that WAS asked.
-        assert report.restore_marker_closed is False
-        assert rebuild.close_restore_marker(cfg, TREE_ID) is False
-    else:
-        assert report.restore_marker_closed is None
-        assert rebuild.close_restore_marker(cfg, TREE_ID) is None
+    expected = False if present else None
+    assert report.restore_marker_closed is expected
+    assert rebuild.close_restore_marker(cfg, TREE_ID) is expected
 
 
 def test_the_rebuild_declares_a_recovery_intent_so_the_restore_latch_lets_it_past(
     cfg, gates_pass, db, adopted_root, declared, monkeypatch
 ):
-    """The latch must not refuse the rebuild its own refusal names, so the
-    membership write declares ``RECOVERY``, as a restore does.
-    """
+    """The latch must not refuse the rebuild its refusal names, so the write declares ``RECOVERY``."""
     seen: list[session.Intent] = []
     real = session.assert_gates
 
@@ -1616,9 +1395,7 @@ def test_a_rebuild_is_still_held_by_the_unresolved_session_latch(
             convergence.Cause(
                 reason="session-committed-unverified",
                 message="a session ended committed-unverified",
-                remediation=convergence.Remediation(
-                    remedy=convergence.Remedy.RESTORE_FROM_SNAPSHOT
-                ),
+                remediation=convergence.Remediation(remedy=convergence.Remedy.RESTORE_FROM_SNAPSHOT),
                 origin=("test",),
             )
         )
@@ -1629,15 +1406,10 @@ def test_a_rebuild_is_still_held_by_the_unresolved_session_latch(
     assert excinfo.value.cause.reason == "session-committed-unverified"
 
 
-# ── the readers that were reading too generously ─────────────────────────────
-
-
 def test_a_boolean_update_count_is_not_a_number(cfg):
     """``isinstance(True, int)``: a usn of 1 hides every regression."""
     with pytest.raises(ValueError):
-        convergence.Fingerprint.from_json(
-            {"schema_version": "6000", "active_rows": 10, "local_usn": True}
-        )
+        convergence.Fingerprint.from_json({"schema_version": "6000", "active_rows": 10, "local_usn": True})
 
 
 def test_a_handle_with_no_session_cannot_defeat_the_autoflush_guard(cfg):
@@ -1684,8 +1456,6 @@ def test_each_unreadable_reading_names_which_one_failed(cfg, db):
     def _boom(_db):
         raise RuntimeError("the property table moved")
 
-    import unittest.mock
-
     with unittest.mock.patch.object(rb_writer, "db_schema_version", _boom):
         with pytest.raises(CratekitError) as excinfo:
             convergence.probe(_Wrapped(db))
@@ -1701,12 +1471,8 @@ def test_a_record_with_no_nodes_key_is_refused_like_one_with_a_null_nodes_key(cf
 def test_a_disposition_for_a_tree_that_is_not_refusing_anything_is_refused(cfg):
     """An acceptance of nothing shown would wave the next restore through."""
     with pytest.raises(CratekitError) as excinfo:
-        convergence.clear_unconverged(
-            cfg,
-            TREE_ID,
-            differences=(),
-            disposition=convergence.Disposition(actor="a person"),
-        )
+        disposition = convergence.Disposition(actor="a person")
+        convergence.clear_unconverged(cfg, TREE_ID, differences=(), disposition=disposition)
     assert excinfo.value.cause.reason == "tree-unconverged"
     assert convergence.read(cfg).tree(TREE_ID) is None
 
@@ -1750,27 +1516,12 @@ def test_a_bridge_record_carrying_a_cutover_contradicts_itself_and_is_refused():
 def test_a_recorded_destination_the_taxonomy_dropped_is_reported_not_refused(
     cfg, gates_pass, db, adopted_root, declared
 ):
-    """AN ORDINARY TAXONOMY EDIT IS NOT A ONE-WAY DOOR.
-
-    Refusing on a recorded identifier the template no longer names took out the
-    rebuild and the check it tells a person to run.
-    """
+    """An ordinary taxonomy edit is not a one-way door: the rebuild and its check still answer."""
     bucket_id = _destination(declared)[0]
-    convergence.record_nodes(
-        cfg,
-        TREE_ID,
-        [
-            convergence.DestinationNode(
-                bucket=bucket_id,
-                sub="a_sub_this_taxonomy_never_declared",
-                folder_id="f",
-                playlist_id="p",
-            )
-        ],
+    dropped = convergence.DestinationNode(
+        bucket=bucket_id, sub="a_sub_this_taxonomy_never_declared", folder_id="f", playlist_id="p"
     )
-
-    # The read-only check answers rather than dying, which is the whole point:
-    # it is what a person is told to run when something is wrong.
+    convergence.record_nodes(cfg, TREE_ID, [dropped])
     report = _report(cfg, db, adopted_root, declared, _truth(cfg, declared, PLAIN))
     assert f"{bucket_id}/a_sub_this_taxonomy_never_declared" in report.undeclared
 
@@ -1778,7 +1529,7 @@ def test_a_recorded_destination_the_taxonomy_dropped_is_reported_not_refused(
     assert rebuilt.after.converged and rebuilt.cleared
     assert rebuilt.after.undeclared != ()
 
-    # AND THE RECORD KEEPS IT, since a taxonomy edit is reversible.
+    # The record keeps it, since a taxonomy edit is reversible.
     kept = convergence.read(cfg).tree(TREE_ID)
     assert kept.node(bucket_id, "a_sub_this_taxonomy_never_declared") is not None
 
@@ -1794,33 +1545,22 @@ def test_dropping_the_additive_sub_class_leaves_both_verbs_working(
     bucket_id = _destination(declared)[0]
     assert convergence.read(cfg).tree(TREE_ID).node(bucket_id, trees.VOX_SUB_CLASS)
 
-    trimmed = replace(
-        declared,
-        sub_classes=tuple(s for s in declared.sub_classes if not s.additive),
-    )
+    trimmed = replace(declared, sub_classes=tuple(s for s in declared.sub_classes if not s.additive))
 
     report = _report(cfg, db, adopted_root, trimmed, vocal(trimmed), vocal_threshold=5.0)
     assert f"{bucket_id}/{trees.VOX_SUB_CLASS}" in report.undeclared
 
-    again = _rebuild(
-        cfg, db, adopted_root, trimmed, [PLAIN], truth=vocal(trimmed), vocal_threshold=5.0
-    )
+    again = _rebuild(cfg, db, adopted_root, trimmed, [PLAIN], truth=vocal(trimmed), vocal_threshold=5.0)
     assert again.after.converged
-
-    # Re-declaring it puts everything back: the kept record resolves again.
-    restored = _rebuild(
-        cfg, db, adopted_root, declared, [PLAIN], truth=vocal(declared), vocal_threshold=5.0
-    )
+    # Re-declared, the kept record resolves again.
+    restored = _rebuild(cfg, db, adopted_root, declared, [PLAIN], truth=vocal(declared), vocal_threshold=5.0)
     assert restored.after.converged
     assert len(rebuild.read_tree(db, str(adopted_root.ID))) == 2
 
 
 def test_a_derived_placement_the_taxonomy_cannot_name_is_still_a_defect(declared):
     """One document contradicting itself keeps its refusal and its sentence."""
-    assert (
-        rebuild._declared_display(declared, "no_such_bucket_at_all", "high", derived=False)
-        is None
-    )
+    assert rebuild._declared_display(declared, "no_such_bucket_at_all", "high", derived=False) is None
     with pytest.raises(CratekitError) as excinfo:
         rebuild._declared_display(declared, "no_such_bucket_at_all", "high", derived=True)
     assert excinfo.value.cause.reason == "routing-destination-renamed"
@@ -1829,9 +1569,6 @@ def test_a_derived_placement_the_taxonomy_cannot_name_is_still_a_defect(declared
 def test_the_empty_derivation_reason_is_declared_in_the_one_vocabulary():
     """S4, for the slug this round adds."""
     assert REASONS["rebuild-derivation-empty"] is ExitCode.LIBRARY_PREREQUISITE
-
-
-# ── Part 10: the two surfaces, one landed and one still owed
 
 
 class _Args:
@@ -1853,9 +1590,7 @@ def _converge():
 
 
 def test_the_read_only_verb_and_the_destructive_one_stay_in_separate_modules():
-    """``converge`` has no gates and writes nothing; sharing a module with
-    ``rebuild`` once parked the remedy both refusals name (U20).
-    """
+    """``converge`` has no gates and writes nothing; sharing ``rebuild``'s module parked it (U20)."""
     converge_entry = registry.entry("converge")
     rebuild_entry = registry.entry("rebuild")
     assert converge_entry.landed and converge_entry.module == "cratekit.cli.converge"
@@ -1863,15 +1598,11 @@ def test_the_read_only_verb_and_the_destructive_one_stay_in_separate_modules():
     assert converge_entry.writes == frozenset()
     assert rebuild_entry.landed
     assert rebuild_entry.destructive and "db_tree" in rebuild_entry.writes
-    assert rebuild_entry.module != converge_entry.module, (
-        "one module for two verbs is what parked the read-only one"
-    )
+    assert rebuild_entry.module != converge_entry.module
 
 
 def test_the_landed_verb_opens_no_session_and_writes_no_state(cfg, db, adopted_root):
-    """READ ONLY BY CONTRACT: the person reaching for it has a library refusing
-    writes, so it is driven with every gate unanswered.
-    """
+    """Read only by contract, so it is driven with every gate unanswered."""
     source = Path(converge_cli.__file__).read_text(encoding="utf-8")
     for forbidden in ("assert_gates", "record_acknowledgment", "session_lock"):
         assert forbidden not in source, f"the read-only verb reaches for {forbidden}"
@@ -1899,12 +1630,7 @@ def test_the_landed_verb_never_calls_an_uncompared_tree_converged(cfg, adopted_r
 def test_an_active_taxonomy_that_cannot_be_read_is_not_compared_and_opens_nothing(
     cfg, db, adopted_root, monkeypatch
 ):
-    """R-685: an unreadable active taxonomy is reported not compared, asked
-    before the database opens so no refusal holds the handle.
-    """
-    from cratekit.core import rb_writer
-    from tests.test_active_taxonomy import write_active
-
+    """R-685: an unreadable active taxonomy is not compared, asked before the database opens."""
     tree_registry.write(cfg, _registry(str(adopted_root.ID)))
     write_active(cfg, "this is = = not toml")
     opened = []
@@ -1918,30 +1644,16 @@ def test_an_active_taxonomy_that_cannot_be_read_is_not_compared_and_opens_nothin
 
 def test_the_rebuild_verb_records_a_named_person_for_a_disposition():
     """P5: the surface never invents a disposition actor nobody typed."""
-    import importlib
-
     module = importlib.import_module("cratekit.cli.rebuild")
     source = Path(module.__file__).read_text(encoding="utf-8")
     for invented in ("getuser", "getlogin", "geteuid", "environ"):
-        assert invented not in source, (
-            f"the rebuild surface derives a disposition actor from {invented!r}; "
-            f"an actor nobody typed is the product answering for the user"
-        )
-    assert "clear_unconverged" not in source, (
-        "the surface clears a tree's flag directly rather than through the "
-        "rebuild, whose clearing call is handed the check's own difference list"
-    )
-
-
-# ── Part 11: what Intent.RECOVERY sheds, and what this rebuild puts back
+        assert invented not in source, f"the surface derives an actor from {invented!r}"
+    # Only the rebuild clears a flag, handed the check's own difference list.
+    assert "clear_unconverged" not in source
 
 
 class _Kind(StrEnum):
-    """The reconciliation kinds, as U32 spells them, in a stand-in.
-
-    It reproduces the one thing the derivation reads, so the RULE is asserted
-    rather than the other unit's current answer.
-    """
+    """U32's reconciliation kinds in a stand-in, so the rule is asserted, not U32's current answer."""
 
     EFFECT = "effect"
     IN_FLIGHT_RESTORE = "in-flight-restore"
@@ -1986,9 +1698,7 @@ _E, _F, _T, _L = _Kind.EFFECT, _Kind.IN_FLIGHT_RESTORE, _Kind.UNCONVERGED_TREE, 
 @pytest.mark.parametrize(
     "outstanding, latching, held",
     [
-        # THE GAP: RECOVERY shed the in-flight latch and a hand-written kind list
-        # never put it back; a restore killed partway leaves trees flagged and
-        # the latch standing.
+        # RECOVERY sheds the in-flight latch; a restore killed partway must still hold.
         pytest.param(_F, {_E, _F}, True, id="an in-flight restore holds"),
         # An effect is outside the library and no rebuild repairs it.
         pytest.param(_E, {_E, _F}, True, id="an effect holds"),
@@ -2025,11 +1735,7 @@ def test_the_rebuild_refuses_end_to_end_while_a_restore_is_in_flight(
 ):
     """The whole rebuild refuses, writing no membership, fingerprint or clearing."""
     convergence.mark_unconverged(cfg, [TREE_ID], reason="a restore")
-    _stand_in(
-        monkeypatch,
-        _Kind.IN_FLIGHT_RESTORE,
-        latching={_Kind.EFFECT, _Kind.IN_FLIGHT_RESTORE},
-    )
+    _stand_in(monkeypatch, _Kind.IN_FLIGHT_RESTORE, latching={_Kind.EFFECT, _Kind.IN_FLIGHT_RESTORE})
     before = convergence.read(cfg).fingerprint
 
     with pytest.raises(CratekitError):
@@ -2041,33 +1747,20 @@ def test_the_rebuild_refuses_end_to_end_while_a_restore_is_in_flight(
 
 
 def test_the_diagnostic_survives_a_record_every_other_reader_refuses(cfg, adopted_root):
-    """FIX 3: a corrupt node map refuses every reader, and the diagnostic still
-    answers, since it is what a person is told to run.
-    """
+    """A corrupt node map refuses every reader, and the diagnostic a person is told to run answers."""
     tree_registry.write(cfg, _registry(str(adopted_root.ID)))
-    convergence.path_for(cfg).parent.mkdir(parents=True, exist_ok=True)
-    convergence.path_for(cfg).write_text(
-        json.dumps(
-            {
-                "schema_version": convergence.SCHEMA_VERSION,
-                "fingerprint": None,
-                "trees": [
-                    {
-                        "tree": TREE_ID,
-                        "unconverged": True,
-                        "reason": "a restore",
-                        "since": "2026-08-02",
-                        "disposition": None,
-                        "nodes": [
-                            {"bucket": "b", "sub": "one", "folder": "f", "playlist": "p"},
-                            {"bucket": "b", "sub": "two", "folder": "f", "playlist": "p"},
-                        ],
-                    }
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
+    tree = {
+        "tree": TREE_ID,
+        "unconverged": True,
+        "reason": "a restore",
+        "since": "2026-08-02",
+        "disposition": None,
+        "nodes": [
+            {"bucket": "b", "sub": "one", "folder": "f", "playlist": "p"},
+            {"bucket": "b", "sub": "two", "folder": "f", "playlist": "p"},
+        ],
+    }
+    _write_record(cfg, {"schema_version": convergence.SCHEMA_VERSION, "fingerprint": None, "trees": [tree]})
 
     with pytest.raises(CratekitError):
         convergence.read(cfg)
