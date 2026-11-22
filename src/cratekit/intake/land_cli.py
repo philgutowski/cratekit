@@ -1,25 +1,17 @@
 """``intake.land``: a staged batch moves into the library behind one gate.
 
 The engine is :mod:`cratekit.intake.landing`; this shell owns the plan, the
-gate and what a person is told afterwards. The native medium's steps are in
-:mod:`land_native`, its gate screens and notes in :mod:`land_report`, and the
-rehearsal in :mod:`land_rehearse`; every name a caller reads here is
-re-exported here.
+gate and what a person is told afterwards. The native medium's steps, gate
+screens and notes are in :mod:`land_native`, whose every name is read here too.
 
 THE PLAN IS SHOWN BEFORE ANYTHING MOVES, and an answer recorded against it is
 refused as stale if the folder, the batch, the intake file or the manifest's
 bytes changed since, because the digest covers all of them.
 
-THE IMPORT IS THE PERSON'S AND BLOCKS NOTHING. A landed batch is an intake
-file rekordbox has not seen; :func:`ingest.place_files` persists its
-``rekordbox_import`` pending action on the intake session record (not the
-run, where nothing would clear it), and the envelope carries that same
-action, so the screen and the session log cannot differ.
-
-A label row no landed file matches is a warning naming the track, never a
-failure. On a database native tree a manifest's rows, ``--label`` or
-``--label-from-tags`` file the batch under the Record Labels tree in the
-landing's own commit (U156, U177).
+THE IMPORT IS THE PERSON'S AND BLOCKS NOTHING: its ``rekordbox_import``
+pending action is persisted on the intake session record and carried by the
+envelope, so the screen and the session log cannot differ. A label row no
+landed file matches is a warning naming the track, never a failure.
 """
 
 from __future__ import annotations
@@ -44,44 +36,6 @@ from cratekit.intake import (
     shelve,
 )
 from cratekit.intake import cli as intake_cli
-from cratekit.intake.land_native import (  # noqa: F401 - some re-exported, callers name them here
-    AUTO_ANALYSIS_STEP,
-    AWAITING_ANALYSIS,
-    DATABASE_PIN,
-    DYN_NOT_WRITTEN,
-    FAVORITES,
-    FAVORITES_COLOUR_HELD,
-    FAVORITES_PLACED,
-    FAVORITES_SKIPPED,
-    LAND_ARCHIVE_FAILED,
-    LANDED,
-    PLAYLIST,
-    REFUSED,
-    TWIN,
-    TWINS_LEFT,
-    VOX_MOSTLY_UNSCORED,
-    VOX_NOT_WRITTEN,
-    VOX_UNSCORED,
-    _apply_landing_archive,
-    _folder,
-    _native_identity,
-    _native_payload,
-    _native_reported,
-    _native_shown,
-    _place_owned,
-    _plan,
-    _plan_set_archive,
-    _with_archive,
-    _with_filing,
-    ask_then_write,
-    awaiting_analysis,
-    collection_facts,
-    dyn_warnings,
-    playlist_item,
-    set_playlist_item,
-    split_facts,
-    vox_warnings,
-)
 from cratekit.write import metadata_cli
 
 #: The two gates, one per medium. The xml one answers inline as it always has;
@@ -100,6 +54,15 @@ INTAKE_SUFFIX = "_inboxed.xml"
 RETIRED_SUFFIX = ".imported"
 
 _RETIRED_TAIL = re.compile(re.escape(RETIRED_SUFFIX) + r"(-[0-9]+)?$")
+
+#: The native medium's names this shell uses itself.
+_folder, _place_owned = land_native._folder, land_native._place_owned
+LANDED, REFUSED, PLAYLIST = land_native.LANDED, land_native.REFUSED, land_native.PLAYLIST
+
+
+def __getattr__(name: str) -> Any:
+    """A name of the native medium, which callers read on this verb's module."""
+    return getattr(land_native, name)
 
 
 def unretired_name(name: str) -> str:
@@ -385,13 +348,8 @@ BRIDGE_VOX_OWED = (
 
 
 def _payload(
-    planned: landing.Plan,
-    *,
-    target: Path,
-    destination: Path,
-    export: Path,
-    manifest: landing.LabelManifest | None = None,
-    split: tuple[account_playlists.Claimed, ...] = (),
+    planned: landing.Plan, *, target: Path, destination: Path, export: Path,
+    manifest: landing.LabelManifest | None = None, split: tuple[account_playlists.Claimed, ...] = (),
     emptied: tuple[tuple[str, account_playlists.Left], ...] = (),
 ) -> dict:
     items = [
@@ -418,17 +376,12 @@ def _payload(
     if emptied:
         # The left rows of an account playlist that holds nothing (U128).
         identity["unplanned_left"] = [[name, row.identity()] for name, row in emptied]
-    return _plan(identity, items, len(items))
+    return land_native._plan(identity, items, len(items))
 
 
 def _shown(
-    planned: landing.Plan,
-    *,
-    cfg: config.Config,
-    target: Path,
-    destination: Path,
-    manifest: landing.LabelManifest | None = None,
-    split: tuple[account_playlists.Claimed, ...] = (),
+    planned: landing.Plan, *, cfg: config.Config, target: Path, destination: Path,
+    manifest: landing.LabelManifest | None = None, split: tuple[account_playlists.Claimed, ...] = (),
     emptied: int = 0,
 ) -> dict[str, Any]:
     """What the gate screen puts in front of the person, one line per fact."""
@@ -444,7 +397,7 @@ def _shown(
     }
     if split:
         shown.update(
-            split_facts(
+            land_native.split_facts(
                 [(one.name, one.account_name, len(one.members), one.owned) for one in split],
                 len(account_playlists.unclaimed(planned.items, split)),
                 left=sum(len(one.left) for one in split) + emptied,
@@ -492,9 +445,7 @@ def _reported(payload: dict, landed: landing.Landed) -> dict:
         if entry is None:
             items.append({**item, "action": LANDED})
         else:
-            items.append(
-                {**item, "action": REFUSED, "reason": entry.reason, "why": entry.sentence}
-            )
+            items.append({**item, "action": REFUSED, "reason": entry.reason, "why": entry.sentence})
     totals = {
         "count": payload["totals"]["count"],
         "landed": len(landed.moved),
@@ -505,23 +456,15 @@ def _reported(payload: dict, landed: landing.Landed) -> dict:
         # IN ``items`` AND ``totals``, since ``plan/1`` is closed at four keys.
         items.extend(
             {
-                "action": FILED,
-                "label": entry.label,
-                "year": entry.year,
-                "playlist": entry.playlist,
-                "count": len(entry.track_ids),
+                "action": FILED, "label": entry.label, "year": entry.year,
+                "playlist": entry.playlist, "count": len(entry.track_ids),
             }
             for entry in landed.labelled
         )
         items.extend(
             {
-                "action": UNFILED,
-                "id": entry.ref,
-                "artist": entry.artist,
-                "title": entry.title,
-                "label": entry.label,
-                "year": entry.year,
-                "reason": entry.reason,
+                "action": UNFILED, "id": entry.ref, "artist": entry.artist, "title": entry.title,
+                "label": entry.label, "year": entry.year, "reason": entry.reason,
                 "why": entry.sentence,
             }
             for entry in landed.unlabelled
@@ -620,17 +563,8 @@ def intake_land(ctx) -> Envelope:
         hearted = account_playlists.hearted(cfg, pass_name, planned.items)
         owned = account_playlists.owned_hearts(cfg, pass_name)
         return _land_native(
-            ctx,
-            cfg,
-            planned,
-            medium=medium,
-            owned=owned,
-            rehearse=rehearse,
-            manifest=manifest,
-            label=label,
-            label_from_tags=label_from_tags,
-            claims=claims,
-            hearted=hearted,
+            ctx, cfg, planned, medium=medium, owned=owned, rehearse=rehearse, manifest=manifest,
+            label=label, label_from_tags=label_from_tags, claims=claims, hearted=hearted,
         )
     if ctx.args.export is None and declared is not None:
         raise refuse(
@@ -665,10 +599,7 @@ def intake_land(ctx) -> Envelope:
     if planned.items:
         try:
             landing.preflight(
-                planned,
-                cfg=cfg,
-                export=export,
-                destination=destination,
+                planned, cfg=cfg, export=export, destination=destination,
                 label_rows=manifest.rows if manifest is not None else (),
                 names=[claimed.name for claimed in split],
             )
@@ -679,8 +610,7 @@ def intake_land(ctx) -> Envelope:
     spec = gate_named(ctx.entry, XML_GATE)
     try:
         option = ctx.gate.require(
-            spec,
-            digest=payload["digest"],
+            spec, digest=payload["digest"],
             context=_shown(planned, cfg=cfg, emptied=len(emptied), **facts),
         )
     except CratekitError as exc:
@@ -701,14 +631,10 @@ def intake_land(ctx) -> Envelope:
         if ctx.args.name is None:
             _still_free(cfg, batch)
         landed = landing.apply(
-            planned,
-            cfg=cfg,
-            export=export,
-            destination=destination,
+            planned, cfg=cfg, export=export, destination=destination,
             manifest=manifest.path if manifest is not None else None,
             manifest_digest=manifest.digest if manifest is not None else None,
-            split=split,
-            pass_name=pass_name,
+            split=split, pass_name=pass_name,
         )
     return ctx.envelope(
         data=_reported(payload, landed),
@@ -731,14 +657,8 @@ def intake_land(ctx) -> Envelope:
 
 
 def _land_native(
-    ctx,
-    cfg: config.Config,
-    planned: landing.Plan,
-    *,
-    medium: ingest.IntakeMedium,
-    owned: tuple[account_playlists.HeartRow, ...] = (),
-    rehearse: bool = False,
-    **asked,
+    ctx, cfg: config.Config, planned: landing.Plan, *, medium: ingest.IntakeMedium,
+    owned: tuple[account_playlists.HeartRow, ...] = (), rehearse: bool = False, **asked,
 ) -> Envelope:
     """Plan the rows against the database, ask, then move, write and file.
 
@@ -762,7 +682,7 @@ def _land_native(
     spec = gate_named(ctx.entry, NATIVE_GATE)
     if not planned.items:
         identity = {"kind": "land-native", "folder": str(planned.folder), "batch": planned.batch}
-        empty = _plan(identity, [], 0)
+        empty = land_native._plan(identity, [], 0)
         if rehearse:
             # NOTHING TO REHEARSE, and never the owned hearts' write instead: a
             # rehearsal asks no gate, so it must not reach one (U162).
@@ -786,21 +706,11 @@ def _land_native(
     # The account playlist's archive rides on this gate when the set has one
     # recorded under the frozen INSPIRATION name (U129).
     archive_planned = _plan_set_archive(
-        cfg,
-        set_job=set_job,
-        words=words,
-        pass_name=ctx.args.pass_name or planned.batch,
+        cfg, set_job=set_job, words=words, pass_name=ctx.args.pass_name or planned.batch
     )
     planner = land_native.native_planner(
-        ctx,
-        medium,
-        owned=owned,
-        unfiled=unfiled,
-        set_job=set_job,
-        words=words,
-        reports=reports,
-        set_planned=set_planned,
-        **asked,
+        ctx, medium, owned=owned, unfiled=unfiled, set_job=set_job, words=words,
+        reports=reports, set_planned=set_planned, **asked,
     )
     archive_notes: list[dict[str, str]] = []
     applied: list[native.NativePlan] = []
@@ -811,20 +721,18 @@ def _land_native(
         with landing.batch_lock(planned.batch):
             if ctx.args.name is None:
                 _still_free(cfg, planned.batch)
-            landed_native = landing.apply_native(
-                planned, cfg=cfg, db=db, rows=rows, declared=declared
-            )
+            landed_native = landing.apply_native(planned, cfg=cfg, db=db, rows=rows, declared=declared)
         # Archive after the batch is in the library; a failure is a warning,
         # never a failure of a landing that already wrote (U129).
-        archive_notes.extend(_apply_landing_archive(cfg, archive_planned))
+        archive_notes.extend(land_native._apply_landing_archive(cfg, archive_planned))
         return landed_native
 
     def payload_of(rows: native.NativePlan) -> dict:
-        data = _native_payload(planned, rows, target=_folder(rows))
-        return _with_archive(data, archive_planned)
+        data = land_native._native_payload(planned, rows, target=_folder(rows))
+        return land_native._with_archive(data, archive_planned)
 
     def shown_of(rows: native.NativePlan) -> dict[str, Any]:
-        shown = _native_shown(rows, folder=planned.folder, target=_folder(rows))
+        shown = land_native._native_shown(rows, folder=planned.folder, target=_folder(rows))
         shown["files after landing"] = filing.fact(rows.filing, why=unfiled, tree=declared.tree.id)
         if archive_planned is not None:
             shown["account archive"] = archive_planned.shown
@@ -846,14 +754,8 @@ def _land_native(
             archived=archive_planned, declared=declared,
         )
 
-    payload, landed = ask_then_write(
-        ctx,
-        cfg,
-        spec,
-        plan=plan,
-        payload=payload_of,
-        shown=shown_of,
-        write=write,
+    payload, landed = land_native.ask_then_write(
+        ctx, cfg, spec, plan=plan, payload=payload_of, shown=shown_of, write=write
     )
     if landed is None:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
@@ -862,21 +764,36 @@ def _land_native(
     warnings = land_native.landed_warnings(
         cfg, payload, landed, applied=applied, archive_notes=archive_notes, set_planned=set_planned
     )
-    reported = _native_reported(payload, landed)
+    reported = land_native._native_reported(payload, landed)
     predicted = applied[-1].filing if applied else None
     if predicted is not None:
         # THE FILING, AFTER EVERY READ BACK OF THE LANDING (U165), under the
         # actor who answered its gate. It never fails the landing it follows.
         sorted_in = filing.file_landed(
-            cfg,
-            declared,
-            predicted,
-            landed.collection,
-            actor=approving_actor(ctx, spec),
+            cfg, declared, predicted, landed.collection, actor=approving_actor(ctx, spec)
         )
         warnings.extend(filing.warnings(sorted_in))
-        reported = _with_filing(reported, sorted_in)
+        reported = land_native._with_filing(reported, sorted_in)
     return ctx.envelope(data=reported, warnings=warnings)
+
+
+def _plan_set_archive(cfg, *, set_job, words, pass_name: str):
+    """The account archive for this set landing, or None when there is none to file (U129)."""
+    if set_job is None:
+        return None
+    from cratekit.export import set_cli
+    from cratekit.modules.outbound import ledger
+
+    name = set_playlist.frozen_name(set_job)
+    if not name and words is not None:
+        name = set_cli.set_name(set_playlist.playlist_name(words))
+    if not name or ledger.set_playlist(cfg, name) is None:
+        return None
+    try:
+        return set_cli.plan_archive_named(cfg, name, pass_name=pass_name)
+    except CratekitError:
+        # Soft: the landing still lands; archive can run later via export archive.
+        return None
 
 
 #: The verb a rehearsal record names, so a live landing reads only its own (U162).
@@ -912,7 +829,7 @@ def plan_identity(
     # NOT THE ENGINE'S OWN DIGEST, a hash no mapping back can reach.
     gate = {
         key: value
-        for key, value in _native_identity(planned, rows, target=target).items()
+        for key, value in land_native._native_identity(planned, rows, target=target).items()
         if key != "collection"
     }
     if archived is not None:
@@ -937,34 +854,21 @@ def _filed_watch(cfg: config.Config, planned: landing.Plan) -> tuple[Path, ...]:
 def _active_rows(db) -> int:
     from sqlalchemy import text
 
-    return int(
-        db.session.execute(
-            text("SELECT COUNT(*) FROM djmdContent WHERE rb_local_deleted = 0")
-        ).scalar()
-    )
+    query = text("SELECT COUNT(*) FROM djmdContent WHERE rb_local_deleted = 0")
+    return int(db.session.execute(query).scalar())
 
 
 def _rehearse_native(ctx, cfg: config.Config, planned: landing.Plan, **how: Any) -> Envelope:
     """Rehearse the landing on a scratch area of this run's own, then remove it (U162).
 
-    THE LIVE PLAN IS MADE FIRST, against the database copy, so its digest is
-    the one the live landing will show. THEN THE SAME FILES ARE PLANNED AT THE
-    AREA, and applied there only when that plan, mapped back, reads line for
-    line as the live one: what is rehearsed is the plan the live run will ask.
-
-    NOTHING LIVE IS WRITTEN OR MOVED: the live database and folders are
-    witnessed before and after. The account archive is never rehearsed, and
-    the report says so. A FAILURE KEEPS THE AREA AND NAMES IT. ``how`` is what
-    :func:`_rehearse_in` plans and applies with.
+    THE LIVE PLAN IS MADE FIRST, on the database copy, so its digest is the
+    live landing's; the area's plan is applied only when, mapped back, it reads
+    line for line as the live one. NOTHING LIVE IS WRITTEN OR MOVED, witnessed
+    before and after; the account archive is never rehearsed, and the report
+    says so. A FAILURE KEEPS THE AREA AND NAMES IT.
     """
-    before = rehearsal.witness(
-        cfg,
-        (
-            planned.folder,
-            Path(cfg.library.root) / cfg.library.music_dir,
-            *_filed_watch(cfg, planned),
-        ),
-    )
+    music = Path(cfg.library.root) / cfg.library.music_dir
+    before = rehearsal.witness(cfg, (planned.folder, music, *_filed_watch(cfg, planned)))
     area = rehearsal.open_area(cfg, ctx.run.run_id, files=planned.items, staging=planned.folder)
     try:
         facts, payload, lines = _rehearse_in(cfg, planned, area=area, **how)
@@ -1003,36 +907,25 @@ def _rehearse_native(ctx, cfg: config.Config, planned: landing.Plan, **how: Any)
     rehearsal.remove(area)
     facts["area removed"] = True
     recorded = rehearsal.record(
-        ctx.run.run_id,
-        verb=REHEARSAL_VERB,
-        key=rehearsal_key(planned),
-        digest=payload["digest"],
-        plan=lines,
-        facts=facts,
+        ctx.run.run_id, verb=REHEARSAL_VERB, key=rehearsal_key(planned),
+        digest=payload["digest"], plan=lines, facts=facts,
     )
     facts["record"] = str(recorded)
     data = {**payload, "totals": {**payload["totals"], "rehearsal": facts}}
-    warnings = []
-    if how["archived"] is not None:
-        warnings.append(
-            {
-                "code": REHEARSAL_ARCHIVE_SKIPPED,
-                "message": "the account archive this set landing would rename was planned "
-                "and digested and not rehearsed, since it is a write to the account",
-            }
-        )
+    skipped = (
+        "the account archive this set landing would rename was planned "
+        "and digested and not rehearsed, since it is a write to the account"
+    )
+    warnings = [] if how["archived"] is None else [
+        land_native._note(REHEARSAL_ARCHIVE_SKIPPED, skipped)
+    ]
     return ctx.envelope(data=data, warnings=warnings)
 
 
 def _rehearse_in(
-    cfg: config.Config,
-    planned: landing.Plan,
-    *,
-    area: rehearsal.Area,
+    cfg: config.Config, planned: landing.Plan, *, area: rehearsal.Area,
     planner: Callable[..., Callable[[Any], native.NativePlan]],
-    payload_of: Callable[[native.NativePlan], dict],
-    archived,
-    declared,
+    payload_of: Callable[[native.NativePlan], dict], archived, declared,
 ) -> tuple[dict[str, Any], dict, list[str]]:
     """Plan live, plan at the area, compare, apply at the area, read back. Answers the facts."""
     db = rb_writer.open_db(area.database, require_closed=True, cfg=area.cfg)
@@ -1103,16 +996,10 @@ def _rehearse_in(
             detail={"database": str(area.database)},
         )
     facts: dict[str, Any] = {
-        "run": area.run_id,
-        "landed": len(landed.moved),
-        "refused": len(landed.refused),
-        "added": len(landed.collection.added),
-        "already present": len(landed.collection.present),
-        "memberships": landed.collection.memberships_added,
-        "active rows before": rows_before,
-        "active rows after": rows_after,
-        "landed rows gridless": True,
-        "integrity": "ok",
+        "run": area.run_id, "landed": len(landed.moved), "refused": len(landed.refused),
+        "added": len(landed.collection.added), "already present": len(landed.collection.present),
+        "memberships": landed.collection.memberships_added, "active rows before": rows_before,
+        "active rows after": rows_after, "landed rows gridless": True, "integrity": "ok",
     }
     return facts, payload, lines
 

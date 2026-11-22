@@ -3,8 +3,8 @@
 ``land_cli._land_native`` runs these steps in order: the planner, the write in
 :func:`ask_then_write`'s order, the account archive, the owned hearts and the
 notes a person reads after. ONE WORDING FOR EVERY VERB THAT ADDS A ROW (R-770):
-``intake file`` reads the facts and the warnings here. :mod:`land_cli`
-re-exports the names callers read there.
+``intake file`` reads the facts and the warnings here, through :mod:`land_cli`,
+which answers every name of this module.
 """
 
 from __future__ import annotations
@@ -53,32 +53,39 @@ FAVORITES_SKIPPED = "favorites-placement-skipped"
 #: A heart's row a person coloured otherwise, left and named (U153).
 FAVORITES_COLOUR_HELD = "favorites-colour-held"
 
-#: The warning a native landing carries: the rows are in the collection and
-#: rekordbox has not analysed them, which it does on request and not on sight.
+#: The rows are in the collection and rekordbox has not analysed them, which
+#: it does on request and not on sight.
 AWAITING_ANALYSIS = "rows-await-analysis"
 
-#: The warnings a native write carries about the vox My Tag (U127): a file
-#: whose score could not be read, and a landing that wrote no tag at all.
+#: The vox My Tag (U127): a file whose score could not be read, and a landing
+#: that wrote no tag at all.
 VOX_UNSCORED = "vox-unscored"
 VOX_NOT_WRITTEN = "vox-not-written"
 
-#: On the GATE SCREEN when more than half the added rows carry no voxlevel
+#: On the gate screen when more than half the added rows carry no voxlevel
 #: (U181): the shape of a batch analysed while the vocal model could not load.
 VOX_MOSTLY_UNSCORED = "vox-mostly-unscored"
 
-#: A row whose drift read as variable and carries no dyn My Tag after the
-#: commit (U157), named so the person still runs it with Dynamic.
+#: A variable row with no dyn My Tag after the commit (U157), named so the
+#: person still runs it with Dynamic.
 DYN_NOT_WRITTEN = "dyn-not-written"
+
+#: Why a set landing's account archive did not finish after the rows wrote (U129).
+LAND_ARCHIVE_FAILED = "intake-land-archive-failed"
+
+#: What a native write's answer is pinned to outside its digest (U161): the
+#: database file the handle opened.
+DATABASE_PIN = "database"
+
+
+def _note(code: str, message: str) -> dict[str, str]:
+    """One warning a person reads, by its code."""
+    return {"code": code, "message": message}
 
 
 def _plan(identity: dict[str, Any], items: list, count: int) -> dict[str, Any]:
     """A plan payload, closed at the four keys of ``plan/1``."""
-    return {
-        "digest": digest_of(identity),
-        "items": items,
-        "totals": {"count": count},
-        "chunk": None,
-    }
+    return {"digest": digest_of(identity), "items": items, "totals": {"count": count}, "chunk": None}
 
 
 def split_facts(
@@ -157,10 +164,7 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
     for item in planned.items:
         row = by_target[str(target / item.name)]
         entry: dict[str, Any] = {
-            "action": row.action,
-            "from": str(item),
-            "to": str(row.target),
-            "row": row.columns(),
+            "action": row.action, "from": str(item), "to": str(row.target), "row": row.columns()
         }
         if row.content_id is not None:
             entry["content_id"] = row.content_id
@@ -173,25 +177,21 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
             entry["label"] = filed.get(str(row.target), "none")
         if row.action == native.ADD and rows.vox_cut is not None and not rows.vox_blocked:
             # U127: the score each added row was read at and whether it is tagged.
-            entry["voxlevel"] = row.voxlevel
-            entry["vox"] = row.vox
+            entry.update(voxlevel=row.voxlevel, vox=row.vox)
         if row.action == native.ADD and row.drift_verdict not in ("", drift.UNSCORED):
-            # U157: the drift each added row was read at, its verdict and dyn
-            # tag; a file with no reading is the fact line's to count.
-            entry["drift"] = row.drift
-            entry["drift_verdict"] = row.drift_verdict
-            entry["dyn"] = row.dyn
+            # U157: the drift reading, its verdict and dyn tag; a file with no
+            # reading is the fact line's to count.
+            entry.update(drift=row.drift, drift_verdict=row.drift_verdict, dyn=row.dyn)
         if str(row.target) in sorted_into:
             entry["files into"] = sorted_into[str(row.target)].shown()
         items.append(entry)
-    identity = _native_identity(planned, rows, target=target)
     if rows.favorites is not None and rows.favorites.skipped:
         # THE SKIP IS AN ITEM OF THE PLAN, since ``plan/1``'s keys are closed.
-        hearts = rows.favorites
+        skipped = rows.favorites
         items.append(
-            {"action": FAVORITES, "playlist": hearts.source_name, "skipped": hearts.skipped}
+            {"action": FAVORITES, "playlist": skipped.source_name, "skipped": skipped.skipped}
         )
-    return _plan(identity, items, len(planned.items))
+    return _plan(_native_identity(planned, rows, target=target), items, len(planned.items))
 
 
 def favorites_facts(plan: native.FavoritesPlan) -> dict[str, Any]:
@@ -238,6 +238,7 @@ def collection_facts(rows: native.NativePlan) -> dict[str, Any]:
         if rows.base_drive and rows.current_drive and rows.base_drive != rows.current_drive
         else "under the mounted path"
     )
+    analyze = f"found (row {rows.analyze_playlist_id})" if rows.analyze_playlist_id else "made"
     facts = {
         "playlist": f"{rows.playlist} under {rows.root_name} (row {rows.root_id})",
         "reads and writes": str(rows.database),
@@ -257,14 +258,7 @@ def collection_facts(rows: native.NativePlan) -> dict[str, Any]:
         "dyn My Tag": dyn_fact(rows),
         # U166: the one playlist every added row joins for the rekordbox visit.
         "analyze": (
-            (
-                f"{rows.root_name} / {native.ANALYZE}, every added row, "
-                + (
-                    f"found (row {rows.analyze_playlist_id})"
-                    if rows.analyze_playlist_id
-                    else "made"
-                )
-            )
+            f"{rows.root_name} / {native.ANALYZE}, every added row, {analyze}"
             if rows.to_add()
             else "nothing, since no row is added"
         ),
@@ -307,24 +301,21 @@ def vox_plan_warnings(rows: native.NativePlan, *, folder: Path) -> list[dict[str
     """The gate screen's warning when most added rows carry no score, else none (U181).
 
     Most of a batch unscored is a batch analysed with no vocal model loaded,
-    so it is a warning with its own code a caller can lift, not a clause at
-    the end of the vox line.
+    so it is a warning with its own code a caller can lift.
     """
     adding = rows.to_add()
     unscored = rows.vox_unscored()
     if not adding or 2 * len(unscored) <= len(adding):
         return []
     return [
-        {
-            "code": VOX_MOSTLY_UNSCORED,
-            "message": (
-                f"{len(unscored)} of the {len(adding)} row(s) this landing adds carry "
-                f"no voxlevel, so they join with no vox My Tag; a batch this unscored "
-                f"was analysed with no vocal model loaded. Check crate doctor's "
-                f"install.extras row, score them with crate analyze vocals --unscored "
-                f"{folder}, then plan the landing again"
-            ),
-        }
+        _note(
+            VOX_MOSTLY_UNSCORED,
+            f"{len(unscored)} of the {len(adding)} row(s) this landing adds carry "
+            f"no voxlevel, so they join with no vox My Tag; a batch this unscored "
+            f"was analysed with no vocal model loaded. Check crate doctor's "
+            f"install.extras row, score them with crate analyze vocals --unscored "
+            f"{folder}, then plan the landing again",
+        )
     ]
 
 
@@ -349,11 +340,8 @@ def dyn_fact(rows: native.NativePlan) -> str:
 def playlist_item(collection: native.NativeLanded) -> dict[str, Any]:
     """The one item a native write appends for the batch playlist it wrote."""
     return {
-        "action": PLAYLIST,
-        "playlist": collection.playlist,
-        "id": collection.playlist_id,
-        "tree": collection.tree_id,
-        "session": collection.session_id,
+        "action": PLAYLIST, "playlist": collection.playlist, "id": collection.playlist_id,
+        "tree": collection.tree_id, "session": collection.session_id,
     }
 
 
@@ -372,10 +360,7 @@ def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dic
         written = [row for row in rows.rows if row.action != native.UNSUPPORTED]
         shown.update(
             split_facts(
-                [
-                    (one.name, one.account_name, len(one.members), one.owned)
-                    for one in rows.playlists
-                ],
+                [(one.name, one.account_name, len(one.members), one.owned) for one in rows.playlists],
                 sum(1 for row in written if str(row.target) not in claimed),
                 left=sum(len(one.left) for one in rows.playlists) + len(rows.unplanned_left),
             )
@@ -394,10 +379,8 @@ def _native_shown(rows: native.NativePlan, *, folder: Path, target: Path) -> dic
 
 def twin_facts(planned) -> str:
     """The landing's custom playlist twins (U149), one line: each made, each left and why."""
-    made = [one for one in planned if not one.why]
-    left = [one for one in planned if one.why]
-    said = [f"{one.folder.name} / {one.name}" for one in made]
-    said.extend(f"{one.account_name} gets none: {one.why}" for one in left)
+    said = [f"{one.folder.name} / {one.name}" for one in planned if not one.why]
+    said.extend(f"{one.account_name} gets none: {one.why}" for one in planned if one.why)
     return "; ".join(said)
 
 
@@ -409,22 +392,22 @@ def _twin_notes(cfg: config.Config, rows, collection: native.NativeLanded) -> li
     left = [one for one in (rows.twins if rows is not None else ()) if one.why]
     if left:
         notes.append(
-            {
-                "code": TWINS_LEFT,
-                "message": (
-                    f"{len(left)} account playlist(s) got no custom playlist twin: "
-                    + "; ".join(f"{one.account_name}: {one.why}" for one in left)
-                ),
-            }
+            _note(
+                TWINS_LEFT,
+                f"{len(left)} account playlist(s) got no custom playlist twin: "
+                + "; ".join(f"{one.account_name}: {one.why}" for one in left),
+            )
         )
     return notes
 
 
 def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
     """The plan, each item marked with what the apply actually did to it."""
+    collection = landed.collection
+    session_id = collection.session_id
     refused = {str(entry.path): entry for entry in landed.refused}
-    added = {str(row.target): row for row in landed.collection.added}
-    present = {str(row.target): row for row in landed.collection.present}
+    added = {str(row.target): row for row in collection.added}
+    present = {str(row.target): row for row in collection.present}
     items: list[dict[str, Any]] = []
     for item in payload["items"]:
         if item.get("action") == FAVORITES or item.get("area") == "account-archive":
@@ -439,18 +422,14 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
             continue
         row = added.get(item["to"])
         if row is not None:
+            columns = {
+                **item["row"], "Title": row.title, "FolderPath": row.folder_path,
+                rb_writer.FILE_ID_COLUMN: row.file_id,
+                rb_writer.CONTENT_LINK_COLUMN: row.content_link,
+            }
             items.append(
                 {
-                    **item,
-                    "action": LANDED,
-                    "content_id": row.content_id,
-                    "row": {
-                        **item["row"],
-                        "Title": row.title,
-                        "FolderPath": row.folder_path,
-                        rb_writer.FILE_ID_COLUMN: row.file_id,
-                        rb_writer.CONTENT_LINK_COLUMN: row.content_link,
-                    },
+                    **item, "action": LANDED, "content_id": row.content_id, "row": columns,
                     "left_empty": sorted(row.empty),
                     **({"vox": row.vox} if "vox" in item else {}),
                     **({"dyn": row.dyn} if "dyn" in item else {}),
@@ -458,128 +437,93 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
             )
             continue
         held = present.get(item["to"])
-        items.append(
-            {
-                **item,
-                "action": LANDED,
-                "content_id": held.content_id if held is not None else item.get("content_id"),
-                "already_present": True,
-            }
-        )
+        held_id = held.content_id if held is not None else item.get("content_id")
+        items.append({**item, "action": LANDED, "content_id": held_id, "already_present": True})
     totals = {
-        "count": payload["totals"]["count"],
-        "landed": len(landed.moved),
-        "refused": len(landed.refused),
-        "added": len(landed.collection.added),
-        "already present": len(landed.collection.present),
-        "memberships": landed.collection.memberships_added,
+        "count": payload["totals"]["count"], "landed": len(landed.moved),
+        "refused": len(landed.refused), "added": len(collection.added),
+        "already present": len(collection.present), "memberships": collection.memberships_added,
     }
     # WHAT ADOPTION READS BACK, not what the writer counted (U127, U157).
     voxed = sum(1 for row in landed.collection.added if row.vox)
     if voxed:
         totals["vox tagged"] = voxed
-    dyned = sum(1 for row in landed.collection.added if row.dyn)
+    dyned = sum(1 for row in collection.added if row.dyn)
     if dyned:
         totals["dyn tagged"] = dyned
-    if landed.collection.playlist_id:
-        items.append(playlist_item(landed.collection))
+    if collection.playlist_id:
+        items.append(playlist_item(collection))
     items.extend(
         {
-            "action": PLAYLIST,
-            "playlist": written.name,
-            "id": written.playlist_id,
-            "account": written.account,
-            "count": written.tracks,
-            "tree": landed.collection.tree_id,
-            "session": landed.collection.session_id,
+            "action": PLAYLIST, "playlist": written.name, "id": written.playlist_id,
+            "account": written.account, "count": written.tracks, "tree": collection.tree_id,
+            "session": session_id,
         }
-        for written in landed.collection.playlists
+        for written in collection.playlists
     )
     items.extend(
         {
-            "action": TWIN,
-            "playlist": f"{twin.folder} / {twin.name}",
-            "id": twin.playlist_id,
-            "account_id": twin.account_id,
-            "count": twin.tracks,
-            "session": landed.collection.session_id,
+            "action": TWIN, "playlist": f"{twin.folder} / {twin.name}", "id": twin.playlist_id,
+            "account_id": twin.account_id, "count": twin.tracks, "session": session_id,
         }
-        for twin in landed.collection.twins
+        for twin in collection.twins
     )
-    placed = landed.collection.favorites
+    placed = collection.favorites
     if placed is not None:
         totals["hearts placed"] = placed.added
         items.append(
             {
-                "action": FAVORITES,
-                "playlist": placed.source_name,
-                "id": placed.source_id,
-                "count": placed.added_source,
-                "session": landed.collection.session_id,
+                "action": FAVORITES, "playlist": placed.source_name, "id": placed.source_id,
+                "count": placed.added_source, "session": session_id,
             }
         )
         items.extend(
             {
-                "action": FAVORITES,
-                "playlist": name,
-                "id": row,
-                "count": count,
-                "created": name in placed.created,
-                "session": landed.collection.session_id,
+                "action": FAVORITES, "playlist": name, "id": row, "count": count,
+                "created": name in placed.created, "session": session_id,
             }
             for name, row, count in placed.months
         )
-    kept = landed.collection.set_playlist
+    kept = collection.set_playlist
     if kept is not None:
         if kept.playlist_id:
-            items.append(set_playlist_item(kept, session_id=landed.collection.session_id))
-        totals = {
-            **totals,
-            "set playlist tracks": kept.members,
-            "set playlist left out": len(kept.left),
-        }
-    filed = landed.collection.labels
+            items.append(set_playlist_item(kept, session_id=session_id))
+        totals["set playlist tracks"] = kept.members
+        totals["set playlist left out"] = len(kept.left)
+    filed = collection.labels
     if filed is not None:
         items.extend(
-            label_filing.item(one, tree=filed.tree_id, session_id=landed.collection.session_id)
+            label_filing.item(one, tree=filed.tree_id, session_id=session_id)
             for one in filed.years
         )
-        totals = {
-            **totals,
-            "label playlists": len(filed.years),
-            "label memberships": filed.added(),
-            "filed under no label": len(filed.left),
-        }
+        totals["label playlists"] = len(filed.years)
+        totals["label memberships"] = filed.added()
+        totals["filed under no label"] = len(filed.left)
     return {**payload, "items": items, "totals": totals}
 
 
 def set_playlist_item(kept: set_playlist.Written, *, session_id: str) -> dict[str, Any]:
     """The one item a write appends for the set's permanent playlist (U121)."""
     return {
-        "action": PLAYLIST,
-        "playlist": kept.name,
-        "id": kept.playlist_id,
-        "folder": kept.folder_id,
-        "folder_created": kept.folder_created,
-        "playlist_created": kept.playlist_created,
-        "count": kept.members,
-        "added": kept.added,
-        "left": [one.identity() for one in kept.left],
-        "session": session_id,
+        "action": PLAYLIST, "playlist": kept.name, "id": kept.playlist_id,
+        "folder": kept.folder_id, "folder_created": kept.folder_created,
+        "playlist_created": kept.playlist_created, "count": kept.members, "added": kept.added,
+        "left": [one.identity() for one in kept.left], "session": session_id,
     }
 
 
 def _with_filing(reported: dict, filed: filing.Filed) -> dict:
-    """The landed payload with what the filing after it did, in its totals (U165)."""
+    """The landed payload with what the filing after it did, in its totals (U165);
+    each item already says where it files in its ``files into``."""
     totals = {**reported["totals"], "filing": filed.state}
     if filed.state == filing.FILED:
-        totals = {
-            **totals,
-            "filed": filed.filed,
-            "filing memberships": filed.memberships,
-            "placed nowhere": len(filed.nowhere),
-        }
-    # Each item already says where it files in its ``files into``.
+        totals.update(
+            {
+                "filed": filed.filed,
+                "filing memberships": filed.memberships,
+                "placed nowhere": len(filed.nowhere),
+            }
+        )
     return {**reported, "totals": totals}
 
 
@@ -610,7 +554,7 @@ def favorites_notes(payload: dict, collection: native.NativeLanded) -> list[dict
     placed = collection.favorites
     if placed is None:
         return []
-    return [{"code": FAVORITES_PLACED, "message": placed.said()}, *_colour_notes(placed)]
+    return [_note(FAVORITES_PLACED, placed.said()), *_colour_notes(placed)]
 
 
 def _colour_notes(placed) -> list[dict[str, str]]:
@@ -632,22 +576,19 @@ def _colour_notes(placed) -> list[dict[str, str]]:
         )
     if placed.held:
         notes.append(
-            {
-                "code": FAVORITES_COLOUR_HELD,
-                "message": (
-                    f"{len(placed.held)} row(s) carry a colour a person chose and keep it: "
-                    + "; ".join(one.said() for one in placed.held)
-                ),
-            }
+            _note(
+                FAVORITES_COLOUR_HELD,
+                f"{len(placed.held)} row(s) carry a colour a person chose and keep it: "
+                + "; ".join(one.said() for one in placed.held),
+            )
         )
     return notes
 
 
 #: The visit's short path (U319): with Auto Analysis on, a launch in front
 #: raises one dialog whose OK analyses every waiting row on the preference's
-#: own mode, so a dyn row still takes Dynamic. Said after the selections it
-#: stands in for, so "as above" names them. ``cli.tail`` spells the same, held
-#: to this by a test, since a lower package imports no feature module.
+#: own mode, so a dyn row still takes Dynamic. Said after the selections, so
+#: "as above" names them. ``cli.tail`` spells the same, held to this by a test.
 AUTO_ANALYSIS_STEP = (
     "or, with Auto Analysis on, open rekordbox with its window in front and press OK "
     "on its Auto Analysis dialog only when it shows every one of those Normal "
@@ -712,14 +653,12 @@ def dyn_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
         )
     names = ", ".join(path.name for path in collection.dyn_variable if path in untagged)
     return [
-        {
-            "code": DYN_NOT_WRITTEN,
-            "message": (
-                f"{len(untagged)} row(s) whose tempo moves do not carry the dyn My Tag, "
-                f"so select them by name and run Analyze Tracks on them with "
-                f"{drift.DYNAMIC_SETTINGS}: {names}; {why}"
-            ),
-        }
+        _note(
+            DYN_NOT_WRITTEN,
+            f"{len(untagged)} row(s) whose tempo moves do not carry the dyn My Tag, "
+            f"so select them by name and run Analyze Tracks on them with "
+            f"{drift.DYNAMIC_SETTINGS}: {names}; {why}",
+        )
     ]
 
 
@@ -744,44 +683,27 @@ def vox_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
         )
         names = ", ".join(path.name for path in collection.vox_missing)
         warnings.append(
-            {
-                "code": VOX_NOT_WRITTEN,
-                "message": (
-                    f"{len(collection.vox_missing)} row(s) planned for the vox My Tag "
-                    f"do not carry it, so they reach no with vox playlist: {names}; {why}"
-                ),
-            }
+            _note(
+                VOX_NOT_WRITTEN,
+                f"{len(collection.vox_missing)} row(s) planned for the vox My Tag "
+                f"do not carry it, so they reach no with vox playlist: {names}; {why}",
+            )
         )
     if collection.vox_blocked:
-        return [
-            *warnings,
-            {
-                "code": VOX_NOT_WRITTEN,
-                "message": (
-                    f"no row joined with the vox My Tag, so none reaches a with vox "
-                    f"playlist: {collection.vox_blocked}"
-                ),
-            }
-        ]
+        said = "no row joined with the vox My Tag, so none reaches a with vox playlist: "
+        return [*warnings, _note(VOX_NOT_WRITTEN, said + collection.vox_blocked)]
     if not collection.vox_unscored:
         return warnings
     names = ", ".join(path.name for path in collection.vox_unscored)
     return [
         *warnings,
-        {
-            "code": VOX_UNSCORED,
-            "message": (
-                f"{len(collection.vox_unscored)} file(s) carry no voxlevel to read, so "
-                f"their rows got no vox My Tag: {names}; run crate analyze vocals on "
-                f"them and then crate metadata mytags-vocals --apply"
-            ),
-        }
+        _note(
+            VOX_UNSCORED,
+            f"{len(collection.vox_unscored)} file(s) carry no voxlevel to read, so "
+            f"their rows got no vox My Tag: {names}; run crate analyze vocals on "
+            f"them and then crate metadata mytags-vocals --apply",
+        ),
     ]
-
-
-#: What a native write's answer is pinned to outside its digest (U161): the
-#: database file the handle opened.
-DATABASE_PIN = "database"
 
 
 def unfiled_reason(ctx, medium: ingest.IntakeMedium) -> str:
@@ -822,20 +744,11 @@ def read_set(ctx) -> tuple[jobs.Job | None, set_playlist.SetWords | None, tuple[
 
 
 def native_planner(
-    ctx,
-    medium: ingest.IntakeMedium,
-    *,
-    manifest: landing.LabelManifest | None,
-    label: str | None,
-    label_from_tags: bool,
-    claims: tuple[account_playlists.Claim, ...],
-    hearted: tuple[account_playlists.Hearted, ...],
-    owned: tuple[account_playlists.HeartRow, ...],
-    unfiled: str,
-    set_job: jobs.Job | None,
-    words: set_playlist.SetWords | None,
-    reports: tuple[dict[str, Any], ...],
-    set_planned: list[set_playlist.SetPlaylistPlan],
+    ctx, medium: ingest.IntakeMedium, *, manifest: landing.LabelManifest | None,
+    label: str | None, label_from_tags: bool, claims: tuple[account_playlists.Claim, ...],
+    hearted: tuple[account_playlists.Hearted, ...], owned: tuple[account_playlists.HeartRow, ...],
+    unfiled: str, set_job: jobs.Job | None, words: set_playlist.SetWords | None,
+    reports: tuple[dict[str, Any], ...], set_planned: list[set_playlist.SetPlaylistPlan],
 ) -> Callable[[config.Config, landing.Plan], Callable[[Any], native.NativePlan]]:
     """The landing's planner: given a library and its staged files, a plan made on a handle.
 
@@ -851,13 +764,7 @@ def native_planner(
             if set_job is None or words is None:
                 return None
             made = set_playlist.plan_for_landing(
-                cfg,
-                db,
-                declared,
-                set_job,
-                words,
-                reports,
-                files=files,
+                cfg, db, declared, set_job, words, reports, files=files,
                 posted=getattr(ctx.args, "posted", None),
             )
             set_planned.append(made)
@@ -883,9 +790,7 @@ def native_planner(
             # THE INBOX PLAYLIST FOR A SET (U135): named for the set, and an
             # earlier landing's playlist of the job is added to; the batch
             # folder keeps the landing's own name, so only the playlist joins.
-            inbox_name = planned.batch
-            batch_playlist_id = ""
-            set_job_id = ""
+            inbox_name, batch_playlist_id, set_job_id = planned.batch, "", ""
             leftovers: tuple[str, ...] = ()
             inbox_found_by_name = False
             if set_job is not None and words is not None:
@@ -903,13 +808,7 @@ def native_planner(
                     cfg, db, set_job_id, root_id, inbox_name, keep_id=batch_playlist_id
                 )
             split, emptied = _native_split(
-                db,
-                cfg,
-                claims,
-                tree_id=tree_id,
-                registry=registry,
-                batch=inbox_name,
-                target=target,
+                db, cfg, claims, tree_id=tree_id, registry=registry, batch=inbox_name, target=target
             )
             # EACH UNPAIRED ACCOUNT PLAYLIST'S TWIN (U149), on this handle.
             from cratekit.favorites import backfill, placement  # noqa: PLC0415 - toggleable
@@ -917,21 +816,12 @@ def native_planner(
             from cratekit.sync import twins
 
             landing_twins = twins.plan_landing(
-                db,
-                [(one.account, one.account_name or one.name) for one in split],
-                year=batch_name.today().year,
-                paired=pairs.PairStore(cfg).all(),
+                db, [(one.account, one.account_name or one.name) for one in split],
+                year=batch_name.today().year, paired=pairs.PairStore(cfg).all(),
             )
             made = native.plan_rows(
-                cfg,
-                db,
-                tree_id=tree_id,
-                registry=registry,
-                batch=inbox_name,
-                files=files,
-                split=split,
-                unplanned_left=emptied,
-                pass_name=ctx.args.pass_name,
+                cfg, db, tree_id=tree_id, registry=registry, batch=inbox_name, files=files,
+                split=split, unplanned_left=emptied, pass_name=ctx.args.pass_name,
                 hearts=tuple(
                     native.HeartItem(target=target / one.path.name, month=one.month, ref=one.ref)
                     for one in hearted
@@ -943,12 +833,9 @@ def native_planner(
                     )
                     for one in backfill.owned_in_library(cfg, db, owned)
                 ),
-                set_plan=set_plan(db, files),
-                batch_playlist_id=batch_playlist_id,
-                set_job_id=set_job_id,
-                inbox_leftovers=leftovers,
-                inbox_found_by_name=inbox_found_by_name,
-                labels=label_plan(db, files),
+                set_plan=set_plan(db, files), batch_playlist_id=batch_playlist_id,
+                set_job_id=set_job_id, inbox_leftovers=leftovers,
+                inbox_found_by_name=inbox_found_by_name, labels=label_plan(db, files),
                 twins=landing_twins,
             )
             made = replace(made, folder=target, batch=planned.batch)
@@ -964,16 +851,12 @@ def native_planner(
 
 
 def landed_warnings(
-    cfg: config.Config,
-    payload: dict,
-    landed: landing.LandedNative,
-    *,
-    applied: list[native.NativePlan],
-    archive_notes: list[dict[str, str]],
+    cfg: config.Config, payload: dict, landed: landing.LandedNative, *,
+    applied: list[native.NativePlan], archive_notes: list[dict[str, str]],
     set_planned: list[set_playlist.SetPlaylistPlan],
 ) -> list[dict[str, str]]:
     """What a person reads after a native landing wrote, in the order it is said."""
-    warnings = [{"code": entry.reason, "message": entry.sentence} for entry in landed.refused]
+    warnings = [_note(entry.reason, entry.sentence) for entry in landed.refused]
     warnings.extend(account_playlists.left_warning(landed.collection.left))
     warnings.extend(_twin_notes(cfg, applied[-1] if applied else None, landed.collection))
     warnings.extend(awaiting_analysis(landed.collection))
@@ -1001,14 +884,8 @@ def landed_warnings(
 
 
 def _native_split(
-    db,
-    cfg: config.Config,
-    claims: tuple[account_playlists.Claim, ...],
-    *,
-    tree_id: str,
-    registry,
-    batch: str,
-    target: Path,
+    db, cfg: config.Config, claims: tuple[account_playlists.Claim, ...], *, tree_id: str,
+    registry, batch: str, target: Path,
 ) -> tuple[tuple[native.PlaylistPlan, ...], tuple[tuple[str, account_playlists.Left], ...]]:
     """Each account playlist named against the database's INBOX, on the write handle.
 
@@ -1027,25 +904,18 @@ def _native_split(
     return (
         tuple(
             native.PlaylistPlan(
-                name=claimed.name,
-                account=claimed.playlist_id,
-                members=tuple(
+                name=claimed.name, account=claimed.playlist_id, account_name=claimed.account_name,
+                left=claimed.left, members=tuple(
                     native.PlaylistMember(target=target / member.file.name, member=member)
                     if member.file is not None
                     else native.PlaylistMember(content_id=member.row, member=member)
                     for member in claimed.members
                 ),
-                account_name=claimed.account_name,
-                left=claimed.left,
             )
             for claimed in resolved
         ),
         emptied,
     )
-
-
-#: Why a set landing's account archive did not finish after the rows wrote (U129).
-LAND_ARCHIVE_FAILED = "intake-land-archive-failed"
 
 
 def _apply_landing_archive(cfg, archived) -> list[dict[str, str]]:
@@ -1074,25 +944,6 @@ def _apply_landing_archive(cfg, archived) -> list[dict[str, str]]:
     return list(warnings)
 
 
-def _plan_set_archive(cfg, *, set_job, words, pass_name: str):
-    """The account archive for this set landing, or None when there is none to file (U129)."""
-    if set_job is None:
-        return None
-    from cratekit.export import set_cli
-    from cratekit.modules.outbound import ledger
-
-    name = set_playlist.frozen_name(set_job)
-    if not name and words is not None:
-        name = set_cli.set_name(set_playlist.playlist_name(words))
-    if not name or ledger.set_playlist(cfg, name) is None:
-        return None
-    try:
-        return set_cli.plan_archive_named(cfg, name, pass_name=pass_name)
-    except CratekitError:
-        # Soft: the landing still lands; archive can run later via export archive.
-        return None
-
-
 def _with_archive(payload: dict, archived) -> dict:
     """Fold the archive plan into the landing's digest and items so one approval covers both."""
     if archived is None:
@@ -1102,16 +953,9 @@ def _with_archive(payload: dict, archived) -> dict:
         "archive": archived.payload["digest"],
     }
     items = list(payload.get("items") or [])
-    for item in archived.payload.get("items") or []:
-        items.append({**item, "area": "account-archive"})
-    totals = dict(payload.get("totals") or {})
-    totals["archive_writes"] = bool(archived.writes)
-    return {
-        **payload,
-        "digest": digest_of(identity),
-        "items": items,
-        "totals": totals,
-    }
+    items.extend({**item, "area": "account-archive"} for item in archived.payload.get("items") or [])
+    totals = {**(payload.get("totals") or {}), "archive_writes": bool(archived.writes)}
+    return {**payload, "digest": digest_of(identity), "items": items, "totals": totals}
 
 
 #: What a native write plans: a landing's rows, or the owned hearts alone (U146).
@@ -1119,13 +963,8 @@ _Planned = TypeVar("_Planned")
 
 
 def ask_then_write(
-    ctx,
-    cfg: config.Config,
-    spec,
-    *,
-    plan: Callable[[Any], _Planned],
-    payload: Callable[[_Planned], dict],
-    shown: Callable[[_Planned], dict[str, Any]],
+    ctx, cfg: config.Config, spec, *, plan: Callable[[Any], _Planned],
+    payload: Callable[[_Planned], dict], shown: Callable[[_Planned], dict[str, Any]],
     write: Callable[[Any, _Planned], Any],
 ) -> tuple[dict, Any | None]:
     """The order every native intake write keeps, held once. Answers (payload, written).
@@ -1160,12 +999,7 @@ def ask_then_write(
 
 
 def _place_owned(
-    ctx,
-    cfg: config.Config,
-    spec,
-    *,
-    declared,
-    owned: tuple[account_playlists.HeartRow, ...],
+    ctx, cfg: config.Config, spec, *, declared, owned: tuple[account_playlists.HeartRow, ...],
     empty: dict,
 ) -> Envelope:
     """The pass's owned hearts All Favorites lacks, placed when no file was downloaded (U146).
@@ -1190,14 +1024,12 @@ def _place_owned(
             data=empty,
             outcome=Outcome.NO_OP,
             warnings=[
-                {
-                    "code": FAVORITES_SKIPPED,
-                    "message": (
-                        f"nothing to land and no owned heart was placed: "
-                        f"{exc.cause.message}; run crate favorites backfill once the "
-                        f"playlist exists"
-                    ),
-                }
+                _note(
+                    FAVORITES_SKIPPED,
+                    f"nothing to land and no owned heart was placed: "
+                    f"{exc.cause.message}; run crate favorites backfill once the "
+                    f"playlist exists",
+                )
             ],
         )
     finally:
@@ -1211,12 +1043,8 @@ def _place_owned(
         )
 
     payload, done = ask_then_write(
-        ctx,
-        cfg,
-        spec,
-        plan=lambda db: backfill.plan_owned(cfg, db, source=source, rows=owned),
-        payload=lambda planned: backfill.payload(planned, cfg),
-        shown=backfill.landing_facts,
+        ctx, cfg, spec, plan=lambda db: backfill.plan_owned(cfg, db, source=source, rows=owned),
+        payload=lambda planned: backfill.payload(planned, cfg), shown=backfill.landing_facts,
         write=written,
     )
     if done is None:
@@ -1224,14 +1052,9 @@ def _place_owned(
     backfill.assert_read_back(done)
     placed = done.placed
     totals = {**payload["totals"], "hearts placed": placed.added}
-    warnings = [
-        {
-            "code": FAVORITES_PLACED,
-            "message": (
-                f"{placed.said()}, for {len(payload['items'])} owned heart(s); no file "
-                f"was landed; undo with a restore of session {done.session_id}"
-            ),
-        },
-        *_colour_notes(placed),
-    ]
+    said = (
+        f"{placed.said()}, for {len(payload['items'])} owned heart(s); no file "
+        f"was landed; undo with a restore of session {done.session_id}"
+    )
+    warnings = [_note(FAVORITES_PLACED, said), *_colour_notes(placed)]
     return ctx.envelope(data={**payload, "totals": totals}, warnings=warnings)
