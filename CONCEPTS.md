@@ -81,7 +81,8 @@ it in an `acquire-refused` warning. Raised by a worker as `jobs.Declined`.
 
 ### Searcher
 The injected component that asks the record catalogues for a track's genre,
-`tagging/searchers.py`: Discogs through its API with a person's token, then
+`tagging/searchers.py`, which reads Discogs in `tagging/discogs.py` and the
+shops in `tagging/shops.py` (U306): Discogs through its API with a person's token, then
 Beatport when Discogs gives no genre (U282; U244 asked Beatport first). A
 Discogs decline gives way to Beatport, and a file Discogs tagged with no
 picture asks Beatport for its cover only. Every source is asked one question

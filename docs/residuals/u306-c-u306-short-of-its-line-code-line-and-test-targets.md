@@ -8,8 +8,8 @@ issue: no
 files of `tagging`, `analysis` and `vocals`, at most 17,444 source lines,
 10,189 code lines, 23,357 test lines and 30 percent less test time. Measured
 on the merged head by `scripts/refactor_measure.py lines` against the base
-`c9192091`: source 23,494 to the figure in `docs/restart/u306.md`, code lines
-13,104 to about 12,700, test lines 31,668 to about 28,900. No file is over
+`c9192091`: source 23,494 to 18,785, code lines 13,104 to 12,718, test lines
+31,668 to 29,619, and the test time not told apart on this container. No file is over
 1,500 lines and no copied block is left. The code that remains is mostly code
 the recorded kill set finds by its exact text, so cutting it means rewriting
 guarded code with every replayed row re-anchored by hand, which this card did
