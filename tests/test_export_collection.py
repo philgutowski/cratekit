@@ -490,6 +490,7 @@ def test_the_strict_reader_takes_the_file_and_sees_the_same_library(machine):
 
 
 def test_the_envelope_counts_what_the_file_holds_and_names_what_it_left_out(machine):
+    """And says that no tempo data was written."""
     destination = Path(machine.library.root) / "exports" / "counted.xml"
     code, envelope = drive(["export", "collection", str(destination)])
 
@@ -513,6 +514,8 @@ def test_the_envelope_counts_what_the_file_holds_and_names_what_it_left_out(mach
     assert summary["tracks_without_a_file"] == len(BASELINE)
     assert "'1', '2'" in warned["export-location-not-a-file"]
     assert summary["rows_normalised"] == 0
+    (tempo,) = [c for c in envelope["data"]["checks"] if c["key"] == "export.tempo"]
+    assert "no tempo data was written" in tempo["detail"]
 
 
 def test_every_line_ends_in_a_carriage_return_and_a_line_feed(machine):
@@ -645,15 +648,6 @@ def test_no_tempo_the_database_holds_reaches_the_file(either):
         assert token not in content, token
     assert content.count("AverageBpm=") == len(LIVE)
     assert content.count(f'AverageBpm="{GRIDLESS_AVERAGE_BPM}"') == len(LIVE)
-
-
-def test_the_envelope_says_no_tempo_was_written(machine):
-    code, envelope = drive(
-        ["export", "collection", str(Path(machine.library.root) / "exports" / "said.xml")]
-    )
-    assert code == int(ExitCode.OK), envelope
-    (tempo,) = [c for c in envelope["data"]["checks"] if c["key"] == "export.tempo"]
-    assert "no tempo data was written" in tempo["detail"]
 
 
 # 4. Who wrote it
