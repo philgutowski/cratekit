@@ -15,9 +15,9 @@ rules, its cloud lane section this lane's; this skill is the steps.
 
 A cloud container with a fresh clone, no rekordbox, no library volume, no live
 account, nobody watching. Run every tool through `.venv/bin/`, which the
-session hook built with the dev extras; if it could not, build it:
-`uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e '.[dev]'`.
-GraphQL is refused (METHOD's cloud lane), so use `gh api` on
+session hook built with the dev extras; if it could not, build it with `uv
+venv --python 3.12 .venv` and `uv pip install --python .venv/bin/python -e
+'.[dev]'`. GraphQL is refused (METHOD's cloud lane), so use `gh api` on
 `repos/<owner>/<repo>/...` or the GitHub MCP tools. `scripts/board.py cloud`
 is the queue, `show N` the brief, `closing --since origin/main` the closing
 check, `residuals --land` the numbering, `audit --labels-only` the audit.
@@ -27,15 +27,16 @@ edit the calibration file, never skip, deselect or mark a test.
 
 ## Models
 
-METHOD's cloud lane names who plans, builds and reviews, and when Opus 5.5
-stands in for Fable. A session not on Opus 5.5 hands step 4 to the
-`opus-builder` agent. Where the harness cannot load the repository's agents by
-name, the review runs as a general purpose agent at high effort on the `fable`
-model, or `opus` for the stand in, told to read the `fable-reviewer`
-definition's body first and follow it. A stand in is named `Review: Opus 5.5
-at high effort, Fable out of usage` in the Progress comment, the record and
-the pull request body. Any other refusal or failure of the review is retried,
-never substituted.
+METHOD's cloud lane names who plans, builds and reviews. The coordinator
+starts this thread on Opus 5.5 at its card's size's effort, so it plans and
+builds itself, saying in the plan if the card is another size; a session not
+on Opus 5.5 hands step 4 to `opus-builder`. A Fable stand in, or a review
+where the harness cannot load agents by name, is a general purpose agent at
+high effort on the `opus` (or `fable`) model told to read the `fable-reviewer`
+definition first and follow it; a stand in is named `Review: Opus 5.5 at high
+effort, Fable out of usage` in the Progress comment, the record and the pull
+request body. Any other refusal or failure of the review is retried, never
+substituted.
 
 ## Writes you never make
 
@@ -68,10 +69,11 @@ The reader forgives markdown, emphasis and punctuation around a heading, so
 different word: a bare `Question`, or `Brainstorm notes`, is a heading it does
 not know, and a card under one is read as held, then as a session that died.
 Post with `gh api -X POST repos/<owner>/<repo>/issues/N/comments -F
-body=@file.md`. Phillip's comments are read only as answers to a `Brainstorm`
-or a `Question for Phillip`. A session that finds its card labelled `attended`
-or closed stops. A hold silent for eight hours is offered as `resume`, so post
-a `Progress` note at each phase: built, each review round, mutation measured.
+body=@file.md`. Phillip's comments, and `Answer from Phillip`, are read only
+as answers to a `Brainstorm` or a `Question for Phillip`. A session that finds
+its card labelled `attended` or closed stops. A hold silent for eight hours is
+offered as `resume`, so post a `Progress` note at each phase: built, each
+review round, mutation measured.
 
 **Tell the coordinator** that started this thread (METHOD's cloud lane), with
 the project's tool for messaging it, right after this session's last comment
@@ -130,18 +132,18 @@ Built, not merely verified live afterwards: a unit whose code and tests run on
 fixtures and disposable copies is the cloud's, its live proof an OWED line in
 its record. Post `Needs the machine` with why and the exact local steps as
 commands Phillip can paste (`board.py start N`, the verbs, the attended
-sitting), then take the next card. A session sets aside as many cards as it
-must and builds at most one.
+sitting), then run `board.py cloud` again and take the next card. A session
+sets aside as many cards as it must and builds at most one.
 
 **It needs a brainstorm** when the brief has no goal, no test scenarios or no
 verification, reads as an idea, or carries the `idea` label. Post
 `Brainstorm`: the idea in two or three sentences, what already does part of
 the job, two or three approaches with the cost and main risk of each, your
-recommendation, and at most four questions as Asking Phillip says. Then take
-the next card. When it comes back `answered`, rewrite the brief with his
-answers folded in (`gh api -X PATCH repos/<owner>/<repo>/issues/N -F
-body=@brief.md`), keeping the `**Depends on:**` line first and every field of
-the brief form.
+recommendation, and at most four questions as Asking Phillip says, each
+answerable in a word. Then take the next card. When it comes back `answered`,
+rewrite the brief with his answers folded in (`gh api -X PATCH
+repos/<owner>/<repo>/issues/N -F body=@brief.md`), keeping the `**Depends
+on:**` line first and every field of the brief form.
 
 **Otherwise it is buildable.** Go on.
 
@@ -165,8 +167,7 @@ approval nobody is here to give: the seam, the files, the test scenarios from
 the brief, the residuals the unit closes, what is out of scope, which of the
 three the card is, and its size (METHOD's card sizes), which sets its effort,
 review rounds and mutation table. Fix an insufficient brief in the issue body
-first. A session that is not Opus 5.5 hands this step to `opus-builder` with the
-card number and the branch.
+first; a session not on Opus 5.5 gives `opus-builder` the card and the branch.
 
 Guard first; commit in units of meaning named for the unit, `feat(u57): ...`,
 subject and body only, running the test files for what you touched as you go.
@@ -280,7 +281,8 @@ result, the residual files, and what is OWED. No closing keyword anywhere in
 it.
 
 **Wait for CI on the head** with one tracked background job with a two hour
-timeout, never a foreground sleep or a poll repeated by hand (U196):
+timeout, since the script waits up to an hour, never a foreground sleep or a
+poll repeated by hand (U196):
 
     SHA=$(git rev-parse HEAD)
     .venv/bin/python scripts/wait_ci.py $SHA      # exit 0 green, 1 red, 2 timed out, 3 unread

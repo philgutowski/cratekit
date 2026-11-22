@@ -34,8 +34,10 @@ residual, and keep going.
 
 Work is picked from the board, https://github.com/users/philgutowski/projects/2,
 never from a plan document or a conversation. Every implementation unit `U-N`
-and every attended chore `A-N` is an issue, and **the issue is the brief**: if
-it is insufficient, fix the issue rather than working around it. An issue
+and every attended chore `A-N` is an issue, and **the issue is the brief**
+(goal, requirements, dependencies, key files, approach, test scenarios,
+verification): if it is insufficient, fix the issue rather than working around
+it. An issue
 number does not always match its unit number (U38 is issue #51), so look it
 up before writing a trailer. **U29, #29, is attended and never a session's to
 take**, whatever a queue says; METHOD's Do not touch says why.
@@ -87,41 +89,40 @@ hunt what a green suite cannot see, as METHOD lists.
   rekordbox on the live library through the desktop control tool, to import,
   to let it analyse, and to read what it shows. Where an attended card asks
   what rekordbox itself writes, it may also make, on a throwaway track and a
-  playlist made by hand for the check, the change that card names (removing
-  it from the collection, setting cues, playing it on a deck, deleting that
+  playlist made by hand for the check, the change that card names (removing it
+  from the collection, setting cues, playing it on a deck, deleting that
   playlist), and may change an analysis setting a probe names and put it back
   to Phillip's standard, read back by a screenshot; never on a real track, and
   never a change the card does not name (U321). A cloud session, a job, a verb
-  and a test never launch rekordbox or its background agent; the checks
-  before opening it and after quitting it are `docs/METHOD-local.md`'s. The
-  analysis visit after a landing
-  follows the project's `rekordbox-visit` skill step by step (U173), and a
-  whole sync pass, from the account's new music to filed and analysed,
-  follows the project's `crate-sync` skill (U174). A whole attended sitting,
-  every open attended card driven with worker sessions, follows the project's
-  `attended-orchestrator` skill (U316).
+  and a test never launch rekordbox or its background agent; the checks before
+  opening it and after quitting it are `docs/METHOD-local.md`'s. The analysis
+  visit after a landing follows the project's `rekordbox-visit` skill step by
+  step (U173), and a whole sync pass, from the account's new music to filed
+  and analysed, follows the project's `crate-sync` skill (U174). A whole
+  attended sitting, every open attended card driven with worker sessions,
+  follows the project's `attended-orchestrator` skill (U316).
 - **A backup is needed only when the library is more than five days out of
   date, or when Phillip asks for one**, decided by Phillip on 2026-10-10,
-  relaxing the one day rule of 2026-09-29; `docs/METHOD-local.md` says how
-  a sitting reads the ages.
+  relaxing the one day rule of 2026-09-29; `docs/METHOD-local.md` says how a
+  sitting reads the ages.
 - **A database write gate is approved by the session only when a rehearsal
   matches**, decided 2026-09-29: the same verb driven on a disposable copy
   with library state redirected, then the live plan brought to its gate and
-  approved if its digest equals the rehearsed one. **If it differs, the
-  session still approves**, decided by Phillip on 2026-10-09 ("don't ask for
-  my approval on anything going forward"), after reading the difference and
-  recording it in the sitting record; a rehearsal that fails, or a difference
-  in what is written rather than in a path, is the one case that still stops.
-  The actor on every gate is `session`. **The backup acknowledgment may be
-  minted by the session**, decided by Phillip on 2026-10-09, reversing the
-  2026-09-29 rule: it reads both backup ages, refuses unless both are under
-  five days, and answers as `session`, since any other actor takes the
-  terminal rule, which checks no age. `docs/METHOD-local.md` has the command.
+  approved, and reported, if its digest equals the rehearsed one. **If it
+  differs, the session still approves**, decided by Phillip on 2026-10-09
+  ("don't ask for my approval on anything going forward"), after reading the
+  difference and recording it in the sitting record; a rehearsal that fails,
+  or a difference in what is written rather than in a path, is the one case
+  that still stops. The actor on every gate is `session`. **The backup
+  acknowledgment may be minted by the session**, decided by Phillip on
+  2026-10-09, reversing the 2026-09-29 rule: it reads both backup ages,
+  refuses unless both are under five days, and answers as `session`, since any
+  other actor takes the terminal rule, which checks no age.
+  `docs/METHOD-local.md` has the command.
 - **DJ_tools is read-only for code.** It is the live system until each
   workflow's replacement is proven. Its `docs/` are the exception.
-- **Do not symlink `.venv` into a worktree.** The editable install names the
-  checkout it was installed from, so a worktree would verify code it cannot
-  see.
+- **Do not symlink `.venv` into a worktree.** The editable install names its
+  checkout, so a worktree would verify code it cannot see.
 - **A pull request per unit, merged by the session that opened it once CI is
   green**, decided by U158, replacing the old no pull requests rule; never one
   that waits on a person. **A cloud session merges itself**, attended or not,
@@ -129,13 +130,12 @@ hunt what a green suite cannot see, as METHOD lists.
   in the cloud now and going forward"). METHOD's Committing and merging has
   the rest.
 - **Other builders share the board**, decided by Phillip on 2026-11-04. Never
-  take a card or touch a branch held on `grok/`. One Claude project builds and
-  the other files cards and keeps the decisions page. METHOD's Sharing the
-  board section has the rules, the limits and the definition of done.
+  take a card or touch a branch held on `grok/`. METHOD's Sharing the board
+  section has the rules, the limits and the definition of done.
 - **No em dashes, en dashes, or double hyphens** in any prose, code comment,
   commit message, or issue body. Do not swap a dash for a colon; favor commas,
   and keep colons for a genuine list or definition.
-- **Every doc is kept up to date**, decided by Phillip on 2026-11-07. A change
+- **Every doc is kept up to date**, decided by Phillip on 2026-11-07: a change
   lands with every doc it makes untrue corrected in the same pull request, a
-  user's doc and a session's alike, and its record names each one. METHOD's
-  Docs always current section has the list and the rule.
+  user's doc and a session's alike, its record naming each (METHOD's Docs
+  always current).

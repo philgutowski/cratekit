@@ -1,11 +1,11 @@
 # Method
 
-This file is the operating instruction, the one document a session reads to
-learn how to work here; `CLAUDE.md` is the contract and names the others.
-**The compound engineering plugin is out of the loop**, decided 2026-09-07: no
-`ce-plan`, `ce-work`, `ce-code-review` or `ce-compound`, the rules they
-enforced that were paid for kept below. Native Relay is retired
-(`docs/METHOD-local.md`).
+This file is the operating instruction, deliberately fixed in size, the one
+document a session reads to learn how to work here; `CLAUDE.md` is the
+contract and names the others. **The compound engineering plugin is out of the
+loop**, decided 2026-09-07: no `ce-plan`, `ce-work`, `ce-code-review` or
+`ce-compound`, the rules they enforced that were paid for kept below. Native
+Relay is retired (`docs/METHOD-local.md`).
 
 ## The pipeline, one unit per session
 
@@ -26,9 +26,8 @@ options, and the conservative one is taken.
    unit, `feat(u57): ...`.
 4. **Review.** Locally the built in `/code-review`, in the cloud the
    `fable-reviewer` agent; drive every finding, apply what holds, commit the
-   fixes. Then the mutation table, then the hunts a green suite cannot see. At
-   most two fix rounds, then what is still open is a residual and the unit
-   merges.
+   fixes, at most two rounds (the merge bar). Then the mutation table, then
+   the hunts a green suite cannot see.
 5. **Record.** Each residual is a file, `docs/residuals/<unit>-<slug>.md`, with
    no number, in the form `docs/residuals/README.md` gives; **one that meets
    the board bar says `issue: yes`**, since a finding nobody queued is a
@@ -129,15 +128,18 @@ dropped and why, so a truncation is not read as coverage.
   a zero on a subset is promoted to a full run before it is reported.
 - **The full baseline may be read, never the rest**, decided by Phillip on
   2026-11-13 (U271): the driver reads its full baseline from
-  `cloud_battery.py`'s run record only when it is for this HEAD on a clean
-  tree throughout, this host, boot, checkout and interpreter, the same known
-  failures file by its sha256, and a run of every collected test with no
-  `PYTEST_ADDOPTS`; otherwise it measures and says why. A red record refuses
-  the batch. Subset baselines and the null control are always measured, and
-  `--measure-baseline` measures regardless.
+  `cloud_battery.py`'s run record only when it is for this HEAD, the tree
+  clean throughout that run and now, this host, boot, checkout and
+  interpreter, the same known failures file by its sha256, and a run of every
+  collected test with no `PYTEST_ADDOPTS`; otherwise it measures and says why.
+  A red record refuses the batch. Every subset baseline is measured, the null
+  control runs the full suite in the driver's own environment held to the
+  read collected count, the table says which baseline was read and which
+  measured, and `--measure-baseline` measures regardless.
 - **A zero row on a guard with a user facing surface** needs a composite: pair
-  it with a mutation of the thing it guards and report both counts. **A zero
-  on a maintainer facing guard** gets one line.
+  it with a mutation of the thing it guards and report both counts; a prose
+  argument is not evidence. **A zero on a maintainer facing guard** gets one
+  line.
 - **Write the table into the repository** under `docs/mutation/`, with full
   row descriptions; a table that lives only in a chat is a claim.
 - **A restructuring is held to its recorded kills and its behaviour** (U297).
@@ -152,21 +154,15 @@ dropped and why, so a truncation is not read as coverage.
   `tests/test_duplication.py` fails on a copied block of six logical lines
   past its package's allowance in `tests/ratchets/duplication/`,
   `tests/test_import_rules.py` on an import crossing a package outside the
-  rules, and `scripts/refactor_measure.py` measures both.
+  rules, and `scripts/refactor_measure.py` measures both. `docs/DEVELOPING.md`
+  documents these scripts, the `cloud-unit` skill the order they run in.
 
-`docs/DEVELOPING.md` documents these scripts' commands, and the `cloud-unit`
-skill the order they run in.
-
-## Reading discipline, because context is what you are billed for
-
-Every tool result is re-sent on every later call: thinking is cheap, reading
-is not.
+## Reading discipline, because every tool result is re-sent on every call
 
 - **Never read a file over 400 lines whole.** Grep for the symbol, then read
-  the region around it. The ledger runs to tens of thousands of lines over
-  `docs/residual-findings.md` and its archive `docs/ledger/`: find a finding
-  with `board.py residuals --search WORDS`, which names the file it is in, and
-  read that entry. Never print every heading.
+  the region around it. Find a finding in the ledger, tens of thousands of
+  lines, with `board.py residuals --search WORDS`, which names the file it is
+  in, and read that entry. Never print every heading.
 - **Delegate a sweep, keep the conclusion**, to a read only subagent.
 - **Every report opens with a verdict header under 60 lines**: the verdict, a
   numbered finding table with each finding's classification, and the battery
@@ -175,10 +171,9 @@ is not.
 
 ## Driver rules, every one of them paid for
 
-- **Never pass `-q`,** even to a collection run: `pyproject.toml` sets it, so
-  yours is `-qq` and hides the summary and the collect listing. Use
-  `pytest --tb=no` for counts and `pytest --collect-only -o addopts=` for the
-  collected count.
+- **Never pass `-q`,** even to a collection run: `pyproject.toml` sets it, and
+  `-qq` hides the summary and the collect listing. Use `pytest --tb=no` for
+  counts, `pytest --collect-only -o addopts=` for the collected count.
 - **Check the collected count on every row.** A file that fails to COLLECT
   takes its tests with it and the run still looks green.
 - **One driver at a time, as a tracked background job, with nothing else
@@ -194,8 +189,7 @@ is not.
   line on `" - "` or at a space; both appear inside parametrized ids (U268).
 - **Reword a message mutation, never append.** The suite asserts with `in`.
 - **Mutate to a realistic nearby value, and mutate coefficients too.**
-- **Remove each guard layer alone.** A guard covered by another guard is a
-  guard nothing covers.
+- **Remove each guard layer alone**: one covered by another is covered by nothing.
 - **A timing row carries a repeat count and a pass rate,** never one number.
 - **Every number was measured or the report says it was not.** Offer no
   mechanism for a discrepancy without a measurement showing it operating.
@@ -242,7 +236,8 @@ minutes on a four core container; a venv made before 2026-09-18 needs
 - **Run it on a COMMITTED tree**: `tests/modules/test_reports.py` reads every
   uncommitted and untracked file as U34's own and bans its residual numbers.
 - **A worktree gets its own venv**, `python3.12 -m venv .venv` then
-  `pip install -e '.[dev]'` (CLAUDE.md), and its own scratch directory.
+  `pip install -e '.[dev]'` (CLAUDE.md), and its own scratch directory named
+  for its unit.
 
 ## What CI is for, decided 2026-08-15
 
@@ -261,8 +256,10 @@ blaming the platform for a red run, drive it.
   merged through the API as a merge commit titled `merge(uN): <what landed>`
   ending with the closing trailer. **Never one that waits on a person**: no
   reviewer, no approval. Its body carries no closing keyword, which would
-  bypass the closing check. CI judges its range and the card its head branch
-  names, so a unit a register still owes cannot merge. A refused merge
+  bypass the closing check. CI judges its range and reads the card a merge
+  will close off a `cloud/N-slug` head only, so a unit a register still owes
+  cannot merge; a local unit's pull request is judged on its range, and its
+  close on the push to `main`. A refused merge
   endpoint means a local merge with the same message, pushed. The `cloud-unit`
   skill's step 9 is how.
 - **`git push origin --all` fails on this connection.** Push one branch at a
@@ -275,21 +272,23 @@ blaming the platform for a red run, drive it.
 
       git log origin/main..main --format=%B | grep -inE '\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\b[[:space:]]*#[0-9]+'
 
-  **NEVER WRITE A CLOSING KEYWORD ADJACENT TO AN ISSUE NUMBER, even to quote
-  one, even inside backticks.** Put words between them, or name the unit. A
-  branch already carrying one cannot be made safe by the merge commit: rewrite
-  those bodies, or expect the close and reopen the issue after the push.
+**NEVER WRITE A CLOSING KEYWORD ADJACENT TO AN ISSUE NUMBER, even to quote
+one, even inside backticks, even to say it is unsafe.** Put words between
+them, or name the unit. A branch already carrying one cannot be made safe by
+the merge commit: rewrite those bodies, or expect the close and reopen the
+issue after the push.
 - **Residual numbers are APPEND ONLY; a number, once given, is that finding's
   for life.** It is given at landing and nowhere else (U124): a unit files its
   residuals unnumbered in `docs/residuals/`, and `board.py residuals --land`,
   which refuses off `main`, gives each the next number past the highest in the
-  ledger, so numbers on `main` never move and gaps are fine. Issue titles carry
-  the numbers, which is why a renumber is forbidden; a branch built before U124
-  that numbers its own entries takes fresh numbers at the merge. The ledger is
-  the working file `docs/residual-findings.md` and its archive `docs/ledger/`,
-  files of at most 5,000 lines by number range (U314); `--land` archives the
-  working file's oldest entries when it passes that, and an amendment to an
-  archived entry is made in its archive file. Verify a merge with:
+  ledger, so numbers on `main` never move and gaps are fine. Issue titles
+  carry the numbers, which is why a renumber is forbidden; a branch built
+  before U124 that numbers its own entries takes fresh numbers at the merge.
+  The ledger is the working file `docs/residual-findings.md` and its archive
+  `docs/ledger/`, files of at most 5,000 lines by number range (U314);
+  `--land` archives the working file's oldest entries when it passes that, and
+  an amendment to an archived entry is made in its archive file. Verify a
+  merge with:
 
       .venv/bin/python scripts/board.py residuals --check --against origin/main   # no heading duplicated or removed
 
@@ -323,9 +322,9 @@ reversed with a reason, or a trap that cost real time; routine work files
 nothing. `CONCEPTS.md` gains a term when a unit gives a word a specific
 meaning here. **Explanations are batched per phase**, decided 2026-09-07: the
 rule that every change ships with an explanation Phillip can give in an
-interview is met when a phase merges and he runs the `code-explainer` skill
-over its range once; units land with commit messages and the record, and a
-session does not run it.
+interview is met per phase: Phillip runs the `code-explainer` skill over a
+merged phase once, when he wants it; units land with commit messages and the
+record, and a session does not run it.
 
 ## The cloud lane, decided 2026-10-27
 
@@ -340,17 +339,16 @@ rekordbox, or Phillip at the desktop) is built locally, set aside with a
 comment carrying the steps; a card labelled `attended` is never offered.
 
 **The queue** is every open unit and residual card that is ready, read by
-`board.py cloud` off each card's comments over REST; a session writes no label
-and no status. Its hold is its `Started` comment, its other steps comments
-under the skill's headings, and Phillip's answer any comment without the
-session footer after the question, or one headed `Answer from Phillip`. **Ten
-lanes, and the building project runs at most ten threads at once**, Phillip's
-decision of 2026-11-21 (`CLOUD_LANES`). The coordinator counts its own running
-threads, not the held count `board.py cloud` prints, which drops a card whose
-thread asked a question and kept building. A hold beyond the lane count
-withdraws, the earliest keeping theirs; a hold with no comment for eight hours
-is a dead session, resumed from its pushed branch. Each worker merges the
-latest `main` and runs the battery again before it merges.
+`board.py cloud` off each card's comments over REST, which carry the skill's
+headings; a session writes no label and no status. Phillip's answer is any
+comment without the session footer after a question, or `Answer from Phillip`.
+**Ten lanes, and the building project runs at most ten threads at once**,
+Phillip's decision of 2026-11-21 (`CLOUD_LANES`). The coordinator counts its
+own running threads, not the held count `board.py cloud` prints, which drops a
+card whose thread asked a question and kept building. A hold beyond the lane
+count withdraws, the earliest keeping theirs; a hold with no comment for eight
+hours is a dead session, resumed from its pushed branch. Each worker merges
+the latest `main` and runs the battery again before it merges.
 
 **A decision that is Phillip's goes on the decisions page**, decided
 2026-10-28, by way of the card as CLAUDE.md says: a brainstorm waits for his
@@ -358,10 +356,10 @@ answer, a question does not stop the build, and any session, attended or not,
 asks this way rather than stopping (`docs/decisions-page.md`).
 
 **Opus 5.5 brainstorms, plans and builds, at high effort, or medium for a
-small card; Fable at high effort reviews**, as the `fable-reviewer` agent
-whatever the session runs; a session on another model hands the plan and the
-build to the `opus-builder` agent. The plan is posted on the card, never in
-plan mode, which waits for an approval nobody gives. **When Fable is out of
+small card, the coordinator starting each thread so; Fable at high effort
+reviews**, as the `fable-reviewer` agent whatever the session runs. A session
+on another model hands the plan and the build to the `opus-builder` agent, and
+the plan goes on the card, never plan mode (the skill). **When Fable is out of
 usage, Opus 5.5 at high effort reviews in its place**, decided by Phillip on
 2026-11-08, the same definition and merge bar, named in the record and the
 pull request; only a usage limit refusal allows it. No follow up Fable pass is
@@ -380,7 +378,7 @@ for a merge battery until Phillip answers #702 (U273). `docs/DEVELOPING.md`
 has the mechanics. Nothing is skipped or marked, a newly failing test is the
 branch's, and one that fails only under a parallel run on ext4 is rerun alone
 before it is called either. The macOS battery is owed on a Mac, in each
-record's OWED paragraph.
+record's OWED paragraph, and runs whenever Phillip next builds or sits locally.
 
 **GitHub GraphQL is refused on the container**: `gh issue`, `gh repo`,
 `gh project` and `gh api --paginate` fail, `board.py` reads issues over REST,
@@ -468,6 +466,8 @@ mutation tables are records of what was true when written, never rewritten.
    because` and the reason.
 4. The review reports a doc the branch made untrue, quoting the line and what
    the code now does; it is fixed in the fix round, not filed as a residual.
+   The merge bar's floor still decides what holds a merge of code; this rule
+   is part of a card being done.
 
 ## Local and attended work, releases
 
@@ -478,10 +478,6 @@ asks and on his Mac, since a cloud session's proxy refuses tag pushes.
 ## Do not touch
 
 U30's board state, U20, R-9, A1, A2.
-
-**The conformance branch is UNPARKED as of 2026-09-07**: a unit on the board
-that lands the way any unit does. Until it lands, its `write/metadata.py` soft
-delete defect is still live on main, and the branch is 377 commits behind.
 
 **U29 stays attended, for a reason that will not expire.** Its brief says
 "attended per workflow, do not batch cutovers", and it requires each
