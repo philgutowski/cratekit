@@ -14,8 +14,8 @@ import pytest
 
 from cratekit.core import config, tags
 from cratekit.intake import ingest, landing, pipeline
-from tests.test_landing import cfg as cfg  # noqa: PLC0414 - the fixture
-from tests.test_landing import silence as silence  # noqa: PLC0414 - the fixture
+from tests.test_landing import cfg as cfg
+from tests.test_landing import silence as silence
 from tests.xml_fixtures import _fresh_xml
 
 HEADED = "01A - 112 - Ain't Gonna Hurt Nobody"
@@ -60,21 +60,10 @@ def _no_tempo(body: bytes) -> None:
         assert b'AverageBpm="0.00"' in row
 
 
-def test_a_title_headed_file_with_no_tempo_elsewhere_lands_named_as_its_title(
-    cfg, silence, tmp_path
-):
-    name, body, target = _land(
-        cfg, silence, tmp_path, f"{HEADED}.flac", title=HEADED, initialkey="01A"
-    )
-    assert name == HEADED
-    _no_tempo(body)
-    # The file is not touched: the head was read as text, never written back.
-    assert tags.read_tag(target, "title") == HEADED
-
-
 @pytest.mark.parametrize(
     ("filename", "fields", "named", "tonality"),
     [
+        (f"{HEADED}.flac", {"title": HEADED, "initialkey": "01A"}, HEADED, None),
         ("Body.flac", {"title": "08A - 124 - Body"}, "08A - 124 - Body", None),
         # The Name is what Reload Tags reads, so the title's head wins over the key tag.
         ("Body.flac", {"title": "08A - 124 - Body", "initialkey": "3B"}, "08A - 124 - Body", "3B"),
@@ -90,25 +79,21 @@ def test_a_title_headed_file_with_no_tempo_elsewhere_lands_named_as_its_title(
         ("Body.flac", {"title": "Body", "initialkey": "08A"}, "Body", None),
         # An acquired marker at the END of the stem is not doubled into a head.
         ("Body [MP3].flac", {"title": "Body"}, "Body", None),
+        # A lossy file keeps its marker on all three surfaces.
+        ("08A - 124 - [MP3] Body.flac", {"title": "08A - 124 - [MP3] Body"}, "08A - 124 - [MP3] Body", None),
     ],
 )
 def test_the_name_carries_the_head_and_nothing_invents_a_tempo(
     cfg, silence, tmp_path, filename, fields, named, tonality
 ):
-    name, body, _ = _land(cfg, silence, tmp_path, filename, **fields)
+    name, body, target = _land(cfg, silence, tmp_path, filename, **fields)
     assert name == named
     _no_tempo(body)
     if tonality:
         assert f'Tonality="{tonality}"'.encode() in body
-
-
-def test_a_lossy_file_keeps_its_marker_on_all_three_surfaces(cfg, silence, tmp_path):
-    headed = "08A - 124 - [MP3] Body"
-    name, body, target = _land(cfg, silence, tmp_path, f"{headed}.flac", title=headed)
-    assert target.stem == headed
-    assert tags.read_tag(target, "title") == headed
-    assert name == headed
-    _no_tempo(body)
+    # The file is not touched: the head was read as text, never written back.
+    assert target.name == filename
+    assert tags.read_tag(target, "title") == fields["title"]
 
 
 def test_a_second_landing_of_the_same_file_renders_the_same_name(cfg, silence, tmp_path):

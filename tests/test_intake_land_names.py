@@ -1,9 +1,7 @@
 """U110: an INBOX batch is named by its date and source, never a run identifier.
 
-The real dispatcher, with ``tests/test_intake_land.py``'s fixtures. The batch
-folder and playlist take ``<date> <source>``, a second landing that day `` 2``,
-``--name`` wins, and the intake file keeps the identifier the marks read. The
-date seam is pinned so a run across midnight reads one date.
+A second landing that day takes `` 2``, ``--name`` wins, and the intake file keeps
+the identifier the marks read. The date is pinned so one run reads one date.
 """
 
 from __future__ import annotations
@@ -22,9 +20,9 @@ from cratekit.intake import cli as intake_cli
 from cratekit.label import go
 from cratekit.sync import mark_cli, playlists
 from tests.test_intake_land import GATE, _drive, _land, _manifest, _music, _stage
-from tests.test_intake_land import cfg as cfg  # noqa: PLC0414 - the fixture, re-exported
-from tests.test_intake_land import export as export  # noqa: PLC0414 - the fixture
-from tests.test_intake_land import silence as silence  # noqa: PLC0414 - the fixture
+from tests.test_intake_land import cfg as cfg
+from tests.test_intake_land import export as export
+from tests.test_intake_land import silence as silence
 
 DAY = date(2026, 10, 3)
 #: A sync pass as ``intake missing --run`` names it.
@@ -93,8 +91,13 @@ def test_a_tidal_playlist_sync_landing_is_named_and_its_intake_file_keeps_the_pa
     _queued(cfg, "pl-a", source_id=playlists.SOURCE_ID)
     _queued(cfg, "pl-other", source_id=playlists.SOURCE_ID, run_id="2026-10-02T090000Z-ffff")
     _stage(cfg, silence, "One.flac")
-    envelope = _applied(export, "--pass", PASS)
     batch = "2026-10-03 Tidal playlists"
+    # The gate screen names the playlist before anything moves.
+    code, refused = _drive(_land(export, "--pass", PASS))
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["shown"]["playlist"] == batch
+    assert refused["cause"]["detail"]["shown"]["intake file"].endswith(f"{PASS}_inboxed.xml")
+    envelope = _applied(export, "--pass", PASS)
     assert (_music(cfg, batch) / "One.flac").is_file()
     intake = Path(envelope["pending_human_action"]["artifact"])
     assert intake == Path(cfg.library.root) / f"{PASS}_inboxed.xml"
@@ -182,23 +185,18 @@ def test_a_default_name_taken_after_the_gate_is_refused_under_the_lock(
 
 
 def test_a_landing_whose_intake_file_another_landing_is_writing_is_refused(cfg, silence, export):
-    """The landing takes the intake lock itself, so one pass under another name waits."""
+    """The landing takes the intake lock itself, so one pass under another name
+    waits: the intake file is keyed on the pass, so it needs its own lock."""
     _stage(cfg, silence, "One.flac")
     with landing.intake_lock(PASS):
         code, refused = _drive(["-d", f"{GATE}=apply", *_land(export, "--name", "Other", "--pass", PASS)])
-
+        with pytest.raises(CratekitError) as caught:
+            with landing.intake_lock(PASS):
+                pass
     assert refused["cause"]["reason"] == "job-driver-held", refused
     assert refused["cause"]["detail"]["intake"] == PASS
     assert (Path(cfg.paths.download_staging) / "One.flac").is_file()
     assert not (Path(cfg.library.root) / f"{PASS}_inboxed.xml").exists()
-
-
-def test_two_landings_of_one_pass_under_two_names_share_one_intake_lock(cfg):
-    """The intake file is keyed on the pass, so it needs its own lock."""
-    with landing.intake_lock(PASS):
-        with pytest.raises(CratekitError) as caught:
-            with landing.intake_lock(PASS):
-                pass
     assert caught.value.cause.reason == "job-driver-held"
     assert caught.value.cause.detail["intake"] == PASS
     # A batch named exactly as a pass is a different lock.
@@ -229,16 +227,6 @@ def test_name_and_pass_together_name_the_batch_and_the_file_apart(cfg, silence, 
     envelope = _applied(export, "--name", "Friday warmup", "--pass", PASS)
     assert (_music(cfg, "Friday warmup") / "One.flac").is_file()
     assert Path(envelope["pending_human_action"]["artifact"]).name == f"{PASS}_inboxed.xml"
-
-
-def test_the_gate_screen_names_the_playlist_before_anything_moves(cfg, silence, export):
-    _queued(cfg, "pl-a", source_id=playlists.SOURCE_ID)
-    _stage(cfg, silence, "One.flac")
-    code, refused = _drive(_land(export, "--pass", PASS))
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    shown = refused["cause"]["detail"]["shown"]
-    assert shown["playlist"] == "2026-10-03 Tidal playlists"
-    assert shown["intake file"].endswith(f"{PASS}_inboxed.xml")
 
 
 @pytest.mark.parametrize("given", ["", " padded", ".hidden", "a/b", "a\\b"])

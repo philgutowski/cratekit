@@ -1,9 +1,8 @@
 """U146 on the native medium: a heart on an owned track joins All Favorites and its month.
 
-R4 and R6's landing half on the native suite's disposable database: a track
-the library holds is hearted, the hearts job reports it owned, and ``crate
-intake land --pass`` places it under the landing's own gate, with or without a
-file to land. Nothing is downloaded or removed, and nothing is real (D1).
+``crate intake land --pass`` places a hearted track the library holds under the
+landing's own gate, with or without a file to land, on the native suite's
+disposable database. Nothing is downloaded or removed, and nothing is real (D1).
 """
 
 from __future__ import annotations
@@ -18,9 +17,7 @@ from cratekit.favorites import backfill
 from cratekit.intake import land_cli
 from tests.cli_drive import drive
 from tests.test_intake_land_account_playlists_native import PASS, _stage
-from tests.test_intake_land_account_playlists_native import (
-    pinned_day as pinned_day,  # noqa: PLC0414
-)
+from tests.test_intake_land_account_playlists_native import pinned_day as pinned_day
 from tests.test_intake_land_hearts_native import (
     NOV,
     PINK_ID,
@@ -33,29 +30,25 @@ from tests.test_intake_land_hearts_native import (
     _home,
     hearts_swept,
 )
-from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
+from tests.test_intake_land_native import _platform_seams as _platform_seams
 from tests.test_intake_land_native import _query, _two_acts
-from tests.test_intake_land_native import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
-from tests.test_intake_land_native import acknowledged as acknowledged  # noqa: PLC0414
-from tests.test_intake_land_native import library as library  # noqa: PLC0414
-from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
-from tests.test_intake_land_native import native_library as native_library  # noqa: PLC0414
-from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
+from tests.test_intake_land_native import _release_process_locks as _release_process_locks
+from tests.test_intake_land_native import acknowledged as acknowledged
+from tests.test_intake_land_native import library as library
+from tests.test_intake_land_native import machine as machine
+from tests.test_intake_land_native import native_library as native_library
+from tests.test_intake_land_native import silence as silence
 
 LAND = ["intake", "land", "--pass", PASS]
 
 
+def _owned_path(cfg: config.Config, title: str) -> Path:
+    return Path(cfg.library.root) / cfg.library.music_dir / "Processed_Tracks" / "2025" / f"{title}.flac"
+
+
 def _owned(cfg: config.Config, silence: Path, title: str) -> str:
     """A track the library holds, two folders deep with its row, as the source system filed it."""
-    path = (
-        Path(cfg.library.root)
-        / cfg.library.music_dir
-        / "Processed_Tracks"
-        / "2025"
-        / f"{title}.flac"
-    )
+    path = _owned_path(cfg, title)
     path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(silence, path)
     assert tags.write_tags(path, {"title": title, "artist": "Probe", "genre": "Deep House"})
@@ -74,14 +67,8 @@ def _content_count(cfg: config.Config) -> int:
 
 def _live(cfg: config.Config, playlist_id: str) -> list[str]:
     """The members a person sees, the removed rows left out, which ``_favorites`` keeps."""
-    return [
-        str(row[0])
-        for row in _query(
-            cfg,
-            "SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? AND rb_local_deleted = 0",
-            playlist_id,
-        )
-    ]
+    live = "SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? AND rb_local_deleted = 0"
+    return [str(row[0]) for row in _query(cfg, live, playlist_id)]
 
 
 def _landed_ok() -> tuple[dict, dict]:
@@ -89,6 +76,14 @@ def _landed_ok() -> tuple[dict, dict]:
     code, acted, refused = _two_acts(LAND)
     assert code == int(ExitCode.OK), acted
     return acted, refused
+
+
+def _no_op() -> dict:
+    """One run of the landing, which must succeed having done nothing."""
+    code, acted = drive(LAND)
+    assert code == int(ExitCode.OK), acted
+    assert acted["outcome"] == "no_op"
+    return acted
 
 
 def _hold(cfg: config.Config, source_id: str, row: str) -> None:
@@ -155,11 +150,16 @@ def test_an_owned_track_hearted_today_joins_all_favorites_and_its_month_with_not
     assert record.state is session.SessionState.CLOSED
     assert source_id
     # Run again, every owned heart is placed, so it asks nothing and ends no-op.
-    code, again = drive(LAND)
-    assert code == int(ExitCode.OK), again
-    assert again["outcome"] == "no_op"
-    assert again["data"]["totals"] == {"count": 0}
+    assert _no_op()["data"]["totals"] == {"count": 0}
     assert _favorites(cfg, folder_id) == {SOURCE: ["Owned"], "2026-11": ["Owned"]}
+    # Removed from All Favorites by hand and still hearted, it joins again.
+    _mark_removed(cfg, source_id, row)
+    assert _live(cfg, source_id) == []
+    hearts_swept(cfg, {"Owned": NOV})
+    acted, _refused = _landed_ok()
+    assert _live(cfg, source_id) == [row]
+    assert _favorites(cfg, folder_id)["2026-11"] == ["Owned"]
+    assert acted["data"]["totals"]["hearts placed"] == 1, "the month already held it"
 
 
 def test_a_pass_with_no_hearts_job_opens_nothing_and_ends_no_op(native_library, monkeypatch):
@@ -174,27 +174,8 @@ def test_a_pass_with_no_hearts_job_opens_nothing_and_ends_no_op(native_library, 
         return real(*args, **kwargs)
 
     monkeypatch.setattr(rb_writer, "open_db", counting)
-    code, acted = drive(LAND)
-    assert code == int(ExitCode.OK), acted
-    assert acted["outcome"] == "no_op"
+    _no_op()
     assert opened == []
-
-
-def test_a_track_removed_from_all_favorites_by_hand_and_still_hearted_joins_again(
-    native_library, silence
-):
-    cfg, _root_id = native_library
-    folder_id, source_id = _home(cfg)
-    row = _owned(cfg, silence, "Owned")
-    hearts_swept(cfg, {"Owned": NOV})
-    _landed_ok()
-    _mark_removed(cfg, source_id, row)
-    assert _live(cfg, source_id) == []
-    hearts_swept(cfg, {"Owned": NOV})
-    acted, _refused = _landed_ok()
-    assert _live(cfg, source_id) == [row]
-    assert _favorites(cfg, folder_id)["2026-11"] == ["Owned"]
-    assert acted["data"]["totals"]["hearts placed"] == 1, "the month already held it"
 
 
 def test_an_owned_heart_joins_in_the_same_commit_as_a_downloaded_one(native_library, silence):
@@ -236,25 +217,17 @@ def test_an_owned_heart_all_favorites_holds_is_no_write_beside_a_landing(native_
     assert "2026-09" not in _favorites(cfg, folder_id)
 
 
-def test_an_owned_heart_whose_job_froze_no_date_key_is_left_to_the_backfill(
-    native_library, silence
-):
-    """The landing has no listing to date it from, and Undated is a placement nothing undoes."""
-    cfg, _root_id = native_library
-    folder_id, _source_id = _home(cfg)
-    _owned(cfg, silence, "Old")
-    hearts_swept(cfg, {"Old": UNKNOWN})
-    code, acted = drive(LAND)
-    assert code == int(ExitCode.OK), acted
-    assert acted["outcome"] == "no_op"
-    assert _favorites(cfg, folder_id) == {SOURCE: []}
-
-
 def test_an_owned_heart_the_account_dates_nowhere_goes_to_undated(native_library, silence):
+    """Once acknowledged: an owned only pass refuses before the gate without it."""
     cfg, _root_id = native_library
     folder_id, _source_id = _home(cfg)
     _owned(cfg, silence, "Dateless")
     hearts_swept(cfg, {"Dateless": None})
+    session.ack_path(cfg).unlink()
+    code, refused = drive(LAND)
+    assert code == int(ExitCode.ACK_REQUIRED), refused
+    assert _favorites(cfg, folder_id) == {SOURCE: []}
+    session.record_acknowledgment(cfg, terminal=lambda: True)
     acted, _refused = _landed_ok()
     assert _favorites(cfg, folder_id) == {SOURCE: ["Dateless"], "Undated": ["Dateless"]}
 
@@ -263,37 +236,23 @@ def test_with_no_all_favorites_an_owned_only_pass_ends_no_op_and_says_why(native
     cfg, _root_id = native_library
     _owned(cfg, silence, "Owned")
     hearts_swept(cfg, {"Owned": NOV})
-    code, acted = drive(LAND)
-    assert code == int(ExitCode.OK), acted
-    assert acted["outcome"] == "no_op"
+    acted = _no_op()
     (note,) = [w for w in acted["warnings"] if w["code"] == land_cli.FAVORITES_SKIPPED]
     assert "no owned heart was placed" in note["message"]
     assert _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name = '2026-11'") == []
 
 
-def test_an_owned_only_pass_refuses_before_the_gate_with_no_acknowledgment(native_library, silence):
+def test_owned_hearts_an_empty_landing_cannot_place_alone_are_no_write(native_library, silence):
+    """A job that froze no date key has no listing to date it from, and Undated is
+    a placement nothing undoes. A file two active rows claim answers nothing
+    (U128), never the first duplicate. Only what All Favorites lacks: a month for
+    a held heart is the backfill's to give."""
     cfg, _root_id = native_library
-    folder_id, _source_id = _home(cfg)
-    _owned(cfg, silence, "Owned")
-    hearts_swept(cfg, {"Owned": NOV})
-    session.ack_path(cfg).unlink()
-    code, refused = drive(LAND)
-    assert code == int(ExitCode.ACK_REQUIRED), refused
-    assert _favorites(cfg, folder_id) == {SOURCE: []}
-
-
-def test_an_owned_heart_whose_file_two_rows_claim_is_not_placed_by_a_guess(native_library, silence):
-    """A file two active rows claim answers nothing (U128), never the first duplicate."""
-    cfg, _root_id = native_library
-    folder_id, _source_id = _home(cfg)
+    folder_id, source_id = _home(cfg)
+    _owned(cfg, silence, "Old")
+    _hold(cfg, source_id, _owned(cfg, silence, "Held"))
     _owned(cfg, silence, "Twice Imported")
-    path = (
-        Path(cfg.library.root)
-        / cfg.library.music_dir
-        / "Processed_Tracks"
-        / "2025"
-        / "Twice Imported.flac"
-    )
+    path = _owned_path(cfg, "Twice Imported")
     # A second import of the same file: a row made elsewhere and pointed at it.
     elsewhere = path.with_name("Twice Imported copy.flac")
     shutil.copyfile(silence, elsewhere)
@@ -306,11 +265,9 @@ def test_an_owned_heart_whose_file_two_rows_claim_is_not_placed_by_a_guess(nativ
         rb_writer.close_db(handle)
     elsewhere.unlink()
     assert len(_query(cfg, "SELECT ID FROM djmdContent WHERE FolderPath = ?", str(path))) == 2
-    hearts_swept(cfg, {"Twice Imported": NOV})
-    code, acted = drive(LAND)
-    assert code == int(ExitCode.OK), acted
-    assert acted["outcome"] == "no_op"
-    assert _favorites(cfg, folder_id) == {SOURCE: []}
+    hearts_swept(cfg, {"Old": UNKNOWN, "Held": NOV, "Twice Imported": NOV})
+    _no_op()
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Held"]}
 
 
 def test_landing_an_older_pass_places_no_owned_heart_once_a_later_hearts_job_ran(
@@ -322,25 +279,8 @@ def test_landing_an_older_pass_places_no_owned_heart_once_a_later_hearts_job_ran
     _owned(cfg, silence, "Dropped")
     hearts_swept(cfg, {"Dropped": NOV})
     hearts_swept(cfg, {"Other": NOV}, run_id="2026-10-04T101500Z-ef56")
-    code, acted = drive(LAND)
-    assert code == int(ExitCode.OK), acted
-    assert acted["outcome"] == "no_op"
+    _no_op()
     assert _favorites(cfg, folder_id) == {SOURCE: []}
-
-
-def test_an_owned_heart_all_favorites_holds_without_a_month_is_no_write_for_an_empty_landing(
-    native_library, silence
-):
-    """Only what All Favorites lacks: a month for a held heart is the backfill's to give."""
-    cfg, _root_id = native_library
-    folder_id, source_id = _home(cfg)
-    row = _owned(cfg, silence, "Held")
-    _hold(cfg, source_id, row)
-    hearts_swept(cfg, {"Held": NOV})
-    code, acted = drive(LAND)
-    assert code == int(ExitCode.OK), acted
-    assert acted["outcome"] == "no_op"
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Held"]}
 
 
 def test_an_owned_heart_joins_beside_a_landed_file_that_is_no_heart(native_library, silence):

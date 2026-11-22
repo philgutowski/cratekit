@@ -1,8 +1,7 @@
 """U149 at the landing: each account playlist a native landing writes gets its custom playlist twin.
 
 In the landing's one commit, into ``Custom Playlists <landing year>``, with the
-INBOX playlist's rows, marked as a pair. On the native suite's disposable
-database. Nothing here is real (D1).
+INBOX playlist's rows, marked as a pair. Nothing here is real (D1).
 """
 
 from __future__ import annotations
@@ -16,19 +15,15 @@ from cratekit.modules.outbound import pairs
 from cratekit.sync import twins
 from tests.cli_drive import drive
 from tests.test_intake_land_account_playlists_native import _inbox, _land, _stage, swept
-from tests.test_intake_land_account_playlists_native import (
-    pinned_day as pinned_day,  # noqa: PLC0414
-)
+from tests.test_intake_land_account_playlists_native import pinned_day as pinned_day
 from tests.test_intake_land_native import GATE, _members, _query, _two_acts
-from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_intake_land_native import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
-from tests.test_intake_land_native import acknowledged as acknowledged  # noqa: PLC0414
-from tests.test_intake_land_native import library as library  # noqa: PLC0414
-from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
-from tests.test_intake_land_native import native_library as native_library  # noqa: PLC0414
-from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
+from tests.test_intake_land_native import _platform_seams as _platform_seams
+from tests.test_intake_land_native import _release_process_locks as _release_process_locks
+from tests.test_intake_land_native import acknowledged as acknowledged
+from tests.test_intake_land_native import library as library
+from tests.test_intake_land_native import machine as machine
+from tests.test_intake_land_native import native_library as native_library
+from tests.test_intake_land_native import silence as silence
 
 FOLDER = twins.folder_name(2026)
 
@@ -160,17 +155,8 @@ def test_a_folder_made_after_the_gate_refuses_and_moves_nothing(native_library, 
 
 def test_a_plan_with_no_account_playlist_plans_no_twin_and_digests_as_before():
     plan = native.NativePlan(
-        tree_id="t",
-        root_id="r",
-        root_name="INBOX",
-        playlist="b",
-        database=Path("x"),
-        device_id="d",
-        master_db_id="m",
-        base_drive=None,
-        current_drive=None,
-        rows=(),
-        link=None,
+        tree_id="t", root_id="r", root_name="INBOX", playlist="b", database=Path("x"),
+        device_id="d", master_db_id="m", base_drive=None, current_drive=None, rows=(), link=None,
         digest="",
     )
     assert "twins" not in native.identity(plan)

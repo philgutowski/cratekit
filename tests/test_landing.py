@@ -108,15 +108,10 @@ def test_three_tagged_files_land_in_one_intake_file(cfg, silence, export):
     planned = landing.plan(_staging(cfg), cfg, BATCH)
     assert [p.name for p in planned.items] == ["One.flac", "Three.flac", "Two.flac"]
     result = _land(cfg, export, planned)
-    assert sorted(p.name for p in _batch_dir(cfg).iterdir()) == [
-        "One.flac",
-        "Three.flac",
-        "Two.flac",
-    ]
+    assert sorted(p.name for p in _batch_dir(cfg).iterdir()) == ["One.flac", "Three.flac", "Two.flac"]
     assert not any(_staging(cfg).glob("*.flac"))
     assert result.refused == ()
-    assert len(result.moved) == 3
-    assert len(result.placed) == 3
+    assert len(result.moved) == len(result.placed) == 3
     assert len({item.track_id for item in result.placed}) == 3
     body = _destination(cfg).read_bytes()
     assert b'<COLLECTION Entries="3">' in body
@@ -157,8 +152,7 @@ def test_a_file_with_no_genre_or_energy_lands_in_the_fallback_bucket(cfg, silenc
     assert result.refused == ()
     placed = {item.path.name: item for item in result.placed}
     assert set(placed) == {"Bare.flac", "Tagged.flac"}
-    assert placed["Bare.flac"].bucket
-    assert placed["Bare.flac"].sub
+    assert placed["Bare.flac"].bucket and placed["Bare.flac"].sub
     assert placed["Bare.flac"].bucket != placed["Tagged.flac"].bucket
 
 
@@ -214,28 +208,25 @@ def test_an_export_that_cannot_be_spliced_is_refused_before_any_move(
     assert not _destination(cfg).exists()
 
 
-def test_an_added_file_makes_the_plan_stale(cfg, silence, export):
-    first = _stage(cfg, silence, "One.flac")
-    planned = landing.plan(_staging(cfg), cfg, BATCH)
-    _stage(cfg, silence, "Late.flac")
-    assert _refused(cfg, export, planned).reason == "decision-stale"
-    assert first.is_file()
-    assert not _destination(cfg).exists()
-
-
-@pytest.mark.parametrize("retag", [True, False], ids=["replaced", "touched"])
-def test_a_file_changed_under_the_same_name_makes_the_plan_stale(cfg, silence, export, retag):
+@pytest.mark.parametrize("change", ["added", "replaced", "touched"])
+def test_an_added_file_or_one_changed_under_the_same_name_makes_the_plan_stale(
+    cfg, silence, export, change
+):
     """The digest is not of names alone: new bytes, or the same size touched."""
     staged = _stage(cfg, silence, "One.flac")
     planned = landing.plan(_staging(cfg), cfg, BATCH)
-    if retag:
-        tags.write_tags(staged, {"title": "A Different Recording, Longer Title"})
-    stat = staged.stat()
-    os.utime(staged, ns=(stat.st_atime_ns, stat.st_mtime_ns + 5_000_000_000))
-    if not retag:
-        assert staged.stat().st_size == stat.st_size
+    if change == "added":
+        _stage(cfg, silence, "Late.flac")
+    else:
+        if change == "replaced":
+            tags.write_tags(staged, {"title": "A Different Recording, Longer Title"})
+        stat = staged.stat()
+        os.utime(staged, ns=(stat.st_atime_ns, stat.st_mtime_ns + 5_000_000_000))
+        if change == "touched":
+            assert staged.stat().st_size == stat.st_size
     assert _refused(cfg, export, planned).reason == "decision-stale"
     assert staged.is_file()
+    assert not _destination(cfg).exists()
 
 
 def test_the_listing_is_flat_audio_only_and_skips_dotfiles(cfg, silence):
@@ -263,9 +254,7 @@ def test_an_empty_folder_or_a_batch_name_that_is_no_plain_folder_is_refused(cfg,
     assert excinfo.value.cause.reason == "intake-list-unusable"
 
 
-def test_a_staging_folder_on_another_device_is_refused_by_name(
-    cfg, silence, export, monkeypatch
-):
+def test_a_staging_folder_on_another_device_is_refused_by_name(cfg, silence, export, monkeypatch):
     staged = _stage(cfg, silence, "One.flac")
     planned = landing.plan(_staging(cfg), cfg, BATCH)
     staging = _staging(cfg)
@@ -279,9 +268,7 @@ def test_a_staging_folder_on_another_device_is_refused_by_name(
     assert not (Path(cfg.library.root) / cfg.library.music_dir).exists()
 
 
-def test_an_absent_library_root_is_refused_before_the_device_probe(
-    cfg, silence, export
-):
+def test_an_absent_library_root_is_refused_before_the_device_probe(cfg, silence, export):
     staged = _stage(cfg, silence, "One.flac")
     planned = landing.plan(_staging(cfg), cfg, BATCH)
     root = Path(cfg.library.root)
@@ -322,16 +309,18 @@ def test_every_file_refused_writes_nothing(cfg, silence, export):
     assert not _destination(cfg).exists()
 
 
-def test_a_move_that_fails_part_way_names_what_moved_and_writes_no_xml(
-    cfg, silence, export, monkeypatch
+@pytest.mark.parametrize("failing", ["A.flac", "B.flac"], ids=["first", "part-way"])
+def test_a_move_that_fails_names_what_moved_and_writes_no_xml(
+    cfg, silence, export, monkeypatch, failing
 ):
+    """A first move that fails leaves no batch folder either."""
     for name in ("A.flac", "B.flac", "C.flac"):
         _stage(cfg, silence, name)
     planned = landing.plan(_staging(cfg), cfg, BATCH)
     real = os.replace
 
     def replace(src, dst):
-        if Path(src).name == "B.flac":
+        if Path(src).name == failing:
             raise PermissionError(13, "Permission denied", str(src))
         return real(src, dst)
 
@@ -339,7 +328,12 @@ def test_a_move_that_fails_part_way_names_what_moved_and_writes_no_xml(
     cause = _refused(cfg, export, planned)
     assert cause.reason == "path-permission-denied"
     assert "A.flac" in cause.message
-    assert cause.detail["moved"] == [str(_batch_dir(cfg) / "A.flac")]
+    if failing == "A.flac":
+        assert cause.detail["moved"] == []
+        assert "nothing was moved" in cause.message
+        assert not _batch_dir(cfg).exists()
+    else:
+        assert cause.detail["moved"] == [str(_batch_dir(cfg) / "A.flac")]
     assert not _destination(cfg).exists()
     assert (_staging(cfg) / "B.flac").is_file()
     assert (_staging(cfg) / "C.flac").is_file()
@@ -365,16 +359,12 @@ def test_a_splice_that_fails_after_the_moves_names_them_and_leaves_no_xml(
     assert sorted(p.name for p in _batch_dir(cfg).iterdir()) == ["A.flac", "B.flac"]
 
 
-def test_a_refusal_from_place_files_keeps_its_own_reason(
-    cfg, silence, export, monkeypatch
-):
+def test_a_refusal_from_place_files_keeps_its_own_reason(cfg, silence, export, monkeypatch):
     _stage(cfg, silence, "A.flac")
     planned = landing.plan(_staging(cfg), cfg, BATCH)
 
     def refusing(*_args, **_kwargs):
-        raise ingest.refuse(
-            "intake-list-unusable", "a refusal only place_files can make"
-        )
+        raise ingest.refuse("intake-list-unusable", "a refusal only place_files can make")
 
     monkeypatch.setattr(ingest, "place_files", refusing)
     cause = _refused(cfg, export, planned)
@@ -394,22 +384,6 @@ def test_a_batch_where_nothing_lands_leaves_no_batch_folder(cfg, silence, export
     # Not even the music folder: the refusal comes before any folder is made.
     assert not _batch_dir(cfg).parent.exists()
     assert not _destination(cfg).exists()
-
-
-def test_a_first_move_that_fails_leaves_no_batch_folder(
-    cfg, silence, export, monkeypatch
-):
-    _stage(cfg, silence, "A.flac")
-    planned = landing.plan(_staging(cfg), cfg, BATCH)
-
-    def replace(src, _dst):
-        raise PermissionError(13, "Permission denied", str(src))
-
-    monkeypatch.setattr(landing.os, "replace", replace)
-    cause = _refused(cfg, export, planned)
-    assert cause.detail["moved"] == []
-    assert "nothing was moved" in cause.message
-    assert not _batch_dir(cfg).exists()
 
 
 def test_a_file_arriving_between_the_passes_is_not_replaced(cfg, silence, export, monkeypatch):
@@ -506,30 +480,22 @@ def test_a_held_batch_name_refuses_a_second_holder_and_names_the_batch(cfg):
     assert cause.remediation.remedy is None
     assert len(cause.remediation.steps) == 2
     assert "--name" in cause.remediation.steps[1]
-
-
-def test_a_holder_that_has_not_written_its_name_yet_is_unknown(cfg):
-    """The name in the file is for the message, never the liveness test."""
+    # The name in the file is for the message, never the liveness test.
     cause, _held = _second_holder(BATCH, BATCH, unnamed=True)
     assert cause.reason == "job-driver-held"
     assert cause.detail["holder"] == "holder unknown"
 
 
-def test_the_batch_lock_is_on_the_state_disk_and_never_under_the_library(cfg):
-    """An advisory lock on exFAT was never verified, so the lock stays off the library."""
-    with landing.batch_lock(BATCH) as held:
-        pass
-    assert held.parent == config.installation_state_dir() / "landing_locks"
-    assert Path(cfg.library.root).resolve() not in held.resolve().parents
+def test_the_batch_lock_is_on_the_state_disk_and_a_released_one_leaves_its_file(cfg):
+    """An advisory lock on exFAT was never verified, so the lock stays off the library.
+    Unlinking on release would let a second process lock a fresh inode."""
+    with landing.batch_lock(BATCH) as first:
+        inode = first.stat().st_ino
+    assert first.parent == config.installation_state_dir() / "landing_locks"
+    assert Path(cfg.library.root).resolve() not in first.resolve().parents
     entry = config.state_file(landing.LOCK_KEY)
     assert entry.root is config.StateRoot.INSTALLATION
     assert entry.snapshot is config.SnapshotRole.NEVER_RESTORED
-
-
-def test_a_released_batch_lock_leaves_its_file_and_can_be_taken_again(cfg):
-    """Unlinking on release would let a second process lock a fresh inode."""
-    with landing.batch_lock(BATCH) as first:
-        inode = first.stat().st_ino
     assert first.exists()
     with landing.batch_lock(BATCH) as second:
         assert second == first
@@ -544,22 +510,12 @@ def test_a_refusal_inside_the_batch_lock_releases_it(cfg):
     with pytest.raises(RuntimeError):
         with landing.batch_lock(BATCH):
             raise RuntimeError("the landing failed")
-    with landing.batch_lock(BATCH):
-        pass
-
-
-def test_two_batch_names_are_held_together(cfg):
+    # Taken again, and beside a second batch name.
     with landing.batch_lock(BATCH) as one, landing.batch_lock(BATCH + "-b") as two:
         assert one != two
 
 
-@pytest.mark.parametrize(
-    "other",
-    [
-        BATCH.upper(),
-        BATCH.swapcase(),
-    ],
-)
+@pytest.mark.parametrize("other", [BATCH.upper(), BATCH.swapcase()])
 def test_two_spellings_of_one_folder_share_one_lock(cfg, other):
     """A case insensitive volume makes both spellings one batch folder."""
     assert other != BATCH
@@ -572,9 +528,7 @@ def test_composed_and_decomposed_spellings_share_one_lock():
     assert composed != decomposed
     assert landing.lock_key(composed) == landing.lock_key(decomposed)
     assert landing.lock_key(composed) != landing.lock_key("Cafe")
-
-
-def test_a_lock_key_is_a_plain_file_name_whatever_the_batch_is_called():
+    # And a key is a plain file name whatever the batch is called.
     key = landing.lock_key("a batch: with * every ? odd | character " + "x" * 300)
     assert re.fullmatch(r"[0-9a-f]{64}", key)
 
