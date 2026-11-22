@@ -27,6 +27,8 @@ import stat
 import subprocess
 import sys
 import tomllib
+import unicodedata
+from collections import deque
 from pathlib import Path
 
 import keyring
@@ -51,11 +53,7 @@ def parsed(source: str) -> ast.Module:
 
 @pytest.fixture
 def library(tmp_path, monkeypatch):
-    """A per test library root, with ``CRATEKIT_LIBRARY_ROOT`` re-pointed at it.
-
-    The conftest isolation already sets the override; aligning it here keeps a
-    written config and the override from silently disagreeing.
-    """
+    """A per test library root, with the conftest override re-pointed at it to agree."""
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
@@ -285,11 +283,7 @@ def test_library_state_never_lands_under_the_installation_root(cfg):
 
 @pytest.fixture
 def split_installation_dirs(monkeypatch, tmp_path):
-    """Force the two installation directories apart, and prove they are apart.
-
-    On macOS platformdirs gives one directory for both, so an entry declared under
-    one and read from the other agrees by accident there and diverges on Linux.
-    """
+    """Force the two installation directories apart; macOS platformdirs makes them one."""
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "installation-config"))
     monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "installation-state"))
     assert config.config_dir() != config.installation_state_dir()
@@ -346,11 +340,7 @@ _STATE_ROOT_ACCESSORS = {
 
 
 def _paths_composed_from_a_state_root(source: str) -> list[str]:
-    """Every expression building a path under a state root directly.
-
-    Such a path is a state file the inventory does not know, so nothing walking
-    ``STATE_FILES`` backs it up or clears it.
-    """
+    """Every path built under a state root directly: a state file the inventory misses."""
     found: list[str] = []
     for node in ast.walk(parsed(source)):
         if not isinstance(node, ast.BinOp) or not isinstance(node.op, ast.Div):
@@ -411,11 +401,7 @@ def test_the_job_queue_stays_with_the_installation(cfg):
 
 
 def test_the_per_set_workspaces_resolve_from_configured_directory_names(cfg, library):
-    """Composed from configured names, and INSIDE the sets directory, never the directory itself.
-
-    The sets directory holds the user's recordings; naming it would put their
-    audio into every generic pass over the inventory.
-    """
+    """Inside the sets directory, never it: it holds the user's own recordings."""
     resolved = config.state_path("set_workspaces", cfg)
     sets_dir = library / cfg.library.music_dir / cfg.library.sets_dir
     assert resolved.parent == sets_dir
@@ -578,9 +564,7 @@ def test_the_capture_unit_derives_its_source_set_rather_than_listing_it():
 
 
 def test_the_restore_unit_derives_its_target_set_rather_than_listing_it():
-    """The symmetric half. A text search only: it catches a typed suffix, not
-    whether the derivation is used, which ``tests/test_restore.py`` drives.
-    """
+    """A text search only; ``tests/test_restore.py`` drives whether the derivation is used."""
     import cratekit.core.restore as restore  # noqa: PLC0415
 
     source = Path(restore.__file__).read_text()
@@ -641,10 +625,7 @@ def test_a_database_beside_the_library_needs_no_acknowledgment(cfg):
 
 @pytest.mark.parametrize("value", ["no", "true", "yes", "1", "2026-13-99", "01-08-2026", "20260801"])
 def test_a_non_date_acknowledgment_does_not_switch_the_refusal_off(library, tmp_path, value):
-    """The acknowledgment records WHEN, so it must be a real date; ``no`` must not disable the rule.
-
-    Both are asserted: the shape is named and the containment refusal still fires.
-    """
+    """The acknowledgment records WHEN, so ``no`` must not disable the rule it reads as enforcing."""
     data = valid_data(library)
     data["library"]["db_path"] = str(tmp_path / "elsewhere" / "master.db")
     data["library"]["db_outside_root_acknowledged_on"] = value
@@ -663,9 +644,7 @@ def test_a_malformed_acknowledgment_is_named_even_when_the_database_is_contained
 
 
 def test_the_library_state_layout_carries_no_migration_because_nothing_wrote_another_one():
-    """A deferral with a countdown. ``MIGRATIONS`` is dict to dict and cannot move a
-    file; at layout version 1 no build has written another shape.
-    """
+    """A deferral with a countdown: dict to dict migrations cannot move a file."""
     assert config.LIBRARY_STATE_LAYOUT_VERSION == 1, (
         "the library state layout changed. Config migrations are dict-to-dict "
         "and cannot move a file, so the unit that changed it owns a one-time "
@@ -678,12 +657,7 @@ def test_the_library_state_layout_carries_no_migration_because_nothing_wrote_ano
 def test_doctor_reports_a_database_that_sits_outside_the_library_root(
     library, tmp_path, monkeypatch
 ):
-    """ARMED by U27: doctor keeps saying a long accepted database is non atomic.
-
-    Asserted on the finding's status, both paths and the date, none of which the
-    OK branch can produce; an earlier "atomic" substring check matched its
-    "atomically".
-    """
+    """ARMED by U27. Asserted on what the OK branch cannot produce, not on "atomic"."""
     from cratekit.cli import doctor
 
     outside = tmp_path / "elsewhere" / "master.db"
@@ -1212,35 +1186,23 @@ def _called_name(func: ast.expr) -> str | None:
     return None
 
 
-def _deferred_nodes(tree: ast.AST) -> set[int]:
-    """Ids of every node inside a function or lambda, which runs at call time, not import."""
-    deferred: set[int] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
-            for child in ast.walk(node):
-                if child is not node:
-                    deferred.add(id(child))
-    return deferred
+def _eager_walk(root: ast.AST):
+    """``ast.walk`` that never enters a function or lambda body, which runs at call time."""
+    todo = deque([root])
+    while todo:
+        node = todo.popleft()
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
+            todo.extend(ast.iter_child_nodes(node))
+        yield node
 
 
 def module_level_config_snapshots(source: str, module: str) -> list[str]:
-    """One message per binding evaluated at import that reads config.
-
-    Class bodies count. Detected as data flow, since ``config.load().library.root``
-    and ``installation_state_dir()`` freeze the same value.
-    """
+    """One message per binding evaluated at import (class bodies too) that reads config."""
     problems: list[str] = []
-    tree = parsed(source)
-    deferred = _deferred_nodes(tree)
-
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign | ast.AnnAssign):
+    for node in _eager_walk(parsed(source)):
+        if not isinstance(node, ast.Assign | ast.AnnAssign) or node.value is None:
             continue
-        if id(node) in deferred or node.value is None:
-            continue
-        for sub in ast.walk(node.value):
-            if id(sub) in deferred:
-                continue
+        for sub in _eager_walk(node.value):
             if (
                 isinstance(sub, ast.Attribute)
                 and isinstance(sub.value, ast.Name)
@@ -1280,43 +1242,44 @@ def test_the_snapshot_lint_allows_reading_config_inside_a_function():
     assert module_level_config_snapshots(source, "cratekit.label.sweep") == []
 
 
-def test_no_module_composes_a_state_path_or_snapshots_config_at_import_time():
-    """The real package, one walk for both lints: each source is parsed once.
+def test_no_module_composes_its_own_path_under_a_state_root():
+    """Every path under a state root comes from ``state_path``, so it is declared.
 
-    Composed paths: every path under a state root comes from ``state_path``, so
-    it is declared; the inventory modules define the roots and are excluded.
-    Snapshots: empty today; the point is that it can never fill up.
+    Only a source naming an accessor can hold a hit (identifiers compared after
+    the NFKC folding the parser applies), so the rest are not parsed.
     """
-    composed: list[str] = []
-    snapshots: list[str] = []
+    offenders: list[str] = []
+    for path in sorted(SRC_ROOT.rglob("*.py")):
+        if path.relative_to(SRC_ROOT).as_posix() in INVENTORY_MODULES:
+            continue
+        source = path.read_text()
+        folded = unicodedata.normalize("NFKC", source)
+        if not any(name in folded for name in _STATE_ROOT_ACCESSORS):
+            continue
+        for hit in _paths_composed_from_a_state_root(source):
+            offenders.append(f"{path.relative_to(SRC_ROOT)}: {hit}")
+    assert not offenders, (
+        "paths composed under a state root outside the inventory:\n"
+        + "\n".join(offenders)
+        + "\nDeclare the entry in config.STATE_FILES and resolve it with state_path()."
+    )
+
+
+def test_no_module_in_the_package_snapshots_config_at_import_time():
+    """The real package. Empty today; the point is that it can never fill up."""
+    problems: list[str] = []
     for path in sorted(SRC_ROOT.rglob("*.py")):
         relative = path.relative_to(SRC_ROOT).as_posix()
-        source = path.read_text()
-        if relative not in INVENTORY_MODULES:
-            for hit in _paths_composed_from_a_state_root(source):
-                composed.append(f"{path.relative_to(SRC_ROOT)}: {hit}")
         if relative == "cratekit/core/config.py":
             continue  # the module that DEFINES them
         parts = list(path.relative_to(SRC_ROOT).with_suffix("").parts)
         if parts[-1] == "__init__":
             parts.pop()
-        snapshots += module_level_config_snapshots(source, ".".join(parts))
-    assert not composed, (
-        "paths composed under a state root outside the inventory:\n"
-        + "\n".join(composed)
-        + "\nDeclare the entry in config.STATE_FILES and resolve it with state_path()."
-    )
-    assert not snapshots, "module-level config snapshots:\n" + "\n".join(snapshots)
+        problems += module_level_config_snapshots(path.read_text(), ".".join(parts))
+    assert not problems, "module-level config snapshots:\n" + "\n".join(problems)
 
 
 # Environment overrides relocate; they never supply.
-
-
-def test_an_override_relocates_a_configured_value(library, tmp_path, monkeypatch):
-    moved = tmp_path / "moved"
-    moved.mkdir()
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(moved))
-    assert config.from_dict(valid_data(library)).library.root == moved
 
 
 def test_an_override_never_supplies_a_value_the_file_omitted(library, monkeypatch):
@@ -1330,10 +1293,7 @@ def test_an_override_never_supplies_a_value_the_file_omitted(library, monkeypatc
 def test_a_containment_violation_created_by_the_override_is_not_validated_clean(
     library, tmp_path, monkeypatch
 ):
-    """Containment is decided against the effective root, not the one the file names.
-
-    Set through the real environment variable, the path where the answers diverged.
-    """
+    """Containment is decided against the effective root, set through the real variable."""
     relocated = tmp_path / "relocated"
     relocated.mkdir()
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(relocated))
@@ -1485,10 +1445,7 @@ def test_a_failed_write_leaves_no_temporary_file_behind(cfg, tmp_path, monkeypat
 
 
 def test_a_read_with_no_keychain_backend_raises_and_names_the_opt_in(monkeypatch):
-    """None here would send a request with no credential and read the 401 as an outage.
-
-    The refusal names the environment opt in rather than taking it.
-    """
+    """Never None, which reads a 401 as an outage; it names the opt in, never takes it."""
 
     def no_backend(*args, **kwargs):
         raise keyring.errors.NoKeyringError("no backend")
@@ -1576,11 +1533,9 @@ def test_the_presence_index_records_names_and_never_values():
 
 
 def _unreadable_index(monkeypatch, path: Path):
-    """Make exactly one file answer EACCES to a read; returns a disarm callable.
+    """One file answers EACCES (chmod is vacuous under root); returns a disarm.
 
-    Patched rather than chmod 000, which is vacuous under root. Call the disarm
-    rather than ``monkeypatch.undo``, which would also roll back the autouse
-    fixtures isolating state and the keyring.
+    Disarm rather than ``monkeypatch.undo``, which also undoes the autouse isolation.
     """
     real = Path.read_text
     armed = True
@@ -1628,11 +1583,7 @@ def test_an_absent_presence_index_still_answers_nothing_recorded():
 
 
 def test_an_index_refused_for_something_other_than_a_permission_keeps_its_own_act():
-    """The site's declared act, visible only where no classification claims the error.
-
-    A directory at the index path raises EISDIR on a real filesystem; a mutation
-    table found the act unkilled when every test reached it through EACCES.
-    """
+    """EISDIR, which no classification claims, shows the site's own declared act."""
     index = config.state_path("credential_index")
     index.parent.mkdir(parents=True, exist_ok=True)
     index.mkdir()
@@ -1773,10 +1724,7 @@ def test_the_environment_fallback_is_opt_in_and_never_silent(monkeypatch):
 
 
 def test_the_presence_index_cycle_is_held_under_an_exclusive_lock():
-    """Measured unlocked: two processes lost a name in 23 of 25 trials.
-
-    A fresh descriptor contends for ``flock`` exactly as another process would.
-    """
+    """Unlocked, two processes lost a name in 23 of 25 trials; a fresh descriptor contends."""
     import fcntl
 
     lock_path = config.state_path("credential_index_lock")
@@ -1895,12 +1843,7 @@ def _drive_every_write_path(cfg) -> list[Path]:
 def test_every_file_and_directory_this_unit_creates_is_private_under_any_umask(
     permissive_umask, cfg
 ):
-    """Walked rather than enumerated, directories included.
-
-    A world writable index lets any account forge doctor's answer, and a 0600
-    file in a 0777 directory can still be replaced. The migration lock, which
-    persists on purpose, is named because an enumerated version missed it.
-    """
+    """Walked, not enumerated, directories included; the migration lock is named as well."""
     roots = _drive_every_write_path(cfg)
 
     offenders: list[str] = []
@@ -2112,11 +2055,6 @@ def test_an_export_staleness_nobody_could_mean_is_refused_with_its_ceiling(libra
     assert str(ceiling) in problems[0]
 
 
-def test_an_absent_export_staleness_is_not_a_problem(library):
-    assert config.validate(valid_data(library)) == []
-    assert config.validate(valid_data(library, outbound={})) == []
-
-
 # R-301: the recognition host and the monthly bound are the user's.
 
 
@@ -2177,8 +2115,15 @@ def test_a_host_that_is_not_a_bare_name_under_the_service_is_refused(library, va
     assert "recognition.host" in problems[0]
 
 
-def test_an_absent_recognition_section_is_not_a_problem(library):
-    assert config.validate(valid_data(library, recognition={})) == []
-    assert config.validate(
-        valid_data(library, recognition={"host": "identify-eu-west-1.acrcloud.com"})
-    ) == []
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {},
+        {"outbound": {}},
+        {"recognition": {}},
+        {"recognition": {"host": "identify-eu-west-1.acrcloud.com"}},
+    ],
+    ids=["no-sections", "empty-outbound", "empty-recognition", "recognition-host-only"],
+)
+def test_an_absent_optional_section_or_key_is_not_a_problem(library, overrides):
+    assert config.validate(valid_data(library, **overrides)) == []

@@ -10,6 +10,7 @@ against the old resolvers is in tests/test_routing_parity.py.
 from __future__ import annotations
 
 import copy
+import enum
 import tomllib
 from pathlib import Path
 
@@ -79,10 +80,18 @@ def test_every_bucket_declares_a_tempo_window(default):
     assert default.buckets_without_bpm_prior() == ()
 
 
-def test_the_tree_root_and_intake_are_declared_not_hardcoded(default):
-    """R19: the two most copied literals of the old system are data."""
-    assert default.tree.id and default.tree.display
-    assert default.intake.id and default.intake.display
+@pytest.mark.parametrize("node", ["tree", "intake", "catalog", "long_tracks", "inspiration"])
+def test_each_root_node_is_declared_by_id_and_display(default, node):
+    """R19: the old system's most copied literals are data. The optional catalog
+    tree, long track playlist (U88) and inspiration folder (U121) ship declared."""
+    declared = getattr(default, node)
+    assert declared is not None and declared.id and declared.display
+
+
+def test_the_long_track_bound_and_the_inspiration_folder_ship_as_the_source_system_had_them(default):
+    assert default.long_tracks.over_seconds == 1200
+    assert default.inspiration.id == "inspiration"
+    assert default.inspiration.display == "INSPIRATION"
 
 
 def test_the_reserved_and_derived_subs_carry_different_policies(default):
@@ -93,26 +102,6 @@ def test_the_reserved_and_derived_subs_carry_different_policies(default):
     derived = [entry for entry in default.sub_classes if entry.policy is SubPolicy.DERIVED]
     # Two since U119, the vocal class and the genre Favorites, each additive.
     assert len(derived) == 2 and all(entry.additive for entry in derived)
-
-
-def test_the_catalog_tree_is_declared_in_the_shipped_default(default):
-    """Optional in the schema, present in the default, so an importer needs no edit."""
-    assert default.catalog is not None
-    assert default.catalog.id and default.catalog.display
-
-
-def test_the_long_track_playlist_is_declared_in_the_shipped_default(default):
-    """U88: the source system's separation of sets from tracks, as data."""
-    assert default.long_tracks is not None
-    assert default.long_tracks.id and default.long_tracks.display
-    assert default.long_tracks.over_seconds == 1200
-
-
-def test_the_inspiration_folder_is_declared_in_the_shipped_default(default):
-    """U121: the folder a set's permanent playlist is kept in, as data."""
-    assert default.inspiration is not None
-    assert default.inspiration.id == "inspiration"
-    assert default.inspiration.display == "INSPIRATION"
 
 
 @pytest.mark.parametrize("section", ["catalog", "long_tracks", "inspiration"])
@@ -257,6 +246,13 @@ def case(id_: str, mutate, *needles, absent: tuple = ()):
 
 
 _FORMER = (_promoted, "formerly", 0)
+_former = _get(*_FORMER)
+
+
+def _former_copy(**changed):
+    return lambda d: [dict(_former(d), **changed)]
+
+
 _SPLIT = (_splitter, "split_from", 0)
 _ONE_TABLE = {"id": "x", "bucket": "y", "sub": "z", "display": "One table"}
 
@@ -294,19 +290,13 @@ REFUSED = [
     case("bands-short-of-scale", _set(("energy", "bands", -1, "max"), 8), "scale_max"),
     case("band-label-for-undeclared-band", _override_an_undeclared_band, "not a declared band"),
     case("source-sub-outside-bucket", _route_by_source_outside_the_bucket, "not a declared sub"),
-    case(
-        "source-string-routing-two-ways",
-        _set(("bucket", 1, "aliases"), lambda d: [*d["bucket"][1]["aliases"], d["bucket"][0]["aliases"][0]]),
-        "cannot route two ways",
-    ),
+    case("source-string-routing-two-ways", _set(("bucket", 1, "aliases"), lambda d: [
+        *d["bucket"][1]["aliases"], d["bucket"][0]["aliases"][0]]), "cannot route two ways"),
     case("fuzzy-rule-to-no-bucket", _set(("fuzzy", 0, "bucket"), "nowhere"), "is not declared"),
     # An uppercase keyword could never match, and reads as a rule that fires.
     case("uppercase-keyword", _set(("fuzzy", 0, "keyword"), lambda d: d["fuzzy"][0]["keyword"].upper()), "can never match"),
-    case(
-        "suggest-rule-answers-and-declines",
-        _set((lambda d: next(r for r in d["suggest"] if "bucket" in r), "decline"), "ask"),
-        "exactly one of bucket, tag, decline",
-    ),
+    case("suggest-rule-answers-and-declines", _set((lambda d: next(r for r in d["suggest"] if "bucket" in r), "decline"),
+         "ask"), "exactly one of bucket, tag, decline"),
     # KTD14: the XML bridge's indentation encodes exactly three levels.
     case("tree-depth-not-three", _set(("tree", "depth"), 4), "KTD14"),
     case("bad-tempo-window", _set(("bucket", 0, "bpm"), {"start": 100, "floor": 120, "ceil": 140}), "floor < start < ceil"),
@@ -314,33 +304,20 @@ REFUSED = [
     case("former-in-undeclared-bucket", _set((*_FORMER, "bucket"), "no_such_bucket"), "is not declared"),
     # Stops a mistyped line planning removals from a live sub.
     case("former-is-a-live-sub", _set((*_FORMER, "sub"), _get(_holder, "sub", 0, "id")), "still declares the sub"),
-    case("former-named-for-live-sub", _set((*_FORMER, "display"), _get(_holder, "sub", 0, "display")), "still holds a sub named"),
+    case("former-named-for-live-sub", _set((*_FORMER, "display"), _get(_holder, "sub", 0, "display")),
+         "still holds a sub named"),
     # A band is a live place of an energy bucket, under the bucket's label for it.
     case("former-named-for-a-band", _former_place_named_for_a_band, "still holds a sub named"),
     case("former-named-for-sub-class", _set((*_FORMER, "display"), _get("sub_class", 0, "display")), "still holds a sub named"),
     case("former-id-is-a-band", _set((*_FORMER, "id"), _get("energy", "bands", 0, "id")), "already a sub of this bucket"),
-    case(
-        "former-twice-in-one-bucket",
-        _set((_promoted, "formerly"), lambda d: [*_promoted(d)["formerly"], dict(_promoted(d)["formerly"][0])]),
-        "duplicate former place id",
-        "already the former place of",
-    ),
-    case(
-        "one-playlist-former-place-of-two-buckets",
-        _set((_another_bucket, "formerly"), lambda d: [dict(_promoted(d)["formerly"][0], id="another_id")]),
-        "already the former place of",
-        absent=("duplicate former place id",),
-    ),
+    case("former-twice-in-one-bucket", _set((_promoted, "formerly"), lambda d: [*_promoted(d)["formerly"], dict(_former(d))]),
+         "duplicate former place id", "already the former place of"),
+    case("one-playlist-former-place-of-two-buckets", _set((_another_bucket, "formerly"), _former_copy(id="another_id")),
+         "already the former place of", absent=("duplicate former place id",)),
     # Both compete in the folder that holds them, under their identifiers.
-    case(
-        "two-buckets-one-former-place-id",
-        _set(
-            (_another_bucket, "formerly"),
-            lambda d: [dict(_promoted(d)["formerly"][0], sub="another_sub", display="Another playlist")],
-        ),
-        "duplicate former place id",
-        absent=("already the former place of",),
-    ),
+    case("two-buckets-one-former-place-id",
+         _set((_another_bucket, "formerly"), _former_copy(sub="another_sub", display="Another playlist")),
+         "duplicate former place id", absent=("already the former place of",)),
     case("former-short-of-id", _set((*_FORMER, "id"), "Not An Id"), ("formerly", "must match")),
     case("former-short-of-sub", _set((*_FORMER, "sub"), ""), ("formerly", "must match")),
     case("former-short-of-display", _set((*_FORMER, "display"), ""), ("formerly", "display must be a non-empty string")),
@@ -353,39 +330,25 @@ REFUSED = [
         for name, shape in (("one-table", _ONE_TABLE), ("list-of-strings", ["a bare name"]), ("string", "a bare name"))
     ],
     # It competes in the holder too, so the identifier has to be free there.
-    case("former-id-is-holder-sub", _set((*_FORMER, "id"), _get(_holder, "sub", 0, "id")), "where a former place competes as well"),
+    case("former-id-is-holder-sub", _set((*_FORMER, "id"), _get(_holder, "sub", 0, "id")),
+         "where a former place competes as well"),
     # A split place (U118) that is not a live band; stops a former place being
     # written as a split place.
     case("split-of-undeclared-band", _set((*_SPLIT, "sub"), "no_such_band"), "is not a band"),
-    case(
-        "split-out-of-bucket-with-no-bands",
-        _set((*_SPLIT, "bucket"), lambda d: next(b for b in d["bucket"] if b.get("sub_by_source"))["id"]),
-        "is not a band",
-    ),
+    case("split-out-of-bucket-with-no-bands",
+         _set((*_SPLIT, "bucket"), lambda d: next(b for b in d["bucket"] if b.get("sub_by_source"))["id"]), "is not a band"),
     case("split-renamed", _set((*_SPLIT, "display"), "Renamed by hand"), ("the name", "gives")),
     case("split-out-of-undeclared-bucket", _set((*_SPLIT, "bucket"), "no_such_bucket"), "not another declared bucket"),
     case("split-out-of-itself", _set((*_SPLIT, "bucket"), _get(_splitter, "id")), "not another declared bucket"),
     case("one-band-split-by-two-buckets", _one_band_split_by_two_buckets, "already split out by"),
     case("split-id-of-a-former-place", _set((*_SPLIT, "id"), _get(*_FORMER, "id")), "already a former or split place"),
-    case(
-        "split-of-holders-former-place-renamed",
-        _set(
-            (lambda d: next(r for r in _splitter(d)["split_from"] if r["sub"] not in _band_ids(d)), "display"),
-            "Renamed by hand",
-        ),
-        "gives",
-    ),
+    case("split-of-holders-former-place-renamed", _set((lambda d: next(
+        r for r in _splitter(d)["split_from"] if r["sub"] not in _band_ids(d)), "display"), "Renamed by hand"), "gives"),
     # Only the holder's own former place is one the holder competes on.
     case("split-of-another-buckets-former", _split_another_buckets_former_place, "is not a band or a former place"),
     case("split-id-is-a-band", _set((*_SPLIT, "id"), _get("energy", "bands", 0, "id")), "already a sub of this bucket"),
-    case(
-        "split-in-bucket-without-energy",
-        _all(
-            _set((_splitter, "energy"), {"enabled": False}),
-            _set((_splitter, "single_sub"), {"id": "everything", "display": "Everything"}),
-        ),
-        "does not split by energy",
-    ),
+    case("split-in-bucket-without-energy", _all(_set((_splitter, "energy"), {"enabled": False}),
+         _set((_splitter, "single_sub"), {"id": "everything", "display": "Everything"})), "does not split by energy"),
     # An older build ignores the key and files the split genre into its new
     # folder while it sits in the old band.
     *[
@@ -398,14 +361,9 @@ REFUSED = [
     ],
     case("tagging-word-claimed-by-two-buckets", _tagging_word_in_two_buckets, "is claimed by both"),
     # A sub class derived from a playlist (U119).
-    case(
-        "two-additive-classes-on-one-signal",
-        _set(
-            ("sub_class",),
-            lambda d: [*d["sub_class"], {"id": "second_vox", "display": "Second", "policy": "derived", "additive": True}],
-        ),
-        ("'vox' signal", "only one is supported per signal"),
-    ),
+    case("two-additive-classes-on-one-signal", _set(("sub_class",), lambda d: [*d["sub_class"], {
+        "id": "second_vox", "display": "Second", "policy": "derived", "additive": True}]),
+         ("'vox' signal", "only one is supported per signal")),
     case("playlist-signal-without-playlist", _set(("sub_class", 2, "signal_playlist"), ""), "signal_playlist"),
     case("playlist-signal-manual", _all(_set(("sub_class", 2, "policy"), "manual"), _set(("sub_class", 2, "additive"), False)),
          "derived and additive"),
@@ -458,70 +416,60 @@ def test_the_second_template_shares_no_name_with_the_default(default, second):
     assert default.tree.display != second.tree.display
 
 
-def test_a_custom_taxonomy_routes_with_no_code_change(second):
-    """The whole parameterisation claim, in one assertion per tier."""
-    assert routing.resolve_bucket(second, "Banger").bucket_id == "floor_filler"
-    assert routing.resolve_bucket(second, "Slow Burn").bucket_id == "slow_burn"
-    assert routing.resolve_bucket(second, "a proper banger").bucket_id == "floor_filler"
-    assert routing.resolve_bucket(second, "no idea").bucket_id == "unfiled"
+def _band(bucket, level):
+    return lambda t: routing.energy_sub(t, bucket, level).display
 
 
-def test_a_custom_taxonomy_uses_its_own_band_count(second):
-    """Four bands, four different cuts, and none of the default's names."""
-    seen = {
-        level: routing.energy_sub(second, "floor_filler", level).display
-        for level in range(1, 11)
-    }
-    assert seen[1] == "Warm Up"
-    assert seen[3] == "Groove"
-    assert seen[6] == "Peak"
-    assert seen[9] == "Afters"
+def _by_source(level, genre):
+    return lambda t: routing.energy_sub(t, "field_recordings", level, source_genre=genre).id
 
 
-def test_a_custom_taxonomy_applies_its_own_band_label_override(second):
-    """Same cuts, different labels, and only the overridden ones move."""
-    assert routing.energy_sub(second, "slow_burn", 1).display == "Barely Moving"
-    assert routing.energy_sub(second, "slow_burn", 4).display == "Groove"
-    assert routing.energy_sub(second, "slow_burn", 10).display == "Last Call"
+def _prior(t):
+    prior = routing.bpm_prior(t, "Banger")
+    return (prior.start, prior.floor, prior.ceil)
 
 
-def test_a_custom_taxonomy_honours_a_bucket_with_no_energy_split(second):
-    for level in (None, 1, 5, 10):
-        assert routing.energy_sub(second, "spoken", level).display == "Spoken Word"
-    assert routing.no_energy_sub(second, "spoken") is None
-    assert routing.rates(second, "spoken") is False
+def _unknown_tempo(t):
+    unknown = routing.suggest_tag(t, "slow one")
+    return (unknown.bucket_id, unknown.needs_review is True)
 
 
-def test_a_custom_taxonomy_honours_a_bucket_routing_by_source(second):
-    assert routing.energy_sub(second, "field_recordings", 5, source_genre="Wildlife").id == "birds"
-    assert routing.energy_sub(second, "field_recordings", None, source_genre="Weather").id == "water"
+# The whole parameterisation claim: the second template answers by its own
+# declaration, one case per tier, band, curve and vocabulary it declares.
+CUSTOM = [
+    ("routes-exactly", lambda t: routing.resolve_bucket(t, "Banger").bucket_id, "floor_filler"),
+    ("routes-by-display", lambda t: routing.resolve_bucket(t, "Slow Burn").bucket_id, "slow_burn"),
+    ("routes-by-keyword", lambda t: routing.resolve_bucket(t, "a proper banger").bucket_id, "floor_filler"),
+    ("routes-to-its-fallback", lambda t: routing.resolve_bucket(t, "no idea").bucket_id, "unfiled"),
+    # Four bands, four different cuts, and none of the default's names.
+    *[(f"band-{lv}-{name}", _band("floor_filler", lv), name) for lv, name in
+      ((1, "Warm Up"), (3, "Groove"), (6, "Peak"), (9, "Afters"))],
+    # Same cuts, different labels, and only the overridden ones move.
+    *[(f"label-override-{lv}", _band("slow_burn", lv), name) for lv, name in
+      ((1, "Barely Moving"), (4, "Groove"), (10, "Last Call"))],
+    *[(f"no-energy-split-{lv}", _band("spoken", lv), "Spoken Word") for lv in (None, 1, 5, 10)],
+    ("no-energy-split-has-no-no-energy-sub", lambda t: routing.no_energy_sub(t, "spoken"), None),
+    ("no-energy-split-does-not-rate", lambda t: routing.rates(t, "spoken"), False),
+    ("by-source-wildlife", _by_source(5, "Wildlife"), "birds"),
+    ("by-source-without-energy", _by_source(None, "Weather"), "water"),
     # Unmapped falls to the DECLARED default rather than to whichever sub is first.
-    assert routing.energy_sub(second, "field_recordings", 5, source_genre="Ghosts").id == "engines"
+    ("by-source-unmapped-to-declared-default", _by_source(5, "Ghosts"), "engines"),
+    *[(f"rating-{lv}", lambda t, lv=lv: routing.energy_rating(t, lv), r) for lv, r in
+      ((3, 51), (6, 153), (10, 255), (None, None))],
+    ("tempo-window", _prior, (128, 120, 140)),
+    ("declines-its-own-word", lambda t: routing.suggest_tag(t, "Misc").declined, True),
+    ("declines-empty-as-not-found", lambda t: routing.suggest_tag(t, "").decline, routing.Decline.NOT_FOUND),
+    ("tags-by-its-vocabulary", lambda t: routing.suggest_tag(t, "Banger").tag, "Floor Filler"),
+    ("tempo-split-slow", lambda t: routing.suggest_tag(t, "slow one", bpm=80.0).bucket_id, "spoken"),
+    ("tempo-split-fast", lambda t: routing.suggest_tag(t, "slow one", bpm=110.0).bucket_id, "slow_burn"),
+    ("tempo-split-unknown-needs-review", _unknown_tempo, ("slow_burn", True)),
+]
 
 
-def test_a_custom_taxonomy_uses_its_own_rating_curve(second):
-    assert routing.energy_rating(second, 3) == 51
-    assert routing.energy_rating(second, 6) == 153
-    assert routing.energy_rating(second, 10) == 255
-    assert routing.energy_rating(second, None) is None
-
-
-def test_a_custom_taxonomy_uses_its_own_tempo_windows(second):
-    prior = routing.bpm_prior(second, "Banger")
-    assert (prior.start, prior.floor, prior.ceil) == (128, 120, 140)
-
-
-def test_a_custom_taxonomy_uses_its_own_decline_vocabulary(second):
-    assert routing.suggest_tag(second, "Misc").declined
-    assert routing.suggest_tag(second, "").decline is routing.Decline.NOT_FOUND
-    assert routing.suggest_tag(second, "Banger").tag == "Floor Filler"
-
-
-def test_a_custom_taxonomy_splits_on_tempo_where_it_declares_one(second):
-    assert routing.suggest_tag(second, "slow one", bpm=80.0).bucket_id == "spoken"
-    assert routing.suggest_tag(second, "slow one", bpm=110.0).bucket_id == "slow_burn"
-    unknown = routing.suggest_tag(second, "slow one")
-    assert unknown.bucket_id == "slow_burn" and unknown.needs_review is True
+@pytest.mark.parametrize(("ask", "answer"), [pytest.param(a, b, id=i) for i, a, b in CUSTOM])
+def test_a_custom_taxonomy_answers_by_its_own_declaration(second, ask, answer):
+    got = ask(second)
+    assert got is answer if answer is None or isinstance(answer, (bool, enum.Enum)) else got == answer
 
 
 def test_a_buckets_own_display_name_is_never_reported_off_taxonomy(default, second):

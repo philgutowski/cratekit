@@ -1,15 +1,9 @@
 """The name template and the ONE head parser.
 
-Consolidation: eight regexes once read or wrote the ``{key} - {bpm} - `` head.
-The looser of the two real parsers accepted off-wheel keys and lowercase and did
-not know the lossy marker was part of the head; each delta has a test with the
-input that separates the two, so deleting it is a recorded behaviour change.
-
-Parameterization: three templates render in one process, the evidence that the
-engine is template-driven rather than reading one global shape.
-
-No real library string appears here (D1). The shape corpus is synthesized from
-the classes measured in a live export of 10,070 rows on 2026-08-01.
+Eight regexes once read or wrote the ``{key} - {bpm} - `` head; each delta of the
+deleted looser parser has a test with the input that separates it. Three
+templates render in one process, the evidence the engine is template-driven.
+No real library string appears here (D1).
 """
 
 from __future__ import annotations
@@ -46,8 +40,7 @@ from cratekit.core.naming import (
 )
 from tests.test_config import parsed
 
-# The marker text is configuration (S3), supplied here as data; it appears
-# nowhere in cratekit/core/naming.py.
+# The marker text is configuration (S3), never spelled in cratekit/core/naming.py.
 MARKER = "[MP3]"
 
 #: The shipped shape: key and tempo, both required, marker declared.
@@ -56,8 +49,7 @@ DEFAULT = NameTemplate(markers=(MarkerRule(field="lossy", literal=MARKER),))
 #: No marker declared, to prove R21 refuses rather than writing an unmarked lossy file.
 UNMARKED = NameTemplate()
 
-#: Tempo optional: render and parse widen from one declaration, or a head gets
-#: glued to a title.
+#: Tempo optional: render and parse widen together from one declaration.
 OPTIONAL_BPM = NameTemplate(
     head_optional=frozenset({"bpm"}),
     markers=(MarkerRule(field="lossy", literal=MARKER),),
@@ -149,8 +141,8 @@ def test_parse_and_strip_head(name, fields, rest, note):
 
 
 class TestTheDeletedDuplicate:
-    """The three claims that justified deleting the looser parser. A live export
-    of 10,070 rows held zero names only it would have matched."""
+    """The claims that justified deleting the looser parser (zero live names
+    only it matched)."""
 
     #: The pattern as the deleted module actually spelled it.
     LOOSE = re.compile(r"^\s*0?\d{1,2}[ABab]\s*-\s*\d{1,3}\s*-\s*")
@@ -175,8 +167,7 @@ class TestTheDeletedDuplicate:
 
 
 def test_the_case_asymmetry_is_a_choice_not_an_accident():
-    """A code read from a detector is normalized; a name on disk is held to the
-    convention. Both halves asserted so nobody "fixes" one into the other."""
+    """A detected code is normalized, a name on disk held to the convention."""
     assert parse_camelot("12b") == (12, "B")
     assert parse_head("12b - 124 - x", template=DEFAULT) is None
 
@@ -195,7 +186,7 @@ class TestSplitAndPadHead:
         assert split_head(name, template=DEFAULT) == expected
 
     def test_pad_splices_only_the_key(self):
-        """Only the key's span moves, so an export rewrite and a rename share one rule."""
+        """Only the key's span moves: an export rewrite and a rename share one rule."""
         before = f"8A - 124 - {MARKER} Cola & Friends!"
         after = pad_head(before, template=DEFAULT)
         assert after == f"08A - 124 - {MARKER} Cola & Friends!"
@@ -217,8 +208,7 @@ class TestSplitAndPadHead:
 
 
 class TestTrailingHead:
-    """Some catalog paths carry the head as a SUFFIX, once stripped by a ninth
-    private regex beside a call to the canonical parser."""
+    """Some catalog paths carry the head as a SUFFIX (once a ninth private regex)."""
 
     @pytest.mark.parametrize(
         "name,expected",
@@ -247,8 +237,7 @@ class TestHasHead:
         assert has_head(name, template=DEFAULT) is expected
 
     def test_a_marker_alone_is_not_a_finished_name(self):
-        """It strips, so it never leaks into a match key, but it is not processed
-        and yields no fields. Three answers to three questions."""
+        """It strips, but it is not processed and yields no fields."""
         assert not has_head(f"{MARKER} Cola", template=DEFAULT)
         assert strip_head(f"{MARKER} Cola", template=DEFAULT) == "Cola"
         assert parse_head(f"{MARKER} Cola", template=DEFAULT) is None
@@ -284,27 +273,21 @@ class TestRender:
         assert _rendered(render_all(spec, template=DEFAULT)) == (filename, title_tag, title_tag)
 
     def test_the_key_is_written_and_measured_in_the_same_padded_form(self):
-        """U39 made the written form padded, so written and measured heads match.
-        A template writing unpadded still measures padded (the 2026-07-04 rule)."""
+        """U39: written and measured heads match; unpadded still measures padded."""
         spec = NameSpec(stem="Body", suffix=".flac", key="8A", bpm=124)
         assert render_all(spec, template=DEFAULT).filename.startswith("08A - 124 - ")
         assert budget_head(spec, template=DEFAULT) == "08A - 124 - "
-        legacy = NameTemplate(
-            key_pad="none", markers=(MarkerRule(field="lossy", literal=MARKER),)
-        )
+        legacy = NameTemplate(key_pad="none", markers=(MarkerRule(field="lossy", literal=MARKER),))
         assert render_all(spec, template=legacy).filename.startswith("8A - 124 - ")
         assert budget_head(spec, template=legacy) == "08A - 124 - "
 
     def test_rendering_is_idempotent(self):
-        """A tag write that succeeded before a failed rename once got a SECOND
-        head on the next run; normalizing the inputs makes it converge."""
+        """A tag write before a failed rename once got a SECOND head next run."""
         spec = NameSpec(stem="Body", suffix=".flac", key="8A", bpm=124, title="Body")
         once = render_all(spec, template=DEFAULT)
-        twice = render_all(
-            NameSpec(stem=once.filename[: -len(".flac")], suffix=".flac", key="8A", bpm=124,
-                     title=once.title_tag),
-            template=DEFAULT,
-        )
+        again = NameSpec(stem=once.filename[: -len(".flac")], suffix=".flac", key="8A", bpm=124,
+                         title=once.title_tag)
+        twice = render_all(again, template=DEFAULT)
         assert twice.filename == once.filename
         assert twice.title_tag == once.title_tag
 
@@ -323,16 +306,14 @@ class TestRender:
     ids=["pads", "already-padded-unchanged", "data-case-normalized", "padded-output-renders-again"],
 )
 def test_the_default_template_writes_the_padded_form(key, filename):
-    """U39: the default absorbed the retired pad sweep, and the budget always
-    reserved the padded byte. A code read as data is normalized here too."""
+    """U39: the default absorbed the retired pad sweep; data case is normalized."""
     out = render_all(NameSpec(stem="Cola", suffix=".flac", key=key, bpm=124),
                      template=NameTemplate())
     assert _rendered(out) == (filename, filename[: -len(".flac")], filename[: -len(".flac")])
 
 
 class TestAnalysisOff:
-    """R20's graceful degradation, new construction: the source terminated a file
-    whose detection failed, so it never rendered a name without the fields."""
+    """R20's graceful degradation, new construction with no source to port."""
 
     def test_no_key_and_no_tempo_renders_the_body_alone(self):
         out = render_all(NameSpec(stem="Some Bootleg", suffix=".flac"), template=DEFAULT)
@@ -346,7 +327,6 @@ class TestAnalysisOff:
         assert strip_head(stem, template=DEFAULT) == "Some Bootleg"
 
     def test_absent_fields_are_omitted_not_rendered_empty(self):
-        """``"None - None - Title"`` in a name is recognized by no parser."""
         out = render_all(NameSpec(stem="Title", suffix=".flac"), template=DEFAULT)
         assert "None" not in out.filename
         assert not out.filename.startswith(("-", " "))
@@ -366,8 +346,7 @@ class TestAnalysisOff:
 
 
 class TestAStrippedHeadIsKept:
-    """R-740. ``normalize_spec`` once kept none of the head it stripped, so a spec
-    built from tags (a key, no tempo tag) rendered with the file's head thrown away."""
+    """R-740: ``normalize_spec`` once threw away the head it stripped."""
 
     @pytest.mark.parametrize(
         "spec,filename,title_tag",
@@ -414,29 +393,22 @@ class TestAStrippedHeadIsKept:
         assert render_all(spec, template=DEFAULT).title_tag == "Body"
 
     def test_a_rendered_head_renders_again_unchanged(self):
-        once = render_all(
-            NameSpec(stem="Body", suffix=".flac", key="1A", title="1A - 112 - Body"),
-            template=DEFAULT,
-        )
-        twice = render_all(
-            NameSpec(stem=once.filename[: -len(".flac")], suffix=".flac", title=once.title_tag),
-            template=DEFAULT,
-        )
+        spec = NameSpec(stem="Body", suffix=".flac", key="1A", title="1A - 112 - Body")
+        once = render_all(spec, template=DEFAULT)
+        again = NameSpec(stem=once.filename[: -len(".flac")], suffix=".flac", title=once.title_tag)
+        twice = render_all(again, template=DEFAULT)
         assert twice == once
 
 
 class TestMarkerCoupling:
-    """R21: the marker is on the filename, the tag and the library field, or on
-    none. The library field was coupled by data flow alone in the source."""
+    """R21: the marker is on the filename, the tag and the library field, or none."""
 
     @pytest.mark.parametrize("lossy", [True, False])
     @pytest.mark.parametrize("key,bpm", [("8A", 124), (None, None), ("8A", None)])
     @pytest.mark.parametrize("title", ["Title", None])
     def test_all_three_surfaces_or_none(self, lossy, key, bpm, title):
-        out = render_all(
-            NameSpec(stem="Body", suffix=".flac", key=key, bpm=bpm, title=title, lossy=lossy),
-            template=DEFAULT,
-        )
+        spec = NameSpec(stem="Body", suffix=".flac", key=key, bpm=bpm, title=title, lossy=lossy)
+        out = render_all(spec, template=DEFAULT)
         present = [MARKER in out.filename, MARKER in out.title_tag, MARKER in out.library_name]
         assert all(present) if lossy else not any(present)
 
@@ -540,7 +512,6 @@ def test_every_declared_field_is_anchorable_or_not_on_purpose():
 
 class TestBudgetInteraction:
     def test_the_budget_head_equals_the_written_head_since_the_pad_moved_in(self):
-        """Before U39 the budget head was one reserved pad byte wider."""
         spec = NameSpec(stem="Body", suffix=".flac", key="8A", bpm=124)
         written = render_all(spec, template=DEFAULT).filename[: -len("Body.flac")]
         assert budget_head(spec, template=DEFAULT) == written
@@ -549,26 +520,20 @@ class TestBudgetInteraction:
         lossy = NameSpec(stem="Body", suffix=".mp3", key="8A", bpm=124, lossy=True)
         clean = NameSpec(stem="Body", suffix=".flac", key="8A", bpm=124)
         assert budget_head(lossy, template=DEFAULT) == f"08A - 124 - {MARKER} "
-        assert len(budget_head(lossy, template=DEFAULT)) > len(
-            budget_head(clean, template=DEFAULT))
+        assert len(budget_head(lossy, template=DEFAULT)) > len(budget_head(clean, template=DEFAULT))
 
     def test_an_absent_field_contributes_zero_bytes_including_its_separator(self):
         """An analysis-off library gets the whole budget for its body."""
-        long_stem = "T" * 300
-        analyzed = fit_to_budget(
-            NameSpec(stem=long_stem, suffix=".flac", key="8A", bpm=124),
-            template=DEFAULT, budget=BUDGET, parent_dir=DIR)
-        bare = fit_to_budget(
-            NameSpec(stem=long_stem, suffix=".flac"),
-            template=DEFAULT, budget=BUDGET, parent_dir=DIR)
+        fit = {"template": DEFAULT, "budget": BUDGET, "parent_dir": DIR}
+        analyzed = fit_to_budget(NameSpec(stem="T" * 300, suffix=".flac", key="8A", bpm=124), **fit)
+        bare = fit_to_budget(NameSpec(stem="T" * 300, suffix=".flac"), **fit)
         assert budget_head(NameSpec(stem="", suffix=""), template=DEFAULT) == ""
         assert len(bare.stem) > len(analyzed.stem)
 
     def test_build_fits_and_its_result_is_already_in_the_padded_form(self):
         """The retired pad stage has nothing left to add to a name this writes."""
-        out = build(
-            NameSpec(stem="U" * 300, suffix=".flac", key="8A", bpm=124),
-            template=DEFAULT, budget=BUDGET, parent_dir=DIR)
+        spec = NameSpec(stem="U" * 300, suffix=".flac", key="8A", bpm=124)
+        out = build(spec, template=DEFAULT, budget=BUDGET, parent_dir=DIR)
         assert len(f"{DIR}/{out.filename}".encode()) <= BUDGET.path_budget_bytes
         assert pad_head(out.filename, template=DEFAULT) == out.filename
 
@@ -578,20 +543,16 @@ class TestBudgetInteraction:
         assert build(spec, template=DEFAULT, budget=BUDGET, parent_dir=DIR) == first
 
     def test_dedupe_runs_before_the_fit_and_the_hash_uses_the_original(self):
-        spec = NameSpec(
-            stem="Weightless - Marconi Union - Weightless",
-            suffix=".flac", key="8A", bpm=124,
-            title="Weightless", album="Weightless")
+        spec = NameSpec(stem="Weightless - Marconi Union - Weightless", suffix=".flac", key="8A",
+                        bpm=124, title="Weightless", album="Weightless")
         fitted = fit_to_budget(spec, template=DEFAULT, budget=BUDGET, parent_dir=DIR)
         assert fitted.stem == "Weightless - Marconi Union"
 
 
 # Shape coverage against the live library.
 
-# Measured 2026-08-01 against an export of 10,070 rows: 9,897 (98.28%) carry a
-# head this parser reads; of the 173 others, 169 have none, 3 are titles starting
-# with a digit, 1 is a key with no tempo. Zero matched only the deleted parser.
-# The names are SYNTHESIZED (D1) to cover every shape and character class seen.
+# Measured 2026-08-01 on 10,070 exported rows: 9,897 carry a readable head; 169
+# have none, 3 start with a digit, 1 is key-only. The names are SYNTHESIZED (D1).
 SHAPE_CORPUS = [
     ("08A - 124 - Plain Body", True, "Plain Body", "padded head, space in the body"),
     ("8A - 124 - Plain Body", True, "Plain Body", "unpadded head, pre-pad stage"),
@@ -629,15 +590,13 @@ def test_a_composition_form_difference_does_not_change_the_head():
 
 SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
 
-#: A class of exactly the two Camelot letters, the one shape all eight copies
-#: shared. Keyed on the fragment so a pattern assembled from pieces is caught;
-#: an unrelated two-letter class tripping it is a review, not a defect.
+#: A class of exactly the two Camelot letters, the shape all eight copies shared,
+#: so a pattern assembled from pieces is caught too (a false hit is a review).
 _LETTER_CLASS = re.compile(r"\[\s*[AaBb]{2,4}\s*\]|\[Aa\]\[Bb\]")
 
 
 def _camelot_regex_literals(source: str) -> list[str]:
-    """Every Camelot-shaped pattern literal, ``bytes`` included: one source copy
-    spliced a padded key into an export as bytes."""
+    """Every Camelot-shaped pattern literal, ``bytes`` included."""
     found: list[str] = []
     for node in ast.walk(parsed(source)):
         if not isinstance(node, ast.Constant):
@@ -689,8 +648,7 @@ def test_no_module_carries_a_private_camelot_parser():
 
 
 def test_the_accepted_extension_set_is_one_tuple():
-    """The source had five such tuples with three memberships. One home,
-    lowercase, dot-prefixed, no duplicates."""
+    """One home, lowercase, dot-prefixed, no duplicates (the source had five)."""
     assert len(set(AUDIO_EXTS)) == len(AUDIO_EXTS)
     assert all(e.startswith(".") and e == e.lower() for e in AUDIO_EXTS)
     assert {".flac", ".aiff", ".aif", ".mp3", ".wav"} <= set(AUDIO_EXTS)

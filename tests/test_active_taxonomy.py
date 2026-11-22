@@ -83,8 +83,15 @@ READERS = {
 
 
 def _reader_calls(path: Path) -> list[tuple[str, int]]:
-    """Every call in ``path`` to a name in READERS, aliased imports resolved."""
-    tree = parsed(path.read_text(encoding="utf-8"))
+    """Every call in ``path`` to a name in READERS, aliased imports resolved.
+
+    A file naming none of them is skipped unparsed: every call the walk finds
+    needs a READERS name written in the source, as an attribute or an import.
+    """
+    source = path.read_text(encoding="utf-8")
+    if not any(name in source for name in READERS):
+        return []
+    tree = parsed(source)
     bound = {name: name for name in READERS}
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):

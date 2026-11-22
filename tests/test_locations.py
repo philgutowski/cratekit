@@ -140,24 +140,9 @@ def test_an_emitted_location_is_pure_ascii():
 @pytest.mark.parametrize(
     "character, expected",
     [(c, c) for c in string.ascii_letters + string.digits + REKORDBOX_SAFE_CHARS]
-    + [
-        (" ", "%20"),
-        ('"', "%22"),
-        ("%", "%25"),
-        ("&", "%26"),
-        ("'", "%27"),
-        ("<", "%3c"),
-        (">", "%3e"),
-        ("?", "%3f"),
-        ("[", "%5b"),
-        ("\\", "%5c"),
-        ("]", "%5d"),
-        ("^", "%5e"),
-        ("`", "%60"),
-        ("{", "%7b"),
-        ("|", "%7c"),
-        ("}", "%7d"),
-    ],
+    + [(" ", "%20"), ('"', "%22"), ("%", "%25"), ("&", "%26"), ("'", "%27"), ("<", "%3c"),
+       (">", "%3e"), ("?", "%3f"), ("[", "%5b"), ("\\", "%5c"), ("]", "%5d"), ("^", "%5e"),
+       ("`", "%60"), ("{", "%7b"), ("|", "%7c"), ("}", "%7d")],
 )
 def test_every_printable_ascii_character_is_pinned_literal_or_encoded(character, expected):
     """An edit to the safe set fails HERE. Space encodes and ``!`` does not (KTD27);
@@ -243,82 +228,50 @@ CURRENT_ROOT = "/Volumes/Library"
 LEGACY_ROOT = "/Volumes/MyLibrary"
 
 
-def test_a_path_already_under_the_root_resolves_as_itself():
-    result = resolve_recorded_path(f"{CURRENT_ROOT}/Music/t.flac", root=CURRENT_ROOT)
-    assert result.resolution is Resolution.UNDER_ROOT
-    assert result.path == f"{CURRENT_ROOT}/Music/t.flac"
+LEGACY_RULE = [PrefixRule(LEGACY_ROOT, CURRENT_ROOT)]
 
 
-def test_a_configured_prefix_resolves_a_legacy_volume_path():
-    """Without the map, most of a real library resolves to nothing."""
-    rules = [PrefixRule(LEGACY_ROOT, CURRENT_ROOT)]
-    result = resolve_recorded_path(f"{LEGACY_ROOT}/Music/t.flac", root=CURRENT_ROOT,
-                                   prefix_map=rules)
-    assert result.resolution is Resolution.REMAPPED
-    assert result.path == f"{CURRENT_ROOT}/Music/t.flac"
-    assert result.rule_index == 0
-
-
-def test_an_unmapped_prefix_is_reported_and_never_guessed():
-    """No path comes back; the prefix does, for doctor to group rows by."""
-    result = resolve_recorded_path("/Volumes/MusicLibrary/x/t.flac", root=CURRENT_ROOT)
-    assert result.resolution is Resolution.UNMAPPED
-    assert result.path is None
-    assert result.prefix == "/Volumes/MusicLibrary"
-
-
-def test_the_rewrite_is_anchored_and_not_a_substring_replace():
-    """``str.replace`` rewrote every occurrence, corrupting a path while reporting success."""
-    rules = [PrefixRule(LEGACY_ROOT, CURRENT_ROOT)]
-    nested = f"{CURRENT_ROOT}/Music/Archive{LEGACY_ROOT}/t.flac"
-    result = resolve_recorded_path(nested, root=CURRENT_ROOT, prefix_map=rules)
-    assert result.resolution is Resolution.UNDER_ROOT
-    assert result.path == nested
-
-
-def test_a_sibling_sharing_a_string_prefix_does_not_match():
-    """A rule for one volume must not swallow another whose name extends it."""
-    rules = [PrefixRule(LEGACY_ROOT, CURRENT_ROOT)]
-    result = resolve_recorded_path(f"{LEGACY_ROOT}Archive/t.flac", root=CURRENT_ROOT,
-                                   prefix_map=rules)
-    assert result.resolution is Resolution.UNMAPPED
-
-
-def test_the_map_is_ordered_and_the_first_match_wins():
-    """Order is load-bearing because one prefix can be another's prefix."""
-    rules = [
-        PrefixRule(f"{LEGACY_ROOT}/Music", f"{CURRENT_ROOT}/Audio"),
-        PrefixRule(LEGACY_ROOT, CURRENT_ROOT),
-    ]
-    result = resolve_recorded_path(f"{LEGACY_ROOT}/Music/t.flac", root=CURRENT_ROOT,
-                                   prefix_map=rules)
-    assert result.rule_index == 0
-    assert result.path == f"{CURRENT_ROOT}/Audio/t.flac"
-
-
-def test_a_rule_matches_a_prefix_written_in_either_composition_form():
-    """A volume named with an accent is ordinary, and the user types one form."""
-    legacy_nfd = "/Volumes/" + NFD_STEM
-    legacy_nfc = "/Volumes/" + NFC_STEM
-    rules = [PrefixRule(legacy_nfd, CURRENT_ROOT)]
-    result = resolve_recorded_path(f"{legacy_nfc}/t.flac", root=CURRENT_ROOT,
-                                   prefix_map=rules)
-    assert result.resolution is Resolution.REMAPPED
-    assert result.path == f"{CURRENT_ROOT}/t.flac"
-
-
-def test_resolution_does_not_check_existence():
-    """An unmapped prefix and a gone file are separate categories for deletion."""
-    result = resolve_recorded_path(f"{CURRENT_ROOT}/nothing/here.flac", root=CURRENT_ROOT)
-    assert result.resolution is Resolution.UNDER_ROOT
-    assert result.path == f"{CURRENT_ROOT}/nothing/here.flac"
-
-
-def test_a_non_absolute_recorded_path_is_its_own_category():
-    """Device-relative and streaming rows are not failures and are not paths."""
-    result = resolve_recorded_path("contents/x.flac", root=CURRENT_ROOT)
-    assert result.resolution is Resolution.NOT_A_PATH
-    assert result.path is None
+@pytest.mark.parametrize(
+    "recorded,rules,expected",
+    [
+        (f"{CURRENT_ROOT}/Music/t.flac", (),
+         dict(resolution=Resolution.UNDER_ROOT, path=f"{CURRENT_ROOT}/Music/t.flac")),
+        # Without the map, most of a real library resolves to nothing.
+        (f"{LEGACY_ROOT}/Music/t.flac", LEGACY_RULE,
+         dict(resolution=Resolution.REMAPPED, path=f"{CURRENT_ROOT}/Music/t.flac", rule_index=0)),
+        # No path comes back; the prefix does, for doctor to group rows by.
+        ("/Volumes/MusicLibrary/x/t.flac", (),
+         dict(resolution=Resolution.UNMAPPED, path=None, prefix="/Volumes/MusicLibrary")),
+        # ``str.replace`` rewrote every occurrence, corrupting a path confidently.
+        (f"{CURRENT_ROOT}/Music/Archive{LEGACY_ROOT}/t.flac", LEGACY_RULE,
+         dict(resolution=Resolution.UNDER_ROOT,
+              path=f"{CURRENT_ROOT}/Music/Archive{LEGACY_ROOT}/t.flac")),
+        # A rule for one volume must not swallow another whose name extends it.
+        (f"{LEGACY_ROOT}Archive/t.flac", LEGACY_RULE,
+         dict(resolution=Resolution.UNMAPPED, path=None)),
+        # Order is load-bearing because one prefix can be another's prefix.
+        (f"{LEGACY_ROOT}/Music/t.flac",
+         [PrefixRule(f"{LEGACY_ROOT}/Music", f"{CURRENT_ROOT}/Audio"), *LEGACY_RULE],
+         dict(resolution=Resolution.REMAPPED, path=f"{CURRENT_ROOT}/Audio/t.flac", rule_index=0)),
+        # A volume named with an accent is ordinary, and the user types one form.
+        (f"/Volumes/{NFC_STEM}/t.flac", [PrefixRule(f"/Volumes/{NFD_STEM}", CURRENT_ROOT)],
+         dict(resolution=Resolution.REMAPPED, path=f"{CURRENT_ROOT}/t.flac")),
+        # An unmapped prefix and a gone file are separate categories for deletion.
+        (f"{CURRENT_ROOT}/nothing/here.flac", (),
+         dict(resolution=Resolution.UNDER_ROOT, path=f"{CURRENT_ROOT}/nothing/here.flac")),
+        # Device-relative and streaming rows are not failures and are not paths.
+        ("contents/x.flac", (), dict(resolution=Resolution.NOT_A_PATH, path=None)),
+    ],
+    ids=["under-the-root-resolves-as-itself", "configured-prefix-resolves-a-legacy-path",
+         "unmapped-prefix-reported-never-guessed", "rewrite-anchored-not-substring-replace",
+         "sibling-sharing-a-string-prefix-does-not-match", "ordered-and-first-match-wins",
+         "rule-matches-either-composition-form", "resolution-does-not-check-existence",
+         "non-absolute-path-is-its-own-category"],
+)
+def test_resolve_recorded_path(recorded, rules, expected):
+    kwargs = {"prefix_map": rules} if rules else {}
+    result = resolve_recorded_path(recorded, root=CURRENT_ROOT, **kwargs)
+    assert {name: getattr(result, name) for name in expected} == expected
 
 
 def test_leading_prefix_names_no_platform_mount_root():
@@ -397,14 +350,13 @@ def _plant(root: Path, relative: str, source: str) -> None:
     path.write_text(source)
 
 
+_UNQUOTE = "from urllib.parse import unquote\n\ndef f(v):\n    return unquote(v)\n"
+_QUOTE_PLUS = "from urllib.parse import quote_plus\n\ndef q(v):\n    return quote_plus(v)\n"
+
+
 def test_the_sweep_still_reports_a_planted_decoder_by_its_relative_path(tmp_path):
     """The guard bites: a module that decodes for itself is named, path and call."""
-    _plant(
-        tmp_path,
-        "cratekit/library/planted.py",
-        "from urllib.parse import unquote_plus\n\n"
-        "def decode(value):\n    return unquote_plus(value)\n",
-    )
+    _plant(tmp_path, "cratekit/library/planted.py", _UNQUOTE.replace("unquote", "unquote_plus"))
     _plant(tmp_path, "cratekit/library/clean.py", "def nothing():\n    return 1\n")
 
     assert _location_codec_offenders(tmp_path) == [
@@ -414,11 +366,7 @@ def test_the_sweep_still_reports_a_planted_decoder_by_its_relative_path(tmp_path
 
 def test_the_guard_itself_fails_naming_a_decoder_planted_under_its_root(tmp_path, monkeypatch):
     """The guard, not only its sweep, fails on a planted root and names the module."""
-    _plant(
-        tmp_path,
-        "cratekit/library/planted.py",
-        "from urllib.parse import unquote\n\ndef decode(value):\n    return unquote(value)\n",
-    )
+    _plant(tmp_path, "cratekit/library/planted.py", _UNQUOTE)
     monkeypatch.setitem(globals(), "SRC_ROOT", tmp_path)
 
     with pytest.raises(AssertionError) as raised:
@@ -447,16 +395,8 @@ def test_the_sweep_reports_each_name_called_bare_or_as_an_attribute(tmp_path, na
 def test_the_sweep_reports_every_call_and_reads_the_name_alone(tmp_path):
     """One line per call, two calls in one file are two lines, and the name is
     read without its owner, so ``shlex.quote`` is reported as ``quote`` is."""
-    _plant(
-        tmp_path,
-        "cratekit/a.py",
-        "from urllib.parse import unquote\n\ndef f(v):\n    unquote(v)\n    return unquote(v)\n",
-    )
-    _plant(
-        tmp_path,
-        "cratekit/b/c.py",
-        "import shlex\n\ndef g(v):\n    return shlex.quote(v)\n",
-    )
+    _plant(tmp_path, "cratekit/a.py", _UNQUOTE + "    unquote(v)\n")
+    _plant(tmp_path, "cratekit/b/c.py", "import shlex\n\ndef g(v):\n    return shlex.quote(v)\n")
 
     assert _location_codec_offenders(tmp_path) == [
         "cratekit/a.py calls unquote()",
@@ -467,22 +407,9 @@ def test_the_sweep_reports_every_call_and_reads_the_name_alone(tmp_path):
 
 def test_the_permitted_quote_plus_is_excused_and_nothing_else_is(tmp_path):
     """The exemption covers one call name in one module, on both axes."""
-    _plant(
-        tmp_path,
-        "cratekit/tagging/searchers.py",
-        "from urllib.parse import quote_plus, unquote\n\n"
-        "def q(v):\n    return quote_plus(v), unquote(v)\n",
-    )
-    _plant(
-        tmp_path,
-        "cratekit/tagging/other.py",
-        "from urllib.parse import quote_plus\n\ndef q(v):\n    return quote_plus(v)\n",
-    )
-    _plant(
-        tmp_path,
-        "searchers.py",
-        "from urllib.parse import quote_plus\n\ndef q(v):\n    return quote_plus(v)\n",
-    )
+    _plant(tmp_path, "cratekit/tagging/searchers.py", _QUOTE_PLUS + _UNQUOTE)
+    _plant(tmp_path, "cratekit/tagging/other.py", _QUOTE_PLUS)
+    _plant(tmp_path, "searchers.py", _QUOTE_PLUS)
 
     assert sorted(_location_codec_offenders(tmp_path)) == [
         "cratekit/tagging/other.py calls quote_plus()",
@@ -494,7 +421,7 @@ def test_the_permitted_quote_plus_is_excused_and_nothing_else_is(tmp_path):
 def test_the_sweep_skips_the_decoder_and_the_vendored_tree(tmp_path):
     """Only ``cratekit/_vendor`` under the root and files named ``locations.py``
     are skipped; lookalikes are swept."""
-    call = "from urllib.parse import unquote\n\ndef f(v):\n    return unquote(v)\n"
+    call = _UNQUOTE
     _plant(tmp_path, "cratekit/core/locations.py", call)
     _plant(tmp_path, "cratekit/_vendor/downloader/fetch.py", call)
     _plant(tmp_path, "cratekit/_vendor/top.py", call)
@@ -512,7 +439,8 @@ def test_the_sweep_skips_the_decoder_and_the_vendored_tree(tmp_path):
 def test_the_sweep_computes_each_relative_path_once_per_file(tmp_path, monkeypatch):
     """U253's proof is a count: one ``relative_to`` per file swept, not per node
     (834,825 calls for 311 files at ``a7fcc9f4``)."""
-    body = "".join(f"x{n} = [{n}, {n} + 1, ({n},)]\n" for n in range(100))
+    # Spells "quote" in a string, so each file is parsed and its nodes walked.
+    body = "note = 'unquoted'\n" + "".join(f"x{n} = [{n}, {n} + 1, ({n},)]\n" for n in range(100))
     for name in ("one", "two", "three"):
         _plant(tmp_path, f"cratekit/{name}.py", body)
     _plant(tmp_path, "cratekit/core/locations.py", body)

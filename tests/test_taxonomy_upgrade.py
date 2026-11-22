@@ -1,9 +1,8 @@
 """U132: what the shipped template declares that a library's copy lacks, and the copy with it added.
 
-The planner is a function of two texts, so every scenario here is a copy built
-from the shipped text by hand and compared with what the planner answers. The
-copies are cut with plain string operations rather than with the planner's own
-cut, so an expected value never comes from the code under test.
+The planner is a function of two texts. Each copy is cut from the shipped text
+with plain string operations, never the planner's own cut, so an expected value
+never comes from the code under test.
 """
 
 from __future__ import annotations
@@ -12,8 +11,14 @@ import tomllib
 
 import pytest
 
-from cratekit.core import routing, taxonomy
+from cratekit.cli.verbs import taxonomy as upgrade_cli
+from cratekit.core import active_taxonomy, config, routing, taxonomy
 from cratekit.core import taxonomy_upgrade as upgrade
+from cratekit.core.cause import refuse
+from cratekit.core.exit_codes import ExitCode
+from tests.cli_drive import drive
+from tests.test_active_taxonomy import write_active
+from tests.test_config import valid_data
 
 
 def _shipped() -> str:
@@ -64,12 +69,8 @@ def before_genre_subs(text: str) -> str:
 
 
 def behind() -> str:
-    """A version 2 copy made before the genre Favorites and the Soul folder shipped.
-
-    Its vocabulary tags the catalogue's soul word as R&B, as the live copy's does.
-    It predates the Rominimal genre sub as well (U155), which version 2 cannot
-    declare.
-    """
+    """A version 2 copy made before the genre Favorites, the Soul folder and the
+    Rominimal genre sub (U155); it tags the soul word as R&B, as the live copy does."""
     text = _without(before_genre_subs(_shipped()), FAVORITES_START, FAVORITES_END)
     text = _without(text, SOUL_START, SOUL_END)
     return _version(_retag(text, "Soul & Funk", "Soul", "R&B"), 2)
@@ -96,12 +97,17 @@ def _plan(text: str) -> upgrade.Plan:
     return upgrade.plan(text, _shipped(), template=taxonomy.DEFAULT_TEMPLATE_NAME)
 
 
-# ---------------------------------------------------------------------------
-# The brief's four scenarios
-# ---------------------------------------------------------------------------
+# The brief's four scenarios.
 
 
-def test_a_version_2_copy_gains_favorites_and_soul_and_the_shipped_version():
+def _subsequence(short: list[str], long: list[str]) -> bool:
+    remaining = iter(long)
+    return all(any(line == other for other in remaining) for line in short)
+
+
+def test_a_version_2_copy_gains_favorites_and_soul_in_place_and_keeps_every_line():
+    """Declared order is behaviour: review menus list buckets in it and a tie
+    between two buckets' words goes to the first declared."""
     copy = behind()
     assert taxonomy.load_taxonomy(copy).schema_version == 2
     found = _plan(copy)
@@ -113,9 +119,26 @@ def test_a_version_2_copy_gains_favorites_and_soul_and_the_shipped_version():
     assert after.schema_version == 5
     assert [c.id for c in after.sub_classes if c.signal == taxonomy.SIGNAL_PLAYLIST] == ["favorites"]
     shipped = taxonomy.load_taxonomy(_shipped())
-    assert _bucket(found.after, "soul") == [b for b in shipped.buckets if b.id == "soul"][0]
+    assert _bucket(found.after, "soul") == _bucket(_shipped(), "soul")
     (fav,) = [c for c in after.sub_classes if c.id == "favorites"]
     assert fav == [c for c in shipped.sub_classes if c.id == "favorites"][0]
+    # Every line and entry the copy held is kept, in its order.
+    raised = copy.replace("schema_version = 2\n", "schema_version = 5\n", 1)
+    assert _subsequence(raised.splitlines(), found.after.splitlines())
+    by_id = {b.id: b for b in after.buckets}
+    for bucket in taxonomy.load_taxonomy(copy).buckets:
+        assert by_id[bucket.id] == bucket
+    assert found.after.count("# Added by crate taxonomy upgrade") == 2
+    # An added entry sits where the shipped template puts it.
+    assert [b.id for b in after.buckets] == [b.id for b in shipped.buckets]
+    assert [c.id for c in after.sub_classes] == [c.id for c in shipped.sub_classes]
+    # The added text parses back to the shipped entries.
+    shipped_data, after_data = tomllib.loads(_shipped()), tomllib.loads(found.after)
+    for kind, ids in (("sub_class", found.classes), ("bucket", found.buckets)):
+        for entry_id in ids:
+            (want,) = [e for e in shipped_data[kind] if e["id"] == entry_id]
+            (got,) = [e for e in after_data[kind] if e["id"] == entry_id]
+            assert got == want
 
 
 def test_a_version_4_copy_with_every_entry_plans_nothing():
@@ -124,6 +147,7 @@ def test_a_version_4_copy_with_every_entry_plans_nothing():
     assert not found.behind
     assert found.after == found.before
     assert (found.classes, found.buckets, found.held) == ((), (), ())
+    assert found.keywords == ()
 
 
 def test_an_edited_bucket_is_left_alone():
@@ -144,42 +168,12 @@ def test_a_rerun_plans_nothing():
     assert again.after == first.after
 
 
-# ---------------------------------------------------------------------------
-# What the copy keeps
-# ---------------------------------------------------------------------------
-
-
-def _subsequence(short: list[str], long: list[str]) -> bool:
-    remaining = iter(long)
-    return all(any(line == other for other in remaining) for line in short)
-
-
-def test_every_line_and_entry_the_copy_held_is_kept_in_its_order():
-    copy = behind()
-    found = _plan(copy)
-    raised = copy.replace("schema_version = 2\n", "schema_version = 5\n", 1)
-    assert _subsequence(raised.splitlines(), found.after.splitlines())
-    before = taxonomy.load_taxonomy(copy)
-    after = {b.id: b for b in taxonomy.load_taxonomy(found.after).buckets}
-    for bucket in before.buckets:
-        assert after[bucket.id] == bucket
-    assert found.after.count("# Added by crate taxonomy upgrade") == 2
-
-
-def test_an_added_entry_sits_where_the_shipped_template_puts_it():
-    """Declared order is behaviour: review menus list buckets in it and a tie
-    between two buckets' words goes to the first declared."""
-    found = _plan(behind())
-    shipped = taxonomy.load_taxonomy(_shipped())
-    after = taxonomy.load_taxonomy(found.after)
-    assert [b.id for b in after.buckets] == [b.id for b in shipped.buckets]
-    assert [c.id for c in after.sub_classes] == [c.id for c in shipped.sub_classes]
+# What the copy keeps.
 
 
 def test_headers_that_cannot_be_matched_to_entries_put_the_block_at_the_end():
-    """The fallback: a header the scan does not read (a quoted key here) leaves
-    the copy's headers and entries uneven, so the block goes at the end, and
-    the copy's own entries stay exactly as they were."""
+    """A header the scan does not read (a quoted key) leaves headers and entries
+    uneven, so the block goes at the end and the copy's entries stay as they were."""
     text = behind()
     assert text.count("[[sub_class]]\n") > 1
     quoted = text.replace("[[sub_class]]\n", '[["sub_class"]]\n', 1)
@@ -209,23 +203,10 @@ def test_a_shipped_template_that_does_not_load_is_not_the_copys_fault():
     assert "shipped" in str(caught.value)
 
 
-def test_the_added_text_parses_back_to_the_shipped_entries():
-    found = _plan(behind())
-    shipped = tomllib.loads(_shipped())
-    after = tomllib.loads(found.after)
-    for kind, ids in (("sub_class", found.classes), ("bucket", found.buckets)):
-        for entry_id in ids:
-            (want,) = [e for e in shipped[kind] if e["id"] == entry_id]
-            (got,) = [e for e in after[kind] if e["id"] == entry_id]
-            assert got == want
+# What is held, and the hand edit it names.
 
 
-# ---------------------------------------------------------------------------
-# What is held, and the hand edit it names
-# ---------------------------------------------------------------------------
-
-
-def test_soul_is_held_while_rnb_still_files_its_words():
+def test_soul_is_held_while_rnb_still_files_its_words_until_the_hand_edit():
     copy = live_shaped()
     found = _plan(copy)
     assert found.classes == ("favorites",)
@@ -240,17 +221,13 @@ def test_soul_is_held_while_rnb_still_files_its_words():
     assert found.missing_buckets == ("soul",)
     assert found.behind
     taxonomy.load_taxonomy(found.after)
-
-
-def test_the_hand_edit_lets_soul_in_on_the_next_run():
-    held = _plan(live_shaped())
-    assert [h.id for h in held.held] == ["soul"]
-    by_hand = held.after.replace('  "Soul",\n  "Soul / R&B",\n', "", 1).replace(
+    # The hand edit lets Soul in on the next run.
+    by_hand = found.after.replace('  "Soul",\n  "Soul / R&B",\n', "", 1).replace(
         '  "soul & funk",\n', "", 1
     )
-    found = _plan(by_hand)
-    assert found.buckets == ("soul",)
-    assert found.held == ()
+    again = _plan(by_hand)
+    assert again.buckets == ("soul",)
+    assert again.held == ()
 
 
 JAZZ_START = "# JAZZ AT THE TOP LEVEL"
@@ -305,22 +282,19 @@ def test_jazz_is_held_while_non_electronic_still_files_its_words_and_every_place
     assert "take the row out with it" in row
     assert not found.writes
     assert found.missing_buckets == ("jazz",)
+    # Held, the bucket is not added, so its keyword rule is not yet a difference.
+    assert found.keywords == ()
 
 
 def test_the_hand_edit_the_hold_names_lets_jazz_in_on_the_next_run():
-    """Every line the hold named, out, and the copy loads and takes the bucket.
-
-    The catalogue's Jazz still tags Jazz without its row, by the bucket's own
-    word. The copy's keyword rule is the copy's and is left where it was, and
-    the plan says so, since the shipped template sends a partial match to Jazz.
-    """
+    """Every line the hold named, out, and the copy takes the bucket; Jazz still
+    tags by the bucket's own word. The copy's keyword rule is left, and said."""
     by_hand = _without_jazz_words(before_jazz())
     by_hand = _swap(by_hand, JAZZ_VOCABULARY_ROW, "")
     found = _plan(by_hand)
     assert found.buckets == ("jazz",)
     assert found.held == ()
-    shipped = taxonomy.load_taxonomy(_shipped())
-    assert _bucket(found.after, "jazz") == [b for b in shipped.buckets if b.id == "jazz"][0]
+    assert _bucket(found.after, "jazz") == _bucket(_shipped(), "jazz")
     after = taxonomy.load_taxonomy(found.after)
     order = [b.id for b in after.buckets]
     assert order.index("hip_hop") + 1 == order.index("jazz") == order.index("non_electronic") - 1
@@ -342,12 +316,6 @@ def test_a_copy_with_no_jazz_keyword_rule_is_told_it_has_none():
     )
     (sentence,) = _plan(by_hand).keywords
     assert "the copy has no rule for it" in sentence
-
-
-def test_a_bucket_this_does_not_add_is_never_told_about_its_keyword_rule():
-    """Held, the bucket is not added, so its rule is not yet a difference."""
-    assert _plan(before_jazz()).keywords == ()
-    assert _plan(_shipped()).keywords == ()
 
 
 def test_one_place_filing_a_word_under_two_spellings_names_both_in_one_sentence():
@@ -440,9 +408,7 @@ def test_a_copy_that_does_not_load_is_refused_by_the_loader():
         _plan(behind().replace('id = "rnb"', 'id = "R and B"', 1))
 
 
-# ---------------------------------------------------------------------------
-# The cut
-# ---------------------------------------------------------------------------
+# The cut.
 
 
 def test_every_shipped_class_and_bucket_cuts_whole():
@@ -461,36 +427,28 @@ def test_a_cut_that_parses_to_something_else_refuses():
         upgrade.cut(reshaped, "bucket", "soul")
 
 
-# ---------------------------------------------------------------------------
-# The words a person reads
-# ---------------------------------------------------------------------------
+# The words a person reads.
 
 
-def test_the_gap_names_both_versions_and_each_missing_entry():
-    words = upgrade.gap(_plan(live_shaped()))
-    assert "schema_version 2" in words
-    assert "states 5" in words
-    assert "favorites" in words
-    assert "soul" in words
+@pytest.mark.parametrize(
+    ("say", "needles"),
+    [
+        (upgrade.gap, ("schema_version 2", "states 5", "favorites", "soul")),
+        (upgrade.remedy, (
+            "crate taxonomy upgrade raises schema_version to 5 and adds favorites",
+            "soul is held",
+            "run crate taxonomy upgrade again",
+        )),
+    ],
+    ids=["gap-names-both-versions-and-each-missing-entry", "remedy-names-the-verb-and-the-hand-edit"],
+)
+def test_the_words_a_person_reads(say, needles):
+    words = say(_plan(live_shaped()))
+    for needle in needles:
+        assert needle in words
 
 
-def test_the_remedy_names_the_verb_and_the_hand_edit():
-    words = upgrade.remedy(_plan(live_shaped()))
-    assert "crate taxonomy upgrade raises schema_version to 5 and adds favorites" in words
-    assert "soul is held" in words
-    assert "run crate taxonomy upgrade again" in words
-
-
-# ---------------------------------------------------------------------------
-# The verb, through the real dispatcher
-# ---------------------------------------------------------------------------
-
-from cratekit.cli.verbs import taxonomy as upgrade_cli  # noqa: E402
-from cratekit.core import config  # noqa: E402
-from cratekit.core.exit_codes import ExitCode  # noqa: E402
-from tests.cli_drive import drive  # noqa: E402
-from tests.test_active_taxonomy import write_active  # noqa: E402
-from tests.test_config import valid_data  # noqa: E402
+# The verb, through the real dispatcher.
 
 VERB = ["taxonomy", "upgrade"]
 APPLY = upgrade_cli.APPLY_GATE
@@ -524,6 +482,20 @@ def _decided(run_id: str, option: str) -> None:
     assert code == int(ExitCode.OK), envelope
 
 
+def _acted(run_id: str) -> dict:
+    code, acted = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.OK), acted
+    return acted
+
+
+def _resumed(configured, text: str):
+    """``text`` as the copy, asked and approved, ready for the verb to resume."""
+    path = write_active(configured, text)
+    run_id, _ = _asked()
+    _decided(run_id, "approve")
+    return path, run_id
+
+
 def test_the_verb_asks_then_writes_the_upgraded_copy_and_keeps_the_old_one(configured):
     path = write_active(configured, behind())
     run_id, refused = _asked()
@@ -536,8 +508,7 @@ def test_the_verb_asks_then_writes_the_upgraded_copy_and_keeps_the_old_one(confi
     }
     assert path.read_text(encoding="utf-8") == behind()
     _decided(run_id, "approve")
-    code, acted = drive(["--run", run_id, *VERB])
-    assert code == int(ExitCode.OK), acted
+    acted = _acted(run_id)
     assert acted["data"]["digest"] == shown["digest"]
     assert [w["code"] for w in acted["warnings"]] == [upgrade_cli.UPGRADED]
     assert path.read_text(encoding="utf-8") == _plan(behind()).after
@@ -555,11 +526,8 @@ def test_a_second_run_plans_nothing_and_asks_nothing(configured):
 
 
 def test_what_is_held_is_said_and_written_around(configured):
-    path = write_active(configured, live_shaped())
-    run_id, _ = _asked()
-    _decided(run_id, "approve")
-    code, acted = drive(["--run", run_id, *VERB])
-    assert code == int(ExitCode.OK), acted
+    path, run_id = _resumed(configured, live_shaped())
+    acted = _acted(run_id)
     codes = [w["code"] for w in acted["warnings"]]
     assert codes == [upgrade_cli.HELD, upgrade_cli.UPGRADED]
     assert "bucket soul" in acted["warnings"][0]["message"]
@@ -572,12 +540,8 @@ def test_what_is_held_is_said_and_written_around(configured):
 
 
 def test_the_upgrade_that_adds_jazz_says_the_copys_keyword_rule_is_left(configured):
-    copy = _swap(_without_jazz_words(before_jazz()), JAZZ_VOCABULARY_ROW, "")
-    path = write_active(configured, copy)
-    run_id, _ = _asked()
-    _decided(run_id, "approve")
-    code, acted = drive(["--run", run_id, *VERB])
-    assert code == int(ExitCode.OK), acted
+    path, run_id = _resumed(configured, _swap(_without_jazz_words(before_jazz()), JAZZ_VOCABULARY_ROW, ""))
+    acted = _acted(run_id)
     codes = [w["code"] for w in acted["warnings"]]
     assert codes == [upgrade_cli.KEYWORD_RULE, upgrade_cli.UPGRADED]
     assert "'jazz'" in acted["warnings"][0]["message"]
@@ -597,9 +561,7 @@ def test_an_abort_writes_nothing(configured):
 
 
 def test_a_copy_edited_between_the_answer_and_the_write_is_refused_as_stale(configured):
-    path = write_active(configured, behind())
-    run_id, _ = _asked()
-    _decided(run_id, "approve")
+    path, run_id = _resumed(configured, behind())
     edited = behind().replace('display = "R&B"', 'display = "R&B Edited By Hand"', 1)
     path.write_text(edited, encoding="utf-8")
     code, acted = drive(["--run", run_id, *VERB])
@@ -608,26 +570,22 @@ def test_a_copy_edited_between_the_answer_and_the_write_is_refused_as_stale(conf
     assert _backups(path) == []
 
 
-def test_a_library_with_no_copy_is_refused_and_given_nothing(configured):
+@pytest.mark.parametrize("broken", [False, True], ids=["no-copy-is-given-nothing", "copy-that-does-not-load"])
+def test_a_copy_that_cannot_be_planned_is_refused_before_the_gate(configured, broken):
     path = config.state_path("taxonomy_active", configured)
     assert not path.exists()
+    if broken:
+        write_active(configured, behind().replace('id = "rnb"', 'id = "R and B"', 1))
     code, refused = drive(VERB)
     assert refused["cause"]["reason"] == "config-unusable", refused
     assert code != int(ExitCode.DECISION_REQUIRED)
-    assert not path.exists()
-
-
-def test_a_copy_that_does_not_load_is_refused_before_the_gate(configured):
-    path = write_active(configured, behind().replace('id = "rnb"', 'id = "R and B"', 1))
-    code, refused = drive(VERB)
-    assert refused["cause"]["reason"] == "config-unusable", refused
-    assert code != int(ExitCode.DECISION_REQUIRED)
-    assert _backups(path) == []
+    assert path.exists() is broken
+    if broken:
+        assert _backups(path) == []
 
 
 def test_the_digest_is_a_function_of_the_two_texts_alone():
-    """The payload takes no path, so a rehearsal on a disposable copy of the
-    same file matches the live plan, and another text is another digest."""
+    """The payload takes no path, so a rehearsal on a copy matches the live plan."""
     one = upgrade_cli.payload(_plan(behind()))
     two = upgrade_cli.payload(_plan(behind()))
     assert one["digest"] == two["digest"]
@@ -649,12 +607,7 @@ def test_a_backup_never_takes_an_earlier_backups_name(tmp_path):
 
 
 def test_a_copy_that_does_not_read_back_is_replaced_by_the_one_it_replaced(configured, monkeypatch):
-    from cratekit.core import active_taxonomy
-    from cratekit.core.cause import refuse
-
-    path = write_active(configured, behind())
-    run_id, _ = _asked()
-    _decided(run_id, "approve")
+    path, run_id = _resumed(configured, behind())
 
     def refused(cfg):
         raise refuse("config-unusable", "a loader that disagrees with the planner")
@@ -668,19 +621,10 @@ def test_a_copy_that_does_not_read_back_is_replaced_by_the_one_it_replaced(confi
     assert kept.read_text(encoding="utf-8") == behind()
 
 
-def _resumed(configured, text: str):
-    """``text`` as the copy, asked, approved, and the verb resumed."""
-    path = write_active(configured, text)
-    run_id, _ = _asked()
-    _decided(run_id, "approve")
-    return path, run_id
-
-
 def test_a_crlf_copy_is_kept_byte_for_byte_and_upgraded_in_its_own_line_ending(configured):
     crlf = behind().replace("\n", "\r\n")
     path, run_id = _resumed(configured, crlf)
-    code, acted = drive(["--run", run_id, *VERB])
-    assert code == int(ExitCode.OK), acted
+    acted = _acted(run_id)
     (kept,) = _backups(path)
     assert kept.read_bytes() == crlf.encode("utf-8")
     written = path.read_bytes()
@@ -701,8 +645,7 @@ def test_a_crlf_copy_plans_the_digest_its_lf_twin_does(configured):
 def test_mixed_line_endings_are_written_as_lf_and_said(configured):
     mixed = behind().replace("\n", "\r\n", 1)
     path, run_id = _resumed(configured, mixed)
-    code, acted = drive(["--run", run_id, *VERB])
-    assert code == int(ExitCode.OK), acted
+    acted = _acted(run_id)
     (kept,) = _backups(path)
     assert kept.read_bytes() == mixed.encode("utf-8")
     assert b"\r" not in path.read_bytes()
@@ -731,9 +674,6 @@ def test_an_edit_after_the_second_plan_is_refused_as_stale(configured, monkeypat
 
 
 def test_a_restore_that_fails_says_so_and_names_the_backup(configured, monkeypatch):
-    from cratekit.core import active_taxonomy
-    from cratekit.core.cause import refuse
-
     path, run_id = _resumed(configured, behind())
 
     def refused(cfg):
@@ -776,9 +716,7 @@ def test_the_read_back_names_a_copy_that_is_not_utf8(configured):
     assert problem is not None and "utf" in problem.lower(), problem
 
 
-# ---------------------------------------------------------------------------
-# U244: a source's vocabulary table the copy lacks, added whole and never over one it holds
-# ---------------------------------------------------------------------------
+# U244: a source's vocabulary table the copy lacks, added whole and never over one it holds.
 
 DISCOGS_START = "# DISCOGS' STYLES (U244)."
 
@@ -810,6 +748,8 @@ def test_a_copy_made_before_u244_gains_the_discogs_table_whole():
     assert found.after.startswith(copy), "every line the copy held is kept, in order"
     assert DISCOGS_START in found.after, "the table's comments come with it"
     assert _plan(found.after).writes is False, "a rerun plans nothing"
+    assert "it lacks the vocabulary table(s) [vocabulary.discogs]" in upgrade.gap(found)
+    assert "adds [vocabulary.discogs]" in upgrade.remedy(found)
 
 
 def test_the_copys_own_edits_are_kept_when_the_table_is_added():
@@ -892,12 +832,6 @@ def test_every_shipped_table_cuts_whole_and_a_missing_one_refuses():
         upgrade.cut_table(_shipped(), "juno")
 
 
-def test_the_gap_and_the_remedy_name_the_missing_table():
-    found = _plan(without_discogs(_shipped()))
-    assert "it lacks the vocabulary table(s) [vocabulary.discogs]" in upgrade.gap(found)
-    assert "adds [vocabulary.discogs]" in upgrade.remedy(found)
-
-
 def test_the_verb_asks_then_adds_the_discogs_table(configured):
     copy = without_discogs(_shipped())
     path = write_active(configured, copy)
@@ -907,18 +841,15 @@ def test_the_verb_asks_then_adds_the_discogs_table(configured):
         ("vocabulary", "discogs", "add")
     }
     _decided(run_id, "approve")
-    code, acted = drive(["--run", run_id, *VERB])
-    assert code == int(ExitCode.OK), acted
+    acted = _acted(run_id)
     assert acted["data"]["totals"]["vocabularies"] == 1
     assert path.read_text(encoding="utf-8") == _plan(copy).after
     assert "[vocabulary.discogs]" in acted["warnings"][0]["message"]
 
 
 def test_a_copy_made_before_u133_takes_the_discogs_table_and_loads_after_the_holds_edits():
-    """U244's round two. A copy made before the Jazz folder and before Discogs
-    gains the Discogs table in the run that holds Jazz; the hand edits the hold
-    names must then leave a copy that loads and takes Jazz, so no row of the
-    Discogs table may write Jazz, which that copy files only as a sub."""
+    """U244's round two: no Discogs row may write Jazz, which that copy files only
+    as a sub, or the hold's hand edits leave a copy that does not load."""
     first = _plan(without_discogs(before_jazz()))
     assert first.vocabularies == ("discogs",)
     assert [held.id for held in first.held] == ["jazz"]
