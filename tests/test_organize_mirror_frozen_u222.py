@@ -1,7 +1,6 @@
 """U222: the mirror's apply after a library write between its acts holds the gate's plan.
 
-Sitting 66 on U204's library: the gate's run freezes, a ``mirror-edits`` run
-writes the library between the acts, and the decided run rebuilds. D1 applies.
+Sitting 66 on U204's library: the gate freezes, ``mirror-edits`` writes, the decided run rebuilds. D1 applies.
 """
 
 from __future__ import annotations
@@ -20,9 +19,7 @@ from tests.test_organize_mirror_edits import _field_policies as _field_policies 
 from tests.test_organize_mirror_edits_u204 import BATCH_A
 from tests.test_organize_mirror_edits_u204 import world as world  # noqa: PLC0414
 from tests.test_routing_workers import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_routing_workers import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
+from tests.test_routing_workers import _release_process_locks as _release_process_locks
 from tests.test_routing_workers import acknowledged as acknowledged  # noqa: PLC0414
 from tests.test_routing_workers import configured as configured  # noqa: PLC0414
 from tests.test_routing_workers import library as library  # noqa: PLC0414
@@ -69,6 +66,11 @@ def _asked(world) -> int:
     return len(world.account.matches)
 
 
+def _gate_of_next(world) -> Area:
+    world.runs += 1
+    return _mirror(world, account_mirror.Run(run_id=f"next-{world.runs}", record=True))
+
+
 def test_an_inbox_join_the_library_took_between_the_acts_applies_the_approved_plan(world):
     """Sitting 66, A41: the apply lands with no stale and the track stays on the account."""
     world.put_in(INBOX_A, "r2")
@@ -90,11 +92,6 @@ def test_an_inbox_join_the_library_took_between_the_acts_applies_the_approved_pl
     after = _gate_of_next(world)
     assert step.state == NOTHING
     assert all(one.state != "planned" for one in after.steps), [one.key for one in after.steps]
-
-
-def _gate_of_next(world) -> Area:
-    world.runs += 1
-    return _mirror(world, account_mirror.Run(run_id=f"next-{world.runs}", record=True))
 
 
 def test_an_inbox_leave_the_library_took_between_the_acts_applies_the_approved_plan(world):
@@ -333,14 +330,7 @@ def test_an_older_record_or_an_unreadable_snapshot_or_step_is_planned_afresh(wor
 
 
 def test_a_plan_made_afresh_by_a_decided_run_is_never_read_as_what_the_gate_showed(world):
-    """Review round one: the resume after a fresh plan must not say nothing moved.
-
-    The gate's record is one this build does not read (version 5, as every run
-    gated before U222), a batch lands between the acts, and the gate's run is
-    resumed twice. The first resume plans afresh; it freezes what it planned so
-    the next one asks the provider nothing, but that plan is not the gate's, so
-    the second resume cannot name what moved and says so.
-    """
+    """Review round one: a resume after a fresh plan, frozen by a run that applies, never says nothing moved."""
     shown = _gate(world)
     path = config.state_path("mirror_plans", world.cfg) / f"{GATE}.json"
     document = json.loads(path.read_text(encoding="utf-8"))

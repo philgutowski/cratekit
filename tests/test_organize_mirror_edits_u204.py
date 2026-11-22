@@ -1,7 +1,6 @@
 """U204: an edit made on the account to the Favorites folder or INBOX changes the library.
 
-U201's disposable library grown a Favorites folder and an INBOX of two live
-batches, each pass a new organize run written in organize's order. D1 applies.
+U201's library grown a Favorites folder and an INBOX of two live batches. D1 applies.
 """
 
 from __future__ import annotations
@@ -13,7 +12,6 @@ from pathlib import Path
 import pytest
 
 from cratekit.core import config, jobs, rb_writer, tags, taxonomy, tree_registry
-from cratekit.core.cause import CratekitError
 from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue
 from cratekit.modules.outbound import ledger
@@ -22,13 +20,10 @@ from cratekit.organize import mirror_downloads, mirror_edits, rekordbox
 from cratekit.organize.steps import LISTED, NOTHING, PLANNED
 from tests.label_fakes import FakeCatalogue, catalogue_factory
 from tests.test_inbox_rotate import _record_landing
-from tests.test_label_workers import installed as installed  # noqa: PLC0414
-from tests.test_organize_mirror_edits import Machine, silence, without_fsync
+from tests.test_organize_mirror_edits import Machine, latched, refused, silence, without_fsync
 from tests.test_organize_mirror_edits import _field_policies as _field_policies  # noqa: PLC0414
 from tests.test_routing_workers import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_routing_workers import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
+from tests.test_routing_workers import _release_process_locks as _release_process_locks
 from tests.test_routing_workers import acknowledged as acknowledged  # noqa: PLC0414
 from tests.test_routing_workers import configured as configured  # noqa: PLC0414
 from tests.test_routing_workers import library as library  # noqa: PLC0414
@@ -148,6 +143,13 @@ class World(Machine):
         queue = mirror_downloads.add_step(self.cfg, shared)
         return area, step, queue, shared
 
+    def plans_nothing(self) -> None:
+        """The next run plans nothing to the library, the queue or the account, and decides nothing."""
+        area, step, queue, shared = self.plan_all()
+        assert step.state == queue.state == NOTHING
+        assert {one.state for one in area.steps} <= {NOTHING, LISTED}
+        assert shared.reading().decided.decisions == ()
+
     def run_all(self):
         area, step, queue, _shared = self.plan_all()
         for one in (step, queue, *area.steps):
@@ -244,10 +246,7 @@ def test_the_first_run_mirrors_favorites_and_inbox_and_records_their_snapshots(w
 
 
 def test_a_second_run_with_nothing_changed_plans_nothing_anywhere(world):
-    area, step, queue, _shared = world.plan_all()
-    assert step.state == NOTHING
-    assert queue.state == NOTHING
-    assert {one.state for one in area.steps} <= {NOTHING, LISTED}
+    world.plans_nothing()
 
 
 def test_edits_on_playlists_never_agreed_change_nothing_in_the_library(world):
@@ -282,10 +281,7 @@ def test_a_track_added_to_all_favorites_is_favourited_in_its_month_and_coloured(
     # The next run mirrors the month it made, and the one after plans nothing.
     world.run_all()
     assert world.held("Favorites 2026-09") == ["r2"]
-    area, step, queue, shared = world.plan_all()
-    assert step.state == NOTHING and queue.state == NOTHING
-    assert {one.state for one in area.steps} <= {NOTHING, LISTED}
-    assert shared.reading().decided.decisions == ()
+    world.plans_nothing()
 
 
 def test_a_track_added_to_all_favorites_with_no_time_goes_to_undated(world):
@@ -326,8 +322,7 @@ def test_a_track_removed_from_all_favorites_leaves_the_favorites_folder(world):
     assert world.held(SOURCE) == []
     world.run_all()
     assert world.held(f"Favorites {MONTH}") == []
-    _area, step, queue, _shared = world.plan_all()
-    assert step.state == NOTHING and queue.state == NOTHING
+    world.plans_nothing()
 
 
 def test_a_track_removed_from_a_month_alone_is_listed_and_not_carried(world):
@@ -375,8 +370,7 @@ def test_a_track_added_to_an_inbox_batch_joins_it_and_one_taken_off_leaves_it(wo
     assert world.places("2") == {("Deep House", "Med")}
     assert world.held(f"INBOX {BATCH_A}") == ["r1", "r2"]
     assert world.held(f"INBOX {BATCH_B}") == []
-    _area, step, queue, _shared = world.plan_all()
-    assert step.state == NOTHING and queue.state == NOTHING
+    world.plans_nothing()
 
 
 def test_a_batch_moved_into_old_since_the_plan_is_never_touched(world):
@@ -384,9 +378,7 @@ def test_a_batch_moved_into_old_since_the_plan_is_never_touched(world):
     _area, step, _queue, _shared = world.plan_all()
     assert step.state == PLANNED
     world.into_old(world.batch_a)
-    with pytest.raises(CratekitError) as raised:
-        step.apply()
-    assert raised.value.cause.reason == "decision-stale"
+    assert refused(step) == "decision-stale"
     assert world.members(world.batch_a) == {"1"}
 
 
@@ -460,7 +452,7 @@ def test_a_track_added_to_inbox_or_favorites_that_the_library_lacks_is_queued(wo
     assert world.held(f"INBOX {BATCH_A}") == ["r1", "r3"]
 
 
-def test_a_track_a_snapshot_once_held_is_never_queued_again(world):
+def test_a_track_a_snapshot_once_held_is_never_queued_again():
     decided = edits.decide(
         [
             edits.Mirrored(
@@ -520,9 +512,7 @@ def test_a_track_moved_between_months_leaves_the_old_month(world):
     assert world.members(world.month) == set()
     assert world.members(world.source) == {"1"}
     assert world.held(f"Favorites {MONTH}") == []
-    _area, step, queue, shared = world.plan_all()
-    assert step.state == NOTHING and queue.state == NOTHING
-    assert shared.reading().decided.decisions == ()
+    world.plans_nothing()
 
 
 def test_another_release_of_an_owned_recording_is_never_queued_nor_swapped(world):
@@ -553,18 +543,10 @@ def test_a_recording_the_library_holds_in_no_playlist_is_never_queued(world):
 
 
 def test_an_inbox_edit_over_a_latched_intake_tree_writes_nothing(world, monkeypatch):
-    from cratekit.core import convergence
-    from cratekit.core.cause import refuse
-    asked: list[str] = []
-    def latched(_cfg, _db, tree_id, _registry, **_kwargs):
-        asked.append(tree_id)
-        raise refuse("tree-unconverged", "the tree is latched", origin=("test",))
-    monkeypatch.setattr(convergence, "assert_tree_writable", latched)
+    asked = latched(monkeypatch)
     world.put_in(f"INBOX {BATCH_A}", "r2")
     _area, step, _queue, _shared = world.plan_all()
-    with pytest.raises(CratekitError) as caught:
-        step.apply()
-    assert caught.value.cause.reason == "tree-unconverged"
+    assert refused(step) == "tree-unconverged"
     assert asked == [DECLARED.intake.id]
     assert world.members(world.batch_a) == {"1"}
 
@@ -594,9 +576,7 @@ def test_a_favourite_the_placement_did_not_write_is_refused_at_the_read_back(wor
     monkeypatch.setattr(placement, "place", short)
     world.put_in(f"Favorites {MONTH}", "r2")
     _area, step, _queue, _shared = world.plan_all()
-    with pytest.raises(CratekitError) as caught:
-        step.apply()
-    assert caught.value.cause.reason == "session-committed-unverified"
+    assert refused(step) == "session-committed-unverified"
 
 
 def test_a_track_put_in_a_quarter_is_named_and_not_filed(world):
@@ -698,9 +678,7 @@ def test_a_favorites_edit_planned_and_not_applied_is_taken_whole_by_the_next_run
     assert change["leaves"] == [f"Favorites / {MONTH}"]
     assert world.members(world.month) == set()
     assert world.members(september) == {"1"}
-    _area, step, _queue, shared = world.plan_all()
-    assert step.state == NOTHING
-    assert shared.reading().decided.decisions == ()
+    world.plans_nothing()
 
 
 @pytest.mark.parametrize(
@@ -744,9 +722,7 @@ def test_a_month_the_placement_did_not_make_is_refused_at_the_read_back(world, m
     monkeypatch.setattr(placement, "place", no_month)
     world.put_in(SOURCE, "r2", at="2026-09-14T10:00:00+00:00")
     _area, step, _queue, _shared = world.plan_all()
-    with pytest.raises(CratekitError) as caught:
-        step.apply()
-    assert caught.value.cause.reason == "session-committed-unverified"
+    assert refused(step) == "session-committed-unverified"
 
 
 def test_the_downloads_plan_reads_the_library_through_a_reports_one_handle(world, monkeypatch):

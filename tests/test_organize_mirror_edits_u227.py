@@ -1,7 +1,6 @@
 """U227: a download an account edit queued is filed where the edit put it, once it lands.
 
-Sitting 85 on U204's world: the landing files the track by its own tags into
-another band, which is never read as a change made in rekordbox. D1 applies.
+Sitting 85 on U204's world: the landing's own filing is never read as rekordbox's change. D1 applies.
 """
 
 from __future__ import annotations
@@ -14,12 +13,9 @@ from cratekit.modules.outbound import mirror_edits as edits
 from tests.test_organize_mirror_edits_u204 import _field_policies as _field_policies  # noqa: PLC0414
 from tests.test_organize_mirror_edits_u204 import _items, _land_and_file, _queued
 from tests.test_organize_mirror_edits_u204 import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_organize_mirror_edits_u204 import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
+from tests.test_organize_mirror_edits_u204 import _release_process_locks as _release_process_locks
 from tests.test_organize_mirror_edits_u204 import acknowledged as acknowledged  # noqa: PLC0414
 from tests.test_organize_mirror_edits_u204 import configured as configured  # noqa: PLC0414
-from tests.test_organize_mirror_edits_u204 import installed as installed  # noqa: PLC0414
 from tests.test_organize_mirror_edits_u204 import library as library  # noqa: PLC0414
 from tests.test_organize_mirror_edits_u204 import world as world  # noqa: PLC0414
 
@@ -52,13 +48,26 @@ def _file_by_tags(world, content_id: str, to: tuple[str, str], at: str) -> None:
     )
 
 
-def _queued_landed_and_filed(world, to=("Deep House", "Low")) -> None:
+def _queued_and_landed(world) -> None:
+    """Put in Tech House Med on the account, queued by the next organize, then landed."""
     world.put_in("Tech House Med", "r3", at=ACCOUNT_AT)
     world.run_all()
     assert len(_queued(world.cfg)) == 1
     _land_and_file(world, matched_as="r3")
+
+
+def _queued_landed_and_filed(world, to=("Deep House", "Low")) -> None:
+    _queued_and_landed(world)
     _file_by_tags(world, "3", to, FILED_AT)
     assert world.places("3") == {to}
+
+
+def _kept(step) -> dict:
+    """The one item naming r3, rekordbox's place kept, and no change carried."""
+    assert _items(step) == []
+    (kept,) = [one for one in step.items if one.get("track") == "r3"]
+    assert kept["outcome"] == edits.REKORDBOX
+    return kept
 
 
 def test_a_queued_track_filed_elsewhere_by_its_tags_is_filed_where_the_account_put_it(world):
@@ -83,10 +92,7 @@ def test_a_move_made_in_rekordbox_after_the_landing_still_stands(world):
     _queued_landed_and_filed(world)
     world.move_in_rekordbox("3", ("Deep House", "Med"), MOVED_AT)
     _area, step, _queue = world.run_all()
-    assert _items(step) == []
-    (kept,) = [one for one in step.items if one.get("track") == "r3"]
-    assert kept["outcome"] == edits.REKORDBOX
-    assert "rekordbox's place stands" in kept["why"]
+    assert "rekordbox's place stands" in _kept(step)["why"]
     assert world.places("3") == {("Deep House", "Med")}
     assert "r3" not in world.held("Tech House Med")
 
@@ -98,7 +104,6 @@ def test_a_filing_recorded_before_the_download_was_queued_is_not_the_landings(wo
     _file_by_tags(world, "3", ("Deep House", "Low"), FILED_AT)
     # The job is queued after the filing: a hand made stand in for a queue
     # that froze a track the library already filed.
-    from cratekit.core import jobs
     from cratekit.intake import cli as intake_cli
     from cratekit.organize import mirror_downloads
     with jobs.open_store() as store:
@@ -119,21 +124,14 @@ def _retag(world, content_id: str, genre: str, genre_id: str, energy: int) -> No
 
 
 def _file_through_adoption(world, content_id: str, genre: str, genre_id: str, energy: int) -> None:
-    """The filing ``intake.filing.file_landed`` makes, and ``crate adopt apply`` makes again.
-
-    The file and the row take ``genre`` and ``energy``; the adoption plan over
-    the row is filed by ``apply_cli.file_plan``, which writes the band
-    membership and marks the adoption ledger.
-    """
+    """The filing ``intake.filing.file_landed`` makes, and ``crate adopt apply`` makes again."""
     _retag(world, content_id, genre, genre_id, energy)
     plan = apply_cli.current_plan(world.cfg, DECLARED, scope=frozenset({content_id}))
     apply_cli.file_plan(world.cfg, plan, DECLARED, actor="session", refuse_unplaced=lambda _m: None)
 
 
 def test_the_landings_filing_by_the_real_producer_is_read_as_the_landings(world):
-    world.put_in("Tech House Med", "r3", at=ACCOUNT_AT)
-    world.run_all()
-    _land_and_file(world, matched_as="r3")
+    _queued_and_landed(world)
     _file_through_adoption(world, "3", "Deep House", "100", 2)
     assert world.places("3") == {("Deep House", "Low")}
     _area, step, _queue = world.run_all()
@@ -146,28 +144,19 @@ def test_the_landings_filing_by_the_real_producer_is_read_as_the_landings(world)
 
 def test_a_refiling_through_adoption_after_the_landing_is_not_the_landings(world):
     """A person retags the landed file and files it again: their filing stands."""
-    world.put_in("Tech House Med", "r3", at=ACCOUNT_AT)
-    world.run_all()
-    _land_and_file(world, matched_as="r3")
+    _queued_and_landed(world)
     _file_through_adoption(world, "3", "Deep House", "100", 2)
     _file_through_adoption(world, "3", "Tech House", "101", 7)
     assert ("Tech House", "High") in world.places("3")
     _area, step, _queue = world.run_all()
-    assert _items(step) == []
-    (kept,) = [one for one in step.items if one.get("track") == "r3"]
-    assert kept["outcome"] == edits.REKORDBOX
-    assert "landed for the account's edit" not in kept["why"]
+    assert "landed for the account's edit" not in _kept(step)["why"]
     assert ("Tech House", "High") in world.places("3")
     # The energy the person filed it with is never rewritten toward the edit.
     assert tags.read_energy_checked(world.files["3"]) == 7
 
 
 def _file_as_person(world, content_id: str, genre: str, genre_id: str, energy: int) -> None:
-    """A person tags the row and files it through ``crate adopt apply``'s worker.
-
-    The verb queues an ``adopt.apply`` job freezing the approved plan's digest,
-    and its worker, ``apply_cli.handle``, files that plan.
-    """
+    """A person tags the row and files it through ``crate adopt apply``'s queued worker."""
     _retag(world, content_id, genre, genre_id, energy)
     plan = apply_cli.current_plan(world.cfg, DECLARED)
     with jobs.open_store() as store:
@@ -185,20 +174,12 @@ def _file_as_person(world, content_id: str, genre: str, genre_id: str, energy: i
 
 
 def test_a_persons_first_filing_after_a_landing_that_filed_nothing_is_not_the_landings(world):
-    """Round two of the review: a download with no genre tag is filed nowhere by its
-    landing, and the person's own first filing is never read as the landing's."""
-    world.put_in("Tech House Med", "r3", at=ACCOUNT_AT)
-    world.run_all()
-    _land_and_file(world, matched_as="r3")
-    assert adoption.read(world.cfg).applied == () or all(
-        one.content_id != "3" for one in adoption.read(world.cfg).applied
-    )
+    """Review round two: a download its landing filed nowhere, then filed by a person, is theirs."""
+    _queued_and_landed(world)
+    assert all(one.content_id != "3" for one in adoption.read(world.cfg).applied)
     _file_as_person(world, "3", "Tech House", "101", 7)
     assert world.places("3") == {("Tech House", "High")}
     _area, step, _queue = world.run_all()
-    assert _items(step) == []
-    (kept,) = [one for one in step.items if one.get("track") == "r3"]
-    assert kept["outcome"] == edits.REKORDBOX
-    assert "landed for the account's edit" not in kept["why"]
+    assert "landed for the account's edit" not in _kept(step)["why"]
     assert world.places("3") == {("Tech House", "High")}
     assert tags.read_energy_checked(world.files["3"]) == 7

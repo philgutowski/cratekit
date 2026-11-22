@@ -1,8 +1,6 @@
 """U201: an edit made on the account to a mirrored genre playlist changes the library.
 
-Driven end to end on a disposable BY GENRE + ENERGY tree and the strict fake
-account, each pass a new organize run; asserted on what the account, files and
-database hold. D1 applies.
+End to end on a disposable tree and the strict fake account, a new organize run each pass. D1 applies.
 """
 
 from __future__ import annotations
@@ -13,6 +11,7 @@ import shutil
 import sqlite3
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -29,9 +28,7 @@ from tests.test_active_taxonomy import write_active
 from tests.test_label_workers import installed as installed  # noqa: PLC0414
 from tests.test_rb_writer_db import _build_disposable_database
 from tests.test_routing_workers import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_routing_workers import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
+from tests.test_routing_workers import _release_process_locks as _release_process_locks
 from tests.test_routing_workers import acknowledged as acknowledged  # noqa: PLC0414
 from tests.test_routing_workers import configured as configured  # noqa: PLC0414
 from tests.test_routing_workers import library as library  # noqa: PLC0414
@@ -175,6 +172,13 @@ class Machine:
                 one.applied = one.apply()
         return area, step
 
+    def plans_nothing(self) -> None:
+        """The next run plans nothing on either side and decides nothing."""
+        area, step, shared = self.plan()
+        assert step.state == NOTHING
+        assert {one.state for one in area.steps} <= {NOTHING, LISTED}
+        assert shared.reading().decided.decisions == ()
+
     def remote(self, title: str) -> str:
         (found,) = [pid for pid, name in self.account.titles.items() if name == title]
         return found
@@ -255,6 +259,25 @@ def _writes(account) -> tuple:
     return (list(account.created), list(account.chunks), list(account.taken))
 
 
+def refused(step) -> str:
+    """The reason the step's apply refuses with."""
+    with pytest.raises(CratekitError) as caught:
+        step.apply()
+    return caught.value.cause.reason
+
+
+def latched(monkeypatch) -> list[str]:
+    """Every tree's latch refuses; answers the trees it was asked for."""
+    from cratekit.core import convergence
+    from cratekit.core.cause import refuse
+    asked: list[str] = []
+    def refusing(_cfg, _db, tree_id, _registry, **_kwargs):
+        asked.append(tree_id)
+        raise refuse("tree-unconverged", "the tree is latched", origin=("test",))
+    monkeypatch.setattr(convergence, "assert_tree_writable", refusing)
+    return asked
+
+
 def test_the_first_run_mirrors_one_way_and_records_every_playlists_snapshot(machine):
     assert machine.held("Deep House Low") == ["r1"]
     assert machine.held("Deep House Med") == ["r2"]
@@ -266,9 +289,7 @@ def test_the_first_run_mirrors_one_way_and_records_every_playlists_snapshot(mach
 
 
 def test_a_second_run_with_nothing_changed_plans_nothing_on_either_side(machine):
-    area, step, _shared = machine.plan()
-    assert step.state == NOTHING
-    assert {one.state for one in area.steps} <= {NOTHING, LISTED}
+    machine.plans_nothing()
 
 
 def test_an_edit_on_a_playlist_never_agreed_is_put_back_and_nothing_in_the_library_changes(machine):
@@ -301,11 +322,7 @@ def test_a_track_moved_on_the_account_is_retagged_refiled_and_the_next_run_plans
     assert machine.held("Tech House Med") == ["r1"]
     assert machine.held("Deep House Low") == []
     assert _writes(machine.account) == before
-    # AND THE NEXT RUN PLANS NOTHING ON EITHER SIDE.
-    area, step, shared = machine.plan()
-    assert step.state == NOTHING
-    assert {one.state for one in area.steps} <= {NOTHING, LISTED}
-    assert shared.reading().decided.decisions == ()
+    machine.plans_nothing()
 
 
 def test_a_move_in_rekordbox_after_an_edit_was_taken_is_rekordboxs(machine):
@@ -352,9 +369,7 @@ def test_a_track_removed_on_the_account_and_added_nowhere_is_unfiled_and_listed(
     assert "1" in {one.get("content_id") or one.get("id") for one in unplaced}
     # IT STAYS IN THE COLLECTION.
     assert machine.sql("SELECT rb_local_deleted FROM djmdContent WHERE ID = '1'") == [(0,)]
-    area, step, _shared = machine.plan()
-    assert step.state == NOTHING
-    assert {one.state for one in area.steps} <= {NOTHING, LISTED}
+    machine.plans_nothing()
 
 
 def test_the_gate_names_every_membership_the_step_takes_away(machine):
@@ -405,8 +420,7 @@ def test_two_moves_follow_the_later_account_move(machine):
     assert step.state == PLANNED
     assert machine.places("1") == {("Tech House", "Med")}
     assert machine.held("Tech House Med") == ["r1"]
-    area, step, _shared = machine.plan()
-    assert step.state == NOTHING and {one.state for one in area.steps} <= {NOTHING, LISTED}
+    machine.plans_nothing()
 
 
 def test_two_moves_with_the_account_time_unknown_keep_rekordboxs(machine):
@@ -427,9 +441,7 @@ def test_a_library_moved_since_the_plan_writes_nothing(machine):
         "created_at, updated_at) VALUES ('late', ?, '1', 2, 0, '2026-11-04', '2026-11-04')",
         machine.playlists[("Tech House", "High")],
     )
-    with pytest.raises(CratekitError) as caught:
-        step.apply()
-    assert caught.value.cause.reason == "decision-stale"
+    assert refused(step) == "decision-stale"
     assert tags.read_genre_from_file(machine.files["1"]) == "Deep House"
 
 
@@ -448,10 +460,10 @@ def test_without_the_backup_acknowledgment_the_rekordbox_area_is_not_planned(mac
     assert tags.read_genre_from_file(machine.files["1"]) == "Deep House"
 
 
-def test_the_step_is_a_kind_the_rekordbox_area_names_and_listed_with_no_reading(machine):
+def test_the_step_is_a_kind_the_rekordbox_area_names_and_listed_with_no_reading(acknowledged):
     assert rekordbox.MIRROR_EDITS in rekordbox.STEPS
     area = rekordbox.plan_area(
-        machine.cfg, None, gate="organize.rekordbox.approve", today=date(2026, 11, 4), labels=(),
+        acknowledged, None, gate="organize.rekordbox.approve", today=date(2026, 11, 4), labels=(),
         report=False, only=frozenset({rekordbox.MIRROR_EDITS}),
     )
     (step,) = area.steps
@@ -611,9 +623,7 @@ def test_a_short_playlists_snapshot_advances_so_a_rekordbox_move_is_never_read_a
     machine.move_in_rekordbox("1", ("Deep House", "Med"), "2026-11-05 10:00:00.000 +00:00")
     machine.run()
     assert machine.held("Deep House Med") == ["r2", "r1"]
-    _area, step, shared = machine.plan()
-    assert step.state == NOTHING
-    assert shared.reading().decided.decisions == ()
+    machine.plans_nothing()
     # AND A REAL EDIT ON A WHOLE PLAYLIST IS CARRIED, not held.
     machine.take_off("Deep House Med", "r1")
     _area, step = machine.run()
@@ -636,18 +646,10 @@ def test_a_track_moved_to_its_own_genres_with_vox_is_held_and_nothing_is_written
 
 def test_a_tree_the_product_latched_refuses_the_write_before_any_file_is_tagged(machine, monkeypatch):
     """Finding 2: the tree's own latch, before a tag, a row or a membership."""
-    from cratekit.core import convergence
-    from cratekit.core.cause import refuse
-    asked: list[str] = []
-    def latched(_cfg, _db, tree_id, _registry, **_kwargs):
-        asked.append(tree_id)
-        raise refuse("tree-unconverged", "the tree is latched", origin=("test",))
-    monkeypatch.setattr(convergence, "assert_tree_writable", latched)
+    asked = latched(monkeypatch)
     machine.move_on_account()
     _area, step, _shared = machine.plan()
-    with pytest.raises(CratekitError) as caught:
-        step.apply()
-    assert caught.value.cause.reason == "tree-unconverged"
+    assert refused(step) == "tree-unconverged"
     assert asked == [taxonomy.default_taxonomy().tree.id]
     assert tags.read_genre_from_file(machine.files["1"]) == "Deep House"
     assert machine.places("1") == {("Deep House", "Low")}
@@ -699,18 +701,10 @@ def test_a_read_back_that_differs_from_the_plan_is_refused():
         genre_was="Deep House", genre="Tech House", energy_was=2, energy=4,
         leave=(("p-low", "Deep House", "Low"),), join=(("p-med", "Tech House", "Med"),), tree=edits.GENRE,
     )
-    class Held:
-        def __init__(self, rows):
-            self.rows = rows
-        def fetchall(self):
-            return self.rows
-    class Session:
-        def execute(self, *_args, **_kwargs):
-            return Held([("p-low",)])
-    class Db:
-        session = Session()
+    held = SimpleNamespace(fetchall=lambda: [("p-low",)])
+    db = SimpleNamespace(session=SimpleNamespace(execute=lambda *_args, **_kwargs: held))
     with pytest.raises(CratekitError) as caught:
-        mirror_edits.assert_read_back(Db(), [change])
+        mirror_edits.assert_read_back(db, [change])
     assert caught.value.cause.reason == "session-committed-unverified"
     assert caught.value.cause.detail == {"content_id": "1", "stayed": ["p-low"], "absent": ["p-med"]}
 
