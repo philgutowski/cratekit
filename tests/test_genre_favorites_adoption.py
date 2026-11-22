@@ -93,11 +93,6 @@ def test_an_adoption_with_no_source_playlist_files_its_tracks_and_says_the_refre
     assert note["message"].endswith(f"({genre_favorites.SOURCE_MISSING})")
 
 
-# ---------------------------------------------------------------------------
-# U132: a library without the class is told so, with the cause's own code
-# ---------------------------------------------------------------------------
-
-
 def _without_the_class(monkeypatch) -> None:
     import dataclasses
 

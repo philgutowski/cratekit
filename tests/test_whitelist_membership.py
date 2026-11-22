@@ -33,11 +33,6 @@ def _baseline_registry():
     W.reset_field_policies()
 
 
-# ---------------------------------------------------------------------------
-# The three ceilings R-15 names
-# ---------------------------------------------------------------------------
-
-
 def test_the_permitted_tables_are_exactly_these_five():
     """The structural guarantee. Any table outside this set cannot gain a row."""
     assert W.PERMITTED_ROW_TABLES == frozenset(
@@ -95,11 +90,6 @@ def test_the_bookkeeping_set_is_exactly_these_ten_columns():
     )
 
 
-# ---------------------------------------------------------------------------
-# The same shape one file over: deny lists, where a REMOVAL is the widening
-# ---------------------------------------------------------------------------
-
-
 def test_the_gridless_on_create_set_is_exactly_these_five_columns():
     """Removing one lets a row this product creates carry that analysis column."""
     assert W.GRIDLESS_ON_CREATE_COLUMNS == frozenset(
@@ -111,10 +101,6 @@ def test_the_unwritable_metadata_fields_are_exactly_these_three():
     """Removing one lets a metadata operation register that field."""
     assert set(metadata.UNWRITABLE_FIELDS) == {"KeyID", "ColorID", "Commnt"}
 
-
-# ---------------------------------------------------------------------------
-# Every database open names the file it opens
-# ---------------------------------------------------------------------------
 
 _CONSTRUCTOR = "Rekordbox6Database"
 
@@ -206,10 +192,7 @@ def test_every_database_open_in_src_names_the_file_it_opens():
         ("Rekordbox6Database(str(copy))", "positional argument"),
         ("Rekordbox6Database(**options)", "passes no path="),
         ("pyrekordbox.Rekordbox6Database(db_dir=d)", "passes no path="),
-        (
-            "from pyrekordbox import Rekordbox6Database as Open\nOpen(db_dir=d)",
-            "passes no path=",
-        ),
+        ("from pyrekordbox import Rekordbox6Database as Open\nOpen(db_dir=d)", "passes no path="),
         ("Open = Rekordbox6Database\nOpen(path=p)", "referenced without being called"),
         ("functools.partial(Rekordbox6Database, db_dir=d)", "referenced without being called"),
         ("getattr(pyrekordbox, 'Rekordbox6Database')()", "named in a string"),

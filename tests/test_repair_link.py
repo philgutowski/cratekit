@@ -102,9 +102,6 @@ def _refused(cfg, *specs: str) -> str:
     return caught.value.cause.reason
 
 
-# Parsing a triple
-
-
 def test_a_triple_reads_row_column_and_a_value_of_the_columns_type():
     assert row_link.parse_triple(f"101:{LINK}={HOUSE}") == row_link.Triple("101", LINK, HOUSE)
     assert row_link.parse_triple(f"101:{ISRC}=") == row_link.Triple("101", ISRC, "")
@@ -150,9 +147,6 @@ def test_the_probe_policy_names_exactly_the_columns_asked_and_refuses_any_other(
     with pytest.raises(ValueError):
         rb_writer.row_probe_policy([LINK, "AnalysisUpdated"])
     assert rb_writer.ROW_PROBE_OWNER not in rb_writer.registered_field_policies()
-
-
-# The plan
 
 
 def test_the_plan_is_each_triple_its_values_and_who_else_carries_each(machine):
@@ -312,9 +306,6 @@ def test_the_digest_does_not_move_with_the_carrier_count(machine):
     two = _planned(machine, f"101:{LINK}={HOUSE}")
     assert two.probes[0].carriers == one.probes[0].carriers - 1
     assert two.digest == one.digest
-
-
-# The two acts and the apply
 
 
 def test_the_two_acts_write_each_triple_and_move_no_other_column(acknowledged):
@@ -570,9 +561,6 @@ def test_apply_refuses_an_empty_watch_before_touching_the_database(acknowledged)
     finally:
         rb_writer.close_db(db)
     assert str(_content(acknowledged)["101"][LINK]) == str(BINDING)
-
-
-# The read back, pure
 
 
 def _probe(content_id="101", column=LINK, value=HOUSE, was=str(BINDING)) -> row_link.Probe:

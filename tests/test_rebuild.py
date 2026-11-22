@@ -78,10 +78,7 @@ def cfg(library, monkeypatch):
     resolved = config.from_dict(
         valid_data(
             library,
-            rekordbox={
-                "pinned_app_version": RECORDED_APP_VERSION,
-                "validated_on": "2026-08-01",
-            },
+            rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"},
         )
     )
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: resolved)

@@ -120,6 +120,13 @@ UNDER_THE_ROOT = "recorded-under-the-root"
 UNDER_A_BASE_DRIVE = "recorded-under-a-base-drive"
 
 
+def _ok(result: tuple[int, dict]) -> dict:
+    """The envelope of a drive that exited OK."""
+    code, envelope = result
+    assert code == int(ExitCode.OK), envelope
+    return envelope
+
+
 @pytest.fixture(autouse=True)
 def _platform_seams(monkeypatch):
     """What a temporary library cannot speak for, as the cutover suite patches it."""
@@ -352,8 +359,7 @@ def _seed_from_nothing(cfg: config.Config, *, moved: bool) -> None:
 
 def _drive_collection(cfg: config.Config, name: str) -> tuple[Path, dict]:
     destination = Path(cfg.library.root) / "exports" / name
-    code, envelope = drive(["export", "collection", str(destination)])
-    assert code == int(ExitCode.OK), envelope
+    envelope = _ok(drive(["export", "collection", str(destination)]))
     return destination, envelope
 
 
@@ -893,9 +899,7 @@ def test_a_landing_splices_into_the_file_and_the_import_is_proved_against_a_seco
     second = _export(machine, "after-import.xml")
     before = second.read_bytes()
 
-    code, proved = drive(["intake", "imported", "--export", str(second)])
-
-    assert code == int(ExitCode.OK), proved
+    proved = _ok(drive(["intake", "imported", "--export", str(second)]))
     (item,) = proved["data"]["items"]
     assert item["action"] == "imported"
     assert item["count"] == 2
@@ -974,9 +978,7 @@ def test_the_inbox_routing_reads_the_file_and_routes_its_intake(either, tagged):
     machine = either
     exported = _export(machine)
 
-    code, envelope = drive(["-d", "route.inbox.apply=apply", "route", "inbox", "--export", str(exported)])
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = _ok(drive(["-d", "route.inbox.apply=apply", "route", "inbox", "--export", str(exported)]))
     assert envelope["data"]["totals"]["inserted"] == 3
     written = Path(envelope["data"]["totals"]["output"]).read_bytes()
     assert _sub_keys(written, "Deep House", "Low") == ("11",)
@@ -989,9 +991,7 @@ def test_the_unplaced_sweep_reads_the_file_and_places_what_no_sub_holds(either, 
     machine = either
     exported = _export(machine)
 
-    code, envelope = drive(["route", "unplaced", "--export", str(exported)])
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = _ok(drive(["route", "unplaced", "--export", str(exported)]))
     placed = {item["track_id"]: item["destination"] for item in envelope["data"]["items"]}
     assert placed["11"] == "Deep House/Low"
     assert placed["12"] == "Deep House/Med"
@@ -1050,9 +1050,7 @@ def test_the_composed_sync_reads_the_file_and_queues_the_favourites(either, monk
     exported = _export(machine)
     _bind(monkeypatch, outbound_fakes.FakeAccount(catalog={}))
 
-    code, passed = _approved(["sync", "all", "--export", str(exported)], sync_cli.CONFIRM, "sync")
-
-    assert code == int(ExitCode.OK), passed
+    _ok(_approved(["sync", "all", "--export", str(exported)], sync_cli.CONFIRM, "sync"))
     with jobs.open_store() as store:
         favourites = [job for job in jobs.list_jobs(store) if job.handler_key == "sync.favorites"]
         (job,) = favourites

@@ -27,6 +27,13 @@ from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database, _row
 
 
+def _ok(result: tuple[int, dict]) -> dict:
+    """The envelope of a drive that exited OK."""
+    code, envelope = result
+    assert code == int(ExitCode.OK), envelope
+    return envelope
+
+
 @pytest.fixture
 def library(tmp_path, monkeypatch):
     root = tmp_path / "library"
@@ -96,8 +103,7 @@ def _answer(folder: Path, option: str = "apply") -> tuple[int, dict]:
 
 
 def _drive(folder: Path, option: str) -> dict:
-    code, envelope = _answer(folder, option)
-    assert code == int(ExitCode.OK), envelope
+    envelope = _ok(_answer(folder, option))
     return envelope["data"]
 
 
@@ -831,8 +837,7 @@ def test_a_referenced_file_does_not_hold_a_name_it_will_never_take(collected):
     _record(collected, str(held), identifier="10")
     plan = _plan(folder)
     assert _actions(plan) == {held.name: "referenced", free.name: "rename"}
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.OK), envelope
+    _ok(_answer(folder))
     assert held.is_file()
     assert (folder / "05A - 120 - Song - Artist.flac").is_file()
 
@@ -861,8 +866,7 @@ def test_a_sweep_that_carried_out_every_rename_still_answers_ok(configured):
     folder = _folder(configured)
     _track(folder, "1A - 124 - Alpha.flac", title="1A - 124 - Alpha", key="1A")
     _track(folder, "2A - 124 - Beta.flac", title="2A - 124 - Beta", key="2A")
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.OK), envelope
+    envelope = _ok(_answer(folder))
     assert envelope["outcome"] == "ok"
     assert envelope["cause"] is None
     assert envelope["data"]["totals"] == {
@@ -1185,8 +1189,7 @@ def test_a_referenced_identifier_file_is_held_as_referenced_and_never_owed(colle
     plan = _plan(folder)
     assert _actions(plan) == {"12345.flac": "referenced"}
     assert plan["totals"] == {"count": 0, "referenced": 1, "collides": 0, "unnamed": 0}
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.OK), envelope
+    envelope = _ok(_answer(folder))
     assert envelope["outcome"] == "ok"
     assert path.is_file()
 

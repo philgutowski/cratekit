@@ -50,6 +50,13 @@ FIRST = "Puls One.flac"
 SECOND = "Puls Two.flac"
 
 
+def _ok(result: tuple[int, dict]) -> dict:
+    """The envelope of a drive that exited OK."""
+    code, envelope = result
+    assert code == int(ExitCode.OK), envelope
+    return envelope
+
+
 @pytest.fixture
 def library(tmp_path, monkeypatch) -> Path:
     root = tmp_path / "library"
@@ -66,10 +73,7 @@ def configured(library) -> config.Config:
         valid_data(
             library,
             profile={"name": "full"},
-            rekordbox={
-                "pinned_app_version": RECORDED_APP_VERSION,
-                "validated_on": "2026-08-01",
-            },
+            rekordbox={"pinned_app_version": RECORDED_APP_VERSION, "validated_on": "2026-08-01"},
         )
     )
     config.save(cfg)
@@ -242,8 +246,7 @@ def _offered() -> dict:
 
 
 def _decide(run_id: str, option: str) -> None:
-    code, envelope = _drive(["run", "decide", run_id, GATE, option, "--actor", "a-person"])
-    assert code == int(ExitCode.OK), envelope
+    _ok(_drive(["run", "decide", run_id, GATE, option, "--actor", "a-person"]))
 
 
 def test_a_resort_after_a_genre_sub_writes_nothing_under_the_intake_root(both_native):
@@ -252,8 +255,7 @@ def test_a_resort_after_a_genre_sub_writes_nothing_under_the_intake_root(both_na
     before = _below(cfg, both_native["intake"])
     assert before == {BATCH: {"1", "2"}}, before
 
-    code, done = _resort()
-    assert code == int(ExitCode.OK), done
+    _ok(_resort())
 
     assert _below(cfg, both_native["intake"]) == before, (
         "the resort wrote under INBOX, which is the folder sitting 61 found: "
@@ -261,9 +263,6 @@ def test_a_resort_after_a_genre_sub_writes_nothing_under_the_intake_root(both_na
     )
     genre = _below(cfg, both_native["genre"])
     assert genre[f"{BUCKET_FOLDER} / {GENRE_SUB}"] == {"1", "2"}, genre
-
-
-# ── The plan at its gate
 
 
 def test_the_gate_shows_every_add_and_only_the_routing_trees(both_native):
@@ -299,8 +298,7 @@ def test_an_abort_queues_nothing_and_writes_nothing(both_native):
     cfg = config.load()
     run_id = _offered()["run_id"]
     _decide(run_id, "abort")
-    code, declined = _drive(["--run", run_id, "route", "resort"])
-    assert code == int(ExitCode.OK), declined
+    declined = _ok(_drive(["--run", run_id, "route", "resort"]))
     assert declined["data"]["job_id"] == ""
     assert declined["data"]["state"] == "declined"
     assert _below(cfg, both_native["genre"]) == {}
@@ -308,15 +306,13 @@ def test_an_abort_queues_nothing_and_writes_nothing(both_native):
 
 def test_a_resort_with_no_change_plans_nothing_and_queues_nothing(both_native):
     """The second resort over a library the first one filed asks over nothing."""
-    code, done = _resort()
-    assert code == int(ExitCode.OK), done
+    _ok(_resort())
     shown = _offered()["cause"]["detail"]["shown"]
     assert shown["items"] == [] and shown["adds"] == 0, shown
     refused = _offered()
     run_id = refused["run_id"]
     _decide(run_id, "apply")
-    code, again = _drive(["--run", run_id, "route", "resort"])
-    assert code == int(ExitCode.OK), again
+    again = _ok(_drive(["--run", run_id, "route", "resort"]))
     assert again["data"]["job_id"] == "", "a resort with nothing to add queued a job"
     assert again["data"]["state"] == "nothing-to-add"
 
@@ -388,9 +384,6 @@ def test_the_resume_argv_names_the_gate_run():
     assert routing_cli.resort_argv(older) == ["route", "resort", "--job", "job-1"]
 
 
-# ── The class one file over: rebuild, converge and inbox
-
-
 def test_a_rebuild_naming_the_intake_tree_refuses_and_queues_nothing(both_native):
     code, refused = _drive(["rebuild", "--actor", "a-person", "--tree", "inbox"])
     assert code == int(ExitCode.PRECONDITION), refused
@@ -403,8 +396,7 @@ def test_a_rebuild_of_every_tree_leaves_the_intake_tree_alone(both_native):
     code, queued = _drive(["rebuild", "--actor", "a-person"])
     assert code == int(ExitCode.OK), queued
     assert [w["code"] for w in queued["warnings"]] == ["tree-not-derived"], queued
-    code, done = _drive(["rebuild", "--actor", "a-person", "--job", queued["data"]["job_id"]])
-    assert code == int(ExitCode.OK), done
+    _ok(_drive(["rebuild", "--actor", "a-person", "--job", queued["data"]["job_id"]]))
     assert _below(cfg, both_native["intake"]) == {BATCH: {"1", "2"}}
     assert _below(cfg, both_native["genre"])[f"{BUCKET_FOLDER} / {GENRE_SUB}"] == {"1", "2"}
 
@@ -435,15 +427,11 @@ def test_route_inbox_files_into_the_routing_tree_only(both_native, monkeypatch):
         "read_truth",
         lambda path: rebuild.Truth(location=str(path), genre=GENRE_SUB, energy=5),
     )
-    code, applied = _drive(["-d", "route.inbox.apply=apply", "route", "inbox"])
-    assert code == int(ExitCode.OK), applied
+    _ok(_drive(["-d", "route.inbox.apply=apply", "route", "inbox"]))
     assert _below(cfg, both_native["intake"]) == {BATCH: {"1", "2"}}, (
         "route inbox wrote the routing tree's folders under INBOX"
     )
     assert _below(cfg, both_native["genre"])[f"{BUCKET_FOLDER} / {GENRE_SUB}"] == {"2"}
-
-
-# ── The guard, at the derivation
 
 
 def test_every_declared_place_but_the_routing_tree_is_not_derivable():
@@ -478,8 +466,6 @@ def test_the_derivation_refuses_the_intake_tree_before_reading_a_file(configured
     assert caught.value.cause.reason == "rebuild-tree-not-derivable"
 
 
-# ── Round one: the favourites pass, and a marked INBOX
-
 FAVORITES_SOURCE = "All Favorites"
 
 
@@ -508,8 +494,7 @@ def test_a_resort_writes_no_favourite_its_gate_did_not_show(with_favourite):
     """Every membership the resort writes was a row on the screen it was approved over."""
     cfg = config.load()
     shown = _shown(_offered()["cause"]["detail"]["shown"]["items"])
-    code, done = _resort()
-    assert code == int(ExitCode.OK), done
+    _ok(_resort())
     written = _landed(_below(cfg, with_favourite["genre"]))
     assert written == shown, (
         f"the resort wrote {sorted(written - shown)}, which its gate never showed"
@@ -518,12 +503,10 @@ def test_a_resort_writes_no_favourite_its_gate_did_not_show(with_favourite):
 
 def test_the_favourite_a_resort_left_is_shown_and_filed_by_the_next(with_favourite):
     cfg = config.load()
-    code, done = _resort()
-    assert code == int(ExitCode.OK), done
+    _ok(_resort())
     following = _shown(_offered()["cause"]["detail"]["shown"]["items"])
     assert following == {(f"{BUCKET_FOLDER} / Favorites", "1")}, following
-    code, done = _resort()
-    assert code == int(ExitCode.OK), done
+    _ok(_resort())
     assert (f"{BUCKET_FOLDER} / Favorites", "1") in _landed(_below(cfg, with_favourite["genre"]))
     assert _offered()["cause"]["detail"]["shown"]["items"] == []
 
@@ -571,10 +554,8 @@ def _accept(actor: str = "the-dj") -> dict:
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     assert refused["cause"]["detail"]["gate"] == "rebuild.accept"
     run_id = refused["run_id"]
-    code, envelope = _drive(["run", "decide", run_id, "rebuild.accept", "accept", "--actor", actor])
-    assert code == int(ExitCode.OK), envelope
-    code, accepted = _drive(["--run", run_id, *verb])
-    assert code == int(ExitCode.OK), accepted
+    _ok(_drive(["run", "decide", run_id, "rebuild.accept", "accept", "--actor", actor]))
+    accepted = _ok(_drive(["--run", run_id, *verb]))
     return accepted
 
 
@@ -603,8 +584,7 @@ def test_an_aborted_acceptance_leaves_the_inbox_refusing(restored):
     verb = ["rebuild", "--actor", "a-person", "--tree", "inbox"]
     run_id = _drive(verb)[1]["run_id"]
     _drive(["run", "decide", run_id, "rebuild.accept", "abort", "--actor", "the-dj"])
-    code, declined = _drive(["--run", run_id, *verb])
-    assert code == int(ExitCode.OK), declined
+    declined = _ok(_drive(["--run", run_id, *verb]))
     assert declined["data"]["state"] == "declined"
     assert _landing_refuses(cfg)
 
@@ -620,8 +600,7 @@ def test_the_engine_never_accepts_a_tree_a_rebuild_can_repair(restored):
 
 
 def test_a_rebuild_of_one_named_tree_names_nothing_it_left_alone(both_native):
-    code, queued = _drive(["rebuild", "--actor", "a-person", "--tree", "genre_energy"])
-    assert code == int(ExitCode.OK), queued
+    queued = _ok(_drive(["rebuild", "--actor", "a-person", "--tree", "genre_energy"]))
     assert queued["warnings"] == [], queued
 
 

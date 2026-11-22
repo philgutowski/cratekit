@@ -42,9 +42,6 @@ REAL_INODE_BOUND = row_defaults.inode_bound
 WANTED = {column: str(value) for column, value in DEFAULTS.items()}
 
 
-# Fixtures
-
-
 @pytest.fixture(autouse=True)
 def _release_process_locks():
     yield
@@ -267,9 +264,6 @@ def _as_text(row: dict) -> dict[str, str | None]:
     return {column: None if row[column] is None else str(row[column]) for column in DEFAULTS}
 
 
-# The plan
-
-
 def test_the_plan_lists_each_live_row_missing_a_default_with_exactly_its_null_columns(machine):
     build(machine)
     _sql(machine, "UPDATE djmdContent SET Rating = 3, Commnt = 'typed' WHERE ID = '102'")
@@ -424,9 +418,6 @@ def test_the_digest_is_equal_across_two_bounds_that_select_the_same_rows(machine
     least one and the approval must not hang on it."""
     build(machine)
     assert _planned(machine, bound=BOUND).digest == _planned(machine, bound=BOUND + 5).digest
-
-
-# The verb, end to end
 
 
 def test_the_two_acts_fill_every_null_default_and_move_no_other_column(acknowledged):
@@ -612,9 +603,6 @@ def test_an_abort_writes_nothing(acknowledged):
     assert _content(acknowledged) == before
 
 
-# The engine's refusals
-
-
 @pytest.mark.parametrize(
     ("update", "said"),
     [
@@ -790,9 +778,6 @@ def test_the_file_id_is_a_real_column_owned_by_its_policy_and_hidden_from_no_gua
 )
 def test_a_file_id_is_judged_against_the_bound_alone(value, state):
     assert row_defaults.file_id_state(value, BOUND) == state
-
-
-# The read back, pure
 
 
 def _item(content_id: str = "101", columns=("SamplerGain", "DJPlayCount")) -> row_defaults.Item:

@@ -55,9 +55,6 @@ def _clean_registry():
     rb_writer.reset_field_policies()
 
 
-# Scenario 1: the policy rejects an operation writing an unowned field
-
-
 def test_every_operation_is_refused_a_field_it_did_not_declare():
     """Derived over the whole operation table, so a new operation is covered at once."""
     metadata.enable()
@@ -99,9 +96,6 @@ def test_enabling_only_one_operation_widens_the_column_set_by_exactly_its_fields
     assert columns - baseline == {"Rating"}
     assert "Title" not in columns
     assert "GenreID" not in columns
-
-
-# Scenario 2: a rating backfill skips rows carrying a manual rating
 
 
 def test_a_rating_backfill_fills_an_empty_rating_with_a_star_not_a_byte():
@@ -197,9 +191,6 @@ def test_the_rating_curve_is_read_from_the_taxonomy_not_hardcoded():
     assert metadata.rating_for(99, theirs) is None
 
 
-# Scenario 3: key padding rewrites only the title, and is idempotent
-
-
 def test_padding_rewrites_the_key_span_and_leaves_every_other_byte_alone():
     metadata.enable()
     row = Row("1", Title="1A - 124 - Artist - Title 2A Mix", Rating=51, GenreID="7")
@@ -244,9 +235,6 @@ def test_a_row_with_no_title_is_surfaced_rather_than_dropped():
     assert [s.reason for s in plan.skipped] == ["no-title"]
 
 
-# Scenario 4: every write to a key metadata field is refused
-
-
 def test_no_operation_may_declare_a_key_field_even_as_fill_if_empty():
     """Registration refuses, so the mistake cannot reach a write path."""
     for mode in rb_writer.Ownership:
@@ -281,8 +269,6 @@ def test_no_operation_in_the_table_declares_an_unwritable_field():
         clash = set(policy.fields) & set(metadata.UNWRITABLE_FIELDS)
         assert not clash, f"{owner} declares {sorted(clash)}"
 
-
-# Scenario 5: no code path creates a key row. The structural half.
 
 #: Constructing the table class IS authoring a key row. ``add_key`` and
 #: ``create_key`` do not exist in the pinned binding and are forbidden anyway, so
@@ -361,9 +347,6 @@ def test_the_guard_does_not_fire_on_correct_code_or_on_prose():
 def test_the_metadata_module_exposes_no_key_resolver():
     assert not hasattr(metadata, "resolve_key_id")
     assert "resolve_key_id" not in metadata.__all__
-
-
-# Scenario 6: a genre with no lookup row is skipped and surfaced, never created
 
 
 def test_a_genre_with_no_lookup_row_is_skipped_and_surfaced():
@@ -452,9 +435,6 @@ def test_a_deleted_marker_is_not_an_error_here_the_way_it_is_for_a_track():
     assert metadata.resolve_genre_id(db, "Melodic House") == "7"
 
 
-# Scenario 7: the dry-run difference matches the applied result exactly
-
-
 def test_the_preview_decisions_equal_the_applied_decisions():
     """One plan object serves both, so the two cannot describe different work."""
     metadata.enable()
@@ -494,9 +474,6 @@ def test_report_totals_name_every_decision_the_enum_declares():
     metadata.enable()
     report = metadata.write_plan(metadata.Plan(metadata.PAD_CAMELOT), {})
     assert set(report.totals) == {d.value for d in rb_writer.Decision}
-
-
-# The registration seam itself
 
 
 def test_enable_reports_the_columns_the_guard_will_actually_enforce():
