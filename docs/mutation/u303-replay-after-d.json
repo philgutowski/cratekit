@@ -8,7 +8,7 @@
   "invalid_reason": "in progress",
   "baseline_collected": 22934,
   "baseline_exit": 1,
-  "pytest_runs": 59,
+  "pytest_runs": 62,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 251,
@@ -970,6 +970,107 @@
       "source": {
         "table": "u182.json",
         "id": "M13b_sweep_verbatim"
+      }
+    },
+    {
+      "id": "u182.M14c_frees_set_composite",
+      "description": "composite for M14: drop _frees's own set check, the layer that holds when the identity's set branch is gone",
+      "file": "src/cratekit/cli/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b569e531523432bc",
+      "subset": [
+        "tests/test_jobs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_a_stale_set_job_says_it_frees_no_playlist_and_names_no_file_as_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if hold.job.handler_key != \"intake.playlist\":\n        return \"frees no account playlist: a set job holds none out of a pass\"",
+      "new": "    if False:\n        return \"frees no account playlist: a set job holds none out of a pass\"",
+      "source": {
+        "table": "u182.json",
+        "id": "M14c_frees_set_composite"
+      }
+    },
+    {
+      "id": "u182.M15_name_fallback",
+      "description": "intake_playlist: name a job queued by hand by nothing rather than by its source",
+      "file": "src/cratekit/cli/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4191cfba18eff412",
+      "subset": [
+        "tests/test_jobs.py",
+        "tests/test_render_payloads.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 137,
+      "baseline_collected": 137,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_a_reference_the_url_parser_cannot_read_is_kept_as_typed_not_a_crash",
+        "tests/test_jobs.py::test_job_show_and_list_name_the_playlist_an_intake_job_was_made_for"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return source, source\n\n\ndef playlist_identity",
+      "new": "    return \"\", source\n\n\ndef playlist_identity",
+      "source": {
+        "table": "u182.json",
+        "id": "M15_name_fallback"
+      }
+    },
+    {
+      "id": "u182.M16_naive_instant",
+      "description": "_instant: accept a stamp with no offset, read as if it were UTC",
+      "file": "src/cratekit/cli/jobs.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "24a03d3b55dbe4f5",
+      "subset": [
+        "tests/test_jobs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_a_job_whose_queued_time_cannot_be_read_is_never_stale"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return moment if moment.tzinfo is not None else None",
+      "new": "    return moment if moment.tzinfo is not None else moment.replace(tzinfo=timezone.utc)",
+      "source": {
+        "table": "u182.json",
+        "id": "M16_naive_instant"
       }
     }
   ],
