@@ -1,34 +1,20 @@
 """Rebuilding a governed tree, and saying whether it matches the declaration (U36).
 
-A database-native tree has exactly one repair path. There is no XML export to
-re-import (under U9's A2 verdict an import would replace the tree), and an
-incremental sync sees nothing to do because the files a recovered database no
-longer places still read as owned. So the rebuild derives the tree's whole
-membership again, from the declared taxonomy and from what is on disk, with no
-watermark anywhere in it.
-
-THE THREE PROPERTIES, each one a failure the naive version produces:
-
-* **It converges across a rename, or it doubles the tree.** Every write targets
-  a playlist by the name rekordbox shows, so destinations resolve through the
-  node identifiers a previous write recorded first, and by display name only
-  when nothing was recorded (:mod:`cratekit.write.convergence_check`).
-* **It adds and never removes.** A membership made by hand under a governed
-  tree is somebody's data; the check reports the other direction and a person
-  settles it.
-* **It is idempotent, including across a crash.** The one membership writer's
-  add is a read-then-insert under the session lock, so re-running finishes the
-  job.
+A database-native tree's one repair path: no XML export can be re-imported (an
+import would replace the tree, U9's A2) and an incremental sync sees nothing
+to do, so the rebuild derives the whole membership again from the declared
+taxonomy and the files on disk, with no watermark. It converges across a
+rename (destinations resolve through recorded node identifiers first,
+:mod:`cratekit.write.convergence_check`), adds and never removes (a hand made
+membership is somebody's data), and is idempotent across a crash.
 
 "LIBRARY TRUTH" is the files on disk and their tags, read live: an export is
-hours stale, and deriving the tree from the database's own playlist rows would
-make every check a tautology.
+stale, and deriving from the database's own playlist rows makes every check a
+tautology.
 
-LAYER: write. It reads state and files, calls the session spine through the
-membership writer, and names no verb (D2). The filename is the one issue #36's
-brief names, and the ``tests/_pending.py`` key relies on it. The ``origin``
-labels say ``tree_rebuild`` because ``rebuild`` is a verb name, which the
-layering guard forbids as a string constant below the CLI.
+LAYER: write; names no verb (D2). The ``tests/_pending.py`` key relies on the
+filename. The ``origin`` labels say ``tree_rebuild`` because ``rebuild`` is a
+verb name, which the layering guard forbids as a string constant below the CLI.
 """
 
 from __future__ import annotations
@@ -124,11 +110,9 @@ _TRUTH_FIELDS = ("genre", "energylevel", "voxlevel")
 def read_truth(path: Path) -> Truth:
     """The three tag readings for one file, through ONE container open (U250).
 
-    Through :mod:`cratekit.core.tags`, the one place that knows which container
-    takes which dialect. It never raises for an unreadable file: an absent
-    reading routes to the declared fallback, visibly, where an exception would
-    abandon the rebuild over one stray file. The answer equals the three single
-    field readers' field for field (``tests/test_rebuild_one_open.py``).
+    Through :mod:`cratekit.core.tags`. It never raises for an unreadable file:
+    an absent reading routes to the declared fallback, visibly, where an
+    exception would abandon the rebuild over one stray file.
     """
     values = tags.read_tags(path, _TRUTH_FIELDS)
     return Truth(
@@ -152,9 +136,8 @@ def library_truth(
     over an unchanged library produce byte-identical plans. A generator: a
     caller needing two passes materializes it.
 
-    AN ABSENT MUSIC DIRECTORY REFUSES RATHER THAN YIELDING NOTHING, because an
-    empty read reaches the check as zero destinations, zero differences, and
-    CONVERGED. An empty read is evidence that nothing could be read.
+    AN ABSENT MUSIC DIRECTORY REFUSES RATHER THAN YIELDING NOTHING, which the
+    check would read as zero differences and CONVERGED.
     """
     wanted = {suffix.lower() for suffix in suffixes}
     base = Path(root)
@@ -192,9 +175,8 @@ def derive_from_taxonomy(
     skipping it would write a tree missing a whole dimension that the check
     never compares, and report it converged.
 
-    A LIBRARY WITH NO VOCAL CALIBRATION IS A GAP, NOT A REFUSAL. The threshold is
-    passed in (D7) and None is a real answer for a slim install; the dimension
-    is then named in the second return value as not compared.
+    A LIBRARY WITH NO VOCAL CALIBRATION IS A GAP, NOT A REFUSAL: the threshold
+    is passed in (D7), and with None the dimension is named as not compared.
     """
     # THE VOCAL CLASSES ONLY (U119). A playlist derived class comes from the
     # database through the genre favorites engine, added by callers with a handle.
@@ -238,10 +220,10 @@ def derive_from_taxonomy(
         if vocal_threshold is not None and routing.routes_with_vox(
             entry.voxlevel, vocal_threshold
         ):
-            for sub_class in additive:
-                out.append(
-                    DeclaredPlacement(entry.location, resolution.bucket_id, sub_class.id)
-                )
+            out.extend(
+                DeclaredPlacement(entry.location, resolution.bucket_id, sub_class.id)
+                for sub_class in additive
+            )
     return tuple(out), gaps
 
 
@@ -269,9 +251,8 @@ def not_compared_warnings(not_compared: Iterable[str]) -> tuple[dict[str, str], 
     """The envelope warning for a declared vocal dimension this run did not file.
 
     A warning, not a refusal: the rest of the tree is right. One wording, in
-    ``handlers.drift_warnings``' ``{code, message}`` shape, for the inbox apply
-    and the rebuild and resort resumes. The export route does not carry it: it
-    reports the gap as ``not_derived`` and reads any warning as a skipped write.
+    ``handlers.drift_warnings``' ``{code, message}`` shape. The export route
+    reports the gap as ``not_derived`` instead.
     """
     if VOCAL_DIMENSION not in tuple(not_compared):
         return ()
@@ -300,10 +281,8 @@ def left_behind(
 ) -> tuple["Difference", ...]:
     """The unexpected memberships of one check that a person can act on.
 
-    A dimension this run did not derive is left out: with no vocal calibration
-    every track in a correctly filled vocal playlist reads as unexpected, and
-    naming those would tell a person to empty a playlist that is right. That
-    gap has its own warning.
+    A dimension this run did not derive is left out, or with no vocal
+    calibration a correctly filled vocal playlist would read as unexpected.
     """
     skipped = _uncompared_subs(declared, after.not_compared)
     if not skipped:
@@ -327,10 +306,8 @@ def left_behind_message(records: Iterable[Mapping[str, Any]], *, listed_in: str)
     """The sentence naming what an additive write left in the tree, or None.
 
     Named so a person can remove it, because nothing in this build deletes a
-    membership row (R-312). The playlist by its display, the track by the file
-    its row resolved to. It offers the removal and never says why the
-    membership is there, which the check cannot tell. The count is the whole
-    set, the names are capped, ``listed_in`` holds them all; sorted.
+    membership row (R-312). The count is the whole set, the names are capped,
+    ``listed_in`` holds them all; sorted.
     """
     found = sorted(
         f"{entry['folder']}/{entry['playlist']}: "
@@ -387,9 +364,8 @@ def derivable(declared: taxonomy.Taxonomy, tree_id: str) -> bool:
     """Whether the taxonomy derivation describes this tree's membership (U219).
 
     The derivation has the ROUTING tree's shape. A tree the declaration names
-    as something else, the intake flow above all, holds what its verbs put
-    there, which no tag decides. A tree it does not name is read as a routing
-    tree under another identifier.
+    as something else holds what its verbs put there; a tree it does not name
+    is read as a routing tree under another identifier.
     """
     return tree_id not in other_declared_trees(declared)
 
@@ -397,9 +373,7 @@ def derivable(declared: taxonomy.Taxonomy, tree_id: str) -> bool:
 def assert_derivable(declared: taxonomy.Taxonomy, tree_id: str) -> None:
     """Refuse to derive membership for a tree the taxonomy derivation does not describe.
 
-    R-789: the intake tree cut over with the taxonomy as its source (R-746) and
-    a resort wrote ``INBOX / Minimal / Deep Tech`` with every band in it. It
-    lives at the derivation, the one call every reader and writer makes.
+    At the derivation, the one call every reader and writer makes (R-789).
     """
     others = other_declared_trees(declared)
     if tree_id not in others:
@@ -439,8 +413,7 @@ def accept_as_it_stands(
 ) -> None:
     """Record a named person accepting a marked tree no rebuild can reproduce (U219).
 
-    Only a tree :func:`derivable` rules out; a routing tree is cleared by
-    :func:`rebuild_tree` on a check's evidence, so this is never the flag's off
+    Only a tree :func:`derivable` rules out, so this is never the flag's off
     switch for a tree a rebuild can repair. A disposition, not a clearing: the
     flag stays set, the refusal is answered by ``actor``, and a later restore
     clears the answer and marks it again.
@@ -497,10 +470,8 @@ def declared_membership(
     file is read. ``truth`` defaults to a live walk of the music directory; a
     caller supplying it supplies the READINGS, never the rules.
 
-    A DERIVATION THAT PLACED NOTHING IS A REFUSAL, NOT AN ANSWER. Every question
-    downstream is scoped to the destinations it produced, so zero placements
-    reads as zero differences, CONVERGED, and a cleared flag on a tree nobody
-    looked at, with every write gate skipped on the way past.
+    A DERIVATION THAT PLACED NOTHING IS A REFUSAL, NOT AN ANSWER, since zero
+    placements reads downstream as CONVERGED and clears the flag.
     """
     assert_derivable(declared, tree_id)
     derive = None if source is None else DERIVATIONS.get(source)
@@ -585,9 +556,8 @@ REBUILD_ACTOR = "tree-rebuild"
 def _reconcile():  # type: ignore[no-untyped-def]
     """``cratekit.core.reconcile`` if this build has it, else None. Never raises.
 
-    Resolved at call time so this module imports on a build without it, the
-    shape ``restore._convergence_module`` uses from the other side. Every caller
-    reports the absence rather than treating it as an answer.
+    Resolved at call time so this module imports on a build without it; every
+    caller reports the absence rather than treating it as an answer.
     """
     try:
         from cratekit.core import reconcile  # noqa: PLC0415
@@ -607,10 +577,7 @@ def assert_no_latched_restore(cfg: config.Config) -> None:
     The membership write's ``Intent.RECOVERY`` sheds the restore-reconciliation
     latch WHOLE, so this puts it back: every kind ``reconcile.LATCHING_KINDS``
     holds except the unconverged-tree kind, whose only remedy is this rebuild.
-    Derived from the latch's own set, so a kind added later is held by default;
-    the hand-listed version missed ``IN_FLIGHT_RESTORE`` and let a rebuild run
-    over a database and coupled state at different generations. On a build
-    whose latch does not hold the tree kind it subtracts nothing, which is right.
+    Derived from the latch's own set, so a kind added later is held by default.
     """
     reconcile = _reconcile()
     if reconcile is None:
@@ -655,14 +622,10 @@ def assert_no_latched_restore(cfg: config.Config) -> None:
 def close_restore_marker(cfg: config.Config, tree_id: str) -> bool | None:
     """Close a legacy UNCONVERGED_TREE marker for this tree, on evidence. Three answers.
 
-    ``core.convergence``'s per-tree flag and ``core.reconcile``'s
-    ``UNCONVERGED_TREE`` marker describe one condition from two sides. U32
-    settled ownership on ``convergence``, so this normally answers False; it
+    ``convergence`` owns the condition (U32), so this normally answers False; it
     closes a marker a build with ``reconcile`` and no ``convergence`` left
-    behind, which would otherwise stand open forever. It is reached only after
-    a check reported no difference. None means the module is absent, logged,
-    because "nothing open" and "not reached" are different facts. It goes when
-    U32's pending entry removes the ``UNCONVERGED_TREE`` path.
+    behind. Reached only after a check reported no difference. None means the
+    module is absent, logged, because "nothing open" and "not reached" differ.
     """
     reconcile = _reconcile()
     if reconcile is None:
@@ -878,9 +841,8 @@ def _plan_key(rows: Iterable[Mapping[str, Any]]) -> list[tuple[str, str, str, st
 def assert_as_approved(before: ConvergenceReport, approved: Sequence[Mapping[str, Any]]) -> None:
     """Refuse a write that would add anything other than what a person approved (U219).
 
-    The plan is consumed, not remade (R-691) across a queue: a library that
-    moved between the gate and the worker would write a plan nobody read.
-    Checked on the rebuild's before check, so nothing is written on a mismatch.
+    The plan is consumed, not remade (R-691), so a library that moved between
+    the gate and the worker writes nothing. Checked on the before check.
     """
     planned = _plan_key(additions(before))
     wanted = _plan_key(approved)
@@ -935,8 +897,7 @@ def _favorites_to_file(
     approved: Sequence[Mapping[str, Any]] | None,
 ) -> tuple[DeclaredPlacement, ...]:
     """The second pass's placements: the Favorites over the tree the first write left (U119)."""
-    # One set, built once (U246): rebuilt per placement it cost a ten thousand
-    # track rebuild 17 of its 28 seconds.
+    # One set, built once (U246), not per placement.
     first_pass = set(derived)
     favorites = tuple(entry for entry in placements if entry not in first_pass)
     if approved is not None:
@@ -1141,14 +1102,12 @@ def rebuild_governed_tree(
 ) -> RebuildReport:
     """Open this library's database, rebuild one governed tree, and close it again.
 
-    The composition only: the handle, registry, declared taxonomy and rows
-    :func:`rebuild_tree` cannot get for itself. It lives here because the
-    ``rebuild`` and ``route.resort`` workers cannot import each other. One tree
-    per call, so a refusal on the second tree leaves the first one's item done.
+    The composition only, here because the ``rebuild`` and ``route.resort``
+    workers cannot import each other. One tree per call, so a refusal on the
+    second tree leaves the first one's item done.
 
     No configuration is loaded: the job's frozen one is passed in (KTD9).
-    ``vocal_threshold`` is required (D7, R-276): a default of None filed no
-    vocal sub-playlist for any caller that forgot it. The rows come from
+    ``vocal_threshold`` is required (D7, R-276), never defaulted. The rows come from
     :func:`cratekit.write.routing_pass.content_rows`, which refuses a row that
     cannot report its soft-delete marker.
     """
@@ -1177,10 +1136,8 @@ def favorites_skipped_warnings(
 ) -> tuple[dict[str, str], ...]:
     """The note a rebuild that drove the routing tree carries when no genre Favorites class is declared (U132).
 
-    :func:`with_favorites` passes over an undeclared class silently, and a live
-    library went weeks with no Favorites and no word why. Only when the routing
-    tree is among ``tree_ids``, the trees the job drove in this run, and asked
-    of the declaration because the worker's report does not outlive its item.
+    :func:`with_favorites` passes over an undeclared class silently. Only when
+    the routing tree is among ``tree_ids``, the trees the job drove this run.
     """
     if declared.tree.id not in {str(tree_id) for tree_id in tree_ids}:
         return ()
@@ -1193,9 +1150,8 @@ def governed_not_compared(
     """What :func:`rebuild_governed_tree` leaves uncompared, asked without a library.
 
     The same two inputs it derives with, the active taxonomy (R-685) and the
-    threshold read as the worker reads it, so the warning stops once a
-    calibration is read (U89). A resume asks this because the worker's report
-    does not outlive its item, and re-deriving would walk every file again.
+    threshold read as the worker reads it (U89). A resume asks this because the
+    worker's report does not outlive its item.
     """
     return not_derived(declared, vocal_threshold=vocal_threshold)
 

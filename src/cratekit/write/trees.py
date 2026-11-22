@@ -1,21 +1,16 @@
 """The tree writers: one implementation per write, in either medium (U18).
 
-Everything a workflow does to a tree (a named subtree of the playlist
-hierarchy) comes through here, by the XML bridge (a spliced export the user
-re-imports) or the database (membership rows written directly); which medium is
-correct is the registry's answer. One implementation replaces the source's five
-splicers, which disagreed where it mattered; nine goldens pin the bytes.
+Everything a workflow does to a tree comes through here, by the XML bridge (a
+spliced export the user re-imports) or the database (membership rows written
+directly); which medium is correct is the registry's answer. Goldens pin the
+bytes.
 
 This module locates and splices nothing: ``rbxml`` does, so its guard covers
 every byte write, and every call here names the tree it targets. No display
-name is spelled here (R19). The database half calls the session spine
-(:func:`cratekit.core.session.assert_gates`, a capture
-:func:`cratekit.core.snapshot.assert_verified` passed) and NAMES the analysis
-roots it could touch, or the watch (R17's fifth surface) watches nothing.
-
-Under U9's A2 verdict an XML import replaces unconditionally, so a tree that has
-taken a database-native write is permanently unsafe to XML import; the bridge
-guard stops the next sweep walking through that door.
+name is spelled here (R19). The database half calls the session spine and
+NAMES the analysis roots it could touch, or the watch (R17's fifth surface)
+watches nothing. An XML import replaces unconditionally (U9's A2), so a tree
+that has taken a database-native write never takes a bridge write again.
 """
 
 from __future__ import annotations
@@ -78,8 +73,7 @@ class VoxReport:
     """What the vocal sweep changed, and every folder it could not serve.
 
     ``warnings`` keeps "could not write it" apart from "already had it".
-    Iterable over ``modified``, so a caller that wants only the names reads it
-    as the plain list it used to be.
+    Iterable over ``modified``, so a caller reads it as the plain name list.
     """
 
     modified: tuple[str, ...] = ()
@@ -92,11 +86,8 @@ class VoxReport:
         return len(self.modified)
 
     def __eq__(self, other: object) -> bool:
-        """Equal to the plain name list as well as to another report.
-
-        The goldens compare this against a list of display names, which is the
-        whole contract a caller depends on.
-        """
+        """Equal to the plain name list, which the goldens compare against, as
+        well as to another report."""
         if isinstance(other, VoxReport):
             return (self.modified, self.warnings) == (other.modified, other.warnings)
         if isinstance(other, (list, tuple)):
@@ -153,12 +144,10 @@ class ContentRow:
 def soft_delete_marker(row: Any) -> bool:
     """Read rekordbox's soft-delete marker off one mapped row, or REFUSE.
 
-    The one implementation of the rule ``ContentRow.deleted`` states, for the
-    routing pass (rows alive) and the deletion pass (rows not). A row that
-    cannot report it refuses, ``None`` included, since a permissive default
+    The one implementation of the rule ``ContentRow.deleted`` states. A row
+    that cannot report it refuses, ``None`` included, since a permissive default
     would place a removed track or hide a removal. The read is
-    :func:`cratekit.core.rb_writer.soft_deleted` since R-758; this keeps the
-    words a collection row is refused in.
+    :func:`cratekit.core.rb_writer.soft_deleted` (R-758); this keeps the words.
     """
     return rb_writer.soft_deleted(
         row,
@@ -234,10 +223,7 @@ def _route(
     norm_by_tid: dict | None,
     create_missing: bool,
 ) -> RouteReport:
-    """One routing sweep, the one body both entry points below use.
-
-    The source carried two copies that drifted (a bare LF, a missing dedupe).
-    """
+    """One routing sweep, the one body both entry points below use."""
     if rbxml.playlists_start(content) == -1:
         return RouteReport(warnings=(f"{rbxml.PLAYLISTS_SECTION} section not found",))
 
@@ -295,8 +281,7 @@ def apply_unplaced_changes(
 def apply_rating_changes(rating_plan: Mapping[object, object], content: bytearray) -> int:
     """Patch star ratings on collection tracks. Returns how many changed.
 
-    One writer where the source had two; both goldens pin it. No tree is named:
-    a rating is an attribute of a track, so no guard is keyed on one.
+    No tree is named: a rating is an attribute of a track.
     """
     return rbxml.apply_rating_changes(dict(rating_plan), content)
 
@@ -380,9 +365,8 @@ def _governed_or_named(
 ) -> rbxml.Tree:
     """The tree a bridge write targets: governed by the registry, or named outright.
 
-    No ungoverned default: the emitter guard does nothing for an ungoverned
-    tree, so defaulting one for a node the registry governs would splice an
-    export for a tree the database owns. A caller with no records passes
+    No ungoverned default, which would let the guard pass a tree the database
+    owns. A caller with no records passes
     :data:`cratekit.core.tree_registry.EMPTY`; one writing a playlist this
     product does not govern passes ``rbxml.Tree(display=...)`` itself.
     """
@@ -497,12 +481,11 @@ def check_record_labels_tree(
 ) -> None:
     """Every refusal :func:`insert_record_labels_tree` can make, and no write.
 
-    ``catalog`` is each source name and the years it would be written under.
-    The landing moves files out of staging before it writes the tree, so it
-    asks first; the same resolution and byte writer run over a copy. Each year
-    gets one id no document holds, not an empty list, since the writer returns
-    early from a held playlist with nothing to add, before the refusals about
-    its layout. An empty ``catalog`` asks nothing, the undeclared tree included.
+    ``catalog`` is each source name and the years it would be written under;
+    the same resolution and byte writer run over a copy. Each year gets one id
+    no document holds, since the writer returns early from a held playlist with
+    nothing to add, before the refusals about its layout. An empty ``catalog``
+    asks nothing, the undeclared tree included.
     """
     if not catalog:
         return
@@ -579,8 +562,8 @@ def located(
 ) -> tuple[str, locations.ResolvedPath]:
     """One recorded path, decoded ONCE, with how it resolves on this machine.
 
-    Public since R-500, so ``write/naming_cli`` holds no copy of these calls.
-    The decoded path comes back beside the resolution so no caller decodes twice.
+    Public (R-500), and the decoded path comes back beside the resolution so no
+    caller decodes twice.
     """
     decoded = locations.location_to_path(str(recorded))
     return decoded, locations.resolve_recorded_path(decoded, root=root, prefix_map=prefix_map)
@@ -589,8 +572,8 @@ def located(
 def _comparable(recorded: str, *, root: Path | str, prefix_map: Sequence[locations.PrefixRule]):
     """One recorded path, decoded and resolved into the form both sides compare in.
 
-    Both sides go through this: one side normalized and the other not is how
-    144 files with accented names went missing.
+    Both sides go through this, or accented names normalized on one side only
+    never match.
     """
     return located(recorded, root=root, prefix_map=prefix_map)[1]
 
@@ -673,8 +656,7 @@ def _root_row(db: Any, root_id: str) -> Any:
     """The playlist row the cutover adopted, or a refusal naming it.
 
     Refused rather than defaulted: writing unparented would put the tree beside
-    itself. No ``.first()``: ``get_playlist(ID=...)`` returns the row or None,
-    not a query.
+    itself. ``get_playlist(ID=...)`` returns the row or None, not a query.
     """
     row = db.get_playlist(ID=str(root_id))
     if row is None:
@@ -739,10 +721,9 @@ def _record_membership_commit(
 ) -> None:
     """Record one tree's commit on its session record, when it added anything.
 
-    A pass that added nothing claims no commit, or restoring past a week of
-    no-op sweeps would make a person name each one. Nothing new exists when
-    nothing was added. ``created`` is memberships added, the per-tree number
-    ``restore list`` asks for.
+    A pass that added nothing claims no commit, or restoring past no-op sweeps
+    would make a person name each one. ``created`` is memberships added, the
+    per-tree number ``restore list`` asks for.
     """
     if added <= 0:
         return
@@ -780,8 +761,7 @@ def _writable_root(
 ) -> str:
     """The tree's adopted root, once the medium and the convergence gate pass.
 
-    Both through the shared assertions, and here because every database
-    membership write passes through: the convergence gate runs before the
+    Both through the shared assertions; the convergence gate runs before the
     session opens and refuses a tree a restore left short.
     """
     root_id = tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
@@ -1013,10 +993,9 @@ class _Destinations:
     """The live playlists answering to each destination, resolved once each.
 
     Found among LIVE nodes, unlike the additive writer's find or create, which
-    can hand back a removed playlist where an addition is invisible and the
-    proof of the target fails for ever; what is added to and removed from come
-    from one walk. Every node carrying the names counts, as the placement
-    reader counts them. A removal never creates.
+    can hand back a removed playlist and fail the proof of the target for ever;
+    what is added to and removed from come from one walk. Every node carrying
+    the names counts. A removal never creates.
     """
 
     def __init__(self, db: Any, anchor: Any) -> None:
@@ -1156,8 +1135,7 @@ def move_tree_membership(
 ) -> MoveReport:
     """Move tracks between the playlists of one database native tree.
 
-    The first writer that removes a membership, held to everything
-    :func:`write_tree_membership` holds, for its reasons. Two commits in one
+    Held to everything :func:`write_tree_membership` holds. Two commits in one
     session, the additions first, so a failure between them leaves a track in
     both playlists and never in neither, and a resume finishes the rest. The
     fingerprint is taken after each commit that landed. No ``workflow``,
