@@ -33,8 +33,11 @@ BOOKKEEPING = frozenset({"Seq", "updated_at", "usn", "rb_local_usn"})
 @contextmanager
 def handle(cfg: config.Config, *, write: bool = False) -> Iterator[Any]:
     """The live library on a handle of the caller's own, opened to read or to write, and closed."""
-    extra = {} if write else {"check_app_version": False}
-    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=write, cfg=cfg, **extra)
+    path = rb_writer.live_db_path(cfg)
+    if write:
+        db = rb_writer.open_db(path, require_closed=True, cfg=cfg)
+    else:
+        db = rb_writer.open_db(path, require_closed=False, check_app_version=False, cfg=cfg)
     try:
         yield db
     finally:

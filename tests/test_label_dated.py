@@ -351,3 +351,9 @@ def test_no_removal_shape_appears_in_the_dated_module():
         }
     )
     assert named == [], named
+
+
+def test_the_year_plans_actions_are_the_outbound_folders_own_values():
+    """dated spells them by value to import outbound only to write; they may not drift."""
+    assert (dated.CREATE, dated.REUSE, dated.AMBIGUOUS) == (
+        folders.CREATE, folders.REUSE, folders.AMBIGUOUS)

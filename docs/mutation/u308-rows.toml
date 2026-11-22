@@ -62,8 +62,8 @@ description = "spine.handle: the write handle opens with rekordbox running"
 file = "src/cratekit/favorites/spine.py"
 surface = "user"
 tests = ["tests/test_favorites_backfill.py", "tests/test_favorites_split.py", "tests/test_favorites_order.py"]
-old = '''    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=write, cfg=cfg, **extra)'''
-new = '''    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=False, cfg=cfg, **extra)'''
+old = '''        db = rb_writer.open_db(path, require_closed=True, cfg=cfg)'''
+new = '''        db = rb_writer.open_db(path, require_closed=False, cfg=cfg)'''
 
 [[rows]]
 id = "M7_empty_roots_admitted"
