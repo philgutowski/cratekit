@@ -188,18 +188,15 @@ def test_every_database_open_in_src_names_the_file_it_opens():
     configured live library; ``db_dir`` only names where it reads playlist XML
     and analysis paths. A call passing ``db_dir`` alone reads live rows while
     appearing to read a copy. This pins the argument, the cheap half; what the
-    connection opened is a separate check, filed rather than made.
-
-    A module that never spells the constructor cannot hold a call, an alias, a
-    reference or a string of it, so it is not parsed.
+    connection opened is a separate check, filed rather than made. Every
+    module is parsed, since a string of the constructor's name can be joined
+    from pieces no text search finds.
     """
     found = 0
     problems: list[str] = []
     for source in sorted((SRC_ROOT / "cratekit").rglob("*.py")):
-        text = source.read_text(encoding="utf-8")
-        if _CONSTRUCTOR not in text:
-            continue
-        count, bad = _audit_database_opens(ast.parse(text, filename=str(source)))
+        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        count, bad = _audit_database_opens(tree)
         found += count
         problems.extend(f"{source.relative_to(SRC_ROOT)}:{line}: {why}" for line, why in bad)
     assert found, f"no {_CONSTRUCTOR} call in src; this check would pass by finding nothing"
