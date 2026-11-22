@@ -655,3 +655,144 @@ def test_an_article_names_no_maker(label):
 def test_an_article_is_folded_out_of_a_makers_name_on_both_sides():
     assert matched("Sunrise Mood (The Black Madonna Remix)", tracks=("Sunrise Mood (Black Madonna Remix)",))
     assert not matched("Sunrise Mood (The Black Madonna Remix)", tracks=("Sunrise Mood",))
+
+
+# ---------------------------------------------------------------------------
+# U324. A maker spelled with a letter accent stripping leaves alone
+# ---------------------------------------------------------------------------
+
+#: Sitting 102's file, by its own artist, and the three releases its sweep
+#: named, each carrying the mix spelled with ø.
+ROYKSOPP = "Röyksopp"
+WHAT_ELSE = "What Else Is There? (Trentemoller Remix)"
+WHAT_ELSE_RELEASES = (2667673, 589586, 641256)
+
+#: Each letter the fold takes, both cases where a case is written, and what
+#: it is read as: every pair below is one maker's name spelled two ways.
+ONE_MAKER = (
+    ("Trentemøller", "Trentemoller"),
+    ("TRENTEMØLLER", "Trentemoller"),
+    ("Straße", "Strasse"),
+    ("Łukasz", "Lukasz"),
+    ("łukasz", "Lukasz"),
+    ("Æther", "Aether"),
+    ("æther", "Aether"),
+    ("Œuvre", "Oeuvre"),
+    ("œuvre", "Oeuvre"),
+    ("Đorđe", "Dorde"),
+    ("ĐORĐE", "Dorde"),
+    ("Þór", "Thor"),
+    ("þór", "Thor"),
+)
+
+
+def _carrying(number: int, mix: str):
+    return release(
+        number,
+        artist=ROYKSOPP,
+        title="What Else Is There?",
+        tracks=listed("What Else Is There?", f"What Else Is There? ({mix})"),
+    )
+
+
+@pytest.mark.parametrize("number", WHAT_ELSE_RELEASES)
+def test_the_trentemoller_remix_takes_each_release_the_sweep_named(number):
+    fetch = routed(search=results(number), releases={number: _carrying(number, "Trentemøller Remix")})
+    said = discogs_answer(searcher(fetch)(ROYKSOPP, WHAT_ELSE))
+    assert said.answer == "matched", said.note
+
+
+def test_the_mix_spelled_with_its_letter_takes_a_release_writing_it_plain():
+    fetch = routed(search=results(7), releases={7: _carrying(7, "Trentemoller Remix")})
+    said = discogs_answer(searcher(fetch)(ROYKSOPP, "What Else Is There? (Trentemøller Remix)"))
+    assert said.answer == "matched", said.note
+
+
+def test_the_sitting_file_takes_its_genre_through_tag_one(tmp_path, silence):
+    path = tmp_path / "what else is there.flac"
+    shutil.copy2(silence, path)
+    assert tags.write_tags(path, {"artist": ROYKSOPP, "title": f"04A - 126 - {WHAT_ELSE}"})
+    number = WHAT_ELSE_RELEASES[0]
+    fetch = routed(
+        search=results(number),
+        releases={
+            number: release(
+                number,
+                artist=ROYKSOPP,
+                title="What Else Is There?",
+                tracks=listed("What Else Is There? (Trentemøller Remix)"),
+                styles=("Techno",),
+            )
+        },
+    )
+    result = tag.tag_one(path, searcher=searcher(fetch))
+    (discogs,) = [said for said in result.answers if said.source == searchers.DISCOGS]
+    assert discogs.answer == "matched", discogs.note
+    assert result.genre_written is not None
+    assert tags.read_genre_from_file(path) == result.genre_written
+
+
+@pytest.mark.parametrize(("written", "plain"), ONE_MAKER)
+def test_a_maker_spelled_with_a_letter_nfkd_leaves_is_one_maker(written, plain):
+    assert matched(f"Sunrise Mood ({plain} Remix)", tracks=(f"Sunrise Mood ({written} Remix)",))
+    assert matched(f"Sunrise Mood ({written} Remix)", tracks=(f"Sunrise Mood ({plain} Remix)",))
+    named = titles.named_versions(titles.read_file(f"Sunrise Mood ({written} Remix)", ARTIST))
+    assert named == titles.named_versions(titles.read_file(f"Sunrise Mood ({plain} Remix)", ARTIST))
+
+
+@pytest.mark.parametrize(("written", "plain"), ONE_MAKER)
+def test_a_folded_maker_written_with_no_bracket_is_read_by_its_last_words(written, plain):
+    assert matched(f"Sunrise Mood ({plain} Remix)", tracks=(f"Sunrise Mood - {written} Remix",))
+    assert matched(f"Sunrise Mood - {written} Remix", tracks=(f"Sunrise Mood ({plain} Remix)",))
+
+
+def test_another_maker_is_still_a_version_miss_with_the_note():
+    said = asked("What Else Is There? (Trentemøller Remix)", 9, tracks=("What Else Is There? (Vitalic Remix)",))
+    assert (said.answer, said.note) == (
+        "miss",
+        "Discogs release 9 holds no track with this version (trentemoller)",
+    )
+    said = asked(WHAT_ELSE, 9, tracks=("What Else Is There? (Vitalic Remix)",))
+    assert (said.answer, said.note) == (
+        "miss",
+        "Discogs release 9 holds no track with this version (trentemoller)",
+    )
+
+
+@pytest.mark.parametrize(
+    ("mine", "theirs"),
+    [
+        # The fold reads a letter as its plain spelling, never as another
+        # letter's: "o" is not "oe", "a" not "ae", "s" not "ss".
+        ("Trentemøller", "Trentemoeller"),
+        ("Æther", "Ather"),
+        ("Straße", "Strase"),
+        ("Þór", "Tor"),
+        ("Đorđe", "Dorje"),
+    ],
+)
+def test_a_different_spelling_is_still_another_maker(mine, theirs):
+    assert not matched(f"Sunrise Mood ({mine} Remix)", tracks=(f"Sunrise Mood ({theirs} Remix)",))
+    assert not matched(f"Sunrise Mood ({theirs} Remix)", tracks=(f"Sunrise Mood ({mine} Remix)",))
+
+
+def test_a_plain_title_naming_no_mix_matches_as_before():
+    assert matched("What Else Is There?", tracks=("What Else Is There?",))
+    assert matched("What Else Is There? (Extended Mix)", tracks=("What Else Is There?",))
+    assert matched("Straße", tracks=("Straße",))
+
+
+def test_the_fold_takes_exactly_the_letters_nfkd_leaves_alone():
+    """The table's membership, each entry read alone: deleting one makes its
+    letter a different maker again."""
+    assert {letter: titles._folded(letter) for letter in "øØæÆœŒßđĐłŁþÞ"} == {
+        "ø": "o", "Ø": "o", "æ": "ae", "Æ": "ae", "œ": "oe", "Œ": "oe", "ß": "ss",
+        "đ": "d", "Đ": "d", "ł": "l", "Ł": "l", "þ": "th", "Þ": "th",
+    }
+
+
+def test_a_letter_that_also_carries_an_accent_is_read_plain():
+    """The table is read after the accents come off, so "ǿ" and "ǽ", which
+    NFKD splits into "ø" or "æ" and a mark, are "o" and "ae" as well."""
+    assert (titles._folded("ǿ"), titles._folded("ǽ")) == ("o", "ae")
+    assert matched("Sunrise Mood (Trentemoller Remix)", tracks=("Sunrise Mood (Trentemǿller Remix)",))
