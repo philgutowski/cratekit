@@ -15,7 +15,7 @@ from cratekit.cli import registry
 from cratekit.core import jobs, session
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.export import set_cli
+from cratekit.export import set_cli, set_rename
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import set_playlist
 from cratekit.modules.outbound import ledger
@@ -100,7 +100,7 @@ def renamed(account, monkeypatch):
     remote_id = _recorded(cfg, held, OLD)
     live = {"name": NEW}
     monkeypatch.setattr(
-        set_cli, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, live["name"])
+        set_rename, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, live["name"])
     )
     return cfg, held, job.job_id, remote_id, live
 
@@ -139,7 +139,7 @@ def test_a_renamed_inspiration_playlist_renames_the_account_playlist_ledger_and_
     assert shown["frozen name"] == f"{OLD!r} -> {NEW!r}"
     assert INSPIRATION_ID in shown["follows"]
     actions = {item["kind"]: item["action"] for item in done["data"]["items"]}
-    assert actions == {"playlist": set_cli.RENAME, "job": set_cli.REFREEZE}
+    assert actions == {"playlist": set_rename.RENAME, "job": set_rename.REFREEZE}
 
 
 def test_a_second_rename_is_a_no_op(renamed):
@@ -176,7 +176,7 @@ def test_a_backfill_after_the_rename_plans_no_twin_and_a_named_export_adds_to_it
     job = _succeeded_set_job(cfg, "", created="2026-10-09T12:00:00+00:00")
     posted, queued = set_cli._names_for_job(job)
     remote_id = _recorded(cfg, held, queued)
-    monkeypatch.setattr(set_cli, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, posted))
+    monkeypatch.setattr(set_rename, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, posted))
     monkeypatch.setattr(set_cli, "_inspiration_playlists", lambda _cfg: [(posted, INSPIRATION_ID)])
     wanted = tuple(match.Wanted(artist=a, title=t, origin=match.TEXT) for a, t in ROWS)
     monkeypatch.setattr(set_cli, "_wanted_from_job", lambda _cfg, _job: wanted)
@@ -219,7 +219,7 @@ def test_a_job_with_no_frozen_name_is_found_by_the_queued_day_and_refrozen(accou
     assert queued.startswith("10_09_26 ")
     remote_id = _recorded(cfg, held, queued)
     monkeypatch.setattr(
-        set_cli, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, names[0])
+        set_rename, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, names[0])
     )
 
     code, done, refused = _rename_acts(job.job_id)
@@ -246,7 +246,7 @@ def test_a_missing_account_record_refuses_by_name(renamed):
 
 def test_a_job_whose_inspiration_playlist_is_gone_refuses_by_name(renamed, monkeypatch):
     cfg, held, job_id, _remote_id, _live = renamed
-    monkeypatch.setattr(set_cli, "_inspiration_of", lambda _cfg, _job_id: None)
+    monkeypatch.setattr(set_rename, "_inspiration_of", lambda _cfg, _job_id: None)
 
     code, done = drive(["export", "set", "--rename", job_id])
 
@@ -405,7 +405,7 @@ def test_a_name_with_a_slash_freezes_as_the_library_spells_it(account, monkeypat
     live = "3_25_26 Live 3/25 at Probe 2-26"
     job = _succeeded_set_job(cfg, OLD)
     remote_id = _recorded(cfg, held, OLD)
-    monkeypatch.setattr(set_cli, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, live))
+    monkeypatch.setattr(set_rename, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, live))
 
     code, done, refused = _rename_acts(job.job_id)
 
@@ -445,7 +445,7 @@ def landed(account, monkeypatch):
     assert LANDED not in set_cli._names_for_job(job)
     assert NEW not in set_cli._names_for_job(job)
     remote_id = _recorded(cfg, held, LANDED)
-    monkeypatch.setattr(set_cli, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, NEW))
+    monkeypatch.setattr(set_rename, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, NEW))
     return cfg, held, job.job_id, remote_id
 
 
@@ -560,7 +560,7 @@ def test_the_frozen_name_ranks_ahead_of_the_landing_record(account, monkeypatch)
     kept = _recorded(cfg, held, OLD)
     _landed(cfg, job.job_id, LANDED)
     stale = _recorded(cfg, held, LANDED)
-    monkeypatch.setattr(set_cli, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, NEW))
+    monkeypatch.setattr(set_rename, "_inspiration_of", lambda _cfg, _job_id: (INSPIRATION_ID, NEW))
 
     code, done = drive(["export", "set", "--rename", job.job_id])
 
