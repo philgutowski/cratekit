@@ -42,6 +42,7 @@ from cratekit.core import (
 from cratekit.core.cause import Remedy, refuse
 from cratekit.intake import batch_name, fetch, ingest
 from cratekit.intake import cli as intake_cli
+from cratekit.intake.cli_identify import _note
 from cratekit.write import routing_pass, trees
 
 #: The job key a set is queued under, and the only key this module reads.
@@ -101,46 +102,23 @@ class SetWords:
         return {"dj": self.dj, "name": self.name, "month": self.month.strftime("%Y-%m")}
 
 
+#: The flags that stand in for the page, each with its metavar and help.
+_WORD_FLAGS = (
+    ("--dj", "NAME", "who played the set, as the playlist names them (default: the uploader "
+        "the fetched page named)"),
+    ("--set-name", "NAME", "the set's name, abbreviated as you want it in the playlist "
+        "(default: the fetched page's title, less the uploader's name in front of it)"),
+    ("--set-date", "YYYY-MM", "the month the set is from, YYYY-MM or YYYY-MM-DD (default: "
+        "the day the fetched page says the recording went up)"),
+    ("--posted", "YYYY-MM-DD", "the day the set went up on its service, as the playlist opens "
+        "with (default: the page's upload_date; the landing day when the page names none)"),
+)
+
+
 def add_word_arguments(parser) -> None:
     """The flags that stand in for the page, shared by both verbs."""
-    parser.add_argument(
-        "--dj",
-        default=None,
-        metavar="NAME",
-        help=(
-            "who played the set, as the playlist names them (default: the uploader "
-            "the fetched page named)"
-        ),
-    )
-    parser.add_argument(
-        "--set-name",
-        dest="set_name",
-        default=None,
-        metavar="NAME",
-        help=(
-            "the set's name, abbreviated as you want it in the playlist (default: "
-            "the fetched page's title, less the uploader's name in front of it)"
-        ),
-    )
-    parser.add_argument(
-        "--set-date",
-        dest="set_date",
-        default=None,
-        metavar="YYYY-MM",
-        help=(
-            "the month the set is from, YYYY-MM or YYYY-MM-DD (default: the day the "
-            "fetched page says the recording went up)"
-        ),
-    )
-    parser.add_argument(
-        "--posted",
-        default=None,
-        metavar="YYYY-MM-DD",
-        help=(
-            "the day the set went up on its service, as the playlist opens with "
-            "(default: the page's upload_date; the landing day when the page names none)"
-        ),
-    )
+    for flag, metavar, text in _WORD_FLAGS:
+        parser.add_argument(flag, default=None, metavar=metavar, help=text)
 
 
 def today() -> date:
@@ -173,26 +151,37 @@ def _not_a(flag: str, value: str, kind: str, forms: str, exc: Exception | None =
     )
 
 
+def _flag_day(flag: str, value: str, pattern: re.Pattern, kind: str, forms: str) -> date:
+    """The day a date flag names, the first for a month that names none, or its refusal."""
+    found = pattern.match(value.strip())
+    if found is None:
+        raise _not_a(flag, value, kind, forms)
+    try:
+        return date(int(found.group(1)), int(found.group(2)), int(found.group(3) or 1))
+    except ValueError as exc:
+        raise _not_a(flag, value, kind, forms, exc) from exc
+
+
+def _page_day(text: str | None, *, month: bool = False) -> date | None:
+    """The page's upload day, or the first of its month, or None for no date.
+
+    A page date that is not a date names nothing, and the flag is asked for.
+    """
+    found = _PAGE_DATE.match((text or "").strip())
+    if found is None:
+        return None
+    try:
+        return date(int(found.group(1)), int(found.group(2)), 1 if month else int(found.group(3)))
+    except ValueError:
+        return None
+
+
 def _month_of(flag: str | None, page_date: str | None) -> date | None:
-    """The set's month: the flag when given, else the page's upload day, else None."""
-    if flag:
-        found = _FLAG_DATE.match(flag.strip())
-        if found is None:
-            raise _not_a("--set-date", flag, "month", "YYYY-MM or YYYY-MM-DD")
-        try:
-            # The day, when given, is checked as a day and then dropped.
-            given = date(int(found.group(1)), int(found.group(2)), int(found.group(3) or 1))
-            return given.replace(day=1)
-        except ValueError as exc:
-            raise _not_a("--set-date", flag, "month", "YYYY-MM or YYYY-MM-DD", exc) from exc
-    found = _PAGE_DATE.match((page_date or "").strip())
-    if found is not None:
-        try:
-            return date(int(found.group(1)), int(found.group(2)), 1)
-        except ValueError:
-            # A page date that is not a date names no month, and the flag is asked for.
-            return None
-    return None
+    """The set's month: the flag when given, its day checked then dropped, else the page's."""
+    if not flag:
+        return _page_day(page_date, month=True)
+    given = _flag_day("--set-date", flag, _FLAG_DATE, "month", "YYYY-MM or YYYY-MM-DD")
+    return given.replace(day=1)
 
 
 def words_from_page(
@@ -279,28 +268,16 @@ def naming_day(
     INBOX batch name keeps the landing date.
     """
     if posted:
-        found = _POSTED_FLAG.match(posted.strip())
-        if found is None:
-            raise _not_a("--posted", posted, "day", "YYYY-MM-DD")
-        try:
-            return date(int(found.group(1)), int(found.group(2)), int(found.group(3))), None
-        except ValueError as exc:
-            raise _not_a("--posted", posted, "day", "YYYY-MM-DD", exc) from exc
-    found = _PAGE_DATE.match((page_upload_date or "").strip())
-    if found is not None:
-        try:
-            return date(int(found.group(1)), int(found.group(2)), int(found.group(3))), None
-        except ValueError:
-            pass
+        return _flag_day("--posted", posted, _POSTED_FLAG, "day", "YYYY-MM-DD"), None
+    if (found := _page_day(page_upload_date)) is not None:
+        return found, None
     day = landing or today()
-    return day, {
-        "code": POSTED_FALLBACK,
-        "message": (
-            f"the set's page named no upload date, so its playlists open with the "
-            f"landing day {batch_name.set_day_word(day)}; pass --posted YYYY-MM-DD "
-            f"to name another day"
-        ),
-    }
+    return day, _note(
+        POSTED_FALLBACK,
+        f"the set's page named no upload date, so its playlists open with the "
+        f"landing day {batch_name.set_day_word(day)}; pass --posted YYYY-MM-DD "
+        f"to name another day",
+    )
 
 
 def ignored_posted(job: jobs.Job, posted: str | None) -> dict[str, str] | None:
@@ -313,19 +290,16 @@ def ignored_posted(job: jobs.Job, posted: str | None) -> dict[str, str] | None:
     frozen = frozen_name(job)
     if not posted or not frozen:
         return None
-    day, _fallback = naming_day(posted=posted)
-    word = batch_name.set_day_word(day)
+    word = batch_name.set_day_word(naming_day(posted=posted)[0])
     opens = frozen.split()[0]
     if word == opens:
         return None
-    return {
-        "code": POSTED_IGNORED,
-        "message": (
-            f"--posted {posted.strip()} names the day {word}, but this set's playlists "
-            f"keep the name {frozen!r} frozen on its job when it was queued, which "
-            f"opens with {opens}; the frozen name wins and --posted was not used"
-        ),
-    }
+    return _note(
+        POSTED_IGNORED,
+        f"--posted {posted.strip()} names the day {word}, but this set's playlists "
+        f"keep the name {frozen!r} frozen on its job when it was queued, which "
+        f"opens with {opens}; the frozen name wins and --posted was not used",
+    )
 
 
 def naming_day_for(
@@ -344,10 +318,8 @@ def playlist_name(words: SetWords, *, on: date | None = None) -> str:
 
     ``on`` is the posted day from :func:`naming_day`; omitted, the landing day.
     """
-    made = on or today()
-    return batch_name.set_playlist_form(
-        made, dj=words.dj, name=words.name, month=words.month
-    )
+    day = on or today()
+    return batch_name.set_playlist_form(day, dj=words.dj, name=words.name, month=words.month)
 
 
 # ---------------------------------------------------------------------------
@@ -724,11 +696,6 @@ def _no_suppression_id(_recording: str, _address: object) -> str:
     return ""
 
 
-def _track(report: Mapping[str, Any]) -> Mapping[str, Any]:
-    track = report.get("track")
-    return track if isinstance(track, Mapping) else {}
-
-
 def _members(
     reports: Sequence[Mapping[str, Any]],
     *,
@@ -747,7 +714,8 @@ def _members(
     members: list[Member] = []
     left: list[Left] = []
     for position, report in enumerate(reports, start=1):
-        track = _track(report)
+        track = report.get("track")
+        track = track if isinstance(track, Mapping) else {}
         artist, title = str(track.get("artist") or ""), str(track.get("title") or "")
         state = str(report.get("state") or "")
 
@@ -765,11 +733,9 @@ def _members(
                 paths = owned_again(intake_cli.thawed(track))
             owned(paths)
             continue
-        if state == "suppressed":
-            left.append(Left(position, artist, title, state, SUPPRESSED))
-            continue
         if state not in DOWNLOADED_STATES:
-            left.append(Left(position, artist, title, state, NOT_RESOLVED))
+            why = SUPPRESSED if state == "suppressed" else NOT_RESOLVED
+            left.append(Left(position, artist, title, state, why))
             continue
         paths, how = downloaded(intake_cli.thawed(track))
         if not paths:
@@ -904,6 +870,9 @@ UNANSWERED = "the match is a question no person has answered"
 NOT_HELD = "no library file matches it"
 TOMBSTONED = "a version of it was deleted on purpose"
 
+#: Why a track that is not MATCHED has no row; any other state is :data:`NOT_HELD`.
+_NO_MATCH = {match.MatchState.NEEDS_REVIEW: UNANSWERED, match.MatchState.SUPPRESSED: TOMBSTONED}
+
 #: One track's collection row, the file it was found by, and why there is none.
 RowAndPath = tuple[str, str, str]
 
@@ -949,11 +918,7 @@ def library_matches(cfg: config.Config, db: Any) -> Callable[[match.Wanted], Row
         found = library.resolve(wanted)
         if found.state is match.MatchState.MATCHED:
             return row_of(found.paths)
-        if found.state is match.MatchState.NEEDS_REVIEW:
-            return "", "", UNANSWERED
-        if found.state is match.MatchState.SUPPRESSED:
-            return "", "", TOMBSTONED
-        return "", "", NOT_HELD
+        return "", "", _NO_MATCH.get(found.state, NOT_HELD)
 
     return found_by
 
@@ -989,10 +954,8 @@ def plan_for_backfill(
 
 def payload(plan: SetPlaylistPlan) -> dict[str, Any]:
     """The plan as a gate shows it: one item per member, then one per left row."""
-    items: list[dict[str, Any]] = [
-        {"action": "add", **one.identity()} for one in plan.members
-    ]
-    items.extend({"action": "leave", **one.identity()} for one in plan.left)
+    items = [{"action": "add", **one.identity()} for one in plan.members]
+    items += [{"action": "leave", **one.identity()} for one in plan.left]
     return {
         "digest": plan.digest,
         "items": items,
@@ -1020,10 +983,9 @@ def facts(plan: SetPlaylistPlan) -> dict[str, Any]:
         "set tracks": len(plan.members),
         "set left out": len(plan.left),
     }
-    if plan.posted_fallback:
-        shown["posted day"] = plan.posted_fallback["message"]
-    if plan.posted_ignored:
-        shown["posted day"] = plan.posted_ignored["message"]
+    # The frozen name winning over --posted is the day said, when both are.
+    if note := plan.posted_ignored or plan.posted_fallback:
+        shown["posted day"] = note["message"]
     return shown
 
 
@@ -1046,18 +1008,12 @@ def left_warning(left: Sequence[Left]) -> list[dict[str, str]]:
     """The one warning naming every track the playlist does not hold."""
     if not left:
         return []
-    named = "; ".join(
-        f"{one.position}. {one.artist} - {one.title} ({one.why})" for one in left
-    )
-    return [
-        {
-            "code": LEFT_OUT,
-            "message": (
-                f"{len(left)} track(s) of the set are not in its playlist, because "
-                f"nothing the product owns or landed was tied to them: {named}"
-            ),
-        }
-    ]
+    named = "; ".join(f"{one.position}. {one.artist} - {one.title} ({one.why})" for one in left)
+    return [_note(
+        LEFT_OUT,
+        f"{len(left)} track(s) of the set are not in its playlist, because "
+        f"nothing the product owns or landed was tied to them: {named}",
+    )]
 
 
 def nothing_note(plan: SetPlaylistPlan, *, left: int | None = None) -> list[dict[str, str]]:
@@ -1067,31 +1023,23 @@ def nothing_note(plan: SetPlaylistPlan, *, left: int | None = None) -> list[dict
     more than the plan's when every landed member's file was refused at the move.
     """
     count = len(plan.left) if left is None else left
-    return [
-        {
-            "code": NOTHING,
-            "message": (
-                f"no track of the set was owned or landed, so the playlist "
-                f"{plan.name!r} was not written; {count} track(s) are listed as left out"
-            ),
-        }
-    ]
+    return [_note(
+        NOTHING,
+        f"no track of the set was owned or landed, so the playlist "
+        f"{plan.name!r} was not written; {count} track(s) are listed as left out",
+    )]
 
 
 def written_note(written: Written) -> list[dict[str, str]]:
     """The one note a write carries naming the playlist it made and what it holds."""
     made = ", created at the playlist root" if written.folder_created else ""
     which = "made by this write" if written.playlist_created else "found and added to"
-    return [
-        {
-            "code": WRITTEN,
-            "message": (
-                f"the set's playlist {written.name!r} ({which}) holds {written.members} "
-                f"track(s) under the folder (row {written.folder_id}{made}), "
-                f"{written.added} added by this write and read back from the database"
-            ),
-        }
-    ]
+    return [_note(
+        WRITTEN,
+        f"the set's playlist {written.name!r} ({which}) holds {written.members} "
+        f"track(s) under the folder (row {written.folder_id}{made}), "
+        f"{written.added} added by this write and read back from the database",
+    )]
 
 
 # ---------------------------------------------------------------------------
@@ -1208,16 +1156,6 @@ def write_members(
         left=(*left, *plan.left),
         ids=distinct,
     )
-
-
-def record_on(record: session.SessionRecord, written: Written, plan: SetPlaylistPlan) -> None:
-    """Name the set playlist on the session record, beside whatever else it names."""
-    record.detail[RECORD_KEY] = {
-        "id": written.playlist_id,
-        "name": written.name,
-        "job": plan.job_id,
-        "folder": written.folder_id,
-    }
 
 
 def read_back(db: Any, playlist_id: str) -> tuple[str, ...]:
@@ -1344,7 +1282,12 @@ def _record_set_commit(
         return
     if not (written.added or written.playlist_created or written.folder_created):
         return
-    record_on(record, written, plan)
+    record.detail[RECORD_KEY] = {
+        "id": written.playlist_id,
+        "name": written.name,
+        "job": plan.job_id,
+        "folder": written.folder_id,
+    }
     changes = (session.TreeChange(tree=plan.tree_id, created=written.added),)
     session.record_commit(record, plan.tree_id, session.ChangeSummary(changes), cfg)
 

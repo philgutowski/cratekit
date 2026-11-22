@@ -12,14 +12,9 @@ library's own (A8), its file id the landed file's inode (U115) and its
 ContentLink the library's (U126): rekordbox will not load a row without them.
 
 THE PLAN IS BUILT AGAINST THE DATABASE AND THE APPLY REBUILDS NOTHING: it asks
-again only whether a row appeared since the approved digest. Each account
-playlist gets its own INBOX playlist (U113), and every new row joins
-:data:`ANALYZE` (U166). A row here is one this engine adds, unlike in
-``cratekit.tagging.rows``.
-
-The plan and the readers are in ``native_plan`` and the apply's steps in
-``native_apply``, each reached through this module too; every name a test
-patches here stays looked up here. Opens no database of its own.
+again only whether a row appeared since the approved digest. The plan and the
+readers are in ``native_plan``, each reached through this module too. Opens
+no database of its own.
 """
 
 from __future__ import annotations
@@ -30,14 +25,16 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Mapping, Sequence
 
+from cratekit.adopt import placements as adopt_placements
 from cratekit.core import config, convergence, drift, rb_writer, session, tree_registry
-from cratekit.core.cause import Remedy, refuse
-from cratekit.favorites import colour as colour_mod
-from cratekit.favorites import placement
+from cratekit.core.cause import CratekitError, Remedy, refuse
 from cratekit.intake import ingest, label_filing, set_playlist
 from cratekit.write import metadata_cli, row_link, trees
 
 if TYPE_CHECKING:
+    from cratekit.favorites import colour as colour_mod
+    from cratekit.favorites import placement
+
     # Annotation only: the module that defines them reaches this one.
     from cratekit.intake.account_playlists import Left, Member
 
@@ -47,69 +44,51 @@ ADD = "add"
 PRESENT = "already present"
 UNSUPPORTED = "unsupported"
 
-#: The columns a landed row leaves for rekordbox. THE WRITER'S LIST, not a
-#: copy: a second spelling is how what a person reads and what the guard
-#: enforces come to differ.
+#: The columns a landed row leaves for rekordbox: THE WRITER'S LIST, so what a
+#: person reads and what the guard enforces cannot differ.
 LEFT_EMPTY: tuple[str, ...] = tuple(sorted(rb_writer.CONTENT_ROW_EMPTY_COLUMNS))
 
-#: What the screen shows for the file id of a row to be added: a sentence,
-#: because the number is read on the landed file when the row is made (U115).
+#: The screen's file id for a row to be added, read on the landed file when made (U115).
 FILE_ID_AT_LANDING = "the landed file's inode number, read when the row is made"
 
 #: The session workflow a native landing is recorded under, the intake's own.
 WORKFLOW = ingest.INTAKE_WORKFLOW
 
-#: Record field naming the batch playlist a landing wrote, by id and name,
-#: which ``inbox rotate`` ages it by.
+#: Record field naming the batch playlist a landing wrote, which ``inbox rotate`` ages.
 BATCH_PLAYLIST_KEY = "batch_playlist"
-#: Record field naming the batch a landing filed and its folder (U164), so a
-#: batch landed again by its name goes back there and the name stays taken.
+#: Record field naming the batch and its folder (U164), so the name stays taken.
 FILED_BATCH_KEY = "filed_batch"
-#: Key on a batch playlist entry naming the set job it was written for (U135),
-#: so a later landing of the same job adds to it under its first name.
+#: Key on a batch playlist entry naming its set job (U135), so a later landing adds to it.
 INBOX_JOB_KEY = "job"
-#: Record field naming the sync pass given with ``--pass`` (R-777), written
-#: with the commit, so ``sync mark --pass`` reads it as proof the pass landed.
+#: Record field naming the ``--pass`` (R-777), which ``sync mark --pass`` reads as proof.
 PASS_KEY = "pass"
 
-#: Record field naming every row a landing made (R-1037): the database
-#: identity, the update count the commit left, the playlists it made, and each
-#: row's :data:`LANDED_COLUMNS` and UUID. rekordbox deletes a removed row
-#: outright, so this record is the only place its file and identity are
+#: Record field naming every row a landing made (R-1037): rekordbox deletes a
+#: removed row outright, so this is the only place its file and identity are
 #: written down. Spelled again in ``deletion.library``.
 LANDED_ROWS_KEY = "collection_landed"
-#: The field each landed row's UUID is kept under (R-1844): a fresh uuid4 no
-#: database from before the landing holds, so a row still held under it proves
-#: the landing was not rolled back. Spelled again in ``deletion.library``.
+#: Each landed row's fresh UUID (R-1844): a row still held under it proves the
+#: landing was not rolled back. Spelled again in ``deletion.library``.
 LANDED_UUID_KEY = "uuid"
-#: The columns a landed row is named by, ``rb_writer.RECORDED_COLUMNS``
-#: spelled here so this package reaches no further into the core.
+#: The columns a landed row is named by, ``rb_writer.RECORDED_COLUMNS`` spelled
+#: here so this package reaches no further into the core.
 LANDED_COLUMNS: tuple[str, ...] = (
-    "ID",
-    "FolderPath",
-    "FileSize",
-    "ArtistName",
-    "Title",
-    "ISRC",
-    "RemixerName",
-    "Subtitle",
+    "ID", "FolderPath", "FileSize", "ArtistName", "Title", "ISRC", "RemixerName", "Subtitle"
 )
 
 #: Record field listing the account playlists a landing wrote (U113).
 INBOX_PLAYLISTS_KEY = ingest.INBOX_PLAYLISTS_KEY
 
-#: The playlist under the intake root every row a landing creates joins
-#: (U166), so the rekordbox visit selects one playlist. Reserved: no batch may
-#: take it and an account playlist of the name lands dated (U175).
-#: ``batch_name.ANALYZE`` spells it again, held equal by a test.
+#: The playlist under the intake root every created row joins (U166), so the
+#: visit selects one playlist. Reserved for batches; ``batch_name.ANALYZE``
+#: spells it again, held equal by a test.
 ANALYZE = "Analyze"
 
 #: Why a playlist member is not in its INBOX playlist when its file made no row (U128).
 NOT_LANDED = "its file did not land"
 
-#: Why a landing plans no vox My Tag (U127). Without a calibration there is
-#: no cut to read a score against, and a tag from the default cut would file
-#: a vocal sub the derivation never would.
+#: Why a landing plans no vox My Tag (U127): with no calibration there is no
+#: cut, and the default cut would file a vocal sub the derivation never would.
 VOX_UNCALIBRATED = (
     "the library has no vocal calibration, so no score can be read against a cut; "
     "run crate analyze calibrate and then crate metadata mytags-vocals --apply"
@@ -126,9 +105,8 @@ VOX_UNREADABLE = (
     "a cut; run crate analyze calibrate again and then crate metadata mytags-vocals --apply"
 )
 
-#: The My Tag every added row whose drift reads variable gets (U157), so
-#: Analyze Tracks selects those rows for Dynamic. ``analysis.rekordbox_check``
-#: imports it, so the check and the landing cannot disagree.
+#: The My Tag every added row whose drift reads variable gets (U157), so Analyze
+#: Tracks selects them for Dynamic; ``analysis.rekordbox_check`` imports it.
 DYN_VALUE = "dyn"
 DYN_CATEGORY = "Analysis"
 #: What the dyn tags are filed under in a record's change summary (R19).
@@ -144,8 +122,7 @@ _ORIGIN = ("intake.native",)
 
 logger = logging.getLogger(__name__)
 
-#: The content columns a landing links to a lookup row (U163), the year
-#: column, and the album's own artist, read back beside the row's words.
+#: The content columns linked to a lookup row (U163), the year, and the album's artist.
 ARTIST_COLUMN = "ArtistID"
 ALBUM_COLUMN = "AlbumID"
 GENRE_COLUMN = "GenreID"
@@ -154,6 +131,10 @@ ALBUM_ARTIST = "AlbumArtistID"
 
 #: What the screen and the digest show for a word the commit mints a row for (U163).
 MINTED = "mint"
+
+
+def _name(word: Word | None) -> str:
+    return word.name if word is not None else ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,8 +157,7 @@ class Word:
 
     def key(self) -> tuple[str, str, str]:
         """What one commit mints once: the table, the name and an album's artist."""
-        artist = self.album_artist.name if self.album_artist is not None else ""
-        return (self.table, self.name, artist)
+        return (self.table, self.name, _name(self.album_artist))
 
     def shown(self) -> dict[str, Any]:
         """The word, its row or ``mint``, and what a mint stores, for the screen and the digest."""
@@ -207,17 +187,14 @@ class RowPlan:
     content_id: str | None = None
     #: Why the file is planned as ``UNSUPPORTED``, in a sentence, else empty.
     why: str = ""
-    #: The file's ``voxlevel`` (U127), None when unread, and whether the row
-    #: is given the vox My Tag, its score clearing the cut.
+    #: The file's ``voxlevel`` (U127), None when unread, and whether it is tagged vox.
     voxlevel: int | None = None
     vox: bool = False
-    #: The file's drift, its verdict against the plan's cut (U157), and
-    #: whether the row is given the dyn My Tag. Empty on a row not added.
+    #: The file's drift, its verdict against the cut (U157), and whether it is tagged dyn.
     drift: float | None = None
     drift_verdict: str = ""
     dyn: bool = False
-    #: The file's artist, album and genre words (U163), None for a word the
-    #: file does not carry.
+    #: The file's artist, album and genre words (U163), None for one it does not carry.
     artist: Word | None = None
     album: Word | None = None
     genre: Word | None = None
@@ -249,26 +226,21 @@ class RowPlan:
 
     def words(self) -> dict[str, Any]:
         """The words the row is planned to read back with, by column (U163)."""
+        album_artist = self.album.album_artist if self.album is not None else None
         return {
-            ARTIST_COLUMN: self.artist.name if self.artist is not None else "",
-            ALBUM_COLUMN: self.album.name if self.album is not None else "",
-            ALBUM_ARTIST: (
-                self.album.album_artist.name
-                if self.album is not None and self.album.album_artist is not None
-                else ""
-            ),
-            GENRE_COLUMN: self.genre.name if self.genre is not None else "",
+            ARTIST_COLUMN: _name(self.artist),
+            ALBUM_COLUMN: _name(self.album),
+            ALBUM_ARTIST: _name(album_artist),
+            GENRE_COLUMN: _name(self.genre),
             YEAR_COLUMN: self.year,
         }
 
 
 @dataclass(frozen=True, slots=True)
 class PlaylistMember:
-    """One track an account playlist's INBOX playlist holds (U128).
-
-    A planned ``target``, or the ``content_id`` of a row the library held.
-    ``member`` names it in the warning when its file does not land.
-    """
+    """One track an account playlist's INBOX playlist holds (U128): a planned
+    ``target`` or a held row's ``content_id``; ``member`` names it when its file
+    does not land."""
 
     target: Path | None = None
     content_id: str = ""
@@ -307,8 +279,7 @@ class HeartItem:
     """One planned file the pass's hearts asked for, and the month playlist it joins (U120, U145)."""
 
     target: Path
-    #: The month playlist, or None when the job froze no date key; the
-    #: backfill gives that heart its month.
+    #: The month playlist, or None when the job froze no date key: the backfill gives it.
     month: str | None
     ref: str
 
@@ -346,20 +317,15 @@ class FavoritesPlan:
     #: The library's Pink row (U153), or empty with ``colour_skipped`` saying why.
     pink: str = ""
     colour_skipped: str = ""
-    #: The owned hearts with no colour, which take Pink, and those a person
-    #: coloured otherwise, named and left.
+    #: The owned hearts with no colour, which take Pink, and those coloured otherwise, left.
     colour: tuple[str, ...] = ()
     held: tuple[colour_mod.Held, ...] = ()
 
     @property
     def months(self) -> tuple[str, ...]:
         """Every month the hearts go to, by name, so the screen reads in one order."""
-        return tuple(
-            sorted(
-                {item.month for item in self.items if item.month}
-                | {one.month for one in self.owned}
-            )
-        )
+        months = {item.month for item in self.items if item.month}
+        return tuple(sorted(months | {one.month for one in self.owned}))
 
     @property
     def unknown(self) -> int:
@@ -371,12 +337,10 @@ class FavoritesPlan:
         return tuple(month for month in self.months if month not in self.present)
 
     def home(self) -> placement.Home:
+        from cratekit.favorites import placement  # noqa: PLC0415 - favorites is toggleable
         return placement.Home(
-            source_name=self.source_name,
-            source_id=self.source_id,
-            folder_id=self.folder_id,
-            folder_name=self.folder_name,
-            present={},
+            source_name=self.source_name, source_id=self.source_id,
+            folder_id=self.folder_id, folder_name=self.folder_name, present={},
         )
 
     def identity(self) -> dict[str, Any]:
@@ -390,14 +354,13 @@ class FavoritesPlan:
                 {"to": str(item.target), "month": item.month, "ref": item.ref}
                 for item in self.items
             ],
+            # THE PINK ROW (U153): a heart coloured by hand between the two acts is another plan.
+            "pink": self.pink,
         }
         if self.owned:
             identity["owned"] = [
                 {"row": one.content_id, "month": one.month, "ref": one.ref} for one in self.owned
             ]
-        # THE PINK ROW AND ITS ROWS (U153): a heart coloured by hand between
-        # the two acts is another plan.
-        identity["pink"] = self.pink
         if self.colour:
             identity["colour"] = list(self.colour)
         return identity
@@ -427,8 +390,7 @@ class NativePlan:
     base_drive: str | None
     current_drive: str | None
     rows: tuple[RowPlan, ...]
-    #: The ContentLink every added row is given and its counts (U126), read
-    #: at plan time; None when the plan adds no row.
+    #: The ContentLink every added row is given and its counts (U126); None when none is added.
     link: row_link.LibraryLink | None
     digest: str
     #: The account playlists, each its own INBOX playlist (U113); the batch
@@ -447,19 +409,16 @@ class NativePlan:
     batch_playlist_id: str = ""
     #: The set job a ``--set`` landing records on its batch playlist (U135).
     set_job_id: str = ""
-    #: INBOX names that look like earlier parts of this set from before U135,
-    #: shown and never joined automatically.
+    #: INBOX names that look like earlier parts of this set, shown and never joined.
     inbox_leftovers: tuple[str, ...] = ()
-    #: Whether a set landing found a live INBOX playlist of the set's name no
-    #: landing of this job recorded (U135).
+    #: Whether a set landing found a live INBOX playlist of its name no landing recorded.
     inbox_found_by_name: bool = False
     #: The left rows of each account playlist holding nothing here (U128).
     unplanned_left: tuple[tuple[str, Left], ...] = ()
     #: The vox cut the scores were read against (U127), and why no row is tagged.
     vox_cut: float | None = None
     vox_blocked: str = ""
-    #: The drift cut the readings were judged against (U157), and why no
-    #: variable row is tagged.
+    #: The drift cut (U157), and why no variable row is tagged.
     drift_cut: float | None = None
     dyn_blocked: str = ""
     #: The live :data:`ANALYZE` playlist the plan found (U166), empty when made.
@@ -536,8 +495,7 @@ class NativeLanded:
     present: tuple[RowPlan, ...]
     memberships_added: int
     session_id: str
-    #: The account playlists written (U113); ``playlist_id`` is empty when
-    #: they took every row.
+    #: The account playlists written (U113); ``playlist_id`` is empty when they took every row.
     playlists: tuple[WrittenPlaylist, ...] = ()
     #: The hearts placed (U120), the set's playlist (U121) and the label
     #: filing (U156) the same commit wrote, each None when not planned.
@@ -563,8 +521,8 @@ class NativeLanded:
     dyn_blocked: str = ""
     dyn_missing: tuple[Path, ...] = ()
     dyn_unread: str = ""
-    #: The :data:`ANALYZE` playlist the rows joined (U166), its display name,
-    #: and how many memberships the commit added; empty when no row was added.
+    #: The :data:`ANALYZE` playlist the rows joined (U166), its display name and
+    #: the memberships added; empty when no row was added.
     analyze_id: str = ""
     analyze_name: str = ""
     analyze_added: int = 0
@@ -594,70 +552,48 @@ def _playlist_identity(one: PlaylistPlan) -> dict[str, Any]:
 def identity(plan: NativePlan) -> dict[str, Any]:
     """What the digest covers: every fact the apply writes, and the library it writes to.
 
-    The database's path is the one fact the screen shows that is left out
-    (U161), since two copies of one library carry the same device, master id
-    and rows and a rehearsal on one must digest as the other.
+    Each optional key only when it applies, so a plan without it digests as
+    before. NEVER THE DATABASE'S PATH (U161): two copies of one library carry
+    the same device, master id and rows, and a rehearsal on one must digest as
+    the other.
     """
-    split = (
-        {"playlists": [_playlist_identity(one) for one in plan.playlists]}
-        if plan.playlists
-        else {}
-    )
-    unplanned = (
-        {"unplanned_left": [[name, row.identity()] for name, row in plan.unplanned_left]}
-        if plan.unplanned_left
-        else {}
-    )
+    found: dict[str, Any] = {}
+    if plan.playlists:
+        found["playlists"] = [_playlist_identity(one) for one in plan.playlists]
+    if plan.twins:
+        found["twins"] = [one.identity() for one in plan.twins]
+    if plan.unplanned_left:
+        found["unplanned_left"] = [[name, row.identity()] for name, row in plan.unplanned_left]
+    if plan.set_playlist is not None:
+        found["set_playlist"] = set_playlist.identity(plan.set_playlist)
     favorites = {"favorites": plan.favorites.identity()} if plan.favorites is not None else {}
-    kept = (
-        {"set_playlist": set_playlist.identity(plan.set_playlist)}
-        if plan.set_playlist is not None
-        else {}
-    )
     filed = {"labels": label_filing.identity(plan.labels)} if plan.labels is not None else {}
-    # THE VOX (U127) AND DYN (U157) TAGS ONLY WHEN A ROW IS ADDED, each row's
-    # reading and answer, so an approval given before a file was rescored or
-    # the cut changed is stale for the tags it would write.
-    vox = (
-        {
-            "vox": {
+    if plan.to_add():
+        # THE VOX (U127) AND DYN (U157) TAGS, each row's reading and answer, so
+        # an approval given before a rescore or a new cut is stale.
+        found.update(
+            vox={
                 "cut": plan.vox_cut,
                 "blocked": plan.vox_blocked,
                 "rows": [[str(row.target), row.voxlevel, row.vox] for row in plan.to_add()],
-            }
-        }
-        if plan.to_add()
-        else {}
-    )
-    dyn = (
-        {
-            "dyn": {
+            },
+            dyn={
                 "cut": plan.drift_cut,
                 "blocked": plan.dyn_blocked,
                 "rows": [
                     [str(row.target), row.drift, row.drift_verdict, row.dyn]
                     for row in plan.to_add()
                 ],
-            }
-        }
-        if plan.to_add()
-        else {}
-    )
-    # Each key below only when it applies, so a plan without it digests as before.
+            },
+        )
     analyze = {"analyze": plan.analyze_playlist_id} if plan.to_add() else {}
     filing = (
         {"filing": [one.identity() for one in plan.filing]} if plan.filing is not None else {}
     )
-    twins = {"twins": [one.identity() for one in plan.twins]} if plan.twins else {}
     return {
-        **split,
-        **twins,
-        **unplanned,
+        **found,
         **favorites,
-        **kept,
         **filed,
-        **vox,
-        **dyn,
         **analyze,
         **filing,
         "kind": "land-native",
@@ -668,8 +604,6 @@ def identity(plan: NativePlan) -> dict[str, Any]:
         "set_job": plan.set_job_id,
         "inbox_leftovers": list(plan.inbox_leftovers),
         "inbox_found_by_name": plan.inbox_found_by_name,
-        # THE LIBRARY BY ITS DEVICE AND MASTER ID, NEVER THE FILE (U161): a
-        # rehearsal reads a copy at another path and must digest as the live one.
         "device": plan.device_id,
         "master_db_id": plan.master_db_id,
         "rows": [
@@ -696,11 +630,9 @@ def _restamp(content: Any, row: RowPlan, plan: NativePlan) -> None:
     """Put the planned path and device, the file id, the link and rekordbox's defaults on the row the binding made.
 
     ON THE OBJECT BEFORE THE GUARD'S FLUSH, so the guard judges the row as it
-    will be stored. Each value fixes something rekordbox will not load a row
-    to a deck without.
+    will be stored; rekordbox will not load a row to a deck without each.
     """
-    # THE MINTED ID AS TEXT, AS STORED (U153): a flush cannot order pending
-    # djmdContent rows that mix the binding's int ID with stored text IDs.
+    # TEXT, AS STORED (U153): a flush cannot order rows mixing int and text IDs.
     content.ID = str(content.ID)
     if str(content.FolderPath) != row.folder_path:
         content.FolderPath = row.folder_path
@@ -726,14 +658,12 @@ def file_id_of(path: Path) -> int:
 def assert_names_still_free(db: Any, plan: NativePlan) -> None:
     """Refuse an account playlist name INBOX came to hold after the plan chose it.
 
-    ASKED BEFORE THE FIRST MOVE, so a refusal leaves the files in staging, and
+    Asked before the first move, so a refusal leaves the files in staging, and
     again before the first row, for whatever took a name in between.
     """
-    from cratekit.intake.native_plan import inbox_held
-
     if not plan.playlists:
         return
-    held = set(inbox_held(db, plan.root_id))
+    held = set(native_plan.inbox_held(db, plan.root_id))
     clash = sorted(one.name for one in plan.playlists if one.name in held)
     if clash:
         raise refuse(
@@ -749,9 +679,8 @@ def assert_names_still_free(db: Any, plan: NativePlan) -> None:
 def assert_rows_gridless(landed: NativeLanded) -> None:
     """Refuse when a row read back after the commit carries an analysis value.
 
-    THE GUARD HOLDS THIS BEFORE THE COMMIT, so reaching here is the guard's
-    defect. It is read anyway, because the record promises what the rows hold
-    as rekordbox will find them.
+    The guard holds this before the commit, so reaching here is the guard's
+    defect; it is read anyway, because the record promises what the rows hold.
     """
     carried = [
         f"{row.content_id}: {name} = {value!r}"
@@ -773,7 +702,7 @@ def assert_rows_gridless(landed: NativeLanded) -> None:
 def assert_rows_identified(landed: NativeLanded) -> None:
     """Refuse when a landed row's file id or link read back is not what it was given.
 
-    THE RESTAMP SETS THEM BEFORE THE COMMIT, so reaching here means a column
+    The restamp sets them before the commit, so reaching here means a column
     was dropped on the way to the table and rekordbox will not load the row.
     The write is durable, so the refusal names the session that undoes it.
     """
@@ -811,33 +740,20 @@ def assert_rows_identified(landed: NativeLanded) -> None:
 
 
 def apply_rows(
-    cfg: config.Config,
-    db: Any,
-    plan: NativePlan,
-    *,
-    analysis_roots: Iterable[Path | str],
+    cfg: config.Config, db: Any, plan: NativePlan, *, analysis_roots: Iterable[Path | str]
 ) -> NativeLanded:
     """Write the plan: the rows, the playlist under the root, the memberships.
 
-    THE SESSION SPINE IS CALLED, NOT REBUILT: the gates with a record kept, a
-    capture, the analysis watch over ``analysis_roots``, the commit witness and
-    the guarded commit, whose ``creations`` admits the content rows (R-760).
-
-    ALL OR NOTHING IN THE DATABASE: every write is pending on one handle until
-    one commit, and a refusal before it rolls the handle back. The files are in
-    the library by then, which the caller reports.
+    THE SESSION SPINE IS CALLED, NOT REBUILT: the gates, a capture, the
+    analysis watch, the commit witness and the guarded commit, whose
+    ``creations`` admits the content rows (R-760). ALL OR NOTHING IN THE
+    DATABASE: every write is pending on one handle until one commit.
     """
-    from cratekit.intake import native_apply as steps
-    from cratekit.intake.native_apply import _analyze_row, _tag_dyn, _tag_vox, _vox_read_back
-
-    watched = steps._assert_unchanged(cfg, db, plan, analysis_roots)
+    watched = _assert_unchanged(cfg, db, plan, analysis_roots)
     added_ids: list[tuple[RowPlan, str]] = []
     present: list[RowPlan] = list(plan.present())
-    memberships = 0
-    vox_written = 0
-    dyn_written = 0
-    analyze_id = ""
-    analyze_added = 0
+    memberships = vox_written = dyn_written = analyze_added = 0
+    analyze_id = playlist_id = ""
     with (
         session.assert_gates(
             cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
@@ -855,7 +771,6 @@ def apply_rows(
                 tree_id=plan.tree_id,
                 root_id=plan.root_id,
             )
-        playlist_id = ""
         # EVERY PLAYLIST ROW BEFORE THIS LANDING (R-1037), so its record names
         # only the playlists it MADE, which no rollback to before it can hold.
         playlists_before = frozenset(str(row.ID) for row in db.get_playlist())
@@ -870,19 +785,21 @@ def apply_rows(
         twins_written: tuple[Any, ...] = ()
         failed: BaseException | None = None
         try:
-            # BEFORE THE FIRST ROW, so a refusal adds nothing: an account
-            # playlist is created, so a name taken since would show twice.
+            # BEFORE THE FIRST ROW: an account playlist is created, so a name
+            # taken since would show twice.
             assert_names_still_free(db, plan)
             if plan.twins:
                 from cratekit.sync import twins as twin_mod
 
                 twin_mod.recheck_landing(db, plan.twins)
             to_add = plan.to_add()
-            taken = steps._taken_since_the_plan(db, cfg, to_add)
+            # THE ONE QUESTION ASKED AGAIN, before the first row so the read
+            # flushes nothing: a row that appeared since is present, not doubled.
+            taken = native_plan.content_ids_for(db, cfg, [row.target for row in to_add])
             # THE WORDS ARE ASKED AGAIN (U163), so a lookup row made or retired
             # since the approval refuses rather than linking what nobody approved.
-            steps._assert_words_unmoved(db, [row for row in to_add if str(row.target) not in taken])
-            mints = steps._Mints(db)
+            _assert_words_unmoved(db, [row for row in to_add if str(row.target) not in taken])
+            mints = _Mints(db)
             for row in to_add:
                 held = taken.get(str(row.target))
                 if held is not None:
@@ -917,30 +834,21 @@ def apply_rows(
                         left.append((one.name, member.member.left(NOT_LANDED)))
                 if ids:
                     accounts.append((one, ids))
-            ordered = steps._batch_order(plan, by_target, claimed)
+            ordered = _batch_order(plan, by_target, claimed)
             # THE BATCH PLAYLIST HOLDS WHAT NO ACCOUNT PLAYLIST CLAIMED, and is
             # not written when that is nothing.
             if ordered or not accounts:
-                playlist = steps._batch_playlist_row(db, plan, anchor)
+                playlist = _batch_playlist_row(db, plan, anchor)
                 memberships = len(rb_writer.add_memberships(db, playlist, ordered))
                 playlist_id = str(playlist.ID)
             for one, ids in accounts:
                 created = db.create_playlist(one.name, parent=anchor)
                 count = len(rb_writer.add_memberships(db, created, ids))
                 memberships += count
-                written.append(
-                    WrittenPlaylist(
-                        name=one.name,
-                        playlist_id=str(created.ID),
-                        account=one.account,
-                        tracks=count,
-                    )
-                )
+                written.append(WrittenPlaylist(one.name, str(created.ID), one.account, count))
             # EACH ACCOUNT PLAYLIST'S TWIN (U149), the copy that stays when the
             # INBOX one rotates out.
             if plan.twins:
-                from cratekit.sync import twins as twin_mod
-
                 twins_written = twin_mod.write_landing(
                     db, plan.twins, {one.account: ids for one, ids in accounts}
                 )
@@ -962,21 +870,14 @@ def apply_rows(
                     for item in plan.favorites.items
                     if str(item.target) in by_target
                 ]
-                pairs.extend((one.content_id, one.month) for one in plan.favorites.owned)
                 # AND PINK (U153) on each new row and each uncoloured owned heart.
-                to_colour = [
-                    by_target[str(item.target)]
-                    for item in plan.favorites.items
-                    if str(item.target) in by_target
-                ]
+                to_colour = [content_id for content_id, _month in pairs]
+                pairs.extend((one.content_id, one.month) for one in plan.favorites.owned)
                 to_colour.extend(plan.favorites.colour)
+                from cratekit.favorites import placement  # noqa: PLC0415 - favorites is toggleable
                 placed = placement.place(
-                    db,
-                    plan.favorites.home(),
-                    pairs,
-                    pink=plan.favorites.pink,
-                    to_colour=to_colour,
-                    held=plan.favorites.held,
+                    db, plan.favorites.home(), pairs, pink=plan.favorites.pink,
+                    to_colour=to_colour, held=plan.favorites.held,
                     colour_skipped=plan.favorites.colour_skipped,
                 )
             # THE SET'S PERMANENT PLAYLIST (U121) and THE LABEL FILING (U156),
@@ -1001,17 +902,12 @@ def apply_rows(
             len(added_ids),
             memberships + analyze_added,
             cfg,
-            landed=steps._landed_rows(
+            landed=_landed_rows(
                 db, plan, added_ids, (playlist_id, *(one.playlist_id for one in written)),
                 before=playlists_before,
             ),
-            playlist_id=playlist_id,
-            written=written,
-            placed=placed,
-            set_written=set_written,
-            vox_written=vox_written,
-            dyn_written=dyn_written,
-            labels_written=labels_written,
+            playlist_id=playlist_id, written=written, placed=placed, set_written=set_written,
+            vox_written=vox_written, dyn_written=dyn_written, labels_written=labels_written,
             twins_written=twins_written,
         )
         if failed is not None:
@@ -1030,23 +926,17 @@ def apply_rows(
             _vox_read_back(db) if any(row.vox for row, _ in added_ids) else (frozenset(), "")
         )
         dyned, dyn_unread = (
-            steps._dyn_read_back(db) if any(row.dyn for row, _ in added_ids) else (frozenset(), "")
+            _dyn_read_back(db) if any(row.dyn for row, _ in added_ids) else (frozenset(), "")
         )
         for row, content_id in added_ids:
-            values, title, folder_path, file_id, link = steps._read_back(db, content_id)
+            values, title, folder_path, file_id, link = _read_back(db, content_id)
             landed.append(
                 AddedRow(
-                    target=row.target,
-                    content_id=content_id,
-                    title=title,
-                    folder_path=folder_path,
-                    empty=values,
-                    file_id=file_id,
-                    content_link=link,
+                    target=row.target, content_id=content_id, title=title,
+                    folder_path=folder_path, empty=values, file_id=file_id, content_link=link,
                     vox=content_id in voxed,
                     dyn=content_id in dyned,
-                    words=steps._words_back(db, content_id),
-                    planned=row.words(),
+                    words=_words_back(db, content_id), planned=row.words(),
                 )
             )
         session_id = record.session_id
@@ -1057,17 +947,10 @@ def apply_rows(
         return tuple(row.target for row, content_id in added_ids if keep(row, content_id))
 
     return NativeLanded(
-        tree_id=plan.tree_id,
-        playlist=plan.playlist,
-        playlist_id=playlist_id,
-        added=tuple(landed),
-        present=tuple(present),
-        memberships_added=memberships,
-        session_id=session_id,
-        playlists=tuple(written),
-        favorites=placed,
-        set_playlist=set_written,
-        labels=labels_written,
+        tree_id=plan.tree_id, playlist=plan.playlist, playlist_id=playlist_id,
+        added=tuple(landed), present=tuple(present), memberships_added=memberships,
+        session_id=session_id, playlists=tuple(written), favorites=placed,
+        set_playlist=set_written, labels=labels_written,
         content_link=plan.link.value if plan.link is not None else None,
         left=tuple(left),
         vox_written=vox_written,
@@ -1091,21 +974,11 @@ def apply_rows(
 
 
 def _record_landing_commit(
-    record: session.SessionRecord,
-    plan: NativePlan,
-    rows: int,
-    memberships: int,
-    cfg: config.Config,
-    *,
-    playlist_id: str,
-    landed: Mapping[str, Any] | None = None,
-    written: Sequence[WrittenPlaylist] = (),
-    placed: placement.Placed | None = None,
-    set_written: set_playlist.Written | None = None,
-    vox_written: int = 0,
-    dyn_written: int = 0,
-    labels_written: label_filing.Written | None = None,
-    twins_written: Sequence[Any] = (),
+    record: session.SessionRecord, plan: NativePlan, rows: int, memberships: int,
+    cfg: config.Config, *, playlist_id: str, landed: Mapping[str, Any] | None = None,
+    written: Sequence[WrittenPlaylist] = (), placed: placement.Placed | None = None,
+    set_written: set_playlist.Written | None = None, vox_written: int = 0, dyn_written: int = 0,
+    labels_written: label_filing.Written | None = None, twins_written: Sequence[Any] = (),
 ) -> None:
     """Record the commit on the session, once anything landed.
 
@@ -1159,6 +1032,7 @@ def _record_landing_commit(
         record.detail[label_filing.PROVIDER_KEY] = dict(labels_written.provider)
     # THE HEARTS UNDER THEIR OWN KEY (U120): the Favorites folder is nobody's
     # registered tree, so a restore sees them apart from the memberships.
+    from cratekit.favorites import placement  # noqa: PLC0415 - favorites is toggleable
     if placed is not None and (hearts > 0 or coloured > 0):
         record.detail[placement.PLACED_KEY] = placed.to_json()
     changes = []
@@ -1205,18 +1079,360 @@ def _record_count(
     session.record_commit(record, key, session.ChangeSummary((change,)), cfg)
 
 
-def __getattr__(name: str) -> Any:
-    """A name of the plan, the readers or the apply's steps, found on first use.
+# ---------------------------------------------------------------------------
+# The apply's steps, and the read back after its commit
+# ---------------------------------------------------------------------------
 
-    Each of them imports this module's types, so importing them here would be a cycle.
+
+def _read_back(db: Any, content_id: str) -> tuple[dict[str, Any], str, str, str, int | None]:
+    """The analysis columns, title, path, file id and link of one row, from SQL after the commit."""
+    from sqlalchemy import text
+
+    selected = ", ".join(LEFT_EMPTY)
+    row = db.session.execute(
+        text(
+            f"SELECT Title, FolderPath, {rb_writer.FILE_ID_COLUMN}, "
+            f"{rb_writer.CONTENT_LINK_COLUMN}, {selected} "
+            f"FROM djmdContent WHERE ID = :id"
+        ),
+        {"id": content_id},
+    ).first()
+    if row is None:
+        raise refuse(
+            "internal-error",
+            f"the content row {content_id!r} was committed and could not be read "
+            f"back, so the landing cannot say what it holds",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=_ORIGIN,
+            detail={"content_id": content_id},
+        )
+    values = dict(zip(LEFT_EMPTY, row[4:]))
+    return (
+        values, str(row[0] or ""), str(row[1] or ""), str(row[2] or ""),
+        None if row[3] is None else int(row[3]),
+    )
+
+
+def _words_back(db: Any, content_id: str) -> dict[str, Any]:
+    """One row's artist, album, album artist, genre and year, from SQL after the commit (U163).
+
+    THROUGH ACTIVE LOOKUP ROWS ONLY, so a row linked to a tombstone reads as
+    carrying no word, which is what rekordbox shows for it.
     """
-    from importlib import import_module
+    from sqlalchemy import text
 
-    # NEVER A DUNDER: the import system asks for ``__path__`` while a sibling
-    # is still importing this module, and must be told there is none.
-    siblings = () if name.startswith("__") else ("native_plan", "native_apply")
-    for sibling in siblings:
-        module = import_module(f"cratekit.intake.{sibling}")
-        if hasattr(module, name):
-            return getattr(module, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    active = f"{rb_writer.SOFT_DELETE_COLUMN} = 0"
+    row = db.session.execute(
+        text(
+            f"SELECT a.Name, al.Name, aa.Name, g.Name, c.{YEAR_COLUMN} "
+            f"FROM {rb_writer.CONTENT_TABLE} c "
+            f"LEFT JOIN {rb_writer.ARTIST_TABLE} a ON a.ID = c.{ARTIST_COLUMN} AND a.{active} "
+            f"LEFT JOIN {rb_writer.ALBUM_TABLE} al ON al.ID = c.{ALBUM_COLUMN} AND al.{active} "
+            f"LEFT JOIN {rb_writer.ARTIST_TABLE} aa ON aa.ID = al.{ALBUM_ARTIST} AND aa.{active} "
+            f"LEFT JOIN {rb_writer.GENRE_TABLE} g ON g.ID = c.{GENRE_COLUMN} AND g.{active} "
+            f"WHERE c.ID = :id"
+        ),
+        {"id": content_id},
+    ).first()
+    if row is None:
+        return {}
+    names = (ARTIST_COLUMN, ALBUM_COLUMN, ALBUM_ARTIST, GENRE_COLUMN)
+    return {
+        **{column: str(value or "") for column, value in zip(names, row)},
+        YEAR_COLUMN: int(row[4]) if row[4] else None,
+    }
+
+
+def _resolved_now(resolver: native_plan._Resolver, word: Word) -> Word | None:
+    """``word`` resolved again on the apply's handle, by the plan's own rule."""
+    if word.table == rb_writer.ALBUM_TABLE:
+        artist = (
+            resolver.word(rb_writer.ARTIST_TABLE, word.album_artist.name)
+            if word.album_artist is not None
+            else None
+        )
+        return resolver.album(word.name, artist)
+    return resolver.word(word.table, word.name)
+
+
+def _rows_of(word: Word | None) -> tuple[str, str]:
+    """The rows a word takes, its own and an album's artist, empty for a mint."""
+    if word is None:
+        return ("", "")
+    artist = word.album_artist.row_id if word.album_artist is not None else ""
+    return (word.row_id, artist)
+
+
+def _assert_words_unmoved(db: Any, rows: Sequence[RowPlan]) -> None:
+    """Refuse when a word resolves to another row now than the plan found (U163).
+
+    The plan is what was approved and is not rebuilt: a lookup row minted,
+    retired or renamed since changes what the screen showed.
+    """
+    resolver = native_plan._Resolver(db)
+    moved = []
+    for row in rows:
+        for word in (row.artist, row.album, row.genre):
+            if word is None:
+                continue
+            now = _resolved_now(resolver, word)
+            if _rows_of(now) != _rows_of(word):
+                moved.append(
+                    f"{row.target.name}: {word.table} {word.name!r} was "
+                    f"{word.row_id or MINTED} and is {(now.row_id if now else '') or MINTED}"
+                )
+    if moved:
+        raise refuse(
+            "decision-stale",
+            "a word a row would carry resolves to another lookup row than the plan "
+            "found, so nothing was written; plan the landing again: " + "; ".join(moved),
+            origin=_ORIGIN,
+            detail={"moved": moved},
+        )
+
+
+class _Mints:
+    """The lookup rows one commit mints, each once per word, and the links to them (U163).
+
+    BY HAND, NOT THROUGH ``add_artist`` AND KIN, which refuse a name even a
+    tombstone holds. MINTED AND LINKED IN ONE COMMIT, because rekordbox
+    garbage collects a lookup row nothing references (A4).
+    """
+
+    def __init__(self, db: Any) -> None:
+        self._db = db
+        self._made: dict[tuple[str, str, str], str] = {}
+
+    def tables(self) -> tuple[str, ...]:
+        """The lookup tables this commit minted a row in, to name in ``creations``."""
+        return tuple(sorted({table for table, _name, _artist in self._made}))
+
+    def link(self, content: Any, row: RowPlan) -> None:
+        """Link the content row to each of its words' rows, minting a word's once, and write its year."""
+        for column, word in row.linked():
+            if word is not None:
+                setattr(content, column, self.id_of(word))
+        if row.year is not None:
+            setattr(content, YEAR_COLUMN, row.year)
+
+    def id_of(self, word: Word) -> str:
+        """The row ``word`` links: the plan's active row, or the one this commit minted for it."""
+        if word.row_id:
+            return word.row_id
+        key = word.key()
+        if key not in self._made:
+            self._made[key] = self._mint(word)
+        return self._made[key]
+
+    def _mint(self, word: Word) -> str:
+        from uuid import uuid4
+
+        kind = native_plan._lookup_class(word.table)
+        # TEXT, AS THE STORED ROWS ARE (U153): the binding mints an int.
+        columns: dict[str, Any] = {
+            "ID": str(self._db.generate_unused_id(kind)),
+            "Name": word.name,
+            "UUID": str(uuid4()),
+        }
+        if word.table != rb_writer.GENRE_TABLE:
+            columns["SearchStr"] = word.search
+        if word.table == rb_writer.ALBUM_TABLE:
+            columns[ALBUM_ARTIST] = (
+                self.id_of(word.album_artist) if word.album_artist is not None else None
+            )
+        made = kind.create(**columns)
+        self._db.add(made)
+        # FLUSHED AT ONCE, so the next mint's unused id is drawn against this one.
+        self._db.flush()
+        return str(made.ID)
+
+
+def _tag_vox(db: Any, added: Sequence[tuple[RowPlan, str]]) -> int:
+    """Give each added row the plan tagged the vox My Tag (U127). Answers how many were written."""
+    content_ids = [content_id for row, content_id in added if row.vox]
+    return _tag(db, content_ids, metadata_cli.CATEGORY, metadata_cli.VALUE_VOX)
+
+
+def _tag_dyn(db: Any, added: Sequence[tuple[RowPlan, str]]) -> int:
+    """Give each added row the plan tagged the dyn My Tag (U157). Answers how many were written."""
+    return _tag(db, [content_id for row, content_id in added if row.dyn], DYN_CATEGORY, DYN_VALUE)
+
+
+def _tag(db: Any, content_ids: Sequence[str], category: str, name: str) -> int:
+    """Give each row the My Tag ``name`` under ``category``, pending on the landing's handle.
+
+    THE VOCALS VERB'S OWN WRITER, so the category and value are found or made
+    as ``metadata mytags-vocals`` makes them and an association there is kept.
+    """
+    if not content_ids:
+        return 0
+    value = rb_writer.ensure_my_tag_value(db, category, name)
+    return sum(1 for content_id in content_ids if rb_writer.add_my_tag(db, value, content_id))
+
+
+def _dyn_read_back(db: Any) -> tuple[frozenset[str], str]:
+    """Every row carrying the dyn My Tag as the check reads it, after the commit (U157).
+
+    A refusal is the answer's reason, not a failure: the commit has landed.
+    """
+    try:
+        return native_plan.dyn_marked(db), ""
+    except CratekitError as exc:
+        return frozenset(), exc.cause.message
+
+
+def _vox_read_back(db: Any) -> tuple[frozenset[str], str]:
+    """Every row carrying the vox My Tag as adoption reads it, after the commit (U127).
+
+    ADOPTION'S OWN READER, since the promise is that the next ``adopt apply``
+    files the row. A refusal is the answer's reason: the commit has landed.
+    """
+    try:
+        tagged = adopt_placements.vox_tagged(db)
+    except CratekitError as exc:
+        return frozenset(), exc.cause.message
+    return tagged or frozenset(), ""
+
+
+def _batch_playlist_row(db: Any, plan: NativePlan, anchor: Any) -> Any:
+    """The INBOX playlist the batch members go in: the recorded one, else found or made.
+
+    THE RECORDED PLAYLIST of a set landing (U135) is checked live again. A
+    removed playlist is never found: rekordbox soft deletes one a person
+    removes, and memberships written into it are seen by nobody.
+    """
+    if plan.batch_playlist_id:
+        row = db.get_playlist(ID=plan.batch_playlist_id)
+        if row is None or rb_writer.is_folder(row) or rb_writer.node_removed(row):
+            raise refuse(
+                "decision-stale",
+                f"the INBOX playlist {plan.playlist!r} (row {plan.batch_playlist_id}) "
+                f"the plan adds to is not live any more, so nothing was written",
+                origin=_ORIGIN,
+                detail={"playlist": plan.batch_playlist_id, "name": plan.playlist},
+            )
+        return row
+    parent_id = str(anchor.ID)
+    for row in list(db.get_playlist(Name=plan.playlist)):
+        if rb_writer.is_folder(row) or rb_writer.node_removed(row):
+            continue
+        if str(getattr(row, "ParentID", "") or "") == parent_id:
+            return row
+    return db.create_playlist(plan.playlist, parent=anchor)
+
+
+def _analyze_row(db: Any, plan: NativePlan, anchor: Any) -> Any:
+    """The :data:`ANALYZE` playlist the added rows join, found again at the write
+    so one made since is joined, never made twice, and one removed is not written into."""
+    del plan
+    found = native_plan.analyze_playlist(db, str(anchor.ID))
+    return found if found is not None else db.create_playlist(ANALYZE, parent=anchor)
+
+
+def _plain(value: Any) -> Any:
+    return value if value is None or isinstance(value, (int, float)) else str(value)
+
+
+def _landed_rows(
+    db: Any, plan: NativePlan, added_ids: Sequence[tuple[RowPlan, str]], joined: Iterable[str],
+    *, before: frozenset[str],
+) -> dict[str, Any] | None:
+    """What :data:`LANDED_ROWS_KEY` records of a committed landing, read back from the database.
+
+    THE ROWS AS THE DATABASE HOLDS THEM after the commit, with the update
+    count it left, each row's UUID (R-1844), and the playlists of ``joined``
+    this landing MADE, those not in ``before``: no database from before the
+    landing holds one, which tells a removal from a rollback.
+
+    A READ THAT FAILS RECORDS NOTHING and says so: the landing has committed,
+    and a record naming no row only keeps the files.
+    """
+    if not added_ids:
+        return None
+    try:
+        rows = []
+        for _row, content_id in added_ids:
+            content = db.get_content(ID=content_id)
+            if content is None:
+                raise LookupError(f"the row {content_id!r} could not be read back")
+            rows.append(
+                {
+                    "content_id": str(content_id),
+                    "columns": {name: _plain(getattr(content, name, None)) for name in LANDED_COLUMNS},
+                    LANDED_UUID_KEY: str(getattr(content, "UUID", None) or ""),
+                }
+            )
+        sequence = int(db.get_local_usn())
+    except Exception as exc:  # noqa: BLE001 - any read failure records nothing
+        logger.warning(
+            "the rows this landing made could not be read back for its record (%s), so "
+            "the deletion pass will not offer their files if they are removed in rekordbox",
+            exc,
+        )
+        return None
+    playlists = sorted({str(one) for one in joined if one and str(one) not in before})
+    return {
+        "database_identity": plan.master_db_id,
+        "sequence": sequence,
+        "playlists": playlists,
+        "rows": rows,
+    }
+
+
+def _assert_unchanged(
+    cfg: config.Config, db: Any, plan: NativePlan, analysis_roots: Iterable[Path | str]
+) -> list[Path]:
+    """The roots to watch, once the intake tree is still anchored where the plan found it.
+
+    ``analysis_roots`` has no default: a watch that watches nothing reports
+    every session clean.
+    """
+    watched = [Path(root) for root in analysis_roots]
+    if not watched:
+        raise ValueError(
+            "analysis_roots is empty, so the analysis-file watch would watch nothing "
+            "and this session would report itself clean whatever happened to the "
+            "library's grids; name the roots this write could touch"
+        )
+    registry = tree_registry.read(cfg)
+    root_id = native_plan.anchored_intake_root(db, plan.tree_id, registry)
+    if root_id != plan.root_id:
+        raise refuse(
+            "decision-stale",
+            f"the intake tree {plan.tree_id!r} is anchored to root {root_id!r} and the "
+            f"plan was made against {plan.root_id!r}, so nothing was written",
+            origin=_ORIGIN,
+            detail={"planned": plan.root_id, "anchored": root_id},
+        )
+    convergence.assert_tree_writable(cfg, db, plan.tree_id, registry)
+    return watched
+
+
+def _batch_order(plan: NativePlan, by_target: Mapping[str, str], claimed: set[str]) -> list[str]:
+    """The batch playlist's rows, each once: what no account playlist claimed, in the plan's order.
+
+    IN SET ORDER FIRST FOR A SET LANDING (U135), so both landings' rows read in
+    set order on the joined INBOX playlist; the set's members carry positions
+    and landing files alone sort by name.
+    """
+    members = plan.set_playlist.members if plan.set_playlist is not None else ()
+    targets = [str(member.target) for member in members if member.target]
+    targets += [str(row.target) for row in plan.rows]
+    return list(
+        dict.fromkeys(by_target[one] for one in targets if one in by_target and one not in claimed)
+    )
+
+
+def __getattr__(name: str) -> Any:
+    """A name of the plan and its readers, defined in ``native_plan``, which imports this module.
+
+    NEVER A DUNDER: the import system asks for ``__path__`` while the plan is
+    still importing this module, and must be told there is none.
+    """
+    if name.startswith("__"):
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return getattr(native_plan, name)
+
+
+# Last, since it imports this module's names.
+from cratekit.intake import native_plan  # noqa: E402

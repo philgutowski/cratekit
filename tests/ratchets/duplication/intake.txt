@@ -3,21 +3,3 @@
 # ever removed, by hand or with: scripts/refactor_measure.py prune intake
 # A line whose copy is gone fails nothing. To see where a window stands:
 # scripts/refactor_measure.py duplicates --where DIGEST
-15d5339f377384b5
-15d5339f377384b5
-4647ca1be05624b4
-4647ca1be05624b4
-491d85397e124e19
-491d85397e124e19
-618a85a7a3d51a3b
-618a85a7a3d51a3b
-ae52d73ee808eb21
-ae52d73ee808eb21
-c46bcb1735e05ff6
-c46bcb1735e05ff6
-d7e9ee400097efe3
-d7e9ee400097efe3
-f52c998f8a5156f4
-f52c998f8a5156f4
-f5c20b1414f2cc3c
-f5c20b1414f2cc3c
