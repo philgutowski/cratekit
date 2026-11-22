@@ -1,14 +1,8 @@
 """U201: an edit made on the account to a mirrored genre playlist changes the library.
 
-Driven end to end on a disposable database holding an adopted BY GENRE + ENERGY
-tree of two genre folders and two tagged files, with the account faked by the
-strict recording account: the mirror's own step (``account_mirror.add_steps``)
-and the rekordbox area's ``mirror-edits`` step, both off one shared reading as
-``crate organize`` builds them, each pass a new organize run. What is asserted
-is what the account, the files and the database hold afterwards, never a step's
-own report alone.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+Driven end to end on a disposable BY GENRE + ENERGY tree and the strict fake
+account, each pass a new organize run; asserted on what the account, files and
+database hold. D1 applies.
 """
 
 from __future__ import annotations
@@ -133,9 +127,7 @@ class Machine:
                 for band in BANDS:
                     playlists[(genre, band)] = str(rb_writer.ensure_playlist(handle, band, folder).ID)
             for content_id, (genre, band, _energy) in TRACKS.items():
-                rb_writer.add_memberships(
-                    handle, handle.get_playlist(ID=playlists[(genre, band)]), [content_id]
-                )
+                rb_writer.add_memberships(handle, handle.get_playlist(ID=playlists[(genre, band)]), [content_id])
             handle.session.commit()
             return {"playlists": playlists, "root_id": str(root.ID)}
         finally:
@@ -157,8 +149,6 @@ class Machine:
                 )
             ),
         )
-
-    # ── one organize run ─────────────────────────────────────────────────
 
     def shared(self) -> account_mirror.Shared:
         self.runs += 1
@@ -184,8 +174,6 @@ class Machine:
                 one.applied = one.apply()
         return area, step
 
-    # ── the account ──────────────────────────────────────────────────────
-
     def remote(self, title: str) -> str:
         (found,) = [pid for pid, name in self.account.titles.items() if name == title]
         return found
@@ -201,7 +189,8 @@ class Machine:
         if at:
             self.account.added_at[(self.remote(title), track)] = at
 
-    # ── the library ──────────────────────────────────────────────────────
+    def sql(self, statement: str, *args) -> list:
+        return _query(self.db, statement, *args)
 
     def places(self, content_id: str) -> set[tuple[str, str]]:
         found = _query(
@@ -259,20 +248,11 @@ def _writes(account) -> tuple:
     return (list(account.created), list(account.chunks), list(account.taken))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 1. The snapshot and the first run
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_the_first_run_mirrors_one_way_and_records_every_playlists_snapshot(machine):
     assert machine.held("Deep House Low") == ["r1"]
     assert machine.held("Deep House Med") == ["r2"]
     recorded = ledger.mirror_folders(machine.cfg)
-    agreed = {
-        title: entry.agreed
-        for folder in recorded.values()
-        for title, entry in folder.playlists.items()
-    }
+    agreed = {title: entry.agreed for folder in recorded.values() for title, entry in folder.playlists.items()}
     assert agreed["Deep House Low"] == {"r1"}
     assert agreed["Tech House Med"] == frozenset()
     assert all(value is not None for value in agreed.values())
@@ -284,15 +264,11 @@ def test_a_second_run_with_nothing_changed_plans_nothing_on_either_side(machine)
     assert {one.state for one in area.steps} <= {NOTHING, LISTED}
 
 
-def test_an_edit_on_a_playlist_never_agreed_is_put_back_and_nothing_in_the_library_changes(
-    machine,
-):
+def test_an_edit_on_a_playlist_never_agreed_is_put_back_and_nothing_in_the_library_changes(machine):
     machine.forget_snapshots()
     machine.take_off("Deep House Low", "r1")
     machine.put_in("Tech House Med", "r1")
-
     area, step = machine.run()
-
     assert step.state == NOTHING
     assert machine.places("1") == {("Deep House", "Low")}
     assert machine.held("Deep House Low") == ["r1"]
@@ -300,20 +276,11 @@ def test_an_edit_on_a_playlist_never_agreed_is_put_back_and_nothing_in_the_libra
     assert tags.read_genre_from_file(machine.files["1"]) == "Deep House"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 2. A move, an unfile, carried into the library
-# ═══════════════════════════════════════════════════════════════════════════
-
-
-def test_a_track_moved_on_the_account_is_retagged_refiled_and_the_next_run_plans_nothing(
-    machine,
-):
+def test_a_track_moved_on_the_account_is_retagged_refiled_and_the_next_run_plans_nothing(machine):
     machine.take_off("Deep House Low", "r1")
     machine.put_in("Tech House Med", "r1")
     before = _writes(machine.account)
-
     area, step = machine.run()
-
     assert step.state == PLANNED
     (change,) = [one for one in step.items if one.get("edit")]
     assert change["genre"] == ["Deep House", "Tech House"]
@@ -341,9 +308,7 @@ def test_a_move_in_rekordbox_after_an_edit_was_taken_is_rekordboxs(machine):
     machine.put_in("Tech House Med", "r1")
     machine.run()
     machine.move_in_rekordbox("1", ("Deep House", "Low"), "2026-11-05 10:00:00.000 +00:00")
-
     _area, step = machine.run()
-
     assert step.state == NOTHING
     assert machine.places("1") == {("Deep House", "Low")}
     assert machine.held("Deep House Low") == ["r1"]
@@ -353,9 +318,7 @@ def test_a_move_in_rekordbox_after_an_edit_was_taken_is_rekordboxs(machine):
 def test_a_move_within_a_genre_keeps_the_genre_and_moves_the_energy_to_the_nearest(machine):
     machine.take_off("Deep House Low", "r1")
     machine.put_in("Deep House High", "r1")
-
     _area, step = machine.run()
-
     (change,) = [one for one in step.items if one.get("edit")]
     assert change["genre"] == ["Deep House", "Deep House"]
     assert change["energy"] == [2, 7]
@@ -366,9 +329,7 @@ def test_a_move_within_a_genre_keeps_the_genre_and_moves_the_energy_to_the_neare
 def test_a_move_to_unsorted_clears_the_energy(machine):
     machine.take_off("Deep House Med", "r2")
     machine.put_in("Deep House Unsorted", "r2")
-
     machine.run()
-
     assert tags.read_energy_from_file(machine.files["2"]) is None
     assert tags.read_genre_from_file(machine.files["2"]) == "Deep House"
     assert machine.places("2") == {("Deep House", "Unsorted")}
@@ -376,9 +337,7 @@ def test_a_move_to_unsorted_clears_the_energy(machine):
 
 def test_a_track_removed_on_the_account_and_added_nowhere_is_unfiled_and_listed(machine):
     machine.take_off("Deep House Low", "r1")
-
     _area, step = machine.run()
-
     (change,) = [one for one in step.items if one.get("edit")]
     assert change["edit"] == edits.UNFILE and change["genre"] == ["Deep House", None]
     assert tags.read_genre_from_file(machine.files["1"]) is None
@@ -388,9 +347,7 @@ def test_a_track_removed_on_the_account_and_added_nowhere_is_unfiled_and_listed(
     assert totals["compared"] is True
     assert "1" in {one.get("content_id") or one.get("id") for one in unplaced}
     # IT STAYS IN THE COLLECTION.
-    conn = sqlite3.connect(machine.db)
-    assert conn.execute("SELECT rb_local_deleted FROM djmdContent WHERE ID = '1'").fetchone() == (0,)
-    conn.close()
+    assert machine.sql("SELECT rb_local_deleted FROM djmdContent WHERE ID = '1'") == [(0,)]
     area, step, _shared = machine.plan()
     assert step.state == NOTHING
     assert {one.state for one in area.steps} <= {NOTHING, LISTED}
@@ -400,14 +357,7 @@ def test_the_gate_names_every_membership_the_step_takes_away(machine):
     machine.take_off("Deep House Low", "r1")
     _area, step, _shared = machine.plan()
     lines = mirror_edits.deletes(step.items)
-    assert lines == [
-        "a track leaves Deep House / Low, and its genre and energy tags are cleared"
-    ]
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 3. Held, and the most recent change
-# ═══════════════════════════════════════════════════════════════════════════
+    assert lines == ["a track leaves Deep House / Low, and its genre and energy tags are cleared"]
 
 
 def test_a_short_listing_changes_nothing_in_the_library_and_undoes_nothing(machine):
@@ -415,9 +365,7 @@ def test_a_short_listing_changes_nothing_in_the_library_and_undoes_nothing(machi
     machine.put_in("Tech House Med", "r1")
     machine.account.hidden[machine.remote("Deep House Low")] = ("r9",)
     machine.account.playlists[machine.remote("Deep House Low")].append("r9")
-
     area, step = machine.run()
-
     assert step.state == NOTHING
     assert machine.places("1") == {("Deep House", "Low")}
     assert "r1" not in machine.held("Deep House Low")
@@ -426,9 +374,7 @@ def test_a_short_listing_changes_nothing_in_the_library_and_undoes_nothing(machi
 
 def test_a_track_the_library_lacks_added_on_the_account_is_held_there(machine):
     machine.put_in("Tech House Med", "r9")
-
     _area, step = machine.run()
-
     assert step.state == NOTHING
     (named,) = step.items
     assert named["outcome"] == edits.HELD and named["acquire"] is True
@@ -440,9 +386,7 @@ def test_two_moves_follow_the_later_rekordbox_move(machine):
     machine.take_off("Deep House Low", "r1")
     machine.put_in("Tech House Med", "r1", at="2026-11-04T09:00:00+00:00")
     machine.move_in_rekordbox("1", ("Deep House", "High"), "2026-11-04 10:00:00.000 +00:00")
-
     _area, step = machine.run()
-
     assert step.state == NOTHING
     assert machine.places("1") == {("Deep House", "High")}
     assert tags.read_genre_from_file(machine.files["1"]) == "Deep House"
@@ -454,9 +398,7 @@ def test_two_moves_follow_the_later_account_move(machine):
     machine.take_off("Deep House Low", "r1")
     machine.put_in("Tech House Med", "r1", at="2026-11-04T11:00:00+00:00")
     machine.move_in_rekordbox("1", ("Deep House", "High"), "2026-11-04 10:00:00.000 +00:00")
-
     _area, step = machine.run()
-
     assert step.state == PLANNED
     assert machine.places("1") == {("Tech House", "Med")}
     assert machine.held("Tech House Med") == ["r1"]
@@ -468,43 +410,30 @@ def test_two_moves_with_the_account_time_unknown_keep_rekordboxs(machine):
     machine.take_off("Deep House Low", "r1")
     machine.put_in("Tech House Med", "r1")
     machine.move_in_rekordbox("1", ("Deep House", "High"), "2026-11-04 10:00:00.000 +00:00")
-
     _area, step = machine.run()
-
     assert step.state == NOTHING
     (named,) = step.items
     assert named["outcome"] == edits.REKORDBOX and "unknown" in named["why"]
     assert machine.places("1") == {("Deep House", "High")}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 4. The write's own guards
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_a_library_moved_since_the_plan_writes_nothing(machine):
     machine.take_off("Deep House Low", "r1")
     machine.put_in("Tech House Med", "r1")
     _area, step, _shared = machine.plan()
-    conn = sqlite3.connect(machine.db)
-    conn.execute(
+    machine.sql(
         "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, rb_local_deleted, "
         "created_at, updated_at) VALUES ('late', ?, '1', 2, 0, '2026-11-04', '2026-11-04')",
-        (machine.playlists[("Tech House", "High")],),
+        machine.playlists[("Tech House", "High")],
     )
-    conn.commit()
-    conn.close()
-
     with pytest.raises(CratekitError) as caught:
         step.apply()
-
     assert caught.value.cause.reason == "decision-stale"
     assert tags.read_genre_from_file(machine.files["1"]) == "Deep House"
 
 
 def test_without_the_backup_acknowledgment_the_rekordbox_area_is_not_planned(machine, monkeypatch):
     from cratekit.core.cause import refuse
-
     monkeypatch.setattr(
         rekordbox,
         "acknowledgment",
@@ -542,20 +471,13 @@ def test_the_step_is_a_kind_the_rekordbox_area_names_and_listed_with_no_reading(
 
 def test_an_account_that_cannot_be_read_refuses_the_step_alone(machine):
     from cratekit.core.cause import refuse
-
     def unreachable():
         raise refuse("credential-missing", "no account", origin=("test",))
-
     shared = account_mirror.Shared(machine.cfg, unreachable, None)
     step = mirror_edits.add_step(
         machine.cfg, active_taxonomy.load(machine.cfg), tree_registry.read(machine.cfg), shared
     )
     assert step.state == REFUSED and step.cause.reason == "credential-missing"
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 5. The tags routing reads, chosen by routing
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -570,9 +492,7 @@ def test_an_account_that_cannot_be_read_refuses_the_step_alone(machine):
         ("Minimal / Deep Tech", "Low Energy", "Deep House", 9, ("Minimal / Deep Tech", 3)),
     ],
 )
-def test_the_tags_are_the_nearest_pair_routing_files_into_the_place(
-    folder, playlist, genre, energy, expected
-):
+def test_the_tags_are_the_nearest_pair_routing_files_into_the_place(folder, playlist, genre, energy, expected):
     declared = taxonomy.default_taxonomy()
     assert mirror_edits.target_tags(declared, folder, playlist, genre, energy) == expected
 
@@ -587,19 +507,12 @@ def test_a_genre_folder_places_only_what_routing_files_into():
         ),
         edits=edits.GENRE,
     )
-    found = mirror_edits.places(
-        declared, [folder, mirror.Folder(name="Not A Genre", edits=edits.GENRE)]
-    )
+    found = mirror_edits.places(declared, [folder, mirror.Folder(name="Not A Genre", edits=edits.GENRE)])
     assert {title: place.primary for title, place in found.items()} == {
         "Deep House Low": True,
         "Deep House Unsorted": True,
         "Deep House with vox": False,
     }
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 6. A folder no edit rule reads is mirrored one way
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_folder_that_is_not_a_genre_folder_is_mirrored_one_way(installed, monkeypatch):
@@ -613,28 +526,18 @@ def test_a_folder_that_is_not_a_genre_folder_is_mirrored_one_way(installed, monk
     monkeypatch.setattr(
         account_mirror, "read_library", lambda _cfg, **_: account_mirror.Library(folders=(favorites,))
     )
-
     def run() -> None:
         area = Area(name="account")
-        account_mirror.add_steps(
-            installed, area, lambda: account, account_mirror.Run(run_id="r", record=True)
-        )
+        account_mirror.add_steps(installed, area, lambda: account, account_mirror.Run(run_id="r", record=True))
         for one in area.steps:
             if one.apply is not None:
                 one.apply()
-
     run()
     (pid,) = [one for one, name in account.titles.items() if name == "All Favorites"]
     assert ledger.mirror_folders(installed)["Favorites"].playlists["All Favorites"].agreed == {"r1"}
     account.playlists[pid].remove("r1")
     run()
     assert account.playlists[pid] == ["r1"]
-
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 7. The account's dated listing, and the snapshot's record
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _dated_adapter(cfg, members, *, hidden=0, declared=True, times=None):
@@ -699,7 +602,6 @@ def test_the_ledger_keeps_a_snapshot_apart_from_none_and_only_on_its_own_playlis
     ledger.reserve_mirror_playlist(installed, "Deep House", "Deep House Low", lambda: "p1")
     ledger.reserve_mirror_playlist(installed, "Deep House", "Deep House Med", lambda: "p2")
     assert ledger.mirror_folders(installed)["Deep House"].playlists["Deep House Low"].agreed is None
-
     ledger.record_mirror_agreed(
         installed,
         "Deep House",
@@ -711,36 +613,22 @@ def test_the_ledger_keeps_a_snapshot_apart_from_none_and_only_on_its_own_playlis
     held = ledger.mirror_folders(installed)["Deep House"].playlists
     assert held["Deep House Low"].agreed == {"r1", "r2"}
     assert held["Deep House Med"].agreed is None
-
     # A HELD TRACK KEEPS THE WORD THE RECORD HOLDS NOW, settled or not.
     ledger.settle_mirror_tracks(installed, [("Deep House", "Deep House Low", "r9", True)])
     ledger.record_mirror_agreed(installed, "Deep House", {"Deep House Low": ("p1", {"r1"}, {"r9", "r2"})})
-    assert ledger.mirror_folders(installed)["Deep House"].playlists["Deep House Low"].agreed == {
-        "r1",
-        "r2",
-        "r9",
-    }
+    assert ledger.mirror_folders(installed)["Deep House"].playlists["Deep House Low"].agreed == {"r1", "r2", "r9"}
     ledger.record_mirror_agreed(installed, "Deep House", {"Deep House Low": ("p1", set(), set())})
     assert ledger.mirror_folders(installed)["Deep House"].playlists["Deep House Low"].agreed == frozenset()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 8. Round one's findings, each driven
-# ═══════════════════════════════════════════════════════════════════════════
-
-
-def test_a_short_playlists_snapshot_advances_so_a_rekordbox_move_is_never_read_as_an_edit(
-    machine,
-):
+def test_a_short_playlists_snapshot_advances_so_a_rekordbox_move_is_never_read_as_an_edit(machine):
     """Finding 1: Deep House Low lists short, rekordbox moves the track, nobody touches the account."""
     low = machine.remote("Deep House Low")
     machine.account.playlists[low].append("r9")
     machine.account.hidden[low] = ("r9",)
     machine.move_in_rekordbox("1", ("Deep House", "Med"), "2026-11-05 10:00:00.000 +00:00")
-
     machine.run()
     assert machine.held("Deep House Med") == ["r2", "r1"]
-
     _area, step, shared = machine.plan()
     assert step.state == NOTHING
     assert shared.reading().decided.decisions == ()
@@ -755,9 +643,7 @@ def test_a_track_moved_to_its_own_genres_with_vox_is_held_and_nothing_is_written
     """Finding 3: no genre changed, so no write and no false gate line."""
     machine.take_off("Deep House Low", "r1")
     machine.put_in("Deep House with vox", "r1")
-
     _area, step = machine.run()
-
     assert step.state == NOTHING
     (named,) = step.items
     assert named["outcome"] == edits.HELD
@@ -766,27 +652,20 @@ def test_a_track_moved_to_its_own_genres_with_vox_is_held_and_nothing_is_written
     assert machine.held("Deep House Low") == []
 
 
-def test_a_tree_the_product_latched_refuses_the_write_before_any_file_is_tagged(
-    machine, monkeypatch
-):
+def test_a_tree_the_product_latched_refuses_the_write_before_any_file_is_tagged(machine, monkeypatch):
     """Finding 2: the tree's own latch, before a tag, a row or a membership."""
     from cratekit.core import convergence
     from cratekit.core.cause import refuse
-
     asked: list[str] = []
-
     def latched(_cfg, _db, tree_id, _registry, **_kwargs):
         asked.append(tree_id)
         raise refuse("tree-unconverged", "the tree is latched", origin=("test",))
-
     monkeypatch.setattr(convergence, "assert_tree_writable", latched)
     machine.take_off("Deep House Low", "r1")
     machine.put_in("Tech House Med", "r1")
     _area, step, _shared = machine.plan()
-
     with pytest.raises(CratekitError) as caught:
         step.apply()
-
     assert caught.value.cause.reason == "tree-unconverged"
     assert asked == [taxonomy.default_taxonomy().tree.id]
     assert tags.read_genre_from_file(machine.files["1"]) == "Deep House"
@@ -798,9 +677,7 @@ def test_a_row_whose_genre_disagrees_with_its_file_takes_the_new_genre(machine):
     assert tags.write_tags(machine.files["1"], {"genre": "Tech House"})
     machine.take_off("Deep House Low", "r1")
     machine.put_in("Tech House Med", "r1")
-
     machine.run()
-
     assert machine.genre_row("1") == GENRES["Tech House"]
 
 
@@ -808,9 +685,7 @@ def test_a_track_whose_file_is_gone_is_named_and_nothing_of_it_is_written(machin
     machine.files["1"].unlink()
     machine.take_off("Deep House Low", "r1")
     machine.put_in("Tech House Med", "r1")
-
     _area, step = machine.run()
-
     assert step.state == NOTHING
     (named,) = step.items
     assert named["outcome"] == "not taken" and "could not be found" in named["why"]
@@ -819,31 +694,22 @@ def test_a_track_whose_file_is_gone_is_named_and_nothing_of_it_is_written(machin
 
 
 def test_a_track_whose_row_left_the_collection_is_named_and_nothing_is_written(machine):
-    conn = sqlite3.connect(machine.db)
-    conn.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = '1'")
-    conn.commit()
-    conn.close()
+    machine.sql("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = '1'")
     machine.take_off("Deep House Low", "r1")
     machine.put_in("Tech House Med", "r1")
-
     _area, step, _shared = machine.plan()
-
     assert step.state == NOTHING
     (named,) = step.items
     assert named["outcome"] == "not taken" and "no longer a live row" in named["why"]
     assert tags.read_genre_from_file(machine.files["1"]) == "Deep House"
 
 
-def test_a_file_that_does_not_take_its_tags_keeps_its_row_and_tree_as_they_were(
-    machine, monkeypatch
-):
+def test_a_file_that_does_not_take_its_tags_keeps_its_row_and_tree_as_they_were(machine, monkeypatch):
     machine.take_off("Deep House Low", "r1")
     machine.put_in("Tech House Med", "r1")
     _area, step, _shared = machine.plan()
     monkeypatch.setattr(tags, "write_tags", lambda _path, _fields: False)
-
     done = step.apply()
-
     assert done["tagged"] == 0 and len(done["untagged"]) == 1
     assert machine.places("1") == {("Deep House", "Low")}
     assert machine.genre_row("1") == GENRES["Deep House"]
@@ -865,21 +731,16 @@ def test_a_read_back_that_differs_from_the_plan_is_refused():
         join=(("p-med", "Tech House", "Med"),),
         tree=edits.GENRE,
     )
-
     class Held:
         def __init__(self, rows):
             self.rows = rows
-
         def fetchall(self):
             return self.rows
-
     class Session:
         def execute(self, *_args, **_kwargs):
             return Held([("p-low",)])
-
     class Db:
         session = Session()
-
     with pytest.raises(CratekitError) as caught:
         mirror_edits.assert_read_back(Db(), [change])
     assert caught.value.cause.reason == "session-committed-unverified"
@@ -889,10 +750,8 @@ def test_a_read_back_that_differs_from_the_plan_is_refused():
 def test_a_vocal_calibration_that_cannot_be_read_refuses_the_step_alone(machine, monkeypatch):
     from cratekit.core.cause import refuse
     from cratekit.write import metadata_cli
-
     def unreadable(_cfg):
         raise refuse("vocal-calibration-unreadable", "not json", origin=("test",))
-
     monkeypatch.setattr(metadata_cli, "load_vocal_threshold", unreadable)
     machine.take_off("Deep House Low", "r1")
     machine.put_in("Tech House Med", "r1")
@@ -900,19 +759,15 @@ def test_a_vocal_calibration_that_cannot_be_read_refuses_the_step_alone(machine,
     assert step.state == REFUSED and step.cause.reason == "vocal-calibration-unreadable"
 
 
-def test_a_mirror_made_before_u201_is_agreed_by_its_first_run_and_an_edit_after_it_is_taken(
-    machine,
-):
+def test_a_mirror_made_before_u201_is_agreed_by_its_first_run_and_an_edit_after_it_is_taken(machine):
     """Every playlist equal and never agreed, so nothing is written and the plan records it."""
     machine.forget_snapshots()
     _area, step = machine.run()
     assert step.state == NOTHING
     agreed = ledger.mirror_folders(machine.cfg)["Deep House"].playlists["Deep House Low"].agreed
     assert agreed == {"r1"}
-
     machine.take_off("Deep House Low", "r1")
     machine.put_in("Tech House Med", "r1")
     _area, step = machine.run()
-
     assert step.state == PLANNED
     assert machine.places("1") == {("Tech House", "Med")}

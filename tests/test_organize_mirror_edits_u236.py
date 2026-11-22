@@ -1,22 +1,10 @@
 """U236: a favourite put in on the account and taken off again before the next organize.
 
-Sitting 88 (A90): a track put in ``All Favorites`` on the account was carried by
-an organize run into All Favorites and its month in rekordbox. The account area
-had been planned before that write, so the account's month never got it, and
-the month's snapshot was settled without it. The account then took it off All
-Favorites, and the next organize read the library's own month placement as a
-change made in rekordbox since: "an addition beats a removal", and the
-favourite was kept.
-
-Driven end to end on U204's disposable library, each pass a new organize run
-written in organize's order. What is asserted is what the account, the
-database and the ledger hold afterwards. D1 applies: nothing here names a real
-account, a real person or a real track.
+Sitting 88: the library's own month placement is never read as a change made in
+rekordbox. On U204's library, each pass a new organize run. D1 applies.
 """
 
 from __future__ import annotations
-
-import sqlite3
 
 import pytest
 
@@ -82,11 +70,6 @@ def _favourited(world, *, at: str) -> None:
     assert world.members(world.source) == {"1", "2"}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 1. The sitting's two rounds
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_a_favourite_taken_off_again_before_another_organize_is_unfavourited(world):
     """Sitting 88: the month the library placed it in is never read as rekordbox's addition."""
     _favourited(world, at=IN_MONTH)
@@ -94,10 +77,8 @@ def test_a_favourite_taken_off_again_before_another_organize_is_unfavourited(wor
     # The account area was planned before that write, so its month lacks it.
     assert world.held(SHOWN) == ["r1"]
     assert _placed(world) == {SHOWN: frozenset({"r2"})}
-
     world.take_off(SOURCE, "r2")
     _area, step, _queue = world.run_all()
-
     (change,) = _items(step)
     assert change["edit"] == edits.UNFAVOURITE, step.items
     assert sorted(change["leaves"]) == [f"Favorites / {MONTH}", f"Favorites / {SOURCE}"]
@@ -118,10 +99,8 @@ def test_the_same_when_the_write_made_the_month(world):
     made = world.under_favorites(NEW_MONTH)
     assert world.members(made) == {"2"}
     assert _placed(world) == {f"Favorites {NEW_MONTH}": frozenset({"r2"})}
-
     world.take_off(SOURCE, "r2")
     _area, step, _queue = world.run_all()
-
     (change,) = _items(step)
     assert change["edit"] == edits.UNFAVOURITE, step.items
     assert world.members(world.source) == {"1"}
@@ -132,10 +111,8 @@ def test_a_month_added_by_hand_in_rekordbox_between_still_beats_the_removal(worl
     """A real addition in rekordbox after the run keeps the favourite, as before."""
     _favourited(world, at=IN_MONTH)
     other = _by_hand(world, "2026-08", "2")
-
     world.take_off(SOURCE, "r2")
     _area, step, _queue = world.run_all()
-
     assert step.state == NOTHING
     (named,) = [one for one in _named(step) if one.get("outcome") == edits.REKORDBOX]
     assert "an addition beats a removal" in named["why"]
@@ -143,16 +120,9 @@ def test_a_month_added_by_hand_in_rekordbox_between_still_beats_the_removal(worl
     assert world.members(other) == {"2"}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 2. The organize after the favourite
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_the_organize_after_the_favourite_puts_it_in_the_accounts_month(world):
     _favourited(world, at=IN_MONTH)
-
     _area, step, _queue = world.run_all()
-
     assert step.state == NOTHING
     assert world.held(SHOWN) == ["r1", "r2"]
     assert _placed(world) == {}
@@ -168,10 +138,8 @@ def test_a_hand_addition_after_the_placement_is_dropped_is_read_as_one(world):
     world.run_all()
     assert _placed(world) == {}
     other = _by_hand(world, "2026-08", "2")
-
     world.take_off(SOURCE, "r2")
     _area, step, _queue = world.run_all()
-
     assert step.state == NOTHING
     assert world.members(world.source) == {"1", "2"}
     assert world.members(other) == {"2"}
@@ -182,10 +150,8 @@ def test_a_favourite_put_in_another_month_on_the_account_leaves_the_placed_month
     september = _second_month(world)
     _favourited(world, at=IN_MONTH)
     assert _placed(world) == {SHOWN: frozenset({"r2"})}
-
     world.put_in(f"Favorites {NEW_MONTH}", "r2")
     _area, step, _queue = world.run_all()
-
     (change,) = _items(step)
     assert change["edit"] == edits.FAVOURITE, step.items
     assert change["joins"] == [f"Favorites / {NEW_MONTH}"]
@@ -199,15 +165,9 @@ def test_a_favourite_put_in_another_month_on_the_account_leaves_the_placed_month
     assert shared.reading().decided.decisions == ()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 3. The two acts of a gated run (U222)
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_the_placements_are_read_as_the_gate_read_them_after_a_write_between_the_acts(world):
     """The library step between the acts drops the placement; the apply reads the gate's."""
     from tests.test_organize_mirror_frozen_u222 import GATE, _answered, _apply, _edits_pass, _gate
-
     _favourited(world, at=IN_MONTH)
     world.take_off(SOURCE, "r2")
     shown = _gate(world)
@@ -216,9 +176,7 @@ def test_the_placements_are_read_as_the_gate_read_them_after_a_write_between_the
     _edits_pass(world)
     assert world.members(world.source) == {"1"} and world.members(world.month) == {"1"}
     assert _placed(world) == {}
-
     applied = _answered(world)
-
     assert applied.digest() == shown.digest()
     _apply(applied)
     # The account was never given the track back over the edit.
@@ -232,27 +190,15 @@ def test_a_frozen_folder_with_no_placements_reads_none_and_one_unread_reads_the_
         "Other": ledger.MirrorFolder(name="Other", placed={"Other x": {"now": "t"}}),
     }
     frozen = mirror_frozen.Frozen(library=None, matches={}, placed={"Favorites": {}})
-
     read = mirror_frozen.overlay(recorded, frozen)
-
     assert read["Favorites"].placed == {}
     assert read["Other"].placed == {"Other x": {"now": "t"}}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 4. Review round one (Fable): driven, then pinned
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def _delete_playlist(world, playlist_id: str) -> None:
     """A person deletes a playlist in rekordbox, with every membership it held."""
-    conn = sqlite3.connect(world.db)
-    try:
-        conn.execute("DELETE FROM djmdSongPlaylist WHERE PlaylistID = ?", (playlist_id,))
-        conn.execute("DELETE FROM djmdPlaylist WHERE ID = ?", (playlist_id,))
-        conn.commit()
-    finally:
-        conn.close()
+    world.sql("DELETE FROM djmdSongPlaylist WHERE PlaylistID = ?", playlist_id)
+    world.sql("DELETE FROM djmdPlaylist WHERE ID = ?", playlist_id)
 
 
 def test_a_placement_the_account_refused_to_take_still_lets_the_unfavourite_through(world):
@@ -262,10 +208,8 @@ def test_a_placement_the_account_refused_to_take_still_lets_the_unfavourite_thro
     world.run_all()
     assert world.held(SHOWN) == ["r1"]
     assert _placed(world) == {SHOWN: frozenset({"r2"})}
-
     world.take_off(SOURCE, "r2")
     _area, step, _queue = world.run_all()
-
     (change,) = _items(step)
     assert change["edit"] == edits.UNFAVOURITE, step.items
     assert world.members(world.source) == {"1"}
@@ -280,10 +224,8 @@ def test_a_month_deleted_and_made_again_by_hand_is_a_persons_addition(world, bet
     if between:
         world.run_all()
     again = _by_hand(world, MONTH, "2")
-
     world.take_off(SOURCE, "r2")
     _area, step, _queue = world.run_all()
-
     assert not [one for one in _items(step) if one["edit"] == edits.UNFAVOURITE], step.items
     assert world.members(world.source) == {"1", "2"}
     assert world.members(again) == {"2"}
@@ -291,45 +233,30 @@ def test_a_month_deleted_and_made_again_by_hand_is_a_persons_addition(world, bet
 
 def test_a_membership_a_person_took_off_and_put_back_by_hand_is_theirs(world):
     _favourited(world, at=IN_MONTH)
-    conn = sqlite3.connect(world.db)
-    try:
-        conn.execute(
-            "UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE PlaylistID = ? AND ContentID = '2'",
-            (world.month,),
-        )
-        conn.execute(
-            "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, rb_local_deleted, "
-            "created_at, updated_at) VALUES ('by-hand', ?, '2', 9, 0, ?, ?)",
-            (world.month, "2099-01-01 10:00:00.000 +00:00", "2099-01-01 10:00:00.000 +00:00"),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
+    world.sql("UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE PlaylistID = ? AND ContentID = '2'", world.month)
+    world.sql(
+        "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, rb_local_deleted, "
+        "created_at, updated_at) VALUES ('by-hand', ?, '2', 9, 0, ?, ?)",
+        world.month, "2099-01-01 10:00:00.000 +00:00", "2099-01-01 10:00:00.000 +00:00",
+    )
     world.take_off(SOURCE, "r2")
     _area, step, _queue = world.run_all()
-
     assert step.state == NOTHING
     assert world.members(world.source) == {"1", "2"}
 
 
-def test_a_month_whose_listing_fails_at_the_unfavourite_still_reads_its_placement(
-    world, monkeypatch
-):
+def test_a_month_whose_listing_fails_at_the_unfavourite_still_reads_its_placement(world, monkeypatch):
     """Finding 4: the listing that fails reads as its snapshot, short, placement and all."""
     _favourited(world, at=IN_MONTH)
     world.take_off(SOURCE, "r2")
     failing = world.remote(SHOWN)
     real = world.account.playlist_listing
-
     def listing(playlist_id):
         if playlist_id == failing:
             raise refuse("unavailable-transient", "the month could not be listed")
         return real(playlist_id)
-
     monkeypatch.setattr(world.account, "playlist_listing", listing)
     _area, step, _queue = world.run_all()
-
     (change,) = _items(step)
     assert change["edit"] == edits.UNFAVOURITE, step.items
     assert world.members(world.source) == {"1"}

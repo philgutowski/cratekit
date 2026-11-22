@@ -1,13 +1,4 @@
-"""U147: what the account mirror reads from the library, on a disposable database.
-
-The routing tree is cut over and its folders and playlists made on the handle,
-as the genre Favorites suite makes them, and the Favorites folder beside it.
-:func:`account_mirror.read_library` is handed that handle in place of the live
-database's, so the walk, the titles and the refusals are read off a real
-schema rather than a stand in.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
-"""
+"""U147: what the account mirror reads from the library, on a disposable database. D1 applies."""
 
 from __future__ import annotations
 
@@ -36,9 +27,7 @@ def _shape(library: account_mirror.Library) -> dict[str, dict[str, list[str]]]:
     }
 
 
-def test_every_genre_folder_and_the_favorites_folder_is_read_under_its_account_titles(
-    cfg, db, monkeypatch
-):
+def test_every_genre_folder_and_the_favorites_folder_is_read_under_its_account_titles(cfg, db, monkeypatch):
     tree = Tree(cfg, db)
     tree.playlist(DEEP, "Low", "1", "2")
     tree.playlist(DEEP, "with vox", "2")
@@ -53,9 +42,7 @@ def test_every_genre_folder_and_the_favorites_folder_is_read_under_its_account_t
     nested = db.create_playlist_folder("Nested", parent=tree.folder(DEEP))
     db.add_to_playlist(db.create_playlist("Deeper", parent=nested), "4")
     db.session.commit()
-
     read = _read(cfg, db, monkeypatch)
-
     assert read.refused == {} and read.favorites == ""
     assert _shape(read) == {
         AFRO.display: {f"{AFRO.display} High": ["3"]},
@@ -75,21 +62,15 @@ def test_two_tree_folders_of_one_name_refuse_that_name_and_read_the_rest(cfg, db
     db.create_playlist("Low", parent=twin)
     tree.playlist(AFRO, "High", "3")
     db.session.commit()
-
     read = _read(cfg, db, monkeypatch)
-
     assert list(read.refused) == [AFRO.display]
     assert read.refused[AFRO.display].reason == "account-mirror-ambiguous"
     assert [folder.name for folder in read.folders] == [DEEP.display]
 
 
-def test_a_library_with_no_favourites_playlist_mirrors_the_tree_and_says_why_not_favorites(
-    cfg, db, monkeypatch
-):
+def test_a_library_with_no_favourites_playlist_mirrors_the_tree_and_says_why_not_favorites(cfg, db, monkeypatch):
     tree = Tree(cfg, db)
     tree.playlist(DEEP, "Low", "1")
-
     read = _read(cfg, db, monkeypatch)
-
     assert [folder.name for folder in read.folders] == [DEEP.display]
     assert "All Favorites" in read.favorites

@@ -1,10 +1,7 @@
 """U230: which mirrored playlists ``mirror_downloads.queued_from`` names as having queued a track.
 
-The edit rule reads the base of the playlist whose mirror job queued a track
-as it stood at the queue, so the reader must name that playlist and no other:
-the job's own source, from this library's mirror jobs that did not fail or
-were not cancelled, and nothing when the queue cannot be read. Driven on
-U204's disposable world with the queue written by its own writer.
+The job's own source, from this library's live mirror jobs, and nothing when the
+queue cannot be read. On U204's world.
 """
 
 from __future__ import annotations
@@ -42,10 +39,7 @@ def _queue(cfg, reference: str, tracks=("r3",), *, source_id=mirror_downloads.SO
 def test_each_track_is_named_with_every_playlist_whose_job_queued_it(world):
     _queue(world.cfg, "pl-a", ("r3", "r4"))
     _queue(world.cfg, "pl-b", ("r3",))
-    assert mirror_downloads.queued_from(world.cfg) == {
-        "r3": frozenset({"pl-a", "pl-b"}),
-        "r4": frozenset({"pl-a"}),
-    }
+    assert mirror_downloads.queued_from(world.cfg) == {"r3": frozenset({"pl-a", "pl-b"}), "r4": frozenset({"pl-a"})}
 
 
 def test_a_cancelled_job_another_source_and_another_library_name_nothing(world):
@@ -65,9 +59,7 @@ def test_a_cancelled_job_another_source_and_another_library_name_nothing(world):
 
 def test_a_queue_that_cannot_be_read_names_nothing(world, monkeypatch):
     _queue(world.cfg, "pl-a")
-
     def unreadable(_cfg):
         raise OSError("the queue is locked")
-
     monkeypatch.setattr(mirror_downloads, "_jobs", unreadable)
     assert mirror_downloads.queued_from(world.cfg) == {}

@@ -1,21 +1,7 @@
 """U230: a download an account edit queued is filed there even though that playlist already lists it.
 
-Driven on U204's disposable world with U227's producers: the track is put in
-a mirrored genre playlist on the account, the downloads step queues it, it
-lands, and the landing files it by its own tags into another band. Then the
-playlist the person edited holds the track in its own base, as sitting 86
-read the live ledger: never agreed, so its account side is its base, or
-agreed with the track. Before U230 the next organize read no account edit at
-all and mirrored rekordbox's place onto the account. What is asserted is what
-the database and the account hold afterwards.
-
-THE BASE IS WRITTEN BY HAND here, through the ledger's own file. The run that
-queues the download keeps a held track out of an agreed snapshot
-(``mirror_edits.agreed_after``), and driven here it leaves no snapshot
-holding the track after the queue or the landing, so what produced the
-sitting's base is unmeasured on this tree; the record says so.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+On U204's world with U227's producers, the edited playlist's base written by
+hand through the ledger's file (sitting 86). D1 applies.
 """
 
 from __future__ import annotations
@@ -78,9 +64,7 @@ def test_a_never_agreed_playlist_holding_the_track_files_it_where_the_account_pu
     playlist as landed for the account's edit, then a further organize plans
     nothing."""
     _landed_with_base(world, None)
-
     _area, step, _queue = world.run_all()
-
     (change,) = _items(step)
     assert change["edit"] == edits.MOVE and change["joins"] == ["Tech House / Med"]
     assert "landed for the account's edit" in change["why"]
@@ -98,9 +82,7 @@ def test_an_agreed_snapshot_holding_the_track_is_the_librarys_word(world):
     once the library took the edit, so it is never lifted, and the account
     side reads as no change, U227's reading."""
     _landed_with_base(world, {"r3"})
-
     _area, step, _queue = world.run_all()
-
     assert _items(step) == []
     assert world.places("3") == {("Deep House", "Low")}
 
@@ -112,9 +94,7 @@ def test_a_move_in_rekordbox_after_the_carry_still_stands(world):
     _area, step, _queue = world.run_all()
     assert [one["edit"] for one in _items(step)] == [edits.MOVE]
     world.move_in_rekordbox("3", ("Deep House", "Med"), MOVED_AT)
-
     _area, step, _queue = world.run_all()
-
     assert _items(step) == []
     assert world.places("3") == {("Deep House", "Med")}
     assert "r3" not in world.held(EDITED)
@@ -124,9 +104,7 @@ def test_another_playlists_snapshot_holding_the_track_keeps_rekordboxs_place(wor
     """A row another mirrored playlist's snapshot held is never read as landed."""
     _landed_with_base(world, None)
     _set_base(world, "Deep House Med", {"r3"})
-
     _area, step, _queue = world.run_all()
-
     assert _items(step) == []
     assert world.places("3") == {("Deep House", "Low")}
 
@@ -138,7 +116,6 @@ def test_a_job_queued_from_another_playlist_does_not_lift_the_edited_ones_base(w
     from cratekit.core import jobs
     from cratekit.intake import cli as intake_cli
     from cratekit.organize import mirror_downloads
-
     _landed_with_base(world, None)
     with jobs.open_store() as store:
         (real,) = [
@@ -157,27 +134,16 @@ def test_a_job_queued_from_another_playlist_does_not_lift_the_edited_ones_base(w
         )
         store.conn.execute("UPDATE jobs SET created = ? WHERE job_id = ?", (real.created, other.job_id))
     assert mirror_downloads.queued_from(world.cfg) == {"r3": frozenset({world.remote("Deep House Low")})}
-
     _area, step, _queue = world.run_all()
-
     assert _items(step) == []
     assert world.places("3") == {("Deep House", "Low")}
 
 
 def _rotate_landed_batch(world) -> None:
     """The landing's batch leaves INBOX for INBOX / Old, as ``inbox rotate`` moves it."""
-    import sqlite3
 
-    conn = sqlite3.connect(world.db)
-    try:
-        conn.execute(
-            "UPDATE djmdPlaylist SET ParentID = ? WHERE Name = ? AND ParentID = ?",
-            (world.old, "2026-11-02 Landed", world.inbox),
-        )
-        assert conn.total_changes == 1
-        conn.commit()
-    finally:
-        conn.close()
+    ((landed,),) = world.sql("SELECT ID FROM djmdPlaylist WHERE Name = ? AND ParentID = ?", "2026-11-02 Landed", world.inbox)
+    world.into_old(landed)
 
 
 def test_a_drag_back_into_the_landings_band_after_the_batch_left_inbox_stands(world):
@@ -193,9 +159,7 @@ def test_a_drag_back_into_the_landings_band_after_the_batch_left_inbox_stands(wo
     _rotate_landed_batch(world)
     world.run_all()
     world.move_in_rekordbox("3", ("Deep House", "Low"), MOVED_AT)
-
     _area, step, _queue = world.run_all()
-
     assert _items(step) == []
     assert world.places("3") == {("Deep House", "Low")}
     assert "r3" not in world.held(EDITED)

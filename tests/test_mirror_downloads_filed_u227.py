@@ -1,11 +1,7 @@
 """U227: which adoption ledger entries ``mirror_downloads.filed`` reads as a landing's filing.
 
-The mutation table's zero rows, pinned at the reader itself, where the edit
-rule's own guards cannot cover them: the earliest approval since the queue
-(R11), a track owned by one row (R13), the earliest job holding the track
-(R14) and this library's adopt approvals alone (R24). Driven on U204's
-disposable world, with the queue and the ledger written as their own writers
-write them and each time set by hand.
+The mutation table's zero rows R11, R13, R14 and R24, pinned at the reader on
+U204's world with each time set by hand.
 """
 
 from __future__ import annotations
@@ -105,9 +101,7 @@ def test_only_this_librarys_adopt_approvals_are_a_persons(world):
     cfg = world.cfg
     _queue(cfg, QUEUED)
     _entry(cfg, "3", "Deep House", "Low", LANDING_FILED, "shared-digest")
-    elsewhere = dataclasses.replace(
-        cfg, library=dataclasses.replace(cfg.library, volume_id="another-library-volume")
-    )
+    elsewhere = dataclasses.replace(cfg, library=dataclasses.replace(cfg.library, volume_id="another-library-volume"))
     _queue(elsewhere, QUEUED, handler="adopt.apply", payload={"digest": "shared-digest"})
     assert _filed(cfg) == {"r3": frozenset({("Deep House", "Low")})}
     # This library's own adopt job carrying it makes it a person's filing.
