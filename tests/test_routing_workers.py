@@ -362,7 +362,6 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
 
     def left_behind(report, declared):
         assert report is after
-        del declared
         return (measured,)
 
     def produced(*handed):
@@ -372,7 +371,6 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
     def spy(cfg, *, tree_id, workflow, vocal_threshold, **rest):
         # No default on ``workflow`` or ``vocal_threshold``: a spy that supplied
         # one would answer for a worker that named nothing.
-        del cfg
         approvals.append(rest.get("approved"))
         seen.append((tree_id, workflow))
         cuts.append(vocal_threshold)
@@ -419,7 +417,6 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
 @QUEUED_VERBS
 def test_neither_queued_verb_files_a_job_with_no_items(acknowledged, native, argv):
     """A job with nothing to claim is walked once and reported as succeeded."""
-    del acknowledged, native
     _exited(_drive(argv))
     filed = _queued_jobs()
     assert filed, "the verb reported OK and filed nothing at all"
@@ -430,7 +427,6 @@ def test_neither_queued_verb_files_a_job_with_no_items(acknowledged, native, arg
 @QUEUED_VERBS
 def test_neither_queued_verb_files_a_job_at_all_with_no_native_tree(configured, argv):
     """With no native tree there is nothing to queue, and it is not a refusal."""
-    del configured
     envelope = _exited(_drive(argv))
     assert envelope["outcome"] == str(Outcome.NO_OP), envelope
     assert envelope["data"]["job_id"] == ""
@@ -662,7 +658,6 @@ def test_unplaced_reports_the_rows_no_governed_tree_holds(acknowledged, medium, 
 
 def test_unplaced_over_a_fully_placed_library_reports_none(acknowledged, native):
     """The other direction, so the report cannot be a constant."""
-    del acknowledged
     _queue_and_resume()
     _apply_inbox()
     assert _membership(config.load(), native) == {"1", "2"}
@@ -675,7 +670,6 @@ def test_unplaced_over_a_fully_placed_library_reports_none(acknowledged, native)
 
 def test_unplaced_says_when_it_could_not_compare(configured):
     """An empty answer over a library nothing read is kept apart from an empty library."""
-    del configured
     envelope = _exited(_drive(["route", "unplaced"]))
     assert envelope["outcome"] == str(Outcome.NO_OP)
     assert envelope["data"]["items"] == []
@@ -685,7 +679,6 @@ def test_unplaced_says_when_it_could_not_compare(configured):
 
 def test_unplaced_does_not_report_a_row_rekordbox_removed(acknowledged, native):
     """A tombstone is not a track waiting to be filed."""
-    del native
     _set_row(acknowledged, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", "2")
 
     envelope = _exited(_drive(["route", "unplaced"]))
@@ -717,7 +710,6 @@ def test_doctor_does_not_ask_for_rekordbox_closed_for_the_unplaced_report(monkey
 
 def test_unplaced_reports_with_rekordbox_open_and_writes_nothing(configured, native, monkeypatch):
     """R-313: a report that is safe with rekordbox open."""
-    del native
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: True)
     database = Path(configured.library.db_path)
@@ -734,7 +726,6 @@ def test_unplaced_still_refuses_on_a_drifted_binding_so_doctor_keeps_the_pins(
     configured, native, monkeypatch
 ):
     """Why ``rekordbox.pins`` stays declared when ``rekordbox.closed`` goes."""
-    del native
     import pyrekordbox
 
     monkeypatch.setattr(pyrekordbox, "__version__", "0.0.0-drifted")
@@ -776,7 +767,6 @@ def test_a_driven_rebuild_over_an_absent_music_directory_fails_the_item(acknowle
 
 def test_a_driven_rebuild_whose_root_the_database_lacks_fails_the_item(acknowledged, native):
     """A registry pointing at a root this library does not have."""
-    del native
     record = tree_registry.read(acknowledged).record(TREE_ID)
     moved = dataclasses.replace(record, root_id="root-row-0000")
     tree_registry.write(acknowledged, tree_registry.Registry((moved,)))
@@ -817,7 +807,6 @@ def test_each_write_watches_the_grids_where_they_actually_live(
     acknowledged, native, planted_grid, monkeypatch, drive
 ):
     """R17's fifth surface, runtime half, measured at each call site rather than asserted."""
-    del native, acknowledged
     seen = _watched_roots(monkeypatch)
     _exited(drive())
     assert seen, "the write opened no session at all, so there is nothing to measure"
@@ -830,7 +819,6 @@ def test_each_write_watches_the_grids_where_they_actually_live(
 @QUEUED_VERBS
 def test_neither_resume_drives_another_verbs_job(acknowledged, native, argv):
     """``handlers.run_job`` reads the worker off the JOB ROW, not off this verb."""
-    del acknowledged, native
     with jobs.open_store() as store:
         foreign = jobs.enqueue(
             store, handler_key="master", payload={}, cfg=config.load(), item_ids=("one",)
@@ -854,7 +842,6 @@ def test_neither_resume_drives_a_job_an_older_build_queued_with_no_items(
     acknowledged, native, argv, key
 ):
     """The zero item rule on the resume side, which is the door that predates the fix (U53)."""
-    del acknowledged, native
     with jobs.open_store() as store:
         stale = jobs.enqueue(store, handler_key=key, payload={}, cfg=config.load())
 
@@ -868,7 +855,6 @@ def test_a_resume_whose_items_did_not_all_succeed_is_not_an_ok_exit(
     acknowledged, native, argv, key, monkeypatch
 ):
     """R-225, which named this inheritance in advance."""
-    del acknowledged
     with jobs.open_store() as store:
         job = jobs.enqueue(
             store,
@@ -890,7 +876,6 @@ def test_a_resume_whose_items_did_not_all_succeed_is_not_an_ok_exit(
 
 def test_a_resume_reads_no_registry_of_its_own(acknowledged, native):
     """Everything a queued job needs was frozen when it was queued."""
-    del native
     job_id = _drive(["rebuild", "--actor", "a-person"])[1]["data"]["job_id"]
     tree_registry.path_for(acknowledged).write_text("{ this is not a registry")
 
@@ -932,7 +917,6 @@ def test_a_confirmed_inbox_over_the_shipped_taxonomy_says_the_vocal_dimension_wa
 
 def test_a_declined_inbox_carries_no_vocal_warning(acknowledged, native):
     """Nothing was derived on the declined branch, so nothing went uncompared."""
-    del acknowledged, native
     declined = _exited(_decline_inbox())
     assert _vocal_warnings(declined) == []
 
@@ -989,7 +973,6 @@ def no_favorites_class(monkeypatch):
 def test_a_driven_resume_over_no_favorites_class_names_the_skipped_step(
     acknowledged, native, no_favorites_class, argv
 ):
-    del acknowledged, native, no_favorites_class
     queued = _exited(_drive(argv))
     assert _favorites_warnings(queued) == [], "the queue-only answer skipped nothing yet"
     job_id = queued["data"]["job_id"]
@@ -1009,7 +992,6 @@ def test_a_rebuild_of_another_tree_says_nothing_of_the_routing_trees_favorites(
     acknowledged, native, monkeypatch, argv
 ):
     """The class is declared under the routing tree alone, so a job over another tree skipped nothing."""
-    del acknowledged, native
     real = active_taxonomy.load
 
     def narrowed(cfg):
@@ -1028,7 +1010,6 @@ def test_a_rebuild_of_another_tree_says_nothing_of_the_routing_trees_favorites(
 def test_a_driven_resume_over_the_declared_class_says_nothing_of_it(
     acknowledged, native, monkeypatch, argv
 ):
-    del acknowledged, native
     real = active_taxonomy.load
     monkeypatch.setattr(
         active_taxonomy,
@@ -1045,7 +1026,6 @@ def test_a_driven_resume_over_the_declared_class_says_nothing_of_it(
 @QUEUED_VERBS
 def test_a_resume_that_drove_nothing_carries_no_vocal_warning(acknowledged, native, argv):
     """A job already finished on entry was compared by an earlier run, not this one."""
-    del acknowledged, native
     job_id, code, first = _queue_and_resume(argv)
     assert code == int(ExitCode.OK), first
     assert len(_vocal_warnings(first)) == 1, first["warnings"]
@@ -1056,7 +1036,6 @@ def test_a_resume_that_drove_nothing_carries_no_vocal_warning(acknowledged, nati
 def test_a_taxonomy_with_no_vocal_dimension_warns_on_neither_surface(
     acknowledged, native, no_vocal_dimension
 ):
-    del no_vocal_dimension
     code, applied = _apply_inbox()
     assert code == int(ExitCode.OK), applied
     assert applied["data"]["totals"]["applied"] is True
@@ -1134,7 +1113,6 @@ def test_a_resort_that_left_nothing_behind_says_nothing_about_it(acknowledged, n
 
 def test_a_resort_resume_that_drove_nothing_names_no_leftover(acknowledged, native, leftover):
     """A job finished on entry was measured by the run that drove it, not this one."""
-    del acknowledged, native, leftover
     code, queued = _drive(["route", "resort"])
     assert _left_behind(queued) == []
     job_id = queued["data"]["job_id"]
@@ -1145,7 +1123,6 @@ def test_a_resort_resume_that_drove_nothing_names_no_leftover(acknowledged, nati
 
 def test_one_jobs_leftovers_are_not_counted_under_another(acknowledged, native, leftover):
     """TWO jobs over one state each name the one leftover, never the pool of both."""
-    del acknowledged, native, leftover
     for turn in range(2):
         # A resort with nothing to add queues no job (U219), so the second is enqueued by hand.
         job_id = _drive([*RESORT])[1]["data"]["job_id"] if turn == 0 else _enqueue_resort(TREE_ID).job_id
@@ -1156,7 +1133,6 @@ def test_one_jobs_leftovers_are_not_counted_under_another(acknowledged, native, 
 
 def test_the_whole_list_is_written_where_the_warning_says_it_is(acknowledged, native, leftover):
     """The names in a warning are capped, so the place it points at has to be real."""
-    del acknowledged, native
     (warning,) = _left_behind(_queue_and_resume(RESORT)[2])
     listed_in = Path(warning["message"].rsplit("listed in ", 1)[1])
     (report,) = sorted(listed_in.glob("*.json"))
@@ -1171,7 +1147,6 @@ def test_a_resort_that_failed_part_way_names_only_what_the_finished_tree_left(
     acknowledged, native, monkeypatch, request, left
 ):
     """The exit a resort over several trees usually takes; a converged tree adds no step."""
-    del acknowledged, native
     if left:
         request.getfixturevalue("leftover")
     job = _enqueue_resort(TREE_ID, "second_tree")
@@ -1205,7 +1180,6 @@ def test_a_second_process_names_what_the_first_ones_tree_left(
     acknowledged, native, leftover, monkeypatch
 ):
     """The driver that died is the run an in memory note loses."""
-    del acknowledged, native, leftover
     job = _enqueue_resort(TREE_ID, "second_tree")
     real = rebuild.rebuild_governed_tree
     calls: list[str] = []
@@ -1233,7 +1207,6 @@ def test_a_refusal_raised_before_the_drive_carries_no_leftover_step(
     acknowledged, native, leftover, monkeypatch
 ):
     """A run that drove nothing answers for no tree, whatever an earlier one wrote."""
-    del acknowledged, native, leftover
     job = _enqueue_resort(TREE_ID, "second_tree")
     _fail_other_trees(monkeypatch, _not_there_yet)
     code, first = _drive(["route", "resort", "--job", job.job_id])
@@ -1242,7 +1215,6 @@ def test_a_refusal_raised_before_the_drive_carries_no_leftover_step(
         jobs.retry(store, job.job_id)
 
     def corrupt(cfg):
-        del cfg
         raise refuse("config-unusable", "the calibration cannot be read")
 
     monkeypatch.setattr(metadata_cli, "load_vocal_threshold", corrupt)
@@ -1340,7 +1312,6 @@ def mixed(native, acknowledged) -> str:
 @QUEUED_VERBS
 def test_neither_queued_verb_takes_an_item_for_a_tree_still_on_the_bridge(mixed, argv):
     """A rebuild of a bridge tree writes membership the next import overwrites."""
-    del mixed
     _exited(_drive(argv))
     filed = _queued_jobs()
     assert len(filed) == 1, filed
@@ -1351,7 +1322,6 @@ def test_neither_queued_verb_takes_an_item_for_a_tree_still_on_the_bridge(mixed,
 
 def test_a_rebuild_of_one_named_tree_queues_that_tree_alone(acknowledged, native):
     """The ``--tree`` flag scopes the work."""
-    del native
     entries = tree_registry.read(acknowledged)
     second = tree_registry.TreeRecord(
         tree_id="second_shelf",
@@ -1376,7 +1346,6 @@ def test_a_gate_answer_this_verb_does_not_recognise_writes_nothing(
     acknowledged, native, monkeypatch
 ):
     """The branch direction, which no drive through the shipped gate can reach."""
-    del acknowledged
     monkeypatch.setattr(routing_cli, "_apply_gate", lambda ctx, plan, shown: "later")
     envelope = _exited(_drive(["route", "inbox"]))
     assert envelope["outcome"] == str(Outcome.NO_OP), envelope
@@ -1395,7 +1364,6 @@ def encrypted(acknowledged, native) -> str:
 
 def test_converge_compares_a_native_tree_on_an_encrypted_library(acknowledged, encrypted):
     """"Not compared" on a real library reads as "nothing to see", not "could not look"."""
-    del acknowledged, encrypted
     envelope = _exited(_drive(["converge"]))
     statuses = {check["key"]: check["status"] for check in envelope["data"]["checks"]}
     assert statuses[f"tree.{TREE_ID}"] != converge.NOT_COMPARED, envelope
@@ -2464,7 +2432,6 @@ def test_a_corrupt_calibration_is_converge_not_comparing_rather_than_a_match(ack
 @pytest.fixture
 def voiced(tagged, monkeypatch) -> dict[str, int]:
     """``tagged``, with voxlevel readings served from the file name as well."""
-    del tagged
     levels: dict[str, int] = {}
     serve_readings(monkeypatch, vox=lambda path: levels.get(path.name))
     return levels
@@ -2854,7 +2821,6 @@ def test_a_calibrated_export_with_no_routing_tree_warns_rather_than_crashing(
 def test_a_calibrated_export_over_a_taxonomy_with_no_vocal_sub_creates_none(
     configured, voiced, no_vocal_dimension, tmp_path
 ):
-    del no_vocal_dimension
     _calibrated(configured)
     voiced["Low Track.flac"] = 6
     export = _write_export(configured, tmp_path / "exports")
@@ -3277,7 +3243,6 @@ def test_the_database_inbox_gate_shows_a_genre_sub_beside_the_band_and_files_bot
     acknowledged, native, rominimal
 ):
     """U155: the gate names the band and the genre sub the apply files into, and counts both."""
-    del rominimal
     shown = _blocked_inbox()
     (item,) = shown["items"]
     assert item["destination"] == "Minimal / Deep Tech/Low Energy"
@@ -3318,7 +3283,6 @@ ROMINIMAL_FOLDER = ("Minimal / Deep Tech", ("Low Energy", "Med Energy", "High En
 @pytest.fixture
 def rominimal_export(tagged, monkeypatch):
     """Track 11 reads as Rominimal at energy 2, the others as EXPORT_TRACKS has them."""
-    del tagged
     readings = {name: (genre, energy) for name, genre, energy, _ in EXPORT_TRACKS.values()}
     readings["Low Track.flac"] = ("Rominimal", 2)
     serve_readings(
@@ -3332,7 +3296,6 @@ def test_the_export_gate_shows_a_genre_sub_beside_the_band_and_files_both(
     configured, rominimal_export, tmp_path
 ):
     """The export gate names both places and counts the second; the file holds both."""
-    del rominimal_export
     subs = ("Low", "Med", "High")
     folders = (("Deep House", subs), ("Tech House", subs), ROMINIMAL_FOLDER)
     export = _write_export(configured, tmp_path / "exports", folders=folders)
@@ -3351,7 +3314,6 @@ def test_the_export_gate_shows_a_genre_sub_beside_the_band_and_files_both(
 def test_the_unplaced_export_names_a_genre_sub_beside_the_band_and_files_both(
     configured, rominimal_export, tmp_path
 ):
-    del rominimal_export
     folders = (("Deep House", ("Low", "Med")), ("Tech House", ("Low", "Med")), ROMINIMAL_FOLDER)
     export = _unplaced_export(configured, tmp_path / "exports", folders=folders)
     envelope = _exited(_sweep(export))

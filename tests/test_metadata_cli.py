@@ -289,7 +289,6 @@ def test_a_library_with_no_tag_category_refuses_through_the_verb(ready, monkeypa
         )
         db_session.commit()
     engine.dispose()
-    del monkeypatch
     code, envelope = drive(["metadata", "mytags-vocals", "--apply"])
     assert code != int(ExitCode.OK), envelope
     assert envelope["cause"]["reason"] == "mytag-category-template-missing"
