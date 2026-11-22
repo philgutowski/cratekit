@@ -1,74 +1,32 @@
 """Rotate INBOX: a stale batch moves into Old, an expired one in Old is removed (U111).
 
-INBOX is a listening queue, and every landing adds one batch playlist to it, so
-it only ever grows. The source system's ``dj-inbox-rotation`` reported which
-lists to drag and left the dragging to a person, and ``report intake-aging``
-copies that report. This is the rotation as a write, on a library whose intake
-tree is database native:
+Every landing adds one batch playlist to INBOX, so the rotation keeps it short:
 
-* a batch playlist directly under INBOX older than ``reports.intake_stale_days``
-  moves into the folder ``[intake_old]`` declares, ``INBOX / Old``;
-* a batch playlist directly under Old older than ``reports.intake_expired_days``
-  is removed.
+* a batch directly under INBOX older than ``reports.intake_stale_days`` moves
+  into the folder ``[intake_old]`` declares, ``INBOX / Old``;
+* a batch directly under Old older than ``reports.intake_expired_days`` is
+  removed.
 
-TRACKS ARE NEVER REMOVED. A move changes the playlist node's parent and its
-position and nothing it holds. A removal soft deletes the node and its own
-memberships, the way rekordbox removes a playlist, so every track stays in the
-collection and in every other playlist it sits in, its BY GENRE + ENERGY places
-included. Both are asserted from SQL before the commit, row by row, through
+TRACKS ARE NEVER REMOVED. A move changes the node's parent and position only;
+a removal soft deletes the node and its own memberships, as rekordbox removes
+a playlist, so every track stays in the collection and every other playlist.
+Both are asserted from SQL before the commit through
 :func:`cratekit.core.rb_writer.assert_node_changes_confined`.
 
-WHAT A BATCH IS, decided here and nowhere else. A playlist directly under INBOX
-or Old is a batch when ANY of these holds, and the plan says which:
+WHAT A BATCH IS, decided here and nowhere else, and the plan says which rule:
+a native landing's ``run record`` names it by identifier; its name ends
+``_inboxed`` (a run's name before U110); an intake file's record whose import
+``intake imported`` PROVED names it and its batch folder is still there
+(``recorded name``, the LATEST proven landing winning); or its name is U110's
+``2026-10-03 Tidal playlists`` shape and a batch folder of that name is there
+(``dated name``). An unproven import made no playlist, so one of that name
+made later is a person's.
 
-==============================  ===============================================
-``run record``                  a native landing's session record names this
-                                playlist by identifier (``native.BATCH_PLAYLIST_KEY``)
-``_inboxed suffix``             the name ends ``_inboxed``, a batch named for
-                                its run before U110
-``recorded name``               an intake file's landing record whose import
-                                ``intake imported`` PROVED names this playlist
-                                as one of the author's account playlists
-                                (U113) AND the batch folder the record names
-                                still sits under the music folder
-``dated name``                  the name is U110's ``2026-10-03 Tidal playlists``
-                                shape AND a batch folder of exactly that name
-                                sits under the music folder, which both media
-                                make for every landing
-==============================  ===============================================
-
-AN ACCOUNT PLAYLIST'S NAME IS NOT THE BATCH SHAPE: it carried no date before
-U175, ``Sunset Warmup``, and since U175 carries its landing's date at the END,
-``Sunset Warmup 2026-10-27``, so it is never recognised by its name's shape,
-and a native landing's batch and account playlists are aged from its one
-record and rotate together. A native
-landing names each one on its record by identifier,
-``ingest.INBOX_PLAYLISTS_KEY``, and it is a ``run record`` batch. An intake
-file's playlist has no identifier until rekordbox imports it, so its record
-names it and its batch folder. ONLY A PROVEN IMPORT COUNTS: an intake file
-nobody imported made no playlist, and a playlist of that name somebody makes
-later is theirs. The LATEST proven landing of a name wins: a landing takes a
-name only while INBOX and the pending intake files do not hold it, so the
-newest record naming it is the one that made the playlist INBOX shows now.
-
-EVERYTHING ELSE IS LEFT ALONE AND LISTED: the Old folder itself, a folder, a
-smart playlist, INBOX / Analyze, and an ordinary playlist no rule recognises,
-each with its kind, its reason and, for a plain playlist, its live row count.
-The account mirror lists the same nodes under INBOX the same way (U214), since
-both read this one classifier. A dated name with no batch folder is a
-playlist somebody named that way, and the folder test is what keeps it out.
-
-A BATCH'S AGE is its landing date from the run record when one names it, by
-identifier or by its recorded name, else
-the playlist row's own ``created_at``, which for a batch rekordbox imported from
-an intake file is the day it was imported. Each batch says which it was aged
-from. A batch with neither, or dated after the day the rotation is run for, is
-left alone rather than guessed at.
-
-A BATCH PAST EXPIRY THAT IS STILL IN INBOX MOVES, it is not removed. Removal is
-the second stage and happens only in Old, so a batch is always seen in Old by
-at least one plan before one removes it. The cost is that the run after such a
-move removes it, recorded as a residual.
+EVERYTHING ELSE IS LEFT ALONE AND LISTED with its kind and reason; the account
+mirror reads this one classifier (U214). A BATCH'S AGE is its landing date from
+the run record, else the row's ``created_at``; with neither, or dated after the
+day asked, it is left alone rather than guessed at. A batch past expiry still
+in INBOX moves, so every batch is seen in Old by one plan before one removes it.
 
 Layer: modules. It opens no database of its own: the verb hands it a handle.
 """
@@ -83,14 +41,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from cratekit.cli.output import digest_of
-from cratekit.core import (
-    config,
-    convergence,
-    rb_writer,
-    session,
-    taxonomy,
-    tree_registry,
-)
+from cratekit.core import config, convergence, rb_writer, session, taxonomy, tree_registry
 from cratekit.core.cause import Remedy, refuse
 from cratekit.intake import batch_name, ingest, landing, native
 from cratekit.write import trees
@@ -113,8 +64,7 @@ BY_RECORDED_NAME = "recorded name"
 AGED_FROM_RECORD = "run record"
 AGED_FROM_CREATED = "playlist created"
 
-#: Each kind of node left alone, and how a line names it (U214). The kind is
-#: what the plan carries; the label is what a person reads beside its name.
+#: Each kind of node left alone, and what a person reads beside its name (U214).
 LEFT_OLD = "old"
 LEFT_FOLDER = "folder"
 LEFT_SMART = "smart playlist"
@@ -177,16 +127,11 @@ class Left:
     place: str
     kind: str
     reason: str
-    #: The live rows a plain playlist holds (U214), ``None`` for a folder or a
-    #: smart playlist, which hold no membership to count.
+    #: The live rows a plain playlist holds, ``None`` for a folder or a smart playlist.
     tracks: int | None = None
 
     def identity(self) -> dict[str, Any]:
-        """What the digest takes: everything but the row count, which nothing writes.
-
-        A person adding a track to their own playlist between the gate and
-        the write changes nothing the rotation does, so it does not stale it.
-        """
+        """What the digest takes: all but the row count, which nothing here writes."""
         return {
             "id": self.playlist_id,
             "playlist": self.name,
@@ -225,12 +170,10 @@ class RotationPlan:
     removals: tuple[Batch, ...]
     kept: tuple[Batch, ...]
     left: tuple[Left, ...]
-    #: Session records that could not be read, so their batches aged from the row.
-    #: An unlisted log counts as one (R-1255).
+    #: Session records that could not be read, an unlisted log counting as one.
     unreadable_records: int
     digest: str
-    #: The session log exists and could not be listed, so no record was read
-    #: at all; the warning says so rather than naming a count (R-1255).
+    #: The session log could not be listed, so the warning names no count (R-1255).
     log_unlisted: bool = False
 
     @property
@@ -250,17 +193,15 @@ class Rotated:
     removed: tuple[str, ...]
     old_id: str
     old_created: bool
+    #: The membership rows the removal marked, as the writer returned them.
     memberships_removed: int
     session_id: str
-    #: Every way the read back disagrees with the plan. Empty when it agrees.
-    #: ``memberships_removed`` is the rows the removal marked, as the writer
-    #: returned them; the read back checks none of a removed node's is live.
+    #: Every way the read back disagrees with the plan, empty when it agrees.
     disagreements: tuple[str, ...]
 
 
 def identity(plan: RotationPlan) -> dict[str, Any]:
-    """What the digest covers: every fact the screen shows and the write acts on,
-    but a left node's row count, which nothing writes (U214)."""
+    """What the digest covers: every fact shown and acted on, but a left node's row count."""
     return {
         "kind": "inbox-rotate",
         "tree": plan.tree_id,
@@ -276,9 +217,16 @@ def identity(plan: RotationPlan) -> dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
-# Reading
-# ---------------------------------------------------------------------------
+def watched_roots(analysis_roots: Iterable[Path | str]) -> list[Path]:
+    """The roots a write's analysis watch covers, refusing none: an empty watch passes anything."""
+    watched = [Path(root) for root in analysis_roots]
+    if not watched:
+        raise ValueError(
+            "analysis_roots is empty, so the analysis-file watch would watch nothing "
+            "and this session would report itself clean whatever happened to the "
+            "library's grids; name the roots this write could touch"
+        )
+    return watched
 
 
 def old_node(declared: taxonomy.Taxonomy) -> taxonomy.Node:
@@ -300,8 +248,20 @@ def old_node(declared: taxonomy.Taxonomy) -> taxonomy.Node:
     return declared.intake_old
 
 
-def anchored_root(db: Any, tree_id: str, registry: tree_registry.Registry) -> str:
-    """The intake tree's adopted root, or the refusal that names ``tree cutover``."""
+def anchored_root(
+    db: Any,
+    tree_id: str,
+    registry: tree_registry.Registry,
+    *,
+    holds: str = "batches",
+    act: str = "move",
+    origin: tuple[str, ...] = _ORIGIN,
+) -> str:
+    """The intake tree's adopted root, or the refusal that names ``tree cutover``.
+
+    One home for every INBOX writer: ``holds`` and ``act`` say what the
+    caller would have done to the tree's nodes.
+    """
     try:
         return tree_registry.anchored_root(
             tree_id, registry, root_exists=lambda root_id: db.get_playlist(ID=root_id) is not None
@@ -311,15 +271,15 @@ def anchored_root(db: Any, tree_id: str, registry: tree_registry.Registry) -> st
             raise
         raise refuse(
             "tree-unconverged",
-            f"the intake tree {tree_id!r} is still on the xml bridge, so its batches "
-            f"are not this product's to move in the database; cut the intake tree "
+            f"the intake tree {tree_id!r} is still on the xml bridge, so its {holds} "
+            f"are not this product's to {act} in the database; cut the intake tree "
             f"over first, nothing was read or written",
             remedy=Remedy.COMPLETE_PENDING_ACTION,
             steps=(
                 f"run crate tree cutover {tree_id} --export with a Fresh Export to "
                 f"move the intake tree to the database",
             ),
-            origin=_ORIGIN,
+            origin=origin,
             detail={"tree_id": tree_id, "mode": str(exc.mode)},
             inner=exc.cause,
         ) from exc
@@ -330,9 +290,7 @@ def _local_date(stamp: str) -> date | None:
         moment = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
     except (TypeError, ValueError):
         return None
-    if moment.tzinfo is not None:
-        moment = moment.astimezone()
-    return moment.date()
+    return (moment.astimezone() if moment.tzinfo is not None else moment).date()
 
 
 def _named_ids(record: session.SessionRecord) -> list[str]:
@@ -370,14 +328,11 @@ class Landings:
 
     #: Each playlist a native landing named by identifier, and the day it first landed.
     by_id: dict[str, date]
-    #: Each account playlist an intake file named, the day of the latest landing
-    #: naming it, and the batch folder that landing made.
+    #: Each account playlist an intake file named, its latest landing day and batch folder.
     by_name: dict[str, tuple[date, str]]
     #: How many records could not be read.
     unreadable: int
-    #: The session log exists and could not be listed (U214), so no record in
-    #: it was read at all, which is not the same as none being there. Read
-    #: off the scan's unread half since R-1255, where it counts as one.
+    #: The session log could not be listed, so no record was read at all (U214).
     unlisted: bool = False
 
     def unread(self) -> str:
@@ -390,10 +345,10 @@ class Landings:
 
 
 def _batch_folder(path: str) -> bool | None:
-    """Whether a batch folder is there: ``None`` when the music folder cannot be read (U214).
+    """Whether a batch folder is there, ``None`` when the music folder cannot be read.
 
-    ``os.path.isdir`` answers a folder it is refused as absent, which would
-    name a batch whose folder is there as no batch at all.
+    ``os.path.isdir`` answers a refused folder as absent, which would call a
+    batch whose folder is there no batch at all.
     """
     try:
         return stat.S_ISDIR(os.stat(path).st_mode)
@@ -406,12 +361,10 @@ def _batch_folder(path: str) -> bool | None:
 def landings(cfg: config.Config) -> Landings:
     """Every batch the landing records name, by identifier and by recorded name.
 
-    A NATIVE RECORD that names a playlist and committed nothing landed nothing,
-    so it dates nothing, and the EARLIEST landing wins: a batch is as old as its
-    first tracks. AN INTAKE FILE'S RECORD commits nothing to the database, so it
-    is read once ``intake imported`` proved its import, which is when the
-    playlists it names exist, and the LATEST record naming a name wins, for the
-    reason the module gives.
+    A native record that committed nothing landed nothing, and the EARLIEST
+    landing of an identifier wins: a batch is as old as its first tracks. An
+    intake file's record counts once its import was proved, and the LATEST
+    naming a name wins, for the reason the module gives.
     """
     records, unreadable = session.scan_log(cfg)
     unlisted = session.log_unlisted(unreadable, cfg)
@@ -435,73 +388,54 @@ def landings(cfg: config.Config) -> Landings:
         for key in ids:
             if key not in by_id or landed < by_id[key]:
                 by_id[key] = landed
-    return Landings(
-        by_id=by_id, by_name=by_name, unreadable=len(unreadable), unlisted=unlisted
-    )
+    return Landings(by_id=by_id, by_name=by_name, unreadable=len(unreadable), unlisted=unlisted)
 
 
 def _live_children(db: Any, parent_id: str) -> list[Any]:
-    return [
-        row
-        for row in list(db.get_playlist(ParentID=str(parent_id)))
-        if not rb_writer.node_removed(row)
-    ]
+    rows = db.get_playlist(ParentID=str(parent_id))
+    return [row for row in list(rows) if not rb_writer.node_removed(row)]
 
 
 def _track_count(db: Any, playlist: Any) -> int:
-    return sum(
-        1
-        for song in db.get_playlist_songs(PlaylistID=str(playlist.ID))
-        if not rb_writer.membership_removed(song)
-    )
+    songs = db.get_playlist_songs(PlaylistID=str(playlist.ID))
+    return sum(1 for song in songs if not rb_writer.membership_removed(song))
 
 
-def _recognised(
-    cfg: config.Config,
-    row: Any,
-    recorded: Mapping[str, date],
-    named: Mapping[str, tuple[date, str]],
-) -> tuple[str | None, bool]:
+def _recognised(cfg: config.Config, row: Any, found: Landings) -> tuple[str | None, bool]:
     """How the row is recognised as a batch, and whether a batch folder could not be read.
 
-    The second half is True when a rule that asks for a batch folder was
-    refused the music folder (U214), so an unrecognised playlist is never
-    said to have no batch folder while one may be there.
+    The second half keeps an unrecognised playlist from being said to have no
+    batch folder while the music folder refused the look (U214).
     """
     name = str(getattr(row, "Name", "") or "")
-    if str(row.ID) in recorded:
+    if str(row.ID) in found.by_id:
         return BY_RECORD, False
     unread = False
-    if name in named:
-        found = _batch_folder(landing.target_dir(cfg, named[name][1]))
-        if found:
+    if name in found.by_name:
+        present = _batch_folder(landing.target_dir(cfg, found.by_name[name][1]))
+        if present:
             return BY_RECORDED_NAME, False
-        unread = unread or found is None
+        unread = unread or present is None
     if name.endswith(INBOXED_SUFFIX):
         return BY_SUFFIX, False
     if batch_name.is_default_shape(name):
-        found = _batch_folder(landing.target_dir(cfg, name))
-        if found:
+        present = _batch_folder(landing.target_dir(cfg, name))
+        if present:
             return BY_NAME, False
-        unread = unread or found is None
+        unread = unread or present is None
     return None, unread
 
 
 def _created_date(row: Any) -> date | None:
     """The LOCAL day the row was created, as a batch is named for the local day.
 
-    The column is stored at UTC. The pinned binding, pyrekordbox 0.4.4, hands
-    it back naive and already converted to local time, read on 2026-10-03, so
-    a batch imported at 9 pm on the east coast is that evening's. An aware
-    value, which a different binding could return, is converted the same way
-    rather than read on the UTC calendar, as ``collection_export`` converts.
+    pyrekordbox 0.4.4 hands the UTC column back naive and already local; an
+    aware value is converted the same way rather than read on the UTC calendar.
     """
     created = getattr(row, "created_at", None)
     if isinstance(created, datetime):
         return (created.astimezone() if created.tzinfo is not None else created).date()
-    if isinstance(created, date):
-        return created
-    return None
+    return created if isinstance(created, date) else None
 
 
 def _classify(
@@ -510,24 +444,16 @@ def _classify(
     row: Any,
     *,
     place: str,
-    in_old: bool,
-    recorded: Mapping[str, date],
+    found: Landings,
     today: date,
-    stale_days: int,
-    expired_days: int,
-    named: Mapping[str, tuple[date, str]] | None = None,
+    in_old: bool = False,
     old_display: str | None = None,
-    unread: str = "",
 ) -> Batch | Left:
     """One node as a batch, or as left alone with its kind and reason.
 
-    ``old_display`` is the declared Old folder's name, so the folder of that
-    name directly under INBOX is named as Old rather than as any folder
-    (U214); ``None`` when no Old is declared, which reads it as a folder.
-    ``unread`` is :meth:`Landings.unread`, why a record none read names may
-    name it, so a playlist no rule recognises is never said to have no record
-    naming it while one that might could not be read, nor no batch folder
-    while the music folder could not be read.
+    ``old_display`` names the folder of that name directly under INBOX as Old,
+    ``None`` when no Old is declared. An unread record or music folder is said
+    as such, never as no record or no batch folder (U214).
     """
     playlist_id, name = str(row.ID), str(getattr(row, "Name", "") or "")
 
@@ -550,20 +476,17 @@ def _classify(
         )
     if int(getattr(row, "Attribute", -1)) != 0:
         return left(LEFT_SMART, "a smart playlist is never a batch", counted=False)
-    # INBOX / ANALYZE IS NEVER A BATCH (U166), whatever a record from before
-    # its name was reserved says of it: it holds the rows waiting for analysis,
-    # and moving it into Old would take them out of the visit.
+    # INBOX / ANALYZE IS NEVER A BATCH (U166), whatever an old record says: it
+    # holds the rows awaiting analysis, and Old would take them out of the visit.
     if not in_old and name == native.ANALYZE:
         return left(
             LEFT_ANALYZE,
             "the playlist every landing fills with the rows awaiting analysis is "
             "never a batch; crate inbox analyzed takes out what rekordbox analysed",
         )
-    named = named or {}
-    recognised_by, folder_unread = _recognised(cfg, row, recorded, named)
+    recognised_by, folder_unread = _recognised(cfg, row, found)
     if recognised_by is None:
-        # UNREAD IS NOT NONE: a record that could not be read, or a music
-        # folder that could not be read, may hold what would recognise it.
+        unread = found.unread()
         records = (
             f"no readable landing record names it ({unread})"
             if unread
@@ -575,37 +498,36 @@ def _classify(
             if folder_unread
             else "and no batch folder under the music folder carries its name"
         )
-        return left(
-            LEFT_UNRECOGNISED,
-            f"{records}, its name does not end _inboxed, {folders}",
-        )
-    if playlist_id in recorded:
-        landed, aged_from = recorded[playlist_id], AGED_FROM_RECORD
+        return left(LEFT_UNRECOGNISED, f"{records}, its name does not end _inboxed, {folders}")
+    if playlist_id in found.by_id:
+        landed, aged_from = found.by_id[playlist_id], AGED_FROM_RECORD
     elif recognised_by == BY_RECORDED_NAME:
-        landed, aged_from = named[name][0], AGED_FROM_RECORD
+        landed, aged_from = found.by_name[name][0], AGED_FROM_RECORD
     else:
         landed, aged_from = _created_date(row), AGED_FROM_CREATED
     if landed is None:
         return left(LEFT_UNDATED, "no landing record and no creation date to age it from")
     if landed > today:
         return left(
-            LEFT_UNDATED, f"dated {landed.isoformat()}, after {today.isoformat()}, so its age is unknown"
+            LEFT_UNDATED,
+            f"dated {landed.isoformat()}, after {today.isoformat()}, so its age is unknown",
         )
     age = (today - landed).days
+    stale_days, expired_days = cfg.reports.intake_stale_days, cfg.reports.intake_expired_days
     if in_old:
         action = REMOVE if age > expired_days else KEEP
     else:
         action = MOVE if age > stale_days else KEEP
     return Batch(
-        playlist_id=playlist_id,
-        name=name,
-        place=place,
-        recognised_by=recognised_by,
-        landed=landed,
-        aged_from=aged_from,
-        age_days=age,
-        tracks=_track_count(db, row),
-        action=action,
+        playlist_id,
+        name,
+        place,
+        recognised_by,
+        landed,
+        aged_from,
+        age,
+        _track_count(db, row),
+        action,
     )
 
 
@@ -619,21 +541,14 @@ def plan_rotation(
 ) -> RotationPlan:
     """Plan the rotation against an open handle. Reads, writes nothing.
 
-    THE THRESHOLDS ARE CONFIGURATION'S, ``reports.intake_stale_days`` and
-    ``reports.intake_expired_days``, the two ``report intake-aging`` bands by.
-    ``today`` has no default, for that report's reason.
-
-    ONLY THE DIRECT CHILDREN OF INBOX AND OF OLD ARE ASKED. A batch is a
-    playlist the landing hangs from the intake root, and a playlist a person
-    filed inside a folder of their own has been organised, not forgotten.
+    The thresholds are configuration's, ``today`` has no default, and ONLY THE
+    DIRECT CHILDREN OF INBOX AND OF OLD ARE ASKED: a playlist a person filed
+    inside a folder of their own has been organised, not forgotten.
     """
     old = old_node(declared)
     tree_id = declared.intake.id
     root_id = anchored_root(db, tree_id, registry)
-    root = db.get_playlist(ID=root_id)
     found = landings(cfg)
-    recorded, unreadable = found.by_id, found.unreadable
-
     children = _live_children(db, root_id)
     olds = [row for row in children if rb_writer.is_folder(row) and row.Name == old.display]
     if len(olds) > 1:
@@ -648,14 +563,10 @@ def plan_rotation(
         )
     old_row = olds[0] if olds else None
     # WHERE A ROW SITS IS READ OFF THE TREE, never off the two taxonomy ids,
-    # which a hand edited template could make equal. Old itself is classified
-    # with the rest, so the plan names it left as the mirror does (U214).
+    # which a hand edited template could make equal.
     nodes = [(row, tree_id, False) for row in children]
     if old_row is not None:
         nodes += [(row, old.id, True) for row in _live_children(db, str(old_row.ID))]
-
-    stale_days = cfg.reports.intake_stale_days
-    expired_days = cfg.reports.intake_expired_days
     batches: list[Batch] = []
     left: list[Left] = []
     for row, place, in_old in nodes:
@@ -665,39 +576,31 @@ def plan_rotation(
             row,
             place=place,
             in_old=in_old,
-            recorded=recorded,
+            found=found,
             today=today,
-            stale_days=stale_days,
-            expired_days=expired_days,
-            named=found.by_name,
             old_display=old.display,
-            unread=found.unread(),
         )
         (batches if isinstance(classified, Batch) else left).append(classified)
 
     def oldest_first(action: str) -> tuple[Batch, ...]:
-        return tuple(
-            sorted(
-                (batch for batch in batches if batch.action == action),
-                key=lambda batch: (-batch.age_days, batch.name, batch.playlist_id),
-            )
-        )
+        chosen = (batch for batch in batches if batch.action == action)
+        return tuple(sorted(chosen, key=lambda one: (-one.age_days, one.name, one.playlist_id)))
 
     planned = RotationPlan(
         tree_id=tree_id,
         root_id=str(root_id),
-        root_name=str(getattr(root, "Name", "") or ""),
+        root_name=str(getattr(db.get_playlist(ID=root_id), "Name", "") or ""),
         old_place=old.id,
         old_display=old.display,
         old_id=str(old_row.ID) if old_row is not None else None,
         as_of=today,
-        stale_days=stale_days,
-        expired_days=expired_days,
+        stale_days=cfg.reports.intake_stale_days,
+        expired_days=cfg.reports.intake_expired_days,
         moves=oldest_first(MOVE),
         removals=oldest_first(REMOVE),
         kept=oldest_first(KEEP),
         left=tuple(sorted(left, key=lambda node: (node.place, node.name, node.playlist_id))),
-        unreadable_records=unreadable,
+        unreadable_records=found.unreadable,
         digest="",
         log_unlisted=found.unlisted,
     )
@@ -712,13 +615,10 @@ class Live:
     root_name: str
     #: Each live batch, ``(playlist id, name)``, ordered by name then id.
     batches: tuple[tuple[str, str], ...]
-    #: The name of every live node directly under INBOX, batch or not, Old
-    #: included, so a mirror can tell a batch that LEFT INBOX from one that
-    #: is still there and only no longer reads as a batch.
+    #: The name of every live node directly under INBOX, so a mirror tells a
+    #: batch that LEFT INBOX from one that no longer reads as a batch.
     present: frozenset[str]
-    #: Every live node directly under INBOX that is not a live batch, with the
-    #: classifier's kind and reason (U214), ordered by name then id, so a
-    #: mirror names each one it leaves off rather than dropping it unsaid.
+    #: Every other live node directly under INBOX with its kind and reason (U214).
     left: tuple[Left, ...] = ()
 
 
@@ -732,26 +632,15 @@ def live_batches(
 ) -> Live:
     """Every batch directly under INBOX, by this module's one rule of what a batch is.
 
-    A BATCH IS WHAT :func:`plan_rotation` CALLS ONE, read by the same
-    classifier, so the mirror and the rotation never disagree on it. Its age
-    decides nothing here: A BATCH IS LIVE WHILE IT SITS UNDER INBOX, stale or
-    not, since whether a rotation moves it this run is not known when the
-    mirror is planned (its gate may be declined, or the rotation not asked
-    for), and a batch with no date to age it from, or dated after ``today``,
-    is one the rotation leaves in INBOX. The cost, a stale batch mirrored by
-    the same organize run that moves it and removed at the next, is a
-    residual. Old and everything in it is not live, and neither is a folder,
-    a smart playlist, INBOX / Analyze or a playlist no rule recognises: each
-    direct child of INBOX among them is in ``left`` with its reason (U214).
-    Old is named as Old only when ``[intake_old]`` is declared.
-
-    Reads, writes nothing, needs no ``[intake_old]`` declared. Refuses as
-    :func:`anchored_root` refuses, by name, on an intake tree that is not
-    database native or not adopted.
+    The same classifier as :func:`plan_rotation`, so the mirror and the
+    rotation never disagree. A BATCH IS LIVE WHILE IT SITS UNDER INBOX, stale,
+    undated or not, since whether a rotation moves it this run is not known
+    when the mirror is planned. Everything else directly under INBOX is in
+    ``left`` with its reason. Needs no ``[intake_old]``; refuses as
+    :func:`anchored_root` does.
     """
     tree_id = declared.intake.id
     root_id = anchored_root(db, tree_id, registry)
-    root = db.get_playlist(ID=root_id)
     found = landings(cfg)
     children = _live_children(db, root_id)
     old_display = declared.intake_old.display if declared.intake_old is not None else None
@@ -759,18 +648,7 @@ def live_batches(
     left: list[Left] = []
     for row in children:
         classified = _classify(
-            cfg,
-            db,
-            row,
-            place=tree_id,
-            in_old=False,
-            recorded=found.by_id,
-            today=today,
-            stale_days=cfg.reports.intake_stale_days,
-            expired_days=cfg.reports.intake_expired_days,
-            named=found.by_name,
-            old_display=old_display,
-            unread=found.unread(),
+            cfg, db, row, place=tree_id, found=found, today=today, old_display=old_display
         )
         if isinstance(classified, Batch) or classified.kind == LEFT_UNDATED:
             batches.append((classified.playlist_id, classified.name))
@@ -778,83 +656,59 @@ def live_batches(
             left.append(classified)
     return Live(
         root_id=str(root_id),
-        root_name=str(getattr(root, "Name", "") or ""),
+        root_name=str(getattr(db.get_playlist(ID=root_id), "Name", "") or ""),
         batches=tuple(sorted(batches, key=lambda one: (one[1], one[0]))),
         present=frozenset(str(getattr(row, "Name", "") or "") for row in children),
         left=tuple(sorted(left, key=lambda node: (node.name, node.playlist_id))),
     )
 
 
-# ---------------------------------------------------------------------------
-# Writing
-# ---------------------------------------------------------------------------
-
-
-def _stale(message: str, **detail: Any):
-    return refuse(
-        "decision-stale",
-        message,
-        steps=("run `crate inbox rotate` again and approve the plan as it is now",),
-        origin=_ORIGIN,
-        detail=detail,
-    )
-
-
 def _record_rotation_commit(
-    record: session.SessionRecord, plan: RotationPlan, created: int, changed: int, cfg: config.Config
+    record: session.SessionRecord,
+    plan: RotationPlan,
+    created: int,
+    changed: int,
+    cfg: config.Config,
 ) -> None:
     """Record the commit under the intake tree: the folder it made, the nodes it changed.
 
-    ``updated`` for a move and a removal alike, since each node is still there
-    and a restore that discards the session discards that change to it.
+    ``updated`` for a move and a removal alike: each node is still there, and a
+    restore that discards the session discards that change to it.
     """
     if created <= 0 and changed <= 0:
         return
-    session.record_commit(
-        record,
-        plan.tree_id,
-        session.ChangeSummary(
-            (session.TreeChange(tree=plan.tree_id, created=created, updated=changed),)
-        ),
-        cfg,
-    )
+    change = session.TreeChange(tree=plan.tree_id, created=created, updated=changed)
+    session.record_commit(record, plan.tree_id, session.ChangeSummary((change,)), cfg)
 
 
 def _read_back(db: Any, plan: RotationPlan, old_id: str) -> list[str]:
     """Where every planned node sits now, read from SQL after the commit."""
     from sqlalchemy import text
 
+    def run(sql: str, playlist_id: str) -> Any:
+        return db.session.execute(text(sql), {"id": playlist_id})
+
+    node = (
+        f"SELECT ParentID, {rb_writer.SOFT_DELETE_COLUMN} FROM {rb_writer.PLAYLIST_TABLE} "
+        f"WHERE ID = :id"
+    )
+    live = (
+        f"SELECT COUNT(*) FROM {rb_writer.MEMBERSHIP_TABLE} WHERE PlaylistID = :id "
+        f"AND COALESCE({rb_writer.SOFT_DELETE_COLUMN}, 0) = 0"
+    )
     problems: list[str] = []
     for batch in plan.moves:
-        row = db.session.execute(
-            text(
-                f"SELECT ParentID, {rb_writer.SOFT_DELETE_COLUMN} FROM "
-                f"{rb_writer.PLAYLIST_TABLE} WHERE ID = :id"
-            ),
-            {"id": batch.playlist_id},
-        ).first()
+        row = run(node, batch.playlist_id).first()
         if row is None or str(row[0]) != old_id or row[1]:
             problems.append(f"{batch.name!r} ({batch.playlist_id}) is not live under Old")
     for batch in plan.removals:
-        row = db.session.execute(
-            text(
-                f"SELECT {rb_writer.SOFT_DELETE_COLUMN} FROM {rb_writer.PLAYLIST_TABLE} "
-                f"WHERE ID = :id"
-            ),
-            {"id": batch.playlist_id},
-        ).first()
-        if row is None or not row[0]:
+        row = run(node, batch.playlist_id).first()
+        if row is None or not row[1]:
             problems.append(f"{batch.name!r} ({batch.playlist_id}) is not marked removed")
-        live = db.session.execute(
-            text(
-                f"SELECT COUNT(*) FROM {rb_writer.MEMBERSHIP_TABLE} WHERE PlaylistID = :id "
-                f"AND COALESCE({rb_writer.SOFT_DELETE_COLUMN}, 0) = 0"
-            ),
-            {"id": batch.playlist_id},
-        ).scalar()
-        if live:
+        held = run(live, batch.playlist_id).scalar()
+        if held:
             problems.append(
-                f"{batch.name!r} ({batch.playlist_id}) still holds {live} live membership(s)"
+                f"{batch.name!r} ({batch.playlist_id}) still holds {held} live membership(s)"
             )
     return problems
 
@@ -870,37 +724,22 @@ def apply_rotation(
     """Write the approved plan: Old if absent, the moves, the removals. One commit.
 
     THE PLAN IS TAKEN AGAIN ON THIS HANDLE FIRST, and a digest that moved
-    refuses with nothing written. The plan the person approved was read on a
-    handle that has since closed, and rekordbox or another verb may have
-    changed INBOX in between.
-
-    THE SESSION SPINE IS CALLED, NOT REBUILT, as every database tree writer
-    calls it: the three gates with a record kept, a capture verified before
-    anything is written, the analysis watch over the roots named, the commit
-    witness, and the guarded commit, which here names the playlist and the
-    membership tables in ``removals`` and nothing else.
-
-    CONFINED BEFORE IT COMMITS. :func:`rb_writer.assert_node_changes_confined`
-    compares SQL readings taken before and after the writes: no content row,
-    no membership of any playlist the plan does not remove, and no playlist
-    row beyond what the plan names may have changed, and every planned move
-    and removal must be there. Then the guarded commit's whitelist judges the
-    session from the binding's buffer. Either refusal rolls everything back.
+    refuses with nothing written: the approved plan was read on a handle since
+    closed. The session spine is called as every tree writer calls it, and the
+    guarded commit admits removals in ``REMOVALS`` only. CONFINED BEFORE IT
+    COMMITS: SQL readings before and after the writes must show no change the
+    plan does not name and every change it does, or everything rolls back.
     """
-    watched = [Path(root) for root in analysis_roots]
-    if not watched:
-        raise ValueError(
-            "analysis_roots is empty, so the analysis-file watch would watch nothing "
-            "and this session would report itself clean whatever happened to the "
-            "library's grids; name the roots this write could touch"
-        )
+    watched = watched_roots(analysis_roots)
     registry = tree_registry.read(cfg)
     again = plan_rotation(cfg, db, declared=declared, registry=registry, today=plan.as_of)
     if again.digest != plan.digest:
-        raise _stale(
+        raise refuse(
+            "decision-stale",
             "INBOX is not as the approved plan read it, so nothing was written",
-            approved=plan.digest,
-            now=again.digest,
+            steps=("run `crate inbox rotate` again and approve the plan as it is now",),
+            origin=_ORIGIN,
+            detail={"approved": plan.digest, "now": again.digest},
         )
     convergence.assert_tree_writable(cfg, db, plan.tree_id, registry)
 
@@ -914,14 +753,14 @@ def apply_rotation(
         rb_writer.commit_witness(db) as witness,
     ):
         record, capture = trees.attached_capture(gates, cfg, db)
-
         changed = len(plan.moves) + len(plan.removals)
         try:
             before = rb_writer.node_tables(db)
-            root = db.get_playlist(ID=plan.root_id)
             old = db.get_playlist(ID=plan.old_id) if plan.old_id else None
             if plan.moves and old is None:
-                old = db.create_playlist_folder(plan.old_display, parent=root)
+                old = db.create_playlist_folder(
+                    plan.old_display, parent=db.get_playlist(ID=plan.root_id)
+                )
                 created.append(str(old.ID))
             for batch in plan.moves:
                 rb_writer.move_playlist_node(db, db.get_playlist(ID=batch.playlist_id), old)
@@ -930,12 +769,9 @@ def apply_rotation(
                 marked += len(
                     rb_writer.remove_playlist_node(db, db.get_playlist(ID=batch.playlist_id))
                 )
+            removed = [batch.playlist_id for batch in plan.removals]
             rb_writer.assert_node_changes_confined(
-                db,
-                before,
-                moved=moved,
-                removed=[batch.playlist_id for batch in plan.removals],
-                created=created,
+                db, before, moved=moved, removed=removed, created=created
             )
             rb_writer.commit_guarded(db, removals=REMOVALS)
         except BaseException:
@@ -952,7 +788,7 @@ def apply_rotation(
 
     return Rotated(
         moved=tuple(batch.playlist_id for batch in plan.moves),
-        removed=tuple(batch.playlist_id for batch in plan.removals),
+        removed=tuple(removed),
         old_id=old_id,
         old_created=bool(created),
         memberships_removed=marked,
@@ -962,10 +798,9 @@ def apply_rotation(
 
 
 def assert_read_back(rotated: Rotated) -> None:
-    """Refuse when the committed database is not what the plan said it would be.
+    """Refuse when the committed database is not what the plan said, as a defect.
 
-    The confinement check holds this before the commit, so reaching here is a
-    defect, and it is reported as one with every disagreement named.
+    The confinement check holds this before the commit, so reaching here is one.
     """
     if rotated.disagreements:
         raise refuse(
@@ -976,40 +811,3 @@ def assert_read_back(rotated: Rotated) -> None:
             origin=_ORIGIN,
             detail={"disagreements": list(rotated.disagreements)},
         )
-
-
-__all__ = [
-    "AGED_FROM_CREATED",
-    "AGED_FROM_RECORD",
-    "BY_NAME",
-    "BY_RECORD",
-    "BY_RECORDED_NAME",
-    "BY_SUFFIX",
-    "INBOXED_SUFFIX",
-    "KEEP",
-    "LEFT_ANALYZE",
-    "LEFT_FOLDER",
-    "LEFT_OLD",
-    "LEFT_SHOWN",
-    "LEFT_SMART",
-    "LEFT_UNDATED",
-    "LEFT_UNRECOGNISED",
-    "MOVE",
-    "REMOVALS",
-    "REMOVE",
-    "WORKFLOW",
-    "Batch",
-    "Left",
-    "Live",
-    "Rotated",
-    "RotationPlan",
-    "anchored_root",
-    "apply_rotation",
-    "assert_read_back",
-    "identity",
-    "Landings",
-    "landings",
-    "live_batches",
-    "old_node",
-    "plan_rotation",
-]

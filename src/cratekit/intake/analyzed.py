@@ -1,28 +1,20 @@
 """Clear INBOX / Analyze of every row rekordbox has analysed (U166).
 
-Every native landing adds each row it creates to one playlist directly under
-the intake root, :data:`cratekit.intake.native.ANALYZE`, so the rekordbox visit
-selects that one playlist and runs Analyze Track over it. Nothing else adds to
-it. This is the other half: a row rekordbox has analysed leaves it, and a row
-still waiting stays, so the next visit selects exactly what is owed.
+Every native landing adds each row it creates to one playlist under the intake
+root, :data:`cratekit.intake.native.ANALYZE`, which the rekordbox visit
+analyses. A row rekordbox has analysed leaves it and a row still waiting
+stays, so the next visit selects exactly what is owed.
 
-WHAT ANALYSED MEANS, decided here and nowhere else. A row is cleared only when
-its collection row is live, ``Analysed`` is set (nonzero) and
-``AnalysisDataPath`` names a file. Each is rekordbox's own column and rekordbox
-writes both on an analysis; a row lacking either is left in the playlist and
-listed with why. NOTHING IS CLEARED ON A GUESS: a row that cannot be read, or
-that is gone from the collection, stays where a person can see it.
+WHAT ANALYSED MEANS, decided here and nowhere else: the collection row is live,
+``Analysed`` is set and ``AnalysisDataPath`` names a file, both of which
+rekordbox writes on an analysis. NOTHING IS CLEARED ON A GUESS: a row that
+cannot be read, or is gone, stays where a person can see it.
 
-A MEMBERSHIP IS REMOVED, NEVER A TRACK. The removal is
-:func:`cratekit.core.rb_writer.remove_memberships`, the product's one soft
-delete of a membership, under a commit that admits a removal in the membership
-table and nowhere else. The content row, its file and every other playlist it
-sits in are untouched, and the read back holds the playlist to exactly the rows
-that were waiting.
-
-THE PLAN IS TAKEN AGAIN ON THE WRITE HANDLE, the rotation's and the refill's
-rule, and a digest that moved refuses with nothing written: an analysis that
-finished between the approval and the apply is another plan.
+A MEMBERSHIP IS REMOVED, NEVER A TRACK, by
+:func:`cratekit.core.rb_writer.remove_memberships` under a commit admitting a
+removal in the membership table only, and the read back holds the playlist to
+exactly the rows that were waiting. The plan is taken again on the write
+handle, so an analysis finished after the approval is another plan.
 
 Layer: modules. It opens no database of its own: the verb hands it a handle.
 """
@@ -36,7 +28,7 @@ from typing import Any, Iterable
 from cratekit.cli.output import digest_of
 from cratekit.core import config, convergence, rb_writer, session, taxonomy, tree_registry
 from cratekit.core.cause import refuse
-from cratekit.intake import native, refill
+from cratekit.intake import native, refill, rotate
 from cratekit.write import trees
 
 #: The session workflow a clear is recorded under.
@@ -125,11 +117,8 @@ def identity(plan: AnalyzedPlan) -> dict[str, Any]:
 def member(db: Any, content_id: str) -> Member:
     """Read one row's answer off its collection row. A row that cannot answer stays.
 
-    PUBLIC SINCE U167, because ``crate analyze check`` asks the same question of
-    the same rows and must not answer it a second way: this is the one reading
-    of what analysed means, for the clear and for the check. The read is here
-    and the judgment is :func:`judge`, so a caller that already holds the row
-    asks the same rule without reading it again (U259).
+    Public so ``crate analyze check`` asks the one rule rather than a second
+    (U167); the judgment is :func:`judge`, for a caller holding the row (U259).
     """
     return judge(content_id, db.get_content(ID=content_id))
 
@@ -137,11 +126,8 @@ def member(db: Any, content_id: str) -> Member:
 def judge(content_id: str, row: Any) -> Member:
     """Judge one collection row already in hand; ``None`` is a row the collection lacks.
 
-    THE JUDGMENT OF :func:`member`, SPLIT FROM ITS READ (U259), not a second
-    rule: ``member`` is this over a read by ID, and ``crate analyze check``
-    calls it over the rows its one read of the collection, or of the rows in
-    scope, already holds. A row whose removal marker cannot be read refuses
-    here, for both.
+    :func:`member`'s judgment split from its read (U259), not a second rule. A
+    row whose removal marker cannot be read refuses here, for both.
     """
     if row is None:
         return Member(content_id=content_id, title="", action=WAIT, why=NO_ROW)
@@ -175,20 +161,13 @@ def plan_clear(
     del cfg
     tree_id = declared.intake.id
     root_id = refill.anchored_root(db, tree_id, registry)
-    root = db.get_playlist(ID=root_id)
     playlist = native.analyze_playlist(db, str(root_id))
-    members: list[Member] = []
-    if playlist is not None:
-        seen: set[str] = set()
-        for content_id in live_members(db, str(playlist.ID)):
-            if content_id in seen:
-                continue
-            seen.add(content_id)
-            members.append(member(db, content_id))
+    held = live_members(db, str(playlist.ID)) if playlist is not None else ()
+    members = [member(db, content_id) for content_id in dict.fromkeys(held)]
     plan = AnalyzedPlan(
         tree_id=tree_id,
         root_id=str(root_id),
-        root_name=str(getattr(root, "Name", "") or ""),
+        root_name=str(getattr(db.get_playlist(ID=root_id), "Name", "") or ""),
         playlist_id=str(playlist.ID) if playlist is not None else "",
         members=tuple(members),
     )
@@ -216,19 +195,10 @@ def apply_clear(
 ) -> Cleared:
     """Remove the approved plan's analysed rows from the playlist in one guarded commit.
 
-    THE SESSION SPINE IS CALLED, NOT REBUILT, as every database tree writer
-    calls it: the gates with a record kept, a capture verified before anything
-    is written, the analysis watch over the roots named, the commit witness,
-    and the guarded commit, which admits a removal in the membership table and
-    nowhere else.
+    The session spine is every tree writer's; the guarded commit admits a
+    removal in the membership table and nowhere else.
     """
-    watched = [Path(root) for root in analysis_roots]
-    if not watched:
-        raise ValueError(
-            "analysis_roots is empty, so the analysis-file watch would watch nothing "
-            "and this session would report itself clean whatever happened to the "
-            "library's grids; name the roots this write could touch"
-        )
+    watched = rotate.watched_roots(analysis_roots)
     registry = tree_registry.read(cfg)
     again = plan_clear(cfg, db, declared=declared, registry=registry)
     if again.digest != plan.digest:
@@ -251,11 +221,8 @@ def apply_clear(
         record, capture = trees.attached_capture(gates, cfg, db)
         try:
             playlist = db.get_playlist(ID=plan.playlist_id)
-            # ONE PER ROW, though a track the playlist held twice has each of
-            # its memberships marked, so the count is the plan's rows.
-            removed = list(
-                dict.fromkeys(rb_writer.remove_memberships(db, playlist, plan.clears()))
-            )
+            # ONE PER ROW: a track held twice has both memberships marked.
+            removed = list(dict.fromkeys(rb_writer.remove_memberships(db, playlist, plan.clears())))
             rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))
         except BaseException:
             trees.rollback_quietly(db)
@@ -266,12 +233,7 @@ def apply_clear(
         convergence.record_fingerprint(cfg, db)
         read_back = live_members(db, plan.playlist_id)
         session_id = record.session_id
-    return Cleared(
-        session_id=session_id,
-        playlist_id=plan.playlist_id,
-        removed=tuple(removed),
-        read_back=read_back,
-    )
+    return Cleared(session_id, plan.playlist_id, tuple(removed), read_back)
 
 
 def _record_clear_commit(
@@ -279,11 +241,8 @@ def _record_clear_commit(
 ) -> None:
     """Record the commit under the intake tree, the playlist named and each row it removed.
 
-    ``updated`` for each membership, the rotation's count for a node it
-    removed, since the row is still there with its marker set and a restore
-    that discards the session discards that change to it. ONLY WHEN A ROW WAS
-    REMOVED, the landing's rule: a record saying the tree committed with no
-    change would tell a restore otherwise.
+    ``updated`` per membership, whose row stays with its marker set; only when
+    a row was removed, since a no change commit would mislead a restore.
     """
     if not removed:
         return
@@ -291,21 +250,12 @@ def _record_clear_commit(
         "playlist": {"id": plan.playlist_id, "name": plan.name},
         "removed": list(removed),
     }
-    session.record_commit(
-        record,
-        plan.tree_id,
-        session.ChangeSummary((session.TreeChange(tree=plan.tree_id, updated=len(removed)),)),
-        cfg,
-    )
+    change = session.TreeChange(tree=plan.tree_id, updated=len(removed))
+    session.record_commit(record, plan.tree_id, session.ChangeSummary((change,)), cfg)
 
 
 def assert_read_back(plan: AnalyzedPlan, cleared: Cleared) -> None:
-    """Refuse an answer the database does not hold: the playlist holds exactly the waiting rows.
-
-    EVERY ROW THE PLAN LEFT IS STILL THERE AND NO ROW IT CLEARED IS, read back
-    from SQL after the commit, so a removal that took a waiting row or missed
-    an analysed one is said rather than reported as done.
-    """
+    """Refuse an answer the database does not hold: the playlist holds exactly the waiting rows."""
     live = set(cleared.read_back)
     waiting = {one.content_id for one in plan.waits()}
     lost = sorted(waiting - live)
@@ -325,25 +275,3 @@ def assert_read_back(plan: AnalyzedPlan, cleared: Cleared) -> None:
                 "read": list(cleared.read_back),
             },
         )
-
-
-__all__ = [
-    "CLEAR",
-    "NOT_ANALYSED",
-    "NO_ANALYSIS_PATH",
-    "NO_ROW",
-    "RECORD_KEY",
-    "ROW_REMOVED",
-    "WAIT",
-    "WORKFLOW",
-    "AnalyzedPlan",
-    "Cleared",
-    "Member",
-    "apply_clear",
-    "assert_read_back",
-    "identity",
-    "judge",
-    "live_members",
-    "member",
-    "plan_clear",
-]

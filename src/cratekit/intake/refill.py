@@ -1,56 +1,15 @@
 """Refill an INBOX account playlist from the pass that mirrored it (U134).
 
-A pass sweeps the playlists the author made on the streaming account, and the
-landing gives each one an INBOX playlist holding every track of it the library
-owns, in the account's order (U113, U128). Nothing rebuilt one afterwards. At
-sitting 34 every native row of four such playlists was removed and the files
-dropped back into rekordbox from Finder, which left the playlists empty and
-the tracks under new rows. ``intake land --pass`` again is a ``no_op`` with
-nothing staged, and a later landing of a mirrored pass holds only its new
-files; ``sync pair`` refuses a playlist under INBOX by design. This module is
-the rebuild: the pass's recorded reports, read again, against the library as
-it is now.
+The rebuild of an INBOX playlist a landing mirrored from the account (U113,
+U128): WHAT IT SHOULD HOLD IS READ FROM THE PASS's recorded jobs and reports,
+never from the account, each row resolved by the set backfill's rule (U121),
+and a row not owned, claimed twice or suppressed is LEFT with why.
 
-WHAT THE PLAYLIST SHOULD HOLD IS READ FROM THE PASS, never from the account.
-Each ``intake.playlist`` job the pass ran recorded its account playlist's
-tracks in item order, which is the account's order, and each committed report
-says what the track resolved to. No provider is asked anything.
+THE PLAYLIST IS FOUND BEFORE ONE REPORT IS READ, by :func:`locate`. ONLY WHAT
+IT LACKS IS PLANNED, so a second run plans nothing, and a membership is the
+only thing written, never a beat grid.
 
-EVERY ROW IS RESOLVED BY THE SET BACKFILL'S RULE (U121), which is the same
-question asked of a different job: a row the report called owned is found by
-the report's library paths, and asked of the library again only when those
-paths hold no row any more; a row that was downloaded is asked of the library
-as it stands, with a person's review answers read back. Each answer is found
-in the collection by path. A row the library does not own, a row two
-collection rows claim, and a suppressed row are LEFT, each named with why,
-never filed by a guess.
-
-THE PLAYLIST IS FOUND BEFORE ONE REPORT IS READ, in this order:
-
-* a landing record of the pass that names the account playlist by the
-  account's identifier and the pass (U128), whose ``id`` is the playlist;
-* a landing record from before U128, which names neither, whose ``pass`` is
-  this pass and whose entry carries the account's name EXACTLY, so a second
-  landing's ``Name 2`` is never taken for the first;
-* a live playlist anywhere under the intake root with the account's name.
-
-The first record of the pass is the mirror, since a later landing of the same
-pass made a ``Name 2`` holding only its new files. The name is asked only
-when no record names the account playlist, never of a playlist a record gives
-another pass, and never while a session record cannot be read.
-
-A RECORDED PLAYLIST THAT IS LIVE OUTSIDE INBOX IS REFUSED BY NAME. A person
-moved it out of the listening queue, and filling it is not this verb's. An
-account playlist nothing answers, two playlists answer, or whose recorded
-playlist is gone, is listed and written nothing.
-
-ONLY WHAT THE PLAYLIST LACKS IS PLANNED, in the account's order, through the
-guarded writer's one membership rule, so a second run plans nothing. A
-membership is the only thing written: no content row, no playlist row, no
-file, and never a beat grid.
-
-Layer: modules. It reads configuration through the objects it is handed and
-opens no database of its own.
+Layer: modules. It opens no database of its own.
 """
 
 from __future__ import annotations
@@ -61,17 +20,9 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import digest_of
-from cratekit.core import (
-    config,
-    convergence,
-    jobs,
-    rb_writer,
-    session,
-    taxonomy,
-    tree_registry,
-)
+from cratekit.core import config, convergence, jobs, rb_writer, session, taxonomy, tree_registry
 from cratekit.core.cause import Remedy, refuse
-from cratekit.intake import account_playlists, ingest, native, set_playlist
+from cratekit.intake import account_playlists, ingest, native, rotate, set_playlist
 from cratekit.write import trees
 
 #: The session workflow a refill's write is recorded under.
@@ -97,8 +48,7 @@ UNREADABLE = (
     "name alone is not trusted"
 )
 
-#: What each row of a planned playlist does. ``again`` is a row whose track an
-#: earlier row of the same account playlist already is: one membership holds both.
+#: What each row of a planned playlist does; ``again`` is a track an earlier row is.
 ADD = "add"
 HELD = "held"
 AGAIN = "again"
@@ -197,12 +147,10 @@ class RefillPlan:
     root_name: str
     targets: tuple[Target, ...]
     unfound: tuple[Unfound, ...] = ()
-    #: Session records that could not be read, so a playlist one names was not seen.
-    #: An unlisted log counts as one (R-1255).
+    #: Session records that could not be read, an unlisted log counting as one.
     unreadable: int = 0
     digest: str = ""
-    #: The session log exists and could not be listed, so no record was read
-    #: at all; the warning says so rather than naming a count (R-1255).
+    #: The session log could not be listed, so the warning names no count (R-1255).
     log_unlisted: bool = False
 
     @property
@@ -255,27 +203,9 @@ def identity(plan: RefillPlan) -> dict[str, Any]:
 
 def anchored_root(db: Any, tree_id: str, registry: tree_registry.Registry) -> str:
     """The intake tree's adopted root, or the refusal that names ``tree cutover``."""
-    try:
-        return tree_registry.anchored_root(
-            tree_id, registry, root_exists=lambda root_id: db.get_playlist(ID=root_id) is not None
-        )
-    except tree_registry.TreeModeRefused as exc:
-        if exc.cause.reason != "tree-unconverged" or exc.mode != tree_registry.Mode.XML:
-            raise
-        raise refuse(
-            "tree-unconverged",
-            f"the intake tree {tree_id!r} is still on the xml bridge, so its playlists "
-            f"are not this product's to fill in the database; cut the intake tree over "
-            f"first, nothing was read or written",
-            remedy=Remedy.COMPLETE_PENDING_ACTION,
-            steps=(
-                f"run crate tree cutover {tree_id} --export with a Fresh Export to "
-                f"move the intake tree to the database",
-            ),
-            origin=_ORIGIN,
-            detail={"tree_id": tree_id, "mode": str(exc.mode)},
-            inner=exc.cause,
-        ) from exc
+    return rotate.anchored_root(
+        db, tree_id, registry, holds="playlists", act="fill", origin=_ORIGIN
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -293,13 +223,10 @@ class Recorded:
 def recorded_entries(records: Iterable[session.SessionRecord]) -> tuple[Recorded, ...]:
     """Every account playlist a standing intake landing record names by id, oldest record first.
 
-    AN ENTRY SINCE U128 carries the account's identifier and the pass. AN
-    ENTRY FROM BEFORE carries neither, and its pass is its record's.
-
-    ORDERED BY WHEN THE SESSION STARTED, to the microsecond, and only then by
-    its identifier. An identifier is a second's stamp and a random tail, so two
-    landings inside one second would sort by chance, and the first landing is
-    the one that mirrored the account's whole playlist.
+    An entry from before U128 carries no account and no pass, and its pass is
+    its record's. ORDERED BY START TIME to the microsecond before identifier,
+    since two landings in one second would otherwise sort by chance, and the
+    first landing is the mirror.
     """
     found: list[Recorded] = []
     for record in sorted(records, key=lambda one: (one.started, one.session_id)):
@@ -309,19 +236,10 @@ def recorded_entries(records: Iterable[session.SessionRecord]) -> tuple[Recorded
             if not isinstance(entry, Mapping) or not entry.get("id"):
                 continue
             account = str(entry.get(ingest.INBOX_ACCOUNT_KEY) or "")
-            found.append(
-                Recorded(
-                    session_id=record.session_id,
-                    pass_name=str(
-                        (entry.get(ingest.INBOX_PASS_KEY) if account else None)
-                        or record.detail.get(native.PASS_KEY)
-                        or ""
-                    ),
-                    account=account,
-                    name=str(entry.get("name") or ""),
-                    playlist_id=str(entry["id"]),
-                )
-            )
+            own = entry.get(ingest.INBOX_PASS_KEY) if account else None
+            pass_name = str(own or record.detail.get(native.PASS_KEY) or "")
+            name = str(entry.get("name") or "")
+            found.append(Recorded(record.session_id, pass_name, account, name, str(entry["id"])))
     return tuple(found)
 
 
@@ -330,11 +248,9 @@ def bridge_names(
 ) -> tuple[str, ...]:
     """The INBOX names intake file landings of ``pass_name`` recorded for ``account``, oldest first.
 
-    AN INTAKE FILE'S ENTRY CARRIES NO IDENTIFIER (U113), only the name it gave
-    the playlist, the batch folder, and since U128 the account and the pass.
-    Since U175 that name is dated, so the account's own name no longer finds
-    the playlist, and this is the name :func:`locate` asks as well. Only an
-    entry carrying this account and this pass counts.
+    An intake file's entry carries no identifier, and since U175 its name is
+    dated, so the account's own name no longer finds the playlist and
+    :func:`locate` asks this one too. Only this account and pass count.
     """
     names: list[str] = []
     for record in sorted(records, key=lambda one: (one.started, one.session_id)):
@@ -355,10 +271,8 @@ def bridge_names(
 def ours(entry: Recorded, *, pass_name: str, account: str, name: str) -> bool:
     """Whether the entry names the INBOX mirror of this account playlist in this pass.
 
-    BY THE ACCOUNT'S IDENTIFIER since U128. BY THE ACCOUNT'S NAME EXACTLY
-    before it: a second landing of the same pass named its playlist ``Name 2``,
-    and that playlist holds that landing's new files, not the account's whole
-    playlist.
+    By the account's identifier since U128, by its name EXACTLY before, since a
+    second landing's ``Name 2`` holds only that landing's new files.
     """
     if entry.pass_name != pass_name:
         return False
@@ -399,38 +313,18 @@ def locate(
 ) -> Target | Unfound:
     """The one INBOX playlist the account playlist was mirrored into, or why there is none.
 
-    THE FIRST RECORDED IS THE MIRROR. The pass's first landing gave the account
-    playlist its INBOX playlist, whole since U128; a later landing of the same
-    pass made a ``Name 2`` holding only the files it brought (U113), and is
-    recorded with the same keys. So only the oldest entry is the answer. It is
-    REFUSED BY NAME when it is live outside INBOX, before any report is read,
-    and when it is gone the account playlist is listed and nothing is guessed.
-
-    THE ACCOUNT'S NAME IS ASKED ONLY WHEN NO RECORD NAMES IT, and then only of
-    playlists no landing record gives another pass or another account
-    (``others``), and only while every session record could be read: a record
-    nobody could read may name the playlist this name would take. NEVER OF
-    INBOX / Analyze (U166): its name is reserved, an account playlist of that
-    name lands dated (U175), and filling it would put rows already analysed
-    back in front of the visit.
-
-    THE NAME ASKED IS THE ACCOUNT'S, AND THE ONE AN INTAKE FILE RECORDED.
-    A landing before U175 named the playlist as the account names it. An
-    intake file's landing since U175 named it with its date at the end and
-    records that name, with no identifier until rekordbox imports it, so the
-    first such name this pass recorded for this account is asked too
-    (``recorded``, :func:`bridge_names`). Two playlists answering is still
+    THE FIRST RECORDED IS THE MIRROR, since a later landing of the pass made a
+    ``Name 2`` with only its new files. It is refused by name when live outside
+    INBOX, and listed when gone. THE NAME IS ASKED ONLY WHEN NO RECORD NAMES
+    IT: the account's, and the dated one an intake file recorded
+    (``recorded_name``), only of playlists no record gives another pass or
+    account (``others``), only while every record could be read, and never of
+    INBOX / Analyze (U166), whose rows are already analysed. Two answering is
     two, and nothing is filled.
     """
 
     def unfound(why: str, rows: Sequence[Any] = ()) -> Unfound:
-        return Unfound(
-            account=account,
-            account_name=name,
-            job_id=job_id,
-            why=why,
-            candidates=tuple(str(row.ID) for row in rows),
-        )
+        return Unfound(account, name, job_id, why, tuple(str(row.ID) for row in rows))
 
     if recorded:
         mirror = _live_playlist(db, recorded[0])
@@ -466,14 +360,7 @@ def locate(
         if len(rows) != 1:
             return unfound(TWO_FOUND if rows else NOT_FOUND, rows)
         found_by, (row,) = BY_NAME, rows
-    return Target(
-        account=account,
-        account_name=name,
-        job_id=job_id,
-        playlist_id=str(row.ID),
-        name=str(getattr(row, "Name", "") or ""),
-        found_by=found_by,
-    )
+    return Target(account, name, job_id, str(row.ID), str(getattr(row, "Name", "") or ""), found_by)
 
 
 def _pass_unknown(cfg: config.Config, pass_name: str) -> Exception:
@@ -490,12 +377,13 @@ def _pass_unknown(cfg: config.Config, pass_name: str) -> Exception:
     )
 
 
-def _shared(located: Sequence[tuple[jobs.Job, Target | Unfound]]) -> list[tuple[jobs.Job, Target | Unfound]]:
+def _shared(
+    located: Sequence[tuple[jobs.Job, Target | Unfound]],
+) -> list[tuple[jobs.Job, Target | Unfound]]:
     """Each target whose INBOX playlist another target of the pass also answers to, as unfound.
 
-    ONE PLAYLIST IS NOT TWO ACCOUNT PLAYLISTS' MIRROR. Two jobs of the pass
-    found by one name, or one account playlist queued twice, would plan two
-    fills of one playlist against the same state, and neither is the answer.
+    One playlist is not two account playlists' mirror: two fills of it against
+    one state would each be wrong.
     """
     counts: dict[str, int] = {}
     for _job, one in located:
@@ -523,7 +411,6 @@ def plan_refill(
     """Plan the refill of every INBOX playlist the pass mirrored. Reads, writes nothing."""
     tree_id = declared.intake.id
     root_id = anchored_root(db, tree_id, registry)
-    root = db.get_playlist(ID=root_id)
     named = account_playlists.playlist_jobs(cfg, pass_name)
     if not named:
         raise _pass_unknown(cfg, pass_name)
@@ -535,29 +422,21 @@ def plan_refill(
     located: list[tuple[jobs.Job, Target | Unfound]] = []
     for job, name in named:
         account = account_playlists.account_of(job)
-        others = frozenset(
-            one.playlist_id
-            for one in entries
-            if not ours(one, pass_name=pass_name, account=account, name=name)
+        asked = {"pass_name": pass_name, "account": account, "name": name}
+        others = frozenset(one.playlist_id for one in entries if not ours(one, **asked))
+        bridged = bridge_names(records, pass_name=pass_name, account=account)
+        found = locate(
+            db,
+            under,
+            recorded_ids(entries, **asked),
+            others=others,
+            unreadable=len(unreadable),
+            account=account,
+            name=name,
+            job_id=job.job_id,
+            recorded_name=next(iter(bridged), ""),
         )
-        located.append(
-            (
-                job,
-                locate(
-                    db,
-                    under,
-                    recorded_ids(entries, pass_name=pass_name, account=account, name=name),
-                    others=others,
-                    unreadable=len(unreadable),
-                    account=account,
-                    name=name,
-                    job_id=job.job_id,
-                    recorded_name=next(
-                        iter(bridge_names(records, pass_name=pass_name, account=account)), ""
-                    ),
-                ),
-            )
-        )
+        located.append((job, found))
     located = _shared(located)
 
     targets: list[Target] = []
@@ -576,7 +455,7 @@ def plan_refill(
         pass_name=pass_name,
         tree_id=tree_id,
         root_id=str(root_id),
-        root_name=str(getattr(root, "Name", "") or ""),
+        root_name=str(getattr(db.get_playlist(ID=root_id), "Name", "") or ""),
         targets=tuple(targets),
         unfound=tuple(unfound),
         unreadable=len(unreadable),
@@ -595,23 +474,10 @@ def apply_refill(
 ) -> Refilled:
     """Write the approved plan's memberships in one guarded commit and read them back.
 
-    THE PLAN IS TAKEN AGAIN ON THIS HANDLE FIRST, the rotation's rule, and a
-    digest that moved refuses with nothing written: the plan the person
-    approved was read on a handle that has since closed.
-
-    THE SESSION SPINE IS CALLED, NOT REBUILT, as every database tree writer
-    calls it: the gates with a record kept, a capture verified before anything
-    is written, the analysis watch over the roots named, the commit witness,
-    and the guarded commit, whose whitelist admits the memberships and nothing
-    a membership writer does not add.
+    The plan is taken again on this handle first and a moved digest refuses,
+    the rotation's rule; the session spine is every tree writer's.
     """
-    watched = [Path(root) for root in analysis_roots]
-    if not watched:
-        raise ValueError(
-            "analysis_roots is empty, so the analysis-file watch would watch nothing "
-            "and this session would report itself clean whatever happened to the "
-            "library's grids; name the roots this write could touch"
-        )
+    watched = rotate.watched_roots(analysis_roots)
     registry = tree_registry.read(cfg)
     again = plan_refill(cfg, db, declared=declared, registry=registry, pass_name=plan.pass_name)
     if again.digest != plan.digest:
@@ -650,11 +516,11 @@ def apply_refill(
         convergence.record_fingerprint(cfg, db)
         filled = tuple(
             Filled(
-                playlist_id=target.playlist_id,
-                name=target.name,
-                wanted=target.distinct,
-                added=added.get(target.playlist_id, ()),
-                read_back=set_playlist.read_back(db, target.playlist_id),
+                target.playlist_id,
+                target.name,
+                target.distinct,
+                added.get(target.playlist_id, ()),
+                set_playlist.read_back(db, target.playlist_id),
             )
             for target in plan.targets
             if target.adds
@@ -669,11 +535,9 @@ def _record_refill_commit(
     added: Mapping[str, Sequence[str]],
     cfg: config.Config,
 ) -> None:
-    """Record the commit on the session, under the intake tree, with each playlist named.
+    """Record the commit under the intake tree, each playlist named, only when one was added.
 
-    ONLY WHEN A MEMBERSHIP WAS ADDED, the landing's rule for its tree: a record
-    saying the tree committed with no change would tell a restore otherwise.
-    Named the way the write session guard reads a commit helper.
+    A record saying the tree committed with no change would mislead a restore.
     """
     count = sum(len(ids) for ids in added.values())
     if not count:
@@ -694,20 +558,14 @@ def _record_refill_commit(
 def assert_read_back(refilled: Refilled) -> None:
     """Refuse an answer the database does not hold: every wanted row live, in order when filled.
 
-    EVERY ROW THE PLAYLIST SHOULD HOLD IS READ BACK LIVE, whatever it held
-    before. THE ACCOUNT'S ORDER IS HELD ONLY FOR A PLAYLIST THIS COMMIT FILLED,
-    one that held none of its rows before, for the set playlist's reason: a
-    playlist that held some appends what it lacked after them, which is
-    rekordbox's own order for an added track.
+    The account's order is held only for a playlist that held none of its rows
+    before: one that held some appends after them, rekordbox's own order.
     """
     for one in refilled.filled:
-        live = set(one.read_back)
+        live, wanted = set(one.read_back), set(one.wanted)
         missing = [content_id for content_id in one.wanted if content_id not in live]
         filled = len(one.added) == len(one.wanted)
-        wanted = set(one.wanted)
-        in_order = [content_id for content_id in one.read_back if content_id in wanted] == list(
-            one.wanted
-        )
+        in_order = [cid for cid in one.read_back if cid in wanted] == list(one.wanted)
         if missing or (filled and not in_order):
             raise refuse(
                 "session-committed-unverified",
@@ -724,36 +582,3 @@ def assert_read_back(refilled: Refilled) -> None:
                     "missing": missing,
                 },
             )
-
-
-__all__ = [
-    "bridge_names",
-    "ADD",
-    "AGAIN",
-    "BY_NAME",
-    "BY_RECORD",
-    "GONE",
-    "HELD",
-    "NOT_FOUND",
-    "OUTSIDE_INBOX",
-    "RECORD_KEY",
-    "SHARED",
-    "TWO_FOUND",
-    "UNREADABLE",
-    "WORKFLOW",
-    "Filled",
-    "Recorded",
-    "RefillPlan",
-    "Refilled",
-    "Target",
-    "Unfound",
-    "anchored_root",
-    "apply_refill",
-    "assert_read_back",
-    "identity",
-    "locate",
-    "ours",
-    "plan_refill",
-    "recorded_entries",
-    "recorded_ids",
-]
