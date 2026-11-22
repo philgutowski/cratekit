@@ -1567,3 +1567,8 @@ def test_a_live_plan_after_its_rehearsal_asks_the_provider_no_isrc_again(
     else:
         assert sorted(client.asked) == sorted([isrc("2"), isrc("3")] * 2)
         assert said == ["0 ISRC lookups answered from the cache, 2 asked of the streaming provider"]
+
+
+def test_an_unpaired_pair_names_the_account_side_gone_unless_told_otherwise():
+    """U304: the default is written out so sync imports the outbound module lazily."""
+    assert pair_cli.Unpaired("acc", "rb", "name", "rekordbox name").gone == pairs.ACCOUNT_SIDE

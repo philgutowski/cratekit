@@ -11,7 +11,6 @@ from cratekit.acquire import match
 from cratekit.cli.output import timestamp
 from cratekit.core import config
 from cratekit.core.cause import refuse
-from cratekit.favorites import placeholders
 from cratekit.intake import cli as intake_cli
 from cratekit.sync import pair_merge, pair_model, pair_read, pair_stopped
 from cratekit.sync.pair_model import (
@@ -42,6 +41,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     ``home`` is where the rekordbox side is made, for a pair whose rekordbox
     side is new (U202); that side then holds nothing yet.
     """
+    from cratekit.favorites import placeholders
     cfg = reader.cfg
     if target.new:
         # U198. NOTHING TO LIST: the account side is made by this sync, so it
@@ -725,6 +725,7 @@ def _kept_after(held: Any, write: pair_stopped.StoppedWrite) -> Any:
     reading kept for another stop, or before this one, says nothing of this
     one.
     """
+    from cratekit.favorites import placeholders
     kept = getattr(held, "stop_seen", None) if held is not None else None
     if kept is None or kept.run != write.run_id:
         return None
@@ -870,6 +871,7 @@ def _moved_since_stop(
     """
     from dataclasses import replace
 
+    from cratekit.favorites import placeholders
     from cratekit.modules.outbound import pairs
 
     if held is None:
@@ -973,6 +975,7 @@ def _pending(
     moves land by position on the wrong tracks. Held, and the reading not
     kept again.
     """
+    from cratekit.favorites import placeholders
     if pair_stopped.shows(write.end, now):
         return
     assert write.moving_at is not None
@@ -1231,6 +1234,7 @@ def held_for_choice(pair: Any, remote_id: str, dates: Mapping[str, str]) -> bool
     the playlist by hand since the twin was made is queued as any pair's is,
     and one the account dates nowhere, or a mark that does not read, is held.
     """
+    from cratekit.favorites import placeholders
     if pair is None or not getattr(pair, "twin", False):
         return False
     recorded = getattr(pair, "on_hold", None)

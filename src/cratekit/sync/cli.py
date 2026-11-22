@@ -58,7 +58,6 @@ from typing import TYPE_CHECKING, Any
 from cratekit.cli.output import Envelope, load_config
 from cratekit.core import config, jobs, profiles
 from cratekit.core.cause import Cause, CratekitError, Outcome
-from cratekit.modules.outbound import source as outbound_source
 from cratekit.sync import sources
 
 if TYPE_CHECKING:
@@ -89,7 +88,12 @@ def _load() -> config.Config:
 
 
 def build_all(parser, entry) -> None:
-    """Declare the surface. The two flags are the favourites source's inputs."""
+    """Declare the surface. The two flags are the favourites source's inputs.
+
+    ``--favorites-playlist`` defaults to None, which ``resolve_sweep`` reads as
+    the outbound module's default playlist, so building the verb imports no
+    toggleable package (U304).
+    """
     del entry
     parser.add_argument(
         "--export",
@@ -102,7 +106,7 @@ def build_all(parser, entry) -> None:
     )
     parser.add_argument(
         "--favorites-playlist",
-        default=outbound_source.DEFAULT_FAVORITES_PLAYLIST,
+        default=None,
         dest="favorites_playlist",
         metavar="NAME",
         help="the playlist whose members the favourites source sweeps",

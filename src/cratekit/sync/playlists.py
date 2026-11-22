@@ -94,20 +94,16 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from cratekit.core import config, jobs
 from cratekit.core.cause import CratekitError, Scope, refuse
-from cratekit.favorites import placeholders
 from cratekit.intake import cli as intake_cli
-from cratekit.label.catalogue import (
-    AccountPlaylist,
-    Catalogue,
-    PlaylistReferenceInvalid,
-)
-from cratekit.label.catalogue import playlist_id as typed_playlist_id
 from cratekit.sync import marks
 from cratekit.sync.watermarks import WatermarkStore
+
+if TYPE_CHECKING:
+    from cratekit.label.catalogue import AccountPlaylist, Catalogue
 
 #: This source's identifier, as ``sync.sources`` declares it and as the jobs it
 #: queues carry it.
@@ -259,6 +255,7 @@ def exclusion(
     :attr:`Excluded.SWEPT` whatever its title, so one stripped of the legacy
     prefix is excluded exactly as it was while it carried it.
     """
+    from cratekit.favorites import placeholders
     if is_taken(playlist.playlist_id, playlist.name, taken):
         return Excluded.SWEPT
     if is_library_debris(playlist.name):
@@ -327,6 +324,8 @@ def recorded_as(job: jobs.Job) -> str:
     under the reserved reference, and that is never an account playlist this
     cursor could hold, so such a job records nothing.
     """
+    from cratekit.label.catalogue import PlaylistReferenceInvalid
+    from cratekit.label.catalogue import playlist_id as typed_playlist_id
     reference = _playlist_of(job)
     if not reference:
         return ""

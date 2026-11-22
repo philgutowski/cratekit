@@ -65,7 +65,6 @@ from datetime import datetime
 from typing import Any
 
 from cratekit.core import rb_writer
-from cratekit.modules.outbound import mirror
 from cratekit.write import playlist_pair
 
 #: The account root folder a playlist at the rekordbox root goes in.
@@ -168,6 +167,7 @@ def title_of(path: tuple[str, ...]) -> tuple[str, str]:
 
     A path of one name is a playlist at the rekordbox root.
     """
+    from cratekit.modules.outbound import mirror
     if len(path) == 1:
         return ROOT_FOLDER, mirror.title(ROOT_FOLDER, path[0])
     return path[0], mirror.title(path[0], " ".join(path[1:]))
@@ -234,14 +234,7 @@ def discover(
     skipped = frozenset(str(one) for one in skip)
     held = frozenset(str(one) for one in paired)
     gone = frozenset(str(one) for one in released)
-    every = list(db.get_playlist())
-    live = [row for row in every if not rb_writer.node_removed(row)]
-    children: dict[str, list[Any]] = {}
-    for row in live:
-        parent = str(getattr(row, "ParentID", "") or "")
-        if parent in rb_writer.ROOT_PARENT_SENTINELS:
-            parent = ""
-        children.setdefault(parent, []).append(row)
+    every, live, children = _live_children(db)
 
     foreign = {str(row.ID) for row in foreign_tree.roots_in(live)}
     # THE FAVOURITES' HOME, by placement's rule: the one live plain playlist of
@@ -431,14 +424,7 @@ def home_of(
             f"its title {title!r} is only its folder's name, so a rekordbox playlist "
             f"made for it would have no name; rename it on the account"
         )
-    every = list(db.get_playlist())
-    live = [row for row in every if not rb_writer.node_removed(row)]
-    children: dict[str, list[Any]] = {}
-    for row in live:
-        parent = str(getattr(row, "ParentID", "") or "")
-        if parent in rb_writer.ROOT_PARENT_SENTINELS:
-            parent = ""
-        children.setdefault(parent, []).append(row)
+    _every, live, children = _live_children(db)
 
     def named(row: Any) -> str:
         return str(getattr(row, "Name", "") or "")
@@ -712,3 +698,16 @@ __all__ = [
     "name_of",
     "title_of",
 ]
+
+
+def _live_children(db) -> tuple[list[Any], list[Any], dict[str, list[Any]]]:
+    """Every node, the live ones, and each parent's live children, the root as ``""``."""
+    every = list(db.get_playlist())
+    live = [row for row in every if not rb_writer.node_removed(row)]
+    children: dict[str, list[Any]] = {}
+    for row in live:
+        parent = str(getattr(row, "ParentID", "") or "")
+        if parent in rb_writer.ROOT_PARENT_SENTINELS:
+            parent = ""
+        children.setdefault(parent, []).append(row)
+    return every, live, children

@@ -12,7 +12,6 @@ from cratekit.acquire import match
 from cratekit.cli.output import timestamp
 from cratekit.core import config, jobs, locations, session, tags
 from cratekit.core.cause import CratekitError
-from cratekit.favorites import placeholders
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import ingest
 from cratekit.sync import pair_stopped
@@ -158,6 +157,7 @@ class _Reader:
         write that began before the pair was marked is another pair's: a
         carried record outlives a pair forgotten and marked again (R-1372).
         """
+        from cratekit.favorites import placeholders
         if not account_id or held is None:
             return None
         began, write = self.stopped[0].get(account_id, (None, None))

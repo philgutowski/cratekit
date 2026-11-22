@@ -76,7 +76,6 @@ from datetime import datetime
 from typing import Any
 
 from cratekit.cli.output import count_of
-from cratekit.favorites import placeholders
 
 #: The fields an ordering step records, by name.
 AT = "at"
@@ -177,6 +176,7 @@ def _moving(
 
     A count that is not a whole number at least zero is read as None, not known.
     """
+    from cratekit.favorites import placeholders
     if not isinstance(value, Mapping):
         return None
     at = placeholders.parse_hearted(value.get(AT))
@@ -250,6 +250,7 @@ def _read(
     says the caller looked for one, so its absence can mean no move was
     sent (U234); a moving step present and unreadable never means that.
     """
+    from cratekit.favorites import placeholders
     if not isinstance(value, Mapping):
         # A RECORD WRITTEN BEFORE U225 says only that the order began.
         return None
@@ -329,6 +330,7 @@ def passed_by(
     is let go. A record with no time, or of another pair, is not this
     snapshot's to let go.
     """
+    from cratekit.favorites import placeholders
     passed: list[tuple[str, str]] = []
     for record in records:
         for key, steps in record.done.items():
@@ -381,6 +383,7 @@ def stopped_writes(
     the next plan would take a reading lagging those moves as the person's
     reorder and merge it into rekordbox.
     """
+    from cratekit.favorites import placeholders
     stopped: dict[str, tuple[datetime, StoppedWrite]] = {}
     finished: dict[str, datetime] = {}
     for record in records:

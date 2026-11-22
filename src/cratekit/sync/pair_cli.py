@@ -232,7 +232,6 @@ from typing import Any
 from cratekit.cli.output import Envelope
 from cratekit.core import config, jobs, session
 from cratekit.core.cause import CratekitError, Outcome
-from cratekit.modules.outbound.pairs import REKORDBOX_SIDE
 from cratekit.sync import cli as sync_cli
 from cratekit.sync import pair_calls
 from cratekit.sync.pair_check import (
@@ -569,6 +568,7 @@ def sync_pair(ctx) -> Envelope:
     """
     from cratekit.core import held_plan
     from cratekit.modules.outbound import pairs
+    from cratekit.modules.outbound.pairs import REKORDBOX_SIDE
 
     cfg = sync_cli._load()
     # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733), as every verb that

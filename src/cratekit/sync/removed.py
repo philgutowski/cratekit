@@ -99,7 +99,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from cratekit.acquire import match
 from cratekit.cli.output import digest_of
@@ -116,10 +116,12 @@ from cratekit.core import (
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.intake import account_playlists, ingest, native, refill, set_playlist
 from cratekit.intake import cli as intake_cli
-from cratekit.label import catalogue
 from cratekit.sync import playlists, twins, unavailable
 from cratekit.sync.watermarks import WatermarkStore
 from cratekit.write import trees
+
+if TYPE_CHECKING:
+    from cratekit.label import catalogue
 
 #: The three answers a row can get.
 OFFERED = "offered"

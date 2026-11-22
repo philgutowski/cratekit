@@ -10,7 +10,6 @@ from cratekit.acquire import listing as provider_listing
 from cratekit.core import config, rb_writer
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.intake import cli as intake_cli
-from cratekit.modules.outbound.pairs import ACCOUNT_SIDE, REKORDBOX_SIDE
 from cratekit.sync import pair_merge
 from cratekit.sync.pair_model import (
     _ORIGIN,
@@ -213,6 +212,7 @@ class Moved:
         }
 
     def said(self) -> str:
+        from cratekit.modules.outbound.pairs import ACCOUNT_SIDE
         if self.side == HOME_SIDE:
             return f"the rekordbox playlist to be made at {self.name!r}: {self.why}"
         where = "the account playlist" if self.side == ACCOUNT_SIDE else "the rekordbox playlist"
@@ -264,6 +264,7 @@ def check(
     """
     from cratekit.label import catalogue
     from cratekit.modules.outbound import pairs
+    from cratekit.modules.outbound.pairs import ACCOUNT_SIDE, REKORDBOX_SIDE
 
     def of(one: PairPlan) -> PairSteps:
         return PairSteps(steps, one.target.key)
@@ -666,6 +667,7 @@ def check(
 
 def _landed_moved(db: Any, one: PairPlan, landed: Mapping[str, Any], moved: list[Moved]) -> None:
     """Read a rekordbox playlist this run's commit landed against what it left (U210)."""
+    from cratekit.modules.outbound.pairs import REKORDBOX_SIDE
     playlist_id = str(landed["playlist_id"])
     there = playlist_pair.read_playlist(db, playlist_id)
     expected = tuple(tuple(row) for row in landed.get("rows") or ())

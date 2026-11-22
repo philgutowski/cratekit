@@ -10,7 +10,6 @@ from typing import Any
 from cratekit.cli.output import digest_of
 from cratekit.core import config, rb_writer, session
 from cratekit.core.cause import CratekitError
-from cratekit.modules.outbound.pairs import ACCOUNT_SIDE, REKORDBOX_SIDE
 from cratekit.sync import pair_merge, playlists
 from cratekit.sync.pair_model import (
     AMBIGUOUS,
@@ -62,8 +61,10 @@ class Unpaired:
     name: str
     rekordbox_name: str
     #: U198. The side that is GONE, and whether the product made the account
-    #: side for a discovered playlist, whose survivor is then released.
-    gone: str = ACCOUNT_SIDE
+    #: side for a discovered playlist, whose survivor is then released. The
+    #: default is ``pairs.ACCOUNT_SIDE``, written out so this package imports
+    #: the outbound module only where a function needs it (U304).
+    gone: str = "account"
     made: bool = False
     #: Why the rekordbox side is let go when it is still there: moved under a
     #: folder the configuration skips (U198, the review's finding).
@@ -130,6 +131,7 @@ def plan(
     then a pair whose own playlist is gone is left out and named rather than
     refusing the rest.
     """
+    from cratekit.modules.outbound.pairs import REKORDBOX_SIDE
     if not wanted and not every:
         return Plan()
     from cratekit.core import active_taxonomy, tree_registry
@@ -731,6 +733,7 @@ def payload(planned: Plan) -> dict[str, Any]:
 
 def facts(planned: Plan) -> dict[str, Any]:
     """The facts beside the items on the gate screen, one line per pair."""
+    from cratekit.modules.outbound.pairs import REKORDBOX_SIDE
     shown: dict[str, Any] = {"pairs": len(planned.pairs)}
     for one in planned.pairs:
         lead = "the account's" if one.merged.leader == pair_merge.ACCOUNT else "rekordbox's"

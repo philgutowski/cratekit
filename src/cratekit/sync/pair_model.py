@@ -8,7 +8,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 from cratekit.core.cause import CratekitError, refuse
-from cratekit.favorites import placeholders
 from cratekit.intake import cli as intake_cli
 from cratekit.sync import pair_merge, pair_stopped, playlists
 from cratekit.write import playlist_pair
@@ -607,6 +606,7 @@ def _scope_account(
     mirrored: frozenset[str] = frozenset(),
 ) -> str:
     """The account playlist's name, or the refusal saying why a pair may not hold it."""
+    from cratekit.favorites import placeholders
     playlist = listed.get(account_id)
     if playlist is None:
         raise _unknown(

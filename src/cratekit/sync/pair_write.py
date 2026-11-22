@@ -10,7 +10,6 @@ from typing import Any
 from cratekit.cli.output import timestamp
 from cratekit.core import analysis_store, config, jobs, rb_writer
 from cratekit.core.cause import CratekitError, refuse
-from cratekit.favorites import placeholders
 from cratekit.intake import cli as intake_cli
 from cratekit.sync import pair_merge, pair_model, pair_stopped
 from cratekit.sync.pair_model import (
@@ -155,6 +154,7 @@ def _let_go_passed(account_id: str, synced: str) -> None:
     write.
     """
     from cratekit.core import held_plan
+    from cratekit.favorites import placeholders
 
     moment = placeholders.parse_hearted(synced)
     if moment is None:
@@ -628,6 +628,7 @@ def _write_account(
     Split out of :func:`apply_pair` by U226, so what the adapter records of
     the pair's readings is read whether the write finishes, stops or raises.
     """
+    from cratekit.favorites import placeholders
     account_after: tuple[str, ...]
     removed: tuple[str, ...] = ()
     added: tuple[str, ...] = ()
