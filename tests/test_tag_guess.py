@@ -51,6 +51,10 @@ def _staged(name: str, artist: str = "", genre: str = "", readable: bool = True)
     )
 
 
+def _plan(files, **signals) -> guess.GuessPlan:
+    return guess.plan(ROOT, files, guess.Signals(**signals), DECLARED)
+
+
 def _item(plan: guess.GuessPlan, name: str) -> guess.Item:
     (found,) = [item for item in plan.items if item.relative == f"{name}.flac"]
     return found
@@ -74,12 +78,7 @@ def test_the_words_are_held_to_the_shipped_taxonomy():
 
 def test_the_artists_tracks_in_the_library_give_the_genre():
     lone = _staged("lone", artist="Ana Vale")
-    plan = guess.plan(
-        ROOT,
-        (lone,),
-        guess.Signals(library={"ana vale": (DEEP, DEEP, DEEP)}),
-        DECLARED,
-    )
+    plan = _plan((lone,), library={"ana vale": (DEEP, DEEP, DEEP)})
     item = _item(plan, "lone")
     assert item.outcome == guess.GUESSED and item.genre == DEEP
     assert item.band == suggest.HIGH, "three tracks at weight two is six votes, all agreeing"
@@ -89,14 +88,14 @@ def test_the_artists_tracks_in_the_library_give_the_genre():
 
 def test_the_artist_key_folds_case_and_spacing_as_tag_suggest_does():
     lone = _staged("lone", artist="  ANA   vale ")
-    plan = guess.plan(ROOT, (lone,), guess.Signals(library={"ana vale": (DEEP,)}), DECLARED)
+    plan = _plan((lone,), library={"ana vale": (DEEP,)})
     assert _item(plan, "lone").genre == DEEP
 
 
 def test_the_artists_tracks_in_the_folder_vote_too():
     tagged = _staged("tagged", artist="Ana Vale", genre=PROGRESSIVE)
     lone = _staged("lone", artist="Ana Vale")
-    plan = guess.plan(ROOT, (tagged, lone), guess.Signals(library={}), DECLARED)
+    plan = _plan((tagged, lone), library={})
     item = _item(plan, "lone")
     assert item.genre == PROGRESSIVE and item.artist_folder == 1
     assert _item(plan, "tagged").outcome == "has-genre"
@@ -107,12 +106,7 @@ def test_a_playlist_mostly_of_one_genre_gives_it_to_a_track_no_artist_knows():
     odd = _staged("odd", artist="Odd One", genre=DEEP)
     lone = _staged("lone", artist="Nobody Known")
     playlist = _playlist("Idris precise beats", *members, odd, lone)
-    plan = guess.plan(
-        ROOT,
-        (*members, odd, lone),
-        guess.Signals(library={}, playlists=(playlist,), pass_name="p"),
-        DECLARED,
-    )
+    plan = _plan((*members, odd, lone), library={}, playlists=(playlist,), pass_name="p")
     item = _item(plan, "lone")
     assert item.genre == MELODIC and item.playlists == ("Idris precise beats",)
     # ONE VOICE OF FOUR, shared three to one.
@@ -125,14 +119,10 @@ def test_a_long_playlist_does_not_drown_three_tracks_by_the_artist():
     artist's three Deep House tracks six. A vote per member would give ten."""
     members = [_staged(f"m{n}", artist=f"Other {n}", genre=MELODIC) for n in range(10)]
     lone = _staged("lone", artist="Ana Vale")
-    plan = guess.plan(
-        ROOT,
+    plan = _plan(
         (*members, lone),
-        guess.Signals(
-            library={"ana vale": (DEEP, DEEP, DEEP)},
-            playlists=(_playlist("long", *members, lone),),
-        ),
-        DECLARED,
+        library={"ana vale": (DEEP, DEEP, DEEP)},
+        playlists=(_playlist("long", *members, lone),),
     )
     item = _item(plan, "lone")
     assert item.genre == DEEP
@@ -143,12 +133,7 @@ def test_a_track_by_the_same_artist_votes_once_as_the_artists():
     same = _staged("same", artist="Ana Vale", genre=DEEP)
     other = _staged("other", artist="Other", genre=MELODIC)
     lone = _staged("lone", artist="Ana Vale")
-    plan = guess.plan(
-        ROOT,
-        (same, other, lone),
-        guess.Signals(library={}, playlists=(_playlist("p", same, other, lone),)),
-        DECLARED,
-    )
+    plan = _plan((same, other, lone), library={}, playlists=(_playlist("p", same, other, lone),))
     # The same artist's track is two as the artist's and nothing in the share,
     # so the playlist's whole voice goes to the other member.
     assert dict(_item(plan, "lone").votes) == {DEEP: Fraction(2), MELODIC: Fraction(4)}
@@ -157,12 +142,7 @@ def test_a_track_by_the_same_artist_votes_once_as_the_artists():
 def test_an_owned_track_of_the_playlist_votes_from_its_file():
     lone = _staged("lone", artist="Nobody Known")
     owned = (guess.Member(artist="Kept", genre=PROGRESSIVE),)
-    plan = guess.plan(
-        ROOT,
-        (lone,),
-        guess.Signals(library={}, playlists=(_playlist("p", lone, owned=owned),)),
-        DECLARED,
-    )
+    plan = _plan((lone,), library={}, playlists=(_playlist("p", lone, owned=owned),))
     assert _item(plan, "lone").genre == PROGRESSIVE
 
 
@@ -172,14 +152,10 @@ def test_a_three_way_tie_goes_to_the_artist_then_to_the_name():
     # Artist: Progressive House 2. Playlist: Melodic House 2 after sharing with
     # a Deep House member: one voice of four over two members is two each.
     deep = _staged("d", artist="Other Two", genre=DEEP)
-    plan = guess.plan(
-        ROOT,
+    plan = _plan(
         (lone, melodic, deep),
-        guess.Signals(
-            library={"ana vale": (PROGRESSIVE,)},
-            playlists=(_playlist("p", melodic, deep, lone),),
-        ),
-        DECLARED,
+        library={"ana vale": (PROGRESSIVE,)},
+        playlists=(_playlist("p", melodic, deep, lone),),
     )
     item = _item(plan, "lone")
     assert item.band == suggest.SPLIT
@@ -191,11 +167,10 @@ def test_a_tie_no_artist_breaks_goes_to_the_first_by_name():
     lone = _staged("lone", artist="Nobody Known")
     melodic = _staged("m", artist="Other", genre=MELODIC)
     deep = _staged("d", artist="Other Two", genre=DEEP)
-    plan = guess.plan(
-        ROOT,
+    plan = _plan(
         (lone, melodic, deep),
-        guess.Signals(library={}, playlists=(_playlist("p", melodic, deep, lone),)),
-        DECLARED,
+        library={},
+        playlists=(_playlist("p", melodic, deep, lone),),
     )
     item = _item(plan, "lone")
     assert item.band == suggest.SPLIT and item.genre == min(DEEP, MELODIC)
@@ -205,7 +180,7 @@ def test_an_exact_eighty_percent_share_is_high_as_tag_suggest_says():
     """Review round 1: a Fraction share compared with a float bound sat one band low."""
     lone = _staged("lone", artist="Ana Vale")
     library = {"ana vale": (DEEP, DEEP, DEEP, DEEP, MELODIC)}
-    plan = guess.plan(ROOT, (lone,), guess.Signals(library=library), DECLARED)
+    plan = _plan((lone,), library=library)
     item = _item(plan, "lone")
     assert dict(item.votes) == {DEEP: Fraction(8), MELODIC: Fraction(2)}
     assert item.band == suggest.band_of(8, 10) == suggest.HIGH
@@ -218,11 +193,10 @@ def test_a_playlist_share_on_an_exact_bound_is_banded_as_the_ints_would_be():
     members = [_staged(f"m{n}", artist=f"Other {n}", genre=DEEP) for n in range(3)]
     others = [_staged(f"o{n}", artist=f"Else {n}", genre=MELODIC) for n in range(2)]
     lone = _staged("lone", artist="Nobody Known")
-    plan = guess.plan(
-        ROOT,
+    plan = _plan(
         (*members, *others, lone),
-        guess.Signals(library={}, playlists=(_playlist("p", *members, *others, lone),)),
-        DECLARED,
+        library={},
+        playlists=(_playlist("p", *members, *others, lone),),
     )
     item = _item(plan, "lone")
     assert dict(item.votes) == {DEEP: Fraction(12, 5), MELODIC: Fraction(8, 5)}
@@ -231,18 +205,16 @@ def test_a_playlist_share_on_an_exact_bound_is_banded_as_the_ints_would_be():
 
 def test_a_file_nothing_votes_for_keeps_no_genre():
     lone = _staged("lone", artist="Nobody Known")
-    plan = guess.plan(ROOT, (lone,), guess.Signals(library={}), DECLARED)
+    plan = _plan((lone,), library={})
     item = _item(plan, "lone")
     assert item.outcome == guess.NO_VOTES and item.genre == "" and item.band == suggest.NONE
 
 
 def test_an_off_taxonomy_neighbour_is_counted_and_never_guessed():
     lone = _staged("lone", artist="Ana Vale")
-    only = guess.plan(ROOT, (lone,), guess.Signals(library={"ana vale": (LATIN,)}), DECLARED)
+    only = _plan((lone,), library={"ana vale": (LATIN,)})
     assert _item(only, "lone").outcome == guess.NO_VOTES
-    mixed = guess.plan(
-        ROOT, (lone,), guess.Signals(library={"ana vale": (LATIN, DEEP)}), DECLARED
-    )
+    mixed = _plan((lone,), library={"ana vale": (LATIN, DEEP)})
     item = _item(mixed, "lone")
     assert item.genre == DEEP and item.band == suggest.LOW, "half the votes is low"
 
@@ -250,7 +222,7 @@ def test_an_off_taxonomy_neighbour_is_counted_and_never_guessed():
 def test_a_file_with_a_genre_is_never_a_candidate_and_its_off_taxonomy_word_is_named():
     latin = _staged("latin", artist="Ana Vale", genre=LATIN)
     deep = _staged("deep", artist="Ana Vale", genre=DEEP)
-    plan = guess.plan(ROOT, (latin, deep), guess.Signals(library={}), DECLARED)
+    plan = _plan((latin, deep), library={})
     assert [item.outcome for item in plan.items] == ["has-genre", "has-genre"]
     assert dict(plan.off_taxonomy) == {LATIN: ("latin.flac",)}
     assert not plan.guesses
@@ -258,7 +230,7 @@ def test_a_file_with_a_genre_is_never_a_candidate_and_its_off_taxonomy_word_is_n
 
 def test_a_file_whose_genre_could_not_be_read_is_not_a_blank():
     unread = _staged("unread", artist="Ana Vale", readable=False)
-    plan = guess.plan(ROOT, (unread,), guess.Signals(library={"ana vale": (DEEP,)}), DECLARED)
+    plan = _plan((unread,), library={"ana vale": (DEEP,)})
     assert _item(plan, "unread").outcome == guess.FILE_UNREADABLE
 
 
@@ -268,14 +240,14 @@ def test_the_share_before_and_after_counts_the_files_carrying_a_genre():
         _staged("b", artist="Ana Vale"),
         _staged("c", artist="Nobody Known"),
     )
-    plan = guess.plan(ROOT, files, guess.Signals(library={}), DECLARED)
+    plan = _plan(files, library={})
     assert (plan.before, plan.after, len(plan.items)) == (1, 2, 3)
 
 
 def test_the_artist_key_is_empty_for_no_artist_and_votes_nothing():
     a = _staged("a", genre=DEEP)
     lone = _staged("lone")
-    plan = guess.plan(ROOT, (a, lone), guess.Signals(library={"": (DEEP,)}), DECLARED)
+    plan = _plan((a, lone), library={"": (DEEP,)})
     assert _item(plan, "lone").outcome == guess.NO_VOTES
 
 
@@ -641,13 +613,10 @@ def test_an_exact_bound_over_a_playlist_and_an_artist_is_banded_exactly():
     members = [_staged(f"d{n}", artist=f"Other {n}", genre=DEEP) for n in range(7)]
     members += [_staged(f"m{n}", artist=f"Else {n}", genre=MELODIC) for n in range(3)]
     lone = _staged("lone", artist="Ana Vale")
-    plan = guess.plan(
-        ROOT,
+    plan = _plan(
         (*members, lone),
-        guess.Signals(
-            library={"ana vale": (DEEP,)}, playlists=(_playlist("p", *members, lone),)
-        ),
-        DECLARED,
+        library={"ana vale": (DEEP,)},
+        playlists=(_playlist("p", *members, lone),),
     )
     item = _item(plan, "lone")
     assert dict(item.votes) == {DEEP: Fraction(24, 5), MELODIC: Fraction(6, 5)}
