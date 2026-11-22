@@ -8,7 +8,7 @@
   "invalid_reason": "in progress",
   "baseline_collected": 22934,
   "baseline_exit": 1,
-  "pytest_runs": 57,
+  "pytest_runs": 59,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 251,
@@ -901,6 +901,75 @@
       "source": {
         "table": "u182.json",
         "id": "M12_empty_set_copies"
+      }
+    },
+    {
+      "id": "u182.M13_identity_parse",
+      "description": "playlist_identity: key on the raw source instead of the pass's reading",
+      "file": "src/cratekit/cli/jobs.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7fc1e3940979c9d4",
+      "subset": [
+        "tests/test_jobs.py",
+        "tests/test_sync_land.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 153,
+      "baseline_collected": 153,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_a_url_typed_by_hand_holds_the_same_playlist_a_sweeps_id_does",
+        "tests/test_jobs.py::test_the_job_verbs_read_a_playlist_as_the_sweep_records_it",
+        "tests/test_sync_land.py::test_a_url_typed_by_hand_and_a_sweeps_id_are_one_playlist_on_the_left_open_row"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return catalogue.playlist_id(source)",
+      "new": "        return source",
+      "source": {
+        "table": "u182.json",
+        "id": "M13_identity_parse"
+      }
+    },
+    {
+      "id": "u182.M13b_sweep_verbatim",
+      "description": "playlist_identity: parse a sweep's own id as if typed, so it no longer agrees with the cursor",
+      "file": "src/cratekit/cli/jobs.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "182e6ec0a4bf84c0",
+      "subset": [
+        "tests/test_jobs.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 82,
+      "baseline_collected": 82,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_jobs.py::test_the_job_verbs_read_a_playlist_as_the_sweep_records_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if (job.payload or {}).get(INTAKE_SWEEP_KEY) == INTAKE_SWEEP_ID:",
+      "new": "    if False:",
+      "source": {
+        "table": "u182.json",
+        "id": "M13b_sweep_verbatim"
       }
     }
   ],
