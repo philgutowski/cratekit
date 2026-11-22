@@ -1,0 +1,207 @@
+name = "u301"
+pass_kind = "light"
+
+# The card's own table over the helpers U301 added or rewrote while shrinking
+# the rest of core. The guards each helper took over from its copies are held
+# by the kill set replay, u301-replay-after, and these rows are the new code.
+
+[[rows]]
+id = "P1_initargs_refused_without_an_initializer"
+description = "_refuse_unsendable: check the initializer's arguments only when there is an initializer, so map_workers and WorkStream pass a lambda argument on an in process plan"
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py", "tests/test_pool_stream.py"]
+old = '''    for position, argument in enumerate(initargs):
+        _refuse_what_no_child_could_receive(argument, f"initializer argument {position}")
+'''
+new = '''    for position, argument in enumerate(initargs if initializer is not None else ()):
+        _refuse_what_no_child_could_receive(argument, f"initializer argument {position}")
+'''
+
+[[rows]]
+id = "P2_initializer_held_to_the_rule"
+description = "_refuse_unsendable: never check the initializer, so an unpicklable one passes an in process plan and fails a pooled one"
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_sizing.py", "tests/test_pool_stream.py"]
+old = '''    if initializer is not None:
+        _refuse_what_no_child_could_receive(initializer, "initializer")
+    for position, argument in enumerate(initargs):'''
+new = '''    for position, argument in enumerate(initargs):'''
+
+[[rows]]
+id = "G1_positive_env_accepts_zero"
+description = "_positive_env: read zero as a raise, so CRATEKIT calls of 0 lifts the ceiling to nothing"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_provider_budget.py", "tests/test_provider_gate_night.py"]
+old = '''    return value if value > 0 else None'''
+new = '''    return value if value >= 0 else None'''
+
+[[rows]]
+id = "G2_run_cause_retryable"
+description = "_run_cause: every gate refusal says retryable, so a cooldown or a ceiling invites an immediate retry"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_provider_budget.py", "tests/test_provider_gate_night.py"]
+old = '''        retryable=False, origin=("provider_gate",), detail=detail,'''
+new = '''        retryable=True, origin=("provider_gate",), detail=detail,'''
+
+[[rows]]
+id = "G3_calls_word_plural"
+description = "_calls_word: always the plural, so a refusal over one call reads 1 calls"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_provider_budget.py"]
+old = '''    return "call" if n == 1 else "calls"'''
+new = '''    return "calls"'''
+
+[[rows]]
+id = "G4_parked_forgets_the_scope"
+description = "Gate._parked: leave the open command's stop unset, so the next call in the same command is not refused"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_provider_budget.py", "tests/test_provider_gate_night.py"]
+old = '''            scope.stopped = cause
+        return self._stopped(cause)'''
+new = '''            pass
+        return self._stopped(cause)'''
+
+[[rows]]
+id = "G5_report_state_reads_garbage_as_fresh"
+description = "_report_state: read a state file that is not a JSON object as a fresh one, so a report shows nothing spent over a file it never read"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_provider_budget.py", "tests/test_provider_gate_night.py"]
+old = '''    return _State.from_json(data) if isinstance(data, dict) else None'''
+new = '''    return _State.from_json(data if isinstance(data, dict) else {})'''
+
+[[rows]]
+id = "G6_totals_drop_the_app"
+description = "_State.totals: report no app calls, so the spend a report and the gate read loses the app's share"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_provider_budget.py", "tests/test_catalogue_app.py"]
+old = '''        return Spend(self.calls, self.rate_limited, self.app_calls, self.app_rate_limited)'''
+new = '''        return Spend(self.calls, self.rate_limited, 0, 0)'''
+
+[[rows]]
+id = "F1_permission_read_as_absent"
+description = "_no_unless_refused: answer False over a permission error, so an attached volume under an untraversable directory reads as no volume"
+file = "src/cratekit/core/preflight.py"
+surface = "user"
+tests = ["tests/test_preflight.py", "tests/test_doctor.py", "tests/test_paths_resolved.py"]
+old = '''        if cause.permission_denied(exc) is not None:
+            raise
+        return False
+    except ValueError:'''
+new = '''        return False
+    except ValueError:'''
+
+[[rows]]
+id = "T1_refuse_unknown_admits_a_field"
+description = "_refuse_unknown: never refuse, so write_tags of bpm writes nothing and answers True"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+tests = ["tests/test_tags.py", "tests/test_no_beatgrid_ever.py", "tests/test_tagging_engine.py"]
+old = '''    unknown = set(names) - set(FIELDS)
+    if unknown:'''
+new = '''    unknown = set(names) - set(FIELDS)
+    if False:'''
+
+[[rows]]
+id = "T2_rewrite_saves_when_the_edit_declines"
+description = "_rewrite: save even when the edit answers that the file already agrees, so clear_tags adds a tag block to an ID3 file that had none"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+tests = ["tests/test_tags.py", "tests/test_tag_rows.py", "tests/test_tagging_engine.py"]
+old = '''        if edit(handle) is not False:
+            _save(path, handle)'''
+new = '''        edit(handle)
+        _save(path, handle)'''
+
+[[rows]]
+id = "T3_rewrite_reports_a_failed_save"
+description = "_rewrite: answer True after a failed save, so a write that never reached the file reads as done"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+tests = ["tests/test_tags.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''        log.debug(failure, path, exc)
+        return False'''
+new = '''        log.debug(failure, path, exc)
+        return True'''
+
+[[rows]]
+id = "T4_spec_admits_an_unknown_field"
+description = "_spec: answer the genre spec for any name, so a read of an unknown field answers the genre instead of refusing"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+tests = ["tests/test_tags.py", "tests/test_tagging_engine.py", "tests/test_library_reads_remembered.py"]
+old = '''    spec = FIELDS.get(field)
+    if spec is None:'''
+new = '''    spec = FIELDS.get(field, FIELDS["genre"])
+    if spec is None:'''
+
+[[rows]]
+id = "A1_decoded_rgb_skips_the_orientation"
+description = "_decoded_rgb: drop the EXIF transpose, so a rotated photo is encoded on its side"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_art.py", "tests/test_album_cover_once.py", "tests/test_tagging_engine.py"]
+old = '''            return _flatten_to_rgb(ImageOps.exif_transpose(source))'''
+new = '''            return _flatten_to_rgb(source)'''
+
+[[rows]]
+id = "J1_job_row_answers_none"
+description = "_job_row: answer None for an unknown job instead of refusing, so get, refreeze and join_run fail on an attribute rather than job-unknown"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_job_resume.py", "tests/test_shared_homes.py"]
+old = '''    row = conn.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
+    if row is None:
+        raise refuse(
+            "job-unknown",'''
+new = '''    row = conn.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
+    if row is None and False:
+        raise refuse(
+            "job-unknown",'''
+
+[[rows]]
+id = "J2_release_claims_any_driver"
+description = "release_claims: release every driver's claims when one driver is named, so a parked driver frees an item a second driver holds"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_jobs_batch.py"]
+old = '''    if driver is not None:
+        query += " AND claimed_by = ?"
+        params += (driver,)'''
+new = '''    if False:
+        query += " AND claimed_by = ?"
+        params += (driver,)'''
+
+[[rows]]
+id = "J3_claim_takes_two"
+description = "claim: take a batch of two, so one driver claims an item it will never settle"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py", "tests/test_jobs_batch.py", "tests/test_job_resume.py"]
+old = '''    claimed = claim_batch(store, job_id, driver, 1)'''
+new = '''    claimed = claim_batch(store, job_id, driver, 2)'''
+
+[[rows]]
+id = "R1_applied_keeps_duplicates"
+description = "ImportResult.applied: list an item inserted and resolved twice, so the import reports it as two changes"
+file = "src/cratekit/core/review_exchange.py"
+surface = "user"
+tests = ["tests/test_review_queue.py"]
+old = '''        return tuple(dict.fromkeys((*self.inserted, *self.resolved)))'''
+new = '''        return (*self.inserted, *self.resolved)'''
+
+[[rows]]
+id = "R2_revoke_drops_the_actor"
+description = "DecisionStore.revoke: record no actor on a lifted record, so a revocation names nobody"
+file = "src/cratekit/core/review.py"
+surface = "user"
+tests = ["tests/test_review_queue.py", "tests/test_tombstones.py", "tests/test_uncredited_tombstone.py"]
+old = '''                return replace(one, revoked=True, revoked_at=lifted_at, revoked_by=actor)'''
+new = '''                return replace(one, revoked=True, revoked_at=lifted_at, revoked_by=None)'''
