@@ -469,9 +469,8 @@ def ambiguous(name: str, found: Sequence[str]) -> CratekitError:
     """Two root folders of a mirror's name: that folder refused by name, nothing written."""
     return refuse(
         AMBIGUOUS_REASON,
-        f"the account holds {len(found)} root folders named {name!r}, so which one "
-        f"is the mirror is not something its name decides, and nothing was planned "
-        f"for it",
+        f"the account holds {len(found)} root folders named {name!r}, so which one is the mirror "
+        f"is not something its name decides, and nothing was planned for it",
         steps=(
             "rename or merge the extra folders on the account so one carries the "
             "name, then run organize again",
@@ -515,9 +514,7 @@ def _reused(
         remote_id=mine.remote_id,
         move=not placed,
         add=tuple(
-            one
-            for one in wanted
-            if one not in on and one not in mine.refused and one not in hold.skip
+            one for one in wanted if one not in on and one not in mine.refused and one not in hold.skip
         ),
         remove=remove,
         tracks=len(wanted),
@@ -585,9 +582,8 @@ def plan(
                 if placed or exc.cause.reason != "unavailable-transient":
                     raise
                 why = (
-                    "the playlist recorded for it is not in the folder and could "
-                    "not be read, so it may have been deleted on the account; "
-                    "nothing is made in its place"
+                    "the playlist recorded for it is not in the folder and could not be read, so "
+                    "it may have been deleted on the account; nothing is made in its place"
                 )
                 steps.append(PlaylistPlan(source.name, UNREADABLE, mine.remote_id, why=why))
                 continue
@@ -599,10 +595,9 @@ def plan(
         theirs = sorted(pid for pid, name in inside.items() if name == source.name)
         if theirs:
             why = (
-                f"the folder holds {len(theirs)} playlist(s) of this title the "
-                f"product did not make, so a person's playlist is left as it is "
-                f"and nothing is made beside it; rename it on the account to "
-                f"let the mirror make its own"
+                f"the folder holds {len(theirs)} playlist(s) of this title the product did not "
+                f"make, so a person's playlist is left as it is and nothing is made beside it; "
+                f"rename it on the account to let the mirror make its own"
             )
             steps.append(PlaylistPlan(source.name, LEFT, theirs[0], why=why))
             continue

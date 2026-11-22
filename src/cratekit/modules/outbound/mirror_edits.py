@@ -90,8 +90,10 @@ FAVORITES = "favorites"
 INBOX = "inbox"
 TREES = (GENRE, FAVORITES, INBOX)
 
-#: The three readings of a playlist, as :class:`Mirrored` names them.
+#: The three readings of a playlist, as :class:`Mirrored` names them, and as a
+#: decision shows them.
 _SIDES = ("base", "account", "rekordbox")
+_SHOWN = ("was", "account", "rekordbox")
 
 
 @dataclass(frozen=True, slots=True)
@@ -470,7 +472,7 @@ def _decide_genre(
         # AS IT STOOD WHEN THE DOWNLOAD WAS QUEUED (U230), :func:`_as_queued`.
         lifted = _as_queued(track, playlists, filed, queued)
         was, now, there = (_placed(playlists, track, side, True, lifted) for side in _SIDES)
-        shown = {"was": _titles(was), "account": _titles(now), "rekordbox": _titles(there)}
+        shown = dict(zip(_SHOWN, map(_titles, (was, now, there))))
         if track in unread:
             return Decision(track, HELD, _UNREAD, **shown)
         more = (_placed(playlists, track, side, False, lifted) for side in _SIDES[:2])
@@ -521,10 +523,7 @@ def _decide_genre(
 
 
 def _landed_there(
-    track: str,
-    there: frozenset[Place],
-    held: bool,
-    filed: Mapping[str, frozenset[tuple[str, str]]],
+    track: str, there: frozenset[Place], held: bool, filed: Mapping[str, frozenset[tuple[str, str]]]
 ) -> bool:
     """Whether every band rekordbox holds ``track`` in is one its landing filed it into (U227).
 
@@ -600,7 +599,7 @@ def _decide_favorites(
         )
         shown = {
             key: _titles(_placed(playlists, track, side, True) | months)
-            for key, side, months in zip(("was", "account", "rekordbox"), _SIDES, (was_m, now_m, there_m))
+            for key, side, months in zip(_SHOWN, _SIDES, (was_m, now_m, there_m))
         }
         if track in unread:
             return say(HELD, _UNREAD)
@@ -638,13 +637,8 @@ def _decide_favorites(
         elif added_s:
             to = source
             kind, why = FAVOURITE, f"put in {to.title} on the account"
-            extra = {
-                "when": next(
-                    (one.account_added.get(track, "") for one in playlists if one.place.primary),
-                    "",
-                ),
-                "filed": bool(now_m or there_m),
-            }
+            when = (one.account_added.get(track, "") for one in playlists if one.place.primary)
+            extra = {"when": next(when, ""), "filed": bool(now_m or there_m)}
         else:
             return say(HELD, (
                 f"taken off {_named(removed_m)} on the account and left in {favourites}: "
@@ -727,16 +721,11 @@ def _decide_inbox(
                 why = f"{why}, and rekordbox made the same change"
                 decisions.append(Decision(track, AGREED, why, to=one.place, tree=INBOX, **shown))
                 continue
+            settle = ((one.place.folder, one.place.title, added),)
+            kind = JOIN if added else LEAVE
             decisions.append(
                 _carry(
-                    track,
-                    JOIN if added else LEAVE,
-                    why,
-                    owner,
-                    known,
-                    to=one.place,
-                    tree=INBOX,
-                    settle=((one.place.folder, one.place.title, added),),
+                    track, kind, why, owner, known, to=one.place, tree=INBOX, settle=settle,
                     shown=shown,
                 )
             )
@@ -747,7 +736,9 @@ def _later(
     playlists: Sequence[Mirrored], track: str, to: Place | None, placed: frozenset[Place]
 ) -> str | None:
     """``None`` when the account's addition is the later, else why rekordbox's stands."""
-    on_account = next((one.account_added.get(track, "") for one in playlists if one.place == to), "")
+    on_account = next(
+        (one.account_added.get(track, "") for one in playlists if one.place == to), ""
+    )
     in_rekordbox = (
         next((one.rekordbox_added.get(track, "") for one in playlists if one.place in placed), "")
         if len(placed) == 1

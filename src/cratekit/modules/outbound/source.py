@@ -166,12 +166,7 @@ def export_age(path: Path, *, limit_days: int, now: datetime | None = None) -> E
         written = datetime.fromtimestamp(located.stat().st_mtime, tz=timezone.utc)
     except (OSError, OverflowError, ValueError):
         return ExportAge(path=located, limit_days=limit_days)
-    return ExportAge(
-        path=located,
-        limit_days=limit_days,
-        written=written,
-        judged_at=now or datetime.now(timezone.utc),
-    )
+    return ExportAge(located, limit_days, written, now or datetime.now(timezone.utc))
 
 
 #: Parsed exports by resolved absolute path, since a job's handler reads the
@@ -196,10 +191,7 @@ def required_path(named: str | None) -> Path:
             "outbound-export-required",
             "this verb decides what to write from a rekordbox collection "
             "export, and none was named, so it has no work to queue",
-            steps=(
-                "export the collection from rekordbox and pass the file with "
-                "--export",
-            ),
+            steps=("export the collection from rekordbox and pass the file with --export",),
             scope=Scope.RUN,
             origin=_ORIGIN,
         )
@@ -217,12 +209,9 @@ def read_library(path: Path) -> Library:
     if found is not None:
         return found
     view = library_export.read_export_file(resolved)
-    library = Library(
-        path=resolved,
-        view=view,
-        entries={entry.track_id: entry for entry in view.entries},
+    library = _LIBRARIES[resolved] = Library(
+        resolved, view, {entry.track_id: entry for entry in view.entries}
     )
-    _LIBRARIES[resolved] = library
     return library
 
 
@@ -266,13 +255,9 @@ def resolve(library: Library, identifier: str) -> ResolvedPlaylist:
     if not matched:
         raise refuse(
             "export-playlist-unknown",
-            f"no playlist in {library.path.name} is named {wanted!r}. A folder "
-            f"of that name is not a match either, because a folder holds "
-            f"playlists rather than tracks",
-            steps=(
-                "name the playlist by its display name, or by its full path "
-                "joined with /",
-            ),
+            f"no playlist in {library.path.name} is named {wanted!r}. A folder of that name is "
+            f"not a match either, because a folder holds playlists rather than tracks",
+            steps=("name the playlist by its display name, or by its full path joined with /",),
             scope=Scope.RUN,
             origin=_ORIGIN,
             detail={"playlist": wanted},
@@ -281,9 +266,8 @@ def resolve(library: Library, identifier: str) -> ResolvedPlaylist:
         paths = sorted(_display_path(p) for p in matched)
         raise refuse(
             "export-playlist-ambiguous",
-            f"{wanted!r} names {len(matched)} playlists in {library.path.name}, "
-            f"and writing the wrong one to a streaming account is not something "
-            f"this build can undo",
+            f"{wanted!r} names {len(matched)} playlists in {library.path.name}, and writing the "
+            f"wrong one to a streaming account is not something this build can undo",
             steps=(f"name one of them by its full path: {', '.join(paths)}",),
             scope=Scope.RUN,
             origin=_ORIGIN,
@@ -349,10 +333,7 @@ def _identified(
 
 
 def local_tracks(
-    library: Library,
-    track_ids: tuple[str, ...] | list[str],
-    *,
-    cfg: config.Config,
+    library: Library, track_ids: tuple[str, ...] | list[str], *, cfg: config.Config
 ) -> tuple[LocalTrack, ...]:
     """The export engine's input for these identifiers.
 
@@ -361,23 +342,13 @@ def local_tracks(
     empty. ``cfg`` is required, since a default would restore that defect.
     """
     return tuple(
-        LocalTrack(
-            identity=track_id,
-            title=entry.name,
-            artist=entry.artist,
-            isrc=found.isrc,
-            album=found.album,
-            release_title=title,
-        )
+        LocalTrack(track_id, entry.name, entry.artist, found.isrc, title, album=found.album)
         for track_id, entry, found, title in _identified(library, track_ids, cfg)
     )
 
 
 def heart_candidates(
-    library: Library,
-    track_ids: tuple[str, ...] | list[str],
-    *,
-    cfg: config.Config,
+    library: Library, track_ids: tuple[str, ...] | list[str], *, cfg: config.Config
 ) -> tuple[HeartCandidate, ...]:
     """The hearts engine's input for these identifiers, read as :func:`local_tracks` reads.
 
@@ -406,9 +377,7 @@ def name_template(cfg: config.Config) -> naming.NameTemplate:
     return _template(cfg)
 
 
-def release_title(
-    entry: library_export.CollectionEntry, *, template: naming.NameTemplate
-) -> str:
+def release_title(entry: library_export.CollectionEntry, *, template: naming.NameTemplate) -> str:
     """The row's title as a release spells it, its naming head stripped by the declared template."""
     return naming.strip_heads(entry.name, template=template)
 
@@ -425,9 +394,8 @@ def _require_root(cfg: config.Config) -> None:
         return
     raise refuse(
         "library-volume-unmounted",
-        f"the library root {root} is not a directory on this machine, so no "
-        f"track's audio file can be read for its ISRC and every row would be "
-        f"reported unmatched; nothing was written",
+        f"the library root {root} is not a directory on this machine, so no track's audio file "
+        f"can be read for its ISRC and every row would be reported unmatched; nothing was written",
         steps=("mount the library volume and resume the job",),
         origin=_ORIGIN,
         detail={"library": str(root)},
@@ -436,10 +404,7 @@ def _require_root(cfg: config.Config) -> None:
 
 def prefix_rules(cfg: config.Config) -> list[locations.PrefixRule]:
     """The configured volume prefix map, without which a renamed drive resolves no row (R-372)."""
-    return [
-        locations.PrefixRule(source_prefix, target)
-        for source_prefix, target in cfg.resolved_prefix_map()
-    ]
+    return [locations.PrefixRule(prefix, target) for prefix, target in cfg.resolved_prefix_map()]
 
 
 def isrc_for(
@@ -486,10 +451,7 @@ def file_identity(
         return FileIdentity()
     read = tags.read_tags(path, ("isrc", "album"))
     # THE INDEX'S OWN FOLD AND VALIDATION, so one tag never reads two ways.
-    return FileIdentity(
-        isrc=match.isrc_token(read["isrc"]),
-        album=str(read["album"] or "").strip(),
-    )
+    return FileIdentity(match.isrc_token(read["isrc"]), album=str(read["album"] or "").strip())
 
 
 def _rows(
@@ -500,11 +462,8 @@ def _rows(
     Skipping, since :func:`resolve` already refused an all dangling playlist
     and an item's identifier was accepted by the queue.
     """
-    return tuple(
-        (track_id, library.entries[track_id])
-        for track_id in track_ids
-        if track_id in library.entries
-    )
+    entries = library.entries
+    return tuple((track_id, entries[track_id]) for track_id in track_ids if track_id in entries)
 
 
 __all__ = [

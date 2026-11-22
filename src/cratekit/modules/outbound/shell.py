@@ -83,10 +83,7 @@ def load_config(origin: str) -> config.Config:
 
 
 def reported(
-    store,
-    job,
-    cfg: config.Config,
-    summary: Callable[[config.Config, str], Mapping[str, Any]],
+    store, job, cfg: config.Config, summary: Callable[[config.Config, str], Mapping[str, Any]]
 ) -> dict[str, Any]:
     """One queued job, flattened for the envelope, with what it actually wrote."""
     # UNDER ``progress``, NOT BESIDE IT: ``job_state/1`` forbids an undeclared
@@ -166,25 +163,21 @@ def age_warnings(age: ExportAge) -> tuple[dict[str, str], ...]:
     written = age.written
     if written is None:
         code, message = "outbound-export-age-unknown", (
-            f"the date {age.path.name} was last written could not be "
-            f"read, so nothing here can say whether it still describes "
-            f"the library"
+            f"the date {age.path.name} was last written could not be read, so nothing here can "
+            f"say whether it still describes the library"
         )
     elif age.future_dated:
         code, message = "outbound-export-age-unknown", (
-            f"{age.path.name} is dated {_local_date(written)}, which is "
-            f"in the future, so its age cannot be judged and nothing "
-            f"here can say whether it still describes the library. "
+            f"{age.path.name} is dated {_local_date(written)}, which is in the future, so its age "
+            f"cannot be judged and nothing here can say whether it still describes the library. "
             f"Export the collection again if it may have moved"
         )
     elif age.stale:
         code, message = "outbound-export-stale", (
-            f"{age.path.name} was last written on "
-            f"{_local_date(written)}, {_spelled(age)} ago, which is "
-            f"past the {age.limit_days} days "
-            f"outbound.export_stale_days allows. Anything the library "
-            f"gained or lost since then is not in this write. Export "
-            f"the collection again if it has moved"
+            f"{age.path.name} was last written on {_local_date(written)}, {_spelled(age)} ago, "
+            f"which is past the {age.limit_days} days outbound.export_stale_days allows. Anything "
+            f"the library gained or lost since then is not in this write. Export the collection "
+            f"again if it has moved"
         )
     else:
         return ()
@@ -204,31 +197,24 @@ def queue_warnings(
     warnings: list[dict[str, str]] = [*age_warnings(age)]
     found = (
         (
-            not account.bound(),
-            "outbound-account-unbound",
+            not account.bound(), "outbound-account-unbound",
             "this build has no streaming provider adapter, so this job "
             "will queue and then fail at the provider seam",
         ),
         (
-            resolved.dangling,
-            "playlist-track-missing",
-            f"{len(resolved.dangling)} {noun}(s) this playlist names are "
-            f"not in the export's collection and are not queued: "
-            f"{', '.join(resolved.dangling)}",
+            resolved.dangling, "playlist-track-missing",
+            f"{len(resolved.dangling)} {noun}(s) this playlist names are not in the export's "
+            f"collection and are not queued: {', '.join(resolved.dangling)}",
         ),
         (
-            resolved.repeated,
-            "playlist-track-repeated",
-            f"{len(resolved.repeated)} {noun}(s) appear more than once in "
-            f"this playlist and are queued once: "
-            f"{', '.join(resolved.repeated)}",
+            resolved.repeated, "playlist-track-repeated",
+            f"{len(resolved.repeated)} {noun}(s) appear more than once in this playlist and are "
+            f"queued once: {', '.join(resolved.repeated)}",
         ),
         (
-            resolved.pink_missing,
-            "favorites-pink-export-missing",
-            f"{len(resolved.pink_missing)} pink row(s) the library "
-            f"carries are not in the export's collection and are not "
-            f"queued: {', '.join(resolved.pink_missing)}",
+            resolved.pink_missing, "favorites-pink-export-missing",
+            f"{len(resolved.pink_missing)} pink row(s) the library carries are not in the "
+            f"export's collection and are not queued: {', '.join(resolved.pink_missing)}",
         ),
     )
     warnings.extend({"code": code, "message": message} for due, code, message in found if due)

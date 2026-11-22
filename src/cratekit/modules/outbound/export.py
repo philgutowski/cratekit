@@ -155,11 +155,7 @@ def plan(
     )
 
 
-def apply(
-    cfg: config.Config,
-    account: RemoteAccount,
-    planned: ExportPlan,
-) -> ExportReport:
+def apply(cfg: config.Config, account: RemoteAccount, planned: ExportPlan) -> ExportReport:
     """Write the matched tracks. Reuses a recorded remote playlist if one exists.
 
     THE CREATE AND ITS RECORD HAPPEN UNDER ONE LEDGER LOCK

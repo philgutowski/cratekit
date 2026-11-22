@@ -108,7 +108,12 @@ class Plan:
             "kind": self.kind,
             "subject": self.subject,
             "playlists": [
-                [one.key, one.remote_id, sorted(taken.remote_id for taken in one.take), sorted(one.settle)]
+                [
+                    one.key,
+                    one.remote_id,
+                    sorted(taken.remote_id for taken in one.take),
+                    sorted(one.settle),
+                ]
                 for one in self.playlists
                 if one.writes
             ],
@@ -131,9 +136,8 @@ class Pruned:
 def _incomplete(subject: str, what: str) -> CratekitError:
     return refuse(
         "internal-error",
-        f"the prune of {subject!r} was handed a catalogue that does not say which "
-        f"tracks each release holds ({what}), so nothing was planned and nothing "
-        f"was taken off",
+        f"the prune of {subject!r} was handed a catalogue that does not say which tracks each "
+        f"release holds ({what}), so nothing was planned and nothing was taken off",
         scope=Scope.RUN,
         origin=_ORIGIN,
         detail={"subject": subject},
@@ -253,9 +257,8 @@ def plan_label(
         )
     if unexplained:
         notes.append(
-            f"{len(unexplained)} recorded track(s) are on no release this read "
-            f"reached, and a release the read did not reach is not evidence, so "
-            f"they stay"
+            f"{len(unexplained)} recorded track(s) are on no release this read reached, and a "
+            f"release the read did not reach is not evidence, so they stay"
         )
     steps: list[PlaylistPrune] = []
     for year in sorted(shape.years):
@@ -330,9 +333,8 @@ def plan_export(
     why = ""
     if older:
         why = (
-            f"this collection export is older than the one the playlist was last "
-            f"written from, on {older}, so a track added since would read as gone; "
-            f"export the collection again"
+            f"this collection export is older than the one the playlist was last written from, on "
+            f"{older}, so a track added since would read as gone; export the collection again"
         )
     elif unrowed and unmatched:
         why = (
@@ -341,9 +343,8 @@ def plan_export(
         )
     elif unrowed and fresh:
         why = (
-            f"{len(fresh)} row(s) of the library playlist match a track this playlist "
-            f"was never written with, so a match may have moved; export the playlist "
-            f"first, then prune"
+            f"{len(fresh)} row(s) of the library playlist match a track this playlist was never "
+            f"written with, so a match may have moved; export the playlist first, then prune"
         )
     if why or account is None:
         why = why or "no account was opened to read the playlist"
@@ -417,7 +418,6 @@ def payload(
     steps = planned.playlists if planned is not None else ()
     items: list[dict[str, Any]] = []
     for step in steps:
-        where = {"playlist": step.remote_id, "key": step.key, "name": step.name}
         if step.why:
             items.append(
                 {
@@ -431,14 +431,20 @@ def payload(
                 }
             )
             continue
-        track = {"kind": "track", **where}
+        at = {"kind": "track", "playlist": step.remote_id, "key": step.key, "name": step.name}
         items.extend(
-            {"id": taken.remote_id, **track, "action": "take-off", "artist": taken.artist, "title": taken.title}
-            for taken in step.take
+            {
+                "id": one.remote_id,
+                **at,
+                "action": "take-off",
+                "artist": one.artist,
+                "title": one.title,
+            }
+            for one in step.take
         )
-        items.extend({"id": one, **track, "action": "already-off"} for one in step.settle)
+        items.extend({"id": one, **at, "action": "already-off"} for one in step.settle)
         twice = "on the playlist more than once, and a second copy is a person's"
-        items.extend({"id": one, **track, "action": "left-alone", "why": twice} for one in step.twice)
+        items.extend({"id": one, **at, "action": "left-alone", "why": twice} for one in step.twice)
     return {
         "digest": digest(identity),
         "items": items,

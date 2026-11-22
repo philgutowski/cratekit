@@ -133,12 +133,7 @@ class SetApplied:
 
 
 def plan_set(
-    cfg: config.Config,
-    name: str,
-    rows: Sequence[SetRow],
-    account: RemoteAccount,
-    *,
-    year: str,
+    cfg: config.Config, name: str, rows: Sequence[SetRow], account: RemoteAccount, *, year: str
 ) -> SetPlan:
     """Decide the set's playlist against the ledger and the account.
 
@@ -149,16 +144,16 @@ def plan_set(
     wanted = tuple(dict.fromkeys(row.remote_id for row in rows if row.matched))
     recorded = ledger.set_playlist(cfg, name)
     if recorded is None:
-        return SetPlan(name=name, year=year, action=CREATE, rows=tuple(rows), add=wanted)
+        return SetPlan(name, year, CREATE, tuple(rows), add=wanted)
     asked = recorded.added | recorded.refused
     # READ EVERY TIME, so a track a person took off is said as taken off.
     held = set(account.playlist_tracks(recorded.remote_id))
     return SetPlan(
-        name=name,
-        year=recorded.year or year,
-        action=REUSE,
-        rows=tuple(rows),
-        remote_id=recorded.remote_id,
+        name,
+        recorded.year or year,
+        REUSE,
+        tuple(rows),
+        recorded.remote_id,
         add=tuple(one for one in wanted if one not in asked and one not in held),
         refused=frozenset(one for one in wanted if one in recorded.refused and one not in held),
         on_playlist=frozenset(one for one in wanted if one in held),
@@ -219,7 +214,7 @@ class ArchivePlan:
 
     @property
     def left(self) -> str:
-        """Why the set is not marked: taken already, by the record or a legacy prefix, or retitled."""
+        """Why the set is not marked: taken, by the record or a legacy prefix, or retitled."""
         if self.taken:
             return ALREADY_MARKED
         if self.title is None or self.title == self.playlist.name:
@@ -296,13 +291,7 @@ def plan_archive(
         action, folder_id = (ADOPT, named[0]) if named else (CREATE, "")
     title = account.folder_playlists(folder_id).get(playlist.remote_id) if folder_id else None
     return ArchivePlan(
-        playlist=playlist,
-        year=year,
-        folder_action=action,
-        folder_id=folder_id,
-        stale_folder=stale,
-        title=title,
-        taken=playlist.remote_id in taken_ids(cfg),
+        playlist, year, action, folder_id, stale, title, taken=playlist.remote_id in taken_ids(cfg)
     )
 
 
@@ -441,15 +430,7 @@ def plan_rename(
     if held is None:
         return None
     twin = next((one for one in older if one.remote_id != held.remote_id), None)
-    return RenamePlan(
-        job_id=job_id,
-        playlist=held,
-        to=to,
-        frozen=frozen,
-        live=live,
-        inspiration_id=inspiration_id,
-        twin=twin,
-    )
+    return RenamePlan(job_id, held, to, frozen, live, inspiration_id, twin)
 
 
 def apply_rename(
@@ -471,7 +452,9 @@ def apply_rename(
     if planned.rename:
         account.rename_playlist(playlist.remote_id, planned.to)
         done.renamed = True
-        done.rekeyed = ledger.rename_set_playlist(cfg, playlist.name, planned.to, playlist.remote_id)
+        done.rekeyed = ledger.rename_set_playlist(
+            cfg, playlist.name, planned.to, playlist.remote_id
+        )
     if planned.refreeze:
         refreeze(planned.live or planned.to)
         done.refrozen = True
