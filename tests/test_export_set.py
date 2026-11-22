@@ -796,6 +796,54 @@ def test_sync_unmark_takes_the_archive_mark_off_again(account):
     assert mark_record.MarkRecord(cfg).taken_ids() == frozenset()
 
 
+# 3b. The one gated loop both backfills share (U309)
+
+def _loop(option: str, apply, *plans: tuple[str, bool]) -> dict:
+    """The shared loop over ``plans`` (name, writes), its gate answered ``option``."""
+    ctx = SimpleNamespace(
+        gate=SimpleNamespace(require=lambda *_a, **_k: option),
+        entry=SimpleNamespace(gates=(BUILD,)),
+        envelope=lambda **shown: shown,
+    )
+    planned = [SimpleNamespace(name=name, writes=writes) for name, writes in plans]
+    payload = {"totals": {"writes": True}}
+    return set_cli._gate_then_apply_each(
+        ctx, None, payload, {}, [], planned, apply, set_cli._SET_BACKFILL
+    )
+
+
+def test_a_backfill_whose_gate_was_aborted_applies_nothing():
+    """A backfill gate answered abort applies nothing and is a no op."""
+    asked = []
+    done = _loop("abort", lambda _cfg, one: (asked.append(one), [], True), ("a", True))
+    assert (asked, done["outcome"]) == ([], set_cli.Outcome.NO_OP)
+
+
+def test_a_backfill_skips_the_planless_and_names_only_what_wrote():
+    """A plan writing nothing is never applied, and a set is named done only if it wrote."""
+    asked = []
+
+    def apply(_cfg, one):
+        asked.append(one.name)
+        return None, [], one.name == "wrote"
+
+    done = _loop("apply", apply, ("planless", False), ("wrote", True), ("unchanged", True))
+    assert asked == ["wrote", "unchanged"]
+    assert done["data"]["totals"]["applied"] == {"playlists": ["wrote"]}
+
+
+def test_a_backfill_failing_before_anything_landed_raises_it_as_is():
+    """A failure before any set landed is raised as it was, not as a part way failure."""
+    boom = RuntimeError("the account dropped the first write")
+
+    def apply(_cfg, _one):
+        raise boom
+
+    with pytest.raises(RuntimeError) as raised:
+        _loop("apply", apply, ("first", True))
+    assert raised.value is boom
+
+
 # 4. Add only, by the suite's own scan
 
 @pytest.mark.parametrize(
