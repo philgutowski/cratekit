@@ -1,16 +1,8 @@
 """U172: ``crate tag guess`` gives the files every catalogue missed a genre.
 
-Three layers, in the order they are trusted. The rules, pure, over files and
-neighbours handed in: the artist's tracks, the playlist's one voice, the tie,
-nothing at all, the word the taxonomy has no place for. Then the verb through
-the real dispatcher, over real tagged containers and a disposable database:
-the write and its read back, the report that writes nothing, what could not be
-read said in a warning, and the share before and after. Then the tail, which
-runs it after ``tag folder`` with the pass.
-
-The genre words are the shipped taxonomy's.
-
-D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+The rules, pure, over files and neighbours handed in; the verb through the real
+dispatcher over real containers and a disposable database; then the tail that
+runs it after ``tag folder``. D1 applies.
 """
 
 from __future__ import annotations
@@ -68,9 +60,7 @@ def _playlist(name: str, *files: guess.Staged, owned: tuple[guess.Member, ...] =
     return guess.Playlist(name=name, files=tuple(one.path for one in files), owned=owned)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The rules, pure
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_words_are_held_to_the_shipped_taxonomy():
@@ -289,9 +279,7 @@ def test_the_artist_key_is_empty_for_no_artist_and_votes_nothing():
     assert _item(plan, "lone").outcome == guess.NO_VOTES
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The verb, through the dispatcher
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _stage(cfg: config.Config, silence: Path, name: str, **fields: str) -> Path:
@@ -561,9 +549,7 @@ def test_a_folder_that_is_not_there_refuses(machine):
     assert envelope["cause"]["reason"] == "source-missing"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The tail
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_tail_runs_the_guess_right_after_tag_folder():

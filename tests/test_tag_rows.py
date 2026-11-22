@@ -1,17 +1,9 @@
 """R-816: ``crate tag rows`` writes a row's genre from its file, and nothing else.
 
-Three layers, in the order they are trusted. The plan, against a disposable
-database and real tagged containers, one row per outcome. The apply, with every
-column of every row compared across the write. Then the verb through the real
-dispatcher: the two acts R34 requires, the acknowledgment, the stale digest,
-the second run, and the genre report the residual names as its symptom.
-
-The too coarse word is taken from the shipped taxonomy. The other genre words
-are spelled here, because what is under test is that the row comes to carry
-whatever the file says, and the library's lookup rows are whatever this file
-seeds.
-
-D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+The plan against a disposable database and real tagged containers, one row per
+outcome; the apply with every column of every row compared across the write;
+then the verb through the real dispatcher. The too coarse word is the shipped
+taxonomy's; the lookup rows are whatever this file seeds. D1 applies.
 """
 
 from __future__ import annotations
@@ -79,13 +71,7 @@ UNREADABLE = object()
 
 @dataclass(frozen=True)
 class Track:
-    """One row to seed and the file it names.
-
-    ``file`` is the genre the file carries, an empty string for a readable
-    file with no genre, :data:`ABSENT` for no file at all, or
-    :data:`UNREADABLE` for bytes no tag library opens. ``recorded`` overrides
-    the location the row records.
-    """
+    """One row to seed and the file it names."""
 
     content_id: str
     row: str
@@ -98,9 +84,7 @@ def _genre_ids() -> dict[str, str]:
     return {name: str(ordinal) for ordinal, name in enumerate(LOOKUPS, start=100)}
 
 
-# ---------------------------------------------------------------------------
 # Fixtures
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
@@ -303,9 +287,7 @@ def _two_acts(verb: list[str] = VERB) -> tuple[int, dict, dict]:
     return code, acted, refused
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The plan: one outcome per row
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_stale_row_is_planned_with_the_rows_word_and_the_files(machine, silence):
@@ -685,9 +667,7 @@ def test_the_digest_moves_when_only_a_count_moves(machine, silence):
     assert after.digest != before.digest
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The apply and the read back
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _apply(cfg: config.Config) -> tuple[rows.RowsPlan, rows.Written]:
@@ -1018,9 +998,7 @@ def test_a_genre_that_reads_wrong_refuses_and_names_the_undo():
     assert "session-1" in " ".join(cause.remediation.steps)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The verb, through the real dispatcher
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_planned_written_and_read_back_through_the_two_acts(acknowledged, silence):
@@ -1389,9 +1367,7 @@ def test_a_word_the_library_has_no_row_for_names_the_act_on_a_run_that_wrote(
     assert "give one track that genre in rekordbox" in left["message"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. What the registry and the source say
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_verb_declares_the_row_and_no_file():
