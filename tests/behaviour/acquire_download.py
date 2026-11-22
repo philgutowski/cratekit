@@ -11,9 +11,12 @@ them. Kept apart from ``acquire.py`` because the drive suite names its own
 
 from __future__ import annotations
 
+import itertools
+import time
+
 import pytest
 
-from cratekit.core import secrets
+from cratekit.core import provider_gate, secrets
 from cratekit.core.exit_codes import ExitCode
 from tests.test_vendored_drive import STORED, keys, resume_argv, tidal_list
 from tests.test_vendored_drive import cfg as cfg  # noqa: PLC0414
@@ -25,6 +28,21 @@ from tests.test_vendored_drive import stored as stored  # noqa: PLC0414
 from tests.test_vendored_drive import tool as tool  # noqa: PLC0414
 
 OK = int(ExitCode.OK)
+
+
+@pytest.fixture(autouse=True)
+def stepped_gate_clock(monkeypatch):
+    """The provider gate's clock, stepping a millisecond a reading from the pinned instant.
+
+    ``provider_gate.Gate`` binds ``time.time`` as a default argument when it is
+    imported, before the capture pins the clock, so its state file would carry
+    the real time and differ between any two captures of one revision. A clock
+    held still would never let the gate's spacing elapse, so each reading steps.
+    """
+    readings = itertools.count()
+    defaults = dict(provider_gate.Gate.__init__.__kwdefaults__)
+    defaults["clock"] = lambda: time.time() + next(readings) / 1000
+    monkeypatch.setattr(provider_gate.Gate.__init__, "__kwdefaults__", defaults)
 
 
 @pytest.fixture
