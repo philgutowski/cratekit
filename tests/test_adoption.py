@@ -5803,7 +5803,10 @@ cfg = config.from_dict(
 
 if role == "apply":
     def slow(path, field, value):
-        # The window the revert used to fit inside, made wide enough to hit.
+        # The window the revert used to fit inside, made wide enough to hit. The
+        # marker says the lock is held, so the revert starts inside the window
+        # however slowly either interpreter starts.
+        Path(str(target) + ".applying").touch()
         time.sleep(1.0)
         return tags.write_tags(path, {field: value})
 
@@ -5812,7 +5815,10 @@ if role == "apply":
         entry_id="ap_one", write_field=slow,
     )
 else:
-    time.sleep(0.3)
+    marker = Path(str(target) + ".applying")
+    deadline = time.monotonic() + 60
+    while not marker.exists() and time.monotonic() < deadline:
+        time.sleep(0.01)
     adopt_revert.revert_tags(cfg)
 """
 
