@@ -21,7 +21,7 @@ def _cfg(tmp_path: Path) -> config.Config:
     return cfg
 
 
-def test_propose_name_is_idempotent_on_a_name_that_already_fits(tmp_path):
+def test_propose_name_is_idempotent_and_offering_twice_offers_one_item(tmp_path):
     cfg = _cfg(tmp_path)
     path = Path(cfg.library.root) / "04A - 124 - Short Title.flac"
     path.write_bytes(b"fLaC")
@@ -31,10 +31,7 @@ def test_propose_name_is_idempotent_on_a_name_that_already_fits(tmp_path):
     again, err2 = repair.propose_name(path, cfg=cfg)
     assert err2 == ""
     assert again == first
-
-
-def test_offer_repairs_writes_path_repair_queue_items(tmp_path):
-    cfg = _cfg(tmp_path)
+    # Offered into the path-repair queue, and offered again, it is one item.
     path = Path(cfg.library.root) / "too-long-name.flac"
     path.write_bytes(b"fLaC")
     proposed = "short.flac"
