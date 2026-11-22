@@ -302,14 +302,14 @@ def _land_first(cfg: config.Config, silence: Path, name: str = "Zero.flac") -> N
     assert code == int(ExitCode.OK), acted
 
 
-def _two_acts(verb: list[str]) -> tuple[int, dict, dict]:
+def _two_acts(verb: list[str], gate: str = GATE) -> tuple[int, dict, dict]:
     """R34's two acts against the explicit gate, then the acting drive."""
     code, refused = drive(verb)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     detail = refused["cause"]["detail"]
-    assert detail["gate"] == GATE and detail["explicit"] is True
+    assert detail["gate"] == gate and detail["explicit"] is True
     run_id = refused["run_id"]
-    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    decided, envelope = drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"])
     assert decided == int(ExitCode.OK), envelope
     code, acted = drive(["--run", run_id, *verb])
     return code, acted, refused
