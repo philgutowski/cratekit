@@ -1,34 +1,18 @@
 """A collection export written from database rows, in the shape the readers read (R-745).
 
-Every verb that reads a Fresh Export had one source for it, rekordbox's own
-export menu. This module turns the rows already read through a disposable copy
-into that document, and opens nothing itself.
-
-THE SHAPE IS THE READERS' (:mod:`cratekit.write.rbxml`) WHERE IT DIFFERS FROM
-REKORDBOX'S:
-
-1. every line ends in CRLF, because an insert is placed two bytes ahead of a
-   closing line and nothing checks what those two bytes are;
-2. a childless folder is an open line and a close line, never self closed,
-   because a landing inserts into the intake folder and needs a body;
-3. membership is one key element per line in the one spelling the membership
-   reader matches, and anything else reads as an empty playlist.
+The rows already read through a disposable copy, turned into the document every
+verb reading a Fresh Export reads; it opens nothing itself. THE SHAPE IS THE
+READERS' (:mod:`cratekit.write.rbxml`) WHERE IT DIFFERS FROM REKORDBOX'S: every
+line ends in CRLF, a childless folder is an open and a close line so a landing
+can insert into it, and membership is one key element per line in the one
+spelling the reader matches.
 
 NO TEMPO DATA IS CARRIED, by decision: every row gets the gridless constant and
-no tempo child, whatever the database holds. No verb reads a tempo off an export
-and a landing hands this file to an import, so the only proof a value is safe is
-that it is never written.
-
-EVERY LOCATION IS WRITTEN WHERE THE FILE IS MOUNTED (R-773). rekordbox keeps the
-drive a path was recorded under after the drive is renamed, while every verb
-compares a location with a path on this machine, so a recorded path goes
-through the one resolver and the prefix rules. A path under no rule, or whose
-rule points somewhere the readers would not read back as itself, is written as
-the database holds it and counted, never dropped or guessed at.
-
-What a rekordbox export carries that this one does not (cue points, tempo
-elements, colour) is listed in the ledger entry. This is for the verbs that
-read an export, not a backup.
+no tempo child, whatever the database holds, since a landing hands this file to
+an import. EVERY LOCATION IS WRITTEN WHERE THE FILE IS MOUNTED (R-773), through
+the one resolver and the prefix rules; a path under no rule, or whose rule does
+not read back as itself, is written as held and counted. This is for the verbs
+that read an export, not a backup.
 
 Layer: write. It names no verb and no taxonomy display name.
 """
@@ -137,11 +121,9 @@ class NodeRow:
 class Provenance:
     """Who wrote the file, and what is known about the database it came from.
 
-    THE DATABASE HOLDS NO APPLICATION VERSION, only its schema version, so the
-    file labels three things: that schema version, the application installed
-    here, and the version the pin names, and none is called the version that
-    last wrote the database. ``None`` is written as ``unknown``, never left out,
-    so an unreadable value is told apart from a truncated line.
+    THE DATABASE HOLDS NO APPLICATION VERSION, only its schema version, so none
+    of the three versions labelled is called the one that last wrote it.
+    ``None`` is written as ``unknown``, never left out.
     """
 
     writer: str
@@ -284,10 +266,8 @@ LOOKUPS = ("get_artist", "get_album", "get_genre", "get_key", "get_label")
 def _prime_lookups(db: Any) -> list[Any]:
     """Read each lookup table once, and hold the rows for as long as the read runs.
 
-    WITHOUT THIS EVERY DISTINCT ARTIST IS ITS OWN QUERY through a lazy relation,
-    thousands of statements on a large library. A row the session holds
-    resolves with none, so the five tables are read whole and kept referenced,
-    because the session holds them weakly.
+    Otherwise every distinct artist is its own query through a lazy relation.
+    Kept referenced, because the session holds them weakly.
     """
     held: list[Any] = []
     for name in LOOKUPS:
@@ -460,20 +440,12 @@ def mounted_location(
 ) -> Mounted:
     """What is written for one recorded location, and how it resolved (R-773).
 
-    THE ONE DECODE AND RESOLVE STEP, ``trees.located``, which doctor's survey and
-    every routing pass use, so the file and ``library.paths_resolved`` count the
-    same rows as under no rule.
+    THE ONE DECODE AND RESOLVE STEP, ``trees.located``, so the file and
+    ``library.paths_resolved`` count the same rows as under no rule.
 
-    ONLY A ROW A RULE PLACED IS REWRITTEN; a row under the root or under no rule
-    is handed back byte for byte, since swapping in the current root unasked
-    would invent a fact. AND ONLY WHEN THE PLACE READS BACK AS ITSELF through the
-    same root and rules. A rule onto a second volume (unless mapped onto itself),
-    a target a later rule moves again, and a target that is not an absolute path
-    would all read back under no rule, so each is left to its rule, as rekordbox
-    writes a drive other than its own.
-
-    A streamed track, a row with no path and a location naming another host are
-    handed back as recorded, the resolver's own answer for them.
+    ONLY A ROW A RULE PLACED IS REWRITTEN, AND ONLY WHEN THE PLACE READS BACK AS
+    ITSELF through the same root and rules; everything else is handed back byte
+    for byte, since swapping in the current root unasked would invent a fact.
     """
     try:
         _decoded, resolved = trees.located(recorded, root=root, prefix_map=prefix_map)
@@ -499,9 +471,8 @@ _NOT_ATTRIBUTE_TEXT = re.compile("[\x00-\x1f\ufffe\uffff\ud800-\udfff]")
 def clean_text(value: str) -> str:
     """``value`` with every character an attribute cannot hold written as a space.
 
-    THE BYTE READERS WOULD TAKE THE CHARACTER AND REKORDBOX WOULD NOT: the file
-    would be read and spliced into and then refused at the import. The caller
-    counts the rows it changed.
+    THE BYTE READERS WOULD TAKE THE CHARACTER AND REKORDBOX'S IMPORT WOULD NOT.
+    The caller counts the rows it changed.
     """
     return _NOT_ATTRIBUTE_TEXT.sub(" ", value)
 
@@ -681,13 +652,10 @@ def render(
     ``root`` AND ``prefix_map`` ARE REQUIRED: a default writes every location
     under a drive nothing mounts and says nothing (R-773). No rule is an empty map.
 
-    THE DECLARED COUNTS ARE COUNTED FROM WHAT WAS WRITTEN, because the strict
-    reader refuses a file whose declared count differs from the rows it finds,
-    which is how it catches a half copied export.
-
-    A SMART PLAYLIST IS OMITTED AND NAMED: the database holds its rule, not its
-    members, and an unclassifiable node makes the strict reader refuse the file.
-    A NODE NOTHING REACHES FROM THE ROOT is omitted and named as well.
+    THE DECLARED COUNTS ARE COUNTED FROM WHAT WAS WRITTEN, since the strict
+    reader refuses a file whose declared count differs from its rows. A SMART
+    PLAYLIST, whose members the database does not hold, and A NODE NOTHING
+    REACHES FROM THE ROOT are omitted and named.
     """
     seen: set[str] = set()
     for track in tracks:

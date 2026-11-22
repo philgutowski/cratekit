@@ -1,20 +1,15 @@
 """The four ``route.*`` verbs: inbox, unplaced, resort, pending (U20).
 
-The registry names ``cratekit.write.routing_cli`` and ``tests/_pending.py``
-keys on that string, so the module stays here; the export path lives in
+The registry names this module path; the export path lives in
 :mod:`cratekit.write.routing_export`. It imports :mod:`cratekit.cli.output`
 alone, never ``cratekit.cli.registry``, which would be an upward import.
+EVERY CLOSE GOES THROUGH :func:`cratekit.write.routing_pass.close_run`, never
+``session.close_session``, which bypasses its gates.
 
-EVERY CLOSE GOES THROUGH :func:`cratekit.write.routing_pass.close_run`;
-``session.close_session`` bypasses the gates that refuse a run still holding a
-track nowhere, and a call of that name here is what the armed guard waits for.
-
-Nothing about where a track goes is decided here: the placements come from
-:func:`cratekit.write.rebuild.declared_membership`, the destinations from
-``plan_destinations`` through the node map U36 recorded, so a re-run after a
-rename converges, and the write from
-:func:`cratekit.write.trees.write_tree_membership`. Every verb does the work it
-reports (U53), and the database path plans before its gate (R-691).
+Nothing about where a track goes is decided here: the placements, the
+destinations and the write are the rebuild's and the tree writers'. Every verb
+does the work it reports (U53), and the database path plans before its gate
+(R-691).
 
 Layer: write.
 """
@@ -32,7 +27,6 @@ from cratekit.core import (
     config,
     convergence,
     jobs,
-    locations,
     rb_writer,
     session,
     taxonomy,
@@ -128,11 +122,9 @@ def _inbox_files(folder: Path) -> list[Path]:
 class InboxPlan:
     """Where the database path puts each intake file, decided BEFORE the gate (R-691).
 
-    ``items`` is what the digest covers and the person is shown, as display
-    names. ``placements`` is the same decision in the engine's terms, one tuple
-    per native tree, and is what the write consumes, so it cannot decide
-    differently from the screen. ``declared`` and ``entries`` are carried so the
-    write reads neither again; ``warnings`` are the planner's.
+    ``items`` is what the digest covers and the person is shown.
+    ``placements`` is the same decision in the engine's terms, one tuple per
+    native tree, which the write consumes, so it cannot differ from the screen.
     """
 
     folder: Path
@@ -148,12 +140,10 @@ class InboxPlan:
 def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
     """Decide where every intake file goes, without opening the database.
 
-    The readings, the derivation and the display names are taken here by the
-    calls the write makes, so the screen and the write, and the two media, cannot
-    disagree (R-691). The calibrated cut is read here so a corrupt one refuses
-    before any write (U89), and only when something will be derived. A library
-    with nothing native reads no file and carries the export remedy; an empty
-    folder derives nothing either. One derivation per registry source.
+    By the calls the write makes, so the screen and the write cannot disagree
+    (R-691). The calibrated cut is read here so a corrupt one refuses before any
+    write (U89), and only when something will be derived. A library with nothing
+    native reads no file and carries the export remedy.
     """
     folder = Path(cfg.library.root) / declared.intake.display
     files = _inbox_files(folder)
@@ -211,9 +201,7 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
 def _inbox_facts(plan: InboxPlan) -> dict[str, Any]:
     """The database gate's totals, counted off the items it lists (R-691).
 
-    The same shape as the export gate's, naming the trees written, the dimensions
-    not derived and the planner's warnings, so a total cannot disagree with the
-    list under it.
+    The export gate's shape, so a total cannot disagree with the list under it.
     """
     return {
         "intake": str(plan.folder),
@@ -230,9 +218,8 @@ def _apply_gate(ctx, plan: dict, facts: dict[str, Any]) -> str:
     """Ask the apply gate over ``plan``, showing it whole (R-686).
 
     The gate shows the facts, the digest, the count and EVERY item the digest
-    covers, unbounded, rendered by :func:`cratekit.cli.gates.shown_plan` through
-    the run's resolver (R-693). The export gate's items also lead with artist and
-    title (R-692). The export route asks this through the module, which tests patch.
+    covers, unbounded (R-693). The export route asks this through the module,
+    which tests patch.
     """
     spec = ctx.entry.gates[0]
     return ctx.gate.require(spec, plan=plan, context=facts)
@@ -330,10 +317,9 @@ def build_pending(parser, entry) -> None:
 def resort_argv(job) -> list[str]:
     """The command line that continues one queued resort.
 
-    It carries ``--run`` (U219): the resort's gate is explicit, so the spawned
-    child must name the run the answer was recorded against or it stalls, as
-    ``tests/test_queued_resume_contract.py`` guards. The flag goes before the verb
-    path, since it belongs to the root parser.
+    It carries ``--run`` (U219), or the spawned child cannot find the answer its
+    explicit gate recorded. The flag goes before the verb path, since it belongs
+    to the root parser.
     """
     gate_run = (job.payload or {}).get(jobs.GATE_RUN_KEY)
     resume = ["--run", str(gate_run)] if gate_run else []
@@ -376,15 +362,14 @@ def _skipped_files(
 ) -> list[dict[str, Any]]:
     """One record per file the write skipped, with the reason and the rows named.
 
-    The writer's matcher sees live rows only, so its ``absent`` is two states:
-    never imported and imported then removed. The rows are indexed again here,
-    both halves, and the placement comes from :func:`routing_pass.row_placement`,
-    the deferred pass's rule. One record per file, since every tree matches the
-    same rows; ``trees`` says which ones it was declared into.
+    The writer's ``absent`` is two states, never imported and imported then
+    removed, so both halves are indexed again here and read through
+    :func:`routing_pass.row_placement`. One record per file; ``trees`` says which
+    trees it was declared into.
     """
     if not skipped:
         return []
-    rules = [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
+    rules = trees.prefix_rules(cfg)
     index = routing_pass.index_rows(rows, root=cfg.library.root, prefix_map=rules)
     paths = sorted(skipped)
     removed = trees.match_indexed_rows(
@@ -443,12 +428,9 @@ def skipped_warnings(records: list[dict[str, Any]]) -> list[dict[str, str]]:
 def apply_inbox(cfg: config.Config, planned: InboxPlan) -> dict[str, Any]:
     """File the intake folder into every tree that has cut over.
 
-    The placements are the ones :func:`plan_inbox` derived and the gate showed,
-    consumed rather than remade (R-691); the destinations come from
-    ``plan_destinations`` and the write from ``write_tree_membership``, which owns
-    the session gates. A library with nothing native writes nothing and answers
-    ``no-native-tree``: membership written for a tree on the XML bridge is
-    overwritten by the next import.
+    The placements the gate showed, consumed rather than remade (R-691). A
+    library with nothing native writes nothing and answers ``no-native-tree``,
+    since the next import would overwrite a bridge tree's membership.
     """
     entries = planned.entries
     native = planned.native
@@ -590,11 +572,9 @@ def route_unplaced(ctx) -> Envelope:
 def _resume(ctx, store, job_id: str) -> Envelope:
     """Reconcile, refuse a foreign or itemless job, drive it, and report how it ended.
 
-    Reconcile first, since a dead driver may have left a claim. The job has to be
-    a resort, since ``handlers.run_job`` resolves the worker from the job row. A
-    resort queued before U53 carries no items and would be walked to SUCCEEDED, so
-    it refuses. A job that ended badly is not an ok exit (R-225), caught outside
-    the ``is_open`` branch so a job failed on entry is caught too.
+    Reconcile first, since a dead driver may have left a claim. A job with no
+    items would be walked to SUCCEEDED, so it refuses. A job that ended badly is
+    not an ok exit (R-225), even one failed on entry.
     """
     job = jobs.reconcile(store, job_id)
     if job.handler_key != ctx.entry.handler_key:
@@ -728,12 +708,10 @@ def _resort_facts(adds: list[dict[str, str]], facts: dict[str, Any]) -> dict[str
 def route_resort(ctx) -> Envelope:
     """Show every add, ask, then queue the resort. Long work is a job, never an inline sweep.
 
-    THE GATE FIRST (U219): the verb reads without writing, runs the rebuild's
-    derivation and check, and shows every add by tree, folder, playlist and file,
-    with the count it leaves behind. The answer is pinned to the database file
-    read (U161), the adds are frozen in the job, and the worker refuses if they
-    moved. Only the routed trees; another native tree is named in a warning
-    (R-789). An empty plan still asks, then queues nothing.
+    THE GATE FIRST (U219): read only, it shows every add the rebuild would make.
+    The answer is pinned to the database file read (U161), the adds are frozen in
+    the job, and the worker refuses if they moved. Only the routed trees (R-789).
+    An empty plan still asks, then queues nothing.
     """
     cfg = load_config(("routing_cli",))
     if ctx.args.job:
@@ -804,11 +782,9 @@ def route_resort(ctx) -> Envelope:
 def handle_resort(job, item, cfg) -> None:
     """Re-place one governed tree from the declaration. The ``route.resort`` worker.
 
-    It is the rebuild engine, additive by construction: a track moved by a genre
-    or energy change stays in its old sub too, and the resume names what was left
-    (R-312). The engine's own ``after`` check is kept as this item's report, the
-    durable channel the driver owns. ``cfg`` is the job's frozen configuration
-    (KTD9).
+    The rebuild engine, additive, so the resume names what was left (R-312). The
+    engine's ``after`` check is kept as this item's report. ``cfg`` is the job's
+    frozen configuration (KTD9).
     """
     tree_id = str(item.item_id)
     report = rebuild.rebuild_governed_tree(
@@ -861,9 +837,8 @@ DUE_AGAIN = "resort-again"
 def _due_again_warnings(cfg: config.Config, job_id: str) -> list[dict[str, str]]:
     """Say that a second resort has more to show, and what stands until it runs.
 
-    A resort writes only what its gate showed, so a favourite whose track it filed
-    into a new folder waits for the next plan, and a tree a restore marked stays
-    unconverged until then.
+    A resort writes only what its gate showed, so what its own writes made due
+    waits for the next plan.
     """
     due: dict[str, int] = {}
     for report in RESORT_ARTIFACTS.committed(cfg, job_id):
@@ -891,9 +866,8 @@ def _due_again_warnings(cfg: config.Config, job_id: str) -> list[dict[str, str]]
 def _with_left_behind(error: CratekitError, cfg: config.Config, job_id: str) -> CratekitError:
     """The same refusal, carrying what the trees that DID finish left behind.
 
-    A partial failure is a resort's ordinary bad ending and leaves with no
-    warnings, so the step is appended, through ``rebuilt`` so the cause keeps its
-    type.
+    A partial failure leaves with no warnings, so the step is appended, through
+    ``rebuilt`` so the cause keeps its type.
     """
     records, listed_in = _left_behind(cfg, job_id)
     message = rebuild.left_behind_message(records, listed_in=listed_in)

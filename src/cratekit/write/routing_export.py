@@ -54,9 +54,8 @@ def _rating_not_landable(owed: int) -> list[dict[str, str]]:
 def _plan(items: list[dict[str, str]], *, kind: str, **totals: Any) -> dict:
     """The plan envelope, with the digest taken over the ITEMS alone.
 
-    The extra totals stay outside the digest: they carry what this run did, not
-    what it offered, so folding them in would stale an answer for no reason.
-    ``plan/1`` forbids properties it does not name, so extras ride here.
+    The extra totals carry what this run did, not what it offered, so they stay
+    outside the digest; ``plan/1`` forbids properties it does not name.
     """
     digest = digest_of({"kind": kind, "items": items})
     return {
@@ -82,9 +81,8 @@ def _column(
 ) -> dict[str, str]:
     """Which column of a gate's item one placement is shown in (U155).
 
-    A track files into its energy sub, the vocal sub and a genre sub, each with
-    a column of its own, so a gate never shows one place for a track written into
-    two. One answer for both media.
+    Each of the energy, vocal and genre subs has a column of its own, so a gate
+    never shows one place for a track written into two. One answer for both media.
     """
     if placement.sub == trees.VOX_SUB_CLASS:
         return vocal
@@ -105,10 +103,8 @@ def _placed_counts(tracks: list[dict[str, str]]) -> dict[str, int]:
 def _named(plan: dict, names: dict[str, dict[str, str]]) -> dict:
     """The plan as the export gate shows it, each track named (R-692).
 
-    Each shown item leads with the row's artist and title, then every field the
-    digest was taken over. The names are the screen's alone, outside the digest,
-    so a JSON reader drops ``artist`` and ``title`` to compare with a declined
-    run's items.
+    Each shown item leads with the row's artist and title, which stay outside
+    the digest, then every field the digest was taken over.
     """
     return {
         **plan,
@@ -129,9 +125,8 @@ def _export_facts(
     """The export gate's totals, counted off the items it lists.
 
     Counted from the items, so a total cannot disagree with the list under it.
-    ``not derived`` rides because an empty vocal column on an uncalibrated library
-    means the dimension was not read, and the warnings because a track with no
-    destination has its reason before the question.
+    ``not derived`` and the warnings ride so an empty column and a track with no
+    destination have their reason before the question.
     """
     tracks = [item for item in items if item["track_id"]]
     return {
@@ -239,9 +234,8 @@ def _read_export(export: Path) -> bytes:
 def _inbox_keys(content: bytes, declared: taxonomy.Taxonomy, export: Path) -> list[str]:
     """Every track key the export's intake folder holds, first seen first.
 
-    The intake folder is a direct child of the playlist root, so a namesake deeper
-    is never read as the inbox. An export with no such folder REFUSES: an empty
-    answer would read as "your inbox is empty".
+    A direct child of the playlist root, never a deeper namesake. An export with
+    no such folder REFUSES, since an empty answer reads as an empty inbox.
     """
     root = rbxml.root_node(content)
     if root is None:
@@ -279,16 +273,16 @@ def _collection_rows(content: bytes) -> dict[str, dict[str, str]]:
 def _readable_file(location: str, cfg: config.Config) -> Path | None:
     """The file a recorded Location names on this machine, or None.
 
-    Through the prefix map first, then as written. None when neither is a file:
-    absent tags route to the fallback bucket, which would file a track by the one
-    fact nobody measured.
+    Through the prefix map first, then as written. None when neither is a file,
+    rather than route absent tags to the fallback bucket.
     """
     try:
         decoded = locations.location_to_path(location)
     except locations.LocationDecodeError:
         return None
-    rules = [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
-    resolved = locations.resolve_recorded_path(decoded, root=cfg.library.root, prefix_map=rules)
+    resolved = locations.resolve_recorded_path(
+        decoded, root=cfg.library.root, prefix_map=trees.prefix_rules(cfg)
+    )
     for candidate in (resolved.path, decoded):
         if candidate and candidate.startswith("/") and Path(candidate).is_file():
             return Path(candidate)
@@ -314,12 +308,10 @@ def _owed_ratings(
 ) -> int:
     """How many unrated intake rows are owed a star rating from their energy.
 
-    The source system rated by energy in the filing pass, through
-    :func:`cratekit.core.routing.energy_rating` and ``rates``, called rather than
-    restated. OWED, NOT PLANNED (R-688): an import keeps the database's rating on
-    every row an export carries, so none is written. Counted in ROWS, on the
-    export scale, only for a placed track, and once per file however many places
-    it files into (U155).
+    Through :func:`cratekit.core.routing.energy_rating` and ``rates``. OWED, NOT
+    PLANNED (R-688): an import keeps the database's rating on every row an
+    export carries, so none is written. Counted in ROWS, only for a placed
+    track, and once per file however many places it files into (U155).
     """
     energy = {reading.location: reading.energy for reading in readings}
     owed = 0
@@ -409,10 +401,9 @@ def _vox_subs(
     """Give every genre folder its vocal sub-playlist, before anything is routed.
 
     Returns the bytes with the subs in place and each ``folder/sub`` created. The
-    routing writer creates no sub, so this runs first, as the source system's
-    ``dj-create-vox-playlists`` did, and only on a calibrated library that declares
-    the vocal sub. Idempotent. An unreachable tree is a warning and the routing
-    still runs, since its writer reports the same tree.
+    routing writer creates no sub, so this runs first, only on a calibrated
+    library that declares the vocal sub. Idempotent. An unreachable tree is a
+    warning, since the routing writer reports the same tree.
     """
     if threshold is None or not any(
         entry.additive and entry.id == trees.VOX_SUB_CLASS for entry in declared.sub_classes
@@ -463,10 +454,8 @@ def _decide(
 ) -> Decision:
     """Route export rows by the native path's decision, called rather than restated.
 
-    One decision for both export sweeps (U91): ``read_truth``,
-    ``derive_from_taxonomy`` and :func:`routing_pass.destination`, so the sweeps
-    and the database medium cannot disagree. A row whose Location names no file
-    here is a warning and is not routed.
+    One decision for both export sweeps and the database medium (U91). A row
+    whose Location names no file here is a warning and is not routed.
     """
     files: dict[str, list[str]] = {}
     for key, row in rows:
@@ -601,11 +590,10 @@ def apply_export(
     """Write the plan into a copy of the export, beside it, never in place.
 
     Returns the file written or None, the membership report, how many tracks the
-    long track playlist gained, and its writer's warning. The tree is the governed
-    one, so the emitter guard refuses a tree that has cut over. The non creating
-    writer, since a person curated this tree. No rating is written (R-688).
-    Nothing changed is nothing written; a long track or a created vocal sub is a
-    change. The long track playlist is written last, once, add only.
+    long track playlist gained, and its writer's warning. The governed tree, so
+    the emitter guard refuses one that has cut over; the non creating writer,
+    since a person curated this tree. No rating is written (R-688). Nothing
+    changed is nothing written. The long track playlist is written last, add only.
     """
     if declared is None:
         declared = active_taxonomy.load(cfg)
@@ -740,9 +728,8 @@ def route_inbox_export(ctx, cfg: config.Config, export: Path) -> Envelope:
             else []
         ),
     ]
-    # The owed ratings join the warnings only after the answer: no run of this
-    # medium can land one (R-688), so counting them would answer route-blocked
-    # over a library already filed, every time.
+    # The owed ratings join the warnings only after the answer, since no run of
+    # this medium can land one (R-688).
     reason = _route_reason(destination, warnings)
     warnings += unrated
     data = _plan(
