@@ -2,7 +2,7 @@
 title: "A partial table that declines what it does not list sends a first-match chooser on to the wrong word"
 date: 2026-10-02
 category: integration-issues
-module: "core/routing.py suggest_tag, core/taxonomy.py vocabularies and named_folder, tagging/published.py choose"
+module: "core/routing.py suggest_tag, core/taxonomy_model.py vocabularies and named_folder, tagging/published.py choose"
 problem_type: integration_issue
 component: core_logic
 root_cause: incorrect_assumption

@@ -203,7 +203,8 @@ already had, through the config and writer suites that drove them before.
 `core.config` and `core.taxonomy` are each split into parts (U299), and every
 name a caller used stays importable from the module it always came from, which
 is the one to import from. `core.config_base` holds the schema version, the
-keys, the environment variables and the two installation directories;
+volume and template keys, the environment variables and the two installation
+directories;
 `core.state_files` the state inventory and its resolvers, so a new state entry
 is declared there; `core.config_schema` the section classes and `Config`; and
 `core.config_validate` validation and the environment overrides. `core.config`
