@@ -1,12 +1,10 @@
 """R-1305. A rejected session whose answer body is not JSON still asks for a login.
 
-The provider client decodes an error answer's body inside its own handler of
-the HTTP error, so a 401 or 403 whose body is a gateway's page surfaces as a
-decode error with the HTTP error as its context, three links down, and no
-declared cause. Every failure here is raised by the installed client's own
-request handler (``tests.provider_answers``), so the chain is the client's.
-The two readers: ``account.provider_failure`` for a call after login, and
-``provider_session.client_session`` for the login itself.
+The client decodes an error body inside its own handler of the HTTP error, so a
+401 or 403 carrying a gateway's page surfaces as a decode error with the HTTP
+error as its context, three links down. Every failure here is raised by the
+installed client's own handler (``tests.provider_answers``). The two readers:
+``account.provider_failure`` after login, ``provider_session.client_session`` at it.
 """
 
 from __future__ import annotations
@@ -26,12 +24,9 @@ from tests.test_outbound_tidal_account import installed as installed  # noqa: PL
 
 #: Answers that judge the session, each with a body the client can and cannot read.
 REJECTED = [
-    pytest.param(401, HTML, id="401-html"),
-    pytest.param(403, HTML, id="403-html"),
-    pytest.param(401, b"", id="401-empty"),
-    pytest.param(403, b"", id="403-empty"),
-    pytest.param(401, JSON_BODY, id="401-json"),
-    pytest.param(403, JSON_BODY, id="403-json"),
+    pytest.param(status, body, id=f"{status}-{kind}")
+    for kind, body in (("html", HTML), ("empty", b""), ("json", JSON_BODY))
+    for status in (401, 403)
 ]
 
 #: Answers that say nothing about the session, whatever their body.
@@ -50,11 +45,10 @@ class AuthenticationError(Exception):
 class Looping(ValueError):
     """A failure whose links lead back to it, and that will not be walked forever.
 
-    A walk with no cycle guard spins, which would hang the suite and every
-    mutation row after it. So each read of a link is counted, and past a bound
-    far above any honest walk's the read raises, once, so an unguarded walk
-    fails in milliseconds. The links are the interpreter's own fields, set
-    through the base descriptors, so the chain is a real one.
+    Each read of a link is counted, and past a bound far above any honest walk's
+    the read raises, once, so an unguarded walk fails rather than hanging the
+    suite. The links are the interpreter's own fields, set through the base
+    descriptors, so the chain is a real one.
     """
 
     #: Reads of a link past which the walk is taken not to end.

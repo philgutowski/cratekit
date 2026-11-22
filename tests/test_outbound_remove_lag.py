@@ -1,12 +1,10 @@
 """R-1308: a removal from an account playlist whose read lags the removal is taken as done.
 
-Driven against the U220 stand in for the provider's client, whose read can lag
-a write in its tracks, its declared count, or both. Each reading of the read
-back is judged on its two halves, each the playlist before the removal or
-after it: both after is done; either still before is a lag, read again after a
-pause, bounded; anything else refuses at once. Nothing is ever sent again.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+Driven against the U220 stand in, whose read can lag a write in its tracks, its
+declared count, or both. Each reading of the read back is judged on those two
+halves, each before the removal or after it: both after is done; either still
+before is a lag, read again after a pause, bounded; anything else refuses at
+once. Nothing is ever sent again. D1 applies.
 """
 
 from __future__ import annotations
@@ -15,7 +13,8 @@ import pytest
 
 from cratekit.core.cause import CratekitError
 from cratekit.modules.outbound import tidal_account
-from tests.test_outbound_order import Client, Movable, Provider, Stale, _adapter
+from tests.test_outbound_order import Client, Movable, Provider, Stale, _adapter, _lands
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414 - fixture
 from tests.test_outbound_workers import installed as installed  # noqa: PLC0414 - fixture
 
 #: The three ways a read can lag a write: the tracks alone, the count alone, and both.
@@ -35,11 +34,19 @@ def _lagging(members: list[str], lag: int, how: str) -> Provider:
     return provider
 
 
-def _removing_b(installed, provider: Provider, slept: list[float] | None = None):
-    """The cause of taking ``b`` off ``mine``, which must refuse."""
+def _removing_b(installed, provider: Provider):
+    """The cause of taking ``b`` off ``mine``, which must refuse, and the pauses before it."""
+    slept: list[float] = []
     with pytest.raises(CratekitError) as refused:
         _adapter(installed, provider, slept).remove_tracks("mine", ("b",))
-    return refused.value.cause
+    return refused.value.cause, slept
+
+
+def _takes_b(installed, provider: Provider) -> list[float]:
+    """The pauses of taking ``b`` off ``mine``, which must come back as taken."""
+    slept: list[float] = []
+    assert _adapter(installed, provider, slept).remove_tracks("mine", ("b",)) == ("b",)
+    return slept
 
 
 # ── a read that lags the removal ────────────────────────────────────────────
@@ -48,8 +55,7 @@ def _removing_b(installed, provider: Provider, slept: list[float] | None = None)
 @pytest.mark.parametrize("how", LAGS)
 def test_a_removal_whose_read_lags_one_write_is_taken_as_done(installed, how):
     provider = _lagging(["a", "b", "c", "d"], 1, how)
-    slept: list[float] = []
-    assert _adapter(installed, provider, slept).remove_tracks("mine", ("b",)) == ("b",)
+    slept = _takes_b(installed, provider)
     assert provider.members == ["a", "c", "d"]
     assert provider.removals == [(1,)], "a removal was sent twice"
     assert slept == [tidal_account.ORDER_PAUSES[0]], "a lagging read was read again with no pause"
@@ -58,8 +64,7 @@ def test_a_removal_whose_read_lags_one_write_is_taken_as_done(installed, how):
 @pytest.mark.parametrize("how", LAGS)
 def test_a_read_that_never_catches_up_refuses_saying_the_removal_may_have_landed(installed, how):
     provider = _lagging(["a", "b", "c", "d"], 99, how)
-    slept: list[float] = []
-    cause = _removing_b(installed, provider, slept)
+    cause, slept = _removing_b(installed, provider)
     assert cause.reason == "outbound-remove-refused"
     assert cause.detail["problem"] == "read-back-differs"
     assert cause.detail["lagged"] == "yes"
@@ -87,15 +92,12 @@ def test_a_refused_read_back_forgets_what_was_remembered_of_the_playlist(install
 
 def test_a_read_that_catches_up_on_the_last_reading_is_taken_as_done(installed):
     provider = _lagging(["a", "b", "c", "d"], tidal_account.ORDER_REREADS, "whole")
-    slept: list[float] = []
-    assert _adapter(installed, provider, slept).remove_tracks("mine", ("b",)) == ("b",)
-    assert len(slept) == tidal_account.ORDER_REREADS
+    assert len(_takes_b(installed, provider)) == tidal_account.ORDER_REREADS
     assert provider.removals == [(1,)]
 
 
 def test_the_pauses_are_the_orders_pauses(installed):
-    slept: list[float] = []
-    _removing_b(installed, _lagging(["a", "b", "c", "d"], 99, "whole"), slept)
+    _cause, slept = _removing_b(installed, _lagging(["a", "b", "c", "d"], 99, "whole"))
     assert slept == [tidal_account._pause(n) for n in range(1, tidal_account.ORDER_REREADS + 1)]
 
 
@@ -105,8 +107,7 @@ def test_the_pauses_are_the_orders_pauses(installed):
 def test_a_removal_that_took_the_wrong_track_refuses_at_once_with_no_pause(installed):
     provider = Provider(["a", "b", "c", "d"])
     provider.wrong = 0
-    slept: list[float] = []
-    cause = _removing_b(installed, provider, slept)
+    cause, slept = _removing_b(installed, provider)
     assert cause.detail["problem"] == "read-back-differs"
     assert cause.detail["lagged"] == "no"
     assert "may have come off" in cause.message
@@ -118,8 +119,8 @@ def test_a_wrong_track_behind_a_lagging_count_refuses_at_once(installed):
     """Half before and half neither is not a lag: the tracks show a wrong removal."""
     provider = _lagging(["a", "b", "c", "d"], 99, "count")
     provider.wrong = 0
-    slept: list[float] = []
-    assert _removing_b(installed, provider, slept).detail["lagged"] == "no"
+    cause, slept = _removing_b(installed, provider)
+    assert cause.detail["lagged"] == "no"
     assert slept == []
 
 
@@ -132,8 +133,7 @@ def test_a_count_that_is_neither_before_nor_after_refuses_at_once(installed, dec
     """The tracks are after, the count or the videos something else: refused, no pause."""
     provider = Provider(["a", "b", "c", "d"])
     provider.shown = (declared, videos)
-    slept: list[float] = []
-    cause = _removing_b(installed, provider, slept)
+    cause, slept = _removing_b(installed, provider)
     assert cause.detail["problem"] == "read-back-differs"
     assert cause.detail["lagged"] == "no"
     assert slept == []
@@ -147,8 +147,8 @@ def test_a_lagging_reading_then_a_wrong_one_refuses_without_spending_the_bound(i
     """Before is judged by the tracks read, not by how many: a swapped track refuses at once."""
     provider = _lagging(["a", "b", "c", "d"], 1, "whole")
     provider.drift = drift
-    slept: list[float] = []
-    assert _removing_b(installed, provider, slept).detail["lagged"] == "no"
+    cause, slept = _removing_b(installed, provider)
+    assert cause.detail["lagged"] == "no"
     assert slept == [tidal_account.ORDER_PAUSES[0]]
 
 
@@ -189,8 +189,7 @@ def test_a_pairs_removal_add_and_order_all_land_over_a_read_that_lags_each_write
     account = _adapter(installed, provider)
     assert account.remove_tracks("mine", ("b",)) == ("b",)
     assert account.add_tracks("mine", ("x",)) == ("x",)
-    assert account.order_tracks("mine", ("x", "d", "a", "c")) == ("x", "d", "a", "c")
-    assert provider.members == ["x", "d", "a", "c"]
+    _lands(account, ("x", "d", "a", "c"), provider)
     assert provider.removals == [(1,)]
 
 

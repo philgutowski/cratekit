@@ -1,15 +1,10 @@
 """U255. Adding a track to an account playlist costs one write and one read.
 
-The cost was four requests a track (the speed survey of 2026-11-12): the
-client's ``Session.playlist`` fetches an owned playlist twice, the adapter
-opened it afresh per track, and the client's ``add`` reads it again after its
-POST. The adapter now holds the object its membership read opened and adds
-through it. These tests drive the REAL client over a transport that keeps the
-account's playlists, moves each one's version tag on every write, answers a
-write on a stale tag with 412 (Sitting 62), and counts every request by method
-and path. The request count is the assertion, never a wall clock. Round one's
-review added a write by another writer between the open and the tracks read, a
-read served one write behind, and a tracks read that fails after the open.
+It cost four (the speed survey of 2026-11-12); the adapter now holds the object
+its membership read opened and adds through it. Driven on the REAL client over a
+transport that keeps the account's playlists, moves each one's version tag on
+every write, answers a write on a stale tag 412 (Sitting 62), and counts every
+request by method and path. The request count is the assertion, never a clock.
 """
 
 from __future__ import annotations
@@ -25,6 +20,8 @@ from cratekit.core.cause import CratekitError, refuse
 from cratekit.modules.outbound import account, export, ledger
 from cratekit.modules.outbound.tidal_account import TidalAccount
 from tests.test_adapter_listing import OWNER, _logged_in_over, _owned_playlist
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414 - fixture
+from tests.test_outbound_workers import installed as installed  # noqa: PLC0414 - fixture
 
 requests = pytest.importorskip("requests")
 
@@ -37,19 +34,11 @@ class _Data(dict):
 
 
 def _track(identifier: str) -> _Data:
+    artist = {"id": 1, "name": "Aurora Bloom", "type": "MAIN"}
     return _Data(
-        {
-            "id": int(identifier),
-            "title": f"Track {identifier}",
-            "duration": 300,
-            "allowStreaming": True,
-            "streamReady": True,
-            "trackNumber": 1,
-            "volumeNumber": 1,
-            "artist": {"id": 1, "name": "Aurora Bloom", "type": "MAIN"},
-            "artists": [{"id": 1, "name": "Aurora Bloom", "type": "MAIN"}],
-            "album": {"id": 77, "title": "Sun Path EP", "cover": None, "videoCover": None},
-        }
+        id=int(identifier), title=f"Track {identifier}", duration=300, allowStreaming=True,
+        streamReady=True, trackNumber=1, volumeNumber=1, artist=artist, artists=[dict(artist)],
+        album={"id": 77, "title": "Sun Path EP", "cover": None, "videoCover": None},
     )
 
 
@@ -407,32 +396,9 @@ def test_a_held_playlist_never_outlives_its_adapter(monkeypatch):
 # ── the export, end to end at the adapter ───────────────────────────────────
 
 
-@pytest.fixture
-def cfg(tmp_path, monkeypatch):
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    monkeypatch.setenv("CRATEKIT_STATE_DIR", str(tmp_path / "install"))
-    monkeypatch.setenv("CRATEKIT_CONFIG_DIR", str(tmp_path / "cfgdir"))
-    built = config.from_dict(
-        {
-            "schema_version": config.CURRENT_SCHEMA_VERSION,
-            "library": {
-                "root": str(root),
-                "volume_id": "F1E2-D3C4",
-                "db_path": str(root / "db" / "master.db"),
-            },
-            "paths": {"download_staging": str(tmp_path / "staging")},
-            "profile": {"name": "full"},
-        }
-    )
-    config.save(built)
-    config.reset_cache()
-    return built
-
-
 @pytest.mark.parametrize("count", [1, 12, 100])
 def test_an_export_of_up_to_a_hundred_tracks_to_a_recorded_playlist_makes_seven_requests(
-    cfg, count
+    installed, count
 ):
     """``export.apply`` over the real client: every track recorded and added once, in order.
     U270 sends what the playlist lacks in one ``add_tracks``, so the count no longer grows
@@ -440,7 +406,7 @@ def test_an_export_of_up_to_a_hundred_tracks_to_a_recorded_playlist_makes_seven_
     and the client's read after it."""
     provider = Account("pl0")
     remote = _adapter(provider)
-    ledger.reserve_playlist(cfg, "crate-one", lambda: "pl0")
+    ledger.reserve_playlist(installed, "crate-one", lambda: "pl0")
     wanted = _ids(count)
     planned = export.ExportPlan(
         playlist_key="crate-one",
@@ -448,7 +414,7 @@ def test_an_export_of_up_to_a_hundred_tracks_to_a_recorded_playlist_makes_seven_
         matched=tuple((f"row-{one}", one) for one in wanted),
         unmatched=(),
     )
-    report = export.apply(cfg, remote, planned)
+    report = export.apply(installed, remote, planned)
     assert report.created is False
     assert report.added == tuple(wanted)
     assert provider.items["pl0"] == wanted
@@ -456,7 +422,7 @@ def test_an_export_of_up_to_a_hundred_tracks_to_a_recorded_playlist_makes_seven_
     assert provider.track_reads("pl0") == 1
     assert provider.posts("pl0") == 1
     assert sum(provider.requests.values()) == 7
-    recorded = json.loads(config.state_path("outbound_writes", cfg).read_text())
+    recorded = json.loads(config.state_path("outbound_writes", installed).read_text())
     assert recorded["playlists"]["crate-one"]["remote_id"] == "pl0"
     record = recorded["playlists"]["crate-one"]
     assert record["added"] == wanted

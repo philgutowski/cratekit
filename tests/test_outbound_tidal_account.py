@@ -1,15 +1,9 @@
 """U63: the provider account adapter behind the outbound seam, driven against fakes.
 
-The client is a fake injected at ``provider_session.CLIENT_FACTORY``, the one
-place a client is built, so the adapter under test is the shipped class over a
-stand in for the network; nothing here reaches the provider.
-
-**ONE SUBSTITUTION BEYOND THE CLIENT.** Some end to end drives give the rows an
-ISRC through ``source.local_tracks`` and ``source.heart_candidates``, since a
-rekordbox collection export carries none; the drives with no ISRC are here too,
-and they match nothing.
-
-D1 applies. Nothing here names a real volume, a real person, or a real track.
+The client is a fake injected at ``provider_session.CLIENT_FACTORY``, so nothing
+here reaches the provider. ONE SUBSTITUTION BEYOND IT: some end to end drives give
+the rows an ISRC through ``source.local_tracks`` and ``source.heart_candidates``,
+since a collection export carries none. D1 applies: no real volume, person or track.
 """
 
 from __future__ import annotations
@@ -32,6 +26,7 @@ from cratekit.modules.outbound.service import RemoteAccount
 from tests import outbound_fakes
 from tests._containers import synth_container
 from tests.cli_drive import approve_and_queue, drive, drive_human
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414 - fixture
 from tests.test_outbound_workers import installed as installed  # noqa: PLC0414 - fixture
 
 #: Every module the adapter is made of: the structural guards read them all.
@@ -92,8 +87,7 @@ class Playlist:
         self.edits: list[tuple[str | None, str | None]] = []
         self.edit_fail: list[Exception] = []
         self.edit_answer = True
-        # ``None`` until the client is asked, so a test can tell a playlist
-        # made private from one whose visibility nobody touched.
+        #: ``None`` until the client is asked: made private, or never touched.
         self.public: bool | None = None
         self.privates = 0
         self.private_fail: list[Exception] = []
@@ -340,8 +334,9 @@ def test_an_isrc_naming_two_tracks_is_no_match_rather_than_the_first():
 CODE = "AA0000000001"
 
 
-def releases(*tracks: Track) -> FakeClient:
-    return FakeClient(isrcs={CODE: list(tracks)})
+def releases(*tracks: Track, hearts: list[str] = ()) -> FakeClient:
+    """A client whose ISRC ``CODE`` names ``tracks``, the account hearting ``hearts``."""
+    return FakeClient(isrcs={CODE: list(tracks)}, hearts=hearts)
 
 
 def sun(track_id: str, version: str | None = None, *artists: str, name: str = "Sun Path") -> Track:
@@ -406,25 +401,20 @@ def test_releases_spelled_alike_stay_unmatched_and_the_reason_counts_them():
 
 
 def test_among_releases_spelled_alike_the_one_already_hearted_is_the_match():
-    client = releases(sun("101"), sun("202"))
-    client.user.favorites.hearts = ["202"]
-    found = adapter(client)
+    found = adapter(releases(sun("101"), sun("202"), hearts=["202"]))
     assert match_row(found, "Sun Path") == "202"
     assert found.unmatched_reason("7") == ""
 
 
 def test_two_hearted_releases_spelled_alike_are_still_no_match():
-    client = releases(sun("101"), sun("202"))
-    client.user.favorites.hearts = ["101", "202"]
-    found = adapter(client)
+    found = adapter(releases(sun("101"), sun("202"), hearts=["101", "202"]))
     assert match_row(found, "Sun Path") is None
     assert "hearts 2 of those" in found.unmatched_reason("7")
 
 
 def test_a_heart_on_a_release_the_row_does_not_name_decides_nothing():
     """The hearted one is the radio edit, and the row is the plain record."""
-    client = releases(sun("101"), sun("202"), sun("303", "Radio Edit"))
-    client.user.favorites.hearts = ["303"]
+    client = releases(sun("101"), sun("202"), sun("303", "Radio Edit"), hearts=["303"])
     assert match_row(adapter(client), "Sun Path") is None
 
 
@@ -483,8 +473,7 @@ def test_a_provider_title_that_reads_two_ways_agrees_under_either_too():
 
 
 def test_a_row_carrying_no_names_chooses_nothing_and_asks_the_hearts_nothing():
-    client = releases(sun("101"), sun("202", "Radio Edit"))
-    client.user.favorites.hearts = ["101"]
+    client = releases(sun("101"), sun("202", "Radio Edit"), hearts=["101"])
     found = adapter(client)
     assert found.match_track(identity="7", isrc=CODE) is None
     assert found.match_track(identity="7", isrc=CODE, title="Sun Path") is None
@@ -682,12 +671,9 @@ def test_a_private_step_refused_twice_still_hands_back_the_one_playlist():
 
 def test_a_created_playlist_the_client_offers_no_private_call_for_is_still_returned():
     client = FakeClient()
-
-    class Bare:
-        id = "00000000-0000-4000-8000-0000000000aa"
-
-    client.user.create_playlist = lambda title, description: Bare()
-    assert adapter(client).create_playlist("Crate") == Bare.id
+    bare = SimpleNamespace(id="00000000-0000-4000-8000-0000000000aa")
+    client.user.create_playlist = lambda title, description: bare
+    assert adapter(client).create_playlist("Crate") == bare.id
 
 
 # ── the retitle, R-358 ──
@@ -897,63 +883,41 @@ def isrc_for(row: str) -> str:
 
 def give_rows_an_isrc(monkeypatch) -> None:
     """The one substitution beyond the client. See the module docstring."""
-    real_tracks = source.local_tracks
-    real_candidates = source.heart_candidates
+    for name, key in (("local_tracks", "identity"), ("heart_candidates", "row_id")):
 
-    def tracks(library, track_ids, *, cfg):
-        return tuple(
-            replace(track, isrc=isrc_for(track.identity))
-            for track in real_tracks(library, track_ids, cfg=cfg)
-        )
+        def given(library, track_ids, *, cfg, real=getattr(source, name), key=key):
+            rows = real(library, track_ids, cfg=cfg)
+            return tuple(replace(row, isrc=isrc_for(getattr(row, key))) for row in rows)
 
-    def candidates(library, track_ids, *, cfg):
-        return tuple(
-            replace(item, isrc=isrc_for(item.row_id))
-            for item in real_candidates(library, track_ids, cfg=cfg)
-        )
-
-    monkeypatch.setattr(source, "local_tracks", tracks)
-    monkeypatch.setattr(source, "heart_candidates", candidates)
+        monkeypatch.setattr(source, name, given)
 
 
 def _argv(job_id: str) -> list[str]:
+    """The command line that resumes ``job_id``."""
     from cratekit.cli import jobs as cli_jobs
 
     with jobs.open_store() as store:
         return cli_jobs.argv_for(jobs.get(store, job_id))
 
 
-def _resume(job_id: str) -> tuple[int, dict]:
-    return drive(_argv(job_id))
-
-
-def _resume_human(job_id: str) -> tuple[int, str]:
-    """The same resume as :func:`_resume`, answered in the default output mode."""
-    return drive_human(_argv(job_id))
-
-
-def export_verb(exported: Path) -> list[str]:
-    return ["export", "playlist", outbound_fakes.CRATE, "--export", str(exported)]
-
-
-def favorites_verb(exported: Path) -> list[str]:
-    return ["sync", "favorites", "--export", str(exported)]
-
-
 def queue(exported: Path, *, sweep: bool) -> str:
     """The sweep or the export over ``exported``, approved and queued: its job."""
     if sweep:
-        return approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")[1]
-    return approve_and_queue(export_verb(exported), "export.playlist.confirm")[1]
+        verb, gate = ["sync", "favorites"], "sync.favorites.confirm"
+    else:
+        verb, gate = ["export", "playlist", outbound_fakes.CRATE], "export.playlist.confirm"
+    return approve_and_queue([*verb, "--export", str(exported)], gate)[1]
 
 
-def run_job(monkeypatch, client: FakeClient, exported: Path, *, sweep: bool):
-    """``client`` in, a session recorded, the job queued and resumed: code, answer, job."""
+def run_job(monkeypatch, client: FakeClient, exported: Path, *, sweep: bool, ok: bool = True):
+    """``client`` in, a session recorded, the job queued and resumed, its exit OK exactly
+    when ``ok``: the answer and the job."""
     use_client(monkeypatch, client)
     record_session()
     job_id = queue(exported, sweep=sweep)
-    code, resumed = _resume(job_id)
-    return code, resumed, job_id
+    code, resumed = drive(_argv(job_id))
+    assert (code == int(ExitCode.OK)) is ok, resumed
+    return resumed, job_id
 
 
 def write_export(installed, **rows) -> Path:
@@ -969,8 +933,7 @@ def test_a_hearts_sweep_runs_to_done_and_the_ledger_records_every_heart(installe
     exported = write_export(installed, favorites=(1, 2, 3))
     client = FakeClient(isrcs=numbered(500), hearts=["502"])
     give_rows_an_isrc(monkeypatch)
-    code, resumed, _job = run_job(monkeypatch, client, exported, sweep=True)
-    assert code == int(ExitCode.OK), resumed
+    resumed, _job = run_job(monkeypatch, client, exported, sweep=True)
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert client.user.favorites.added == ["501", "503"]
     assert ledger.recorded_hearts(installed) == frozenset({"501", "503"})
@@ -984,8 +947,7 @@ def test_a_playlist_export_runs_to_done_and_the_ledger_records_every_add(install
     exported = write_export(installed)
     client = FakeClient(isrcs=numbered(700))
     give_rows_an_isrc(monkeypatch)
-    code, resumed, job_id = run_job(monkeypatch, client, exported, sweep=False)
-    assert code == int(ExitCode.OK), resumed
+    resumed, job_id = run_job(monkeypatch, client, exported, sweep=False)
     assert client.user.created == [outbound_fakes.CRATE]
     (playlist,) = client.playlists.values()
     # Items two and three find the first item's record, so neither creates nor
@@ -995,15 +957,13 @@ def test_a_playlist_export_runs_to_done_and_the_ledger_records_every_add(install
     # ONE ADD FOR THE JOB'S THREE TRACKS (U270): the batch goes in one request.
     assert playlist.adds == [["701", "702", "703"]]
     assert ledger.playlist_remote_id(installed, outbound_fakes.CRATE) == playlist.id
-    assert ledger.playlist_added(installed, outbound_fakes.CRATE) == frozenset(
-        {"701", "702", "703"}
-    )
+    assert ledger.playlist_added(installed, outbound_fakes.CRATE) == {"701", "702", "703"}
     reports = artifacts.committed(installed, job_id)
     assert [report["remote_id"] for report in reports] == [playlist.id] * 3
     # Somebody made it public at the provider since; that is theirs to keep.
     playlist.public = True
     account.forget()
-    code, resumed = _resume(queue(exported, sweep=False))
+    code, resumed = drive(_argv(queue(exported, sweep=False)))
     assert code == int(ExitCode.OK), resumed
     assert client.user.created == [outbound_fakes.CRATE]
     assert list(client.playlists) == [playlist.id]
@@ -1023,8 +983,7 @@ def test_a_provider_failure_on_one_heart_fails_that_item_and_no_other(installed,
 
     client.user.favorites.add_track = add_track
     give_rows_an_isrc(monkeypatch)
-    code, _resumed, job_id = run_job(monkeypatch, client, exported, sweep=True)
-    assert code != int(ExitCode.OK)
+    _resumed, job_id = run_job(monkeypatch, client, exported, sweep=True, ok=False)
     with jobs.open_store() as store:
         causes = {
             item.item_id: (item.cause.reason if item.cause else None)
@@ -1038,8 +997,7 @@ def test_a_row_whose_file_carries_no_isrc_matches_nothing(installed, monkeypatch
     """No substitution and no file behind the rows: honest unmatched rows, no call (R-355)."""
     exported = write_export(installed, favorites=(1, 2))
     client = FakeClient(isrcs=numbered(500, (1, 2)), tracks={"1", "2"})
-    code, resumed, job_id = run_job(monkeypatch, client, exported, sweep=True)
-    assert code == int(ExitCode.OK), resumed
+    resumed, job_id = run_job(monkeypatch, client, exported, sweep=True)
     assert client.user.favorites.added == []
     assert client.isrc_asked == [] and client.track_asked == []
     reports = artifacts.committed(installed, job_id)
@@ -1071,8 +1029,7 @@ def test_a_sweep_matches_through_the_isrc_the_file_carries(installed, monkeypatc
         },
     )
     client = FakeClient(isrcs={isrc_for("1"): ["501"], isrc_for("2"): ["502"]})
-    code, resumed, job_id = run_job(monkeypatch, client, exported, sweep=True)
-    assert code == int(ExitCode.OK), resumed
+    resumed, job_id = run_job(monkeypatch, client, exported, sweep=True)
     assert client.isrc_asked == [isrc_for("1")]
     assert client.user.favorites.added == ["501"]
     reports = artifacts.committed(installed, job_id)
@@ -1136,8 +1093,7 @@ def test_a_sweep_resolves_a_shared_isrc_by_the_rows_own_names_and_says_why_it_co
     placed = _three_tagged(installed, silence)
     exported = write_export(installed, favorites=(1, 2, 3), locations=placed)
     client = FakeClient(isrcs=_releases_for_three_rows())
-    code, resumed, job_id = run_job(monkeypatch, client, exported, sweep=True)
-    assert code == int(ExitCode.OK), resumed
+    resumed, job_id = run_job(monkeypatch, client, exported, sweep=True)
     assert client.user.favorites.added == ["511", "503"]
     outbound = resumed["data"]["progress"]["outbound"]
     assert outbound["unmatched"] == ["2"]
@@ -1153,8 +1109,7 @@ def test_an_export_resolves_a_shared_isrc_by_the_rows_own_names_and_says_why_it_
 ):
     exported = write_export(installed, locations=_three_tagged(installed, silence))
     client = FakeClient(isrcs=_releases_for_three_rows())
-    code, resumed, job_id = run_job(monkeypatch, client, exported, sweep=False)
-    assert code == int(ExitCode.OK), resumed
+    resumed, job_id = run_job(monkeypatch, client, exported, sweep=False)
     (playlist,) = client.playlists.values()
     assert playlist.members == ["511", "503"]
     outbound = resumed["data"]["progress"]["outbound"]
@@ -1172,7 +1127,7 @@ def test_an_export_resolves_a_shared_isrc_by_the_rows_own_names_and_says_why_it_
     (listed,) = outbound["unmatched_tracks"]
     assert (listed["artist"], listed["title"]) == ("Artist 2", "08A - 124 - Track 2")
     assert listed["reason"] == row["reason"]
-    code, said = _resume_human(job_id)
+    code, said = drive_human(_argv(job_id))
     assert code == int(ExitCode.OK), said
     assert f"    unmatched: Artist 2 - 08A - 124 - Track 2: {row['reason']}" in said, said
 
@@ -1182,8 +1137,7 @@ def test_a_release_the_account_already_hearts_is_the_one_an_export_adds(
 ):
     exported = write_export(installed, crate=(2,), locations=_three_tagged(installed, silence))
     client = FakeClient(isrcs=_releases_for_three_rows(), hearts=["512"])
-    code, resumed, _job = run_job(monkeypatch, client, exported, sweep=False)
-    assert code == int(ExitCode.OK), resumed
+    resumed, _job = run_job(monkeypatch, client, exported, sweep=False)
     (playlist,) = client.playlists.values()
     assert playlist.members == ["512"]
     assert resumed["data"]["progress"]["outbound"]["reasons"] == []
@@ -1194,8 +1148,7 @@ def test_an_unmatched_row_with_nothing_said_about_it_adds_no_reason_to_the_envel
 ):
     exported = write_export(installed, crate=(1, 3), locations=_three_tagged(installed, silence))
     client = FakeClient(isrcs={isrc_for("3"): ["503"]})
-    code, resumed, _job = run_job(monkeypatch, client, exported, sweep=False)
-    assert code == int(ExitCode.OK), resumed
+    resumed, _job = run_job(monkeypatch, client, exported, sweep=False)
     outbound = resumed["data"]["progress"]["outbound"]
     assert outbound["unmatched"] == ["1"] and outbound["reasons"] == []
     # R-850: ``reasons`` omits it, and the answer's list still names it.
@@ -1249,32 +1202,28 @@ ADMITTED_REMOVALS = {
 def test_the_adapter_names_each_remove_on_the_client_inside_its_one_member():
     """A removal shape anywhere else in the adapter's modules, or another in a member, fails."""
     shapes = ("remove", "delete", "unheart", "unlike", "clear")
-    named: set[tuple[str, str]] = set()
-    defined: list[str] = []
-    for tree in _trees():
-        defined += [
-            node.name
-            for node in ast.walk(tree)
-            if isinstance(node, ast.FunctionDef) and any(s in node.name.lower() for s in shapes)
-        ]
-        named |= {
-            (_enclosing(tree, node), node.attr)
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Attribute) and any(s in node.attr.lower() for s in shapes)
-        }
+    defined = [
+        node.name
+        for tree in _trees()
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and any(s in node.name.lower() for s in shapes)
+    ]
+    named = {
+        (inside, attr)
+        for tree in _trees()
+        for inside, attr in _attributes(tree)
+        if any(s in attr.lower() for s in shapes)
+    }
     assert sorted(defined) == sorted(ADMITTED_REMOVALS), defined
     assert named == set(ADMITTED_REMOVALS.items()), sorted(named)
 
 
-def _enclosing(tree: ast.Module, target: ast.AST) -> str:
-    """The name of the innermost function in ``tree`` that holds ``target``, or ``""``."""
-    found = ""
-    for function in ast.walk(tree):
-        if isinstance(function, ast.FunctionDef) and any(
-            node is target for node in ast.walk(function)
-        ):
-            found = function.name
-    return found
+def _attributes(node: ast.AST, inside: str = ""):
+    """Each attribute named under ``node``, with the innermost function holding it, or ``""``."""
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, ast.Attribute):
+            yield inside, child.attr
+        yield from _attributes(child, child.name if isinstance(child, ast.FunctionDef) else inside)
 
 
 def test_the_client_library_still_offers_the_private_call_a_create_relies_on():
@@ -1302,8 +1251,10 @@ def on_album(track: Track, name: str) -> Track:
     return track
 
 
-def single_and_album_cut() -> FakeClient:
-    return releases(on_album(sun("101"), "Sun Path"), on_album(sun("202"), "Tidal Lines"))
+def single_and_album_cut(hearts: list[str] = ()) -> FakeClient:
+    """A single and its album cut, spelled alike, the account hearting ``hearts``."""
+    single, cut = on_album(sun("101"), "Sun Path"), on_album(sun("202"), "Tidal Lines")
+    return releases(single, cut, hearts=hearts)
 
 
 def by_album(found: tidal_account.TidalAccount, album: str) -> str | None:
@@ -1354,12 +1305,8 @@ def test_an_unreadable_track_stops_the_album_from_choosing_the_lone_agreeing_one
 
 def test_the_album_never_overrides_a_heart_or_breaks_a_tie_between_two():
     """Out of scope by the brief: how a hearted release breaks a tie is unchanged."""
-    client = single_and_album_cut()
-    client.user.favorites.hearts = ["101"]
-    assert by_album(adapter(client), "Tidal Lines") == "101"
-    client = single_and_album_cut()
-    client.user.favorites.hearts = ["101", "202"]
-    found = adapter(client)
+    assert by_album(adapter(single_and_album_cut(["101"])), "Tidal Lines") == "101"
+    found = adapter(single_and_album_cut(["101", "202"]))
     assert by_album(found, "Tidal Lines") is None
     assert "hearts 2 of those, so none was chosen" in found.unmatched_reason("7")
 
@@ -1385,8 +1332,7 @@ def test_a_sweep_hearts_the_release_the_files_album_tag_names(installed, monkeyp
     on_album(single, "Track 2")
     on_album(cut, "Track 2 (Deluxe)")
     client = FakeClient(isrcs=shapes)
-    code, resumed, _job = run_job(monkeypatch, client, exported, sweep=True)
-    assert code == int(ExitCode.OK), resumed
+    resumed, _job = run_job(monkeypatch, client, exported, sweep=True)
     assert client.user.favorites.added == ["511", "512", "503"]
     assert resumed["data"]["progress"]["outbound"]["unmatched"] == []
 
@@ -1434,15 +1380,12 @@ def test_a_file_album_naming_two_of_three_takes_the_lower_of_those_two():
 
 
 def test_two_hearted_releases_take_the_lower_hearted_one_never_an_unhearted_one():
-    client = releases(*tie("101", "202", "303", "404"))
-    client.user.favorites.hearts = ["404", "202"]
+    client = releases(*tie("101", "202", "303", "404"), hearts=["404", "202"])
     assert any_release(adapter(client)) == "202"
 
 
 def test_a_lone_heart_and_a_lone_album_choose_as_they_always_did():
-    client = single_and_album_cut()
-    client.user.favorites.hearts = ["202"]
-    assert any_release(adapter(client)) == "202"
+    assert any_release(adapter(single_and_album_cut(["202"]))) == "202"
     assert any_release(adapter(single_and_album_cut()), album="Tidal Lines") == "202"
 
 
@@ -1491,9 +1434,7 @@ def test_a_tie_broken_by_any_agreeing_is_said_and_no_other_match_is():
 def test_a_lone_release_a_lone_heart_or_a_lone_album_is_never_a_broken_tie():
     found = adapter(releases(sun("101")))
     assert any_release(found) == "101" and found.tie_broken("7") is False
-    client = single_and_album_cut()
-    client.user.favorites.hearts = ["202"]
-    found = another_catalogue(client)
+    found = another_catalogue(single_and_album_cut(["202"]))
     assert any_release(found) == "202" and found.tie_broken("7") is False
     found = another_catalogue(single_and_album_cut())
     assert any_release(found, album="Tidal Lines") == "202"
@@ -1501,9 +1442,7 @@ def test_a_lone_release_a_lone_heart_or_a_lone_album_is_never_a_broken_tie():
 
 
 def test_two_hearts_or_an_album_naming_two_is_a_broken_tie():
-    client = releases(*tie("101", "202"))
-    client.user.favorites.hearts = ["202", "101"]
-    found = adapter(client)
+    found = adapter(releases(*tie("101", "202"), hearts=["202", "101"]))
     assert any_release(found) == "101" and found.tie_broken("7") is True
     found = another_catalogue(three_on_albums())
     assert any_release(found, album="Tidal Lines") == "202" and found.tie_broken("7") is True
@@ -1520,8 +1459,8 @@ def test_two_hearts_and_an_album_naming_one_of_them_is_a_broken_tie():
         on_album(sun("101"), "Sun Path"),
         on_album(sun("202"), "Tidal Lines"),
         on_album(sun("303"), "Night Drives"),
+        hearts=["303", "202"],
     )
-    client.user.favorites.hearts = ["303", "202"]
     found = adapter(client)
     assert any_release(found, album="Tidal Lines") == "202"
     assert found.tie_broken("7") is True
