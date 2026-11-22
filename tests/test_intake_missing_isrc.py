@@ -256,9 +256,7 @@ def test_a_set_with_no_isrc_resolves_no_catalogue_and_spends_no_login(cfg, libra
 
 
 def test_a_track_that_cannot_be_a_text_line_is_named_and_the_rest_are_still_written(cfg, library, recognised, monkeypatch):
-    """The review's first finding, driven: one handed on row whose artist carries the line
-    separator used to refuse the whole verb, every track named by ISRC with it, under a remedy
-    that could not work."""
+    """One row no text line can hold is named on its own check; the rest are still written."""
     job_id = finished_set(
         library,
         recognised,
@@ -284,9 +282,7 @@ def test_a_track_that_cannot_be_a_text_line_is_named_and_the_rest_are_still_writ
 
 
 def test_the_order_the_provider_answers_in_does_not_change_the_files(cfg, library, recognised, monkeypatch):
-    """The review's second finding, the half that is this unit's to fix: the reason names the
-    identifiers, and in provider order a reshuffled answer would turn a repeat run into a
-    refusal."""
+    """Sorted ids, so a reshuffled answer never turns a repeat run into a refusal."""
     job_id = finished_set(library, recognised, monkeypatch, hit("Nova Reef", "Tide", isrc=TWO))
     bind(monkeypatch, FakeCatalogue(isrcs={TWO: [FakeTrack("9003"), FakeTrack("9002")]}))
     first = missing(job_id)
@@ -297,8 +293,7 @@ def test_the_order_the_provider_answers_in_does_not_change_the_files(cfg, librar
 
 
 def test_missing_tracks_none_named_and_none_writable_refuse_rather_than_no_op(cfg, library, recognised, monkeypatch):
-    """U78's mutation row B2. Nothing listed and nothing handed on to a file,
-    reported as a no-op, reads exactly like a set the library already held."""
+    """Nothing listed or handed on is not a no-op, which would read as a set already held."""
     job_id = finished_set(library, recognised, monkeypatch, hit("Kite - Harbor", "Low Tide Signal"))
     code, envelope = missing(job_id)
     assert code == int(ExitCode.PRECONDITION), envelope

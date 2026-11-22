@@ -590,8 +590,7 @@ def test_the_verb_declares_that_it_adjudicates():
 def test_the_run_after_an_answer_lists_more_than_the_first_and_is_not_refused(
     cfg, library, tmp_path, monkeypatch
 ):
-    """The documented second run. Under one fixed name it was refused, because
-    the first run had already written a list and this one holds other bytes."""
+    """The run after an answer lists more under a new name rather than being refused."""
     path = tracklist(tmp_path, "Nova Reef - Tide", "Aurora Bloom - Sun Path")
     bind(
         monkeypatch,
@@ -629,8 +628,7 @@ def test_two_tracklists_of_one_file_name_in_two_folders_do_not_collide(
 def test_a_missing_row_of_another_services_list_is_searched_for_and_not_dropped(
     cfg, library, tmp_path, monkeypatch
 ):
-    """Its ref is that service's id, which the emitter writes as none. Sorted by
-    the ref alone it was in no file and on no check, at exit zero."""
+    """Its ref is that service's id, which the emitter writes as none, so it is searched."""
     path = tmp_path / "other.json"
     path.write_text(
         json.dumps(
@@ -704,8 +702,7 @@ def test_a_title_with_two_readings_is_never_listed_on_one_candidate(
 
 
 def test_a_failed_search_says_which_offers_it_did_not_make(cfg, library, tmp_path, monkeypatch):
-    """A version question the library raised is in the queue before the provider
-    is asked, so the refusal may not say nothing was offered."""
+    """A version question the library raised is queued first, so the refusal may not say none."""
     owned(library, "Nova Reef - Tide (Extended Mix).flac")
     path = tracklist(tmp_path, "Nova Reef - Tide", "Aurora Bloom - Sun Path")
     bind(monkeypatch, UnreadableCatalogue())
@@ -789,8 +786,7 @@ def test_an_exact_candidate_under_the_floor_of_nothing_is_still_first():
 
 
 def test_the_only_exact_candidate_carrying_no_identifier_is_not_listed():
-    """Both exact hits lack an id, so their ids are ONE distinct value, the empty one, and only the
-    identifier condition stands between that and a listed row nothing can download."""
+    """Two exact hits with no id share ONE id, the empty one, and must still not be listed."""
     wanted, answer = answer_of(
         "Aurora Bloom - Sun Path",
         Hit("", "Aurora Bloom", "Sun Path"),
@@ -808,8 +804,7 @@ def test_exact_hits_with_no_identifier_are_reported_as_that_and_not_as_no_resemb
 
 
 def test_an_accepted_option_that_does_not_carry_its_own_track_lists_nothing(cfg):
-    """The option's id is what a person chose and its detail is what is listed,
-    so a detail naming another track is a download nobody accepted."""
+    """An option whose detail names another track is a download nobody accepted."""
     wanted = match.read_text_lines("Aurora Bloom - Sun Path")[0]
     other = match.read_row(Hit("9999", "Nova Reef", "Tide"), origin=match.TIDAL, position=1)
     with review.open_store(cfg) as items:
@@ -872,9 +867,7 @@ def test_a_search_answered_by_another_emoji_title_is_not_exact(line, title, exac
 
 
 def test_two_emoji_rows_are_each_searched_and_listed(cfg, library, tmp_path, monkeypatch):
-    """Review round one's third finding: the dedupe of a line listed twice is keyed on the match
-    identifier, which two emoji titles by one artist shared, so the second was never searched
-    and never downloaded."""
+    """Two emoji titles by one artist share a match id, and each is still searched and listed."""
     drop, wave = "\U0001f4a7", "\U0001f30a"
     path = tracklist(tmp_path, f"Aurora Bloom - {drop}", f"Aurora Bloom - {wave}")
     fake = bind(

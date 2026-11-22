@@ -185,8 +185,7 @@ def _earlier(out: Path, name: str, track: dict) -> None:
     ids=["by-provider-id", "by-isrc", "neither"],
 )
 def test_each_half_of_the_own_rows_rule_keeps_a_row_alone(cfg, library, tmp_path, earlier, kept):
-    """Review round one, F5: the earlier copy claims a row by its provider id, or by its ISRC when
-    the ids differ (a set row named by ISRC), and a copy naming neither claims nothing."""
+    """The earlier copy claims a row by provider id, or by ISRC when the ids differ."""
     from cratekit.intake import missing_cli
     staged(tmp_path, library, "a.flac", artist="Lumen Drift", title="Salt Road", isrc=SALT)
     out = lists_dir(library)
@@ -198,9 +197,7 @@ def test_each_half_of_the_own_rows_rule_keeps_a_row_alone(cfg, library, tmp_path
 def test_a_track_held_since_the_job_is_never_said_to_carry_no_isrc(
     cfg, library, tmp_path, monkeypatch
 ):
-    """Review round two, finding 2: the one missing track is in the library now, so nothing is
-    missing and nothing was asked of the staging folder; the row says that, not that no missing
-    track carries an ISRC."""
+    """Nothing missing asks the staging folder nothing, and the row says so (review round two)."""
     salt = Track("204", "Lumen Drift", "Salt Road")
     salt.isrc = SALT
     job_id = finished(monkeypatch, [salt])
@@ -216,9 +213,7 @@ def test_a_track_held_since_the_job_is_never_said_to_carry_no_isrc(
 
 
 def test_a_run_with_a_failed_job_and_every_finished_row_staged_answers_ok(cfg, library, tmp_path):
-    """Mutation row M10: the left out refusal stands aside when the finished jobs' only missing
-    tracks are staged, so the pass lands them, while the skipped row still fails and names the
-    job it left out."""
+    """The left out refusal stands aside when the finished rows are staged; the skip still fails."""
     salt = Track("204", "Lumen Drift", "Salt Road")
     salt.isrc = SALT
     kept = finished_in_run(cfg, "pl-a", [salt])

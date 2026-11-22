@@ -46,8 +46,7 @@ def library(tmp_path, monkeypatch) -> Path:
 
 @pytest.fixture
 def cfg(library) -> config.Config:
-    """A configured machine naming the fake adapter with pacing off, so the
-    same configuration serves the intake job and the download that follows."""
+    """A configured machine naming the fake adapter, so one config serves intake and download."""
     built = config.from_dict(
         valid_data(
             library,
@@ -157,8 +156,7 @@ def edit_report(job_id: str, index: int, change) -> None:
 
 
 def human(argv: list[str]) -> tuple[int, str]:
-    """The DEFAULT output a person reads. ``drive`` always asks for json, and a
-    json only driver has already hidden one blank renderer in this product."""
+    """The DEFAULT output a person reads, which a json only driver cannot see."""
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(argv, stdout=out, stderr=err)
     return code, out.getvalue() + err.getvalue()
@@ -510,8 +508,7 @@ def test_a_job_with_nothing_missing_is_no_op_and_writes_nothing(cfg, library, mo
 
 
 class Withholding(StrictCatalogue):
-    """The seam answering as the adapter does when its listing came back
-    short of the account's declared count: the rows it served, and the count."""
+    """The seam as the adapter answers a listing short of the declared count."""
 
     def __init__(self, rows: list[Track], *, declared: int) -> None:
         super().__init__(hearts=rows)
@@ -598,8 +595,7 @@ def test_a_failed_job_is_refused_carrying_its_own_cause(cfg, library, monkeypatc
 def test_fewer_readable_reports_than_items_refuses_rather_than_listing_a_subset(
     cfg, library, monkeypatch
 ):
-    """Damaged reports refuse the job, by identifier and not by count; a row nothing names is
-    reported unlisted as a failing check."""
+    """Damaged reports refuse the job by identifier; a row nothing names is a failing check."""
     job_id = finished(monkeypatch, hearts())
     with jobs.open_store() as store:
         job = jobs.get(store, job_id)
@@ -648,8 +644,7 @@ def test_an_unknown_job_is_refused_by_name(cfg):
 
 
 def test_a_succeeded_job_with_no_items_is_refused_not_listed_empty(cfg, library):
-    """The review's first finding, driven: a pre U57 build queued intake jobs with
-    no items, and zero reports against zero items passes a comparison by id."""
+    """Zero reports against zero items passes a comparison by id, so no items refuses."""
     with jobs.open_store() as store:
         job = jobs.enqueue(
             store, handler_key="intake.playlist", payload={"source": "pl-1"}, cfg=cfg, item_ids=()
@@ -727,8 +722,7 @@ def test_a_billed_guest_survives_the_freeze_the_worker_resolves_from():
 def test_a_deleted_credited_row_never_withholds_another_remix_of_the_recording(
     cfg, library, monkeypatch
 ):
-    """The companion names one VERSION. A heart for a different remix of the
-    same recording is still missing and still listed, because nobody deleted it."""
+    """The companion names one VERSION; another remix was deleted by nobody."""
     tombstone(cfg, "Aurora Bloom", "Sun Path (feat. Mira) (Nightwave Remix)")
     job_id = finished(monkeypatch, [Track("202", "Aurora Bloom", "Sun Path", version="Daybreak Remix")])
     _code, envelope = missing(job_id)
@@ -905,8 +899,7 @@ def test_a_run_lists_only_its_own_finished_jobs_and_names_the_rest(
 
 
 def test_skip_failed_over_nothing_missing_refuses_rather_than_a_clean_no_op(cfg, library):
-    """The finished job owns everything and the skipped one resolved nothing, so
-    a no-op would say the pass needs no download when half of it was never read."""
+    """Half the pass was never read, so a no-op would wrongly say it needs no download."""
     owned(library, "Lumen Drift - Salt Road.flac")
     finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
     broken = in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])

@@ -579,8 +579,7 @@ def test_the_pipeline_result_carries_the_session_the_action_is_on(cfg, silence, 
     ["RUN_synced_inboxed.xml", "RUN_synced_inboxed.xml.imported", "RUN_synced_inboxed.xml.imported-2"],
 )
 def test_sync_mark_reads_the_same_pass_off_a_retired_intake_file(name):
-    """``sync mark`` finds its pass from the intake file's name, and a person who
-    proved the import first hands it the retired one."""
+    """``sync mark`` finds its pass from the intake file's name, retired or not."""
     assert mark_cli._pass_name(Path("/library") / name) == "RUN_synced"
 
 
@@ -652,8 +651,7 @@ def test_tracks_acknowledged_as_gone_are_not_proof_of_an_import(cfg, silence, ex
 def test_a_refused_close_is_reported_and_tried_again_next_time(
     cfg, silence, export, tmp_path, monkeypatch
 ):
-    """The file is retired and the proof recorded by the time the gated close
-    can refuse, so the refusal is on the item and the next run closes it."""
+    """A gated close refused after the proof is on the item, and the next run closes it."""
     _land(cfg, silence, export)
     (record,) = session.records(cfg)
     after = _export_after_import(tmp_path, _intake_file(cfg))
@@ -687,8 +685,7 @@ def test_a_refused_close_is_reported_and_tried_again_next_time(
 def test_a_failed_call_records_no_track_the_ledger_cannot_withdraw(
     cfg, silence, export, monkeypatch
 ):
-    """Nothing that can fail follows the ledger write, because an intent cannot
-    be taken back and an abandoned run's would be outstanding for ever."""
+    """Nothing that can fail follows the ledger write, since an intent cannot be taken back."""
     music = Path(cfg.library.root) / cfg.library.music_dir
     music.mkdir(parents=True, exist_ok=True)
     path = music / "One.flac"
