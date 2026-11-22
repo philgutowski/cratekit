@@ -367,9 +367,7 @@ def test_an_empty_answer_handed_straight_in_is_not_remembered():
 
 
 def test_two_pictures_of_one_length_are_encoded_apart(encodes):
-    """The digest is what tells two pictures apart, never their length alone.
-    A JPEG decodes with bytes after its end marker, so the shorter of two
-    covers is padded to the longer one's length."""
+    """The digest is what tells two pictures apart, never their length alone."""
     one, two = cover(), other_cover()
     longer = max(len(one), len(two))
     one, two = (picture + b"\0" * (longer - len(picture)) for picture in (one, two))
@@ -383,11 +381,9 @@ def test_two_pictures_of_one_length_are_encoded_apart(encodes):
 
 
 def test_two_covers_sharing_a_long_header_are_encoded_apart(encodes):
-    """The digest is over every byte, not a prefix. Two covers carrying one
-    embedded colour profile agree for thousands of bytes before their pixels
-    differ, and are padded to one length too, so only the whole digest tells
-    them apart. Round one of the review found a 2 KB prefix digest killed by
-    nothing."""
+    """The digest is over every byte, not a prefix. Two covers carrying one embedded colour
+    profile agree for thousands of bytes before their pixels differ, and are padded to one
+    length too, so only the whole digest tells them apart."""
     import io
 
     from tests.test_tagging_engine import _gradient

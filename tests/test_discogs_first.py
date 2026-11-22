@@ -349,10 +349,7 @@ def test_a_picture_ask_beatport_refuses_is_unread_and_counts_toward_the_stop():
 
 
 def test_a_record_shop_decline_still_ends_an_explicit_walk():
-    """Only a source that names no picture gives way on a decline. A record
-    shop's decline is its own word for the track and carries its row's
-    picture, so on a walk naming Beatport first it settles the file as before
-    and Discogs is not asked."""
+    """Only a source that names no picture gives way on a decline."""
     seen: list[str] = []
     fetch = routed(
         search=results(7),

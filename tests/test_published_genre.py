@@ -598,9 +598,9 @@ def test_the_first_genre_that_maps_to_a_folder_is_chosen():
 
 @pytest.mark.parametrize("passed_over", [UNDECLARED, FALLBACK_GENRE, TAG_ONLY, REFUSED[0], ""])
 def test_a_word_that_maps_to_no_folder_is_passed_over_for_the_next(passed_over):
-    """Each way a word fails to map: nothing declares it, it resolves to a name
-    too coarse to be a tag, a rule gives it a tag with no bucket, the taxonomy
-    refuses it outright, or it is empty."""
+    """Each way a word fails to map: nothing declares it, it resolves to a name too coarse to be
+    a tag, a rule gives it a tag with no bucket, the taxonomy refuses it outright, or it is
+    empty."""
     assert published.choose(NO_TABLE, [passed_over]) is None
     chosen = published.choose(NO_TABLE, [passed_over, SUB_GENRE])
     assert chosen is not None and chosen[0] == SUB_GENRE
@@ -669,10 +669,8 @@ def test_the_aliased_word_for_a_style_resolves_to_a_sub_and_routes_into_it():
 
 @pytest.mark.parametrize(("word", "folder"), [("Soul & Funk", "Soul"), ("Rap/Hip Hop", "Hip-Hop")])
 def test_the_aliased_word_for_soul_or_hip_hop_resolves_to_the_folder_u118_gave_it(word, folder):
-    """Each resolved to a style sub until R-797 and U118 moved those subs to
-    folders of their own, split by energy, and "Soul & Funk" to Soul by its
-    first word. The word is the bucket's now, the tag written is the folder's
-    name, and that name routes back into the same folder's bands."""
+    """Each resolved to a style sub until R-797 and U118 moved those subs to folders of their
+    own, split by energy, and "Soul & Funk" to Soul by its first word."""
     suggestion = routing.suggest_tag(TAXONOMY, word)
     promoted = next(bucket for bucket in TAXONOMY.buckets if bucket.display == folder)
     assert promoted.formerly or promoted.split_from
@@ -752,9 +750,8 @@ def test_beatport_must_have_answered_before_the_general_catalogue_is_asked(beatp
 
 @pytest.mark.parametrize("given", ["", "CAT-0042"])
 def test_a_file_with_no_isrc_is_said_to_have_none_whatever_beatport_answered(given):
-    """KTD8. Beatport was not read, so nothing would be asked anyway, and the
-    file still counts as one with no ISRC, since another run will not change
-    that. Before, it was recorded ``not-asked`` and the warning undercounted."""
+    """KTD8. Beatport was not read, so nothing would be asked anyway, and the file still counts
+    as one with no ISRC, since another run will not change that."""
     hit = SearchHit(
         answers=(
             SourceAnswer(searchers.BEATPORT, "unreachable"),
@@ -836,9 +833,8 @@ def test_a_declined_answer_beside_beatports_own_declined_word_keeps_beatports():
 
 
 def test_a_published_genre_over_beatports_declined_word_is_written_and_keeps_beatports_picture():
-    """Beatport answered with a catch-all, which is not a usable answer, so the
-    general catalogue is asked and its answer is written. The picture Beatport's
-    row named stays, and says it is Beatport's."""
+    """Beatport answered with a catch-all, which is not a usable answer, so the general
+    catalogue is asked and its answer is written."""
     hit = SearchHit(
         genre=None,
         source=searchers.BEATPORT,
@@ -903,10 +899,8 @@ BANDCAMP_CHALLENGE = Fetched(
 
 
 def shops(beatport: str = EMPTY_BEATPORT, *, traxsource=TRAXSOURCE_403, bandcamp=BANDCAMP_CHALLENGE):
-    """The searcher over the walk before U244, in the state measured on the
-    author's machine: Beatport answering and both fallbacks refusing. The
-    default walk's interplay with the general catalogue, Beatport then
-    Discogs, is ``tests/test_discogs_searcher.py``'s."""
+    """The searcher over the walk before U244, in the state measured on the author's machine:
+    Beatport answering and both fallbacks refusing."""
     return searchers.catalogue_searcher(
         TAXONOMY,
         fetch=_all_three(beatport=beatport, traxsource=traxsource, bandcamp=bandcamp),
@@ -916,9 +910,8 @@ def shops(beatport: str = EMPTY_BEATPORT, *, traxsource=TRAXSOURCE_403, bandcamp
 
 
 def test_ae1_a_track_beatport_does_not_carry_gets_the_published_genre(track):
-    """AE1. Beatport misses, the general catalogue calls the album by a word the
-    taxonomy has a folder for, and that is written. Routing then files the
-    written tag in the sub the taxonomy declared for the word."""
+    """AE1. Beatport misses, the general catalogue calls the album by a word the taxonomy has a
+    folder for, and that is written."""
     word = "Rock"
     suggestion = routing.suggest_tag(TAXONOMY, word)
     # THE FOLDER IS PINNED BY IDENTIFIER, not only by asking the resolver the
@@ -984,9 +977,8 @@ def test_ae3_a_usable_beatport_answer_is_written_and_the_general_catalogue_is_no
 
 
 def test_ae4_a_file_with_no_isrc_is_reported_as_that_and_not_as_no_hit(tmp_path, silence):
-    """AE4, with every record shop answering MISS, which before this unit was a
-    clean ``no-hit``. The general catalogue could not be asked, so whether any
-    catalogue carries the track is unknown."""
+    """AE4, with every record shop answering MISS, which before this unit was a clean
+    ``no-hit``."""
     path = tmp_path / f"{TITLE}.flac"
     shutil.copy2(silence, path)
     seen: list[str] = []
@@ -1130,9 +1122,8 @@ def test_a_declined_published_word_does_not_put_the_picture_question_to_the_cata
 
 
 def test_a_match_with_no_genre_leaves_the_file_as_the_shops_left_it(track):
-    """Every record shop missed and the general catalogue knows the track with
-    no genre published. The record carries the match, and nothing else about
-    the file names a catalogue that supplied nothing."""
+    """Every record shop missed and the general catalogue knows the track with no genre
+    published."""
     result = tag.tag_one(
         track,
         searcher=shops(traxsource="<html></html>", bandcamp="<html><ul></ul></html>"),

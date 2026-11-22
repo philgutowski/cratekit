@@ -607,9 +607,9 @@ def test_a_pass_whose_catalogues_answered_says_nothing_of_refusals(
 
 
 def test_every_landing_verb_runs_the_one_chain_whose_tag_step_this_is():
-    """``sync land``, ``label sync --go`` and ``sync bandcamp`` reach the tag step
-    through :func:`tail.through_name`, so a label go's tag step behaves as the
-    sync pass's by construction."""
+    """``sync land``, ``label sync --go`` and ``sync bandcamp`` reach the tag step through
+    :func:`tail.through_name`, so a label go's tag step behaves as the sync pass's by
+    construction."""
     import inspect
 
     from cratekit.cli import sync_bandcamp

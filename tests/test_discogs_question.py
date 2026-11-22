@@ -160,9 +160,9 @@ def test_a_headed_title_tag_asks_discogs_past_its_head_and_takes_its_match(tmp_p
 
 
 def test_the_same_title_asked_with_its_head_misses_as_it_did_at_the_sitting():
-    """The fixture answers a person's question and not the head's: the asker
-    handed the title tag as its question misses, as sitting 100 measured, and
-    handed the title past the head matches the same release."""
+    """The fixture answers a person's question and not the head's: the asker handed the title
+    tag as its question misses, as sitting 100 measured, and handed the title past the head
+    matches the same release."""
     seen: list[str] = []
     asker = searchers.discogs_asker(token=SENT, fetch=typed_fetch(seen), sleep=lambda _s: None)
     headed = "03B - 83 - That's the Way of the World"

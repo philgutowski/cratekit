@@ -138,9 +138,8 @@ def test_another_mitigation_is_not_called_a_challenge():
 
 
 def test_a_200_just_a_moment_page_is_blocked_not_a_parse_break():
-    """R-794: the challenge carries no ``__NEXT_DATA__``, so parsed first it
-    was a parser defect and, beside an unread Discogs, a refusal telling the
-    person to report one."""
+    """R-794: the challenge carries no ``__NEXT_DATA__``, so parsed first it was a parser defect
+    and, beside an unread Discogs, a refusal telling the person to report one."""
     hit = _searcher(_over_the_wire(_Response(200, CHALLENGE_PAGE)))(ARTIST, TITLE)
 
     said = _beatport(hit)
@@ -162,10 +161,9 @@ def test_a_200_page_carrying_only_cloudflares_script_is_blocked():
 
 
 def test_a_results_page_carrying_cloudflares_script_is_read_as_results():
-    """A page that carries Beatport's payload is a results page, whatever
-    script Cloudflare put on it, so a match or a miss is never read as a
-    refusal (U281's review): a bot managed site can carry the detection
-    script on every ordinary page."""
+    """A page that carries Beatport's payload is a results page, whatever script Cloudflare put
+    on it, so a match or a miss is never read as a refusal (U281's review): a bot managed site
+    can carry the detection script on every ordinary page."""
     script = '<script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script>'
     found = _beatport_page([_beatport_track(ARTIST, TITLE, BUCKET_GENRE)]) + script
     empty = _beatport_page([]) + script
@@ -406,9 +404,8 @@ def test_a_stopped_catalogue_is_answered_without_a_wait():
 
 
 def test_the_count_is_per_catalogue_so_a_refusing_one_never_stops_an_answering_one():
-    """The scraped walk, where three catalogues are scraped: Traxsource refuses
-    every search and is stopped, Beatport and Bandcamp answer and are asked on
-    every file."""
+    """The scraped walk, where three catalogues are scraped: Traxsource refuses every search and
+    is stopped, Beatport and Bandcamp answer and are asked on every file."""
     seen: list[str] = []
     empty_bandcamp = "<html><ul class='result-items'></ul></html>"
 
