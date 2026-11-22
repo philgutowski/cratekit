@@ -100,14 +100,12 @@ def three() -> tuple[dict, ...]:
 
 
 def test_a_one_id_isrc_is_listed_and_two_ids_and_no_isrc_are_handed_on(
-    cfg, library, recognised, monkeypatch
+    cfg, library, recognised, monkeypatch  # noqa: F811 - the imported fixture
 ):
     job_id = finished_set(library, recognised, monkeypatch, *three())
     fake = bind(
         monkeypatch,
-        FakeCatalogue(
-            isrcs={ONE: [FakeTrack("9001")], TWO: [FakeTrack("9002"), FakeTrack("9003")]}
-        ),
+        FakeCatalogue(isrcs={ONE: [FakeTrack("9001")], TWO: [FakeTrack("9002"), FakeTrack("9003")]}),
     )
     code, envelope = missing(job_id)
     assert code == int(ExitCode.OK), envelope
@@ -129,14 +127,12 @@ def test_a_one_id_isrc_is_listed_and_two_ids_and_no_isrc_are_handed_on(
 
 
 def test_the_unlisted_file_round_trips_through_read_list_with_its_reasons(
-    cfg, library, recognised, monkeypatch
+    cfg, library, recognised, monkeypatch  # noqa: F811
 ):
     job_id = finished_set(library, recognised, monkeypatch, *three())
     bind(
         monkeypatch,
-        FakeCatalogue(
-            isrcs={ONE: [FakeTrack("9001")], TWO: [FakeTrack("9002"), FakeTrack("9003")]}
-        ),
+        FakeCatalogue(isrcs={ONE: [FakeTrack("9001")], TWO: [FakeTrack("9002"), FakeTrack("9003")]}),
     )
     _code, envelope = missing(job_id)
     handed = lists_dir(library) / f"intake-{job_id}.unlisted.json"
@@ -157,11 +153,9 @@ def test_the_unlisted_file_round_trips_through_read_list_with_its_reasons(
 
 
 def test_an_isrc_the_provider_files_nothing_under_is_handed_on_as_unknown(
-    cfg, library, recognised, monkeypatch
+    cfg, library, recognised, monkeypatch  # noqa: F811
 ):
-    job_id = finished_set(
-        library, recognised, monkeypatch, hit("Lumen Drift", "Salt Road", isrc=NONE_FILED)
-    )
+    job_id = finished_set(library, recognised, monkeypatch, hit("Lumen Drift", "Salt Road", isrc=NONE_FILED))
     fake = bind(monkeypatch, FakeCatalogue())
     code, envelope = missing(job_id)
     assert code == int(ExitCode.OK), envelope
@@ -173,7 +167,7 @@ def test_an_isrc_the_provider_files_nothing_under_is_handed_on_as_unknown(
 
 
 def test_an_isrc_is_folded_before_it_is_asked_and_a_malformed_one_is_never_asked(
-    cfg, library, recognised, monkeypatch
+    cfg, library, recognised, monkeypatch  # noqa: F811
 ):
     job_id = finished_set(
         library,
@@ -191,22 +185,18 @@ def test_an_isrc_is_folded_before_it_is_asked_and_a_malformed_one_is_never_asked
 
 
 def test_the_same_id_twice_in_one_answer_is_one_id_and_is_listed(
-    cfg, library, recognised, monkeypatch
+    cfg, library, recognised, monkeypatch  # noqa: F811
 ):
-    job_id = finished_set(
-        library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path", isrc=ONE)
-    )
+    job_id = finished_set(library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path", isrc=ONE))
     bind(monkeypatch, FakeCatalogue(isrcs={ONE: [FakeTrack("9001"), FakeTrack("9001")]}))
     _code, envelope = missing(job_id)
     assert envelope["data"]["summary"]["written"] == 1
 
 
 def test_an_answer_holding_a_track_with_no_identifier_is_handed_on_not_read_as_one(
-    cfg, library, recognised, monkeypatch
+    cfg, library, recognised, monkeypatch  # noqa: F811
 ):
-    job_id = finished_set(
-        library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path", isrc=ONE)
-    )
+    job_id = finished_set(library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path", isrc=ONE))
     bind(monkeypatch, FakeCatalogue(isrcs={ONE: [FakeTrack("9001"), FakeTrack("")]}))
     _code, envelope = missing(job_id)
     summary = envelope["data"]["summary"]
@@ -217,7 +207,9 @@ def test_an_answer_holding_a_track_with_no_identifier_is_handed_on_not_read_as_o
 # Nothing is written unless every answer is in hand
 
 
-def test_a_provider_outage_refuses_and_writes_nothing(cfg, library, recognised, monkeypatch):
+def test_a_provider_outage_refuses_and_writes_nothing(
+    cfg, library, recognised, monkeypatch  # noqa: F811
+):
     job_id = finished_set(library, recognised, monkeypatch, *three())
     fake = bind(monkeypatch, UnreadableCatalogue())
     code, envelope = missing(job_id)
@@ -230,7 +222,7 @@ def test_a_provider_outage_refuses_and_writes_nothing(cfg, library, recognised, 
 
 
 def test_no_stored_session_refuses_before_anything_is_written(
-    cfg, library, recognised, monkeypatch
+    cfg, library, recognised, monkeypatch  # noqa: F811
 ):
     """The real ``resolve``, over an isolated keychain holding no provider session."""
     job_id = finished_set(library, recognised, monkeypatch, *three())
@@ -241,7 +233,7 @@ def test_no_stored_session_refuses_before_anything_is_written(
 
 
 def test_a_set_with_no_isrc_resolves_no_catalogue_and_spends_no_login(
-    cfg, library, recognised, monkeypatch
+    cfg, library, recognised, monkeypatch  # noqa: F811
 ):
     job_id = finished_set(
         library, recognised, monkeypatch, hit("Aurora Bloom", "Sun Path"), hit("Nova Reef", "Tide")
@@ -257,14 +249,12 @@ def test_a_set_with_no_isrc_resolves_no_catalogue_and_spends_no_login(
 
 
 def test_a_different_file_at_the_unlisted_path_refuses_before_the_list_is_written(
-    cfg, library, recognised, monkeypatch
+    cfg, library, recognised, monkeypatch  # noqa: F811
 ):
     job_id = finished_set(library, recognised, monkeypatch, *three())
     bind(
         monkeypatch,
-        FakeCatalogue(
-            isrcs={ONE: [FakeTrack("9001")], TWO: [FakeTrack("9002"), FakeTrack("9003")]}
-        ),
+        FakeCatalogue(isrcs={ONE: [FakeTrack("9001")], TWO: [FakeTrack("9002"), FakeTrack("9003")]}),
     )
     handed = lists_dir(library) / f"intake-{job_id}.unlisted.json"
     handed.parent.mkdir(parents=True)
@@ -276,13 +266,13 @@ def test_a_different_file_at_the_unlisted_path_refuses_before_the_list_is_writte
     assert sorted(p.name for p in handed.parent.iterdir()) == [handed.name]
 
 
-def test_a_second_run_over_the_same_answers_is_not_refused(cfg, library, recognised, monkeypatch):
+def test_a_second_run_over_the_same_answers_is_not_refused(
+    cfg, library, recognised, monkeypatch  # noqa: F811
+):
     job_id = finished_set(library, recognised, monkeypatch, *three())
     bind(
         monkeypatch,
-        FakeCatalogue(
-            isrcs={ONE: [FakeTrack("9001")], TWO: [FakeTrack("9002"), FakeTrack("9003")]}
-        ),
+        FakeCatalogue(isrcs={ONE: [FakeTrack("9001")], TWO: [FakeTrack("9002"), FakeTrack("9003")]}),
     )
     first = missing(job_id)
     again = missing(job_id)
@@ -291,7 +281,7 @@ def test_a_second_run_over_the_same_answers_is_not_refused(cfg, library, recogni
 
 
 def test_a_track_that_cannot_be_a_text_line_is_named_and_the_rest_are_still_written(
-    cfg, library, recognised, monkeypatch
+    cfg, library, recognised, monkeypatch  # noqa: F811
 ):
     """The review's first finding, driven: one handed on row whose artist carries the line
     separator used to refuse the whole verb, every track named by ISRC with it, under a remedy
@@ -322,7 +312,7 @@ def test_a_track_that_cannot_be_a_text_line_is_named_and_the_rest_are_still_writ
 
 
 def test_the_order_the_provider_answers_in_does_not_change_the_files(
-    cfg, library, recognised, monkeypatch
+    cfg, library, recognised, monkeypatch  # noqa: F811
 ):
     """The review's second finding, the half that is this unit's to fix: the reason names the
     identifiers, and in provider order a reshuffled answer would turn a repeat run into a
@@ -337,7 +327,7 @@ def test_the_order_the_provider_answers_in_does_not_change_the_files(
 
 
 def test_a_product_refusal_from_the_catalogue_passes_through_unrelabelled(
-    cfg, library, recognised, monkeypatch
+    cfg, library, recognised, monkeypatch  # noqa: F811
 ):
     from cratekit.core.cause import refuse
     from cratekit.core.exit_codes import Remedy
@@ -360,7 +350,7 @@ def test_a_product_refusal_from_the_catalogue_passes_through_unrelabelled(
 
 
 def test_missing_tracks_none_named_and_none_writable_refuse_rather_than_no_op(
-    cfg, library, recognised, monkeypatch
+    cfg, library, recognised, monkeypatch  # noqa: F811
 ):
     """U78's mutation row B2. Nothing listed and nothing handed on to a file,
     reported as a no-op, reads exactly like a set the library already held."""
@@ -403,7 +393,7 @@ class _CountingClient:
 
 
 def test_a_second_run_over_the_same_set_asks_the_provider_no_isrc_again(
-    cfg, library, recognised, monkeypatch
+    cfg, library, recognised, monkeypatch  # noqa: F811
 ):
     from cratekit.cli import ISRC_LOOKUPS
     from cratekit.label import tidal_catalogue

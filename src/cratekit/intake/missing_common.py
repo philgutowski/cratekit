@@ -249,9 +249,7 @@ def _named_by_isrc(
         answer = answers.get(code)
         if not code:
             named.append(
-                _Unnamed(
-                    NO_ISRC, "it carries no ISRC, so the provider cannot be asked for it exactly"
-                )
+                _Unnamed(NO_ISRC, "it carries no ISRC, so the provider cannot be asked for it exactly")
             )
         elif answer is None:
             named.append(

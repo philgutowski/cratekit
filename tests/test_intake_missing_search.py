@@ -177,12 +177,7 @@ def test_the_same_exact_track_served_twice_is_one_candidate(cfg, library, tmp_pa
     bind(
         monkeypatch,
         FakeCatalogue(
-            searches={
-                SUN: [
-                    Hit("7001", "Aurora Bloom", "Sun Path"),
-                    Hit("7001", "Aurora Bloom", "Sun Path"),
-                ]
-            }
+            searches={SUN: [Hit("7001", "Aurora Bloom", "Sun Path"), Hit("7001", "Aurora Bloom", "Sun Path")]}
         ),
     )
     envelope = ok(path)[0]
@@ -256,9 +251,7 @@ def test_an_exact_candidate_beside_an_exact_one_with_no_identifier_is_offered(
     bind(
         monkeypatch,
         FakeCatalogue(
-            searches={
-                SUN: [Hit("7001", "Aurora Bloom", "Sun Path"), Hit("", "Aurora Bloom", "Sun Path")]
-            }
+            searches={SUN: [Hit("7001", "Aurora Bloom", "Sun Path"), Hit("", "Aurora Bloom", "Sun Path")]}
         ),
     )
     envelope = ok(path)[0]
@@ -325,7 +318,9 @@ def test_a_near_miss_is_offered_with_its_score_and_is_not_listed(
     assert "never picked from a score" in item.payload["why"]
 
 
-def test_a_second_run_offers_nothing_new_and_spends_no_search(cfg, library, tmp_path, monkeypatch):
+def test_a_second_run_offers_nothing_new_and_spends_no_search(
+    cfg, library, tmp_path, monkeypatch
+):
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
     fake = bind(monkeypatch, near_miss())
     found(path)
@@ -367,9 +362,7 @@ def test_an_acceptance_of_the_only_candidate_needs_no_option(cfg, library, tmp_p
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
     bind(
         monkeypatch,
-        FakeCatalogue(
-            searches={SUN: [Hit("7002", "Aurora Bloom", "Sun Path", version="Extended Mix")]}
-        ),
+        FakeCatalogue(searches={SUN: [Hit("7002", "Aurora Bloom", "Sun Path", version="Extended Mix")]}),
     )
     found(path)
     resolve(the_item(cfg).item_id, "accepted")
@@ -668,9 +661,7 @@ def test_two_tracklists_of_one_file_name_in_two_folders_do_not_collide(
     (tmp_path / "saturday").mkdir()
     one = tracklist(tmp_path / "friday", "Nova Reef - Tide", name="tracklist.txt")
     two = tracklist(tmp_path / "saturday", "Aurora Bloom - Sun Path", name="tracklist.txt")
-    bind(
-        monkeypatch, FakeCatalogue(searches={TIDE: [Hit("7010", *TIDE)], SUN: [Hit("7001", *SUN)]})
-    )
+    bind(monkeypatch, FakeCatalogue(searches={TIDE: [Hit("7010", *TIDE)], SUN: [Hit("7001", *SUN)]}))
     found(one)
     ok(two)
     assert len(list(lists_dir(library).glob("tracklist-found-*.list.json"))) == 2
@@ -688,13 +679,7 @@ def test_a_missing_row_of_another_services_list_is_searched_for_and_not_dropped(
                 "list": 1,
                 "origin": "spotify",
                 "tracks": [
-                    {
-                        "track": {
-                            "id": "sp1",
-                            "name": "Sun Path",
-                            "artists": [{"name": "Aurora Bloom"}],
-                        }
-                    }
+                    {"track": {"id": "sp1", "name": "Sun Path", "artists": [{"name": "Aurora Bloom"}]}}
                 ],
             }
         ),
@@ -791,13 +776,7 @@ def test_rows_asked_by_isrc_and_rows_searched_for_share_one_catalogue(
                             "external_ids": {"isrc": "QZAAA2600001"},
                         }
                     },
-                    {
-                        "track": {
-                            "id": "sp2",
-                            "name": "Sun Path",
-                            "artists": [{"name": "Aurora Bloom"}],
-                        }
-                    },
+                    {"track": {"id": "sp2", "name": "Sun Path", "artists": [{"name": "Aurora Bloom"}]}},
                 ],
             }
         ),
@@ -962,7 +941,5 @@ def test_a_search_question_about_one_emoji_title_is_not_another_ones():
     assert candidates.item_id(drop) != candidates.item_id(wave)
     plain = match.read_text_lines("Aurora Bloom - Sun Path (Extended Mix)")[0]
     assert candidates.identity(plain) == {
-        "artist": "aurora bloom",
-        "title": "sun path",
-        "version": "extended mix",
+        "artist": "aurora bloom", "title": "sun path", "version": "extended mix",
     }

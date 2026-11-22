@@ -114,9 +114,7 @@ def build_missing(parser, entry) -> None:
 
 
 def _resume_argv(job: jobs.Job) -> str:
-    resume = (
-        intake_cli.playlist_argv if job.handler_key == "intake.playlist" else intake_cli.set_argv
-    )
+    resume = intake_cli.playlist_argv if job.handler_key == "intake.playlist" else intake_cli.set_argv
     return shlex.join(resume(job))
 
 
@@ -137,9 +135,8 @@ def _finished_or_refuse(store, job_id: str) -> jobs.Job:
         raise _unusable(
             f"job {job.job_id} is {job.state}, not succeeded, so some of its tracks "
             f"may not be resolved and a list of the rest would read as complete",
-            f"finish it with: crate {argv}"
-            if job.is_open()
-            else "queue the playlist again, let it finish, then list that job",
+            f"finish it with: crate {argv}" if job.is_open() else
+            "queue the playlist again, let it finish, then list that job",
             inner=job.cause,
             job_id=job.job_id,
             state=str(job.state),
@@ -288,7 +285,9 @@ def in_pass(job: jobs.Job, pass_name: str) -> bool:
 
 def _missing_for_run(ctx, run_id: str) -> Envelope:
     with jobs.open_store() as store:
-        kept, skipped = _run_jobs_or_refuse(store, run_id, skip_failed=bool(ctx.args.skip_failed))
+        kept, skipped = _run_jobs_or_refuse(
+            store, run_id, skip_failed=bool(ctx.args.skip_failed)
+        )
         found = [(job, _reports_or_refuse(store, job)) for job in kept]
     name = synced_name(run_id)
     checks = [
@@ -302,7 +301,8 @@ def _missing_for_run(ctx, run_id: str) -> Envelope:
             "skipped",
             "fail" if skipped else "ok",
             f"{len(skipped)} job(s) failed or were cancelled and their tracks are NOT "
-            f"in the list: " + ", ".join(f"{job.job_id} ({_source_ref(job)})" for job in skipped)
+            f"in the list: "
+            + ", ".join(f"{job.job_id} ({_source_ref(job)})" for job in skipped)
             if skipped
             else "every intake job in the run succeeded",
         ),
@@ -349,7 +349,8 @@ def intake_missing(ctx) -> Envelope:
         # A FLAG THAT WOULD MEAN NOTHING IS REFUSED, not ignored, or a failed
         # job's refusal would read as the flag not working.
         raise _unusable(
-            "--skip-failed leaves failed jobs out of a run's list and means nothing for one job",
+            "--skip-failed leaves failed jobs out of a run's list and means nothing "
+            "for one job",
             "drop --skip-failed, or list the whole pass with --run",
             job_id=str(ctx.args.job),
         )

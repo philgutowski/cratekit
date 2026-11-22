@@ -174,9 +174,7 @@ def _staged_check(staged: _Staged | None, rows: list[tuple[match.Wanted, Path]])
             + "; ".join(f"{one.artist} - {one.title} as {path.name}" for one, path in rows),
         )
     if staged is None:
-        return _check(
-            "staged", "info", "no track is missing, so none was asked whether it is staged"
-        )
+        return _check("staged", "info", "no track is missing, so none was asked whether it is staged")
     if staged.unasked:
         return _check("staged", "info", staged.unasked)
     return _check("staged", "info", f"no missing track is staged already in {staged.folder}")
@@ -333,7 +331,7 @@ def _listed(
         (job, report)
         for job, report in rows_in
         if report["state"] == "missing" or next(answered)
-    ]  # fmt: skip
+    ]
     missing = [intake_cli.thawed(report["track"]) for _job, report in asking]
     origins = [job for job, _report in asking]
     tally = _Tally(counts)

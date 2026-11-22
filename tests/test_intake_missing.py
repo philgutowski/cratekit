@@ -173,12 +173,8 @@ def tombstone(cfg: config.Config, artist: str, title: str) -> None:
     stores.record_tombstone(
         cfg,
         RemovedRow(
-            content_id="9001",
-            recorded="2026-09-18",
-            sequence=1,
-            size=None,
-            artist=artist,
-            title=title,
+            content_id="9001", recorded="2026-09-18", sequence=1, size=None,
+            artist=artist, title=title,
         ),
         actor="deletion",
     )
@@ -291,11 +287,7 @@ def test_a_second_run_is_the_same_list_and_not_a_refusal(cfg, library, monkeypat
     assert summary["list"] == first["data"]["summary"]["list"]
     assert [path.read_bytes() for path in paths] == before
     assert (summary["written"], summary["missing"]) == (2, 2)
-    assert (summary["owned_since"], summary["suppressed_since"], summary["offered_since"]) == (
-        0,
-        0,
-        0,
-    )
+    assert (summary["owned_since"], summary["suppressed_since"], summary["offered_since"]) == (0, 0, 0)
 
 
 # R-502: a missing row is asked again at listing time
@@ -611,7 +603,11 @@ def test_a_short_hearts_listing_is_queued_and_says_by_how_much(cfg, library, mon
     code, envelope = drive(["intake", "playlist", "favorites"])
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "ok"
-    assert envelope["data"]["progress"]["shortfall"] == {"declared": 7, "listed": 5, "withheld": 2}
+    assert envelope["data"]["progress"]["shortfall"] == {
+        "declared": 7,
+        "listed": 5,
+        "withheld": 2,
+    }
     (warning,) = withheld(envelope)
     assert "7 declared, 5 listed, 2 withheld by the provider" in warning["message"]
     with jobs.open_store() as store:
@@ -647,7 +643,11 @@ def test_hearts_all_withheld_are_not_read_as_an_account_with_none(cfg, library, 
     code, envelope = drive(["intake", "playlist", "favorites"])
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
-    assert envelope["data"]["progress"]["shortfall"] == {"declared": 3, "listed": 0, "withheld": 3}
+    assert envelope["data"]["progress"]["shortfall"] == {
+        "declared": 3,
+        "listed": 0,
+        "withheld": 3,
+    }
     (warning,) = withheld(envelope)
     assert "3 declared, 0 listed, 3 withheld by the provider" in warning["message"]
     with jobs.open_store() as store:
@@ -669,10 +669,8 @@ def test_an_open_job_is_refused_and_nothing_is_written(cfg, library, monkeypatch
 def test_a_failed_job_is_refused_carrying_its_own_cause(cfg, library, monkeypatch):
     job_id = queued(monkeypatch, hearts())
     cause = Cause(
-        reason="internal-error",
-        message="stopped for the test",
-        remediation=Remediation(steps=("nothing",)),
-        origin=("test",),
+        reason="internal-error", message="stopped for the test",
+        remediation=Remediation(steps=("nothing",)), origin=("test",),
     )
     with jobs.open_store() as store:
         jobs.transition(store, job_id, jobs.JobState.FAILED, cause=cause)
@@ -821,9 +819,8 @@ def test_a_deleted_track_whose_row_kept_a_credit_is_suppressed_and_not_listed(
 ):
     """R-431: a deletion whose row kept a featured credit still suppresses the heart."""
     tombstone(cfg, "Aurora Bloom", "Sun Path (feat. Mira) (Nightwave Remix)")
-    job_id = finished(
-        monkeypatch, [Track("201", "Aurora Bloom", "Sun Path", version="Nightwave Remix")]
-    )
+    job_id = finished(monkeypatch, [Track("201", "Aurora Bloom", "Sun Path", version="Nightwave Remix")])
+
     _code, envelope = missing(job_id)
     summary = envelope["data"]["summary"]
     assert (summary["written"], summary["suppressed"]) == (0, 1)
@@ -837,18 +834,10 @@ def test_a_billed_guest_survives_the_freeze_the_worker_resolves_from():
 
     solo, billed = match.read_tidal_tracks(
         [
-            {
-                "id": "1",
-                "title": "Sun Path",
-                "version": "Nightwave Remix",
-                "artists": [{"name": "Aurora Bloom"}],
-            },
-            {
-                "id": "2",
-                "title": "Sun Path",
-                "version": "Nightwave Remix",
-                "artists": [{"name": "Aurora Bloom"}, {"name": "Zed"}],
-            },
+            {"id": "1", "title": "Sun Path", "version": "Nightwave Remix",
+             "artists": [{"name": "Aurora Bloom"}]},
+            {"id": "2", "title": "Sun Path", "version": "Nightwave Remix",
+             "artists": [{"name": "Aurora Bloom"}, {"name": "Zed"}]},
         ]
     )
     assert intake_cli.thawed(intake_cli.frozen(solo)).uncredited_spellings
@@ -863,9 +852,8 @@ def test_a_deleted_credited_row_never_withholds_another_remix_of_the_recording(
     """The companion names one VERSION. A heart for a different remix of the
     same recording is still missing and still listed, because nobody deleted it."""
     tombstone(cfg, "Aurora Bloom", "Sun Path (feat. Mira) (Nightwave Remix)")
-    job_id = finished(
-        monkeypatch, [Track("202", "Aurora Bloom", "Sun Path", version="Daybreak Remix")]
-    )
+    job_id = finished(monkeypatch, [Track("202", "Aurora Bloom", "Sun Path", version="Daybreak Remix")])
+
     _code, envelope = missing(job_id)
     summary = envelope["data"]["summary"]
     assert (summary["written"], summary["suppressed"]) == (1, 0)
@@ -890,13 +878,8 @@ def in_run(cfg, reference: str, rows: list[Track], *, run_id: str = RUN) -> str:
     )
     with jobs.open_store() as store:
         job = intake_cli.queue_playlist(
-            store,
-            cfg,
-            handler_key="intake.playlist",
-            reference=reference,
-            tracks=tracks,
-            run_id=run_id,
-            source_id="playlists",
+            store, cfg, handler_key="intake.playlist", reference=reference,
+            tracks=tracks, run_id=run_id, source_id="playlists",
         )
     return job.job_id
 
@@ -911,10 +894,8 @@ def finished_in_run(cfg, reference: str, rows: list[Track], *, run_id: str = RUN
 
 def fail(job_id: str) -> None:
     cause = Cause(
-        reason="internal-error",
-        message="stopped for the test",
-        remediation=Remediation(steps=("nothing",)),
-        origin=("test",),
+        reason="internal-error", message="stopped for the test",
+        remediation=Remediation(steps=("nothing",)), origin=("test",),
     )
     with jobs.open_store() as store:
         jobs.transition(store, job_id, jobs.JobState.FAILED, cause=cause)
@@ -960,8 +941,7 @@ def test_a_run_list_is_one_file_a_second_listing_reproduces(cfg, library):
     again = run_ok()[0]
     assert again["data"]["summary"]["list"] == first["data"]["summary"]["list"]
     assert sorted(p.name for p in lists_dir(library).iterdir()) == [
-        RUN_LIST,
-        RUN_LIST.replace(".list.json", ".manifest.json"),
+        RUN_LIST, RUN_LIST.replace(".list.json", ".manifest.json"),
     ]
 
 
@@ -999,10 +979,7 @@ def test_a_run_whose_rows_were_all_acquired_since_names_no_download(cfg, library
     owned(library, "Lumen Drift - Salt Road.flac")
     envelope = run_ok()[0]
     assert envelope["outcome"] == "no_op"
-    assert (envelope["data"]["summary"]["next"], envelope["data"]["summary"]["owned_since"]) == (
-        None,
-        1,
-    )
+    assert (envelope["data"]["summary"]["next"], envelope["data"]["summary"]["owned_since"]) == (None, 1)
 
 
 def test_the_default_human_output_names_the_list_the_download_and_the_landing(cfg, library):
@@ -1139,10 +1116,7 @@ def test_a_job_of_another_verb_in_the_same_run_is_not_listed(cfg, library):
     finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
     with jobs.open_store() as store:
         jobs.enqueue(
-            store,
-            handler_key="sync.labels",
-            payload={"run_id": RUN},
-            cfg=cfg,
+            store, handler_key="sync.labels", payload={"run_id": RUN}, cfg=cfg,
             item_ids=("some-label",),
         )
     envelope = run_ok()[0]
@@ -1210,7 +1184,11 @@ def test_a_playlist_declaring_ten_with_two_withheld_queues_eight_and_warns(
     with jobs.open_store() as store:
         items = jobs.items(store, envelope["data"]["job_id"])
     assert len(items) == 8
-    assert envelope["data"]["progress"]["shortfall"] == {"declared": 10, "listed": 8, "withheld": 2}
+    assert envelope["data"]["progress"]["shortfall"] == {
+        "declared": 10,
+        "listed": 8,
+        "withheld": 2,
+    }
     (warning,) = playlist_withheld(envelope)
     assert "10 declared, 8 listed, 2 withheld by the provider" in warning["message"]
     assert repr(SHORT) in warning["message"]
@@ -1231,12 +1209,18 @@ def test_a_playlist_with_no_declared_count_warns_nothing(cfg, library, monkeypat
     assert playlist_withheld(envelope) == []
 
 
-def test_a_playlist_whose_every_track_is_withheld_is_not_a_quiet_no_op(cfg, library, monkeypatch):
+def test_a_playlist_whose_every_track_is_withheld_is_not_a_quiet_no_op(
+    cfg, library, monkeypatch
+):
     bind_playlist(monkeypatch, [], declared=3)
     code, envelope = drive(["intake", "playlist", SHORT])
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
-    assert envelope["data"]["progress"]["shortfall"] == {"declared": 3, "listed": 0, "withheld": 3}
+    assert envelope["data"]["progress"]["shortfall"] == {
+        "declared": 3,
+        "listed": 0,
+        "withheld": 3,
+    }
     assert len(playlist_withheld(envelope)) == 1
 
 

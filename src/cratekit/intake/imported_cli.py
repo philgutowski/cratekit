@@ -228,9 +228,7 @@ def retire(artifact: Path) -> Path | None:
             raise
     except OSError as exc:
         raise refuse(
-            "path-permission-denied"
-            if isinstance(exc, PermissionError)
-            else "intake-list-unusable",
+            "path-permission-denied" if isinstance(exc, PermissionError) else "intake-list-unusable",
             f"{artifact.name} could not be renamed out of the way "
             f"({exc.strerror or exc}), so nothing about its run was changed",
             origin=_ORIGIN,

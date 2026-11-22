@@ -453,7 +453,11 @@ def propose(
                 else f"the provider's search returned {answer.hits} hit(s) and none "
                 f"that can be downloaded resembles it"
                 + (f", the best scoring {best:g}" if best is not None else "")
-                + (f"; {unnamed} that do resemble it carry no identifier" if unnamed else "")
+                + (
+                    f"; {unnamed} that do resemble it carry no identifier"
+                    if unnamed
+                    else ""
+                )
                 + (f"; {answer.unreadable} could not be read" if answer.unreadable else "")
             ),
         )

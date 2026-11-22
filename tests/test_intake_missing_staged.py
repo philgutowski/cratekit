@@ -63,12 +63,8 @@ def test_a_staged_file_carrying_a_wanted_tracks_isrc_is_named_staged_and_not_lis
     cfg, library, tmp_path, monkeypatch
 ):
     staged(
-        tmp_path,
-        library,
-        "Lumen Drift - Salt Road.flac",
-        artist="Lumen Drift",
-        title="Salt Road",
-        isrc=SALT,
+        tmp_path, library, "Lumen Drift - Salt Road.flac",
+        artist="Lumen Drift", title="Salt Road", isrc=SALT,
     )
     job_id = finished(monkeypatch, rows())
     code, envelope = missing(job_id)
@@ -136,14 +132,8 @@ def test_every_missing_track_staged_is_something_to_land_not_a_no_op(
     cfg, library, tmp_path, monkeypatch
 ):
     staged(tmp_path, library, "a.flac", artist="Lumen Drift", title="Salt Road", isrc=SALT)
-    staged(
-        tmp_path,
-        library,
-        "b.flac",
-        artist="Kite Harbor",
-        title="Low Tide Signal",
-        isrc="gb-aaa-26-00002",
-    )
+    staged(tmp_path, library, "b.flac", artist="Kite Harbor", title="Low Tide Signal",
+           isrc="gb-aaa-26-00002")
     job_id = finished(monkeypatch, rows())
     code, envelope = missing(job_id)
     assert code == int(ExitCode.OK), envelope

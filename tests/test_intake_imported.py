@@ -175,7 +175,9 @@ def test_a_verified_run_stays_open_with_its_placements_still_owed(cfg, silence, 
 # ── What is not proof ───────────────────────────────────────────────────────
 
 
-def test_an_export_taken_before_the_import_proves_nothing_and_changes_nothing(cfg, silence, export):
+def test_an_export_taken_before_the_import_proves_nothing_and_changes_nothing(
+    cfg, silence, export
+):
     """The export the batch was spliced into names none of the landed files."""
     envelope = _land(cfg, silence, export, "One.flac", "Two.flac")
     code, result = _drive(["intake", "imported", "--export", str(export)])
@@ -195,9 +197,7 @@ def test_a_partly_imported_batch_is_not_imported(cfg, silence, export, tmp_path)
     """One landed track missing from the export is a batch that did not import."""
     _land(cfg, silence, export, "One.flac", "Two.flac")
     body = _intake_file(cfg).read_bytes()
-    without_two = re.sub(
-        rb"[ \t]*<TRACK [^>]*Two\.flac[^>]*>.*?</TRACK>\r?\n", b"", body, flags=re.S
-    )
+    without_two = re.sub(rb"[ \t]*<TRACK [^>]*Two\.flac[^>]*>.*?</TRACK>\r?\n", b"", body, flags=re.S)
     assert body.count(b"<TRACK ") - without_two.count(b"<TRACK ") == 1
     assert b"One.flac" in without_two
     partial = tmp_path / "partial.xml"
@@ -273,7 +273,9 @@ def test_an_export_that_is_not_there_is_refused_even_with_nothing_waiting(cfg, t
     assert code != int(ExitCode.OK)
 
 
-def test_a_waiting_run_with_no_export_named_is_refused_and_says_what_to_pass(cfg, silence, export):
+def test_a_waiting_run_with_no_export_named_is_refused_and_says_what_to_pass(
+    cfg, silence, export
+):
     _land(cfg, silence, export)
     (record,) = session.records(cfg)
     _, result = _drive(["intake", "imported"])
@@ -438,7 +440,7 @@ def test_route_pending_with_no_native_tree_is_a_no_op_that_says_so(cfg, silence,
 def volume_agrees(cfg, monkeypatch):
     """The gated close asserts the library volume, and a temporary folder is not it."""
     monkeypatch.setattr(
-        preflight, "default_identity_provider", lambda: lambda _path: cfg.library.volume_id
+        preflight, "default_identity_provider", lambda: (lambda _path: cfg.library.volume_id)
     )
     monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
 
@@ -470,7 +472,9 @@ def test_after_a_cutover_the_pass_placing_every_track_is_proof_and_closes_the_ru
     assert tree_registry.pending_intake_xml(cfg) == ()
 
 
-def test_a_waiting_run_with_tracks_still_outstanding_is_not_called_imported(cfg, silence, export):
+def test_a_waiting_run_with_tracks_still_outstanding_is_not_called_imported(
+    cfg, silence, export
+):
     """The close is attempted as it always was, and the gate refuses it."""
     _land(cfg, silence, export)
     (record,) = session.records(cfg)
@@ -699,7 +703,7 @@ def test_a_refused_close_is_reported_and_tried_again_next_time(
     assert not _intake_file(cfg).exists()
     assert session.read_record(record.session_id, cfg).state is session.SessionState.OPEN
     monkeypatch.setattr(
-        preflight, "default_identity_provider", lambda: lambda _path: cfg.library.volume_id
+        preflight, "default_identity_provider", lambda: (lambda _path: cfg.library.volume_id)
     )
     monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
     code, again = _drive(["intake", "imported"])
@@ -748,7 +752,10 @@ def test_a_failed_call_records_no_track_the_ledger_cannot_withdraw(
 
     monkeypatch.setattr(session, "mark_awaiting_import", failing)
     with pytest.raises(CratekitError):
-        ingest.place_files([path], cfg=cfg, export=export, destination=music / "One_inboxed.xml")
+        ingest.place_files(
+            [path], cfg=cfg, export=export, destination=music / "One_inboxed.xml"
+        )
+
     assert routing_pass.read(cfg).intents == ()
     (record,) = session.records(cfg)
     assert record.state is session.SessionState.ABANDONED

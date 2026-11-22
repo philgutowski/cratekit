@@ -325,9 +325,7 @@ def _found_report(ctx, path, subject, counts, by_isrc, proposals, written) -> En
             "fail" if asked else "ok",
             f"{len(asked)} missing track(s) have provider candidates and no exact one "
             f"to list, so they are offered for review and NOT in the list: "
-            + "; ".join(
-                f"{one.wanted.artist} - {one.wanted.listed} ({one.item_id})" for one in asked
-            )
+            + "; ".join(f"{one.wanted.artist} - {one.wanted.listed} ({one.item_id})" for one in asked)
             + f"; see: {review_command}; then run: {again}"
             if asked
             else "no missing track is waiting on a provider candidate",
