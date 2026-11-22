@@ -184,7 +184,7 @@ def test_a_landing_followed_step_by_step_passes_the_cutover_precheck(
 # ── What is not proof ───────────────────────────────────────────────────────
 
 
-def test_the_intake_file_is_refused_as_its_own_proof(cfg, silence, export, tmp_path):
+def test_the_intake_file_is_refused_as_its_own_proof(cfg, silence, export, tmp_path, monkeypatch):
     """What is not proof leaves the run waiting; a verified run then stays open, owing its
     placements, and the record says why it may wait."""
     _land(cfg, silence, export)
@@ -214,11 +214,41 @@ def test_the_intake_file_is_refused_as_its_own_proof(cfg, silence, export, tmp_p
     assert result["cause"]["detail"]["sessions"] == [record.session_id]
     _, result = _drive(["intake", "imported", "--export", str(export), "--session", "no-such"])
     assert result["cause"]["reason"] == "intake-list-unusable", result
+    # THE NAME CHECK ALONE, where the identity check cannot help.
+    other = tmp_path / "later_inboxed.xml"
+    other.write_bytes(intake_file.read_bytes())
+    _, result = _drive(["intake", "imported", "--export", str(other)])
+    assert result["cause"]["reason"] == "library-export-unusable", result
+    assert "carries a name" in result["cause"]["message"]
+    # ROUTE PENDING with no native tree is a no-op that says so, and opens nothing.
+    code, result = _drive(["route", "pending"])
+    assert code == int(ExitCode.OK), result
+    assert result["outcome"] == "no_op"
+    (warning,) = result["warnings"]
+    assert warning["code"] == "no-native-tree"
+    assert "intake imported --export" in warning["message"]
+    assert [item["session_id"] for item in result["data"]["items"]] == [record.session_id]
+    assert session.read_record(record.session_id, cfg).to_json() == record.to_json()
+    # TRACKS STILL OUTSTANDING: the close is attempted as it always was, and refused.
+    with pytest.raises(CratekitError) as caught:
+        routing_cli._close_if_settled(cfg, record.session_id)
+    assert caught.value.cause.reason == "awaiting-import"
+    assert session.IMPORT_VERIFIED_KEY not in session.read_record(record.session_id, cfg).detail
+    # A RETIRE THAT CANNOT RENAME is a refusal and changes nothing.
+    after = _export_after_import(tmp_path, intake_file)
+
+    def denied(*args, **kwargs):
+        raise PermissionError(13, "Permission denied")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(imported_cli.os, "replace", denied)
+        _, result = _drive(["intake", "imported", "--export", str(after)])
+    assert result["cause"]["reason"] == "path-permission-denied", result
+    assert not intake_file.with_name(intake_file.name + ".imported").exists()
     assert intake_file.is_file()
     (record,) = session.records(cfg)
     assert record.state is session.SessionState.AWAITING_IMPORT
     # VERIFIED, the run is NOT closed before a cutover.
-    after = _export_after_import(tmp_path, intake_file)
     _, result = _drive(["intake", "imported", "--export", str(after)])
     (record,) = session.records(cfg)
     assert result["data"]["items"][0]["closed"] is False
@@ -253,6 +283,11 @@ def test_nothing_waiting_is_a_no_op_with_or_without_an_export(cfg, export):
         assert code == int(ExitCode.OK), result
         assert result["outcome"] == "no_op"
         assert result["data"]["items"] == []
+    # AND PRINTS NO PROOF LINES to a person.
+    code, text = drive_human(["intake", "imported", "--export", str(export)])
+    assert code == int(ExitCode.OK), text
+    assert text.splitlines()[0] == "intake.imported: no_op", text
+    assert "proven:" not in text, text
 
 
 def test_an_export_that_is_not_there_is_refused_even_with_nothing_waiting(cfg, tmp_path):
@@ -388,21 +423,6 @@ def test_a_placed_call_ends_awaiting_import_with_the_action_persisted(cfg, silen
 # ── The brief's third scenario: route pending before a cutover ──────────────
 
 
-def test_route_pending_with_no_native_tree_is_a_no_op_that_says_so(cfg, silence, export):
-    """It answered OK over a run it had not opened."""
-    _land(cfg, silence, export)
-    (before,) = session.records(cfg)
-    code, result = _drive(["route", "pending"])
-    assert code == int(ExitCode.OK), result
-    assert result["outcome"] == "no_op"
-    (warning,) = result["warnings"]
-    assert warning["code"] == "no-native-tree"
-    assert "intake imported --export" in warning["message"]
-    assert [item["session_id"] for item in result["data"]["items"]] == [before.session_id]
-    (after,) = session.records(cfg)
-    assert after.to_json() == before.to_json()
-
-
 @pytest.fixture
 def volume_agrees(cfg, monkeypatch):
     """The gated close asserts the library volume, and a temporary folder is not it."""
@@ -439,20 +459,6 @@ def test_after_a_cutover_the_pass_placing_every_track_is_proof_and_closes_the_ru
     assert tree_registry.pending_intake_xml(cfg) == ()
 
 
-def test_a_waiting_run_with_tracks_still_outstanding_is_not_called_imported(
-    cfg, silence, export
-):
-    """The close is attempted as it always was, and the gate refuses it."""
-    _land(cfg, silence, export)
-    (record,) = session.records(cfg)
-    with pytest.raises(CratekitError) as caught:
-        routing_cli._close_if_settled(cfg, record.session_id)
-    assert caught.value.cause.reason == "awaiting-import"
-    (after,) = session.records(cfg)
-    assert after.state is session.SessionState.AWAITING_IMPORT
-    assert session.IMPORT_VERIFIED_KEY not in after.detail
-
-
 # ── The precheck's excusal is three facts, and each one is required ─────────
 
 
@@ -476,9 +482,13 @@ def test_the_precheck_excuses_a_verified_run_holding_no_capture(cfg, export):
     tree_registry.assert_cutover_ready(cfg, export=export)
 
 
-def test_the_precheck_refuses_a_verified_run_that_holds_a_capture(cfg, export):
+@pytest.mark.parametrize(
+    "changes", [{"snapshot_path": "/captures/one"}, {"state": session.SessionState.COMMITTED_UNVERIFIED}],
+    ids=["holding-a-capture", "not-open"],
+)
+def test_the_precheck_refuses_a_verified_run_that_holds_a_capture(cfg, export, changes):
     _verified_snapshot(cfg)
-    record = _verified(cfg, snapshot_path="/captures/one")
+    record = _verified(cfg, **changes)
     assert _refusal(cfg, export).cause.detail["sessions"] == [record.session_id]
 
 
@@ -490,12 +500,6 @@ def test_the_precheck_refuses_an_open_run_with_no_proof_recorded(cfg, export):
     assert refusal.detail["sessions"] == [record.session_id]
     assert refusal.detail["states"] == {record.session_id: "open"}
     assert "close or abandon every open run" in refusal.remediation.steps
-
-
-def test_the_precheck_refuses_a_verified_run_that_is_not_open(cfg, export):
-    _verified_snapshot(cfg)
-    record = _verified(cfg, state=session.SessionState.COMMITTED_UNVERIFIED)
-    assert _refusal(cfg, export).cause.detail["sessions"] == [record.session_id]
 
 
 def test_only_a_run_waiting_on_an_import_has_one_to_verify(cfg):
@@ -719,43 +723,12 @@ def test_a_failed_call_records_no_track_the_ledger_cannot_withdraw(
     assert record.state is session.SessionState.ABANDONED
 
 
-def test_a_retire_that_cannot_rename_is_a_refusal_and_changes_nothing(
-    cfg, silence, export, tmp_path, monkeypatch
-):
-    _land(cfg, silence, export)
-    after = _export_after_import(tmp_path, _intake_file(cfg))
-    def denied(*args, **kwargs):
-        raise PermissionError(13, "Permission denied")
-    monkeypatch.setattr(imported_cli.os, "replace", denied)
-    _, result = _drive(["intake", "imported", "--export", str(after)])
-    assert result["cause"]["reason"] == "path-permission-denied", result
-    assert _intake_file(cfg).is_file()
-    assert not _intake_file(cfg).with_name(_intake_file(cfg).name + ".imported").exists()
-    (record,) = session.records(cfg)
-    assert record.state is session.SessionState.AWAITING_IMPORT
-
-
 def test_doctor_reads_a_proven_run_as_proven_and_not_as_in_progress(cfg):
     from cratekit.cli import doctor
     proven = _verified(cfg)
     in_flight = session.open_session(cfg, workflow=ingest.INTAKE_WORKFLOW)
     assert "import proven" in doctor._open_state(session.read_record(proven.session_id, cfg))
     assert doctor._open_state(in_flight) == "open"
-
-
-def test_an_intake_file_no_waiting_run_names_is_still_refused_as_the_export(
-    cfg, silence, export, tmp_path
-):
-    """THE NAME CHECK ALONE, where the identity check cannot help."""
-    _land(cfg, silence, export)
-    other = tmp_path / "later_inboxed.xml"
-    other.write_bytes(_intake_file(cfg).read_bytes())
-    _, result = _drive(["intake", "imported", "--export", str(other)])
-    assert result["cause"]["reason"] == "library-export-unusable", result
-    assert "carries a name" in result["cause"]["message"]
-    (record,) = session.records(cfg)
-    assert record.state is session.SessionState.AWAITING_IMPORT
-    assert _intake_file(cfg).is_file()
 
 
 # ── R-678: what a person reads without asking for json ──
@@ -795,8 +768,3 @@ def test_a_run_the_export_does_not_prove_is_named_beside_the_one_it_does(
     assert "  proven: 1 run(s), 1 track(s); retired: 1 intake file(s)" in lines, text
 
 
-def test_nothing_waiting_prints_no_proof_lines(cfg, export):
-    code, text = drive_human(["intake", "imported", "--export", str(export)])
-    assert code == int(ExitCode.OK), text
-    assert text.splitlines()[0] == "intake.imported: no_op", text
-    assert "proven:" not in text, text
