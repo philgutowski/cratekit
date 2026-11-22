@@ -388,7 +388,9 @@ def landings(cfg: config.Config) -> Landings:
         for key in ids:
             if key not in by_id or landed < by_id[key]:
                 by_id[key] = landed
-    return Landings(by_id=by_id, by_name=by_name, unreadable=len(unreadable), unlisted=unlisted)
+    return Landings(
+        by_id=by_id, by_name=by_name, unreadable=len(unreadable), unlisted=unlisted
+    )
 
 
 def _live_children(db: Any, parent_id: str) -> list[Any]:
@@ -509,8 +511,7 @@ def _classify(
         return left(LEFT_UNDATED, "no landing record and no creation date to age it from")
     if landed > today:
         return left(
-            LEFT_UNDATED,
-            f"dated {landed.isoformat()}, after {today.isoformat()}, so its age is unknown",
+            LEFT_UNDATED, f"dated {landed.isoformat()}, after {today.isoformat()}, so its age is unknown"
         )
     age = (today - landed).days
     stale_days, expired_days = cfg.reports.intake_stale_days, cfg.reports.intake_expired_days
@@ -664,11 +665,7 @@ def live_batches(
 
 
 def _record_rotation_commit(
-    record: session.SessionRecord,
-    plan: RotationPlan,
-    created: int,
-    changed: int,
-    cfg: config.Config,
+    record: session.SessionRecord, plan: RotationPlan, created: int, changed: int, cfg: config.Config
 ) -> None:
     """Record the commit under the intake tree: the folder it made, the nodes it changed.
 

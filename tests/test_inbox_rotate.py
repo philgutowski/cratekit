@@ -84,7 +84,7 @@ def machine(tmp_path, monkeypatch):
     config.reset_cache()
     adopt_fixtures.build(resolved, TRACKS)
     monkeypatch.setattr(
-        preflight, "default_identity_provider", lambda: lambda _path: resolved.library.volume_id
+        preflight, "default_identity_provider", lambda: (lambda _path: resolved.library.volume_id)
     )
     monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
     return resolved
@@ -294,10 +294,7 @@ def test_the_forty_and_the_hundred_move_the_old_one_hundred_twenty_goes_and_no_t
     assert actions["keep"] == ["2026-09-23 Tidal playlists"]
     # Old itself is named left beside the rest since U214, as the mirror names it.
     assert sorted(actions[rotate_cli.LEAVE]) == [
-        "2026-01-01 my list",
-        "Lisa picks",
-        OLD,
-        "listen later",
+        "2026-01-01 my list", "Lisa picks", OLD, "listen later"
     ]
 
     # The moves: parent is Old, still live, every track still in it.
@@ -694,10 +691,8 @@ def _removal_callers() -> dict[str, list[str]]:
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if not isinstance(node, ast.Call):
                 continue
-            name = (
-                node.func.attr
-                if isinstance(node.func, ast.Attribute)
-                else getattr(node.func, "id", "")
+            name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(
+                node.func, "id", ""
             )
             if name not in {"commit_guarded", "assert_session_whitelisted", "guard_violations"}:
                 continue
@@ -730,13 +725,9 @@ def test_only_the_rotation_asks_its_commit_to_admit_a_removed_playlist():
 
 
 def _template_with(section: str) -> str:
-    text = (
-        Path(taxonomy.__file__)
-        .resolve()
-        .parents[1]
-        .joinpath("templates", "taxonomy.default.toml")
-        .read_text(encoding="utf-8")
-    )
+    text = Path(taxonomy.__file__).resolve().parents[1].joinpath(
+        "templates", "taxonomy.default.toml"
+    ).read_text(encoding="utf-8")
     start = text.index("[intake_old]")
     end = text.index("\n\n", start)
     return text[:start] + section + text[end:]

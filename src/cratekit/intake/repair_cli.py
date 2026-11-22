@@ -216,7 +216,9 @@ def _plan_for(decided: repair.Decided, *, root: Path | None, cfg: config.Config)
     }
 
 
-def _incomplete_cause(incomplete: list[dict[str, str]], *, renamed: int, retryable: bool) -> Cause:
+def _incomplete_cause(
+    incomplete: list[dict[str, str]], *, renamed: int, retryable: bool
+) -> Cause:
     """What the run answers when an accepted rename did not happen (R-172).
 
     ``name apply``'s reason and wording; the steps are this verb's, since each
@@ -260,9 +262,7 @@ def _apply(ctx, cfg: config.Config) -> Envelope:
     spec = next(gate for gate in ctx.entry.gates if gate.name == "repair.paths.confirm")
     # THE PLAN IS SHOWN THROUGH THE GATE LAYER (R-693). ``count`` is shown as
     # ``renames``, as ``name apply`` does, beside the screen's own count of items.
-    totals = {
-        "renames" if name == "count" else name: value for name, value in plan["totals"].items()
-    }
+    totals = {"renames" if name == "count" else name: value for name, value in plan["totals"].items()}
     option = ctx.gate.require(
         spec, plan=plan, context={"root": str(root) if root is not None else None, **totals}
     )
@@ -278,7 +278,8 @@ def _apply(ctx, cfg: config.Config) -> Envelope:
 
     # TRUE ONCE ANYTHING OUTSTANDING COULD CLEAR WITHOUT A PERSON: a collision or a later find.
     retryable = any(
-        item["action"] in _HELD and item["action"] not in _NEEDS_A_PERSON for item in plan["items"]
+        item["action"] in _HELD and item["action"] not in _NEEDS_A_PERSON
+        for item in plan["items"]
     )
 
     def _owed(item: dict[str, str], why: str) -> None:

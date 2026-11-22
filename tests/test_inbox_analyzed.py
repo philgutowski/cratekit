@@ -108,7 +108,9 @@ FIVE = ("Alpha", "Bravo", "Charlie", "Delta", "Echo")
 TWO = ("Foxtrot", "Golf")
 
 
-def test_a_landing_of_five_adds_five_memberships_to_analyze_under_the_root(native_library, silence):
+def test_a_landing_of_five_adds_five_memberships_to_analyze_under_the_root(
+    native_library, silence
+):
     cfg, root_id = native_library
     acted = _land(cfg, silence, "2026-10-28_five", FIVE)
 
@@ -381,7 +383,9 @@ def test_an_intake_tree_on_the_bridge_is_refused_naming_the_cutover(acknowledged
     assert "tree cutover" in str(refused["cause"])
 
 
-def test_an_analysis_finished_after_the_approval_is_refused_by_the_engine(native_library, silence):
+def test_an_analysis_finished_after_the_approval_is_refused_by_the_engine(
+    native_library, silence
+):
     """The engine's own stale check, with no gate in front (the gated verb solution)."""
     cfg, root_id = native_library
     _land(cfg, silence, "2026-10-28_two", TWO)
@@ -497,7 +501,9 @@ def test_an_analyze_playlist_outside_the_root_is_never_written_into(native_libra
     assert _titles(cfg, _analyze_id(cfg, root_id)) == list(TWO)
 
 
-def test_analyze_removed_after_the_approval_is_refused_and_nothing_lands(native_library, silence):
+def test_analyze_removed_after_the_approval_is_refused_and_nothing_lands(
+    native_library, silence
+):
     """The digest names the playlist the plan found, so its removal is another plan."""
     cfg, root_id = native_library
     _land(cfg, silence, "2026-10-28_one", ("Alpha",))
@@ -598,7 +604,9 @@ def test_the_rotation_never_takes_analyze_for_a_batch_whatever_a_record_says():
     assert isinstance(found, rotate.Left) and found.kind == "analyze", found
 
 
-def test_a_membership_whose_collection_row_is_missing_stays_and_is_named(native_library, silence):
+def test_a_membership_whose_collection_row_is_missing_stays_and_is_named(
+    native_library, silence
+):
     """The first mutation table's zero: a row nothing in the collection answers is never cleared."""
     cfg, root_id = native_library
     _land(cfg, silence, "2026-10-28_one", ("Alpha",))
@@ -622,9 +630,9 @@ def test_a_membership_whose_collection_row_is_missing_stays_and_is_named(native_
     assert code == int(ExitCode.OK), acted
     (ghost,) = [item for item in acted["data"]["items"] if item["content_id"] == "ghost"]
     assert ghost["action"] == analyzed.WAIT and ghost["why"] == analyzed.NO_ROW
-    assert _query(cfg, "SELECT rb_local_deleted FROM djmdSongPlaylist WHERE ID = 'sp-ghost'") == [
-        (0,)
-    ]
+    assert _query(
+        cfg, "SELECT rb_local_deleted FROM djmdSongPlaylist WHERE ID = 'sp-ghost'"
+    ) == [(0,)]
     assert acted["data"]["totals"]["removed"] == 1
 
 

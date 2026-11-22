@@ -106,7 +106,9 @@ def _scan(folder: Path) -> dict:
 
 def _decide(cfg, path: Path, verdict: Verdict | None, option: str | None = None) -> None:
     """Record a verdict on the one item offered for ``path``, as a person would."""
-    wanted = review.item_id_for(str(Queue.PATH_REPAIR), repair.KIND, {"path": str(path.resolve())})
+    wanted = review.item_id_for(
+        str(Queue.PATH_REPAIR), repair.KIND, {"path": str(path.resolve())}
+    )
     with review.open_store(cfg) as store:
         assert review.find(store, wanted) is not None, "the scan offered no item for it"
         if verdict is not None:
@@ -367,7 +369,9 @@ def test_a_linked_file_is_never_renamed_through_its_link(configured, tmp_path):
     assert "linked file" in envelope["cause"]["detail"]["incomplete"][0]["why"]
 
 
-def test_an_interrupt_between_the_claim_and_the_rename_leaves_no_stub(configured, monkeypatch):
+def test_an_interrupt_between_the_claim_and_the_rename_leaves_no_stub(
+    configured, monkeypatch
+):
     folder, path = _one_accepted(configured, b"fLaC mine")
 
     def interrupted(self, target):
@@ -445,7 +449,9 @@ def test_an_unreadable_collection_refuses_and_renames_nothing(configured, monkey
 
 def _rewrite_payload(cfg, path: Path, **fields: str) -> None:
     """Put values in the stored payload, as an edited import document could."""
-    wanted = review.item_id_for(str(Queue.PATH_REPAIR), repair.KIND, {"path": str(path.resolve())})
+    wanted = review.item_id_for(
+        str(Queue.PATH_REPAIR), repair.KIND, {"path": str(path.resolve())}
+    )
     with review.open_store(cfg) as store:
         payload = {**review.get(store, wanted).payload, **fields}
         with store.immediate() as conn:
@@ -524,7 +530,9 @@ def test_a_name_taken_after_the_gate_is_never_overwritten(configured, monkeypatc
     assert "already taken" in envelope["cause"]["detail"]["incomplete"][0]["why"]
 
 
-def test_a_file_deleted_after_the_gate_is_named_and_not_called_renamed(configured, monkeypatch):
+def test_a_file_deleted_after_the_gate_is_named_and_not_called_renamed(
+    configured, monkeypatch
+):
     folder, path = _one_accepted(configured)
     _after_the_gate(monkeypatch, path.unlink)
 
@@ -621,7 +629,9 @@ def test_the_gate_shows_every_item_the_digest_was_taken_over(configured):
     root and the totals, so a person confirms renames they have read."""
     folder, path = _one_accepted(configured)
 
-    code, out, _ = drive(["--output", "json", "repair", "paths", "--apply", "--root", str(folder)])
+    code, out, _ = drive(
+        ["--output", "json", "repair", "paths", "--apply", "--root", str(folder)]
+    )
     assert code == int(ExitCode.DECISION_REQUIRED), out
     shown = json.loads(out)["cause"]["detail"]["shown"]
     code, declined = _answer("abort", "--root", str(folder))

@@ -153,4 +153,6 @@ def decided(store: review.ReviewStore) -> Decided:
                     error=str(item.payload.get("error") or ""),
                 )
             )
-    return Decided(accepted=tuple(accepted), kept=kept, rejected=rejected, still_open=still_open)
+    return Decided(
+        accepted=tuple(accepted), kept=kept, rejected=rejected, still_open=still_open
+    )

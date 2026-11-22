@@ -87,9 +87,7 @@ def _emptied(cfg: config.Config, name: str = INBOX_NAME) -> str:
             cfg, "SELECT Title, FolderPath FROM djmdContent WHERE ID = ?", content_id
         )
         _sql(cfg, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", content_id)
-        _sql(
-            cfg, "UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE ContentID = ?", content_id
-        )
+        _sql(cfg, "UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE ContentID = ?", content_id)
         _sql(
             cfg,
             "INSERT INTO djmdContent (ID, Title, FolderPath, rb_local_deleted, created_at, "
@@ -168,9 +166,7 @@ def test_three_owned_and_two_new_refill_an_empty_playlist_as_five_in_account_ord
     assert _query(cfg, "SELECT COUNT(*) FROM djmdContent") == rows_before
     assert acted["data"]["totals"]["added"] == 5
     assert acted["data"]["totals"]["read back"] == 5
-    added = [
-        item for item in refused["cause"]["detail"]["shown"]["items"] if item["action"] == "add"
-    ]
+    added = [item for item in refused["cause"]["detail"]["shown"]["items"] if item["action"] == "add"]
     assert [item["title"] for item in added] == ["Held1", "New1", "Held2", "New2", "Held3"]
     assert not [w for w in acted["warnings"] if w["code"] == refill_cli.LEFT_OUT]
     # Recorded under the intake tree, with the playlist named.
@@ -253,16 +249,11 @@ def test_a_pre_u128_record_is_matched_by_the_accounts_exact_name_so_the_twin_is_
     # second record of the same pass naming the twin.
     (landing,) = [r for r in session.records(cfg) if native.INBOX_PLAYLISTS_KEY in r.detail]
     _named_before_u175(cfg, playlist_id)
-    stripped = [
-        {"id": one["id"], "name": ACCOUNT} for one in landing.detail[native.INBOX_PLAYLISTS_KEY]
-    ]
+    stripped = [{"id": one["id"], "name": ACCOUNT} for one in landing.detail[native.INBOX_PLAYLISTS_KEY]]
     stripped.append({"id": twin_id, "name": f"{ACCOUNT} 2"})
     records = [
         session.SessionRecord.from_json(
-            {
-                **landing.to_json(),
-                "detail": {**landing.detail, native.INBOX_PLAYLISTS_KEY: stripped},
-            }
+            {**landing.to_json(), "detail": {**landing.detail, native.INBOX_PLAYLISTS_KEY: stripped}}
         )
     ]
 
@@ -270,9 +261,7 @@ def test_a_pre_u128_record_is_matched_by_the_accounts_exact_name_so_the_twin_is_
     found = refill.recorded_ids(entries, pass_name=PASS, account="pl-a", name=ACCOUNT)
 
     assert found == (playlist_id,)
-    assert (
-        refill.recorded_ids(entries, pass_name="another_synced", account="pl-a", name=ACCOUNT) == ()
-    )
+    assert refill.recorded_ids(entries, pass_name="another_synced", account="pl-a", name=ACCOUNT) == ()
 
 
 def test_a_playlist_no_record_names_is_found_by_the_accounts_name_under_inbox(
@@ -294,10 +283,8 @@ def test_a_playlist_no_record_names_is_found_by_the_accounts_name_under_inbox(
     assert code == int(ExitCode.OK), acted
     assert _live_members(cfg, playlist_id) == ["Held1", "New1", "Held2", "New2", "Held3"]
     shown = refused["cause"]["detail"]["shown"]["playlists"]
-    assert shown == [
-        f"{ACCOUNT} (row {playlist_id}, {refill.BY_NAME}): 5 track(s) "
-        f"the library owns, 5 to add, 0 left out"
-    ]
+    assert shown == [f"{ACCOUNT} (row {playlist_id}, {refill.BY_NAME}): 5 track(s) "
+                     f"the library owns, 5 to add, 0 left out"]
 
 
 def test_a_dated_playlist_an_intake_file_recorded_by_name_alone_is_found_by_that_name(
@@ -369,7 +356,8 @@ def test_a_playlist_that_holds_some_gets_only_what_it_lacks(native_library, sile
 
     assert code == int(ExitCode.OK), acted
     actions = [
-        (item["title"], item["action"]) for item in refused["cause"]["detail"]["shown"]["items"]
+        (item["title"], item["action"])
+        for item in refused["cause"]["detail"]["shown"]["items"]
     ]
     assert actions == [
         ("Held1", refill.ADD),
@@ -556,13 +544,7 @@ def test_the_name_is_not_asked_of_a_playlist_a_record_gives_another_pass():
     under = {"1": mine, "2": theirs}
 
     found = refill.locate(
-        _Db(mine, theirs),
-        under,
-        (),
-        others=frozenset({"2"}),
-        account="pl-a",
-        name=ACCOUNT,
-        job_id="j",
+        _Db(mine, theirs), under, (), others=frozenset({"2"}), account="pl-a", name=ACCOUNT, job_id="j"
     )
 
     assert isinstance(found, refill.Target)

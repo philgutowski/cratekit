@@ -222,7 +222,9 @@ def apply_clear(
         try:
             playlist = db.get_playlist(ID=plan.playlist_id)
             # ONE PER ROW: a track held twice has both memberships marked.
-            removed = list(dict.fromkeys(rb_writer.remove_memberships(db, playlist, plan.clears())))
+            removed = list(
+                dict.fromkeys(rb_writer.remove_memberships(db, playlist, plan.clears()))
+            )
             rb_writer.commit_guarded(db, removals=(rb_writer.MEMBERSHIP_TABLE,))
         except BaseException:
             trees.rollback_quietly(db)

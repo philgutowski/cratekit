@@ -377,9 +377,7 @@ def _pass_unknown(cfg: config.Config, pass_name: str) -> Exception:
     )
 
 
-def _shared(
-    located: Sequence[tuple[jobs.Job, Target | Unfound]],
-) -> list[tuple[jobs.Job, Target | Unfound]]:
+def _shared(located: Sequence[tuple[jobs.Job, Target | Unfound]]) -> list[tuple[jobs.Job, Target | Unfound]]:
     """Each target whose INBOX playlist another target of the pass also answers to, as unfound.
 
     One playlist is not two account playlists' mirror: two fills of it against

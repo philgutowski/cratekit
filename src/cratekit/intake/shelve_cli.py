@@ -225,12 +225,7 @@ def intake_shelve(ctx) -> Envelope:
                     {"action": ALREADY_FILED, "batch": name, "folder": folder}
                     for name, folder in filed.items()
                 ],
-                "totals": {
-                    "count": len(filed),
-                    "batches": 0,
-                    "rows": 0,
-                    "already filed": len(filed),
-                },
+                "totals": {"count": len(filed), "batches": 0, "rows": 0, "already filed": len(filed)},
                 "chunk": None,
             },
             outcome=Outcome.NO_OP,
