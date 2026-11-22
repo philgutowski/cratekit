@@ -1577,7 +1577,7 @@ source = { table = "u270.json", id = "J6_missing_outcome_fails" }
 description = "_batch_outcomes: read an item the handler gave no outcome for as done"
 file = "src/cratekit/core/jobs_drive.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/core/jobs_drive.py, was in src/cratekit/core/jobs.py"
+moved = "_batch_outcomes moved whole from core/jobs.py to core/jobs_drive.py with the drive loop (U301); the test that killed it, test_an_item_the_handler_answered_nothing_for_is_failed_not_done, is now the no-answer case of test_an_item_without_a_usable_outcome_is_failed_not_done in the same file, the same input and the same check"
 tests = ["tests/test_jobs_batch.py", "tests/test_outbound_workers.py"]
 old = '            outcomes[item.item_id] = _no_outcome(item)'
 new = '            outcomes[item.item_id] = None'
@@ -1610,7 +1610,7 @@ source = { table = "u270.json", id = "J9_outcome_type_check" }
 description = "_batch_outcomes: pass an outcome that is neither produced nor an exception through to the commit"
 file = "src/cratekit/core/jobs_drive.py"
 surface = "maintainer"
-moved = "the same text, now in src/cratekit/core/jobs_drive.py, was in src/cratekit/core/jobs.py"
+moved = "_batch_outcomes moved whole from core/jobs.py to core/jobs_drive.py with the drive loop (U301); the test that killed it, test_an_outcome_that_is_neither_produced_nor_an_exception_fails_its_item, is now the neither-produced-nor-an-exception case of test_an_item_without_a_usable_outcome_is_failed_not_done in the same file, now also asserting the message"
 tests = ["tests/test_jobs_batch.py"]
 old = '        if outcome is not None and not isinstance(outcome, (Produced, Exception)):'
 new = '        if False:'
