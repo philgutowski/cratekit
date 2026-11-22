@@ -170,7 +170,8 @@ def test_a_library_with_no_quarter_never_walks_the_library_or_asks_the_account(s
 
 def test_a_member_two_quarters_hold_is_one_member_and_both_quarters_retire(staged):
     cfg, folder_id, (q3, q4), _fake = staged(
-        {"Twice": NOV, "Once": OCT.format(day=2)}, ("2026-Q3", "Twice"), ("2026-Q4", "Twice", "Once")
+        {"Twice": NOV, "Once": OCT.format(day=2)},
+        ("2026-Q3", "Twice"), ("2026-Q4", "Twice", "Once"),
     )
     acted, shown = _approved()
     assert shown["quarters to retire"] == ["2026-Q3 (1)", "2026-Q4 (2)"]
@@ -222,7 +223,8 @@ def test_with_no_source_playlist_the_verb_refuses_by_name(native_library, silenc
 
 
 def test_a_quarter_that_changed_after_the_approval_is_refused_and_nothing_is_written(staged):
-    cfg, folder_id, (q4,), _fake = staged({"One": NOV, "Late": OCT.format(day=9)}, ("2026-Q4", "One"))
+    late = {"One": NOV, "Late": OCT.format(day=9)}
+    cfg, folder_id, (q4,), _fake = staged(late, ("2026-Q4", "One"))
     approved = split_cli.planned(cfg, source=SOURCE)
     _put(cfg, q4, _rows(cfg)["Late"])
     assert _written_refused(cfg, approved).cause.reason == "decision-stale"
@@ -256,7 +258,8 @@ def test_a_run_stopped_after_its_additions_replans_to_the_same_digest_and_finish
 
 
 def test_the_writer_refuses_a_membership_the_plan_did_not_name(staged, monkeypatch):
-    cfg, folder_id, (q4,), _fake = staged({"One": NOV, "Stray": OCT.format(day=3)}, ("2026-Q4", "One"))
+    hearts = {"One": NOV, "Stray": OCT.format(day=3)}
+    cfg, folder_id, (q4,), _fake = staged(hearts, ("2026-Q4", "One"))
     stray = _rows(cfg)["Stray"]
     refused = _rewritten(monkeypatch, cfg, lambda ids: [*ids, stray])
     assert refused.cause.reason == "whitelist-violation"

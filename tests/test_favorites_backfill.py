@@ -49,6 +49,7 @@ UTC = timezone.utc
 SEP = datetime(2026, 9, 29, 22, 0, tzinfo=UTC)
 NOV = datetime(2026, 11, 3, 12, 0, tzinfo=UTC)
 NOV_ISO = "2026-11-03T12:00:00+00:00"
+GENRE = "Deep House"
 LIVE_MONTH = "SELECT {} FROM djmdPlaylist WHERE Name = '{}' AND rb_local_deleted = 0"
 
 
@@ -93,7 +94,7 @@ def _file(path: Path, silence: Path, title: str, **extra: str) -> Path:
 def _stage(cfg, silence: Path, title: str) -> Path:
     """A file tagged the way the hearts job's rows read, so the match rule ties them."""
     path = Path(cfg.paths.download_staging) / f"{title}.flac"
-    return _file(path, silence, title, genre="Deep House")
+    return _file(path, silence, title, genre=GENRE)
 
 
 def _land(batch: str = BATCH) -> None:
@@ -110,7 +111,7 @@ def _seed(cfg, silence: Path, *titles: str, batch: str = BATCH) -> None:
     with _db(cfg) as handle:
         artist = handle.get_artist(Name="Probe").one_or_none() or handle.add_artist("Probe")
         for title in titles:
-            path = _file(_processed(cfg) / batch / f"{title}.flac", silence, title, genre="Deep House")
+            path = _file(_processed(cfg) / batch / f"{title}.flac", silence, title, genre=GENRE)
             handle.add_content(path, Title=title, ArtistID=artist.ID)
 
 
@@ -157,7 +158,8 @@ class _World:
     def __call__(self, hearts: dict, dates: dict | None = None, **kwargs):
         """Hearts landed and the account carrying them, each in September unless ``dates``."""
         _landed_hearts(self.cfg, self.silence, hearts, **kwargs.pop("hearted", {}))
-        return (*self.home, self.account({t: SEP for t in hearts} if dates is None else dates, **kwargs))
+        fake = self.account({t: SEP for t in hearts} if dates is None else dates, **kwargs)
+        return (*self.home, fake)
 
     def account(self, dates: dict, **kwargs):
         return _account(self.patch, dates, **kwargs)
@@ -393,6 +395,21 @@ def test_an_unreadable_account_refuses_only_when_a_heart_needs_placing(given, mo
     assert refused["cause"]["reason"] == "label-playlist-unreadable"
 
 
+def test_a_home_that_moved_between_the_two_acts_is_refused_by_the_write(given):
+    cfg, _folder_id, source_id, _fake = given({"Same Girl": None})
+    code, refused = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, envelope = drive(["run", "decide", run_id, GATE, "approve", "--actor", "a-person"])
+    assert decided == int(ExitCode.OK), envelope
+    # Somebody drags the heart into All Favorites by hand before the write.
+    _put(cfg, source_id, _rows(cfg)["Same Girl"])
+    code, acted = drive(["--run", run_id, *VERB])
+    assert code != int(ExitCode.OK), acted
+    assert acted["cause"]["reason"] == "decision-stale", acted
+    assert _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name = '2026-09'") == []
+
+
 def test_with_nothing_landed_the_gate_is_still_asked_and_nothing_is_written(home, monkeypatch):
     cfg, folder_id, _source_id = home
     fake = _account(monkeypatch, {})
@@ -615,7 +632,7 @@ def test_a_heart_all_favorites_holds_at_the_root_beside_another_playlist_still_t
 
 
 def test_a_heart_its_job_dated_nowhere_stays_undated_though_the_account_dates_it_now(given):
-    """Only a row with no date key at all is dated from the listing, as the landing would file it."""
+    """Only a row with no date key at all is dated from the listing, as a landing files it."""
     cfg, folder_id, _source_id = given.home
     given.deep("Dateless")
     hearts_swept(cfg, {"Dateless": None}, run_id="")

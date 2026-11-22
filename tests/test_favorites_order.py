@@ -53,7 +53,8 @@ def _order(cfg, folder_id: str) -> list[str]:
     """The live children of the folder by name, in the order rekordbox shows them."""
     return [str(name) for (name,) in _query(
         cfg,
-        "SELECT Name FROM djmdPlaylist WHERE ParentID = ? AND rb_local_deleted = 0 ORDER BY Seq, Name, ID",
+        "SELECT Name FROM djmdPlaylist WHERE ParentID = ? AND rb_local_deleted = 0 "
+        "ORDER BY Seq, Name, ID",
         folder_id,
     )]
 

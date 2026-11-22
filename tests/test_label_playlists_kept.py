@@ -50,6 +50,13 @@ def _parks_after(monkeypatch, fake, reads: int) -> dict:
     return switch
 
 
+def _parked_once(monkeypatch, fake, reads: int) -> None:
+    """A full build parked after ``reads`` reads, the breaker lifted after it."""
+    switch = _parks_after(monkeypatch, fake, reads)
+    assert drive(FULL)[0] != int(ExitCode.OK)
+    switch["after"] = None
+
+
 def _stored() -> dict:
     return json.loads(kept_reads.path_for(LABEL_ID).read_text(encoding="utf-8"))
 
@@ -90,9 +97,7 @@ def test_a_build_parked_part_way_resumes_and_reads_only_what_it_had_not(kompakt,
 
 def test_a_resumed_build_plans_what_a_build_in_one_go_plans(kompakt, monkeypatch):
     _cfg, fake, account = kompakt
-    switch = _parks_after(monkeypatch, fake, 2)
-    assert drive(FULL)[0] != int(ExitCode.OK)
-    switch["after"] = None
+    _parked_once(monkeypatch, fake, 2)
     _exits(ExitCode.OK, _decided(FULL, (BUILD, "apply")))
     assert _held(account) == {
         "Kompakt 2021": ["t1", "t2"], "Kompakt 2022": ["t3"],
@@ -427,9 +432,7 @@ def test_a_write_that_succeeds_after_one_failed_clears_what_was_said(installed, 
 
 def test_the_build_gate_counts_the_calls_left_after_the_kept_reads(kompakt, monkeypatch):
     _cfg, fake, _account = kompakt
-    switch = _parks_after(monkeypatch, fake, 4)
-    assert drive(FULL)[0] != int(ExitCode.OK)
-    switch["after"] = None
+    _parked_once(monkeypatch, fake, 4)
     refused = _exits(ExitCode.DECISION_REQUIRED, drive(FULL))
     rest = len(LISTED) - 4
     assert refused["cause"]["detail"]["shown"]["provider calls"] == (
@@ -486,9 +489,7 @@ def test_an_age_reads_in_minutes_then_hours_then_days(age, said):
 # 9. What the review of round 2 found unpinned
 def test_a_resumed_run_that_cannot_write_says_both_the_reuse_and_the_loss(kompakt, monkeypatch):
     _cfg, fake, _account = kompakt
-    switch = _parks_after(monkeypatch, fake, 3)
-    assert drive(FULL)[0] != int(ExitCode.OK)
-    switch["after"] = None
+    _parked_once(monkeypatch, fake, 3)
     _full_disk(monkeypatch)
     refused = _exits(ExitCode.DECISION_REQUIRED, drive(FULL))
     said = refused["cause"]["detail"]["shown"]["release reads"]

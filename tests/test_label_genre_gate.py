@@ -30,9 +30,7 @@ from tests.test_label_workers import queued_sweep
 LABEL = "Tide Works"
 SLUG = "tide-works"
 
-#: The general catalogue's 27 top level words, measured 2026-10-01, each with
-#: the kind the shipped rules must give it. Written out, never derived from the
-#: template, so a rule that drifts fails here.
+#: The general catalogue's 27 top level words and their kinds, written out so a drift fails.
 MEASURED = {
     "Pop": "pop", "Rap/Hip Hop": "hip_hop", "Reggaeton": "latin", "Rock": "rock", "Dance": "dance",
     "R&B": "rnb", "Alternative": "rock", "Christian": "christian", "Electro": "dance",
@@ -527,8 +525,7 @@ def test_three_releases_unread_in_a_row_end_the_asking_and_an_answer_resets_it()
 
 
 def test_the_gate_names_the_review_kind_the_sweep_files_under():
-    # The literal, not one module's name for it against the other's: the two
-    # are one object since the review, and X equals X would hold for any word.
+    # The literal: the two names are one object, so X equals X would hold for any word.
     assert sweep.KIND == "label-release"
     assert genre_gate.RELEASE_KIND == "label-release"
     assert genre_gate.release_item_id("r1") == review.item_id_for(
@@ -883,15 +880,13 @@ def test_a_labels_kind_changed_after_a_hold_releases_what_now_fits(installed, mo
     sweep_once()
     assert list(filed(installed)) == ["r-rnb"]
     assert held_ids(installed) == ["r-christian"]
-    # Nothing is verified again. The one provider read is the increment asking
-    # whether the library came to own the released release in the meantime.
+    # Nothing verified again; the one read asks whether the library came to own it.
     assert fake.verified == verified
     assert fake.releases_asked_for == [*read, "r-rnb"]
     payload = filed(installed)["r-rnb"].payload
     assert payload["genre_gate"] == "passed"
     assert payload["published_genres"] == ["R&B"]
-    # Filed under the sweep that released it, and still counted held under
-    # the sweep that first held the one that stands.
+    # Filed under the releasing sweep; the standing hold counts under its first sweep.
     by_run = {row["run"]: (row["items"], row["held"]) for row in grouped("run")}
     assert sorted(by_run.values()) == [(0, 1), (1, 0)]
     assert by_run[payload[sweep.SWEEP_RUN]] == (1, 0)
@@ -1096,16 +1091,14 @@ def test_a_hold_the_window_no_longer_reaches_is_dropped_when_it_stops_holding(
     assert held_ids(installed) == ["r-1"]
     bind(monkeypatch, {"r-2": ("2026", isrc(2)), **older})
     sweep_once()
-    # Still a dance label: the newer release is filed and the hold stands,
-    # though the window of one never reached it.
+    # Still a dance label: the newer release is filed and the hold stands past the window.
     assert list(filed(installed)) == ["r-2"]
     assert held_ids(installed) == ["r-1"]
     drive(["label", "registry", "set", LABEL, "--kind", "rnb"])
     bind_lookup(monkeypatch, never_asked)
     sweep_once()
     assert held_ids(installed) == []
-    # Not filed either: it is past the window, like any release the sweep
-    # has not examined, and is counted there.
+    # Not filed either: past the window, counted there like any unexamined release.
     assert list(filed(installed)) == ["r-2"]
     [row] = grouped("label")
     assert (row["items"], row["held"], row["beyond"]) == (1, 0, 1)

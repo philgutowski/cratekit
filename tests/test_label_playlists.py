@@ -101,11 +101,10 @@ def kompakt(installed, monkeypatch):
 
 
 @pytest.fixture
-def built(kompakt):
-    """``kompakt`` with its three years built as the verb's engine builds them."""
-    cfg, fake, account = kompakt
-    playlists_cli.apply_plan(cfg, account, playlists_cli.plan_label(cfg, _entry(), fake, account))
-    return kompakt
+def built(followed):
+    """``followed`` with its three years built by the verb's two acts, its kept reads and all."""
+    assert _build()[0] == int(ExitCode.OK)
+    return followed
 
 
 def _entry() -> labels.LabelEntry:

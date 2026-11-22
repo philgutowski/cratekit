@@ -113,6 +113,20 @@ def bind(monkeypatch, fake: FakeCatalogue) -> FakeCatalogue:
     return fake
 
 
+def refused_by(argv: list[str]) -> dict:
+    """Drive ``argv``, which must refuse on a precondition. Its envelope."""
+    code, refused = drive(argv)
+    assert code == int(ExitCode.PRECONDITION), refused
+    return refused
+
+
+def imported(name: str) -> dict:
+    """Queue an import of ``name`` through the real verb, which must succeed."""
+    code, queued = drive(["label", "import", name])
+    assert code == int(ExitCode.OK), queued
+    return queued
+
+
 def queued_job(verb: list[str]) -> str:
     """Queue through the real verb and return the job identifier."""
     code, envelope = drive(verb)
@@ -206,8 +220,7 @@ def offers(cfg: config.Config) -> dict[str, str]:
 def test_sync_labels_refuses_to_queue_and_names_the_guided_verb(installed):
     """Labels registered, so the old verb would have queued, and it queues nothing."""
     register(*LABELS)
-    code, refused = drive(["sync", "labels"])
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = refused_by(["sync", "labels"])
     assert refused["cause"]["reason"] == "verb-retired"
     assert "crate label sync" in refused["cause"]["message"]
     steps = refused["cause"]["remediation"]["steps"]
@@ -218,8 +231,7 @@ def test_sync_labels_refuses_to_queue_and_names_the_guided_verb(installed):
 
 def test_the_retired_refusal_reads_nothing_so_a_fresh_install_gets_it_too():
     """No ``installed`` fixture: a machine that was never set up."""
-    code, refused = drive(["sync", "labels"])
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = refused_by(["sync", "labels"])
     assert refused["cause"]["reason"] == "verb-retired"
     assert queue_is_empty()
 
@@ -239,24 +251,21 @@ def test_a_sweep_queued_before_u109_still_resumes_to_done(installed, monkeypatch
 def test_an_import_queues_exactly_one_item_and_it_is_the_label_id(installed):
     """Driven by DISPLAY NAME and asserted on the identifier, which is the point."""
     register(*LABELS)
-    code, queued = drive(["label", "import", "Ostgut Ton"])
-    assert code == int(ExitCode.OK), queued
+    queued = imported("Ostgut Ton")
     assert queued_items(queued["data"]["job_id"]) == ["ostgut-ton"]
 
 
 def test_an_import_of_an_unregistered_name_refuses_and_queues_nothing(installed):
     """R6: the import cannot queue an empty job because it refuses first."""
     register(*LABELS)
-    code, refused = drive(["label", "import", "no-such-label"])
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = refused_by(["label", "import", "no-such-label"])
     assert refused["cause"]["reason"] == "label-unknown"
     assert queue_is_empty()
 
 
 def test_an_import_against_an_empty_registry_refuses_the_unknown_name(installed):
     """The two refusals stay distinguishable when both conditions hold at once."""
-    code, refused = drive(["label", "import", "Kompakt"])
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = refused_by(["label", "import", "Kompakt"])
     assert refused["cause"]["reason"] == "label-unknown"
     assert queue_is_empty()
 
@@ -268,8 +277,7 @@ def test_the_import_queues_without_a_warning_now_an_adapter_is_bound(installed):
     """U62 flipped the warning, and the job still queues."""
     assert catalogue.bound() is True
     register(*LABELS)
-    code, queued = drive(["label", "import", "Kompakt"])
-    assert code == int(ExitCode.OK), queued
+    queued = imported("Kompakt")
     codes = {warning["code"] for warning in queued.get("warnings") or ()}
     assert "label-catalogue-unbound" not in codes
     assert queued_items(queued["data"]["job_id"])
@@ -279,8 +287,7 @@ def test_the_unbound_warning_says_the_job_will_fail_at_the_provider_seam(install
     """A code alone is a slug; the sentence is what a person reads."""
     monkeypatch.setattr(catalogue, "bound", lambda: False)
     register(*LABELS)
-    code, queued = drive(["label", "import", "Kompakt"])
-    assert code == int(ExitCode.OK), queued
+    queued = imported("Kompakt")
     said = [
         warning["message"]
         for warning in queued.get("warnings") or ()
@@ -294,8 +301,7 @@ def test_a_refused_sweep_carries_no_warning_because_nothing_was_queued(installed
     """The warning belongs to a queued job, so a refusal must not carry one."""
     monkeypatch.setattr(catalogue, "bound", lambda: False)
     register(*LABELS)
-    code, refused = drive(["sync", "labels"])
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = refused_by(["sync", "labels"])
     assert not (refused.get("warnings") or ())
 
 
@@ -303,8 +309,7 @@ def test_the_warning_rides_the_envelope_rather_than_the_job_state_payload(instal
     """KTD7: the payload stays exactly the four ``job_state/1`` keys."""
     monkeypatch.setattr(catalogue, "bound", lambda: False)
     register(*LABELS)
-    code, queued = drive(["label", "import", "Kompakt"])
-    assert code == int(ExitCode.OK), queued
+    queued = imported("Kompakt")
     assert set(queued["data"]) == {"job_id", "state", "cause", "progress"}
     assert queued.get("warnings")
 
@@ -448,8 +453,7 @@ def test_a_label_the_registry_no_longer_holds_refuses_rather_than_sweeping_nothi
 
 
 # ── 6b. A catalogue that confirms nothing is not a label with nothing new ────
-# Keyed on the dropped population, not an empty candidate list, so a quiet label
-# (all tombstoned, or an exhausted crawl) stays a no op.
+# Keyed on the drops, not an empty candidate list, so a quiet label stays a no op.
 
 
 def unconfirming(*label_ids: str) -> FakeCatalogue:
@@ -490,8 +494,7 @@ def test_a_label_whose_every_release_is_tombstoned_still_succeeds(installed, mon
         )
     bind(monkeypatch, readable(SLUGS[0]))
     job_id = queued_sweep()
-    resumed = swept(job_id)
-    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+    assert swept(job_id)["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {}
 
 
@@ -512,8 +515,7 @@ def test_a_label_whose_crawl_listed_nothing_at_all_still_succeeds(installed, mon
     register(LABELS[0])
     bind(monkeypatch, FakeCatalogue(artists={SLUGS[0]: FakePagedArtist([])}))
     job_id = queued_sweep()
-    resumed = swept(job_id)
-    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+    assert swept(job_id)["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {}
 
 
@@ -522,8 +524,7 @@ def test_a_sweep_that_confirmed_some_of_what_it_read_succeeds_and_offers_those(
 ):
     """The other arm of the refusal's conjunction, which nothing had pinned."""
     job_id = sweep_job(monkeypatch, readable(SLUGS[0], confirmed={"hf-1"}), LABELS[0])
-    resumed = swept(job_id)
-    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+    assert swept(job_id)["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {"hf-1": SLUGS[0]}
 
 
@@ -581,8 +582,7 @@ def test_an_unreadable_tombstone_store_does_not_fail_a_label_with_nothing_to_ask
     corrupt_tombstone_store(installed)
     bind(monkeypatch, FakeCatalogue(artists={SLUGS[0]: FakePagedArtist([])}))
     job_id = queued_sweep()
-    resumed = swept(job_id)
-    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+    assert swept(job_id)["data"]["state"] == str(jobs.JobState.SUCCEEDED)
 
 
 def test_an_unreadable_tombstone_store_still_refuses_a_label_with_a_confirmed_release(
@@ -621,9 +621,7 @@ def test_a_second_resume_of_a_failed_sweep_still_does_not_exit_ok(installed, mon
     job_id = sweep_job(monkeypatch, UnreadableCatalogue(), LABELS[0])
     assert drive(["sync", "labels", "--job", job_id])[0] != int(ExitCode.OK)
     again = unswept(job_id)
-    # The stored job cause, raised on a closed job. It used to be the wrapper's
-    # unavailable-transient. The items failed as sync-source-lookups-failed, which
-    # is not retryable, so that is now the job's reason too.
+    # The stored job cause: the items' permanent sync-source-lookups-failed.
     assert again["cause"]["reason"] == "sync-source-lookups-failed"
     assert again["cause"]["retryable"] is False
     assert again["cause"]["remediation"]["remedy"] != "resume-job"
@@ -686,9 +684,7 @@ def test_the_worker_offers_into_the_library_its_job_was_queued_for(
 
 PLAYLIST = "https://example.invalid/playlist/harvest"
 
-#: One imprint the fake catalogue confirms and one it does not. The unconfirmed
-#: name is what makes ``unresolved`` able to fail: a build that reported the
-#: offered count twice would agree with a fixture where everything is confirmed.
+#: One imprint the fake confirms and one it does not, so ``unresolved`` can fail.
 CONFIRMED = "Anjunadeep"
 UNCONFIRMED = "Mystery Distro"
 
@@ -785,8 +781,7 @@ def test_an_empty_playlist_offers_nothing_and_reports_zero_rather_than_refusing(
     envelope = harvest_ok()
     assert envelope["data"]["items"] == []
     assert envelope["data"]["unresolved"] == 0
-    # NO_OP rather than OK, because "harvested nothing" and "harvested four
-    # labels" are both successes and the difference belongs where it can be read.
+    # NO_OP rather than OK: both are successes, and the difference must be readable.
     assert envelope["outcome"] == "no_op"
     assert harvested(installed) == []
 
@@ -861,9 +856,7 @@ def test_a_playlist_the_catalogue_cannot_resolve_refuses_that_it_was_unreadable(
     assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), refused
     assert refused["cause"]["reason"] == "label-playlist-unreadable"
     assert catalogue_fake.playlists_asked_for == [PLAYLIST]
-    # The provider's OWN exception type, carried through. The refusal this unit
-    # replaced raised the same slug and the same code having asked nothing at
-    # all, so the detail is what tells the two builds apart.
+    # The provider's OWN exception type, which tells it from a refusal that asked nothing.
     assert refused["cause"]["detail"]["kind"] == "RuntimeError"
     assert harvested(installed) == []
 
@@ -960,8 +953,7 @@ def test_a_label_verb_will_not_drive_a_job_queued_for_another_verb(installed):
 
 def test_an_import_on_an_unconfigured_machine_says_so_rather_than_naming_the_label():
     """The sibling of the sweep's fresh install test, which the round found missing."""
-    code, refused = drive(["label", "import", LABELS[0]])
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = refused_by(["label", "import", LABELS[0]])
     assert refused["cause"]["reason"] == "config-unusable"
     assert queue_is_empty()
 
@@ -976,8 +968,7 @@ def test_the_itemless_refusal_names_the_cancel_that_gets_a_person_out(installed)
     _, refused = drive(["sync", "labels", "--job", job.job_id])
     steps = refused["cause"]["remediation"]["steps"]
     assert any(f"crate job cancel {job.job_id}" in step for step in steps), steps
-    # A SWEEP CANNOT BE QUEUED AGAIN (U109), so the way back is the guided verb
-    # and never the retired one, which would only refuse.
+    # A sweep cannot be queued again (U109), so the way back is the guided verb.
     assert steps[-1] == "then take label releases with: crate label sync", steps
 
 
@@ -1024,8 +1015,7 @@ def test_a_mixed_listing_of_tombstoned_and_unconfirmed_releases_is_a_label_with_
     """The false refusal the round found, driven."""
     bury(installed, "hf-1")
     job_id = sweep_job(monkeypatch, counting(SLUGS[0], confirmed=frozenset()), LABELS[0])
-    resumed = swept(job_id)
-    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+    assert swept(job_id)["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {}
 
 
@@ -1087,9 +1077,7 @@ def test_a_refusal_the_artist_lookup_raises_in_kind_keeps_its_own_reason(install
 
 
 # ── 12. A release the library already holds is not offered. R-259. ───────────
-# The worker passed an empty owned set, and both filters on the labels path are
-# membership tests against the set they are handed, so every sweep offered what
-# the library already held.
+# The worker passed an empty owned set, so every sweep offered what the library held.
 
 
 class Row:
@@ -1102,8 +1090,7 @@ class Row:
         self.isrc = ""
 
 
-#: The tracks on each of the first label's two releases, as the provider lists
-#: them when a release is read again by identifier.
+#: The tracks of the first label's two releases, as a read by identifier lists them.
 TRACKS = {
     "hf-1": ([Row("11", "Aurora Bloom", "Sun Path"), Row("12", "Nova Reef", "Tide")], 2026),
     "hf-2": ([Row("21", "Mira Vale", "Glass Hour")], 2025),
@@ -1131,8 +1118,7 @@ def test_a_label_whose_catalogue_the_library_already_holds_offers_nothing(instal
     )
     bind(monkeypatch, tracked())
     job_id = queued_sweep()
-    resumed = swept(job_id)
-    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+    assert swept(job_id)["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {}
 
 
@@ -1210,8 +1196,7 @@ def test_a_track_read_the_provider_could_not_answer_offers_the_release(installed
     )
     fake = bind(monkeypatch, tracked(cls=TracksOutage))
     job_id = queued_sweep()
-    resumed = swept(job_id)
-    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
+    assert swept(job_id)["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {"hf-1": SLUGS[0], "hf-2": SLUGS[0]}
     assert sorted(fake.releases_asked_for) == ["hf-1", "hf-2"]
 

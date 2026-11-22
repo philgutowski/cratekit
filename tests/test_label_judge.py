@@ -341,8 +341,7 @@ def test_a_refreshed_hold_keeps_the_run_its_release_was_filed_under(installed):
             return held_by_hand(
                 store, payload=payload, reason="still another kind", run_id="sweep-2",
             )
-        # A producer that describes it as never filed loses neither the run
-        # it was filed under nor the word that it was taken back.
+        # Described as never filed, it keeps its filing run and its withheld word.
         assert refresh({"identity": "r-1", "title": "T"}).payload == {
             "identity": "r-1", "title": "T", sweep.SWEEP_RUN: FILED_BY, review.WITHHELD_FIELD: True,
         }
@@ -560,8 +559,7 @@ def test_words_the_item_recorded_pass_a_release_with_no_request_at_all(installed
     assert held_ids(installed) == []
     assert counts(judging(envelope)) == {"judged": 1, "held": 0, "passed": 1, "not-judged": 0}
     assert judging(envelope)["asked"] == 0
-    # A verdict the item already carried is not written a second time, so the
-    # stamp still reads as the filing sweep's.
+    # A verdict the item already carried is not written again: the stamp stays the sweep's.
     assert genre_gate.GATE_RUN_FIELD not in item_of(installed, "r-dance").payload
 
 
@@ -881,8 +879,7 @@ def test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many
         "judged": 0, "held": 0, "passed": 0, "not-judged": 3,
     }
     assert cause["detail"]["judging"]["unread"] == 3
-    # The fourth release was not read from the provider, and nothing went round
-    # the refusal: three asked, three answers, and then nobody was asked.
+    # Three asked, three answers, then nobody asked: the fourth was never read.
     assert provider.releases_asked_for == ["r-1", "r-2", "r-3"]
     assert lookup.asked == [isrc(1), isrc(2), isrc(3)]
     assert sorted(item_states(job_id).values()) == ["done"] * 3 + ["pending"] * 2
@@ -892,8 +889,7 @@ def test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many
         assert stamped[genre_gate.GATE_FIELD] == "not-judged"
         assert stamped[genre_gate.GATE_ANSWER_FIELD] == "unreachable"
     assert genre_gate.GATE_FIELD not in item_of(installed, "r-4").payload
-    # A person resumes once the catalogue answers, and the run picks up at the
-    # release it stopped before.
+    # Resumed once the catalogue answers, the run picks up where it stopped.
     lookup.table = {isrc(n): ("Christian",) for n in range(1, 6)}
     envelope = resumed(job_id)
     assert lookup.asked[3:] == [isrc(4), isrc(5)]
@@ -1211,9 +1207,7 @@ def test_the_next_sweep_keeps_the_hold_and_does_not_file_the_release_again(insta
     with review.open_store(installed) as store:
         [hold] = review.holds(store, queue=QUEUE)
     assert hold.run_id == job_id
-    # The sweep rewrote the hold's payload as a candidate it never filed. The
-    # run the release was first filed under came through that, so a return
-    # still files it as the old release it is.
+    # The sweep's rewrite kept the filing run, so a return files it as the old release.
     assert hold.payload[sweep.SWEEP_RUN] == FILED_BY
     assert held_verb("return", "r-christian")[0] == int(ExitCode.OK)
     assert item_of(installed, "r-christian").payload[sweep.SWEEP_RUN] == FILED_BY
@@ -1231,8 +1225,7 @@ def test_label_held_does_not_say_a_sweep_was_refused_over_what_a_judge_run_met(
     assert item_of(installed, "r-1").payload[genre_gate.GATE_ANSWER_FIELD] == "unreachable"
     listing = held_ok()
     [swept] = listing["data"]["summary"]["sweeps"]
-    # Still not judged, which is a fact about the release as it stands. Not
-    # asked and not unread by the SWEEP, which asked nobody about it.
+    # Still not judged, but neither asked nor unread by the SWEEP, which asked nobody.
     assert (swept["filed"], swept["asked"], swept["unread"], swept["not_judged"]) == (1, 0, 0, 1)
     line = check(listing, f"label.held.sweep.{SLUG}")
     assert line["status"] == "info"

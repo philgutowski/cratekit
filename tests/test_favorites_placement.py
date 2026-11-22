@@ -101,6 +101,10 @@ def test_no_quarter_is_named_by_the_placement_any_more():
     assert placeholders.QUARTER_LABEL.fullmatch("2026-Q4")
 
 
+def test_a_heart_with_no_date_goes_to_undated():
+    assert placeholders.month_label(None) == placeholders.UNDATED == "Undated"
+
+
 def test_a_frozen_date_reads_back_and_junk_reads_as_no_date():
     assert placeholders.parse_hearted("2026-10-01T03:00:00+00:00") == datetime(
         2026, 10, 1, 3, tzinfo=UTC
@@ -169,6 +173,11 @@ def test_a_playlist_of_the_sources_name_inside_deadca7s_folder_is_not_a_second_s
     with pytest.raises(CratekitError) as caught:
         placement.resolve_home(db, SOURCE)
     assert len(caught.value.cause.detail["ids"]) == 2
+
+
+def test_an_empty_source_is_a_home_here_where_the_refresh_refuses_it(cfg, db):
+    _home(db)
+    assert placement.resolve_home(db, SOURCE).source_name == SOURCE
 
 
 def test_a_source_at_the_root_has_no_folder_and_the_months_sit_beside_it(cfg, db):
