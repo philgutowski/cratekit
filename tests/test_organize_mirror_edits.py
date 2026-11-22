@@ -551,9 +551,7 @@ def test_the_adapter_lists_each_track_with_its_added_time_and_the_declared_count
     # A TIME WITH NO ZONE IS UNKNOWN, never guessed.
     assert listing.added == {"a": "2026-11-04T10:00:00+00:00"}
     assert (listing.listed, listing.declared, listing.short) == (3, 3, False)
-
-
-def test_a_listing_the_provider_counts_more_than_it_lists_is_short(installed):
+    # One the provider counts and does not list is short.
     listing = _dated_adapter(installed, ["a"], hidden=1).playlist_listing("p")
     assert (listing.listed, listing.declared, listing.short) == (1, 2, True)
 

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import pytest
 
-from cratekit.core import rb_writer
 from cratekit.core.cause import refuse
 from cratekit.modules.outbound import ledger
 from cratekit.modules.outbound import mirror_edits as edits
@@ -37,21 +36,11 @@ def _placed(world) -> dict[str, frozenset[str]]:
 
 def _by_hand(world, name: str, content_id: str) -> str:
     """A person puts a row in a Favorites playlist in rekordbox, making it if absent."""
-    handle = rb_writer.open_db(world.db, unlock=False, cfg=world.cfg)
-    try:
-        folder = handle.get_playlist(ID=world.favorites)
-        found = [
-            one
-            for one in handle.get_playlist(ParentID=world.favorites)
-            if str(one.Name) == name and not rb_writer.node_removed(one)
-        ]
-        playlist = found[0] if found else handle.create_playlist(name, parent=folder)
-        handle.session.flush()
-        rb_writer.add_memberships(handle, playlist, [content_id])
-        handle.session.commit()
-        return str(playlist.ID)
-    finally:
-        rb_writer.close_db(handle)
+    live = "AND COALESCE(rb_local_deleted, 0) = 0"
+    found = world.sql(f"SELECT ID FROM djmdPlaylist WHERE ParentID = ? AND Name = ? {live}", world.favorites, name)
+    if found:
+        return world.playlist("", str(found[0][0]), [content_id])
+    return world.playlist(name, world.favorites, [content_id])
 
 
 def _favourited(world, *, at: str) -> None:

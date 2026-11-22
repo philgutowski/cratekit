@@ -28,6 +28,7 @@ from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedArtist, FakeRelease, catalogue_factory
 from tests.test_label_playlists import LABEL, LABEL_ID, RELEASES
 from tests.test_label_workers import register
+from tests.test_organize_mirror import persons_playlist
 from tests.test_outbound_workers import bind as bind_account
 from tests.test_outbound_workers import installed as installed  # noqa: PLC0414 - fixture
 
@@ -269,10 +270,7 @@ def test_a_year_adopted_from_the_account_is_said_and_left_alone(installed, monke
     register(LABEL)
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(_catalogue()))
     account = outbound_fakes.StrictAccount()
-    account.folder_names["folder-made"] = LABEL
-    account.playlists["by-hand"] = []
-    account.titles["by-hand"] = "Kompakt 2023"
-    account.placed["by-hand"] = "folder-made"
+    persons_playlist(account, LABEL, "Kompakt 2023", folder_id="folder-made", playlist_id="by-hand")
     bind_account(monkeypatch, account)
     assert _two_acts(["label", "playlists", LABEL], BUILD)[0] == OK
     assert _year(installed).created is False

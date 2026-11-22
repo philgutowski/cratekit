@@ -38,6 +38,12 @@ def folder(name: str, **playlists: tuple[int, ...]) -> mirror.Folder:
     )
 
 
+def persons_playlist(account, folder: str, title: str, held=(), *, folder_id="hand-1", playlist_id="mine-1") -> None:
+    """A root folder and a playlist in it holding ``held``, made by a person on the account."""
+    account.folder_names[folder_id] = folder
+    account.titles[playlist_id], account.playlists[playlist_id], account.placed[playlist_id] = title, list(held), folder_id
+
+
 def single(name: str, title: str, *rows: mirror.Row) -> mirror.Folder:
     """A folder of one playlist holding ``rows``."""
     return mirror.Folder(name=name, playlists=(mirror.Source(name=title, rows=rows),))
@@ -188,10 +194,7 @@ def test_two_root_folders_of_the_name_refuse_that_genre_and_the_rest_proceeds(wo
 
 
 def test_a_persons_playlist_of_the_same_title_is_left_and_nothing_made_beside_it(world):
-    world.account.folder_names["hand-1"] = "Techno"
-    world.account.titles["mine-1"] = "Techno Low"
-    world.account.playlists["mine-1"] = ["r99"]
-    world.account.placed["mine-1"] = "hand-1"
+    persons_playlist(world.account, "Techno", "Techno Low", ["r99"])
     world.mirror(folder("Techno", Low=(1,), High=(2,)))
     area = world.run()
     items = {item["playlist"]: item for item in _steps(area)["mirror:Techno"].items[1:]}
@@ -435,6 +438,9 @@ def test_a_library_name_two_folders_take_is_refused_by_name(world):
     steps = _steps(world.plan())
     assert steps["mirror:Soul"].state == REFUSED and "two of folders" in steps["mirror:Soul"].detail
     assert steps["mirror:Techno"].state == PLANNED
+    # And the refusal names its remedy in rekordbox.
+    assert cause.reason == mirror.AMBIGUOUS_REASON
+    assert any("in rekordbox" in step for step in cause.remediation.steps)
 
 
 def test_a_row_whose_database_code_changed_is_matched_again(world):
@@ -461,10 +467,7 @@ def test_a_code_read_off_the_file_asks_the_one_track_to_agree_and_a_database_cod
 
 
 def test_a_persons_playlist_left_alone_costs_no_match(world):
-    world.account.folder_names["hand-1"] = "Techno"
-    world.account.titles["mine-1"] = "Techno Low"
-    world.account.playlists["mine-1"] = []
-    world.account.placed["mine-1"] = "hand-1"
+    persons_playlist(world.account, "Techno", "Techno Low")
     world.mirror(folder("Techno", Low=(1, 2)))
     world.plan()
     assert world.account.matches == []
@@ -483,12 +486,6 @@ def test_rows_a_folder_with_nothing_to_write_matched_are_linked_by_another_folde
     area = world.run()
     assert _steps(area)["mirror:Techno"].state == NOTHING
     assert set(ledger.mirror_links(installed)) == {"c1", "c2"}
-
-
-def test_a_library_name_two_folders_take_names_its_remedy_in_rekordbox():
-    cause = account_mirror._twice("Soul", "folders")
-    assert cause.reason == mirror.AMBIGUOUS_REASON
-    assert any("in rekordbox" in step for step in cause.remediation.steps)
 
 
 def test_sync_pair_refuses_to_pair_a_mirrored_playlist():

@@ -10,6 +10,7 @@ from cratekit.adopt import apply_cli, collection
 from cratekit.cli.output import timestamp
 from cratekit.core import jobs, tags, taxonomy
 from cratekit.modules.outbound import mirror_edits as edits
+from tests.test_mirror_downloads_filed_u227 import _entry
 from tests.test_organize_mirror_edits_u204 import _field_policies as _field_policies  # noqa: PLC0414
 from tests.test_organize_mirror_edits_u204 import _items, _land_and_file, _queued
 from tests.test_organize_mirror_edits_u204 import _platform_seams as _platform_seams  # noqa: PLC0414
@@ -30,22 +31,12 @@ MOVED_AT = "2026-11-06 16:00:00.000 +00:00"
 
 def _file_by_tags(world, content_id: str, to: tuple[str, str], at: str) -> None:
     """The landing's own filing: one band membership at ``at``, recorded in the adoption ledger."""
-    genre, band = to
     world.sql(
         "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, "
         "rb_local_deleted, created_at, updated_at) VALUES (?, ?, ?, 1, 0, ?, ?)",
         f"filed-{content_id}", world.playlists[to], content_id, at, at,
     )
-    bucket = DECLARED.bucket_for_display(genre)
-    (sub,) = [one.id for one in DECLARED.energy.bands if one.display == band]
-    adoption.mark_applied(
-        world.cfg,
-        adoption.AppliedEntry(
-            entry_id=f"{DECLARED.tree.id}:{content_id}:{bucket}:{sub}", tree=DECLARED.tree.id,
-            content_id=content_id, bucket=bucket, sub=sub, actor="session", digest="landing",
-            applied=timestamp(),
-        ),
-    )
+    _entry(world.cfg, content_id, *to, timestamp(), "landing")
 
 
 def _queued_and_landed(world) -> None:

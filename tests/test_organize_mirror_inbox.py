@@ -22,7 +22,7 @@ from tests.test_inbox_rotate import acknowledged as acknowledged  # noqa: PLC041
 from tests.test_inbox_rotate import machine as machine  # noqa: PLC0414 - fixture
 from tests.test_inbox_rotate import native_library as native_library  # noqa: PLC0414 - fixture
 from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
-from tests.test_organize_mirror import folder, row
+from tests.test_organize_mirror import folder, persons_playlist, row
 from tests.test_organize_mirror import world as world  # noqa: PLC0414 - fixture
 
 BATCHES = ("2026-10-20 Tidal playlists", "2026-10-25 Favorites", "2026-10-31 Defected")
@@ -83,10 +83,7 @@ def test_a_second_refresh_with_nothing_changed_plans_nothing(world, mirrored):
 
 def test_a_persons_playlist_titled_inbox_batch_in_the_folder_is_left_and_named(world):
     world.mirror(_three())
-    world.account.folder_names["hand-1"] = "INBOX"
-    world.account.titles["mine-1"] = f"INBOX {BATCHES[1]}"
-    world.account.playlists["mine-1"] = ["r99"]
-    world.account.placed["mine-1"] = "hand-1"
+    persons_playlist(world.account, "INBOX", f"INBOX {BATCHES[1]}", ["r99"])
     area = world.run()
     items = {item["playlist"]: item for item in _step(area).items[1:]}
     assert items[f"INBOX {BATCHES[1]}"]["action"] == mirror.LEFT
@@ -312,22 +309,22 @@ def test_a_rebuild_from_a_frozen_plan_reads_no_landing_record(world, installed, 
     assert _step(area).state == PLANNED
 
 
-def _live(cfg) -> rotate.Live:
+def _read(cfg, read):
+    """``read(handle, declared, registry)`` on a handle of the library, closed after."""
     declared = active_taxonomy.load(cfg)
     handle = _open(cfg)
     try:
-        return rotate.live_batches(cfg, handle, declared=declared, registry=tree_registry.read(cfg), today=TODAY)
+        return read(handle, declared, tree_registry.read(cfg))
     finally:
         rb_writer.close_db(handle)
+
+
+def _live(cfg) -> rotate.Live:
+    return _read(cfg, lambda handle, declared, registry: rotate.live_batches(cfg, handle, declared=declared, registry=registry, today=TODAY))
 
 
 def _inbox_folder(cfg) -> tuple[str, object]:
-    declared = active_taxonomy.load(cfg)
-    handle = _open(cfg)
-    try:
-        return account_mirror._inbox(cfg, handle, declared, tree_registry.read(cfg), TODAY)
-    finally:
-        rb_writer.close_db(handle)
+    return _read(cfg, lambda handle, declared, registry: account_mirror._inbox(cfg, handle, declared, registry, TODAY))
 
 
 @pytest.fixture
@@ -454,24 +451,18 @@ def test_a_passs_dated_account_playlist_is_mirrored_beside_its_batch_under_its_d
     batch = _node(cfg, "2026-10-27 Tidal playlists", under=root_id, age=3, tracks=("t1",))
     dated = _node(cfg, "Lisa_10_27_26 2026-10-27", under=root_id, age=3, tracks=("t2", "t3"))
     started = datetime.combine(landed, datetime.min.time().replace(hour=12)).astimezone()
-    session.write_record(
-        session.SessionRecord(
-            session_id=f"{started.strftime('%Y%m%dT%H%M%S')}-landing",
-            workflow=native.WORKFLOW,
-            started=started.isoformat(),
-            state=session.SessionState.CLOSED,
-            sources={INTAKE: str(session.SourceState.COMMITTED)},
-            ended=started.isoformat(),
-            detail={
-                native.BATCH_PLAYLIST_KEY: {"id": batch, "name": "2026-10-27 Tidal playlists"},
-                native.INBOX_PLAYLISTS_KEY: [
-                    {"id": dated, "name": "Lisa_10_27_26 2026-10-27", "account": "pl-l",
-                     "pass": "2026-10-27T101500Z-cd34_synced"},
-                ],
-            },
-        ),
-        cfg,
+    detail = {
+        native.BATCH_PLAYLIST_KEY: {"id": batch, "name": "2026-10-27 Tidal playlists"},
+        native.INBOX_PLAYLISTS_KEY: [
+            {"id": dated, "name": "Lisa_10_27_26 2026-10-27", "account": "pl-l", "pass": "2026-10-27T101500Z-cd34_synced"},
+        ],
+    }
+    record = session.SessionRecord(
+        session_id=f"{started.strftime('%Y%m%dT%H%M%S')}-landing", workflow=native.WORKFLOW, started=started.isoformat(),
+        state=session.SessionState.CLOSED, sources={INTAKE: str(session.SourceState.COMMITTED)},
+        ended=started.isoformat(), detail=detail,
     )
+    session.write_record(record, cfg)
     name, read = _inbox_folder(cfg)
     assert isinstance(read, mirror.Folder)
     assert {source.name: [one.content_id for one in source.rows] for source in read.playlists} == {

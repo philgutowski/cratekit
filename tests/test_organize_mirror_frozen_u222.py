@@ -18,6 +18,7 @@ from tests.test_organize_mirror import folder
 from tests.test_organize_mirror_edits import _field_policies as _field_policies  # noqa: PLC0414
 from tests.test_organize_mirror_edits_u204 import BATCH_A
 from tests.test_organize_mirror_edits_u204 import world as world  # noqa: PLC0414
+from tests.test_organize_mirror_frozen import _plan
 from tests.test_routing_workers import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_routing_workers import _release_process_locks as _release_process_locks
 from tests.test_routing_workers import acknowledged as acknowledged  # noqa: PLC0414
@@ -60,6 +61,10 @@ def _apply(area: Area) -> None:
     for step in area.steps:
         if step.apply is not None:
             step.applied = step.apply()
+
+
+def _mp(name: str, remote_id: str, agreed) -> ledger.MirrorPlaylist:
+    return ledger.MirrorPlaylist(name=name, remote_id=remote_id, agreed=agreed)
 
 
 def _asked(world) -> int:
@@ -158,15 +163,11 @@ def test_an_account_change_between_the_acts_is_stale_and_names_its_folder_and_pl
     world = Plain(installed, monkeypatch)
     world.mirror(folder("Techno", Low=(1, 2), Med=(3,)), folder("Soul", High=(4,)))
     world.run()
-    shown = Area(name="account")
-    account_mirror.add_steps(world.cfg, shown, lambda: world.account, account_mirror.Run(run_id=GATE, record=True))
+    shown = _plan(world, account_mirror.Run(run_id=GATE, record=True))
     world.account.playlists[world.playlist_id("Techno Low")].append("r99")
     world.account.names["r99"] = ("Someone", "By Hand")
     asked = len(world.account.matches)
-    applied = Area(name="account")
-    account_mirror.add_steps(
-        world.cfg, applied, lambda: world.account, account_mirror.Run(run_id=GATE, record=True, decided=True)
-    )
+    applied = _plan(world, account_mirror.Run(run_id=GATE, record=True, decided=True))
     assert applied.digest() != shown.digest()
     assert len(world.account.matches) == asked
     assert applied.stale[0] == ("moved since the gate showed it: mirror Techno onto the account, in 'Techno Low'")
@@ -247,27 +248,14 @@ def test_the_frozen_snapshot_is_the_one_the_gates_plan_read_not_the_one_it_recor
 
 
 def test_a_playlist_made_again_between_the_acts_reads_its_snapshot_now():
+    now, then = frozenset({"now"}), frozenset({"then"})
+    inbox = {"kept": _mp("kept", "p1", now), "made again": _mp("made again", "p3", now), "new": _mp("new", "p4", None)}
     recorded = {
-        "INBOX": ledger.MirrorFolder(
-            name="INBOX",
-            playlists={
-                "kept": ledger.MirrorPlaylist(name="kept", remote_id="p1", agreed=frozenset({"now"})),
-                "made again": ledger.MirrorPlaylist(name="made again", remote_id="p3", agreed=frozenset({"now"})),
-                "new": ledger.MirrorPlaylist(name="new", remote_id="p4", agreed=None),
-            },
-        ),
-        "Techno": ledger.MirrorFolder(
-            name="Techno", playlists={"low": ledger.MirrorPlaylist(name="low", remote_id="p5", agreed=None)},
-        ),
+        "INBOX": ledger.MirrorFolder(name="INBOX", playlists=inbox),
+        "Techno": ledger.MirrorFolder(name="Techno", playlists={"low": _mp("low", "p5", None)}),
     }
-    frozen = mirror_frozen.Frozen(
-        library=None,
-        matches={},
-        agreed={
-            "INBOX": {"kept": ("p1", frozenset({"then"})), "made again": ("p2", frozenset({"then"}))},
-            "Techno": {"low": ("p5", frozenset({"then"}))},
-        },
-    )
+    agreed = {"INBOX": {"kept": ("p1", then), "made again": ("p2", then)}, "Techno": {"low": ("p5", then)}}
+    frozen = mirror_frozen.Frozen(library=None, matches={}, agreed=agreed)
     read = mirror_frozen.overlay(recorded, frozen)
     assert read["INBOX"].playlists["kept"].agreed == frozenset({"then"})
     assert read["INBOX"].playlists["made again"].agreed == frozenset({"now"})
@@ -284,15 +272,8 @@ def test_a_never_agreed_snapshot_is_frozen_and_read_back_as_never_agreed(world):
     """None is no snapshot yet and an empty set is one agreed empty; the file keeps them apart."""
     _gate(world)
     gated, _said = mirror_frozen.load(world.cfg, GATE)
-    recorded = {
-        "INBOX": ledger.MirrorFolder(
-            name="INBOX",
-            playlists={
-                "new": ledger.MirrorPlaylist(name="new", remote_id="p4", agreed=None),
-                "emptied": ledger.MirrorPlaylist(name="emptied", remote_id="p5", agreed=frozenset()),
-            },
-        )
-    }
+    inbox = {"new": _mp("new", "p4", None), "emptied": _mp("emptied", "p5", frozenset())}
+    recorded = {"INBOX": ledger.MirrorFolder(name="INBOX", playlists=inbox)}
     other = "2026-11-05T20:30:00Z-0001"
     mirror_frozen.freeze(world.cfg, other, gated.library, gated.matches, recorded=recorded)
     frozen, said = mirror_frozen.load(world.cfg, other)

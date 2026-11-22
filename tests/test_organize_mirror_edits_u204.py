@@ -453,11 +453,6 @@ def test_a_track_a_snapshot_once_held_is_never_queued_again():
     assert decided.wanted == ()
 
 
-def test_the_steps_are_kinds_the_rekordbox_area_names():
-    assert rekordbox.MIRROR_DOWNLOADS in rekordbox.STEPS
-    assert rekordbox.STEPS.index(rekordbox.MIRROR_EDITS) < rekordbox.STEPS.index(rekordbox.MIRROR_DOWNLOADS)
-
-
 def test_never_a_beat_grid(world):
     world.put_in(SOURCE, "r2")
     world.put_in(f"INBOX {BATCH_A}", "r2")
@@ -466,9 +461,11 @@ def test_never_a_beat_grid(world):
 
 
 def test_without_a_reading_the_downloads_step_is_listed(acknowledged):
-    from datetime import date as day
+    # A step the rekordbox area names, after the edits step.
+    assert rekordbox.MIRROR_DOWNLOADS in rekordbox.STEPS
+    assert rekordbox.STEPS.index(rekordbox.MIRROR_EDITS) < rekordbox.STEPS.index(rekordbox.MIRROR_DOWNLOADS)
     area = rekordbox.plan_area(
-        acknowledged, None, gate="organize.rekordbox", today=day(2026, 11, 5), labels=(),
+        acknowledged, None, gate="organize.rekordbox", today=date(2026, 11, 5), labels=(),
         report=True, only=frozenset({rekordbox.MIRROR_DOWNLOADS}),
     )
     (step,) = area.steps

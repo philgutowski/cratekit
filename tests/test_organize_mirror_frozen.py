@@ -164,11 +164,14 @@ def test_a_row_matched_later_loses_its_miss(installed, monkeypatch):
     assert ledger.mirror_links(installed)["c5"][0] == "r5"
 
 
-def test_a_miss_is_never_recorded_over_a_link(installed, monkeypatch):
+def test_a_miss_is_never_recorded_over_a_link(installed):
     ledger.record_mirror_links(installed, {"c1": ("r1", "ISRC00001")})
     ledger.record_mirror_misses(installed, {"c1": ("why", ("a",)), "c2": ("why", ("b",))})
     assert set(ledger.mirror_misses(installed)) == {"c2"}
     assert ledger.mirror_links(installed)["c1"] == ("r1", "ISRC00001")
+    # A write elsewhere in the ledger carries the misses through.
+    ledger.record_mirror_links(installed, {"c9": ("r9", "ISRC00009")})
+    assert ledger.mirror_misses(installed) == {"c2": ("why", ("b",))}
 
 
 def test_a_malformed_miss_is_dropped_and_asked_again_rather_than_refusing(installed):
@@ -184,12 +187,6 @@ def test_a_ledger_whose_misses_are_not_a_map_refuses(installed):
     with pytest.raises(CratekitError) as caught:
         ledger.mirror_misses(installed)
     assert caught.value.cause.reason == "outbound-ledger-unusable"
-
-
-def test_a_write_elsewhere_in_the_ledger_carries_the_misses_through(installed):
-    ledger.record_mirror_misses(installed, {"c2": ("why", ("b",))})
-    ledger.record_mirror_links(installed, {"c9": ("r9", "ISRC00009")})
-    assert ledger.mirror_misses(installed) == {"c2": ("why", ("b",))}
 
 
 def test_the_file_signature_moves_when_the_file_is_rewritten(installed):
