@@ -51,9 +51,9 @@ MADE = ("1", "2", "201", "401", "501", "601")
 
 
 def seed(cfg) -> None:
-    """``repair rows``'s library with the probe columns set: rekordbox's values on
-    every row it made, the binding's on the two rows a landing made, each made
-    whole so the probe columns are the one difference."""
+    """``repair rows``'s library with the probe columns set: rekordbox's values on every row it
+    made, the binding's on the two rows a landing made, each made whole so the probe columns are
+    the one difference."""
     build(cfg)
     _sql(cfg, f"UPDATE djmdContent SET {LINK} = ?, {ISRC} = ''", HOUSE)
     _sql(
@@ -245,8 +245,8 @@ def test_a_value_only_a_tombstone_carries_refuses_as_unheld(machine):
 
 
 def test_the_bindings_value_onto_a_row_rekordbox_made_refuses_as_the_minority(machine):
-    """The probe moves a row toward the value most rows carry, never away: the
-    reverse write would take a row that loads and make the question worse."""
+    """The probe moves a row toward the value most rows carry, never away: the reverse write would
+    take a row that loads and make the question worse."""
     seed(machine)
     with pytest.raises(CratekitError) as caught:
         _planned(machine, f"201:{LINK}={BINDING}")
@@ -256,9 +256,7 @@ def test_the_bindings_value_onto_a_row_rekordbox_made_refuses_as_the_minority(ma
 
 
 def test_a_null_counts_its_fellows_as_null_so_writing_one_back_is_the_minority(machine):
-    """An ISRC of NULL is held by the two landed rows only. Writing the empty
-    text over a rekordbox row's empty text is a no op, and a NULL is not a value
-    the probe can ask for at all, so the minority rule is driven on text."""
+    """An ISRC of NULL is held by the two landed rows only."""
     seed(machine)
     _sql(machine, f"UPDATE djmdContent SET {ISRC} = 'X1' WHERE ID IN ('101', '102')")
     # 101 holds X1 with one fellow, 102; six rows hold the empty text.
@@ -487,9 +485,9 @@ def test_rekordbox_running_refuses_at_the_apply_and_writes_nothing(acknowledged,
 
 
 def test_a_column_moved_after_the_commit_refuses_through_the_verb(acknowledged, monkeypatch):
-    """The read back is what the verb answers with: a judge that finds a moved
-    column after the commit refuses the run as the guard's defect, naming the
-    session whose capture undoes the durable write."""
+    """The read back is what the verb answers with: a judge that finds a moved column after the
+    commit refuses the run as the guard's defect, naming the session whose capture undoes the
+    durable write."""
     seed(acknowledged)
     monkeypatch.setattr(row_link, "judge", lambda plan, before, after: ((), ("101: BPM",)))
     code, acted, _ = _two_acts(f"101:{LINK}={HOUSE}")
@@ -519,8 +517,8 @@ def test_the_guard_refuses_a_probe_column_written_without_the_policy(acknowledge
 
 
 def test_a_plan_writing_one_column_admits_only_that_one_to_the_guard(acknowledged, monkeypatch):
-    """The policy is built from the columns written, so a ContentLink only plan
-    that also sets an ISRC beside it is refused by the guard before the commit."""
+    """The policy is built from the columns written, so a ContentLink only plan that also sets an
+    ISRC beside it is refused by the guard before the commit."""
     seed(acknowledged)
     real = rb_writer.write_metadata_field
 
@@ -537,8 +535,7 @@ def test_a_plan_writing_one_column_admits_only_that_one_to_the_guard(acknowledge
 
 
 def test_a_tempo_moved_beside_the_write_is_refused_by_the_guard(acknowledged, monkeypatch):
-    """The probe's policy admits its columns only. A tempo set in the same
-    commit is refused before it, and nothing is written."""
+    """The probe's policy admits its columns only."""
     seed(acknowledged)
     real = rb_writer.write_metadata_field
 
@@ -624,8 +621,8 @@ def test_judge_names_a_value_that_did_not_take_and_a_column_that_moved():
 
 
 def test_judge_counts_a_column_written_on_another_row_as_moved_here():
-    """The planned columns are per row: an ISRC written on 102 does not excuse
-    an ISRC that moved on 101, where only the ContentLink was written."""
+    """The planned columns are per row: an ISRC written on 102 does not excuse an ISRC that moved
+    on 101, where only the ContentLink was written."""
     plan = _plan_of(_probe(), _probe(content_id="102", column=ISRC, value="", was=None))
     before = {"101": {LINK: BINDING, ISRC: None}, "102": {ISRC: None}}
     after = {"101": {LINK: HOUSE, ISRC: ""}, "102": {ISRC: ""}}

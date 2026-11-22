@@ -79,8 +79,8 @@ def test_a_target_held_by_another_recording_keeps_the_plain_collision(configured
 
 
 def test_a_copy_with_no_isrc_on_either_side_is_never_called_the_same_recording(configured):
-    """Absence of a read is not a match: no ISRC on the file in the way, then
-    none on the file held back."""
+    """Absence of a read is not a match: no ISRC on the file in the way, then none on the file held
+    back."""
     folder = _folder(configured)
     _copies(folder, earlier=None, newer=ISRC)
     (item,) = _plan(folder)["items"]
@@ -95,8 +95,8 @@ def test_a_held_back_copy_with_no_isrc_is_never_called_the_same_recording(config
 
 
 def test_two_movers_sharing_a_target_a_copy_holds_carry_no_isrc(configured):
-    """Review round one, F3: the reason is the two movers', so the item carries
-    no ISRC that would describe the file on disk instead."""
+    """Review round one, F3: the reason is the two movers', so the item carries no ISRC that would
+    describe the file on disk instead."""
     folder = _folder(configured)
     _copies(folder, earlier=ISRC, newer=ISRC)
     third = _track(folder, "102.flac")
@@ -112,10 +112,7 @@ def test_two_movers_sharing_a_target_a_copy_holds_carry_no_isrc(configured):
 
 
 def test_a_copy_that_takes_the_name_after_the_plan_is_said_a_second_copy(configured):
-    """Review round one, F8, the claim after the gate. ``lead`` renders onto the
-    name ``marked`` holds while ``marked`` is itself moving, so the plan leaves
-    it promised (R-172) and the claim finds the name taken by a file carrying
-    the same ISRC."""
+    """Review round one, F8, the claim after the gate."""
     folder = _folder(configured)
     marker = configured.naming.lossy_marker
     lead = _track(

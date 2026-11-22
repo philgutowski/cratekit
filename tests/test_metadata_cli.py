@@ -301,12 +301,7 @@ def test_a_library_with_no_tag_category_refuses_through_the_verb(ready, monkeypa
 
 
 def test_an_apply_is_listed_by_restore_list_as_a_restorable_session(ready):
-    """The cost R-375 names, reproduced through both verbs a person would type.
-
-    Found on the live library: after an apply wrote four associations, the
-    sessions directory held an unrelated rehearsal alone, and the write's only
-    trace was a snapshot directory nothing could list or spend.
-    """
+    """The cost R-375 names, reproduced through both verbs a person would type."""
     cfg, audio, db_path = ready
     del audio, db_path
     code, envelope = drive(["metadata", "mytags-vocals", "--apply"])

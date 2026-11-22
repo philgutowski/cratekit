@@ -45,12 +45,7 @@ def library(tmp_path, monkeypatch):
 
 @pytest.fixture
 def configured(library, monkeypatch):
-    """A machine set up far enough that the verb reaches its own logic.
-
-    The collection is stubbed as READ AND EMPTY, which is a real state and not a
-    missing database: these tests are about the rename, and the collection guard
-    is driven against a disposable database further down.
-    """
+    """A machine set up far enough that the verb reaches its own logic."""
     resolved = config.from_dict(valid_data(library))
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: resolved)
     monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: ())
@@ -64,13 +59,24 @@ def drive(argv: list[str]) -> tuple[int, str, str]:
     return code, out.getvalue(), err.getvalue()
 
 
-def _track(
-    folder: Path, name: str, *, title: str | None = None, key: str | None = None
-) -> Path:
+#: One second of silence, synthesized once per process: ffmpeg writes the same
+#: bytes every time, and a subprocess per track was half of each test's time.
+_SILENCE: list[bytes] = []
+
+
+def _silence(target: Path) -> Path:
+    """A real audio file at ``target``, synthesized once and copied after."""
+    if _SILENCE:
+        target.write_bytes(_SILENCE[0])
+    else:
+        synth_container(target.parent, ".flac").rename(target)
+        _SILENCE.append(target.read_bytes())
+    return target
+
+
+def _track(folder: Path, name: str, *, title: str | None = None, key: str | None = None) -> Path:
     """A real audio file under ``folder`` with the given name and tags."""
-    made = synth_container(folder, ".flac")
-    target = folder / name
-    made.rename(target)
+    target = _silence(folder / name)
     fields: dict[str, object] = {}
     if title is not None:
         fields["title"] = title
@@ -106,13 +112,7 @@ def _apply(folder: Path) -> dict:
 
 
 def _answer(folder: Path) -> tuple[int, dict]:
-    """Status and whole envelope from one apply, whatever it exits with.
-
-    ``_apply`` asserts a zero exit, which is right for a sweep that carried out
-    every rename it promised. R-172's whole content is that an apply which could
-    not is a non-success answer carrying its plan, so these tests read both
-    halves rather than the payload alone.
-    """
+    """Status and whole envelope from one apply, whatever it exits with."""
     code, out, _ = drive([
         "--output", "json", "-d", "name.apply.confirm=apply",
         "name", "apply", "--root", str(folder),
@@ -149,8 +149,7 @@ def test_an_unpadded_head_is_carried_and_padded_with_the_tempo_intact(configured
 
 
 def test_the_head_is_recovered_from_the_title_when_the_filename_lost_it(configured):
-    """The tag then rename crash window leaves the head in the title and not
-    in the filename. The pass heals that file rather than stripping it."""
+    """The tag then rename crash window leaves the head in the title and not in the filename."""
     folder = _folder(configured)
     _track(folder, "Cola.flac", title="01A - 124 - Cola", key="01A")
     _apply(folder)
@@ -160,8 +159,8 @@ def test_the_head_is_recovered_from_the_title_when_the_filename_lost_it(configur
 
 
 def test_the_plan_and_the_apply_agree_on_a_marked_file(configured):
-    """The plan used to build its spec without the lossy flag, so it promised
-    a marked file a rename the apply pass was never going to perform."""
+    """The plan used to build its spec without the lossy flag, so it promised a marked file a
+    rename the apply pass was never going to perform."""
     folder = _folder(configured)
     marker = configured.naming.lossy_marker
     _track(folder, f"{marker} Cola.flac", title=f"{marker} Cola")
@@ -169,16 +168,15 @@ def test_the_plan_and_the_apply_agree_on_a_marked_file(configured):
 
 
 def test_a_name_with_no_parseable_head_is_left_as_it_arrives(configured):
-    """13A is off the wheel, so the whole name is the body and stays put.
-    Driven and pinned rather than assumed."""
+    """13A is off the wheel, so the whole name is the body and stays put."""
     folder = _folder(configured)
     _track(folder, "13A - 124 - Cola.flac", title="13A - 124 - Cola")
     assert _plan(folder)["items"] == []
 
 
 def test_a_key_tag_that_is_not_camelot_does_not_poison_the_pass(configured):
-    """The head's own key still carries the rename; the junk tag is ignored
-    rather than crashing the render or overruling the head."""
+    """The head's own key still carries the rename; the junk tag is ignored rather than crashing
+    the render or overruling the head."""
     folder = _folder(configured)
     _track(folder, "1A - 124 - Cola.flac", title="1A - 124 - Cola", key="Amaj")
     assert _moves(_plan(folder)) == [
@@ -187,8 +185,7 @@ def test_a_key_tag_that_is_not_camelot_does_not_poison_the_pass(configured):
 
 
 def test_the_tag_key_wins_over_a_stale_head_and_the_pass_converges(configured):
-    """Renaming from metadata is the verb's job. The head fills silence; it
-    does not overrule a tag somebody corrected, and one apply converges."""
+    """Renaming from metadata is the verb's job."""
     folder = _folder(configured)
     _track(folder, "01A - 124 - Cola.flac", title="01A - 124 - Cola", key="2A")
     assert _moves(_plan(folder)) == [
@@ -200,9 +197,7 @@ def test_the_tag_key_wins_over_a_stale_head_and_the_pass_converges(configured):
 
 
 def test_the_filename_head_alone_is_enough_when_the_title_tag_lacks_it(configured):
-    """Acquired files often carry a clean title tag while the filename still
-    holds the head. The filename is the surface being renamed, so it is the
-    first head source, and the title fallback must not be the only one."""
+    """Acquired files often carry a clean title tag while the filename still holds the head."""
     folder = _folder(configured)
     _track(folder, "1A - 124 - Cola.flac", title="Cola")
     assert _moves(_plan(folder)) == [
@@ -215,12 +210,7 @@ def test_the_filename_head_alone_is_enough_when_the_title_tag_lacks_it(configure
 
 
 def test_the_filename_head_wins_when_both_heads_parse_and_disagree(configured):
-    """Precedence, pinned where it is observable. Every other test that gives
-    both surfaces a parseable head gives them the SAME values, so none of them
-    can tell "the filename wins" from "either wins, it did not matter here".
-    The filename is the convention's ground truth and the title is a recovery
-    fallback for the crash window, not a correction channel, so a stale title
-    head must not drag a correct filename backwards."""
+    """Precedence, pinned where it is observable."""
     folder = _folder(configured)
     _track(folder, "1A - 124 - Cola.flac", title="5B - 95 - Cola")
     assert _moves(_plan(folder)) == [
@@ -239,10 +229,8 @@ def test_the_filename_head_wins_when_both_heads_parse_and_disagree(configured):
 
 
 def test_the_filename_body_is_carried_through_a_padding_rename(configured):
-    """R-168. The library keeps the artist in the filename and the title alone
-    in the tag, so composing the name from the tag drops the artist off almost
-    every file. The head is padded and the body is whatever the file already
-    had."""
+    """R-168. The library keeps the artist in the filename and the title alone in the tag, so
+    composing the name from the tag drops the artist off almost every file."""
     folder = _folder(configured)
     _track(
         folder,
@@ -259,10 +247,7 @@ def test_the_filename_body_is_carried_through_a_padding_rename(configured):
 
 
 def test_the_title_tag_is_not_given_the_filename_body(configured):
-    """The other half of the same decision, and the one a rename could corrupt
-    silently. The apply pass rewrites the title tag, so a spec that fed the
-    filename's body into both surfaces would stuff the artist and the album
-    into every title tag in the library. Each surface keeps its own body."""
+    """The other half of the same decision, and the one a rename could corrupt silently."""
     folder = _folder(configured)
     _track(
         folder,
@@ -277,10 +262,8 @@ def test_the_title_tag_is_not_given_the_filename_body(configured):
 
 
 def test_both_library_grammars_survive_a_rename(configured):
-    """Measured on the real library: `Artist - Title` and
-    `Title - Artist - Album` both occur, in that order of rarity, and no rule
-    distinguishes them. Preserving the body serves both without knowing which
-    is which."""
+    """Measured on the real library: `Artist - Title` and `Title - Artist - Album` both occur, in
+    that order of rarity, and no rule distinguishes them."""
     folder = _folder(configured)
     _track(folder, "2A - 120 - Artist - Song.flac", title="2A - 120 - Song")
     _track(
@@ -300,25 +283,7 @@ def test_both_library_grammars_survive_a_rename(configured):
 
 
 def test_a_rename_never_replaces_the_body_with_the_title_tag(configured):
-    """The structural form of R-168, stated as what it actually forbids.
-
-    "A rename never shortens the body" is the wrong rule and was tried first.
-    Two shorteners are legitimate and predate this unit: ``dedupe_stem`` drops a
-    trailing segment that merely repeats the lead, and ``fit_to_budget``
-    truncates a name over the path ceiling. Driven over sixty real library files
-    they account for every remaining body change and nothing else does. What
-    must never happen is the body being REPLACED by the title tag's body, which
-    is the defect, and that is the first assertion.
-
-    THESE THREE FIXTURES DELIBERATELY TRIGGER NEITHER SHORTENER, which is why
-    the second assertion may demand exact equality here. That is a property of
-    the inputs and not a general rule, so do not read it as one and do not
-    "fix" a future failure by widening it. The shorteners are pinned in
-    ``test_a_trailing_segment_repeating_the_lead_is_still_deduped``,
-    ``test_a_trailing_segment_that_only_starts_with_the_lead_survives`` and
-    ``test_a_name_over_the_byte_ceiling_is_truncated_not_rebuilt``. Two
-    reviewers caught this docstring promising a weaker rule than the assertion
-    enforced, which is the same shape as the defect this unit fixes."""
+    """The structural form of R-168, stated as what it actually forbids."""
     folder = _folder(configured)
     names = [
         "1A - 124 - Artist Name - Song Title.flac",
@@ -344,11 +309,8 @@ def test_a_rename_never_replaces_the_body_with_the_title_tag(configured):
 
 
 def test_a_trailing_segment_repeating_the_lead_is_still_deduped(configured):
-    """``dedupe_stem`` has always run inside ``build`` and never had anything to
-    work on, because the body it received was a single segment off the title
-    tag. Feeding it the filename's real body is what switches it on, so its
-    behaviour is pinned here rather than discovered later as a surprise. Nine of
-    sixty real files take this path."""
+    """``dedupe_stem`` has always run inside ``build`` and never had anything to work on, because
+    the body it received was a single segment off the title tag."""
     folder = _folder(configured)
     _track(
         folder,
@@ -364,11 +326,8 @@ def test_a_trailing_segment_repeating_the_lead_is_still_deduped(configured):
 
 
 def test_a_marker_in_the_title_alone_is_still_recovered(configured):
-    """The marker is read from either surface, and the only other test of that
-    ``or`` puts it in BOTH at once, so it cannot say which operand carries the
-    case. This is the marker's own crash window: a run that wrote the marked
-    title and died before the rename leaves the marker in the title alone, and
-    the pass has to carry it onto the file rather than drop it."""
+    """The marker is read from either surface, and the only other test of that ``or`` puts it in
+    BOTH at once, so it cannot say which operand carries the case."""
     folder = _folder(configured)
     marker = configured.naming.lossy_marker
     _track(folder, "Cola.flac", title=f"{marker} Cola")
@@ -376,12 +335,7 @@ def test_a_marker_in_the_title_alone_is_still_recovered(configured):
 
 
 def test_a_marker_in_the_filename_alone_is_not_stripped_off(configured):
-    """The other operand of the same ``or``, and the direction that loses data.
-    An acquired file is marked in its name while its title tag arrives clean
-    from the source. If only the title were consulted the render would drop
-    the marker, and the pass would propose renaming the marked file to its
-    unmarked form, which is how a lossy copy and its lossless twin stop being
-    distinguishable. It proposes nothing instead."""
+    """The other operand of the same ``or``, and the direction that loses data."""
     folder = _folder(configured)
     marker = configured.naming.lossy_marker
     _track(folder, f"{marker} Cola.flac", title="Cola")
@@ -389,12 +343,7 @@ def test_a_marker_in_the_filename_alone_is_not_stripped_off(configured):
 
 
 def test_a_trailing_segment_that_only_starts_with_the_lead_survives(configured):
-    """The negative half of dedupe, and the rule that makes it safe to run
-    unconditionally. ``dedupe_stem``'s docstring calls it "ambiguity means
-    identity": anything not matching exactly passes through byte identical, so
-    a trailing segment that merely BEGINS with the lead is not a repeat and is
-    kept. Only the positive case was pinned, which is how a widened rule would
-    have shipped looking correct."""
+    """The negative half of dedupe, and the rule that makes it safe to run unconditionally."""
     folder = _folder(configured)
     _track(
         folder,
@@ -410,9 +359,8 @@ def test_a_trailing_segment_that_only_starts_with_the_lead_survives(configured):
 
 
 def test_a_deduping_rename_converges_on_one_pass(configured):
-    """``dedupe_stem`` applies its rule once rather than to a fixed point, and
-    this unit is what gave it real input, so convergence is pinned at the
-    surface rather than assumed. Apply, then re-plan and require silence."""
+    """``dedupe_stem`` applies its rule once rather than to a fixed point, and this unit is what
+    gave it real input, so convergence is pinned at the surface rather than assumed."""
     folder = _folder(configured)
     _track(
         folder,
@@ -425,11 +373,8 @@ def test_a_deduping_rename_converges_on_one_pass(configured):
 
 
 def test_a_file_with_no_title_tag_takes_its_body_from_the_filename(configured):
-    """The only surface left when the tag is absent is the name itself, so the
-    body comes from there and the tag is populated from it. This fills an empty
-    tag rather than losing anything, and it is what the pre-U41 code did too.
-    Driven by hand during review and pinned here because a hand drive that
-    leaves no test is a measurement nobody can repeat."""
+    """The only surface left when the tag is absent is the name itself, so the body comes from
+    there and the tag is populated from it."""
     folder = _folder(configured)
     _track(folder, "1A - 124 - Artist Name - Song Title.flac", key="1A")
     _apply(folder)
@@ -439,15 +384,7 @@ def test_a_file_with_no_title_tag_takes_its_body_from_the_filename(configured):
 
 
 def test_a_name_over_the_byte_ceiling_is_truncated_not_rebuilt(configured):
-    """Truncation went from unreachable to live in this unit, and nothing drove
-    it. While the body came off the title tag it was short by construction, so
-    the ceiling was never approached; carrying the real body means some names
-    now cross it. Four of thirty six renames in a sixty file real library
-    sample took this path.
-
-    Truncating is not the defect. Losing the body to the tag is. This asserts
-    the shape rather than an exact string, because the fixture's temporary
-    parent directory varies in length between runs and moves the cut."""
+    """Truncation went from unreachable to live in this unit, and nothing drove it."""
     folder = _folder(configured)
     body = "Artist Name - " + ("Extremely Long Song Title Part " * 6).strip()
     name = f"1A - 124 - {body}.flac"
@@ -481,10 +418,7 @@ def prefix_map() -> list[dict[str, str]]:
 
 @pytest.fixture
 def collected(library, monkeypatch, prefix_map):
-    """A configured machine whose collection is a real, readable database.
-
-    The rows are added per test through :func:`_record`.
-    """
+    """A configured machine whose collection is a real, readable database."""
     from pyrekordbox.db6 import database as binding
 
     data = valid_data(
@@ -613,8 +547,8 @@ def test_a_row_under_an_unmapped_volume_refuses_and_renames_nothing(collected):
 
 
 def test_an_unmapped_row_refuses_the_plan_too(collected):
-    """The abort option reads the plan, and a plan over a collection with a hole
-    in it would show a rename the apply was never going to be allowed."""
+    """The abort option reads the plan, and a plan over a collection with a hole in it would show a
+    rename the apply was never going to be allowed."""
     folder = _folder(collected)
     _pair(folder)
     _record(collected, "/mnt/volume/Music/1A - 124 - Held.flac", identifier="10")
@@ -627,8 +561,8 @@ def test_an_unmapped_row_refuses_the_plan_too(collected):
 
 
 def test_every_unmapped_row_is_counted_and_the_first_is_named(collected):
-    """Two dark rows, one of them a tombstone (R-524), each under the name of a
-    file the plan would rename, and a third row that resolves."""
+    """Two dark rows, one of them a tombstone (R-524), each under the name of a file the plan would
+    rename, and a third row that resolves."""
     folder = _folder(collected)
     held, free = _pair(folder)
     _record(collected, "/mnt/volume/Music/2A - 124 - Free.flac", identifier="10", deleted=1)
@@ -668,9 +602,8 @@ def test_two_dark_rows_under_one_candidate_name_each_name_it(collected):
 
 
 def test_a_dark_row_is_matched_across_folders_by_leaf_alone(collected, tmp_path):
-    """The rule the guard rests on, named: a renamed volume or a moved mount
-    changes a path's prefix and never its leaf. The row sits under a folder
-    tree unlike the candidate's in every segment but the last, and it refuses."""
+    """The rule the guard rests on, named: a renamed volume or a moved mount changes a path's
+    prefix and never its leaf."""
     folder = _folder(collected)
     held, free = _pair(folder)
     elsewhere = tmp_path / "old-laptop" / "Downloads" / "stick" / "1A - 124 - Held.flac"
@@ -684,9 +617,8 @@ def test_a_dark_row_is_matched_across_folders_by_leaf_alone(collected, tmp_path)
 
 
 def test_a_dark_row_under_a_held_candidate_name_refuses_nothing(collected):
-    """A candidate a resolved row references is never renamed (R-407), so a
-    dark row under its name puts nothing in doubt: the resolved keys are read
-    before the dark rows are compared. The held file stays, its sibling goes."""
+    """A candidate a resolved row references is never renamed (R-407), so a dark row under its name
+    puts nothing in doubt: the resolved keys are read before the dark rows are compared."""
     folder = _folder(collected)
     held, free = _pair(folder)
     _record(collected, str(held), identifier="10")
@@ -702,10 +634,9 @@ def test_a_dark_row_under_a_held_candidate_name_refuses_nothing(collected):
     "prefix_map", [[{"from": "/mnt/VOLUME", "to": "{library.root}"}]]
 )
 def test_a_rule_differing_from_the_recorded_volume_only_in_case_refuses(collected):
-    """PINNED TO THE REFUSAL. The shared resolver compares a prefix exactly, so
-    this row is unmapped to every writer, and matching it here alone would make
-    this verb a second locate that disagrees with the first. The message names
-    the recorded spelling, which is what shows a person the difference."""
+    """PINNED TO THE REFUSAL. The shared resolver compares a prefix exactly, so this row is
+    unmapped to every writer, and matching it here alone would make this verb a second locate
+    that disagrees with the first."""
     folder = _folder(collected)
     held, free = _pair(folder)
     relative = held.relative_to(collected.library.root)
@@ -720,9 +651,7 @@ def test_a_rule_differing_from_the_recorded_volume_only_in_case_refuses(collecte
 def test_a_row_that_goes_unmapped_after_the_gate_refuses_before_any_rename(
     collected, monkeypatch
 ):
-    """The re-read before the rename, on its own. The plan is built over a
-    collection every row of which resolves, and the apply pass reads one that
-    gained a row under a volume no rule names."""
+    """The re-read before the rename, on its own."""
     folder = _folder(collected)
     held, free = _pair(folder)
     reads = iter([(), ("/mnt/volume/Music/1A - 124 - Held.flac",)])
@@ -734,8 +663,8 @@ def test_a_row_that_goes_unmapped_after_the_gate_refuses_before_any_rename(
 
 
 def test_the_refusal_names_the_decoded_location_a_rule_is_matched_against(collected):
-    """A row recorded as a location URL is quoted DECODED, because a rule is
-    compared with the decoded path and the encoded spelling would never match."""
+    """A row recorded as a location URL is quoted DECODED, because a rule is compared with the
+    decoded path and the encoded spelling would never match."""
     folder = _folder(collected)
     _pair(folder)
     _record(
@@ -753,9 +682,9 @@ def test_the_refusal_names_the_decoded_location_a_rule_is_matched_against(collec
 def test_a_gone_file_under_a_folder_on_this_machine_refuses_under_a_candidate_name(
     collected, tmp_path
 ):
-    """The other half of the existence rule. The folder is on this machine and
-    the recorded file is not, and the row carries a candidate's name, so nothing
-    says whether the row names that candidate."""
+    """The other half of the existence rule. The folder is on this machine and the recorded file is
+    not, and the row carries a candidate's name, so nothing says whether the row names that
+    candidate."""
     folder = tmp_path / "laptop" / "Downloads"
     folder.mkdir(parents=True)
     held, free = _pair(folder)
@@ -769,9 +698,8 @@ def test_a_gone_file_under_a_folder_on_this_machine_refuses_under_a_candidate_na
 
 
 def test_a_gone_file_under_another_name_refuses_nothing(collected, tmp_path):
-    """R-523, decided: a dark row whose file name is no candidate's cannot be a
-    candidate under another spelling, so it holds nothing and refuses nothing.
-    The row is under a folder that exists here, the shape R-523 filed."""
+    """R-523, decided: a dark row whose file name is no candidate's cannot be a candidate under
+    another spelling, so it holds nothing and refuses nothing."""
     folder = tmp_path / "laptop" / "Downloads"
     folder.mkdir(parents=True)
     held, free = _pair(folder)
@@ -782,9 +710,8 @@ def test_a_gone_file_under_another_name_refuses_nothing(collected, tmp_path):
 
 
 def test_a_dark_tombstone_under_another_name_refuses_nothing(collected):
-    """R-524, decided: a tombstone counts exactly as a live row does, so one
-    under a gone folder refuses when its name is a candidate's and passes when
-    it is not. The live library carries 437 of the second kind."""
+    """R-524, decided: a tombstone counts exactly as a live row does, so one under a gone folder
+    refuses when its name is a candidate's and passes when it is not."""
     folder = _folder(collected)
     held, free = _pair(folder)
     _record(
@@ -810,8 +737,8 @@ def test_a_dark_tombstone_under_a_candidate_name_still_refuses(collected):
 
 
 def test_a_dark_row_is_matched_to_a_candidate_by_name_ignoring_case(collected):
-    """The leaf is compared as the referenced set compares a path, casefolded
-    and composed, because the volume the library sits on ignores case."""
+    """The leaf is compared as the referenced set compares a path, casefolded and composed, because
+    the volume the library sits on ignores case."""
     folder = _folder(collected)
     held, free = _pair(folder)
     _record(collected, "/mnt/volume/Music/1a - 124 - HELD.FLAC", identifier="10")
@@ -821,10 +748,9 @@ def test_a_dark_row_is_matched_to_a_candidate_by_name_ignoring_case(collected):
 
 
 def test_a_streamed_track_recorded_as_a_catalogue_path_refuses_nothing(collected):
-    """The live form. rekordbox 7 records a streamed track as a path under
-    ``/v4/catalog/tracks/``, which starts with a slash and reaches the resolver
-    as an unmapped path with no file behind it. The first live plan found 137
-    active rows of this shape (R-675). It names no file, so it holds nothing."""
+    """The live form. rekordbox 7 records a streamed track as a path under ``/v4/catalog/tracks/``,
+    which starts with a slash and reaches the resolver as an unmapped path with no file behind
+    it."""
     folder = _folder(collected)
     held, free = _pair(folder)
     _record(collected, "/v4/catalog/tracks/17477108/", identifier="10")
@@ -835,11 +761,7 @@ def test_a_streamed_track_recorded_as_a_catalogue_path_refuses_nothing(collected
 def test_a_row_whose_file_exists_elsewhere_does_not_hold_a_namesake_in_the_library(
     collected, tmp_path
 ):
-    """The existence half of dark, reached alone. A track in a downloads folder
-    under no rule, present where its row says, shares its name with a library
-    file the plan would rename. The row has answered, it names its own file, so
-    the namesake is not in doubt and is renamed. Without the existence test the
-    row is dark, its leaf matches, and the verb refuses over a file it holds."""
+    """The existence half of dark, reached alone."""
     folder = _folder(collected)
     held, free = _pair(folder)
     downloads = tmp_path / "laptop" / "Downloads"
@@ -853,10 +775,7 @@ def test_a_row_whose_file_exists_elsewhere_does_not_hold_a_namesake_in_the_libra
 
 
 def test_a_device_relative_row_neither_blocks_nor_protects(collected):
-    """The other resolution with no path, reached alone. A row recorded relative
-    to a device, no leading slash, is not a path on this machine and is never
-    dark, whatever its leaf. Without the resolution test it reads as an absent
-    file under a candidate's name and refuses."""
+    """The other resolution with no path, reached alone."""
     folder = _folder(collected)
     held, free = _pair(folder)
     _record(collected, "Contents/Artist/1A - 124 - Held.flac", identifier="10")
@@ -865,8 +784,8 @@ def test_a_device_relative_row_neither_blocks_nor_protects(collected):
 
 
 def test_a_dark_row_is_only_asked_about_the_files_being_renamed(collected):
-    """A file the plan holds as unnamed is not renamed, so a dark row under its
-    name cannot be stranded by this pass and refuses nothing."""
+    """A file the plan holds as unnamed is not renamed, so a dark row under its name cannot be
+    stranded by this pass and refuses nothing."""
     folder = _folder(collected)
     _track(folder, "12345.flac")
     held, _free = _pair(folder)
@@ -881,8 +800,8 @@ def test_a_dark_row_is_only_asked_about_the_files_being_renamed(collected):
 
 
 def test_the_refusal_counts_every_row_and_lists_no_more_than_twenty(collected):
-    """A fresh setup was measured at 9937 unmapped rows, which uncapped is 9937
-    strings in one envelope. The count is never capped, only the two lists."""
+    """A fresh setup was measured at 9937 unmapped rows, which uncapped is 9937 strings in one
+    envelope."""
     recorded = tuple(f"/absent-{index:02d}/music/track.flac" for index in range(25))
     with pytest.raises(naming_cli.CratekitError) as refused:
         naming_cli._referenced(recorded, cfg=collected, renaming=[Path("/x/track.flac")])
@@ -895,9 +814,7 @@ def test_the_refusal_counts_every_row_and_lists_no_more_than_twenty(collected):
 
 
 def test_a_row_recording_a_link_to_nothing_is_dark(collected, tmp_path):
-    """The name is on this machine and the file behind it is not, so the row has
-    not answered. Existence is asked of what the path reaches, never of the
-    link itself."""
+    """The name is on this machine and the file behind it is not, so the row has not answered."""
     folder = _folder(collected)
     held, free = _pair(folder)
     dangling = tmp_path / "elsewhere" / "1A - 124 - Held.flac"
@@ -910,8 +827,8 @@ def test_a_row_recording_a_link_to_nothing_is_dark(collected, tmp_path):
 
 
 def test_a_row_that_is_not_a_path_neither_blocks_nor_protects(collected):
-    """A streaming pseudo-location references no file, so it is not a hole in
-    the collection, and a library that ever streamed anything still renames."""
+    """A streaming pseudo-location references no file, so it is not a hole in the collection, and a
+    library that ever streamed anything still renames."""
     folder = _folder(collected)
     held, free = _pair(folder)
     _record(collected, "tidal:tracks:12345", identifier="10")
@@ -920,8 +837,8 @@ def test_a_row_that_is_not_a_path_neither_blocks_nor_protects(collected):
 
 
 def test_an_unmapped_row_over_an_empty_folder_refuses_nothing(collected):
-    """With no rename candidate the collection is not read at all, so a hole in
-    it cannot change the outcome and the empty plan is still readable."""
+    """With no rename candidate the collection is not read at all, so a hole in it cannot change
+    the outcome and the empty plan is still readable."""
     folder = _folder(collected)
     _record(collected, "/mnt/volume/Music/elsewhere.flac", identifier="10")
     assert _plan(folder)["items"] == []
@@ -957,9 +874,8 @@ def test_a_tombstoned_row_still_protects_its_file(collected):
 
 
 def test_a_root_outside_the_library_is_still_checked(collected, tmp_path):
-    """The row sits under no rule and its recorded file is on this machine, so
-    it has answered (R-500): the recorded key protects the file and nothing
-    refuses. A downloads folder is the ordinary case."""
+    """The row sits under no rule and its recorded file is on this machine, so it has answered
+    (R-500): the recorded key protects the file and nothing refuses."""
     folder = tmp_path / "laptop" / "Downloads"
     folder.mkdir(parents=True)
     held, free = _pair(folder)
@@ -970,9 +886,8 @@ def test_a_root_outside_the_library_is_still_checked(collected, tmp_path):
 
 
 def test_a_database_with_no_matching_row_proceeds(collected):
-    """Zero referencing rows from a database that OPENED is a fact, not a
-    failure, so the pass renames. The disposable database holds two rows with
-    no path at all."""
+    """Zero referencing rows from a database that OPENED is a fact, not a failure, so the pass
+    renames."""
     folder = _folder(collected)
     held, free = _pair(folder)
     _apply(folder)
@@ -1009,23 +924,15 @@ def test_an_unopenable_database_refuses_and_renames_nothing(collected):
 
 
 def test_an_empty_folder_needs_no_database(collected):
-    """With nothing to rename the collection cannot change the outcome, so a
-    machine with no database can still read an empty plan."""
+    """With nothing to rename the collection cannot change the outcome, so a machine with no
+    database can still read an empty plan."""
     folder = _folder(collected)
     Path(collected.library.db_path).unlink()
     assert _plan(folder)["items"] == []
 
 
 def test_a_row_that_appears_after_the_gate_still_protects_its_file(collected, monkeypatch):
-    """The re-check before the rename, on its own. The plan is built over an
-    empty collection and the apply pass reads one that references the file,
-    which is rekordbox importing while the gate waits on a person.
-
-    R-172 added the second half: the file is still protected AND the run says
-    the rename a person approved did not happen. The protection is not a reason
-    to report success over a plan that was carried out in part, and the next run
-    shows the same file as referenced and exits 0.
-    """
+    """The re-check before the rename, on its own."""
     folder = _folder(collected)
     held, free = _pair(folder)
     reads = iter([(), (str(held),)])
@@ -1040,10 +947,7 @@ def test_a_row_that_appears_after_the_gate_still_protects_its_file(collected, mo
 
 
 def test_a_library_with_cloud_sync_on_refuses_and_names_the_real_cause(collected, monkeypatch):
-    """The read open still runs the canary, which refuses a library whose cloud
-    sync is ON. That is kept as a refusal, the same one every other collection
-    reader makes, and the person is told the real cause and its remedy rather
-    than only that the collection could not be read."""
+    """The read open still runs the canary, which refuses a library whose cloud sync is ON."""
     folder = _folder(collected)
     held, free = _pair(folder)
     monkeypatch.setattr(
@@ -1063,8 +967,8 @@ def test_a_library_with_cloud_sync_on_refuses_and_names_the_real_cause(collected
 def test_a_file_recorded_by_its_real_path_is_protected_through_a_linked_root(
     collected, tmp_path
 ):
-    """The root is given through a link and the row records the real path, so
-    only the RESOLVED spelling of the candidate matches."""
+    """The root is given through a link and the row records the real path, so only the RESOLVED
+    spelling of the candidate matches."""
     folder = _folder(collected)
     held, free = _pair(folder)
     _record(collected, str(held), identifier="10")
@@ -1078,8 +982,8 @@ def test_a_file_recorded_by_its_real_path_is_protected_through_a_linked_root(
 def test_a_file_recorded_through_a_link_is_protected_through_that_link(
     collected, tmp_path
 ):
-    """The row records the path through a link and the root is given the same
-    way, so only the ABSOLUTE spelling of the candidate matches."""
+    """The row records the path through a link and the root is given the same way, so only the
+    ABSOLUTE spelling of the candidate matches."""
     folder = _folder(collected)
     held, free = _pair(folder)
     link = tmp_path / "linked"
@@ -1091,8 +995,8 @@ def test_a_file_recorded_through_a_link_is_protected_through_that_link(
 
 
 def test_a_row_naming_another_host_neither_blocks_nor_protects(collected):
-    """A remote location has no local path, so it protects no local file, and
-    one such row in a library must not stop the verb for every other file."""
+    """A remote location has no local path, so it protects no local file, and one such row in a
+    library must not stop the verb for every other file."""
     folder = _folder(collected)
     held, free = _pair(folder)
     _record(collected, f"file://elsewhere.invalid{held}", identifier="10")
@@ -1103,8 +1007,8 @@ def test_a_row_naming_another_host_neither_blocks_nor_protects(collected):
 def test_a_read_that_fails_after_the_open_refuses_and_renames_nothing(
     collected, monkeypatch
 ):
-    """The open succeeds and the query does not, which is a failure no open
-    side check classifies. It still refuses rather than reading as empty."""
+    """The open succeeds and the query does not, which is a failure no open side check classifies.
+    """
     folder = _folder(collected)
     held, free = _pair(folder)
 
@@ -1122,15 +1026,8 @@ def test_a_read_that_fails_after_the_open_refuses_and_renames_nothing(
 
 
 def test_a_rename_onto_a_name_another_file_holds_overwrites_nothing(configured):
-    """Two files that render to one name. The padded one is already in
-    convention, and the unpadded one would be renamed onto it, which on this
-    platform replaces the file silently. The claim on the target is what
-    stops that, and nothing drove it until the U67 mutation table asked.
-
-    R-172 added the second half: the file that stays put is NAMED. The target
-    is a file on disk that nothing is moving, so the collision is known while
-    the plan is built and the rename is never promised.
-    """
+    """Two files that render to one name. The padded one is already in convention, and the unpadded
+    one would be renamed onto it, which on this platform replaces the file silently."""
     folder = _folder(configured)
     kept = _track(folder, "01A - 124 - Cola.flac", title="01A - 124 - Cola", key="01A")
     other = _track(folder, "1A - 124 - Cola.flac", title="1A - 124 - Cola", key="1A")
@@ -1154,12 +1051,7 @@ def test_a_rename_onto_a_name_another_file_holds_overwrites_nothing(configured):
 
 
 def _colliding_pair(folder: Path) -> tuple[Path, Path]:
-    """Two files that render to one name, each of which needs a rename.
-
-    The dedupe rule drops a trailing body segment repeating the lead, so these
-    two differ on disk and render identically. This is the ledger's own driven
-    case, with the dedupe standing in for its 05A song.
-    """
+    """Two files that render to one name, each of which needs a rename."""
     first = _track(
         folder, "5A - 120 - Song - Artist - Song.flac", title="5A - 120 - Song", key="5A"
     )
@@ -1168,13 +1060,7 @@ def _colliding_pair(folder: Path) -> tuple[Path, Path]:
 
 
 def test_two_files_rendering_to_one_name_are_not_promised_two_renames(configured):
-    """The plan pass owns the collision, which is where the ledger put it.
-
-    Before this, the plan promised both renames, the apply performed one, the
-    other file was skipped at the claim and the envelope still answered ok.
-    Neither is promised now, both are named, and ``totals.count`` is the number
-    of renames that can actually happen.
-    """
+    """The plan pass owns the collision, which is where the ledger put it."""
     folder = _folder(configured)
     first, second = _colliding_pair(folder)
     plan = _plan(folder)
@@ -1184,12 +1070,7 @@ def test_two_files_rendering_to_one_name_are_not_promised_two_renames(configured
 
 
 def test_a_collision_answers_with_the_files_that_stayed_put(configured):
-    """The apply over that plan renames nothing and says so.
-
-    Answering ok here is the whole finding: every later sweep detects the same
-    collision, so a library that can never converge would report success for
-    ever. The cause names both files and the remediation says what to do.
-    """
+    """The apply over that plan renames nothing and says so."""
     folder = _folder(configured)
     first, second = _colliding_pair(folder)
     code, envelope = _answer(folder)
@@ -1220,16 +1101,7 @@ def test_a_collision_answers_with_the_files_that_stayed_put(configured):
 
 
 def test_a_target_a_collider_holds_is_held_back_too(configured):
-    """The collision detection runs to a fixpoint, which the review found.
-
-    ``third`` renders onto the name ``first`` carries, and ``first`` is one of a
-    colliding pair, both marked lossy and both rendering to one marked name, so
-    it is not going anywhere. Asking once whether a target belongs to a mover
-    counted the pair as movers while holding them back, so
-    ``third`` read as a chain sort order would resolve: the plan promised one
-    rename and no rename was possible. Driven before the fix at
-    ``totals.count`` of 1 with zero renames performed.
-    """
+    """The collision detection runs to a fixpoint, which the review found."""
     folder = _folder(configured)
     marker = configured.naming.lossy_marker
     first = _track(
@@ -1261,16 +1133,7 @@ def test_a_target_a_collider_holds_is_held_back_too(configured):
 
 
 def test_two_targets_differing_only_in_case_are_one_name(configured):
-    """The collision is keyed through ``_key``, NFC and casefolded.
-
-    The two names on disk differ by more than case, since a volume that ignores
-    case cannot hold two that do not, and their RENDERED names differ only in
-    case. That is one name on the volume this product ships for: the first would
-    take it and the second's claim would fail against the file the first just
-    created. Comparing the targets as written promises both renames there. On a
-    volume that respects case the cost is two files left unrenamed, which is the
-    direction ``_key`` already chose for the referenced guard.
-    """
+    """The collision is keyed through ``_key``, NFC and casefolded."""
     folder = _folder(configured)
     upper = _track(
         folder, "5A - 120 - Song - Artist - Song.flac", title="5A - 120 - Song", key="5A"
@@ -1284,14 +1147,7 @@ def test_two_targets_differing_only_in_case_are_one_name(configured):
 
 
 def test_a_referenced_file_does_not_hold_a_name_it_will_never_take(collected):
-    """A file the collection references is not a mover, so it cannot collide.
-
-    Both of these render to one name and the referenced one is never going to be
-    renamed, so the name is free and its sibling takes it. Passing the held back
-    file to the collision pass would lose that rename to a file that is not
-    moving, which is the same cost this unit exists to stop, with the sign
-    reversed.
-    """
+    """A file the collection references is not a mover, so it cannot collide."""
     folder = _folder(collected)
     held = _track(
         folder, "5A - 120 - Song - Artist - Song.flac", title="5A - 120 - Song", key="5A"
@@ -1309,13 +1165,7 @@ def test_a_referenced_file_does_not_hold_a_name_it_will_never_take(collected):
 def test_the_remediation_only_names_a_hand_rename_over_a_real_collision(
     configured, monkeypatch
 ):
-    """A collision is the one reason a person has to name a file themselves.
-
-    The review drove the sort-order chain and was told to hand-rename a file
-    whose target was free by the time the run ended, over a run a second attempt
-    completes. The step now sends a person to the report, and the collision
-    sentence is added only when a name really is in use.
-    """
+    """A collision is the one reason a person has to name a file themselves."""
     folder = _folder(configured)
     _track(folder, "1A - 124 - Alpha.flac", title="1A - 124 - Alpha", key="1A")
     monkeypatch.setattr(naming_cli.tags, "write_tags", lambda path, fields: False)
@@ -1334,9 +1184,7 @@ def test_the_remediation_only_names_a_hand_rename_over_a_real_collision(
 
 
 def test_a_sweep_that_carried_out_every_rename_still_answers_ok(configured):
-    """The other half of the outcome, so the new answer cannot swallow the old
-    one. Two files with nothing in each other's way both land and the envelope
-    is ok at exit 0, which is what every earlier test in this file drives."""
+    """The other half of the outcome, so the new answer cannot swallow the old one."""
     folder = _folder(configured)
     _track(folder, "1A - 124 - Alpha.flac", title="1A - 124 - Alpha", key="1A")
     _track(folder, "2A - 124 - Beta.flac", title="2A - 124 - Beta", key="2A")
@@ -1357,15 +1205,7 @@ def test_a_sweep_that_carried_out_every_rename_still_answers_ok(configured):
 
 
 def test_a_target_another_mover_still_holds_is_promised_and_then_reported(configured):
-    """The collision the plan CANNOT rule out, driven with nothing faked.
-
-    ``lead`` dedupes onto the name ``marked`` currently holds, and ``marked`` is
-    itself moving because its title carries the lossy marker. Sort order decides
-    whether the chain resolves: a hyphen sorts before a dot, so ``lead`` is
-    attempted first and its target is still occupied. Holding it back in the
-    plan would lose a rename that succeeds whenever the order runs the other
-    way, so it stays promised and the apply reports what happened.
-    """
+    """The collision the plan CANNOT rule out, driven with nothing faked."""
     folder = _folder(configured)
     marker = configured.naming.lossy_marker
     lead = _track(
@@ -1392,9 +1232,7 @@ def test_a_target_another_mover_still_holds_is_promised_and_then_reported(config
 
 
 def test_a_file_gone_after_the_plan_is_named_rather_than_skipped(configured, monkeypatch):
-    """A file moved or deleted while the gate waits on a person. The plan
-    promised its rename, and a report that shows the promise with no mark on it
-    is the cost R-172 names."""
+    """A file moved or deleted while the gate waits on a person."""
     folder = _folder(configured)
     vanishing = _track(folder, "1A - 124 - Gone.flac", title="1A - 124 - Gone", key="1A")
     staying = _track(folder, "2A - 124 - Here.flac", title="2A - 124 - Here", key="2A")
@@ -1415,8 +1253,8 @@ def test_a_file_gone_after_the_plan_is_named_rather_than_skipped(configured, mon
 
 
 def test_a_rename_the_filesystem_refuses_is_named_and_leaves_no_claim(configured, monkeypatch):
-    """The ``OSError`` branch. The claim it created is removed, which was
-    already true, and the file it could not rename is now named as well."""
+    """The ``OSError`` branch. The claim it created is removed, which was already true, and the
+    file it could not rename is now named as well."""
     folder = _folder(configured)
     track = _track(folder, "1A - 124 - Alpha.flac", title="1A - 124 - Alpha", key="1A")
     original = Path.rename
@@ -1437,16 +1275,7 @@ def test_a_rename_the_filesystem_refuses_is_named_and_leaves_no_claim(configured
 
 
 def test_a_title_tag_that_could_not_be_written_is_named(configured, monkeypatch):
-    """The same shape one file over, which METHOD's fifth pattern asks for.
-
-    ``write_tags`` returns False on any failure rather than raising, and nothing
-    read the answer, so a file whose title never got the head was reported as a
-    rename that happened in full. The rename itself stands and is counted.
-
-    IT IS NAMED WHERE IT IS, not where the plan found it. This branch runs after
-    a successful rename, so reporting the plan's own ``from`` would send a person
-    to a filename that no longer exists.
-    """
+    """The same shape one file over, which METHOD's fifth pattern asks for."""
     folder = _folder(configured)
     _track(folder, "1A - 124 - Alpha.flac", title="1A - 124 - Alpha", key="1A")
     renamed = folder / "01A - 124 - Alpha.flac"
@@ -1478,9 +1307,7 @@ def test_a_title_tag_that_could_not_be_written_is_named(configured, monkeypatch)
 
 def _acquired(folder: Path, name: str, **fields: str) -> Path:
     """A file the way the downloader leaves it: named for its identifier, tagged."""
-    made = synth_container(folder, ".flac")
-    target = folder / name
-    made.rename(target)
+    target = _silence(folder / name)
     if fields:
         assert tags.write_tags(target, dict(fields))
     return target
@@ -1495,8 +1322,8 @@ def _renames(plan: dict) -> list[tuple[str, str]]:
 
 
 def test_an_identifier_stem_is_composed_from_the_artist_and_title_tags(configured):
-    """The brief's first scenario: a key the wheel does not hold, no tempo, so
-    no head, and a body carrying both tags in the library's own order."""
+    """The brief's first scenario: a key the wheel does not hold, no tempo, so no head, and a body
+    carrying both tags in the library's own order."""
     folder = _folder(configured)
     _acquired(
         folder, "92654769.flac",
@@ -1508,16 +1335,15 @@ def test_an_identifier_stem_is_composed_from_the_artist_and_title_tags(configure
 
 
 def test_a_camelot_key_tag_without_a_tempo_still_renders_no_head(configured):
-    """The state every file is in before rekordbox analysis. The head stays
-    all or nothing, and the composed body is not given half a head."""
+    """The state every file is in before rekordbox analysis."""
     folder = _folder(configured)
     _acquired(folder, "92654769.flac", artist="Tirzah", title="Affection", initialkey="7A")
     assert _moves(_plan(folder)) == [("92654769.flac", "Tirzah - Affection.flac")]
 
 
 def test_a_stem_carrying_text_is_not_recomposed_from_its_tags(configured):
-    """R-168 stands: the artist and title tags are there and disagree with the
-    filename, and the plan pads the head and touches nothing else."""
+    """R-168 stands: the artist and title tags are there and disagree with the filename, and the
+    plan pads the head and touches nothing else."""
     folder = _folder(configured)
     _acquired(
         folder, "4A - 126 - Burning (Extended Mix).flac",
@@ -1539,9 +1365,9 @@ def test_a_padded_text_stem_with_tags_plans_nothing(configured):
 
 
 def test_an_identifier_with_no_artist_tag_is_held_and_named_in_the_plan(configured):
-    """Never renamed to its title alone, and never silently left out: the file
-    is in the plan under its own action with the reason, and the digest covers
-    it, so a tag written while the gate waits changes the plan a person saw."""
+    """Never renamed to its title alone, and never silently left out: the file is in the plan under
+    its own action with the reason, and the digest covers it, so a tag written while the gate
+    waits changes the plan a person saw."""
     folder = _folder(configured)
     _acquired(folder, "12345.flac", title="Affection")
     plan = _plan(folder)
@@ -1564,9 +1390,7 @@ def test_an_identifier_with_no_tags_at_all_is_held_with_its_own_reason(configure
 
 
 def test_an_identifier_whose_title_tag_is_only_a_head_is_held(configured):
-    """R-664's shape: the live system writes the head into the tag. A tag that
-    is nothing but a head has no body to give, and the artist alone is not a
-    name."""
+    """R-664's shape: the live system writes the head into the tag."""
     folder = _folder(configured)
     _acquired(folder, "12345.flac", artist="Tirzah", title="07A - 126 - ")
     why = _held(_plan(folder))["12345.flac"]
@@ -1574,10 +1398,7 @@ def test_an_identifier_whose_title_tag_is_only_a_head_is_held(configured):
 
 
 def test_a_head_inside_the_title_tag_is_not_composed_into_the_body(configured):
-    """The head belongs to the head derivation and the body is the tag's body.
-    The head the live system wrote into the tag (R-664) is rendered onto the
-    filename through the same title fallback every file has had since U39, as
-    text, and the composed body carries none of it."""
+    """The head belongs to the head derivation and the body is the tag's body."""
     folder = _folder(configured)
     _acquired(folder, "12345.flac", artist="Tirzah", title="07A - 126 - Affection")
     moves = _moves(_plan(folder))
@@ -1585,9 +1406,8 @@ def test_a_head_inside_the_title_tag_is_not_composed_into_the_body(configured):
 
 
 def test_every_credited_artist_reaches_the_composed_body(configured):
-    """A Vorbis comment can hold the credit as several fields, and the single
-    value reader answers with the first. The library writes the credits into
-    one segment separated by a comma, so the composed body does the same."""
+    """A Vorbis comment can hold the credit as several fields, and the single value reader answers
+    with the first."""
     import mutagen
 
     folder = _folder(configured)
@@ -1617,9 +1437,8 @@ def test_a_composed_body_over_the_ceiling_is_fitted_not_left_as_a_number(configu
 
 
 def test_a_folder_of_both_kinds_is_renamed_through_the_dispatcher(configured):
-    """The brief's driven scenario: the composed names exist, the text stems
-    are untouched, and the title tag body is the tag's own (R-168's second
-    half), never the composed filename body."""
+    """The brief's driven scenario: the composed names exist, the text stems are untouched, and the
+    title tag body is the tag's own (R-168's second half), never the composed filename body."""
     folder = _folder(configured)
     _acquired(folder, "92654769.flac", artist="Tirzah", title="Affection", initialkey="7A")
     _acquired(folder, "4A - 126 - Burning (Extended Mix).flac", artist="Someone", title="Burning")
@@ -1649,8 +1468,8 @@ def test_a_folder_of_both_kinds_is_renamed_through_the_dispatcher(configured):
 
 
 def test_an_artist_tag_removed_while_the_gate_waits_holds_the_file(configured, monkeypatch):
-    """The apply pass re-reads the tags after the gate rather than trusting the
-    plan's, so a body composed from a tag that is gone is not written."""
+    """The apply pass re-reads the tags after the gate rather than trusting the plan's, so a body
+    composed from a tag that is gone is not written."""
     folder = _folder(configured)
     path = _acquired(folder, "12345.flac", artist="Tirzah", title="Affection")
     real = naming_cli._plan_for
@@ -1673,9 +1492,7 @@ def test_an_artist_tag_removed_while_the_gate_waits_holds_the_file(configured, m
 
 
 def test_the_gate_shows_the_totals_and_every_item(configured):
-    """R-670: the screen carried the question and not one rename. The blocked
-    envelope's ``shown`` carries the counts, each planned rename and each held
-    file with its reason, the way the landing gate shows its files."""
+    """R-670: the screen carried the question and not one rename."""
     folder = _folder(configured)
     _acquired(folder, "92654769.flac", artist="Tirzah", title="Affection")
     _acquired(folder, "12345.flac", title="Nameless")
@@ -1717,8 +1534,8 @@ def test_an_identifier_with_an_artist_and_no_title_tag_is_held_with_its_own_reas
 
 
 def test_a_letterless_stem_that_is_not_a_number_is_carried_as_it_is(configured):
-    """Digits only, not "no letters". A name a person chose can be all symbols
-    and R-168's rule stands over it: nothing planned, nothing owed."""
+    """Digits only, not "no letters". A name a person chose can be all symbols and R-168's rule
+    stands over it: nothing planned, nothing owed."""
     folder = _folder(configured)
     _acquired(folder, "2 + 2 = 5.flac")
     plan = _plan(folder)
@@ -1737,8 +1554,8 @@ def test_an_empty_artist_value_does_not_lead_the_body_with_a_comma(configured):
 
 
 def test_the_digest_covers_a_held_identifier_file(configured):
-    """A folder holding one held file and an empty folder are different plans,
-    so a person who approved one has not approved the other."""
+    """A folder holding one held file and an empty folder are different plans, so a person who
+    approved one has not approved the other."""
     folder = _folder(configured)
     empty = _plan(folder)["digest"]
     _acquired(folder, "12345.flac", title="Nameless")
@@ -1746,9 +1563,8 @@ def test_the_digest_covers_a_held_identifier_file(configured):
 
 
 def test_a_referenced_identifier_file_is_held_as_referenced_and_never_owed(collected):
-    """An imported identifier file is one this verb can never rename (R-407),
-    whatever its tags say. It is held as referenced, not unnamed, and the sweep
-    answers ok rather than sending a person to write a tag that changes nothing."""
+    """An imported identifier file is one this verb can never rename (R-407), whatever its tags
+    say."""
     folder = _folder(collected)
     path = _acquired(folder, "12345.flac", title="Nameless")
     _record(collected, str(path), identifier="10")
@@ -1762,8 +1578,8 @@ def test_a_referenced_identifier_file_is_held_as_referenced_and_never_owed(colle
 
 
 def test_a_held_identifier_file_reads_the_collection_even_with_nothing_to_rename(collected, monkeypatch):
-    """The collection decides between referenced and unnamed, so it is read for
-    a held file alone, where a plan with no rename candidate used to skip it."""
+    """The collection decides between referenced and unnamed, so it is read for a held file alone,
+    where a plan with no rename candidate used to skip it."""
     folder = _folder(collected)
     _acquired(folder, "12345.flac", title="Nameless")
     reads: list[int] = []
@@ -1776,8 +1592,7 @@ def test_a_held_identifier_file_reads_the_collection_even_with_nothing_to_rename
 def test_a_tag_edited_while_the_gate_waits_is_not_renamed_to_a_name_nobody_saw(
     configured, monkeypatch
 ):
-    """The plan showed one name and the tags now render another. The rename is
-    owed rather than performed, because approval was of the name shown."""
+    """The plan showed one name and the tags now render another."""
     folder = _folder(configured)
     path = _acquired(folder, "12345.flac", artist="Tirzah", title="Affection")
     real = naming_cli._plan_for
@@ -1796,8 +1611,8 @@ def test_a_tag_edited_while_the_gate_waits_is_not_renamed_to_a_name_nobody_saw(
 
 
 def test_the_report_over_a_held_identifier_says_to_tag_it(configured):
-    """The generic step, run this again, is the one action that cannot fix an
-    unnamed file, so the cause carries the step that can."""
+    """The generic step, run this again, is the one action that cannot fix an unnamed file, so the
+    cause carries the step that can."""
     folder = _folder(configured)
     _acquired(folder, "12345.flac", title="Nameless")
     code, envelope = _answer(folder)
@@ -1807,8 +1622,8 @@ def test_the_report_over_a_held_identifier_says_to_tag_it(configured):
 
 
 def test_the_gate_screen_lists_no_more_than_the_bound_and_counts_the_rest():
-    """A sweep of the library root is thousands of items and the screen is
-    printed and parsed, so the lists stop at the bound and the totals carry on."""
+    """A sweep of the library root is thousands of items and the screen is printed and parsed, so
+    the lists stop at the bound and the totals carry on."""
     bound = naming_cli.PLAN_SHOWN
     items = [
         {"action": "rename", "from": f"{n}.flac", "to": f"A - {n}.flac", "path": f"/x/{n}.flac"}

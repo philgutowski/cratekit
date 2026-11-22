@@ -60,12 +60,7 @@ class FakeGenres:
 
 @pytest.fixture(autouse=True)
 def _clean_registry():
-    """Every test starts from the baseline registry and leaves it there.
-
-    The registry is module state in core. Without this a test that enables an
-    operation makes a later test's "this field is not writable" assertion pass or
-    fail depending on file order.
-    """
+    """Every test starts from the baseline registry and leaves it there."""
     rb_writer.reset_field_policies()
     yield
     rb_writer.reset_field_policies()
@@ -125,9 +120,8 @@ def test_enabling_only_one_operation_widens_the_column_set_by_exactly_its_fields
 
 
 def test_a_rating_backfill_fills_an_empty_rating_with_a_star_not_a_byte():
-    """R-414. The database stores 0 to 5, read off a real library, so the cut's
-    export byte 255 lands as five stars. Pinning 255 here was the test agreeing
-    with the defect."""
+    """R-414. The database stores 0 to 5, read off a real library, so the cut's export byte 255
+    lands as five stars."""
     metadata.enable()
     row = Row("1", Rating=0)
     plan = metadata.plan_rating_backfill([row], {"1": 8}, cuts=CUTS)
@@ -137,8 +131,8 @@ def test_a_rating_backfill_fills_an_empty_rating_with_a_star_not_a_byte():
 
 
 def test_a_rating_backfill_never_overwrites_a_rating_a_person_set():
-    """The case that matters. Afterwards, a wrong overwrite is indistinguishable
-    from a right one, because the evidence it destroyed was the disagreement."""
+    """The case that matters. Afterwards, a wrong overwrite is indistinguishable from a right one,
+    because the evidence it destroyed was the disagreement."""
     metadata.enable()
     row = Row("1", Rating=1)
     plan = metadata.plan_rating_backfill([row], {"1": 9}, cuts=CUTS)
@@ -149,10 +143,8 @@ def test_a_rating_backfill_never_overwrites_a_rating_a_person_set():
 
 
 def test_the_shipped_curve_plans_one_to_five_stars_for_the_database():
-    """The curve is read from the shipped template, whose cuts stay on the export
-    scale for the export writer, and every value planned for the database is a
-    star. The expected stars are the template's own bytes over 51, derived here
-    from the export spelling rather than from the function under test."""
+    """The curve is read from the shipped template, whose cuts stay on the export scale for the
+    export writer, and every value planned for the database is a star."""
     cuts = taxonomy.default_taxonomy().energy.rating_cuts
     assert {cut.rating for cut in cuts} <= {51, 102, 153, 204, 255}
     rows = [Row(str(level), Rating=0) for level in range(1, 11)]
@@ -174,8 +166,8 @@ def test_a_curve_already_on_the_star_scale_passes_through():
 
 
 def test_a_cut_that_declares_zero_skips_its_band_and_keeps_the_rest():
-    """Zero is unrated on both scales. A curve that leaves the lowest band
-    unrated on purpose still rates every other band."""
+    """Zero is unrated on both scales. A curve that leaves the lowest band unrated on purpose still
+    rates every other band."""
     curve = (taxonomy.RatingCut(max=2, rating=0), taxonomy.RatingCut(max=10, rating=204))
     rows = [Row("1", Rating=0), Row("2", Rating=0)]
     plan = metadata.plan_rating_backfill(rows, {"1": 1, "2": 7}, cuts=curve)
@@ -184,8 +176,7 @@ def test_a_cut_that_declares_zero_skips_its_band_and_keeps_the_rest():
 
 
 def test_a_curve_mixing_the_two_scales_is_refused_at_plan_time():
-    """51 and 3 each fold on their own, to one star and three. The export writer
-    would spell the top band as nearly unrated, so the mix is a typo, refused."""
+    """51 and 3 each fold on their own, to one star and three."""
     curve = (taxonomy.RatingCut(max=5, rating=51), taxonomy.RatingCut(max=10, rating=3))
     with pytest.raises(CratekitError) as excinfo:
         metadata.plan_rating_backfill([Row("1", Rating=0)], {"1": 2}, cuts=curve)
@@ -195,9 +186,8 @@ def test_a_curve_mixing_the_two_scales_is_refused_at_plan_time():
 
 @pytest.mark.parametrize("value", [20, 50, 256, 6, -1])
 def test_a_cut_value_on_neither_scale_is_refused_at_plan_time(value):
-    """Refused before any row is planned, even a row that lands in a good cut,
-    so a misdeclared curve never produces a partial plan that reads as a sweep
-    that worked."""
+    """Refused before any row is planned, even a row that lands in a good cut, so a misdeclared
+    curve never produces a partial plan that reads as a sweep that worked."""
     curve = (taxonomy.RatingCut(max=5, rating=255), taxonomy.RatingCut(max=10, rating=value))
     with pytest.raises(CratekitError) as excinfo:
         metadata.plan_rating_backfill([Row("1", Rating=0)], {"1": 2}, cuts=curve)
@@ -209,8 +199,7 @@ def test_a_cut_value_on_neither_scale_is_refused_at_plan_time(value):
 
 
 def test_the_export_scale_is_what_rating_for_still_answers():
-    """The conversion lives at the database boundary only. ``rating_for`` reads
-    the curve as declared, which is what the export writer's scale needs."""
+    """The conversion lives at the database boundary only."""
     assert metadata.rating_for(8, CUTS) == 255
     assert metadata.database_stars(255) == 5
 
@@ -342,12 +331,7 @@ def _package_modules():
 
 
 def key_authoring_violations(source: str, module: str) -> list[str]:
-    """Names and assignments that would author a key value. Never matches a string.
-
-    A docstring arguing why this module writes no key is an ``ast.Constant`` and
-    is invisible here, which is the entire reason this walks the tree. So is
-    ``"KeyID"`` used as a dictionary key in the unwritable table.
-    """
+    """Names and assignments that would author a key value."""
     problems: list[str] = []
     tree = ast.parse(source)
     for node in ast.walk(tree):
@@ -380,9 +364,11 @@ def key_authoring_violations(source: str, module: str) -> list[str]:
 
 def test_no_module_in_the_package_authors_a_key_value():
     """The live half. Green today, and green is the point."""
+    words = (*FORBIDDEN_KEY_SYMBOLS, "KeyID")
     problems: list[str] = []
     for module, source in _package_modules():
-        problems += key_authoring_violations(source, module)
+        if any(word in source for word in words):
+            problems += key_authoring_violations(source, module)
     assert not problems, "key-authoring violations:\n" + "\n".join(problems)
 
 
@@ -455,13 +441,7 @@ def test_the_genre_lookup_table_is_not_creatable_structurally():
 
 
 def test_a_genre_row_that_cannot_report_the_marker_refuses_rather_than_resolving():
-    """The permissive default U18 removed, live on main until now at line 195.
-
-    ``rb_local_deleted`` is a bookkeeping column, so it is precisely the column a
-    binding change can stop exposing, and a default is then applied to EVERY row
-    at once. Defaulting it to 0 made a soft-deleted genre resolve, and the write
-    that followed pointed a track's ``GenreID`` at a row rekordbox has retired.
-    """
+    """The permissive default U18 removed, live on main until now at line 195."""
     db = FakeGenres([Row("6", Name="Melodic House")])
     with pytest.raises(CratekitError) as caught:
         metadata.resolve_genre_id(db, "Melodic House")
@@ -472,11 +452,7 @@ def test_a_genre_row_that_cannot_report_the_marker_refuses_rather_than_resolving
 
 
 def test_an_explicit_none_marker_refuses_alongside_a_missing_attribute():
-    """``bool(None)`` is the same permissive answer, so it takes the same path.
-
-    A binding that supplies the column but leaves it NULL is the shape that gets
-    missed, because the attribute is present and only its value is uninformative.
-    """
+    """``bool(None)`` is the same permissive answer, so it takes the same path."""
     db = FakeGenres([Row("6", Name="Melodic House", rb_local_deleted=None)])
     with pytest.raises(CratekitError) as caught:
         metadata.resolve_genre_id(db, "Melodic House")
@@ -484,15 +460,7 @@ def test_an_explicit_none_marker_refuses_alongside_a_missing_attribute():
 
 
 def test_an_unreadable_marker_is_not_collapsed_into_the_genre_unknown_skip():
-    """The refusal must be distinguishable from a miss, and this is why.
-
-    ``None`` from this function already means one specific thing, "no active
-    genre by that name", and the plan turns it into a per-row ``genre-unknown``
-    skip. A binding regression folded into that None would surface as thousands
-    of skips naming the user's TAXONOMY, sending them to fix something that was
-    never wrong. The two outcomes are asserted here side by side so a later
-    simplification cannot quietly merge them.
-    """
+    """The refusal must be distinguishable from a miss, and this is why."""
     live = FakeGenres([Row("7", Name="Melodic House", rb_local_deleted=0)])
     assert metadata.resolve_genre_id(live, "Nonexistent Genre") is None
 
@@ -510,13 +478,7 @@ def test_an_unreadable_marker_is_not_collapsed_into_the_genre_unknown_skip():
 
 
 def test_a_deleted_marker_is_not_an_error_here_the_way_it_is_for_a_track():
-    """The asymmetry that decides the shape of this fix.
-
-    A tombstoned CONTENT row is a track somebody removed, and the routing pass
-    partitions on it. A tombstoned LOOKUP row is an ordinary thing to walk past:
-    the right response is to keep reading, because the next row may be the live
-    namesake. So "deleted" is not a refusal here, and only "cannot say" is.
-    """
+    """The asymmetry that decides the shape of this fix."""
     db = FakeGenres(
         [
             Row("6", Name="Melodic House", rb_local_deleted=1),
