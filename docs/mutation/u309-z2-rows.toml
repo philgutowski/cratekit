@@ -1,0 +1,49 @@
+name = "u309-z2"
+pass_kind = "light"
+
+# Four rows of docs/mutation/u309.md measured again after the tests that reach
+# them landed: each read zero on the full suite at 111e4ac6, guards in filing
+# and the account mirror the split moved, which no test reached on the base.
+
+[[rows]]
+id = "U18_part_way_step_again"
+description = "A filing or root apply failing part way no longer tells the person to run again"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py", "tests/test_organize_root.py"]
+old = '        remedy=cause.remediation.remedy, steps=(*cause.remediation.steps, again),'
+new = '        remedy=cause.remediation.remedy, steps=tuple(cause.remediation.steps),'
+
+[[rows]]
+id = "U20_year_folder_reserved_once"
+description = "Each move into a year reserves that year's folder again"
+file = "src/cratekit/organize/filing.py"
+surface = "user"
+tests = ["tests/test_organize.py", "tests/test_organize_root.py"]
+old = '''
+    if year not in done.folders:
+        done.folders[year] = reserve_year('''
+new = '''
+    if True:
+        done.folders[year] = reserve_year('''
+
+[[rows]]
+id = "U21_reading_unread_listed"
+description = "A rekordbox area step over an unread reading is planned instead of listed"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_organize_mirror_inbox.py"]
+old = '''
+    if reading.unread:
+        return Step(key=kind, title=title, state=LISTED, detail=reading.unread)
+    return reading'''
+new = '    return reading'
+
+[[rows]]
+id = "U22_keep_newest_time"
+description = "The newest of two membership times is replaced by the older"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py"]
+old = '    if at is not None and (held is None or at > held):'
+new = '    if at is not None and (held is None or at < held):'
