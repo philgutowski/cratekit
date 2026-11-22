@@ -37,7 +37,15 @@ import keyring.errors
 import pytest
 import tomli_w
 
-from cratekit.core import config, config_validate, profiles, secrets
+from cratekit.core import (
+    config,
+    config_base,
+    config_schema,
+    config_validate,
+    profiles,
+    secrets,
+    state_files,
+)
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode, Remedy
 
@@ -1145,15 +1153,20 @@ def test_importing_the_config_module_creates_nothing(tmp_path):
     assert list(home.iterdir()) == []
 
 
+#: config and the parts split from it (U299), every one read by the two guards below.
+CONFIG_PARTS = (config, config_base, config_schema, config_validate, state_files)
+
+
 def test_config_exposes_no_module_level_location_constant():
-    """With nothing to snapshot, snapshotting cannot happen."""
+    """With nothing to snapshot, snapshotting cannot happen, in config or any of its parts."""
     offenders = [
-        name
-        for name, value in vars(config).items()
+        f"{part.__name__}.{name}"
+        for part in CONFIG_PARTS
+        for name, value in vars(part).items()
         if not name.startswith("_") and isinstance(value, Path)
     ]
     assert not offenders, (
-        f"cratekit.core.config exposes module-level Path constants {offenders}. "
+        f"configuration exposes module-level Path constants {offenders}. "
         f"Every location is a function so that a caller cannot bind one at its "
         f"own import time and stop tracking later changes."
     )
@@ -1904,7 +1917,11 @@ def test_the_bare_mkdir_lint_catches_a_creation_that_skips_the_helper():
 def test_every_directory_the_config_module_creates_goes_through_the_private_helper():
     """One creator decides the mode, and keeps ``save``'s docstring from claiming to be it."""
     source = (SRC_ROOT / "cratekit" / "core" / "config.py").read_text()
-    offenders = _bare_mkdir_calls(source)
+    offenders = [
+        hit
+        for part in CONFIG_PARTS
+        for hit in _bare_mkdir_calls(Path(part.__file__).read_text())
+    ]
     assert not offenders, (
         "directories created outside mkdir_private:\n"
         + "\n".join(offenders)
