@@ -34,12 +34,8 @@ def _queue(cfg, created: str, *, handler: str = mirror_downloads.HANDLER, payloa
     with jobs.open_store() as store:
         if payload is None:
             job = intake_cli.queue_playlist(
-                store,
-                cfg,
-                handler_key=handler,
-                reference="pl-tech-house-med",
-                tracks={"r3": {"isrc": "ISRC00000003"}},
-                source_id=mirror_downloads.SOURCE_ID,
+                store, cfg, handler_key=handler, reference="pl-tech-house-med",
+                tracks={"r3": {"isrc": "ISRC00000003"}}, source_id=mirror_downloads.SOURCE_ID,
             )
         else:
             job = jobs.enqueue(store, handler_key=handler, payload=payload, cfg=cfg, item_ids=("x",))
@@ -53,13 +49,8 @@ def _entry(cfg, content_id: str, genre: str, band: str, applied: str, digest: st
     adoption.mark_applied(
         cfg,
         adoption.AppliedEntry(
-            entry_id=f"{DECLARED.tree.id}:{content_id}:{bucket}:{sub}",
-            tree=DECLARED.tree.id,
-            content_id=content_id,
-            bucket=bucket,
-            sub=sub,
-            actor="session",
-            digest=digest,
+            entry_id=f"{DECLARED.tree.id}:{content_id}:{bucket}:{sub}", tree=DECLARED.tree.id,
+            content_id=content_id, bucket=bucket, sub=sub, actor="session", digest=digest,
             applied=applied,
         ),
     )

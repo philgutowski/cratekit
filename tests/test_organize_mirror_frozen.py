@@ -288,9 +288,7 @@ def test_a_frozen_plan_of_another_version_or_run_is_not_rebuilt(world, installed
     document = json.loads(open(path, encoding="utf-8").read())
     # Version 1 is the record before U150, which froze no INBOX retirement.
     for changed in (
-        {"version": mirror_frozen.VERSION + 1},
-        {"version": 1},
-        {"run_id": "another"},
+        {"version": mirror_frozen.VERSION + 1}, {"version": 1}, {"run_id": "another"},
     ):
         with open(path, "w", encoding="utf-8") as handle:
             json.dump({**document, **changed}, handle)
@@ -464,10 +462,8 @@ def test_each_folders_edit_rule_survives_the_freeze_and_a_version_3_record_is_pl
         folders=tuple(
             mirror.Folder(name=name, edits=rule)
             for name, rule in (
-                ("Techno", mirror_edits.GENRE),
-                ("Favorites", mirror_edits.FAVORITES),
-                ("INBOX", mirror_edits.INBOX),
-                ("Mine", ""),
+                ("Techno", mirror_edits.GENRE), ("Favorites", mirror_edits.FAVORITES),
+                ("INBOX", mirror_edits.INBOX), ("Mine", ""),
             )
         )
     )

@@ -113,10 +113,7 @@ class Machine:
             _query(
                 self.db,
                 f"UPDATE djmdContent SET FolderPath = ?, GenreID = ?, {rb_writer.ISRC_COLUMN} = ? WHERE ID = ?",
-                str(path),
-                GENRES[genre],
-                f"ISRC0000000{content_id}",
-                content_id,
+                str(path), GENRES[genre], f"ISRC0000000{content_id}", content_id,
             )
         handle = rb_writer.open_db(self.db, unlock=False, cfg=self.cfg)
         try:
@@ -141,10 +138,8 @@ class Machine:
                 (
                     tree_registry.TreeRecord(
                         tree_id=taxonomy.default_taxonomy().tree.id,
-                        mode=tree_registry.Mode.DATABASE,
-                        cutover_on=date(2026, 8, 1),
-                        root_id=self.root_id,
-                        source=tree_registry.DerivationSource.TAXONOMY,
+                        mode=tree_registry.Mode.DATABASE, cutover_on=date(2026, 8, 1),
+                        root_id=self.root_id, source=tree_registry.DerivationSource.TAXONOMY,
                     ),
                 )
             ),
@@ -435,20 +430,13 @@ def test_a_library_moved_since_the_plan_writes_nothing(machine):
 def test_without_the_backup_acknowledgment_the_rekordbox_area_is_not_planned(machine, monkeypatch):
     from cratekit.core.cause import refuse
     monkeypatch.setattr(
-        rekordbox,
-        "acknowledgment",
+        rekordbox, "acknowledgment",
         lambda _cfg: refuse("backup-acknowledgment-missing", "no backup", origin=("test",)),
     )
     machine.take_off("Deep House Low", "r1")
     area = rekordbox.plan_area(
-        machine.cfg,
-        None,
-        gate="organize.rekordbox.approve",
-        today=date(2026, 11, 4),
-        labels=(),
-        report=False,
-        only=frozenset({rekordbox.MIRROR_EDITS}),
-        shared=machine.shared(),
+        machine.cfg, None, gate="organize.rekordbox.approve", today=date(2026, 11, 4), labels=(),
+        report=False, only=frozenset({rekordbox.MIRROR_EDITS}), shared=machine.shared(),
     )
     assert area.cause is not None and area.steps == []
     assert tags.read_genre_from_file(machine.files["1"]) == "Deep House"
@@ -457,13 +445,8 @@ def test_without_the_backup_acknowledgment_the_rekordbox_area_is_not_planned(mac
 def test_the_step_is_a_kind_the_rekordbox_area_names_and_listed_with_no_reading(machine):
     assert rekordbox.MIRROR_EDITS in rekordbox.STEPS
     area = rekordbox.plan_area(
-        machine.cfg,
-        None,
-        gate="organize.rekordbox.approve",
-        today=date(2026, 11, 4),
-        labels=(),
-        report=False,
-        only=frozenset({rekordbox.MIRROR_EDITS}),
+        machine.cfg, None, gate="organize.rekordbox.approve", today=date(2026, 11, 4), labels=(),
+        report=False, only=frozenset({rekordbox.MIRROR_EDITS}),
     )
     (step,) = area.steps
     assert (step.key, step.state) == (mirror_edits.KIND, LISTED)
@@ -509,9 +492,7 @@ def test_a_genre_folder_places_only_what_routing_files_into():
     )
     found = mirror_edits.places(declared, [folder, mirror.Folder(name="Not A Genre", edits=edits.GENRE)])
     assert {title: place.primary for title, place in found.items()} == {
-        "Deep House Low": True,
-        "Deep House Unsorted": True,
-        "Deep House with vox": False,
+        "Deep House Low": True, "Deep House Unsorted": True, "Deep House with vox": False,
     }
 
 
@@ -577,8 +558,7 @@ def _dated_adapter(cfg, members, *, hidden=0, declared=True, times=None):
 
 def test_the_adapter_lists_each_track_with_its_added_time_and_the_declared_count(installed):
     listing = _dated_adapter(
-        installed,
-        ["a", "b", "a"],
+        installed, ["a", "b", "a"],
         times={"a": "2026-11-04T10:00:00+00:00", "b": "2026-11-04T11:00:00"},
     ).playlist_listing("p")
     assert listing.names == {"a": ("Artist a", "Title a"), "b": ("Artist b", "Title b")}
@@ -718,17 +698,9 @@ def test_a_file_that_does_not_take_its_tags_keeps_its_row_and_tree_as_they_were(
 
 def test_a_read_back_that_differs_from_the_plan_is_refused():
     change = mirror_edits.Change(
-        content_id="1",
-        track="r1",
-        outcome=edits.MOVE,
-        shown="a track",
-        path="x",
-        genre_was="Deep House",
-        genre="Tech House",
-        energy_was=2,
-        energy=4,
-        leave=(("p-low", "Deep House", "Low"),),
-        join=(("p-med", "Tech House", "Med"),),
+        content_id="1", track="r1", outcome=edits.MOVE, shown="a track", path="x",
+        genre_was="Deep House", genre="Tech House", energy_was=2, energy=4,
+        leave=(("p-low", "Deep House", "Low"),), join=(("p-med", "Tech House", "Med"),),
         tree=edits.GENRE,
     )
     class Held:

@@ -26,12 +26,8 @@ from tests.test_organize_mirror_edits_u204 import world as world  # noqa: PLC041
 def _queue(cfg, reference: str, tracks=("r3",), *, source_id=mirror_downloads.SOURCE_ID) -> str:
     with jobs.open_store() as store:
         job = intake_cli.queue_playlist(
-            store,
-            cfg,
-            handler_key=mirror_downloads.HANDLER,
-            reference=reference,
-            tracks={one: {"isrc": f"ISRC-{one}"} for one in tracks},
-            source_id=source_id,
+            store, cfg, handler_key=mirror_downloads.HANDLER, reference=reference,
+            tracks={one: {"isrc": f"ISRC-{one}"} for one in tracks}, source_id=source_id,
         )
     return job.job_id
 

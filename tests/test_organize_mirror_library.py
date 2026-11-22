@@ -48,9 +48,7 @@ def test_every_genre_folder_and_the_favorites_folder_is_read_under_its_account_t
         AFRO.display: {f"{AFRO.display} High": ["3"]},
         DEEP.display: {f"{DEEP.display} Low": ["1", "2"], f"{DEEP.display} with vox": ["2"]},
         "Favorites": {
-            "All Favorites": ["1", "3"],
-            "Favorites 2026-10": ["1"],
-            "Favorites Undated": ["3"],
+            "All Favorites": ["1", "3"], "Favorites 2026-10": ["1"], "Favorites Undated": ["3"],
         },
     }
 

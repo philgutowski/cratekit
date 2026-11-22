@@ -202,8 +202,7 @@ def test_a_step_new_since_the_gate_and_one_gone_are_named():
         matches={},
         steps={
             step.key: mirror_frozen.Shown(
-                title=step.title,
-                digest=mirror_frozen._shown_json(step)["digest"],
+                title=step.title, digest=mirror_frozen._shown_json(step)["digest"],
                 lines=mirror_frozen._lines(step),
             )
             for step in (*then, gone)
@@ -237,8 +236,7 @@ def test_a_label_step_that_moved_is_named_by_its_folder_line():
             return [self.key, "planned", digest_of(self.items)]
     then = One([{"label": "Ilian Tape", "folder": "Ilian Tape: Labels", "year playlists": ["2024"]}])
     frozen = mirror_frozen.Frozen(
-        library=None,
-        matches={},
+        library=None, matches={},
         steps={then.key: mirror_frozen.Shown(**mirror_frozen._shown_json(then))},
     )
     now = One([{"label": "Ilian Tape", "folder": "Ilian Tape: Labels", "year playlists": ["2025"]}])
@@ -318,9 +316,7 @@ def test_an_older_record_or_an_unreadable_snapshot_or_step_is_planned_afresh(wor
     document = json.loads(path.read_text(encoding="utf-8"))
     assert document["version"] == mirror_frozen.VERSION == 7
     for changed in (
-        {"version": 5},
-        {"version": 6},
-        {"placed": {"Favorites": {"Favorites 2026-10": "r1"}}},
+        {"version": 5}, {"version": 6}, {"placed": {"Favorites": {"Favorites 2026-10": "r1"}}},
         {"placed": {"Favorites": {"Favorites 2026-10": ["r1"]}}},
         {"placed": {"Favorites": {"Favorites 2026-10": {"r1": 7}}}},
         {"agreed": {"INBOX": {INBOX_A: ["p1", "not a list"]}}},
@@ -328,8 +324,7 @@ def test_an_older_record_or_an_unreadable_snapshot_or_step_is_planned_afresh(wor
         {"steps": {"mirror:INBOX": {"title": "t", "digest": 7, "lines": {}}}},
         {"steps": {"mirror:INBOX": {"title": "t", "digest": "d", "lines": {"x": None}}}},
         {"steps": {"mirror:INBOX": {"title": "t", "digest": "d"}}},
-        {"agreed": {"INBOX": {INBOX_A: ["p1", ["r1", 7]]}}},
-        {"shown": "yes"},
+        {"agreed": {"INBOX": {INBOX_A: ["p1", ["r1", 7]]}}}, {"shown": "yes"},
     ):
         path.write_text(json.dumps({**document, **changed}), encoding="utf-8")
         frozen, said = mirror_frozen.load(world.cfg, GATE)
@@ -338,10 +333,7 @@ def test_an_older_record_or_an_unreadable_snapshot_or_step_is_planned_afresh(wor
     path.write_text(json.dumps(document), encoding="utf-8")
     frozen, _said = mirror_frozen.load(world.cfg, GATE)
     assert frozen is not None and set(frozen.steps) == {
-        "mirror:Deep House",
-        "mirror:Tech House",
-        "mirror:Favorites",
-        "mirror:INBOX",
+        "mirror:Deep House", "mirror:Tech House", "mirror:Favorites", "mirror:INBOX",
     }
 
 

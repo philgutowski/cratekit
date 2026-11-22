@@ -45,13 +45,8 @@ def _file_by_tags(world, content_id: str, to: tuple[str, str], at: str) -> None:
     adoption.mark_applied(
         world.cfg,
         adoption.AppliedEntry(
-            entry_id=f"{DECLARED.tree.id}:{content_id}:{bucket}:{sub}",
-            tree=DECLARED.tree.id,
-            content_id=content_id,
-            bucket=bucket,
-            sub=sub,
-            actor="session",
-            digest="landing",
+            entry_id=f"{DECLARED.tree.id}:{content_id}:{bucket}:{sub}", tree=DECLARED.tree.id,
+            content_id=content_id, bucket=bucket, sub=sub, actor="session", digest="landing",
             applied=timestamp(),
         ),
     )
@@ -108,11 +103,8 @@ def test_a_filing_recorded_before_the_download_was_queued_is_not_the_landings(wo
     from cratekit.organize import mirror_downloads
     with jobs.open_store() as store:
         intake_cli.queue_playlist(
-            store,
-            world.cfg,
-            handler_key=mirror_downloads.HANDLER,
-            reference=world.remote("Tech House Med"),
-            tracks={"r3": {"isrc": "ISRC00000003"}},
+            store, world.cfg, handler_key=mirror_downloads.HANDLER,
+            reference=world.remote("Tech House Med"), tracks={"r3": {"isrc": "ISRC00000003"}},
             source_id=mirror_downloads.SOURCE_ID,
         )
     _area, step, _queue = world.run_all()
@@ -183,9 +175,7 @@ def _file_as_person(world, content_id: str, genre: str, genre_id: str, energy: i
             store,
             handler_key="adopt.apply",
             payload={
-                "tree": plan.tree,
-                "digest": plan.digest(),
-                apply_cli.ACTOR_KEY: "session",
+                "tree": plan.tree, "digest": plan.digest(), apply_cli.ACTOR_KEY: "session",
                 jobs.GATE_RUN_KEY: "adopt-run",
             },
             item_ids=(plan.digest(),),

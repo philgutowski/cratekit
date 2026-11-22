@@ -258,9 +258,7 @@ def test_a_removal_whose_read_back_differs_is_raised_never_kept(world, monkeypat
         raise refuse(
             "outbound-remove-refused",
             "the playlist read back is not what it held with the asked positions gone",
-            scope=Scope.RUN,
-            origin=("test",),
-            detail={"problem": "read-back-differs"},
+            scope=Scope.RUN, origin=("test",), detail={"problem": "read-back-differs"},
         )
     monkeypatch.setattr(world.account, "remove_tracks", differs)
     area = world.plan()

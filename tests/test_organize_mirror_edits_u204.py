@@ -134,10 +134,8 @@ class World(Machine):
             self.cfg,
             tree_registry.read(self.cfg).with_record(
                 tree_registry.TreeRecord(
-                    tree_id=DECLARED.intake.id,
-                    mode=tree_registry.Mode.DATABASE,
-                    cutover_on=date(2026, 8, 1),
-                    root_id=self.inbox,
+                    tree_id=DECLARED.intake.id, mode=tree_registry.Mode.DATABASE,
+                    cutover_on=date(2026, 8, 1), root_id=self.inbox,
                     source=tree_registry.DerivationSource.TAXONOMY,
                 )
             ),
@@ -174,12 +172,13 @@ class World(Machine):
         self.sql("UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", self.old, playlist_id)
 
     def playlist(self, name: str, parent: str, members: list[str]) -> str:
-        """A playlist made by hand in rekordbox, holding ``members``."""
+        """A playlist made by hand in rekordbox holding ``members``, or with no name ``parent`` joined."""
         handle = rb_writer.open_db(self.db, unlock=False, cfg=self.cfg)
         try:
-            made = handle.create_playlist(name, parent=handle.get_playlist(ID=parent))
-            handle.session.flush()
-            rb_writer.add_memberships(handle, made, members)
+            made = handle.create_playlist(name, parent=handle.get_playlist(ID=parent)) if name else handle.get_playlist(ID=parent)
+            if members:
+                handle.session.flush()
+                rb_writer.add_memberships(handle, made, members)
             handle.session.commit()
             return str(made.ID)
         finally:
@@ -225,6 +224,12 @@ def _queued(cfg) -> list[jobs.Job]:
             for job in jobs.list_jobs(store)
             if (job.payload or {}).get("source_id") == mirror_downloads.SOURCE_ID
         ]
+
+
+def _set_state(job, state) -> None:
+    with jobs.open_store() as store:
+        store.conn.execute("UPDATE jobs SET state = ? WHERE job_id = ?", (str(state), job.job_id))
+        store.conn.commit()
 
 
 def test_the_first_run_mirrors_favorites_and_inbox_and_records_their_snapshots(world):
@@ -459,13 +464,11 @@ def test_a_track_a_snapshot_once_held_is_never_queued_again(world):
         [
             edits.Mirrored(
                 place=edits.Place(SOURCE, "Favorites", SOURCE, True, edits.FAVORITES),
-                account=frozenset({"r9"}),
-                agreed=frozenset(),
+                account=frozenset({"r9"}), agreed=frozenset(),
             ),
             edits.Mirrored(
                 place=edits.Place(f"INBOX {BATCH_A}", "INBOX", BATCH_A, True, edits.INBOX),
-                account=frozenset({"r9"}),
-                agreed=frozenset({"r9"}),
+                account=frozenset({"r9"}), agreed=frozenset({"r9"}),
             ),
         ],
         {},
@@ -488,26 +491,16 @@ def test_never_a_beat_grid(world):
 def test_without_a_reading_the_downloads_step_is_listed(acknowledged):
     from datetime import date as day
     area = rekordbox.plan_area(
-        acknowledged,
-        None,
-        gate="organize.rekordbox",
-        today=day(2026, 11, 5),
-        labels=(),
-        report=True,
-        only=frozenset({rekordbox.MIRROR_DOWNLOADS}),
+        acknowledged, None, gate="organize.rekordbox", today=day(2026, 11, 5), labels=(),
+        report=True, only=frozenset({rekordbox.MIRROR_DOWNLOADS}),
     )
     (step,) = area.steps
     assert step.state == LISTED and step.key == rekordbox.MIRROR_DOWNLOADS
 
 
-def _second_month(world) -> str:
-    handle = rb_writer.open_db(world.db, unlock=False, cfg=world.cfg)
-    try:
-        made = handle.create_playlist("2026-09", parent=handle.get_playlist(ID=world.favorites))
-        handle.session.commit()
-        pid = str(made.ID)
-    finally:
-        rb_writer.close_db(handle)
+def _second_month(world, name: str = "2026-09") -> str:
+    """A month or other playlist made by hand in the Favorites folder, mirrored."""
+    pid = world.playlist(name, world.favorites, [])
     world.run_all()
     return pid
 
@@ -606,13 +599,7 @@ def test_a_favourite_the_placement_did_not_write_is_refused_at_the_read_back(wor
 
 
 def test_a_track_put_in_a_quarter_is_named_and_not_filed(world):
-    handle = rb_writer.open_db(world.db, unlock=False, cfg=world.cfg)
-    try:
-        handle.create_playlist("2026-Q3", parent=handle.get_playlist(ID=world.favorites))
-        handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
-    world.run_all()
+    _second_month(world, "2026-Q3")
     world.put_in("Favorites 2026-Q3", "r2")
     _area, step, _queue = world.run_all()
     assert step.state == NOTHING
@@ -634,9 +621,7 @@ def test_a_failed_download_frees_its_track_to_be_queued_again(world):
     world.put_in("Tech House Med", "r3")
     world.run_all()
     (job,) = _queued(world.cfg)
-    with jobs.open_store() as store:
-        store.conn.execute("UPDATE jobs SET state = ? WHERE job_id = ?", (str(jobs.JobState.FAILED), job.job_id))
-        store.conn.commit()
+    _set_state(job, jobs.JobState.FAILED)
     _area, _step, queue = world.run_all()
     assert queue.state == PLANNED
     assert len(_queued(world.cfg)) == 2
@@ -674,8 +659,7 @@ def test_a_playlist_the_provider_cannot_list_is_named_and_the_others_queue():
     recorded = {
         folder: SimpleNamespace(playlists={title: SimpleNamespace(remote_id=pid)})
         for folder, title, pid in (
-            ("Tech House", "Tech House Med", "p1"),
-            ("Deep House", "Deep House Low", "p2"),
+            ("Tech House", "Tech House Med", "p1"), ("Deep House", "Deep House Low", "p2"),
         )
     }
     reading = SimpleNamespace(decided=decided, recorded=recorded)
@@ -683,10 +667,8 @@ def test_a_playlist_the_provider_cannot_list_is_named_and_the_others_queue():
         if pid == "p1":
             raise refuse("label-playlist-unreadable", "down", origin=("test",))
         return intake_cli.Readable(
-            tracks={"r8": {"isrc": "ISRC00000008", "artist": "A", "title": "T"}},
-            short=None,
-            unread={},
-            order=("r8",),
+            tracks={"r8": {"isrc": "ISRC00000008", "artist": "A", "title": "T"}}, short=None,
+            unread={}, order=("r8",),
         )
     cfg = SimpleNamespace(library=SimpleNamespace(volume_id="v"))
     from unittest import mock
@@ -699,12 +681,7 @@ def test_a_playlist_the_provider_cannot_list_is_named_and_the_others_queue():
 def test_a_favorites_edit_planned_and_not_applied_is_taken_whole_by_the_next_run(world):
     """Round two, finding 1: the plan's snapshot of a level playlist swallowed half the edit."""
     september = _second_month(world)
-    handle = rb_writer.open_db(world.db, unlock=False, cfg=world.cfg)
-    try:
-        rb_writer.add_memberships(handle, handle.get_playlist(ID=september), ["1"])
-        handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
+    world.playlist("", september, ["1"])
     world.take_off(f"Favorites {MONTH}", "r1")
     # Later than rekordbox's own addition, so the account's move is the one carried.
     world.put_in("Favorites 2026-09", "r1", at="2099-01-01T00:00:00+00:00")
@@ -735,9 +712,7 @@ def test_a_finished_download_that_never_lands_is_never_said_to_await_one(world, 
     world.put_in("Tech House Med", "r3")
     world.run_all()
     (job,) = _queued(world.cfg)
-    with jobs.open_store() as store:
-        store.conn.execute("UPDATE jobs SET state = ? WHERE job_id = ?", (str(jobs.JobState.SUCCEEDED), job.job_id))
-        store.conn.commit()
+    _set_state(job, jobs.JobState.SUCCEEDED)
     monkeypatch.setattr(missing_cli, "job_reports", lambda _store, _job: ({"item_id": "r3", "state": state},))
     _area, _step, queue = world.run_all()
     (named,) = queue.items
@@ -752,13 +727,7 @@ def test_a_finished_download_that_never_lands_is_never_said_to_await_one(world, 
 
 def test_a_playlist_of_another_name_in_the_favorites_folder_is_mirrored_one_way(world):
     """Mutation row O1: only All Favorites and a filing playlist are read as edits."""
-    handle = rb_writer.open_db(world.db, unlock=False, cfg=world.cfg)
-    try:
-        handle.create_playlist("Warmup", parent=handle.get_playlist(ID=world.favorites))
-        handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
-    world.run_all()
+    _second_month(world, "Warmup")
     world.put_in("Favorites Warmup", "r2")
     _area, step, _queue = world.run_all()
     assert step.state == NOTHING and step.items == []
