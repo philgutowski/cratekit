@@ -833,6 +833,7 @@ def test_a_read_back_that_differs_from_the_plan_is_refused():
         energy=4,
         leave=(("p-low", "Deep House", "Low"),),
         join=(("p-med", "Tech House", "Med"),),
+        tree=edits.GENRE,
     )
 
     class Held:
