@@ -1348,6 +1348,29 @@ def test_one_impossible_name_costs_one_file_rather_than_the_whole_pass(
     assert report.watermark.sequence == 40, "the watermark passed a confirmed unmoved removal"
 
 
+def test_a_trash_refusal_wider_than_one_name_stops_the_run(cfg, gates_pass, tmp_path, monkeypatch):
+    """Only a refusal the Trash scopes to one name costs one file; a wider one stops the run."""
+    home = _home(tmp_path)
+    db = _prepared(cfg, names=(ONE, TWO))
+    _confirm_every(cfg, db)
+
+    def refuse_the_volume(path, *, layout):
+        raise refuse(
+            "trash-unavailable",
+            "the volume's Trash went away",
+            remedy=Remedy.RUN_DOCTOR,
+            origin=("deletion.trash",),
+            detail={},
+        )
+
+    monkeypatch.setattr(trash, "move_to_trash", refuse_the_volume)
+    with pytest.raises(CratekitError) as excinfo:
+        run.apply(cfg, db, actor="cli", home=home)
+    assert excinfo.value.cause.scope is Scope.RUN
+    assert (Path(cfg.library.root) / "Music" / ONE).exists()
+    assert (Path(cfg.library.root) / "Music" / TWO).exists()
+
+
 def test_a_name_that_is_all_suffix_is_numbered_without_a_leading_space(tmp_path):
     """A name that is all suffix keeps itself and gains no leading space."""
     directory = tmp_path / "trash"
@@ -1767,6 +1790,26 @@ def test_a_row_nobody_declined_is_still_trashed(cfg, gates_pass, tmp_path):
     report = run.apply(cfg, db, actor="cli", home=home)
     assert len(report.trashed) == 1 and report.refused == ()
     assert not (Path(cfg.library.root) / "Music" / ONE).exists()
+
+
+def test_a_playlist_that_takes_the_file_after_the_plan_stops_the_move(
+    cfg, gates_pass, tmp_path, monkeypatch
+):
+    """The re-check's playlist read is fresh, and a file it finds held is not moved."""
+    home, db = _confirmed_one(cfg, tmp_path)
+    real = run.library.playlist_referenced
+    calls = {"count": 0}
+
+    def held_after_the_plan(memberships):
+        calls["count"] += 1
+        held = real(memberships)
+        return held | {"1"} if calls["count"] >= 2 else held
+
+    monkeypatch.setattr(run.library, "playlist_referenced", held_after_the_plan)
+    report = run.apply(cfg, db, actor="cli", home=home)
+    assert report.trashed == (), "a file a playlist took after the plan was trashed"
+    assert (Path(cfg.library.root) / "Music" / ONE).exists()
+    assert [item.category for item in report.refused] == [candidates.Category.STILL_REFERENCED]
 
 
 # ── F6: a trashed file with no tombstone ─────────────────────────────────────
@@ -3970,6 +4013,42 @@ def test_delete_review_trashes_a_confirmed_file(review_cli, tmp_path, monkeypatc
     # U60: what the inline pass owes, through the shipped verb.
     assert len(stores.list_tombstones(review_cli)) == 1
     assert watermark.WatermarkStore(review_cli).read().sequence >= 50
+
+
+def test_delete_review_honours_a_reject_recorded_before_the_gate(review_cli, tmp_path, monkeypatch):
+    """The gate accepts only what nobody answered: a recorded reject is not trashed."""
+    _fake_trash(tmp_path, monkeypatch)
+    one, two = _music(review_cli, ONE), _music(review_cli, TWO, body=b"other bytes")
+    db_path = Path(review_cli.library.db_path)
+    handle = rb_writer.open_db(db_path, unlock=False, cfg=review_cli)
+    try:
+        watermark.WatermarkStore(review_cli).baseline(
+            database_identity=library.database_identity(handle), sequence=40, actor="cli"
+        )
+    finally:
+        rb_writer.close_db(handle)
+    _write_rows(
+        db_path,
+        [
+            ("1", str(one), True, 50, one.stat().st_size, Path(ONE).stem),
+            ("2", str(two), True, 51, two.stat().st_size, Path(TWO).stem),
+        ],
+    )
+    code, out, err = _drive(["--output", "json", "delete", "review"])
+    assert code == int(ExitCode.DECISION_REQUIRED), err or out
+    run_id = json.loads(out)["run_id"]
+    with review.open_store(review_cli) as store:
+        offered = review.list_items(store, queue=review.Queue.DELETION).items
+        rejected = next(item for item in offered if Path(item.payload["path"]).name == TWO)
+        review.resolve(store, rejected.item_id, review.Verdict.REJECTED, actor="a-person")
+    code, _, err = _drive(
+        ["run", "decide", run_id, "delete.review.confirm", "trash", "--actor", "a-person"]
+    )
+    assert code == int(ExitCode.OK), err
+    code, out, err = _drive(["--output", "json", "--run", run_id, "delete", "review"])
+    assert code == int(ExitCode.OK), err or out
+    assert not one.exists()
+    assert two.exists(), "a file a person rejected was trashed by the gate"
 
 
 def _history(cfg) -> Path:
