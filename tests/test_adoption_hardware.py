@@ -73,14 +73,7 @@ def fat(tmp_path):
 
 @pytest.fixture
 def cfg(tmp_path, monkeypatch):
-    """A config whose ledgers live on the default filesystem.
-
-    Deliberately NOT on the FAT volume. What is under test is adoption's
-    handling of FILES on removable media, and putting the ledger there too would
-    fold a second question, whether the ledger's locking survives msdos, into
-    every assertion below. That question is real and it belongs to its own test
-    rather than to these.
-    """
+    """A config whose ledgers live on the default filesystem."""
     root = tmp_path / "library"
     (root / "db").mkdir(parents=True)
     (root / "Music").mkdir(parents=True)
@@ -100,9 +93,7 @@ def _genre_of(declared_taxonomy) -> str:
     for bucket in declared_taxonomy.buckets:
         if bucket.id == declared_taxonomy.fallback.bucket:
             continue
-        resolution = adopt_scan.routing.resolve_bucket(
-            declared_taxonomy, bucket.display
-        )
+        resolution = adopt_scan.routing.resolve_bucket(declared_taxonomy, bucket.display)
         if resolution.bucket_id == bucket.id and resolution.match is not (
             adopt_scan.routing.Match.FALLBACK
         ):
@@ -115,31 +106,8 @@ def _genre_of(declared_taxonomy) -> str:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_a_cloud_backed_track_on_a_fat_volume_is_EXCLUDED_and_never_applicable(
-    fat, cfg, declared
-):
-    """AE12's second half: the named category has to reach the DISPOSITION.
-
-    The existing census test proves an online-only row is named
-    ``ONLINE_ONLY``. It does not prove that naming it keeps it out of the work,
-    and an independent mutation table measured the gap: widening
-    :data:`cratekit.adopt.scan.ADOPTABLE` to admit
-    :attr:`Readability.ONLINE_ONLY` killed ZERO tests against a green suite of
-    3782. A category that is reported and then adopted anyway is worse than one
-    that was never reported, because the report says the tool understood.
-
-    WHAT IT WOULD COST, which is why this is asserted about ``applicable`` and
-    not only about the disposition. An applicable entry is one ``apply_plan``
-    writes a tag to. Writing a tag to a cloud-backed stub materializes the file:
-    the provider is asked for bytes that are not here, on a volume the person
-    plugged in expecting a library read. On a whole library that is every
-    evicted track downloaded, in bulk, on an approval given for a plan that said
-    the file was excluded.
-
-    Driven on real msdos rather than on ``tmp_path`` because the stub convention
-    is a filename convention, and FAT is the filesystem whose name mangling and
-    case folding would break it if anything did.
-    """
+def test_a_cloud_backed_track_on_a_fat_volume_is_EXCLUDED_and_never_applicable(fat, cfg, declared):
+    """AE12's second half: the named category has to reach the DISPOSITION."""
     music = fat / "Music"
     music.mkdir()
     genre = _genre_of(declared)
@@ -167,13 +135,11 @@ def test_a_cloud_backed_track_on_a_fat_volume_is_EXCLUDED_and_never_applicable(
     built = adopt_plan.build_adoption_plan(scanned, declared, tree=TREE_ID)
     applicable = {entry.content_id for entry in built.applicable()}
     assert "evicted" not in applicable, (
-        "an excluded track reached the applicable set, which is the set "
-        "apply_plan writes tags to"
+        "an excluded track reached the applicable set, which is the set apply_plan writes tags to"
     )
     assert "present" in applicable
     assert {track.content_id for track in scanned} == {"present", "evicted"}, (
-        "AE12 says an excluded track is carried in the plan rather than "
-        "omitted from it"
+        "AE12 says an excluded track is carried in the plan rather than omitted from it"
     )
 
 
@@ -183,14 +149,7 @@ def test_a_cloud_backed_track_on_a_fat_volume_is_EXCLUDED_and_never_applicable(
 
 
 def test_an_absent_genre_on_a_fat_file_comes_back_ABSENT(fat, cfg):
-    """Scenario 5, "reverted exactly", including the absence, on real msdos.
-
-    The sibling of this test runs on the default filesystem. It is repeated here
-    because the two branches of :func:`cratekit.adopt.revert.restore_tag` are a
-    DELETE and a WRITE, and a delete is the operation whose result a filesystem
-    is most able to differ about: FAT has no extended attributes, no resource
-    fork and its own rewrite behaviour for a container whose tag block shrinks.
-    """
+    """Scenario 5, "reverted exactly", including the absence, on real msdos."""
     music = fat / "Music"
     music.mkdir()
     path = _synth(music, ".mp3")
@@ -210,19 +169,7 @@ def test_an_absent_genre_on_a_fat_file_comes_back_ABSENT(fat, cfg):
 
 
 def test_a_deleted_fat_file_strands_its_record_for_a_byte_identical_copy(fat, cfg):
-    """The half of round 8's vacancy guard that must still say YES.
-
-    A record is handed on by its BYTES only when its recorded path is
-    demonstrably vacant. Vacant has to keep meaning something, or the guard that
-    round 8 tightened would have closed the byte search entirely and a renamed
-    file would silently get a second record with adoption's own value stored as
-    its original.
-
-    So: adopt on the volume, copy the adopted file, delete the original while
-    its directory stays mounted and answering, and adopt the copy. The ledger
-    must still hold ONE record and it must still hold the value the file had
-    BEFORE adoption ever ran.
-    """
+    """The half of round 8's vacancy guard that must still say YES."""
     music = fat / "Music"
     music.mkdir()
     path = _synth(music, ".mp3")
@@ -255,31 +202,7 @@ def test_a_deleted_fat_file_strands_its_record_for_a_byte_identical_copy(fat, cf
 
 
 def test_a_record_whose_directory_is_gone_is_NOT_treated_as_a_deleted_file(fat, cfg):
-    """Round 8's fix, driven on real msdos: absence of a path is not evidence.
-
-    THE MOTIVATING CASE IS AN EJECTED VOLUME and the mechanism is the branch
-    below. ``_the_recorded_path_is_vacant`` asks for the recorded path's
-    containing directory to be PRESENT AND ANSWERING before it will call the
-    file gone. A deleted or renamed file leaves its directory behind; a volume
-    that went away takes the whole path with it, mount point included, and the
-    previous version of this test was ``not Path(record.path).exists()`` alone,
-    which cannot tell those apart.
-
-    WHAT IS ACTUALLY DRIVEN HERE, said plainly rather than overclaimed. This
-    test removes the recorded file's whole directory on a live msdos volume. It
-    does not detach the volume: detaching it mid test leaves
-    :func:`tests._hardware.fat_volume` no mountpoint to tear down and turns a
-    teardown failure into the result. The predicate branch is the same one an
-    ejected volume reaches, because both arrive as "the parent is not a
-    directory", and it is the branch that decides whether the record is handed
-    to something else.
-
-    The cost of the branch is real and is not hidden: a file whose directory
-    also vanished is no longer findable by its bytes, so a SECOND record is
-    written. That is the trade round 8 chose, one record's original against a
-    live file's value, and this test pins it as a decision rather than leaving
-    it to be rediscovered as a bug.
-    """
+    """Round 8's fix, driven on real msdos: absence of a path is not evidence."""
     music = fat / "Music"
     music.mkdir()
     backup_dir = fat / "Backup"
@@ -293,12 +216,10 @@ def test_a_record_whose_directory_is_gone_is_NOT_treated_as_a_deleted_file(fat, 
 
     backup = backup_dir / "Copy.mp3"
     shutil.copyfile(path, backup)
-    # REMOVED BY HAND RATHER THAN BY ``shutil.rmtree``, and that is a FAT fact
-    # rather than a preference. rmtree walks with ``dir_fd`` relative unlinks
-    # where the platform claims support, and on this msdos volume that walk
-    # raises FileNotFoundError for the directory it is standing in. Measured
-    # here: the rmtree form failed on the real image while this form succeeds,
-    # which is one more reason these proofs are not written against tmp_path.
+    # REMOVED BY HAND RATHER THAN BY ``shutil.rmtree``, and that is a FAT fact rather
+    # than a preference. rmtree walks with ``dir_fd`` relative unlinks where the
+    # platform claims support, and on this msdos volume that walk raises
+    # FileNotFoundError for the directory it is standing in.
     for child in sorted(music.iterdir()):
         child.unlink()
     music.rmdir()

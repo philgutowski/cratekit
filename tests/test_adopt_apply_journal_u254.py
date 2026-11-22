@@ -206,14 +206,7 @@ def _bytes_for(root: Path, count: int, monkeypatch) -> tuple[_Writes, int]:
 
 
 def test_twice_the_marks_write_about_twice_the_bytes(tmp_path, monkeypatch):
-    """The card's measure: 400 marks write under 2.5 times what 200 do.
-
-    The writer before U254 wrote four times as much for twice the entries,
-    because each mark rewrote everything marked before it. The total is also
-    held EQUAL to the final file's size, so every byte that reached the ledger
-    went through one of the two wrapped writers and none was written around
-    them, and to exactly one whole file rewrite, the one that created it.
-    """
+    """The card's measure: 400 marks write under 2.5 times what 200 do."""
     two_hundred, size_200 = _bytes_for(tmp_path / "two-hundred", 200, monkeypatch)
     four_hundred, size_400 = _bytes_for(tmp_path / "four-hundred", 400, monkeypatch)
 
@@ -228,12 +221,7 @@ def test_twice_the_marks_write_about_twice_the_bytes(tmp_path, monkeypatch):
 
 
 def test_a_mark_on_a_journal_this_process_never_wrote_appends(cfg, monkeypatch):
-    """A run's first mark, and every mark after another process's, append too.
-
-    Read whole, since nothing says the file is as this process left it, and
-    then appended to, not rewritten: two processes taking turns would
-    otherwise rewrite the whole ledger on every mark, the square again.
-    """
+    """A run's first mark, and every mark after another process's, append too."""
     path = _plant(cfg, _journal_of(3))
     seen = _count_writes(monkeypatch)
     adopt_apply.mark_applied(cfg, _entry(7))
@@ -283,12 +271,7 @@ def test_an_append_the_system_writes_in_pieces_still_lands_whole(cfg, monkeypatc
 
 
 def test_a_ledger_damaged_since_this_process_left_it_refuses_the_next_mark(cfg):
-    """Skipping the whole read is earned only by a file exactly as it was left.
-
-    Every mark before U254 read and validated the whole ledger, so a damaged one
-    refused the mark. A file another hand changed is read whole again, and
-    refuses the same way, before anything is appended to it.
-    """
+    """Skipping the whole read is earned only by a file exactly as it was left."""
     for n in range(3):
         adopt_apply.mark_applied(cfg, _entry(n))
     path = adopt_apply.path_for(cfg)
@@ -300,11 +283,7 @@ def test_a_ledger_damaged_since_this_process_left_it_refuses_the_next_mark(cfg):
 
 
 def _same_size_document(path: Path) -> bytes:
-    """A schema 1 document padded to the journal's exact size, with its records.
-
-    Appending to it would leave a file no build can read, so a mark that takes
-    it for the journal it replaced is visible at the next read.
-    """
+    """A schema 1 document padded to the journal's exact size, with its records."""
     size = path.stat().st_size
     body = DOCUMENT_BEFORE_U254.encode("utf-8").rstrip(b"\n")
     assert len(body) + 1 <= size, "mark more entries so the journal outgrows it"
@@ -326,12 +305,7 @@ def _after_one_more_mark_reads_the_document_and_the_mark(cfg_value):
 
 
 def test_a_file_put_in_place_with_the_same_size_and_time_is_read_again(cfg):
-    """A restore's shape: a new file, the same size and time. The inode tells.
-
-    Copied beside the ledger, given its modification time, and renamed over
-    it, as a staged restore does. Taken for the file this process left, the
-    next mark would append a journal record to a whole document.
-    """
+    """A restore's shape: a new file, the same size and time. The inode tells."""
     path = _marked_past_the_document(cfg)
     before = os.stat(path)
     staged = path.with_name("staged.tmp")
@@ -367,13 +341,7 @@ def test_a_torn_record_another_process_left_is_cut_before_the_next_append(cfg):
 
 
 def test_a_torn_tail_left_inside_one_clock_tick_is_still_cut(cfg):
-    """The size tells, where a coarse clock gives the torn file its old time.
-
-    FAT, exFAT and HFS+ keep modification times to a second or two, so another
-    process's torn append can leave the inode and the time as this process
-    left them. Taken for the file it left, the next mark would join its record
-    to the torn bytes and read back as not applied.
-    """
+    """The size tells, where a coarse clock gives the torn file its old time."""
     for n in range(3):
         adopt_apply.mark_applied(cfg, _entry(n))
     path = adopt_apply.path_for(cfg)
@@ -382,9 +350,7 @@ def test_a_torn_tail_left_inside_one_clock_tick_is_still_cut(cfg):
         other.write(_line_of(_entry(5))[:15])
     os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
     adopt_apply.mark_applied(cfg, _entry(9))
-    assert adopt_apply.read(cfg).entry_ids() == {
-        _entry(n).entry_id for n in (0, 1, 2, 9)
-    }
+    assert adopt_apply.read(cfg).entry_ids() == {_entry(n).entry_id for n in (0, 1, 2, 9)}
 
 
 def test_a_record_another_process_appended_is_kept(cfg):
@@ -393,9 +359,7 @@ def test_a_record_another_process_appended_is_kept(cfg):
     with path.open("ab") as other:
         other.write(_line_of(_entry(5)))
     adopt_apply.mark_applied(cfg, _entry(1))
-    assert adopt_apply.read(cfg).entry_ids() == {
-        _entry(n).entry_id for n in (0, 1, 5)
-    }
+    assert adopt_apply.read(cfg).entry_ids() == {_entry(n).entry_id for n in (0, 1, 5)}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -443,9 +407,7 @@ def test_the_journal_is_a_header_and_one_line_per_record(cfg):
         adopt_apply.mark_applied(cfg, _entry(n))
     lines = _lines(adopt_apply.path_for(cfg))
     assert lines[0] + b"\n" == HEADER
-    assert [json.loads(line) for line in lines[1:]] == [
-        _entry(n).to_json() for n in range(3)
-    ]
+    assert [json.loads(line) for line in lines[1:]] == [_entry(n).to_json() for n in range(3)]
 
 
 def test_the_ledger_stays_owner_only_after_appends(cfg):
@@ -499,9 +461,7 @@ def test_two_plans_marking_in_turn_keep_both(cfg):
     ledger = adopt_apply.read(cfg)
     assert {entry.tree for entry in ledger.applied} == {"genre_energy", "shelf_stack"}
     assert ledger.entry_ids() == {
-        _entry(n, tree=tree).entry_id
-        for n in range(4)
-        for tree in ("genre_energy", "shelf_stack")
+        _entry(n, tree=tree).entry_id for n in range(4) for tree in ("genre_energy", "shelf_stack")
     }
 
 
@@ -527,11 +487,7 @@ for n in range(25):
 
 
 def test_four_real_processes_marking_at_once_lose_nothing(library, tmp_path):
-    """The lock is what a read, append or repair needs between processes.
-
-    Real interpreters rather than threads, because what is proved is what
-    reached the disk while another process held the lock.
-    """
+    """The lock is what a read, append or repair needs between processes."""
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join([str(SRC_ROOT), str(SRC_ROOT.parent)])
     running = [
@@ -644,13 +600,7 @@ TORN_TAILS = {
 
 @pytest.mark.parametrize("tail", TORN_TAILS.values(), ids=TORN_TAILS.keys())
 def test_a_torn_last_record_is_the_mark_that_did_not_finish(cfg, tail):
-    """Every whole record before it is kept; the torn one reads as not applied.
-
-    Not applied is the safe direction: the mark is the last act of an entry, so
-    a mark that did not land is the documented crash between the tag write and
-    the applied record, which a resume re-applies without refreshing the revert
-    record. Read as empty, it would re-apply the plan from its first entry.
-    """
+    """Every whole record before it is kept; the torn one reads as not applied."""
     path = _plant(cfg, _journal_of(3) + tail)
     assert adopt_apply.read(cfg).entry_ids() == {_entry(n).entry_id for n in range(3)}
     assert path.read_bytes() == _journal_of(3) + tail, "a read repaired the file"
@@ -664,9 +614,7 @@ def test_the_next_mark_cuts_a_torn_record_away(cfg, monkeypatch, tail):
     adopt_apply.mark_applied(cfg, _entry(7))
     adopt_apply.mark_applied(cfg, _entry(8))
     assert (seen.rewrites, seen.appends) == (1, 1), "the repair was not one rewrite"
-    assert adopt_apply.read(cfg).entry_ids() == {
-        _entry(n).entry_id for n in (0, 1, 2, 7, 8)
-    }
+    assert adopt_apply.read(cfg).entry_ids() == {_entry(n).entry_id for n in (0, 1, 2, 7, 8)}
     assert all(json.loads(line) for line in _lines(path))
 
 
@@ -681,12 +629,14 @@ WRONG_JOURNALS = {
     ),
     "a record missing its actor, last": (
         _journal_of(2)
-        + json.dumps({k: v for k, v in _entry(5).to_json().items() if k != "actor"})
-        .encode()
+        + json.dumps({k: v for k, v in _entry(5).to_json().items() if k != "actor"}).encode()
         + b"\n",
         Remedy.RUN_DOCTOR,
     ),
-    "a record that is a list": (_journal_of(1) + b"[1, 2]\n" + _journal_of(2)[len(HEADER) :], Remedy.RUN_DOCTOR),
+    "a record that is a list": (
+        _journal_of(1) + b"[1, 2]\n" + _journal_of(2)[len(HEADER) :],
+        Remedy.RUN_DOCTOR,
+    ),
     "a header from a newer build": (
         b'{"format": "journal", "schema_version": 3}\n' + _journal_of(1)[len(HEADER) :],
         Remedy.UPGRADE_CRATEKIT,
@@ -705,9 +655,7 @@ WRONG_JOURNALS = {
 }
 
 
-@pytest.mark.parametrize(
-    ("payload", "remedy"), WRONG_JOURNALS.values(), ids=WRONG_JOURNALS.keys()
-)
+@pytest.mark.parametrize(("payload", "remedy"), WRONG_JOURNALS.values(), ids=WRONG_JOURNALS.keys())
 def test_a_wrong_journal_refuses_rather_than_reading_as_empty(cfg, payload, remedy):
     """Only the LAST line may be torn; everything else wrong refuses as before."""
     path = _plant(cfg, payload)
@@ -735,21 +683,13 @@ PLAN_SIZE = 5
 def _five(cfg_value, declared_taxonomy):
     _routable, genre = _bucket_and_genre(declared_taxonomy)
     rows = [
-        _row(cfg_value, f"Track {n:02d}.flac", genre, f"c{n:02d}")
-        for n in range(1, PLAN_SIZE + 1)
+        _row(cfg_value, f"Track {n:02d}.flac", genre, f"c{n:02d}") for n in range(1, PLAN_SIZE + 1)
     ]
     return _plan_of(cfg_value, declared_taxonomy, rows)
 
 
 def _kill_ledger_write(monkeypatch, cfg_value, *, at: int, keep: int | None = None):
-    """Make the ``at``-th write to the applied ledger kill the process.
-
-    ``keep`` of None kills before any byte lands; a number lands that many bytes
-    of the record first, through the real writer, which is a write torn by a
-    kill, and a negative one all but that many. A ``keep`` past the record's
-    length lands all of it and then kills, before the mark returns. Counted over both writers, because the first mark creates the file
-    and every later one appends.
-    """
+    """Make the ``at``-th write to the applied ledger kill the process."""
     calls = {"n": 0}
     real_rewrite = config.atomic_write_bytes
     real_append = config.append_durable_bytes
@@ -824,7 +764,9 @@ WHOLE_RECORD = 1 << 20
 
 
 @pytest.mark.parametrize("marked", range(1, PLAN_SIZE))
-@pytest.mark.parametrize("keep", [0, 1, 40, -2, -1], ids=["none", "one", "some", "all-but-two", "all-but-newline"])
+@pytest.mark.parametrize(
+    "keep", [0, 1, 40, -2, -1], ids=["none", "one", "some", "all-but-two", "all-but-newline"]
+)
 def test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it(
     cfg, declared, monkeypatch, marked, keep
 ):
@@ -834,25 +776,19 @@ def test_an_append_torn_by_a_kill_resumes_with_exactly_the_marks_before_it(
     with monkeypatch.context() as patched:
         _kill_ledger_write(patched, cfg, at=marked + 1, keep=keep)
         with pytest.raises(_Killed):
-            adopt_apply.apply_plan(
-                cfg, plan, declared, approval=granted, place=lambda *_: None
-            )
+            adopt_apply.apply_plan(cfg, plan, declared, approval=granted, place=lambda *_: None)
     _resume_and_check(cfg, declared, plan, granted, marked=marked)
 
 
 @pytest.mark.parametrize("marked", range(1, PLAN_SIZE))
-def test_a_kill_after_the_whole_record_landed_counts_the_mark(
-    cfg, declared, monkeypatch, marked
-):
+def test_a_kill_after_the_whole_record_landed_counts_the_mark(cfg, declared, monkeypatch, marked):
     """The crash between the applied record and the end of the run: skipped after."""
     plan = _five(cfg, declared)
     granted = adopt_approval.grant(plan, actor="tester")
     with monkeypatch.context() as patched:
         _kill_ledger_write(patched, cfg, at=marked + 1, keep=WHOLE_RECORD)
         with pytest.raises(_Killed):
-            adopt_apply.apply_plan(
-                cfg, plan, declared, approval=granted, place=lambda *_: None
-            )
+            adopt_apply.apply_plan(cfg, plan, declared, approval=granted, place=lambda *_: None)
     _resume_and_check(cfg, declared, plan, granted, marked=marked + 1)
 
 
@@ -868,9 +804,7 @@ def test_a_revert_after_a_partial_apply_restores_what_it_wrote(
         path.write_bytes(_synth_in(tmp_path / f"source{n}", ".flac").read_bytes())
         tags.write_genre(path, f"Original {n}")
         paths.append(path)
-    rows = [
-        adopt_scan.CollectionRow(str(path), str(path), genre, False) for path in paths
-    ]
+    rows = [adopt_scan.CollectionRow(str(path), str(path), genre, False) for path in paths]
     plan = _plan_of(cfg, declared, rows)
     assert len(plan.applicable()) == 4
     granted = adopt_approval.grant(plan, actor="tester")
