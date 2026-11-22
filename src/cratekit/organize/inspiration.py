@@ -1,59 +1,25 @@
 """INSPIRATION brought level with the account's downloaded sets (U144).
 
-The account's ``Downloaded Sets <year>`` folders hold one downloaded playlist
-per set the source system downloaded, once prefixed ``DOWNLOADED `` and since
-U242 held as taken in Cratekit's own record, and most of those sets were
-downloaded before a set landing wrote a playlist under INSPIRATION (U121), so
-their tracks are in the library with nothing naming the set. This step of
-``crate organize``'s rekordbox area backfills them by MATCHING, chosen by the
-author over running each set through the intake again: no track is
-downloaded, a set the source system did not finish shows as a short playlist,
-and every track left out is named under its set.
+Most sets in the account's ``Downloaded Sets <year>`` folders were downloaded
+before a set landing wrote an INSPIRATION playlist (U121). This step backfills
+them by MATCHING, chosen by the author over running each set through the
+intake again: nothing is downloaded, and every track left out is named.
 
-THE PLAN. Every taken playlist (:func:`cratekit.sync.playlists.is_taken`, the
-record or the old prefix) in every root folder named ``Downloaded Sets
-<year>``, or recorded by the archive as that year's folder whatever it is
-called now, is one set, and its INSPIRATION name is the account name with any
-old prefix off, spelled by the rule a set playlist's name is made
-by (a slash becomes a dash). A playlist in such a folder that is not taken,
-and a folder whose playlists could not be listed, are named on the gate and
-read no further. A set whose name an INSPIRATION playlist already
-carries, by the rule the set archive reads that proof with (U142), is skipped,
-so a second run plans nothing. Every other set's tracks are read from the
-account and each is asked of the library by the rule a set's own backfill
-uses (:func:`cratekit.intake.set_playlist.library_rows`): the match engine
-over the library now, the file's ISRC first and the artist, title and version
-after, a person's review answers read back, then the one collection row the
-file resolves to. No record ties a provider track to a library row by its
-identifier, so none is read.
+THE PLAN. Every taken playlist (U242) in a sets folder is one set, named as its
+account title less any prefix. A set INSPIRATION already holds, by the
+archive's proof rule (U142), is skipped, so a second run plans nothing. Every
+other set's tracks are asked of the library by a set backfill's own rule; only
+the engine's MATCHED is written, and every other answer is a miss with its
+reason. A set with no match, a refused listing, and two sets of one name are
+shown and not written.
 
-THE BAR A MATCH CLEARS TO BE WRITTEN UNREAD is the engine's MATCHED. A
-question nobody answered, a track the library lacks, a version deleted on
-purpose, a file with no collection row and a file two rows claim are misses,
-each named under its set by position, artist and title with its reason. A set
-with no match is reported and nothing is written for it: an empty playlist
-kept for good is not the set. A set whose listing the provider refused is
-shown unread with that refusal, and two account sets of one name are shown and
-neither is written, since the library cannot hold both under one name.
+A SET IS READ ROW BY ROW (R-1295): a track with no title or no artist is never
+asked of the library, since the half left matches any file agreeing on it, and
+is a miss at its place; with no provider id either, its set is unread.
 
-A SET IS READ ROW BY ROW (R-1295), as ``crate sync all`` and ``crate sync
-pair`` read a playlist. A track the account lists with no title or no artist is
-never asked of the library, since the half left matches any file agreeing on
-it; it is a miss at its place in the set, named by its id and why, and the
-set's other tracks are matched as ever. A set no track of which reads is shown
-unread, each track named, never as a set with no match. Such a row that carries
-no provider id still leaves its set unread in the reader's own words,
-since nothing would name it; a row the reader reads is matched with or
-without an id, as it always was, because nothing here keys a track by its id.
-
-THE WRITE is one session for every set: a capture, each playlist found live by
-its name under INSPIRATION or made there by the rule a set's playlist is
-(:func:`cratekit.intake.set_playlist.place_playlist`), the guarded commit, the
-commit recorded under the INSPIRATION folder's own id, and every playlist read
-back from SQL. The plan is taken again on the write handle first, and a
-membership the approved plan did not name is refused by name, as is any other
-change, with nothing written. Nothing here touches INBOX, a content row, a
-beat grid or the account.
+THE WRITE is one session for every set, taken again on the write handle first:
+a membership the approved plan did not name is refused by name, any other
+change as stale, with nothing written; every playlist is read back from SQL.
 
 Layer: modules.
 """
@@ -62,7 +28,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -71,7 +37,7 @@ from cratekit.acquire import match
 from cratekit.cli.output import digest_of
 from cratekit.core import analysis_store, config, convergence, rb_writer, session
 from cratekit.core.cause import CratekitError, refuse
-from cratekit.modules.outbound.folders import MARK_PREFIX
+from cratekit.organize.filing import by_name
 
 _ORIGIN = ("organize.inspiration",)
 
@@ -91,9 +57,14 @@ TWICE = "two-of-one-name"
 UNPREFIXED = "unprefixed"
 FOLDER_UNREAD = "folder-unread"
 
-#: The prefix a downloaded set's account playlist carried before U242, which
-#: a set still carrying it is read by until ``crate sync strip`` takes it off.
-PREFIX = MARK_PREFIX
+
+def __getattr__(name: str) -> Any:
+    """``PREFIX``, the prefix a downloaded set carried before U242, read from its home."""
+    if name == "PREFIX":
+        from cratekit.modules.outbound.folders import MARK_PREFIX
+
+        return MARK_PREFIX
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def sets_folder(name: str) -> bool:
@@ -133,34 +104,26 @@ class SetRow:
     withheld: int = 0
     #: Why a set is unread or left, in the words the gate shows.
     why: str = ""
-    #: The account tracks as read, each at its place in the set, kept so the
-    #: write asks the library again about exactly these and never reads the
-    #: account a second time.
+    #: The account tracks as read, each at its place in the set, so the write
+    #: asks the library about exactly these and never reads the account again.
     wanted: tuple[tuple[int, match.Wanted], ...] = field(default=(), compare=False)
-    #: The tracks the account lists with no title or no artist, each a miss at
-    #: its place in the set (R-1295), kept beside ``wanted`` for the same
+    #: The tracks listed with no title or no artist (R-1295), kept for the same
     #: reason; ``misses`` carries them too.
     unread: tuple[Miss, ...] = field(default=(), compare=False)
 
     def identity(self) -> dict[str, Any]:
         return {
-            "name": self.name,
-            "playlist": self.playlist_id,
-            "folder": self.folder,
-            "action": self.action,
-            "members": list(self.members),
+            "name": self.name, "playlist": self.playlist_id, "folder": self.folder,
+            "action": self.action, "members": list(self.members),
             "misses": [miss.line() for miss in self.misses],
-            "withheld": self.withheld,
-            "why": self.why,
+            "withheld": self.withheld, "why": self.why,
         }
 
     def item(self) -> dict[str, Any]:
         """The set as the gate shows it, every miss named under it."""
         shown: dict[str, Any] = {
-            "action": self.action,
-            "set": self.name,
-            "account folder": self.folder,
-            "account playlist": self.playlist_id,
+            "action": self.action, "set": self.name,
+            "account folder": self.folder, "account playlist": self.playlist_id,
         }
         if self.action in (CREATE, EMPTY):
             shown["tracks"] = len(self.members)
@@ -195,11 +158,8 @@ class ParityPlan:
 
     def identity(self) -> dict[str, Any]:
         return {
-            "kind": "inspiration-parity",
-            "tree": self.tree_id,
-            "folder": self.folder_id,
-            "folder_display": self.folder_display,
-            "sets": [row.identity() for row in self.rows],
+            "kind": "inspiration-parity", "tree": self.tree_id, "folder": self.folder_id,
+            "folder_display": self.folder_display, "sets": [row.identity() for row in self.rows],
         }
 
     def digest(self) -> str:
@@ -265,14 +225,8 @@ class Applied:
             "playlists created": sum(1 for one in self.wrote if one.created),
             "memberships added": sum(one.added for one in self.wrote),
             "read back": {one.name: len(one.read_back) for one in self.wrote},
-            "folder created": self.folder_created,
-            "session": self.session_id,
+            "folder created": self.folder_created, "session": self.session_id,
         }
-
-
-# ---------------------------------------------------------------------------
-# The plan
-# ---------------------------------------------------------------------------
 
 
 def account_sets(
@@ -281,59 +235,40 @@ def account_sets(
     """Every downloaded set on the account, and every row nothing is planned for.
 
     The sets are ``(folder name, playlist id, INSPIRATION name)``, in folder
-    then name order. A SETS FOLDER is a root folder named ``Downloaded Sets
-    <year>``, or one whose id ``recorded`` names, which is the folder the
-    archive files into by its ledger record whatever it is called now. Two
-    kinds of row are answered beside the sets and never read further: a folder
-    whose playlists could not be listed, unread and not empty, and a playlist
-    in a sets folder without the prefix, which the archive leaves unprefixed
-    when a person retitled it, named so it is not silently passed over.
+    then name order. A SETS FOLDER is named ``Downloaded Sets <year>`` or is one
+    ``recorded`` names, the archive's folder by its ledger. A folder that could
+    not be listed, and a playlist in a sets folder that is not taken, are rows
+    beside the sets, named so neither is silently passed over.
 
-    A SET IS A TAKEN PLAYLIST (U242): one ``taken``, the record's taken
-    ledger, holds, or one whose title still carries the old prefix. Its
-    INSPIRATION name is its title less any prefix, so a set stripped of the
-    prefix is the same set under the same name.
+    A SET IS A TAKEN PLAYLIST (U242), held by ``taken`` or carrying the old
+    prefix, and its INSPIRATION name is its title less any prefix.
     """
     from cratekit.export import set_cli
+    from cratekit.modules.outbound.folders import MARK_PREFIX
     from cratekit.sync.playlists import is_taken, untaken_name
 
     marked = frozenset(recorded)
     held = frozenset(taken)
     sets_found: list[tuple[str, str, str]] = []
     rows: list[SetRow] = []
-    folders = sorted(remote.folders().items(), key=lambda one: (one[1], one[0]))
-    for folder_id, folder_name in folders:
+    for folder_id, folder_name in by_name(remote.folders().items()):
         if not sets_folder(folder_name) and folder_id not in marked:
             continue
         try:
             listed = remote.folder_playlists(folder_id)
         except CratekitError as exc:
-            rows.append(
-                SetRow(
-                    "",
-                    "",
-                    folder_name,
-                    FOLDER_UNREAD,
-                    why=f"its playlists could not be listed: {exc.cause.message}",
-                )
-            )
+            why = f"its playlists could not be listed: {exc.cause.message}"
+            rows.append(SetRow("", "", folder_name, FOLDER_UNREAD, why=why))
             continue
-        for playlist_id, name in sorted(listed.items(), key=lambda one: (one[1], one[0])):
+        for playlist_id, name in by_name(listed.items()):
             stripped = untaken_name(name) if is_taken(playlist_id, name, held) else ""
             if not stripped:
-                rows.append(
-                    SetRow(
-                        name,
-                        playlist_id,
-                        folder_name,
-                        UNPREFIXED,
-                        why=(
-                            f"Cratekit does not hold it as taken and it does not carry "
-                            f"the old {PREFIX.strip()} prefix, so it is not read as a "
-                            f"downloaded set"
-                        ),
-                    )
+                why = (
+                    f"Cratekit does not hold it as taken and it does not carry "
+                    f"the old {MARK_PREFIX.strip()} prefix, so it is not read as a "
+                    f"downloaded set"
                 )
+                rows.append(SetRow(name, playlist_id, folder_name, UNPREFIXED, why=why))
                 continue
             sets_found.append((folder_name, playlist_id, set_cli.set_name(stripped)))
     return sets_found, rows
@@ -363,11 +298,9 @@ class _Listed:
 def _read(found: Any, playlist_id: str) -> _Listed:
     """The set's account tracks as the match engine reads them, row by row (R-1295).
 
-    A row the engine will not read, naming no title or no artist, is set aside
-    by the reader's own rule (``intake_cli.set_aside``) and named, and every
-    other row reads as it always did. Such a row carrying no provider id
-    raises the engine's own refusal with that said after it, so the set is
-    shown unread and the reason names the missing id as what held it back.
+    A row the engine will not read is set aside by the reader's own rule
+    (``intake_cli.set_aside``) and named; one carrying no provider id raises
+    the engine's refusal with that said after it, so the set is shown unread.
     """
     from cratekit.intake import cli as intake_cli
     from cratekit.label import cli as label_cli
@@ -381,8 +314,7 @@ def _read(found: Any, playlist_id: str) -> _Listed:
         except match.UnreadableList as exc:
             one = intake_cli.set_aside(row)
             if not one.ref:
-                # NOTHING WOULD NAME IT among the misses, so the set stays
-                # unread, and the reason says the id is what held it back.
+                # NOTHING WOULD NAME IT among the misses, so the set stays unread.
                 raise match.UnreadableList(
                     f"{exc}; it carries no provider id either, so it cannot be named "
                     f"among the set's misses and the set is not written",
@@ -414,19 +346,18 @@ def _none_read(listing: _Listed) -> str:
 def _unread_miss(position: int, one: Any) -> Miss:
     """A track the account lists with no title or no artist, named under its set."""
     return Miss(
-        position,
-        one.artist or "no artist",
+        position, one.artist or "no artist",
         one.title or "no title",
         f"{one.why} (track {one.ref}), so it was not asked of the library",
     )
 
 
-def _matched(
-    row_of: Callable[[match.Wanted], tuple[str, str]],
-    wanted: Sequence[tuple[int, match.Wanted]],
-    unread: Sequence[Miss] = (),
-) -> tuple[tuple[str, ...], tuple[Miss, ...]]:
-    """Each track's collection row, distinct and in set order, and every miss named in set order."""
+def _decided(
+    name: str, playlist_id: str, folder: str, wanted: tuple[tuple[int, match.Wanted], ...],
+    withheld: int, row_of: Callable[[match.Wanted], tuple[str, str]],
+    unread: tuple[Miss, ...] = (),
+) -> SetRow:
+    """The set with each track's collection row, distinct in set order, and every miss named."""
     ids: list[str] = []
     misses: list[Miss] = list(unread)
     for position, one in wanted:
@@ -435,26 +366,12 @@ def _matched(
             ids.append(held)
         else:
             misses.append(Miss(position, one.artist, one.listed, why))
-    return tuple(dict.fromkeys(ids)), tuple(sorted(misses, key=lambda miss: miss.position))
-
-
-def _decided(
-    name: str,
-    playlist_id: str,
-    folder: str,
-    wanted: tuple[tuple[int, match.Wanted], ...],
-    withheld: int,
-    row_of: Callable[[match.Wanted], tuple[str, str]],
-    unread: tuple[Miss, ...] = (),
-) -> SetRow:
-    members, misses = _matched(row_of, wanted, unread)
+    members = tuple(dict.fromkeys(ids))
     return SetRow(
-        name=name,
-        playlist_id=playlist_id,
-        folder=folder,
+        name=name, playlist_id=playlist_id, folder=folder,
         action=CREATE if members else EMPTY,
         members=members,
-        misses=misses,
+        misses=tuple(sorted(misses, key=lambda miss: miss.position)),
         withheld=withheld,
         why="" if members else "no track of the set matched a library row, so nothing is written",
         wanted=wanted,
@@ -486,31 +403,24 @@ def _held(db: Any, folder_id: str) -> frozenset[str]:
 
 
 def plan(
-    cfg: config.Config,
-    declared: Any,
-    *,
-    remote: Any,
-    found: Any,
+    cfg: config.Config, declared: Any, *, remote: Any, found: Any,
     reading: Callable[[], AbstractContextManager[Any]],
 ) -> ParityPlan:
     """Every downloaded set on the account, decided against INSPIRATION and the library.
 
-    ``remote`` is the account, for its folders; ``found`` is the catalogue,
-    for each set's tracks; ``reading`` opens a read handle on the database.
-    NO READ IS HELD ACROSS A PROVIDER CALL: the database is read once for
-    where INSPIRATION is and what it holds, let go while the account is read,
-    and read again to match only when a set has tracks to match. Letting go
-    is closing the handle, or under ``crate organize --report`` releasing its
-    one shared handle (U267), which stays open holding no lock and no row. A
-    taxonomy with no INSPIRATION folder, or a root holding it twice, refuses
-    by the set playlist's own rule.
+    ``remote`` is the account, ``found`` the catalogue for each set's tracks,
+    and ``reading`` opens a read handle on the database. NO READ IS HELD
+    ACROSS A PROVIDER CALL: the database is read for INSPIRATION, let go while
+    the account is read, and read again only when a set has tracks to match.
+    A taxonomy with no INSPIRATION folder, or two, refuses by the set
+    playlist's own rule.
     """
     from cratekit.intake import set_playlist
+    from cratekit.sync.playlists import taken_ids
 
     with reading() as db:
         folder_id, node = set_playlist.folder_for(db, declared)
         held = _held(db, folder_id)
-    from cratekit.sync.playlists import taken_ids
 
     listed, rows = account_sets(remote, recorded_folders(cfg), taken_ids(cfg))
     named = Counter(name for _folder, _pid, name in listed)
@@ -520,19 +430,12 @@ def plan(
             rows.append(SetRow(name, playlist_id, folder, SKIP))
             continue
         if named[name] > 1:
-            rows.append(
-                SetRow(
-                    name,
-                    playlist_id,
-                    folder,
-                    TWICE,
-                    why=(
-                        f"{named[name]} downloaded sets on the account carry this name "
-                        f"and INSPIRATION can hold one, so neither is written; rename "
-                        f"one on the account"
-                    ),
-                )
+            why = (
+                f"{named[name]} downloaded sets on the account carry this name "
+                f"and INSPIRATION can hold one, so neither is written; rename "
+                f"one on the account"
             )
+            rows.append(SetRow(name, playlist_id, folder, TWICE, why=why))
             continue
         try:
             listing = _read(found, playlist_id)
@@ -545,16 +448,8 @@ def plan(
         if listing.unread and not listing.wanted:
             # EVERY TRACK UNREAD is a set that could not be read, not one with
             # no match, and is shown with each track and why (R-1295).
-            rows.append(
-                SetRow(
-                    name,
-                    playlist_id,
-                    folder,
-                    UNREAD,
-                    withheld=listing.withheld,
-                    why=_none_read(listing),
-                )
-            )
+            why = _none_read(listing)
+            rows.append(SetRow(name, playlist_id, folder, UNREAD, withheld=listing.withheld, why=why))
             continue
         read.append((name, playlist_id, folder, listing))
     if read:
@@ -562,20 +457,13 @@ def plan(
             row_of = _Rows(cfg, db)
             rows.extend(
                 _decided(
-                    name,
-                    playlist_id,
-                    folder,
-                    listing.wanted,
-                    listing.withheld,
-                    row_of,
+                    name, playlist_id, folder, listing.wanted, listing.withheld, row_of,
                     tuple(_unread_miss(place, one) for place, one in listing.unread),
                 )
                 for name, playlist_id, folder, listing in read
             )
     return ParityPlan(
-        tree_id=node.id,
-        folder_display=node.display,
-        folder_id=folder_id,
+        tree_id=node.id, folder_display=node.display, folder_id=folder_id,
         rows=tuple(sorted(rows, key=lambda row: (row.folder, row.name, row.playlist_id))),
     )
 
@@ -583,10 +471,9 @@ def plan(
 def again(cfg: config.Config, db: Any, declared: Any, approved: ParityPlan) -> ParityPlan:
     """The approved plan taken again on ``db``: INSPIRATION and the library read now.
 
-    THE ACCOUNT IS NOT READ AGAIN. Its tracks were read for the plan a person
-    approved and are what the plan names; the write asks the library about
-    exactly those. A set skipped then whose INSPIRATION playlist has gone is
-    no longer skipped, so it reads as a change rather than as nothing.
+    THE ACCOUNT IS NOT READ AGAIN: the write asks the library about exactly the
+    tracks the approved plan names. A set skipped then whose INSPIRATION
+    playlist has gone reads as a change rather than as nothing.
     """
     from cratekit.export import set_cli
     from cratekit.intake import set_playlist
@@ -627,10 +514,8 @@ def again(cfg: config.Config, db: Any, declared: Any, approved: ParityPlan) -> P
 def assert_unchanged(approved: ParityPlan, now: ParityPlan) -> None:
     """Refuse a write the approved plan does not describe, naming a membership it never showed.
 
-    A MEMBERSHIP THE PLAN DID NOT NAME IS REFUSED BY NAME FIRST: a set whose
-    track now resolves to a row the person was not shown would be written
-    with it. Any other change, a set gone or a miss that moved, refuses as the
-    plan being stale. Either way nothing is written.
+    A MEMBERSHIP THE PLAN DID NOT NAME IS REFUSED BY NAME FIRST, since it
+    would be written unseen; any other change refuses as the plan being stale.
     """
     shown = {row.name: set(row.members) for row in approved.rows}
     for row in now.creates:
@@ -654,17 +539,11 @@ def assert_unchanged(approved: ParityPlan, now: ParityPlan) -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# The write
-# ---------------------------------------------------------------------------
-
-
 def write(db: Any, approved: ParityPlan) -> tuple[list[Wrote], bool]:
     """Make each planned playlist under INSPIRATION and add its members, pending on ``db``.
 
-    INSIDE A CALLER'S SESSION, which commits or rolls back. Only the rows the
-    plan names are added, to the playlist of the set's name. The folder is
-    made once, for the first set, when the plan read none.
+    INSIDE A CALLER'S SESSION, which commits or rolls back. The folder is made
+    once, for the first set, when the plan read none.
     """
     from cratekit.intake import set_playlist
 
@@ -683,10 +562,7 @@ def write(db: Any, approved: ParityPlan) -> tuple[list[Wrote], bool]:
 
 
 def _record_parity_commit(
-    record: session.SessionRecord,
-    wrote: Iterable[Wrote],
-    approved: ParityPlan,
-    cfg: config.Config,
+    record: session.SessionRecord, wrote: Iterable[Wrote], approved: ParityPlan, cfg: config.Config
 ) -> None:
     """Record the commit under the INSPIRATION folder's own id, only when it changed a row."""
     made = [one for one in wrote if one.added or one.created]
@@ -705,9 +581,7 @@ def assert_read_back(wrote: Iterable[Wrote]) -> None:
     """Refuse an answer the database does not hold.
 
     A PLAYLIST THIS WRITE MADE HOLDS EXACTLY THE PLAN'S ROWS, in the set's
-    order, and nothing else: a row read back under it that the plan did not
-    name is a membership nobody approved. One found by its name holds every
-    planned row, whatever it held before.
+    order; one found by its name holds every planned row, whatever else.
     """
     for one in wrote:
         live = list(one.read_back)
@@ -726,11 +600,8 @@ def assert_read_back(wrote: Iterable[Wrote]) -> None:
                 f"answer cannot be vouched for",
                 origin=_ORIGIN,
                 detail={
-                    "playlist_id": one.playlist_id,
-                    "planned": list(one.members),
-                    "read": live,
-                    "missing": missing,
-                    "unnamed": unnamed,
+                    "playlist_id": one.playlist_id, "planned": list(one.members), "read": live,
+                    "missing": missing, "unnamed": unnamed,
                 },
             )
 
@@ -739,9 +610,8 @@ def apply(cfg: config.Config, declared: Any, approved: ParityPlan) -> Applied:
     """Write the approved plan in a session of its own, on a handle opened to write.
 
     rekordbox must be closed. The plan is taken again on this handle and
-    refused when it moved, and the tree's convergence latch is asked; then the
-    session spine every database writer calls: the gates with a record kept, a capture verified before anything
-    is written, the analysis watch, the commit witness and the guarded commit.
+    refused when it moved, the tree's convergence latch is asked, and then the
+    session spine every database writer calls.
     """
     from cratekit.core import tree_registry
 
@@ -749,9 +619,8 @@ def apply(cfg: config.Config, declared: Any, approved: ParityPlan) -> Applied:
     db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
     try:
         assert_unchanged(approved, again(cfg, db, declared, approved))
-        # THE TREE'S OWN LATCH FIRST, as every tree writer's: a database
-        # restored out of band is detected before this write's fingerprint
-        # overwrites the evidence, and a tree marked unconverged is refused.
+        # THE TREE'S OWN LATCH FIRST, so a database restored out of band is
+        # caught before this write's fingerprint overwrites the evidence.
         convergence.assert_tree_writable(cfg, db, approved.tree_id, tree_registry.read(cfg))
         wrote: list[Wrote] = []
         with (
@@ -786,29 +655,8 @@ def apply(cfg: config.Config, declared: Any, approved: ParityPlan) -> Applied:
 
 
 __all__ = [
-    "CREATE",
-    "EMPTY",
-    "FOLDER_UNREAD",
-    "NAMED_UNREAD",
-    "PREFIX",
-    "RECORD_KEY",
-    "SKIP",
-    "TWICE",
-    "UNPREFIXED",
-    "UNREAD",
-    "WORKFLOW",
-    "Applied",
-    "Miss",
-    "ParityPlan",
-    "SetRow",
-    "Wrote",
-    "account_sets",
-    "again",
-    "apply",
-    "assert_read_back",
-    "assert_unchanged",
-    "plan",
-    "recorded_folders",
-    "sets_folder",
-    "write",
+    "CREATE", "EMPTY", "FOLDER_UNREAD", "NAMED_UNREAD", "RECORD_KEY", "SKIP", "TWICE",
+    "UNPREFIXED", "UNREAD", "WORKFLOW", "Applied", "Miss", "ParityPlan", "SetRow", "Wrote",
+    "account_sets", "again", "apply", "assert_read_back", "assert_unchanged", "plan",
+    "recorded_folders", "sets_folder", "write",
 ]

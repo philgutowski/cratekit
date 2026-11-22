@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -55,34 +55,42 @@ KINDS = {
 }
 
 
-def _smart(cfg, name: str, *, under: str) -> str:
-    handle = _open(cfg)
-    try:
-        made = handle.create_playlist(name, parent=handle.get_playlist(ID=under))
-        made.Attribute = 4
-        handle.session.commit()
-        return str(made.ID)
-    finally:
-        rb_writer.close_db(handle)
-
-
 @pytest.fixture
 def brief(native_library):
-    """The brief's INBOX: a dated batch, Old, Analyze, a folder, a label playlist, a smart one."""
+    """The brief's INBOX: a dated batch, Old, Analyze, a folder, a label playlist, a smart one.
+
+    Made in one open of the database, each node as ``_node`` makes it.
+    """
     cfg, root_id = native_library
-    old_id = _node(cfg, OLD, under=root_id, folder=True)
-    ids = {
-        "batch": _node(cfg, BATCH, under=root_id, age=10, tracks=("t1", "t2"), batch_folder=True),
-        "old batch": _node(
-            cfg, "2026-05-01 Tidal playlists", under=old_id, age=150, tracks=("t6",),
-            batch_folder=True,
-        ),
-        "analyze": _node(cfg, native.ANALYZE, under=root_id, tracks=("t3",)),
-        "folder": _node(cfg, FOLDER, under=root_id, folder=True),
+    ids: dict[str, str] = {}
+    handle = _open(cfg)
+    try:
+        def make(key, name, under, age=None, tracks=(), *, folder=False, smart=False):
+            parent = handle.get_playlist(ID=under)
+            made = (handle.create_playlist_folder if folder else handle.create_playlist)(
+                name, parent=parent
+            )
+            if age is not None:
+                made.created_at = datetime.combine(TODAY - timedelta(days=age), datetime.min.time())
+            for content_id in tracks:
+                handle.add_to_playlist(made, content_id)
+            if smart:
+                made.Attribute = 4
+            handle.session.commit()
+            ids[key] = str(made.ID)
+
+        make("old", OLD, root_id, folder=True)
+        make("batch", BATCH, root_id, 10, ("t1", "t2"))
+        make("old batch", "2026-05-01 Tidal playlists", ids.pop("old"), 150, ("t6",))
+        make("analyze", native.ANALYZE, root_id, tracks=("t3",))
+        make("folder", FOLDER, root_id, folder=True)
         # Dated, three rows, and no batch folder or record: no rule recognises it.
-        "labels": _node(cfg, LABELS, under=root_id, age=5, tracks=("t3", "t4", "t5")),
-        "smart": _smart(cfg, SMART, under=root_id),
-    }
+        make("labels", LABELS, root_id, 5, ("t3", "t4", "t5"))
+        make("smart", SMART, root_id, smart=True)
+    finally:
+        rb_writer.close_db(handle)
+    for batch in (BATCH, "2026-05-01 Tidal playlists"):
+        (Path(cfg.library.root) / cfg.library.music_dir / batch).mkdir(parents=True)
     return cfg, root_id, ids
 
 
@@ -123,16 +131,12 @@ def _inbox(cfg) -> mirror.Folder:
     return read
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The classifier names every node it does not take as a batch
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_live_batches_name_every_other_node_under_inbox_with_its_kind(brief):
     cfg, _root, ids = brief
-
     live = _live(cfg)
-
     assert live.batches == ((ids["batch"], BATCH),)
     assert {node.name: node.kind for node in live.left} == KINDS
     # The label playlist is named as unrecognised with its row count.
@@ -152,9 +156,7 @@ def test_the_live_batches_name_every_other_node_under_inbox_with_its_kind(brief)
 def test_an_undeclared_old_is_named_as_a_folder(brief):
     cfg, _root, _ids = brief
     declared = replace(active_taxonomy.load(cfg), intake_old=None)
-
     live = _live(cfg, declared)
-
     assert {node.name: node.kind for node in live.left}[OLD] == rotate.LEFT_FOLDER
 
 
@@ -172,9 +174,7 @@ def test_an_undated_batch_is_mirrored_and_not_named_left(native_library):
         ).left[0].kind == rotate.LEFT_UNDATED
     finally:
         rb_writer.close_db(handle)
-
     live = _live(cfg)
-
     assert [name for _id, name in live.batches] == ["2026-10-09 Favorites"]
     assert live.left == ()
 
@@ -188,10 +188,8 @@ def test_a_playlist_whose_record_cannot_be_read_is_never_said_to_have_none(nativ
     data = json.loads(entry.read_text(encoding="utf-8"))
     data["schema_version"] = 2
     entry.write_text(json.dumps(data), encoding="utf-8")
-
     (node,) = _live(cfg).left
     planned = _rotation(cfg)
-
     assert node.kind == rotate.LEFT_UNRECOGNISED
     assert node.reason.startswith(
         "no readable landing record names it (1 session record(s) could not be read, "
@@ -227,9 +225,7 @@ def test_a_session_log_that_cannot_be_listed_is_never_read_as_no_record(native_l
     # the glob it used to read is refused too, as an unprivileged account is.
     _refuse_under(monkeypatch, "listdir", log)
     _refuse_under(monkeypatch, "scandir", log)
-
     (node,) = _live(cfg).left
-
     assert rotate.landings(cfg).unlisted is True
     assert node.kind == rotate.LEFT_UNRECOGNISED
     assert node.reason.startswith(
@@ -260,7 +256,6 @@ def test_an_absent_session_log_is_no_record_at_all(native_library):
         for entry in log.iterdir():
             entry.unlink()
         log.rmdir()
-
     assert rotate.landings(cfg).unlisted is False
     assert rotate.landings(cfg).unread() == ""
 
@@ -272,9 +267,7 @@ def test_a_music_folder_that_cannot_be_read_is_never_read_as_no_batch_folder(
     _node(cfg, BATCH, under=root_id, age=10, tracks=("t1",), batch_folder=True)
     assert [name for _id, name in _live(cfg).batches] == [BATCH]
     _refuse_under(monkeypatch, "stat", Path(cfg.library.root) / cfg.library.music_dir)
-
     (node,) = _live(cfg).left
-
     assert node.kind == rotate.LEFT_UNRECOGNISED
     assert node.reason.endswith(
         "and the music folder could not be read to look for a batch folder of its "
@@ -287,9 +280,7 @@ def test_a_dated_playlist_with_no_batch_folder_still_says_so(native_library):
     """The readable case keeps its plain wording."""
     cfg, root_id = native_library
     _node(cfg, LABELS, under=root_id, age=5, tracks=("t3",))
-
     (node,) = _live(cfg).left
-
     assert node.reason == (
         "no landing record names it, its name does not end _inboxed, and no batch "
         "folder under the music folder carries its name"
@@ -301,9 +292,7 @@ def test_a_folder_named_old_inside_old_is_a_folder_and_listed_as_yours(brief):
     cfg, _root, _ids = brief
     planned = _rotation(cfg)
     (nested,) = [_node(cfg, OLD, under=planned.old_id, folder=True)]
-
     again = _rotation(cfg)
-
     (inside,) = [node for node in again.left if node.playlist_id == nested]
     assert (inside.kind, inside.place) == (rotate.LEFT_FOLDER, again.old_place)
     area = Area(name="rekordbox")
@@ -311,16 +300,12 @@ def test_a_folder_named_old_inside_old_is_a_folder_and_listed_as_yours(brief):
     assert [one["kind"] for one in area.yours if one["name"] == OLD] == [rotate.LEFT_FOLDER]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The mirror's INBOX folder and the rotation's plan name the same nodes
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_inbox_folder_mirrors_the_batch_and_names_the_other_nodes(brief):
     cfg, _root, _ids = brief
-
     read = _inbox(cfg)
-
     assert [source.name for source in read.playlists] == [f"{read.name} {BATCH}"]
     assert [label for label, _reason in read.unmirrored] == [
         f"{LABELS} (3 row(s)), not recognised as a batch",
@@ -336,10 +321,8 @@ def test_the_inbox_folder_mirrors_the_batch_and_names_the_other_nodes(brief):
 
 def test_the_rotation_plan_names_the_same_nodes_the_same_way(brief):
     cfg, _root, _ids = brief
-
     planned = _rotation(cfg)
     live = _live(cfg)
-
     under_inbox = [node for node in planned.left if node.place == planned.tree_id]
     assert {node.name: node.kind for node in under_inbox} == KINDS
     assert sorted(under_inbox, key=lambda node: (node.name, node.playlist_id)) == list(live.left)
@@ -351,12 +334,9 @@ def test_the_rotation_plan_names_the_same_nodes_the_same_way(brief):
 
 def test_the_rotation_payload_shows_each_left_node_with_its_row_count(brief):
     from cratekit.intake import rotate_cli
-
     cfg, _root, _ids = brief
-
     planned = _rotation(cfg)
     shown = rotate_cli.plan_payload(planned)
-
     left = {item["playlist"]: item for item in shown["items"] if item["action"] == rotate_cli.LEAVE}
     assert set(left) == set(KINDS)
     assert left[LABELS]["tracks"] == 3 and left[LABELS]["kind"] == rotate.LEFT_UNRECOGNISED
@@ -374,9 +354,7 @@ def test_a_row_added_to_a_left_playlist_does_not_move_the_rotations_digest(brief
         handle.session.commit()
     finally:
         rb_writer.close_db(handle)
-
     after = _rotation(cfg)
-
     assert {node.name: node.tracks for node in after.left}[LABELS] == 4
     assert after.digest == before.digest
 
@@ -391,24 +369,19 @@ def test_a_renamed_left_playlist_still_moves_the_rotations_digest(brief):
         handle.session.commit()
     finally:
         rb_writer.close_db(handle)
-
     assert _rotation(cfg).digest != before.digest
 
 
 def test_the_organize_rotation_step_does_not_list_old_as_yours(brief):
     cfg, _root, _ids = brief
     area = Area(name="rekordbox")
-
     rekordbox_area._rotation(cfg, active_taxonomy.load(cfg), TODAY, area)
-
     yours = {one["name"] for one in area.yours}
     assert OLD not in yours
     assert {FOLDER, LABELS, SMART, native.ANALYZE} <= yours
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The organize step names them on its plan and its line
-# ═══════════════════════════════════════════════════════════════════════════
 
 UNMIRRORED = (
     (f"{LABELS} (36 row(s)), not recognised as a batch", "no landing record names it"),
@@ -442,9 +415,7 @@ def _named(step) -> list[str]:
 def test_the_inbox_step_names_each_unmirrored_node_on_its_plan_and_its_line(installed, monkeypatch):
     world = World(installed, monkeypatch)
     world.mirror(_with_unmirrored((BATCH, (1, 2))))
-
     step = _inbox_step(world.plan())
-
     assert step.state == PLANNED
     assert _named(step) == [
         f"{LABELS} (36 row(s)), not recognised as a batch: not mirrored, no landing record names it",
@@ -461,9 +432,7 @@ def test_an_inbox_with_nothing_to_write_still_names_them(installed, monkeypatch)
     world = World(installed, monkeypatch)
     world.mirror(_with_unmirrored((BATCH, (1,))))
     world.run()
-
     step = _inbox_step(world.plan())
-
     assert step.state == NOTHING
     assert len(_named(step)) == 2 and step.counts["left"] == 2
     assert "2 left as they are" in step.detail
@@ -473,9 +442,7 @@ def test_an_inbox_with_nothing_to_write_still_names_them(installed, monkeypatch)
 def test_an_inbox_with_no_batch_at_all_still_names_them(installed, monkeypatch):
     world = World(installed, monkeypatch)
     world.mirror(_with_unmirrored())
-
     step = _inbox_step(world.plan())
-
     assert step.state == NOTHING
     assert len(_named(step)) == 2
     assert "2 node(s) in INBOX not mirrored" in step.detail
@@ -487,30 +454,23 @@ def test_the_unmirrored_lines_take_no_part_in_the_digest(installed, monkeypatch)
     world.mirror(_with_unmirrored((BATCH, (1,))))
     named = _inbox_step(world.plan()).digest
     world.mirror(replace(_with_unmirrored((BATCH, (1,))), unmirrored=()))
-
     assert _inbox_step(world.plan()).digest == named
 
 
 def test_a_genre_folder_names_no_unmirrored_node(installed, monkeypatch):
     world = World(installed, monkeypatch)
     world.mirror(mirror.Folder(name="Techno", playlists=(mirror.Source("Techno Low", (row(1),)),)))
-
     (step,) = world.plan().steps
-
     assert "not mirrored" not in step.detail and _named(step) == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. The frozen plan carries them to the run that applies
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_frozen_plan_carries_the_unmirrored_nodes(installed):
     library = account_mirror.Library(folders=(_with_unmirrored((BATCH, (1,))),))
-
     mirror_frozen.freeze(installed, "2026-11-05T00:00:00Z-u214", library, {})
     frozen, said = mirror_frozen.load(installed, "2026-11-05T00:00:00Z-u214")
-
     assert said == "" and frozen is not None
     assert frozen.library == library
     assert frozen.library.folders[0].unmirrored == UNMIRRORED
@@ -531,7 +491,6 @@ def test_a_rebuild_from_the_frozen_plan_still_names_them(installed, monkeypatch)
         installed, area, lambda: world.account,
         account_mirror.Run(run_id=run, record=True, decided=True),
     )
-
     step = _inbox_step(area)
     assert len(_named(step)) == 2
     assert "2 node(s) in INBOX not mirrored" in step.detail
@@ -539,14 +498,11 @@ def test_a_rebuild_from_the_frozen_plan_still_names_them(installed, monkeypatch)
 
 @pytest.mark.parametrize(
     "held",
-    [
-        "INBOX Old",
-        [["a label only"]],
-        [["a label", 3]],
-        [("a", "b", "c")],
-    ],
+    ["INBOX Old", [["a label only"]], [["a label", 3]], [("a", "b", "c")]],
     ids=["text", "one part", "not text", "three parts"],
 )
+
+
 def test_frozen_unmirrored_nodes_that_are_not_pairs_of_text_are_not_read(installed, held):
     library = account_mirror.Library(folders=(_with_unmirrored((BATCH, (1,))),))
     mirror_frozen.freeze(installed, "2026-11-05T00:00:00Z-ab12", library, {})
@@ -554,9 +510,7 @@ def test_frozen_unmirrored_nodes_that_are_not_pairs_of_text_are_not_read(install
     document = json.loads(path.read_text(encoding="utf-8"))
     document["library"]["folders"][0]["unmirrored"] = held
     path.write_text(json.dumps(document), encoding="utf-8")
-
     frozen, said = mirror_frozen.load(installed, "2026-11-05T00:00:00Z-ab12")
-
     assert frozen is None and "is not one this build reads" in said
 
 
@@ -569,9 +523,7 @@ def test_a_version_four_frozen_plan_is_planned_afresh(installed):
     document["version"] = 4
     del document["library"]["folders"][0]["unmirrored"]
     path.write_text(json.dumps(document), encoding="utf-8")
-
     frozen, said = mirror_frozen.load(installed, "2026-11-05T00:00:00Z-cd34")
-
     # 7 since U236, which froze the placements beside the snapshots U222 froze;
     # a version 4 record is still refused.
     assert mirror_frozen.VERSION == 7

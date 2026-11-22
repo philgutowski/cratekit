@@ -48,9 +48,7 @@ from tests.test_organize import machine as machine  # noqa: PLC0414
 from tests.test_organize import seams as seams  # noqa: PLC0414
 from tests.test_organize import world as world  # noqa: PLC0414
 
-# ---------------------------------------------------------------------------
 # What every open and every close was, counted at the binding's seam
-# ---------------------------------------------------------------------------
 
 
 class Opens:
@@ -97,31 +95,24 @@ def _said(envelope: dict) -> tuple[dict, list]:
     return data, warnings
 
 
-# ---------------------------------------------------------------------------
 # One open, one close
-# ---------------------------------------------------------------------------
 
 
 def test_the_report_opens_the_database_once_and_closes_it_once(world, monkeypatch):
-    opens = Opens(monkeypatch)
-
-    _report()
-
-    assert len(opens.opened) == 1, [caller for caller, _w, _db in opens.opened]
-    ((caller, write, db),) = opens.opened
-    assert caller == "handle" and write is False
-    assert opens.closed == [db]
-
-
-def test_the_report_says_exactly_what_it_said_with_an_open_per_step(world, monkeypatch):
-    shared = _report()
+    """And says exactly what it said with an open per step."""
+    with monkeypatch.context() as patched:
+        opens = Opens(patched)
+        shared = _report()
+        assert len(opens.opened) == 1, [caller for caller, _w, _db in opens.opened]
+        ((caller, write, db),) = opens.opened
+        assert caller == "handle" and write is False
+        assert opens.closed == [db]
     with monkeypatch.context() as patched:
         opens = Opens(patched)
         _without_sharing(patched)
         separate = _report()
         # THE COMPARISON IS AGAINST THE OLD SHAPE, measured: seven opens.
         assert len(opens.opened) == 7 and opens.each_closed_once()
-
     assert _said(shared) == _said(separate)
     for area in ("rekordbox", "account"):
         assert _steps(shared, area) == _steps(separate, area)
@@ -142,7 +133,6 @@ def test_an_open_that_refuses_refuses_each_step_as_its_own_open_did(world, monke
     attempts.clear()
     _without_sharing(monkeypatch)
     separate = _report()
-
     # AS MANY ATTEMPTS AS READERS THAT REACHED THEIR OPEN, five, measured on
     # the base; a refusal kept and handed on would make it one.
     assert asked == len(attempts) == 5
@@ -155,9 +145,7 @@ def test_an_open_that_refuses_refuses_each_step_as_its_own_open_did(world, monke
     assert len(refused) >= 4, refused
 
 
-# ---------------------------------------------------------------------------
 # Every way out closes it
-# ---------------------------------------------------------------------------
 
 
 def test_a_step_that_refuses_after_the_open_leaves_no_handle_open(world, monkeypatch):
@@ -168,7 +156,6 @@ def test_a_step_that_refuses_after_the_open_leaves_no_handle_open(world, monkeyp
 
     monkeypatch.setattr(rotate, "plan_rotation", refusing)
     envelope = _report()
-
     assert _steps(envelope, "rekordbox")["rotate"]["state"] == "refused"
     assert len(opens.opened) == 1 and opens.each_closed_once()
 
@@ -183,14 +170,11 @@ def test_a_failure_nobody_expected_still_closes_the_handle(world, monkeypatch):
     # the report fails.
     monkeypatch.setattr(own, "rekordbox_home", failing)
     code, envelope = drive([*VERB, "--report"])
-
     assert code != int(ExitCode.OK), envelope
     assert len(opens.opened) == 1 and opens.each_closed_once()
 
 
-# ---------------------------------------------------------------------------
 # The run that answers a gate is not changed
-# ---------------------------------------------------------------------------
 
 #: The applying run's opens on the base, both gates answered by their two
 #: acts and the run that writes, in order: who opened, and whether to write.
@@ -226,17 +210,13 @@ def test_the_applying_run_opens_exactly_as_it_did(world, monkeypatch):
 
     opens = Opens(monkeypatch)
     monkeypatch.setattr(rb_writer, "SharedRead", never)
-
     code, done, _first = _answered()
-
     assert code == int(ExitCode.OK), done
     assert tuple((caller, write) for caller, write, _db in opens.opened) == APPLYING
     assert opens.each_closed_once()
 
 
-# ---------------------------------------------------------------------------
 # The readers a set or a selection reaches
-# ---------------------------------------------------------------------------
 
 
 def test_the_sets_step_reads_inspiration_through_the_one_handle(world, monkeypatch):
@@ -248,9 +228,7 @@ def test_the_sets_step_reads_inspiration_through_the_one_handle(world, monkeypat
         _without_sharing(patched)
         separate = _report()
     opens = Opens(monkeypatch)
-
     again = _report()
-
     step = _steps(again, account_area.AREA)[f"archive:{SET_NAME}"]
     assert step["state"] == "planned", step
     # EIGHT READERS, one open: the brief's seven and the INSPIRATION listing.
@@ -260,16 +238,18 @@ def test_the_sets_step_reads_inspiration_through_the_one_handle(world, monkeypat
 
 def test_a_selection_that_reads_no_database_opens_none(world, monkeypatch):
     opens = Opens(monkeypatch)
-
     code, envelope = drive([*VERB, "--report", "--only", account_area.FILE])
-
     assert code == int(ExitCode.OK), envelope
     assert opens.opened == []
 
 
-# ---------------------------------------------------------------------------
 # The shared read alone
-# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def cfg(machine):
+    """A configured disposable database and nothing in it of the world's."""
+    return machine
 
 
 def _first_playlist(db) -> Any:
@@ -289,16 +269,13 @@ def _probe(cfg) -> bool:
         conn.close()
 
 
-def test_a_shared_read_opens_at_its_first_read_and_once(world, monkeypatch):
-    cfg = world[0]
+def test_a_shared_read_opens_at_its_first_read_and_once(cfg, monkeypatch):
     opens = Opens(monkeypatch)
     shared = rb_writer.SharedRead(cfg)
-
     assert opens.opened == []
     first = shared.handle()
     rb_writer.done_reading(first, shared)
     second = shared.handle()
-
     assert first is second and len(opens.opened) == 1
     assert opens.opened[0][1] is False, "opened with read intent"
     assert opens.closed == []
@@ -307,8 +284,7 @@ def test_a_shared_read_opens_at_its_first_read_and_once(world, monkeypatch):
     assert opens.closed == [first]
 
 
-def test_a_shared_read_asks_again_after_an_open_that_refused(world, monkeypatch):
-    cfg = world[0]
+def test_a_shared_read_asks_again_after_an_open_that_refused(cfg, monkeypatch):
     real = rb_writer.open_db
     attempts: list[int] = []
 
@@ -320,13 +296,11 @@ def test_a_shared_read_asks_again_after_an_open_that_refused(world, monkeypatch)
 
     monkeypatch.setattr(rb_writer, "open_db", once_refusing)
     shared = rb_writer.SharedRead(cfg)
-
     with pytest.raises(CratekitError) as refused:
         shared.handle()
     assert refused.value.cause.reason == "database-open-failed"
     db = shared.handle()
     shared.close()
-
     assert len(attempts) == 2 and db is not None
 
 
@@ -344,21 +318,14 @@ def test_a_release_forgets_every_row_so_the_next_reader_reads_afresh(world):
         # THE CONTROL: unreleased, the session answers the row it loaded.
         assert str(db.get_playlist(ID=playlist_id).Name) == was
         rb_writer.done_reading(db, shared)
-
         again = shared.handle().get_playlist(ID=playlist_id)
-
         assert str(again.Name) == "Renamed elsewhere"
     finally:
         shared.close()
 
 
 def test_a_released_handle_holds_no_lock_while_the_report_waits(world):
-    """The report holds its handle across provider calls, so it must hold no lock there.
-
-    IN THE ROLLBACK JOURNAL, the stricter mode, where a reader's lock keeps
-    every writer out; in WAL a reader blocks no writer at all. The fixture is
-    disposable, so its mode is switched for the probe.
-    """
+    """The report holds its handle across provider calls, so it must hold no lock there."""
     cfg = world[0]
     conn = sqlite3.connect(cfg.library.db_path)
     ((mode,),) = conn.execute("PRAGMA journal_mode=DELETE").fetchall()
@@ -374,14 +341,12 @@ def test_a_released_handle_holds_no_lock_while_the_report_waits(world):
         open_statement.close()
         _first_playlist(db)
         rb_writer.done_reading(db, shared)
-
         assert _probe(cfg) is True
     finally:
         shared.close()
 
 
-def test_a_shared_read_refuses_a_handle_not_its_own_and_a_read_after_close(world):
-    cfg = world[0]
+def test_a_shared_read_refuses_a_handle_not_its_own_and_a_read_after_close(cfg):
     shared = rb_writer.SharedRead(cfg)
     other = rb_writer.open_db(cfg.library.db_path, cfg=cfg)
     try:
@@ -392,26 +357,20 @@ def test_a_shared_read_refuses_a_handle_not_its_own_and_a_read_after_close(world
     finally:
         rb_writer.close_db(other)
         shared.close()
-
     with pytest.raises(CratekitError) as after:
         shared.handle()
     assert after.value.cause.reason == "internal-error"
 
 
-def test_a_reader_with_no_shared_read_closes_its_own_handle(world, monkeypatch):
-    cfg = world[0]
+def test_a_reader_with_no_shared_read_closes_its_own_handle(cfg, monkeypatch):
     opens = Opens(monkeypatch)
     db = rb_writer.open_db(cfg.library.db_path, cfg=cfg)
-
     rb_writer.done_reading(db, None)
-
     assert opens.closed == [db]
 
 
-def test_the_inspiration_opener_refuses_to_write_through_a_shared_read(world):
+def test_the_inspiration_opener_refuses_to_write_through_a_shared_read(cfg):
     from cratekit.export import set_cli
-
-    cfg = world[0]
     shared = rb_writer.SharedRead(cfg)
     try:
         with pytest.raises(CratekitError) as refused:
