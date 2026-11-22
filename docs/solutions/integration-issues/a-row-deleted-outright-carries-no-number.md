@@ -73,7 +73,9 @@ every playlist it made. The content id is random and the UUID a fresh one the
 landing wrote, so no database from before the landing holds the pair; the id
 alone is not enough, since an import after a rollback can draw the same random
 id. What is still read as a rollback, a landing whose every row is gone and
-whose playlists are not all held, is counted on the gate's screen.
+whose playlists are not all held, is counted on the gate's screen while one of
+its absent rows was never numbered, so a batch already offered or taken as
+history and tidied afterwards does not grow the count.
 
 ## How to apply
 

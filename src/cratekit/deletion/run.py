@@ -146,9 +146,9 @@ class Plan:
     #: The landings this run read as rolled back (R-1844) that hold an absent
     #: row no run has numbered: the database holds neither one of the
     #: landing's rows under its recorded UUID nor every playlist it made, so
-    #: none of its rows is offered, and that row was never put to anyone. Said
-    #: on the gate's screen, because a refusal nobody sees reads as a library
-    #: with nothing removed.
+    #: none of its rows is offered, and no run offered that row or took it as
+    #: history. Said on the gate's screen, because a refusal nobody sees reads
+    #: as a library with nothing removed.
     rolled_back: int = 0
 
     @property
