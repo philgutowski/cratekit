@@ -8,7 +8,7 @@
   "invalid_reason": "in progress",
   "baseline_collected": 22933,
   "baseline_exit": 1,
-  "pytest_runs": 100,
+  "pytest_runs": 101,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 251,
@@ -1776,6 +1776,50 @@
       "source": {
         "table": "r787.json",
         "id": "D1_doctor_own_list"
+      }
+    },
+    {
+      "id": "r787.D2_set_guard_removed",
+      "description": "doctor stops judging a native record by the set, so a native catalogue tree reads ok",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7522348802641261",
+      "subset": [
+        "tests/test_backup_comparison.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_config_update.py",
+        "tests/test_cutover_cli.py",
+        "tests/test_doctor.py",
+        "tests/test_incremental_sync.py",
+        "tests/test_intake_imported.py",
+        "tests/test_outbound_workers.py",
+        "tests/test_packaging.py",
+        "tests/test_paths_resolved.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 2223,
+      "baseline_collected": 2223,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_cli.py::test_doctor_lists_and_fails_a_recorded_tree_the_taxonomy_does_not_declare"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            tree_id not in may_cut_over or record.source not in tree_registry.REBUILDABLE",
+      "new": "            record.source not in tree_registry.REBUILDABLE",
+      "source": {
+        "table": "r787.json",
+        "id": "D2_set_guard_removed"
       }
     }
   ],
