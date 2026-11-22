@@ -10,6 +10,12 @@ since the slug carries the sentence. Codes are drawn only from 10 through 59, so
 refusal is never confused with success, a defect, the parser's 2, the growth band
 or the shell's own statuses, and ``_index`` enforces that at import. Nothing in
 ``src/`` reads this table yet: it records what a refusal is owed.
+
+Two readers see these statuses. A shell owns 126 and above (not executable, not
+found, 128 plus a signal, and 255 for a status above a byte); the job engine
+reads ``subprocess.returncode``, which is the NEGATIVE signal number for a child
+killed by a signal. Both are safe because nothing reserved here is negative and
+nothing is at or above 126.
 """
 
 from __future__ import annotations
@@ -484,8 +490,8 @@ def _index(reservations: tuple[Reservation, ...]) -> Mapping[str, Reservation]:
                 f"own territory."
             )
         # Unreachable today, kept as defence in depth: these state what the
-        # range means, so a renumbered band fails by name (residual "One check
-        # in this unit is unreachable").
+        # range means, so a renumbered band fails by name. See the residual
+        # "One check in this unit is unreachable".
         band = band_of(reservation.code)
         if band.name not in RESERVED_BANDS:
             raise ValueError(

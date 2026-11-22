@@ -2597,8 +2597,8 @@ def test_conformance_4_adjudication_goes_through_the_review_queue(entry, configu
     Per declared adjudicating verb, under its own handler key, an offered item is
     addressable by that key, a real command line resolves it, and an independent
     store open sees the verdict. This drives the shared surface, not the verb, a gap
-    recorded as the residual "Conformance 4 and 6 drive the shared surface and not
-    the landed verbs". The static half walks each landed verb's source for a comma
+    the residual finding "Conformance 4 and 6 drive the shared surface and not the
+    landed verbs" records. The static half walks each landed verb's source for a comma
     separated writer.
     """
     import importlib
@@ -2700,8 +2700,8 @@ def test_conformance_6_destructive_verbs_refuse_without_the_session_gates(
     Three refusals, three codes, zero writes each: a lock held elsewhere is 20, a
     missing backup acknowledgment 32, a mismatched volume 22. The trigger is
     ``destructive``, not ``writes`` (KTD24). This drives the shared gate under each
-    verb's name, not the verb through the dispatcher, a gap recorded as the residual
-    "Conformance 4 and 6 drive the shared surface and not the landed verbs".
+    verb's name, not the verb through the dispatcher, a gap the residual finding
+    "Conformance 4 and 6 drive the shared surface and not the landed verbs" records.
     """
     import importlib
 
