@@ -1,15 +1,9 @@
-"""What the two tagging verbs share: how a queued job is resumed and reported.
+"""The names the tagging verbs import the shared resume shell by.
 
-``crate tag folder`` and ``crate tag retag`` disagree about what an item is,
-about where the answer comes from and about whether a person has to confirm
-anything first. They agree about how a queued job is resumed, what a job with
-no items means, and what shape the payload they report takes. Those three have
-one home each since U298, :func:`cratekit.core.jobs.advance`,
-:func:`cratekit.core.jobs.reported` and :func:`cratekit.cli.output.no_job`,
-and this module keeps the names its package imports them by.
-
-Each verb's own summary of what it did, and the gate ``tag retag`` answers,
-are deliberately not here.
+How a queued job is resumed and reported, and the payload of a run that
+queued nothing, have one home each since U298:
+:func:`cratekit.core.jobs.advance`, :func:`cratekit.core.jobs.reported` and
+:func:`cratekit.cli.output.no_job`.
 
 Layer: modules.
 """

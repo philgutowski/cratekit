@@ -1,68 +1,32 @@
 """Read a title once into typed fields, and say whether two name one recording.
 
-THE RECORD SHOP MATCHER, REDESIGNED BY U280. Every source asked by artist and
-title (Beatport, Discogs, Traxsource, Bandcamp) decides through
-:func:`matches` whether a catalogue row is the file's own recording, and the
-row's genre is then written onto the file for good. Four fixes landed on the
-matcher it replaces in one day (R-1534, R-1631, R-1636, R-1646), each review
-finding a defect the fix before it made, because that matcher read a title as
-every way it could be read, sets of word tuples from every run of its dash
-parts, and two titles matched when any reading of one equalled any of the
-other. A reading added for one shape widened every shape on every source.
+Every source asked by artist and title decides through :func:`matches`
+whether a catalogue row is the file's own recording (U280), and the row's
+genre is then written for good. Each side is read once, into fields that say
+what each part is and how that was told, never as every way it could be read
+(the defect of R-1534, R-1631, R-1636 and R-1646):
 
-WHAT REPLACES IT. Each side is read once, into fields that say what each part
-of it is and how that was told:
+- A catalogue row by its own structure (:class:`Row`): its title before the
+  bracket groups it ends with or a dash tail that is a version, and the split
+  of title from version that writes. A row carries no head or credit.
+- A file's title, or its name with no title tag, into its parts
+  (:class:`FileName`), each with its :class:`Role` and how it was told
+  (:class:`Told`). The title is chosen by position.
+- Where only a list of version words could tell a part, the name is
+  :attr:`Outcome.AMBIGUOUS`, settled only by a row writing the same split;
+  anything else is a miss, never a guess (R-1646).
 
-- A catalogue row is read by its own structure (:class:`Row`): its title,
-  before the bracket groups it ends with or before a dash tail that is a
-  version, and the split of its title from its version that structure
-  writes. A row never carries a head or an artist's credit.
-- A file's title, or its name when it has no title tag, is read into its
-  parts (:class:`FileName`): the ``KEY - BPM`` head the live library writes,
-  a track number, the searched artist's credit, the title, a version after
-  it, an album before a track numbered title, each part with its
-  :class:`Role` and how it was told (:class:`Told`). The title is one part,
-  chosen by position, and what may follow it is read with it only where the
-  name's own structure allows.
-- Where only a list of version words could tell what a part is, the name is
-  :attr:`Outcome.AMBIGUOUS`, and only a row that writes the same split of a
-  title from its version settles it; anything else is a miss, never a guess
-  (R-1646, the conservative option of #770 and #788).
+A :class:`Title` is known by its words as written and its core's, each with
+and without a feature credit and a trailing version run; two name one
+recording when a name of one is a name of the other (:meth:`Title.same`).
+Nothing is compared by characters, and shedding stays inside a title.
 
-THE ONE COMPARISON. A :class:`Title` is one stretch of text read as a title,
-known by its words as written and by its core, the words before the bracket
-groups it ends with, each with and without its feature credit and its
-trailing run of version words. Two titles name one recording when a name of
-one is a name of the other (:meth:`Title.same`). Nothing is compared by
-characters. Shedding stays inside the title: the whole name is compared as
-written, never shed of a feature credit or a version, a bracket group is shed
-only from the dash part that carries it, and a stretch is read across a dash only where the name's
-structure lets the title run on, into its own version or a part that may be
-its own.
-
-A NAMED MIX, FOR DISCOGS (U318). :func:`matches` reads a title past its
-version, so "Two Months Off (Tim Green Remix)" and "Two Months Off" are one
-recording to it. Discogs lists a release's mixes as its tracks, and a remix
-took a release of four other mixes that way, so Discogs also asks
-:func:`named_versions` of the file and :func:`writes_version` of the row: a
-mix that names its maker must be written on the release. The other sources
-are unchanged. A maker and a credit are compared as names, folded
-(:func:`_folded`): accents off, and "ø", "æ", "œ", "ß", "đ", "ł" and "þ",
-which NFKD leaves whole, spelled plain (:data:`_PLAIN_SPELLINGS`), so
-"Trentemøller" is "Trentemoller" (U324), for a maker on Discogs and for the
-artist's credit every source reads a file's name by. A title is compared by
-its words as written.
-
-WHERE A LIST STILL DECIDES, and which way it fails. :data:`VERSION_WORDS`
-sheds a trailing version from a title and tells a dash tail that is a
-version from one that is not. A word it lacks makes a title longer than its
-row writes it, a miss. It never decides that a part is the title: that is
-position, and where position cannot tell, the outcome is ambiguous. For a
-named mix, :data:`VERSION_WORDS` and :data:`MIX_DESCRIPTIONS` say which
-words name no one, and it fails both ways: a word both lack is read as a
-name, which costs a Discogs miss, and a maker named by their words alone,
-"(DJ Deep Remix)", is read as no one, matched as before, another mix's
-release included.
+For Discogs (U318), which lists a release's mixes as its tracks, a mix naming
+its maker (:func:`named_versions`) must be written on the release
+(:func:`writes_version`). Makers and credits are compared folded
+(:func:`_folded`, U324). :data:`VERSION_WORDS` only sheds a version, never
+picks the title, so a word it lacks costs a miss; for a named mix a word it
+and :data:`MIX_DESCRIPTIONS` both lack reads as a maker's name.
 """
 
 from __future__ import annotations
@@ -85,14 +49,11 @@ Words = tuple[str, ...]
 TitleSplit = tuple[Words, Words]
 
 
-# ---------------------------------------------------------------------------
 # Text: words, brackets, the dash between parts
-# ---------------------------------------------------------------------------
 
 
 def normalized(value: str) -> str:
-    """NFC, lowercased, trimmed. Catalogue text and file tags disagree about all
-    three, and a comparison that skips normalizing misses on the accent alone."""
+    """NFC, lowercased, trimmed: catalogue text and file tags disagree on all three."""
     return unicodedata.normalize("NFC", value).lower().strip()
 
 
@@ -100,10 +61,8 @@ def normalized(value: str) -> str:
 #: punctuation here.
 _WORD = re.compile(r"[^\W_]+")
 
-#: The spaced dash between the parts of a title. A catalogue writes a version
-#: after it, "Sunrise Mood - Original Mix"; the live library writes its
-#: ``KEY - BPM - `` head before it in the title tag, and a file with no title
-#: tag is asked by its "Artist - Title" stem.
+#: The spaced dash between a title's parts: "Sunrise Mood - Original Mix",
+#: the library's ``KEY - BPM - `` head, an "Artist - Title" stem.
 DASH = " - "
 
 #: The brackets a title's groups are written in, round or square.
@@ -138,11 +97,8 @@ def words(value: str) -> Words:
 def _trailing_group_start(value: str) -> int | None:
     """Where the balanced bracket group a title ends with opens, or None.
 
-    Read from the end, bracket by bracket, so a group with a group inside it,
-    "(Mike's (Dub) Mix)", is one group, and a bracket in mid title is never
-    taken for the start of the suffix: "Knee (Not Just) Deep (Part 1)" ends
-    with "(Part 1)", not with everything from "(Not Just)" on (R-1631). A
-    square bracket is a bracket too, "Sun Path [Nightwave Remix]".
+    Read from the end, so "(Mike's (Dub) Mix)" is one group and "Knee (Not
+    Just) Deep (Part 1)" ends with "(Part 1)" only (R-1631). Square or round.
     """
     text = value.rstrip()
     if not text.endswith(tuple(_CLOSING)):
@@ -169,11 +125,8 @@ def without_trailing_groups(value: str) -> str:
 
 
 def own_core(value: str) -> tuple[str, bool]:
-    """:func:`title_core`, never across a dash: the bracket groups a title of
-    several dash parts ends with are its last part's own, so when that part
-    is brackets alone they are kept. "Artist - (Intro)" is never "artist"
-    (U280 review round one's F2), in the shared match and in Beatport's
-    ranking alike (round two)."""
+    """:func:`title_core`, never across a dash: a last part of brackets alone
+    keeps them, so "Artist - (Intro)" is never "artist" (U280's review)."""
     text = value.strip()
     if DASH in text and not identifies(without_trailing_groups(text.split(DASH)[-1])):
         return text, False
@@ -189,13 +142,9 @@ def _unbracketed(value: str) -> str:
 def title_core(value: str) -> tuple[str, bool]:
     """A normalized title's core, and whether it may be compared exactly only.
 
-    The core is the title with the bracket groups it ENDS with taken off, read
-    as balanced groups from the end, so a group in mid title stays: "Knee (Not
-    Just) Deep (Part 1)" is "Knee (Not Just) Deep" (R-1631), and "(Not Just)
-    Knee Deep (Part 1)" is "(Not Just) Knee Deep". A title of bracket groups
-    alone, "(Intro)" or "(Intro) (Extended Mix)", is its first groups' words,
-    "intro", read as they are and never shed further, since a word out of a
-    bracket is a word in too many titles (R-1534).
+    The core sheds only the bracket groups the title ends with (R-1631). A
+    title of groups alone, "(Intro) (Extended Mix)", is its first groups'
+    words, never shed further: such a word is in too many titles (R-1534).
     """
     bare = without_trailing_groups(value)
     if identifies(bare):
@@ -208,9 +157,7 @@ def title_core(value: str) -> tuple[str, bool]:
     return _unbracketed(current), True
 
 
-# ---------------------------------------------------------------------------
 # Words a title sheds: a feature credit, a version, a remaster's year
-# ---------------------------------------------------------------------------
 
 #: The words that open a featured artist's credit written into a title.
 _FEATURING = frozenset({"feat", "ft", "featuring"})
@@ -231,9 +178,8 @@ def _without_featuring(found: Words) -> Words | None:
 
 
 def _a_remasters_year(found: Words, index: int) -> bool:
-    """Whether the word at ``index`` is a year written beside "remaster" or
-    "remastered", the one year a version carries. Any other year names the
-    recording, "Summer 1999" (R-1631, round two)."""
+    """Whether the word at ``index`` is a year beside "remaster(ed)", the one
+    year a version carries; "Summer 1999" names a recording (R-1631)."""
     if _YEAR.fullmatch(found[index]) is None:
         return False
     beside = found[max(index - 1, 0) : index] + found[index + 1 : index + 2]
@@ -248,11 +194,8 @@ def _without_version(found: Words) -> Words | None:
     """The words before a trailing run of version words, "sunrise mood" of
     "Sunrise Mood Extended Mix", or None.
 
-    The run is words of the domain's :data:`VERSION_WORDS` and a remaster's
-    year, at least one of them a version word, and something must be left
-    before it: "Original Mix" and "Dub Club" are titles, never a version of
-    nothing. Any other number stays, since it names the recording: "Kitchen
-    Session 2" is never "Kitchen Session 1". The list only sheds, so a version
+    At least one version word, and something left before it ("Original Mix"
+    is a title). Other numbers name the recording. The list only sheds, so a
     word it lacks costs a title its own row, never another's.
     """
     end = len(found)
@@ -282,9 +225,7 @@ def _ends_in_version(text: str) -> bool:
     return bool(named) and named[-1] in VERSION_WORDS
 
 
-# ---------------------------------------------------------------------------
 # A title: one stretch of text, and the names it is known by
-# ---------------------------------------------------------------------------
 
 
 def _shed(found: Words) -> set[Words]:
@@ -340,22 +281,11 @@ def read_title(
     """One stretch of normalized text read as a title, or None when it carries
     no letter or digit.
 
-    A title of bracket groups alone is its first groups' words and nothing
-    else (:func:`title_core`). Otherwise it is known by its words and its
-    core's, each shed of a feature credit and a version run unless ``shed`` is
-    False, by its core without a zero padded track number it opens with when
-    ``numbered``, and, kept apart, by its core with its leading groups shed.
-
-    With ``marker``, a stretch that opens where the naming verb writes its
-    marker, a square bracketed group it opens with is read past as well, so
-    "[MP3] (Not Just) Knee Deep" is also "(Not Just) Knee Deep", whose own
-    leading group then sheds as any title's does.
-
-    Two filters say what a stretch read at that place cannot be. ``after_title``
-    (a title read after the artist's credit or a track number) is never
-    version words alone, "Original Mix" of "Artist - Album - 01 Original Mix".
-    ``in_head`` (a title read inside a trailing head) is never numbers and
-    keys alone.
+    Known by its words and its core's, shed unless ``shed`` is False; with
+    ``numbered``, by its core past a zero padded track number; and, kept
+    apart, by its core past its leading groups. With ``marker`` a square
+    bracketed group it opens with is read past too. ``after_title`` forbids
+    version words alone, ``in_head`` numbers and keys alone.
     """
     if not identifies(text):
         return None
@@ -373,12 +303,9 @@ def read_title(
             if identifies(rest):
                 bare = forms(words(rest))
     if numbered and not exact:
-        # A track number is its first part's own, as the layout tells one
-        # (:func:`_opens_with_a_track_number`): before more words, "01
-        # Sunrise Mood", the title is the rest of the core; before brackets
-        # alone it is a lone "01" to "09", and the title is read past it,
-        # "02 (Intro) (Extended Mix)" as "(Intro) (Extended Mix)", while "007
-        # (Intro)" is a title (review round two).
+        # As the layout tells one (:func:`_opens_with_a_track_number`): before
+        # brackets alone only "01" to "09" is a number, so "007 (Intro)" is a
+        # title (review round two).
         found = words(core)
         if len(found) > 1:
             names |= forms(found[1:])
@@ -415,9 +342,7 @@ def read_title(
     )
 
 
-# ---------------------------------------------------------------------------
 # A catalogue row, read by its own structure
-# ---------------------------------------------------------------------------
 
 
 def _a_tail_to_shed(tail: str, *, file: bool) -> bool:
@@ -433,11 +358,9 @@ def _a_tail_to_shed(tail: str, *, file: bool) -> bool:
 
 
 def _row_splits(text: str) -> frozenset[TitleSplit]:
-    """The splits a catalogue row writes into a title and its version: before
-    the bracket groups it ends with, "Sunrise Mood (Extended Mix)", or before
-    a dash tail that is a version, "Sunrise Mood - Extended Mix". A row of no
-    such structure, "Vocal Mix" or "Sunrise Mood Extended Mix", writes none,
-    since a catalogue lists a single's versions as its track titles."""
+    """The splits a catalogue row writes into a title and its version, before
+    its trailing bracket groups or a version dash tail. "Sunrise Mood Extended
+    Mix" writes none: a catalogue lists a single's versions as titles."""
     parts = text.split(DASH)
     every = words(text)
     splits: set[TitleSplit] = set()
@@ -480,19 +403,15 @@ def read_row(value: str) -> Row:
 
 
 def read_beatport_row(name: str, mix: str) -> Row:
-    """A Beatport row: its name read as a row, with the split its name and mix
-    write together, "Sunrise Mood" with "Extended Mix" splitting as "Sunrise
-    Mood (Extended Mix)" does (R-1646). The mix reaches no other name, so a
-    name is still matched whatever mix it is listed under."""
+    """A Beatport row: its name read as a row, plus the split name and mix
+    write together (R-1646); the mix reaches no other name."""
     row = read_row(name)
     if not identifies(mix):
         return row
     return Row(row.titles, row.splits | _row_splits(f"{normalized(name)} ({normalized(mix)})"))
 
 
-# ---------------------------------------------------------------------------
 # A file's head: the KEY - BPM the naming verb writes, and a track number
-# ---------------------------------------------------------------------------
 
 #: The tempos a head carries before any key, as the naming verb writes them: a
 #: whole number of beats a minute. A number outside it, "909" or "1998", is a
@@ -526,13 +445,10 @@ def _a_tempo(word: str) -> bool:
 
 
 def _head_end(parts: list[str]) -> int:
-    """How many dash parts a file's title opens with that are its head, as the
-    naming verb writes one: a Camelot key, a tempo, or one of each, in either
-    order, and never the title's last part. Bounded to those shapes, so a
-    title of numbers after a head is the title, "909" of "08A - 124 - 909 -
-    Artist - Album". A number after a key is its tempo whatever its value; a
-    tempo alone, "124 - Title", or before a key, is one only in a tempo's
-    range, so "909 - Artist - Album" is titled "909" (R-1636)."""
+    """How many dash parts a file's title opens with that are its head: a
+    Camelot key, a tempo, or one of each in either order, never the last
+    part. A number after a key is its tempo whatever its value; otherwise
+    only in a tempo's range, so "909 - Artist - Album" is titled (R-1636)."""
     end = 0
     keys = tempos = False
     while end < min(2, len(parts) - 1):
@@ -601,9 +517,7 @@ def _a_track_number(part: str) -> bool:
     return _LONE_TRACK_NUMBER.fullmatch(_LEADING_GROUPS.sub("", part).strip()) is not None
 
 
-# ---------------------------------------------------------------------------
 # The searched artist's credit, as a name writes it
-# ---------------------------------------------------------------------------
 
 #: What joins two names in one credit, "Aurora Bloom & Tide", "Aurora Bloom,
 #: Tide" or "Aurora Bloom; Tide". "and" is not here: it is in names, "Above and
@@ -617,15 +531,9 @@ _CREDIT_JOIN = re.compile(r"[,&/;+]")
 _CREDIT_WORDS = frozenset({"x", "vs", "pres", "presents"}) | _FEATURING
 
 
-#: The Latin letters accent stripping leaves whole, each read as its plain
-#: spelling (U324). NFKD takes the accent off "Â", but "ø", "æ", "œ", "ß",
-#: "đ", "ł" and "þ" are letters of their own, so "Trentemøller" and the
-#: "Trentemoller" a file writes read as two makers, and a remix credited one
-#: way missed every release crediting it the other. Each letter is read one
-#: way only, "ø" as "o" and never "oe", so "Trentemoeller" stays another
-#: spelling. Both cases are listed, though every caller lowers its text
-#: first, so the fold reads a letter the same whoever calls it. Only these
-#: letters: "ð", "ı", "ħ", "ŧ" and "ŋ" are left as written.
+#: The Latin letters NFKD leaves whole, each read one way as its plain
+#: spelling (U324), so "Trentemøller" is "Trentemoller", never
+#: "Trentemoeller". Both cases, whoever calls; "ð", "ı", "ħ", "ŧ" and "ŋ" stay.
 _PLAIN_SPELLINGS = MappingProxyType(
     {
         "ø": "o",
@@ -652,11 +560,8 @@ def _unaccented(word: str) -> str:
 
 
 def _folded(word: str) -> str:
-    """A word with its accents taken off, so "Âme" and "Ame" are one name,
-    and with the letters :data:`_PLAIN_SPELLINGS` lists, which NFKD leaves
-    whole, spelled plain, so "Trentemøller" and "Trentemoller" are too.
-    The table is read after the accents come off, so a letter carrying an
-    accent as well, "ǿ", is read as its plain spelling too."""
+    """A word with its accents off and :data:`_PLAIN_SPELLINGS` read plain,
+    in that order, so "Âme" is "Ame" and "ǿ" is "o"."""
     return _unaccented(word).translate(_PLAIN_LETTERS)
 
 
@@ -693,13 +598,9 @@ def _artist_names(artist: str) -> frozenset[Words]:
 
 def _runs_in(inner: Words, outer: Words, *, written: Words | None = None) -> bool:
     """Whether ``inner`` is a run of ``outer``'s words, in order and together;
-    with ``written``, ``inner``'s words as written before they were folded, a
-    word of one letter stands for a word it opens, "B Badie" in "Bernard
-    Badie". A letter is one with its accents off and before the table
-    spells it plain, main's rule exactly, since the fold spells "Þ" and "Æ"
-    with two (U324): "Þ Badie" still stands for "Þórður Badie" and "Ǽ Badie"
-    for "Æsir Badie", and a word NFKD itself spells with two, "Ĳ", is no
-    initial, as on main."""
+    with ``written``, a word of one letter as written stands for a word it
+    opens, "B Badie" in "Bernard Badie". One letter is counted before the
+    table spells it plain (U324), so "Þ" is an initial and "Ĳ" is not."""
     size = len(inner)
 
     def initial(index: int) -> bool:
@@ -718,19 +619,11 @@ def _runs_in(inner: Words, outer: Words, *, written: Words | None = None) -> boo
 def _names_the_artist(part: str, names: frozenset[Words], *, first: bool) -> bool:
     """Whether a dash part of the file's title is the searched artist's credit.
 
-    It is when it reads as a credit naming the artist: one of the names it
-    joins (:func:`_credited_names`) is one of the artist's names word for word,
-    accents aside and the letters :data:`_PLAIN_SPELLINGS` lists read plain
-    (:func:`_folded`), once a marker the
-    naming verb writes before it ("[MP3] ")
-    is taken off: "Bernard Badie & Tide", "[MP3] Bernard Badie", "The Black
-    Madonna" and "Ame" credit "Bernard Badie", "Black Madonna" and "Âme". Or
-    its words, two or more, are a run of one of the artist's names, an
-    initial standing for a word: "B. Badie". A title that holds the name is
-    not its credit, "Riding The Tide" or "Bernard Badie Theme", and a word of
-    a name alone is a title, "Badie" (R-1636). The first part of the body may
-    open with a track number, "01 Bernard Badie - Title"; a later part that
-    does is a title, never the artist.
+    One of the names it joins (:func:`_credited_names`) is one of the artist's,
+    folded and past a marker; or its words, two or more, are a run of one,
+    "B. Badie". A title holding the name is not its credit, "Riding The Tide",
+    nor is one word of a name, "Badie" (R-1636). Only the body's first part
+    may open with a track number.
     """
     text = _LEADING_GROUPS.sub("", part)
     found = words(text)
@@ -763,24 +656,17 @@ def _before_featuring(text: str) -> str:
 
 
 def _credits_before_featuring(part: str, names: frozenset[Words]) -> bool:
-    """Whether a part credits the searched artist before any feature credit
-    it carries: "Aurora Bloom feat. Tide" does for "Aurora Bloom", and
-    "Sunrise Mood feat. Tide" does not for "Tide", whose name is only in the
-    feature (R-1646, round two), and neither does "(Dub Mix) feat. Tide", a
-    title of brackets. The part is cut at the feature word as written, so the
-    marker strip :func:`_names_the_artist` makes never takes a title's own
-    brackets."""
+    """Whether a part credits the searched artist before any feature credit:
+    "Sunrise Mood feat. Tide" does not for "Tide" (R-1646, round two). Cut at
+    the feature word as written, so a title's own brackets stay."""
     if _featuring_at(part) is None:
         return True
     return _names_the_artist(_before_featuring(part), names, first=True)
 
 
 def _credit_words(part: str) -> set[Words]:
-    """The words of the artist's part as a self titled title, with and
-    without the marker and the track number :func:`_names_the_artist` reads
-    past and a feature credit: "[MP3] Aurora Bloom" and "Aurora Bloom feat.
-    Tide" are also "aurora bloom". Each is only ever half of a split, so a
-    row must write the version beside it to meet it."""
+    """The words of the artist's part as a self titled title, with and without
+    the marker, track number and feature credit; only ever half a split."""
     found = {words(part)}
     bare = words(_LEADING_GROUPS.sub("", part))
     found.add(bare)
@@ -793,9 +679,7 @@ def _credit_words(part: str) -> set[Words]:
     return {each for each in found if each}
 
 
-# ---------------------------------------------------------------------------
 # A file's title or name, read into its parts
-# ---------------------------------------------------------------------------
 
 
 class Role(Enum):
@@ -887,17 +771,10 @@ class _Layout:
 def _layout(parts: list[str], names: frozenset[Words]) -> _Layout:
     """Read where a file's head ends and its title starts among its dash parts.
 
-    The title is the first part after the head that is not the artist's
-    credit or a lone track number: a title tag is "KEY - BPM - Title", maybe
-    with a dash version after it, and a file with no tag is asked by its name,
-    "KEY - BPM - Title - Artist - Album", "Artist - Title" or "Artist - Album
-    - 01 Title" (R-1636). The artist's part is the title only when nothing
-    else can be: "Aurora Bloom - Original Mix", whose other part is version
-    words alone, and "Aurora Bloom - Aurora Bloom - Sun Path", whose next part
-    credits the artist too. A part after the title that opens with a zero
-    padded track number, or follows one written alone, is a later title, the
-    "01 Title" of "Artist - Album - 01 Title". A lone track number before the
-    title is passed over as the head is, "01 - Artist - Title".
+    The title is the first part after the head and lone track numbers that
+    is not the artist's credit (R-1636); the artist's part only when nothing
+    else can be, "Aurora Bloom - Original Mix". A later part opening with a
+    zero padded track number, or after a lone one, is a later title.
     """
     body = head = _head_end(parts)
     _, tail = _head_parts(parts)
@@ -932,16 +809,11 @@ def _layout(parts: list[str], names: frozenset[Words]) -> _Layout:
 def _only_a_list_reads(parts: list[str], layout: _Layout, names: frozenset[Words]) -> int | None:
     """The part of a name that only a list of version words could read, or None.
 
-    "Artist - X", X ending in a version, is a title X by the artist or the
-    artist's self titled track in its version X, and only a list could say
-    which: "vocal" is a version, "sunrise mood" a title (R-1646). X is the
-    first part after the artist's credits and any lone track number, read
-    with a feature credit after it cut off, "Vocal Mix feat. Tide", and
-    after more than one credit, "Artist - Tide - Sunrise Mood Extended Mix";
-    main read those two one way (R-1651), each credit then the artist's own
-    and not a feature credit naming them. A version alone is no title, so
-    "Artist - Original Mix" is the self titled track, and a track numbered
-    later part is the title, so X is then its album.
+    "Artist - X", X ending in a version, is a title X or the self titled track
+    in version X (R-1646). X is the first part past the credits and lone
+    track numbers, its feature credit cut off; several credits count only
+    when each is the artist's own (R-1651). A version alone is no title, and
+    a track numbered later part makes X an album.
     """
     first = layout.head
     while first < layout.end and (first in layout.credits or first in layout.numbers):
@@ -949,10 +821,7 @@ def _only_a_list_reads(parts: list[str], layout: _Layout, names: frozenset[Words
     credits = [index for index in range(layout.head, first) if index in layout.credits]
     if first >= layout.end or layout.numbered or not credits:
         return None
-    # More than one credit counts only when each is the artist's own credit:
-    # "Sunrise Mood (feat. Tide) - Artist - Vocal Mix" by "Artist & Tide"
-    # names the artist in its first part only as featured, so that part is
-    # the title, as main read it.
+    # More than one credit counts only when each is the artist's own.
     if len(credits) > 1 and not all(_credits_before_featuring(parts[index], names) for index in credits):
         return None
     cut = _before_featuring(parts[first])
@@ -962,14 +831,11 @@ def _only_a_list_reads(parts: list[str], layout: _Layout, names: frozenset[Words
 
 
 def _name_splits(parts: list[str], layout: _Layout, ambiguous: int) -> frozenset[TitleSplit]:
-    """The ways an ambiguous name splits into a title and its version: each
-    credit before X titled, X its version, ("aurora bloom", "vocal mix"); or
-    X titled up to its trailing run of version words, the rest its version,
-    ("sunrise mood", "extended mix"). X is read as written and without a
-    feature credit after it. A row matches only by writing one of these
-    splits itself (:func:`_row_splits`), so the catalogue, never a list, says
-    which reading holds. A version word the list lacks makes the second split
-    longer than any row writes it, a miss rather than a match.
+    """The ways an ambiguous name splits into a title and its version.
+
+    Each credit titled with X its version, or X titled up to its trailing
+    version run; X as written and without a feature credit. A row matches
+    only by writing one itself, so the catalogue, never a list, decides.
     """
     credits = [index for index in range(layout.head, ambiguous) if index in layout.credits]
     splits: set[TitleSplit] = set()
@@ -1012,18 +878,11 @@ def _parts(parts: list[str], layout: _Layout, ambiguous: int | None) -> tuple[Pa
 def _title_stretches(parts: list[str], layout: _Layout, names: frozenset[Words]) -> dict[Title, str]:
     """The stretches a titled name's title is read as, each with where it came from.
 
-    From the title, and from each track numbered later title, a stretch runs
-    to the end of the name, or stops before a part that credits the artist
-    ("Title - Artist - Album"), before a tail that is a version or a trailing
-    head ("Title - Original Mix", "Title - 08A - 124"), or anywhere when the
-    title follows the head directly, since the naming verb keeps whatever body
-    a name carries after the head and an artist may be spelled there as the
-    tag does not. A stretch never stops before a track number or a track
-    numbered title, so the album before one is never read alone. When the
-    title is the artist's part and the next part credits the artist too,
-    "Tide & Artist - Artist", the second is read as a title as well (R-1653).
-    Two more parts are read as a title too, each with its reason
-    (:func:`_featured_first_part`, :func:`_tempo_as_title`).
+    From the title and each later numbered title, a stretch runs to the end
+    or stops before a credit, a version or trailing head tail, or anywhere
+    when the title follows the head directly; never before a track number.
+    A second credit after the artist's own titled part is read too (R-1653),
+    and so are :func:`_featured_first_part` and :func:`_tempo_as_title`.
     """
     head, title, credits = layout.head, layout.title, layout.credits
     starts = [title, *layout.numbered]
@@ -1056,14 +915,8 @@ def _title_stretches(parts: list[str], layout: _Layout, names: frozenset[Words])
 
 def _featured_first_part(parts: list[str], layout: _Layout, names: frozenset[Words]) -> tuple[Title, str] | None:
     """A first part that names the artist only in its feature credit, read as
-    a title too. "Sunrise Mood feat. Tide - Bernard Badie" by Tide is another
-    artist's credit featuring them, or a title featuring them, and only the
-    second has a title in it (R-1646, round two). Main read it so by shedding
-    the feature credit from the whole name, across every dash, so only with
-    no head before it, and it is read so only there: after a head the name
-    may carry a tag that disagrees with it, "08A - 124 - Bernard Badie feat.
-    Tide - Sunrise Mood" tagged "Tide", whose first part main never read as
-    a title (U280 review round one's F3)."""
+    a title too (R-1646, round two); only with no head before it (U280's
+    review, F3)."""
     head = layout.head
     if head != 0 or head == layout.title or head not in layout.credits:
         return None
@@ -1074,11 +927,8 @@ def _featured_first_part(parts: list[str], layout: _Layout, names: frozenset[Wor
 
 
 def _tempo_as_title(parts: list[str], layout: _Layout) -> tuple[Title, str] | None:
-    """A lone number in a tempo's range before nothing but a version, its
-    bracket groups and a feature credit, read as a title too: "100 - Original
-    Mix" or "100 - Original Mix feat. Tide - Artist" is a tempo head and a
-    title "Original Mix", or a title "100" and its version. Main read it so
-    by shedding the version from the whole name."""
+    """A lone tempo before nothing but a version, read as a title too: "100 -
+    Original Mix" may be a title "100" and its version."""
     if layout.body != 1 or naming.is_camelot(words(parts[0])[0]):
         return None
     cut = _before_featuring(DASH.join(parts))
@@ -1091,20 +941,11 @@ def _tempo_as_title(parts: list[str], layout: _Layout) -> tuple[Title, str] | No
 def read_file(value: str, artist: str) -> FileName:
     """A file's title, or its name, read once for a file by ``artist``.
 
-    Its parts are laid out (:func:`_layout`): the head, a lone track number,
-    the artist's credits, the title, an album before a track numbered title,
-    and what follows the title. A name only a list could read
-    (:func:`_only_a_list_reads`) is :attr:`Outcome.AMBIGUOUS`, and matches a
-    row writing one of its splits (:func:`_name_splits`) or its whole name.
-    Any other is :attr:`Outcome.TITLED`, read as the stretches its title runs
-    to (:func:`_title_stretches`) and as its whole name.
-
-    The whole name is also read as written, never shed of a feature credit
-    or a version, and with a bracket group shed only from the part carrying
-    it: any of them cut from across its dashes leaves what no part says, "Artist feat. Tide - Title" or "Artist -
-    (Intro)" read as "artist", which met the self titled row (R-1646 round
-    one, U280 review round one). A title that starts at the first part is a
-    stretch to the end like any other, and sheds as its own.
+    Laid out by :func:`_layout`; :attr:`Outcome.AMBIGUOUS` when only a list
+    could read it (:func:`_only_a_list_reads`), else :attr:`Outcome.TITLED`
+    with its stretches (:func:`_title_stretches`). The whole name is read as
+    written too, never shed across a dash, or "Artist - (Intro)" reads as
+    "artist" (R-1646, U280's review).
     """
     text = normalized(value)
     if not identifies(text):
@@ -1121,9 +962,7 @@ def read_file(value: str, artist: str) -> FileName:
     return FileName(roles, Outcome.TITLED, tuple(read), tuple(read.values()), whole)
 
 
-# ---------------------------------------------------------------------------
 # The match
-# ---------------------------------------------------------------------------
 
 
 def _any_same(mine: Iterable[Title], theirs: Iterable[Title]) -> bool:
@@ -1147,22 +986,13 @@ def matches(file: FileName, row: Row) -> bool:
     return _any_same((*file.titles, *whole), row.titles)
 
 
-
-# ---------------------------------------------------------------------------
 # The version a file's title names, and whether a catalogue title writes it (U318)
-# ---------------------------------------------------------------------------
 
 
-#: Words that describe a mix of the recording without naming who made it,
-#: read as noise beside :data:`VERSION_WORDS` when a version is compared
-#: (U318) and nowhere else: its kind, length, format, medium, edition,
-#: language or style, "Main Mix", "Vocal Mix", "LP Version", "2009 Digital
-#: Remaster", "UK Radio Edit", "12 Inch Version", "Deep Mix". Such a mix is
-#: the plain title's own recording, so a file so titled still takes the
-#: release of its plain title, as it did before. A word missing here reads
-#: as a maker's name, which costs a Discogs miss; a maker named by these
-#: words alone, "DJ Deep" or "Digital", reads as no one and is matched as
-#: before, another mix's release included.
+#: Words describing a mix without naming its maker, noise beside
+#: :data:`VERSION_WORDS` when a version is compared (U318) and nowhere else:
+#: "Main Mix", "LP Version", "UK Radio Edit". A word missing here reads as a
+#: maker, a Discogs miss; a maker named by these alone reads as no one.
 #: Pinned word for word by ``tests/test_discogs_version.py``.
 MIX_DESCRIPTIONS = frozenset(
     {
@@ -1212,19 +1042,10 @@ def _a_mix_word(found: Words, index: int) -> bool:
 def _naming_words(found: Words) -> Words:
     """What a version names beside its version words, or nothing.
 
-    "tim green" of "Tim Green Remix" and of "Extended Tim Green Remix",
-    "mita gami" of "Mita Gami Extended Mix": the words of a stretch that ends
-    in a version word or a spelling of one ("Rmx"), with the words it ends
-    and opens with that are the reader's own fold (:data:`VERSION_WORDS` and
-    a remaster's year, :func:`_a_version_word`, a year anywhere in a
-    remaster's stretch), a mix's description (:data:`MIX_DESCRIPTIONS`) or a
-    spelling left out, and folded as a name is (accents off, the letters
-    :data:`_PLAIN_SPELLINGS` lists read plain (:func:`_folded`), "and", "the"
-    and a possessive "s" dropped). A version of those alone, "Extended
-    Mix", "Original Mix", "Radio Edit", "Vocal Mix" or "2014 Remaster",
-    names no other mix, and a stretch that does not end in a version word,
-    "Part 1", or that opens with a credit, "feat. Tom Tom Club", is no
-    version at all; both name nothing.
+    "tim green" of "Extended Tim Green Remix": a stretch ending in a version
+    word or spelling, with its leading and trailing mix words dropped and
+    folded as a name. "Extended Mix" names no one; "Part 1" or "feat. Tom
+    Tom Club" is no version. Both name nothing.
     """
     if not found or not _a_kind_word(found, len(found) - 1) or found[0] in _CREDITS:
         return ()
@@ -1255,12 +1076,8 @@ def _trailing_groups(text: str) -> list[tuple[str, str]]:
 def _group_versions(text: str, *, title: bool = False) -> set[Words]:
     """What each bracket group a text ends with names as a version.
 
-    With ``title``, for a file's title, a group with nothing before it that
-    names anything is the title itself, as :func:`title_core` reads a title
-    of brackets alone, never its version, and so is one after only the
-    naming verb's marker or a lone track number, which the reader reads past:
-    "(Sunrise Mood Extended Mix)" and "02 (Sunrise Mood Extended Mix)" name
-    no mix, and "(Intro) (Tide Remix)" names Tide's."""
+    With ``title``, a group after nothing but a marker or a lone track number
+    is the title itself, as :func:`title_core` reads it, never its version."""
     return {
         named
         for before, inside in _trailing_groups(text)
@@ -1283,17 +1100,9 @@ def _stretch_version(text: str) -> Words:
 def named_versions(file: FileName) -> frozenset[Words]:
     """The versions a file's title names, each by its naming words (U318).
 
-    Read off the parse, never a second one: each bracket group the title
-    part ends with that is a version, "Two Months Off (Tim Green Remix)",
-    and the dash part right after the title when it is one, "Two Months Off
-    - Tim Green Remix" (:func:`_naming_words`), never a part that credits the
-    artist or one past it, "Title - Culture Club - Album". A version that
-    names no one, "Extended Mix", "LP Version", names nothing, so the file is
-    matched as it always was. Only a titled name names one: an ambiguous
-    name matches only a row writing its split, its version included, and an
-    unreadable one names nothing. A version written into the title with no
-    bracket or dash, "Sunrise Mood Tim Green Remix", is one only a list
-    could cut from its title, so it names nothing here either.
+    Off the parse: the title part's version groups and the dash part right
+    after it, never a credit or past one. Only a titled name names one, and
+    a version with no bracket or dash, which only a list could cut, does not.
     """
     if file.outcome is not Outcome.TITLED:
         return frozenset()
@@ -1314,18 +1123,10 @@ def named_versions(file: FileName) -> frozenset[Words]:
 def writes_version(value: str, named: frozenset[Words], *, titled: bool) -> bool:
     """Whether a catalogue title writes one of a file's named versions (U318).
 
-    With ``titled``, for a row whose title is already the file's, read by
-    the row's own structure, as :func:`read_row` reads it: a bracket group
-    ending the row or one of its dash parts, any dash part after the first,
-    or the row whole, each naming exactly one of ``named``; and a version
-    written on with no bracket or dash, "Two Months Off Tim Green Remix",
-    whose whole names "two months off tim green", ending in "tim green".
-
-    Without it, for a track matched on nothing else, a single's other track,
-    the row must be the mix alone, "Tim Green Remix" or "(Tim Green
-    Remix)", so "Sun Path (Tide Remix)" never says a single of "Sunrise
-    Mood" holds Tide's remix of it, and "Lost And Found Dub" never writes
-    "found".
+    With ``titled`` (a row whose title is the file's), any group or dash part
+    the row's structure writes, or a whole ending in the name. Without it the
+    row must be the mix alone, so "Sun Path (Tide Remix)" holds no remix of
+    "Sunrise Mood".
     """
     text = normalized(value)
     core = without_trailing_groups(text)
@@ -1344,9 +1145,7 @@ def writes_version(value: str, named: frozenset[Words], *, titled: bool) -> bool
     return any(len(whole) > len(name) and whole[-len(name) :] == name for name in named)
 
 
-# ---------------------------------------------------------------------------
 # The question a catalogue is asked (U289)
-# ---------------------------------------------------------------------------
 
 
 class Read(Enum):
@@ -1375,15 +1174,8 @@ class Question:
 
 
 def _past_head(value: str) -> list[str] | None:
-    """A text's dash parts after a leading ``KEY - BPM`` head and the marker
-    after it, or None when it opens with no head that carries a key.
-
-    The head is :func:`_head_end`'s, the matcher's own, held to a Camelot key
-    among its parts (:func:`_a_head`), so a title that opens with a number, a
-    fresh download's "99 - Luftballons", is never read as headed. A head is
-    at most two parts, so a text of two parts that are both a head's words is
-    a head alone, and its remainder is empty.
-    """
+    """A text's dash parts after a leading ``KEY - BPM`` head and its marker,
+    or None when no head carrying a key opens it ("99 - Luftballons")."""
     parts = unicodedata.normalize("NFC", value).strip().split(DASH)
     body = _head_end(parts)
     if not body or not _a_head(words(DASH.join(parts[:body]))):
@@ -1408,22 +1200,14 @@ def question(value: str, artist: str) -> Question:
     """The title a catalogue is asked for a file whose title, or name, is
     ``value``, by ``artist``.
 
-    Past the head the naming verb writes and the marker after it, and past a
-    first part that is the artist's own name word for word when a title
-    follows it, so "03B - 83 - That's the Way of the World" is asked as
-    "That's the Way of the World", and a name split by :func:`by_name` is
-    asked as its title. A text with no head is asked as written, so a freshly
-    downloaded file is asked exactly as it always was, and a text with nothing
-    past its head that names a title is asked as written too, never as an
-    empty field. Only the question: what a catalogue's row is matched against
-    stays the file's own text (:func:`read_file`).
+    Past the head, its marker, and a first part that is the artist's name when
+    a title follows. With no head, or nothing past it, asked as written. Rows
+    are still matched against the file's own text (:func:`read_file`).
     """
     rest = _past_head(value)
     if rest is None:
         return Question(artist, value, Read.AS_WRITTEN)
-    # A TITLE MUST FOLLOW THE ARTIST'S PART for it to be read off, so a title
-    # that is the artist's own name, a self titled track, is asked whole. A
-    # head alone leaves no part at all.
+    # A TITLE MUST FOLLOW THE ARTIST'S PART, so a self titled track is whole.
     if len(rest) > 1 and _same_name(rest[0], artist) and identifies(DASH.join(rest[1:])):
         rest = rest[1:]
     title = DASH.join(rest).strip()
@@ -1432,29 +1216,17 @@ def question(value: str, artist: str) -> Question:
     return Question(artist, title, Read.PAST_HEAD)
 
 
-#: The tail an older naming wrote after a file name's title, "_PN" of
-#: "06A - 126 - Sean Doron - Sunshine Hotel_PN", the library's mark of a
-#: processed copy and no part of the title (R-1724). Read exactly as it was
-#: written, at the very end of the name, and off a name only: a title TAG
-#: ending in it is a title as written.
+#: The tail an older naming wrote after a name's title, no part of it
+#: (R-1724); read exactly, at the very end, off a name only, never a tag.
 NAME_TAIL = "_PN"
 
 
 def name_title(stem: str) -> str:
     """The title a file's name carries, for a file with no title tag.
 
-    The name, ``stem``, with the :data:`NAME_TAIL` it ends with dropped from
-    its last dash part, so "Sunshine Hotel_PN" is "Sunshine Hotel" and "On The
-    Rocks (Cafe Del Mar Mix)_PN" ends with its mix, which Discogs then sets
-    aside and the matcher reads as the release's own. A name with no tail is
-    returned as it is, the same string, and so is a name whose last part is
-    the tail alone, "8A - 124 - Artist - _PN" or "_PN": no title is left past
-    it, so it is read exactly as it always was, and a file of that name still
-    reaches the general catalogue by its ISRC once the record shops miss.
-
-    The by-name read (:func:`by_name`) and the title ``tag folder`` and ``tag
-    retag`` hand the searcher for a file with no title tag are read here, so
-    the question and the text a row is matched against are one.
+    ``stem`` with its trailing :data:`NAME_TAIL` dropped; returned unchanged
+    with no tail, or when the tail is its last part alone. Both the question
+    and the text a row is matched against are read here, so they are one.
     """
     text = stem.rstrip()
     if not text.endswith(NAME_TAIL):
@@ -1469,18 +1241,11 @@ def name_title(stem: str) -> str:
 def by_name(stem: str) -> Question:
     """The artist and title a file with no tags is asked by, read off its name.
 
-    The name is read past the older naming's tail first (:func:`name_title`).
-
-    The naming verb writes a name as ``KEY - BPM - [marker] Artist - Title``,
-    so a headed name whose body is exactly two parts is that artist and that
-    title (:attr:`Read.BY_NAME`). Any other headed name is
-    :attr:`Read.NAME_AMBIGUOUS` and asked with no artist, as before: three
-    parts or more ("Artist - Title - Album", "Title - Artist - Album"), one
-    part, a first part that is or opens with a track number, and a second that
-    opens with one ("Album - 01 Title") or ends in a version ("Artist -
-    Original Mix", "Title - Kerri Chandler Remix"), since only a guess could
-    say which part is the artist. A name with no head is asked as written,
-    with no artist, exactly as before.
+    Past :func:`name_title`'s tail, a headed name whose body is exactly
+    ``Artist - Title`` is :attr:`Read.BY_NAME`. Any other headed name, or one
+    whose parts carry a track number or end in a version, is
+    :attr:`Read.NAME_AMBIGUOUS`, asked with no artist; with no head, as
+    written.
     """
     name = name_title(stem)
     rest = _past_head(name)
@@ -1491,8 +1256,7 @@ def by_name(stem: str) -> Question:
         return unsplit
     if len(rest) == 2:
         artist, title = (part.strip() for part in rest)
-        # THE READER'S PIECES READ NORMALIZED TEXT, as :func:`read_file` hands
-        # them, so the version list's lower case words are found.
+        # Normalized, as :func:`read_file` hands its pieces text.
         folded_artist, folded_title = normalized(artist), normalized(title)
         if (
             identifies(folded_artist)
