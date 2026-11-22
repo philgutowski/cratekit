@@ -126,7 +126,6 @@ def test_export_set_declares_the_rename_gate_explicit():
 
 def test_a_renamed_inspiration_playlist_renames_the_account_playlist_ledger_and_job(renamed):
     cfg, held, job_id, remote_id, _live = renamed
-
     done, refused = _renamed(job_id)
     assert done["outcome"] == "ok"
     assert held.renamed == [(remote_id, NEW)]
@@ -150,7 +149,6 @@ def test_a_renamed_inspiration_playlist_renames_the_account_playlist_ledger_and_
 def test_a_second_rename_is_a_no_op(renamed):
     cfg, held, job_id, _remote_id, _live = renamed
     _renamed(job_id)
-
     done, refused = _renamed(job_id)
     assert done["outcome"] == "no_op"
     assert len(held.renamed) == 1
@@ -160,7 +158,6 @@ def test_a_second_rename_is_a_no_op(renamed):
 
 def test_an_aborted_rename_writes_nothing(renamed):
     cfg, held, job_id, _remote_id, _live = renamed
-
     done, _refused = _renamed(job_id, option="abort")
     assert done["outcome"] == "no_op"
     assert held.renamed == []
@@ -185,14 +182,11 @@ def test_a_backfill_after_the_rename_plans_no_twin_and_a_named_export_adds_to_it
     code, before = drive(["export", "set"])
     assert code == int(ExitCode.DECISION_REQUIRED), before
     assert before["cause"]["detail"]["shown"]["inspiration without account playlist"] == [posted]
-
     _renamed(job.job_id)
-
     code, after = drive(["export", "set"])
     assert code == int(ExitCode.DECISION_REQUIRED), after
     assert after["cause"]["detail"]["shown"]["inspiration without account playlist"] == ["none"]
     assert held.created == [queued]
-
     # A set exported again under its new name adds to the renamed playlist.
     path = _tracklist(cfg)
     code, refused = drive(["export", "set", str(path), "--name", posted])
@@ -220,7 +214,6 @@ def test_a_job_with_no_frozen_name_is_found_by_the_queued_day_and_refrozen(accou
     assert queued.startswith("10_09_26 ")
     remote_id = _recorded(cfg, held, queued)
     _inspiration_named(monkeypatch, names[0])
-
     done, refused = _renamed(job.job_id)
     assert refused["cause"]["detail"]["shown"]["frozen name"] == f"none -> {names[0]!r}"
     assert held.renamed == [(remote_id, names[0])]
@@ -231,7 +224,6 @@ def test_a_job_with_no_frozen_name_is_found_by_the_queued_day_and_refrozen(accou
 def test_a_missing_account_record_refuses_by_name(renamed):
     cfg, held, _job_id, _remote_id, _live = renamed
     other = _succeeded_set_job(cfg, "1_01_26 Nobody Recorded 1-26")
-
     done = _unresolved(other.job_id)
     assert "no account playlist is recorded" in done["cause"]["message"]
     assert "1_01_26 Nobody Recorded 1-26" in done["cause"]["message"]
@@ -241,7 +233,6 @@ def test_a_missing_account_record_refuses_by_name(renamed):
 def test_a_job_whose_inspiration_playlist_is_gone_refuses_by_name(renamed, monkeypatch):
     cfg, held, job_id, _remote_id, _live = renamed
     monkeypatch.setattr(set_rename, "_inspiration_of", lambda _cfg, _job_id: None)
-
     done = _unresolved(job_id)
     assert "no INSPIRATION playlist" in done["cause"]["message"]
     assert held.renamed == []
@@ -251,7 +242,6 @@ def test_a_job_whose_inspiration_playlist_is_gone_refuses_by_name(renamed, monke
 def test_a_playlist_the_archive_marked_is_refused_rather_than_retitled(renamed):
     cfg, held, job_id, remote_id, _live = renamed
     mark_record.MarkRecord(cfg).record_marked("pass-1", {remote_id: (OLD, f"DOWNLOADED {OLD}")})
-
     done = _unresolved(job_id)
     assert any(
         "crate sync unmark --pass 'pass-1'" in step
@@ -266,7 +256,6 @@ def test_a_mark_already_put_back_does_not_refuse(renamed):
     record = mark_record.MarkRecord(cfg)
     record.record_marked("pass-1", {remote_id: (OLD, f"DOWNLOADED {OLD}")})
     record.record_unmarked("pass-1", remote_id)
-
     _renamed(job_id)
     assert held.renamed == [(remote_id, NEW)]
 
@@ -291,7 +280,6 @@ def test_a_rename_that_failed_after_the_account_finishes_on_the_next_run(renamed
     assert done["cause"]["detail"]["refrozen"] is False
     assert ledger.set_playlist_names(cfg) == (NEW,)
     assert _frozen(job_id) == OLD
-
     monkeypatch.setattr(jobs, "refreeze", real)
     done, refused = _renamed(job_id)
     assert refused["cause"]["detail"]["shown"]["account playlist"] == f"{remote_id}: already {NEW!r}"
@@ -314,7 +302,6 @@ def test_a_ledger_left_under_the_old_key_is_moved_on_the_next_run(renamed, monke
     assert ledger.set_playlist_names(cfg) == (OLD,)
     assert _frozen(job_id) == OLD
     monkeypatch.setattr(ledger, "rename_set_playlist", real)
-
     done, _refused = _renamed(job_id)
     assert held.renamed == [(remote_id, NEW), (remote_id, NEW)]
     assert ledger.set_playlist_names(cfg) == (NEW,)
@@ -371,7 +358,6 @@ def test_a_twin_under_the_new_name_is_refused_rather_than_adopted(renamed):
     """A backfill that already made a twin under NEW: the rename chooses neither."""
     cfg, held, job_id, remote_id, _live = renamed
     twin = _recorded(cfg, held, NEW)
-
     done = _unresolved(job_id)
     assert remote_id in done["cause"]["message"] and twin in done["cause"]["message"]
     assert held.renamed == []
@@ -387,14 +373,12 @@ def test_a_name_with_a_slash_freezes_as_the_library_spells_it(account, monkeypat
     job = _succeeded_set_job(cfg, OLD)
     remote_id = _recorded(cfg, held, OLD)
     _inspiration_named(monkeypatch, live)
-
     done, refused = _renamed(job.job_id)
     spelled = set_cli.set_name(live)
     assert held.renamed == [(remote_id, spelled)]
     assert ledger.set_playlist_names(cfg) == (spelled,)
     assert _frozen(job.job_id) == live
     assert refused["cause"]["detail"]["shown"]["frozen name"] == f"{OLD!r} -> {live!r}"
-
     done, _refused = _renamed(job.job_id)
     assert done["outcome"] == "no_op"
 
@@ -430,7 +414,6 @@ def landed(account, monkeypatch):
 def test_a_job_whose_page_words_differ_renames_by_the_name_its_landing_recorded(landed):
     cfg, held, job_id, remote_id = landed
     _landed(cfg, job_id, LANDED)
-
     done, refused = _renamed(job_id)
     assert held.renamed == [(remote_id, NEW)]
     assert ledger.set_playlist(cfg, LANDED) is None
@@ -441,7 +424,6 @@ def test_a_job_whose_page_words_differ_renames_by_the_name_its_landing_recorded(
     shown = refused["cause"]["detail"]["shown"]
     assert shown["account playlist"] == f"{remote_id}: {LANDED!r} -> {NEW!r}"
     assert shown["frozen name"] == f"none -> {NEW!r}"
-
     # A second run is a no op: the record is under NEW and the job carries it.
     done, _refused = _renamed(job_id)
     assert done["outcome"] == "no_op"
@@ -461,7 +443,6 @@ def test_a_job_with_no_landing_record_and_no_matching_name_still_refuses(landed,
         _landed(cfg, job_id, LANDED, source=session.SourceState.PENDING)
     elif recorded == "another job":
         _landed(cfg, "2026-10-10T00:00:00Z-0000", LANDED)
-
     done = _unresolved(job_id)
     assert "no account playlist is recorded" in done["cause"]["message"]
     assert LANDED not in done["cause"]["detail"]["names"]
@@ -473,7 +454,6 @@ def test_a_twin_under_the_new_name_still_refuses_when_the_landing_names_the_old(
     cfg, held, job_id, remote_id = landed
     _landed(cfg, job_id, LANDED)
     twin = _recorded(cfg, held, NEW)
-
     done = _unresolved(job_id)
     assert done["cause"]["detail"]["twin"] == remote_id
     assert done["cause"]["detail"]["remote_id"] == twin
@@ -491,9 +471,7 @@ def test_the_backfill_plans_no_twin_after_a_rename_by_the_landing_record(landed,
     # Before the rename the backfill reads the set as having no account playlist.
     left = before["cause"]["detail"]["shown"]["left for a later sitting"]
     assert any(message.startswith(f"{NEW}: ") for message in left), left
-
     _renamed(job_id)
-
     code, after = drive(["export", "set"])
     assert code == int(ExitCode.DECISION_REQUIRED), after
     assert after["cause"]["detail"]["shown"]["inspiration without account playlist"] == ["none"]
@@ -508,7 +486,6 @@ def test_two_playlists_under_two_older_names_are_a_twin_not_a_choice(landed):
     with jobs.open_store() as store:
         queued = set_cli._names_for_job(jobs.get(store, job_id))[-1]
     twin = _recorded(cfg, held, queued)
-
     done = _unresolved(job_id)
     assert (done["cause"]["detail"]["remote_id"], done["cause"]["detail"]["twin"]) == (
         remote_id,
@@ -527,9 +504,7 @@ def test_the_frozen_name_ranks_ahead_of_the_landing_record(account, monkeypatch)
     _landed(cfg, job.job_id, LANDED)
     stale = _recorded(cfg, held, LANDED)
     _inspiration_named(monkeypatch, NEW)
-
     code, done = drive(["export", "set", "--rename", job.job_id])
-
     assert code == int(ExitCode.PRECONDITION), done
     assert (done["cause"]["detail"]["remote_id"], done["cause"]["detail"]["twin"]) == (kept, stale)
     assert f"{kept} under {OLD!r}" in done["cause"]["message"]
@@ -541,7 +516,6 @@ def test_recorded_names_reads_every_landing_of_the_job_the_newest_first(account)
     _landed(cfg, "job-a", "10_11_26 Second Part", stamp="2026-10-11T16:09:29Z-0002")
     _landed(cfg, "job-a", "10_11_26 Second Part", stamp="2026-10-11T17:00:00Z-0003")
     _landed(cfg, "job-b", "10_12_26 Another Set", stamp="2026-10-12T16:09:29Z-0004")
-
     assert set_playlist.recorded_names(cfg, "job-a") == (
         "10_11_26 Second Part",
         "10_10_26 First Part",

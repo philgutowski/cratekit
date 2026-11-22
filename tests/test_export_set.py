@@ -238,7 +238,6 @@ def test_the_sweep_never_reads_a_set_playlist_as_intake(account, monkeypatch):
     from types import SimpleNamespace
 
     from cratekit.sync import cli as sync_cli
-
     cfg, _fake, _held = account
     _built(_tracklist(cfg))
     built = ledger.set_playlist_ids(cfg)
@@ -344,7 +343,6 @@ def test_a_candidate_accepted_in_review_is_used_and_not_searched_for_again(accou
     from cratekit.acquire import match
     from cratekit.core import review
     from cratekit.intake import candidates
-
     cfg, fake, _held = account
     fake.searches[("Artist Five", "Title Five")] = [
         Hit("tid-5a", "Artist Five", "Title Five"),
@@ -432,7 +430,6 @@ def test_a_held_files_album_tag_is_handed_to_the_account_with_its_isrc(
 def test_a_persons_answer_in_review_wins_over_the_librarys_file(account, tmp_path):
     from cratekit.acquire import match
     from cratekit.core import review
-
     cfg, fake, held = account
     _held(tmp_path, cfg, isrc="QZABC2600007")
     held.catalog["set-row-1"] = "tid-by-file"
@@ -589,7 +586,6 @@ def test_the_walk_never_asks_past_the_providers_ceiling_of_300():
 def test_a_title_read_two_ways_on_a_full_page_says_so_and_not_the_bound(account):
     cfg, fake, _held_account = account
     from cratekit.acquire import match
-
     row = ("Artist Seven", "Sun Path - Live")
     (wanted,) = match.read_text_lines("Artist Seven - Sun Path - Live\n")
     assert wanted.other_reading is not None, "the fixture's title no longer reads two ways"
@@ -611,7 +607,6 @@ def test_an_exact_match_with_no_identifier_is_not_said_to_resemble_nothing(accou
 def _walk(line: str, hits: list) -> tuple[candidates.Answer, list[int]]:
     """``search_pages`` over ``hits`` served a page at a time, and the offsets asked."""
     from cratekit.acquire import match
-
     (wanted,) = match.read_text_lines(f"{line}\n")
     asked: list[int] = []
 
@@ -659,7 +654,6 @@ def test_an_exact_match_with_no_identifier_on_a_full_page_reads_no_second_page()
 
 def test_an_empty_page_after_full_ones_ends_the_listing_and_a_full_last_page_never_lists():
     from cratekit.acquire import match
-
     hits = [Hit("tid-7", *SEVEN), *_filler(2 * catalogue.TRACK_SEARCH_PAGE - 1)]
     answer, asked = _walk("Artist Seven - Title Seven", hits)
     assert asked == [0, 50, 100], "the third page, empty, is the end of the listing"
@@ -753,9 +747,7 @@ def test_a_set_put_in_its_folder_by_hand_writes_nothing_and_its_gate_says_so(acc
     # A SET MARKED BY HAND BEFORE U242, its old prefix still on it.
     held.titles[recorded.remote_id] = f"DOWNLOADED {NAME}"
     argv = ["export", "archive", NAME, "--xml", str(_landed(cfg))]
-
     code, asked = drive(argv)
-
     assert code == int(ExitCode.DECISION_REQUIRED), asked
     shown = asked["cause"]["detail"]["shown"]
     assert "recorded folder" not in shown
@@ -765,7 +757,6 @@ def test_a_set_put_in_its_folder_by_hand_writes_nothing_and_its_gate_says_so(acc
     assert held.moves == [] and held.renamed == []
     assert len(held.folders_created) == made_by_hand
     assert ledger.set_folder(cfg, folder_name) == "gone-from-the-account"
-
     held.titles[recorded.remote_id] = "My Own Title"
     code, asked = drive(argv)
     assert code == int(ExitCode.DECISION_REQUIRED), asked

@@ -295,7 +295,6 @@ def _job(job_id: str):
 def _resume(job_id: str) -> tuple[int, dict]:
     """Drive the resume the job engine would spawn, in THIS process."""
     from cratekit.cli import jobs as cli_jobs
-
     job = _job(job_id)
     return drive(cli_jobs.argv_for(job))
 
@@ -312,12 +311,10 @@ def test_an_export_runs_pending_to_done_and_its_artifact_reads_back(installed, q
     """The whole point of the unit, driven through the real resume path."""
     account = fake(1, 2, 3)
     job_id = queue(account)
-
     code, resumed = _resume(job_id)
     assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert resumed["data"]["progress"]["counts"]["done"] == 3
-
     reports = artifacts.committed(installed, job_id)
     assert len(reports) == 3
     assert [report["track"] for report in reports] == ["1", "2", "3"]
@@ -334,7 +331,6 @@ def test_a_second_export_of_the_same_playlist_adds_nothing_and_creates_nothing(q
     account = fake(1, 2, 3)
     first = queue(account)
     assert _resume(first)[0] == int(ExitCode.OK)
-
     second = queue()
     code, resumed = _resume(second)
     assert code == int(ExitCode.OK), resumed
@@ -359,7 +355,6 @@ def test_the_envelope_names_the_tracks_the_provider_could_not_match(queue):
 def _resume_human(job_id: str) -> tuple[int, str]:
     """The same resume as :func:`_resume`, answered in the default output mode."""
     from cratekit.cli import jobs as cli_jobs
-
     job = _job(job_id)
     return drive_human(cli_jobs.argv_for(job))
 
@@ -372,9 +367,7 @@ def test_an_export_with_an_unmatched_track_counts_and_names_it_on_both_renderers
     """R-850, driven. A live export of eight answered ``ok`` and ``8 of 8 settled``."""
     account = fake(1, 3)
     job_id = queue(account)
-
     code, resumed = _resume(job_id)
-
     assert code == int(ExitCode.OK), resumed
     assert resumed["outcome"] == "ok"
     outbound = resumed["data"]["progress"]["outbound"]
@@ -391,7 +384,6 @@ def test_an_export_with_an_unmatched_track_counts_and_names_it_on_both_renderers
     (warning,) = resumed["warnings"]
     assert "1 of the 3 track(s)" in warning["message"]
     assert account.playlist_tracks("pl-1") == ("tid-1", "tid-3")
-
     code, said = _resume_human(job_id)
     assert code == int(ExitCode.OK), said
     assert "  tracks: 2 written, 0 already there or written before, 1 unmatched" in said
@@ -401,9 +393,7 @@ def test_an_export_with_an_unmatched_track_counts_and_names_it_on_both_renderers
 
 def test_an_export_where_every_track_matches_answers_with_no_unmatched_line(queue):
     job_id = queue(fake(1, 2, 3))
-
     code, resumed = _resume(job_id)
-
     assert code == int(ExitCode.OK), resumed
     outbound = resumed["data"]["progress"]["outbound"]
     assert outbound["counts"] == {"written": 3, "already": 0, "unmatched": 0}
@@ -419,9 +409,7 @@ def test_a_second_export_counts_what_the_playlist_already_held(queue):
     first = queue(fake(1, 2, 3))
     assert _resume(first)[0] == int(ExitCode.OK)
     second = queue()
-
     code, resumed = _resume(second)
-
     assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["progress"]["outbound"]["counts"] == {
         "written": 0,
@@ -437,10 +425,8 @@ def test_a_resumed_export_counts_across_both_runs_and_each_item_once(queue):
     account = fake(1, 3, fail_on={"tid-3"}, transient=True)
     job_id = queue(account)
     assert _resume(job_id)[0] != int(ExitCode.OK)
-
     account.fail_on = frozenset()
     code, resumed = _retried(job_id)
-
     assert code == int(ExitCode.OK), resumed
     outbound = resumed["data"]["progress"]["outbound"]
     assert outbound["counts"] == {"written": 2, "already": 0, "unmatched": 1}
@@ -474,14 +460,12 @@ def test_a_failed_item_leaves_the_job_resumable_and_the_resume_redoes_only_it(qu
     account = fake(1, 2, 3, fail_on={"armed"})
     _match_fails_for(account, "2")
     job_id = queue(account)
-
     code, resumed = _resume(job_id)
     assert code != int(ExitCode.OK), resumed
     states = {item.item_id: str(item.state) for item in _items(job_id)}
     assert states["1"] == str(jobs.ItemState.DONE)
     assert states["2"] == str(jobs.ItemState.FAILED)
     assert states["3"] == str(jobs.ItemState.DONE)
-
     # RE-ARMED IN PROCESS RATHER THAN THROUGH ``crate job resume``, which spawns
     # a DETACHED child. That child is a fresh process and inherits no
     # monkeypatch, so it would meet the real provider seam and fail every item.
@@ -507,7 +491,6 @@ def test_a_track_the_provider_would_not_add_fails_its_item_alone_and_is_never_re
     account = fake(1, 2, 3)
     account.unaddable.add("tid-2")
     job_id = queue(account)
-
     assert _resume(job_id)[0] != int(ExitCode.OK)
     held = _items(job_id)
     states = {item.item_id: str(item.state) for item in held}
@@ -530,12 +513,10 @@ def test_a_refused_request_fails_every_item_it_carried_and_the_resume_adds_each_
     that was in it, and the resume sends them again: one add each, none twice."""
     account = fake(1, 2, 3, fail_on={"tid-2"}, transient=True)
     job_id = queue(account)
-
     assert _resume(job_id)[0] != int(ExitCode.OK)
     states = {item.item_id: str(item.state) for item in _items(job_id)}
     assert set(states.values()) == {str(jobs.ItemState.FAILED)}
     assert account.added == []
-
     account.fail_on = frozenset()
     assert _retried(job_id)[0] == int(ExitCode.OK)
     assert account.playlists["pl-1"] == ["tid-1", "tid-2", "tid-3"]
@@ -592,7 +573,6 @@ def test_a_second_sweep_writes_nothing_because_the_ledger_remembers(sweep):
     first = sweep(first_account)
     assert _resume(first)[0] == int(ExitCode.OK)
     assert sorted(first_account.hearted) == ["tid-1", "tid-2"]
-
     second_account = fake(1, 2)
     second = sweep(second_account)
     assert _resume(second)[0] == int(ExitCode.OK)
@@ -622,9 +602,7 @@ def test_a_sweep_with_an_unmatched_favourite_counts_and_names_it_on_both_rendere
     """R-856, driven. The sweep answered ``ok`` and ``3 of 3 settled`` and nothing else."""
     account = fake(1, 3)
     job_id = _three_favourites(installed, queue, account)
-
     code, resumed = _resume(job_id)
-
     assert code == int(ExitCode.OK), resumed
     assert resumed["outcome"] == "ok"
     outbound = resumed["data"]["progress"]["outbound"]
@@ -643,7 +621,6 @@ def test_a_sweep_with_an_unmatched_favourite_counts_and_names_it_on_both_rendere
     ]
     assert "1 of the 3 favourite(s)" in resumed["warnings"][1]["message"]
     assert sorted(account.hearted) == ["tid-1", "tid-3"]
-
     code, said = _resume_human(job_id)
     assert code == int(ExitCode.OK), said
     assert "  tracks: 2 hearted, 0 already hearted or hearted before, 1 unmatched" in said
@@ -654,9 +631,7 @@ def test_a_sweep_with_an_unmatched_favourite_counts_and_names_it_on_both_rendere
 
 def test_a_sweep_where_every_favourite_matches_answers_with_no_unmatched_line(installed, queue):
     job_id = _three_favourites(installed, queue, fake(1, 2, 3, hearts={"tid-3"}))
-
     code, resumed = _resume(job_id)
-
     assert code == int(ExitCode.OK), resumed
     outbound = resumed["data"]["progress"]["outbound"]
     assert outbound["counts"] == {"hearted": 2, "already_hearted": 1, "unmatched": 0}
@@ -676,9 +651,7 @@ def test_a_favourite_whose_isrc_names_several_tracks_is_listed_with_that_reason(
     )
     account.reasons["3"] = several
     job_id = _three_favourites(installed, queue, account)
-
     code, resumed = _resume(job_id)
-
     assert code == int(ExitCode.OK), resumed
     (row,) = resumed["data"]["progress"]["outbound"]["unmatched_tracks"]
     assert row == {"identity": "3", "artist": "Artist 3", "title": "Track 3", "reason": several}
@@ -787,9 +760,7 @@ def test_queueing_a_sweep_tells_a_person_in_the_default_output_that_nothing_loca
     del installed
     bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2)))
     run_id = _answer_the_confirm(favorites_verb(exported), "sync.favorites.confirm")
-
     code, text = _human(["--run", run_id, *favorites_verb(exported)])
-
     assert code == int(ExitCode.OK), text
     assert _says_no_local_write(text), text
 
@@ -798,11 +769,8 @@ def test_the_resumed_sweep_says_the_same_thing_where_the_hearting_actually_happe
     """The queueing pass writes nothing at all; the resume is the run."""
     job_id = sweep(fake(1, 2))
     from cratekit.cli import jobs as cli_jobs
-
     argv = cli_jobs.argv_for(_job(job_id))
-
     code, text = _human(argv)
-
     assert code == int(ExitCode.OK), text
     assert _says_no_local_write(text), text
 
@@ -811,9 +779,7 @@ def test_an_item_report_carries_no_empty_colored_list(installed, sweep):
     """R-424's other half: an empty list reads as a write that found nothing."""
     job_id = sweep(fake(1, 2))
     assert _resume(job_id)[0] == int(ExitCode.OK)
-
     reports = artifacts.committed(installed, job_id)
-
     assert reports, "the sweep committed nothing to assert about"
     for report in reports:
         assert "colored" not in report, report
@@ -840,7 +806,6 @@ def test_doctor_asks_neither_rekordbox_question_for_a_sweep_that_reads_an_export
     """Derived from this entry alone, the way ``route.unplaced`` pinned the same shape."""
     from cratekit.cli import doctor
     from cratekit.core import profiles
-
     monkeypatch.setattr(registry, "entries", lambda: (registry.entry("sync.favorites"),))
     membership = profiles.resolve("full")
     assert doctor.requires_check("library.mounted", membership)
@@ -852,7 +817,6 @@ def test_doctor_asks_neither_rekordbox_question_for_a_sweep_that_reads_an_export
 def test_a_sweep_runs_with_rekordbox_open_and_never_opens_the_database(monkeypatch, sweep):
     """Why dropping both checks is safe, driven rather than argued."""
     from cratekit.core import rb_writer
-
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: True)
 
@@ -862,7 +826,6 @@ def test_a_sweep_runs_with_rekordbox_open_and_never_opens_the_database(monkeypat
     monkeypatch.setattr(rb_writer, "open_db", refuse_to_open)
     account = fake(1, 2)
     job_id = sweep(account)
-
     assert _resume(job_id)[0] == int(ExitCode.OK)
     assert sorted(account.hearted) == ["tid-1", "tid-2"]
 
@@ -890,7 +853,6 @@ def test_with_a_credential_stored_and_no_adapter_the_seam_refuses_unbound(
     installed, monkeypatch
 ):
     from cratekit.core import secrets
-
     monkeypatch.setattr(secrets, "exists", lambda name: True)
     unimportable_adapter(monkeypatch)
     with pytest.raises(CratekitError) as excinfo:
@@ -942,7 +904,6 @@ def test_a_confirm_recorded_against_one_document_does_not_authorise_another(
     bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
     first = outbound_fakes.write_export(installed.library.root / "one")
     second = outbound_fakes.write_export(installed.library.root / "two", crate=(1,))
-
     refused = _asked(export_verb(first))
     _decided(refused)
     code, other = drive(["--run", refused["run_id"], *export_verb(second)])
@@ -977,7 +938,6 @@ def test_the_handler_runs_against_the_frozen_configuration_not_the_current_one(
     bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
     invocation = export_verb(exported) if verb == "export" else favorites_verb(exported)
     _run, job_id = approve_and_queue(invocation, gate)
-
     current = config.load()
     # BOTH BANDS MOVE, because config validation refuses a stale day count above
     # the expired one: the bands would overlap and a grouping would be reported
@@ -991,7 +951,6 @@ def test_the_handler_runs_against_the_frozen_configuration_not_the_current_one(
     config.save(moved)
     config.reset_cache()
     assert config.load().reports.intake_stale_days == 99
-
     seen: list[int] = []
     real = getattr(module, worker)
 
@@ -1014,7 +973,6 @@ def test_an_item_whose_track_left_the_export_refuses_rather_than_writing_nothing
     job_id = queue(fake(1, 2, 3))
     exported.write_bytes(outbound_fakes.export_document(crate=(1,), tracks=1))
     source.forget_libraries()
-
     code, resumed = _resume(job_id)
     assert code != int(ExitCode.OK), resumed
     failed = [item for item in _items(job_id) if item.state is jobs.ItemState.FAILED]
@@ -1032,7 +990,6 @@ def test_a_ledger_that_cannot_be_read_stops_the_write_rather_than_duplicating(in
     ledger_path = config.state_path("outbound_writes", installed)
     ledger_path.parent.mkdir(parents=True, exist_ok=True)
     ledger_path.write_text("{not json", encoding="utf-8")
-
     code, resumed = _resume(job_id)
     assert code != int(ExitCode.OK), resumed
     assert account.created == []
@@ -1096,9 +1053,7 @@ def test_the_isrc_is_read_through_the_prefix_map_and_folded(installed, tmp_path)
     old = tmp_path / "renamed-drive"
     recorded = locations.location_url(old / "Music" / "a.flac")
     rules = [locations.PrefixRule(str(old), str(root))]
-
     found = source.isrc_for(_entry(recorded), root=root, prefix_map=rules)
-
     assert found == "ZZX9A2600042"
     assert source.isrc_for(_entry(recorded), root=root, prefix_map=[]) == "", (
         "an unmapped prefix is not guessed onto the current root"
@@ -1127,7 +1082,6 @@ def test_a_missing_file_or_a_value_that_is_not_an_isrc_reads_as_none(
     root = Path(installed.library.root)
     gone = locations.location_url(root / "Music" / "gone.flac")
     assert source.isrc_for(_entry(gone), root=root, prefix_map=[]) == ""
-
     for index, value in enumerate(("CAT-0042", "ZZX9A260004", "ZZX9A26000421", "1ZX9A2600042")):
         path = _tagged(tmp_path / str(index), root / "Music" / f"bad{index}.flac", value)
         assert source.isrc_for(
@@ -1152,7 +1106,6 @@ def test_the_row_builders_use_the_configured_prefix_map(tmp_path, monkeypatch):
     )
     source.forget_libraries()
     library = source.read_library(exported)
-
     assert [t.isrc for t in source.local_tracks(library, ("1", "2"), cfg=cfg)] == [
         "ZZX9A2600042",
         "",
@@ -1165,7 +1118,6 @@ def test_an_absent_library_root_refuses_rather_than_reading_every_row_untagged(i
     """The review's finding: an unmounted volume is not a library of untagged files."""
     library = source.read_library(exported)
     gone = replace(installed, library=replace(installed.library, root=installed.library.root / "unplugged"))
-
     for build in (source.local_tracks, source.heart_candidates):
         with pytest.raises(CratekitError) as raised:
             build(library, ("1",), cfg=gone)
@@ -1237,7 +1189,6 @@ def test_a_cancelled_job_does_not_report_a_clean_resume(queue):
         cancelled = jobs.cancel(store, job_id)
     assert cancelled.state is jobs.JobState.CANCELLED
     assert cancelled.cause is not None
-
     code, resumed = _resume(job_id)
     assert code != int(ExitCode.OK), resumed
     assert resumed["cause"] is not None
@@ -1284,7 +1235,6 @@ def test_a_failed_favourite_leaves_the_sweep_resumable(sweep):
     account = fake(1, 2, fail_on={"tid-2"}, transient=True)
     job_id = sweep(account)
     assert _resume(job_id)[0] != int(ExitCode.OK)
-
     account.fail_on = frozenset()
     assert _retried(job_id)[0] == int(ExitCode.OK)
     assert sorted(account.hearted) == ["tid-1", "tid-2"]
@@ -1296,12 +1246,10 @@ def test_both_provider_refusals_carry_a_remediation_a_person_can_act_on(
 ):
     """Not merely non-None: a remedy token or a step, or the refusal says nothing."""
     from cratekit.core import secrets
-
     with pytest.raises(CratekitError) as missing:
         account_module.resolve(installed)
     assert missing.value.cause.remediation is not None
     assert str(missing.value.cause.remediation.remedy)
-
     monkeypatch.setattr(secrets, "exists", lambda name: True)
     unimportable_adapter(monkeypatch)
     with pytest.raises(CratekitError) as unbound:
@@ -1467,7 +1415,6 @@ def test_the_limit_is_the_configured_one_in_both_directions(installed, exported,
     _code, refused = drive(_invocation(verb, exported))
     shown = refused["cause"]["detail"]["shown"]["export"]
     assert (shown["freshness"], shown["stale_after_days"]) == ("within-limit", 60)
-
     _written_days_ago(exported, 2)
     _configure_stale_days(1)
     _code, refused = drive(_invocation(verb, exported))
@@ -1640,7 +1587,6 @@ def _shown_playlist(verb: list[str]) -> dict:
 
 def _ledger_playlists(installed) -> dict:
     import json
-
     path = config.state_path("outbound_writes", installed)
     return json.loads(path.read_text(encoding="utf-8"))["playlists"]
 
@@ -1657,10 +1603,8 @@ def test_a_crate_dragged_into_a_folder_updates_its_remote_playlist(installed, qu
             _FOLDER, outbound_fakes.CRATE, [1, 2, 3, 4]
         ),
     )
-
     job_id = queue(verb=export_verb(moved, _MOVED))
     code, resumed = _resume(job_id)
-
     assert code == int(ExitCode.OK), resumed
     assert account.created == [outbound_fakes.CRATE]
     assert account.playlist_tracks("pl-1") == ("tid-1", "tid-2", "tid-3", "tid-4")
@@ -1679,10 +1623,8 @@ def test_a_renamed_crate_updates_its_remote_playlist(installed, queue):
     """A rename changes the display name too, so only the tracks can say it."""
     account = _exported_once(queue)
     renamed = _reorganised(installed, crate_name="Peak Time")
-
     job_id = queue(verb=export_verb(renamed, "Peak Time"))
     assert _resume(job_id)[0] == int(ExitCode.OK)
-
     assert account.created == [outbound_fakes.CRATE]
     assert list(_ledger_playlists(installed)) == ["Peak Time"]
 
@@ -1691,7 +1633,6 @@ def test_the_gate_and_the_envelope_both_say_which_playlist_is_adopted(installed,
     """A refusal carries no warnings, so the gate has to say it as well."""
     _exported_once(queue)
     moved = _moved_into_a_folder(installed)
-
     shown = _shown_playlist(export_verb(moved, _MOVED))
     assert shown["action"] == export_cli.ACTION_ADOPT
     assert shown["remote_id"] == "pl-1"
@@ -1700,7 +1641,6 @@ def test_the_gate_and_the_envelope_both_say_which_playlist_is_adopted(installed,
     # THE EVIDENCE NAMES BOTH SIDES, the record's size and the crate's, because
     # three of three reads very differently against a crate of three thousand.
     assert "from 3 track(s), 3 of them among the 3 this playlist holds" in shown["warning"]
-
     run_id, _job = approve_and_queue(export_verb(moved, _MOVED), _GATE)
     # THE SAME RUN AGAIN, which the recorded decision still answers, so the
     # queueing envelope can be read here rather than inside the helper.
@@ -1714,7 +1654,6 @@ def test_the_gate_says_create_and_update_when_nothing_is_adopted(exported, queue
     """The block is shown every time, so its absence never means create."""
     first = _shown_playlist(export_verb(exported))
     assert first == {"action": export_cli.ACTION_CREATE, "remote_id": None}
-
     _exported_once(queue)
     again = _shown_playlist(export_verb(exported))
     assert again == {"action": export_cli.ACTION_UPDATE, "remote_id": "pl-1"}
@@ -1729,11 +1668,9 @@ def test_a_crate_the_export_still_carries_is_never_adopted_from(installed, queue
             _FOLDER, outbound_fakes.CRATE, [1, 2, 3]
         ),
     )
-
     assert _shown_playlist(export_verb(both, _MOVED))["action"] == export_cli.ACTION_CREATE
     job_id = queue(verb=export_verb(both, _MOVED))
     assert _resume(job_id)[0] == int(ExitCode.OK)
-
     assert account.created == [outbound_fakes.CRATE, outbound_fakes.CRATE]
     assert sorted(_ledger_playlists(installed)) == sorted([outbound_fakes.CRATE, _MOVED])
 
@@ -1743,11 +1680,9 @@ def test_new_playlist_declines_the_adoption_and_creates(installed, queue):
     account = _exported_once(queue)
     moved = _moved_into_a_folder(installed)
     verb = [*export_verb(moved, _MOVED), "--new-playlist"]
-
     assert _shown_playlist(verb) == {"action": export_cli.ACTION_CREATE, "remote_id": None}
     job_id = queue(verb=verb)
     assert _resume(job_id)[0] == int(ExitCode.OK)
-
     assert account.created == [outbound_fakes.CRATE, outbound_fakes.CRATE]
     recorded = _ledger_playlists(installed)
     assert recorded[outbound_fakes.CRATE]["remote_id"] == "pl-1"
@@ -1759,12 +1694,10 @@ def test_a_confirmed_adoption_does_not_authorise_a_create(installed, queue):
     _exported_once(queue)
     moved = _moved_into_a_folder(installed)
     verb = export_verb(moved, _MOVED)
-
     refused = _asked(verb)
     run_id = refused["run_id"]
     option = refused["cause"]["detail"]["options"][0]
     assert drive(["run", "decide", run_id, _GATE, option, "--actor", "a-person"])[0] == 0
-
     with jobs.open_store() as store:
         before = len(jobs.list_jobs(store))
     code, stale = drive(["--run", run_id, *verb, "--new-playlist"])
@@ -1791,13 +1724,11 @@ def test_two_orphaned_records_that_could_each_be_it_adopt_neither(installed, que
     job_id = queue(verb=[*export_verb(second, "Second"), "--new-playlist"])
     assert _resume(job_id)[0] == int(ExitCode.OK)
     assert account.created == [outbound_fakes.CRATE, "Second"]
-
     third = _reorganised(installed, crate_name="Third")
     shown = _shown_playlist(export_verb(third, "Third"))
     assert shown["action"] == export_cli.ACTION_CREATE
     assert outbound_fakes.CRATE in shown["warning"]
     assert "Second" in shown["warning"]
-
     job_id = queue(verb=export_verb(third, "Third"))
     code, _resumed = _resume(job_id)
     assert code == int(ExitCode.OK)
@@ -1818,10 +1749,8 @@ def test_two_crates_offered_one_orphan_do_not_both_get_it(installed, queue):
     )
     first = queue(verb=export_verb(split, "P/One"))
     second = queue(verb=export_verb(split, "Q/Two"))
-
     assert _resume(first)[0] == int(ExitCode.OK)
     code, refused = _resume(second)
-
     assert code != int(ExitCode.OK), refused
     assert "outbound-record-moved" in str(refused)
     assert account.created == [outbound_fakes.CRATE]
@@ -1834,19 +1763,16 @@ def test_a_half_driven_job_resumed_after_its_crate_moved_creates_nothing(install
     account.catalog.update(catalog(3))
     old_job = queue()
     assert _job(old_job).payload[export_cli.REMOTE] == "pl-1"
-
     moved = _moved_into_a_folder(installed)
     new_job = queue(verb=export_verb(moved, _MOVED))
     account.catalog.pop("3")
     assert _resume(new_job)[0] == int(ExitCode.OK)
     assert list(_ledger_playlists(installed)) == [_MOVED]
-
     account.catalog.update(catalog(3))
     # THE OLD JOB READS ITS OWN FROZEN DOCUMENT PATH, which now holds the moved
     # crate, so put the document it was queued against back first.
     _reorganised(installed)
     code, resumed = _resume(old_job)
-
     assert code == int(ExitCode.OK), resumed
     assert account.created == [outbound_fakes.CRATE]
     assert account.playlist_tracks("pl-1") == ("tid-1", "tid-2", "tid-3")
@@ -1862,13 +1788,11 @@ def test_a_path_reused_for_a_different_crate_is_said_at_the_gate(installed, queu
         crate=(4, 5, 6),
         extra_children=outbound_fakes.nested_playlist(_FOLDER, "Archive", [1, 2, 3]),
     )
-
     reused = _shown_playlist(export_verb(chained))
     assert reused["action"] == export_cli.ACTION_UPDATE
     assert reused["remote_id"] == "pl-1"
     assert f"{_FOLDER}/Archive" in reused["warning"]
     assert "exporting that one first" in reused["warning"]
-
     renamed_away = _shown_playlist(export_verb(chained, f"{_FOLDER}/Archive"))
     assert renamed_away["action"] == export_cli.ACTION_ADOPT
     assert renamed_away["recorded_as"] == outbound_fakes.CRATE
@@ -1891,7 +1815,6 @@ def test_the_resume_gate_shows_the_frozen_tracks_the_digest_covers(exported, que
     off the payload and never off the export document."""
     job_id = queue(fake(1, 2, 3))
     payload = _job(job_id).payload
-
     refused = _asked([*export_verb(exported), "--job", job_id])
     detail = refused["cause"]["detail"]
     assert detail["gate"] == "export.playlist.confirm"
@@ -1982,7 +1905,6 @@ def test_the_files_album_is_read_beside_its_isrc_in_one_read(installed, tmp_path
     tagged = _tagged(tmp_path / "a", root / "Music" / "a.flac", "ZZX9A2600042")
     assert tags.write_tags(tagged, {"album": "  Tidal Lines "}) is True
     bare = _tagged(tmp_path / "b", root / "Music" / "b.flac", "ZZX9A2600043")
-
     found = source.file_identity(_entry(locations.location_url(tagged)), root=root, prefix_map=[])
     assert found == source.FileIdentity(isrc="ZZX9A2600042", album="Tidal Lines")
     assert source.file_identity(
@@ -2023,9 +1945,7 @@ def test_local_tracks_carries_the_files_album_to_the_export_plan(installed, tmp_
 def test_a_created_playlist_is_filed_in_exports_as_its_gate_showed(queue):
     account = fake(1, 2, 3)
     job_id = queue(account)
-
     code, resumed = _resume(job_id)
-
     assert code == int(ExitCode.OK), resumed
     assert _codes(resumed) == []
     assert account.folders_created == ["Exports"]
@@ -2043,9 +1963,7 @@ def test_a_changed_exports_folder_makes_the_old_answer_stale(installed, exported
     _decided(refused)
     # A person makes an Exports folder on the account between the ask and the answer.
     account.create_folder("Exports")
-
     code, other = drive(["--run", refused["run_id"], *export_verb(exported)])
-
     assert code != int(ExitCode.OK), other
     assert other["cause"]["reason"] == "decision-stale"
     assert _queue_is_empty()
@@ -2055,9 +1973,7 @@ def test_a_folder_changed_after_the_queue_leaves_the_playlist_at_the_root_with_a
     account = fake(1, 2, 3)
     job_id = queue(account)
     account.create_folder("Exports")
-
     code, resumed = _resume(job_id)
-
     assert code == int(ExitCode.OK), resumed
     assert resumed["outcome"] == "ok"
     assert _codes(resumed) == [export_cli.UNFILED_WARNING]
@@ -2069,7 +1985,6 @@ def test_a_folder_changed_after_the_queue_leaves_the_playlist_at_the_root_with_a
 
 def test_a_filing_failure_is_a_warning_on_a_finished_export(monkeypatch, queue):
     from cratekit.modules.outbound import kinds
-
     account = fake(1, 2, 3)
     job_id = queue(account)
 
@@ -2077,9 +1992,7 @@ def test_a_filing_failure_is_a_warning_on_a_finished_export(monkeypatch, queue):
         raise OSError("ledger write failed")
 
     monkeypatch.setattr(kinds, "reserve", broken)
-
     code, resumed = _resume(job_id)
-
     assert code == int(ExitCode.OK), resumed
     assert resumed["outcome"] == "ok"
     assert _codes(resumed) == [export_cli.UNFILED_WARNING]
