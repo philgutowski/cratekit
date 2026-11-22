@@ -1,9 +1,4 @@
-"""U191: a label sync's taken releases reach the year playlists without the catalogue,
-and a full build is counted and gated before it is read.
-
-Driven through the real dispatcher with the catalogue and the account faked.
-D1 applies: nothing here names a real volume, person or track.
-"""
+"""U191: a sync's taken releases reach the year playlists; a full build is gated by count."""
 
 from __future__ import annotations
 
@@ -18,9 +13,10 @@ from cratekit.label import playlists_cli, sync_cli
 from cratekit.modules.outbound import folders, ledger
 from tests.cli_drive import drive
 from tests.label_fakes import FakePagedArtist, FakeRelease, FakeTrack
-from tests.test_label_playlists import BUILD, LABEL, LABEL_ID, LISTED, _entry, _exits, _years
+from tests.test_label_playlists import BUILD, LABEL, LABEL_ID, LISTED, _entry, _exits, _held, _years
 from tests.test_label_playlists import kompakt as kompakt  # noqa: PLC0414 - fixture
 from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
+from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 
 CRAWL = playlists_cli.CRAWL_GATE
 RELEASES = ["label", "playlists", LABEL, "--releases"]
@@ -37,14 +33,8 @@ def _took(cfg, *releases: tuple[str, str], settled: bool = True) -> None:
         "answered_at": timestamp(),
         "releases": [
             {
-                "identity": identity,
-                "artist": "Some Artist",
-                "title": f"Title {identity}",
-                "year": year,
-                "tracks": 1,
-                "size": 1,
-                "item_id": None,
-                "payload": {},
+                "identity": identity, "artist": "Some Artist", "title": f"Title {identity}",
+                "year": year, "tracks": 1, "size": 1, "item_id": None, "payload": {},
             }
             for identity, year in releases
         ],
@@ -75,11 +65,9 @@ def _reads(monkeypatch, account) -> list[str]:
     """Every playlist whose tracks the plan reads off the account."""
     read: list[str] = []
     real = account.playlist_tracks
-
     def recorded(playlist_id):
         read.append(playlist_id)
         return real(playlist_id)
-
     monkeypatch.setattr(account, "playlist_tracks", recorded)
     return read
 
@@ -150,8 +138,7 @@ def test_a_release_the_provider_no_longer_lists_is_counted_not_refused(kompakt):
     _took(cfg, ("r7", "2020"), ("r2", "2022"))
     _exits(ExitCode.OK, _releases())
     assert sorted(fake.releases_asked_for) == ["r2", "r2", "r7", "r7"]
-    (folder_id,) = account.folder_names
-    assert _years(account, folder_id) == {"Kompakt 2022": ["t3"]}
+    assert _held(account) == {"Kompakt 2022": ["t3"]}
     code, refused = drive(RELEASES)
     assert "1 the provider no longer has" in refused["cause"]["detail"]["shown"]["catalogue"]
 
@@ -268,11 +255,9 @@ def small_threshold(monkeypatch):
 def _verifier_calls(monkeypatch, fake) -> list[str]:
     asked: list[str] = []
     real = fake.search_release
-
     def recorded(claimed, release):
         asked.append(str(getattr(release, "id", "")))
         return real(claimed, release)
-
     monkeypatch.setattr(fake, "search_release", recorded)
     return asked
 
@@ -308,8 +293,7 @@ def test_a_full_build_answered_crawl_reads_the_catalogue_and_asks_the_build_gate
 ):
     _cfg, fake, account = kompakt
     _exits(ExitCode.OK, _decided(["label", "playlists", LABEL], (CRAWL, "crawl"), (BUILD, "apply")))
-    (folder_id,) = account.folder_names
-    assert set(_years(account, folder_id)) == {"Kompakt 2021", "Kompakt 2022", "Kompakt 2023"}
+    assert set(_held(account)) == {"Kompakt 2021", "Kompakt 2022", "Kompakt 2023"}
     assert "r1" in fake.releases_asked_for
 
 
@@ -362,8 +346,7 @@ def test_a_release_the_provider_dates_by_nothing_takes_the_year_its_answer_recor
     # r5 has no provider year: one answer recorded 2019, the other nothing usable.
     _took(cfg, ("r5", "2019"))
     assert _releases()[0] == int(ExitCode.OK)
-    (folder_id,) = account.folder_names
-    assert _years(account, folder_id) == {"Kompakt 2019": ["t8"]}
+    assert _held(account) == {"Kompakt 2019": ["t8"]}
 
 
 def test_a_recorded_year_that_is_not_four_digits_is_undated(kompakt):

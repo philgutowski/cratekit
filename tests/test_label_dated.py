@@ -1,9 +1,4 @@
-"""U117: new label releases kept apart from the ones already heard.
-
-The record of what a go took and heard is the label review store; the dated
-playlist is planned by ``crate organize``'s account step beside the year,
-which is left as it was. Fakes only; D1 applies.
-"""
+"""U117: new label releases kept apart from the ones already heard."""
 
 from __future__ import annotations
 
@@ -21,7 +16,7 @@ from cratekit.modules.outbound import folders
 from cratekit.organize import account as organize_account
 from cratekit.organize.steps import NOTHING, PLANNED, REFUSED, Area
 from tests.label_fakes import FakeTrack
-from tests.test_label_playlists import LABEL, LABEL_ID, _entry, _years
+from tests.test_label_playlists import LABEL, LABEL_ID, _entry, _held
 from tests.test_label_playlists import kompakt as kompakt  # noqa: PLC0414 - fixture
 from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
 
@@ -38,15 +33,9 @@ def _answer(taken: list[str], day: str, *, answer: str = sync_cli.ALL, settled: 
     """A saved answer as ``Answered.to_json`` writes it, settled at 22:00 local."""
     taking = answer in (sync_cli.ALL, sync_cli.PICK)
     entry = {
-        "label_id": LABEL_ID,
-        "label_name": LABEL,
-        "answer": answer,
-        "offered": len(taken),
-        "taken": list(taken) if taking else [],
-        "left": [] if taking else list(taken),
-        "removed": False,
-        "run": "ask-1",
-        "answered_at": _instant(day, 9),
+        "label_id": LABEL_ID, "label_name": LABEL, "answer": answer, "offered": len(taken),
+        "taken": list(taken) if taking else [], "left": [] if taking else list(taken),
+        "removed": False, "run": "ask-1", "answered_at": _instant(day, 9),
         "releases": [{"identity": one} for one in taken] if taking else [],
     }
     if settled:
@@ -73,11 +62,7 @@ def _built(cfg, fake, account) -> folders.Plan:
 def _plan(cfg, fake, account, *, today=TODAY) -> dated.DatedPlan:
     year_plan = playlists_cli.plan_label(cfg, _entry(), fake, account)
     return dated.plan(
-        cfg,
-        year_plan.catalogue,
-        year_plan.folder_id,
-        account,
-        sync_cli.load_record(cfg),
+        cfg, year_plan.catalogue, year_plan.folder_id, account, sync_cli.load_record(cfg),
         today=today,
     )
 
@@ -128,8 +113,7 @@ def test_the_name_is_the_year_name_then_new_then_the_day():
 def test_a_go_into_an_existing_year_makes_a_dated_playlist_and_leaves_the_year(kompakt):
     cfg, fake, account = kompakt
     year_plan = _built(cfg, fake, account)
-    (folder_id,) = account.folder_names
-    before = _years(account, folder_id)
+    before = _held(account)
     assert "Kompakt 2023" in before
     _record(cfg, [_answer(["r3"], "2026-10-09")])
     planned = _plan(cfg, fake, account)
@@ -137,7 +121,7 @@ def test_a_go_into_an_existing_year_makes_a_dated_playlist_and_leaves_the_year(k
         ("Kompakt 2023 new 2026-10-09", dated.CREATE, ("t4", "t5"))
     ]
     dated.apply(cfg, account, planned)
-    after = _years(account, folder_id)
+    after = _held(account)
     assert after["Kompakt 2023 new 2026-10-09"] == ["t4", "t5"]
     assert {k: v for k, v in after.items() if " new " not in k} == before
     assert not year_plan.writes
@@ -146,14 +130,13 @@ def test_a_go_into_an_existing_year_makes_a_dated_playlist_and_leaves_the_year(k
 def test_a_second_go_the_same_day_appends_to_the_same_dated_playlist(kompakt):
     cfg, fake, account = kompakt
     _built(cfg, fake, account)
-    (folder_id,) = account.folder_names
     _record(cfg, [_answer(["r3"], "2026-10-09")])
     dated.apply(cfg, account, _plan(cfg, fake, account))
     _record(cfg, [_answer(["r3"], "2026-10-09"), _answer(["r4"], "2026-10-09")])
     planned = _plan(cfg, fake, account)
     assert [(s.action, s.add) for s in planned.steps] == [(dated.REUSE, ("t6", "t7"))]
     dated.apply(cfg, account, planned)
-    held = _years(account, folder_id)
+    held = _held(account)
     assert held["Kompakt 2023 new 2026-10-09"] == ["t4", "t5", "t6", "t7"]
     assert sum(1 for title in account.titles.values() if " new " in title) == 1
     assert not _plan(cfg, fake, account).writes
@@ -255,12 +238,10 @@ def test_the_age_key_defaults_to_thirty_and_refuses_zero():
 def test_the_account_refusing_mid_pass_names_what_was_written_and_a_rerun_finishes(kompakt):
     cfg, fake, account = kompakt
     _built(cfg, fake, account)
-    (folder_id,) = account.folder_names
     _record(cfg, [_answer(["r1"], "2026-10-08"), _answer(["r3"], "2026-10-09")])
     planned = _plan(cfg, fake, account)
     assert [s.name for s in planned.steps] == [
-        "Kompakt 2021 new 2026-10-08",
-        "Kompakt 2023 new 2026-10-09",
+        "Kompakt 2021 new 2026-10-08", "Kompakt 2023 new 2026-10-09",
     ]
     account.fail_on = frozenset({"Kompakt 2023 new 2026-10-09"})
     with pytest.raises(CratekitError) as raised:
@@ -271,11 +252,10 @@ def test_the_account_refusing_mid_pass_names_what_was_written_and_a_rerun_finish
     account.fail_on = frozenset()
     again = _plan(cfg, fake, account)
     assert [(s.action, s.add) for s in again.steps] == [
-        (dated.REUSE, ()),
-        (dated.CREATE, ("t4", "t5")),
+        (dated.REUSE, ()), (dated.CREATE, ("t4", "t5")),
     ]
     dated.apply(cfg, account, again)
-    held = _years(account, folder_id)
+    held = _held(account)
     assert held["Kompakt 2021 new 2026-10-08"] == ["t1", "t2"]
     assert held["Kompakt 2023 new 2026-10-09"] == ["t4", "t5"]
 
@@ -285,7 +265,6 @@ def test_a_move_refused_after_the_create_names_the_playlist_left_at_the_root(kom
     _built(cfg, fake, account)
     _record(cfg, [_answer(["r3"], "2026-10-09")])
     planned = _plan(cfg, fake, account)
-
     def refuse_move(playlist_id, folder_id):
         raise RuntimeError("the provider dropped the connection")
     monkeypatch.setattr(account, "move_to_folder", refuse_move)
@@ -336,8 +315,7 @@ def test_organize_plans_the_dated_playlist_after_the_label_folder_and_applies_in
     for one in area.steps:
         if one.apply is not None and one.key.startswith("label"):
             one.applied = one.apply()
-    (folder_id,) = account.folder_names
-    held = _years(account, folder_id)
+    held = _held(account)
     assert held["Kompakt 2023"] == ["t4", "t5", "t6", "t7"]
     assert held["Kompakt 2023 new 2026-10-09"] == ["t4", "t5"]
 

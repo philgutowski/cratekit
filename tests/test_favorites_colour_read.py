@@ -1,9 +1,4 @@
-"""The favourites colour read against a real open, and a library that is not there.
-
-Marked ``real_pink_read`` past the suite's autouse stub. A missing database
-stops both verbs with the open's own cause; under ``crate sync all`` it is the
-favourites source's refusal while the rest of the pass still runs.
-"""
+"""The favourites colour read against a real open, and a library that is not there."""
 
 from __future__ import annotations
 
@@ -35,9 +30,7 @@ def test_a_missing_database_is_the_opens_own_cause_under_sync_favorites(
     if gone == "file":
         target.parent.mkdir(parents=True)
     monkeypatch.setattr(rb_writer, "live_db_path", lambda cfg=None: target)
-
     code, refused = drive(favorites_verb(exported))
-
     assert code != int(ExitCode.OK), refused
     expected = "library-database-missing" if gone == "file" else "library-directory-missing"
     assert refused["cause"]["reason"] == expected, refused
@@ -49,9 +42,7 @@ def test_a_missing_database_is_the_favourites_refusal_under_sync_all(
     target = installed.library.root / "absent" / "master.db"
     target.parent.mkdir(parents=True)
     monkeypatch.setattr(rb_writer, "live_db_path", lambda cfg=None: target)
-
     code, envelope = drive(["sync", "all", "--export", str(exported)])
-
     # Every source refuses on its own here, the favourites one with the open's own cause.
     assert code != int(ExitCode.OK), envelope
     assert envelope["cause"]["reason"] != "internal-error", envelope
@@ -66,7 +57,6 @@ def test_the_real_read_finds_the_pink_row_in_a_disposable_library(installed, clo
     from pyrekordbox.db6 import tables
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
-
     target = installed.library.root / "disposable" / "master.db"
     _build_disposable_database(target)
     engine = create_engine(f"sqlite:///{target}")
@@ -78,5 +68,4 @@ def test_the_real_read_finds_the_pink_row_in_a_disposable_library(installed, clo
         session.commit()
     engine.dispose()
     monkeypatch.setattr(rb_writer, "live_db_path", lambda cfg=None: target)
-
     assert favorites_cli.read_pink_track_ids(installed) == ("1",)

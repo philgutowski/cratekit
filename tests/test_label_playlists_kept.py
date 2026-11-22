@@ -1,8 +1,4 @@
-"""R-1091: a full label build keeps what it read, so a large label builds over several runs.
-
-Driven through the real dispatcher with the catalogue and the account faked.
-D1 applies: nothing here names a real volume, person or track.
-"""
+"""R-1091: a full label build keeps what it read, so a large label builds over several runs."""
 
 from __future__ import annotations
 
@@ -17,13 +13,14 @@ from cratekit.core.jobs import Parked
 from cratekit.label import kept_reads, playlists_cli
 from tests.cli_drive import drive
 from tests.label_fakes import FakeTrack
-from tests.test_label_playlists import BUILD, LABEL, LABEL_ID, LISTED, _entry, _exits, _years
+from tests.test_label_playlists import BUILD, LABEL, LABEL_ID, LISTED, _entry, _exits, _held
 from tests.test_label_playlists import kompakt as kompakt  # noqa: PLC0414 - fixture
 from tests.test_label_playlists_releases import RELEASES, _decided, _took
 from tests.test_label_playlists_releases import (
     small_threshold as small_threshold,  # noqa: PLC0414 - fixture
 )
 from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
+from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 
 CRAWL = playlists_cli.CRAWL_GATE
 FULL = ["label", "playlists", LABEL]
@@ -37,7 +34,6 @@ def _parks_after(monkeypatch, fake, reads: int) -> dict:
     real = fake.release_tracks
     done: list[str] = []
     switch: dict = {"after": reads}
-
     def paced(release_id):
         if switch["after"] is not None and len(done) >= switch["after"]:
             fake.releases_asked_for.append(release_id)
@@ -50,7 +46,6 @@ def _parks_after(monkeypatch, fake, reads: int) -> dict:
             )
         done.append(release_id)
         return real(release_id)
-
     monkeypatch.setattr(fake, "release_tracks", paced)
     return switch
 
@@ -99,10 +94,8 @@ def test_a_resumed_build_plans_what_a_build_in_one_go_plans(kompakt, monkeypatch
     assert drive(FULL)[0] != int(ExitCode.OK)
     switch["after"] = None
     _exits(ExitCode.OK, _decided(FULL, (BUILD, "apply")))
-    (folder_id,) = account.folder_names
-    assert _years(account, folder_id) == {
-        "Kompakt 2021": ["t1", "t2"],
-        "Kompakt 2022": ["t3"],
+    assert _held(account) == {
+        "Kompakt 2021": ["t1", "t2"], "Kompakt 2022": ["t3"],
         "Kompakt 2023": ["t4", "t5", "t6", "t7"],
     }
 
@@ -111,7 +104,6 @@ def test_a_build_refused_part_way_by_a_failed_read_keeps_the_reads_before_it(kom
     _cfg, fake, account = kompakt
     # r1 is read fourth and fails as an outage, not as a release that is gone.
     real = fake.release_tracks
-
     def failing(release_id):
         if release_id == "r1":
             fake.releases_asked_for.append(release_id)
@@ -193,8 +185,7 @@ def test_a_crawl_answered_build_reads_each_release_once_over_its_three_runs(
     _cfg, fake, account = kompakt
     _exits(ExitCode.OK, _decided(FULL, (CRAWL, "crawl"), (BUILD, "apply")))
     assert sorted(fake.releases_asked_for) == sorted(READ)
-    (folder_id,) = account.folder_names
-    assert set(_years(account, folder_id)) == {"Kompakt 2021", "Kompakt 2022", "Kompakt 2023"}
+    assert set(_held(account)) == {"Kompakt 2021", "Kompakt 2022", "Kompakt 2023"}
 
 
 def test_a_gone_release_is_kept_as_gone_and_counted_without_asking_again(kompakt):
@@ -219,8 +210,7 @@ def test_a_kept_read_keeps_a_track_the_provider_will_not_play_out_of_the_year(ko
         {"id": "t2", "available": False, "artist": "", "title": "Track t2"},
     ]
     _exits(ExitCode.OK, _decided(FULL, (BUILD, "apply")))
-    (folder_id,) = account.folder_names
-    assert _years(account, folder_id)["Kompakt 2021"] == ["t1"]
+    assert _held(account)["Kompakt 2021"] == ["t1"]
 
 
 def test_a_kept_read_keeps_the_year_the_provider_stated_over_the_listed_one(kompakt):
@@ -230,8 +220,7 @@ def test_a_kept_read_keeps_the_year_the_provider_stated_over_the_listed_one(komp
     assert drive(FULL)[0] == int(ExitCode.DECISION_REQUIRED)
     assert _stored()["reads"]["r2"]["year"] == 2019
     _exits(ExitCode.OK, _decided(FULL, (BUILD, "apply")))
-    (folder_id,) = account.folder_names
-    assert _years(account, folder_id)["Kompakt 2019"] == ["t3"]
+    assert _held(account)["Kompakt 2019"] == ["t3"]
 
 
 # 4. The screens
@@ -356,7 +345,6 @@ def test_a_releases_build_neither_reads_nor_writes_the_store(kompakt):
 
 # 6. The store on its own
 def test_reads_are_written_every_flush_and_not_only_at_the_end(installed, monkeypatch):
-    del installed
     monkeypatch.setattr(kept_reads, "FLUSH_EVERY", 2)
     store = kept_reads.KeptReads.load(LABEL_ID)
     store.keep("a", [FakeTrack("t1")], 2020)
@@ -366,7 +354,6 @@ def test_reads_are_written_every_flush_and_not_only_at_the_end(installed, monkey
 
 
 def test_a_flush_with_nothing_new_writes_nothing(installed):
-    del installed
     kept_reads.KeptReads.load(LABEL_ID).flush()
     assert not kept_reads.path_for(LABEL_ID).exists()
 
@@ -377,13 +364,11 @@ def _full_disk(monkeypatch) -> list[str]:
     tried: list[str] = []
     real = kept_reads.config.atomic_write_bytes
     store = kept_reads.path_for(LABEL_ID)
-
     def refused(payload, path, **kwargs):
         if path != store:
             return real(payload, path, **kwargs)
         tried.append(str(path))
         raise OSError(28, "No space left on device")
-
     monkeypatch.setattr(kept_reads.config, "atomic_write_bytes", refused)
     return tried
 
@@ -429,7 +414,6 @@ def test_a_file_where_the_labels_directory_belongs_still_shows_the_plan(kompakt)
 
 
 def test_a_write_that_succeeds_after_one_failed_clears_what_was_said(installed, monkeypatch):
-    del installed
     store = kept_reads.KeptReads.load(LABEL_ID)
     store.keep("a", [FakeTrack("t1")], 2020)
     real = kept_reads.config.atomic_write_bytes
@@ -461,7 +445,6 @@ def test_the_store_is_written_every_fifty_reads():
 
 
 def test_a_read_exactly_the_age_old_is_read_again(installed, monkeypatch):
-    del installed
     start = datetime(2026, 11, 1, 12, 0, tzinfo=kept_reads.timezone.utc)
     monkeypatch.setattr(kept_reads, "clock", lambda: start)
     store = kept_reads.KeptReads.load(LABEL_ID)
@@ -476,7 +459,6 @@ def test_a_read_exactly_the_age_old_is_read_again(installed, monkeypatch):
 
 
 def test_a_year_given_as_a_bool_is_kept_as_no_year(installed):
-    del installed
     store = kept_reads.KeptReads.load(LABEL_ID)
     store.keep("a", [FakeTrack("t1")], True)
     store.flush()
@@ -484,7 +466,6 @@ def test_a_year_given_as_a_bool_is_kept_as_no_year(installed):
 
 
 def test_a_release_named_twice_is_counted_once_as_kept(installed):
-    del installed
     store = kept_reads.KeptReads.load(LABEL_ID)
     store.keep("a", [FakeTrack("t1")], 2020)
     assert store.kept(["a", "a", "b"])[0] == 1
@@ -494,10 +475,8 @@ def test_a_release_named_twice_is_counted_once_as_kept(installed):
 @pytest.mark.parametrize(
     "age, said",
     [
-        (timedelta(minutes=59), "59 minute(s)"),
-        (timedelta(minutes=60), "1 hour(s)"),
-        (timedelta(hours=47), "47 hour(s)"),
-        (timedelta(hours=48), "2 day(s)"),
+        (timedelta(minutes=59), "59 minute(s)"), (timedelta(minutes=60), "1 hour(s)"),
+        (timedelta(hours=47), "47 hour(s)"), (timedelta(hours=48), "2 day(s)"),
     ],
 )
 def test_an_age_reads_in_minutes_then_hours_then_days(age, said):

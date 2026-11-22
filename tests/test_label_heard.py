@@ -1,9 +1,4 @@
-"""U123: a label's dated playlist heard, merged into the year and removed.
-
-Driven through the real dispatcher with U117's fakes, the dated playlist made
-by :func:`dated.apply` so the ledger vouches for it; the adapter's removal over
-a stand in client at the end. D1 applies.
-"""
+"""U123: a label's dated playlist heard, merged into the year and removed."""
 
 from __future__ import annotations
 
@@ -25,6 +20,7 @@ from tests.test_label_dated import _answer, _built, _plan, _record
 from tests.test_label_playlists import LABEL, LABEL_ID, _entry, _exits, _years
 from tests.test_label_playlists import kompakt as kompakt  # noqa: PLC0414 - fixture
 from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
+from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 
 GATE = "label.heard.confirm"
 DAY = "2026-10-09"
@@ -231,8 +227,7 @@ def test_a_date_no_go_took_anything_on_is_refused(kompakt):
 
 
 @pytest.mark.parametrize(
-    "argv",
-    [[LABEL, "23", DAY], [LABEL, "2023", "2026-13-01"], [LABEL, "2023", "yesterday"]],
+    "argv", [[LABEL, "23", DAY], [LABEL, "2023", "2026-13-01"], [LABEL, "2023", "yesterday"]],
 )
 def test_a_year_or_date_that_is_not_one_is_refused(kompakt, argv):
     code, refused = drive(["label", "heard", *argv])
@@ -316,8 +311,7 @@ def test_the_heard_list_is_added_to_never_replaced_and_kept_sorted(installed):
         cfg,
         {
             "version": sync_cli.RECORD_VERSION,
-            "labels": {LABEL_ID: {"asked": ["x"], heard.HEARD: ["r9"]}},
-            "answers": [],
+            "labels": {LABEL_ID: {"asked": ["x"], heard.HEARD: ["r9"]}}, "answers": [],
         },
     )
     assert heard.record_heard(cfg, LABEL_ID, ["r3", "r9"]) == 1
@@ -475,7 +469,6 @@ def test_an_unreadable_ledger_refuses_a_dated_create_before_anything_exists(inst
     path = config.state_path("outbound_writes", cfg)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("not json", encoding="utf-8")
-
     def create() -> str:
         raise AssertionError("the playlist was created before the ledger was read")
     with pytest.raises(CratekitError) as caught:

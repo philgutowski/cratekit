@@ -1,9 +1,4 @@
-"""R-1056: ``label mark --pass`` marks a label batch a native landing filed.
-
-Proved as ``sync mark --pass`` is, the years read off the landing's session
-record. The first half writes that record by hand; the second lands a real
-batch natively on the native landing suite's disposable database. D1 applies.
-"""
+"""R-1056: ``label mark --pass`` marks a label batch a native landing filed."""
 
 from __future__ import annotations
 
@@ -15,14 +10,13 @@ import pytest
 from cratekit.core import config, session
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import label_filing, native
-from cratekit.label import catalogue
 from cratekit.label import mark_cli as label_mark_cli
 from cratekit.label import registry as labels
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.sync import mark_record
-from tests import outbound_fakes
 from tests.cli_drive import drive
-from tests.label_fakes import catalogue_factory
+from tests.test_favorites_backfill import _silent as _silent  # noqa: PLC0414
+from tests.test_favorites_backfill import silence as silence  # noqa: PLC0414
 from tests.test_intake_land_labels_native import _dated, _manifest
 from tests.test_intake_land_native import _land, _stage
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
@@ -34,27 +28,30 @@ from tests.test_intake_land_native import acknowledged as acknowledged  # noqa: 
 from tests.test_intake_land_native import library as library  # noqa: PLC0414
 from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
 from tests.test_intake_land_native import native_library as native_library  # noqa: PLC0414
-from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
-from tests.test_label_playlists import LABEL, MARK, _build, _catalogue, _exits, _landed, _two_acts
+from tests.test_label_playlists import (
+    LABEL,
+    MARK,
+    _build,
+    _exits,
+    _faked,
+    _landed,
+    _reasons,
+    _refused,
+    _took,
+    _two_acts,
+)
 from tests.test_label_playlists import built as built  # noqa: PLC0414
 from tests.test_label_playlists import followed as followed  # noqa: PLC0414
 from tests.test_label_playlists import kompakt as kompakt  # noqa: PLC0414
 from tests.test_label_workers import installed as installed  # noqa: PLC0414
-from tests.test_outbound_workers import bind as bind_account
+from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 from tests.test_sync_mark import _cut_over_intake
 
 PASS = "LABEL_RUN_synced"
+BY_PASS = ["label", "mark", LABEL, "--pass", PASS]
 
 #: Every year the followed label's build makes, by the fake account's id.
 BUILT = {"pl-1": "Kompakt 2021", "pl-2": "Kompakt 2022", "pl-3": "Kompakt 2023"}
-
-def _took(account) -> list[str]:
-    """What the mark holds as taken, having renamed nothing (U242)."""
-    from cratekit.core import config as _config
-
-    assert account.renamed == [], "no verb writes the DOWNLOADED prefix since U242"
-    return sorted(mark_record.MarkRecord(_config.load()).taken_ids())
-
 
 
 def _filed(year: int, *, label: str = LABEL, tracks: int = 1) -> dict:
@@ -63,13 +60,9 @@ def _filed(year: int, *, label: str = LABEL, tracks: int = 1) -> dict:
 
 
 def _record_landing(
-    cfg: config.Config,
-    *filed: dict,
-    name: str = PASS,
+    cfg: config.Config, *filed: dict, name: str = PASS,
     state: session.SessionState = session.SessionState.CLOSED,
-    source: session.SourceState = session.SourceState.COMMITTED,
-    stamp: str = "120000",
-    labels=None,
+    source: session.SourceState = session.SourceState.COMMITTED, stamp: str = "120000", labels=None,
 ) -> str:
     """The session record a native landing given ``--pass name`` commits."""
     started = f"2026-10-07T{stamp[:2]}:{stamp[2:4]}:{stamp[4:]}+00:00"
@@ -79,13 +72,8 @@ def _record_landing(
     elif filed:
         detail[label_filing.RECORD_KEY] = list(filed)
     record = session.SessionRecord(
-        session_id=f"20261007T{stamp}-landing",
-        workflow=native.WORKFLOW,
-        started=started,
-        state=state,
-        sources={"intake": str(source)},
-        ended=started,
-        detail=detail,
+        session_id=f"20261007T{stamp}-landing", workflow=native.WORKFLOW, started=started,
+        state=state, sources={"intake": str(source)}, ended=started, detail=detail,
     )
     session.write_record(record, cfg)
     return record.session_id
@@ -115,18 +103,16 @@ def native_built(built):
 def test_a_native_pass_marks_exactly_the_years_its_landing_filed(native_built):
     cfg, _fake, account = native_built
     _record_landing(cfg, _filed(2021, tracks=2), _filed(2023))
-    refused = _exits(ExitCode.DECISION_REQUIRED, drive(["label", "mark", LABEL, "--pass", PASS]))
+    refused = _exits(ExitCode.DECISION_REQUIRED, drive(BY_PASS))
     shown = refused["cause"]["detail"]["shown"]
     assert shown["pass"].startswith(f"{PASS}, landed on the database native ")
     assert shown["undone by"] == f"crate sync unmark --pass {PASS}"
     done = _exits(ExitCode.OK, _mark())
     assert _took(account) == ["pl-1", "pl-3"]
-    reasons = {item["id"]: item.get("reason") for item in done["data"]["items"]}
-    assert reasons["pl-2"] == label_mark_cli.NOT_IN_BATCH
+    assert _reasons(done)["pl-2"] == label_mark_cli.NOT_IN_BATCH
     held = mark_record.MarkRecord(cfg).taken()
     assert sorted((e.playlist_id, e.name, e.by) for e in held.values()) == [
-        ("pl-1", "Kompakt 2021", PASS),
-        ("pl-3", "Kompakt 2023", PASS),
+        ("pl-1", "Kompakt 2021", PASS), ("pl-3", "Kompakt 2023", PASS),
     ]
     assert done["warnings"] == []
 
@@ -152,8 +138,7 @@ def test_a_year_filed_under_another_label_or_holding_no_track_is_not_marked(nati
 
 # 2. Nothing filed, and no proof
 @pytest.mark.parametrize(
-    "filed",
-    [(), (_filed(2021, label="Another Label"),), (_filed(2019),)],
+    "filed", [(), (_filed(2021, label="Another Label"),), (_filed(2019),)],
     ids=["no-label-filed", "another-label", "a-year-never-built"],
 )
 def test_a_pass_whose_landings_filed_none_of_the_built_years_marks_nothing_and_says_so(
@@ -182,9 +167,7 @@ def test_a_bridge_batch_of_another_label_says_it_filed_nothing_too(built):
 @pytest.mark.parametrize(
     "landing",
     [
-        None,
-        {"state": session.SessionState.ABANDONED},
-        {"source": session.SourceState.REFUSED},
+        None, {"state": session.SessionState.ABANDONED}, {"source": session.SourceState.REFUSED},
         {"name": "ANOTHER_synced"},
     ],
     ids=["no-landing", "abandoned", "never-committed", "another-pass"],
@@ -194,8 +177,7 @@ def test_a_pass_no_closed_committed_native_landing_names_is_refused_by_name(nati
     if landing is not None:
         _record_landing(cfg, _filed(2021), **landing)
     calls = account._writes
-    refused = _exits(ExitCode.PRECONDITION, drive(["label", "mark", LABEL, "--pass", PASS]))
-    assert refused["cause"]["reason"] == "sync-marks-blocked"
+    refused = _refused(BY_PASS, "sync-marks-blocked")
     assert f"no landing of {PASS!r}" in refused["cause"]["message"]
     assert account._writes == calls and account.renamed == []
     # The label batch's own remedy, not the sync pass's.
@@ -217,7 +199,7 @@ def test_a_label_named_by_its_registry_identifier_is_compared_under_its_name(nat
 def test_pass_on_an_intake_tree_on_the_bridge_is_refused_naming_xml(built):
     cfg, _fake, account = built
     _record_landing(cfg, _filed(2021))
-    refused = _exits(ExitCode.PRECONDITION, drive(["label", "mark", LABEL, "--pass", PASS]))
+    refused = _exits(ExitCode.PRECONDITION, drive(BY_PASS))
     assert "xml bridge" in refused["cause"]["message"]
     assert any("--xml" in step for step in refused["cause"]["remediation"]["steps"])
     assert account.renamed == []
@@ -228,19 +210,16 @@ def test_an_unreachable_library_names_label_mark_as_the_verb_to_run_again(
 ):
     from cratekit.sync import mark_cli as sync_mark_cli
     monkeypatch.setattr(
-        sync_mark_cli.ingest,
-        "intake_medium",
+        sync_mark_cli.ingest, "intake_medium",
         lambda cfg: sync_mark_cli.ingest.IntakeMedium(declared=None, registry=None),
     )
-    refused = _exits(ExitCode.PRECONDITION, drive(["label", "mark", LABEL, "--pass", PASS]))
+    refused = _exits(ExitCode.PRECONDITION, drive(BY_PASS))
     steps = refused["cause"]["remediation"]["steps"]
     assert "mount the library volume, then run crate label mark again" in steps
 
 
 @pytest.mark.parametrize(
-    "argv",
-    [[], ["--xml", "x_inboxed.xml", "--pass", PASS]],
-    ids=["neither", "both"],
+    "argv", [[], ["--xml", "x_inboxed.xml", "--pass", PASS]], ids=["neither", "both"],
 )
 def test_the_pass_is_named_by_exactly_one_of_the_file_and_the_name(native_built, argv):
     _cfg, _fake, account = native_built
@@ -252,21 +231,12 @@ def test_the_pass_is_named_by_exactly_one_of_the_file_and_the_name(native_built,
 @pytest.mark.parametrize(
     "labels",
     [
-        "Kompakt 2021",
-        ["Kompakt 2021"],
-        [{"label": LABEL, "year": "2021", "tracks": 1}],
-        [{"label": LABEL, "year": 2021}],
-        [{"label": LABEL, "year": True, "tracks": 1}],
-        [{"label": LABEL, "year": 2021, "tracks": True}],
-        [{"year": 2021, "tracks": 1}],
+        "Kompakt 2021", ["Kompakt 2021"], [{"label": LABEL, "year": "2021", "tracks": 1}],
+        [{"label": LABEL, "year": 2021}], [{"label": LABEL, "year": True, "tracks": 1}],
+        [{"label": LABEL, "year": 2021, "tracks": True}], [{"year": 2021, "tracks": 1}],
     ],
     ids=[
-        "a-string",
-        "a-list-of-strings",
-        "a-text-year",
-        "no-tracks",
-        "a-bool-year",
-        "a-bool-tracks",
+        "a-string", "a-list-of-strings", "a-text-year", "no-tracks", "a-bool-year", "a-bool-tracks",
         "no-label",
     ],
 )
@@ -275,7 +245,7 @@ def test_a_record_naming_its_filing_in_a_form_this_build_cannot_read_is_refused(
 ):
     cfg, _fake, account = native_built
     session_id = _record_landing(cfg, labels=labels)
-    refused = _exits(ExitCode.PRECONDITION, drive(["label", "mark", LABEL, "--pass", PASS]))
+    refused = _exits(ExitCode.PRECONDITION, drive(BY_PASS))
     assert session_id in refused["cause"]["message"]
     assert "cannot read" in refused["cause"]["message"]
     assert account.renamed == []
@@ -285,7 +255,7 @@ def test_a_record_naming_its_filing_in_a_form_this_build_cannot_read_is_refused(
 def test_a_landing_of_the_pass_after_the_answer_makes_it_stale(native_built):
     cfg, _fake, account = native_built
     _record_landing(cfg, _filed(2021))
-    refused = _exits(ExitCode.DECISION_REQUIRED, drive(["label", "mark", LABEL, "--pass", PASS]))
+    refused = _exits(ExitCode.DECISION_REQUIRED, drive(BY_PASS))
     run_id = refused["run_id"]
     code, _ = drive(["run", "decide", run_id, MARK, "apply", "--actor", "a-person"])
     assert code == int(ExitCode.OK)
@@ -303,7 +273,6 @@ def test_a_landing_between_the_plan_and_the_first_rename_renames_nothing(native_
     _record_landing(cfg, _filed(2021))
     real = label_mark_cli.native_proof
     seen: list[str] = []
-
     def proving(cfg, name, *, verb, named):
         seen.append(verb)
         if len(seen) == 3:
@@ -339,11 +308,8 @@ ONE_LANDING = "20261007T120000-landing"
 
 def _record(labels) -> session.SessionRecord:
     return session.SessionRecord(
-        session_id=ONE_LANDING,
-        workflow=native.WORKFLOW,
-        started="2026-10-07T12:00:00+00:00",
-        state=session.SessionState.CLOSED,
-        sources={},
+        session_id=ONE_LANDING, workflow=native.WORKFLOW, started="2026-10-07T12:00:00+00:00",
+        state=session.SessionState.CLOSED, sources={},
         detail={} if labels is None else {label_filing.RECORD_KEY: labels},
     )
 
@@ -378,18 +344,13 @@ def test_a_year_is_four_digits_as_the_ledger_spells_it():
 def landed_natively(native_library, monkeypatch):
     """The native landing machine; ``follow`` then follows Kompakt and builds its years."""
     cfg, _root = native_library
-
-    def follow() -> outbound_fakes.StrictAccount:
-        full = dataclasses.replace(cfg, profile=config.ProfileConfig(name="full"))
-        config.save(full)
+    def follow():
+        config.save(dataclasses.replace(cfg, profile=config.ProfileConfig(name="full")))
         config.reset_cache()
         labels.RegistryStore().add(LABEL)
-        monkeypatch.setattr(catalogue, "resolve", catalogue_factory(_catalogue()))
-        account = outbound_fakes.StrictAccount()
-        bind_account(monkeypatch, account)
+        _cfg, _fake, account = _faked(monkeypatch, cfg)
         assert _build()[0] == int(ExitCode.OK)
         return account
-
     return cfg, follow
 
 
@@ -402,8 +363,7 @@ def test_a_label_batch_landed_natively_with_label_is_marked_by_its_pass(landed_n
     account = follow()
     done = _exits(ExitCode.OK, _mark())
     assert _took(account) == ["pl-1", "pl-3"]
-    reasons = {item["id"]: item.get("reason") for item in done["data"]["items"]}
-    assert reasons["pl-2"] == label_mark_cli.NOT_IN_BATCH
+    assert _reasons(done)["pl-2"] == label_mark_cli.NOT_IN_BATCH
 
 
 def test_a_label_batch_landed_natively_with_a_manifest_is_marked_by_its_pass(
@@ -427,8 +387,8 @@ def test_the_gate_digest_names_the_landings(native_built):
     """What makes a second landing another plan, read off the payload itself."""
     cfg, _fake, _account = native_built
     _record_landing(cfg, _filed(2021))
-    first = _exits(ExitCode.DECISION_REQUIRED, drive(["label", "mark", LABEL, "--pass", PASS]))
+    first = _exits(ExitCode.DECISION_REQUIRED, drive(BY_PASS))
     _record_landing(cfg, _filed(2021), stamp="130000")
-    second = _exits(ExitCode.DECISION_REQUIRED, drive(["label", "mark", LABEL, "--pass", PASS]))
+    second = _exits(ExitCode.DECISION_REQUIRED, drive(BY_PASS))
     assert first["cause"]["detail"]["shown"]["digest"] != second["cause"]["detail"]["shown"]["digest"]
 

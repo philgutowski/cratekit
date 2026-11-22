@@ -1,12 +1,4 @@
-"""U4, U5 and U6: the label verbs queue real items, run them, and harvest.
-
-The registry decides the items, an empty registry refuses instead of queueing,
-and a queued job actually runs: ``jobs.drive`` succeeds a job with no items, so
-a sweep queued with none reported success over nothing read. Items and refusals
-are read back from the queue, since the envelope carries no item list. The
-catalogue is the only stand in, bound on ``cratekit.label.catalogue.resolve``;
-the dispatcher, queue, driver and sweep engine are real.
-"""
+"""U4, U5 and U6: the label verbs queue real items, run them, and harvest."""
 
 from __future__ import annotations
 
@@ -74,7 +66,6 @@ _PARSERS: dict = {}
 def one_parser(monkeypatch):
     """Every drive parses with the one parser its membership builds."""
     build = cli.build_parser
-
     def shared(*args, **kwargs):
         if args or kwargs:
             return build(*args, **kwargs)
@@ -82,7 +73,6 @@ def one_parser(monkeypatch):
         if membership not in _PARSERS:
             _PARSERS[membership] = build()
         return _PARSERS[membership]
-
     monkeypatch.setattr(cli, "build_parser", shared)
 
 
@@ -145,11 +135,9 @@ def queued_sweep(run_id: str | None = None) -> str:
     assert items, "register a label before filing a sweep, as the old verb refused"
     with jobs.open_store() as store:
         job = jobs.enqueue(
-            store,
-            handler_key=SWEEP_KEY,
+            store, handler_key=SWEEP_KEY,
             payload={"source_id": "labels", "run_id": run_id or output.new_run_id()},
-            item_ids=items,
-            cfg=cfg,
+            item_ids=items, cfg=cfg,
         )
     return job.job_id
 
@@ -366,7 +354,6 @@ def test_a_sweep_runs_every_one_of_its_labels_from_pending_to_done(installed, mo
     bind(monkeypatch, readable(*SLUGS[:2]))
     job_id = queued_sweep()
     assert set(item_states(job_id).values()) == {str(jobs.ItemState.PENDING)}
-
     resumed = swept(job_id)
     assert item_states(job_id) == {slug: str(jobs.ItemState.DONE) for slug in SLUGS[:2]}
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
@@ -378,11 +365,8 @@ def test_each_item_sweeps_its_own_label_and_not_one_named_by_the_payload(install
     catalogue_fake = bind(monkeypatch, readable(*SLUGS[:2]))
     job_id = queued_sweep()
     swept(job_id)
-
     assert offers(installed) == {
-        "hf-1": "hotflush-recordings",
-        "hf-2": "hotflush-recordings",
-        "ot-1": "ostgut-ton",
+        "hf-1": "hotflush-recordings", "hf-2": "hotflush-recordings", "ot-1": "ostgut-ton",
     }
     assert catalogue_fake.asked_for == list(SLUGS[:2])
 
@@ -449,11 +433,9 @@ def test_an_increment_that_could_not_offer_every_release_fails_the_item(installe
     """A partial round FAILS rather than completing, which is a decision."""
     register(LABELS[0])
     bind(monkeypatch, readable(SLUGS[0]))
-
     def refusing_offer(store, candidate, **kwargs):
         del store, kwargs
         raise RuntimeError(f"the review queue rejected {candidate.identity}")
-
     monkeypatch.setattr(sweep, "offer_release", refusing_offer)
     job_id = queued_sweep()
     unswept(job_id)
@@ -470,7 +452,6 @@ def test_a_label_the_registry_no_longer_holds_refuses_rather_than_sweeping_nothi
     job_id = queued_sweep()
     code, removed = drive(["label", "registry", "remove", LABELS[0]])
     assert code == int(ExitCode.OK), removed
-
     unswept(job_id)
     causes = item_causes(job_id)
     assert causes[SLUGS[0]] == "label-unknown"
@@ -503,9 +484,7 @@ def test_a_sweep_that_confirmed_none_of_what_it_read_fails_rather_than_succeedin
     register(LABELS[0])
     bind(monkeypatch, unconfirming(SLUGS[0]))
     job_id = queued_sweep()
-
     unswept(job_id)
-
     assert item_causes(job_id) == {SLUGS[0]: "label-sweep-incomplete"}
     assert job_state(job_id) != str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {}
@@ -518,9 +497,7 @@ def test_the_unconfirmed_refusal_says_how_many_were_read_and_that_the_provider_a
     register(LABELS[0])
     bind(monkeypatch, unconfirming(SLUGS[0]))
     job_id = queued_sweep()
-
     drive(["sync", "labels", "--job", job_id])
-
     said = item_cause_message(job_id, SLUGS[0])
     assert str(len(RELEASES[SLUGS[0]])) in said, said
     assert "confirm" in said, said
@@ -537,9 +514,7 @@ def test_a_label_whose_every_release_is_tombstoned_still_succeeds(installed, mon
         )
     bind(monkeypatch, readable(SLUGS[0]))
     job_id = queued_sweep()
-
     resumed = swept(job_id)
-
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {}
 
@@ -561,9 +536,7 @@ def test_a_verification_call_that_raises_fails_the_item_in_the_lookup_vocabulary
         ),
     )
     job_id = queued_sweep()
-
     unswept(job_id)
-
     assert item_causes(job_id) == {SLUGS[0]: "sync-source-lookups-failed"}
     assert job_state(job_id) == str(jobs.JobState.FAILED)
 
@@ -573,9 +546,7 @@ def test_a_label_whose_crawl_listed_nothing_at_all_still_succeeds(installed, mon
     register(LABELS[0])
     bind(monkeypatch, FakeCatalogue(artists={SLUGS[0]: FakePagedArtist([])}))
     job_id = queued_sweep()
-
     resumed = swept(job_id)
-
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {}
 
@@ -597,9 +568,7 @@ def test_a_sweep_that_confirmed_some_of_what_it_read_succeeds_and_offers_those(
         ),
     )
     job_id = queued_sweep()
-
     resumed = swept(job_id)
-
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {"hf-1": SLUGS[0]}
 
@@ -640,9 +609,7 @@ def test_a_refusal_the_sweep_verifier_raises_in_kind_keeps_its_own_reason(instal
         ),
     )
     job_id = queued_sweep()
-
     unswept(job_id)
-
     assert item_causes(job_id) == {SLUGS[0]: "credential-missing"}
 
 
@@ -658,9 +625,7 @@ def test_a_revoked_tombstone_no_longer_keeps_a_release_out_of_the_queue(installe
     store.revoke(recorded.suppression_id, actor="tests")
     bind(monkeypatch, readable(SLUGS[0]))
     job_id = queued_sweep()
-
     swept(job_id)
-
     assert offers(installed) == {"hf-1": SLUGS[0], "hf-2": SLUGS[0]}
 
 
@@ -679,9 +644,7 @@ def test_an_unreadable_tombstone_store_does_not_fail_a_label_with_nothing_to_ask
     corrupt_tombstone_store(installed)
     bind(monkeypatch, FakeCatalogue(artists={SLUGS[0]: FakePagedArtist([])}))
     job_id = queued_sweep()
-
     resumed = swept(job_id)
-
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
 
 
@@ -693,9 +656,7 @@ def test_an_unreadable_tombstone_store_still_refuses_a_label_with_a_confirmed_re
     corrupt_tombstone_store(installed)
     bind(monkeypatch, readable(SLUGS[0]))
     job_id = queued_sweep()
-
     unswept(job_id)
-
     assert item_causes(job_id) == {SLUGS[0]: "review-file-unusable"}
     assert offers(installed) == {}
 
@@ -707,10 +668,7 @@ def test_a_job_carrying_no_items_refuses_on_resume_and_is_left_open(installed):
     """A job frozen by a build before U52, met by the build that can drive it."""
     with jobs.open_store() as store:
         job = jobs.enqueue(
-            store,
-            handler_key=SWEEP_KEY,
-            payload={"source_id": "labels"},
-            cfg=installed,
+            store, handler_key=SWEEP_KEY, payload={"source_id": "labels"}, cfg=installed,
             item_ids=(),
         )
     code, refused = drive(["sync", "labels", "--job", job.job_id])
@@ -729,7 +687,6 @@ def test_a_second_resume_of_a_failed_sweep_still_does_not_exit_ok(installed, mon
     bind(monkeypatch, UnreadableCatalogue())
     job_id = queued_sweep()
     assert drive(["sync", "labels", "--job", job_id])[0] != int(ExitCode.OK)
-
     again = unswept(job_id)
     # The stored job cause, raised on a closed job. It used to be the wrapper's
     # unavailable-transient. The items failed as sync-source-lookups-failed, which
@@ -749,9 +706,7 @@ def test_a_resume_of_a_cancelled_sweep_does_not_exit_ok_over_the_items_it_never_
     job_id = queued_sweep()
     with jobs.open_store() as store:
         jobs.cancel(store, job_id)
-
     resumed = unswept(job_id)
-
     assert resumed["cause"]["reason"] == "cancelled"
     assert job_state(job_id) == str(jobs.JobState.CANCELLED)
     assert set(item_states(job_id).values()) == {str(jobs.ItemState.PENDING)}
@@ -767,7 +722,6 @@ def test_the_worker_offers_into_the_library_its_job_was_queued_for(
     register(LABELS[0])
     bind(monkeypatch, readable(SLUGS[0]))
     job_id = queued_sweep()
-
     elsewhere = tmp_path / "another-library"
     (elsewhere / "Music").mkdir(parents=True)
     (elsewhere / "db").mkdir(parents=True)
@@ -776,9 +730,7 @@ def test_the_worker_offers_into_the_library_its_job_was_queued_for(
         replace(
             installed,
             library=replace(
-                installed.library,
-                root=elsewhere,
-                db_path=elsewhere / "db" / "master.db",
+                installed.library, root=elsewhere, db_path=elsewhere / "db" / "master.db",
             ),
         )
     )
@@ -792,7 +744,6 @@ def test_the_worker_offers_into_the_library_its_job_was_queued_for(
         "the relocated library already holds a review queue, so an offer written "
         "there would be indistinguishable from one written to the frozen library"
     )
-
     swept(job_id)
     assert offers(installed) == {"hf-1": SLUGS[0], "hf-2": SLUGS[0]}
     assert not review.queue_path(live).exists(), (
@@ -816,8 +767,7 @@ UNCONFIRMED = "Mystery Distro"
 def playlist_of(*tracks: FakeTrack) -> FakeCatalogue:
     """A catalogue holding exactly one readable playlist, at ``PLAYLIST``."""
     return FakeCatalogue(
-        playlists={PLAYLIST: FakePagedPlaylist(list(tracks))},
-        known_labels={CONFIRMED},
+        playlists={PLAYLIST: FakePagedPlaylist(list(tracks))}, known_labels={CONFIRMED},
     )
 
 
@@ -842,9 +792,7 @@ def run_harvest_human(reference: str = PLAYLIST) -> tuple[int, str]:
 def test_harvest_of_a_readable_playlist_offers_one_item_per_verified_label(installed, monkeypatch):
     """The success branch, which no build has ever reached before this unit."""
     bind(monkeypatch, playlist_of(FakeTrack("t1", copyright="2026 Anjunadeep")))
-
     code, envelope = run_harvest()
-
     assert code == int(ExitCode.OK), envelope
     assert envelope["schema"] == "review_set/1"
     assert envelope["data"]["queue"] == str(review.Queue.LABEL_RELEASE)
@@ -855,9 +803,7 @@ def test_harvest_of_a_readable_playlist_offers_one_item_per_verified_label(insta
 def test_harvest_payload_is_exactly_the_three_declared_review_set_keys(installed, monkeypatch):
     """KTD7's rule on the other surface: no per verb detail beside the contract."""
     bind(monkeypatch, playlist_of(FakeTrack("t1", copyright="2026 Anjunadeep")))
-
     code, envelope = run_harvest()
-
     assert code == int(ExitCode.OK), envelope
     assert set(envelope["data"]) == {"queue", "items", "unresolved"}
 
@@ -871,9 +817,7 @@ def test_a_name_the_catalogue_will_not_confirm_is_counted_and_never_offered(inst
             FakeTrack("t2", copyright="2026 Mystery Distro"),
         ),
     )
-
     code, envelope = run_harvest()
-
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["unresolved"] == 1
     assert harvested(installed) == [CONFIRMED]
@@ -885,9 +829,7 @@ def test_a_track_with_no_copyright_string_is_counted_rather_than_dropped_silentl
 ):
     """The track that yields no NAME at all, which is not the same as a drop."""
     bind(monkeypatch, playlist_of(FakeTrack("t1", copyright="2026 Anjunadeep"), FakeTrack("t2")))
-
     code, envelope = run_harvest()
-
     assert code == int(ExitCode.OK), envelope
     assert harvested(installed) == [CONFIRMED]
     assert envelope["data"]["unresolved"] == 1, (
@@ -901,9 +843,7 @@ def test_an_empty_playlist_offers_nothing_and_reports_zero_rather_than_refusing(
 ):
     """The adversarial half of the unreadable refusal, and the reason it is here."""
     bind(monkeypatch, playlist_of())
-
     code, envelope = run_harvest()
-
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["items"] == []
     assert envelope["data"]["unresolved"] == 0
@@ -916,9 +856,7 @@ def test_an_empty_playlist_offers_nothing_and_reports_zero_rather_than_refusing(
 def test_harvest_human_output_names_each_offered_label(installed, monkeypatch):
     """The sitting's missing case: default output names what harvest found."""
     bind(monkeypatch, playlist_of(FakeTrack("t1", copyright="2026 Anjunadeep")))
-
     code, text = run_harvest_human()
-
     assert code == int(ExitCode.OK), text
     lines = text.splitlines()
     assert f"  {CONFIRMED}" in lines, text
@@ -937,9 +875,7 @@ def test_harvest_human_output_names_the_unresolved_count_and_not_an_unconfirmed_
             FakeTrack("t2", copyright="2026 Mystery Distro"),
         ),
     )
-
     code, text = run_harvest_human()
-
     assert code == int(ExitCode.OK), text
     lines = text.splitlines()
     assert f"  {CONFIRMED}" in lines, text
@@ -950,9 +886,7 @@ def test_harvest_human_output_names_the_unresolved_count_and_not_an_unconfirmed_
 def test_an_empty_harvest_still_names_that_nothing_was_offered(installed, monkeypatch):
     """A no_op that prints only the verb and a run id is the original defect."""
     bind(monkeypatch, playlist_of())
-
     code, text = run_harvest_human()
-
     assert code == int(ExitCode.OK), text
     lines = text.splitlines()
     assert lines[0] == "label.harvest: no_op", text
@@ -970,11 +904,9 @@ def test_a_review_set_item_without_a_name_is_rendered_from_its_own_fields():
         started="2026-08-02T00:00:00+00:00",
         data={
             "queue": "deletion",
-            "items": [{"id": "abc", "kind": "removed-track", "path": "/x.flac"}],
-            "unresolved": 3,
+            "items": [{"id": "abc", "kind": "removed-track", "path": "/x.flac"}], "unresolved": 3,
         },
     )
-
     lines = render.render_review_set(envelope)
     assert "  id=abc, kind=removed-track, path=/x.flac" in lines
     assert "  unresolved: 3" in lines
@@ -983,13 +915,10 @@ def test_a_review_set_item_without_a_name_is_rendered_from_its_own_fields():
 def test_review_set_rendering_is_gated_on_the_schema_not_an_items_key():
     """Same gate render_checks uses: a later surface with items is not this shape."""
     plan = output.build(
-        verb="profile.set",
-        run_id="r",
-        schema=output.current_schema("plan"),
+        verb="profile.set", run_id="r", schema=output.current_schema("plan"),
         started="2026-08-02T00:00:00+00:00",
         data={"digest": "d", "items": [{"name": CONFIRMED}], "totals": {}, "chunk": None},
     )
-
     assert render.render_review_set(plan) == []
     assert CONFIRMED not in render.render(plan)
 
@@ -999,9 +928,7 @@ def test_a_playlist_the_catalogue_cannot_resolve_refuses_that_it_was_unreadable(
 ):
     """R13: the slug is earned, because a BOUND provider was asked and failed."""
     catalogue_fake = bind(monkeypatch, UnreadableCatalogue())
-
     code, refused = run_harvest()
-
     assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), refused
     assert refused["cause"]["reason"] == "label-playlist-unreadable"
     assert catalogue_fake.playlists_asked_for == [PLAYLIST]
@@ -1015,9 +942,7 @@ def test_a_playlist_the_catalogue_cannot_resolve_refuses_that_it_was_unreadable(
 def test_a_playlist_that_resolves_and_cannot_be_listed_refuses_the_same_way(installed, monkeypatch):
     """The second unreadable shape, which reaches the boundary as another type."""
     bind(monkeypatch, FakeCatalogue(playlists={PLAYLIST: UnlistablePlaylist()}))
-
     code, refused = run_harvest()
-
     assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), refused
     assert refused["cause"]["reason"] == "label-playlist-unreadable"
     assert refused["cause"]["detail"]["kind"] == "ListingNotPaginated"
@@ -1030,21 +955,15 @@ def test_a_cratekit_refusal_from_below_is_not_flattened_into_an_unreadable_playl
     """A failure that is not the provider's must not be reported as the provider's."""
     from cratekit.core.cause import refuse
     from cratekit.label import harvest as label_harvest
-
     bind(monkeypatch, playlist_of(FakeTrack("t1", copyright="2026 Anjunadeep")))
-
     def refusing_tracks(playlist, **kwargs):
         del playlist, kwargs
         raise refuse(
-            "review-schema-mismatch",
-            "the review queue was written by another build",
+            "review-schema-mismatch", "the review queue was written by another build",
             origin=("tests",),
         )
-
     monkeypatch.setattr(label_harvest, "playlist_tracks", refusing_tracks)
-
     code, refused = run_harvest()
-
     assert code != int(ExitCode.OK), refused
     assert refused["cause"]["reason"] == "review-schema-mismatch"
 
@@ -1068,9 +987,7 @@ def test_a_provider_that_fails_mid_verification_refuses_rather_than_reporting_a_
             answers=1,
         ),
     )
-
     code, refused = run_harvest()
-
     assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), refused
     assert refused["cause"]["reason"] == "label-playlist-unreadable"
     assert refused["cause"]["remediation"]["remedy"] != str(Remedy.REPORT_DEFECT)
@@ -1097,9 +1014,7 @@ def test_a_harvest_that_fails_mid_verification_names_what_it_already_offered(
             answers=1,
         ),
     )
-
     code, refused = run_harvest()
-
     assert code != int(ExitCode.OK), refused
     assert harvested(installed) == [CONFIRMED]
     assert refused["cause"]["detail"]["offered"] == [CONFIRMED]
@@ -1113,9 +1028,7 @@ def test_a_refusal_the_harvest_verifier_raises_in_kind_keeps_its_own_reason(inst
             playlists={PLAYLIST: FakePagedPlaylist([FakeTrack("t1", copyright="2026 Anjunadeep")])}
         ),
     )
-
     code, refused = run_harvest()
-
     assert code != int(ExitCode.OK), refused
     assert refused["cause"]["reason"] == "credential-missing"
 
@@ -1136,15 +1049,10 @@ def test_a_label_verb_will_not_drive_a_job_queued_for_another_verb(installed):
     """The resume drives whatever the row names, so the row has to be a label job."""
     with jobs.open_store() as store:
         foreign = jobs.enqueue(
-            store,
-            handler_key="export.playlist",
-            payload={"playlist": "x"},
-            cfg=installed,
+            store, handler_key="export.playlist", payload={"playlist": "x"}, cfg=installed,
             item_ids=("track-1",),
         )
-
     code, refused = drive(["sync", "labels", "--job", foreign.job_id])
-
     assert code != int(ExitCode.OK), refused
     assert refused["cause"]["reason"] == "job-unknown"
     assert "export.playlist" in refused["cause"]["message"]
@@ -1163,10 +1071,7 @@ def test_the_itemless_refusal_names_the_cancel_that_gets_a_person_out(installed)
     """The job stays open on purpose, so the way out has to be in the steps."""
     with jobs.open_store() as store:
         job = jobs.enqueue(
-            store,
-            handler_key=SWEEP_KEY,
-            payload={"source_id": "labels"},
-            cfg=installed,
+            store, handler_key=SWEEP_KEY, payload={"source_id": "labels"}, cfg=installed,
             item_ids=(),
         )
     _, refused = drive(["sync", "labels", "--job", job.job_id])
@@ -1181,11 +1086,9 @@ def test_the_itemless_refusal_of_an_import_still_says_queue_it_again(installed):
     """The other branch of the same step: an import can still be queued."""
     with jobs.open_store() as store:
         job = jobs.enqueue(
-            store,
-            handler_key=IMPORT_KEY,
+            store, handler_key=IMPORT_KEY,
             payload={"source_id": "labels", "name": "Kompakt", "label_id": "kompakt"},
-            cfg=installed,
-            item_ids=(),
+            cfg=installed, item_ids=(),
         )
     _, refused = drive(["label", "import", "Kompakt", "--job", job.job_id])
     steps = refused["cause"]["remediation"]["steps"]
@@ -1232,9 +1135,7 @@ def test_a_mixed_listing_of_tombstoned_and_unconfirmed_releases_is_a_label_with_
     bury(installed, "hf-1")
     bind(monkeypatch, counting(SLUGS[0], confirmed=frozenset()))
     job_id = queued_sweep()
-
     resumed = swept(job_id)
-
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {}
 
@@ -1246,9 +1147,7 @@ def test_a_sweep_that_read_releases_and_confirmed_none_of_them_still_refuses(
     register(LABELS[0])
     bind(monkeypatch, counting(SLUGS[0], confirmed=frozenset()))
     job_id = queued_sweep()
-
     drive(["sync", "labels", "--job", job_id])
-
     assert item_causes(job_id) == {SLUGS[0]: "label-sweep-incomplete"}
 
 
@@ -1260,9 +1159,7 @@ def test_a_tombstoned_release_is_never_sent_to_the_provider_for_verification(
     bury(installed, "hf-1")
     fake = bind(monkeypatch, counting(SLUGS[0]))
     job_id = queued_sweep()
-
     swept(job_id)
-
     assert fake.verifications == 1, fake.verifications
     assert offers(installed) == {"hf-2": SLUGS[0]}
 
@@ -1276,15 +1173,12 @@ def test_one_item_opens_the_review_store_once_however_many_releases_it_offers(
     job_id = queued_sweep()
     opened: list[object] = []
     real_open = review.open_store
-
     def counted_open(cfg):
         opened.append(cfg)
         return real_open(cfg)
-
     monkeypatch.setattr(review, "open_store", counted_open)
     code, resumed = drive(["sync", "labels", "--job", job_id])
     monkeypatch.setattr(review, "open_store", real_open)
-
     assert code == int(ExitCode.OK), resumed
     assert len(opened) == 1, len(opened)
     assert offers(installed) == {"hf-1": SLUGS[0], "hf-2": SLUGS[0]}
@@ -1297,8 +1191,7 @@ class SessionExpiredAtListing(FakeCatalogue):
         del entry
         raise refuse(
             "credential-missing",
-            "the stored provider session expired before the artist was resolved",
-            origin=("tests",),
+            "the stored provider session expired before the artist was resolved", origin=("tests",),
         )
 
 
@@ -1307,9 +1200,7 @@ def test_a_refusal_the_artist_lookup_raises_in_kind_keeps_its_own_reason(install
     register(LABELS[0])
     bind(monkeypatch, SessionExpiredAtListing())
     job_id = queued_sweep()
-
     unswept(job_id)
-
     assert item_causes(job_id) == {SLUGS[0]: "credential-missing"}
 
 
@@ -1360,16 +1251,12 @@ def test_a_label_whose_catalogue_the_library_already_holds_offers_nothing(instal
     """R-259's closing condition, driven through the real dispatcher and driver."""
     register(LABELS[0])
     hold(
-        installed,
-        "Aurora Bloom - Sun Path.flac",
-        "Nova Reef - Tide.flac",
+        installed, "Aurora Bloom - Sun Path.flac", "Nova Reef - Tide.flac",
         "Mira Vale - Glass Hour.flac",
     )
     bind(monkeypatch, tracked())
     job_id = queued_sweep()
-
     resumed = swept(job_id)
-
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {}
 
@@ -1382,9 +1269,7 @@ def test_a_release_with_one_track_still_missing_is_offered_beside_one_that_is_he
     hold(installed, "Aurora Bloom - Sun Path.flac", "Mira Vale - Glass Hour.flac")
     bind(monkeypatch, tracked())
     job_id = queued_sweep()
-
     swept(job_id)
-
     assert offers(installed) == {"hf-1": SLUGS[0]}
 
 
@@ -1396,9 +1281,7 @@ def test_a_release_listing_no_tracks_and_a_release_that_is_gone_are_both_offered
     hold(installed, "Mira Vale - Glass Hour.flac")
     fake = bind(monkeypatch, tracked(releases={"hf-1": ([], 2026)}))
     job_id = queued_sweep()
-
     swept(job_id)
-
     assert offers(installed) == {"hf-1": SLUGS[0], "hf-2": SLUGS[0]}
     assert sorted(fake.releases_asked_for) == ["hf-1", "hf-2"]
 
@@ -1407,16 +1290,12 @@ def test_a_release_the_library_holds_only_in_another_version_is_offered(installe
     """A different cut is a question for the person, never ownership."""
     register(LABELS[0])
     hold(
-        installed,
-        "Aurora Bloom - Sun Path.flac",
-        "Nova Reef - Tide.flac",
+        installed, "Aurora Bloom - Sun Path.flac", "Nova Reef - Tide.flac",
         "Mira Vale - Glass Hour (Extended Mix).flac",
     )
     bind(monkeypatch, tracked())
     job_id = queued_sweep()
-
     swept(job_id)
-
     assert offers(installed) == {"hf-2": SLUGS[0]}
 
 
@@ -1427,9 +1306,7 @@ def test_an_unconfirmed_release_is_never_read_and_a_confirmed_one_is_read_once(
     register(LABELS[0])
     fake = bind(monkeypatch, tracked(confirmed={"hf-1"}))
     job_id = queued_sweep()
-
     swept(job_id)
-
     assert fake.releases_asked_for == ["hf-1"]
     assert offers(installed) == {"hf-1": SLUGS[0]}
 
@@ -1448,8 +1325,7 @@ class TracksSessionExpired(FakeCatalogue):
     def release_tracks(self, release_id: str):
         del release_id
         raise refuse(
-            "credential-missing",
-            "the stored provider session expired before the release was read",
+            "credential-missing", "the stored provider session expired before the release was read",
             origin=("tests",),
         )
 
@@ -1458,16 +1334,12 @@ def test_a_track_read_the_provider_could_not_answer_offers_the_release(installed
     """Not owned, offered, and the rest of the label is still swept."""
     register(LABELS[0])
     hold(
-        installed,
-        "Aurora Bloom - Sun Path.flac",
-        "Nova Reef - Tide.flac",
+        installed, "Aurora Bloom - Sun Path.flac", "Nova Reef - Tide.flac",
         "Mira Vale - Glass Hour.flac",
     )
     fake = bind(monkeypatch, tracked(cls=TracksOutage))
     job_id = queued_sweep()
-
     resumed = swept(job_id)
-
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert offers(installed) == {"hf-1": SLUGS[0], "hf-2": SLUGS[0]}
     assert sorted(fake.releases_asked_for) == ["hf-1", "hf-2"]
@@ -1479,45 +1351,36 @@ def test_three_failed_track_reads_in_a_row_stop_the_asking(installed, monkeypatc
     many = [FakeRelease(f"hf-{n}") for n in range(1, 6)]
     fake = bind(monkeypatch, TracksOutage(artists={SLUGS[0]: FakePagedArtist(many)}))
     job_id = queued_sweep()
-
     swept(job_id)
-
     assert len(fake.releases_asked_for) == 3, fake.releases_asked_for
     assert sorted(offers(installed)) == [f"hf-{n}" for n in range(1, 6)]
 
 
 def test_a_release_that_is_gone_breaks_the_run_of_failed_reads(installed, monkeypatch):
     """Gone is the provider answering, so it resets the count as a read does."""
-
     class Alternating(FakeCatalogue):
         def release_tracks(self, release_id: str):
             self.releases_asked_for.append(release_id)
             if release_id in {"hf-3", "hf-6"}:
                 raise ReleaseUnresolvable(f"no catalogue release {release_id!r}")
             raise RuntimeError("the provider answered 503 after the retry ladder")
-
     register(LABELS[0])
     many = [FakeRelease(f"hf-{n}") for n in range(1, 8)]
     fake = bind(monkeypatch, Alternating(artists={SLUGS[0]: FakePagedArtist(many)}))
     job_id = queued_sweep()
-
     swept(job_id)
-
     assert len(fake.releases_asked_for) == 7, fake.releases_asked_for
 
 
 def test_a_sweep_of_two_labels_walks_the_library_once(installed, monkeypatch):
     """One view per job. A view per item walked the whole music volume per label."""
     from cratekit.acquire import match_cli
-
     register(LABELS[0], LABELS[1])
     walks: list[object] = []
     real_view = match_cli.library_view
-
     def counted_view(cfg):
         walks.append(cfg)
         return real_view(cfg)
-
     monkeypatch.setattr(match_cli, "library_view", counted_view)
     bind(
         monkeypatch,
@@ -1530,9 +1393,7 @@ def test_a_sweep_of_two_labels_walks_the_library_once(installed, monkeypatch):
         ),
     )
     job_id = queued_sweep()
-
     swept(job_id)
-
     assert len(walks) == 1, len(walks)
     assert set(offers(installed)) == {"hf-1", "hf-2", "ot-1"}
 
@@ -1542,9 +1403,7 @@ def test_a_refusal_the_track_read_raises_in_kind_keeps_its_own_reason(installed,
     register(LABELS[0])
     bind(monkeypatch, tracked(cls=TracksSessionExpired))
     job_id = queued_sweep()
-
     unswept(job_id)
-
     assert item_causes(job_id) == {SLUGS[0]: "credential-missing"}
 
 
@@ -1552,40 +1411,31 @@ def test_a_release_with_a_row_the_reader_cannot_read_is_offered(installed, monke
     """A row naming no artist is a track nobody can look for, so it is not held."""
     register(LABELS[0])
     hold(
-        installed,
-        "Aurora Bloom - Sun Path.flac",
-        "Nova Reef - Tide.flac",
+        installed, "Aurora Bloom - Sun Path.flac", "Nova Reef - Tide.flac",
         "Mira Vale - Glass Hour.flac",
     )
     releases = {
-        **TRACKS,
-        "hf-2": ([Row("21", "Mira Vale", "Glass Hour"), Row("22", "", "Untitled")], 2025),
+        **TRACKS, "hf-2": ([Row("21", "Mira Vale", "Glass Hour"), Row("22", "", "Untitled")], 2025),
     }
     bind(monkeypatch, tracked(releases=releases))
     job_id = queued_sweep()
-
     swept(job_id)
-
     assert offers(installed) == {"hf-2": SLUGS[0]}
 
 
 def test_a_track_read_that_succeeds_breaks_the_run_of_failed_reads(installed, monkeypatch):
     """An answer resets the count, so failures that are not in a row never stop it."""
-
     class Intermittent(FakeCatalogue):
         def release_tracks(self, release_id: str):
             self.releases_asked_for.append(release_id)
             if release_id in {"hf-3", "hf-6"}:
                 return (Row(release_id, "Lumen Drift", release_id),), 2026, None
             raise RuntimeError("the provider answered 503 after the retry ladder")
-
     register(LABELS[0])
     many = [FakeRelease(f"hf-{n}") for n in range(1, 8)]
     fake = bind(monkeypatch, Intermittent(artists={SLUGS[0]: FakePagedArtist(many)}))
     job_id = queued_sweep()
-
     swept(job_id)
-
     assert len(fake.releases_asked_for) == 7, fake.releases_asked_for
 
 
@@ -1631,14 +1481,11 @@ class RateLimitedVerification(FakeCatalogue):
 def _ladder_without_waiting(monkeypatch) -> list[float]:
     """The crawl's real retry ladder, every rung climbed, none of it slept."""
     from cratekit.label import crawl
-
     real = crawl.releases
     waits: list[float] = []
-
     def patient(artist, **kwargs):
         kwargs.setdefault("sleep", waits.append)
         return real(artist, **kwargs)
-
     monkeypatch.setattr(crawl, "releases", patient)
     return waits
 
@@ -1671,13 +1518,10 @@ def test_a_rate_limited_listing_fails_its_item_as_retryable_and_the_job_says_res
     waits = _ladder_without_waiting(monkeypatch)
     _, limit = _one_label_rate_limited(monkeypatch)
     job_id = queued_sweep()
-
     failed = unswept(job_id)
-
     assert limit.answered == 6 and len(waits) == 5, (limit.answered, waits)
     assert item_states(job_id) == {
-        SLUGS[0]: str(jobs.ItemState.DONE),
-        SLUGS[1]: str(jobs.ItemState.FAILED),
+        SLUGS[0]: str(jobs.ItemState.DONE), SLUGS[1]: str(jobs.ItemState.FAILED),
     }
     cause = item_cause(job_id, SLUGS[1])
     assert cause.reason == "sync-source-lookups-failed"
@@ -1686,7 +1530,6 @@ def test_a_rate_limited_listing_fails_its_item_as_retryable_and_the_job_says_res
     assert cause.detail["rate_limited"] is True
     assert "rate limited" in cause.message
     assert "TooManyRequests: Album unavailable" in cause.message
-
     job = failed["cause"]
     assert job["reason"] == "unavailable-transient"
     assert job["retryable"] is True
@@ -1706,26 +1549,20 @@ def test_a_resumed_job_rearms_the_rate_limited_label_and_not_the_settled_one(
     job_id = queued_sweep()
     assert drive(["sync", "labels", "--job", job_id])[0] != int(ExitCode.OK)
     assert fake.asked_for == [SLUGS[0], SLUGS[1]]
-
     spawned: list[list[str]] = []
-
     def recorded(store, job, argv, **kwargs):
         del store, job, kwargs
         spawned.append(list(argv))
         return 4242
-
     monkeypatch.setattr(jobs, "spawn", recorded)
     code, resumed = drive(["job", "resume", job_id])
     assert code == int(ExitCode.OK), resumed
     assert item_states(job_id) == {
-        SLUGS[0]: str(jobs.ItemState.DONE),
-        SLUGS[1]: str(jobs.ItemState.PENDING),
+        SLUGS[0]: str(jobs.ItemState.DONE), SLUGS[1]: str(jobs.ItemState.PENDING),
     }
     assert len(spawned) == 1 and spawned[0][:4] == ["sync", "labels", "--job", job_id]
-
     limit.on = False
     code, finished = drive(spawned[0])
-
     assert code == int(ExitCode.OK), finished
     assert finished["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert item_states(job_id) == {slug: str(jobs.ItemState.DONE) for slug in SLUGS[:2]}
@@ -1745,9 +1582,7 @@ def test_a_rate_limited_verification_is_retryable_too(installed, monkeypatch):
         ),
     )
     job_id = queued_sweep()
-
     failed = unswept(job_id)
-
     assert limit.answered == 1
     cause = item_cause(job_id, SLUGS[0])
     assert cause.reason == "sync-source-lookups-failed"
@@ -1761,9 +1596,7 @@ def test_a_listing_failure_that_is_not_a_rate_limit_stays_permanent(installed, m
     register(LABELS[0])
     bind(monkeypatch, UnreadableCatalogue())
     job_id = queued_sweep()
-
     drive(["sync", "labels", "--job", job_id])
-
     cause = item_cause(job_id, SLUGS[0])
     assert cause.reason == "sync-source-lookups-failed"
     assert cause.retryable is False
@@ -1801,9 +1634,7 @@ def test_a_rate_limit_at_every_other_sweep_boundary_is_retryable(installed, monk
     register(LABELS[0])
     bind(monkeypatch, fake())
     job_id = queued_sweep()
-
     unswept(job_id)
-
     cause = item_cause(job_id, SLUGS[0])
     assert cause.reason == "sync-source-lookups-failed"
     assert cause.retryable is True
@@ -1826,7 +1657,6 @@ def test_a_harvest_over_a_short_playlist_offers_what_it_read_and_warns(installed
         ),
     )
     code, envelope = run_harvest()
-
     assert code == int(ExitCode.OK), envelope
     assert harvested(installed) == [CONFIRMED]
     assert set(envelope["data"]) == {"queue", "items", "unresolved"}

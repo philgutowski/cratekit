@@ -1,10 +1,4 @@
-"""U120: where a landed heart goes, All Favorites and its month.
-
-The engine alone, on the genre Favorites suite's disposable database, the
-folder and its playlists made on the handle.
-
-D1 applies. Nothing here names a real volume, a real person or a real track.
-"""
+"""U120: where a landed heart goes, All Favorites and its month."""
 
 from __future__ import annotations
 
@@ -52,13 +46,23 @@ def _month(db, parent, name: str, *members: str):
     return row
 
 
+def _place(db, pairs: list, home=None, **kwargs):
+    """``place`` over the home resolved now (or the one given), committed."""
+    placed = placement.place(db, home or placement.resolve_home(db, SOURCE), pairs, **kwargs)
+    db.session.commit()
+    return placed
+
+
+def _plan(db, hearts: list, **kwargs):
+    return placement.plan_placements(db, placement.resolve_home(db, SOURCE), hearts, **kwargs)
+
+
 def _names_under(db, parent) -> dict[str, str]:
     def here(row) -> bool:
         held = str(getattr(row, "ParentID", "") or "")
         if parent is None:
             return held in rb_writer.ROOT_PARENT_SENTINELS
         return held == str(parent.ID)
-
     return {
         str(row.Name): str(row.ID)
         for row in db.get_playlist()
@@ -144,9 +148,7 @@ def test_the_home_is_the_one_plain_live_source_its_folder_and_the_months_there(c
     gone = db.create_playlist("2026-Q1", parent=folder)
     gone.rb_local_deleted = 1
     db.session.commit()
-
     home = placement.resolve_home(db, SOURCE)
-
     assert (home.source_id, home.folder_id, home.folder_name) == (str(source.ID), str(folder.ID), "Favorites")
     assert dict(home.present) == {SOURCE: str(source.ID), "2026-09": str(q3.ID)}
     assert home.identity() == {"source": str(source.ID), "folder": str(folder.ID)}
@@ -158,10 +160,8 @@ def test_a_playlist_of_the_sources_name_inside_deadca7s_folder_is_not_a_second_s
     pushed = db.create_playlist_folder("DEADCA7")
     db.create_playlist(SOURCE, parent=pushed)
     db.session.commit()
-
     home = placement.resolve_home(db, SOURCE)
     assert (home.source_id, home.folder_id) == (str(source.ID), str(folder.ID))
-
     mine = db.create_playlist_folder("Mine")
     nested = db.create_playlist_folder("DEADCA7", parent=mine)
     db.create_playlist(SOURCE, parent=nested)
@@ -176,10 +176,8 @@ def test_a_source_at_the_root_has_no_folder_and_the_months_sit_beside_it(cfg, db
     home = placement.resolve_home(db, SOURCE)
     assert home.folder_id == "" and home.folder_name == ""
     assert home.present == {SOURCE: str(source.ID)}
-
     placed = placement.place(db, home, [("1", "2026-11")])
     db.session.commit()
-
     assert placed.created == ("2026-11",)
     assert "2026-11" in _names_under(db, None)
 
@@ -208,11 +206,9 @@ def test_the_plan_reads_what_each_heart_already_has_and_what_it_would_make(cfg, 
     folder, _source = _home(db, "1")
     _month(db, folder, "2026-09", "2")
     home = placement.resolve_home(db, SOURCE)
-
     plan = placement.plan_placements(
         db, home, [("1", SEP, "one"), ("2", SEP, "two"), ("3", NOV, "three"), ("4", None, "four")]
     )
-
     by_row = {one.content_id: one for one in plan.placements}
     assert (by_row["1"].into_source, by_row["1"].into_month) == (False, True)
     assert (by_row["2"].into_source, by_row["2"].into_month) == (True, False)
@@ -227,27 +223,21 @@ def test_the_plan_reads_what_each_heart_already_has_and_what_it_would_make(cfg, 
 
 def test_a_row_named_twice_folds_to_its_first_mention(cfg, db):
     _home(db)
-    home = placement.resolve_home(db, SOURCE)
-    plan = placement.plan_placements(db, home, [("1", SEP, "a"), ("1", NOV, "a again")])
+    plan = _plan(db, [("1", SEP, "a"), ("1", NOV, "a again")])
     assert [(one.content_id, one.month) for one in plan.placements] == [("1", "2026-09")]
 
 
 def test_a_plan_over_a_library_already_placed_writes_nothing(cfg, db):
     folder, _source = _home(db, "1")
     _month(db, folder, "2026-09", "1")
-    home = placement.resolve_home(db, SOURCE)
-    plan = placement.plan_placements(db, home, [("1", SEP, "one")])
+    plan = _plan(db, [("1", SEP, "one")])
     assert not plan.writes and plan.creates == ()
 
 
 def test_place_adds_to_the_source_and_to_each_month_making_an_absent_one(cfg, db):
     folder, source = _home(db, "1")
     q3 = _month(db, folder, "2026-09")
-    home = placement.resolve_home(db, SOURCE)
-
-    placed = placement.place(db, home, [("1", "2026-09"), ("2", "2026-11"), ("3", "Undated")])
-    db.session.commit()
-
+    placed = _place(db, [("1", "2026-09"), ("2", "2026-11"), ("3", "Undated")])
     assert placed.source_id == str(source.ID)
     assert placed.added_source == 2
     assert placed.created == ("2026-11", "Undated")
@@ -271,7 +261,6 @@ def test_placing_the_same_heart_twice_adds_nothing_twice(cfg, db):
     db.session.commit()
     again = placement.place(db, home, [("1", "2026-11"), ("1", "2026-11")])
     db.session.commit()
-
     assert first.added == 2 and again.added == 0 and again.created == ()
     assert _members(db, source.ID) == {"1"}
     (month_id,) = [row for name, row in _names_under(db, folder).items() if name == "2026-11"]
@@ -286,11 +275,7 @@ def test_a_members_marked_removedhip_in_the_month_is_added_again_live(cfg, db):
     (entry,) = list(db.get_playlist_songs(PlaylistID=str(q4.ID)))
     entry.rb_local_deleted = 1
     db.session.commit()
-    home = placement.resolve_home(db, SOURCE)
-
-    placed = placement.place(db, home, [("1", "2026-11")])
-    db.session.commit()
-
+    placed = _place(db, [("1", "2026-11")])
     assert placed.added == 1 and placed.added_source == 0
     assert _members(db, q4.ID) == {"1"}
 
@@ -311,11 +296,7 @@ def test_a_smart_playlist_of_the_months_name_is_not_written_to_and_a_plain_one_i
     smart = db.create_playlist("2026-11", parent=folder)
     smart.Attribute = 4
     db.session.commit()
-    home = placement.resolve_home(db, SOURCE)
-
-    placed = placement.place(db, home, [("1", "2026-11")])
-    db.session.commit()
-
+    placed = _place(db, [("1", "2026-11")])
     assert placed.created == ("2026-11",)
     ((_name, row, count),) = placed.months
     assert row != str(smart.ID) and count == 1
@@ -325,11 +306,8 @@ def test_a_smart_playlist_of_the_months_name_is_not_written_to_and_a_plain_one_i
 def test_no_content_row_tempo_or_rating_is_written(cfg, db):
     """The standing constraint, read from SQL after the write."""
     import sqlite3
-
     _home(db)
-    home = placement.resolve_home(db, SOURCE)
-    placement.place(db, home, [("1", "2026-11"), ("2", "Undated")])
-    db.session.commit()
+    _place(db, [("1", "2026-11"), ("2", "Undated")])
     conn = sqlite3.connect(cfg.library.db_path)
     try:
         rows = conn.execute("SELECT ID, BPM, Rating, AnalysisDataPath FROM djmdContent").fetchall()
@@ -346,14 +324,12 @@ def test_members_marked_removedhips_are_read_apart_from_live_ones(cfg, db):
     db.session.commit()
     assert placement.members(db, source.ID) == {"1"}
     assert placement.members_marked_removed(db, source.ID) == {"2"}
-    del folder
 
 
 def test_the_plans_digest_covers_each_months_row_found_or_to_be_made(cfg, db):
     folder, _source = _home(db)
     q3 = _month(db, folder, "2026-09")
-    home = placement.resolve_home(db, SOURCE)
-    plan = placement.plan_placements(db, home, [("1", SEP, "one"), ("2", NOV, "two")])
+    plan = _plan(db, [("1", SEP, "one"), ("2", NOV, "two")])
     assert plan.identity()["months"] == {"2026-09": str(q3.ID), "2026-11": ""}
 
 
@@ -366,7 +342,6 @@ def _colours(db, *, pink: bool = True) -> None:
     from pyrekordbox.db6 import tables
 
     from tests.test_rb_writer_db import _row
-
     if pink:
         db.session.add(_row(tables.DjmdColor, ID=PINK_ID, ColorCode=1, SortKey=1, Commnt="Pink"))
     db.session.add(_row(tables.DjmdColor, ID=RED_ID, ColorCode=2, SortKey=2, Commnt="Red"))
@@ -390,11 +365,9 @@ def test_the_plan_names_each_uncoloured_heart_for_pink_and_holds_a_coloured_one(
     _paint(db, "2", RED_ID)
     _paint(db, "3", PINK_ID)
     home = placement.resolve_home(db, SOURCE)
-
     plan = placement.plan_placements(
         db, home, [("1", SEP, "one"), ("2", SEP, "two"), ("3", SEP, "three")]
     )
-
     by_row = {one.content_id: one for one in plan.placements}
     assert [by_row[row].into_colour for row in ("1", "2", "3")] == [True, False, False]
     assert plan.pink == PINK_ID and plan.colour_skipped == ""
@@ -413,10 +386,8 @@ def test_the_write_colours_the_planned_rows_and_only_those(cfg, db):
     _parent, _source = _home(db)
     home = placement.resolve_home(db, SOURCE)
     plan = placement.plan_placements(db, home, [("1", SEP, "one"), ("4", NOV, "four")])
-
     placed = placement.place(db, home, [("1", "2026-09"), ("4", "2026-11")], pink=plan.pink, to_colour=plan.to_colour)
     db.session.commit()
-
     assert placed.coloured == ("1", "4")
     assert (_colour_of(db, "1"), _colour_of(db, "4")) == (PINK_ID, PINK_ID)
     assert _colour_of(db, "2") in ("", "0"), "a row the plan did not name is untouched"
@@ -430,9 +401,7 @@ def test_a_recolour_row_takes_pink_and_no_membership(cfg, db):
     _month(db, folder, "2026-09", "5", "6")
     _paint(db, "6", PINK_ID)
     home = placement.resolve_home(db, SOURCE)
-
     plan = placement.plan_placements(db, home, [], recolour=[("5", "five"), ("6", "six")])
-
     assert [(one.content_id, one.title) for one in plan.recolour] == [("5", "five")]
     assert plan.to_colour == ("5",) and plan.placements == () and plan.writes
     assert plan.identity()["recolour"] == ["5"]
@@ -447,8 +416,7 @@ def test_a_recolour_row_takes_pink_and_no_membership(cfg, db):
 def test_a_heart_named_as_a_heart_is_not_listed_again_as_a_recolour(cfg, db):
     _colours(db)
     _home(db, "1")
-    home = placement.resolve_home(db, SOURCE)
-    plan = placement.plan_placements(db, home, [("1", SEP, "one")], recolour=[("1", "one")])
+    plan = _plan(db, [("1", SEP, "one")], recolour=[("1", "one")])
     assert plan.recolour == () and plan.to_colour == ("1",)
 
 
@@ -456,9 +424,7 @@ def test_with_no_pink_row_the_plan_places_and_colours_nothing_and_says_why(cfg, 
     _colours(db, pink=False)
     _home(db)
     home = placement.resolve_home(db, SOURCE)
-
     plan = placement.plan_placements(db, home, [("1", SEP, "one")], recolour=[("2", "two")])
-
     assert plan.pink == "" and "no live row named Pink" in plan.colour_skipped
     assert plan.to_colour == () and plan.colours == 0 and plan.recolour == ()
     assert plan.adds == 2 and plan.writes, "the memberships are still placed"
@@ -471,10 +437,8 @@ def test_with_no_pink_row_the_plan_places_and_colours_nothing_and_says_why(cfg, 
 
 def test_a_colour_read_that_is_not_the_missing_row_is_the_callers_refusal(cfg, db, monkeypatch):
     from cratekit.core.cause import refuse
-
     def broken(_db):
         raise refuse("library-database-missing", "gone", origin=("favorites", "colour"))
-
     monkeypatch.setattr(placement.colour, "pink_colour_id", broken)
     _home(db)
     home = placement.resolve_home(db, SOURCE)
@@ -490,16 +454,13 @@ def test_the_write_leaves_a_row_coloured_by_hand_after_the_plan(cfg, db):
     plan = placement.plan_placements(db, home, [("1", SEP, "one")])
     assert plan.to_colour == ("1",)
     _paint(db, "1", RED_ID)
-
     placed = placement.place(db, home, [("1", "2026-09")], pink=plan.pink, to_colour=plan.to_colour)
     db.session.commit()
-
     assert placed.coloured == () and _colour_of(db, "1") == RED_ID
 
 
 def test_a_row_coloured_by_hand_between_two_plans_moves_the_digest(cfg, db):
     from cratekit.cli.output import digest_of
-
     _colours(db)
     _home(db)
     home = placement.resolve_home(db, SOURCE)
@@ -511,13 +472,10 @@ def test_a_row_coloured_by_hand_between_two_plans_moves_the_digest(cfg, db):
 
 def test_the_colour_module_sorts_rows_by_what_they_carry(cfg, db):
     from cratekit.favorites import colour
-
     _colours(db)
     _paint(db, "2", RED_ID)
     _paint(db, "3", PINK_ID)
-
     found = colour.sort_rows(db, PINK_ID, ["1", "2", "3", "3", "absent"])
-
     assert found.to_colour == ("1",) and found.already == ("3",)
     assert [one.said() for one in found.held] == [f"{db.get_content(ID='2').Title} (Red)"]
     assert colour.colour_name(db, "nope") == "nope"
@@ -564,11 +522,7 @@ def test_place_makes_a_new_month_directly_under_all_favorites_in_an_ordered_fold
     folder, _source = _home(db)
     for name in ("2026-10", "2026-09", "Undated", "Warmup"):
         _month(db, folder, name)
-    home = placement.resolve_home(db, SOURCE)
-
-    placed = placement.place(db, home, [("1", "2026-11"), ("2", "2026-08")])
-    db.session.commit()
-
+    placed = _place(db, [("1", "2026-11"), ("2", "2026-08")])
     assert placed.created == ("2026-11", "2026-08")
     assert _shown(db, folder) == [SOURCE, "2026-11", "2026-10", "2026-09", "2026-08", "Undated", "Warmup"]
 
@@ -577,11 +531,7 @@ def test_a_month_made_in_a_folder_out_of_order_lands_above_every_older_month(cfg
     folder, _source = _home(db)
     _month(db, folder, "2026-08")
     _month(db, folder, "2026-09")
-    home = placement.resolve_home(db, SOURCE)
-
-    placement.place(db, home, [("1", "2026-11")])
-    db.session.commit()
-
+    _place(db, [("1", "2026-11")])
     assert _shown(db, folder) == [SOURCE, "2026-11", "2026-08", "2026-09"]
 
 
@@ -590,11 +540,7 @@ def test_a_month_found_is_not_moved(cfg, db):
     _month(db, folder, "2026-08")
     ten = _month(db, folder, "2026-10")
     seq = int(ten.Seq)
-    home = placement.resolve_home(db, SOURCE)
-
-    placed = placement.place(db, home, [("1", "2026-10")])
-    db.session.commit()
-
+    placed = _place(db, [("1", "2026-10")])
     assert placed.created == ()
     assert int(db.get_playlist(ID=ten.ID).Seq) == seq
     assert _shown(db, folder) == [SOURCE, "2026-08", "2026-10"]
@@ -605,11 +551,7 @@ def test_at_the_root_a_month_is_made_at_the_end_and_nothing_else_moves(cfg, db):
     db.create_playlist("Warmup")
     db.session.commit()
     before = {str(row.ID): int(row.Seq) for row in placement.children(db, "root")}
-    home = placement.resolve_home(db, SOURCE)
-
-    placement.place(db, home, [("1", "2026-11")])
-    db.session.commit()
-
+    _place(db, [("1", "2026-11")])
     after = {str(row.ID): int(row.Seq) for row in placement.children(db, "root")}
     assert {row: after[row] for row in before} == before
     assert _shown(db, None)[-1] == "2026-11"
@@ -622,11 +564,7 @@ def test_a_removed_sibling_keeps_its_position_when_a_month_is_seated(cfg, db):
     gone.rb_local_deleted = 1
     db.session.commit()
     seq = int(gone.Seq)
-    home = placement.resolve_home(db, SOURCE)
-
-    placement.place(db, home, [("1", "2026-11")])
-    db.session.commit()
-
+    _place(db, [("1", "2026-11")])
     assert int(db.get_playlist(ID=gone.ID).Seq) == seq
     assert _shown(db, folder) == [SOURCE, "2026-11", "2026-09"]
 
@@ -634,12 +572,8 @@ def test_a_removed_sibling_keeps_its_position_when_a_month_is_seated(cfg, db):
 @pytest.mark.parametrize(
     ("held", "given"),
     [
-        ([1, 2, 3], (1, 2, 3)),
-        ([3, 1, 2], (1, 2, 3)),
-        ([1, 4, 9], (1, 4, 9)),
-        ([1, 4, 4, 9], (1, 4, 5, 9)),
-        ([2, 2, 2], (2, 3, 4)),
-        ([1, 5, 5, 6], (1, 5, 6, 7)),
+        ([1, 2, 3], (1, 2, 3)), ([3, 1, 2], (1, 2, 3)), ([1, 4, 9], (1, 4, 9)),
+        ([1, 4, 4, 9], (1, 4, 5, 9)), ([2, 2, 2], (2, 3, 4)), ([1, 5, 5, 6], (1, 5, 6, 7)),
         ([], ()),
     ],
 )
@@ -647,7 +581,6 @@ def test_the_slots_are_the_rows_own_positions_with_a_shared_one_lifted(held, giv
     class Row:
         def __init__(self, seq):
             self.Seq = seq
-
     assert placement.slots([Row(seq) for seq in held]) == given
 
 
@@ -658,9 +591,5 @@ def test_a_month_is_never_seated_above_all_favorites(cfg, db):
     source.Seq = 9
     db.session.commit()
     assert _shown(db, folder) == ["2026-08", "Undated", SOURCE]
-    home = placement.resolve_home(db, SOURCE)
-
-    placement.place(db, home, [("1", "2026-11")])
-    db.session.commit()
-
+    _place(db, [("1", "2026-11")])
     assert _shown(db, folder) == ["2026-08", "Undated", SOURCE, "2026-11"]

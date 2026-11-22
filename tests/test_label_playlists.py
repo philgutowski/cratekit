@@ -1,9 +1,4 @@
-"""R-835: a followed label becomes a folder of year playlists on the account.
-
-Driven through the real dispatcher with the label catalogue and the streaming
-account faked; the adapter's folder members over a stand in client at the end.
-D1 applies: nothing here names a real volume, person or track.
-"""
+"""R-835: a followed label becomes a folder of year playlists on the account."""
 
 from __future__ import annotations
 
@@ -14,7 +9,8 @@ from types import SimpleNamespace
 import pytest
 
 from cratekit.cli import registry
-from cratekit.core.cause import CratekitError
+from cratekit.core import config
+from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.label import catalogue, playlists_cli
 from cratekit.label import registry as labels
@@ -34,6 +30,7 @@ from tests.label_fakes import (
 )
 from tests.modules.test_reports import _close, _collection, _document, _folder, _playlist
 from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
+from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 from tests.test_label_workers import register
 from tests.test_outbound_workers import bind as bind_account
 
@@ -64,21 +61,19 @@ LISTED = [
     FakeRelease("r7", year="2020"),
 ]
 
+
+
 def _took(account) -> list[str]:
     """What the mark holds as taken, having renamed nothing (U242)."""
-    from cratekit.core import config as _config
-
     assert account.renamed == [], "no verb writes the DOWNLOADED prefix since U242"
-    return sorted(mark_record.MarkRecord(_config.load()).taken_ids())
-
+    return sorted(mark_record.MarkRecord(config.load()).taken_ids())
 
 
 def _catalogue(releases=None, listed=None, **kwargs) -> FakeCatalogue:
     return FakeCatalogue(
         artists={LABEL_ID: FakePagedArtist(list(LISTED if listed is None else listed))},
         releases=dict(RELEASES if releases is None else releases),
-        confirmed={"r1", "r2", "r3", "r4", "r5", "r7"},
-        **kwargs,
+        confirmed={"r1", "r2", "r3", "r4", "r5", "r7"}, **kwargs,
     )
 
 
@@ -130,6 +125,12 @@ def _exits(expected: ExitCode, result: tuple[int, dict]) -> dict:
     return envelope
 
 
+def _refused(argv: list[str], reason: str) -> dict:
+    """The envelope of a drive refused as a precondition, having asserted its reason."""
+    refused = _refused(argv, reason)
+    return refused
+
+
 def _two_acts(argv: list[str], gate: str, option: str = "apply") -> tuple[int, dict]:
     """R34's two acts on an explicit gate, then the run that carries them out."""
     refused = _exits(ExitCode.DECISION_REQUIRED, drive(argv))
@@ -152,6 +153,12 @@ def _years(account, folder_id: str) -> dict[str, list[str]]:
     }
 
 
+def _held(account) -> dict[str, list[str]]:
+    """``_years`` of the one folder the account holds."""
+    (folder_id,) = account.folder_names
+    return _years(account, folder_id)
+
+
 # 1. The declaration
 def test_both_verbs_write_only_the_account_behind_an_explicit_gate():
     """U242: the mark writes only Cratekit's own record, no surface at all."""
@@ -167,10 +174,7 @@ def test_both_verbs_write_only_the_account_behind_an_explicit_gate():
     assert len(registry.entry("label.mark").gates) == 1
     (_build, crawl) = registry.entry("label.playlists").gates
     assert (crawl.name, crawl.options, crawl.explicit, crawl.digest_source) == (
-        playlists_cli.CRAWL_GATE,
-        ("crawl", "abort"),
-        True,
-        "plan",
+        playlists_cli.CRAWL_GATE, ("crawl", "abort"), True, "plan",
     )
 
 
@@ -211,9 +215,7 @@ def test_the_build_asks_before_anything_reaches_the_account(kompakt):
 
 def test_a_label_nobody_follows_is_a_plan_of_nothing_still_gated(installed, monkeypatch):
     fake = _catalogue()
-    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
-    account = outbound_fakes.StrictAccount()
-    bind_account(monkeypatch, account)
+    _cfg, _fake, account = _faked(monkeypatch, installed, fake)
     done = _exits(ExitCode.OK, _two_acts(["label", "playlists", "Nobody Follows This"], BUILD))
     assert done["outcome"] == "no_op"
     assert [w["code"] for w in done["warnings"]] == ["label-playlists-not-followed"]
@@ -222,17 +224,13 @@ def test_a_label_nobody_follows_is_a_plan_of_nothing_still_gated(installed, monk
 
 def test_a_catalogue_read_in_part_is_refused_before_the_gate(installed, monkeypatch):
     labels.RegistryStore().add(LABEL)
-
     class AlbumsOnly:
         def get_albums(self, limit=None, offset=0):
             return list(LISTED)[offset : offset + (limit or 100)]
     fake = _catalogue()
     fake.artists[LABEL_ID] = AlbumsOnly()
-    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
-    account = outbound_fakes.StrictAccount()
-    bind_account(monkeypatch, account)
-    refused = _exits(ExitCode.PRECONDITION, drive(["label", "playlists", LABEL]))
-    assert refused["cause"]["reason"] == "label-playlists-incomplete"
+    _cfg, _fake, account = _faked(monkeypatch, installed, fake)
+    refused = _refused(["label", "playlists", LABEL], "label-playlists-incomplete")
     assert "gate" not in refused["cause"]["detail"]
     assert account._writes == 0
 
@@ -242,17 +240,14 @@ def test_a_release_whose_tracks_cannot_be_read_refuses_the_plan(installed, monke
     fake = UnreadableCatalogue(
         artists={LABEL_ID: FakePagedArtist(list(LISTED))}, releases=dict(RELEASES)
     )
-    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
-    bind_account(monkeypatch, outbound_fakes.StrictAccount())
-    refused = _exits(ExitCode.PRECONDITION, drive(["label", "playlists", LABEL]))
-    assert refused["cause"]["reason"] == "label-playlists-incomplete"
+    _faked(monkeypatch, installed, fake)
+    _refused(["label", "playlists", LABEL], "label-playlists-incomplete")
 
 
 def test_two_root_folders_named_as_the_label_refuse_and_write_nothing(kompakt):
     _cfg, _fake, account = kompakt
     account.folder_names = {"f-a": LABEL, "f-b": LABEL}
-    refused = _exits(ExitCode.PRECONDITION, drive(["label", "playlists", LABEL]))
-    assert refused["cause"]["reason"] == "label-playlists-ambiguous"
+    _refused(["label", "playlists", LABEL], "label-playlists-ambiguous")
     assert account._writes == 0
 
 
@@ -263,17 +258,14 @@ def test_approved_the_account_holds_the_folder_and_three_private_playlists(kompa
     assert account.folders_created == [LABEL]
     (folder_id,) = account.folder_names
     assert _years(account, folder_id) == {
-        "Kompakt 2021": ["t1", "t2"],
-        "Kompakt 2022": ["t3"],
+        "Kompakt 2021": ["t1", "t2"], "Kompakt 2022": ["t3"],
         "Kompakt 2023": ["t4", "t5", "t6", "t7"],
     }
     assert account.private == set(account.placed)
     shape = ledger.label_shape(cfg, LABEL_ID)
     assert shape.folder_id == folder_id
     assert {year: sorted(y.added) for year, y in shape.years.items()} == {
-        "2021": ["t1", "t2"],
-        "2022": ["t3"],
-        "2023": ["t4", "t5", "t6", "t7"],
+        "2021": ["t1", "t2"], "2022": ["t3"], "2023": ["t4", "t5", "t6", "t7"],
     }
 
 
@@ -404,10 +396,7 @@ def test_the_sweep_never_reads_a_built_year_playlist_as_intake(built):
 
 # 5. The mark, recorded for sync unmark
 def _landed(
-    cfg,
-    name: str = "label-sync-batch",
-    *,
-    label: str = LABEL,
+    cfg, name: str = "label-sync-batch", *, label: str = LABEL,
     years: tuple[str, ...] = ("2021", "2022", "2023"),
 ) -> Path:
     """An intake file as ``intake land`` leaves one for a label batch, with its tree."""
@@ -428,6 +417,10 @@ def _landed(
     xml = folder / f"{name}_inboxed.xml"
     xml.write_bytes(_document(collection=_collection(rows), root_children=tree, root_count=1))
     return xml
+
+
+def _reasons(done: dict) -> dict:
+    return {item["id"]: item.get("reason") for item in done["data"]["items"]}
 
 
 def _mark(xml: Path, option: str = "apply") -> tuple[int, dict]:
@@ -475,8 +468,7 @@ def test_sync_unmark_takes_the_label_mark_off_again(built):
 def test_a_mark_with_no_landed_file_refuses_before_anything(built):
     cfg, _fake, account = built
     missing = cfg.library.root / "landed" / "never-landed_inboxed.xml"
-    refused = _exits(ExitCode.PRECONDITION, drive(["label", "mark", LABEL, "--xml", str(missing)]))
-    assert refused["cause"]["reason"] == "sync-marks-blocked"
+    _refused(["label", "mark", LABEL, "--xml", str(missing)], "sync-marks-blocked")
     assert account.renamed == []
 
 
@@ -485,14 +477,12 @@ def test_a_year_retitled_since_it_was_built_is_left_alone(built):
     account.titles["pl-2"] = "Kompakt Classics"
     done = _exits(ExitCode.OK, _mark(_landed(cfg)))
     assert "pl-2" not in dict(account.renamed)
-    reasons = {item["id"]: item.get("reason") for item in done["data"]["items"]}
-    assert reasons["pl-2"] == "retitled-since-built"
+    assert _reasons(done)["pl-2"] == "retitled-since-built"
 
 
 # 6. Add only, by the suite's own scan
 SOURCES = (
-    Path(folders.__file__),
-    Path(playlists_cli.__file__),
+    Path(folders.__file__), Path(playlists_cli.__file__),
     Path(playlists_cli.__file__).with_name("mark_cli.py"),
 )
 
@@ -512,18 +502,8 @@ def test_no_removal_shape_appears_in_the_label_folder_path(source):
 
 
 # 7. The adapter's folder members, over a stand in for the client
-class _Named:
-    def __init__(self, item_id: str, name: str) -> None:
-        self.id = item_id
-        self.name = name
-
-
-class _Answer:
-    def __init__(self, body: dict) -> None:
-        self._body = body
-
-    def json(self) -> dict:
-        return self._body
+def _Named(item_id: str, name: str) -> SimpleNamespace:
+    return SimpleNamespace(id=item_id, name=name)
 
 
 class _Endpoint:
@@ -535,7 +515,7 @@ class _Endpoint:
         self.client = client
 
     def request(self, method: str, path: str, params: dict | None = None,
-                base_url: str | None = None) -> _Answer:
+                base_url: str | None = None) -> SimpleNamespace:
         params = dict(params or {})
         assert (method, path) == ("GET", "my-collection/playlists/folders")
         # THE ENDPOINT SERVES AND COUNTS EVERY KIND (R-887); the walk keeps one.
@@ -560,13 +540,7 @@ class _Endpoint:
         body: dict = {"items": window, "totalNumberOfItems": len(held)}
         if start + len(window) < len(held):
             body["cursor"] = str(start + len(window))
-        return _Answer(body)
-
-
-class _PlaylistParser:
-    @staticmethod
-    def parse(data: dict) -> _Named:
-        return _Named(data["uuid"], data["title"])
+        return SimpleNamespace(json=lambda: body)
 
 
 class _Folder:
@@ -576,7 +550,7 @@ class _Folder:
         self.client = client
         self.session = client
         self.request = client.request
-        self.playlist = _PlaylistParser()
+        self.playlist = SimpleNamespace(parse=lambda data: _Named(data["uuid"], data["title"]))
         self.id = None
 
     def move_items_to_folder(self, trns: list[str], folder: str | None = None) -> bool:
@@ -778,7 +752,6 @@ def test_a_mark_the_record_cannot_take_names_what_it_took_before(built, monkeypa
     cfg, _fake, account = built
     take = mark_record.MarkRecord.take
     written: list[str] = []
-
     def full(self, entries):
         if written:
             raise OSError(28, "No space left on device")
@@ -796,10 +769,8 @@ def test_a_recorded_year_deleted_on_the_account_is_left_alone_not_refused(built)
     cfg, fake, account = built
     gone = ledger.label_shape(cfg, LABEL_ID).years["2022"].remote_id
     del account.placed[gone]
-
     def unreadable(playlist_id):
         if playlist_id == gone:
-            from cratekit.core.cause import refuse
             raise refuse("unavailable-transient", "the provider has no such playlist")
         return tuple(account.playlists.get(playlist_id, ()))
     account.playlist_tracks = unreadable
@@ -813,11 +784,8 @@ def test_a_catalogue_that_confirms_nothing_is_refused_not_shown_empty(installed,
     labels.RegistryStore().add(LABEL)
     fake = _catalogue()
     fake.confirmed = frozenset()
-    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
-    account = outbound_fakes.StrictAccount()
-    bind_account(monkeypatch, account)
-    refused = _exits(ExitCode.PRECONDITION, drive(["label", "playlists", LABEL]))
-    assert refused["cause"]["reason"] == "label-playlists-incomplete"
+    _cfg, _fake, account = _faked(monkeypatch, installed, fake)
+    _refused(["label", "playlists", LABEL], "label-playlists-incomplete")
     assert account._writes == 0
 
 
@@ -837,7 +805,6 @@ def test_each_chunk_is_recorded_as_it_lands(kompakt, monkeypatch):
     monkeypatch.setattr(folders, "CHUNK", 100)
     real = account.add_tracks
     calls: list[int] = []
-
     def second_chunk_fails(playlist_id, remote_ids):
         calls.append(len(remote_ids))
         if len(calls) == 4:
@@ -867,12 +834,10 @@ def test_a_label_folder_deleted_on_the_account_is_made_again_and_recorded(built)
 
 
 def test_a_rejected_session_reading_a_recorded_year_is_raised_not_passed_over(built):
-    from cratekit.core.cause import refuse
     cfg, fake, account = built
     gone = ledger.label_shape(cfg, LABEL_ID).years["2022"].remote_id
     del account.placed[gone]
     fake.releases["r2"] = ([FakeTrack("t3"), FakeTrack("t11")], 2022)
-
     def rejected(playlist_id):
         raise refuse("credential-missing", "the provider rejected the session")
     account.playlist_tracks = rejected
@@ -899,10 +864,8 @@ def test_the_sync_pass_hands_the_sweep_every_year_playlist_a_build_recorded(buil
     from cratekit.sync import cli as sync_cli
     cfg, _fake, _account = built
     handed: list[frozenset[str]] = []
-
     class Stop(Exception):
         pass
-
     def plan(
         store, cfg_, found, *, handler_key, label_built=frozenset(), set_built=frozenset(),
         paired=frozenset(), mirrored=frozenset(),
@@ -940,7 +903,6 @@ def test_a_title_changed_between_the_plan_and_the_write_is_not_renamed(built):
     assert drive(["run", "decide", run_id, MARK, "apply", "--actor", "a-person"])[0] == 0
     real = account.folder_playlists
     reads: list[int] = []
-
     def retitled_after_the_plan(folder_id):
         reads.append(1)
         listed = real(folder_id)
@@ -957,8 +919,7 @@ def test_an_empty_intake_file_is_no_proof_and_marks_nothing(built):
     cfg, _fake, account = built
     empty = _landed(cfg)
     empty.write_bytes(b"")
-    refused = _exits(ExitCode.PRECONDITION, drive(["label", "mark", LABEL, "--xml", str(empty)]))
-    assert refused["cause"]["reason"] == "sync-marks-blocked"
+    _refused(["label", "mark", LABEL, "--xml", str(empty)], "sync-marks-blocked")
     assert account.renamed == []
 
 
@@ -966,7 +927,6 @@ def test_an_add_answered_with_nothing_is_read_again_and_not_reported_refused():
     client = _Client()
     playlist = _Playlist([], skip=set())
     real = playlist.add
-
     def answers_nothing(media_ids):
         real(media_ids)
         return []

@@ -1,10 +1,5 @@
-"""A decide on a digest bound gate its run has not reached is refused (R-1349).
-
-An answer recorded there would carry no digest, and the resume would apply a
-plan whose screen was never shown. The refusal, ``gate-not-reached``, is no open
-gate to any reader. A gate reached and left open, one already answered, and a
-gate that binds no plan still take an answer.
-"""
+"""A decide on a digest bound gate its run has not reached is refused (R-1349): its answer
+would bind no digest, so a plan whose screen was never shown would apply."""
 
 from __future__ import annotations
 
@@ -20,11 +15,16 @@ from tests.test_cli_contract import _trap_standard_input as _trap_standard_input
 from tests.test_cli_contract import configured as configured  # noqa: PLC0414
 from tests.test_cli_contract import library as library  # noqa: PLC0414
 
-FIRST, SECOND = (
-    registry.GateSpec(
-        name=f"probe.{which}", options=("apply", "abort"), prompt=f"Apply the {which} plan?",
-        explicit=True, digest_source="plan",
+def digest_spec(name: str, *, explicit: bool = True, prompt: str = "Apply this plan?"):
+    """A gate offering apply or abort whose answer binds the plan's digest."""
+    return registry.GateSpec(
+        name=name, options=("apply", "abort"), prompt=prompt, explicit=explicit,
+        digest_source="plan",
     )
+
+
+FIRST, SECOND = (
+    digest_spec(f"probe.{which}", prompt=f"Apply the {which} plan?")
     for which in ("first", "second")
 )
 UNBOUND = registry.GateSpec(
@@ -52,8 +52,7 @@ def _refused(state: gates.RunState, spec: registry.GateSpec, option: str = "appl
     before = state.to_json()
     with pytest.raises(gates.GateNotReached) as raised:
         gates.record(state, spec, option, actor="a-person")
-    # NOTHING WRITTEN: not the decision, not the open gate.
-    assert state.to_json() == before
+    assert state.to_json() == before, "the refusal wrote the decision or the open gate"
     return raised.value.cause.to_json()
 
 
@@ -158,7 +157,7 @@ def test_a_gate_that_binds_no_plan_takes_an_answer_before_it_is_reached():
 
 
 def test_a_handed_off_run_holds_the_offer_its_decide_binds():
-    """``hand_off`` mints a run with its offer, so an answer on it is one over a shown plan."""
+    """``hand_off`` mints a run with its offer, so its answer is one over a shown plan."""
     handed = _state(offers={"probe.second": "sha256:second"})
     gates.record(handed, SECOND, "abort", actor="a-person")
     assert handed.decisions["probe.second"].digest == "sha256:second"
@@ -181,7 +180,7 @@ def _drive(argv: list[str]) -> tuple[int, str, str]:
 
 
 def _unreached(run_id: str) -> gates.RunState:
-    """A real verb's run with a digest bound gate it has not reached: profile set's, reset."""
+    """``profile set``'s run reset to before its digest bound gate."""
     state = gates.load(run_id)
     state.offers.clear()
     state.open_gate = None
@@ -201,7 +200,6 @@ def test_through_the_dispatcher_the_refusal_saves_nothing_and_prints_no_gate_scr
     assert code == int(ExitCode.PRECONDITION)
     assert "has not reached the gate 'profile.set.apply'" in err
     assert f"crate --run {run_id} profile set slim" in err
-    # No gate screen: it would invite the very answer just refused.
-    assert "options:" not in err
+    assert "options:" not in err, "a gate screen invites the very answer just refused"
     assert "answer:  crate run decide" not in err
     assert gates.load(run_id).to_json() == before

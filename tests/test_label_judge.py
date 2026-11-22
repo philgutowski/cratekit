@@ -1,10 +1,4 @@
-"""R-815: the label releases already in review are judged without a sweep.
-
-Driven through the real dispatcher, queue and worker with a fake provider and
-general catalogue, and through the review store where the property is its own.
-Nothing reaches a network, and a decided item is decided as a person would.
-Every expected value is a literal from the fixtures (D1).
-"""
+"""R-815: the label releases already in review are judged without a sweep."""
 
 from __future__ import annotations
 
@@ -38,6 +32,7 @@ from tests.test_label_genre_gate import (
     check,
     filed,
     held_ids,
+    held_ok,
     held_verb,
     isrc,
     never_asked,
@@ -54,44 +49,55 @@ FILED_BY = "sweep-1"
 
 
 def queue_release(
-    cfg: config.Config,
-    release_id: str,
-    *,
-    label_id: str = SLUG,
-    label_name: str = LABEL,
-    filed_by: str | None = FILED_BY,
-    **stamp,
+    cfg: config.Config, *release_ids: str, label_id: str = SLUG, label_name: str = LABEL,
+    filed_by: str | None = FILED_BY, **stamp,
 ) -> str:
-    """One release pending in review, as a sweep before the gate filed it."""
+    """Each release pending in review, as a sweep before the gate filed it. The last item id."""
     with review.open_store(cfg) as store:
-        item = sweep.offer_release(
-            store,
-            run.Candidate(
-                identity=release_id,
-                recency="2026",
-                payload={
-                    "artist": "Label Act",
-                    "title": f"Release {release_id}",
-                    "label_id": label_id,
-                    "label_name": label_name,
-                    "identity": release_id,
-                    **stamp,
-                },
-            ),
-            run_id=filed_by,
-        )
-    return item.item_id
+        for release_id in release_ids:
+            payload = {
+                "artist": "Label Act", "title": f"Release {release_id}", "label_id": label_id,
+                "label_name": label_name, "identity": release_id, **stamp,
+            }
+            candidate = run.Candidate(identity=release_id, recency="2026", payload=payload)
+            item_id = sweep.offer_release(store, candidate, run_id=filed_by).item_id
+    return item_id
 
 
-def catalogues(monkeypatch, releases: dict[str, str], lookup):
-    """Bind the provider to ``releases`` and the general catalogue to ``lookup``."""
-    provider = provider_of(monkeypatch, releases)
-    bind_lookup(monkeypatch, lookup)
-    return provider
+def recorded(gate: str, note: str, answer: str, *genres: str) -> dict:
+    """The stamp a sweep leaves on an item, as ``queue_release`` keywords."""
+    stamp = {"genre_gate": gate, "genre_gate_note": note, "genre_gate_answer": answer}
+    return {**stamp, "published_genres": list(genres)} if genres else stamp
+
+
+def pending(cfg, monkeypatch, releases: dict[str, str], lookup, *argv: str) -> FakeCatalogue:
+    """Register the label with ``argv``, queue each release, and bind both catalogues."""
+    register(*argv)
+    queue_release(cfg, *releases)
+    return provider_of(monkeypatch, releases, lookup)
+
+
+def five_pending(cfg, monkeypatch, lookup) -> FakeCatalogue:
+    """Releases r-1 to r-5 pending, each with its own ISRC."""
+    return pending(cfg, monkeypatch, {f"r-{n}": isrc(n) for n in range(1, 6)}, lookup)
 
 
 def judge(*argv: str) -> tuple[int, dict]:
     return drive(["label", "judge", *argv])
+
+
+def resumed(job_id: str) -> dict:
+    code, envelope = judge("--job", job_id)
+    assert code == int(ExitCode.OK), envelope
+    return envelope
+
+
+def parked_on(job_id: str) -> dict:
+    """Drive the job, which must park as blocked. Its envelope."""
+    code, parked = judge("--job", job_id)
+    assert code != int(ExitCode.OK)
+    assert parked["outcome"] == "blocked"
+    return parked
 
 
 def queued_job(*argv: str) -> str:
@@ -103,9 +109,7 @@ def queued_job(*argv: str) -> str:
 def judge_once(*argv: str) -> tuple[str, dict]:
     """Queue a judging job and drive it to its end. The job and the last envelope."""
     job_id = queued_job(*argv)
-    code, envelope = judge("--job", job_id)
-    assert code == int(ExitCode.OK), envelope
-    return job_id, envelope
+    return job_id, resumed(job_id)
 
 
 def judging(envelope: dict) -> dict:
@@ -146,11 +150,7 @@ def warning_codes(envelope: dict) -> list[str]:
 
 def withhold(store, item_id: str, *, run_id: str = "judge-1", reason: str = "another kind"):
     return review.withhold(
-        store,
-        item_id,
-        group=SLUG,
-        name=LABEL,
-        reason=reason,
+        store, item_id, group=SLUG, name=LABEL, reason=reason,
         detail={"genres": ["Christian"], "kind": "dance", "placed": [["Christian", "christian"]]},
         run_id=run_id,
     )
@@ -161,8 +161,7 @@ def held_by_hand(store, *, release_id: str = "r-1", payload: dict, reason: str, 
     """A hold written straight through the store, under this file's label."""
     return review.hold(
         store, queue=QUEUE, kind=sweep.KIND, identity={"release_id": release_id},
-        payload=payload, group=SLUG, name=LABEL, reason=reason, detail={}, run_id=run_id,
-        **kwargs,
+        payload=payload, group=SLUG, name=LABEL, reason=reason, detail={}, run_id=run_id, **kwargs,
     )
 
 
@@ -176,9 +175,7 @@ def test_an_open_item_leaves_the_queue_and_becomes_a_hold_carrying_what_it_carri
     item_id = queue_release(installed, "r-1")
     with review.open_store(installed) as store:
         before = review.get(store, item_id)
-
         hold = withhold(store, item_id)
-
         assert review.find(store, item_id) is None
         assert review.count_unresolved(store, queue=QUEUE) == 0
         [standing] = review.holds(store, queue=QUEUE)
@@ -188,10 +185,7 @@ def test_an_open_item_leaves_the_queue_and_becomes_a_hold_carrying_what_it_carri
     # What the item carried, and the word that says it was taken back.
     assert hold.payload == {**before.payload, review.WITHHELD_FIELD: True}
     assert (hold.group, hold.name, hold.reason, hold.run_id) == (
-        SLUG,
-        LABEL,
-        "another kind",
-        "judge-1",
+        SLUG, LABEL, "another kind", "judge-1",
     )
     assert hold.detail["genres"] == ["Christian"]
 
@@ -201,9 +195,7 @@ def test_a_decided_item_is_not_withheld_and_stays_exactly_as_it_was(installed, v
     item_id = queue_release(installed, "r-1")
     with review.open_store(installed) as store:
         decided = review.resolve(store, item_id, verdict, actor="suite")
-
         assert withhold(store, item_id) is None
-
         assert review.get(store, item_id) == decided
         assert review.holds(store, queue=QUEUE) == ()
 
@@ -212,9 +204,7 @@ def test_a_superseded_item_is_not_withheld(installed):
     item_id = queue_release(installed, "r-1")
     with review.open_store(installed) as store:
         [retired] = review.supersede(store, [item_id], rule="suite-rule")
-
         assert withhold(store, item_id) is None
-
         assert review.get(store, item_id) == retired
         assert review.holds(store, queue=QUEUE) == ()
 
@@ -225,9 +215,7 @@ def test_an_item_carrying_a_verdict_this_build_cannot_read_is_not_withheld(insta
     with review.open_store(installed) as store:
         deferred(store, item_id)
         assert review.get(store, item_id).verdict is None
-
         assert withhold(store, item_id) is None
-
         assert review.get(store, item_id).stored_verdict == "deferred"
         assert review.holds(store, queue=QUEUE) == ()
 
@@ -239,9 +227,7 @@ def test_a_release_a_person_returned_is_never_withheld_again(installed):
             store, payload={}, reason="returned by hand while it was in review",
             run_id="", returned=True,
         )
-
         assert withhold(store, item_id) is None
-
         assert review.find(store, item_id) is not None
         assert review.find_hold(store, queue=QUEUE, item_id=item_id).state == review.HOLD_RETURNED
 
@@ -256,9 +242,7 @@ def test_a_hold_in_force_beside_an_open_item_is_refreshed_and_keeps_its_first_ru
     item_id = queue_release(installed, "r-1")
     with review.open_store(installed) as store:
         held_by_hand(store, payload={"title": "stale"}, reason="an older reason", run_id="sweep-0")
-
         hold = withhold(store, item_id, reason="another kind")
-
         assert review.find(store, item_id) is None
         assert [one.item_id for one in review.holds(store, queue=QUEUE)] == [item_id]
     assert (hold.run_id, hold.reason) == ("sweep-0", "another kind")
@@ -270,9 +254,7 @@ def test_an_item_that_arrived_with_no_identity_is_still_found_as_a_hold(installe
     with review.open_store(installed) as store:
         with store.immediate() as conn:
             conn.execute("UPDATE review_items SET identity = NULL WHERE item_id = ?", (item_id,))
-
         hold = withhold(store, item_id)
-
         assert hold.identity == {}
         assert hold.payload["identity"] == "r-1"
         assert review.find_hold(store, queue=QUEUE, item_id=item_id) == hold
@@ -317,15 +299,11 @@ def test_an_open_item_is_redescribed_and_keeps_its_place(installed):
     item_id = queue_release(installed, "r-1")
     with review.open_store(installed) as store:
         before = review.get(store, item_id)
-
         after = review.redescribe(store, item_id, {**before.payload, "said": "more"})
-
         assert after == review.get(store, item_id)
     assert after.payload == {**before.payload, "said": "more"}
     assert (after.ordinal, after.handler_key, after.verdict) == (
-        before.ordinal,
-        before.handler_key,
-        None,
+        before.ordinal, before.handler_key, None,
     )
 
 
@@ -333,9 +311,7 @@ def test_redescribing_a_decided_item_changes_nothing(installed):
     item_id = queue_release(installed, "r-1")
     with review.open_store(installed) as store:
         decided = review.resolve(store, item_id, review.Verdict.REJECTED, actor="suite")
-
         assert review.redescribe(store, item_id, {"said": "more"}) is None
-
         assert review.get(store, item_id) == decided
 
 
@@ -344,9 +320,7 @@ def test_redescribing_an_item_with_an_unreadable_verdict_changes_nothing(install
     with review.open_store(installed) as store:
         deferred(store, item_id)
         before = review.get(store, item_id)
-
         assert review.redescribe(store, item_id, {"said": "more"}) is None
-
         assert review.get(store, item_id).payload == before.payload
 
 
@@ -354,9 +328,7 @@ def test_redescribing_an_item_that_is_gone_files_nothing(installed):
     item_id = queue_release(installed, "r-1")
     with review.open_store(installed) as store:
         withhold(store, item_id)
-
         assert review.redescribe(store, item_id, {"said": "more"}) is None
-
         assert review.find(store, item_id) is None
         assert review.count_unresolved(store, queue=QUEUE) == 0
 
@@ -365,20 +337,14 @@ def test_a_refreshed_hold_keeps_the_run_its_release_was_filed_under(installed):
     item_id = queue_release(installed, "r-1")
     with review.open_store(installed) as store:
         withhold(store, item_id)
-
         def refresh(payload: dict):
             return held_by_hand(
-                store, payload=payload, reason="still another kind",
-                run_id="sweep-2",
+                store, payload=payload, reason="still another kind", run_id="sweep-2",
             )
-
         # A producer that describes it as never filed loses neither the run
         # it was filed under nor the word that it was taken back.
         assert refresh({"identity": "r-1", "title": "T"}).payload == {
-            "identity": "r-1",
-            "title": "T",
-            sweep.SWEEP_RUN: FILED_BY,
-            review.WITHHELD_FIELD: True,
+            "identity": "r-1", "title": "T", sweep.SWEEP_RUN: FILED_BY, review.WITHHELD_FIELD: True,
         }
         # One that names a run of its own is believed.
         again = refresh({"identity": "r-1", sweep.SWEEP_RUN: "sweep-7"}).payload
@@ -400,15 +366,9 @@ def test_a_refreshed_hold_that_never_named_a_run_gains_none(installed):
 
 def test_a_queued_release_of_another_kind_is_held_listed_and_returned(installed, monkeypatch):
     """The brief's first scenario, end to end, and no tombstone anywhere in it."""
-    register()
-    queue_release(installed, "r-christian")
-    queue_release(installed, "r-dance")
-    provider_of(monkeypatch, {"r-christian": isrc(1), "r-dance": isrc(2)})
     lookup = Lookup({isrc(1): ("Christian",), isrc(2): ("Dance",)})
-    bind_lookup(monkeypatch, lookup)
-
+    pending(installed, monkeypatch, {"r-christian": isrc(1), "r-dance": isrc(2)}, lookup)
     job_id, envelope = judge_once()
-
     assert counts(judging(envelope)) == {"judged": 2, "held": 1, "passed": 1, "not-judged": 0}
     assert counts(label_row(envelope)) == {"judged": 2, "held": 1, "passed": 1, "not-judged": 0}
     assert label_row(envelope)["label_name"] == LABEL
@@ -421,15 +381,11 @@ def test_a_queued_release_of_another_kind_is_held_listed_and_returned(installed,
     assert hold.run_id == job_id
     assert hold.detail["genres"] == ["Christian"]
     assert "which is christian and not dance" in hold.reason
-
-    code, listing = held_verb()
-    assert code == int(ExitCode.OK), listing
+    listing = held_ok()
     line = check(listing, "label.held.release.r-christian")["detail"]
     assert "release r-christian ('Release r-christian' by Label Act) on Tide Works is held" in line
     assert "which is christian and not dance" in line
-
-    code, returned = held_verb("return", "r-christian")
-    assert code == int(ExitCode.OK), returned
+    returned = held_ok("return", "r-christian")
     assert returned["data"]["summary"]["returned"] == ["r-christian"]
     back = item_of(installed, "r-christian")
     assert back.verdict is None
@@ -444,14 +400,12 @@ def test_a_queued_release_of_another_kind_is_held_listed_and_returned(installed,
 def test_a_returned_release_is_not_judged_again_and_nobody_is_asked(installed, monkeypatch):
     register()
     queue_release(installed, "r-christian")
-    provider = catalogues(monkeypatch, {"r-christian": isrc(1)}, Lookup({isrc(1): ("Christian",)}))
+    provider = provider_of(monkeypatch, {"r-christian": isrc(1)}, Lookup({isrc(1): ("Christian",)}))
     judge_once()
     assert held_verb("return", "r-christian")[0] == int(ExitCode.OK)
     asked_before = list(provider.releases_asked_for)
     bind_lookup(monkeypatch, never_asked)
-
     job_id, envelope = judge_once()
-
     assert provider.releases_asked_for == asked_before
     assert sorted(filed(installed)) == ["r-christian"]
     assert held_ids(installed) == []
@@ -463,12 +417,8 @@ def test_a_returned_release_is_not_judged_again_and_nobody_is_asked(installed, m
 def test_a_queued_release_of_the_labels_kind_stays_and_says_the_gate_passed_it(
     installed, monkeypatch
 ):
-    register()
-    queue_release(installed, "r-dance")
-    catalogues(monkeypatch, {"r-dance": isrc(2)}, Lookup({isrc(2): ("Dance",)}))
-
+    pending(installed, monkeypatch, {"r-dance": isrc(2)}, Lookup({isrc(2): ("Dance",)}))
     job_id, envelope = judge_once()
-
     stays = item_of(installed, "r-dance")
     assert stays.verdict is None
     assert stays.payload[genre_gate.GATE_FIELD] == "passed"
@@ -483,12 +433,8 @@ def test_a_queued_release_of_the_labels_kind_stays_and_says_the_gate_passed_it(
 def test_a_release_the_catalogue_does_not_know_stays_and_is_marked_not_judged(
     installed, monkeypatch
 ):
-    register()
-    queue_release(installed, "r-unknown")
-    catalogues(monkeypatch, {"r-unknown": isrc(3)}, Lookup({}))
-
+    pending(installed, monkeypatch, {"r-unknown": isrc(3)}, Lookup({}))
     _, envelope = judge_once()
-
     stays = item_of(installed, "r-unknown")
     assert stays.verdict is None
     assert stays.payload[genre_gate.GATE_FIELD] == "not-judged"
@@ -511,9 +457,7 @@ def test_an_item_decided_before_the_run_is_no_part_of_it(installed, monkeypatch,
         decided = review.resolve(store, item_id, verdict, actor="suite")
     provider = provider_of(monkeypatch, {"r-christian": isrc(1), "r-open": isrc(2)})
     bind_lookup(monkeypatch, Lookup({isrc(1): ("Christian",), isrc(2): ("Dance",)}))
-
     job_id, _ = judge_once()
-
     assert list(item_states(job_id)) == [item_of(installed, "r-open").item_id]
     assert provider.releases_asked_for == ["r-open"]
     with review.open_store(installed) as store:
@@ -525,14 +469,11 @@ def test_an_item_decided_before_the_run_is_no_part_of_it(installed, monkeypatch,
 def test_an_item_decided_after_the_job_was_queued_is_untouched(installed, monkeypatch, verdict):
     register()
     item_id = queue_release(installed, "r-christian")
-    provider = catalogues(monkeypatch, {"r-christian": isrc(1)}, never_asked)
+    provider = provider_of(monkeypatch, {"r-christian": isrc(1)}, never_asked)
     job_id = queued_job()
     with review.open_store(installed) as store:
         decided = review.resolve(store, item_id, verdict, actor="suite")
-
-    code, envelope = judge("--job", job_id)
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = resumed(job_id)
     assert provider.releases_asked_for == []
     with review.open_store(installed) as store:
         assert review.get(store, item_id) == decided
@@ -546,16 +487,12 @@ def test_a_release_decided_while_it_was_being_judged_is_not_held(installed, monk
     register()
     item_id = queue_release(installed, "r-christian")
     provider_of(monkeypatch, {"r-christian": isrc(1)})
-
     def decided_meanwhile(value):
         with review.open_store(installed) as store:
             review.resolve(store, item_id, review.Verdict.ACCEPTED, actor="suite")
         return published.Published(published.SOURCE, "matched", genres=("Christian",))
-
     bind_lookup(monkeypatch, decided_meanwhile)
-
     job_id, envelope = judge_once()
-
     assert item_of(installed, "r-christian").verdict is review.Verdict.ACCEPTED
     assert genre_gate.GATE_FIELD not in item_of(installed, "r-christian").payload
     assert held_ids(installed) == []
@@ -570,17 +507,13 @@ def test_an_artist_put_right_while_a_release_was_being_judged_is_kept_by_the_sta
     register()
     item_id = queue_release(installed, "r-dance")
     provider_of(monkeypatch, {"r-dance": isrc(1)})
-
     def repaired_meanwhile(value):
         with review.open_store(installed) as store:
             current = review.get(store, item_id)
             review.redescribe(store, item_id, {**current.payload, "artist": "Harbour Act"})
         return published.Published(published.SOURCE, "matched", genres=("Dance",))
-
     bind_lookup(monkeypatch, repaired_meanwhile)
-
     job_id, _envelope = judge_once()
-
     after = item_of(installed, "r-dance")
     assert reports(installed, job_id)["r-dance"]["outcome"] == judge_cli.PASSED
     assert after.payload[genre_gate.GATE_FIELD] == "passed"
@@ -588,12 +521,9 @@ def test_an_artist_put_right_while_a_release_was_being_judged_is_kept_by_the_sta
 
 
 def test_a_label_marked_any_has_nothing_held_and_nobody_is_asked(installed, monkeypatch):
-    register("--kind", "any")
-    queue_release(installed, "r-christian")
-    provider = catalogues(monkeypatch, {"r-christian": isrc(1)}, never_asked)
-
+    releases = {"r-christian": isrc(1)}
+    provider = pending(installed, monkeypatch, releases, never_asked, "--kind", "any")
     _, envelope = judge_once()
-
     assert provider.releases_asked_for == []
     assert held_ids(installed) == []
     stays = item_of(installed, "r-christian")
@@ -609,16 +539,11 @@ def test_a_release_on_a_label_nobody_follows_any_more_is_judged_as_the_default_k
     installed, monkeypatch
 ):
     queue_release(installed, "r-christian", label_id="gone-label", label_name="Gone Label")
-    catalogues(monkeypatch, {"r-christian": isrc(1)}, Lookup({isrc(1): ("Christian",)}))
-
+    provider_of(monkeypatch, {"r-christian": isrc(1)}, Lookup({isrc(1): ("Christian",)}))
     _, envelope = judge_once()
-
     assert held_ids(installed) == ["r-christian"]
     assert counts(label_row(envelope, "gone-label")) == {
-        "judged": 1,
-        "held": 1,
-        "passed": 0,
-        "not-judged": 0,
+        "judged": 1, "held": 1, "passed": 0, "not-judged": 0,
     }
 
 
@@ -627,20 +552,10 @@ def test_a_release_on_a_label_nobody_follows_any_more_is_judged_as_the_default_k
 
 def test_words_the_item_recorded_pass_a_release_with_no_request_at_all(installed, monkeypatch):
     register()
-    queue_release(
-        installed,
-        "r-dance",
-        genre_gate="passed",
-        genre_gate_note=(
-            "the general catalogue calls it Dance, and its label is followed as dance"
-        ),
-        genre_gate_answer="matched",
-        published_genres=["Dance"],
-    )
-    provider = catalogues(monkeypatch, {"r-dance": isrc(2)}, never_asked)
-
+    note = "the general catalogue calls it Dance, and its label is followed as dance"
+    queue_release(installed, "r-dance", **recorded("passed", note, "matched", "Dance"))
+    provider = provider_of(monkeypatch, {"r-dance": isrc(2)}, never_asked)
     _, envelope = judge_once()
-
     assert provider.releases_asked_for == []
     assert held_ids(installed) == []
     assert counts(judging(envelope)) == {"judged": 1, "held": 0, "passed": 1, "not-judged": 0}
@@ -655,20 +570,12 @@ def test_recorded_words_that_would_hold_are_asked_about_before_the_release_is_he
 ):
     """Judged against the kind the label has now, and held on what the catalogue says now."""
     register("--kind", "christian")
-    queue_release(
-        installed,
-        "r-dance",
-        genre_gate="passed",
-        genre_gate_note="filed when the label was a dance label",
-        genre_gate_answer="matched",
-        published_genres=["Dance"],
-    )
+    note = "filed when the label was a dance label"
+    queue_release(installed, "r-dance", **recorded("passed", note, "matched", "Dance"))
     provider = provider_of(monkeypatch, {"r-dance": isrc(2)})
     lookup = Lookup({isrc(2): ("Dance",)})
     bind_lookup(monkeypatch, lookup)
-
     _, envelope = judge_once()
-
     assert provider.releases_asked_for == ["r-dance"]
     assert lookup.asked == [isrc(2)]
     assert held_ids(installed) == ["r-dance"]
@@ -681,28 +588,14 @@ def test_a_record_of_one_tracks_album_does_not_hold_a_release_its_next_track_pas
 ):
     """A sweep stops asking at the first passing track, so its record can be one album."""
     register()
-    queue_release(
-        installed,
-        "r-two",
-        genre_gate="passed",
-        genre_gate_note="filed on its first track",
-        genre_gate_answer="matched",
-        published_genres=["Christian"],
-    )
-    fake = FakeCatalogue(
-        releases={
-            "r-two": (
-                [Track("t-1", "Artist", "One", isrc(1)), Track("t-2", "Artist", "Two", isrc(2))],
-                2026,
-            )
-        }
-    )
+    stamp = recorded("passed", "filed on its first track", "matched", "Christian")
+    queue_release(installed, "r-two", **stamp)
+    rows = [Track("t-1", "Artist", "One", isrc(1)), Track("t-2", "Artist", "Two", isrc(2))]
+    fake = FakeCatalogue(releases={"r-two": (rows, 2026)})
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
     lookup = Lookup({isrc(1): ("Christian",), isrc(2): ("Dance",)})
     bind_lookup(monkeypatch, lookup)
-
     _, envelope = judge_once()
-
     assert lookup.asked == [isrc(1), isrc(2)]
     assert held_ids(installed) == []
     stays = item_of(installed, "r-two").payload
@@ -716,26 +609,17 @@ def test_a_release_the_catalogue_already_had_no_word_for_is_not_asked_about_agai
     installed, monkeypatch, answer
 ):
     register()
-    queue_release(
-        installed,
-        "r-known-nothing",
-        genre_gate="not-judged",
-        genre_gate_note="what the sweep was told",
-        genre_gate_answer=answer,
-    )
-    provider = catalogues(monkeypatch, {"r-known-nothing": isrc(4)}, never_asked)
-
+    stamp = recorded("not-judged", "what the sweep was told", answer)
+    queue_release(installed, "r-known-nothing", **stamp)
+    provider = provider_of(monkeypatch, {"r-known-nothing": isrc(4)}, never_asked)
     job_id, envelope = judge_once()
-
     assert provider.releases_asked_for == []
     stays = item_of(installed, "r-known-nothing")
     assert stays.payload[genre_gate.GATE_NOTE_FIELD] == "what the sweep was told"
     assert genre_gate.GATE_RUN_FIELD not in stays.payload
     report = reports(installed, job_id)["r-known-nothing"]
     assert (report["outcome"], report["reason"], report["asked"]) == (
-        "not-judged",
-        "what the sweep was told",
-        False,
+        "not-judged", "what the sweep was told", False,
     )
     assert counts(judging(envelope))["not-judged"] == 1
 
@@ -743,19 +627,12 @@ def test_a_release_the_catalogue_already_had_no_word_for_is_not_asked_about_agai
 @pytest.mark.parametrize("answer", ["blocked", "unreachable", "parse-break", "not-asked"])
 def test_a_release_nobody_was_told_anything_about_is_asked_about(installed, monkeypatch, answer):
     register()
-    queue_release(
-        installed,
-        "r-christian",
-        genre_gate="not-judged",
-        genre_gate_note="the general catalogue could not be read",
-        genre_gate_answer=answer,
-    )
+    stamp = recorded("not-judged", "the general catalogue could not be read", answer)
+    queue_release(installed, "r-christian", **stamp)
     provider = provider_of(monkeypatch, {"r-christian": isrc(1)})
     lookup = Lookup({isrc(1): ("Christian",)})
     bind_lookup(monkeypatch, lookup)
-
     _, envelope = judge_once()
-
     assert provider.releases_asked_for == ["r-christian"]
     assert lookup.asked == [isrc(1)]
     assert held_ids(installed) == ["r-christian"]
@@ -765,25 +642,16 @@ def test_a_release_nobody_was_told_anything_about_is_asked_about(installed, monk
 def test_a_fresh_answer_with_no_word_takes_the_old_words_off_the_item(installed, monkeypatch):
     """The stamp is one statement. Old words beside a new verdict would be asked about for ever."""
     register()
-    queue_release(
-        installed,
-        "r-1",
-        genre_gate="passed",
-        genre_gate_note="filed when the label was followed for christian music",
-        genre_gate_answer="matched",
-        published_genres=["Christian"],
-    )
-    provider = catalogues(monkeypatch, {"r-1": isrc(1)}, Lookup({}))
-
+    note = "filed when the label was followed for christian music"
+    queue_release(installed, "r-1", **recorded("passed", note, "matched", "Christian"))
+    provider = provider_of(monkeypatch, {"r-1": isrc(1)}, Lookup({}))
     judge_once()
-
     stays = item_of(installed, "r-1").payload
     assert stays[genre_gate.GATE_FIELD] == "not-judged"
     assert stays[genre_gate.GATE_ANSWER_FIELD] == "miss"
     assert genre_gate.GENRES_FIELD not in stays
     assert stays["title"] == "Release r-1"
     assert held_ids(installed) == []
-
     # And so the next run reads the record and asks nobody.
     bind_lookup(monkeypatch, never_asked)
     judge_once()
@@ -800,10 +668,8 @@ def test_an_item_that_names_no_release_is_not_judged_and_nothing_is_read(install
                 "UPDATE review_items SET identity = NULL, payload = ? WHERE item_id = ?",
                 ('{"label_id": "tide-works", "label_name": "Tide Works"}', item_id),
             )
-    provider = catalogues(monkeypatch, {"r-1": isrc(1)}, never_asked)
-
+    provider = provider_of(monkeypatch, {"r-1": isrc(1)}, never_asked)
     job_id, envelope = judge_once()
-
     assert provider.releases_asked_for == []
     [report] = reports(installed, job_id).values()
     assert report["outcome"] == "not-judged"
@@ -814,9 +680,7 @@ def test_an_item_that_names_no_release_is_not_judged_and_nothing_is_read(install
     assert after.payload[genre_gate.GATE_FIELD] == "not-judged"
     assert after.payload[genre_gate.GATE_NOTE_FIELD] == report["reason"]
     assert (after.payload["label_id"], after.verdict, after.ordinal) == (
-        "tide-works",
-        None,
-        before.ordinal,
+        "tide-works", None, before.ordinal,
     )
     assert counts(judging(envelope))["not-judged"] == 1
 
@@ -827,16 +691,8 @@ def test_an_item_that_names_another_items_release_is_not_read_and_stamps_only_it
     """An imported item carries no identity, and its payload is all there is to go on."""
     register()
     item_id = queue_release(installed, "r-1")
-    other = queue_release(
-        installed,
-        "r-2",
-        genre_gate="passed",
-        genre_gate_note=(
-            "the general catalogue calls it Dance, and its label is followed as dance"
-        ),
-        genre_gate_answer="matched",
-        published_genres=["Dance"],
-    )
+    note = "the general catalogue calls it Dance, and its label is followed as dance"
+    other = queue_release(installed, "r-2", **recorded("passed", note, "matched", "Dance"))
     with review.open_store(installed) as store:
         with store.immediate() as conn:
             conn.execute(
@@ -844,10 +700,8 @@ def test_an_item_that_names_another_items_release_is_not_read_and_stamps_only_it
                 ('{"identity": "r-2", "label_id": "tide-works"}', item_id),
             )
         untouched = review.get(store, other)
-    provider = catalogues(monkeypatch, {"r-1": isrc(1), "r-2": isrc(2)}, never_asked)
-
+    provider = provider_of(monkeypatch, {"r-1": isrc(1), "r-2": isrc(2)}, never_asked)
     job_id, _ = judge_once()
-
     assert provider.releases_asked_for == []
     with review.open_store(installed) as store:
         assert review.get(store, other).payload == untouched.payload
@@ -868,9 +722,7 @@ def test_an_item_that_names_another_items_release_is_not_read_and_stamps_only_it
 
 def test_nothing_pending_queues_nothing_and_says_so(installed):
     register()
-
     code, envelope = judge()
-
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
     assert envelope["data"]["job_id"] == ""
@@ -886,9 +738,7 @@ def test_a_named_label_scopes_the_job_to_its_releases(installed, monkeypatch):
     queue_release(installed, "r-theirs", label_id="other-works", label_name="Other Works")
     provider = provider_of(monkeypatch, {"r-ours": isrc(1), "r-theirs": isrc(2)})
     bind_lookup(monkeypatch, Lookup({isrc(1): ("Christian",), isrc(2): ("Christian",)}))
-
     _, envelope = judge_once("--label", LABEL)
-
     assert provider.releases_asked_for == ["r-ours"]
     assert held_ids(installed) == ["r-ours"]
     assert sorted(filed(installed)) == ["r-theirs"]
@@ -898,9 +748,7 @@ def test_a_named_label_scopes_the_job_to_its_releases(installed, monkeypatch):
 def test_a_label_nobody_follows_refuses_the_scope_and_queues_nothing(installed):
     register()
     queue_release(installed, "r-1")
-
     code, envelope = judge("--label", LABEL, "--label", "No Such Label")
-
     assert code != int(ExitCode.OK)
     assert envelope["cause"]["reason"] == "label-unknown"
     assert envelope["cause"]["detail"]["unknown"] == ["No Such Label"]
@@ -912,9 +760,7 @@ def test_a_scope_with_nothing_pending_says_which_zero_it_is(installed):
     register()
     register(name="Other Works")
     queue_release(installed, "r-theirs", label_id="other-works", label_name="Other Works")
-
     code, envelope = judge("--label", LABEL)
-
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
     assert "for the labels named" in envelope["warnings"][0]["message"]
@@ -926,16 +772,10 @@ def test_the_job_is_one_item_per_pending_release_and_carries_no_harvested_name(i
     second = queue_release(installed, "r-2")
     with review.open_store(installed) as store:
         review.offer(
-            store,
-            queue=QUEUE,
-            kind="harvested-label",
-            identity={"label": "someone"},
-            payload={"name": "Someone"},
-            handler_key="label.harvest",
+            store, queue=QUEUE, kind="harvested-label", identity={"label": "someone"},
+            payload={"name": "Someone"}, handler_key="label.harvest",
         )
-
     job_id = queued_job()
-
     assert item_states(job_id) == {first: "pending", second: "pending"}
 
 
@@ -965,37 +805,28 @@ def test_a_run_stopped_part_way_and_resumed_judges_none_twice_and_skips_none(
 ):
     """The release in flight when the run stopped was written and not marked done."""
     register()
-    for release_id in ("r-1", "r-2", "r-3"):
-        queue_release(installed, release_id)
+    queue_release(installed, "r-1", "r-2", "r-3")
     provider = provider_of(monkeypatch, {"r-1": isrc(1), "r-2": isrc(2), "r-3": isrc(3)})
     lookup = Interrupting(
         {isrc(1): ("Dance",), isrc(2): words, isrc(3): ("Christian",)}, on=isrc(2)
     )
     bind_lookup(monkeypatch, lookup)
     job_id = queued_job()
-
     code, stopped = judge("--job", job_id)
-
     assert code != int(ExitCode.OK)
     assert stopped["outcome"] == "cancelled"
     assert stopped["cause"]["detail"]["left"] == 2
     assert counts(stopped["cause"]["detail"]["judging"]) == {
-        "judged": 1,
-        "held": 0,
-        "passed": 1,
-        "not-judged": 0,
+        "judged": 1, "held": 0, "passed": 1, "not-judged": 0,
     }
     assert f"crate job resume {job_id}" in stopped["cause"]["remediation"]["steps"][-1]
     assert "2 release(s) of this job are not judged yet" in (
         stopped["cause"]["remediation"]["steps"][-1]
     )
-
     lookup.on = ""
     with jobs.open_store() as store:
         jobs.retry(store, job_id)
-    code, envelope = judge("--job", job_id)
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = resumed(job_id)
     assert lookup.asked == [isrc(1), isrc(2), isrc(3)]
     assert provider.releases_asked_for == ["r-1", "r-2", "r-3"]
     assert counts(judging(envelope)) == expected
@@ -1008,19 +839,10 @@ def test_a_catalogue_that_refuses_stops_the_run_at_once_and_says_how_many_were_l
     installed, monkeypatch
 ):
     """One refusal is enough. The lookup would answer every later release from memory."""
-    register()
-    ids = [f"r-{n}" for n in range(1, 6)]
-    for release_id in ids:
-        queue_release(installed, release_id)
-    provider = provider_of(monkeypatch, {rid: isrc(n) for n, rid in enumerate(ids, start=1)})
     lookup = Lookup({isrc(n): "blocked" for n in range(1, 6)})
-    bind_lookup(monkeypatch, lookup)
+    provider = five_pending(installed, monkeypatch, lookup)
     job_id = queued_job()
-
-    code, parked = judge("--job", job_id)
-
-    assert code != int(ExitCode.OK)
-    assert parked["outcome"] == "blocked"
+    parked = parked_on(job_id)
     cause = parked["cause"]
     assert cause["reason"] == "catalogue-unreachable"
     assert "the general catalogue refused" in cause["message"]
@@ -1031,15 +853,11 @@ def test_a_catalogue_that_refuses_stops_the_run_at_once_and_says_how_many_were_l
     assert sorted(item_states(job_id).values()) == ["done"] + ["pending"] * 4
     refused = item_of(installed, "r-1").payload
     assert (refused[genre_gate.GATE_FIELD], refused[genre_gate.GATE_ANSWER_FIELD]) == (
-        "not-judged",
-        "blocked",
+        "not-judged", "blocked",
     )
     assert genre_gate.GATE_FIELD not in item_of(installed, "r-2").payload
-
     lookup.table = {isrc(n): ("Dance",) for n in range(1, 6)}
-    code, envelope = judge("--job", job_id)
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = resumed(job_id)
     assert lookup.asked[1:] == [isrc(2), isrc(3), isrc(4), isrc(5)]
     assert counts(judging(envelope)) == {"judged": 4, "held": 0, "passed": 4, "not-judged": 1}
 
@@ -1047,19 +865,10 @@ def test_a_catalogue_that_refuses_stops_the_run_at_once_and_says_how_many_were_l
 def test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many_were_left(
     installed, monkeypatch
 ):
-    register()
-    ids = [f"r-{n}" for n in range(1, 6)]
-    for release_id in ids:
-        queue_release(installed, release_id)
-    provider = provider_of(monkeypatch, {rid: isrc(n) for n, rid in enumerate(ids, start=1)})
     lookup = Lookup({isrc(n): "unreachable" for n in range(1, 6)})
-    bind_lookup(monkeypatch, lookup)
+    provider = five_pending(installed, monkeypatch, lookup)
     job_id = queued_job()
-
-    code, parked = judge("--job", job_id)
-
-    assert code != int(ExitCode.OK)
-    assert parked["outcome"] == "blocked"
+    parked = parked_on(job_id)
     cause = parked["cause"]
     assert cause["reason"] == "catalogue-unreachable"
     assert "could not be read for 3 releases in a row" in cause["message"]
@@ -1069,10 +878,7 @@ def test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many
         f"crate label judge --job {job_id}"
     )
     assert counts(cause["detail"]["judging"]) == {
-        "judged": 0,
-        "held": 0,
-        "passed": 0,
-        "not-judged": 3,
+        "judged": 0, "held": 0, "passed": 0, "not-judged": 3,
     }
     assert cause["detail"]["judging"]["unread"] == 3
     # The fourth release was not read from the provider, and nothing went round
@@ -1086,19 +892,15 @@ def test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many
         assert stamped[genre_gate.GATE_FIELD] == "not-judged"
         assert stamped[genre_gate.GATE_ANSWER_FIELD] == "unreachable"
     assert genre_gate.GATE_FIELD not in item_of(installed, "r-4").payload
-
     # A person resumes once the catalogue answers, and the run picks up at the
     # release it stopped before.
     lookup.table = {isrc(n): ("Christian",) for n in range(1, 6)}
-    code, envelope = judge("--job", job_id)
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = resumed(job_id)
     assert lookup.asked[3:] == [isrc(4), isrc(5)]
     assert held_ids(installed) == ["r-4", "r-5"]
     assert counts(judging(envelope)) == {"judged": 2, "held": 2, "passed": 0, "not-judged": 3}
     assert warning_codes(envelope) == [judge_cli.CATALOGUE_UNREAD, judge_cli.NOT_JUDGED_LEFT]
     assert "could not be read for 3 release(s)" in envelope["warnings"][0]["message"]
-
     # And another run asks about the three that went unread.
     _, again = judge_once()
     assert lookup.asked[5:] == [isrc(1), isrc(2), isrc(3)]
@@ -1107,24 +909,9 @@ def test_a_catalogue_unread_three_times_in_a_row_stops_the_run_and_says_how_many
 
 
 def test_an_answer_between_two_unread_ones_keeps_the_run_going(installed, monkeypatch):
-    register()
-    ids = [f"r-{n}" for n in range(1, 6)]
-    for release_id in ids:
-        queue_release(installed, release_id)
-    provider_of(monkeypatch, {rid: isrc(n) for n, rid in enumerate(ids, start=1)})
-    lookup = Lookup(
-        {
-            isrc(1): "unreachable",
-            isrc(2): "unreachable",
-            isrc(3): ("Dance",),
-            isrc(4): "unreachable",
-            isrc(5): "unreachable",
-        }
-    )
-    bind_lookup(monkeypatch, lookup)
-
+    lookup = Lookup({isrc(n): ("Dance",) if n == 3 else "unreachable" for n in range(1, 6)})
+    five_pending(installed, monkeypatch, lookup)
     _, envelope = judge_once()
-
     assert len(lookup.asked) == 5
     assert counts(judging(envelope)) == {"judged": 1, "held": 0, "passed": 1, "not-judged": 4}
     assert judging(envelope)["unread"] == 4
@@ -1133,47 +920,31 @@ def test_an_answer_between_two_unread_ones_keeps_the_run_going(installed, monkey
 def test_a_refusal_from_the_provider_parks_the_run_on_that_refusal(installed, monkeypatch):
     """An expired session is about this machine's account and not about one release."""
     register()
-    for release_id in ("r-1", "r-2"):
-        queue_release(installed, release_id)
-
+    queue_release(installed, "r-1", "r-2")
     class Expired(FakeCatalogue):
         refusing = True
-
         def release_tracks(self, release_id):
             if self.refusing and release_id == "r-2":
                 raise refuse(
-                    "credential-missing",
-                    "the provider session has expired",
-                    steps=("log in again with: crate login",),
-                    origin=("suite",),
+                    "credential-missing", "the provider session has expired",
+                    steps=("log in again with: crate login",), origin=("suite",),
                 )
             return super().release_tracks(release_id)
-
-    fake = Expired(
-        releases={
-            "r-1": ([Track("t-1", "Artist", "Song", isrc(1))], 2026),
-            "r-2": ([Track("t-2", "Artist", "Song", isrc(2))], 2026),
-        }
-    )
+    fake = Expired(releases={
+        f"r-{n}": ([Track(f"t-{n}", "Artist", "Song", isrc(n))], 2026) for n in (1, 2)
+    })
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
     lookup = Lookup({isrc(1): ("Dance",), isrc(2): ("Christian",)})
     bind_lookup(monkeypatch, lookup)
     job_id = queued_job()
-
-    code, parked = judge("--job", job_id)
-
-    assert code != int(ExitCode.OK)
-    assert parked["outcome"] == "blocked"
+    parked = parked_on(job_id)
     assert parked["cause"]["reason"] == "credential-missing"
     assert parked["cause"]["remediation"]["steps"][0] == "log in again with: crate login"
     assert parked["cause"]["detail"]["left"] == 1
     assert sorted(item_states(job_id).values()) == ["done", "pending"]
     assert genre_gate.GATE_FIELD not in item_of(installed, "r-2").payload
-
     fake.refusing = False
-    code, envelope = judge("--job", job_id)
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = resumed(job_id)
     assert held_ids(installed) == ["r-2"]
     assert counts(judging(envelope)) == {"judged": 2, "held": 1, "passed": 1, "not-judged": 0}
 
@@ -1183,32 +954,23 @@ def test_three_provider_reads_failing_in_a_row_stop_the_run(installed, monkeypat
     ids = [f"r-{n}" for n in range(1, 6)]
     for release_id in ids:
         queue_release(installed, release_id)
-
     class Down(FakeCatalogue):
         down = True
-
         def release_tracks(self, release_id):
             self.releases_asked_for.append(release_id)
             if self.down:
                 raise ConnectionError("the provider did not answer")
             self.releases_asked_for.pop()
             return super().release_tracks(release_id)
-
-    fake = Down(
-        releases={
-            rid: ([Track(f"t-{rid}", "Artist", "Song", isrc(n))], 2026)
-            for n, rid in enumerate(ids, start=1)
-        }
-    )
+    fake = Down(releases={
+        rid: ([Track(f"t-{rid}", "Artist", "Song", isrc(n))], 2026)
+        for n, rid in enumerate(ids, start=1)
+    })
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
     lookup = Lookup({isrc(n): ("Christian",) for n in range(1, 6)})
     bind_lookup(monkeypatch, lookup)
     job_id = queued_job()
-
-    code, parked = judge("--job", job_id)
-
-    assert code != int(ExitCode.OK)
-    assert parked["outcome"] == "blocked"
+    parked = parked_on(job_id)
     assert parked["cause"]["reason"] == "unavailable-transient"
     assert "the provider failed 3 release reads in a row" in parked["cause"]["message"]
     assert parked["cause"]["detail"]["left"] == 2
@@ -1222,11 +984,8 @@ def test_three_provider_reads_failing_in_a_row_stop_the_run(installed, monkeypat
         stamped[genre_gate.GATE_NOTE_FIELD]
     )
     assert stamped[genre_gate.GATE_ANSWER_FIELD] == "not-asked"
-
     fake.down = False
-    code, envelope = judge("--job", job_id)
-
-    assert code == int(ExitCode.OK), envelope
+    resumed(job_id)
     assert held_ids(installed) == ["r-4", "r-5"]
 
 
@@ -1240,9 +999,7 @@ def test_a_taxonomy_that_cannot_be_read_refuses_before_anything_is_queued(instal
     register()
     queue_release(installed, "r-1")
     unreadable_taxonomy(installed)
-
     code, envelope = judge()
-
     assert code != int(ExitCode.OK)
     assert envelope["outcome"] != "ok"
     with jobs.open_store() as store:
@@ -1253,17 +1010,10 @@ def test_a_taxonomy_that_stops_being_readable_parks_the_run_and_fails_no_release
     installed, monkeypatch
 ):
     """One cause, one stop. Failing each release in turn would mark a whole queue failed."""
-    register()
-    for release_id in ("r-1", "r-2"):
-        queue_release(installed, release_id)
-    provider = catalogues(monkeypatch, {"r-1": isrc(1), "r-2": isrc(2)}, never_asked)
+    provider = pending(installed, monkeypatch, {"r-1": isrc(1), "r-2": isrc(2)}, never_asked)
     job_id = queued_job()
     unreadable_taxonomy(installed)
-
-    code, parked = judge("--job", job_id)
-
-    assert code != int(ExitCode.OK)
-    assert parked["outcome"] == "blocked"
+    parked = parked_on(job_id)
     assert parked["cause"]["detail"]["left"] == 2
     assert set(item_states(job_id).values()) == {"pending"}
     assert provider.releases_asked_for == []
@@ -1275,27 +1025,21 @@ def test_a_library_whose_taxonomy_has_no_published_rules_holds_nothing_and_asks_
     register()
     queue_release(installed, "r-christian")
     active_copy_without_published_rules(installed)
-    provider = catalogues(monkeypatch, {"r-christian": isrc(1)}, never_asked)
-
+    provider = provider_of(monkeypatch, {"r-christian": isrc(1)}, never_asked)
     _, envelope = judge_once()
-
     assert provider.releases_asked_for == []
     assert held_ids(installed) == []
-    assert "declares no rule" in item_of(installed, "r-christian").payload[
-        genre_gate.GATE_NOTE_FIELD
-    ]
+    note = item_of(installed, "r-christian").payload[genre_gate.GATE_NOTE_FIELD]
+    assert "declares no rule" in note
     assert counts(judging(envelope)) == {"judged": 0, "held": 0, "passed": 0, "not-judged": 1}
 
 
 def test_the_verb_drives_no_job_but_its_own(installed, monkeypatch):
     register()
-    monkeypatch.setattr(
-        catalogue, "resolve", catalogue_factory(FakeCatalogue(artists={SLUG: FakePagedArtist([])}))
-    )
+    fake = FakeCatalogue(artists={SLUG: FakePagedArtist([])})
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
     other = queued_sweep()
-
     code, envelope = judge("--job", other)
-
     assert code != int(ExitCode.OK)
     assert envelope["cause"]["reason"] == "job-unknown"
     assert "is not a judging job" in envelope["cause"]["message"]
@@ -1303,16 +1047,10 @@ def test_the_verb_drives_no_job_but_its_own(installed, monkeypatch):
 
 
 def test_a_job_that_finished_reports_the_same_counts_when_asked_again(installed, monkeypatch):
-    register()
-    queue_release(installed, "r-christian")
-    provider_of(monkeypatch, {"r-christian": isrc(1)})
     lookup = Lookup({isrc(1): ("Christian",)})
-    bind_lookup(monkeypatch, lookup)
+    pending(installed, monkeypatch, {"r-christian": isrc(1)}, lookup)
     job_id, first = judge_once()
-
-    code, second = judge("--job", job_id)
-
-    assert code == int(ExitCode.OK), second
+    second = resumed(job_id)
     assert judging(second) == judging(first)
     assert lookup.asked == [isrc(1)]
 
@@ -1322,16 +1060,12 @@ def test_a_release_another_job_withheld_meanwhile_is_not_filed_again(installed, 
     register()
     item_id = queue_release(installed, "r-1")
     provider_of(monkeypatch, {"r-1": isrc(1)})
-
     def withheld_meanwhile(value):
         with review.open_store(installed) as store:
             withhold(store, item_id, run_id="another-job")
         return published.Published(published.SOURCE, "unreachable", note="timed out")
-
     bind_lookup(monkeypatch, withheld_meanwhile)
-
     job_id, envelope = judge_once()
-
     assert filed(installed) == {}
     assert held_ids(installed) == ["r-1"]
     with review.open_store(installed) as store:
@@ -1347,21 +1081,15 @@ def test_a_release_another_job_held_while_this_one_was_asking_is_counted_held(
     register()
     item_id = queue_release(installed, "r-1")
     provider_of(monkeypatch, {"r-1": isrc(1)})
-
     def withheld_meanwhile(value):
         with review.open_store(installed) as store:
             withhold(store, item_id, run_id="another-job", reason="the other job's reason")
         return published.Published(published.SOURCE, "matched", genres=("Christian",))
-
     bind_lookup(monkeypatch, withheld_meanwhile)
-
     job_id, envelope = judge_once()
-
     report = reports(installed, job_id)["r-1"]
     assert (report["outcome"], report["reason"], report["asked"]) == (
-        "held",
-        "the other job's reason",
-        True,
+        "held", "the other job's reason", True,
     )
     assert counts(judging(envelope)) == {"judged": 1, "held": 1, "passed": 0, "not-judged": 0}
     assert judging(envelope)["gone"] == 0
@@ -1371,11 +1099,9 @@ def test_a_release_another_job_held_while_this_one_was_asking_is_counted_held(
 def moved_registry(monkeypatch, old_id: str) -> None:
     """The registry as it reads after a label's identifier moved from ``old_id``."""
     real = labels.RegistryStore.load
-
     def load(self):
         held = real(self)
         return labels.Registry(labels=dict(held.labels), renamed={old_id: SLUG})
-
     monkeypatch.setattr(labels.RegistryStore, "load", load)
 
 
@@ -1386,10 +1112,8 @@ def test_a_release_filed_under_a_labels_old_identifier_is_in_a_run_scoped_to_the
     register()
     queue_release(installed, "r-1", label_id="tide-works-old")
     moved_registry(monkeypatch, "tide-works-old")
-    catalogues(monkeypatch, {"r-1": isrc(1)}, Lookup({isrc(1): ("Christian",)}))
-
+    provider_of(monkeypatch, {"r-1": isrc(1)}, Lookup({isrc(1): ("Christian",)}))
     _, envelope = judge_once("--label", LABEL)
-
     assert [row["label_id"] for row in judging(envelope)["labels"]] == [SLUG]
     with review.open_store(installed) as store:
         # Under the identifier the label has now, which is where a sweep looks.
@@ -1405,21 +1129,18 @@ def test_a_release_held_under_an_earlier_holds_run_is_counted_held_when_it_is_re
     item_id = queue_release(installed, "r-1")
     with review.open_store(installed) as store:
         held_by_hand(store, payload={"identity": "r-1"}, reason="an older reason", run_id="sweep-0")
-    catalogues(monkeypatch, {"r-1": isrc(1)}, Lookup({isrc(1): ("Christian",)}))
+    provider_of(monkeypatch, {"r-1": isrc(1)}, Lookup({isrc(1): ("Christian",)}))
     job_id, _ = judge_once()
     with review.open_store(installed) as store:
         assert review.find_hold(store, queue=QUEUE, item_id=item_id).run_id == "sweep-0"
     bind_lookup(monkeypatch, never_asked)
-
     redone = judge_cli._judge_one(SimpleNamespace(job_id=job_id), item_id, installed)
-
     assert (redone["outcome"], redone["release_id"], redone["label_id"]) == ("held", "r-1", SLUG)
     assert "which is christian and not dance" in redone["reason"]
 
 
 def test_an_item_that_left_review_with_no_hold_is_reported_gone(installed):
     redone = judge_cli._judge_one(SimpleNamespace(job_id="job-1"), "rv-nobody", installed)
-
     assert redone["outcome"] == judge_cli.GONE
 
 
@@ -1431,21 +1152,15 @@ def test_the_taxonomy_and_the_registry_are_read_once_for_the_job(installed, monk
     loads: list[str] = []
     real_taxonomy = active_taxonomy.load
     real_registry = judge_cli.labels.RegistryStore.load
-
     def taxonomy(cfg):
         loads.append("taxonomy")
         return real_taxonomy(cfg)
-
     def followed(self):
         loads.append("registry")
         return real_registry(self)
-
     monkeypatch.setattr(active_taxonomy, "load", taxonomy)
     monkeypatch.setattr(judge_cli.labels.RegistryStore, "load", followed)
-
-    code, envelope = judge("--job", job_id)
-
-    assert code == int(ExitCode.OK), envelope
+    envelope = resumed(job_id)
     assert counts(judging(envelope))["passed"] == 3
     assert sorted(loads) == ["registry", "taxonomy"]
 
@@ -1456,10 +1171,8 @@ def test_the_reader_forgets_each_release_and_keeps_its_count_of_failures(install
             if release_id.startswith("bad"):
                 raise ConnectionError("no answer")
             return super().release_tracks(release_id)
-
-    reader = catalogue.ReleaseTracks(
-        Flaky(releases={"r-1": ([Track("t-1", "A", "S", isrc(1))], 2026)})
-    )
+    flaky = Flaky(releases={"r-1": ([Track("t-1", "A", "S", isrc(1))], 2026)})
+    reader = catalogue.ReleaseTracks(flaky)
     reader.release_tracks("r-1")
     for release_id in ("bad-1", "bad-2"):
         with pytest.raises(ConnectionError):
@@ -1471,10 +1184,7 @@ def test_the_reader_forgets_each_release_and_keeps_its_count_of_failures(install
         reader.release_tracks("bad-3")
     reader.forget()
     assert reader.given_up
-
-    register()
-    queue_release(installed, "r-1")
-    catalogues(monkeypatch, {"r-1": isrc(1)}, Lookup({isrc(1): ("Dance",)}))
+    pending(installed, monkeypatch, {"r-1": isrc(1)}, Lookup({isrc(1): ("Dance",)}))
     job_id, _ = judge_once()
     assert judge_cli._JOB_TOOLS[job_id].reader._read == {}
 
@@ -1495,9 +1205,7 @@ def test_the_next_sweep_keeps_the_hold_and_does_not_file_the_release_again(insta
     job_id, _ = judge_once()
     assert held_ids(installed) == ["r-christian"]
     bind_lookup(monkeypatch, never_asked)
-
     sweep_once()
-
     assert held_ids(installed) == ["r-christian"]
     assert filed(installed) == {}
     with review.open_store(installed) as store:
@@ -1518,13 +1226,10 @@ def test_label_held_does_not_say_a_sweep_was_refused_over_what_a_judge_run_met(
     queue_release(installed, "r-1")
     with review.open_store(installed) as store:
         review.record_round(store, queue=QUEUE, run_id=FILED_BY, group=SLUG, name=LABEL, beyond=0)
-    catalogues(monkeypatch, {"r-1": isrc(1)}, Lookup({isrc(1): "unreachable"}))
+    provider_of(monkeypatch, {"r-1": isrc(1)}, Lookup({isrc(1): "unreachable"}))
     judge_once()
     assert item_of(installed, "r-1").payload[genre_gate.GATE_ANSWER_FIELD] == "unreachable"
-
-    code, listing = held_verb()
-
-    assert code == int(ExitCode.OK), listing
+    listing = held_ok()
     [swept] = listing["data"]["summary"]["sweeps"]
     # Still not judged, which is a fact about the release as it stands. Not
     # asked and not unread by the SWEEP, which asked nobody about it.
@@ -1540,21 +1245,12 @@ def test_a_release_a_sweep_held_is_still_returned_under_that_sweep(installed, mo
     register()
     with review.open_store(installed) as store:
         review.hold(
-            store,
-            queue=QUEUE,
-            kind=sweep.KIND,
-            identity={"release_id": "r-swept"},
+            store, queue=QUEUE, kind=sweep.KIND, identity={"release_id": "r-swept"},
             payload={"identity": "r-swept", "label_id": SLUG, "label_name": LABEL, "title": "T"},
-            group=SLUG,
-            name=LABEL,
-            reason="held by a sweep",
-            detail={"genres": ["Christian"], "kind": "dance", "placed": []},
-            run_id="sweep-9",
+            group=SLUG, name=LABEL, reason="held by a sweep",
+            detail={"genres": ["Christian"], "kind": "dance", "placed": []}, run_id="sweep-9",
         )
-
-    code, returned = held_verb("return", "r-swept")
-
-    assert code == int(ExitCode.OK), returned
+    held_ok("return", "r-swept")
     assert item_of(installed, "r-swept").payload[sweep.SWEEP_RUN] == "sweep-9"
 
 
@@ -1563,32 +1259,22 @@ def test_a_withheld_release_the_window_does_not_reach_is_not_dropped_when_its_ki
 ):
     """It was in front of a person. Dropped past the window, it would be in neither place."""
     register("--offer", "1")
-    queue_release(installed, "r-new")
-    queue_release(installed, "r-old")
-    fake = FakeCatalogue(
-        artists={
-            SLUG: FakePagedArtist(
-                [FakeRelease("r-new", year="2026"), FakeRelease("r-old", year="2020")]
-            )
-        },
-        releases={
-            "r-new": ([Track("t-new", "Label Act", "New", isrc(1))], 2026),
-            "r-old": ([Track("t-old", "Label Act", "Old", isrc(2))], 2020),
-        },
-    )
+    queue_release(installed, "r-new", "r-old")
+    listed = [FakeRelease("r-new", year="2026"), FakeRelease("r-old", year="2020")]
+    fake = FakeCatalogue(artists={SLUG: FakePagedArtist(listed)}, releases={
+        "r-new": ([Track("t-new", "Label Act", "New", isrc(1))], 2026),
+        "r-old": ([Track("t-old", "Label Act", "Old", isrc(2))], 2020),
+    })
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
     bind_lookup(monkeypatch, Lookup({isrc(1): ("Dance",), isrc(2): ("Christian",)}))
     judge_once()
     assert held_ids(installed) == ["r-old"]
     assert drive(["label", "registry", "set", LABEL, "--kind", "any"])[0] == int(ExitCode.OK)
     bind_lookup(monkeypatch, never_asked)
-
     sweep_once()
-
     assert held_ids(installed) == ["r-old"]
     assert sorted(filed(installed)) == ["r-new"]
-    code, listing = held_verb()
-    assert code == int(ExitCode.OK), listing
+    listing = held_ok()
     assert "release r-old" in check(listing, "label.held.release.r-old")["detail"]
     assert held_verb("return", "r-old")[0] == int(ExitCode.OK)
     assert sorted(filed(installed)) == ["r-new", "r-old"]
@@ -1601,12 +1287,9 @@ def test_a_withheld_release_filed_before_runs_were_recorded_is_returned_under_no
     register()
     queue_release(installed, "r-legacy", filed_by=None)
     assert sweep.SWEEP_RUN not in item_of(installed, "r-legacy").payload
-    catalogues(monkeypatch, {"r-legacy": isrc(1)}, Lookup({isrc(1): ("Christian",)}))
+    provider_of(monkeypatch, {"r-legacy": isrc(1)}, Lookup({isrc(1): ("Christian",)}))
     judge_once()
-
-    code, returned = held_verb("return", "r-legacy")
-
-    assert code == int(ExitCode.OK), returned
+    held_ok("return", "r-legacy")
     back = item_of(installed, "r-legacy").payload
     assert sweep.SWEEP_RUN not in back
     assert review.WITHHELD_FIELD not in back
@@ -1621,10 +1304,8 @@ def test_a_stale_hold_beside_a_release_the_gate_passes_is_dropped(installed, mon
             store, release_id="r-dance", payload={"identity": "r-dance"}, reason="an older reason",
             run_id="sweep-0",
         )
-    catalogues(monkeypatch, {"r-dance": isrc(2)}, Lookup({isrc(2): ("Dance",)}))
-
+    provider_of(monkeypatch, {"r-dance": isrc(2)}, Lookup({isrc(2): ("Dance",)}))
     judge_once()
-
     assert held_ids(installed) == []
     assert item_of(installed, "r-dance").item_id == item_id
     assert item_of(installed, "r-dance").payload[genre_gate.GATE_FIELD] == "passed"
@@ -1647,12 +1328,8 @@ def test_the_command_that_continues_a_job_names_the_job(installed):
     queue_release(installed, "r-1")
     job_id = queued_job()
     with jobs.open_store() as store:
-        assert judge_cli.label_judge_argv(jobs.get(store, job_id)) == [
-            "label",
-            "judge",
-            "--job",
-            job_id,
-        ]
+        argv = judge_cli.label_judge_argv(jobs.get(store, job_id))
+    assert argv == ["label", "judge", "--job", job_id]
 
 
 def human(argv: list[str]) -> tuple[int, str]:
@@ -1663,15 +1340,11 @@ def human(argv: list[str]) -> tuple[int, str]:
 
 def test_a_person_reads_the_counts_per_label_without_asking_for_json(installed, monkeypatch):
     register()
-    queue_release(installed, "r-christian")
-    queue_release(installed, "r-dance")
-    queue_release(installed, "r-unknown")
+    queue_release(installed, "r-christian", "r-dance", "r-unknown")
     provider_of(monkeypatch, {"r-christian": isrc(1), "r-dance": isrc(2), "r-unknown": isrc(3)})
     bind_lookup(monkeypatch, Lookup({isrc(1): ("Christian",), isrc(2): ("Dance",)}))
     job_id = queued_job()
-
     code, text = human(["label", "judge", "--job", job_id])
-
     assert code == int(ExitCode.OK), text
     assert "  releases: 2 judged, 1 held, 1 passed, 1 not judged" in text
     assert "    Tide Works: 2 judged, 1 held, 1 passed, 1 not judged" in text
@@ -1681,9 +1354,7 @@ def test_a_person_reads_the_counts_per_label_without_asking_for_json(installed, 
 def test_a_job_that_has_not_run_prints_no_counts(installed):
     register()
     queue_release(installed, "r-1")
-
     code, text = human(["label", "judge"])
-
     assert code == int(ExitCode.OK), text
     assert "releases:" not in text
     assert "drive it with: crate label judge --job" in text

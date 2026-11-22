@@ -1,9 +1,4 @@
-"""U217: a label's listing is kept, so a continue resumes it and a second ask is free.
-
-Driven over the catalogue adapter with ``tests/test_label_tidal_catalogue.py``'s
-stand in client, counting every call; a ceiling is the job engine's park.
-D1 applies: nothing here names a real volume, person or track.
-"""
+"""U217: a label's listing is kept, so a continue resumes it and a second ask is free."""
 
 from __future__ import annotations
 
@@ -86,11 +81,8 @@ def roster_client(budget: Budget, *, acts: int = 4) -> CountedClient:
     """A label with no own page: ``acts`` artists, each with an album and a single on it."""
     artists = [
         CountedArtist(
-            budget,
-            f"Act {number}",
-            [label_release(f"{number}01", by=str(number))],
-            [label_release(f"{number}02", by=str(number))],
-            artist_id=str(number),
+            budget, f"Act {number}", [label_release(f"{number}01", by=str(number))],
+            [label_release(f"{number}02", by=str(number))], artist_id=str(number),
         )
         for number in range(1, acts + 1)
     ]
@@ -249,9 +241,7 @@ def test_a_label_entry_that_changed_reads_the_kept_listing_as_empty(entry, clock
     adapter(roster_client(budget)).artist_for(entry)
     whole = budget.calls
     other = labels.LabelEntry(
-        label_id=entry.label_id,
-        name=changed.get("name", entry.name),
-        match=changed.get("match"),
+        label_id=entry.label_id, name=changed.get("name", entry.name), match=changed.get("match"),
         seed_artists=changed.get("seed_artists", ()),
     )
     try:
@@ -268,7 +258,6 @@ def test_a_failed_listing_is_not_kept(entry, clock, monkeypatch):
     # THE RETRY LADDER WAITS THROUGH THE ADAPTER'S PAUSE, not for real.
     monkeypatch.setattr(tidal_catalogue, "_pause", lambda seconds: None)
     budget = Budget()
-
     class Failing(CountedArtist):
         def get_ep_singles(self, limit=None, offset=0):
             raise RuntimeError("the provider failed")
@@ -302,34 +291,22 @@ def test_an_artist_with_no_identifier_is_listed_and_not_kept(entry, clock, budge
         json.dumps({"version": 1, "label_id": "kept-recordings"}),
         json.dumps(
             {
-                "version": 1,
-                "label_id": "kept-recordings",
-                "asked_for": {},
-                "named": {},
+                "version": 1, "label_id": "kept-recordings", "asked_for": {}, "named": {},
                 "identified": {},
-                "searched": {"q": {"read_at": "2026-11-05T12:00:00", "value": []}},
+                "searched": {"q": {"read_at": "2026-11-05T12:00:00", "value": []}}, "listed": {},
+            }
+        ),
+        json.dumps(
+            {
+                "version": 1, "label_id": "kept-recordings", "asked_for": {}, "named": {},
+                "identified": {}, "searched": {"q": {"read_at": "yesterday", "value": []}},
                 "listed": {},
             }
         ),
         json.dumps(
             {
-                "version": 1,
-                "label_id": "kept-recordings",
-                "asked_for": {},
-                "named": {},
-                "identified": {},
-                "searched": {"q": {"read_at": "yesterday", "value": []}},
-                "listed": {},
-            }
-        ),
-        json.dumps(
-            {
-                "version": 1,
-                "label_id": "kept-recordings",
-                "asked_for": {},
-                "named": {},
-                "identified": {},
-                "searched": {},
+                "version": 1, "label_id": "kept-recordings", "asked_for": {}, "named": {},
+                "identified": {}, "searched": {},
                 "listed": {"1 get_albums": {"read_at": NOW.isoformat(), "value": [{"id": 1}]}},
             }
         ),
@@ -364,7 +341,6 @@ def test_the_store_writes_every_flush_batch_as_it_goes(entry, clock, monkeypatch
     monkeypatch.setattr(kept_listing, "FLUSH_EVERY", 3)
     writes: list[int] = []
     real = kept_listing.config.atomic_write_bytes
-
     def counted(payload, path, **kwargs):
         writes.append(len(payload))
         return real(payload, path, **kwargs)
@@ -401,11 +377,8 @@ def test_a_second_label_sync_next_of_the_label_makes_no_provider_call(clock, cfg
     from tests.cli_drive import drive
     budget = Budget()
     own = CountedArtist(
-        budget,
-        LABEL,
-        [Release("r1", copyright="(P) 2025 Another Label", year="2025")],
-        [Release("r2", copyright="(P) 2024 Another Label", year="2024")],
-        artist_id="77",
+        budget, LABEL, [Release("r1", copyright="(P) 2025 Another Label", year="2025")],
+        [Release("r2", copyright="(P) 2024 Another Label", year="2024")], artist_id="77",
     )
     client = CountedClient(budget, artists=[own], albums_by_query={})
     monkeypatch.setattr(catalogue, "resolve", lambda cfg: tidal_catalogue.TidalCatalogue(client))
@@ -453,12 +426,10 @@ def _forget(entry, section: str, key: str) -> None:
 def test_a_listing_the_client_does_not_expose_stays_unread_on_every_run(entry, clock):
     """A missing method is not an answer, so nothing is kept."""
     budget = Budget()
-
     class AlbumsOnly:
         def __init__(self) -> None:
             self.name = LABEL
             self.id = "9"
-
         def get_albums(self, limit=None, offset=0):
             budget.tick(f"albums 9 {offset}")
             return [label_release("901", by="9")][offset : offset + (limit or 100)]
@@ -494,7 +465,6 @@ def test_a_failed_artist_read_in_discovery_still_refuses_rather_than_skipping(en
     adapter(client).artist_for(entry)
     _forget(entry, "listed", "3 get_albums")
     real = client.artist
-
     def failing(artist_id=None):
         if str(artist_id) == "3":
             raise RuntimeError("the provider failed")
@@ -534,7 +504,6 @@ def test_a_search_that_fails_on_a_continue_is_counted_so_the_line_stays_true(ent
     adapter(client).artist_for(entry)
     _forget(entry, "searched", f"{LABEL} 042")
     real = client.search
-
     def failing(query, models=None, limit=50, offset=0):
         if query == f"{LABEL} 042":
             budget.tick(f"search {query}")

@@ -1,8 +1,4 @@
-"""R-228: pink rows outside All Favorites join the favourites sweep.
-
-THE COLOUR READ IS FAKED HERE: the union, the refusals and the plan facts are
-pinned against stand in rows and a patched ``read_pink_track_ids``.
-"""
+"""R-228: pink rows outside All Favorites join the favourites sweep."""
 
 from __future__ import annotations
 
@@ -92,11 +88,8 @@ def test_pink_content_ids_skips_soft_deleted_and_non_pink():
     db = _FakeDB(
         colours=[_Colour("1", "Pink")],
         contents=[
-            _Content("10", "1"),
-            _Content("11", "1", rb_local_deleted=1),
-            _Content("12", "2"),
-            _Content("13", None),
-            _Content("14", "1"),
+            _Content("10", "1"), _Content("11", "1", rb_local_deleted=1), _Content("12", "2"),
+            _Content("13", None), _Content("14", "1"),
         ],
     )
     assert favorites_cli.pink_content_ids(db) == ("10", "14")
@@ -127,12 +120,9 @@ def test_union_names_pink_rows_the_export_lacks(installed):
 def test_resolve_sweep_refuses_empty_favorites_before_colour(installed, monkeypatch):
     """Noticed, not changed: an empty All Favorites still refuses (watcher answer 4)."""
     called: list[str] = []
-
     def boom(cfg):
-        del cfg
         called.append("pink")
         raise AssertionError("colour must not be read after an empty playlist refusal")
-
     monkeypatch.setattr(favorites_cli, "read_pink_track_ids", boom)
     path = _export(installed, favorites=())
     with pytest.raises(CratekitError) as caught:
@@ -143,15 +133,11 @@ def test_resolve_sweep_refuses_empty_favorites_before_colour(installed, monkeypa
 
 def test_resolve_sweep_propagates_the_colour_reads_own_cause(installed, monkeypatch):
     path = _export(installed)
-
     def unread(cfg):
-        del cfg
         raise refuse(
-            "rekordbox-running",
-            "rekordbox is open, so the colour cannot be read",
+            "rekordbox-running", "rekordbox is open, so the colour cannot be read",
             origin=("test", "favorites_pink"),
         )
-
     monkeypatch.setattr(favorites_cli, "read_pink_track_ids", unread)
     with pytest.raises(CratekitError) as caught:
         favorites_cli.resolve_sweep(str(path), None, cfg=installed)
@@ -180,11 +166,9 @@ def test_pink_missing_is_warned_beside_dangling(installed, monkeypatch):
     assert shown["pink_missing"] == ["88"]
     assert shown["from_playlist"] == 1
     assert shown["from_colour"] == 1
-
     exported, resolved = favorites_cli.resolve_sweep(
         str(path), None, cfg=installed, pink_ids=("2", "88")
     )
-    del exported
     age = source.export_age(path, limit_days=installed.outbound.export_stale_days)
     warned = shell.queue_warnings(resolved, noun="favourite", age=age)
     codes = [one["code"] for one in warned]
