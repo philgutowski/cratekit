@@ -335,8 +335,5 @@ def release_lock(ctx) -> Envelope:
 
 
 __all__ = [
-    "build_ack",
-    "build_release",
-    "record_ack",
-    "release_lock",
+    "build_ack", "build_release", "record_ack", "release_lock",
 ]

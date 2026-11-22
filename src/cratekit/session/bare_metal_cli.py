@@ -142,11 +142,8 @@ def _halves(decided: backup.RestorePlan) -> tuple[tuple[str, backup.RestorePlan]
 
 
 def _absence_unconfirmed(
-    exc: processes.AbsenceUnconfirmed,
-    completed: Sequence[str],
-    decided: backup.RestorePlan,
-    *,
-    dry_run: bool,
+    exc: processes.AbsenceUnconfirmed, completed: Sequence[str], decided: backup.RestorePlan,
+    *, dry_run: bool,
 ) -> processes.AbsenceUnconfirmed:
     """The scan's refusal at the database half, saying what the mirror half left (U211)."""
     declared = exc.declared_cause
@@ -171,12 +168,8 @@ def _absence_unconfirmed(
 
 
 def _half_failed(
-    exc: backup.BackupRefused,
-    half: str,
-    *,
-    completed: Sequence[str],
-    decided: backup.RestorePlan,
-    dry_run: bool,
+    exc: backup.BackupRefused, half: str, *, completed: Sequence[str],
+    decided: backup.RestorePlan, dry_run: bool,
 ) -> CratekitError:
     """A refusal from inside one half, saying which half and what is on the target.
 
@@ -245,19 +238,11 @@ def _half_failed(
 
 
 def recover_under_bare_metal_session(
-    cfg: config.Config,
-    *,
-    target: Path | str,
-    accepted: bool,
-    dry_run: bool = False,
-    snapshot: str | None = None,
-    snapshot_volume: str | None = None,
-    terminal: object | None = None,
-    identity_provider: object | None = None,
-    mount_enumerator: object | None = None,
-    mount_probe: object | None = None,
-    runner: object | None = None,
-    process_lister: object | None = None,
+    cfg: config.Config, *, target: Path | str, accepted: bool, dry_run: bool = False,
+    snapshot: str | None = None, snapshot_volume: str | None = None,
+    terminal: object | None = None, identity_provider: object | None = None,
+    mount_enumerator: object | None = None, mount_probe: object | None = None,
+    runner: object | None = None, process_lister: object | None = None,
 ) -> BareMetalReport:
     """The mirror and the database, onto a replacement drive, inside ONE session.
 
@@ -405,11 +390,6 @@ def perform_bare_metal(ctx) -> Envelope:
 
 
 __all__ = [
-    "DATABASE_HALF",
-    "MIRROR_HALF",
-    "BareMetalReport",
-    "build_bare_metal",
-    "perform_bare_metal",
-    "recover_under_bare_metal_session",
-    "rerun_step",
+    "DATABASE_HALF", "MIRROR_HALF", "BareMetalReport", "build_bare_metal", "perform_bare_metal",
+    "recover_under_bare_metal_session", "rerun_step",
 ]

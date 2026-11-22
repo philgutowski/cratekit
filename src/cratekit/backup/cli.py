@@ -226,18 +226,14 @@ def comparison_warning(outcomes) -> tuple[dict[str, str], ...]:
         if mode == backup.COMPARISON_FAST
         else "The fast mode is: crate backup run --check"
     )
-    return (
-        {
-            "code": COMPARISON,
-            "message": (
-                f"the file comparison ran in the {mode} mode and the mirror took "
-                f"{said('seconds', 'seconds')}. It checked "
-                f"{said('checked', 'files')} that were on both sides and {sent}. "
-                f"Both modes compare every file by size and modification time. "
-                f"{other}"
-            ),
-        },
+    message = (
+        f"the file comparison ran in the {mode} mode and the mirror took "
+        f"{said('seconds', 'seconds')}. It checked "
+        f"{said('checked', 'files')} that were on both sides and {sent}. "
+        f"Both modes compare every file by size and modification time. "
+        f"{other}"
     )
+    return ({"code": COMPARISON, "message": message},)
 
 
 def rehearsal_warning() -> dict[str, str]:
@@ -457,12 +453,8 @@ def _open_twin(store, *, handler_key: str, dry_run: bool, cfg: config.Config):
 
 
 def _already_queued(
-    job,
-    frozen: config.Config | None,
-    *,
-    asked_full: bool | None = None,
-    asked_check: bool | None = None,
-    asked_emptied: bool | None = None,
+    job, frozen: config.Config | None, *, asked_full: bool | None = None,
+    asked_check: bool | None = None, asked_emptied: bool | None = None,
 ) -> dict[str, str]:
     """The one warning a reported twin carries, in the job's frozen terms.
 
@@ -579,10 +571,7 @@ def backup_library(ctx) -> Envelope:
                 data=_reported(store, twin),
                 warnings=(
                     _already_queued(
-                        twin,
-                        frozen,
-                        asked_full=payload[FULL],
-                        asked_check=payload[CHECK],
+                        twin, frozen, asked_full=payload[FULL], asked_check=payload[CHECK],
                         asked_emptied=payload[EMPTIED],
                     ),
                     *map(dict, backup.absent_analysis_share(described)),
@@ -591,9 +580,7 @@ def backup_library(ctx) -> Envelope:
                 ),
             )
         job = jobs.enqueue(
-            store,
-            handler_key=ctx.entry.handler_key,
-            payload=payload,
+            store, handler_key=ctx.entry.handler_key, payload=payload,
             # One portion is one item; a job of zero items would succeed empty.
             item_ids=backup_items(),
             cfg=cfg,
@@ -697,14 +684,9 @@ def refusal_for(outcome: backup.BackupOutcome) -> CratekitError | None:
 
 
 def perform_backup(
-    payload: dict[str, Any],
-    *,
-    portion: backup_facts.Portion | None = None,
-    cfg: config.Config | None = None,
-    runner=backup.subprocess_runner,
-    now: datetime | None = None,
-    process_lister=None,
-    read_back: bool = True,
+    payload: dict[str, Any], *, portion: backup_facts.Portion | None = None,
+    cfg: config.Config | None = None, runner=backup.subprocess_runner,
+    now: datetime | None = None, process_lister=None, read_back: bool = True,
     outcome_to: tuple[str, str] | None = None,
 ) -> dict:
     """Do the backup one queued job asks for, and report what actually happened.
@@ -722,9 +704,7 @@ def perform_backup(
     dry_run = bool(payload.get(DRY_RUN))
     try:
         plan = backup.plan_backup(
-            cfg,
-            now=now,
-            process_lister=process_lister,
+            cfg, now=now, process_lister=process_lister,
             full=bool(payload.get(FULL)),
             check=bool(payload.get(CHECK)),
             emptied=bool(payload.get(EMPTIED)),
@@ -847,21 +827,7 @@ def handle(job, item, cfg) -> "jobs.Produced | None":
 
 
 __all__ = [
-    "ALREADY_QUEUED",
-    "COMPARISON",
-    "DRY_RUN",
-    "FULL",
-    "OUTCOMES",
-    "REHEARSAL",
-    "backup_argv",
-    "backup_items",
-    "backup_library",
-    "build",
-    "comparison_warning",
-    "frozen_payload",
-    "handle",
-    "perform_backup",
-    "published_ages",
-    "refusal_for",
-    "rehearsal_warning",
+    "ALREADY_QUEUED", "COMPARISON", "DRY_RUN", "FULL", "OUTCOMES", "REHEARSAL", "backup_argv",
+    "backup_items", "backup_library", "build", "comparison_warning", "frozen_payload", "handle",
+    "perform_backup", "published_ages", "refusal_for", "rehearsal_warning",
 ]

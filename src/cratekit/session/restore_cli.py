@@ -375,15 +375,9 @@ def _named(cfg: config.Config, session_id: str) -> restore.Restorable:
 
 
 def _offer(
-    chosen: restore.Restorable | None,
-    *,
-    discarding: Sequence[str],
-    from_backup: bool,
-    snapshot: backup.ResolvedSnapshot | None,
-    include_mirror: bool,
-    snapshot_volume: str | None = None,
-    target: Path | None = None,
-    dry_run: bool = False,
+    chosen: restore.Restorable | None, *, discarding: Sequence[str], from_backup: bool,
+    snapshot: backup.ResolvedSnapshot | None, include_mirror: bool,
+    snapshot_volume: str | None = None, target: Path | None = None, dry_run: bool = False,
 ) -> dict[str, Any]:
     """What the person is being asked to approve, as a ``plan/1`` payload.
 
@@ -506,21 +500,12 @@ class RestoreReport:
 
 
 def restore_under_one_session(
-    cfg: config.Config,
-    *,
-    session_id: str | None,
-    discarding: Sequence[str] = (),
-    dry_run: bool = False,
-    from_backup: bool = False,
-    snapshot: str | None = None,
-    snapshot_volume: str | None = None,
-    accept_unrecorded: bool | None = None,
-    include_mirror: bool = False,
-    target: Path | str | None = None,
-    identity_provider: object | None = None,
-    mount_enumerator: object | None = None,
-    runner: object | None = None,
-    process_lister: object | None = None,
+    cfg: config.Config, *, session_id: str | None, discarding: Sequence[str] = (),
+    dry_run: bool = False, from_backup: bool = False, snapshot: str | None = None,
+    snapshot_volume: str | None = None, accept_unrecorded: bool | None = None,
+    include_mirror: bool = False, target: Path | str | None = None,
+    identity_provider: object | None = None, mount_enumerator: object | None = None,
+    runner: object | None = None, process_lister: object | None = None,
 ) -> RestoreReport:
     """Both halves of a restore, inside ONE acquisition of the destructive gates.
 
@@ -674,14 +659,9 @@ def perform_restore(ctx) -> Envelope:
 
     pulling = _snapshot_offered(cfg, ctx.args) if ctx.args.from_backup else None
     offered = _offer(
-        chosen,
-        discarding=tuple(ctx.args.discard),
-        from_backup=ctx.args.from_backup,
-        snapshot=pulling,
-        include_mirror=ctx.args.include_mirror,
-        snapshot_volume=ctx.args.snapshot_volume,
-        target=target,
-        dry_run=ctx.args.dry_run,
+        chosen, discarding=tuple(ctx.args.discard), from_backup=ctx.args.from_backup,
+        snapshot=pulling, include_mirror=ctx.args.include_mirror,
+        snapshot_volume=ctx.args.snapshot_volume, target=target, dry_run=ctx.args.dry_run,
     )
     spec = _confirm_gate(ctx.entry)
     # Shown as well as digested: which snapshot, taken when, and whose.
@@ -744,18 +724,8 @@ from cratekit.session.bare_metal_cli import (  # noqa: E402
 )
 
 __all__ = [
-    "DATABASE_HALF",
-    "LISTING",
-    "MIRROR_HALF",
-    "BareMetalReport",
-    "RestoreReport",
-    "build_bare_metal",
-    "build_list",
-    "build_run",
-    "list_restorable",
-    "perform_bare_metal",
-    "perform_restore",
-    "recover_under_bare_metal_session",
-    "rerun_step",
+    "DATABASE_HALF", "LISTING", "MIRROR_HALF", "BareMetalReport", "RestoreReport",
+    "build_bare_metal", "build_list", "build_run", "list_restorable", "perform_bare_metal",
+    "perform_restore", "recover_under_bare_metal_session", "rerun_step",
     "restore_under_one_session",
 ]
