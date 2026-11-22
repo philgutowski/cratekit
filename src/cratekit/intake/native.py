@@ -1,48 +1,25 @@
 """Land a batch in the collection through the guarded database writer (R-746).
 
-On a library whose intake tree has cut over, this engine replaces the xml
-landing's hand steps: one content row per landed file and one batch playlist
-under the adopted intake root, through the session spine every database tree
-writer uses, behind a plan and an approval the verb owns.
+On a library whose intake tree has cut over: one content row per landed file
+and one batch playlist under the adopted intake root, through the session
+spine every database tree writer uses, behind a plan and an approval.
 
-A CONTENT ROW IS THE ROW REKORDBOX ANALYSES INTO, so what it may carry is a
-column policy asserted from SQL before the commit, in ``rb_writer``, and read
-back after it here. The row carries what the file's tags and the filesystem
-say; every column an analysis pass fills stays empty, named by
-:data:`LEFT_EMPTY`.
+A CONTENT ROW IS THE ROW REKORDBOX ANALYSES INTO, so it carries only what the
+file's tags and the filesystem say, asserted from SQL before the commit in
+``rb_writer`` and read back after it here; every analysis column stays empty
+(:data:`LEFT_EMPTY`). Its path is under the base drive, its device the
+library's own (A8), its file id the landed file's inode (U115) and its
+ContentLink the library's (U126): rekordbox will not load a row without them.
 
-What a row needs before rekordbox will show and load it, each measured on the
-live library:
+THE PLAN IS BUILT AGAINST THE DATABASE AND THE APPLY REBUILDS NOTHING: it asks
+again only whether a row appeared since the approved digest. Each account
+playlist gets its own INBOX playlist (U113), and every new row joins
+:data:`ANALYZE` (U166). A row here is one this engine adds, unlike in
+``cratekit.tagging.rows``.
 
-* its ``FolderPath`` under ``djmdProperty.BaseDBDrive``, not the mounted
-  path, and its device the one whose ``MasterDBID`` is the library's
-  ``DBID``: a library can hold two devices and the binding's pick is order
-  dependent (A8);
-* ``rb_file_id`` the landed file's inode, read when the row is made and never
-  from the plan, since staging may sit on another volume (U115);
-* ``ContentLink`` the value most of the library's live rows carry, read at
-  plan time and covered by the digest (U126).
-
-THE PLAN IS BUILT AGAINST THE DATABASE AND THE APPLY REBUILDS NOTHING. The
-person approves the plan's digest; the apply writes that plan and asks the
-database again only what the plan could not know, whether a row appeared in
-between.
-
-An account playlist gets its own INBOX playlist, created and never found by
-name, so two landings never share one (U113); a ``--set`` landing adds to the
-INBOX playlist its job recorded first (U135). Every row a landing creates
-also joins :data:`ANALYZE` under the intake root, so the rekordbox visit
-selects one playlist (U166).
-
-``plan_rows`` and ``apply_rows`` mean something else in ``cratekit.tagging.rows``,
-where a row exists already; here a row is one this engine adds.
-
-The plan lives in :mod:`cratekit.intake.native_plan` and the apply in
-:mod:`cratekit.intake.native_apply`; both are re-exported here, and every name
-a caller or a test patches is looked up on this module.
-
-Layer: modules. It reads configuration through the objects it is handed and
-opens no database of its own.
+The plan is in ``native_plan``, the apply's steps in ``native_apply`` and the
+readers in ``native_read``, each reached through this module too; every name a
+test patches here stays looked up here. Opens no database of its own.
 """
 
 from __future__ import annotations
@@ -249,15 +226,7 @@ class RowPlan:
 
     def columns(self) -> dict[str, Any]:
         """Every column the writer sets on the row, by name, for the screen."""
-        words = {
-            column: word.shown()
-            for column, word in (
-                (ARTIST_COLUMN, self.artist),
-                (ALBUM_COLUMN, self.album),
-                (GENRE_COLUMN, self.genre),
-            )
-            if word is not None
-        }
+        words = {column: word.shown() for column, word in self.linked() if word is not None}
         return {
             "Title": self.title,
             "FolderPath": self.folder_path,
@@ -273,6 +242,14 @@ class RowPlan:
             **words,
             **({YEAR_COLUMN: self.year} if self.year is not None else {}),
         }
+
+    def linked(self) -> tuple[tuple[str, Word | None], ...]:
+        """Each column linked to a lookup row, and the word it takes (U163)."""
+        return (
+            (ARTIST_COLUMN, self.artist),
+            (ALBUM_COLUMN, self.album),
+            (GENRE_COLUMN, self.genre),
+        )
 
     def words(self) -> dict[str, Any]:
         """The words the row is planned to read back with, by column (U163)."""
@@ -852,24 +829,10 @@ def apply_rows(
     one commit, and a refusal before it rolls the handle back. The files are in
     the library by then, which the caller reports.
     """
-    from cratekit.intake.native_apply import (
-        _analyze_row,
-        _assert_unchanged,
-        _assert_words_unmoved,
-        _batch_order,
-        _batch_playlist_row,
-        _dyn_read_back,
-        _landed_rows,
-        _Mints,
-        _read_back,
-        _tag_dyn,
-        _tag_vox,
-        _taken_since_the_plan,
-        _vox_read_back,
-        _words_back,
-    )
+    from cratekit.intake import native_apply as steps
+    from cratekit.intake.native_apply import _analyze_row, _tag_dyn, _tag_vox, _vox_read_back
 
-    watched = _assert_unchanged(cfg, db, plan, analysis_roots)
+    watched = steps._assert_unchanged(cfg, db, plan, analysis_roots)
     added_ids: list[tuple[RowPlan, str]] = []
     present: list[RowPlan] = list(plan.present())
     memberships = 0
@@ -917,11 +880,11 @@ def apply_rows(
 
                 twin_mod.recheck_landing(db, plan.twins)
             to_add = plan.to_add()
-            taken = _taken_since_the_plan(db, cfg, to_add)
+            taken = steps._taken_since_the_plan(db, cfg, to_add)
             # THE WORDS ARE ASKED AGAIN (U163), so a lookup row made or retired
             # since the approval refuses rather than linking what nobody approved.
-            _assert_words_unmoved(db, [row for row in to_add if str(row.target) not in taken])
-            mints = _Mints(db)
+            steps._assert_words_unmoved(db, [row for row in to_add if str(row.target) not in taken])
+            mints = steps._Mints(db)
             for row in to_add:
                 held = taken.get(str(row.target))
                 if held is not None:
@@ -956,11 +919,11 @@ def apply_rows(
                         left.append((one.name, member.member.left(NOT_LANDED)))
                 if ids:
                     accounts.append((one, ids))
-            ordered = _batch_order(plan, by_target, claimed)
+            ordered = steps._batch_order(plan, by_target, claimed)
             # THE BATCH PLAYLIST HOLDS WHAT NO ACCOUNT PLAYLIST CLAIMED, and is
             # not written when that is nothing.
             if ordered or not accounts:
-                playlist = _batch_playlist_row(db, plan, anchor)
+                playlist = steps._batch_playlist_row(db, plan, anchor)
                 memberships = len(rb_writer.add_memberships(db, playlist, ordered))
                 playlist_id = str(playlist.ID)
             for one, ids in accounts:
@@ -1040,7 +1003,7 @@ def apply_rows(
             len(added_ids),
             memberships + analyze_added,
             cfg,
-            landed=_landed_rows(
+            landed=steps._landed_rows(
                 db,
                 plan,
                 added_ids,
@@ -1072,10 +1035,10 @@ def apply_rows(
             _vox_read_back(db) if any(row.vox for row, _ in added_ids) else (frozenset(), "")
         )
         dyned, dyn_unread = (
-            _dyn_read_back(db) if any(row.dyn for row, _ in added_ids) else (frozenset(), "")
+            steps._dyn_read_back(db) if any(row.dyn for row, _ in added_ids) else (frozenset(), "")
         )
         for row, content_id in added_ids:
-            values, title, folder_path, file_id, link = _read_back(db, content_id)
+            values, title, folder_path, file_id, link = steps._read_back(db, content_id)
             landed.append(
                 AddedRow(
                     target=row.target,
@@ -1087,7 +1050,7 @@ def apply_rows(
                     content_link=link,
                     vox=content_id in voxed,
                     dyn=content_id in dyned,
-                    words=_words_back(db, content_id),
+                    words=steps._words_back(db, content_id),
                     planned=row.words(),
                 )
             )
@@ -1250,11 +1213,9 @@ def _record_count(
 
 
 def __getattr__(name: str) -> Any:
-    """A name of the plan, the apply's steps or the readers, which live beside this module.
+    """A name of the plan, the apply's steps or the readers, found on first use.
 
-    LOOKED UP ON FIRST USE, because each of them imports this module's types:
-    importing them here at the top would be a cycle. Every caller keeps
-    reaching them as ``native.<name>``.
+    Each of them imports this module's types, so importing them here would be a cycle.
     """
     from importlib import import_module
 

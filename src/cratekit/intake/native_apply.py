@@ -165,11 +165,7 @@ class _Mints:
 
     def link(self, content: Any, row: RowPlan) -> None:
         """Link the content row to each of its words' rows, minting a word's once, and write its year."""
-        for column, word in (
-            (ARTIST_COLUMN, row.artist),
-            (ALBUM_COLUMN, row.album),
-            (GENRE_COLUMN, row.genre),
-        ):
+        for column, word in row.linked():
             if word is not None:
                 setattr(content, column, self.id_of(word))
         if row.year is not None:

@@ -214,13 +214,11 @@ def plan_rows(
         held = _holding(match)
         file_type = file_type_of(target)
         if file_type is None:
-            action, why = (
-                UNSUPPORTED,
-                (
-                    f"{target.name} has a suffix rekordbox's database has no file type "
-                    f"for, so no content row can name it and it was left in staging; "
-                    f"convert it, or land it through the xml bridge"
-                ),
+            action = UNSUPPORTED
+            why = (
+                f"{target.name} has a suffix rekordbox's database has no file type "
+                f"for, so no content row can name it and it was left in staging; "
+                f"convert it, or land it through the xml bridge"
             )
         else:
             action, why = (ADD if held is None else PRESENT), ""
@@ -347,16 +345,14 @@ def _dyn_plan(
     if not any(row.action == ADD for row in rows):
         return rows, None, ""
     cut = float(cfg.analysis.drift_cut)
-    read: list[RowPlan] = []
-    for row in rows:
-        if row.action != ADD:
-            read.append(row)
-            continue
+
+    def judged(row: RowPlan) -> RowPlan:
         values = tags.read_tags(row.source, _DRIFT_TAGS)
         score, verdict = drift.reading(values["driftlevel"], values["drift"], cut)
-        read.append(replace(row, drift=score, drift_verdict=verdict))
-    variable = [row for row in read if row.drift_verdict == drift.VARIABLE]
-    if not variable:
+        return replace(row, drift=score, drift_verdict=verdict)
+
+    read = [judged(row) if row.action == ADD else row for row in rows]
+    if not any(row.drift_verdict == drift.VARIABLE for row in read):
         return read, cut, ""
     if not rb_writer.my_tag_writable(db):
         return read, cut, DYN_NO_CATEGORY
@@ -373,24 +369,20 @@ def _words_plan(db: Any, rows: list[RowPlan]) -> list[RowPlan]:
     if not any(row.action == ADD for row in rows):
         return rows
     resolver = _Resolver(db)
-    planned: list[RowPlan] = []
-    for row in rows:
-        if row.action != ADD:
-            planned.append(row)
-            continue
+
+    def worded(row: RowPlan) -> RowPlan:
         read = tags.read_tags(row.source, _WORD_TAGS)
         artist = resolver.word(rb_writer.ARTIST_TABLE, _word(read["artist"]))
         album_artist = resolver.word(rb_writer.ARTIST_TABLE, _word(read["albumartist"]))
-        planned.append(
-            replace(
-                row,
-                artist=artist,
-                album=resolver.album(_word(read["album"]), album_artist),
-                genre=resolver.word(rb_writer.GENRE_TABLE, _word(read["genre"])),
-                year=year_of(read["date"]),
-            )
+        return replace(
+            row,
+            artist=artist,
+            album=resolver.album(_word(read["album"]), album_artist),
+            genre=resolver.word(rb_writer.GENRE_TABLE, _word(read["genre"])),
+            year=year_of(read["date"]),
         )
-    return planned
+
+    return [worded(row) if row.action == ADD else row for row in rows]
 
 
 def _word(value: str | None) -> str:
