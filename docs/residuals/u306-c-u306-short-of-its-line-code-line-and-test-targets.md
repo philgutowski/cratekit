@@ -16,8 +16,9 @@ guarded code with every replayed row re-anchored by hand, which this card did
 not do. Eleven import allowance lines stay because the modules they name are
 another card's: `core.art` and `core.taxonomy_word` from tagging and
 `core.cores`, `core.discovery`, `core.drift`, `core.pool` from analysis, and
-`core.discovery` from vocals, all core's (#858, U301), with the interface list
-full at 25; the registry loading `analysis.check_cli` for a verb the analysis
+`core.discovery` from vocals, all core modules off the interface list, which
+is full at 25 and which U301 (#858), merged in before this card landed, left
+as it was; the registry loading `analysis.check_cli` for a verb the analysis
 toggle does not gate (#860, U303); and vocals importing `analysis.artifacts`,
 `analysis.cli` and `analysis.vocals` at top level, which a lazy import would
 change for a person running the vocals verb with analysis off.
