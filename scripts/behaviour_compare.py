@@ -1117,9 +1117,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str]) -> int:
-    args = build_parser().parse_args(argv[1:])
+    chosen = build_parser().parse_args(argv[1:])
     try:
-        return args.run(args)
+        return chosen.run(chosen)
     except Refusal as refusal:
         print(f"refused: {refusal}", file=sys.stderr)
         return 2
