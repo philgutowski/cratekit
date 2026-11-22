@@ -26,10 +26,10 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from cratekit.cli.output import Envelope, approving_actor
-from cratekit.core import config, rehearsal
+from cratekit.core import config, rb_writer, rehearsal, session, snapshot
 from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import (
@@ -41,72 +41,48 @@ from cratekit.intake import (
     landing,
     native,
     set_playlist,
+    shelve,
 )
 from cratekit.intake import cli as intake_cli
-from cratekit.intake.land_native import (  # noqa: F401 - re-exported, callers name these on land_cli
-    DATABASE_PIN,
-    LAND_ARCHIVE_FAILED,
-    _apply_landing_archive,
-    _place_owned,
-    _plan_set_archive,
-    _with_archive,
-    ask_then_write,
-)
-from cratekit.intake.land_rehearse import (  # noqa: F401 - re-exported, callers name these on land_cli
-    REHEARSAL_ARCHIVE_SKIPPED,
-    REHEARSAL_LINES_SHOWN,
-    REHEARSAL_VERB,
-    _fields_of,
-    _rehearse_native,
-    plan_identity,
-    plan_lines,
-    rehearsal_key,
-)
-from cratekit.intake.land_report import (  # noqa: F401 - re-exported, callers name these on land_cli
+from cratekit.intake.land_native import (  # noqa: F401 - some re-exported, callers name them here
     AUTO_ANALYSIS_STEP,
     AWAITING_ANALYSIS,
-    BRIDGE_VOX_NONE,
-    BRIDGE_VOX_OWED,
+    DATABASE_PIN,
     DYN_NOT_WRITTEN,
     FAVORITES,
     FAVORITES_COLOUR_HELD,
     FAVORITES_PLACED,
     FAVORITES_SKIPPED,
-    FILED,
-    LAND,
+    LAND_ARCHIVE_FAILED,
     LANDED,
     PLAYLIST,
     REFUSED,
     TWIN,
     TWINS_LEFT,
-    UNFILED,
     VOX_MOSTLY_UNSCORED,
     VOX_NOT_WRITTEN,
     VOX_UNSCORED,
+    _apply_landing_archive,
     _folder,
+    _native_identity,
     _native_payload,
     _native_reported,
     _native_shown,
-    _payload,
+    _place_owned,
     _plan,
-    _reported,
-    _shown,
+    _plan_set_archive,
+    _with_archive,
     _with_filing,
+    ask_then_write,
     awaiting_analysis,
-    bridge_vox_fact,
     collection_facts,
-    dyn_fact,
     dyn_warnings,
-    favorites_facts,
-    favorites_notes,
     playlist_item,
     set_playlist_item,
     split_facts,
-    twin_facts,
-    vox_fact,
-    vox_plan_warnings,
     vox_warnings,
 )
+from cratekit.write import metadata_cli
 
 #: The two gates, one per medium. The xml one answers inline as it always has;
 #: the native one is explicit, because a content row in the collection is a
@@ -115,9 +91,6 @@ XML_GATE = "intake.land.confirm"
 NATIVE_GATE = "intake.land.native"
 
 _ORIGIN = ("intake.land_cli",)
-
-#: The verb that proves an intake file imported, spelled once in ``ingest``.
-VERIFY_VERB = ingest.VERIFY_VERB
 
 INTAKE_SUFFIX = "_inboxed.xml"
 
@@ -157,19 +130,24 @@ def intake_stem(*, pass_name: str | None, name: str | None, run_id: str) -> str:
     return default_name(run_id)
 
 
+def _unrunnable(message: str, detail: dict | None = None, steps: tuple = ()) -> CratekitError:
+    """A command line this landing cannot run, refused before anything moved."""
+    return refuse(
+        "intake-list-unusable", message, remedy=Remedy.FIX_COMMAND_LINE, steps=steps,
+        origin=_ORIGIN, detail=detail,
+    )
+
+
 def _check_pass(pass_name: str | None) -> None:
     """Refuse a ``--pass`` that is not one plain file name at the library root."""
     if pass_name is None:
         return
     if not landing.plain_name(pass_name):
-        raise refuse(
-            "intake-list-unusable",
+        raise _unrunnable(
             f"{pass_name!r} is not a pass this landing can name its intake file for, "
             f"because it must be one plain file name beside the library; nothing was moved",
-            remedy=Remedy.FIX_COMMAND_LINE,
-            steps=("pass the name crate intake missing --run or crate label sync --go printed",),
-            origin=_ORIGIN,
-            detail={"pass": pass_name},
+            {"pass": pass_name},
+            ("pass the name crate intake missing --run or crate label sync --go printed",),
         )
 
 
@@ -230,104 +208,59 @@ def _still_free(cfg: config.Config, batch: str) -> None:
         )
 
 
+#: The verb's own arguments, in the order its help lists them: flag, settings, help.
+_ARGUMENTS: tuple[tuple[str, dict[str, Any], str], ...] = (
+    ("folder", {"nargs": "?", "metavar": "FOLDER"},
+     "the folder of acquired files to land (default: download staging)"),
+    ("--export", {"metavar": "XML"},
+     "a Fresh Export of the collection to splice the landed files into; "
+     "required while the intake tree is on the xml bridge, and refused "
+     "once it is database native, where the files join the collection "
+     "through the database"),
+    ("--name", {"metavar": "NAME"},
+     "the batch folder under the music folder and the batch playlist under "
+     "INBOX (default: the landing's date and its source, for example "
+     "'2026-10-03 Tidal playlists', with ' 2' added when that is taken)"),
+    ("--pass", {"dest": "pass_name", "metavar": "PASS"},
+     "the pass these files were acquired under, as crate intake missing --run "
+     "or crate label sync --go printed it; the intake file is named for it, so "
+     "sync mark finds the pass, and the batch is named for the pass's sources"),
+    ("--manifest", {"metavar": "JSON"},
+     "the manifest written beside the list these files were acquired "
+     "from; its label rows are filed under the record labels tree"),
+    ("--label", {"metavar": "NAME"},
+     "file every landed file under this label in the record labels tree, in "
+     "the year its date tag names, for a label batch with no manifest such as "
+     "a Bandcamp purchase from the label's own account (database native intake "
+     "trees only; a file with no date tag is named and filed nowhere)"),
+    ("--label-from-tags", {"dest": "label_from_tags", "action": "store_true"},
+     "file each landed file under the label its own label tag names, in the "
+     "year its date tag names, as crate acquire bandcamp-fetch tags a "
+     "registered label's purchases; a file with no label tag or no date tag "
+     "is named and filed nowhere (database native intake trees only)"),
+    ("--set", {"dest": "set_job", "metavar": "JOB"},
+     "the intake set job these files were downloaded for; the landing then "
+     "also writes the whole set, owned and landed tracks in set order, as one "
+     "permanent playlist under the INSPIRATION folder, in the same commit as "
+     "the batch (database native intake trees only)"),
+    ("--rehearse", {"action": "store_true"},
+     "rehearse the landing instead of asking to apply it: copy the database "
+     "and the library state to a scratch area of this run's own, apply the "
+     "landing there over clones of the staged files, read the copy back, "
+     "report the plan's digest, and remove the area; nothing live is "
+     "written or moved, and the live landing then says whether its plan "
+     "equals this rehearsal's (database native intake trees only)"),
+    ("--land-only", {"action": "store_true"},
+     "land the files and write their rows without filing them into the "
+     "library tree afterwards; by default a database native landing shows "
+     "where adoption would file each new row, and files them under the "
+     "same answer when the plan after the commit agrees"),
+)
+
+
 def build_land(parser, entry) -> None:
-    parser.add_argument(
-        "folder",
-        nargs="?",
-        metavar="FOLDER",
-        help="the folder of acquired files to land (default: download staging)",
-    )
-    parser.add_argument(
-        "--export",
-        metavar="XML",
-        help=(
-            "a Fresh Export of the collection to splice the landed files into; "
-            "required while the intake tree is on the xml bridge, and refused "
-            "once it is database native, where the files join the collection "
-            "through the database"
-        ),
-    )
-    parser.add_argument(
-        "--name",
-        metavar="NAME",
-        help=(
-            "the batch folder under the music folder and the batch playlist under "
-            "INBOX (default: the landing's date and its source, for example "
-            "'2026-10-03 Tidal playlists', with ' 2' added when that is taken)"
-        ),
-    )
-    parser.add_argument(
-        "--pass",
-        dest="pass_name",
-        metavar="PASS",
-        help=(
-            "the pass these files were acquired under, as crate intake missing --run "
-            "or crate label sync --go printed it; the intake file is named for it, so "
-            "sync mark finds the pass, and the batch is named for the pass's sources"
-        ),
-    )
-    parser.add_argument(
-        "--manifest",
-        metavar="JSON",
-        help=(
-            "the manifest written beside the list these files were acquired "
-            "from; its label rows are filed under the record labels tree"
-        ),
-    )
-    parser.add_argument(
-        "--label",
-        metavar="NAME",
-        help=(
-            "file every landed file under this label in the record labels tree, in "
-            "the year its date tag names, for a label batch with no manifest such as "
-            "a Bandcamp purchase from the label's own account (database native intake "
-            "trees only; a file with no date tag is named and filed nowhere)"
-        ),
-    )
-    parser.add_argument(
-        "--label-from-tags",
-        dest="label_from_tags",
-        action="store_true",
-        help=(
-            "file each landed file under the label its own label tag names, in the "
-            "year its date tag names, as crate acquire bandcamp-fetch tags a "
-            "registered label's purchases; a file with no label tag or no date tag "
-            "is named and filed nowhere (database native intake trees only)"
-        ),
-    )
-    parser.add_argument(
-        "--set",
-        dest="set_job",
-        metavar="JOB",
-        help=(
-            "the intake set job these files were downloaded for; the landing then "
-            "also writes the whole set, owned and landed tracks in set order, as one "
-            "permanent playlist under the INSPIRATION folder, in the same commit as "
-            "the batch (database native intake trees only)"
-        ),
-    )
-    parser.add_argument(
-        "--rehearse",
-        action="store_true",
-        help=(
-            "rehearse the landing instead of asking to apply it: copy the database "
-            "and the library state to a scratch area of this run's own, apply the "
-            "landing there over clones of the staged files, read the copy back, "
-            "report the plan's digest, and remove the area; nothing live is "
-            "written or moved, and the live landing then says whether its plan "
-            "equals this rehearsal's (database native intake trees only)"
-        ),
-    )
-    parser.add_argument(
-        "--land-only",
-        action="store_true",
-        help=(
-            "land the files and write their rows without filing them into the "
-            "library tree afterwards; by default a database native landing shows "
-            "where adoption would file each new row, and files them under the "
-            "same answer when the plan after the commit agrees"
-        ),
-    )
+    for flag, settings, said in _ARGUMENTS:
+        parser.add_argument(flag, **settings, help=said)
     set_playlist.add_word_arguments(parser)
     parser.set_defaults(_handler=intake_land)
 
@@ -363,12 +296,9 @@ def _label_flag(
         return None
     flag = "--label-from-tags" if from_tags else "--label"
     if given is not None and not given.strip():
-        raise refuse(
-            "intake-list-unusable",
+        raise _unrunnable(
             f"{flag} names no label, so there is nothing to file the batch under; "
-            f"name the label or drop {flag}, nothing was moved",
-            remedy=Remedy.FIX_COMMAND_LINE,
-            origin=_ORIGIN,
+            f"name the label or drop {flag}, nothing was moved"
         )
     if manifest is not None:
         raise refuse(
@@ -438,6 +368,169 @@ def _xml_split(
     return account_playlists.named(claims, taken, batch=batch)
 
 
+#: The action every planned file carries until the apply reports on it.
+LAND = "land"
+
+#: What a label playlist written, and a label row filed under none, are marked.
+FILED = "filed"
+UNFILED = "unfiled"
+
+#: What the bridge's gate screen says of the vox My Tag (U127), on a
+#: calibrated library; :func:`bridge_vox_fact` says the rest.
+BRIDGE_VOX_NONE = "not written, the xml bridge carries no My Tag"
+BRIDGE_VOX_OWED = (
+    f"{BRIDGE_VOX_NONE}; once rekordbox has imported the batch, run crate metadata "
+    f"mytags-vocals --apply to tag its vocal tracks"
+)
+
+
+def _payload(
+    planned: landing.Plan,
+    *,
+    target: Path,
+    destination: Path,
+    export: Path,
+    manifest: landing.LabelManifest | None = None,
+    split: tuple[account_playlists.Claimed, ...] = (),
+    emptied: tuple[tuple[str, account_playlists.Left], ...] = (),
+) -> dict:
+    items = [
+        {"action": LAND, "from": str(item), "to": str(target / item.name)}
+        for item in planned.items
+    ]
+    identity = {
+        "kind": "land",
+        "folder": str(planned.folder),
+        "batch": planned.batch,
+        "target": str(target),
+        "destination": str(destination),
+        "export": str(export),
+        "files": planned.digest,
+    }
+    if manifest is not None:
+        # Only when given, so a landing without one digests as before. The
+        # bytes too: a manifest rewritten under one name is another plan.
+        identity["manifest"] = str(manifest.path)
+        identity["manifest_bytes"] = manifest.digest
+    if split:
+        # Only when there is one, for the manifest's reason (U113).
+        identity["playlists"] = [claimed.identity() for claimed in split]
+    if emptied:
+        # The left rows of an account playlist that holds nothing (U128).
+        identity["unplanned_left"] = [[name, row.identity()] for name, row in emptied]
+    return _plan(identity, items, len(items))
+
+
+def _shown(
+    planned: landing.Plan,
+    *,
+    cfg: config.Config,
+    target: Path,
+    destination: Path,
+    manifest: landing.LabelManifest | None = None,
+    split: tuple[account_playlists.Claimed, ...] = (),
+    emptied: int = 0,
+) -> dict[str, Any]:
+    """What the gate screen puts in front of the person, one line per fact."""
+    shown: dict[str, Any] = {
+        "folder": str(planned.folder),
+        "lands in": str(target),
+        "playlist": planned.batch,
+        "intake file": str(destination),
+        "count": len(planned.items),
+        "files": [item.name for item in planned.items],
+        # U127: the bridge carries no My Tag, so the step owed is said first.
+        "vox My Tag": bridge_vox_fact(cfg),
+    }
+    if split:
+        shown.update(
+            split_facts(
+                [(one.name, one.account_name, len(one.members), one.owned) for one in split],
+                len(account_playlists.unclaimed(planned.items, split)),
+                left=sum(len(one.left) for one in split) + emptied,
+            )
+        )
+    if manifest is not None:
+        # What the manifest ASKS for: which rows have a file is known later.
+        shown["labels filed from"] = str(manifest.path)
+        shown["label playlists named"] = [
+            f"{name} ({count} listed)" for name, count in sorted(manifest.playlists().items())
+        ]
+    return shown
+
+
+def bridge_vox_fact(cfg: config.Config) -> str:
+    """What the bridge's gate screen says of the vox My Tag (U127), by the calibration.
+
+    THE STEP OWED IS ONLY NAMED WHERE IT WOULD TAG FROM A FITTED CUT (R-276);
+    an unreadable calibration is named, never refused, since the bridge writes
+    no tag either way.
+    """
+    try:
+        cut = metadata_cli.load_vocal_threshold(cfg)
+    except CratekitError as exc:
+        return f"{BRIDGE_VOX_NONE}, and " + native.VOX_UNREADABLE.format(why=exc.cause.message)
+    if cut is None:
+        return f"{BRIDGE_VOX_NONE}, and {native.VOX_UNCALIBRATED}"
+    return BRIDGE_VOX_OWED
+
+
+def _split_items(split: tuple[tuple[account_playlists.Claimed, int], ...]) -> list[dict[str, Any]]:
+    """One item per account playlist an intake file was given, with what it holds."""
+    return [
+        {"action": PLAYLIST, "playlist": claimed.name, "account": claimed.playlist_id, "count": n}
+        for claimed, n in split
+    ]
+
+
+def _reported(payload: dict, landed: landing.Landed) -> dict:
+    """The plan, each item marked with what the apply actually did to it."""
+    refused = {str(entry.path): entry for entry in landed.refused}
+    items: list[dict[str, Any]] = []
+    for item in payload["items"]:
+        entry = refused.get(item["from"])
+        if entry is None:
+            items.append({**item, "action": LANDED})
+        else:
+            items.append(
+                {**item, "action": REFUSED, "reason": entry.reason, "why": entry.sentence}
+            )
+    totals = {
+        "count": payload["totals"]["count"],
+        "landed": len(landed.moved),
+        "refused": len(landed.refused),
+    }
+    items.extend(_split_items(landed.split))
+    if landed.labelled or landed.unlabelled:
+        # IN ``items`` AND ``totals``, since ``plan/1`` is closed at four keys.
+        items.extend(
+            {
+                "action": FILED,
+                "label": entry.label,
+                "year": entry.year,
+                "playlist": entry.playlist,
+                "count": len(entry.track_ids),
+            }
+            for entry in landed.labelled
+        )
+        items.extend(
+            {
+                "action": UNFILED,
+                "id": entry.ref,
+                "artist": entry.artist,
+                "title": entry.title,
+                "label": entry.label,
+                "year": entry.year,
+                "reason": entry.reason,
+                "why": entry.sentence,
+            }
+            for entry in landed.unlabelled
+        )
+        totals["filed"] = len(landed.labelled)
+        totals["unfiled"] = len(landed.unlabelled)
+    return {**payload, "items": items, "totals": totals}
+
+
 def gate_named(entry, name: str):
     """One of a verb's gates by name, never by position, since the order the
     gates are declared in is no promise (R-746, R-770)."""
@@ -499,16 +592,13 @@ def intake_land(ctx) -> Envelope:
         if value is not None
     ]
     if words_given and not ctx.args.set_job:
-        raise refuse(
-            "intake-list-unusable",
-            f"{', '.join(words_given)} name{'s' if len(words_given) == 1 else ''} the "
-            f"set's playlist and --set names the set it is made from, so without "
-            f"--set nothing would read {'it' if len(words_given) == 1 else 'them'}; "
-            f"pass --set JOB or drop {'it' if len(words_given) == 1 else 'them'}, "
-            f"nothing was moved",
-            remedy=Remedy.FIX_COMMAND_LINE,
-            origin=_ORIGIN,
-            detail={"given": words_given},
+        one = len(words_given) == 1
+        it = "it" if one else "them"
+        raise _unrunnable(
+            f"{', '.join(words_given)} name{'s' if one else ''} the set's playlist and "
+            f"--set names the set it is made from, so without --set nothing would read "
+            f"{it}; pass --set JOB or drop {it}, nothing was moved",
+            {"given": words_given},
         )
     if ctx.args.set_job:
         set_playlist.assert_native(medium, landing=True)
@@ -518,14 +608,11 @@ def intake_land(ctx) -> Envelope:
     )
     rehearse = bool(getattr(ctx.args, "rehearse", False))
     if rehearse and not medium.native:
-        raise refuse(
-            "intake-list-unusable",
+        raise _unrunnable(
             "--rehearse rehearses a landing into the database on a copy of it, and "
             "this intake tree is on the xml bridge, where a landing writes no "
             "database; drop --rehearse, nothing was copied",
-            remedy=Remedy.FIX_COMMAND_LINE,
-            origin=_ORIGIN,
-            detail={"tree_id": declared.intake.id if declared is not None else None},
+            {"tree_id": declared.intake.id if declared is not None else None},
         )
     if medium.native:
         # WHICH FILES ARE HEARTS (U120), and which hearts the library already
@@ -666,14 +753,11 @@ def _land_native(
     tree_id = declared.intake.id
     unfiled = land_native.unfiled_reason(ctx, medium)
     if ctx.args.export is not None:
-        raise refuse(
-            "intake-list-unusable",
+        raise _unrunnable(
             f"the intake tree {tree_id!r} is database native, so a landing adds the "
             f"files to the collection through the database and there is no export "
             f"to splice; drop --export, nothing was moved",
-            remedy=Remedy.FIX_COMMAND_LINE,
-            origin=_ORIGIN,
-            detail={"tree_id": tree_id, "export": str(ctx.args.export)},
+            {"tree_id": tree_id, "export": str(ctx.args.export)},
         )
     spec = gate_named(ctx.entry, NATIVE_GATE)
     if not planned.items:
@@ -683,14 +767,11 @@ def _land_native(
             # NOTHING TO REHEARSE, and never the owned hearts' write instead: a
             # rehearsal asks no gate, so it must not reach one (U162).
             if owned:
-                raise refuse(
-                    "intake-list-unusable",
+                raise _unrunnable(
                     f"{planned.folder} holds no file to land, and a rehearsal of the "
                     f"pass's {len(owned)} owned heart(s) alone is not built; run the "
                     f"landing without --rehearse to plan them, nothing was copied",
-                    remedy=Remedy.FIX_COMMAND_LINE,
-                    origin=_ORIGIN,
-                    detail={"folder": str(planned.folder), "owned_hearts": len(owned)},
+                    {"folder": str(planned.folder), "owned_hearts": len(owned)},
                 )
             return ctx.envelope(data=empty, outcome=Outcome.NO_OP)
         if owned:
@@ -761,13 +842,8 @@ def _land_native(
 
     if rehearse:
         return _rehearse_native(
-            ctx,
-            cfg,
-            planned,
-            planner=planner,
-            payload_of=payload_of,
-            archived=archive_planned,
-            declared=declared,
+            ctx, cfg, planned, planner=planner, payload_of=payload_of,
+            archived=archive_planned, declared=declared,
         )
 
     payload, landed = ask_then_write(
@@ -801,6 +877,290 @@ def _land_native(
         warnings.extend(filing.warnings(sorted_in))
         reported = _with_filing(reported, sorted_in)
     return ctx.envelope(data=reported, warnings=warnings)
+
+
+#: The verb a rehearsal record names, so a live landing reads only its own (U162).
+REHEARSAL_VERB = "intake land"
+
+#: The warning a set landing's rehearsal carries: its account archive was not rehearsed.
+REHEARSAL_ARCHIVE_SKIPPED = "intake-rehearsal-archive-skipped"
+
+#: At most this many differing lines on a live gate screen; the rest are counted.
+REHEARSAL_LINES_SHOWN = 40
+
+
+def rehearsal_key(planned: landing.Plan) -> dict[str, str]:
+    """What a live landing and its rehearsal share: the staging folder and the batch."""
+    return {"folder": str(planned.folder.resolve()), "batch": planned.batch}
+
+
+def plan_lines(
+    planned: landing.Plan, rows: native.NativePlan, *, target: Path, archived=None
+) -> list[str]:
+    """The native plan as ``path = value`` lines: the gate's identity and the engine's."""
+    return rehearsal.lines(plan_identity(planned, rows, target=target, archived=archived))
+
+
+def plan_identity(
+    planned: landing.Plan, rows: native.NativePlan, *, target: Path, archived=None
+) -> dict[str, Any]:
+    """What :func:`plan_lines` prints, as values, so a rehearsal maps them before they are text.
+
+    MAPPED AS VALUES, NEVER AS LINES (U188): a line is JSON, which escapes an
+    accented path into a spelling no pair of real paths maps.
+    """
+    # NOT THE ENGINE'S OWN DIGEST, a hash no mapping back can reach.
+    gate = {
+        key: value
+        for key, value in _native_identity(planned, rows, target=target).items()
+        if key != "collection"
+    }
+    if archived is not None:
+        gate = {**gate, "archive": archived.payload["digest"]}
+    return {"gate": gate, "plan": native.identity(rows)}
+
+
+def _filed_watch(cfg: config.Config, planned: landing.Plan) -> tuple[Path, ...]:
+    """The live folders a native landing could file its batch in, which a rehearsal watches.
+
+    The year folder the batch name or today names, and for a batch landed into
+    again the folder recorded for it and that folder's own year folder.
+    """
+    when, _said = shelve.filed_parts(planned.batch, on=batch_name.today())
+    watched = [shelve.processed_root(cfg) / f"{when.year}"]
+    again = batch_name.filed_folders(cfg).get(planned.batch)
+    if again is not None:
+        watched.extend((Path(again).parent, Path(again)))
+    return tuple(dict.fromkeys(watched))
+
+
+def _active_rows(db) -> int:
+    from sqlalchemy import text
+
+    return int(
+        db.session.execute(
+            text("SELECT COUNT(*) FROM djmdContent WHERE rb_local_deleted = 0")
+        ).scalar()
+    )
+
+
+def _rehearse_native(ctx, cfg: config.Config, planned: landing.Plan, **how: Any) -> Envelope:
+    """Rehearse the landing on a scratch area of this run's own, then remove it (U162).
+
+    THE LIVE PLAN IS MADE FIRST, against the database copy, so its digest is
+    the one the live landing will show. THEN THE SAME FILES ARE PLANNED AT THE
+    AREA, and applied there only when that plan, mapped back, reads line for
+    line as the live one: what is rehearsed is the plan the live run will ask.
+
+    NOTHING LIVE IS WRITTEN OR MOVED: the live database and folders are
+    witnessed before and after. The account archive is never rehearsed, and
+    the report says so. A FAILURE KEEPS THE AREA AND NAMES IT. ``how`` is what
+    :func:`_rehearse_in` plans and applies with.
+    """
+    before = rehearsal.witness(
+        cfg,
+        (
+            planned.folder,
+            Path(cfg.library.root) / cfg.library.music_dir,
+            *_filed_watch(cfg, planned),
+        ),
+    )
+    area = rehearsal.open_area(cfg, ctx.run.run_id, files=planned.items, staging=planned.folder)
+    try:
+        facts, payload, lines = _rehearse_in(cfg, planned, area=area, **how)
+    except CratekitError as exc:
+        rehearsal.assert_untouched(before, kept=area.paths)
+        inner = exc.cause
+        raise refuse(
+            inner.reason,
+            f"{inner.message}; the rehearsal area is kept at "
+            f"{', '.join(str(path) for path in area.paths)}",
+            remedy=inner.remediation.remedy,
+            steps=inner.remediation.steps,
+            origin=_ORIGIN,
+            detail={**dict(inner.detail), "rehearsal_area": [str(path) for path in area.paths]},
+            inner=inner,
+        ) from exc
+    except KeyboardInterrupt as exc:
+        rehearsal.assert_untouched(before, kept=area.paths)
+        raise refuse(
+            "cancelled",
+            f"the rehearsal was interrupted; the rehearsal area is kept at "
+            f"{', '.join(str(path) for path in area.paths)}",
+            origin=_ORIGIN,
+            detail={"rehearsal_area": [str(path) for path in area.paths]},
+        ) from exc
+    except Exception as exc:
+        rehearsal.assert_untouched(before, kept=area.paths)
+        raise refuse(
+            "internal-error",
+            f"the rehearsal failed ({exc}); the rehearsal area is kept at "
+            f"{', '.join(str(path) for path in area.paths)}",
+            origin=_ORIGIN,
+            detail={"rehearsal_area": [str(path) for path in area.paths]},
+        ) from exc
+    rehearsal.assert_untouched(before, kept=area.paths)
+    rehearsal.remove(area)
+    facts["area removed"] = True
+    recorded = rehearsal.record(
+        ctx.run.run_id,
+        verb=REHEARSAL_VERB,
+        key=rehearsal_key(planned),
+        digest=payload["digest"],
+        plan=lines,
+        facts=facts,
+    )
+    facts["record"] = str(recorded)
+    data = {**payload, "totals": {**payload["totals"], "rehearsal": facts}}
+    warnings = []
+    if how["archived"] is not None:
+        warnings.append(
+            {
+                "code": REHEARSAL_ARCHIVE_SKIPPED,
+                "message": "the account archive this set landing would rename was planned "
+                "and digested and not rehearsed, since it is a write to the account",
+            }
+        )
+    return ctx.envelope(data=data, warnings=warnings)
+
+
+def _rehearse_in(
+    cfg: config.Config,
+    planned: landing.Plan,
+    *,
+    area: rehearsal.Area,
+    planner: Callable[..., Callable[[Any], native.NativePlan]],
+    payload_of: Callable[[native.NativePlan], dict],
+    archived,
+    declared,
+) -> tuple[dict[str, Any], dict, list[str]]:
+    """Plan live, plan at the area, compare, apply at the area, read back. Answers the facts."""
+    db = rb_writer.open_db(area.database, require_closed=True, cfg=area.cfg)
+    try:
+        rows = planner(cfg, planned)(db)
+        target = _folder(rows)
+        payload = payload_of(rows)
+        lines = plan_lines(planned, rows, target=target, archived=archived)
+        # OUTSIDE THE REDIRECTION, reading the installation state the live
+        # plan read, so the two plans differ only in where the files are.
+        staged = landing.plan(area.staging, area.cfg, planned.batch)
+        scratch_rows = planner(area.cfg, staged)(db)
+        scratch_target = _folder(scratch_rows)
+        pairs = _mapped_back(area, planned, (target, rows), (scratch_target, scratch_rows))
+        back = rehearsal.lines(
+            rehearsal.mapped(
+                plan_identity(staged, scratch_rows, target=scratch_target, archived=archived),
+                pairs,
+            )
+        )
+        differ = rehearsal.differing(back, lines)
+        if differ:
+            raise refuse(
+                "decision-stale",
+                f"the plan made at the rehearsal area is not the live plan in "
+                f"{len(differ)} line(s), in {', '.join(_fields_of(differ))}, so nothing "
+                f"was applied there; the area's paths were compared after mapping "
+                + ", ".join(f"{scratch} to {live}" for scratch, live in pairs)
+                + "; a line only the area's plan has is marked -, one only the live plan has +: "
+                + "; ".join(differ[:REHEARSAL_LINES_SHOWN]),
+                origin=_ORIGIN,
+                detail={"differs": differ, "mapped": [list(pair) for pair in pairs]},
+            )
+        # A NAME THE LIVE BATCH FOLDER HOLDS IS HELD AT THE AREA TOO, so the
+        # area's move refuses what the live move will; plans cannot see it.
+        for item in staged.items:
+            if (target / item.name).exists() or (target / item.name).is_symlink():
+                scratch_target.mkdir(parents=True, exist_ok=True)
+                (scratch_target / item.name).touch()
+        with rehearsal.redirected(area):
+            session.assert_backup_acknowledged(area.cfg)
+            rows_before = _active_rows(db)
+            with landing.batch_lock(planned.batch):
+                landed = landing.apply_native(
+                    staged, cfg=area.cfg, db=db, rows=scratch_rows, declared=declared
+                )
+            native.assert_rows_gridless(landed.collection)
+            native.assert_rows_identified(landed.collection)
+            rows_after = _active_rows(db)
+    finally:
+        rb_writer.close_db(db)
+    # The check copies to the temporary volume, so its room is measured first
+    # and no room is never named a failed check (R-1677).
+    snapshot.assert_room_for_check(area.database)
+    try:
+        sound = rb_writer.integrity_ok(area.database, raise_copy_failure=True)
+    except rb_writer.IntegrityCheckCopyFailed as failed:
+        no_room = snapshot.check_had_no_room(failed, origin=_ORIGIN)
+        if no_room is not None:
+            raise no_room from failed
+        sound = False
+    if not sound:
+        raise refuse(
+            "snapshot-integrity-failed",
+            f"the database copy {area.database} fails SQLite's integrity check after "
+            f"the rehearsal's landing",
+            origin=_ORIGIN,
+            detail={"database": str(area.database)},
+        )
+    facts: dict[str, Any] = {
+        "run": area.run_id,
+        "landed": len(landed.moved),
+        "refused": len(landed.refused),
+        "added": len(landed.collection.added),
+        "already present": len(landed.collection.present),
+        "memberships": landed.collection.memberships_added,
+        "active rows before": rows_before,
+        "active rows after": rows_after,
+        "landed rows gridless": True,
+        "integrity": "ok",
+    }
+    return facts, payload, lines
+
+
+def _mapped_back(
+    area: rehearsal.Area, planned: landing.Plan, live: tuple, scratch: tuple
+) -> tuple[tuple[str, str], ...]:
+    """Each scratch spelling in the area's plan and the live spelling it stands for.
+
+    The staging and batch folder in the MOUNTED spelling of ``from`` and
+    ``to``, and the batch folder in the STORED spelling of ``FolderPath``
+    (U188), which on a library whose base drive is not its mount differs.
+    Spelled by the writer's own :func:`native.stored_folder_path`; a repeat
+    pair is dropped. ``live`` and ``scratch`` are each a plan's folder and its rows.
+    """
+    (target, rows), (scratch_target, scratch_rows) = live, scratch
+    stored = (
+        native.stored_folder_path(
+            scratch_target,
+            base_drive=scratch_rows.base_drive,
+            current_drive=scratch_rows.current_drive,
+        ),
+        native.stored_folder_path(
+            target, base_drive=rows.base_drive, current_drive=rows.current_drive
+        ),
+    )
+    return tuple(
+        dict.fromkeys(
+            (
+                (str(area.staging), str(planned.folder)),
+                (str(scratch_target), str(target)),
+                stored,
+            )
+        )
+    )
+
+
+def _fields_of(differ: list[str]) -> list[str]:
+    """The fields the differing lines are in, each once, ``rows.columns.FolderPath`` for a row's path.
+
+    The line's path without indices or its ``gate`` or ``plan`` part, so a
+    leaf in a list is named by the list.
+    """
+    names = []
+    for line in differ:
+        path = re.sub(r"\[\d+\]", "", line[2:].split(" = ", 1)[0])
+        names.append(path.split(".", 1)[-1])
+    return list(dict.fromkeys(names))
 
 
 def rehearsal_facts(planned: landing.Plan, *, digest: str, plan: list[str]) -> dict[str, Any]:
