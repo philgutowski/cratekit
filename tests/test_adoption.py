@@ -54,12 +54,13 @@ from cratekit.adopt import apply as adopt_apply
 from cratekit.adopt import approval as adopt_approval
 from cratekit.adopt import plan as adopt_plan
 from cratekit.adopt import revert as adopt_revert
+from cratekit.adopt import revert_changed as adopt_changed
 from cratekit.adopt import scan as adopt_scan
 from cratekit.core import cause, config, locations, review, tags, taxonomy
 from cratekit.core.cause import REASONS, CratekitError
 from cratekit.core.exit_codes import ExitCode, Remedy
-from tests.test_config import valid_data
 from tests._containers import synth_container
+from tests.test_config import valid_data
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -2308,7 +2309,7 @@ def test_the_FIRST_ADOPTION_of_a_library_hashes_NOTHING(cfg, tmp_path, monkeypat
     reads: list[Path] = []
     real_digest = adopt_revert.digest_of
     monkeypatch.setattr(
-        adopt_revert, "digest_of", lambda p, **kw: (reads.append(p), real_digest(p))[1]
+        adopt_changed, "digest_of", lambda p, **kw: (reads.append(p), real_digest(p))[1]
     )
     path = _synth(tmp_path, ".flac")
     tags.write_genre(path, "User Genre")
@@ -2364,7 +2365,7 @@ def test_a_first_adoption_of_EIGHT_files_reads_EIGHT_times_and_not_FIFTEEN(
     reads: list[Path] = []
     real_digest = adopt_revert.digest_of
     monkeypatch.setattr(
-        adopt_revert, "digest_of", lambda p, **kw: (reads.append(p), real_digest(p))[1]
+        adopt_changed, "digest_of", lambda p, **kw: (reads.append(p), real_digest(p))[1]
     )
 
     per_file: list[int] = []
@@ -2664,7 +2665,7 @@ def test_a_record_whose_SIZE_is_not_this_files_size_is_never_a_reason_to_HASH(
     reads: list[Path] = []
     real_digest = adopt_revert.digest_of
     monkeypatch.setattr(
-        adopt_revert, "digest_of", lambda p, **kw: (reads.append(p), real_digest(p))[1]
+        adopt_changed, "digest_of", lambda p, **kw: (reads.append(p), real_digest(p))[1]
     )
 
     path = _synth(tmp_path, ".flac")
@@ -3685,11 +3686,11 @@ def test_a_file_of_a_DIFFERENT_SIZE_is_refused_without_reading_it(cfg, tmp_path)
 
     reads: list[Path] = []
     real_digest = adopt_revert.digest_of
-    adopt_revert.digest_of = lambda p: (reads.append(p), real_digest(p))[1]
+    adopt_changed.digest_of = lambda p: (reads.append(p), real_digest(p))[1]
     try:
         report = adopt_revert.revert_tags(cfg)
     finally:
-        adopt_revert.digest_of = real_digest
+        adopt_changed.digest_of = real_digest
 
     assert list(report.failed) == [(str(path), "genre")]
     assert reads == [], f"a whole file was hashed to confirm what stat said: {reads}"
@@ -3748,7 +3749,7 @@ def test_a_file_that_cannot_be_READ_is_not_reported_as_somebody_elses_bytes(
     )
     key = (str(path), "genre")
     with pytest.MonkeyPatch.context() as unreadable:
-        unreadable.setattr(adopt_revert, "digest_of", lambda _p: "")
+        unreadable.setattr(adopt_changed, "digest_of", lambda _p: "")
         report = adopt_revert.revert_tags(cfg)
     assert list(report.failed) == [key]
     assert "its bytes cannot be read here to compare" in report.failed[key], (
@@ -3968,7 +3969,7 @@ def test_a_stamping_read_that_FAILS_is_recorded_as_its_own_state(cfg, tmp_path):
     tags.write_genre(path, "Original A")
 
     with pytest.MonkeyPatch.context() as unreadable:
-        unreadable.setattr(adopt_revert, "digest_of", lambda _p: "")
+        unreadable.setattr(adopt_changed, "digest_of", lambda _p: "")
         record, landed = adopt_revert.write_tag_with_record(
             cfg, path, field="genre", written="Adopted", entry_id="e1"
         )
@@ -4028,13 +4029,13 @@ def test_the_stamping_read_is_RETRIED_before_the_record_gives_up(cfg, tmp_path):
         attempts["n"] += 1
         return "" if attempts["n"] == 1 else real_digest(target)
 
-    adopt_revert.digest_of = fails_once
+    adopt_changed.digest_of = fails_once
     try:
         record, landed = adopt_revert.write_tag_with_record(
             cfg, path, field="genre", written="Adopted", entry_id="e1"
         )
     finally:
-        adopt_revert.digest_of = real_digest
+        adopt_changed.digest_of = real_digest
 
     assert landed and attempts["n"] == 2, attempts
     assert record.digest_state is adopt_revert.DigestState.RECORDED
@@ -4207,7 +4208,7 @@ def test_a_cloud_EVICTED_file_IS_read_because_the_restore_fetches_it_anyway(
     real_digest = adopt_revert.digest_of
     with pytest.MonkeyPatch.context() as evicted:
         evicted.setattr(
-            adopt_revert, "digest_of", lambda p: (reads.append(p), real_digest(p))[1]
+            adopt_changed, "digest_of", lambda p: (reads.append(p), real_digest(p))[1]
         )
         evicted.setattr(Path, "stat", evicted_stat)
 
@@ -4395,7 +4396,7 @@ def test_a_REWRITE_INSIDE_ONE_TICK_that_moves_no_stat_field_is_still_caught(
         return answer
 
     with pytest.MonkeyPatch.context() as swapping:
-        swapping.setattr(adopt_revert, "digest_of", swap_the_bytes_after_the_first_read)
+        swapping.setattr(adopt_changed, "digest_of", swap_the_bytes_after_the_first_read)
         report = adopt_revert.revert_tags(cfg)
 
     after = path.stat()
@@ -4738,11 +4739,11 @@ def test_a_read_that_RUNS_OUT_OF_TIME_is_not_reported_as_unreadable(cfg, tmp_pat
 
     key = (str(path), "genre")
     real = adopt_revert.digest_of
-    adopt_revert.digest_of = never_arrives
+    adopt_changed.digest_of = never_arrives
     try:
         report = adopt_revert.revert_tags(cfg)
     finally:
-        adopt_revert.digest_of = real
+        adopt_changed.digest_of = real
 
     assert report.restored == ()
     assert (
@@ -4834,13 +4835,13 @@ def test_the_stamping_read_is_asked_EXACTLY_TWICE_and_not_three_times(
         return ""
 
     real = adopt_revert.digest_of
-    adopt_revert.digest_of = always_fails
+    adopt_changed.digest_of = always_fails
     try:
         record, landed = adopt_revert.write_tag_with_record(
             cfg, path, field="genre", written="Adopted", entry_id="e1"
         )
     finally:
-        adopt_revert.digest_of = real
+        adopt_changed.digest_of = real
 
     assert landed
     assert attempts["n"] == 2, attempts
@@ -4864,13 +4865,13 @@ def test_a_stamping_read_that_TIMES_OUT_is_not_retried_at_all(cfg, tmp_path):
         raise TimeoutError(f"{target} is still being fetched")
 
     real = adopt_revert.digest_of
-    adopt_revert.digest_of = times_out
+    adopt_changed.digest_of = times_out
     try:
         record, landed = adopt_revert.write_tag_with_record(
             cfg, path, field="genre", written="Adopted", entry_id="e1"
         )
     finally:
-        adopt_revert.digest_of = real
+        adopt_changed.digest_of = real
 
     assert landed and attempts["n"] == 1, attempts
     assert record.digest_state is adopt_revert.DigestState.UNREADABLE
@@ -4973,11 +4974,11 @@ def test_the_FETCH_happens_before_the_lock_and_the_DECIDING_read_happens_under_i
             os.close(handle)
         return real(target, **kwargs)
 
-    adopt_revert.digest_of = note_the_lock
+    adopt_changed.digest_of = note_the_lock
     try:
         report = adopt_revert.revert_tags(cfg)
     finally:
-        adopt_revert.digest_of = real
+        adopt_changed.digest_of = real
 
     assert report.failed == {}, report.failed
     assert held_during_read == [False, True], (
