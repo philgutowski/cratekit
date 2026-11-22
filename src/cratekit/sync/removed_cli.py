@@ -21,12 +21,14 @@ answered. This module is the order a person meets it in:
   writes nothing;
 * a plan that offers a row reads the backup acknowledgment, then asks the
   explicit gate ``sync.removed.confirm`` over the digested plan, every offered,
-  kept and left row on its screen (U288);
+  kept and left row on its screen with the count of memberships the removal
+  renumbers (U288, R-1830);
 * only ``apply`` opens the database to write, refusing while rekordbox or its
   agent runs, and the engine takes the plan again on that handle and refuses
   ``decision-stale`` when anything moved in between. The offered rows leave the
-  collection as rekordbox's own Remove from Collection takes them out, and no
-  file is touched: each file reaches the Trash only through the next ``crate
+  collection as rekordbox's own Remove from Collection takes them out, the
+  members after each in a playlist it left numbered down, and no file is
+  touched: each file reaches the Trash only through the next ``crate
   delete review``, which reads the session record this writes.
 
 ``--retire`` is the other order (U320): every synced playlist is read,

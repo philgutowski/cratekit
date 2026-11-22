@@ -237,7 +237,8 @@ Phillip's to answer when he wants one retired sooner. One that offers a track ne
 acknowledgment (mint it with `crate session ack --as session`, as CLAUDE.md's
 rule says) and stops at its explicit gate, `sync.removed.confirm`, whose
 screen lists each offered track by artist, title, the playlists it left and
-its file. `apply` takes them out of the rekordbox collection as rekordbox's
+its file, and counts the playlist memberships after them the removal
+renumbers. `apply` takes them out of the rekordbox collection as rekordbox's
 Remove from Collection does, so the gate is answered by CLAUDE.md's
 rehearsal rule: the same verb driven on a disposable copy with library state
 redirected, as `docs/solutions/workflow-issues/a-disposable-database-copy-does-not-make-library-state-disposable.md`
