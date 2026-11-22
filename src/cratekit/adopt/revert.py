@@ -82,6 +82,12 @@ from cratekit.adopt.revert_record import LedgerUnreadable as LedgerUnreadable
 from cratekit.cli.output import timestamp
 from cratekit.core import config, tags
 
+#: A field's values as a record holds them, None being the field ABSENT.
+_Values = tuple[str, ...] | None
+
+#: Records named by their ledger key, the file and the field.
+_Keys = frozenset[tuple[str, str]]
+
 
 @dataclass(frozen=True, slots=True)
 class _Matched:
@@ -113,30 +119,24 @@ def _re_addressed(
     return _Matched(record, replace(record, file=identity, path=wanted_path))
 
 
-def _one_or_none(
-    found: list[TagSnapshot], *, resolved: Path, why: str
-) -> TagSnapshot | None:
+def _one_or_none(found: list[TagSnapshot], *, resolved: Path, why: str) -> TagSnapshot | None:
     """The single record in ``found``, or a refusal because there is more than one."""
     if not found:
         return None
     if len(found) > 1:
         raise RecordCannotBeMatched(
-            f"{resolved} cannot be matched to one record in the revert ledger: "
-            f"{why}. Nothing is written to a file whose original cannot be "
-            f"recorded first, and choosing between two records here decides "
-            f"which of two values a later revert puts on this file. Nothing has "
-            f"been written and every original in the ledger is still recorded; "
-            f"what has to be settled is the ledger.",
+            f"{resolved} cannot be matched to one record in the revert ledger: {why}. Nothing "
+            f"is written to a file whose original cannot be recorded first, and choosing "
+            f"between two records here decides which of two values a later revert puts on "
+            f"this file. Nothing has been written and every original in the ledger is still "
+            f"recorded; what has to be settled is the ledger.",
             path=resolved,
         )
     return found[0]
 
 
 def _nothing_unrecorded_is_at_risk(
-    record: TagSnapshot,
-    *,
-    written: str,
-    current: Callable[[], tuple[str, ...] | None],
+    record: TagSnapshot, *, written: str, current: Callable[[], _Values]
 ) -> bool:
     """Whether this write can lose a value the ledger does not already hold.
 
@@ -155,15 +155,8 @@ def _nothing_unrecorded_is_at_risk(
 
 
 def _settled_or_refused(
-    record: TagSnapshot,
-    resolved: Path,
-    *,
-    identity: str,
-    path_text: str,
-    keep_path: bool,
-    written: str,
-    look: Callable[[], _Looked],
-    current: Callable[[], tuple[str, ...] | None],
+    record: TagSnapshot, resolved: Path, *, identity: str, path_text: str, keep_path: bool,
+    written: str, look: Callable[[], _Looked], current: Callable[[], _Values],
     size_here: int | None,
 ) -> _Matched:
     """A record whose ADDRESSES agree with this file, checked for what it can cost.
@@ -192,14 +185,8 @@ def _settled_or_refused(
 
 
 def _record_for(
-    ledger: RevertLedger,
-    resolved: Path,
-    *,
-    field: str,
-    identity: str,
-    written: str,
-    look: Callable[[], _Looked],
-    current: Callable[[], tuple[str, ...] | None],
+    ledger: RevertLedger, resolved: Path, *, field: str, identity: str, written: str,
+    look: Callable[[], _Looked], current: Callable[[], _Values],
     size_here: int | None,
 ) -> _Matched | None:
     """Which record in ``ledger`` is about the file at ``resolved``, if any.
@@ -231,36 +218,24 @@ def _record_for(
     """
     path_text = str(resolved)
     legacy = _legacy_file_id(path_text)
+    claimed = [record for record in ledger.snapshots if record.field == field]
     by_identity = _one_or_none(
-        [
-            record
-            for record in ledger.snapshots
-            if record.field == field and record.file in (identity, legacy)
-        ],
+        [record for record in claimed if record.file in (identity, legacy)],
         resolved=resolved,
         why=(
-            "two records key to this file, one under the volume and inode it has "
-            "now and one under the path digest an older build wrote"
+            "two records key to this file, one under the volume and inode it has now and one "
+            "under the path digest an older build wrote"
         ),
     )
     by_path = _one_or_none(
-        [
-            record
-            for record in ledger.snapshots
-            if record.field == field and record.path == path_text
-        ],
+        [record for record in claimed if record.path == path_text],
         resolved=resolved,
         why="two records carry this exact path for this field",
     )
 
     if by_identity is None and by_path is None:
         return _found_by_its_bytes(
-            ledger,
-            resolved,
-            field=field,
-            identity=identity,
-            look=look,
-            size_here=size_here,
+            ledger, resolved, field=field, identity=identity, look=look, size_here=size_here
         )
 
     if by_identity is not None and by_path is not None:
@@ -277,12 +252,11 @@ def _record_for(
                 size_here=size_here,
             )
         raise RecordCannotBeMatched(
-            f"{resolved} is claimed by two different records in the revert "
-            f"ledger: one is keyed to the volume and inode this file has now, "
-            f"and a different one carries this path. Both cannot be about this "
-            f"file, and nothing here can say which is. Both originals are still "
-            f"recorded and nothing has been written; what has to be settled is "
-            f"the ledger.",
+            f"{resolved} is claimed by two different records in the revert ledger: one is "
+            f"keyed to the volume and inode this file has now, and a different one carries "
+            f"this path. Both cannot be about this file, and nothing here can say which is. "
+            f"Both originals are still recorded and nothing has been written; what has to be "
+            f"settled is the ledger.",
             path=resolved,
         )
 
@@ -306,18 +280,12 @@ def _record_for(
             return _re_addressed(
                 by_identity, identity=identity, path_text=path_text, keep_path=False
             )
-        raise RecordCannotBeMatched(
-            _an_inode_is_not_a_file(by_identity, resolved), path=resolved
-        )
+        raise RecordCannotBeMatched(_an_inode_is_not_a_file(by_identity, resolved), path=resolved)
 
     assert by_path is not None
     if _the_bytes_agree(by_path, look, size_here):
-        return _re_addressed(
-            by_path, identity=identity, path_text=path_text, keep_path=True
-        )
-    raise RecordCannotBeMatched(
-        _a_path_is_not_a_file(by_path, resolved), path=resolved
-    )
+        return _re_addressed(by_path, identity=identity, path_text=path_text, keep_path=True)
+    raise RecordCannotBeMatched(_a_path_is_not_a_file(by_path, resolved), path=resolved)
 
 
 def _the_bytes_agree(
@@ -359,13 +327,8 @@ def _the_recorded_path_is_vacant(record: TagSnapshot) -> bool:
 
 
 def _found_by_its_bytes(
-    ledger: RevertLedger,
-    resolved: Path,
-    *,
-    field: str,
-    identity: str,
-    look: Callable[[], _Looked],
-    size_here: int | None,
+    ledger: RevertLedger, resolved: Path, *, field: str, identity: str,
+    look: Callable[[], _Looked], size_here: int | None,
 ) -> _Matched | None:
     """A stranded record whose bytes are this file's, when no address matched.
 
@@ -398,47 +361,42 @@ def _found_by_its_bytes(
         stranded,
         resolved=resolved,
         why=(
-            "two stranded records were stamped from exactly these bytes, so the "
-            "bytes cannot say which of them this file is"
+            "two stranded records were stamped from exactly these bytes, so the bytes cannot "
+            "say which of them this file is"
         ),
     )
     if matched is None:
         return None
-    return _re_addressed(
-        matched, identity=identity, path_text=str(resolved), keep_path=False
-    )
+    return _re_addressed(matched, identity=identity, path_text=str(resolved), keep_path=False)
 
 
 def _a_value_nothing_recorded(
-    record: TagSnapshot, resolved: Path, held: tuple[str, ...] | None
+    record: TagSnapshot, resolved: Path, held: _Values
 ) -> str:
     """The refusal for a file whose field holds something the ledger never saw."""
     return (
-        f"{resolved} is the file a record in the revert ledger is about, by both "
-        f"its volume and inode and its path, but the bytes are not the ones "
-        f"adoption left and its {record.field!r} now holds {held!r}, which is "
-        f"neither the {record.original!r} that record kept nor a value adoption "
-        f"has written through it. Something rewrote this file after adoption ran: "
-        f"a tag edited by hand, or a different recording put here in place. "
-        f"Writing over it would put a value in no file and no record, and which "
-        f"of the two happened is not a fact this file carries. Nothing was "
-        f"written and {record.original!r} is still recorded for "
-        f"{(record.path, record.field)!r}."
+        f"{resolved} is the file a record in the revert ledger is about, by both its volume "
+        f"and inode and its path, but the bytes are not the ones adoption left and its "
+        f"{record.field!r} now holds {held!r}, which is neither the {record.original!r} that "
+        f"record kept nor a value adoption has written through it. Something rewrote this "
+        f"file after adoption ran: a tag edited by hand, or a different recording put here in "
+        f"place. Writing over it would put a value in no file and no record, and which of the "
+        f"two happened is not a fact this file carries. Nothing was written and "
+        f"{record.original!r} is still recorded for {(record.path, record.field)!r}."
     )
 
 
 def _an_inode_is_not_a_file(record: TagSnapshot, resolved: Path) -> str:
     """The refusal for a record keyed to this inode whose own path is elsewhere."""
     return (
-        f"{resolved} has the volume and inode a record in the revert ledger is "
-        f"keyed to, and that record is about {record.path!r}, which is not this "
-        f"file and is no longer there. An inode number is REUSED after the file "
-        f"holding it is deleted, which is ordinary on the FAT and exFAT volumes "
-        f"rekordbox exports to, so this is either that file renamed or an "
-        f"unrelated file that inherited its number. The bytes were asked and did "
-        f"not answer to what that record was stamped from, so the two cannot be "
-        f"told apart from here. Nothing was written to this file and its own tag "
-        f"value is untouched; the record still holds {record.original!r} for "
+        f"{resolved} has the volume and inode a record in the revert ledger is keyed to, and "
+        f"that record is about {record.path!r}, which is not this file and is no longer "
+        f"there. An inode number is REUSED after the file holding it is deleted, which is "
+        f"ordinary on the FAT and exFAT volumes rekordbox exports to, so this is either that "
+        f"file renamed or an unrelated file that inherited its number. The bytes were asked "
+        f"and did not answer to what that record was stamped from, so the two cannot be told "
+        f"apart from here. Nothing was written to this file and its own tag value is "
+        f"untouched; the record still holds {record.original!r} for "
         f"{(record.path, record.field)!r}."
     )
 
@@ -446,27 +404,20 @@ def _an_inode_is_not_a_file(record: TagSnapshot, resolved: Path) -> str:
 def _a_path_is_not_a_file(record: TagSnapshot, resolved: Path) -> str:
     """The refusal for a record carrying this path whose recorded inode has moved."""
     return (
-        f"{resolved} is the path a record in the revert ledger carries, and the "
-        f"volume and inode at that path are no longer the ones that record was "
-        f"written from. A save that writes a temporary file and renames it over "
-        f"the original moves the inode without moving the file, and so does a "
-        f"remount, and so does replacing the file with a different one. The bytes "
-        f"were asked and did not answer to what that record was stamped from, so "
-        f"the three cannot be told apart from here. Nothing was written to this "
-        f"file and its own tag value is untouched; the record still holds "
+        f"{resolved} is the path a record in the revert ledger carries, and the volume and "
+        f"inode at that path are no longer the ones that record was written from. A save "
+        f"that writes a temporary file and renames it over the original moves the inode "
+        f"without moving the file, and so does a remount, and so does replacing the file with "
+        f"a different one. The bytes were asked and did not answer to what that record was "
+        f"stamped from, so the three cannot be told apart from here. Nothing was written to "
+        f"this file and its own tag value is untouched; the record still holds "
         f"{record.original!r} for {(record.path, record.field)!r}."
     )
 
 
 def _record_locked(
-    cfg: config.Config,
-    resolved: Path,
-    *,
-    field: str,
-    written: str,
-    entry_id: str,
-    now: datetime | None,
-    read_field: Callable[[Path, str], tuple[str, ...] | None],
+    cfg: config.Config, resolved: Path, *, field: str, written: str, entry_id: str,
+    now: datetime | None, read_field: Callable[[Path, str], _Values],
 ) -> tuple[RevertLedger, TagSnapshot]:
     """The record half, assuming the caller already holds the lock.
 
@@ -480,24 +431,14 @@ def _record_locked(
     look = functools.cache(lambda: _look_at(resolved))
     current = functools.cache(lambda: read_field(resolved, field))
     matched = _record_for(
-        ledger,
-        resolved,
-        field=field,
-        identity=identity,
-        written=written,
-        look=look,
+        ledger, resolved, field=field, identity=identity, written=written, look=look,
         current=current,
         size_here=_size_of(resolved),
     )
     if matched is None:
         record = TagSnapshot(
-            file=identity,
-            field=field,
-            path=str(resolved),
-            original=current(),
-            written=written,
-            recorded=timestamp(now),
-            entry_id=entry_id,
+            file=identity, field=field, path=str(resolved), original=current(),
+            written=written, recorded=timestamp(now), entry_id=entry_id,
             entries=(entry_id,) if entry_id else (),
         )
         ledger = ledger.with_snapshot(record)
@@ -531,12 +472,7 @@ def _records_only(_path: Path, _field: str, _value: str) -> bool:
 
 
 def snapshot_before_write(
-    cfg: config.Config,
-    path: Path | str,
-    *,
-    field: str,
-    written: str,
-    entry_id: str = "",
+    cfg: config.Config, path: Path | str, *, field: str, written: str, entry_id: str = "",
     now: datetime | None = None,
     read_field: Callable[[Path, str], tuple[str, ...] | None] = tags.read_tag_values,
 ) -> TagSnapshot:
@@ -548,24 +484,13 @@ def snapshot_before_write(
     window a revert can land in, which :func:`write_tag_with_record` closes.
     """
     return write_tag_with_record(
-        cfg,
-        path,
-        field=field,
-        written=written,
-        entry_id=entry_id,
-        now=now,
-        read_field=read_field,
-        write_field=_records_only,
+        cfg, path, field=field, written=written, entry_id=entry_id, now=now,
+        read_field=read_field, write_field=_records_only,
     )[0]
 
 
 def write_tag_with_record(
-    cfg: config.Config,
-    path: Path | str,
-    *,
-    field: str,
-    written: str,
-    entry_id: str = "",
+    cfg: config.Config, path: Path | str, *, field: str, written: str, entry_id: str = "",
     now: datetime | None = None,
     read_field: Callable[[Path, str], tuple[str, ...] | None] = tags.read_tag_values,
     write_field: Callable[[Path, str, str], bool] = _write_one,
@@ -586,12 +511,7 @@ def write_tag_with_record(
     resolved = Path(path)
     with config.exclusive_lock(lock_path(cfg)):
         ledger, record = _record_locked(
-            cfg,
-            resolved,
-            field=field,
-            written=written,
-            entry_id=entry_id,
-            now=now,
+            cfg, resolved, field=field, written=written, entry_id=entry_id, now=now,
             read_field=read_field,
         )
         landed = write_field(resolved, field, written)
@@ -655,20 +575,16 @@ def _cannot_say_which_record(record: TagSnapshot, why: str) -> str:
     refusal's remedy names a verb that has not landed").
     """
     return (
-        f"this record cannot be spent on the file at that path: {why}. force "
-        f"does not apply: it overrides evidence about the BYTES, and what is "
-        f"missing here is which record belongs to this file, which is a fact "
-        f"about the ledger. The record is "
-        f"{(record.path, record.field)!r}; every original is still "
-        f"recorded and nothing has been written."
+        f"this record cannot be spent on the file at that path: {why}. force does not apply: "
+        f"it overrides evidence about the BYTES, and what is missing here is which record "
+        f"belongs to this file, which is a fact about the ledger. The record is "
+        f"{(record.path, record.field)!r}; every original is still recorded and nothing has "
+        f"been written."
     )
 
 
 def revert_tags(
-    cfg: config.Config,
-    *,
-    entry_id: str | None = None,
-    force: Collection[tuple[str, str]] = (),
+    cfg: config.Config, *, entry_id: str | None = None, force: Collection[tuple[str, str]] = (),
     restore: Callable[[Path, str, tuple[str, ...] | None], bool] = restore_tag,
 ) -> RevertReport:
     """Put every recorded original back on disk, exactly.
@@ -700,9 +616,7 @@ def revert_tags(
     with config.exclusive_lock(lock_path(cfg)):
         ledger = read(cfg)
         selected = tuple(
-            record
-            for record in ledger.snapshots
-            if entry_id is None or record.written_by(entry_id)
+            record for record in ledger.snapshots if entry_id is None or record.written_by(entry_id)
         )
         # OVER THE WHOLE LEDGER AND NOT THE SELECTION: ambiguity is a property of
         # the document, and narrowing a group of two to the one an ``entry_id``
@@ -713,9 +627,7 @@ def revert_tags(
         for record in selected:
             reported = (record.path, record.field)
             if _key(record) in confused:
-                failed[reported] = _cannot_say_which_record(
-                    record, _TWO_RECORDS_NAME_THIS_FILE
-                )
+                failed[reported] = _cannot_say_which_record(record, _TWO_RECORDS_NAME_THIS_FILE)
                 continue
             if reported in forced and _key(record) in crowded:
                 failed[reported] = _cannot_say_which_record(
@@ -750,7 +662,7 @@ def _live_identity(path: Path) -> str | None:
 
 def _sharing(
     records: tuple[TagSnapshot, ...], key_of: Callable[[TagSnapshot], tuple[str | None, str]]
-) -> frozenset[tuple[str, str]]:
+) -> _Keys:
     """The records whose ``key_of`` another record shares; a key opening with None
     shares nothing, and a group of one is never shared.
     """
@@ -764,9 +676,7 @@ def _sharing(
     )
 
 
-def _records_that_cannot_be_told_apart(
-    selected: tuple[TagSnapshot, ...],
-) -> frozenset[tuple[str, str]]:
+def _records_that_cannot_be_told_apart(selected: tuple[TagSnapshot, ...]) -> _Keys:
     """The records whose file another record in the LEDGER also names.
 
     Always passed the whole ledger (see :func:`revert_tags`). Ledgers already on
@@ -780,9 +690,7 @@ def _records_that_cannot_be_told_apart(
     return _sharing(selected, lambda record: (_live_identity(Path(record.path)), record.field))
 
 
-def _paths_more_than_one_record_carries(
-    selected: tuple[TagSnapshot, ...],
-) -> frozenset[tuple[str, str]]:
+def _paths_more_than_one_record_carries(selected: tuple[TagSnapshot, ...]) -> _Keys:
     """The records a ``(path, field)`` force key could not have meant uniquely.
 
     ``force`` is keyed on what a person can type, which is not unique, and two
@@ -794,10 +702,7 @@ def _paths_more_than_one_record_carries(
 
 
 def _bring_the_bytes_within_reach(
-    cfg: config.Config,
-    *,
-    entry_id: str | None,
-    forced: Collection[tuple[str, str]],
+    cfg: config.Config, *, entry_id: str | None, forced: Collection[tuple[str, str]]
 ) -> None:
     """Read every file this pass will ask about, BEFORE the lock, and DECIDE NOTHING.
 
@@ -823,10 +728,7 @@ def _bring_the_bytes_within_reach(
 
 
 def _revert_one(
-    record: TagSnapshot,
-    forced: bool,
-    *,
-    restore: Callable[[Path, str, tuple[str, ...] | None], bool],
+    record: TagSnapshot, forced: bool, *, restore: Callable[[Path, str, _Values], bool]
 ) -> str | None:
     """Put one record's original back. None on success, else why not."""
     target = Path(record.path)

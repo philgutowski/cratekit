@@ -51,11 +51,8 @@ class LedgerUnreadable(CratekitError):
     def __init__(self, message: str, *, path: Path, remedy: Remedy) -> None:
         super().__init__(
             Cause(
-                reason="adoption-ledger-unusable",
-                message=message,
-                remediation=Remediation(remedy=remedy),
-                scope=Scope.RUN,
-                origin=("adopt",),
+                reason="adoption-ledger-unusable", message=message,
+                remediation=Remediation(remedy=remedy), scope=Scope.RUN, origin=("adopt",),
                 detail={"path": str(path), "document": self.document},
             )
         )
@@ -63,9 +60,7 @@ class LedgerUnreadable(CratekitError):
         self.remedy = remedy
 
     @classmethod
-    def at(
-        cls, path: Path, message: str, remedy: Remedy = Remedy.RUN_DOCTOR
-    ) -> LedgerUnreadable:
+    def at(cls, path: Path, message: str, remedy: Remedy = Remedy.RUN_DOCTOR) -> LedgerUnreadable:
         """The refusal for the document at ``path``, which every message opens with."""
         return cls(f"{path} {message}", path=path, remedy=remedy)
 
@@ -93,16 +88,11 @@ class AdoptedFileUnidentifiable(CratekitError):
     them in a minute, so telling that person to retry sends them round a loop.
     """
 
-    def __init__(
-        self, message: str, *, path: Path, remedy: Remedy = Remedy.RETRY_LATER
-    ) -> None:
+    def __init__(self, message: str, *, path: Path, remedy: Remedy = Remedy.RETRY_LATER) -> None:
         super().__init__(
             Cause(
-                reason="adoption-file-unidentifiable",
-                message=message,
-                remediation=Remediation(remedy=remedy),
-                scope=Scope.ITEM,
-                origin=("adopt",),
+                reason="adoption-file-unidentifiable", message=message,
+                remediation=Remediation(remedy=remedy), scope=Scope.ITEM, origin=("adopt",),
                 detail={"path": str(path)},
             )
         )
@@ -158,10 +148,9 @@ def identity_of(path: Path) -> str:
         info = path.stat()
     except OSError as exc:
         raise AdoptedFileUnidentifiable(
-            f"{path} cannot be identified on this machine: {exc}. Nothing is "
-            f"written to a file whose original cannot be recorded first, because "
-            f"a tag write with no record behind it is the one thing this product "
-            f"cannot undo",
+            f"{path} cannot be identified on this machine: {exc}. Nothing is written to a "
+            f"file whose original cannot be recorded first, because a tag write with no "
+            f"record behind it is the one thing this product cannot undo",
             path=path,
         ) from exc
     return f"{IDENTITY_SCHEME}:{info.st_dev}:{info.st_ino}"
@@ -174,9 +163,8 @@ def _legacy_file_id(path: str) -> str:
     a second whose ``original`` is adoption's own value. A digest of the decoded,
     composition-normalized path (U31); never written into a new record.
     """
-    return hashlib.sha256(
-        locations.location_to_path(str(path)).encode("utf-8")
-    ).hexdigest()[:_LEGACY_ID_WIDTH]
+    named = locations.location_to_path(str(path)).encode("utf-8")
+    return hashlib.sha256(named).hexdigest()[:_LEGACY_ID_WIDTH]
 
 
 def _is_an_identity(value: str) -> bool:
@@ -249,18 +237,11 @@ class TagSnapshot:
 
     def to_json(self) -> dict[str, Any]:
         return {
-            "file": self.file,
-            "field": self.field,
-            "path": self.path,
+            "file": self.file, "field": self.field, "path": self.path,
             "original": None if self.original is None else list(self.original),
-            "written": self.written,
-            "recorded": self.recorded,
-            "entry": self.entry_id,
-            "entries": list(self.entries),
-            "size": self.size,
-            "mtime_ns": self.mtime_ns,
-            "digest": self.digest,
-            "digest_state": str(self.digest_state),
+            "written": self.written, "recorded": self.recorded, "entry": self.entry_id,
+            "entries": list(self.entries), "size": self.size, "mtime_ns": self.mtime_ns,
+            "digest": self.digest, "digest_state": str(self.digest_state),
         }
 
     def written_by(self, entry_id: str) -> bool:
@@ -288,10 +269,8 @@ class RevertLedger:
     snapshots: tuple[TagSnapshot, ...] = ()
 
     def snapshot(self, file: str, field: str) -> TagSnapshot | None:
-        return next(
-            (entry for entry in self.snapshots if (entry.file, entry.field) == (file, field)),
-            None,
-        )
+        found = (entry for entry in self.snapshots if (entry.file, entry.field) == (file, field))
+        return next(found, None)
 
     def with_snapshot(self, snapshot: TagSnapshot) -> RevertLedger:
         """This ledger plus ``snapshot``, KEEPING any record already there.
@@ -314,9 +293,7 @@ class RevertLedger:
 
     def without(self, keys: frozenset[tuple[str, str]]) -> RevertLedger:
         """This ledger minus the records named, for use after a revert lands."""
-        return RevertLedger(
-            tuple(entry for entry in self.snapshots if _key(entry) not in keys)
-        )
+        return RevertLedger(tuple(entry for entry in self.snapshots if _key(entry) not in keys))
 
 
 #: What an absent file resolves to: "nothing has been overwritten" is an answer.
@@ -352,11 +329,7 @@ def read_raw(path: Path, refused: Callable[..., LedgerUnreadable]) -> bytes | No
 
 
 def read_document(
-    raw: bytes,
-    path: Path,
-    refused: Callable[..., LedgerUnreadable],
-    *,
-    noun: str,
+    raw: bytes, path: Path, refused: Callable[..., LedgerUnreadable], *, noun: str,
     schema_version: int,
 ) -> tuple[dict, int]:
     """An adoption document's JSON object and its schema version, or the refusal."""
@@ -365,15 +338,13 @@ def read_document(
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise refused(path, f"is not readable as JSON: {exc}") from exc
     if not isinstance(data, dict):
-        raise refused(
-            path, f"holds a {type(data).__name__} at its top level rather than {noun}"
-        )
+        raise refused(path, f"holds a {type(data).__name__} at its top level rather than {noun}")
     version = data.get("schema_version")
     if not isinstance(version, int):
         raise refused(
             path,
-            "carries no integer schema_version, so nothing can be said about the "
-            "shape of what follows it",
+            "carries no integer schema_version, so nothing can be said about the shape of "
+            "what follows it",
         )
     if version > schema_version:
         raise refused(
@@ -398,11 +369,8 @@ def _original_values(original: Any, *, path: Path, at: str) -> tuple[str, ...] |
         return (original,)
     if isinstance(original, list) and all(isinstance(v, str) for v in original):
         return tuple(original)
-    raise _refused(
-        path,
-        f"{at} whose original value is a {type(original).__name__} rather than the "
-        f"field's values",
-    )
+    kind = type(original).__name__
+    raise _refused(path, f"{at} whose original value is a {kind} rather than the field's values")
 
 
 def _entry_list(entry: dict, *, path: Path, at: str) -> tuple[str, ...]:
@@ -439,9 +407,8 @@ def _digest(entry: dict, *, path: Path, at: str) -> str:
     if not isinstance(found, str):
         raise _refused(
             path,
-            f"{at} whose digest is a {type(found).__name__} rather than a string; a "
-            f"record whose only unforgeable evidence is unreadable cannot be spent "
-            f"on a guess",
+            f"{at} whose digest is a {type(found).__name__} rather than a string; a record "
+            f"whose only unforgeable evidence is unreadable cannot be spent on a guess",
         )
     return found
 
@@ -473,9 +440,9 @@ def _digest_state(entry: dict, digest: str, *, path: Path, at: str) -> DigestSta
     if state is not DigestState.RECORDED and digest:
         raise _refused(
             path,
-            f"{at} that says its digest is {found!r} and carries one anyway; a record "
-            f"cannot disown the evidence it is holding, and reporting that record as "
-            f"carrying no digest says something false about the document on disk",
+            f"{at} that says its digest is {found!r} and carries one anyway; a record cannot "
+            f"disown the evidence it is holding, and reporting that record as carrying no "
+            f"digest says something false about the document on disk",
         )
     return state
 
@@ -491,9 +458,7 @@ def read(cfg: config.Config) -> RevertLedger:
     )
     entries = data.get("snapshots")
     if not isinstance(entries, list):
-        raise _refused(
-            path, f"has no snapshots array; its records are a {type(entries).__name__}"
-        )
+        raise _refused(path, f"has no snapshots array; its records are a {type(entries).__name__}")
 
     records: list[TagSnapshot] = []
     seen: set[tuple[str, str]] = set()
@@ -505,8 +470,8 @@ def read(cfg: config.Config) -> RevertLedger:
             if not isinstance(entry.get(name), str) or not entry[name]:
                 raise _refused(
                     path,
-                    f"{at} with no {name}; a record that cannot say which file and "
-                    f"field it describes cannot restore anything",
+                    f"{at} with no {name}; a record that cannot say which file and field it "
+                    f"describes cannot restore anything",
                 )
         if "original" not in entry:
             # A missing key and a null are different facts: null means "the field
@@ -514,43 +479,37 @@ def read(cfg: config.Config) -> RevertLedger:
             # deletes a field nobody recorded anything about.
             raise _refused(
                 path,
-                f"{at} with no original key at all; absence of a fact and absence AS "
-                f"a fact are different, and reading the first as the second reverts "
-                f"by deleting a field this ledger never saw",
+                f"{at} with no original key at all; absence of a fact and absence AS a fact "
+                f"are different, and reading the first as the second reverts by deleting a "
+                f"field this ledger never saw",
             )
         if not _is_an_identity(str(entry["file"])):
             # A record keyed by a scheme this build does not write is a second
             # identity for a file that already has one.
             raise _refused(
                 path,
-                f"{at} whose file identifier is {entry['file']!r}, which is neither "
-                f"this build's {IDENTITY_SCHEME} identity nor the {_LEGACY_ID_WIDTH} "
-                f"character path digest that preceded it; a record keyed by an "
-                f"unknown scheme is a second identity for a file that already has one",
+                f"{at} whose file identifier is {entry['file']!r}, which is neither this "
+                f"build's {IDENTITY_SCHEME} identity nor the {_LEGACY_ID_WIDTH} character path "
+                f"digest that preceded it; a record keyed by an unknown scheme is a second "
+                f"identity for a file that already has one",
             )
         original = _original_values(entry["original"], path=path, at=at)
         digest = _digest(entry, path=path, at=at)
         record = TagSnapshot(
-            file=str(entry["file"]),
-            field=str(entry["field"]),
-            path=str(entry["path"]),
-            original=original,
-            written=str(entry["written"]),
-            recorded=str(entry.get("recorded") or ""),
-            entry_id=str(entry.get("entry") or ""),
+            file=str(entry["file"]), field=str(entry["field"]), path=str(entry["path"]),
+            original=original, written=str(entry["written"]),
+            recorded=str(entry.get("recorded") or ""), entry_id=str(entry.get("entry") or ""),
             entries=_entry_list(entry, path=path, at=at),
             size=_optional_int(entry, "size", path=path, at=at),
             mtime_ns=_optional_int(entry, "mtime_ns", path=path, at=at),
-            digest=digest,
-            digest_state=_digest_state(entry, digest, path=path, at=at),
+            digest=digest, digest_state=_digest_state(entry, digest, path=path, at=at),
         )
         if _key(record) in seen:
             raise _refused(
                 path,
-                f"holds two records for {record.field!r} on one file; a ledger that "
-                f"gives two answers for one field cannot say which value to restore, "
-                f"and resolving that by line order decides what a user's file ends "
-                f"up holding",
+                f"holds two records for {record.field!r} on one file; a ledger that gives two "
+                f"answers for one field cannot say which value to restore, and resolving that "
+                f"by line order decides what a user's file ends up holding",
             )
         seen.add(_key(record))
         records.append(record)

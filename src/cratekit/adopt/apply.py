@@ -90,14 +90,8 @@ class AppliedLedgerUnreadable(revert.LedgerUnreadable):
 
 #: Each field of a record, and the key it is written under on disk.
 _KEYS = (
-    ("entry_id", "entry"),
-    ("tree", "tree"),
-    ("content_id", "content"),
-    ("bucket", "bucket"),
-    ("sub", "sub"),
-    ("actor", "actor"),
-    ("digest", "digest"),
-    ("applied", "applied"),
+    ("entry_id", "entry"), ("tree", "tree"), ("content_id", "content"), ("bucket", "bucket"),
+    ("sub", "sub"), ("actor", "actor"), ("digest", "digest"), ("applied", "applied"),
 )
 
 
@@ -200,17 +194,13 @@ def _record_from(entry: object, *, path: Path, where: str) -> AppliedEntry:
     record this module writes is a record it reads.
     """
     if not isinstance(entry, dict):
-        raise _refused(
-            path,
-            f"{where} that is a {type(entry).__name__} rather than an object",
-        )
+        raise _refused(path, f"{where} that is a {type(entry).__name__} rather than an object")
     for name in ("entry", "tree", "content", "actor"):
         if not isinstance(entry.get(name), str) or not entry[name]:
             raise _refused(
                 path,
-                f"{where} with no {name}; a record that cannot say what it "
-                f"applied, or who approved it, is worse than no record because it "
-                f"still suppresses the work",
+                f"{where} with no {name}; a record that cannot say what it applied, or who "
+                f"approved it, is worse than no record because it still suppresses the work",
             )
     return AppliedEntry(**{name: str(entry.get(key) or "") for name, key in _KEYS})
 
@@ -228,22 +218,18 @@ def _read_document(raw: bytes, path: Path) -> AppliedLedger:
         )
     entries = data.get("applied")
     if not isinstance(entries, list):
-        raise _refused(
-            path, f"has no applied array; its records are a {type(entries).__name__}"
-        )
+        raise _refused(path, f"has no applied array; its records are a {type(entries).__name__}")
 
     records: list[AppliedEntry] = []
     seen: set[str] = set()
     for position, entry in enumerate(entries):
-        record = _record_from(
-            entry, path=path, where=f"holds a record at position {position}"
-        )
+        record = _record_from(entry, path=path, where=f"holds a record at position {position}")
         if record.entry_id in seen:
             raise _refused(
                 path,
-                f"holds two records for the entry {record.entry_id!r}; a ledger "
-                f"that gives two answers for one piece of work cannot say who "
-                f"applied it, and resolving that by line order picks an actor",
+                f"holds two records for the entry {record.entry_id!r}; a ledger that gives two "
+                f"answers for one piece of work cannot say who applied it, and resolving that "
+                f"by line order picks an actor",
             )
         seen.add(record.entry_id)
         records.append(record)
@@ -310,12 +296,10 @@ def _read_journal(raw: bytes, path: Path) -> tuple[AppliedLedger, bool]:
                 break
             raise _refused(
                 path,
-                f"holds a line, line {position + 1}, that is not readable as "
-                f"JSON, and only the last line of a journal can be torn: {exc}",
+                f"holds a line, line {position + 1}, that is not readable as JSON, and only "
+                f"the last line of a journal can be torn: {exc}",
             ) from exc
-        record = _record_from(
-            parsed, path=path, where=f"holds a record on line {position + 1}"
-        )
+        record = _record_from(parsed, path=path, where=f"holds a record on line {position + 1}")
         folded[record.entry_id] = record
     return AppliedLedger.of(folded.values()), whole
 
@@ -444,11 +428,7 @@ class ApplyReport:
 
 
 def apply_plan(
-    cfg: config.Config,
-    plan: AdoptionPlan,
-    declared: taxonomy.Taxonomy,
-    *,
-    approval: object,
+    cfg: config.Config, plan: AdoptionPlan, declared: taxonomy.Taxonomy, *, approval: object,
     place: Callable[[PlanEntry, str, str], None],
     tag_value: Callable[[PlanEntry, taxonomy.Taxonomy], str | None] | None = None,
     now: datetime | None = None,
@@ -515,12 +495,8 @@ def apply_plan(
             # identified (gone since the census) costs exactly this entry.
             try:
                 _record, landed = revert.write_tag_with_record(
-                    cfg,
-                    target,
-                    field=ADOPTED_TAG_FIELD,
-                    written=wanted,
-                    entry_id=entry.entry_id,
-                    now=now,
+                    cfg, target, field=ADOPTED_TAG_FIELD, written=wanted,
+                    entry_id=entry.entry_id, now=now,
                 )
             except revert.AdoptedFileUnidentifiable as exc:
                 failed[entry.entry_id] = exc.cause.message
@@ -533,46 +509,14 @@ def apply_plan(
         mark_applied(
             cfg,
             AppliedEntry(
-                entry_id=entry.entry_id,
-                tree=entry.tree,
-                content_id=entry.content_id,
-                bucket=entry.bucket,
-                sub=entry.sub,
-                actor=granted.actor,
-                digest=granted.digest,
-                applied=timestamp(now),
+                entry_id=entry.entry_id, tree=entry.tree, content_id=entry.content_id,
+                bucket=entry.bucket, sub=entry.sub, actor=granted.actor,
+                digest=granted.digest, applied=timestamp(now),
             ),
         )
         applied.append(entry.entry_id)
     return ApplyReport(
-        tree=plan.tree,
-        actor=granted.actor,
-        digest=granted.digest,
-        applied=tuple(applied),
-        already_applied=already,
-        failed=failed,
-        resumed_at=report_resumed,
+        tree=plan.tree, actor=granted.actor, digest=granted.digest, applied=tuple(applied),
+        already_applied=already, failed=failed, resumed_at=report_resumed,
     )
 
-
-__all__ = [
-    "ADOPTED_TAG_FIELD",
-    "EMPTY",
-    "JOURNAL_FORMAT",
-    "LOCK_KEY",
-    "SCHEMA_VERSION",
-    "STATE_KEY",
-    "DOCUMENT_SCHEMA_VERSION",
-    "AppliedEntry",
-    "AppliedLedger",
-    "AppliedLedgerUnreadable",
-    "ApplyReport",
-    "apply_plan",
-    "lock_path",
-    "mark_applied",
-    "membership_plan",
-    "outstanding",
-    "path_for",
-    "read",
-    "write",
-]
