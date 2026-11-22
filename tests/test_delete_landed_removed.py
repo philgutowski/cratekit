@@ -849,3 +849,45 @@ def test_a_landing_one_of_whose_playlists_is_gone_offers_nothing(
 
     assert gone not in _candidates(cfg)
     assert music.exists()
+
+
+# ---------------------------------------------------------------------------
+# A playlist deleted by hand is no rollback (R-1844, #926)
+# ---------------------------------------------------------------------------
+
+
+def _delete_playlist_outright(cfg: config.Config, playlist_id: str) -> None:
+    """rekordbox's sidebar delete (A200): the playlist row and its members, gone, no marker."""
+    _sql(
+        cfg,
+        ("DELETE FROM djmdSongPlaylist WHERE PlaylistID = ?", (playlist_id,)),
+        ("DELETE FROM djmdPlaylist WHERE ID = ?", (playlist_id,)),
+        (
+            "UPDATE agentRegistry SET int_1 = int_1 + 3 WHERE registry_id = 'localUpdateCount'",
+            (),
+        ),
+    )
+
+
+def test_a_landed_row_removed_after_its_playlist_was_deleted_by_hand_is_offered_once(
+    native_library, silence, monkeypatch, tmp_path
+):
+    """The defect: the playlist gone outright read as a rollback, so the removal was never offered."""
+    cfg, _root = native_library
+    _land(cfg, silence, "One", "Two")
+    _deletion_on(cfg, monkeypatch, tmp_path)
+    _baseline(cfg)
+    gone, music = _row(cfg, "One")
+    _kept, other = _row(cfg, "Two")
+    (batch,) = _landing_record(cfg, gone).detail[native.LANDED_ROWS_KEY]["playlists"]
+    _delete_playlist_outright(cfg, batch)
+    _remove_outright(cfg, gone)
+
+    code, refused = _review()
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert _shown(refused)["offered"] == 1, _shown(refused)
+    assert "landings read as rolled back" not in _shown(refused)
+    _trash(refused)
+    assert not music.exists() and other.exists()
+    assert _offered() == 0
