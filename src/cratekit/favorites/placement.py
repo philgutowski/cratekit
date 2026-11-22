@@ -77,19 +77,18 @@ def _live_plain(rows: Iterable[Any]) -> list[Any]:
     ]
 
 
-def _sits_under(row: Any, parent_id: str) -> bool:
-    """Whether ``row`` sits directly under ``parent_id``, any root sentinel reading as the root."""
+def _sits_under(row: Any, parent_id: str, at_root: bool) -> bool:
+    """Whether ``row`` sits directly under ``parent_id``, or at the root when ``at_root``."""
     held = str(getattr(row, "ParentID", "") or "")
-    if parent_id in rb_writer.ROOT_PARENT_SENTINELS:
-        return held in rb_writer.ROOT_PARENT_SENTINELS
-    return held == parent_id
+    return held in rb_writer.ROOT_PARENT_SENTINELS if at_root else held == parent_id
 
 
 def _under(db: Any, parent_id: str) -> dict[str, str]:
     """Every live plain playlist directly under ``parent_id``, by name, first of a name wins."""
     found: dict[str, str] = {}
+    at_root = parent_id in rb_writer.ROOT_PARENT_SENTINELS
     for row in _live_plain(list(db.get_playlist())):
-        if _sits_under(row, parent_id):
+        if _sits_under(row, parent_id, at_root):
             found.setdefault(str(row.Name), str(row.ID))
     return found
 
@@ -473,7 +472,7 @@ def month_row(db: Any, name: str, parent: Any, *, source_id: str) -> tuple[Any, 
     """
     parent_id = "" if parent is None else str(parent.ID)
     for row in _live_plain(list(db.get_playlist(Name=name))):
-        if _sits_under(row, parent_id):
+        if _sits_under(row, parent_id, parent is None):
             return row, False
     made = db.create_playlist(name, parent=parent)
     if parent is not None:

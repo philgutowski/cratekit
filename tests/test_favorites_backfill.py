@@ -228,7 +228,7 @@ def _take_out(cfg, playlist_id: str, row: str) -> None:
     with _db(cfg) as handle:
         (entry,) = [
             one for one in handle.get_playlist_songs(PlaylistID=playlist_id)
-            if str(one.ContentID) == row and not one.rb_local_deleted
+            if str(one.ContentID) == row
         ]
         entry.rb_local_deleted = 1
 

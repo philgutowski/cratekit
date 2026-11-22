@@ -32,8 +32,8 @@ from cratekit.label.catalogue import artist_name
 #: Answers asked now between two writes of the document.
 FLUSH_EVERY = 50
 
-#: The document's version, the release reads' own, as the shared header read checks it.
-VERSION = kept_reads.VERSION
+#: The document's version. Any other refuses rather than being read.
+VERSION = 1
 
 #: The file inside the label's own directory of the crawl cache.
 FILE_NAME = "listing.json"
@@ -253,6 +253,8 @@ def asked_for(entry: Any) -> dict[str, Any]:
 
 class KeptListing(kept_reads._Store):
     """One label's kept listing answers, and what this run made of them."""
+
+    version = VERSION
 
     def __init__(
         self,

@@ -160,6 +160,9 @@ def _stored(kept: Kept) -> dict[str, Any]:
 class _Store:
     """What both kept stores share: their counters, the header checks and the write."""
 
+    #: The store's document version, each store's own.
+    version = VERSION
+
     def __init__(self, label_id: str, path: Path) -> None:
         self.label_id = label_id
         self.path = path
@@ -178,17 +181,17 @@ class _Store:
     def _reusing(self, read_at: datetime) -> None:
         self.oldest = read_at if self.oldest is None else min(self.oldest, read_at)
 
-    @staticmethod
+    @classmethod
     def _document(
-        path: Path, label_id: str, unusable: Callable[[Path, str], CratekitError]
+        cls, path: Path, label_id: str, unusable: Callable[[Path, str], CratekitError]
     ) -> Mapping[str, Any] | None:
         """The store's document, ``None`` when none was written, or the refusal."""
         raw = config.read_json_map(path, lambda why: unusable(path, why))
         if raw is None:
             return None
         version = raw.get("version")
-        if version != VERSION:
-            raise unusable(path, f"it says version {version!r} and this build writes {VERSION}")
+        if version != cls.version:
+            raise unusable(path, f"it says version {version!r} and this build writes {cls.version}")
         if raw.get("label_id") != label_id:
             raise unusable(path, f"it names the label {raw.get('label_id')!r}, not {label_id!r}")
         return raw
@@ -197,7 +200,7 @@ class _Store:
         """Write every answer held, if any is unwritten, by :meth:`_write`'s rule."""
         self._since = 0
         if self._unwritten:
-            self._write({"version": VERSION, "label_id": self.label_id, **self._sections()})
+            self._write({"version": self.version, "label_id": self.label_id, **self._sections()})
 
     def _sections(self) -> dict[str, Any]:
         """The store's own sections of its document, beside the shared header."""
