@@ -48,8 +48,7 @@ def library(tmp_path, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _reader_cache():
-    """No test may inherit another test's library: the reader memoizes per process
-    on the resolved database path, which every test here shares."""
+    """No test may inherit another's library: the reader memoizes on the shared path."""
     collection.reset_cache()
     yield
     collection.reset_cache()
@@ -78,8 +77,7 @@ def cfg(library, monkeypatch):
     return resolved
 
 
-#: One readable routable track, one row whose file is not on disk, and one
-#: tombstone, so a census exercises three outcomes of the derivation.
+#: A readable routable track, a row with no file, and a tombstone: three census outcomes.
 def _tracks(declared_taxonomy) -> tuple[adopt_fixtures.Track, ...]:
     _bucket, genre = _bucket_and_genre(declared_taxonomy)
     return (
@@ -104,8 +102,7 @@ def declared():
 
 @pytest.fixture
 def acknowledged(cfg):
-    """A machine that has answered the backup question, through the real
-    ``record_acknowledgment`` so a change to its shape fails here."""
+    """A machine that has answered the backup question, through the real recorder."""
     session.record_acknowledgment(cfg, terminal=lambda: True)
     return cfg
 
@@ -129,8 +126,7 @@ def _matching(cfg_value):
 
 
 def _one_track_plan(cfg_value, declared_taxonomy, silence) -> tuple[adopt_plan.AdoptionPlan, Path]:
-    """A plan with exactly one applicable entry, over a REAL file on disk, since
-    what is under test is what reaches a user's file."""
+    """A plan with exactly one applicable entry, over a real file on disk."""
     _bucket, genre = _bucket_and_genre(declared_taxonomy)
     path = _synthesized(Path(cfg_value.library.root) / "Music", silence)
     tags.write_genre(path, "Original Genre")
@@ -197,12 +193,8 @@ def test_the_whole_loop_runs_with_the_library_lock_actually_held(acknowledged, d
 
 
 def test_the_analysis_watch_is_armed_on_the_library_root(acknowledged, declared, silence):
-    """R17's fifth surface, runtime half: a watch over no roots reports a clean
-    session whatever happened, so a real analysis file is moved from inside
-    ``tag_value`` and the session must refuse.
-
-    The file sits BESIDE the music folder, not in it: narrowing the root to
-    ``Music`` killed no test until it moved up one level.
+    """R17's fifth surface, runtime half: an analysis file moved from inside
+    ``tag_value``, beside the music folder rather than in it, makes the session refuse.
     """
     plan, _path = _one_track_plan(acknowledged, declared, silence)
     grid = Path(acknowledged.library.root) / "ANLZ0001.DAT"
@@ -251,8 +243,7 @@ def test_the_analysis_watch_reaches_a_share_outside_the_library_root(
 
 
 def test_the_workflow_name_and_the_registry_verb_name_cannot_drift():
-    """``WORKFLOW`` is what the session log records this run under; nothing reads
-    that log in a fixture, so only a comparison can see the two drift apart."""
+    """``WORKFLOW`` names this run in the session log; only a comparison sees drift."""
     assert apply_cli.WORKFLOW == registry.entry("adopt.apply").name
 
 
@@ -267,8 +258,7 @@ def _refused_and_untouched(cfg_value, plan, declared, path, code, **overrides) -
 
 
 def test_an_unacknowledged_machine_rewrites_no_file(cfg, declared, silence):
-    """Refusal two of three, on the state every library is in before a person
-    answers the backup question, which is the state adoption most often meets."""
+    """Refusal two of three, before a person answers the backup question."""
     plan, path = _one_track_plan(cfg, declared, silence)
     _refused_and_untouched(cfg, plan, declared, path, ExitCode.ACK_REQUIRED)
 
@@ -302,8 +292,7 @@ def test_a_second_run_holding_the_lock_rewrites_no_file(acknowledged, declared, 
 
 
 def test_a_nested_session_is_refused_rather_than_deadlocking(acknowledged, declared, silence):
-    """The composition the collector avoids, driven once so the module docstring's
-    argument is a measured fact rather than a reading of ``session_lock``."""
+    """The composition the collector avoids, driven once."""
     plan, _path = _one_track_plan(acknowledged, declared, silence)
 
     def nesting(_entry, _folder, _sub):
@@ -481,14 +470,8 @@ def _decided(answer: str) -> tuple[str, dict]:
 
 
 def test_an_approved_run_queues_one_job_carrying_the_tree_and_the_digest(installed):
-    """R34's two acts, driven, then what the frozen payload holds: the digest the
-    approval was recorded against has to travel with the job.
-
-    THE RESUME THE DRIVER SPAWNS CAN ACTUALLY PROCEED. The gate is explicit, so a
-    resume argv naming only the job minted a fresh run and refused for ever
-    (driven 2026-08-23). The real ``argv_for`` output is driven here, and what it
-    reaches is the membership write's refusal on an uncut tree, proof it got past
-    the gate.
+    """R34's two acts, then the frozen payload carries the approved digest, and the
+    real ``argv_for`` resume gets past the gate to the uncut tree's refusal.
     """
     verb = registry.entry("adopt.apply")
     expected = apply_cli.current_plan(installed, taxonomy.default_taxonomy())
@@ -535,9 +518,7 @@ def test_a_declined_run_queues_nothing_at_all(installed):
 def test_an_approval_recorded_against_a_plan_that_has_since_moved_is_refused(
     installed, monkeypatch, silence
 ):
-    """The gate is OFFERED the digest, which is what makes a stale answer visible;
-    dropping it once killed no test. The plan is moved by giving the census a
-    row, as a real library moves."""
+    """The gate is offered the digest, so a stale answer shows; the census gains a row."""
     plan_before = apply_cli.current_plan(installed, taxonomy.default_taxonomy())
     run_id, _refused = _decided("approve")
 
@@ -563,10 +544,8 @@ def test_an_approval_recorded_against_a_plan_that_has_since_moved_is_refused(
 
 
 def test_a_resume_reconciles_a_claim_a_dead_driver_left_behind(installed):
-    """Reconcile, not get: a row saying running while no driver holds the lock is
-    the state a killed driver leaves. Swapping ``reconcile`` for ``get`` once
-    killed no test. The job reaches a terminal state, which it can only do if the
-    row was re-derived and the item then attempted."""
+    """Reconcile, not get: a running row with no driver holding the lock is
+    re-derived, so the job reaches a terminal state."""
     run_id, job_id = approve_and_queue(APPLY, GATE)
 
     with jobs.open_store() as store:

@@ -623,8 +623,7 @@ def test_a_track_held_under_both_names_is_not_held_under_another_name_only():
 
     assert found.filed == {BUCKET: {"t", "u"}}
     assert found.unnamed == {BUCKET: {"u"}}
-    # A playlist of the declared name is there, so an addition has somewhere
-    # the writer can find and the bucket is not one it would double.
+    # A playlist of the declared name is there for the writer to find.
     assert found.renamed == frozenset()
 
 

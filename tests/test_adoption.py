@@ -61,8 +61,7 @@ ADOPT_ROOT = SRC_ROOT / "cratekit" / "adopt"
 TREE_ID = "shelf_stack"
 HANDLER = "adopt.scan"
 
-#: One name in each composition form, because the pair is the whole reason the identity primitives
-#: exist and a ledger keyed on the raw string holds two records for one file.
+#: One name in each composition form: a raw string key would hold two records.
 COMPOSED = "Café One.flac"
 DECOMPOSED = unicodedata.normalize("NFD", COMPOSED)
 
@@ -119,8 +118,7 @@ def _row(cfg_value, name: str, genre: str, content_id: str) -> adopt_scan.Collec
     )
 
 
-#: Each container's silence, synthesized by ffmpeg once per process and copied
-#: after, so a test pays for a file copy rather than an encoder run.
+#: Each container's silence, synthesized once per process and copied after.
 _SYNTHESIZED: dict[str, bytes] = {}
 
 
@@ -622,8 +620,7 @@ def test_answering_keep_separate_actually_leaves_that_folder_alone(cfg, declared
     assert len(merged.applicable()) == 2
     assert merged.digest() == plan.digest()
 
-    # The identifier does not move, so changing an answer gives the work back
-    # under the identifier the applied ledger already knows.
+    # The identifier does not move, so the applied ledger still knows the work.
     assert {e.entry_id for e in left_alone.entries} == {e.entry_id for e in plan.entries}
 
 
@@ -682,8 +679,7 @@ def test_a_collision_is_addressed_by_the_node_and_survives_a_rename(cfg, declare
         actor="tester",
     )
 
-    # The collision is found through the taxonomy's display name, so a rename in
-    # rekordbox alone makes the folder unfindable and the collision disappears.
+    # Found by display name, so a rekordbox rename alone would hide the collision.
     renamed_declared = _taxonomy_with_bucket_display(declared, routable, "Renamed Shelf")
     after = adopt_plan.ExistingFolder("node-41", "Renamed Shelf", ("a", "stranger"))
     replanned = _plan_of(cfg, renamed_declared, rows, existing=[after])
@@ -695,8 +691,7 @@ def test_a_collision_is_addressed_by_the_node_and_survives_a_rename(cfg, declare
     settled = review.get(replanned_store, second[-1])
     assert settled.verdict is review.Verdict.ACCEPTED
     assert settled.payload["node_id"] == "node-41"
-    # The payload of a SETTLED item is deliberately not refreshed by a re-offer, so what
-    # is on record is what the person was looking at when they decided.
+    # A settled item's payload is not refreshed: it is what the person decided on.
     assert settled.payload["display"] == display
 
 
@@ -713,9 +708,7 @@ def _taxonomy_with_bucket_display(declared, bucket_id: str, display: str):
         if bucket.get("id") == bucket_id:
             bucket["display"] = display
     assert old != display
-    # The template is re-serialized through the loader's own parser rather than
-    # by string replacement, so a display name that happens to appear elsewhere
-    # in the document is not rewritten with it.
+    # Re-serialized through the loader's parser, so no other text is rewritten.
     import tomli_w
 
     return load_taxonomy(tomli_w.dumps(data))
@@ -1017,8 +1010,7 @@ def _plan_over_real_files(cfg_value, declared_taxonomy, tmp_path, suffixes):
     rows = []
     for index, suffix in enumerate(suffixes):
         if suffix == ".aac":
-            # A container this build has no verified handling for. Written as
-            # bytes rather than encoded, because what matters is the suffix.
+            # A container with no verified handling; only the suffix matters.
             path = tmp_path / f"track{index}.aac"
             path.write_bytes(b"not a container this module knows")
         else:
@@ -1046,8 +1038,7 @@ def test_a_refusal_from_the_writer_rewrites_no_files_at_all(cfg, declared, tmp_p
         place=refusing_place,
         tag_value=lambda *_: "Adopted Genre",
     )
-    # THE FILES FIRST. The counts are the symptom; what the refusal cost is the
-    # thing on disk that no snapshot and no re-import puts back.
+    # The files first: they are what nothing puts back.
     for index, entry in enumerate(plan.applicable()):
         assert tags.read_genre_from_file(Path(entry.path)) == f"Original {index}", (
             "a refused run rewrote the genre tag on a user's file"
@@ -1707,8 +1698,7 @@ def test_an_UNMOUNTED_VOLUME_does_not_let_a_COPY_take_a_LIVE_files_record(cfg, t
     assert held.original == ("Volume Own Genre",)
     assert held.digest_state is adopt_revert.DigestState.RECORDED
 
-    # The backup is byte for byte what adoption left, which is the whole point of
-    # a backup and is exactly the evidence the byte search accepts.
+    # The backup is byte for byte what adoption left.
     backup_dir = tmp_path / "backup"
     backup_dir.mkdir()
     backup = backup_dir / "probe.flac"
@@ -1728,13 +1718,11 @@ def test_an_UNMOUNTED_VOLUME_does_not_let_a_COPY_take_a_LIVE_files_record(cfg, t
     assert len(ledger.snapshots) == 2, [(entry.path, entry.original) for entry in ledger.snapshots]
     kept = [entry for entry in ledger.snapshots if entry.path == held.path]
     assert kept == [held], "the copy took the record of a file whose volume was merely unplugged"
-    # AND THE BACKUP GETS ITS OWN RECORD, recording what the BACKUP held, which is
-    # adoption's value because a copy of an adopted file holds an adopted file's tag.
+    # The backup gets its own record, holding adoption's value.
     taken = [entry for entry in ledger.snapshots if entry.path == str(backup)]
     assert len(taken) == 1 and taken[0].original == ("Adopted Bucket",), taken
 
-    # REPLUGGED. The record is still the volume file's, so a re-adoption finds it
-    # rather than writing adoption's own value down as the original.
+    # Replugged: the record is still the volume file's.
     volume.mkdir(parents=True)
     Path(held.path).write_bytes(backup.read_bytes())
     _adopt(cfg, Path(held.path), written="Adopted Bucket", entry_id="e3")
@@ -2036,8 +2024,7 @@ def test_a_container_that_refuses_the_write_is_a_failure_not_a_restore(cfg, tmp_
     assert report.failed[(str(path), "genre")] == "the container refused the write"
 
 
-#: EVERY container the writer claims, derived from the writer's own table rather than listed beside
-#: it.
+#: Every container the writer claims, derived from the writer's own table.
 LEDGER_CONTAINERS = sorted(tags._DIALECT_BY_SUFFIX)
 
 #: Every shape of "what the file held" that an exact reader has to preserve.
@@ -2068,8 +2055,7 @@ def test_the_ledger_records_what_the_file_ACTUALLY_HELD(cfg, tmp_path, suffix, o
     expected = _expected_after_writing(original, suffix, "genre")
     assert _oracle_values(path, "genre") == expected, "the fixture's disk is wrong"
 
-    # THROUGH THE COMPOSED CALL, which is the shape ``apply_plan`` uses and the only one
-    # that stamps.
+    # Through the composed call, the only one that stamps.
     assert _adopt(cfg, path, written="Adopted")[1] is True
     recorded = adopt_revert.read(cfg).snapshots[0]
     assert recorded.original == expected, (
@@ -2083,13 +2069,9 @@ def test_the_ledger_records_what_the_file_ACTUALLY_HELD(cfg, tmp_path, suffix, o
     assert _oracle_values(path, "genre") == expected, "the restore was not exact"
 
 
-#: The one shape a container genuinely cannot hold, stated rather than tolerated. mutagen drops an
-#: ID3 text frame whose only value is the empty string, so the field really IS absent afterwards
-#: and an exact reader has to say so.
+#: mutagen drops an ID3 text frame whose only value is "", so the field is absent.
 def _drops_the_empty_string(suffix: str, field: str) -> bool:
-    # Measured across every frame shape rather than assumed: a TXXX frame drops an empty
-    # value exactly as a plain text frame does, so the rule is the DIALECT and nothing
-    # finer.
+    # A TXXX frame drops an empty value too, so the rule is the dialect.
     assert field in tags.FIELDS
     return tags.dialect_of(suffix) is tags.Dialect.ID3
 
@@ -2289,8 +2271,7 @@ def test_a_digest_state_of_NULL_is_not_the_same_document_as_no_key_at_all(cfg, t
         adopt_revert.read(cfg)
     assert "digest_state is None" in str(refused.value)
 
-    # And the shape it used to be confused with still derives, which is the half
-    # that must not be broken by fixing the other one.
+    # The shape it was confused with still derives.
     del document["snapshots"][0]["digest_state"]
     del document["snapshots"][0]["digest"]
     adopt_revert.path_for(cfg).write_text(json.dumps(document))
@@ -2527,8 +2508,7 @@ def test_a_READ_ONLY_file_and_directory_are_the_writers_problem_not_the_guards(c
     # The file in the read-only directory restored, so the read reached it.
     assert (str(path), "genre") in report.restored, report.failed
     assert tags.read_genre_from_file(path) == "Original Genre"
-    # And whatever the writer said about the read-only FILE, the guard did not
-    # decide it was somebody else's audio.
+    # The guard did not read the read-only file as somebody else's audio.
     refusal = report.failed.get((str(locked), "genre"), "")
     assert "cannot be recognized as the one adoption wrote to" not in refusal, refusal
 
@@ -2591,8 +2571,7 @@ def test_an_UNSTAMPED_record_refuses_a_file_that_was_replaced(cfg, tmp_path):
     report = adopt_revert.revert_tags(cfg)
     assert report.restored == (), "an unstamped record accepted a file"
     assert list(report.failed) == [key]
-    # THE LITERAL IN FULL. Asserting the leading clause left the tail
-    # unpinned, so every word after "there" could be reworded and no test moved.
+    # The literal in full, so no word of the tail can be reworded unseen.
     assert (
         "adoption never finished recording what it left there, which is a run "
         "interrupted between the tag write and the stamp"
@@ -2633,8 +2612,7 @@ def test_a_stamping_read_that_FAILS_is_recorded_as_its_own_state(cfg, tmp_path):
     stored = json.loads(adopt_revert.path_for(cfg).read_text())["snapshots"][0]
     assert stored["digest_state"] == "unreadable", "a failed read looks undigested"
 
-    # THE FORGERY, under this state. Different audio, padded to the recorded size,
-    # stamped back to the recorded time.
+    # The forgery: different audio at the recorded size and time.
     stranger = _synth_in(tmp_path / "other", ".flac")
     tags.write_tags(stranger, {"genre": "Stranger Genre", "title": "Somebody Else"})
     path.write_bytes(stranger.read_bytes()[: record.size].ljust(record.size, b"\x00"))
@@ -2725,8 +2703,7 @@ def test_a_record_with_no_digest_refuses_INSTEAD_OF_falling_back_to_the_metadata
     tags.write_genre(path, "Original A")
     _adopt(cfg, path, written="Adopted", entry_id="e1")
     record = adopt_revert.read(cfg).snapshots[0]
-    # THE OLDER DOCUMENT'S SHAPE EXACTLY: a stamp, and no digest key and no state
-    # key at all, which is what a build predating the digest wrote.
+    # The older shape exactly: a stamp, with no digest key and no state key.
     document = json.loads(adopt_revert.path_for(cfg).read_text())
     del document["snapshots"][0]["digest"]
     del document["snapshots"][0]["digest_state"]
@@ -2736,8 +2713,7 @@ def test_a_record_with_no_digest_refuses_INSTEAD_OF_falling_back_to_the_metadata
     assert stripped.digest_state is adopt_revert.DigestState.ABSENT
     assert stripped.size is not None and stripped.mtime_ns is not None
 
-    # THE FORGERY, under the fallback, which nothing used to drive. Different
-    # audio, padded to the recorded size, stamped back to the recorded time.
+    # The forgery under the fallback: different audio at the recorded size and time.
     stranger = _synth_in(tmp_path / "other", ".flac")
     tags.write_tags(stranger, {"genre": "Stranger Genre", "title": "Somebody Else"})
     blob = stranger.read_bytes()[: record.size].ljust(record.size, b"\x00")
@@ -2758,8 +2734,7 @@ def test_a_record_with_no_digest_refuses_INSTEAD_OF_falling_back_to_the_metadata
     assert tags.read_genre_from_file(path) == "Stranger Genre"
     assert adopt_revert.read(cfg).snapshots != (), "the record was dropped anyway"
 
-    # AND IT IS STILL SPENDABLE, because a refusal nobody can override strands the
-    # only copy of a value as surely as a wrong restore overwrites one.
+    # Still spendable: a refusal nobody can override strands the original.
     forced = adopt_revert.revert_tags(cfg, force=[key])
     assert forced.restored == (key,), forced.failed
     assert tags.read_genre_from_file(path) == "Original A"
@@ -2795,8 +2770,7 @@ def test_a_cloud_EVICTED_file_IS_read_because_the_restore_fetches_it_anyway(cfg,
         evicted.setattr(adopt_changed, "digest_of", lambda p: (reads.append(p), real_digest(p))[1])
         evicted.setattr(Path, "stat", evicted_stat)
 
-        # THE REAL WRITER, which is the whole difference from the version this
-        # replaces: the restore below opens the file with mutagen and rewrites it.
+        # The real writer: the restore below rewrites the file with mutagen.
         report = adopt_revert.revert_tags(cfg)
 
     assert report.failed == {}, report.failed
@@ -2881,9 +2855,7 @@ def test_TWO_RECORDS_for_ONE_FILE_refuse_and_are_not_offered_a_force(cfg, tmp_pa
     assert "force=" not in report.failed[key], "the override is still offered"
     assert tags.read_genre_from_file(path) == "Adopted Bucket"
 
-    # AND THE OVERRIDE DOES NOT REACH IT EITHER, which is the half that matters:
-    # a person who reads the old advice and types it must not be able to spend a
-    # record whose original is adoption's own value.
+    # The override cannot spend a record whose original is adoption's own value.
     forced = adopt_revert.revert_tags(cfg, force=[key])
     assert forced.restored == (), forced.restored
     assert len(adopt_revert.read(cfg).snapshots) == 2
@@ -2896,8 +2868,7 @@ def test_a_REWRITE_INSIDE_ONE_TICK_that_moves_no_stat_field_is_still_caught(cfg,
     _adopt(cfg, path, written="Adopted Bucket", entry_id="e1")
     record = adopt_revert.read(cfg).snapshots[0]
 
-    # A DIFFERENT recording of exactly the same length: same encoder, same
-    # duration, a genre string of the same width. Different bytes, same size.
+    # A different recording of the same size: different bytes.
     other = _synth_in(tmp_path / "other", ".flac")
     tags.write_genre(other, "Adopted Buckex")
     replacement = other.read_bytes()
@@ -3010,18 +2981,14 @@ def test_a_TARGETED_revert_cannot_DISSOLVE_the_group_refusal(cfg, tmp_path):
         f"{key!r}; every original is still recorded and nothing has been "
         "written."
     ), targeted.failed[key]
-    # AND IT NAMES NO COMMAND, because `crate doctor` is not a verb this build has: the
-    # registry marks it planned_in="U27" and the parser answers `invalid choice:
-    # 'doctor'`.
+    # It names no command: `crate doctor` is not a verb this build has.
     assert "doctor" not in targeted.failed[key], targeted.failed[key]
 
-    # THE OTHER SIDE OF THE GROUP, whose original is adoption's own value, is the
-    # one the chain ended on. It must not be reachable by naming its entry either.
+    # The record holding adoption's own value is unreachable by its entry too.
     other = adopt_revert.revert_tags(cfg, entry_id="e2")
     assert other.restored == (), other.restored
 
-    # AND FORCE DOES NOT GET THROUGH A TARGETED PASS EITHER, which is where the
-    # measured chain actually wrote the wrong value.
+    # Nor does force get through a targeted pass.
     forced = adopt_revert.revert_tags(cfg, entry_id="e2", force=[key])
     assert forced.restored == (), forced.restored
 
@@ -3343,14 +3310,12 @@ def test_bytes_THIS_PASS_ITSELF_replaced_are_never_accepted_on(cfg, tmp_path):
     """The pass must not accept a record on bytes its own earlier restore destroyed."""
     path = _synth(tmp_path, ".flac")
     tags.write_tags(path, {"genre": "User Genre", "title": "User Title"})
-    # TITLE FIRST, GENRE SECOND, so the record visited first is the one whose
-    # digest is current and whose restore therefore lands.
+    # Title first, so its digest is current and its restore lands.
     adopt_revert.write_tag_with_record(
         cfg, path, field="title", written="Adopted Title", entry_id="e1"
     )
     _adopt(cfg, path, written="Adopted Bucket", entry_id="e1")
-    # The title record is given the file EXACTLY as it stands now, which is what
-    # the genre record's own restore is about to replace.
+    # The title record gets the file as it stands, which the genre restore replaces.
     document = json.loads(adopt_revert.path_for(cfg).read_text())
     stamp = {
         "size": path.stat().st_size,
@@ -3409,8 +3374,7 @@ def test_an_interrupted_revert_pass_can_be_retried(cfg, tmp_path):
     class _Died(RuntimeError):
         pass
 
-    # WHICHEVER RECORD THE PASS REACHES FIRST, because the ledger sorts by the file's
-    # digest and not by the order the records were made.
+    # Whichever record comes first: the ledger sorts by the file's digest.
     seen: list[Path] = []
 
     def restore_then_die(target, field, original):
@@ -3479,8 +3443,7 @@ def test_a_pass_that_dies_BEFORE_THE_LEDGER_WRITE_still_strands_that_one_record(
     assert list(retry.failed) == [key], "the window is closed rather than narrowed"
     assert tags.read_genre_from_file(done) == paths[done]
 
-    # BOUNDED: the override writes the same original onto a file already holding
-    # it, so the cost of the residue is one override and never a wrong value.
+    # Bounded: the override rewrites the same original, never a wrong value.
     cleared = adopt_revert.revert_tags(cfg, force=[key])
     assert cleared.restored == (key,)
     assert tags.read_genre_from_file(done) == paths[done]
@@ -3498,8 +3461,7 @@ def test_a_death_INSIDE_the_rewrite_is_a_different_window_and_a_weaker_bound(cfg
         pass
 
     def half_rewrite_then_die(target, _field, _original):
-        # What a killed container write leaves: bytes that are neither the
-        # recorded ones nor the original.
+        # A killed write leaves bytes neither recorded nor original.
         target.write_bytes(target.read_bytes()[: len(target.read_bytes()) // 2])
         raise _Died("the process died inside the container rewrite")
 
@@ -3520,8 +3482,7 @@ def test_a_death_INSIDE_the_rewrite_is_a_different_window_and_a_weaker_bound(cfg
 @pytest.mark.parametrize(
     "stranger_genre",
     [
-        # THE FIRST ONE IS THE CASE THE GUARD IS ACTUALLY FOR, and the round 2 version
-        # of this test used only the second.
+        # The first one is the case the guard is for.
         "THE BUCKET ADOPTION WROTE",
         "Different B",
     ],
@@ -3539,8 +3500,7 @@ def test_a_genuinely_replaced_file_is_still_refused_and_force_gets_through(
     path = _synth(tmp_path, ".flac")
     tags.write_genre(path, "Original A")
     _adopt(cfg, path, written=written, entry_id="e1")
-    # A DIFFERENT RECORDING at the same path. Different bytes, so this is not the
-    # backup-restore case; the size differs too, which is the ordinary shape.
+    # A different recording at the same path, of a different size.
     replacement = _synth_in(tmp_path / "other", ".flac")
     tags.write_tags(replacement, {"genre": stranger_genre, "title": "Somebody Else"})
     path.write_bytes(replacement.read_bytes())
@@ -3579,8 +3539,7 @@ def test_force_overrides_the_record_it_names_and_no_other(cfg, tmp_path):
     assert tags.read_genre_from_file(mine) == "Original Mine"
     assert tags.read_genre_from_file(stranger) == "Replaced", "force wrote an unnamed file"
 
-    # Nor can the entry identifier stand in for naming them, since both records
-    # were written through one plan entry.
+    # Both records came from one entry, so the entry cannot name them.
     both = adopt_revert.revert_tags(cfg, entry_id="one_entry")
     assert list(both.failed) == [(str(stranger), "genre")]
 
@@ -3592,8 +3551,7 @@ def test_one_unreadable_record_costs_one_record_not_the_pass(cfg, tmp_path):
         tags.write_genre(path, f"Original {index}")
         _adopt(cfg, path, written="Adopted", entry_id="e1")
 
-    # A THIRD FILE, so the bad record's own guard is satisfied and the pass truly
-    # reaches the writer with an unknown field.
+    # A third file, so the pass reaches the writer with an unknown field.
     odd = _synth_in(tmp_path / "odd", ".flac")
     info = odd.stat()
     document = json.loads(adopt_revert.path_for(cfg).read_text())
@@ -3815,8 +3773,7 @@ def test_with_snapshot_KEEPS_the_record_already_there(cfg, tmp_path):
     kept = adopt_revert.EMPTY.with_snapshot(first).with_snapshot(second)
     assert len(kept.snapshots) == 1
     assert kept.snapshots[0].original == ("User Genre",), "the second record replaced the first"
-    # And the one way a record IS legitimately amended still replaces it, which
-    # is what keeps this from being fixable by refusing both.
+    # The one legitimate amendment still replaces the record.
     amended = kept.replacing(second)
     assert amended.snapshots[0].original == ("Adopted Bucket",)
 
@@ -3919,9 +3876,7 @@ cfg = config.from_dict(
 
 if role == "apply":
     def slow(path, field, value):
-        # The window the revert used to fit inside, made wide enough to hit. The
-        # marker says the lock is held, so the revert starts inside the window
-        # however slowly either interpreter starts.
+        # The marker says the lock is held, so the revert starts inside the window.
         Path(str(target) + ".applying").touch()
         time.sleep(1.0)
         return tags.write_tags(path, {field: value})
@@ -4021,14 +3976,11 @@ def test_the_planned_marker_on_the_apply_verb_CAN_ACTUALLY_FIRE():
     assert apply_entry.module.startswith("cratekit.adopt.")
     assert scan_entry.module != apply_entry.module, "two verbs share one module"
 
-    # THE WHOLE DEFECT IN ONE LINE, and it is the same line either way: this call used
-    # to RAISE, and the raise was caught and read as absence.
+    # This call used to raise, and the raise was read as absence.
     assert importlib.util.find_spec(apply_entry.module) is not None
     assert importlib.util.find_spec(scan_entry.module) is not None
 
-    # DERIVED FROM THE REGISTRY rather than asserted as a state, so this outlives
-    # both verbs: a marker and a landed module cannot both be true, in either
-    # direction, for either verb.
+    # Derived from the registry: a marker and a landed module cannot both be true.
     for entry in (scan_entry, apply_entry):
         assert entry.landed is (entry.planned_in is None), (
             f"{entry.name} says landed={entry.landed} and planned_in="
@@ -4077,9 +4029,7 @@ def test_the_adoption_shell_never_reaches_into_the_layer_above_it():
         problems += import_direction_violations(path.read_text(), module)
     assert not problems, problems
 
-    # Named rather than merely ranked, because "no upward import" is satisfied by a
-    # shell that imports nothing at all, and the trap here is specific: the ONE cli
-    # module a shell is allowed to name is the output contract.
+    # Named, not ranked: the one cli module a shell may name is the output contract.
     imported = {
         node.module
         for node in ast.walk(ast.parse((ADOPT_ROOT / "scan_cli.py").read_text()))

@@ -34,9 +34,7 @@ from tests.test_adoption import (
 )
 from tests.test_config import valid_data
 
-#: The bytes the writer before U254 left for three records, captured from that code on 2026-11-12
-#: rather than composed here, so the compatibility test reads what a library on disk really holds
-#: today and not this test's idea of it.
+#: The bytes the writer before U254 left for three records, captured from that code.
 DOCUMENT_BEFORE_U254 = (
     '{\n  "applied": [\n    {\n      "actor": "a-person",\n      "applied": '
     '"2026-11-01T00:00:00+00:00",\n      "bucket": "house",\n      "content": '
@@ -176,15 +174,12 @@ def _lines(path: Path) -> list[bytes]:
     return raw[:-1].split(b"\n")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The saving, by the byte
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _bytes_for(root: Path, count: int, monkeypatch) -> tuple[_Writes, int]:
     with monkeypatch.context() as patched:
-        # The environment names the library over the document, so each count
-        # gets a library of its own only if the variable says so too.
+        # The environment names the library, so each count needs its own variable too.
         patched.setenv(config.ENV_LIBRARY_ROOT, str(root))
         cfg_value = _cfg_at(root)
         seen = _count_writes(patched)
@@ -352,9 +347,7 @@ def test_a_record_another_process_appended_is_kept(cfg):
     assert adopt_apply.read(cfg).entry_ids() == {_entry(n).entry_id for n in (0, 1, 5)}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The lock, the validation and the shape
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_every_ledger_write_happens_under_the_exclusive_lock(cfg, monkeypatch):
@@ -499,9 +492,7 @@ def test_four_real_processes_marking_at_once_lose_nothing(library, tmp_path):
     assert all(json.loads(line) for line in _lines(adopt_apply.path_for(cfg_value)))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # A ledger written before U254
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _plant(cfg_value, payload: bytes | str) -> Path:
@@ -564,9 +555,7 @@ def test_a_newer_document_still_asks_for_an_upgrade(cfg):
     assert excinfo.value.remedy is Remedy.UPGRADE_CRATEKIT
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # A torn last record, decided: read as the mark that did not finish
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _journal_of(count: int) -> bytes:
@@ -663,9 +652,7 @@ def test_a_header_alone_is_a_ledger_with_nothing_applied(cfg):
     assert adopt_apply.read(cfg) == adopt_apply.EMPTY
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # An apply killed at every mark resumes with exactly the marks that landed
-# ═══════════════════════════════════════════════════════════════════════════
 
 PLAN_SIZE = 5
 

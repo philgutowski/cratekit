@@ -52,7 +52,6 @@ def _absent(path):
     raise FileNotFoundError(path)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1.
 
 
@@ -150,8 +149,7 @@ def test_an_unmapped_local_path_still_refuses_and_names_its_prefix_and_rule(cfg)
     assert "2 under /Users/someone" in cause.message
     assert "1 under /Old Drive/Music" in cause.message
     steps = " ".join(cause.remediation.steps)
-    # ONE ENTRY TO ADD TO THE LIST, never a second assignment of the key, which
-    # a configuration already holding a rule refuses to load.
+    # One entry to add, never a second assignment of the key.
     assert "to the library.location_prefix_map list" in steps
     assert "location_prefix_map = [" not in steps
     assert 'from = "/Users/someone"' in steps
@@ -170,7 +168,6 @@ def test_a_refusal_names_at_most_five_prefixes_and_counts_the_rest(cfg):
     assert message.count(" under /Drive") == 5
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2.
 
 
@@ -223,9 +220,7 @@ def test_delete_review_trashes_a_removed_file_beside_streaming_rows(
     assert code == int(ExitCode.OK), err
     code, out, err = _drive(["--output", "json", "--run", run_id, "delete", "review"])
     assert code == int(ExitCode.OK), err or out
-    # WHERE THE TRASH IS belongs to the platform, and the Trash tests own it;
-    # what this card owes is that the verb finished: the file was moved and its
-    # removal recorded with where it went.
+    # Where the Trash is belongs to the Trash tests; this owes the move and its record.
     del trash
     assert not music.exists()
     (recorded,) = stores.list_tombstones(review_cli)

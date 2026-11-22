@@ -565,8 +565,7 @@ def test_an_active_row_whose_file_is_simply_missing_does_not_block_the_run(cfg):
     candidates.assert_complete(references)
 
 
-#: A prefix no machine has, so every row recorded under it needs a rule to reach
-#: a path at all. Synthesized rather than named after a real volume (D1, R1).
+#: A synthesized prefix no machine has, so its rows need a rule (D1, R1).
 RECORDED_ELSEWHERE = "/recorded/on/another/machine"
 
 
@@ -1475,9 +1474,7 @@ def test_a_rule_onto_the_filesystem_root_names_an_anchor_a_person_can_read(cfg):
 
 def test_the_library_root_anchor_is_folded_the_way_a_rule_target_is(cfg):
     """One directory, two composition forms, and this project's own worst incident."""
-    # Spelled with explicit escapes, because the two forms are the same
-    # glyphs on screen and an editor that normalizes on save would quietly
-    # turn this test into a comparison of one string with itself.
+    # Explicit escapes, so an editor that normalizes cannot make the forms equal.
     composed = "/library/Caf\u00e9"
     decomposed = "/library/Cafe\u0301"
     under_root = locations.ResolvedPath(
@@ -1526,8 +1523,7 @@ def test_a_revoke_that_cannot_reopen_the_item_leaves_the_decline_standing(
             )
         return real(store, item_id, actor=actor)
 
-    # Patched by flag rather than undone, because ``monkeypatch.undo`` would also
-    # revert the volume identity and process probes the gates fixture installed.
+    # A flag, since ``monkeypatch.undo`` would also undo the gates fixture.
     monkeypatch.setattr(run.review, "clear", unreadable)
     with pytest.raises(CratekitError) as excinfo:
         run.revoke(cfg, held.suppression_id, actor="cli")
@@ -1538,8 +1534,7 @@ def test_a_revoke_that_cannot_reopen_the_item_leaves_the_decline_standing(
     broken["on"] = False
     again = run.plan(cfg, db, actor="cli")
     assert [item.category for item in again.candidates] == [candidates.Category.DECLINED]
-    # And retrying completes it, which is what makes the pair recoverable rather
-    # than merely ordered.
+    # Retrying completes it.
     run.revoke(cfg, held.suppression_id, actor="cli")
     reopened = run.plan(cfg, db, actor="cli")
     assert [item.category for item in reopened.candidates] == [candidates.Category.DELETABLE]
@@ -1700,8 +1695,7 @@ def test_a_decline_whose_review_item_cannot_be_addressed_refuses(cfg, gates_pass
     """The derivation fault, told apart from the queue legitimately not holding it."""
     _music(cfg, ONE)
     row = _removed(cfg, ONE, "1")
-    # Written straight into the declines store under a kind this queue never
-    # uses, which is what a derivation drift looks like from the store's side.
+    # A kind this queue never uses: a derivation drift seen from the store.
     drifted = stores.declines(cfg).record(
         kind="some-other-kind",
         identity=stores.row_identity(row),
@@ -1715,8 +1709,7 @@ def test_a_decline_whose_review_item_cannot_be_addressed_refuses(cfg, gates_pass
     assert stores.declines(cfg).suppressions()[0].suppression_id == drifted.suppression_id, (
         "the decline was lifted anyway"
     )
-    # The other half of the derivation: the right kind, an identity this queue
-    # could never have addressed.
+    # The right kind with an identity this queue could never address.
     bad_identity = stores.declines(cfg).record(
         kind=run.REVIEW_KIND, identity={"content_id": "1"}, payload={}, actor="cli"
     )
@@ -1817,8 +1810,7 @@ def test_a_tombstone_that_cannot_be_written_puts_the_file_back(
     assert original.read_bytes() == b"audio bytes"
     assert stores.list_tombstones(cfg, include_revoked=True) == ()
     assert list((home / ".Trash").iterdir()) == []
-    # AND THE NEXT RUN STILL SEES IT. This is the half that matters: the row must
-    # not answer GONE, because GONE retires it and the deletion never happened.
+    # The next run still sees it: GONE would retire a deletion that never happened.
     broken["on"] = False
     again = run.plan(cfg, db, actor="cli")
     assert [item.category for item in again.candidates] == [candidates.Category.DELETABLE]
@@ -2044,8 +2036,7 @@ def test_a_subtitle_that_is_a_mix_name_is_still_composed(cfg):
     written = stores.record_tombstone(cfg, by_id["2"], actor="cli")
     assert stores.suppressed_version(cfg, artist=ARTIST, title="Strobe (Extended Mix)")
     assert not stores.suppressed_version(cfg, artist=ARTIST, title="Strobe")
-    # THE PAYLOAD KEEPS THE COLUMN VALUE, uncomposed and unfolded, and nothing
-    # pinned it.
+    # The payload keeps the column value, uncomposed and unfolded.
     assert written.payload["version"] == "Extended Mix"
 
 
@@ -2100,9 +2091,7 @@ def test_an_interrupt_while_putting_the_file_back_still_names_both_paths(
         raise KeyboardInterrupt()
 
     monkeypatch.setattr(run.trash, "recover", interrupted)
-    # CAUGHT AND RE-RAISED AS AN ASSERTION, because an interrupt that escapes
-    # here does not fail this test, it ENDS THE PYTEST SESSION, and a mutation
-    # measured against a suite that stopped early has measured nothing.
+    # Re-raised as an assertion: an escaping interrupt ends the pytest session.
     with pytest.raises(CratekitError) as excinfo:
         try:
             run.apply(cfg, db, actor="cli", home=home)
@@ -2132,8 +2121,7 @@ def test_a_membership_walk_that_comes_back_short_refuses_rather_than_freeing_the
     _music(cfg, ONE)
     _baseline(cfg)
     rows = [_content(cfg, ONE, "1", deleted=True, usn=50)]
-    # The plan's own walk answers, so the candidate is offered and confirmed
-    # exactly as it would be.
+    # The plan's own walk answers, so the candidate is offered and confirmed.
     db = FakeDb(rows, [_membership("1")], usn=50, memberships_walk_once=True)
     found = run.plan(cfg, db, actor="cli")
     assert [item.category for item in found.candidates] == [candidates.Category.STILL_REFERENCED], (
@@ -2314,9 +2302,7 @@ def test_a_move_that_fails_leaves_no_placeholder_wearing_the_track_s_name(
         raise raising
 
     monkeypatch.setattr(trash.os, "replace", will_not_rename)
-    # CAUGHT AND RE-RAISED, because an interrupt that escapes ENDS the pytest
-    # session rather than failing one test, and a suite that stopped early has
-    # measured nothing.
+    # Re-raised: an escaping interrupt ends the pytest session.
     with pytest.raises(type(raising)):
         trash.move_to_trash(source, layout=layout)
     assert source.read_bytes() == b"audio"
@@ -2485,8 +2471,7 @@ def test_a_featured_credit_bracket_does_not_stand_in_for_the_remix(cfg):
         ("Track (ft. Anna)", "Anna", False),
         ("Track (featuring Anna)", "Anna", False),
         ("Track (with Anna)", "Anna", False),
-        # A marker anywhere but the HEAD is a word in a mix name, and the head is
-        # the whole rule. Reading it by containment would break this one.
+        # A marker anywhere but the head is a word in a mix name.
         ("Track (Live with Strings)", "Live with Strings", True),
         ("Track (Anna Remix)", "Anna", True),
     ],
@@ -2606,8 +2591,7 @@ def test_the_collection_walk_hands_back_every_removal_it_saw(cfg):
 # Part 10: round six.
 
 
-# ── F1: the spelling decision was routed through the vocabulary's own known
-#        false positives ───────────────────────────────────────────────────────
+# ── F1: the spelling decision and the vocabulary's known false positives ──
 
 
 #: The artist and label names the vocabulary's measured false-positive set names.
@@ -2636,15 +2620,13 @@ def test_a_remixer_whose_name_carries_a_version_word_is_still_spelled_matchably(
 @pytest.mark.parametrize(
     ("remixer", "expected"),
     [
-        # THE ONLY VALUES LEFT VERBATIM. The last word is the very word about to
-        # be appended, so appending would write it twice.
+        # The only values left verbatim: appending would write the last word twice.
         ("Michael Woods Remix", "strobe (michael woods remix)"),
         ("Michael Woods Extended Remix", "strobe (michael woods extended remix)"),
         # A designation ending in some OTHER vocabulary word is composed anyway.
         ("Michael Woods Dub", "strobe (michael woods dub remix)"),
         ("Extended Mix", "strobe (extended mix remix)"),
-        # An ordinary artist name, which is what this column is guaranteed to
-        # hold, spelled the way a provider spells it.
+        # An ordinary artist name, spelled the way a provider spells it.
         ("Michael Woods", "strobe (michael woods remix)"),
         ("Anna", "strobe (anna remix)"),
         ("Radio Slave", "strobe (radio slave remix)"),
@@ -2669,8 +2651,7 @@ def test_a_removed_row_with_no_identifier_of_its_own_is_refused_rather_than_name
     assert excinfo.value.cause.reason == "review-selection-invalid"
     with pytest.raises(CratekitError):
         tombstone.removed_file_identity(content_id="", recorded="/music/x.flac")
-    # A NUMERIC identifier is a legitimate identifier and zero is a number. The
-    # emptiness test runs on the converted value for exactly this reason.
+    # Zero is a number: the emptiness test runs on the converted value.
     assert tombstone.removed_file_identity(content_id=0, recorded="/x")["content_id"] == "0"
 
 
@@ -2885,8 +2866,7 @@ def test_a_tombstone_an_earlier_build_wrote_is_still_recognised(cfg, gates_pass,
         actor="cli",
     )
     assert stores.tombstone_predicate(cfg)(removed), "an earlier build's deletion is missed"
-    # AND THE CONSULT IS NOT WIDENED WITH IT, which is the scope of the whole
-    # change.
+    # And the consult is not widened with it.
     assert not stores.suppressed_version(cfg, artist=ARTIST, title="Strobe (Michael Woods Remix)")
     assert stores.suppressed_version(cfg, artist=ARTIST, title="Strobe (Michael Woods)")
     home = _home(tmp_path)
@@ -3162,8 +3142,7 @@ _DESIGNATIONS = (
     "Mezcla Ampliada",
 )
 
-#: 15 ARTIST names whose LAST word is in the vocabulary. Round six left every one
-#: of these verbatim.
+#: 15 artist names whose last word is in the vocabulary.
 _ARTISTS_WORD_LAST = (
     "The Cut",
     "Da Dub",
@@ -3182,8 +3161,7 @@ _ARTISTS_WORD_LAST = (
     "Defected Radio",
 )
 
-#: 10 ARTIST names carrying a vocabulary word anywhere but last. Round five left
-#: every one of these verbatim.
+#: 10 artist names carrying a vocabulary word anywhere but last.
 _ARTISTS_WORD_FIRST = (
     "Radio Slave",
     "Dub Pistols",
@@ -3197,8 +3175,7 @@ _ARTISTS_WORD_FIRST = (
     "Cut Copy",
 )
 
-#: The measured miss counts for the SHIPPED rule, per class, pinned exactly so a
-#: change in either direction is a failing test rather than a paragraph.
+#: The shipped rule's measured miss counts per class, pinned exactly.
 _MEASURED_MISSES = {"designation": 38, "artist-word-last": 0, "artist-word-first": 0}
 
 
@@ -3496,9 +3473,7 @@ def test_a_record_this_build_wrote_says_which_rules_composed_it(cfg, gates_pass)
     record = stores.record_tombstone(cfg, removed, actor="cli", trashed_to="/x")
     assert record.payload[stores.IDENTITY_SCHEME_FIELD] == stores.identity_scheme()
     assert stores.summarize(record)[stores.IDENTITY_SCHEME_FIELD] == stores.identity_scheme()
-    # THE SHAPE IS PINNED SEPARATELY FROM THE VALUE, because the equalities above
-    # take their expected value from the code under test and would be satisfied
-    # by a stamp that is always the empty string.
+    # The shape is pinned apart: the equalities above would pass an empty stamp.
     stamp = stores.identity_scheme()
     assert stamp.startswith("is2_") and len(stamp) == len("is2_") + 16
     # AND IT IS ON THE DISK, not only on the object the writer returned.
@@ -3794,9 +3769,7 @@ def test_the_stamp_reaches_every_rule_by_walking_rather_than_by_a_list():
         "cratekit.deletion.stores.version_of",
     ):
         assert f"code:{name}" in reached, f"the walk stopped reaching {name}"
-    # AND THE VOCABULARY IS IN THERE AS ITS MEMBERS rather than as a name, since
-    # a digest that recorded only "there is a frozenset here" would be exactly
-    # the round 10 defect wearing a new shape.
+    # The vocabulary is in there as its members, not as a name.
     encoded = json.dumps(reached["value:cratekit.core.tombstone.VERSION_WORDS"])
     assert "extended" in encoded and "remix" in encoded
 
@@ -3862,8 +3835,7 @@ def test_nothing_reconstructs_a_former_builds_composition_any_more(cfg):
         value = vars(stores).get(path[0])
         for step in path[1:]:
             value = getattr(value, step, None)
-        # FUNCTIONS ONLY. ``RemovedRow`` is reached too, as the row type in the
-        # predicate's own annotation, and naming a type is not consulting a rule.
+        # Functions only: naming the row type is not consulting a rule.
         if not inspect.isfunction(value):
             continue
         name = f"code:{value.__module__}.{value.__qualname__}"
@@ -3995,9 +3967,7 @@ def test_delete_review_trashes_a_confirmed_file(review_cli, tmp_path, monkeypatc
     assert code == int(ExitCode.OK), err or out
     assert not music.exists()
     assert any(home.joinpath(".Trash").iterdir()), "the confirmed file never reached the Trash"
-    # U60: the whole of what the inline pass owes, asserted through the SHIPPED
-    # verb rather than the engine, since nothing queues it and no worker will
-    # ever finish it later.
+    # U60: what the inline pass owes, through the shipped verb.
     assert len(stores.list_tombstones(review_cli)) == 1
     assert watermark.WatermarkStore(review_cli).read().sequence >= 50
 
@@ -4045,8 +4015,7 @@ def test_delete_review_says_on_the_refusal_that_a_first_run_accepted_history(
         "baselined": False,
         "accepted_as_history": 0,
         "offered": 0,
-        # U243: the disposable database's other row records no location, so the
-        # proof excused it, and the screen says how many it excused.
+        # U243: the other row records no location, and the screen counts it.
         "ignored, not local files": 1,
     }
     _drive(
@@ -4242,8 +4211,7 @@ def test_a_drive_ejected_mid_queue_is_not_settled_as_a_queue_of_deletions(
     arm(2)
     with pytest.raises(CratekitError) as excinfo:
         run.apply(cfg, db, actor="cli", home=home, prefix_map=rule)
-    # UNMOUNTED rather than mismatch: the eject took the file's own directory
-    # with it, so the recorded volume is nowhere and the probed path is absent.
+    # Unmounted, not mismatch: the eject took the file's own directory.
     assert excinfo.value.cause.reason == "mapped-volume-unmounted"
     assert reads["changed"], "the drive was never ejected, so this proved nothing"
     assert stores.list_tombstones(cfg, include_revoked=True) == (), (

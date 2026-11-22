@@ -85,9 +85,7 @@ def _genre_of(declared_taxonomy) -> str:
     raise AssertionError("the shipped template declares no routable bucket")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The census, over a library that is actually on the removable volume
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_cloud_backed_track_on_a_fat_volume_is_EXCLUDED_and_never_applicable(fat, cfg, declared):
@@ -124,9 +122,7 @@ def test_a_cloud_backed_track_on_a_fat_volume_is_EXCLUDED_and_never_applicable(f
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The revert ledger, over files on the removable volume
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_absent_genre_on_a_fat_file_comes_back_ABSENT(fat, cfg):
@@ -188,10 +184,7 @@ def test_a_record_whose_directory_is_gone_is_NOT_treated_as_a_deleted_file(fat, 
 
     backup = backup_dir / "Copy.mp3"
     shutil.copyfile(path, backup)
-    # REMOVED BY HAND RATHER THAN BY ``shutil.rmtree``, and that is a FAT fact rather
-    # than a preference. rmtree walks with ``dir_fd`` relative unlinks where the
-    # platform claims support, and on this msdos volume that walk raises
-    # FileNotFoundError for the directory it is standing in.
+    # Removed by hand: rmtree's dir_fd walk raises FileNotFoundError on msdos.
     for child in sorted(music.iterdir()):
         child.unlink()
     music.rmdir()

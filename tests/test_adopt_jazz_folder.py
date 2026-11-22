@@ -244,9 +244,7 @@ def test_a_classical_track_in_its_style_playlist_is_never_asked_about():
     assert plan.moves == () and plan.left == ()
 
 
-# ---------------------------------------------------------------------------
 # The verb, against a disposable library filed under the shape before U133
-# ---------------------------------------------------------------------------
 
 #: Content identifier, genre, energy tag, and the places seeded: ``old`` is the
 #: Jazz playlist of the non electronic folder, ``vox`` that folder's vocal sub,
@@ -313,8 +311,7 @@ def test_an_approved_move_files_jazz_in_its_bands_and_keeps_every_other_membersh
         kept = {_seeded_place(place) for place in seeded if place != "old"}
         assert after[content_id] == {destination(DECLARED, JAZZ.id, sub), *kept}, content_id
         assert removed[content_id] == {OLD_JAZZ}, content_id
-    # "WITH VOX" AND A SET ARE KEPT: a sub class and a playlist outside the
-    # tree are never a place a move removes.
+    # A sub class and a playlist outside the tree are never a place a move removes.
     assert NONELEC_VOX in after["j-med"]
     assert A_SET in after["j-high"]
     # A track with no reading lands in Unsorted.
