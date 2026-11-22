@@ -1,31 +1,12 @@
-"""The static verb registry: one table, lazily imported, fully introspectable.
+"""The static verb registry: one table, lazily imported, fully introspectable (KTD7).
 
-KTD7 says modules register in a static table rather than through entry points,
-because every module lives in this repository and discovery machinery buys
-nothing. Two consequences shape this file.
-
-**Nothing here imports a module.** ``module`` and ``builder`` are strings. The
-shell imports a module only when it is enabled AND its subcommand is being
-built, and a failed import for a MISSING EXTRA becomes a stub subcommand rather
-than a crash. That is what makes ``crate --help`` work on a slim install with
-every heavy extra absent, and it is why this module imports nothing beyond the
-standard library and the foundation.
-
-**Every entry carries the metadata the conformance suite needs to interrogate
-it.** The source system has the ancestor of this idea: a job-kind table with
-five capability flags used to decide whether a job may touch the database or the
-volume. What it cannot do is answer "does this verb participate in the output
-contract", because that question has no field. Widening the entry from five
-flags to the whole conformance surface is what lets a new verb fail the build by
-OMISSION instead of by review. Coverage proves a verb exists; this proves it
-conforms.
-
-An entry whose ``planned_in`` names a unit is DECLARED but not landed. Declaring
-it early is deliberate: the Feature Inventory parity check is only meaningful
-over the whole surface, and the alternative is discovering at the last unit that
-two Feature rows never acquired a verb. ``tests/test_cli_contract.py`` asserts
-every planned module is genuinely still absent, so the marker expires the moment
-its unit lands rather than surviving as a comment nobody re-reads.
+Nothing here imports a module: ``module`` and ``builder`` are strings, imported
+only when the module is enabled and its subcommand is built, and a missing extra
+becomes a stub, so ``crate --help`` works on a slim install. Every entry carries
+the metadata the conformance suite needs, so a new verb fails the build by
+omission rather than by review. A ``planned_in`` entry is declared but not
+landed, and ``tests/test_cli_contract.py`` expires the marker once its module
+exists.
 """
 
 from __future__ import annotations
@@ -37,9 +18,8 @@ from typing import Mapping
 from cratekit.core import profiles
 from cratekit.modules import extras as _extras
 
-#: The distribution name, used to render the install command for a missing
-#: extra. Spelled once in ``modules.extras``, which the workers can reach and
-#: the CLI cannot be imported by, so a rename cannot desynchronize the two.
+#: The distribution name for a missing extra's install command, spelled once in
+#: ``modules.extras`` so a rename cannot desynchronize the workers and the CLI.
 DISTRIBUTION = _extras.DISTRIBUTION
 
 
@@ -47,21 +27,11 @@ DISTRIBUTION = _extras.DISTRIBUTION
 class GateSpec:
     """A decision point, declared statically rather than asked at a prompt.
 
-    ``name`` is a stable identifier and is never a prompt string. The source
-    system binds its scripted answer to prompt ORDER, so inserting a prompt
-    anywhere upstream silently makes the answer land on the wrong question, and
-    nothing in the type system or the tests would notice. A named gate cannot
-    drift that way.
-
-    ``explicit`` marks a gate R34 forbids any blanket answer for. Those are
-    satisfiable only from a decision recorded against the run by a separate,
-    deliberate act, never inline in the invocation that hit the gate, and never
-    from a config key or an environment variable.
-
-    ``digest_source`` names the artifact whose identity the decision was made
-    against. When it moves between the offer and the answer, the decision is
-    stale rather than valid, which is the property that stops a user approving
-    one plan and running a wider one.
+    ``name`` is a stable identifier, never a prompt string, so an answer cannot
+    drift onto another question when prompts are reordered. ``explicit`` marks
+    a gate answerable only by a separate recorded act, never inline, by config
+    or by environment (R34). ``digest_source`` names the artifact the decision
+    binds to, so a plan that moves after approval makes the decision stale.
     """
 
     name: str
@@ -77,34 +47,17 @@ class GateSpec:
             raise ValueError(f"gate {self.name!r} repeats an option")
 
 
-#: What a verb may declare it writes. ``files`` and ``remote`` are here because
-#: KTD24 binds the destructive gates to DESTRUCTION, not to database writes: a
-#: verb that trashes audio files writes no database row and is the single most
-#: destructive thing the product does.
+#: What a verb may declare it writes. ``files`` and ``remote`` are included
+#: because the destructive gates bind to destruction, not database writes (KTD24).
 WRITE_SURFACES: frozenset[str] = frozenset({"db_tree", "db_metadata", "xml", "files", "remote"})
 
-#: The subset of those surfaces that goes through the guarded rekordbox writer.
-#: A verb declaring one of these opens the database with write intent, so it can
-#: reach the writer's cloud-sync refusals and must declare the decision that
-#: answers the unreadable one. Named here so the rule is DERIVED in one place
-#: rather than re-listed by every check that needs it: a hand-listed copy is a
-#: copy that misses the next verb somebody adds (P3).
+#: The surfaces written through the guarded rekordbox writer. A verb declaring
+#: one must declare the cloud sync decision; derived here once, not re-listed (P3).
 DB_WRITE_SURFACES: frozenset[str] = frozenset({"db_tree", "db_metadata"})
 
-#: The decision a verb reaches when the guarded writer cannot READ rekordbox's
-#: Cloud Library Sync state. Declared once and attached to every verb in
-#: ``DB_WRITE_SURFACES`` rather than re-spelled per entry, because eleven copies
-#: of one gate is eleven chances for one of them to drift a word.
-#:
-#: It is ``explicit`` because R34 forbids a blanket answer for anything in this
-#: class: proceeding past a guard that could not rule out a concurrent writer is
-#: a per-run act by a named actor, never a flag, a config key, or an environment
-#: variable that answers it once for everything.
-#:
-#: The name is not scoped to a verb, unlike the confirm gates around it. That is
-#: deliberate: this is one condition raised by one shared layer, and a decision
-#: is recorded against the run's own verb, so a shared name cannot cross-answer
-#: another run's gate.
+#: The decision reached when the guarded writer cannot read Cloud Library Sync
+#: state, declared once and shared by every ``DB_WRITE_SURFACES`` verb. Explicit
+#: (R34), and unscoped because a decision is recorded against the run's own verb.
 CLOUD_SYNC_UNREADABLE_GATE = GateSpec(
     name="write.cloudsync.unreadable",
     options=("proceed", "abort"),
@@ -128,24 +81,19 @@ class Entry:
     builder: str
     handler_key: str
 
-    #: The Feature Inventory rows this verb satisfies. The parity check reads
-    #: these, so a verb that satisfies a row without saying so leaves the row
-    #: looking unimplemented, and a Cut row claimed by a verb fails the build.
+    #: The Feature Inventory rows this verb satisfies, read by the parity check;
+    #: a Cut row claimed by a verb fails the build.
     feature_rows: tuple[int, ...] = ()
-    #: The source system's console scripts this verb replaces. The other half of
-    #: parity: four live scripts have no Feature Inventory row at all, so a check
-    #: keyed only on the inventory would pass while four workflows vanished.
+    #: The source system's console scripts this verb replaces, the half of
+    #: parity for scripts with no Feature Inventory row.
     source_scripts: tuple[str, ...] = ()
 
-    #: The feature module that gates this verb, or None when it is core. Names a
-    #: member of ``profiles.MODULES``; the profile decides membership (D6) and
-    #: this decides which verb that membership switches.
+    #: The feature module that gates this verb, or None when it is core. The
+    #: profile decides membership (D6); this names which verb it switches.
     module_id: str | None = None
     extras: str | None = None
-    #: Third-party TOP-LEVEL module names the extras group provides. The stub
-    #: fires only when the failed import names one of THESE. Without that gate a
-    #: typo in one of our own modules surfaces to the user as "install the
-    #: analysis extra", which is both wrong and unfixable by them.
+    #: Third-party top-level modules the extras group provides. The stub fires
+    #: only on these, so a defect in our own code is never reported as a missing extra.
     extras_modules: tuple[str, ...] = ()
 
     argv_builder: str | None = None
@@ -183,11 +131,7 @@ class Entry:
                 "the stub cannot tell a missing extra from a defect in our own code"
             )
         # The stub prints ``extras`` as the install command, so it must name a
-        # group that exists. Extras are named one to one with modules (KTD7), and
-        # tests/test_config.py holds EXTRAS_BACKED equal to pyproject's groups, so
-        # these two checks close the chain from a verb to the file pip reads. A
-        # module that grows a heavy dependency now has to grow its extras group
-        # too, rather than send a user to install one that is not there (R-4).
+        # group pyproject declares, named one to one with its module (KTD7, R-4).
         if self.extras is not None and self.extras != self.module_id:
             problems.append(
                 f"the extras group {self.extras!r} is not this verb's own module "
@@ -259,11 +203,9 @@ class Feature:
     disposition: str  # core | module | reshaped | cut | defer
 
 
-#: The plan's Feature Inventory, transcribed. Dispositions drive the parity
-#: check: a row dispositioned ``core`` must be reachable without enabling a
-#: module, a ``module`` row must be gated by one, and a ``cut`` or ``defer`` row
-#: must have no verb at all. Transcribing it here rather than parsing the plan
-#: document keeps the check runnable in a clone that has no plan document.
+#: The plan's Feature Inventory, transcribed so the parity check runs without the
+#: plan document. A ``core`` row needs no module, a ``module`` row is gated by
+#: one, and a ``cut`` or ``defer`` row has no verb.
 FEATURES: tuple[Feature, ...] = (
     Feature(1, "mix URL set identification", "module"),
     Feature(2, "tracklist intake", "module"),
@@ -282,22 +224,15 @@ FEATURES: tuple[Feature, ...] = (
     Feature(15, "duplicate audit", "module"),
     Feature(16, "camelot padding pass", "cut"),
     Feature(17, "filename and path repair", "module"),
-    #: Flipped from Cut on 2026-08-26 (U40), and the plan's own row 18 cell was
-    #: amended in the same sitting because the parity check drift-tests the two
-    #: trees against each other. The Cut justification was "one-time personal
-    #: cleanups", and a 2026-08-24 audit falsified it: tagging is fill-if-empty by
-    #: construction, so a mis-tagged arrival routes to the fallback bucket and no
-    #: verb can ever look a better answer up. That is a permanent hole in a shipped
-    #: workflow rather than one person's migration, and the title says the general
-    #: capability rather than the decision this unit reverses.
+    #: Flipped from Cut (U40): tagging is fill if empty, so without this no verb
+    #: can ever correct a coarse genre. Kept in step with the plan's row 18.
     Feature(18, "genre correction for a tag already too coarse", "module"),
     Feature(19, "streamed-track playlist scan", "cut"),
     Feature(20, "intake aging report", "module"),
     Feature(21, "favourite label registry and sweeps", "module"),
     Feature(22, "label import and label harvest", "module"),
-    #: Flipped from Defer on 2026-10-02 (R-835). The author reversed the
-    #: non-replacement: the account's main structure, a folder per label, is
-    #: no longer kept once the source system retires.
+    #: Flipped from Defer (R-835): the folder per label is otherwise lost when
+    #: the source system retires.
     Feature(23, "label to streaming playlist folders", "module"),
     Feature(24, "hearted-track sync with auto-acquire", "module"),
     Feature(25, "sync orchestrator", "reshaped"),
@@ -315,11 +250,8 @@ FEATURES: tuple[Feature, ...] = (
     Feature(37, "track deletion and tombstones", "module"),
 )
 
-#: Rows whose "Module" disposition is realized as a configured POLICY rather
-#: than a module toggle, with the reason. Exactly one, and it is named rather
-#: than silently exempted: R21 makes lossy acquisition a policy value with
-#: mandatory marking, so there is no configuration in which it is a module that
-#: can be on and unmarked. A toggle would re-create exactly that state.
+#: Module rows realized as a configured policy rather than a toggle, named rather
+#: than silently exempted. R21 makes lossy acquisition a marked policy value.
 POLICY_ROWS: Mapping[int, str] = MappingProxyType(
     {7: "R21 makes this acquisition.lossless_policy, not a module toggle"}
 )

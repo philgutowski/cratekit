@@ -1,44 +1,12 @@
 """``crate export collection``: a collection export without rekordbox's menus (R-745).
 
-WHAT WAS MISSING. A landing, the import proof, a cutover and the routing verbs
-on the export medium each take an export of the collection, and the one way to
-get one was the application's own menu, by hand, with the application open.
-Three were taken that way in one afternoon, and each went stale the moment the
-database was next written. This verb writes the same document from a disposable
-copy of the configured database.
-
-THE DATABASE IS READ THROUGH A DISPOSABLE COPY AND NEVER WRITTEN. The live file
-is protected by standing constraint. ``rb_writer.read_only_copy`` copies, opens
-the copy, and refuses while rekordbox or its agent is running, under the slug
-the writers refuse with, because a copy taken under a live application is
-missing whatever was mid write.
-
-IT NEVER REPLACES A FILE. The destination is created exclusively, so a file that
-appeared between the check and the write is refused by the write itself. An
-export somebody kept is the copy of a tree a cutover walks back to, and nothing
-records what was in one that was overwritten.
-
-THE ORDER IS CHEAPEST REFUSAL FIRST. The destination is a name and a stat, and
-so is the folder it would sit in. The copy is the whole database, which is the
-expensive read, so it is taken last and only for a destination whose folder
-exists, or could be made, and can be written to.
-
-NO GATE, AND NOT DESTRUCTIVE. The run adds one file where a person said to put
-it, replaces nothing and writes no database row, so there is no decision for a
-person to make.
-
-NO TEMPO DATA IS WRITTEN. The emitter's docstring gives the decision and the
-ledger entry records it.
-
-EVERY LOCATION IS WRITTEN WHERE THE LIBRARY IS MOUNTED (R-773). The emitter is
-handed the library root and ``library.location_prefix_map``, and writes a row
-a rule places under the rule's target, which is what rekordbox's own export
-holds for a library on a renamed drive. A row under no rule is written as the
-database holds it. The warning that counts those rows names the prefixes they
-record, and doctor's ``library.paths_resolved`` stays the one report of how
-the collection resolves, counting the same rows through the same walk.
-
-Layer: cli, beside the cutover verbs, which read the database the same way.
+The database is read through a disposable copy and never written, refused
+while rekordbox or its agent runs since such a copy misses whatever was mid
+write. The destination is created exclusively and never replaces a file, since
+a kept export is what a cutover walks back to. Cheap refusals come before the
+expensive copy. There is no gate, as the run only adds one file. No tempo data
+is written. Locations under a ``library.location_prefix_map`` rule are written
+under its target, as rekordbox's own export would (R-773).
 """
 
 from __future__ import annotations
@@ -61,18 +29,15 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
 
 
 def _now() -> datetime:
-    """The moment the file says it was written. A seam, so a test can name it."""
+    """The moment the file says it was written, a seam for tests."""
     return datetime.now(timezone.utc)
 
 
 def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
     """Declare the one argument, the file to write.
 
-    THERE IS NO DEFAULT AND NO OVERWRITE FLAG. A default would put an export
-    somewhere a person did not choose, and the library root is where the
-    pending intake scan looks. A flag to overwrite would be the one path where
-    something is lost, for a file that costs a minute to write under a new
-    name.
+    No default, since it would put an export somewhere nobody chose, and no
+    overwrite flag, since that would be the one path where something is lost.
     """
     del entry
     parser.add_argument(
@@ -86,11 +51,8 @@ def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
 def _refuse_destination(destination: Path) -> None:
     """Refuse a destination that is taken, or named as a pending intake file.
 
-    THE PENDING NAMES ARE REFUSED BECAUSE TWO OTHER VERBS READ THEM AS SOMETHING
-    ELSE. A file under the library ending in one of those suffixes stops a
-    cutover as un-imported work, and the import proof refuses it as the export
-    because it is named as an intake file. An export written under such a name
-    would be refused by the verbs it was written for.
+    A pending intake name is refused because the cutover and the import proof
+    read it as un-imported work and would refuse the export.
     """
     name = destination.name
     for suffix in tree_registry.PENDING_XML_SUFFIXES:
@@ -134,10 +96,8 @@ def _unwritable(destination: Path, blocked: Path, why: str) -> CratekitError:
 def _refuse_unwritable_folder(destination: Path) -> None:
     """Refuse a destination whose folder could not hold it, before the copy.
 
-    THE NEAREST FOLDER THAT EXISTS IS THE ONE ASKED, since the folders under it
-    are made by the write. It has to be a folder, and one this account can
-    write into. Asked here so a database is not copied and read whole for a
-    file that could never have been written.
+    The nearest existing folder is asked, since the write makes the ones
+    under it, so the database is never copied for a file that cannot land.
     """
     nearest = destination.parent
     while not os.path.lexists(nearest) and nearest != nearest.parent:
@@ -149,7 +109,7 @@ def _refuse_unwritable_folder(destination: Path) -> None:
 
 
 def _make_folders(folder: Path) -> list[Path]:
-    """Make ``folder`` and whatever it lacks above it. Answers what was made."""
+    """Make ``folder`` and whatever it lacks above it, answering what was made."""
     missing: list[Path] = []
     cursor = folder
     while not os.path.lexists(cursor) and cursor != cursor.parent:
@@ -168,13 +128,9 @@ def _make_folders(folder: Path) -> list[Path]:
 def _write_new(destination: Path, content: bytes) -> None:
     """Create ``destination`` holding ``content``, or refuse, and never replace.
 
-    EXCLUSIVE CREATE, so the check ahead of the copy is a courtesy and this is
-    the guard. A file that is there when the create is tried is refused as
-    taken whether or not it is still there a moment later.
-
-    A WRITE THAT FAILS LEAVES NOTHING. The file it created is removed, since a
-    truncated export opens and reads as a smaller library, and so is every
-    folder it made on the way, newest first and only while empty.
+    The exclusive create is the guard, the earlier check only a courtesy. A
+    failed write leaves nothing, since a truncated export reads as a smaller
+    library, so the file is removed and so is every folder made, while empty.
     """
     made: list[Path] = []
     created = False
@@ -208,7 +164,7 @@ def _write_new(destination: Path, content: bytes) -> None:
 
 
 def _read(cfg: config.Config) -> tuple[collection_export.Document, str | None]:
-    """Read the copy and render it. Answers the document and the schema version."""
+    """Read the copy and render it, answering the document and the schema version."""
     database = rb_writer.live_db_path(cfg)
     with rb_writer.read_only_copy(database, cfg=cfg) as db:
         schema = rb_writer.db_schema_version(db)
@@ -234,8 +190,7 @@ def _read(cfg: config.Config) -> tuple[collection_export.Document, str | None]:
     return document, schema
 
 
-#: How many leading prefixes the warning over rows under no rule names. The
-#: count of the rest is always given.
+#: How many prefixes the unmapped rows warning names; the rest are counted.
 _NAMED_PREFIXES = 3
 
 

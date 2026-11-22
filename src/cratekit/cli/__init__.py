@@ -1,38 +1,13 @@
-"""The ``crate`` entry point: one shell, one dispatcher, one conversion to a status.
+"""The ``crate`` entry point: one parser, one dispatcher, one conversion to a status.
 
-R2 replaces thirty console scripts with one verb. That much is packaging. What
-this file actually owns is narrower and more load-bearing: it is the ONLY place
-in the package where a failure becomes a process exit status, and the only place
-where a remediation token becomes something a person reads.
-
-Four properties, each answering a defect in the source system:
-
-1. **A parser is built without importing a feature module.** The registry is
-   plain data; a verb's module is imported only when argparse selects that verb
-   (U248), so a command imports the one verb it runs, and an import that fails
-   because an EXTRA is missing becomes a stub subcommand rather than an
-   exception. So ``crate --help`` works with every heavy extra uninstalled
-   (KTD7). An import that fails for any other reason propagates, because
-   telling a user to install an extra when the real problem is a defect in our
-   own module is both wrong and unfixable by them. It propagates for its own
-   verb only: every other command still builds and runs.
-
-2. **Every verb returns an envelope, and the envelope's exit code is the process
-   status.** In the source, the two largest entry points always exit zero
-   because their ``main`` returns ``None``; any automation reading their status
-   is reading a constant.
-
-3. **``SystemExit`` is caught here on purpose.** It is a ``BaseException``, so
-   ``except Exception`` does not see it. That exact gap is live in the source: an
-   argument-parsing failure inside a called writer escapes its handler and
-   surfaces as exit 2 from the orchestrator, where 2 is documented as lock
-   contention. Catching it at the boundary is what keeps 2 meaning only what
-   argparse means by it.
-
-4. **Standard input is never read.** Not by a guarded prompt, not through an
-   injected input function. A gate that has no answer exits with a documented
-   code and leaves the run resumable, which is what makes the same decision
-   answerable from a different process in a later session (R33).
+This is the only place a failure becomes a process exit status and a
+remediation token becomes words. A verb's module is imported only when
+argparse selects it (U248), and a missing extra makes a stub rather than an
+exception, so ``crate --help`` works with every extra uninstalled (KTD7); any
+other import failure propagates, for its own verb only. Every verb returns an
+envelope whose exit code is the status, ``SystemExit`` is caught at the
+boundary so 2 keeps argparse's meaning, and standard input is never read: an
+unanswered gate exits with a code and leaves the run resumable (R33).
 """
 
 from __future__ import annotations
@@ -68,16 +43,10 @@ from cratekit.core.exit_codes import ExitCode, Remedy
 class Context:
     """Everything a verb is handed, and the only way it produces a result.
 
-    A verb never prints, never exits, and never reads input. It returns an
-    envelope. That is what lets the conformance suite drive every verb the same
-    way and assert the same properties about each of them.
-
-    ``progress`` IS THE ONE EXCEPTION, and it is not output. A verb that runs
-    for minutes before its envelope exists hands it a line saying which phase
-    it is in and how far along (R-924). The dispatcher sets it to a writer on
-    standard error in human output and leaves it None in JSON output, so the
-    envelope is still the only thing on standard output and still the result,
-    and a verb handed None does none of the work of measuring progress.
+    A verb never prints, exits or reads input; it returns an envelope, so the
+    conformance suite drives every verb alike. ``progress`` is a standard error
+    writer in human output and None in JSON output, for a long verb's phase
+    lines (R-924); it is never the result.
     """
 
     entry: Entry
@@ -114,25 +83,12 @@ class Context:
     def run_job(self, store, job):
         """Run one queued job's items here, in this process.
 
-        THE ONLY ROUTE A VERB HAS TO THE DRIVER, and it is a method rather than an
-        import for a reason the layering guard enforces. A verb module is
-        modules-ranked and :mod:`cratekit.cli.handlers` is CLI-ranked, so a verb
-        that imported it directly would be reaching upward, which
-        ``tests/test_layering.py`` refuses whether the import is at module scope or
-        inside the function body. ``Context`` is already the one object every verb
-        holds, so the driver arrives the same way the envelope does.
-
-        Returns the ``cratekit.core.jobs.DriveResult`` and the drift warnings the
-        verb should put on its envelope, together, so a verb never has to spell
-        the drift wording itself. EXCEPT when every attempted item failed: the
-        engine records the job as failed and raises there, which is the common
-        failure path for a job with one item.
-
-        THE IMPORT IS INSIDE THE METHOD and it is not a laziness preference. This
-        package's ``__init__`` is imported by ``cratekit.core.jobs`` for the output
-        envelope, and ``handlers`` imports ``cratekit.core.jobs``, so a
-        module-scope import here is a cycle that leaves ``core.jobs`` half built
-        for anything that imports it first. A worker script is exactly that.
+        A verb's only route to the driver, a method because a verb importing
+        :mod:`cratekit.cli.handlers` would reach upward, which the layering
+        guard refuses. Returns the ``DriveResult`` and the warnings for the
+        envelope; when every attempted item failed the engine raises instead.
+        The import is inside the method because a module scope one is a cycle
+        through ``cratekit.core.jobs``.
         """
         from cratekit.cli import handlers
 
@@ -151,21 +107,10 @@ Handler = Callable[[Context], Envelope]
 def _membership() -> profiles.Membership:
     """Which modules are on, tolerating an unconfigured machine.
 
-    ``crate --help`` has to work before setup has ever run, so a missing or
-    unreadable config resolves to the full preset rather than raising. Showing a
-    verb that a later profile turns off is a smaller failure than a help screen
-    that crashes on a fresh install, which is the one moment a new user has no
-    way to diagnose anything.
-
-    AND "UNREADABLE" WAS A CLAIM THIS FUNCTION DID NOT KEEP. ``config.load``
-    stats the file before it reads it, and a stat under a directory this account
-    cannot traverse raises ``PermissionError`` rather than any ``ConfigError``,
-    so the paragraph above was true of a corrupt file and false of an unreadable
-    one. This call sits OUTSIDE the dispatcher's try, in the parser construction
-    every invocation runs first, so the result was a traceback out of ``crate
-    --help`` on a machine whose configuration directory the operating system will
-    not open. The verbs that actually need the configuration still meet the same
-    refusal and report it; what may not happen is the help screen dying of it.
+    ``crate --help`` must work before setup has run, so a missing, corrupt or
+    unreadable config, ``OSError`` included, resolves to the full preset. This
+    runs outside the dispatcher's try; the verbs that need the config still
+    meet the refusal and report it.
     """
     try:
         loaded = config.load()
@@ -180,10 +125,8 @@ def _membership() -> profiles.Membership:
 def _is_missing_extra(exc: ImportError, entry: Entry) -> bool:
     """True only when the failed import names one of the entry's extras modules.
 
-    The gate is the whole point. A bare ``except ImportError`` turns every typo
-    in one of our own modules into "install the analysis extra", which sends the
-    user to fix something that was never broken and leaves the real defect
-    invisible.
+    Otherwise a typo in our own module would read as "install the extra" and
+    hide the real defect.
     """
     missing = (getattr(exc, "name", "") or "").split(".")[0]
     return bool(missing) and missing in entry.extras_modules
@@ -226,11 +169,9 @@ def _stub_help(entry: Entry) -> str:
 class _Unbuilt:
     """One verb's subparser, made from registry data, whose module is not imported yet (U248).
 
-    ``build`` is what the eager loop below does for every verb before it reads
-    a word, done for the one verb argparse selected, on the subparser that was
-    already listed under its name, so the verb's own parser is the same object
-    either way. ``listed`` is the pseudo action argparse keeps the listing line
-    on, which the stub's line replaces.
+    ``build`` does what the eager loop does, for the one verb argparse
+    selected, on the subparser already listed under its name. ``listed`` is
+    the pseudo action holding the listing line a stub replaces.
     """
 
     __slots__ = ("entry", "parser", "listed", "importer", "built", "asked")
@@ -252,16 +193,10 @@ class _Unbuilt:
     def build(self) -> None:
         """Import the verb's module and run its builder, or make it the stub.
 
-        An import that fails for any reason but a missing extra propagates, as
-        it did from the eager loop, so a defect of our own fails loudly. It
-        fails for its own verb only now, and that is the change U248 makes.
-
-        AN ``ArgumentError`` FROM THE IMPORT OR THE BUILDER LEAVES AS A
-        ``RuntimeError``. This runs inside argparse's parse, which reads an
-        ``ArgumentError`` as the user's mistake and exits 2 with a usage line;
-        the eager loop raised it as the defect it is, and so does this. And the
-        verb counts as built only once its builder returned, so a builder that
-        failed part way is never handed on as a verb with half its arguments.
+        An import failing for any reason but a missing extra propagates, so our
+        own defect fails loudly. An ``ArgumentError`` leaves as a
+        ``RuntimeError``, since inside argparse's parse it would read as the
+        user's mistake. The verb counts as built only once its builder returned.
         """
         if self.built:
             return
@@ -284,17 +219,10 @@ class _Unbuilt:
     def ask_for_listing(self) -> None:
         """Settle the listing line, importing only when the line could differ.
 
-        Only a verb that declares extras can be a stub, since any other import
-        failure propagates, so only such a verb is asked, and only when a help
-        screen lists it. The five real ones import their extras inside
-        functions, so on the real registry this import never makes a stub; it
-        is asked anyway because that is a fact about each module today, not a
-        promise, and a ``find_spec`` over the extras would print five stub
-        lines that the eager parser does not.
-
-        A module that fails here for any other reason keeps its plain line: the
-        listing is not its verb, and its verb fails loudly when run. Asked once,
-        since argparse walks the listing twice for one help screen.
+        Only a verb declaring extras can be a stub, so only it is imported, and
+        only when a help screen lists it. Any other failure keeps the plain
+        line, since its verb fails loudly when run. Asked once, because
+        argparse walks the listing twice per help screen.
         """
         if self.built or self.asked or not self.entry.extras_modules:
             return
@@ -316,11 +244,8 @@ class _Unbuilt:
 class _LazyChoices(argparse._SubParsersAction):
     """argparse's own subcommand action, building a verb only when it is chosen (U248).
 
-    argparse still decides which word is the verb, so the global options and
-    their values, ``--option=value``, abbreviations and ``--`` are read exactly
-    as before, and nothing here reads the command line itself. ``__call__`` is
-    reached only after argparse has checked the word against the choices, and
-    ``_get_subactions`` only when a help screen lists them.
+    argparse still decides which word is the verb, so nothing here reads the
+    command line itself.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -365,16 +290,10 @@ def build_parser(
 ) -> argparse.ArgumentParser:
     """Assemble the whole command tree without importing a disabled module.
 
-    ``importer`` is injected so the conformance suite can drive the missing-extra
-    path without uninstalling anything, and so a fake registry can be exercised
-    against the real construction logic rather than against a copy of it.
-
-    LAZY BY DEFAULT (U248). Every verb's subparser is made from registry data
-    alone, its name and its summary, and its module is imported when argparse
-    selects it, so a command imports the one verb it runs and ``--version``
-    and the top level ``--help`` import none. ``eager=True`` is the
-    construction as it stood before, kept for a caller that walks every verb's
-    own arguments, and as the parity the suite holds the lazy tree to.
+    ``importer`` is injected so the suite drives the missing extra path without
+    uninstalling anything. Lazy by default (U248): a verb's module is imported
+    when argparse selects it. ``eager=True`` imports every verb, for a caller
+    that walks each verb's arguments and as the suite's parity check.
     """
     parser = argparse.ArgumentParser(
         prog="crate",
@@ -459,22 +378,10 @@ def build_parser(
 def _drive_argv(envelope: Envelope) -> list[str] | None:
     """The command line that drives the job this invocation just queued, or None.
 
-    HUMAN MODE ONLY, AND NEVER INTO THE ENVELOPE. The job is continued by its own
-    verb's command rebuilt from the frozen payload, which is in the queue and not
-    in the payload, and putting it there would change every consumer's json. So
-    it is read back here, where the words are about to be written.
-
-    ONLY FOR THE VERB THAT QUEUED IT. ``job resume`` answers with a queued job
-    too, after it has already spawned the child driving it, and a second drive
-    command under that one would invite two drivers onto one job. The job's own
-    handler key names its verb, so the check is that it names this one.
-
-    A LOOKUP THAT FAILS IS NOT A FAILED VERB, AND IT NAMES NO COMMAND. This runs
-    in ``_emit``, outside the boundary that converts exceptions, after the job is
-    queued, so anything it raises would be a traceback over a success. And no
-    fallback command is named, because every one on offer, ``job resume``
-    included, reads the same row through the same builder and refuses for the
-    same reason. The job line still names the identifier.
+    Human output only, never in the envelope, whose json would change. Only for
+    the verb that queued it, since ``job resume`` has already spawned a driver.
+    A failed lookup names no command and raises nothing, because this runs
+    outside the boundary, after a success.
     """
     data = envelope.data
     if not envelope.schema.startswith("job_state/") or data.get("state") != "queued":
@@ -498,9 +405,7 @@ def _drive_argv(envelope: Envelope) -> list[str] | None:
 def _emit(envelope: Envelope, *, as_json: bool, stdout, stderr) -> None:
     """Write the result. In JSON mode stdout carries the envelope and NOTHING else.
 
-    Human text goes to standard error in JSON mode rather than being suppressed,
-    so a person watching a scripted run still sees what happened while the
-    consumer parsing stdout gets exactly one object.
+    Human text goes to standard error in JSON mode, so a person still sees it.
     """
     if as_json:
         print(envelope.to_text(), file=stdout)
@@ -516,14 +421,8 @@ def _emit(envelope: Envelope, *, as_json: bool, stdout, stderr) -> None:
 def _progress_to(stderr) -> Callable[[str], None]:
     """A verb's progress lines, one per call, on standard error.
 
-    FLUSHED, because standard error is not line buffered everywhere and a
-    progress line that sits in a buffer until the verb ends is the silence it
-    exists to break.
-
-    A LINE THAT CANNOT BE WRITTEN IS DROPPED. Progress is a hint and never the
-    result, and it is written in the middle of paid work: a reader that closed
-    standard error, ``2>&1 | head`` for one, would otherwise end a pass part
-    way through its calls and lose the job those calls paid for.
+    Flushed, since standard error is not line buffered everywhere. A line that
+    cannot be written is dropped, so a closed reader never ends paid work.
     """
 
     def say(line: str) -> None:
@@ -538,9 +437,8 @@ def _progress_to(stderr) -> Callable[[str], None]:
 def _run_state_for(entry: Entry, args: argparse.Namespace) -> gates.RunState:
     if args.run:
         state = gates.load(args.run)
-        # A run record belongs to the verb that created it. Answering a gate on
-        # one run and then continuing a different verb under that identifier
-        # would apply a decision to a question nobody asked.
+        # A run belongs to the verb that made it, or a decision would answer a
+        # question nobody asked.
         if state.verb != entry.name:
             raise CratekitError(
                 Cause(
@@ -555,36 +453,23 @@ def _run_state_for(entry: Entry, args: argparse.Namespace) -> gates.RunState:
     return gates.new_run(entry)
 
 
-#: The warning code every run that reached the streaming provider carries,
-#: with its call count and how many answers were a rate limit (R-705). A
-#: WARNING rather than a payload field, because every declared surface is
-#: closed and the spend belongs to the run, not to any one verb's answer; and
-#: because a heavy crawl is exactly the thing a person should see before it
-#: becomes a block.
+#: The warning every run that reached the streaming provider carries, with its
+#: calls and rate limits (R-705). A warning, because the spend belongs to the
+#: run and not to any verb's payload.
 PROVIDER_SPEND = "provider-spend"
 
-#: The warning code every run that looked an ISRC up carries (U206): how many
-#: lookups a remembered answer settled and how many went to the provider. A
-#: warning for the reason the spend is one, and beside it, so a rehearsal and
-#: its live run can be read against each other.
+#: The warning every run that looked an ISRC up carries (U206): lookups the
+#: cache settled and lookups asked of the provider.
 ISRC_LOOKUPS = "isrc-lookups"
 
 
 def _with_sibling_runs(envelope: Envelope, state: gates.RunState) -> Envelope:
     """The envelope of a run persisted at its gate, with every sibling run named (U186).
 
-    At sitting 51 two sessions planned one database clear minutes apart and
-    nothing said the other existed. So a verb declaring a database writing
-    surface, at the moment its run is persisted at a gate, names each other run
-    of the same verb with an open gate or an answer from the last twelve hours,
-    as a warning a person reads and a code a session branches on.
-
-    IT INFORMS AND REFUSES NOTHING: the exit code and the cause are the gate's,
-    unchanged, and ``decision-stale`` on the write handle stays the only guard.
-    A READING THAT BREAKS COSTS THE NAMES AND NEVER THE GATE, and says so. This
-    runs inside the boundary's own handler, so anything it raised would replace
-    the gate's envelope with a traceback; and a silent empty answer would read
-    as "no other run", which is the absence this unit exists to end.
+    Only for a database writing verb: each other run of it with an open gate or
+    an answer from the last twelve hours is named as a warning. It refuses
+    nothing. A reading that breaks says so rather than raising, since this runs
+    inside the boundary's handler, or reading as "no other run".
     """
     if not gates.writes_the_database(state.verb):
         return envelope
@@ -609,13 +494,8 @@ def _with_sibling_runs(envelope: Envelope, state: gates.RunState) -> Envelope:
 def _provider_spend() -> provider_gate.Spend:
     """What THIS process has spent so far, across every gate it built.
 
-    Asked at the boundary rather than inside any verb, so the count covers
-    every verb and every seam, and a verb that reaches the provider through a
-    seam it does not know about is still reported. This process's own count
-    and not the shared file's, because the file is written by every driver on
-    the machine: a sweep another process was running would otherwise be
-    reported as this run's calls. A job this verb drives runs in this process;
-    a detached driver is its own invocation and reports its own.
+    Asked at the boundary so every verb and seam is counted. This process's
+    count, not the shared file's, which every driver on the machine writes.
     """
     return provider_gate.process_spend()
 

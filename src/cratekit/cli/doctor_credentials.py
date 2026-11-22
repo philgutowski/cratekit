@@ -1,5 +1,4 @@
-"""Doctor's checks of the keychain, the credentials, the binaries and the adapter contract.
-"""
+"""Doctor's checks of the keychain, the credentials, the binaries and the adapter contract."""
 
 from __future__ import annotations
 
@@ -27,12 +26,8 @@ def _check_keychain(inputs: _Inputs) -> Finding:
             status=Status.OK,
             detail="a keychain backend that can store a credential is available",
         )
-    # THE FALLBACK THIS CHECK'S OWN MESSAGE NAMES IS ASKED ABOUT, rather than
-    # named and then ignored. A headless machine that opted in by name and set
-    # every variable is the documented shape for exactly this case, and it was
-    # painted red: the credential checks read green through the same fallback
-    # while this one failed the whole run on PRECONDITION. A check that refuses a
-    # configuration the product documents is one people learn to work around.
+    # The environment fallback this message names is honoured: a headless
+    # machine that opted in and set every variable is a documented setup.
     needed = _required_credentials(inputs)
     supplied = [name for name in needed if inputs.probes.environment_credential(name)]
     if needed and len(supplied) == len(needed):
@@ -68,29 +63,19 @@ def _check_keychain(inputs: _Inputs) -> Finding:
     )
 
 
-#: Which stored credentials each declared check key is asking about. Declared
-#: rather than derived from the names, because the correspondence is a decision:
-#: the recognition service needs TWO values and a workflow with one of them is
-#: not half working, it is not working. ``tests/test_doctor.py`` asserts every
-#: member of ``secrets.Credential`` appears here exactly once, so a credential
-#: added there cannot be silently unchecked (P3, P4).
+#: Which stored credentials each check key asks about, declared because the
+#: grouping is a decision (recognition needs both values). A test asserts every
+#: ``secrets.Credential`` appears exactly once, so none goes unchecked (P3, P4).
 CREDENTIALS_BY_CHECK: Mapping[str, tuple[secrets.Credential, ...]] = MappingProxyType(
     {
-        # U176. Declared by no verb, so it reports and never fails, and the
-        # setup wizard does not ask every installation for a Bandcamp cookie.
-        # A session is needed only by someone who buys there, the verbs that
-        # spend it refuse naming the login step, and ``_SPENT_WHEN_ASKED``
-        # says which verbs those are rather than that none needs it.
+        # Declared by no verb, so it reports and never fails; the verbs that
+        # spend it are in ``_SPENT_WHEN_ASKED`` (U176).
         "credential.bandcamp": (secrets.Credential.BANDCAMP_SESSION,),
-        # U205. Declared by no verb either, so it reports and never fails:
-        # without it every catalogue lookup goes to the account as it always
-        # did, and the finding says so and how to move them.
+        # Never fails: without it catalogue lookups go to the account (U205).
         "credential.catalogue": catalogue_api.CREDENTIALS,
-        # U245. Spent by no verb at all: only the Cyanite trial script sends
-        # it, so it reports and never fails, and setup never offers it.
+        # Only the Cyanite trial script spends it, so it never fails (U245).
         "credential.cyanite": (secrets.Credential.CYANITE_KEY,),
-        # U244. Declared by no verb, so it reports and never fails: without a
-        # token the tagging verbs record Discogs as not asked and go on.
+        # Never fails: without it the tagging verbs skip Discogs (U244).
         "credential.discogs": (secrets.Credential.DISCOGS_TOKEN,),
         "credential.provider": (secrets.Credential.PROVIDER_SESSION,),
         "credential.recognition": (
@@ -101,10 +86,8 @@ CREDENTIALS_BY_CHECK: Mapping[str, tuple[secrets.Credential, ...]] = MappingProx
 )
 
 
-#: The remediation for each credential group. The provider session is obtained by
-#: authorising, the recognition keys are copied from an account page, and telling
-#: a user to do one when they need the other is the collapse ``core/secrets``
-#: names three separate failure types to avoid.
+#: The remediation for each credential group, kept apart because a session is
+#: obtained by authorising and a key by copying it from an account page.
 _CREDENTIAL_REMEDY: Mapping[str, Remedy] = MappingProxyType(
     {
         "credential.bandcamp": Remedy.AUTHENTICATE_PROVIDER,
@@ -117,27 +100,22 @@ _CREDENTIAL_REMEDY: Mapping[str, Remedy] = MappingProxyType(
 )
 
 
-#: Credentials no verb declares, because asking for them is the person's choice,
-#: and the verbs that spend one when asked. The finding names those verbs, since
-#: "no verb needs it" would be false of every one of these.
+#: Credentials no verb declares and the verbs that spend one when asked, named
+#: in the finding since "no verb needs it" would be false.
 _SPENT_WHEN_ASKED: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {"credential.bandcamp": ("acquire bandcamp", "acquire bandcamp-fetch")}
 )
 
 
-#: Credentials only a trial script spends, never a verb, and what that script
-#: is (U245). The finding names it, since "no verb needs it" would leave a
-#: person wondering why the credential exists at all.
+#: Credentials only a trial script spends, and that script, named in the
+#: finding so the credential's purpose is clear (U245).
 _SPENT_BY_TRIAL: Mapping[str, str] = MappingProxyType(
     {"credential.cyanite": "the Cyanite trial, scripts/cyanite_trial.py"}
 )
 
 
-#: Credentials no verb needs and some verbs SPEND WHEN THERE IS ONE, by the
-#: registry names of those verbs (U244). Without one those verbs go on and say
-#: what they did not ask, so the finding is never a failure, and setup offers
-#: the credential whenever one of them is switched on, since a person who never
-#: hears of it never gets the answers it buys.
+#: Credentials no verb needs and the verbs that spend one when present (U244).
+#: Never a failure; setup offers it whenever one of those verbs is on.
 OFFERED_WHEN_SPENT: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {"credential.discogs": ("tag.folder", "tag.retag", "tag.suggest")}
 )
@@ -146,9 +124,7 @@ OFFERED_WHEN_SPENT: Mapping[str, tuple[str, ...]] = MappingProxyType(
 def _required_credentials(inputs: _Inputs) -> tuple[str, ...]:
     """Every credential name some verb this profile switches on will spend.
 
-    Derived from the same table and the same registry question the per-credential
-    checks use, so the keychain check and the credential checks cannot disagree
-    about what this installation actually needs.
+    Derived as the per credential checks derive it, so the two cannot disagree.
     """
     return tuple(
         str(name)
@@ -161,9 +137,7 @@ def _required_credentials(inputs: _Inputs) -> tuple[str, ...]:
 def _gate_counts(inputs: _Inputs) -> str:
     """What the provider gate has counted under each identity, as one clause.
 
-    A STATE FILE THAT COULD NOT BE READ IS SAID, never shown as nothing spent:
-    the gate itself reads such a file as fresh, which is right for a counter
-    that must not lock the provider out and wrong for a report.
+    An unreadable state file is said, never shown as nothing spent.
     """
     spent = inputs.probes.provider_spend()
     if spent is None:
@@ -186,10 +160,8 @@ def _gate_counts(inputs: _Inputs) -> str:
 def _check_catalogue(key: str, inputs: _Inputs) -> Finding:
     """Where catalogue lookups go, and what each identity has spent (U205).
 
-    NEVER A FAILURE, since no verb needs the app: without it every lookup goes
-    to the account exactly as before. ONE VALUE OF TWO IS NOT HALF SET UP, it is
-    not set up, because the identifier alone cannot ask for a token, and the
-    finding names the one that is missing.
+    Never a failure, since without the app every lookup goes to the account.
+    One value of two is not set up, since one alone cannot ask for a token.
     """
     names = CREDENTIALS_BY_CHECK[key]
     title = "credentials for the catalogue app"
@@ -201,10 +173,7 @@ def _check_catalogue(key: str, inputs: _Inputs) -> Finding:
             title=title,
             status=Status.OK,
             detail=(
-                # WHAT THE INDEX CAN SAY AND NO MORE (round two): doctor never
-                # reads a value, so a value deleted from the keychain still reads
-                # as recorded here. A run that finds one missing says so in its
-                # spend line and asks the account.
+                # Doctor never reads a value, so this says recorded, not usable.
                 f"recorded in this installation: {', '.join(str(n) for n in names)}. "
                 f"ISRC lookups and track reads go under Cratekit's app credentials "
                 f"whenever the keychain gives both values, and a run that finds one "
@@ -294,10 +263,8 @@ def _check_credential(key: str, inputs: _Inputs) -> Finding:
     )
 
 
-#: Every external binary this product shells out to, DERIVED from the binaries
-#: module's own tables rather than listed. A binary added there is probed here on
-#: the day it is added, which is the failure the source system's hand-written
-#: list has already had once (P3).
+#: Every external binary this product shells out to, derived from the binaries
+#: module's tables so a binary added there is probed here at once (P3).
 BINARY_NAMES: tuple[str, ...] = (
     *binaries.INSTALLABLE_BINARIES,
     *sorted(binaries.PLATFORM_BINARIES),
@@ -313,12 +280,8 @@ def _check_binary(key: str, inputs: _Inputs) -> Finding:
     override = binaries.env_var(name)
     broken = inputs.probes.binary_override_problem(name)
     if broken is not None:
-        # A SET override that does not point at an executable is its own failure
-        # and has its own remediation, which existed in the vocabulary and in the
-        # rendered advice and was emitted by nothing. Reported as "not found on
-        # PATH, install it", a user installs a binary they already have and the
-        # override keeps winning over it, because ``find`` deliberately does not
-        # fall through to PATH once an override is set.
+        # A set override that is not an executable is its own failure, since
+        # ``find`` never falls through to PATH while it is set.
         return Finding(
             key=key,
             title=title,
@@ -378,10 +341,8 @@ def _check_binary(key: str, inputs: _Inputs) -> Finding:
 def contract_members(protocol: type = adapter_contract.AcquisitionAdapter) -> tuple[str, ...]:
     """The public members the acquisition protocol declares, derived from it.
 
-    Derived rather than listed, because a listed copy is a copy that stops
-    covering the protocol the moment somebody adds a member to it, and the whole
-    value of the check is that a substitute adapter is measured against the WHOLE
-    contract rather than against the part somebody remembered (P4).
+    Derived so an adapter is measured against the whole contract, including a
+    member added later (P4).
     """
     annotated = set(protocol.__annotations__)
     methods = {
@@ -433,10 +394,8 @@ def _check_adapter(inputs: _Inputs) -> Finding:
             ),
             remedy=Remedy.SWITCH_ADAPTER,
         )
-    # Read only after the membership check above proved it is there, rather than
-    # through a defaulting accessor: a default here would invent an empty name
-    # for a class that declares none and then report the mismatch as the class's
-    # fault instead of as the missing member it is.
+    # Read directly, since the membership check proved it is there; a default
+    # would misreport a missing name as a mismatch.
     declared = loaded.name
     if declared != name:
         return Finding(

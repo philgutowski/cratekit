@@ -1,85 +1,20 @@
 """``crate setup``: clone to first write, without help.
 
-THE ONE INTERACTIVE VERB, and the registry says so: ``interactive=True`` on this
-entry and on no other, asserted by ``tests/test_cli_contract.py`` in both
-directions. Even here, the standard-input READ happens in ``cli/prompt.py`` and
-nowhere else, so this module passes the same no-standard-input guard every other
-module passes. The exemption is one file and this is not it.
+The one interactive verb (``interactive=True`` in the registry, asserted by
+``tests/test_cli_contract.py``); even so, standard input is read only in
+``cli/prompt.py``. It produces the six required configuration keys, the
+taxonomy, the profile and the credentials.
 
-WHAT THE WIZARD IS FOR. Six configuration keys have no default, deliberately: a
-short required list is a short first-run wizard, and every other key is a
-decision the product can make on the user's behalf. Those six plus the taxonomy
-choice, the profile, and the credentials are what stands between a fresh clone
-and a first successful write, and before this verb existed the only way to
-produce them was to hand-write a TOML file against a validation error message.
-
-SIX PROPERTIES, EACH ANSWERING A WAY A WIZARD GOES WRONG. The last two arrived
-from a review that found the first four were not enough on their own.
-
-**Every answer has the same four sources, in one order: a flag, the existing
-configuration, a derived probe, then a question.** So a re-run changes nothing it
-was not asked to change, and a scripted invocation with every flag supplied never
-reaches a prompt at all. The alternative, asking everything every time, is how a
-second run silently re-answers a question the user answered carefully once.
-
-**An existing configuration that cannot be understood REFUSES rather than being
-replaced.** Only a genuinely absent file starts from empty. A file that fails
-validation is read for its answers and completed, because that is what setup is
-for; a file that is corrupt, or was written by a newer build, stops the wizard.
-Treating an unreadable document as an empty one and then writing over it is how a
-user loses the answers they gave, and it is the same shape as a reader that
-cannot tell a wrong document from an empty one.
-
-**The volume identity is DERIVED and never re-derived.** R38 identifies the
-library by the volume's own identity so that a restored clone mounted in its
-place fails the assertion instead of passing it. A wizard that re-read the
-identity on every run would quietly re-record whatever disk happened to be
-mounted, which is the clone case arriving through the thing meant to catch it. An
-identity already recorded is kept unless the user names a new one explicitly.
-
-**And it is derived from a volume that actually HOLDS the configured root.**
-Guarding the re-derive alone was not enough, and the gap cost the whole
-assertion. ``preflight.containing_mount`` walks up to the deepest EXISTING
-ancestor, which is what makes it right for a library root that is a subdirectory
-of a mount and lethal here: with the drive unplugged the configured root does not
-exist, the walk climbs past the empty mount point to the boot disk, and the boot
-disk's identity is recorded as the library's. Every destructive verb's identity
-precondition then passes against the boot disk, and doctor reports four greens
-over it.
-
-What is refused is AN EMPTY MOUNT SLOT, which took three corrections to get
-right. The first two refused a disk that was attached and readable: requiring the
-root to exist refuses every first run, and allowing a gap of one directory
-refuses every library nested deeper than one, which is the ordinary layout. The
-third refused the gap where a volume would appear, which is the right subject and
-the wrong evidence, because an ejected volume leaves its mount point behind as an
-empty directory and then there is no gap to refuse. Neither absence nor depth was
-ever the hazard: the hazard is that nothing is MOUNTED at the place the path goes
-through, so that is the question ``preflight.identity_source`` asks, against a
-declared table of where this platform mounts one.
-
-**NOTHING LIBRARY-SCOPED IS WRITTEN UNTIL THE VOLUME IS ASSERTED.** The active
-taxonomy is the one thing this verb writes beside the library, and it used to be
-written before anything checked which disk was there. Two consequences, both
-real: on macOS an occupied ``/Volumes/NAME`` makes the real volume mount at
-``/Volumes/NAME 1`` on its next attach, so a directory created there is
-permanently the wrong mount point; and the copied template is coupled state
-landing on a filesystem no snapshot of that library captures and no rollback
-reverts. The mount is resolved first now, through the same seams doctor answers
-with, and a volume the product cannot recognise as this library's is a refusal to
-write rather than a write somewhere else.
-
-**The rekordbox pin is PROPOSED and never adopted.** S2: a pin the software
-copies from whatever is installed refuses nothing, forever. The wizard reads the
-installed version and asks; an answer that is not a deliberate yes leaves the pin
-unset, and doctor keeps saying so. The date the pin was confirmed against a real
-write is never written here, because this verb has not made one.
-
-IT ENDS BY RUNNING DOCTOR, and it exits on doctor's verdict rather than on its
-own. Writing a valid configuration onto a machine with no ffmpeg, no credential
-and no keychain is not "setup succeeded"; the user still cannot reach a write.
-The configuration is saved either way, so the fix is one more run rather than
-starting over.
+Every answer comes from a flag, the existing configuration, a derived probe,
+then a question, in that order, so a re-run changes only what it was asked to
+and a fully flagged run never prompts. A configuration that cannot be
+understood refuses rather than being replaced. The volume identity is derived
+once, from a volume actually mounted where the root goes (an empty mount slot
+is refused, since the walk would otherwise record the boot disk), and kept
+unless the user names a new one. Nothing library scoped is written before the
+volume is asserted. The rekordbox pin is proposed, never adopted. The verb ends
+by running doctor and exits on its verdict, with the configuration saved
+either way.
 """
 
 from __future__ import annotations
@@ -111,21 +46,13 @@ from cratekit.tagging import searchers
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.cli import Context
 
-#: Where downloads land when the user has no opinion. On the library volume on
-#: purpose: staging and the destination then share a filesystem, so the move into
-#: the library is a rename rather than a copy, and a half-finished download
-#: cannot fill a boot disk the user needs for other things.
+#: Default staging folder, on the library volume so the move into the library
+#: is a rename and a half finished download cannot fill the boot disk.
 STAGING_DIRNAME = "Downloads"
 
 
 def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
-    """Every answer is also a flag, so the whole wizard is scriptable.
-
-    Not a convenience. A verb that can only be driven by typing at it cannot be
-    exercised end to end by anything except a person, which is how the source
-    system's three unguarded prompts survived a non-interactive contract that
-    claimed to be complete.
-    """
+    """Every answer is also a flag, so the whole wizard is scriptable and testable."""
     parser.add_argument("--library-root", help="the directory holding the music library")
     parser.add_argument("--db-path", help="the rekordbox database this library uses")
     parser.add_argument(
@@ -141,28 +68,16 @@ def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
         ),
     )
     parser.add_argument("--profile", choices=profiles.PROFILE_NAMES, help="the module preset")
-    # A CLOSED SET, exactly like the profile beside it. Without the choices, a
-    # typed name reached validation, was written to the configuration file, and
-    # was then RETURNED by the next run before any guard looked at it, so the
-    # only escape from one transposed letter was to hand-edit the TOML this verb
-    # exists to abolish.
-    #
-    # ``or None`` IS LOAD BEARING, and so is the fact that the walk behind it
-    # cannot raise. THIS FUNCTION RUNS ON EVERY INVOCATION OF EVERY VERB: the
-    # command tree builds each landed entry's parser before anything dispatches,
-    # so a packaged directory that is missing or unreadable would take
-    # ``crate doctor`` and ``crate --help`` down with it, on exactly the machine
-    # doctor exists to report on. An install with no readable templates offers no
-    # closed set rather than an empty one, since an empty ``choices`` rejects
-    # every value including the correct one, and the wizard then reports the
-    # missing template as a finding.
+    # A closed set, so a mistyped name never reaches the file. ``or None`` is
+    # load bearing: this runs for every verb, and an install with no readable
+    # templates must offer no closed set rather than an empty one that rejects
+    # every value; the wizard then reports the missing template.
     parser.add_argument(
         "--taxonomy",
         choices=taxonomy.shipped_template_names() or None,
         help="which shipped taxonomy template to adopt",
     )
-    # The three rclone targets, as flags for the same reason every other answer
-    # is one. Spelled remote:path; a bare folder name is refused by validation
+    # The rclone targets, spelled remote:path; a bare folder name is refused
     # rather than handed to rclone as a local path (R-345).
     parser.add_argument(
         "--backup-dest",
@@ -176,16 +91,14 @@ def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
         "--backup-db-dest-root",
         help="where database snapshots go, as an rclone remote:path",
     )
-    # The fourth value is derived from the three above and never asked, but a
-    # file can SPELL one that disagrees with them, and with no flag to replace it
-    # the refusal's own advice, run setup, handed the same spelling back (R-662).
+    # Derived from the three above and never asked, but a file can spell one
+    # that disagrees, so this flag replaces it (R-662).
     parser.add_argument(
         "--backup-remote",
         help="the rclone remote the three destinations name, replacing a recorded one",
     )
-    # ASKED FOR, NEVER OFFERED UNPROMPTED (U283). A recorded Discogs token is
-    # acknowledged and left alone; this flag is how a person asks to replace
-    # it, and a replacement Discogs does not accept leaves the recorded one.
+    # A recorded Discogs token is left alone unless this is passed; a
+    # replacement Discogs does not accept keeps the recorded one (U283).
     parser.add_argument(
         RELINK_FLAG,
         dest="relink_discogs",
@@ -203,16 +116,8 @@ def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
 def template_names() -> tuple[str, ...]:
     """Every taxonomy template that ships in the wheel, by its short name.
 
-    Derived by walking the packaged directory rather than listed, so a second
-    template is offered on the day it is added and no edit is needed here (P3).
-    The short name is the stable identifier configuration records; the display
-    names inside the template belong to the template (R19).
-
-    The walk itself moved DOWN to ``core/taxonomy`` and this is now one line over
-    it. Doctor asks the same question, to refuse a configuration naming a
-    template nothing ships, and it cannot import this module: the wizard imports
-    doctor, so the arrow only runs one way. Two walks would let the wizard offer
-    a name the check rejects.
+    The walk lives in ``core/taxonomy`` so doctor, which this module imports,
+    checks against the same list the wizard offers (P3, R19).
     """
     return taxonomy.shipped_template_names()
 
@@ -234,14 +139,7 @@ def _refuse(
     detail: Mapping[str, Any] | None = None,
     reason: str = "config-unusable",
 ) -> CratekitError:
-    """A refusal from the wizard, under a declared reason.
-
-    ``reason`` is a parameter because not everything this verb refuses is a
-    problem with the configuration document. Recording a volume identity for a
-    root that is not there is a fact about the LIBRARY, and it carries the slug
-    and therefore the exit code that already means exactly that, rather than
-    being filed under the config's.
-    """
+    """A refusal from the wizard; ``reason`` lets a library fact carry its own slug."""
     return CratekitError(
         Cause(
             reason=reason,
@@ -255,53 +153,21 @@ def _refuse(
 
 
 def _act(exc: BaseException, otherwise: str) -> str:
-    """The closing clause of a wizard sentence, chosen by the KIND of refusal.
+    """The closing clause of a wizard sentence, chosen by the kind of refusal.
 
-    ONE FUNCTION SO THE SENTENCE CANNOT DRIFT FROM THE TOKEN. Every one of these
-    branches used to close with "grant this interpreter access", written into the
-    prose, beside a remedy token the classification now chooses. Those two can
-    disagree, and on a read only volume they did: the sentence named the read only
-    case and then gave the advice for the other one, over a volume no permission
-    grant can change. ``render.access_note`` holds one sentence per kind and is
-    the same wording every other caller in the package gets, so this is a lookup
-    rather than a fourth wording.
-
-    ``otherwise`` is for the failure the operating system did not refuse at all,
-    where there is no kind to follow, and it says what the wizard can offer
-    without claiming to know what happened.
+    It comes from ``render.access_note`` so the sentence cannot contradict the
+    remedy token; ``otherwise`` closes a failure the system did not refuse.
     """
     note = render.access_note(exc)
     return f" {note}" if note is not None else f" {otherwise}"
 
 
 def _unreachable_root(root: str, exc: OSError) -> str:
-    """The sentence for a library root behind a directory nobody can open.
+    """The sentence for a library root behind a directory this account cannot open.
 
-    ONE SENTENCE, TWO CALLERS, because the wizard meets this in two places and
-    they must not describe it two ways. ``Path.exists`` re-raises a permission
-    error rather than answering False, so an ancestor this account cannot
-    traverse comes back from ``core/preflight`` as an exception rather than as a
-    verdict, and both of the wizard's mount questions go through that module.
-
-    IT IS A ROUTINE FIRST-RUN STATE ON THE PLATFORM THIS SHIPS FOR FIRST, which
-    is why it earns a sentence rather than a traceback. On macOS a library root
-    under Documents, Desktop, Downloads or an external volume raises EPERM from
-    ``stat`` for any interpreter without Full Disk Access. Before this, the
-    dispatcher's blanket caught it and rendered "internal-error ... this is a
-    defect; report it", so the product classified the user's own filesystem
-    permission as a Cratekit bug and sent them to file a report, in the one verb
-    whose whole job is getting a fresh clone to a first write. Doctor already
-    answers it as a failed check; the wizard now refuses in the same words.
-
-    THE ACT COMES FROM THE KIND, NOT FROM THIS FUNCTION. The closing clause used
-    to be "Grant this interpreter access to the path", hard coded, beside a
-    remedy token the classification is free to change: under a read only volume
-    or a locked file the token flips and the sentence would then contradict it,
-    which is the same collapse one level in. ``render.access_note`` owns one
-    sentence per kind and every other caller in the package already uses it, so
-    the sentence follows the token by construction. A failure the operating
-    system did not refuse keeps the generic close, because there is no kind to
-    follow.
+    Shared by both mount questions so they say it one way. On macOS this is a
+    routine first run state (EPERM without Full Disk Access), so it is a
+    refusal in plain words, never an internal error.
     """
     return (
         f"{root} could not be examined: {exc}. A directory on the way to it "
@@ -314,15 +180,9 @@ def _unreachable_root(root: str, exc: OSError) -> str:
 def existing_document() -> tuple[dict[str, Any], str]:
     """The configuration this run is completing, and one word for where it came from.
 
-    Three outcomes and they are not interchangeable:
-
-    * a config that loads is returned in its EFFECTIVE, migrated form, so the
-      wizard completes the values the running system actually reads rather than
-      the ones the file happens to spell (P2);
-    * a config that is merely INCOMPLETE is read raw and completed, because
-      completing it is what this verb is for;
-    * anything else refuses. A corrupt file and a file from a newer build both
-      mean a person has to look, and overwriting either destroys answers.
+    A config that loads is returned in its effective, migrated form (P2); one
+    that is merely incomplete is read raw and completed; anything else, corrupt
+    or from a newer build, refuses, since overwriting it destroys answers.
     """
     try:
         return dict(config.load().to_toml_dict()), "existing"
@@ -336,28 +196,16 @@ def existing_document() -> tuple[dict[str, Any], str]:
             remedy=Remedy(str(exc.remedy)),
         ) from exc
 
-    # Incomplete, so the file parsed and carried an integer schema version;
-    # anything else would have raised ConfigCorrupt above. Read it for the
-    # answers it does hold rather than discarding them.
-    #
-    # THIS IS THE SECOND READ OF ONE FILE, so the two can disagree, and the
-    # handler below is what happens when they do: a file removed, a permission
-    # taken away, or a truncation between the load above and this open. It used
-    # to carry a "see above" pragma arguing the load had already classified it,
-    # which is true of the file as it was and says nothing about the file as it
-    # is now. The one thing this may not do is read the document as empty and
-    # write over it, so it refuses.
+    # Incomplete: read it for the answers it holds. This second read can
+    # disagree with the first if the file changed between them, and it must
+    # then refuse rather than treat the document as empty.
     path = config.config_path()
     try:
         with path.open("rb") as handle:
             raw = tomllib.load(handle)
     except (OSError, tomllib.TOMLDecodeError) as exc:
-        # "REPAIR OR RECREATE IT" IS FOR A DOCUMENT THAT IS ACTUALLY DAMAGED.
-        # A configuration file with mode 0o000 is byte for byte intact, and
-        # telling its owner to repair or recreate it sends them to rewrite work
-        # they still have over a chmod. The ``from exc`` is what lets the refusal
-        # constructor overrule the token when the operating system is what
-        # refused; the token stands for a document that really will not parse.
+        # ``from exc`` lets the refusal overrule the repair token when the
+        # system refused access, since an unreadable file is still intact.
         raise _refuse(
             f"setup will not overwrite a configuration it cannot read: {exc}",
             remedy=Remedy.REPAIR_CONFIG_FILE,
@@ -367,12 +215,8 @@ def existing_document() -> tuple[dict[str, Any], str]:
             f"{path} does not hold a table at its top level",
             remedy=Remedy.REPAIR_CONFIG_FILE,
         )
-    # MIGRATED before it is completed. The loaded branch above returns an already
-    # migrated document, and this one must too, or an older file that happens to
-    # be incomplete gets the current schema version stamped onto data no
-    # migration ever touched. Nothing exercises that today because the ladder is
-    # empty at version 1, which is exactly why it has to be written now: the
-    # first migration would land in a unit that has no reason to look here.
+    # Migrated before it is completed, like the loaded branch, or an older
+    # incomplete file gets the current version stamped on unmigrated data.
     try:
         return dict(config.migrate(raw)), "incomplete"
     except config.ConfigError as exc:

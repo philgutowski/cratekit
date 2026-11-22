@@ -1,4 +1,7 @@
 """Doctor's checks of the backups: their ages, the acknowledgment, the comparisons and the remote.
+
+Every check is INFO in a readable state and FAIL only where a record cannot be
+trusted, since a backup that is due is not a broken machine.
 """
 
 from __future__ import annotations
@@ -24,11 +27,7 @@ from cratekit.core.exit_codes import Remedy
 
 
 def _whole_days(age: timedelta | None) -> int:
-    """An age in whole days, never below zero.
-
-    A record from a clock a few minutes ahead is inside the tolerance and is a
-    known age, and ``timedelta.days`` of minus ten minutes is minus one.
-    """
+    """An age in whole days, never below zero, for a clock slightly ahead."""
     return max(age.days, 0) if age is not None else 0
 
 
@@ -91,8 +90,7 @@ def _check_backup_portion(key: str, inputs: _Inputs) -> Finding:
 def _by_kind(answer) -> str:
     """Which kind of run completed a portion and what it changed (U317), or nothing.
 
-    Nothing for a fact a build before U317 wrote, which recorded no kind, rather
-    than a kind the record does not hold.
+    Nothing for an older fact that recorded no kind.
     """
     summary = answer.summary or {}
     took = backup_facts.took(summary.get("seconds"))
@@ -115,19 +113,10 @@ def _by_kind(answer) -> str:
 def _check_backup_acknowledgment(inputs: _Inputs) -> Finding:
     """The backup acknowledgment's window, beside the two ages it was minted over (U184).
 
-    A person or a session deciding whether to mint one reads the two backup ages
-    and then needs the third fact a destructive verb consults, which until this
-    check only ``crate session ack`` showed, and only as context on a refusal.
-
-    INFO IN EVERY READABLE STATE. Absent, valid and expired are all ordinary:
-    nothing has to be done until a destructive verb is about to run, and that
-    verb's own gate asks. Only a record that exists and cannot be understood is
-    a FAIL, since every destructive verb refuses on it.
-
-    AND NOT READ OFF AN ABSENT VOLUME. The record lives on the library volume, so
-    with the volume not established "no file" would say "none on record" about a
-    disk nobody read, which is the absence the session check beside this one is
-    written to refuse.
+    INFO when absent, valid or expired, since a destructive verb's own gate asks
+    for one; FAIL only for a record that cannot be understood, since every
+    destructive verb refuses on it. Never read off an absent volume, where no
+    file would not mean none on record.
     """
     key, title = "backup.acknowledgment", "backup acknowledgment"
     if inputs.cfg is None:
@@ -184,18 +173,15 @@ def _check_backup_acknowledgment(inputs: _Inputs) -> Finding:
 
 
 #: How old the last full comparison may be before the check says to run one.
-#: Not a failure at any age: both modes compare every file, so what ages is
-#: only the proof that the recursive listing and the folder by folder one agree.
+#: Never a failure, since both modes compare every file.
 FULL_COMPARISON_DUE_DAYS = 30
 
 
 def _check_full_comparison(inputs: _Inputs) -> Finding:
     """How long ago the file mirror last compared folder by folder (R-757).
 
-    INFO AT EVERY AGE, and FAIL only where the record itself cannot be trusted.
-    The ordinary backup compares every file through one recursive listing, and
-    this is the date of the last run that did not depend on that listing, so a
-    fast mode cannot go unchecked for ever without the report saying so.
+    Said so the recursive listing the ordinary backup relies on does not go
+    unchecked for ever.
     """
     key, title = "backup.full_comparison", "backup, last full comparison"
     if inputs.cfg is None:
@@ -243,9 +229,7 @@ def _check_full_comparison(inputs: _Inputs) -> Finding:
 def _check_full_check(inputs: _Inputs) -> Finding:
     """When the file mirror last ran a full check, and when the next is due (U317).
 
-    INFO AT EVERY AGE, for the reason the line above gives: a full check that
-    is due is not a fault, it is what the next ``crate backup run`` does by
-    itself. FAIL only where the record cannot be trusted.
+    A due check is not a fault, since the next ``crate backup run`` runs it.
     """
     key, title = "backup.full_check", "backup, last full check"
     if inputs.cfg is None:
@@ -313,10 +297,8 @@ def _newest_entry(folder: Path) -> datetime | None:
 def _folder_presence(path: Path) -> OSError | bool:
     """Whether ``path`` is a folder here, or the error that kept it from being read (U224).
 
-    By its own ``os.stat`` rather than ``Path.is_dir``, which raises a refused
-    stat on 3.12 and answers False for one on later versions, so a folder the
-    account cannot read would read as absent there. Not found, and a path
-    through a file, are absent; any other refusal is unread, never absent.
+    Uses ``os.stat``, since ``Path.is_dir`` answers False for a refused stat on
+    later Pythons. Not found is absent; any other refusal is unread, never absent.
     """
     try:
         mode = os.stat(path).st_mode
@@ -337,10 +319,8 @@ def _deadca7_presence(
     """DEADCA7's support folder, whether it is here, the install signals found,
     and every place that could not be read (U224).
 
-    A probe that raises is a place that could not be read, never an absent one,
-    and the support folder unread, or its probe broken, answers None. The
-    install signals are asked only when the support folder is not here, since
-    that folder alone says the app is installed.
+    A probe that raises is unread, never absent, and an unread support folder
+    answers None. Install signals are asked only without the support folder.
     """
     unread: list[str] = []
     support: bool | None = False
@@ -375,18 +355,10 @@ def _deadca7_presence(
 def _check_deadca7_push(inputs: _Inputs) -> Finding:
     """Whether DEADCA7 is here, when it last pushed into the database, and against what.
 
-    DEADCA7 backs rekordbox's database up into its own folder before every push
-    into it, so the newest entry there is when it last wrote the library. INFO
-    IN EVERY CASE: an app that is not installed is nothing to fix, and a push
-    newer than this product's last database backup is a reason to run one, which
-    the detail says, rather than a broken machine, and a backup folder this
-    account cannot list is said as unread. Nothing here launches the app or
-    reads its catalog.
-
-    THE PUSH TIME IS THE NEWEST ENTRY'S MODIFICATION TIME, which is only the
-    push's own time if the app writes a fresh file rather than copying the
-    database with its date kept. Not yet measured on a real push; the attended
-    card this unit owes reads one.
+    DEADCA7 backs the database up into its own folder before every push, so the
+    newest entry's modification time is taken as the last push, unconfirmed
+    until a real push is read. INFO in every case: a push newer than the last
+    backup is a reason to run one, not a fault. Never launches the app.
     """
     key, title = "deadca7.push", "DEADCA7 pushes into the library"
     if inputs.cfg is None:
@@ -396,9 +368,8 @@ def _check_deadca7_push(inputs: _Inputs) -> Finding:
     def said(detail: str) -> Finding:
         return Finding(key=key, title=title, status=Status.INFO, detail=detail)
 
-    # INSTALLED IS THE SUPPORT FOLDER OR ANY INSTALL SIGNAL (U224): the shipped
-    # app makes its state folder and never the support folder, so the support
-    # folder's absence alone is not the app's.
+    # Installed is the support folder or any install signal, since the shipped
+    # app may never make the support folder (U224).
     if not support and not found:
         if unread:
             return said("whether DEADCA7 is installed here cannot be said: " + "; ".join(unread))
@@ -417,8 +388,7 @@ def _check_deadca7_push(inputs: _Inputs) -> Finding:
     )
     no_push = "DEADCA7 is installed here and has recorded no push into rekordbox's database: "
     if support is None:
-        # Unread is not none: the folder a push would be found in could not be
-        # read, so the answer says it could not look, never that nothing was pushed.
+        # Unread is not none: it could not look, never that nothing was pushed.
         return said(
             f"DEADCA7 is installed here ({', '.join(map(str, found))}), and when it last "
             f"pushed into rekordbox's database cannot be said: " + "; ".join(unread)
@@ -435,8 +405,7 @@ def _check_deadca7_push(inputs: _Inputs) -> Finding:
             raise presence
         pushed = _newest_entry(backups) if presence else None
     except OSError as exc:
-        # Unread is not none: the answer says it could not look, never that
-        # nothing was pushed.
+        # Unread is not none: it could not look, never that nothing was pushed.
         return said(
             f"DEADCA7 is installed here, and when it last pushed into rekordbox's "
             f"database cannot be said: its backup folder could not be read ({_said(exc)})"
@@ -461,7 +430,7 @@ def _check_deadca7_push(inputs: _Inputs) -> Finding:
         )
     database = next(entry for entry in ages if entry.portion is backup_facts.Portion.DATABASE)
     if database.state is backup_facts.AgeState.RECORDED_IN_THE_FUTURE:
-        # A record backup.age.database calls unusable holds nothing here either.
+        # A record backup.age.database calls unusable answers nothing here.
         return Finding(
             key=key,
             title=title,
@@ -511,25 +480,12 @@ def _check_deadca7_push(inputs: _Inputs) -> Finding:
 class TrashPolicy:
     """What one rclone remote type does with a deleted object, as a declaration.
 
-    ``option`` is the per-remote setting that turns trashing off, and ``disabled``
-    is the value of that setting which MEANS off. Both are needed because the
-    providers disagree about the sense: Drive's ``use_trash`` has to be false,
-    while OneDrive's ``hard_delete`` has to be true. One shared "is it false" test
-    read the two backwards, which would have
-    reported a correctly configured remote as trashing and a trashing one as
-    correct.
-
-    ``option`` is None for a provider that trashes and offers no per-remote escape
-    at all. That is a real state and it is not a failure: there is nothing for the
-    user to set, so reporting red every run would train them past it (P7). It is a
-    note naming the consequence.
-
-    ``applies_when`` is the remote setting that names an account kind and the
-    values of it on which ``option`` does anything at all. OneDrive's
-    ``hard_delete`` is honoured on business drives and document libraries and
-    ignored on a personal drive, so reading the option alone reported a personal
-    remote green on a setting that changes nothing. Outside those values, an
-    unset setting included, the answer is a note: nothing can be set there.
+    ``option`` is the setting that turns trashing off and ``disabled`` the value
+    that means off, since providers disagree on the sense (Drive's ``use_trash``
+    false, OneDrive's ``hard_delete`` true). ``option`` None is a provider with
+    no escape, a note rather than a failure since nothing can be set (P7).
+    ``applies_when`` names the account kind setting and the values on which
+    ``option`` is honoured at all; outside them the answer is a note.
     """
 
     option: str | None
@@ -537,19 +493,9 @@ class TrashPolicy:
     applies_when: tuple[str, frozenset[str]] | None = None
 
 
-#: What each rclone remote type does on delete. The residual finding "Backup pruning
-#: reclaims space only if the remote is configured to": pruning a backup archive on a
-#: provider that trashes reclaims nothing for the retention period unless the
-#: remote's own option says otherwise, and the source system solved it by passing
-#: a Drive flag from inside the prune, which is the one-provider assumption this
-#: port removed.
-#:
-#: DECLARED IN BOTH DIRECTIONS, and that is the fix. The table used to hold one
-#: row and the check reported OK for every type that was not in it, so every
-#: provider with a recycle bin that nobody had gotten around to adding, OneDrive,
-#: Box, pCloud and Dropbox among them, read green over the exact condition this
-#: check exists to find. A type with no row here is now "not asserted" rather than
-#: "fine", and the only way to reach OK is a row that says so.
+#: What each rclone remote type does on delete, since a prune on a trashing
+#: provider reclaims nothing until its retention expires. A type with no row is
+#: "not asserted", never fine; only a row reaches OK.
 _REMOTE_TRASH_POLICY: Mapping[str, TrashPolicy] = MappingProxyType(
     {
         "drive": TrashPolicy(option="use_trash", disabled="false"),
@@ -558,10 +504,8 @@ _REMOTE_TRASH_POLICY: Mapping[str, TrashPolicy] = MappingProxyType(
             disabled="true",
             applies_when=("drive_type", frozenset({"business", "documentLibrary"})),
         ),
-        # All three keep deleted files and none exposes a per-remote way out.
-        # Dropbox's row used to name a permanent_delete option, and rclone's
-        # Dropbox backend has no such option, measured against rclone 1.74.3's
-        # own backend help: every run failed with a fix nothing could apply.
+        # All three keep deleted files and none has a per remote way out
+        # (checked against rclone 1.74.3's backend help).
         "dropbox": TrashPolicy(option=None),
         "box": TrashPolicy(option=None),
         "pcloud": TrashPolicy(option=None),
@@ -569,9 +513,7 @@ _REMOTE_TRASH_POLICY: Mapping[str, TrashPolicy] = MappingProxyType(
 )
 
 
-#: Remote types where a delete is an unlink and a prune therefore reclaims space
-#: immediately. Named rather than assumed, because "assumed" is what the single
-#: row above was doing for everything else.
+#: Remote types where a delete is an unlink, so a prune reclaims space at once.
 _NON_TRASHING_REMOTE_TYPES: frozenset[str] = frozenset({"local", "sftp", "ftp"})
 
 
@@ -588,13 +530,8 @@ def _check_backup_remote(inputs: _Inputs) -> Finding:
         )
     remote = inputs.cfg.backup.remote
     if not remote:
-        # INFO rather than FAIL, deliberately. The full preset switches the backup
-        # module on for everybody, so failing here would paint a correctly
-        # configured install red on the day it is set up and keep it red for
-        # anybody who never intends to back up remotely. A guard that fires on
-        # correct setups is one people learn to ignore, and then it protects
-        # nothing (P7). The backup verb refuses on its own missing destination,
-        # which is where that refusal belongs.
+        # INFO, since the full preset turns the module on for everybody and the
+        # backup verb refuses on its own missing destination (P7).
         return Finding(
             key=key,
             title=title,
@@ -626,11 +563,7 @@ def _check_backup_remote(inputs: _Inputs) -> Finding:
             status=Status.INFO,
             detail=f"backup.remote is {remote!r}; rclone's configuration could not be read",
         )
-    # ``remote:path`` is rclone's own spelling and is what a user writes for an
-    # archive under a remote. Trimming the trailing colon alone left the path
-    # attached, so a perfectly configured destination looked up as a remote name
-    # nobody had, and the check reported the one FAIL in this function against a
-    # correct configuration.
+    # The remote name is what precedes the colon in rclone's ``remote:path``.
     named = remote.split(":", 1)[0]
     settings = remotes.get(named)
     if settings is None:
@@ -638,21 +571,14 @@ def _check_backup_remote(inputs: _Inputs) -> Finding:
             key=key,
             title=title,
             status=Status.FAIL,
-            # "The backup remote" rather than "backup.remote names", because
-            # the value may be derived from the destinations and absent from
-            # the file, and a person sent to a key they cannot find stops
-            # looking.
+            # Not "backup.remote names", since the value may be derived from
+            # the destinations and absent from the file.
             detail=(
                 f"the backup remote is {remote!r}, from backup.remote or derived "
                 f"from the destinations, and rclone has no remote called "
                 f"{named!r}; it knows {', '.join(sorted(remotes)) or 'none'}"
             ),
-            # NOT run-setup. The wizard asks for the three destinations and
-            # derives the remote from them (R-345), and it keeps every value it
-            # finds recorded, so a re-run would hand this same name back
-            # unchanged. The remote is named in the configuration file and
-            # created in rclone's own configuration, and this token is the one
-            # that says so.
+            # Not run setup, which would hand the same name back (R-345).
             remedy=Remedy.FIX_CONFIG_VALUES,
         )
     kind = str(settings.get("type", ""))

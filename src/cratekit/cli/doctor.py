@@ -1,80 +1,24 @@
 """``crate doctor`` and ``crate status``: the environment, checked before it is spent.
 
-WHAT WAS WRONG. The source system has health checks, and they have exactly one
-caller: an HTML template in a local web dashboard. No workflow consults them, so
-nothing is ever a precondition to anything. A missing ``ffmpeg`` is discovered
-part way through a download, after the identification calls have been paid for.
-A dead provider session is discovered as "these tracks are missing". An unset
-version pin is discovered by the writer refusing, one step before the write the
-user was trying to make. Every one of those is knowable in advance, cheaply, and
-none of it is asked.
+Doctor answers named checks, each with a remedy token per failure, and
+``cli/registry.py`` lets every verb declare the checks it depends on, so a
+missing binary or credential is found before a paid step rather than during it
+(R3). The check families live in ``doctor_model``, ``doctor_library``,
+``doctor_credentials``, ``doctor_backup`` and ``doctor_state``; this hub keeps
+the table and the verbs.
 
-So R3 is met here in two halves that have to arrive together:
+* Every check answers on every run, so a consumer can diff two reports.
+* The check order is part of the contract, the interpreter first since every
+  other answer is worthless on an unsupported one.
+* Whether a check is required follows the registry: a key is required when a
+  verb declaring it is available under the active profile, so enabling a module
+  turns its credential check from a note into a failure with no edit here.
+* A failing doctor keeps its report, because the checks are the answer: it
+  builds its own envelope with the report in ``data`` and a structured cause,
+  and exits ``PRECONDITION``, or the code a check's own refusal reserves.
 
-* this module answers a named check and reports a fix per failure;
-* ``cli/registry.py`` lets every verb DECLARE the checks it depends on, and
-  ``tests/test_cli_contract.py`` asserts that anything which writes declares at
-  least one, and that every declared key exists here.
-
-The second half is the one the source system has no shape for at all.
-
-THE CHECK SHAPE IS PORTED, WITH ONE SUBSTITUTION. The source returns
-``{key, title, status, detail, fix}`` per check, with three statuses: ok, fail
-and info. That shape is good and is kept, because it is already the ancestor of
-this product's structured cause: it is the one place in that codebase that pairs
-a failure with its exact remedy. The substitution is ``fix``, a sentence, for
-``remedy``, a token the CLI renders (D2). A sentence is still allowed in
-``detail`` for a fix that is not a command at all, because this IS the CLI layer
-and rendering is what it is for.
-
-WHAT IS ADDED, AND WHY EACH ONE.
-
-* **The interpreter, before anything else.** KTD19 bounds the supported Python at
-  both ends and the bound is declared once, in packaging metadata. It is READ
-  from there rather than repeated here: a second copy is a copy that drifts, and
-  the drift would be a check reporting green against a bound nobody enforces.
-  It runs first because every other answer in this file is worthless if the
-  interpreter is one the vendored tree has never run on.
-* **The library volume, with unmounted told apart from moved.** ``core/preflight``
-  already distinguishes five outcomes, and the whole reason it does is that a
-  guard saying "the volume is wrong" sends the user to unplug a drive that was
-  never the problem. Doctor reports which of the five it is, and both findings
-  come from ONE probe rather than from two, so the mount and the identity can
-  never disagree about the state they are describing.
-* **External binaries, resolved before any spend.** Every installable binary is
-  probed on every run, derived from ``core/binaries``' own table rather than
-  listed here, so a binary added there is checked here the day it is added (P3).
-* **The acquisition adapter, against the contract.** R9 says the point of the
-  adapter boundary is that the downloader is replaceable. A configured
-  alternative that does not satisfy the protocol is a substitution that fails at
-  the first download rather than at configuration time, so the members are
-  derived from the Protocol itself and checked on the configured class.
-* **Credentials, per enabled module.** Presence only, never retrieval: reading a
-  value on macOS raises an interactive authorization prompt, which in an
-  unattended check means a hang rather than a report.
-* **Backup age, per portion.** ``core/backup_facts`` answers per portion because
-  the normal state of a library backed up without quitting rekordbox is "files
-  current, database stale", and one aggregate number hides exactly that.
-
-WHETHER A CHECK IS REQUIRED IS DERIVED, NOT DECIDED HERE. A check key is
-required when some verb declaring it is available under the active profile.
-That is what makes "a module enabled without its credential is reported" true by
-construction: enabling ``identify`` makes ``intake.identify`` available, that
-verb declares ``credential.recognition``, and the check turns from a note into a
-failure with no edit to this file. The set is taken over EVERY registry entry
-rather than only the landed ones, so the report does not change its mind about
-what a profile needs as later units land.
-
-WHY A FAILING DOCTOR DOES NOT DISCARD ITS REPORT. Every other refusal in the
-product raises, and the dispatcher turns the cause into an envelope carrying an
-empty diagnostic payload. That is right everywhere else and wrong here: the
-checks ARE the answer, and a doctor that fails by throwing them away is useless
-in exactly the case it exists for. So this module builds its own envelope, with
-the full report in ``data`` and a structured cause beside it, and exits
-``PRECONDITION``.
-
-Layer note: CLI. It imports downward only, and it is the layer allowed to turn a
-remediation token into words.
+Layer note: CLI. It imports downward only, and it may render a remediation
+token into words (D2).
 """
 
 from __future__ import annotations
@@ -158,8 +102,8 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
 def offered(key: str, membership: profiles.Membership) -> bool:
     """Whether setup offers ``key``'s credentials to this profile.
 
-    When a verb it switches on declares the check, as before, and when one of
-    the verbs :data:`OFFERED_WHEN_SPENT` names for it is switched on.
+    True when an available verb declares the check, or when a verb
+    :data:`OFFERED_WHEN_SPENT` names for it is switched on.
     """
     if requires_check(key, membership):
         return True
@@ -183,11 +127,10 @@ def _bound(key: str, function: Callable[[str, _Inputs], Finding]) -> Check:
     return Check(key=key, run=lambda inputs, _key=key: function(_key, inputs))
 
 
-#: Every check, in the order they run, and the order IS part of the contract.
-#: The interpreter comes first because every answer below it is worthless on an
-#: interpreter the vendored tree has never run on. The three families are
-#: expanded from their own declarations rather than typed out, so a credential, a
-#: binary, or a backup portion added elsewhere is checked here without an edit.
+#: Every check in run order, which is part of the contract. The interpreter is
+#: first because every other answer is worthless on an unsupported one. The
+#: families expand from their own declarations, so a credential, binary or
+#: backup portion added elsewhere is checked here without an edit.
 CHECKS: tuple[Check, ...] = (
     Check("interpreter.version", _check_interpreter),
     Check("config.present", _check_config),
@@ -196,13 +139,11 @@ CHECKS: tuple[Check, ...] = (
     Check("library.db_containment", _check_db_containment),
     Check("library.trash", _check_trash),
     Check("taxonomy.active", _check_taxonomy),
-    # U132. After the copy is known to parse, which it reports on.
+    # After the copy is known to parse (U132).
     Check("taxonomy.schema", _check_taxonomy_schema),
     Check("rekordbox.closed", _check_rekordbox_closed),
     Check("rekordbox.pins", _check_rekordbox_pins),
-    # After the pins rather than beside the other library checks, because its
-    # answer comes off an open the binding pin governs: a reader meets the pin
-    # refusal first and this check's "could not be opened" second.
+    # After the pins, since its answer comes off an open the binding pin governs.
     Check("library.paths_resolved", _check_paths_resolved),
     Check("keychain.reachable", _check_keychain),
     *(_bound(key, _check_credential) for key in sorted(CREDENTIALS_BY_CHECK)),
@@ -212,87 +153,47 @@ CHECKS: tuple[Check, ...] = (
         _bound(f"backup.age.{portion}", _check_backup_portion)
         for portion in backup_facts.PORTIONS
     ),
-    # U184. Right after the two ages, which are what it was minted over.
+    # Right after the two ages it was minted over (U184).
     Check("backup.acknowledgment", _check_backup_acknowledgment),
-    # R-757. After the ages it qualifies and before the remote they all name.
+    # After the ages it qualifies, before the remote they name (R-757).
     Check("backup.full_comparison", _check_full_comparison),
     Check("backup.full_check", _check_full_check),
     Check("backup.remote", _check_backup_remote),
-    # U185. After the backup checks, since its warning is a comparison with
-    # the database portion's age, and it names the same remedy they do.
+    # After the backup checks, since it compares with the database age (U185).
     Check("deadca7.push", _check_deadca7_push),
     Check("session.unresolved", _check_unresolved_session),
-    # U186. Beside the session check: both are this installation's own runs
-    # left waiting, and a note here never fails the report.
+    # Beside the session check, both being runs left waiting; never fails (U186).
     Check(OPEN_GATES_CHECK, _check_open_gates),
-    # U206. Beside the open gates, another note about this installation's own
-    # state that never fails the report.
+    # Another note on this installation's own state, never a failure (U206).
     Check(ISRC_CACHE_CHECK, _check_isrc_cache),
-    # U278. Beside the ISRC note, the other note about the provider, and like
-    # it never a failure.
+    # The other provider note, never a failure (U278).
     Check(BUDGET_CHECK, _check_provider_budget),
-    # U293. Beside the hour's budget, the other note about this installation's
-    # provider calls, and like it never a failure.
+    # Another note on provider calls, never a failure (U293).
     Check(NIGHT_CHECK, _check_night_pass),
-    # R-235. Beside the session check because both report this product's own
-    # library state, and after the taxonomy check, which it lists trees from.
+    # After the taxonomy check, which it lists trees from (R-235).
     Check("tree.registry", _check_tree_registry),
     Check("repo.commit_hook", _check_commit_hook),
-    # U181. Beside the release check, whose upgrade command it agrees with.
+    # Beside the release check, whose upgrade command it agrees with (U181).
     Check("install.extras", _check_install_extras),
-    # U159. Last, because it is the one check that reaches the network, and a
-    # slow read should hold up nothing a person is waiting to see.
+    # Last, as the one network check, so a slow read holds up nothing (U159).
     Check("install.release", _check_release),
 )
 
-#: The keys this doctor can answer, in run order. ``tests/test_cli_contract.py``
-#: asserts every key any verb declares appears here, so a verb declaring a check
-#: nobody wrote fails the build rather than silently depending on nothing.
+#: The keys this doctor answers, in run order. ``tests/test_cli_contract.py``
+#: asserts every key a verb declares appears here, so an unwritten check fails
+#: the build.
 CHECK_KEYS: tuple[str, ...] = tuple(check.key for check in CHECKS)
 
 
 def answer(check: Check, inputs: _Inputs) -> Finding:
-    """One check's answer, and a THIRD outcome for the check that cannot give one.
+    """One check's answer, with a check that raised turned into a FAIL.
 
-    "Never raises" was a sentence in :func:`run`'s docstring and nothing made it
-    true. Every check here reaches the outside world, and three of those reaches
-    raise on an ordinary broken machine rather than returning a value:
-    ``psutil`` refusing to enumerate processes, and ``Path.exists`` and
-    ``Path.is_dir`` re-raising a permission error instead of answering False,
-    which is what a library root under a directory this account cannot traverse
-    produces. One of those took the ENTIRE report down, on precisely the machine
-    the module's own opening argument says the report exists for: "a doctor that
-    fails by throwing them away is useless in exactly the case it exists for".
-
-    It is a FAIL rather than an INFO, and that is the load-bearing half. INFO is
-    "worth knowing, nothing to do now", and a check that did not complete has not
-    established that there is nothing to do. Green over an unanswered question is
-    the defect this whole unit keeps being sent back for, and a rescue that
-    reported one would be that defect wearing a handler.
-
-    It is deliberately NOT per check. A handler inside each one is a handler that
-    the next check written here will not have, and the property wanted is about
-    every check rather than about the ones somebody remembered.
-
-    AND IT ONLY RESCUES THE UNSTRUCTURED ONES. A ``CratekitError`` is not a check
-    that broke, it is a check that REFUSED, and it already carries everything the
-    rescue below invents: a declared reason, the reserved exit code that reason
-    maps to, a remediation token and its steps. Flattening one produced a FAIL
-    whose remedy was report-defect and whose detail read "this check did not
-    complete", and the process left under PRECONDITION rather than under the
-    reserved code, so a user with an unmounted drive was told to file a defect
-    about it. Being not-per-check is exactly why that mattered: it is the shape
-    every check written here inherits.
-
-    AND THE UNSTRUCTURED LEG CLASSIFIES BEFORE IT BLAMES. This is the CHECKING
-    path, and rescuing the structured refusals out of it left the remaining leg
-    attaching report-defect to the exact condition the paragraph above names: a
-    library root under a directory this account cannot traverse. One ``crate
-    setup`` report then said "this is not a defect, grant this interpreter
-    access" from the wizard's own note and "this is a defect; report it" three
-    lines below from four checks at once, over one path and one permission.
-    ``cause.access_remedy`` is the single decision, shared with the dispatcher,
-    so a check nobody has guarded comes out right without a handler of its own.
+    Applied to every check rather than inside each, so a check written later
+    cannot take the whole report down. A ``CratekitError`` keeps its own cause,
+    reason and remedy, since it refused rather than broke. Anything else is a
+    FAIL, never INFO, because an unanswered question is not "nothing to do",
+    and its remedy comes from ``cause.access_remedy`` so a permission problem is
+    not called a defect.
     """
     try:
         return check.run(inputs)
@@ -326,14 +227,10 @@ def answer(check: Check, inputs: _Inputs) -> Finding:
 def run(cfg: config.Config | None = None, *, probes: Probes | None = None) -> Report:
     """Answer every check, always, and never raise.
 
-    Every check answers on every run, including the ones that cannot be evaluated,
-    because a report whose length depends on the machine is a report a consumer
-    cannot diff. A check that cannot run says so as INFO and names why, and a
-    check that BREAKS trying says so as FAIL through :func:`answer`.
-
-    ``cfg`` is loaded here rather than required from the caller, because doctor's
-    first job on a broken install is to report that there is no configuration,
-    and a signature that demanded one could not do it.
+    Every check answers on every run so the report can be diffed: one that
+    cannot run says so as INFO, one that breaks is a FAIL through :func:`answer`.
+    ``cfg`` is loaded here because reporting a missing configuration is
+    doctor's first job on a broken install.
     """
     error: Exception | None = None
     if cfg is None:
@@ -357,23 +254,11 @@ def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
 def failure_cause(report: Report, *, origin: str = "cli.doctor") -> Cause:
     """One cause carrying every failing check and its rendered fix.
 
-    The steps exist so a consumer that reads only the cause, which is every
-    consumer that got the failure across a process boundary, still learns which
-    checks failed and what answers each of them. Turning a token into words
-    happens here rather than lower down, which is the one place D2 allows it.
-
-    Public because the wizard raises the same refusal for the same reason: a
-    setup that wrote a valid config onto a machine that still cannot reach a
-    write has not achieved what it was run for, and reporting OK would be a lie
-    with the evidence sitting in the same envelope.
-
-    A CHECK THAT REFUSED UNDER ITS OWN REASON KEEPS IT. ``doctor-check-failed``
-    maps to PRECONDITION, which is the right answer for "some things this machine
-    needs are not here" and the wrong one for a structured refusal that already
-    reserved a code of its own: rewriting an unmounted library volume as "N
-    checks are failing" drops the reserved 22 and the reason slug a caller
-    branches on. The whole report still travels, as steps and in the envelope's
-    data, so nothing is lost by leading with the refusal that named itself.
+    The steps let a consumer that reads only the cause learn which checks failed
+    and what answers each. Public because the setup wizard raises the same
+    refusal. A check that refused under its own reason leads with that reason,
+    so its reserved exit code and slug survive; otherwise the reason is
+    ``doctor-check-failed``, which maps to PRECONDITION.
     """
     steps = []
     for finding in report.failures:
@@ -419,10 +304,8 @@ def doctor(ctx: "Context") -> Envelope:
         schema=schema,
         started=ctx.started,
         outcome=Outcome.FAILED,
-        # READ OFF THE CAUSE rather than written here. It is PRECONDITION for
-        # every ordinary failing report, because that is what
-        # ``doctor-check-failed`` maps to, and a check that refused under its own
-        # reason leaves under the code that reason reserves.
+        # Read off the cause: PRECONDITION for an ordinary failing report, or the
+        # code a check's own refusal reserves.
         code=cause.code,
         data=report.payload(),
         cause=cause,
@@ -455,17 +338,10 @@ def _run_report(
 ) -> tuple[list[Finding], int]:
     """Runs that stopped at a gate or are waiting on a person, and how many were folded away.
 
-    Read from the run records the dispatcher already persists, so this reports
-    the same state ``crate run show`` addresses rather than a second notion of
-    what an open run is.
-
-    OPEN GATES IDLE PAST ``older_than`` ARE ONE LINE (U170): the count, the
-    dates they span and the command that retires them, so a run of gates
-    nobody will resume does not stand above the lines that matter. Only the
-    gates that command would retire are folded, judged by the one predicate
-    it reads, :func:`gates.old_gate`; an old gate it would keep, a record it
-    cannot read and every newer gate are listed one by one as before.
-    ``older_than`` None folds nothing.
+    Read from the dispatcher's run records, the same state ``crate run show``
+    addresses. Open gates idle past ``older_than`` that ``crate run retire``
+    would retire, by :func:`gates.old_gate`, fold into one line (U170); every
+    other run is listed. ``older_than`` None folds nothing.
     """
     found: list[Finding] = []
     old: list[gates.OldGate] = []
@@ -473,21 +349,9 @@ def _run_report(
     try:
         records = sorted(gates.run_dir().glob("*.json"))
     except OSError:
-        # THE TRIGGER IS UNOBSERVABLE AND THE CONTRACT IS NOT. Measured on this
-        # interpreter, ``Path.glob`` swallows ``PermissionError`` inside its own
-        # scandir walk and answers with an empty result for a directory that is a
-        # plain file, so neither an unreadable state root nor a run directory
-        # somebody replaced with a file reaches here through a real filesystem.
-        # It is kept because the swallowing is an implementation detail of the
-        # standard library rather than a documented promise, and losing the whole
-        # status verb to a future change of mind would be worse than a handler
-        # that never fires.
-        #
-        # What that argument does NOT excuse is leaving the promise unwritten,
-        # which is how it sat as a rescue nothing exercised. The promise is that
-        # a walk which refuses costs the report its run records rather than the
-        # verb, and ``tests/test_doctor.py`` states it at the seam by handing
-        # this a run directory that raises.
+        # A walk that refuses costs the report its run records, not the verb.
+        # ``Path.glob`` swallows these errors today, but that is not a promise,
+        # so the handler stays and ``tests/test_doctor.py`` exercises it.
         records = []
     for path in records:
         try:
@@ -535,7 +399,7 @@ def _old_gates_line(old: Sequence[gates.OldGate], older_than: timedelta) -> Find
     """The one line every retirable old gate is folded into, with the command (U170).
 
     The command is in ``detail`` because it carries the threshold, which a
-    remedy token cannot, and this is the layer that renders.
+    remedy token cannot.
     """
     days = older_than.days
     spans = sorted(one.idle_since[:10] for one in old)
@@ -556,22 +420,18 @@ def _old_gates_line(old: Sequence[gates.OldGate], older_than: timedelta) -> Find
 def _source_findings(cfg: config.Config) -> list[Finding]:
     """Per-source sync state, from the session log and the watermark store.
 
-    R29 makes the destructive boundary one source per run, committed and captured
-    independently, and the session record carries a state per source for exactly
-    that reason: without it a resume either redoes committed work or skips
-    uncommitted work and nothing outside can tell which. U22's watermark store
-    is the other half: each source's last clean completion, reported rather than
-    guessed. The rows come from ``cratekit.sync.watermarks.status_rows``, which
-    derives the source set, so a source added there cannot go unreported (P3).
+    Each source's session state shows whether a resume would redo or skip work
+    (R29), and its watermark is its last clean completion (U22). The watermark
+    rows come from ``status_rows``, which derives the source set, so a new
+    source cannot go unreported (P3).
     """
     from cratekit.sync import watermarks as sync_watermarks
 
     found: list[Finding] = []
     parsed, unreadable = session.scan_log(cfg)
     if session.log_unlisted(unreadable, cfg):
-        # A LOG NOBODY COULD LIST IS SAID, not read as no source in flight
-        # (R-1255, review round one); the reporting reader would refuse the
-        # whole status, which reports runs and trees the log does not hold.
+        # A log nobody could list is reported, never read as no source in
+        # flight (R-1255).
         found.append(
             Finding(
                 key="source.session-log",
@@ -630,13 +490,9 @@ def _source_findings(cfg: config.Config) -> list[Finding]:
 def _tree_findings(cfg: config.Config) -> list[Finding]:
     """What medium owns each tree, and whether the registry can be read at all.
 
-    An unreadable registry is its own answer and is never collapsed into "no
-    record": no record reads as "every tree is still on the bridge", which would
-    send a byte write at a tree the database already owns.
-
-    Whether a tree's declared membership actually MATCHES the database is a
-    different question, it needs the database open, and the verb that answers it
-    lands with the convergence check. What is reported here is the record.
+    An unreadable registry is a FAIL, never "no record", since no record reads
+    as every tree still on the bridge and would send a byte write at a tree the
+    database owns. This reports the record, not whether the database matches it.
     """
     try:
         found_registry = tree_registry.read(cfg)
@@ -671,8 +527,7 @@ def status(ctx: "Context") -> Envelope:
     data = {
         "checks": [finding.to_json() for finding in findings],
         "summary": {
-            # EVERY open run, the folded ones included: folding is how they
-            # are shown, never whether they are counted.
+            # Every open run, folded ones included.
             "open_runs": sum(1 for f in findings if f.key.startswith("run.")) + folded,
             "old_gates": folded,
             "sources": sum(1 for f in findings if f.key.startswith("source.")),
