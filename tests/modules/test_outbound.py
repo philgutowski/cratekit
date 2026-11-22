@@ -15,7 +15,7 @@ import pytest
 from cratekit.core import config
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
-from cratekit.modules.outbound import export, hearts, ledger
+from cratekit.modules.outbound import export, hearts, ledger, pairs
 from cratekit.modules.outbound.hearts import REMOVE_FLAGS
 from tests import outbound_fakes
 from tests.outbound_fakes import FakeAccount, FakeColors
@@ -623,6 +623,34 @@ def test_an_unreadable_outbound_ledger_refuses_rather_than_going_empty(cfg):
         ledger.playlist_remote_id(cfg, "crate-one")
     assert excinfo.value.cause.reason == "outbound-ledger-unusable"
 
+
+
+def test_a_track_settled_twice_on_a_set_playlist_is_recorded_once(cfg):
+    """Settling a track the record already holds does not list it a second time."""
+    ledger.reserve_set_playlist(cfg, "Set", "2026", lambda: "pl-1")
+    ledger.record_set_tracks(cfg, "Set", added=["t1"])
+    ledger.record_set_tracks(cfg, "Set", added=["t1", "t2"])
+    sets = json.loads(config.state_path("outbound_writes", cfg).read_text())["sets"]
+    assert sets["Set"]["added"] == ["t1", "t2"]
+
+
+def test_a_settled_write_whose_record_is_gone_refuses(cfg):
+    """Tracks just written to a playlist the ledger no longer holds refuse, never pass quietly."""
+    with pytest.raises(CratekitError) as excinfo:
+        ledger.record_set_tracks(cfg, "Gone", added=["t1"])
+    assert excinfo.value.cause.reason == "outbound-ledger-unusable"
+
+
+def test_a_pairs_record_whose_links_hold_empty_text_is_unusable(cfg):
+    """Empty text is a hold's word only, so a link naming no track refuses the pairs record."""
+    store = pairs.PairStore(cfg)
+    store.path.parent.mkdir(parents=True, exist_ok=True)
+    pair = {"rekordbox_id": "rb-1", "links": {"tid-1": ""}}
+    store.path.write_text(json.dumps(
+        {"version": pairs.PAIRS_VERSION, "library_id": cfg.library.volume_id, "pairs": {"p": pair}}
+    ))
+    with pytest.raises(CratekitError, match="links that are not ids"):
+        store.all()
 
 def test_the_outbound_ledger_survives_a_rollback():
     entry = config.state_file("outbound_writes")

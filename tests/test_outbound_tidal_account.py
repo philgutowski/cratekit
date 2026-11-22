@@ -806,6 +806,45 @@ def test_a_playlist_create_is_never_retried_into_a_second_playlist():
     assert cause.reason == "unavailable-transient"
 
 
+@pytest.mark.parametrize("make", ["create_playlist", "create_folder"])
+def test_a_playlist_or_folder_created_with_no_identifier_is_not_taken_as_created(make):
+    """What the provider created must carry an identifier, or the create is a failure."""
+    client = FakeClient()
+    setattr(client.user, make, lambda *names: SimpleNamespace(id=""))
+    assert refused(lambda: getattr(adapter(client), make)("Crate")).reason == "unavailable-transient"
+
+
+def vouched(cfg, *members: str) -> tuple[Playlist, FakeClient, tidal_account.TidalAccount]:
+    """A playlist the ledger records as made here, and an adapter over a client serving it."""
+    playlist = Playlist("pl-made", list(members))
+    ledger.reserve_set_playlist(cfg, "Set", "2026", lambda: playlist.id)
+    client = FakeClient(playlists={playlist.id: playlist})
+    return playlist, client, tidal_account.TidalAccount(client, sleep=no_sleep, cfg=cfg)
+
+
+def test_a_playlist_found_gone_forgets_the_membership_it_was_remembered_with(installed):
+    """Once the provider no longer serves a playlist, its old membership is never answered."""
+    playlist, client, remote = vouched(installed, "11")
+    assert remote.playlist_tracks(playlist.id) == ("11",)
+    del client.playlists[playlist.id]
+    remote.remove_playlist(playlist.id)
+    refused(lambda: remote.playlist_tracks(playlist.id))
+
+
+def test_a_delete_meeting_a_transient_failure_is_sent_once(installed):
+    """A retried delete could remove twice, so a timed out delete is never sent again."""
+    playlist, _client, remote = vouched(installed)
+    sent: list[str] = []
+
+    def delete() -> bool:
+        sent.append(playlist.id)
+        raise TimeoutError("timed out")
+
+    playlist.delete = delete
+    refused(lambda: remote.remove_playlist(playlist.id))
+    assert sent == [playlist.id]
+
+
 def adding(suffix: str, add) -> tuple[Playlist, tidal_account.TidalAccount]:
     """A playlist holding ``11`` whose client answers an add with ``add``."""
     playlist = Playlist(f"00000000-0000-4000-8000-00000000000{suffix}", ["11"])
