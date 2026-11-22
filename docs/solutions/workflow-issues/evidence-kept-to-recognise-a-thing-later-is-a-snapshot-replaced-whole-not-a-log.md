@@ -2,7 +2,7 @@
 title: "Evidence kept to recognise a thing later is a snapshot replaced whole, not a log, and a queued job's stable identity is what it was confirmed against"
 date: 2026-09-21
 category: workflow-issues
-module: "src/cratekit/modules/outbound/ledger.py, src/cratekit/modules/outbound/export.py, src/cratekit/export/cli.py"
+module: "src/cratekit/modules/outbound/ledger_reserve.py, src/cratekit/modules/outbound/export.py, src/cratekit/export/cli.py"
 problem_type: workflow_issue
 component: outbound_ledger
 root_cause: wrong_identity
