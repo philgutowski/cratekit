@@ -143,15 +143,9 @@ class Proposal:
     offered: int = 0
 
     def to_json(self) -> dict[str, Any]:
-        return {
-            "artist": self.wanted.artist,
-            "title": self.wanted.listed,
-            "state": self.state,
-            "reason": self.reason,
-            "id": self.track.ref if self.track is not None else None,
-            "item_id": self.item_id,
-            "candidates": self.offered,
-        }
+        return {"artist": self.wanted.artist, "title": self.wanted.listed, "state": self.state,
+                "reason": self.reason, "id": self.track.ref if self.track is not None else None,
+                "item_id": self.item_id, "candidates": self.offered}
 
 
 def identity(wanted: match.Wanted) -> dict[str, str]:
@@ -213,20 +207,11 @@ def read_answer(wanted: match.Wanted, rows: tuple[Any, ...]) -> Answer:
         except match.UnreadableList:
             unreadable += 1
             continue
-        candidates.append(
-            Candidate(
-                track=track,
-                exact=(track.distinct, track.version_key) in exact_tokens,
-                score=round(float(fuzz.token_sort_ratio(wanted.recording, track.recording)), 1),
-                album=_album_of(row),
-            )
-        )
-    return Answer(
-        candidates=tuple(candidates),
-        hits=len(rows),
-        unreadable=unreadable,
-        ambiguous=wanted.other_reading is not None,
-    )
+        score = round(float(fuzz.token_sort_ratio(wanted.recording, track.recording)), 1)
+        exact = (track.distinct, track.version_key) in exact_tokens
+        candidates.append(Candidate(track=track, exact=exact, score=score, album=_album_of(row)))
+    return Answer(candidates=tuple(candidates), hits=len(rows), unreadable=unreadable,
+                  ambiguous=wanted.other_reading is not None)
 
 
 def read_pages(wanted: match.Wanted, pages: Sequence[tuple[Any, ...]]) -> Answer:
@@ -250,12 +235,8 @@ def _settled_early(answer: Answer) -> bool:
     )
 
 
-def search_pages(
-    search: Callable[[int], Iterable[Any]],
-    wanted: match.Wanted,
-    *,
-    bound: int | None = None,
-) -> Answer:
+def search_pages(search: Callable[[int], Iterable[Any]], wanted: match.Wanted, *,
+                 bound: int | None = None) -> Answer:
     """One search read page by page, until what past the cut is ruled in or out.
 
     ``search`` is handed the offset of each page (R-879). A common query fills
@@ -326,45 +307,28 @@ def _summary(one: Candidate) -> str:
 
 
 def _option(one: Candidate) -> review.Option:
-    return review.Option(
-        option_id=one.track.ref,
-        summary=_summary(one),
-        detail={
-            "track": intake_cli.frozen(one.track),
-            "exact": one.exact,
-            "score": one.score,
-            "album": one.album,
-        },
-    )
+    detail = {"track": intake_cli.frozen(one.track), "exact": one.exact, "score": one.score,
+              "album": one.album}
+    return review.Option(option_id=one.track.ref, summary=_summary(one), detail=detail)
 
 
 def _why_offered(answer: Answer, offered: tuple[Candidate, ...]) -> str:
     exact = len({one.track.ref for one in offered if one.exact})
     if exact and answer.ambiguous:
-        return (
-            "its title reads two ways, as a version or as the end of the title, so "
-            "no candidate can be called the exact one without a person"
-        )
+        return ("its title reads two ways, as a version or as the end of the title, so "
+            "no candidate can be called the exact one without a person")
     if exact > 1:
-        return (
-            f"the provider holds {exact} tracks that match it exactly, and which "
-            f"release to download is not something the row decides"
-        )
+        return (f"the provider holds {exact} tracks that match it exactly, and which "
+            f"release to download is not something the row decides")
     if exact and answer.full:
-        return (
-            f"one candidate matches it exactly and the provider's answer filled its "
-            f"page of {answer.hits}, so another exact one may sit past the cut"
-        )
+        return (f"one candidate matches it exactly and the provider's answer filled its "
+            f"page of {answer.hits}, so another exact one may sit past the cut")
     if exact and answer.unreadable:
-        return (
-            f"one candidate matches it exactly and {answer.unreadable} row(s) of the "
-            f"answer could not be read, so it may not be the only one"
-        )
+        return (f"one candidate matches it exactly and {answer.unreadable} row(s) of the "
+            f"answer could not be read, so it may not be the only one")
     if exact:
-        return (
-            "one candidate matches it exactly and another exact one carries no "
-            "identifier, so it may not be the only one"
-        )
+        return ("one candidate matches it exactly and another exact one carries no "
+            "identifier, so it may not be the only one")
     return "no candidate matches it exactly, and a near miss is never picked from a score"
 
 
@@ -417,37 +381,22 @@ def settled(items: review.ReviewStore, wanted: match.Wanted) -> Proposal | None:
     return held_as(ACCEPTED, f"accepted in review as {option.summary}", track)
 
 
-def propose(
-    items: review.ReviewStore,
-    wanted: match.Wanted,
-    answer: Answer,
-    *,
-    handler_key: str,
-) -> Proposal:
+def propose(items: review.ReviewStore, wanted: match.Wanted, answer: Answer, *,
+            handler_key: str) -> Proposal:
     """List the row, offer its candidates, or say there are none. Never pick."""
     sole = sole_exact(answer)
     if sole is not None:
-        return Proposal(
-            wanted,
-            LISTED,
-            f"the provider's search holds exactly one track matching it, {_summary(sole)}",
-            track=sole.track,
-        )
+        return Proposal(wanted, LISTED, f"the provider's search holds exactly one track "
+                        f"matching it, {_summary(sole)}", track=sole.track)
     offered = shown(answer)
     if not offered:
         # A MATCH WITH NO IDENTIFIER IS SAID AS THAT, not as "none resembles it",
         # which would send a person after a spelling problem they do not have.
-
-        unnamed = sum(
-            1
-            for one in answer.candidates
-            if not one.track.ref and (one.exact or one.score >= CANDIDATE_FLOOR)
-        )
+        unnamed = sum(1 for one in answer.candidates
+                      if not one.track.ref and (one.exact or one.score >= CANDIDATE_FLOOR))
         best = max((one.score for one in answer.candidates if one.track.ref), default=None)
         return Proposal(
-            wanted,
-            NO_CANDIDATES,
-            (
+            wanted, NO_CANDIDATES, (
                 "the provider's search returned nothing for it"
                 if not answer.hits
                 else f"the provider's search returned {answer.hits} hit(s) and none "
@@ -463,69 +412,20 @@ def propose(
         )
     withheld = len(offered) - OFFER_LIMIT if len(offered) > OFFER_LIMIT else 0
     on_screen = offered[:OFFER_LIMIT]
-    held = review.offer(
-        items,
-        queue=QUEUE,
-        kind=KIND,
-        identity=identity(wanted),
-        payload={
-            "wanted": intake_cli.frozen(wanted),
-            "why": _why_offered(answer, offered),
-            "hits": answer.hits,
-            "unreadable": answer.unreadable,
-            "withheld": withheld,
-            "candidates": [
-                {
-                    "id": one.track.ref,
-                    "artist": one.track.artist,
-                    "title": one.track.listed,
-                    "album": one.album,
-                    "exact": one.exact,
-                    "score": one.score,
-                }
-                for one in on_screen
-            ],
-        },
-        options=[_option(one) for one in on_screen],
-        handler_key=handler_key,
-    )
-    return Proposal(
-        wanted,
-        OFFERED,
-        _why_offered(answer, offered),
-        item_id=held.item_id,
-        offered=len(on_screen),
-    )
+    why = _why_offered(answer, offered)
+    shown_rows = [{"id": one.track.ref, "artist": one.track.artist, "title": one.track.listed,
+                   "album": one.album, "exact": one.exact, "score": one.score} for one in on_screen]
+    payload = {"wanted": intake_cli.frozen(wanted), "why": why, "hits": answer.hits,
+               "unreadable": answer.unreadable, "withheld": withheld, "candidates": shown_rows}
+    held = review.offer(items, queue=QUEUE, kind=KIND, identity=identity(wanted), payload=payload,
+                        options=[_option(one) for one in on_screen], handler_key=handler_key)
+    return Proposal(wanted, OFFERED, why, item_id=held.item_id, offered=len(on_screen))
 
 
 __all__ = [
-    "ACCEPTED",
-    "ASKED",
-    "CANDIDATE_FLOOR",
-    "HELD",
-    "KIND",
-    "LISTED",
-    "NAMED",
-    "NO_CANDIDATES",
-    "OFFERED",
-    "OFFER_LIMIT",
-    "QUEUE",
-    "REJECTED",
-    "SEARCH_CEILING",
+    "ACCEPTED", "ASKED", "CANDIDATE_FLOOR", "HELD", "KIND", "LISTED", "NAMED", "NO_CANDIDATES",
+    "OFFERED", "OFFER_LIMIT", "QUEUE", "REJECTED", "SEARCH_CEILING",
     "SEARCH_PAGES",  # noqa: F822 - served by __getattr__
-    "STALLED",
-    "WAITING",
-    "Answer",
-    "Candidate",
-    "Proposal",
-    "identity",
-    "item_id",
-    "propose",
-    "query_title",
-    "read_answer",
-    "read_pages",
-    "search_pages",
-    "settled",
-    "shown",
-    "sole_exact",
+    "STALLED", "WAITING", "Answer", "Candidate", "Proposal", "identity", "item_id", "propose",
+    "query_title", "read_answer", "read_pages", "search_pages", "settled", "shown", "sole_exact",
 ]

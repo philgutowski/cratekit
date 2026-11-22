@@ -51,34 +51,19 @@ _ORIGIN = ("intake.imported",)
 
 
 def build_imported(parser, entry) -> None:
-    parser.add_argument(
-        "--export",
-        default=None,
-        metavar="XML",
-        help=(
-            "a Fresh Export of the collection, taken after the import; needed "
-            "whenever a run is waiting on one"
-        ),
-    )
-    parser.add_argument(
-        "--session",
-        default=None,
-        metavar="ID",
-        help="look at this intake run only (default: every run waiting on an import)",
-    )
+    parser.add_argument("--export", metavar="XML", help="a Fresh Export of the collection, "
+                        "taken after the import; needed whenever a run is waiting on one")
+    parser.add_argument("--session", metavar="ID", help="look at this intake run only "
+                        "(default: every run waiting on an import)")
     parser.set_defaults(_handler=intake_imported)
 
 
 def _refuse_export(
     message: str, export: Path, code: str = "library-export-unusable", **extra: Any
 ) -> CratekitError:
-    return refuse(
-        code,
-        message,
-        steps=("take a Fresh Export of the collection from rekordbox and pass that file",),
-        origin=_ORIGIN,
-        detail={"export": str(export), **extra},
-    )
+    steps = ("take a Fresh Export of the collection from rekordbox and pass that file",)
+    detail = {"export": str(export), **extra}
+    return refuse(code, message, steps=steps, origin=_ORIGIN, detail=detail)
 
 
 def _same_file(left: Path, right: Path) -> bool:
@@ -109,27 +94,21 @@ def read_export(export: Path, waiting: list[session.SessionRecord]) -> set[str]:
                 f"{export.name} is the intake file run {record.session_id} is "
                 f"waiting on, so every track it names is in it whether or not "
                 f"rekordbox imported it",
-                export,
-                session_id=record.session_id,
+                export, session_id=record.session_id,
             )
     try:
         content = export.read_bytes()
     except OSError as exc:
-        raise _refuse_export(
-            f"{export.name} could not be read ({exc.strerror or exc})", export
-        ) from exc
+        said = f"{export.name} could not be read ({exc.strerror or exc})"
+        raise _refuse_export(said, export) from exc
     if collection_xml.is_stub_listing(content):
         raise _refuse_export(
             f"{export.name} is a stub listing, not a Fresh Export, so it says "
-            f"nothing about what rekordbox holds",
-            export,
-            "intake-export-is-stub",
+            f"nothing about what rekordbox holds", export, "intake-export-is-stub",
         )
     if rbxml.collection_span(content) is None:
         raise _refuse_export(
-            f"{export.name} has no collection section, so it is not a collection export",
-            export,
-        )
+            f"{export.name} has no collection section, so it is not a collection export", export)
     held: set[str] = set()
     for track in rbxml.collection_tracks(content):
         try:
@@ -160,16 +139,12 @@ def _waiting(record: session.SessionRecord) -> bool:
     )
 
 
-def _considered(
-    cfg: config.Config, wanted: str | None
-) -> tuple[list[session.SessionRecord], list[session.SessionRecord]]:
+def _considered(cfg: config.Config, wanted: str | None) -> tuple[list, list]:
     """The runs that owe a proof, and the proven ones with something left to do."""
     waiting: list[session.SessionRecord] = []
     proven: list[session.SessionRecord] = []
     for record in session.records(cfg):
-        if record.workflow != ingest.INTAKE_WORKFLOW:
-            continue
-        if wanted is not None and record.session_id != wanted:
+        if record.workflow != ingest.INTAKE_WORKFLOW or wanted not in (None, record.session_id):
             continue
         if _waiting(record):
             waiting.append(record)
@@ -179,8 +154,7 @@ def _considered(
         raise refuse(
             "intake-list-unusable",
             f"no intake run {wanted} is waiting on an import or was proven imported",
-            origin=_ORIGIN,
-            detail={"session_id": wanted},
+            origin=_ORIGIN, detail={"session_id": wanted},
         )
     return waiting, proven
 
@@ -210,9 +184,7 @@ def retire(artifact: Path) -> Path | None:
         raise refuse(
             "internal-error",
             f"{artifact} does not carry a name this product gives an intake file, "
-            f"so it is not renamed",
-            origin=_ORIGIN,
-            detail={"artifact": str(artifact)},
+            f"so it is not renamed", origin=_ORIGIN, detail={"artifact": str(artifact)},
         )
     target = artifact.with_name(artifact.name + RETIRED_SUFFIX)
     try:
@@ -231,8 +203,7 @@ def retire(artifact: Path) -> Path | None:
             "path-permission-denied" if isinstance(exc, PermissionError) else "intake-list-unusable",
             f"{artifact.name} could not be renamed out of the way "
             f"({exc.strerror or exc}), so nothing about its run was changed",
-            origin=_ORIGIN,
-            detail={"artifact": str(artifact)},
+            origin=_ORIGIN, detail={"artifact": str(artifact)},
         ) from exc
     return target
 
@@ -255,9 +226,7 @@ def _close_if_nothing_is_owed(
     return {"closed": True}
 
 
-def settle(
-    record: session.SessionRecord, cfg: config.Config, held: set[str], export: Path
-) -> dict[str, Any]:
+def settle(record: session.SessionRecord, cfg: config.Config, held: set[str], export: Path) -> dict:
     """Look at one waiting run, and do what the export proves can be done."""
     item: dict[str, Any] = {"session_id": record.session_id}
     artifact = record.pending.artifact if record.pending is not None else None
@@ -268,19 +237,12 @@ def settle(
     if not landed:
         # NOTHING RECORDED IS NOT NOTHING OWED. With no Location to look for, an
         # export proves nothing, so the run is left as it is.
-        return {
-            **item,
-            "action": UNVERIFIABLE,
-            "why": "the routing ledger names no file this run placed, so no export "
-            "can prove its import",
-        }
+        return {**item, "action": UNVERIFIABLE, "why": "the routing ledger names no file this "
+                "run placed, so no export can prove its import"}
     missing = [entry for entry in landed if entry.track not in held]
     if missing:
         return {
-            **item,
-            "action": NOT_IMPORTED,
-            "count": len(landed),
-            "missing": len(missing),
+            **item, "action": NOT_IMPORTED, "count": len(landed), "missing": len(missing),
             "missing_locations": [entry.location for entry in missing[:MISSING_SHOWN]],
         }
     # THE FILE FIRST, THEN THE RECORD, so a failed rename leaves the run waiting
@@ -290,24 +252,13 @@ def settle(
         # A run landed before R-501 goes through the state it should have been
         # left in, so there is one way out of waiting. It recorded no intake
         # file, and which of several naming its tracks was its own is not known.
-        session.mark_awaiting_import(
-            record,
-            session.pending_import(
-                record,
-                artifact="",
-                summary="landed before its intake file was recorded",
-                verify_verb=ingest.VERIFY_VERB,
-            ),
-            cfg,
-        )
+        pending = session.pending_import(record, artifact="", verify_verb=ingest.VERIFY_VERB,
+                                         summary="landed before its intake file was recorded")
+        session.mark_awaiting_import(record, pending, cfg)
     session.mark_import_verified(record, cfg, evidence=f"fresh export {export.name}")
-    return {
-        **item,
-        "action": IMPORTED,
-        "count": len(landed),
-        "retired_to": str(retired) if retired is not None else None,
-        **_close_if_nothing_is_owed(record, cfg, ledger),
-    }
+    return {**item, "action": IMPORTED, "count": len(landed),
+            "retired_to": str(retired) if retired is not None else None,
+            **_close_if_nothing_is_owed(record, cfg, ledger)}
 
 
 def finish(record: session.SessionRecord, cfg: config.Config) -> dict[str, Any] | None:
@@ -335,12 +286,9 @@ def _no_export(waiting: list[session.SessionRecord]) -> CratekitError:
         "library-export-unusable",
         f"{len(waiting)} intake run(s) are waiting on an import, and proving one "
         f"takes a collection export taken after it",
-        steps=(
-            "take a Fresh Export of the collection from rekordbox",
-            "run this again with --export and that file",
-        ),
-        origin=_ORIGIN,
-        detail={"sessions": [record.session_id for record in waiting]},
+        steps=("take a Fresh Export of the collection from rekordbox",
+               "run this again with --export and that file"),
+        origin=_ORIGIN, detail={"sessions": [record.session_id for record in waiting]},
     )
 
 
@@ -357,39 +305,23 @@ def intake_imported(ctx) -> Envelope:
     if waiting and export is not None:
         held = read_export(export, waiting)
         items.extend(settle(record, cfg, held, export) for record in waiting)
-    owed = [
-        record
-        for record, item in zip(waiting, items, strict=True)
-        if item["action"] in (NOT_IMPORTED, UNVERIFIABLE)
-    ]
+    owed = [record for record, item in zip(waiting, items, strict=True)
+            if item["action"] in (NOT_IMPORTED, UNVERIFIABLE)]
     items.extend(item for item in (finish(record, cfg) for record in proven) if item is not None)
     plan = intake_cli._plan(items, kind="imported")
-    plan["totals"] = {
-        "count": len(items),
-        **{
-            action: sum(1 for item in items if item["action"] == action)
-            for action in (IMPORTED, NOT_IMPORTED, UNVERIFIABLE, RETIRED)
-        },
-    }
+    plan["totals"] = {"count": len(items), **{
+        action: sum(1 for item in items if item["action"] == action)
+        for action in (IMPORTED, NOT_IMPORTED, UNVERIFIABLE, RETIRED)}}
     warnings = [
-        {
-            "code": item["action"],
-            "message": (
-                f"run {item['session_id']}: {item['missing']} of {item['count']} "
-                f"landed track(s) are not in {export.name if export else 'the export'}"
-                if item["action"] == NOT_IMPORTED
-                else f"run {item['session_id']}: {item['why']}"
-            ),
-        }
-        for item in items
-        if item["action"] in (NOT_IMPORTED, UNVERIFIABLE)
+        {"code": item["action"], "message": (
+            f"run {item['session_id']}: {item['missing']} of {item['count']} "
+            f"landed track(s) are not in {export.name if export else 'the export'}"
+            if item["action"] == NOT_IMPORTED else f"run {item['session_id']}: {item['why']}")}
+        for item in items if item["action"] in (NOT_IMPORTED, UNVERIFIABLE)
     ] + [
-        {
-            "code": item["close_refused"],
-            "message": f"run {item['session_id']} is proven and was not closed: {item['why']}",
-        }
-        for item in items
-        if "close_refused" in item
+        {"code": item["close_refused"],
+         "message": f"run {item['session_id']} is proven and was not closed: {item['why']}"}
+        for item in items if "close_refused" in item
     ]
     if not items:
         return ctx.envelope(data=plan, outcome=Outcome.NO_OP)
@@ -398,32 +330,13 @@ def intake_imported(ctx) -> Envelope:
     first = owed[0]
     # The run's own action, or for a run landed before R-501, one made here.
     pending = next((one.pending for one in owed if one.pending is not None), None) or (
-        session.pending_import(
-            first,
-            artifact="",
-            summary=f"run {first.session_id} is waiting on an import this export does not show",
-            verify_verb=ingest.VERIFY_VERB,
-        )
-    )
-    return ctx.envelope(
-        data=plan,
-        outcome=Outcome.PENDING,
-        code=ExitCode.PENDING_HUMAN,
-        pending=pending,
-        warnings=warnings,
-    )
+        session.pending_import(first, artifact="", verify_verb=ingest.VERIFY_VERB, summary=(
+            f"run {first.session_id} is waiting on an import this export does not show")))
+    return ctx.envelope(data=plan, outcome=Outcome.PENDING, code=ExitCode.PENDING_HUMAN,
+                        pending=pending, warnings=warnings)
 
 
 __all__ = [
-    "IMPORTED",
-    "NOT_IMPORTED",
-    "RETIRED",
-    "RETIRED_SUFFIX",
-    "UNVERIFIABLE",
-    "build_imported",
-    "finish",
-    "intake_imported",
-    "read_export",
-    "retire",
-    "settle",
+    "IMPORTED", "NOT_IMPORTED", "RETIRED", "RETIRED_SUFFIX", "UNVERIFIABLE", "build_imported",
+    "finish", "intake_imported", "read_export", "retire", "settle",
 ]
