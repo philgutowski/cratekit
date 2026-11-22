@@ -33,8 +33,10 @@ delegated upstream. The chain, in the order it fires, and what each link refuses
    ADMITTED (U288), rekordbox's own Remove from Collection as two sittings
    measured it (A178, A185): a track's content row and every row naming it
    in six tables beside it, only by a commit that names those tables, and
-   proven from SQL before the commit to have reached nothing else. See
-   :data:`DELETABLE_TABLES`.
+   proven from SQL before the commit to have reached nothing else but the
+   ``TrackNo`` of the live members after it in each playlist it left, which
+   rekordbox renumbers too (R-1830). See :data:`DELETABLE_TABLES` and
+   :func:`renumbered_positions`.
 6. **A cross-process write-session lock**, held from snapshot through smoke test.
 
 WHAT CHANGED IN THE PORT, AND WHY EACH CHANGE IS A FIX RATHER THAN A DRIFT.
@@ -4286,44 +4288,50 @@ def remove_from_collection(db: Any, content_id: str) -> dict[str, tuple[str, ...
 
 
 def renumbered_positions(
-    memberships: Iterable[tuple[str, str, str, int | None]],
+    memberships: Iterable[tuple[str, str, str, int | None, bool]],
     removed: Iterable[str],
 ) -> dict[str, tuple[str, int, int]]:
     """Which membership rows a removal renumbers, and to what. PURE (R-1830).
 
     ``memberships`` is every row of every playlist concerned, each
-    ``(membership id, playlist id, content id, TrackNo)``, live and marked
-    alike. Returns ``{membership id: (playlist id, TrackNo now, TrackNo
-    after)}`` holding only the rows whose number moves.
+    ``(membership id, playlist id, content id, TrackNo, live)``. Returns
+    ``{membership id: (playlist id, TrackNo now, TrackNo after)}`` holding
+    only the rows whose number moves.
 
     WHAT REKORDBOX DOES, MEASURED AT SITTING 102 (A197): a playlist at
     ``TrackNo`` 1, 2 and 3, the middle track taken out with Remove from
     Collection, left the third row at 2 and every other column of it as it
-    was. So in each playlist a deleted row leaves, every surviving row
-    numbered above a deleted row is lowered by one per deleted row below it.
-    That is the binding's own rule in ``remove_from_playlist`` (strictly
-    above, down by one per removal), so there is one numbering rule and not
-    a second; the binding's call itself is not used, since it commits by
-    itself and stamps ``updated_at`` and ``rb_local_usn`` on every row it
-    moves, which rekordbox did not.
+    was. So in each playlist, every surviving LIVE row numbered above a
+    removed live row is lowered by one per removed live row below it: the
+    binding's own rule in ``remove_from_playlist`` (strictly above, down by
+    one per removal), held to the rows rekordbox shows. The binding's call
+    itself is not used, since it commits by itself and stamps ``updated_at``
+    and ``rb_local_usn`` on every row it moves, which rekordbox did not.
 
-    A ROW MARKED REMOVED COUNTS AS A ROW, as the binding counts it and as
-    :func:`add_memberships` counts it for the highest position, so every
-    number stays distinct and in its order and the next append still goes
-    past the highest. What rekordbox does in a playlist holding a marked row
-    or a gap was not measured. A row with no number is neither lowered nor
-    counted, since it is above nothing. A playlist no deleted row leaves is
-    not renumbered.
+    ONLY LIVE ROWS COUNT AND ONLY LIVE ROWS MOVE (review round one's B1). A
+    row marked removed is one rekordbox shows nobody, and this product's own
+    membership writers leave such a row at a number a live row may also hold
+    (``playlist_pair`` numbers the live rows one through N). Counting a marked
+    removed row would lower the live row sharing its number onto the next
+    live row's, two live rows on one place; moving a marked survivor writes a
+    row nobody sees. So a playlist the track was only marked out of is not
+    renumbered, and live numbers that were distinct stay distinct and in
+    their order. A row with no number, or whose marker cannot be read
+    (``live`` given as False), is neither lowered nor counted. What rekordbox
+    does in a playlist holding a gap or a marked row was not measured.
     """
-    rows = [(str(key), str(playlist), str(content), number) for key, playlist, content, number in memberships]
+    rows = [
+        (str(key), str(playlist), str(content), number, bool(live))
+        for key, playlist, content, number, live in memberships
+    ]
     gone = {str(one) for one in removed}
     deleted: dict[str, list[int]] = {}
-    for _key, playlist, content, number in rows:
-        if content in gone and number is not None:
+    for _key, playlist, content, number, live in rows:
+        if content in gone and live and number is not None:
             deleted.setdefault(playlist, []).append(int(number))
     moved: dict[str, tuple[str, int, int]] = {}
-    for key, playlist, content, number in rows:
-        if content in gone or number is None:
+    for key, playlist, content, number, live in rows:
+        if content in gone or not live or number is None:
             continue
         below = sum(1 for one in deleted.get(playlist, ()) if one < int(number))
         if below:
@@ -4335,7 +4343,7 @@ def removal_renumbering(db: Any, content_ids: Iterable[str]) -> dict[str, tuple[
     """The membership rows removing ``content_ids`` would renumber, read from SQL (R-1830).
 
     Every row of every playlist holding a membership row that names one of
-    them, live or marked, put through :func:`renumbered_positions`. Reads and
+    them, with whether it is live, put through :func:`renumbered_positions`. Reads and
     writes nothing else; the plan asks it on a read only copy for the count
     its screen shows, and :meth:`CollectionRemoval.prepare` asks it again on
     the write handle for the rows it writes.
@@ -4347,15 +4355,24 @@ def removal_renumbering(db: Any, content_ids: Iterable[str]) -> dict[str, tuple[
         return {}
     statement = text(
         f'SELECT "ID", "{PLAYLIST_REFERENCE_COLUMN}", "{CONTENT_REFERENCE_COLUMN}", '
-        f'"{TRACK_NUMBER_COLUMN}" FROM "{MEMBERSHIP_TABLE}" '
+        f'"{TRACK_NUMBER_COLUMN}", "{SOFT_DELETE_COLUMN}" FROM "{MEMBERSHIP_TABLE}" '
         f'WHERE "{PLAYLIST_REFERENCE_COLUMN}" IN (SELECT "{PLAYLIST_REFERENCE_COLUMN}" '
         f'FROM "{MEMBERSHIP_TABLE}" WHERE "{CONTENT_REFERENCE_COLUMN}" IN :ids)'
     ).bindparams(bindparam("ids", expanding=True))
     rows = db.session.execute(statement, {"ids": wanted}).fetchall()
     return renumbered_positions(
-        ((row[0], row[1], row[2], None if row[3] is None else int(row[3])) for row in rows),
+        ((row[0], row[1], row[2], None if row[3] is None else int(row[3]), _live(row[4])) for row in rows),
         wanted,
     )
+
+
+def _live(marker: Any) -> bool:
+    """Whether a membership row's soft delete marker reads live. Unreadable reads as not live.
+
+    Not live is the answer that renumbers nothing: such a row is neither
+    counted nor moved, which leaves the gap the removal used to leave.
+    """
+    return marker is not None and not bool(marker)
 
 
 def renumber_memberships(db: Any, moved: Mapping[str, tuple[str, int, int]]) -> None:
@@ -4405,14 +4422,14 @@ class DatabaseReading:
     :data:`DELETABLE_TABLES`, which content row each row names. ``counter`` is
     ``localUpdateCount``, or None when the registry holds no such row.
     ``positions`` is, for each membership row, its playlist, the content row
-    it names, its ``TrackNo`` and a digest of every other column, so a
-    renumbering is judged column by column (R-1830).
+    it names, its ``TrackNo``, whether it is live and a digest of every other
+    column, so a renumbering is judged column by column (R-1830).
     """
 
     rows: Mapping[str, Mapping[str, str]]
     named: Mapping[str, Mapping[str, str]]
     counter: int | None
-    positions: Mapping[str, tuple[str, str, int | None, str]] = field(default_factory=dict)
+    positions: Mapping[str, tuple[str, str, int | None, bool, str]] = field(default_factory=dict)
 
 
 def database_reading(db: Any) -> DatabaseReading:
@@ -4424,7 +4441,7 @@ def database_reading(db: Any) -> DatabaseReading:
     session = db.session
     rows: dict[str, dict[str, str]] = {}
     named: dict[str, dict[str, str]] = {}
-    positions: dict[str, tuple[str, str, int | None, str]] = {}
+    positions: dict[str, tuple[str, str, int | None, bool, str]] = {}
     for table in _tables(session):
         columns = _columns(session, table)
         keys = [name for name, place in sorted(columns, key=lambda one: one[1]) if place]
@@ -4446,9 +4463,16 @@ def database_reading(db: Any) -> DatabaseReading:
                 names.index(PLAYLIST_REFERENCE_COLUMN),
                 names.index(CONTENT_REFERENCE_COLUMN),
                 names.index(TRACK_NUMBER_COLUMN),
+                names.index(SOFT_DELETE_COLUMN),
             )
             if table == MEMBERSHIP_TABLE
-            and {PLAYLIST_REFERENCE_COLUMN, CONTENT_REFERENCE_COLUMN, TRACK_NUMBER_COLUMN} <= set(names)
+            and {
+                PLAYLIST_REFERENCE_COLUMN,
+                CONTENT_REFERENCE_COLUMN,
+                TRACK_NUMBER_COLUMN,
+                SOFT_DELETE_COLUMN,
+            }
+            <= set(names)
             else None
         )
         found: dict[str, str] = {}
@@ -4460,7 +4484,7 @@ def database_reading(db: Any) -> DatabaseReading:
             if table in DELETABLE_TABLES and reference is not None:
                 naming[key] = str(values[reference])
             if placed is not None:
-                playlist_at, content_at, number_at = placed
+                playlist_at, content_at, number_at, marker_at = placed
                 rest = tuple(
                     value for at, value in enumerate(values[: len(names)]) if at != number_at
                 )
@@ -4469,6 +4493,7 @@ def database_reading(db: Any) -> DatabaseReading:
                     str(values[playlist_at]),
                     str(values[content_at]),
                     None if number is None else int(number),
+                    _live(values[marker_at]),
                     hashlib.sha256(repr(rest).encode("utf-8")).hexdigest(),
                 )
         rows[table] = found
@@ -4499,7 +4524,7 @@ def collection_removal_violations(
       content row was live before, asked whether anything changed or not, so a
       planned delete that never happened is refused before the commit;
     * no table appears or disappears, no row is added, no row changes but
-      one: a membership row of a playlist a removed row left, whose
+      one: a live membership row of a playlist a removed live row left, whose
       ``TrackNo`` moved to exactly the number :func:`renumbered_positions`
       gives it and whose every other column stayed (R-1830). Every row that
       rule renumbers must have moved, so a planned renumbering that never
@@ -4512,7 +4537,10 @@ def collection_removal_violations(
     gone = {str(one) for one in removed}
     violations: list[str] = []
     planned = renumbered_positions(
-        ((key, playlist, content, number) for key, (playlist, content, number, _rest) in before.positions.items()),
+        (
+            (key, playlist, content, number, live)
+            for key, (playlist, content, number, live, _rest) in before.positions.items()
+        ),
         gone,
     )
     for table in sorted(set(before.rows) ^ set(after.rows)):
@@ -4564,7 +4592,7 @@ def _renumbering_violations(
     if then is None or now is None:
         return [f"the {MEMBERSHIP_TABLE} row {key!r} could not be read for its renumbering"]
     found: list[str] = []
-    if (now[0], now[1], now[3]) != (then[0], then[1], then[3]):
+    if (now[0], now[1], now[3], now[4]) != (then[0], then[1], then[3], then[4]):
         found.append(
             f"the {MEMBERSHIP_TABLE} row {key!r} changed in a column other than "
             f"{TRACK_NUMBER_COLUMN}, and a renumbering moves that column alone"

@@ -236,7 +236,8 @@ def facts(plan: removed.RemovedPlan) -> dict[str, Any]:
             "each offered row out of the rekordbox collection, with every membership, "
             "cue, history entry, analysis file row and mixer row naming it, as "
             "rekordbox's Remove from Collection does, and the tracks after it in each "
-            "playlist it left numbered down by one, as rekordbox numbers them; no other "
+            "playlist it left moved up one place for each removed track before them, as "
+            "rekordbox numbers them; no other "
             "row, no playlist row and no file. crate delete review then offers each file "
             "to the Trash"
         ),

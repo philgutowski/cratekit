@@ -1900,3 +1900,78 @@ def test_a_renumbering_that_moved_between_the_gate_and_the_write_refuses_as_stal
     assert code != int(ExitCode.OK)
     assert acted["cause"]["reason"] == "decision-stale", acted
     assert _every_table(cfg) == seen["tables"]
+
+
+def test_a_track_only_marked_out_of_a_playlist_renumbers_none_of_its_live_members(
+    native_library, silence, monkeypatch, offline
+):
+    """Review round one's B1 and R2, through the verb.
+
+    ``sync pair`` takes a track off by marking its membership and numbers the
+    live rows one through N, so the marked New1 sits at 2 beside the live
+    Held2 at 2. Counting the marked row lowered Held3 onto Held2's place, two
+    live rows on one number, an order ``sync pair`` would then read by row id.
+    """
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2", "Held3")
+    _sql(
+        cfg,
+        "UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE PlaylistID = ? AND ContentID = ?",
+        mine,
+        _row(cfg, "New1"),
+    )
+    for title, number in (("Held2", 2), ("Held3", 3)):
+        _sql(
+            cfg,
+            "UPDATE djmdSongPlaylist SET TrackNo = ? WHERE PlaylistID = ? AND ContentID = ?",
+            number,
+            mine,
+            _row(cfg, title),
+        )
+    kept = _query(
+        cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? AND rb_local_deleted = 0 ORDER BY ID", mine
+    )
+
+    code, acted, refused = _apply()
+
+    assert code == int(ExitCode.OK), acted
+    assert refused["cause"]["detail"]["shown"]["memberships renumbered"] == 7
+    assert _titles(_numbers(cfg, mine)) == [("Held1", 1), ("Held2", 2), ("Held3", 3)]
+    assert _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? ORDER BY ID", mine) == kept
+
+
+def test_renumbering_writes_trackno_alone_and_a_held_row_reads_the_new_number(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    mine = _hand_made(cfg, "Mine", "Held1", "Held2")
+    handle = _handle(cfg)
+    try:
+        held = [song for song in handle.get_playlist_songs(PlaylistID=mine) if int(song.TrackNo) == 2]
+        (song,) = held
+        rb_writer.renumber_memberships(handle, {str(song.ID): (mine, 2, 1)})
+        # The mapped object the session held reads the number SQL now holds.
+        assert int(song.TrackNo) == 1
+        handle.rollback()
+    finally:
+        rb_writer.close_db(handle)
+    assert _titles(_numbers(cfg, mine)) == [("Held1", 1), ("Held2", 2)]
+
+
+def test_only_the_collection_removal_renumbers_memberships():
+    """Review round one's R3: the one TrackNo write the whitelist does not see has one caller."""
+    import ast
+
+    root = Path(rb_writer.__file__).resolve().parents[1]
+    callers: list[str] = []
+    for path in sorted(root.rglob("*.py")):
+        if "_vendor" in path.parts:
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call):
+                name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+                if name == "renumber_memberships":
+                    callers.append(path.relative_to(root).as_posix())
+    assert callers == ["core/rb_writer.py"], callers

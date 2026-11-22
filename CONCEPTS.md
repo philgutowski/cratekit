@@ -369,8 +369,9 @@ most, and a **retired** playlist, one the account no longer lists whose id
 answered not found a day apart, or that a person retired behind
 `sync.removed.retire`, which holds nothing and stops nothing. Behind the explicit gate `sync.removed.confirm`, the offered rows leave
 the collection as rekordbox's Remove from Collection takes them out (U288): the
-row and every row naming it deleted, the lists left, the members after it in
-each playlist numbered down by one as rekordbox numbers them (R-1830); the session record names
+row and every row naming it deleted, the lists left, the live members after it
+in each playlist moved up one place per removed track before them, as rekordbox
+numbers them (R-1830); the session record names
 each one, and `crate delete review` then offers its file.
 
 *Avoid:* a pair removal, which takes a membership and never a track.

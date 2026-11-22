@@ -747,9 +747,9 @@ removed` again. `apply` takes each offered track out of the rekordbox
 collection the way rekordbox's own Remove from Collection does: the
 collection row and every membership, cue, history entry, analysis file row
 and mixer row naming it are deleted, and the playlists and history lists
-stay, emptier. In each playlist the track leaves, the tracks after it are
-numbered down by one, as rekordbox numbers them, and nothing else on their
-rows changes. Nothing else in the database moves, which the verb reads back
+stay, emptier. In each playlist the track leaves, the tracks after it move
+up one place for each removed track before them, as rekordbox numbers them,
+and nothing else on their rows changes. Nothing else in the database moves, which the verb reads back
 from the database after its commit, and it refuses with nothing written when
 the collection or the playlists moved since the gate. A track a My Tag (the
 landing's own `vox` and `dyn` included), a sampler slot, related tracks or any

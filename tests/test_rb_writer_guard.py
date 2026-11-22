@@ -1067,10 +1067,10 @@ def test_the_read_back_after_the_commit_admits_only_the_counter_moving_forward()
 
 
 def _three(playlist="p", *, removed_at=2, first=1):
-    """A playlist of three at ``first``, ``first`` + 1, ``first`` + 2, ``x`` the removed track."""
+    """A live playlist of three at ``first``, ``first`` + 1, ``first`` + 2, ``x`` the removed track."""
     names = ["a", "b", "c"]
     names[removed_at - 1] = "x"
-    return [(f"{playlist}{n}", playlist, name, first + n) for n, name in enumerate(names)]
+    return [(f"{playlist}{n}", playlist, name, first + n, True) for n, name in enumerate(names)]
 
 
 def test_the_middle_of_three_removed_leaves_one_and_two_as_rekordbox_left_them():
@@ -1079,15 +1079,21 @@ def test_the_middle_of_three_removed_leaves_one_and_two_as_rekordbox_left_them()
 
 
 def test_two_removed_members_of_one_playlist_lower_each_row_by_those_below_it():
-    rows = [("r1", "p", "a", 1), ("r2", "p", "x", 2), ("r3", "p", "b", 3), ("r4", "p", "y", 4), ("r5", "p", "c", 5)]
+    rows = [
+        ("r1", "p", "a", 1, True),
+        ("r2", "p", "x", 2, True),
+        ("r3", "p", "b", 3, True),
+        ("r4", "p", "y", 4, True),
+        ("r5", "p", "c", 5, True),
+    ]
     assert W.renumbered_positions(rows, ["x", "y"]) == {"r3": ("p", 3, 2), "r5": ("p", 5, 3)}
     # A track the playlist holds twice is two rows out of it.
-    twice = [("r1", "p", "x", 1), ("r2", "p", "a", 2), ("r3", "p", "x", 3), ("r4", "p", "b", 4)]
+    twice = [("r1", "p", "x", 1, True), ("r2", "p", "a", 2, True), ("r3", "p", "x", 3, True), ("r4", "p", "b", 4, True)]
     assert W.renumbered_positions(twice, ["x"]) == {"r2": ("p", 2, 1), "r4": ("p", 4, 2)}
 
 
 def test_a_member_on_two_playlists_renumbers_each_by_its_own_place_and_no_other():
-    rows = [*_three("p"), *_three("q", removed_at=1), ("s1", "s", "a", 1), ("s2", "s", "b", 2)]
+    rows = [*_three("p"), *_three("q", removed_at=1), ("s1", "s", "a", 1, True), ("s2", "s", "b", 2, True)]
     assert W.renumbered_positions(rows, ["x"]) == {
         "p2": ("p", 3, 2),
         "q1": ("q", 2, 1),
@@ -1097,20 +1103,52 @@ def test_a_member_on_two_playlists_renumbers_each_by_its_own_place_and_no_other(
 
 def test_the_last_member_removed_and_a_numberless_row_renumber_nothing():
     assert W.renumbered_positions(_three(removed_at=3), ["x"]) == {}
-    assert W.renumbered_positions([("r1", "p", "x", None), ("r2", "p", "a", 2)], ["x"]) == {}
-    assert W.renumbered_positions([("r1", "p", "x", 1), ("r2", "p", "a", None)], ["x"]) == {}
+    assert W.renumbered_positions([("r1", "p", "x", None, True), ("r2", "p", "a", 2, True)], ["x"]) == {}
+    assert W.renumbered_positions([("r1", "p", "x", 1, True), ("r2", "p", "a", None, True)], ["x"]) == {}
     assert W.renumbered_positions(_three(), []) == {}
 
 
-def test_a_gap_already_there_stays_and_every_number_stays_distinct():
+def test_a_gap_already_there_stays():
     # 1, 2, 3, 5 with 2 removed: the rows above it move down by one, the gap
     # an earlier removal left is not closed (rekordbox's handling unmeasured).
-    rows = [("r1", "p", "a", 1), ("r2", "p", "x", 2), ("r3", "p", "b", 3), ("r5", "p", "c", 5)]
+    rows = [("r1", "p", "a", 1, True), ("r2", "p", "x", 2, True), ("r3", "p", "b", 3, True), ("r5", "p", "c", 5, True)]
     assert W.renumbered_positions(rows, ["x"]) == {"r3": ("p", 3, 2), "r5": ("p", 5, 4)}
 
 
+def test_a_marked_row_is_neither_counted_nor_moved_so_live_numbers_stay_distinct():
+    """Review round one's B1: a marked row of the removed track sharing a live row's number.
+
+    ``sync pair`` marks a track out and numbers the live rows one through N,
+    so the marked row of New1 sits at 2 beside the live Held2 at 2. Counting it
+    lowered Held3 from 3 onto Held2's 2.
+    """
+    rows = [
+        ("h1", "p", "a", 1, True),
+        ("n1", "p", "x", 2, False),
+        ("h2", "p", "b", 2, True),
+        ("h3", "p", "c", 3, True),
+    ]
+    assert W.renumbered_positions(rows, ["x"]) == {}
+    # A marked survivor above a removed live row keeps its number; the live
+    # rows close up over the live one alone.
+    rows = [
+        ("h1", "p", "a", 1, True),
+        ("n1", "p", "x", 2, True),
+        ("m3", "p", "m", 3, False),
+        ("h4", "p", "b", 4, True),
+    ]
+    assert W.renumbered_positions(rows, ["x"]) == {"h4": ("p", 4, 3)}
+
+
+def test_a_tie_between_a_removed_row_and_a_survivor_lowers_nothing_at_that_place():
+    # Two live rows at 2 (a writer left a tie): the survivor at 2 is not above
+    # the removed one and stays, the row at 3 goes to 2, so the tie is no worse.
+    rows = [("r1", "p", "a", 1, True), ("r2", "p", "x", 2, True), ("r2b", "p", "b", 2, True), ("r3", "p", "c", 3, True)]
+    assert W.renumbered_positions(rows, ["x"]) == {"r3": ("p", 3, 2)}
+
+
 def _positions(rows):
-    return {key: (playlist, content, number, f"rest-{key}") for key, playlist, content, number in rows}
+    return {key: (playlist, content, number, live, f"rest-{key}") for key, playlist, content, number, live in rows}
 
 
 def _membership_reading(rows, *, moved=None, rest=None, gone=("x",)):
@@ -1119,23 +1157,24 @@ def _membership_reading(rows, *, moved=None, rest=None, gone=("x",)):
     if gone is not None:
         positions = {key: value for key, value in positions.items() if value[1] not in gone}
     for key, number in (moved or {}).items():
-        playlist, content, _was, digest = positions[key]
-        positions[key] = (playlist, content, number, digest)
+        playlist, content, _was, live, digest = positions[key]
+        positions[key] = (playlist, content, number, live, digest)
     for key, digest in (rest or {}).items():
-        playlist, content, number, _digest = positions[key]
-        positions[key] = (playlist, content, number, digest)
-    members = {key: f"{value[2]}-{value[3]}" for key, value in positions.items()}
+        playlist, content, number, live, _digest = positions[key]
+        positions[key] = (playlist, content, number, live, digest)
+    members = {key: f"{value[2]}-{value[3]}-{value[4]}" for key, value in positions.items()}
     named = {key: value[1] for key, value in positions.items()}
+    contents = {"x": "x", "a": "a", "b": "b", "c": "c"} if gone is None else {"a": "a", "b": "b", "c": "c"}
     return W.DatabaseReading(
-        rows={W.MEMBERSHIP_TABLE: members, W.CONTENT_TABLE: {"x": "x", "a": "a", "b": "b", "c": "c"} if gone is None else {"a": "a", "b": "b", "c": "c"}},
-        named={W.MEMBERSHIP_TABLE: named, W.CONTENT_TABLE: {"x": "x", "a": "a", "b": "b", "c": "c"} if gone is None else {"a": "a", "b": "b", "c": "c"}},
+        rows={W.MEMBERSHIP_TABLE: members, W.CONTENT_TABLE: contents},
+        named={W.MEMBERSHIP_TABLE: named, W.CONTENT_TABLE: dict(contents)},
         counter=5,
         positions=positions,
     )
 
 
 def test_the_confinement_admits_the_planned_renumbering_and_nothing_beside_it():
-    rows = [*_three("p"), ("s1", "s", "a", 1), ("s2", "s", "b", 2)]
+    rows = [*_three("p"), ("s1", "s", "a", 1, True), ("s2", "s", "b", 2, True)]
     before = _membership_reading(rows, gone=None)
     assert W.collection_removal_violations(before, _membership_reading(rows, moved={"p2": 2}), removed=["x"]) == []
     # Not renumbered at all: the gap rekordbox closes is refused.
@@ -1160,6 +1199,13 @@ def test_the_confinement_admits_the_planned_renumbering_and_nothing_beside_it():
     assert any(
         "'p0' changed" in line for line in W.collection_removal_violations(before, early, removed=["x"])
     )
+
+
+def test_the_confinement_refuses_a_marked_row_renumbered():
+    rows = [("h1", "p", "a", 1, True), ("n1", "p", "x", 2, False), ("h2", "p", "b", 2, True), ("h3", "p", "c", 3, True)]
+    before = _membership_reading(rows, gone=None)
+    assert W.collection_removal_violations(before, _membership_reading(rows), removed=["x"]) == []
+    assert W.collection_removal_violations(before, _membership_reading(rows, moved={"h3": 2}), removed=["x"])
 
 
 def test_a_reading_with_no_positions_admits_no_membership_change():
