@@ -183,12 +183,38 @@ def tombstone(cfg: config.Config, artist: str, title: str) -> None:
 # What is listed
 
 
-def test_a_mixed_job_writes_only_the_missing_rows(cfg, library, monkeypatch):
+def test_a_mixed_job_writes_only_the_missing_rows(cfg, library, monkeypatch, tmp_path):
+    """One job read every way it is listed: refused, elsewhere, here, again, and downloaded."""
     job_id = mixed_job(library, monkeypatch)
+    expected = lists_dir(library) / f"intake-{job_id}.list.json"
+    # AN UNMOUNTED LIBRARY refuses rather than reading every row missing.
+    (library / "Music").rename(library / "Music-away")
+    code, envelope = missing(job_id)
+    assert envelope["cause"]["reason"] == "library-volume-unmounted", (code, envelope)
+    (library / "Music-away").rename(library / "Music")
+    # --skip-failed means nothing for one job and is refused rather than ignored.
+    envelope = refused(job_id, "--skip-failed")
+    assert "--skip-failed" in envelope["cause"]["message"]
+    (tmp_path / "afile").write_text("x")
+    envelope = refused(job_id, "--out", str(tmp_path / "afile"))
+    assert "is not a folder" in envelope["cause"]["message"]
+    assert not lists_dir(library).exists()
+    envelope = ok(job_id, "--out", str(tmp_path / "mine"))[0]
+    assert envelope["data"]["summary"]["list"] == str(tmp_path / "mine" / expected.name)
+    assert not lists_dir(library).exists()
+    # A FILE THAT IS NOT A LIST at the path is refused, left alone, and given no reason.
+    expected.parent.mkdir(parents=True)
+    expected.write_text("not a list\n")
+    envelope = refused(job_id)
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    steps = " ".join(envelope["cause"]["remediation"]["steps"])
+    assert "earlier copy" not in steps
+    assert "move the file aside" in steps
+    assert expected.read_text() == "not a list\n"
+    expected.unlink()
     envelope = ok(job_id)[0]
     assert envelope["outcome"] == "ok"
     summary = envelope["data"]["summary"]
-    expected = lists_dir(library) / f"intake-{job_id}.list.json"
     assert summary["list"] == str(expected)
     assert (summary["written"], summary["owned"], summary["offered"]) == (2, 2, 1)
     assert (summary["suppressed"], summary["unlisted"]) == (0, 0)
@@ -202,6 +228,34 @@ def test_a_mixed_job_writes_only_the_missing_rows(cfg, library, monkeypatch):
     assert set(sidecar["rows"]) == {"204", "205"}
     assert {row["source"] for row in sidecar["rows"].values()} == {"playlist"}
     assert {row["source_ref"] for row in sidecar["rows"].values()} == {"favorites"}
+    # A SECOND RUN writes the same BYTES, so the emitter recognises it (R-476).
+    paths = [Path(summary[key]) for key in ("list", "manifest")]
+    before = [path.read_bytes() for path in paths]
+    again, summary = ok(job_id)
+    assert summary["list"] == str(expected)
+    assert [path.read_bytes() for path in paths] == before
+    assert (summary["written"], summary["missing"]) == (2, 2)
+    assert (summary["owned_since"], summary["suppressed_since"], summary["offered_since"]) == (0, 0, 0)
+    # THE DEFAULT OUTPUT a person reads names the list and the next command.
+    code, text = human(["intake", "missing", "--job", job_id])
+    assert code == int(ExitCode.OK), text
+    assert f"[ok  ] intake.missing.written: 2 missing track(s) written to {expected}" in text
+    assert f"next: crate acquire download {expected}" in text
+    assert "intake.missing.offered: 1 offered for review" in text
+    # AND THE FILE IS ACCEPTED AND DOWNLOADED by acquire.
+    script = Script(landings={"204": Landing(), "205": Landing()})
+    monkeypatch.setitem(acquire.ADAPTERS, FAKE_ADAPTER, FAKE_DECLARATION)
+    monkeypatch.setattr(FakeAdapter, "script", script)
+    monkeypatch.setattr(acquire_cli, "_SLEEP", lambda _seconds: None)
+    code, queued_download = drive(["acquire", "download", str(expected)])
+    assert code == int(ExitCode.OK), queued_download
+    download_id = queued_download["data"]["job_id"]
+    with jobs.open_store() as store:
+        assert [item.item_id for item in jobs.items(store, download_id)] == ["204", "205"]
+    code, ran = drive(resume_argv(download_id))
+    assert code == int(ExitCode.OK), ran
+    assert ran["data"]["state"] == "succeeded"
+    assert sorted(request.key for request in script.fetched) == ["204", "205"]
 
 
 @pytest.mark.parametrize(
@@ -247,93 +301,19 @@ def test_a_held_track_is_owned_and_nothing_is_listed(
     assert not (lists_dir(library) / f"intake-{job_id}.list.json").exists()
 
 
-def test_the_default_human_output_names_the_list_and_the_next_command(cfg, library, monkeypatch):
-    job_id = mixed_job(library, monkeypatch)
-    code, text = human(["intake", "missing", "--job", job_id])
-    assert code == int(ExitCode.OK), text
-    path = lists_dir(library) / f"intake-{job_id}.list.json"
-    assert f"[ok  ] intake.missing.written: 2 missing track(s) written to {path}" in text
-    assert f"next: crate acquire download {path}" in text
-    assert "intake.missing.offered: 1 offered for review" in text
-
-
-def test_the_written_list_is_accepted_and_downloaded_by_acquire(cfg, library, monkeypatch):
-    job_id = mixed_job(library, monkeypatch)
-    _code, envelope = missing(job_id)
-    script = Script(landings={"204": Landing(), "205": Landing()})
-    monkeypatch.setitem(acquire.ADAPTERS, FAKE_ADAPTER, FAKE_DECLARATION)
-    monkeypatch.setattr(FakeAdapter, "script", script)
-    monkeypatch.setattr(acquire_cli, "_SLEEP", lambda _seconds: None)
-    code, queued_download = drive(["acquire", "download", envelope["data"]["summary"]["list"]])
-    assert code == int(ExitCode.OK), queued_download
-    download_id = queued_download["data"]["job_id"]
-    with jobs.open_store() as store:
-        assert [item.item_id for item in jobs.items(store, download_id)] == ["204", "205"]
-    code, ran = drive(resume_argv(download_id))
-    assert code == int(ExitCode.OK), ran
-    assert ran["data"]["state"] == "succeeded"
-    assert sorted(request.key for request in script.fetched) == ["204", "205"]
-
-
-def test_a_second_run_is_the_same_list_and_not_a_refusal(cfg, library, monkeypatch):
-    """A library that gained nothing since the first listing writes the same BYTES, which is what
-    lets the emitter recognise the list rather than refuse it (R-476's comparison), and the
-    recheck counts nothing as changed."""
-    job_id = mixed_job(library, monkeypatch)
-    _code, first = missing(job_id)
-    paths = [Path(first["data"]["summary"][key]) for key in ("list", "manifest")]
-    before = [path.read_bytes() for path in paths]
-    again, summary = ok(job_id)
-    assert summary["list"] == first["data"]["summary"]["list"]
-    assert [path.read_bytes() for path in paths] == before
-    assert (summary["written"], summary["missing"]) == (2, 2)
-    assert (summary["owned_since"], summary["suppressed_since"], summary["offered_since"]) == (0, 0, 0)
-
-
 # R-502: a missing row is asked again at listing time
 
 
-def test_rows_acquired_since_the_job_are_not_listed_and_name_no_download(cfg, library, monkeypatch):
-    """R-502 as driven: two missing rows listed, downloaded and landed, then the same job listed
-    again."""
+def test_rows_acquired_since_the_job_are_not_listed_and_name_no_download(
+    cfg, library, monkeypatch, tmp_path
+):
+    """R-502: rows acquired since are asked again; the list's name is fixed by the job."""
     job_id = mixed_job(library, monkeypatch)
     _code, first = missing(job_id)
     listed = Path(first["data"]["summary"]["list"])
     before = listed.read_bytes()
     owned(library, "Lumen Drift - Salt Road.flac")
-    owned(library, "Kite Harbor - Low Tide Signal.flac")
-    envelope = ok(job_id)[0]
-    assert envelope["outcome"] == "no_op"
-    summary = envelope["data"]["summary"]
-    assert (summary["written"], summary["missing"], summary["owned_since"]) == (0, 0, 2)
-    assert (summary["owned"], summary["offered"]) == (2, 1), "the job's own answers are kept"
-    assert (summary["list"], summary["next"]) == (None, None)
-    checks = {check["title"]: check for check in envelope["data"]["checks"]}
-    assert "crate acquire download" not in checks["written"]["detail"]
-    assert "found missing is in the library" in checks["written"]["detail"], (
-        "not the sentence for a job that never had a missing track"
-    )
-    assert "2 in the library since" in checks["since"]["detail"]
-    assert listed.read_bytes() == before, "the earlier list is not this verb's to remove"
-
-
-def test_one_row_acquired_since_leaves_the_other_listed(cfg, library, monkeypatch, tmp_path):
-    job_id = mixed_job(library, monkeypatch)
-    owned(library, "Lumen Drift - Salt Road.flac")
-    envelope, summary = ok(job_id, "--out", str(tmp_path / "fresh"))
-    assert (summary["written"], summary["missing"], summary["owned_since"]) == (1, 1, 1)
-    assert ids(summary) == ["205"]
-    assert set(json.loads(Path(summary["manifest"]).read_text())["rows"]) == {"205"}
-
-
-def test_a_shorter_rerun_over_the_jobs_earlier_list_refuses_and_says_why(cfg, library, monkeypatch):
-    """The list's name is fixed by the job, so a rerun that lists fewer rows meets the first run's
-    bytes."""
-    job_id = mixed_job(library, monkeypatch)
-    _code, first = missing(job_id)
-    listed = Path(first["data"]["summary"]["list"])
-    before = listed.read_bytes()
-    owned(library, "Lumen Drift - Salt Road.flac")
+    # A SHORTER RERUN over the job's earlier list refuses and says why.
     envelope = refused(job_id)
     assert envelope["cause"]["reason"] == "intake-list-unusable"
     steps = " ".join(envelope["cause"]["remediation"]["steps"])
@@ -343,6 +323,24 @@ def test_a_shorter_rerun_over_the_jobs_earlier_list_refuses_and_says_why(cfg, li
     ) in steps
     assert "this one names are not in it" not in steps
     assert listed.read_bytes() == before
+    # ONE ROW ACQUIRED leaves the other listed, in a folder of its own.
+    envelope, summary = ok(job_id, "--out", str(tmp_path / "fresh"))
+    assert (summary["written"], summary["missing"], summary["owned_since"]) == (1, 1, 1)
+    assert ids(summary) == ["205"]
+    assert set(json.loads(Path(summary["manifest"]).read_text())["rows"]) == {"205"}
+    owned(library, "Kite Harbor - Low Tide Signal.flac")
+    envelope, summary = ok(job_id)
+    assert envelope["outcome"] == "no_op"
+    assert (summary["written"], summary["missing"], summary["owned_since"]) == (0, 0, 2)
+    assert (summary["owned"], summary["offered"]) == (2, 1), "the job's own answers are kept"
+    assert (summary["list"], summary["next"]) == (None, None)
+    checks = checks_of(envelope)
+    assert "crate acquire download" not in checks["written"]["detail"]
+    assert "found missing is in the library" in checks["written"]["detail"], (
+        "not the sentence for a job that never had a missing track"
+    )
+    assert "2 in the library since" in checks["since"]["detail"]
+    assert listed.read_bytes() == before, "the earlier list is not this verb's to remove"
 
 
 def test_a_row_tombstoned_since_the_job_is_not_listed_and_counted_suppressed(
@@ -398,12 +396,25 @@ def checks_of(envelope: dict) -> dict[str, dict]:
     return {check["title"]: check for check in envelope["data"]["checks"]}
 
 
-def test_an_offered_row_rejected_since_is_listed_and_no_longer_offered(cfg, library, monkeypatch):
-    """R-503 as driven: one offered row, answered rejected. The listing used to
-    count it offered on every run after, and nothing it printed could list it."""
+def test_an_offered_row_rejected_since_is_listed_and_no_longer_offered(
+    cfg, library, monkeypatch, tmp_path
+):
+    """R-503: a rejection lists the row, and every refusal over an earlier copy says why."""
     job_id = mixed_job(library, monkeypatch)
+    _code, first = missing(job_id)
+    listed = Path(first["data"]["summary"]["list"])
+    before = listed.read_bytes()
     answer(job_id, "rejected")
-    envelope, summary = ok(job_id)
+    # THE NAME IS FIXED BY THE JOB, so a row answered since meets the first bytes.
+    envelope = refused(job_id)
+    steps = " ".join(envelope["cause"]["remediation"]["steps"])
+    assert (
+        "1 track(s) this one names are not in it, missing since it was written: Nova Reef - Tide"
+    ) in steps
+    assert "it names are not in this one" not in steps
+    assert listed.read_bytes() == before
+    fresh = str(tmp_path / "fresh")
+    envelope, summary = ok(job_id, "--out", fresh)
     assert (summary["written"], summary["missing"], summary["offered"]) == (3, 3, 0)
     assert (summary["answered_missing"], summary["answered_owned"]) == (1, 0)
     assert summary["owned"] == 2
@@ -412,9 +423,24 @@ def test_an_offered_row_rejected_since_is_listed_and_no_longer_offered(cfg, libr
     assert checks["offered"]["detail"].startswith("0 offered for review")
     assert checks["answered"]["detail"].startswith("1 track(s) offered for review")
     assert "asked again now: 1 missing, 0 in the library" in checks["answered"]["detail"]
+    # READ FROM THE EARLIER FILE: it names a track this one does not, whatever the job says.
+    held = library / "Music" / "Nova Reef - Tide.flac"
+    held.write_bytes(b"")
+    steps = " ".join(refused(job_id, "--out", fresh)["cause"]["remediation"]["steps"])
+    assert (
+        "1 track(s) it names are not in this one, no longer missing since it was "
+        "written: Nova Reef - Tide"
+    ) in steps
+    assert "this one names are not in it" not in steps
+    held.unlink()
+    # A REJECTED ROW UNDER A TOMBSTONE is suppressed, not listed.
+    tombstone(cfg, "Nova Reef", "Tide")
+    envelope, summary = ok(job_id, "--out", str(tmp_path / "tombstoned"))
+    assert (summary["suppressed"], summary["answered_suppressed"], summary["offered"]) == (1, 1, 0)
+    assert ids(summary) == ["204", "205"]
 
 
-def test_an_offered_row_accepted_since_is_owned_and_not_listed(cfg, library, monkeypatch):
+def test_an_offered_row_accepted_since_is_owned_and_not_listed(cfg, library, monkeypatch, tmp_path):
     job_id = mixed_job(library, monkeypatch)
     answer(job_id, "accepted")
     envelope, summary = ok(job_id)
@@ -422,6 +448,12 @@ def test_an_offered_row_accepted_since_is_owned_and_not_listed(cfg, library, mon
     assert (summary["answered_owned"], summary["answered_missing"]) == (1, 0)
     assert ids(summary) == ["204", "205"]
     assert "0 missing, 1 in the library" in checks_of(envelope)["answered"]["detail"]
+    # A YES ABOUT A COPY THAT IS GONE stays a question: it does not own another copy.
+    held = library / "Music" / "Nova Reef - Tide (Someone Remix).flac"
+    held.rename(held.with_name("Nova Reef - Tide (Another Remix).flac"))
+    envelope, summary = ok(job_id, "--out", str(tmp_path / "gone"))
+    assert (summary["offered"], summary["answered_offered"], summary["written"]) == (1, 1, 2)
+    assert summary["owned"] == 2
 
 
 def test_an_offered_row_nobody_answered_is_unchanged_and_asks_nothing(cfg, library, monkeypatch):
@@ -437,90 +469,6 @@ def test_an_offered_row_nobody_answered_is_unchanged_and_asks_nothing(cfg, libra
     assert sum(summary[key] for key in summary if key.startswith("answered_")) == 0
     assert "then list this again" in checks_of(envelope)["offered"]["detail"]
     assert drive(["review", "show", offered_item(job_id)])[1]["data"] == shown["data"]
-
-
-def test_a_yes_about_a_copy_that_is_gone_stays_a_question(cfg, library, monkeypatch):
-    """The answer decides as the worker decides it: a yes bound to the copy it
-    was about does not own a different copy held since."""
-    job_id = mixed_job(library, monkeypatch)
-    answer(job_id, "accepted")
-    held = library / "Music" / "Nova Reef - Tide (Someone Remix).flac"
-    held.rename(held.with_name("Nova Reef - Tide (Another Remix).flac"))
-    envelope, summary = ok(job_id)
-    assert (summary["offered"], summary["answered_offered"], summary["written"]) == (1, 1, 2)
-    assert summary["owned"] == 2
-
-
-def test_a_rejected_row_under_a_tombstone_is_suppressed_not_listed(cfg, library, monkeypatch):
-    job_id = mixed_job(library, monkeypatch)
-    answer(job_id, "rejected")
-    tombstone(cfg, "Nova Reef", "Tide")
-    envelope, summary = ok(job_id)
-    assert (summary["suppressed"], summary["answered_suppressed"], summary["offered"]) == (1, 1, 0)
-    assert ids(summary) == ["204", "205"]
-
-
-def test_a_rejection_after_a_listing_refuses_over_the_earlier_list_and_says_why(
-    cfg, library, monkeypatch, tmp_path
-):
-    """The list's name is fixed by the job (R-508 and R-476, out of scope), so a row answered since
-    meets the first listing's bytes."""
-    job_id = mixed_job(library, monkeypatch)
-    _code, first = missing(job_id)
-    listed = Path(first["data"]["summary"]["list"])
-    before = listed.read_bytes()
-    answer(job_id, "rejected")
-    envelope = refused(job_id)
-    steps = " ".join(envelope["cause"]["remediation"]["steps"])
-    assert (
-        "1 track(s) this one names are not in it, missing since it was written: Nova Reef - Tide"
-    ) in steps
-    assert "it names are not in this one" not in steps
-    assert listed.read_bytes() == before
-    elsewhere = ok(job_id, "--out", str(tmp_path / "fresh"))[0]
-    assert elsewhere["data"]["summary"]["written"] == 3
-
-
-def test_the_refusal_names_what_the_earlier_list_holds_not_what_the_job_found(
-    cfg, library, monkeypatch
-):
-    """READ FROM THE EARLIER FILE: it names a track this one does not, whatever the job says."""
-    job_id = mixed_job(library, monkeypatch)
-    answer(job_id, "rejected")
-    _code, first = missing(job_id)
-    assert first["data"]["summary"]["written"] == 3
-    owned(library, "Nova Reef - Tide.flac")
-    envelope = refused(job_id)
-    steps = " ".join(envelope["cause"]["remediation"]["steps"])
-    assert (
-        "1 track(s) it names are not in this one, no longer missing since it was "
-        "written: Nova Reef - Tide"
-    ) in steps
-    assert "this one names are not in it" not in steps
-
-
-def test_an_earlier_file_that_is_not_a_list_gives_no_reason_rather_than_a_wrong_one(
-    cfg, library, monkeypatch
-):
-    job_id = mixed_job(library, monkeypatch)
-    stranger = lists_dir(library) / f"intake-{job_id}.list.json"
-    stranger.parent.mkdir(parents=True)
-    stranger.write_text("not a list\n")
-    envelope = refused(job_id)
-    steps = " ".join(envelope["cause"]["remediation"]["steps"])
-    assert "earlier copy" not in steps
-    assert "move the file aside" in steps
-    assert stranger.read_text() == "not a list\n"
-
-
-def test_an_unmounted_library_refuses_rather_than_reading_every_row_missing(
-    cfg, library, monkeypatch
-):
-    job_id = mixed_job(library, monkeypatch)
-    (library / "Music").rename(library / "Music-away")
-    code, envelope = missing(job_id)
-    assert envelope["cause"]["reason"] == "library-volume-unmounted", (code, envelope)
-    assert not lists_dir(library).exists()
 
 
 def test_the_library_is_asked_where_it_is_now_not_where_the_job_froze_it(
@@ -551,31 +499,16 @@ def test_the_library_is_asked_where_it_is_now_not_where_the_job_froze_it(
     assert (envelope["outcome"], envelope["data"]["summary"]["owned_since"]) == ("no_op", 2)
 
 
-def test_a_job_with_nothing_missing_does_not_need_the_library(cfg, library, monkeypatch):
-    owned(library, "Aurora Bloom - Sun Path.flac")
-    job_id = finished(monkeypatch, [Track("201", "Aurora Bloom", "Sun Path")])
-    (library / "Music").rename(library / "Music-away")
-    envelope = ok(job_id)[0]
-    assert envelope["outcome"] == "no_op"
-
-
-def test_out_overrides_the_folder(cfg, library, monkeypatch, tmp_path):
-    job_id = mixed_job(library, monkeypatch)
-    envelope = ok(job_id, "--out", str(tmp_path / "mine"))[0]
-    assert envelope["data"]["summary"]["list"] == str(
-        tmp_path / "mine" / f"intake-{job_id}.list.json"
-    )
-    assert not lists_dir(library).exists()
-
-
 def test_a_job_with_nothing_missing_is_no_op_and_writes_nothing(cfg, library, monkeypatch):
     owned(library, "Aurora Bloom - Sun Path.flac")
     job_id = finished(monkeypatch, [Track("201", "Aurora Bloom", "Sun Path")])
-    envelope = ok(job_id)[0]
+    envelope, summary = ok(job_id)
     assert envelope["outcome"] == "no_op"
-    assert envelope["data"]["summary"]["list"] is None
-    assert envelope["data"]["summary"]["next"] is None
+    assert (summary["list"], summary["next"]) == (None, None)
     assert not lists_dir(library).exists()
+    # AND DOES NOT NEED THE LIBRARY: nothing is asked again.
+    (library / "Music").rename(library / "Music-away")
+    assert ok(job_id)[0]["outcome"] == "no_op"
 
 
 # R-504: hearts the provider counts and does not serve
@@ -682,30 +615,45 @@ def test_a_failed_job_is_refused_carrying_its_own_cause(cfg, library, monkeypatc
 def test_fewer_readable_reports_than_items_refuses_rather_than_listing_a_subset(
     cfg, library, monkeypatch
 ):
+    """Damaged reports refuse the job, by identifier and not by count; a row nothing names is
+    reported unlisted as a failing check."""
     job_id = finished(monkeypatch, hearts())
     with jobs.open_store() as store:
         job = jobs.get(store, job_id)
-        item = jobs.items(store, job_id)[4]
-    intake_cli.ARTIFACTS.final_path(jobs.frozen_config(job), job_id, item.ordinal).write_text("{")
+        found = jobs.items(store, job_id)
+    paths = [intake_cli.ARTIFACTS.final_path(jobs.frozen_config(job), job_id, one.ordinal)
+             for one in found]
+    kept = [path.read_text() for path in paths]
+    paths[4].write_text("{")
     envelope = refused(job_id)
     assert "5 item(s) and 4 readable report(s)" in envelope["cause"]["message"]
     assert envelope["cause"]["detail"]["unreported"] == ["205"]
     assert not lists_dir(library).exists()
-
-
-def test_a_report_for_the_wrong_item_refuses_even_when_the_count_matches(cfg, library, monkeypatch):
-    """By identifier, not by count: a stray report and a skipped one cancel out."""
-    job_id = finished(monkeypatch, hearts())
+    # A REPORT FOR THE WRONG ITEM: a stray report and a skipped one cancel out by count.
+    paths[4].write_text(kept[4])
     edit_report(job_id, 4, lambda report: report.update({"item_id": "999"}))
-    envelope = refused(job_id)
-    assert envelope["cause"]["detail"]["unreported"] == ["205"]
-
-
-def test_a_report_with_a_state_this_verb_cannot_read_refuses(cfg, library, monkeypatch):
-    job_id = finished(monkeypatch, hearts())
+    assert refused(job_id)["cause"]["detail"]["unreported"] == ["205"]
+    paths[4].write_text(kept[4])
     edit_report(job_id, 0, lambda report: report.update({"state": "needs_review"}))
-    envelope = refused(job_id)
-    assert "'201'" in envelope["cause"]["message"]
+    assert "'201'" in refused(job_id)["cause"]["message"]
+    paths[0].write_text(kept[0])
+    # A MISSING ROW FROM NO PROVIDER stands for any row the provider cannot be asked for.
+    edit_report(job_id, 4, lambda report: report.update(
+        {"track": {**report["track"], "origin": "text", "ref": ""}}))
+    code, text = human(["intake", "missing", "--job", job_id])
+    assert code == int(ExitCode.OK), text
+    assert "[FAIL] intake.missing.unlisted: 1 missing track(s)" in text
+    _code, envelope = missing(job_id)
+    assert envelope["data"]["summary"]["unlisted_tracks"] == [
+        {
+            "artist": "Kite Harbor",
+            "title": "Low Tide Signal",
+            "isrc": None,
+            "why": missing_cli.NO_ISRC,
+            "reason": "it carries no ISRC, so the provider cannot be asked for it exactly",
+            "in_file": True,
+        }
+    ]
 
 
 def test_a_job_of_another_verb_is_refused(cfg, library):
@@ -721,50 +669,6 @@ def test_an_unknown_job_is_refused_by_name(cfg):
     code, envelope = missing("j_nothing")
     assert envelope["cause"]["reason"] == "job-unknown"
     assert code == int(ExitCode.PRECONDITION)
-
-
-def test_a_file_where_the_folder_should_be_is_refused(cfg, library, monkeypatch, tmp_path):
-    job_id = mixed_job(library, monkeypatch)
-    (tmp_path / "afile").write_text("x")
-    envelope = refused(job_id, "--out", str(tmp_path / "afile"))
-    assert "is not a folder" in envelope["cause"]["message"]
-
-
-def test_a_different_list_already_at_the_path_is_refused_and_left_alone(cfg, library, monkeypatch):
-    job_id = mixed_job(library, monkeypatch)
-    target = lists_dir(library) / f"intake-{job_id}.list.json"
-    target.parent.mkdir(parents=True)
-    target.write_text("somebody else's list\n")
-    envelope = refused(job_id)
-    assert envelope["cause"]["reason"] == "intake-list-unusable"
-    assert target.read_text() == "somebody else's list\n"
-
-
-def test_a_missing_row_from_no_provider_is_reported_unlisted_as_a_failing_check(
-    cfg, library, monkeypatch
-):
-    """A recognised track carries no provider id. Its report is edited here to
-    stand for any missing row the provider cannot be asked for."""
-    job_id = finished(monkeypatch, hearts())
-    edit_report(
-        job_id,
-        4,
-        lambda report: report.update({"track": {**report["track"], "origin": "text", "ref": ""}}),
-    )
-    code, text = human(["intake", "missing", "--job", job_id])
-    assert code == int(ExitCode.OK), text
-    assert "[FAIL] intake.missing.unlisted: 1 missing track(s)" in text
-    _code, envelope = missing(job_id)
-    assert envelope["data"]["summary"]["unlisted_tracks"] == [
-        {
-            "artist": "Kite Harbor",
-            "title": "Low Tide Signal",
-            "isrc": None,
-            "why": missing_cli.NO_ISRC,
-            "reason": "it carries no ISRC, so the provider cannot be asked for it exactly",
-            "in_file": True,
-        }
-    ]
 
 
 def test_a_succeeded_job_with_no_items_is_refused_not_listed_empty(cfg, library):
@@ -917,12 +821,17 @@ def run_refused(*extra: str, run_id: str = RUN) -> dict:
     return envelope
 
 
-def test_two_playlists_sharing_a_track_list_it_once_with_both_provenances(cfg, library):
+def test_two_playlists_sharing_a_track_list_it_once_with_both_provenances(cfg, library, tmp_path):
+    """One list per pass, reproduced by a second listing, and asked again row by row."""
     shared = Track("204", "Lumen Drift", "Salt Road")
     first = finished_in_run(cfg, "pl-a", [Track("205", "Kite Harbor", "Low Tide Signal"), shared])
     second = finished_in_run(cfg, "pl-b", [shared, Track("206", "Sable Cove", "Quiet Pier")])
+    _code, earlier = run_missing()
     envelope, summary = run_ok()
-    assert summary["list"] == str(lists_dir(library) / RUN_LIST)
+    assert summary["list"] == earlier["data"]["summary"]["list"] == str(lists_dir(library) / RUN_LIST)
+    assert sorted(p.name for p in lists_dir(library).iterdir()) == [
+        RUN_LIST, RUN_LIST.replace(".list.json", ".manifest.json"),
+    ]
     assert (summary["run_id"], summary["jobs"], summary["skipped"]) == (RUN, [first, second], [])
     assert summary["land_name"] == "2026-09-18T100000Z-ab12_synced"
     assert (summary["written"], summary["missing"]) == (3, 4)
@@ -932,35 +841,24 @@ def test_two_playlists_sharing_a_track_list_it_once_with_both_provenances(cfg, l
     assert rows["204"]["source_refs"] == ["pl-a", "pl-b"]
     assert (rows["205"]["source_ref"], rows["206"]["source_ref"]) == ("pl-a", "pl-b")
     assert "source_refs" not in rows["205"] and "source_refs" not in rows["206"]
-
-
-def test_a_run_list_is_one_file_a_second_listing_reproduces(cfg, library):
-    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
-    finished_in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
-    _code, first = run_missing()
-    again = run_ok()[0]
-    assert again["data"]["summary"]["list"] == first["data"]["summary"]["list"]
-    assert sorted(p.name for p in lists_dir(library).iterdir()) == [
-        RUN_LIST, RUN_LIST.replace(".list.json", ".manifest.json"),
-    ]
-
-
-def test_a_run_asks_each_missing_row_again_as_a_job_does(cfg, library):
-    """R-502 over ``--run``: the same recheck, per row, across every job. The
-    track the two playlists share was acquired, so it drops from both."""
-    shared = Track("204", "Lumen Drift", "Salt Road")
-    finished_in_run(cfg, "pl-a", [Track("205", "Kite Harbor", "Low Tide Signal"), shared])
-    finished_in_run(cfg, "pl-b", [shared, Track("206", "Sable Cove", "Quiet Pier")])
+    code, text = human(["intake", "missing", "--run", RUN])
+    assert code == int(ExitCode.OK), text
+    assert f"next: crate acquire download {lists_dir(library) / RUN_LIST}" in text
+    # R-770: the hint names the batch and which medium wants the export. ``--pass``,
+    # never ``--name`` (U110): the run names the intake file sync mark reads.
+    assert "crate intake land --pass 2026-09-18T100000Z-ab12_synced" in text
+    assert "--name" not in text
+    assert "adding --export XML" in text and "while the intake tree is on the xml bridge" in text
+    assert "no export once the intake tree is database native" in text
+    assert "crate intake land --export" not in text
+    # R-502 over ``--run``: the shared track was acquired, so it drops from both.
     owned(library, "Lumen Drift - Salt Road.flac")
     tombstone(cfg, "Sable Cove", "Quiet Pier")
-    envelope, summary = run_ok()
+    envelope, summary = run_ok("--out", str(tmp_path / "later"))
     assert (summary["written"], summary["missing"]) == (1, 1)
     assert (summary["owned_since"], summary["suppressed_since"]) == (2, 1)
     assert ids(summary) == ["205"]
-    assert (
-        "land what it downloads"
-        in {c["title"]: c for c in envelope["data"]["checks"]}["written"]["detail"]
-    )
+    assert "land what it downloads" in checks_of(envelope)["written"]["detail"]
 
 
 def test_a_run_lists_an_offered_row_a_person_answered_as_a_job_does(cfg, library):
@@ -982,39 +880,24 @@ def test_a_run_whose_rows_were_all_acquired_since_names_no_download(cfg, library
     assert (envelope["data"]["summary"]["next"], envelope["data"]["summary"]["owned_since"]) == (None, 1)
 
 
-def test_the_default_human_output_names_the_list_the_download_and_the_landing(cfg, library):
-    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
-    code, text = human(["intake", "missing", "--run", RUN])
-    assert code == int(ExitCode.OK), text
-    path = lists_dir(library) / RUN_LIST
-    assert f"next: crate acquire download {path}" in text
-    # R-770. The landing takes an export on the xml bridge and refuses one on a
-    # native intake tree, so the hint names the batch and says which medium
-    # wants the export, and never hands a cut over library a flag that refuses.
-    # ``--pass`` and never ``--name`` (U110): the run names the intake file
-    # sync mark reads, and the batch is named for the date and the playlists.
-    assert "crate intake land --pass 2026-09-18T100000Z-ab12_synced" in text
-    assert "--name" not in text
-    assert "adding --export XML" in text and "while the intake tree is on the xml bridge" in text
-    assert "no export once the intake tree is database native" in text
-    assert "crate intake land --export" not in text
-
-
-def test_an_open_job_refuses_the_whole_run_and_names_it(cfg, library):
-    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
-    still = in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
+def test_a_run_lists_only_its_own_finished_jobs_and_names_the_rest(
+    cfg, library, monkeypatch, tmp_path
+):
+    """An unknown run, an open job, a failed one, --skip-failed, and the jobs no run owns."""
+    kept = finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
+    code, envelope = run_missing(run_id="2026-01-01T00:00:00Z-0000")
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == "job-unknown"
+    assert "2026-01-01T00:00:00Z-0000" in envelope["cause"]["message"]
+    # ONE OPEN JOB REFUSES THE WHOLE RUN, --skip-failed or not.
+    broken = in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
     envelope = run_refused("--skip-failed")
     assert envelope["cause"]["reason"] == "intake-list-unusable"
     assert "still open" in envelope["cause"]["message"]
-    assert still in envelope["cause"]["message"]
-    assert envelope["cause"]["detail"]["open"] == [still]
-    assert still in " ".join(envelope["cause"]["remediation"]["steps"])
-    assert not lists_dir(library).exists()
-
-
-def test_a_failed_job_is_named_and_refuses_the_run_without_skip_failed(cfg, library):
-    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
-    broken = in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
+    assert broken in envelope["cause"]["message"]
+    assert envelope["cause"]["detail"]["open"] == [broken]
+    assert broken in " ".join(envelope["cause"]["remediation"]["steps"])
+    # A FAILED JOB is named and refuses the run without --skip-failed.
     fail(broken)
     envelope = run_refused()
     assert envelope["cause"]["reason"] == "intake-list-unusable"
@@ -1023,18 +906,32 @@ def test_a_failed_job_is_named_and_refuses_the_run_without_skip_failed(cfg, libr
     assert envelope["cause"]["inner"]["message"] == "stopped for the test"
     assert "--skip-failed" in " ".join(envelope["cause"]["remediation"]["steps"])
     assert not lists_dir(library).exists()
-
-
-def test_skip_failed_lists_the_rest_and_names_what_it_left_out(cfg, library):
-    kept = finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
-    broken = in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
-    fail(broken)
     envelope, summary = run_ok("--skip-failed")
     assert (summary["jobs"], summary["skipped"]) == ([kept], [broken])
     assert ids(summary) == ["204"]
     (skipped,) = [c for c in envelope["data"]["checks"] if c["title"] == "skipped"]
     assert skipped["status"] == "fail"
     assert broken in skipped["detail"] and "pl-b" in skipped["detail"]
+    # JOBS NO RUN OF THIS LIBRARY OWNS are left OPEN, so a selection that took one refuses:
+    # another library's job in the run, another verb's, and one queued by hand.
+    elsewhere = dataclasses.replace(
+        cfg, library=dataclasses.replace(cfg.library, volume_id="0000-0000")
+    )
+    in_run(elsewhere, "pl-c", [Track("206", "Sable Cove", "Quiet Pier")])
+    with jobs.open_store() as store:
+        jobs.enqueue(
+            store, handler_key="sync.labels", payload={"run_id": RUN}, cfg=cfg,
+            item_ids=("some-label",),
+        )
+    queued(monkeypatch, hearts())
+    envelope, summary = run_ok("--skip-failed")
+    assert (summary["jobs"], ids(summary)) == ([kept], ["204"])
+    # TRACKS ONLY HANDED ON are written to the text list rather than refused.
+    edit_report(kept, 0, lambda report: report.update(
+        {"track": {**report["track"], "origin": "text", "ref": ""}}))
+    envelope, summary = run_ok("--skip-failed", "--out", str(tmp_path / "handed"))
+    assert (summary["written"], summary["unlisted"], summary["skipped"]) == (0, 1, [broken])
+    assert Path(summary["unlisted_list"]).is_file()
 
 
 def test_skip_failed_over_nothing_missing_refuses_rather_than_a_clean_no_op(cfg, library):
@@ -1049,20 +946,6 @@ def test_skip_failed_over_nothing_missing_refuses_rather_than_a_clean_no_op(cfg,
     assert broken in envelope["cause"]["message"]
     assert envelope["cause"]["detail"]["failed"] == [broken]
     assert not lists_dir(library).exists()
-
-
-def test_skip_failed_over_tracks_only_handed_on_writes_them_rather_than_refusing(cfg, library):
-    kept = finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
-    broken = in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
-    fail(broken)
-    edit_report(
-        kept,
-        0,
-        lambda report: report.update({"track": {**report["track"], "origin": "text", "ref": ""}}),
-    )
-    envelope, summary = run_ok("--skip-failed")
-    assert (summary["written"], summary["unlisted"], summary["skipped"]) == (0, 1, [broken])
-    assert Path(summary["unlisted_list"]).is_file()
 
 
 def test_a_run_with_nothing_missing_and_nothing_skipped_is_a_no_op(cfg, library):
@@ -1083,58 +966,9 @@ def test_a_run_whose_every_job_failed_refuses_even_with_skip_failed(cfg, library
     assert not lists_dir(library).exists()
 
 
-def test_an_unknown_run_is_refused_by_name(cfg, library):
-    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
-    code, envelope = run_missing(run_id="2026-01-01T00:00:00Z-0000")
-    assert code != int(ExitCode.OK), envelope
-    assert envelope["cause"]["reason"] == "job-unknown"
-    assert "2026-01-01T00:00:00Z-0000" in envelope["cause"]["message"]
-    assert not lists_dir(library).exists()
-
-
 def test_a_blank_run_is_refused_and_does_not_match_a_job_queued_with_no_run(cfg, library):
     envelope = run_refused(run_id=" ")
     assert envelope["cause"]["reason"] == "intake-list-unusable"
-
-
-def test_another_librarys_job_in_the_same_run_is_not_this_librarys_to_list(cfg, library):
-    """The hazard the brief names: the run alone would merge two libraries. The
-    other library's job is left OPEN, so a filter on the run alone refuses."""
-    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
-    elsewhere = dataclasses.replace(
-        cfg, library=dataclasses.replace(cfg.library, volume_id="0000-0000")
-    )
-    in_run(elsewhere, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
-    envelope = run_ok()[0]
-    body = json.loads(Path(envelope["data"]["summary"]["list"]).read_text())
-    assert [t["id"] for t in body["tracks"]] == ["204"]
-
-
-def test_a_job_of_another_verb_in_the_same_run_is_not_listed(cfg, library):
-    """A full pass queues a labels and a favourites job under the same run. Left
-    OPEN here, so a selection that took every job in the run refuses the run."""
-    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
-    with jobs.open_store() as store:
-        jobs.enqueue(
-            store, handler_key="sync.labels", payload={"run_id": RUN}, cfg=cfg,
-            item_ids=("some-label",),
-        )
-    envelope = run_ok()[0]
-    assert len(envelope["data"]["summary"]["jobs"]) == 1
-
-
-def test_a_job_queued_by_hand_is_not_part_of_any_run(cfg, library, monkeypatch):
-    finished_in_run(cfg, "pl-a", [Track("204", "Lumen Drift", "Salt Road")])
-    queued(monkeypatch, hearts())
-    envelope = run_ok()[0]
-    assert len(envelope["data"]["summary"]["jobs"]) == 1
-
-
-def test_skip_failed_with_one_job_is_refused_rather_than_ignored(cfg, library, monkeypatch):
-    job_id = mixed_job(library, monkeypatch)
-    envelope = refused(job_id, "--skip-failed")
-    assert "--skip-failed" in envelope["cause"]["message"]
-    assert not lists_dir(library).exists()
 
 
 def test_job_and_run_together_are_refused_by_the_parser(cfg):
