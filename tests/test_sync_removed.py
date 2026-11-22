@@ -24,6 +24,7 @@ from cratekit.acquire import match
 from cratekit.cli import jobs as cli_jobs
 from cratekit.cli import registry
 from cratekit.core import config, jobs, rb_writer, session, tree_registry
+from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import missing_cli, native, set_playlist
@@ -1036,6 +1037,8 @@ def test_apply_takes_out_exactly_the_offered_rows_and_every_row_naming_them(
     # INBOX / Analyze: three, three and one members after it are renumbered.
     assert shown["memberships renumbered"] == 7, shown
     assert acted["data"]["totals"]["memberships renumbered"] == 7
+    (applied,) = [one for one in acted["warnings"] if one["code"] == removed_cli.APPLIED]
+    assert "7 playlist membership(s) after them renumbered" in applied["message"], applied
     after = _every_table(cfg)
     expected = _closed_up(_without(before, cfg, {offered}), cfg, before, {offered})
     # Read from SQL, table by table: the offered row and every row naming it
@@ -1975,3 +1978,27 @@ def test_only_the_collection_removal_renumbers_memberships():
                 if name == "renumber_memberships":
                     callers.append(path.relative_to(root).as_posix())
     assert callers == ["core/rb_writer.py"], callers
+
+
+def test_an_unreadable_marker_in_a_playlist_to_renumber_refuses_with_nothing_written(
+    native_library, silence, monkeypatch, offline
+):
+    """Round two's X1: other readers take a NULL marker as live, so the renumbering refuses it."""
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2", "Held3")
+    _sql(
+        cfg,
+        "UPDATE djmdSongPlaylist SET rb_local_deleted = NULL WHERE PlaylistID = ? AND ContentID = ?",
+        mine,
+        _row(cfg, "Held2"),
+    )
+    before = _every_table(cfg)
+    handle = _handle(cfg)
+    try:
+        with pytest.raises(CratekitError) as refused:
+            rb_writer.CollectionRemoval.prepare(handle, [_row(cfg, "New1")])
+        assert refused.value.cause.reason == "soft-delete-marker-unreadable"
+    finally:
+        rb_writer.close_db(handle)
+    assert _every_table(cfg) == before

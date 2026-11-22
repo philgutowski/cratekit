@@ -1141,8 +1141,9 @@ def test_a_marked_row_is_neither_counted_nor_moved_so_live_numbers_stay_distinct
 
 
 def test_a_tie_between_a_removed_row_and_a_survivor_lowers_nothing_at_that_place():
-    # Two live rows at 2 (a writer left a tie): the survivor at 2 is not above
-    # the removed one and stays, the row at 3 goes to 2, so the tie is no worse.
+    # Two live rows at 2 (no writer measured leaves one): the survivor at 2 is
+    # not above the removed one and stays, and the row at 3 goes to 2, so the
+    # tie moves onto two survivors (a residual, rekordbox unmeasured).
     rows = [("r1", "p", "a", 1, True), ("r2", "p", "x", 2, True), ("r2b", "p", "b", 2, True), ("r3", "p", "c", 3, True)]
     assert W.renumbered_positions(rows, ["x"]) == {"r3": ("p", 3, 2)}
 

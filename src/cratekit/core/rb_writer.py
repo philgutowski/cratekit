@@ -2109,8 +2109,9 @@ def add_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> list[
         # AN APPEND GOES PAST THE HIGHEST POSITION, NOT PAST THE ROW COUNT
         # (U288). The binding numbers a new row as the count plus one, which is
         # the highest position only while no row was ever deleted outright; a
-        # track taken out of the collection leaves a gap, and the count plus
-        # one would then land on a position a live row already holds.
+        # track taken out of the collection before R-1830 left a gap, and a
+        # removal still leaves the rows marked removed where they were, so the
+        # count plus one could land on a position a live row already holds.
         number = int(getattr(added, "TrackNo", 0) or 0)
         if added is not None and number <= highest:
             added.TrackNo = highest + 1
@@ -2148,7 +2149,9 @@ def soft_deleted(
     could be removed only the first was ever asked. Two copies of the read
     agree today and disagree eventually, so the read and the refusal live here
     and a caller supplies only the words: what the row is and what treating it
-    as live would cost, which differ by kind.
+    as live would cost, which differ by kind. The one read off SQL rows rather
+    than mapped ones, :func:`removal_renumbering`'s, refuses ``None`` the same
+    way (R-1830).
 
     A ROW THAT CANNOT SAY REFUSES. A missing attribute and ``None`` are both
     refused, because every default a reader could supply is the answer "live",
@@ -4360,6 +4363,21 @@ def removal_renumbering(db: Any, content_ids: Iterable[str]) -> dict[str, tuple[
         f'FROM "{MEMBERSHIP_TABLE}" WHERE "{CONTENT_REFERENCE_COLUMN}" IN :ids)'
     ).bindparams(bindparam("ids", expanding=True))
     rows = db.session.execute(statement, {"ids": wanted}).fetchall()
+    unreadable = sorted(str(row[0]) for row in rows if row[4] is None)
+    if unreadable:
+        # REFUSED, AS :func:`soft_deleted` REFUSES (round two's X1). Other
+        # readers take a NULL marker as live (``COALESCE(..., 0)``), so a row
+        # this rule passed over as not live could end on a live row's number.
+        raise refuse(
+            "soft-delete-marker-unreadable",
+            f"{len(unreadable)} playlist membership row(s) in a playlist this removal "
+            f"would renumber cannot say whether rekordbox removed them, so where the "
+            f"tracks after the removed one belong cannot be said; nothing was written",
+            remedy=Remedy.RUN_DOCTOR,
+            scope=Scope.RUN,
+            origin=("rb_writer",),
+            detail={"membership_ids": unreadable[:20], "column": SOFT_DELETE_COLUMN},
+        )
     return renumbered_positions(
         ((row[0], row[1], row[2], None if row[3] is None else int(row[3]), _live(row[4])) for row in rows),
         wanted,
@@ -4369,8 +4387,9 @@ def removal_renumbering(db: Any, content_ids: Iterable[str]) -> dict[str, tuple[
 def _live(marker: Any) -> bool:
     """Whether a membership row's soft delete marker reads live. Unreadable reads as not live.
 
-    Not live is the answer that renumbers nothing: such a row is neither
-    counted nor moved, which leaves the gap the removal used to leave.
+    The confinement's reading only: :func:`removal_renumbering` refuses a
+    playlist holding an unreadable marker before anything is written, as
+    :func:`soft_deleted` refuses one, so no renumbering is planned around one.
     """
     return marker is not None and not bool(marker)
 
