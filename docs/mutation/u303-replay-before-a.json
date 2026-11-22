@@ -1,18 +1,18 @@
 {
   "name": "u303-replay-before-a",
   "pass_kind": "replay",
-  "branch": "HEAD",
+  "branch": "cloud/860-replay-a",
   "head": "fd8173d3",
-  "when": "2026-11-22 18:45 UTC",
+  "when": "2026-11-22 21:38 UTC",
   "valid": true,
   "invalid_reason": "in progress",
   "baseline_collected": 22933,
   "baseline_exit": 1,
-  "pytest_runs": 66,
+  "pytest_runs": 100,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 251,
-  "known_source": "/tmp/claude-0/-home-user-cratekit/ce20fa78-0ba8-5393-bea1-e47f9b749a43/scratchpad/known-replay.txt",
+  "known_source": "../known-replay.txt",
   "temp_place": "disk",
   "temp_on_disk": 0,
   "baseline_source": "measured",
@@ -597,6 +597,1185 @@
       "source": {
         "table": "r-1.json",
         "id": "T10_no_yaml_falls_back"
+      }
+    },
+    {
+      "id": "r-1.T11_unreadable_config_falls_back",
+      "description": "A configuration that cannot be read falls back to the pre-commit floor instead of a sentence",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "06f62fc1b62bcfa8",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22933,
+      "baseline_collected": 22933,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        return (\n            (),\n            f\"{config_file} could not be read ({exc})\",\n            access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),\n        )\n",
+      "new": "        return (\"pre-commit\",), None, None\n",
+      "source": {
+        "table": "r-1.json",
+        "id": "T11_unreadable_config_falls_back"
+      }
+    },
+    {
+      "id": "r-1.T12_caller_ignores_unknown",
+      "description": "The check ignores an unknown configuration and reports on no extra types",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4edab57bc66850dd",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_configuration_that_does_not_parse_is_not_read_as_one_hook_type",
+        "tests/test_doctor.py::test_no_yaml_reader_is_unknown_rather_than_one_hook_type"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if unknown is not None:",
+      "new": "    if False:",
+      "source": {
+        "table": "r-1.json",
+        "id": "T12_caller_ignores_unknown"
+      }
+    },
+    {
+      "id": "r-1.T13_missing_other_hook",
+      "description": "A configured hook type with no hook file is not reported",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "085b9e1de3c67747",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_configured_commit_msg_stage_with_no_hook_is_refused",
+        "tests/test_doctor.py::test_the_install_line_names_a_configuration_that_is_not_the_default"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            absent.append(f\"no {hook_type} hook at {other}\")\n            continue\n",
+      "new": "            continue\n",
+      "source": {
+        "table": "r-1.json",
+        "id": "T13_missing_other_hook"
+      }
+    },
+    {
+      "id": "r-1.T14_unreadable_other_hook",
+      "description": "A configured hook file this account cannot read is skipped instead of reported unknown",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d8e7a3483db02882",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22933,
+      "baseline_collected": 22933,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        except (OSError, UnicodeDecodeError) as exc:\n            # The same split the pre-commit hook makes above:",
+      "new": "        except (OSError, UnicodeDecodeError) as exc:\n            continue\n            # The same split the pre-commit hook makes above:",
+      "source": {
+        "table": "r-1.json",
+        "id": "T14_unreadable_other_hook"
+      }
+    },
+    {
+      "id": "r-1.T15_other_dispatch",
+      "description": "A configured hook that does not dispatch for its own stage is not reported",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b917ad0b039f5ff2",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_commit_msg_hook_installed_for_another_stage_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if other_problem is not None:\n            absent.append(\n",
+      "new": "        if other_problem is not None:\n            continue\n            absent.append(\n",
+      "source": {
+        "table": "r-1.json",
+        "id": "T15_other_dispatch"
+      }
+    },
+    {
+      "id": "r-1.T16_same_configuration",
+      "description": "Drop the requirement that every other hook dispatches to the pre-commit hook's configuration",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1e3ff969c34d6975",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_commit_msg_hook_on_another_configuration_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if _config_path(other_name, root).resolve() != config_file.resolve():",
+      "new": "        if False:",
+      "source": {
+        "table": "r-1.json",
+        "id": "T16_same_configuration"
+      }
+    },
+    {
+      "id": "r-1.T17_install_config_flag",
+      "description": "The install line never names a non-default configuration",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ef610d55da89d680",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_the_install_line_names_a_configuration_that_is_not_the_default"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if config_name != _HOOK_CONFIG_DEFAULT:",
+      "new": "    if False:",
+      "source": {
+        "table": "r-1.json",
+        "id": "T17_install_config_flag"
+      }
+    },
+    {
+      "id": "r-1.T18_remedy_floor",
+      "description": "With no readable configuration the install line names no type at all",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "de58fc602597b0d9",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_clone_with_no_configuration_is_told_the_floor"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return _install_command(types if problem is None else (\"pre-commit\",))",
+      "new": "    return _install_command(types)",
+      "source": {
+        "table": "r-1.json",
+        "id": "T18_remedy_floor"
+      }
+    },
+    {
+      "id": "r-1.T19_remedy_reads_config",
+      "description": "The fresh clone install line stops reading the configuration and names only pre-commit",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d7b6403dc09f7706",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_fresh_clone_is_told_the_whole_install_line"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    types, problem, _remedy = _configured_hook_types(root / _HOOK_CONFIG_DEFAULT)",
+      "new": "    types, problem, _remedy = (\"pre-commit\",), None, None",
+      "source": {
+        "table": "r-1.json",
+        "id": "T19_remedy_reads_config"
+      }
+    },
+    {
+      "id": "r-1.T1_manual_skip",
+      "description": "Stop skipping the manual stage, so a manual-only hook reads as an unknown stage",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "69d1303537c6e6ce",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_the_hook_types_a_configuration_needs[text5-expected5]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if hook_type == \"manual\":  # run by hand, never by git\n            continue\n",
+      "new": "",
+      "source": {
+        "table": "r-1.json",
+        "id": "T1_manual_skip"
+      }
+    },
+    {
+      "id": "r-1.T20_stage_parameter",
+      "description": "The dispatch check ignores the hook type it was asked about and always wants pre-commit",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b5857bbd8d35b39b",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_commit_msg_hook_installed_for_another_stage_is_refused",
+        "tests/test_doctor.py::test_a_commit_msg_hook_on_another_configuration_is_refused",
+        "tests/test_doctor.py::test_every_configured_hook_type_installed_passes_the_check"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    stage = f\"--hook-type={hook_type}\"",
+      "new": "    stage = \"--hook-type=pre-commit\"",
+      "source": {
+        "table": "r-1.json",
+        "id": "T20_stage_parameter"
+      }
+    },
+    {
+      "id": "r-1.T21_ok_names_others",
+      "description": "The OK detail stops naming the other stages it verified",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2244c5f47cd96b67",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_every_configured_hook_type_installed_passes_the_check"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if len(types) > 1\n",
+      "new": "        if False\n",
+      "source": {
+        "table": "r-1.json",
+        "id": "T21_ok_names_others"
+      }
+    },
+    {
+      "id": "r-1.T22_pre_commit_floor",
+      "description": "Pre-commit is no longer the floor of the needed types",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "631ba79a892c2f73",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 13,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_commit_msg_hook_installed_for_another_stage_is_refused",
+        "tests/test_doctor.py::test_a_commit_msg_hook_on_another_configuration_is_refused",
+        "tests/test_doctor.py::test_a_configured_commit_msg_stage_with_no_hook_is_refused",
+        "tests/test_doctor.py::test_a_fresh_clone_is_told_the_whole_install_line",
+        "tests/test_doctor.py::test_every_configured_hook_type_installed_passes_the_check",
+        "tests/test_doctor.py::test_the_hook_types_a_configuration_needs[default_install_hook_types: [pre-push]\\nrepos: []\\n-expected2]",
+        "tests/test_doctor.py::test_the_hook_types_a_configuration_needs[default_stages: [push]\\nrepos: []\\n-expected3]",
+        "tests/test_doctor.py::test_the_hook_types_a_configuration_needs[repos: []\\n-expected0]",
+        "tests/test_doctor.py::test_the_hook_types_a_configuration_needs[text1-expected1]",
+        "tests/test_doctor.py::test_the_hook_types_a_configuration_needs[text5-expected5]",
+        "tests/test_doctor.py::test_the_hook_types_a_configuration_needs[text6-expected6]",
+        "tests/test_doctor.py::test_the_install_line_names_a_configuration_that_is_not_the_default",
+        "tests/test_doctor.py::test_this_repositorys_own_configuration_needs_both_hook_types"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    types = [\"pre-commit\"]\n    for stage in named:\n",
+      "new": "    types = []\n    for stage in named:\n",
+      "source": {
+        "table": "r-1.json",
+        "id": "T22_pre_commit_floor"
+      }
+    },
+    {
+      "id": "r-1.T23_alias_value",
+      "description": "Map merge-commit to a realistic nearby wrong hook, pre-commit",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9cc059cb6a02f508",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_the_hook_types_a_configuration_needs[text4-expected4]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "\"merge-commit\": \"pre-merge-commit\"",
+      "new": "\"merge-commit\": \"pre-commit\"",
+      "source": {
+        "table": "r-1.json",
+        "id": "T23_alias_value"
+      }
+    },
+    {
+      "id": "r-1.T2_alias_map",
+      "description": "Stop mapping the legacy stage spellings (commit, push, merge-commit) to their hook types",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "af355110dbe9c89b",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_the_hook_types_a_configuration_needs[default_stages: [push]\\nrepos: []\\n-expected3]",
+        "tests/test_doctor.py::test_the_hook_types_a_configuration_needs[text4-expected4]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "hook_type = _STAGE_ALIASES.get(stage, stage) if isinstance(stage, str) else None",
+      "new": "hook_type = stage if isinstance(stage, str) else None",
+      "source": {
+        "table": "r-1.json",
+        "id": "T2_alias_map"
+      }
+    },
+    {
+      "id": "r-1.T3_default_install_types",
+      "description": "Ignore default_install_hook_types when deriving the needed hook types",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4586e268f5f5d830",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_the_hook_types_a_configuration_needs[default_install_hook_types: [pre-push]\\nrepos: []\\n-expected2]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    named.extend(document.get(\"default_install_hook_types\") or [])\n",
+      "new": "",
+      "source": {
+        "table": "r-1.json",
+        "id": "T3_default_install_types"
+      }
+    },
+    {
+      "id": "r-1.T4_default_stages",
+      "description": "Ignore default_stages when deriving the needed hook types",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dc2be1e5cf2d56cf",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_the_hook_types_a_configuration_needs[default_stages: [push]\\nrepos: []\\n-expected3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    named.extend(document.get(\"default_stages\") or [])\n",
+      "new": "",
+      "source": {
+        "table": "r-1.json",
+        "id": "T4_default_stages"
+      }
+    },
+    {
+      "id": "r-1.T5_hook_stages",
+      "description": "Ignore every hook's own stages, the reading that finds this repository's commit-msg stage",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fb0956009d6fbf19",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 12,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_commit_msg_hook_installed_for_another_stage_is_refused",
+        "tests/test_doctor.py::test_a_commit_msg_hook_on_another_configuration_is_refused",
+        "tests/test_doctor.py::test_a_configuration_this_cannot_understand_is_a_sentence[text0-'on-commit']",
+        "tests/test_doctor.py::test_a_configuration_this_cannot_understand_is_a_sentence[text1-installs no hook for]",
+        "tests/test_doctor.py::test_a_configured_commit_msg_stage_with_no_hook_is_refused",
+        "tests/test_doctor.py::test_a_fresh_clone_is_told_the_whole_install_line",
+        "tests/test_doctor.py::test_every_configured_hook_type_installed_passes_the_check",
+        "tests/test_doctor.py::test_the_hook_types_a_configuration_needs[text1-expected1]",
+        "tests/test_doctor.py::test_the_hook_types_a_configuration_needs[text4-expected4]",
+        "tests/test_doctor.py::test_the_hook_types_a_configuration_needs[text6-expected6]",
+        "tests/test_doctor.py::test_the_install_line_names_a_configuration_that_is_not_the_default",
+        "tests/test_doctor.py::test_this_repositorys_own_configuration_needs_both_hook_types"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                named.extend(hook.get(\"stages\") or [])",
+      "new": "                pass",
+      "source": {
+        "table": "r-1.json",
+        "id": "T5_hook_stages"
+      }
+    },
+    {
+      "id": "r-1.T6_unknown_stage",
+      "description": "Skip an unknown stage instead of refusing the configuration",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5ba60b9637041086",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_configuration_this_cannot_understand_is_a_sentence[text0-'on-commit']",
+        "tests/test_doctor.py::test_a_configuration_this_cannot_understand_is_a_sentence[text1-installs no hook for]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if hook_type not in _HOOK_TYPES:\n            return (\n                (),\n                f\"{config_file} names a stage pre-commit installs no hook for, {stage!r}\",\n                None,\n            )\n",
+      "new": "        if hook_type not in _HOOK_TYPES:\n            continue\n",
+      "source": {
+        "table": "r-1.json",
+        "id": "T6_unknown_stage"
+      }
+    },
+    {
+      "id": "r-1.T7_dedupe",
+      "description": "Append a type every time it is named rather than once",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "65d1b56f0fab3c26",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_the_hook_types_a_configuration_needs[text4-expected4]",
+        "tests/test_doctor.py::test_the_hook_types_a_configuration_needs[text6-expected6]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if hook_type not in types:\n            types.append(hook_type)\n",
+      "new": "        types.append(hook_type)\n",
+      "source": {
+        "table": "r-1.json",
+        "id": "T7_dedupe"
+      }
+    },
+    {
+      "id": "r-1.T8_not_a_mapping",
+      "description": "Drop the guard refusing a configuration whose top level is not a mapping",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e2efde80f202bbce",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_configuration_this_cannot_understand_is_a_sentence[- just\\n- a list\\n-is not a pre-commit configuration]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not isinstance(document, dict):\n        return (), f\"{config_file} is not a pre-commit configuration\", None\n",
+      "new": "",
+      "source": {
+        "table": "r-1.json",
+        "id": "T8_not_a_mapping"
+      }
+    },
+    {
+      "id": "r-1.T9_yaml_error_falls_back",
+      "description": "A configuration that does not parse falls back to the pre-commit floor instead of a sentence",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "846618f35e04404c",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_doctor.py",
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1673,
+      "baseline_collected": 1673,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_configuration_that_does_not_parse_is_not_read_as_one_hook_type"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except yaml.YAMLError as exc:\n        return (), f\"{config_file} is not valid YAML ({exc})\", None\n",
+      "new": "    except yaml.YAMLError:\n        return (\"pre-commit\",), None, None\n",
+      "source": {
+        "table": "r-1.json",
+        "id": "T9_yaml_error_falls_back"
+      }
+    },
+    {
+      "id": "r1255.D1_doctor_branches_on_the_scan",
+      "description": "doctor _check_unresolved_session: never branch on the listing, so the log directory is named as an unreadable record",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cf9907172d5b8b0c",
+      "subset": [
+        "tests/test_doctor.py",
+        "tests/test_session_log_unlisted.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 438,
+      "baseline_collected": 438,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_session_log_this_account_cannot_list_is_failed_by_its_own_check"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if session.log_unlisted(unreadable, inputs.cfg):\n        unreadable_directory = session.log_dir(inputs.cfg)",
+      "new": "    if False:\n        unreadable_directory = session.log_dir(inputs.cfg)",
+      "source": {
+        "table": "r1255.json",
+        "id": "D1_doctor_branches_on_the_scan"
+      }
+    },
+    {
+      "id": "r1255.D2_status_names_the_log",
+      "description": "status _source_findings: never name an unlisted log, so a refused source reads as none in flight",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3f6ea7d85b961e5c",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_status_names_a_session_log_it_cannot_list_and_still_reports_the_rest"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if session.log_unlisted(unreadable, cfg):\n        # A LOG NOBODY COULD LIST IS SAID",
+      "new": "    if False:\n        # A LOG NOBODY COULD LIST IS SAID",
+      "source": {
+        "table": "r1255.json",
+        "id": "D2_status_names_the_log"
+      }
+    },
+    {
+      "id": "r1255.D3_status_guard_precise",
+      "description": "status _source_findings: name any unread entry as an unlisted log, so one damaged record hides every source",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8da3d45891db4124",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_status_reads_one_damaged_record_as_a_record_not_as_an_unlisted_log"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if session.log_unlisted(unreadable, cfg):\n        # A LOG NOBODY COULD LIST IS SAID",
+      "new": "    if unreadable:\n        # A LOG NOBODY COULD LIST IS SAID",
+      "source": {
+        "table": "r1255.json",
+        "id": "D3_status_guard_precise"
+      }
+    },
+    {
+      "id": "r372-b.B1_doctor_majority_is_info",
+      "description": "_check_paths_resolved: a majority is a note, so doctor stays green over it",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7f471426990774ca",
+      "subset": [
+        "tests/test_paths_resolved.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 494,
+      "baseline_collected": 494,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_doctor_fails_paths_resolved_over_a_majority_off_a_copy",
+        "tests/test_paths_resolved.py::test_the_two_synthetic_machines_answer_the_check_opposite_ways"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if totals.majority_unmapped:\n        cause = metadata_cli.majority_unmapped_cause(cfg, totals)\n        return Finding(\n            key=key,\n            title=title,\n            status=Status.FAIL,",
+      "new": "    if totals.majority_unmapped:\n        cause = metadata_cli.majority_unmapped_cause(cfg, totals)\n        return Finding(\n            key=key,\n            title=title,\n            status=Status.INFO,",
+      "source": {
+        "table": "r372-b.json",
+        "id": "B1_doctor_majority_is_info"
+      }
+    },
+    {
+      "id": "r372-b.B2_doctor_minority_fails",
+      "description": "_check_paths_resolved: a minority refuses, the sitting's own state after the hand edit",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "24549a2a30368e90",
+      "subset": [
+        "tests/test_paths_resolved.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 494,
+      "baseline_collected": 494,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_doctor_reports_a_minority_as_a_note_and_a_clean_collection_as_ok"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if totals.unmapped:\n        return Finding(\n            key=key,\n            title=title,\n            status=Status.INFO,",
+      "new": "    if totals.unmapped:\n        return Finding(\n            key=key,\n            title=title,\n            status=Status.FAIL,",
+      "source": {
+        "table": "r372-b.json",
+        "id": "B2_doctor_minority_fails"
+      }
+    },
+    {
+      "id": "r372-b.B4_doctor_reads_before_the_volume_checks",
+      "description": "_check_paths_resolved: survey a database on a volume the mount checks could not recognise",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b923a5616bf127ad",
+      "subset": [
+        "tests/test_paths_resolved.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 494,
+      "baseline_collected": 494,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_doctor_defers_to_the_volume_checks_before_reading_anything"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    unreadable = _library_state_unreadable(inputs, \"the database\")\n    if unreadable is not None:",
+      "new": "    unreadable = _library_state_unreadable(inputs, \"the database\")\n    if False:",
+      "source": {
+        "table": "r372-b.json",
+        "id": "B4_doctor_reads_before_the_volume_checks"
+      }
+    },
+    {
+      "id": "r372-b.B5_doctor_opens_the_live_path",
+      "description": "_survey_paths: open the configured database itself rather than a copy",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "199b8b616db21699",
+      "subset": [
+        "tests/test_paths_resolved.py",
+        "tests/test_metadata_cli.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 494,
+      "baseline_collected": 494,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_paths_resolved.py::test_doctor_fails_paths_resolved_over_a_majority_off_a_copy",
+        "tests/test_paths_resolved.py::test_doctor_reports_a_copy_it_could_not_open_as_unknown_rather_than_good",
+        "tests/test_paths_resolved.py::test_doctor_reports_a_minority_as_a_note_and_a_clean_collection_as_ok",
+        "tests/test_paths_resolved.py::test_doctor_reports_an_empty_database_path_under_the_same_cause",
+        "tests/test_paths_resolved.py::test_setup_end_to_end_writes_the_rule_and_ends_on_a_doctor_that_reads_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    with rb_writer.read_only_copy(source, cfg=cfg) as db:\n        return metadata_cli.resolution_totals(cfg, db)",
+      "new": "    db = rb_writer.open_db(source, check_app_version=False, cfg=cfg)\n    try:\n        return metadata_cli.resolution_totals(cfg, db)\n    finally:\n        rb_writer.close_db(db)",
+      "source": {
+        "table": "r372-b.json",
+        "id": "B5_doctor_opens_the_live_path"
+      }
+    },
+    {
+      "id": "r598-b.B6_doctor_clause_dropped",
+      "description": "_open_state: list an orphaned record bare, so it reads as a run in progress with no verb named",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d5e964c64f4ca4fe",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 417,
+      "baseline_collected": 417,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_an_open_session_whose_process_is_gone_names_the_verb_that_ends_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if session.orphaned(record):\n        return f\"{record.state}, its process is gone, crate session release abandons it\"",
+      "new": "    if False:\n        return f\"{record.state}, its process is gone, crate session release abandons it\"",
+      "source": {
+        "table": "r598-b.json",
+        "id": "B6_doctor_clause_dropped"
+      }
+    },
+    {
+      "id": "r757-c2.D1_due_a_day_late",
+      "description": "_check_full_comparison: say to run one only past the bound and not at it",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "05ebfbaa6e8ba2ed",
+      "subset": [
+        "tests/test_backup_comparison.py",
+        "tests/test_backup_cli.py",
+        "tests/modules/test_tools.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 758,
+      "baseline_collected": 758,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_backup_comparison.py::test_doctor_says_how_long_ago_a_full_comparison_last_ran"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    due = f\". {run_one}\" if days >= FULL_COMPARISON_DUE_DAYS else \"\"",
+      "new": "    due = f\". {run_one}\" if days > FULL_COMPARISON_DUE_DAYS else \"\"",
+      "source": {
+        "table": "r757-c2.json",
+        "id": "D1_due_a_day_late"
+      }
+    },
+    {
+      "id": "r787.D1_doctor_own_list",
+      "description": "doctor's _declared_trees keeps a list of its own, the routing tree alone, instead of asking cutover_trees",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ee59a54cb9684a1f",
+      "subset": [
+        "tests/test_backup_comparison.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_config_update.py",
+        "tests/test_cutover_cli.py",
+        "tests/test_doctor.py",
+        "tests/test_incremental_sync.py",
+        "tests/test_intake_imported.py",
+        "tests/test_outbound_workers.py",
+        "tests/test_packaging.py",
+        "tests/test_paths_resolved.py",
+        "tests/test_routing_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 2223,
+      "baseline_collected": 2223,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cutover_cli.py::test_doctor_and_the_verb_read_one_set_of_cutover_trees",
+        "tests/test_cutover_cli.py::test_doctor_fails_on_a_native_record_the_cutover_would_refuse_to_create",
+        "tests/test_cutover_cli.py::test_doctor_reads_a_native_inbox_record_as_ok",
+        "tests/test_cutover_cli.py::test_doctor_reads_an_inbox_the_verb_cut_over_as_ok"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return tuple(named), tree_registry.cutover_trees(declared), None",
+      "new": "    return tuple(named), frozenset({declared.tree.id}), None",
+      "source": {
+        "table": "r787.json",
+        "id": "D1_doctor_own_list"
       }
     }
   ],
