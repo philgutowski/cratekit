@@ -1,0 +1,73 @@
+name = "u309-z"
+pass_kind = "light"
+
+# Six rows of docs/mutation/u309.md measured again after the tests that
+# reach them landed: each read zero on the full suite at 111e4ac6, a guard the
+# split moved that no test reached on the base either.
+
+[[rows]]
+id = "U1_settle_found_refusal"
+description = "A settled write whose record is gone no longer refuses: the shared check of five settles passes an empty entry"
+file = "src/cratekit/modules/outbound/ledger_settle.py"
+surface = "user"
+tests = ["tests/modules/test_outbound.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_sync_twins.py", "tests/test_export_set.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_edits.py", "tests/test_outbound_workers.py", "tests/test_prune.py"]
+old = '''
+    if not entry:
+        raise _refused(cfg, f"it holds no {what}, whose tracks were just {done}")'''
+new = '''
+    if False:
+        raise _refused(cfg, f"it holds no {what}, whose tracks were just {done}")'''
+
+[[rows]]
+id = "U2_settle_extend_dedupes"
+description = "The shared extend adds a value the record already holds a second time"
+file = "src/cratekit/modules/outbound/ledger_settle.py"
+surface = "user"
+tests = ["tests/modules/test_outbound.py", "tests/test_label_heard.py", "tests/test_label_playlists.py", "tests/test_sync_twins.py", "tests/test_export_set.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_edits.py", "tests/test_outbound_workers.py", "tests/test_prune.py"]
+old = '        held += [str(one) for one in more if str(one) not in held]'
+new = '        held += [str(one) for one in more]'
+
+[[rows]]
+id = "U6_pairs_words_only_on_hold"
+description = "A pairs record whose links hold empty text reads as well formed, the empty allowance spread past the held map"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_pair_discover.py", "tests/modules/test_outbound.py"]
+old = 'isinstance(k, str) and k and isinstance(v, str) and (words or v) for k, v in value.items()'
+new = 'isinstance(k, str) and k and isinstance(v, str) for k, v in value.items()'
+
+[[rows]]
+id = "U7_created_needs_identifier"
+description = "A playlist or folder the provider created with no identifier is taken as created"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_organize_root.py", "tests/test_prune.py", "tests/test_label_heard.py", "tests/test_organize.py"]
+old = '''
+    identifier = _identifier(created) if created is not _ABSENT else ""
+    if not identifier:'''
+new = '''
+    identifier = _identifier(created) if created is not _ABSENT else ""
+    if False:'''
+
+[[rows]]
+id = "U8_served_forgets_membership"
+description = "A playlist the provider no longer serves keeps its remembered membership"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_organize_root.py", "tests/test_prune.py", "tests/test_label_heard.py", "tests/test_organize.py"]
+old = '''
+        if found is _ABSENT or found is None:
+            self._members.pop(identifier, None)
+            return None'''
+new = '''
+        if found is _ABSENT or found is None:
+            return None'''
+
+[[rows]]
+id = "U10_delete_never_retried"
+description = "A playlist's delete is retried on a transient failure"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_organize_root.py", "tests/test_prune.py", "tests/test_label_heard.py", "tests/test_organize.py"]
+old = '        if self._call(doing, send, retries=0) is False:'
+new = '        if self._call(doing, send) is False:'
