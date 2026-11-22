@@ -1,94 +1,44 @@
 """Configuration, the two state roots, and the frozen identity a queued job runs against.
 
-TWO RULES GOVERN THIS MODULE. Both are here because the source system's
-equivalent survived four years without drifting, and the reason it did is that
-its docstring stated its rule and the rule was checkable.
+Rule 1: nothing here touches the filesystem at import, so ``crate --help`` and
+the health check run on a machine never set up. Config is lazy, so
+``config_dir()``, ``config_path()`` and ``load()`` are functions, and there is
+no module-level path constant for another module to snapshot, because a bound
+copy keeps the old value after a reload. ``tests/test_config.py`` fails the
+build if a module grows one.
 
-**Rule 1: nothing here touches the filesystem at import.** No mkdir, no write,
-no existence check, no read. This is what lets ``crate --help``, and the health
-check beside it, run on a machine that has never been set up, which is the only
-way a first-run wizard can ever be reached. The source module got this for free
-because it read environment variables only. Cratekit's config is a FILE, so it
-cannot resolve at import without breaking the rule. The resolution is that
-config is LAZY: ``config_dir()``, ``config_path()``, and ``load()`` are
-functions, none of them run at import, and there is no module-level path
-constant for anything else to snapshot.
+Rule 2: a value that can change without the user deciding it is state, not
+config. Watermarks, tombstones, declines, locks, calibration, session logs,
+cached tokens and the active taxonomy template live in a state root.
 
-That last clause is load-bearing. In the source system seventeen modules bound a
-state-directory path at their OWN import time. Reloading config after that point
-changed the config module and changed nothing else, so half the package tracked
-the new value and half kept the old one, silently, forever. There is no such
-constant here to bind, and ``tests/test_config.py`` fails the build if a module
-grows one.
+The two state roots (KTD21):
 
-**Rule 2: if a value can change without the user deciding it changed, it is
-state, not config.** Config carries decisions. Watermarks, tombstones, declines,
-lock state, calibration data, session logs, cached tokens, and the active
-taxonomy template are all things the software changes on its own, so none of
-them live in the config file. They live in one of the two state roots below.
-
----
-
-THE TWO STATE ROOTS (KTD21). This is the heart of the module.
-
-* **Installation-scoped**, under the platform's per-user config and state
+* Installation-scoped, under the platform's per-user config and state
   directories: config, credentials, the job queue, and caches that describe a
-  remote account or a replayable lookup rather than a library.
-* **Library-scoped**, in a dot-directory beside the library itself: the write
-  lock, the session log and its snapshots, per-source watermarks, tombstones and
-  declines, the deletion watermark, analysis calibration, the tree registry, and
-  the active taxonomy template.
+  remote account or a replayable lookup.
+* Library-scoped, in a dot-directory beside the library: the write lock, the
+  session log and its snapshots, watermarks, tombstones, declines, the deletion
+  watermark, calibration, the tree registry and the active taxonomy template.
 
-The source system stores essentially all of its state per installation. Carrying
-that forward breaks three concrete scenarios, and ``STATE_FILES`` below records,
-per entry, which one it breaks:
+Each ``STATE_FILES`` entry names the failure its root prevents: a second
+install against one library, a reinstall losing the undo logs, or the
+migration overlap. Every entry belongs to exactly one root, and installation
+entries also name their ``installation_area`` (config or state directory).
 
-1. **A second install against one library.** Two installation roots means two
-   write-lock files, which means zero mutual exclusion against a database that
-   only ever had one copy.
-2. **A reinstall or a fresh clone.** Two of the ported files are undo logs: the
-   only surviving record of a value that was overwritten on disk. Losing them to
-   a reinstall is unrecoverable data loss against the user's own music files.
-3. **The migration overlap**, where the old system and Cratekit both run against
-   one library. Locks that live per installation can never contend. A lock beside
-   the library is the only shape that both systems can open.
+The snapshot boundary (KTD21b): each library-scoped entry declares what a
+restore does to it, one subdirectory per answer, so the coupled set is a
+directory boundary rather than a list to keep in sync:
 
-``STATE_FILES`` assigns every entry to exactly ONE root. None straddles. Two
-source entries that did straddle are split into two named files each, one per
-root, which is the only way "exactly one" can be true of them.
-
-The installation root spans two PHYSICAL directories, the platform's config
-directory and its state directory, so each installation entry also names which of
-the two it lives in (``installation_area``). That is not a third KTD21 root; it is
-the resolver being able to say where an entry actually is. Leaving it implicit is
-how the config file itself came to be declared under the state directory while
-every loader and saver read the config directory: on macOS platformdirs returns
-one directory for both, so the two agreed by accident here and diverged on Linux.
-
----
-
-THE SNAPSHOT BOUNDARY (KTD21b). The second thing every library-scoped entry
-declares is what a RESTORE does to it, because the plan's top-ranked risk is the
-registry rolling back while the database does not. Three answers, one
-subdirectory each, so the coupled set is a directory boundary rather than a list
-somebody has to keep in sync:
-
-* ``COUPLED`` -> ``<state>/coupled/``. Captured with the database and replaced on
-  restore. The registry, the watermarks, the tombstones, the declines, the active
-  taxonomy, and the favorites state (R30 names most of these by name).
-* ``SURVIVES_ROLLBACK`` -> ``<state>/history/``. The record of what is
-  restorable. Rolling the session log back destroys the log of the sessions a
-  user might restore, and capturing the snapshot store nests every prior snapshot
-  inside the new one.
-* ``NEVER_RESTORED`` -> ``<state>/local/``. Rolling it back is either active data
-  loss or a broken invariant: the undo logs hold the ONLY surviving copy of values
-  already overwritten on the user's files, and a restore that replaces a directory
-  holding a lock swaps the inode a live advisory lock is held on, so mutual
-  exclusion disappears mid-session with nothing raised.
+* ``COUPLED`` -> ``<state>/coupled/``: captured with the database and replaced
+  on restore (registry, watermarks, tombstones, declines, active taxonomy,
+  favorites; R30).
+* ``SURVIVES_ROLLBACK`` -> ``<state>/history/``: the record of what is
+  restorable; rolling it back destroys the log of restorable sessions.
+* ``NEVER_RESTORED`` -> ``<state>/local/``: rolling it back loses data (the
+  undo logs) or swaps the inode a live lock is held on.
 
 U8 and U32 derive the snapshot set from this field (``coupled_state_files`` and
-``snapshot_sources``). A hand-maintained exclusion list is the drift this
-repository already refuses for its CI dependency list and its extras table.
+``snapshot_sources``), never from a hand-kept list.
 """
 
 from __future__ import annotations
@@ -122,58 +72,30 @@ try:
 except ImportError:  # pragma: no cover - Windows has no fcntl
     _fcntl_module = None  # type: ignore[assignment]
 
-# ---------------------------------------------------------------------------
-# Schema version and the file name
-# ---------------------------------------------------------------------------
+# Schema version and the file name.
 
-#: The schema this build writes and validates. Bumped only alongside a migration
-#: entry in ``MIGRATIONS``; ``test_config_migration.py`` fails on a gap, so the
-#: version number can never get ahead of the code that upgrades to it.
+#: The schema this build writes. Bumped only with a ``MIGRATIONS`` entry;
+#: ``test_config_migration.py`` fails on a gap.
 CURRENT_SCHEMA_VERSION = 1
 
-#: The on-disk SHAPE of the library state directory: which subdirectory each
-#: entry's snapshot role resolves into. Deliberately a second number, separate
-#: from ``CURRENT_SCHEMA_VERSION``, because the two need different mechanisms and
-#: only one of those mechanisms exists in this module.
-#:
-#: NOTHING MIGRATES AN EXISTING LIBRARY STATE DIRECTORY, AND THAT IS A RECORDED
-#: DEFERRAL RATHER THAN AN OVERSIGHT. ``MIGRATIONS`` is dict-to-dict by
-#: construction, which is exactly what makes "a failed migration leaves the
-#: original untouched" true by construction rather than by a cleanup path that
-#: can itself fail. The same purity makes it structurally incapable of moving a
-#: file, so it can never be the thing that reconciles a LAYOUT change.
-#:
-#: At version 1 there is nothing to reconcile. The role subdirectories
-#: (``coupled/``, ``history/``, ``local/``) were introduced before this package
-#: had any write path at all, so no build has ever written a library state
-#: directory in another shape and there is no installation on disk to move.
-#:
-#: The day this number moves, the unit that moves it owns a one-time on-disk
-#: reconciliation with its OWN mechanism: a directory walk under the same
-#: exclusive lock a config migration takes, idempotent, and refusing rather than
-#: half-moving. ``tests/test_config.py`` fails on a bump that arrives without
-#: one, so the deferral expires rather than persisting.
+#: The on-disk shape of the library state directory, separate from
+#: ``CURRENT_SCHEMA_VERSION`` because ``MIGRATIONS`` is dict to dict and cannot
+#: move a file. Nothing migrates a library state directory yet, as no build ever
+#: wrote another shape. The unit that bumps this owns a one-time reconciliation
+#: under the migration lock, idempotent and refusing rather than half-moving;
+#: ``tests/test_config.py`` fails a bump without one.
 LIBRARY_STATE_LAYOUT_VERSION = 1
 
 CONFIG_FILENAME = "config.toml"
 
-#: The key U31's destructive-operation assertion reads (R38). Named here so the
-#: unit that implements the assertion does not spell the key itself: a guard that
-#: hardcodes the name of the thing it guards stops guarding it the day it is
-#: renamed, and nothing fails.
+#: The key U31's destructive-operation assertion reads (R38), named here so a
+#: guard never hardcodes the name of what it guards.
 VOLUME_IDENTITY_KEY = "library.volume_id"
 
-#: The key naming which SHIPPED taxonomy template a library adopted (S6).
-#:
-#: This module validates its SHAPE and never its membership, and the split is
-#: deliberate rather than lazy. Membership is "does a template of that name ship
-#: in this wheel", which only the taxonomy module can answer, and that module
-#: sits a layer above this one: a foundation file that imported it would invert
-#: the import direction the layering guard exists to keep. So the closed set is
-#: enforced where it can be, by the wizard offering the shipped names as choices
-#: and by doctor refusing a name nothing ships, and what is enforced here is the
-#: one property those two cannot recover from: a value shaped like a path, which
-#: is composed into a packaged resource name by the reader.
+#: The key naming which shipped taxonomy template a library adopted (S6).
+#: Only its shape is validated here; membership belongs to the taxonomy module
+#: a layer above, so the wizard and doctor enforce it. A path-shaped value is
+#: refused because the reader composes it into a packaged resource name.
 TAXONOMY_TEMPLATE_KEY = "taxonomy.template"
 
 #: A shipped template's short name: a bare token, never a path fragment.
@@ -183,94 +105,45 @@ _TEMPLATE_NAME_SHAPE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 def template_name_is_usable(value: object) -> bool:
     """Whether ``value`` is a shape this configuration can carry as a template name.
 
-    Public because the module that walks the packaged templates has to apply the
-    SAME rule when it decides which files to offer. A file called
-    ``taxonomy.deep.house.toml`` is a candidate on disk and its short name is one
-    this validator refuses, so a walker without this filter offers a closed-set
-    choice that configuration then rejects: two layers, one question, two
-    answers. That is the defect the shared walk was written to close, and it
-    reappears one layer down unless the shape is shared too.
+    Public so the packaged template walker applies the same rule and never
+    offers a name configuration would reject.
     """
     return isinstance(value, str) and bool(_TEMPLATE_NAME_SHAPE.match(value))
 
-# Environment overrides. Exactly three, mirroring the source system's three,
-# and each one RELOCATES a configured value. None of them SUPPLIES one.
-#
-# That distinction is the whole design. An override that can supply a value lets
-# a machine with no setup at all resolve a library root from the environment and
-# start writing to it, which is precisely the "runs against the wrong volume"
-# failure R38 exists to prevent. An override that can only relocate an
-# already-configured value is useful for tests, for a remounted drive, and for
-# nothing else.
-#
-# THEY ARE APPLIED IN EXACTLY ONE PLACE, ``_apply_env_overrides``, BEFORE ANY
-# RULE IS DECIDED. That placement is the fix for a defect with two faces and one
-# cause. Validation used to dig ``library.root`` out of the raw file mapping
-# while the BUILDER applied the override, so the containment rule was decided
-# against the file's root and then lived against a different one. Both faces were
-# reproduced: a config that violates containment at runtime validated clean, and
-# a single save under a relocation wrote a root that the file's own db_path was
-# no longer under, producing a file that refused to load and that the user had
-# never edited.
-#
-# Relocating the root also RE-BASES a db_path that sat under it. That is what
-# "relocate" has to mean here: what the file records is where the database sits
-# RELATIVE to the library, so moving the library without moving the database
-# leaves a path aimed into a tree that is no longer the library. It is also a
-# safety property the test suite has been relying on without stating it, since
-# redirecting the library root is the whole mechanism keeping tests off the real
-# rekordbox database.
+# Environment overrides. Each relocates a configured value and none supplies
+# one, so a machine with no setup can never resolve a library root from the
+# environment and write to the wrong volume (R38). They are applied in one
+# place, ``_apply_env_overrides``, before any rule is decided, so validation and
+# the builder see the same root. Relocating the root also re-bases a db_path
+# under it, which is what keeps tests off the real rekordbox database.
 ENV_CONFIG_DIR = "CRATEKIT_CONFIG_DIR"
 ENV_STATE_DIR = "CRATEKIT_STATE_DIR"
 ENV_LIBRARY_ROOT = "CRATEKIT_LIBRARY_ROOT"
 
-#: The directory the ISRC cache and its lock live in, when set (U206). Unset,
-#: they are installation state like any other. A copy run redirects
-#: ``CRATEKIT_STATE_DIR`` so nothing it does marks live state, and the ISRC
-#: answers it pays for are the one thing it should keep: they are facts about
-#: the provider's catalogue, so the copy run points this at the live state
-#: directory and its lookups are not paid for twice. ``core.rehearsal`` does
-#: that for every rehearsal it redirects.
+#: The directory the ISRC cache and its lock live in, when set (U206). A copy
+#: run points it at the live state directory so catalogue answers are not paid
+#: for twice; ``core.rehearsal`` does that for every rehearsal.
 ENV_ISRC_CACHE_DIR = "CRATEKIT_ISRC_CACHE_DIR"
 
 #: The directory the provider gate's state file and its lock live in, when set
-#: (U278). Unset, they live under the PLATFORM's installation state directory,
-#: the one ``CRATEKIT_STATE_DIR`` overrides, and never under the override: the
-#: gate describes the account's allowance, and a copy run that redirects its
-#: state to scratch must still spend from the one allowance the live run reads.
-#: On 2026-11-12 a copy whose gate followed its state spent about 7,800
-#: catalogue calls the live gate never saw, and the live breaker then refused
-#: the label go they had cost. The suite sets this to each test's own state.
+#: (U278). Unset, they live under the platform's installation state directory,
+#: never under ``CRATEKIT_STATE_DIR``, so a copy run spends from the one
+#: allowance the live run reads. The suite sets this to each test's own state.
 ENV_PROVIDER_GATE_DIR = "CRATEKIT_PROVIDER_GATE_DIR"
 ENV_DOWNLOAD_STAGING = "CRATEKIT_DOWNLOAD_STAGING"
 
 _APP_NAME = "cratekit"
 
 
-# ---------------------------------------------------------------------------
-# Failure vocabulary
-#
-# Five types, not one. Each has a DIFFERENT remediation, and collapsing them
-# into a single ConfigError would force every caller to parse a message string
-# to find out what to tell the user (KTD25).
-# ---------------------------------------------------------------------------
+# Failure vocabulary: one type per remediation, so no caller parses a message
+# (KTD25).
 
 
 class Remedy(StrEnum):
-    """What to do about a configuration failure, as a TOKEN rather than a command.
+    """What to do about a configuration failure, as a token rather than a command.
 
-    D2: no foundation module contains the text a user types. The CLI layer, and
-    only the CLI layer, renders one of these into a command line, because the
-    command depends on the interface the user is actually sitting in front of and
-    this layer does not know which one that is.
-
-    The alternative, which this module shipped first, is remediation as prose
-    inside the message string. A caller that wants to tell a user what to do
-    about a missing config versus a too-new one then has to string-match the
-    message, which is exactly the KTD25 failure this module's own docstring
-    cites. ``secrets.py`` in the same unit already models it correctly; these
-    tokens are this module's contribution to the vocabulary U5 owns (S4), not a
-    competing scheme.
+    D2: no foundation module holds the text a user types; only the CLI renders
+    a token into a command. Part of the vocabulary U5 owns (S4).
     """
 
     RUN_SETUP = "run-setup"
@@ -284,10 +157,8 @@ class Remedy(StrEnum):
 class RemediedError(Exception):
     """An exception that always carries a structured remedy token.
 
-    Its class's own, or the one a raise names, for the case where one type
-    covers two remediations: an unrecorded rekordbox pin is a ConfigInvalid
-    whose answer is one specific decision, not "go read your config file".
-    The acquisition adapter's errors are this as well, with their own tokens.
+    Its class's own, or one a raise names when one type covers two remediations
+    (an unrecorded rekordbox pin is a ConfigInvalid with its own answer).
     """
 
     def __init__(self, message: str, *, remedy=None) -> None:
@@ -311,33 +182,24 @@ class ConfigMissing(ConfigError):
 class ConfigCorrupt(ConfigError):
     """The file exists but cannot be read as a versioned config.
 
-    Covers unparseable TOML and an absent or non-integer ``schema_version``.
-    An absent version is corruption rather than age: Cratekit has written the
-    field since its first release, so a file without one was hand-edited.
+    Covers unparseable TOML and an absent or non-integer ``schema_version``;
+    every release writes the field, so its absence means a hand edit.
     """
 
     remedy = Remedy.REPAIR_CONFIG_FILE
 
 
 class ConfigTooNew(ConfigError):
-    """The file was written by a newer Cratekit. Migrations are forward-only.
+    """The file was written by a newer Cratekit. Migrations are forward only.
 
-    Downgrading is never attempted. A newer build may have written keys this
-    build would silently drop on the next save, and a silent drop of a key the
-    user set is worse than a refusal that names the two versions.
+    Never downgraded, because a save could drop keys this build does not know.
     """
 
     remedy = Remedy.UPGRADE_CRATEKIT
 
 
 class ConfigInvalid(ConfigError):
-    """The config parsed but failed validation.
-
-    Carries EVERY problem, not the first. Validation that stops at the first
-    missing key turns one setup session into one round trip per missing key,
-    and the plan's first test scenario for this unit requires each missing key
-    to be named.
-    """
+    """The config parsed but failed validation. Carries every problem, not the first."""
 
     remedy = Remedy.FIX_CONFIG_VALUES
 
@@ -358,13 +220,9 @@ class ConfigInvalid(ConfigError):
 class ConfigLockUnavailable(ConfigError):
     """A config write could not take the exclusive lock, so it refused.
 
-    Advisory ledgers in the source system tolerate a failed ``flock`` and carry
-    on. A config MIGRATION must not: the job engine re-invokes the CLI as
-    subprocesses (KTD26), so two processes can reach an unmigrated file in the
-    same second, and two unsynchronized migrations of one file is how a config
-    ends up half-upgraded. ``save`` and ``update`` take the same lock for the
-    same reason, since an unsynchronized write loses a whole set of answers
-    while reporting success (R-116).
+    The job engine runs the CLI as subprocesses (KTD26), so two unsynchronized
+    migrations or saves of one file would half-upgrade it or lose answers while
+    reporting success (R-116).
     """
 
     remedy = Remedy.RETRY_WHEN_UNLOCKED
@@ -373,16 +231,10 @@ class ConfigLockUnavailable(ConfigError):
 class ConfigConflict(ConfigError):
     """Two writers changed the same value while one of them was deciding.
 
-    Raised by ``merge_changes`` and only when NOTHING was written. A writer that
-    read the document, took its time, and came back to find another writer's
-    answers on disk keeps both sets when they touch different values. When they
-    touch the same value differently there is no honest merge: picking either
-    one erases an answer somebody gave, which is the loss the lock exists to
-    end. So it refuses and names the keys.
-
-    The remedy is ``RUN_SETUP`` because running the wizard again reads the
-    document that is on disk now and completes THAT, so the person answers the
-    conflicting keys once, against the values they are actually replacing.
+    Raised by ``merge_changes`` only when nothing was written. Changes to
+    different values are both kept; the same value changed two ways has no
+    honest merge, so it refuses and names the keys. ``RUN_SETUP`` reruns the
+    wizard against the document on disk now.
     """
 
     remedy = Remedy.RUN_SETUP
@@ -396,20 +248,11 @@ class ConfigConflict(ConfigError):
         )
 
 
-# ---------------------------------------------------------------------------
-# Directory resolution. Functions, never constants (Rule 1).
-# ---------------------------------------------------------------------------
+# Directory resolution: functions, never constants (Rule 1).
 
 
 def config_dir() -> Path:
-    """The installation-scoped configuration directory.
-
-    Resolved through platformdirs rather than a hardcoded path so the deferred
-    Windows adapter costs nothing here (KTD6, R1). The override exists for tests
-    and for a user who keeps their dotfiles somewhere unusual.
-
-    Creates nothing. A caller that is about to write creates it at that moment.
-    """
+    """The installation-scoped configuration directory (KTD6, R1). Creates nothing."""
     override = os.environ.get(ENV_CONFIG_DIR)
     if override:
         return Path(override)
@@ -419,23 +262,17 @@ def config_dir() -> Path:
 def config_path() -> Path:
     """The path of the config file itself. Does not check that it exists.
 
-    Resolved THROUGH the inventory rather than beside it. Composing
-    ``config_dir() / CONFIG_FILENAME`` here is what let the inventory declare the
-    config file under the installation STATE directory while every loader and
-    saver used the installation CONFIG directory: two roots for one file, invisible
-    on macOS where platformdirs returns the same directory for both. Going through
-    ``state_path`` makes the two answers the same answer by construction.
+    Resolved through ``state_path`` so the inventory and every loader and saver
+    agree on one directory.
     """
     return state_path("config")
 
 
 def installation_state_dir() -> Path:
-    """The installation-scoped STATE directory, distinct from the config directory.
+    """The installation-scoped state directory, distinct from the config directory.
 
-    Kept separate rather than folded into the config directory because the two
-    have different backup semantics on every platform Cratekit targets: a user
-    who syncs their config directory between machines would otherwise sync a job
-    queue and a set of caches that describe one machine's work in progress.
+    Kept apart so syncing a config directory between machines never syncs one
+    machine's job queue and caches.
     """
     override = os.environ.get(ENV_STATE_DIR)
     if override:
@@ -447,10 +284,8 @@ def provider_gate_dir() -> Path:
     """Where the provider gate's two files live: ``CRATEKIT_PROVIDER_GATE_DIR``
     when set, else the platform's installation state directory (U278).
 
-    NOT :func:`installation_state_dir`. That honours ``CRATEKIT_STATE_DIR``,
-    which every copy run sets to scratch, and a gate that followed it gave each
-    copy an allowance of its own that the live gate could not see. The account
-    has one allowance, so every installation state pointed at it reads one gate.
+    Not :func:`installation_state_dir`, which follows ``CRATEKIT_STATE_DIR`` into
+    a copy run's scratch; the account has one allowance, so there is one gate.
     """
     override = os.environ.get(ENV_PROVIDER_GATE_DIR)
     if override:
@@ -467,10 +302,8 @@ _PROVIDER_GATE_KEYS = frozenset({"provider_gate", "provider_gate_lock", "night_b
 def library_state_dir(config: Config) -> Path:
     """The library-scoped state root: a dot-directory beside the library.
 
-    Beside the library and not inside the platform state directory, because
-    everything in here describes THIS library and must travel with it, be
-    snapshotted with it (KTD21b), and be reachable from a second installation
-    and from the old system during the migration overlap.
+    Beside it so the state travels and is snapshotted with the library (KTD21b)
+    and is reachable from a second installation and the old system.
     """
     return config.library.root / config.library.state_dirname
 
@@ -478,10 +311,8 @@ def library_state_dir(config: Config) -> Path:
 def library_coupled_dir(config: Config) -> Path:
     """The one directory a KTD21b snapshot copies and a restore replaces.
 
-    Named as a function so U8 and U32 can say "snapshot this directory" instead of
-    keeping a list of files in sync with ``STATE_FILES``. Everything inside it is
-    declared ``COUPLED``; nothing that is not is allowed in, and
-    ``tests/test_config.py`` asserts both halves.
+    Holds exactly the ``COUPLED`` entries; ``tests/test_config.py`` asserts both
+    halves.
     """
     return library_state_dir(config) / _LIBRARY_SUBDIR_BY_ROLE[SnapshotRole.COUPLED]
 
@@ -489,9 +320,8 @@ def library_coupled_dir(config: Config) -> Path:
 def library_history_dir(config: Config) -> Path:
     """Where the record of what is restorable lives: the session log and snapshots.
 
-    Outside the coupled directory on purpose. A snapshot that captured this would
-    nest every previous snapshot inside itself, and a restore that replaced it
-    would destroy the log of the sessions the user might still want to restore.
+    Outside the coupled directory, so a snapshot never nests earlier snapshots
+    and a restore never destroys the log of restorable sessions.
     """
     return library_state_dir(config) / _LIBRARY_SUBDIR_BY_ROLE[SnapshotRole.SURVIVES_ROLLBACK]
 
@@ -499,18 +329,13 @@ def library_history_dir(config: Config) -> Path:
 def library_local_dir(config: Config) -> Path:
     """Library state a restore must never touch: locks, undo logs, caches, calibration.
 
-    Two different failures share this directory. Rolling an undo log back discards
-    the only surviving copy of a value already overwritten on the user's files.
-    Replacing a directory that holds a lock file swaps the inode a live advisory
-    lock is held on, so two processes both believe they hold it and neither is
-    told otherwise.
+    Rolling an undo log back loses the only copy of an overwritten value, and
+    replacing a directory holding a lock swaps the inode the live lock is on.
     """
     return library_state_dir(config) / _LIBRARY_SUBDIR_BY_ROLE[SnapshotRole.NEVER_RESTORED]
 
 
-# ---------------------------------------------------------------------------
-# The state-file inventory
-# ---------------------------------------------------------------------------
+# The state-file inventory.
 
 
 class StateRoot(StrEnum):
@@ -521,19 +346,12 @@ class StateRoot(StrEnum):
 
 
 class InstallationArea(StrEnum):
-    """Which physical directory an INSTALLATION entry lives in.
+    """Which physical directory an installation entry lives in.
 
-    Not a third KTD21 root. The installation root has always spanned two
-    directories, the platform's config directory and its state directory, and
-    those have different backup and sync semantics on every platform Cratekit
-    targets. What was missing was any way for an ENTRY to say which one it meant,
-    so the resolver guessed one and the loader used the other. On macOS
-    platformdirs returns the same path for both, so the disagreement was invisible
-    on the machine this was written on.
-
-    Read only when ``root is StateRoot.INSTALLATION``. Library entries leave it at
-    the default, and ``tests/test_config.py`` asserts they do, so it can never
-    look meaningful where nothing reads it.
+    Not a third KTD21 root: the installation root spans the platform's config
+    and state directories, which coincide on macOS and differ elsewhere. Read
+    only for installation entries; library entries keep the default, and
+    ``tests/test_config.py`` asserts it.
     """
 
     CONFIG = "config"
@@ -543,55 +361,33 @@ class InstallationArea(StrEnum):
 class SnapshotRole(StrEnum):
     """What a KTD21b restore does to this entry. Declared, never inferred.
 
-    The plan's top-ranked risk is the registry rolling back while the database
-    does not, so this is the field that risk turns on. Its three values are the
-    three incompatible categories that a single flat state directory mixed
-    together, and each one maps to its own subdirectory so the boundary between
-    them is a directory rather than a list a later unit has to maintain.
+    Each value maps to its own subdirectory, so the boundary is a directory
+    rather than a maintained list.
     """
 
-    #: Captured with the database and replaced on restore. Restoring returns the
-    #: library to a self-consistent pre-session state only if this set is exact.
+    #: Captured with the database and replaced on restore; a restore is
+    #: self-consistent only if this set is exact.
     COUPLED = "coupled"
 
-    #: The record of WHAT is restorable, plus the snapshots themselves. Rolling it
-    #: back destroys that record; capturing it nests every prior snapshot inside
-    #: the new one.
+    #: The record of what is restorable, plus the snapshots. Rolling it back
+    #: destroys that record; capturing it nests every prior snapshot.
     SURVIVES_ROLLBACK = "survives-rollback"
 
-    #: Never captured, never replaced. Either its rollback is active data loss (an
-    #: undo log holds the only copy of a value already written to the user's files,
-    #: and a file write is not something a database restore undoes), or its
-    #: identity is live (a lock's inode, a heartbeat, a run in progress), or it
-    #: simply is not library state at all (everything installation-scoped: a
-    #: library snapshot has no business reaching outside the library).
+    #: Never captured, never replaced: its rollback loses data (an undo log),
+    #: its identity is live (a lock, a heartbeat), or it is installation state.
     NEVER_RESTORED = "never-restored"
 
 
 class RollbackEffect(StrEnum):
-    """What a COUPLED entry's records caused OUTSIDE the set a restore replaces.
+    """What a COUPLED entry's records caused outside the set a restore replaces.
 
-    A restore returns the database and its coupled state to a matched earlier
-    point. That is internally consistent and it is not the whole world. Some of
-    the records being discarded had an effect somewhere a rename cannot reach: a
-    playlist renamed at the provider, a file written to the music volume, a file
-    moved to the Trash. Rolling the record back does not undo the effect, so the
-    two disagree from the moment the restore lands, and nothing downstream can
-    tell.
-
-    DECLARED ON THE ENTRY, never listed in the module that reconciles them, for
-    the reason ``decision_store`` gives one line further down and ``sidecars``
-    gives above: a companion list is the drift this schema exists to remove, and
-    a derivation that covers 90 percent of the real set is worse than an honest
-    list because it invites trust (P4). A state entry added later with a real
-    out-of-band effect and no declaration here would simply never be reconciled,
-    and the silence would look like convergence.
-
-    ``NONE`` is a real answer and is spelled rather than left implicit. Most
-    coupled entries describe database rows and nothing else, and saying so is
-    what makes the set derivable: ``tests/test_restore.py`` parses this literal
-    and requires every COUPLED entry to name its answer, so "nobody decided" and
-    "somebody decided nothing happens" cannot look alike.
+    A restore discards records whose effect a rollback cannot undo (a playlist
+    renamed at the provider, a file written or trashed), so the two disagree
+    after it lands. Declared on the entry, never listed in the reconciler, since
+    a companion list drifts and an undeclared effect is silently never
+    reconciled (P4). ``NONE`` is spelled so "nobody decided" and "nothing
+    happens" differ; ``tests/test_restore.py`` parses the literal and requires
+    every COUPLED entry to name its answer.
     """
 
     #: Nothing outside the coupled set. The records describe database rows.
@@ -605,27 +401,14 @@ class RollbackEffect(StrEnum):
     #: A file was moved to the Trash. Rolling the record back does not move it
     #: out, and the library then holds a row for a file nobody can open.
     TRASHED_FILE = "trashed-file"
-    #: A tag was written INTO a file on the music volume. Added at the U23 merge,
-    #: 2026-08-14, because adoption is the first feature whose coupled record
-    #: describes an edit to somebody else's bytes rather than a database row.
-    #:
-    #: Rolling the ledger back un-records that the entry was applied and does not
-    #: un-write the tag, so a restore leaves the library saying a file has not
-    #: been adopted while the file itself says it has. Declaring NONE here would
-    #: have been the exact failure this enum's docstring names: a real
-    #: out-of-band effect that is never reconciled, with the silence reading as
-    #: convergence.
-    #:
-    #: The original values are recoverable, and NOT from anything a rollback
-    #: restores. They live in the adoption tag revert log, which is
-    #: NEVER_RESTORED precisely so it outlives the rollback that would otherwise
-    #: erase the only record of what the tags held before.
+    #: A tag was written into a file on the music volume (U23). Rolling the
+    #: ledger back does not un-write the tag; the original values survive in the
+    #: adoption tag revert log, which is NEVER_RESTORED for that reason.
     WRITTEN_FILE_TAG = "written-file-tag"
 
 
-#: One subdirectory per role, so an entry's physical location is DERIVED from the
-#: answer it already gave rather than typed a second time. A relative path spelled
-#: per entry could disagree with the entry's own declared role; this cannot.
+#: One subdirectory per role, so an entry's location derives from its declared
+#: role and cannot disagree with it.
 _LIBRARY_SUBDIR_BY_ROLE: Mapping[SnapshotRole, str] = MappingProxyType(
     {
         SnapshotRole.COUPLED: "coupled",
@@ -638,12 +421,8 @@ _LIBRARY_SUBDIR_BY_ROLE: Mapping[SnapshotRole, str] = MappingProxyType(
 class Medium(StrEnum):
     """What the entry physically is.
 
-    ``KEYCHAIN`` is in this enum rather than being left out of the table because
-    the Definition of Done requires every state file to be dispositioned, and
-    "this one stopped being a file" is a disposition. Leaving it out would make
-    the table look complete while the sharpest credential exposure in the source
-    system, a long-lived refresh token in a default-permission file, quietly had
-    no row.
+    ``KEYCHAIN`` gives a disposition to state that stopped being a file (the
+    refresh token), so the table stays complete.
     """
 
     FILE = "file"
@@ -653,31 +432,19 @@ class Medium(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Sidecar:
-    """A file the storage engine keeps BESIDE an entry, named by a suffix.
+    """A file the storage engine keeps beside an entry, named by a suffix.
 
-    Declared here rather than kept as a companion list in the unit that captures
-    snapshots, for the reason every other field in this schema is declared: a
-    list maintained beside the schema is the drift this whole design exists to
-    remove, and here the cost of that drift is a torn database.
-
-    THE CONCRETE FAILURE. SQLite in WAL mode holds committed-but-uncheckpointed
-    transactions in ``<db>-wal`` and a shared index over them in ``<db>-shm``.
-    The database row declares ONE path, so a consumer that copies exactly what
-    ``snapshot_sources`` names, and no more, captures a database missing every
-    transaction still in the log. That copy opens cleanly and is silently behind,
-    which is the worst shape a backup can take. The source system captures the
-    database and both sidecars as one matched set; this is that set, declared.
+    Declared on the schema rather than in the snapshot unit, since a companion
+    list drifts. SQLite in WAL mode keeps committed transactions in ``<db>-wal``
+    and an index in ``<db>-shm``; copying only the declared path yields a
+    database that opens cleanly and is silently behind.
     """
 
     suffix: str
-    #: True when a restore writes this sidecar back OUT of the snapshot.
-    #:
-    #: The source system's restore is deliberately asymmetric: it removes the
-    #: LIVE ``-wal`` and ``-shm`` first, so the engine cannot replay a log
-    #: belonging to the database that was just replaced, then copies the
-    #: snapshot's ``-wal`` and never its ``-shm``. The shared-memory index is
-    #: derived from the log, so restoring a stale one beside a fresh log hands
-    #: SQLite two disagreeing views of one database.
+    #: True when a restore writes this sidecar back out of the snapshot. A
+    #: restore removes the live ``-wal`` and ``-shm`` first, then restores only
+    #: ``-wal``: the index derives from the log, and a stale one beside a fresh
+    #: log gives SQLite two views of one database.
     restored: bool
 
 
@@ -693,14 +460,9 @@ SQLITE_SIDECARS: tuple[Sidecar, ...] = (
 class StateFile:
     """One state entry, its root, what a restore does to it, and why.
 
-    ``why`` is not documentation for its own sake. Every future unit that adds
-    state has to answer the same question, and the answer is only checkable if
-    it is phrased as a failure: what breaks under a second install, under a
-    reinstall, or during the migration overlap.
-
-    ``snapshot`` carries no default, so the same is true of the KTD21b question.
-    A new entry cannot be added without deciding whether a restore rolls it back,
-    which is the decision that the plan's top-ranked risk turns on.
+    ``why`` is phrased as a failure (second install, reinstall, migration
+    overlap) so it is checkable. ``snapshot`` has no default, so no entry is
+    added without deciding whether a restore rolls it back.
     """
 
     key: str
@@ -708,57 +470,34 @@ class StateFile:
     medium: Medium
     relative: str
     why: str
-    #: What a KTD21b restore does to this entry. Required: see the class docstring.
+    #: What a KTD21b restore does to this entry. Required.
     snapshot: SnapshotRole
     #: Which physical installation directory this lives in. Read only when
     #: ``root is StateRoot.INSTALLATION``.
     installation_area: InstallationArea = InstallationArea.STATE
-    #: True when the ported shape keys its records on a playlist or folder
-    #: DISPLAY name. R19 and D5 forbid that, so the unit that owns the entry runs
-    #: the one-time re-key in ``rekey_records`` before first use.
+    #: True when the ported shape keys records on a display name, which R19 and
+    #: D5 forbid; the owning unit runs ``rekey_records`` before first use.
     rekey_from_display_name: bool = False
-    #: True when the entry sits at the library ROOT rather than inside the
-    #: library state directory. Only things another system has to find without
-    #: knowing Cratekit's layout belong here.
+    #: True when the entry sits at the library root, for things another system
+    #: must find without knowing Cratekit's layout.
     at_library_root: bool = False
-    #: Files that share this entry's path with a suffix and must be captured with
-    #: it as ONE matched set. Empty for everything that really is a single file.
-    #:
-    #: EVERY ONE OF THEM MAY LEGITIMATELY BE ABSENT, and a consumer must treat
-    #: absence as normal rather than as an error: a database that has just been
-    #: checkpointed, or that was never opened in WAL mode, has no sidecars on
-    #: disk at all. The source system copies each one only if it exists, and so
-    #: must anything reading this field.
+    #: Files sharing this entry's path with a suffix, captured with it as one
+    #: matched set. Any may be absent (a checkpointed or non-WAL database), and a
+    #: consumer must treat absence as normal.
     sidecars: tuple[Sidecar, ...] = ()
-    #: True when this entry is one of R35 and R36's DECISION STORES: a revocable
-    #: set of suppressions that ``core.review`` reads and writes as one document.
-    #:
-    #: Declared on the entry rather than listed in the module that opens them, for
-    #: the reason every other field here is declared. The review module carried a
-    #: literal pair with a docstring saying it came from this inventory, which is a
-    #: list in disguise (P3): a store added to the inventory would not appear in
-    #: it, and a store REMOVED from the inventory would leave the module resolving
-    #: a path nobody declared a root for.
+    #: True when this entry is an R35 and R36 decision store, a revocable set of
+    #: suppressions ``core.review`` reads as one document. Declared here so the
+    #: review module never keeps its own list (P3).
     decision_store: bool = False
-    #: What this entry's records caused OUTSIDE the set a restore replaces. See
-    #: :class:`RollbackEffect`. Left empty on everything that is not COUPLED,
-    #: where the question does not arise at all.
-    #:
-    #: A TUPLE rather than one value, because one record can reach outside in
-    #: more than one direction at once: a label watermark advancing means both
-    #: that audio landed on the volume and that a playlist was renamed at the
-    #: provider, and a person dispositions those separately because the acts
-    #: that repair them are different acts.
+    #: What this entry's records caused outside the set a restore replaces (see
+    #: :class:`RollbackEffect`); empty unless COUPLED. A tuple, because one record
+    #: can reach out in several directions that are repaired separately.
     rollback_effects: tuple[RollbackEffect, ...] = ()
 
 
 STATE_FILES: tuple[StateFile, ...] = (
-    # ── Installation-scoped ────────────────────────────────────────────────
-    #
-    # Every entry here is NEVER_RESTORED for one shared reason: a library snapshot
-    # covers a library. Reaching outside it to roll back a job queue or a
-    # credential index would roll back work that belongs to the MACHINE, and on a
-    # second install it would roll back state the restoring machine has never seen.
+    # Installation-scoped. All NEVER_RESTORED: a library snapshot never rolls
+    # back the machine's own state.
     StateFile(
         key="config",
         root=StateRoot.INSTALLATION,
@@ -771,10 +510,7 @@ STATE_FILES: tuple[StateFile, ...] = (
             "config would force one machine's mount path onto the other."
         ),
         snapshot=SnapshotRole.NEVER_RESTORED,
-        # The CONFIG directory, not the state directory. This is the entry whose
-        # area was implicit and therefore wrong: the loader and saver read
-        # config_dir() while the inventory resolved installation_state_dir(),
-        # which are the same path on macOS and different everywhere else.
+        # The config directory, which differs from the state directory off macOS.
         installation_area=InstallationArea.CONFIG,
     ),
     StateFile(
@@ -1278,19 +1014,16 @@ STATE_FILES: tuple[StateFile, ...] = (
             "would be unreadable in exactly the situation it exists to serve."
         ),
     ),
-    # ── Library-scoped ─────────────────────────────────────────────────────
+    # Library-scoped.
     StateFile(
         key="rekordbox_db",
         snapshot=SnapshotRole.COUPLED,
-        # The database IS the coupled set's centre, and every row in it is
-        # replaced wholesale by the file copy. Nothing about that reaches
-        # outside; what reaches outside is recorded by the entries below, which
-        # is why they carry the effects and this one does not.
+        # The centre of the coupled set; what reaches outside is declared by the
+        # entries below.
         rollback_effects=(RollbackEffect.NONE,),
         root=StateRoot.LIBRARY,
         medium=Medium.FILE,
-        # Composed from library.db_path rather than from a relative literal: the
-        # database's location is the user's decision, made in rekordbox, not ours.
+        # Composed from library.db_path, since rekordbox decides where it sits.
         relative="",
         why=(
             "The single most important piece of library-scoped state in the "
@@ -1307,9 +1040,8 @@ STATE_FILES: tuple[StateFile, ...] = (
             "on another filesystem an explicit decision at setup instead of a "
             "surprise at the first snapshot."
         ),
-        # The only entry with sidecars, and the only one that needs them: it is
-        # the only SQLite database in the inventory. Declaring them here is what
-        # keeps the KTD21b capture set derived rather than hand-listed by U8.
+        # The only SQLite database here, so the only entry with sidecars; this
+        # keeps the KTD21b capture set derived.
         sidecars=SQLITE_SIDECARS,
     ),
     StateFile(
@@ -1583,10 +1315,8 @@ STATE_FILES: tuple[StateFile, ...] = (
     StateFile(
         key="label_watermarks",
         snapshot=SnapshotRole.COUPLED,
-        # BOTH directions at once, which is why this field is a tuple. An
-        # advanced watermark means audio landed on the volume, and it means the
-        # provider playlist it consumed was renamed with the taken marker. The
-        # rows roll back; neither of those does.
+        # Both directions: audio landed on the volume and the provider playlist
+        # was renamed with the taken marker. Neither rolls back with the rows.
         rollback_effects=(
             RollbackEffect.DOWNLOADED_FILE,
             RollbackEffect.REMOTE_PLAYLIST_PREFIX,
@@ -1673,10 +1403,8 @@ STATE_FILES: tuple[StateFile, ...] = (
     StateFile(
         key="tree_registry",
         snapshot=SnapshotRole.COUPLED,
-        # A cutover's effect is entirely inside the database it adopted, so
-        # nothing here reaches outside. The tree still needs reconciling after a
-        # pre-cutover restore, and that is a different question with its own
-        # marker: see cratekit.core.reconcile.
+        # A cutover's effect is inside the database. Reconciling the tree after a
+        # pre-cutover restore is a separate marker, see cratekit.core.reconcile.
         rollback_effects=(RollbackEffect.NONE,),
         root=StateRoot.LIBRARY,
         medium=Medium.FILE,
@@ -1762,22 +1490,8 @@ STATE_FILES: tuple[StateFile, ...] = (
             "one would keep believing it had exclusive access."
         ),
     ),
-    # WRITTEN AT THE U32 MERGE, which is the first moment it could be written.
-    # ``RollbackEffect`` and the ``rollback_effects`` field are U32's and existed
-    # on neither branch alone, so this entry carried the line as a comment until
-    # both halves shared a build. Duplicating the enum to get it in early would
-    # have been worse than the gap: two enum classes with one name compare unequal
-    # member by member, and the merge would have resolved to whichever definition
-    # landed last. U32's guard parses this file and named this entry in a failing
-    # test the moment the two sides met, so the omission could not survive the
-    # merge silently, which is what that guard is for.
-    #
-    # THE ANSWER IS NONE DELIBERATELY RATHER THAN BY OMISSION. Every record this
-    # entry holds describes rows inside the database a restore replaces: a
-    # fingerprint of that database, a flag about a tree inside it, and the
-    # identifiers of playlist rows in it. None of the three caused anything
-    # outside the coupled set, so nothing survives a rollback for a person to
-    # reconcile, and saying so out loud is the whole point of U32's field.
+    # NONE on purpose (U32): every record describes rows inside the database a
+    # restore replaces, so nothing survives a rollback to reconcile.
     StateFile(
         key="tree_convergence",
         snapshot=SnapshotRole.COUPLED,
@@ -2236,14 +1950,8 @@ STATE_FILES: tuple[StateFile, ...] = (
             "because a stage artifact belongs to a run, not to the database."
         ),
     ),
-    # ── U32's three entries, appended ───────────────────────────────────────
-    #
-    # APPENDED RATHER THAN FILED BESIDE THEIR SIBLINGS, deliberately, and for the
-    # reason the verb registry and the reason registry both give for the same
-    # choice: several units land against this literal at once, two entries
-    # inserted into different halves of it auto-merge, and a duplicate key is
-    # then resolved silently by whichever line comes last. An append conflicts
-    # textually, which is a conflict somebody reads.
+    # U32's entries. New entries are appended, never inserted, so two units
+    # adding entries conflict textually instead of auto-merging a duplicate key.
     StateFile(
         key="restore_reconciliation",
         snapshot=SnapshotRole.SURVIVES_ROLLBACK,
@@ -2318,21 +2026,14 @@ STATE_FILES: tuple[StateFile, ...] = (
             "no business reaching outside the library at all."
         ),
     ),
-    # APPENDED RATHER THAN FILED BESIDE A SIBLING, for the reason the verb
-    # registry and the pending register both give: two entries inserted into the
-    # middle of one literal by two units auto-merge into a table nobody read,
-    # while an append conflicts textually and a person resolves it.
+    # Appended, for the reason above.
     StateFile(
         key="adoption_ledger",
         snapshot=SnapshotRole.COUPLED,
         root=StateRoot.LIBRARY,
         medium=Medium.FILE,
         relative="adoption_ledger.json",
-        # ADDED AT THE MERGE, 2026-08-14. U23 was cut before U32 landed the rule
-        # that every COUPLED entry names what its records caused outside the set
-        # a restore replaces, so neither branch alone could see this entry owed
-        # an answer. tests/test_restore.py parses the literal and refuses a
-        # coupled entry without one.
+        # Every COUPLED entry names its effect; tests/test_restore.py checks.
         rollback_effects=(RollbackEffect.WRITTEN_FILE_TAG,),
         why=(
             "Which entries of an approved adoption plan have already been applied "
@@ -2392,13 +2093,7 @@ STATE_FILES: tuple[StateFile, ...] = (
             "document cannot arrive without a lock."
         ),
     ),
-    # ── U33's two entries, appended ────────────────────────────────────────
-    #
-    # APPENDED RATHER THAN FILED BESIDE favorites_state, for the reason the
-    # verb registry and the reason registry both give: several units land
-    # against this literal at once, two entries inserted into different
-    # halves of it auto-merge, and a duplicate key is then resolved silently
-    # by whichever line comes last. An append conflicts textually.
+    # U33's entries, appended for the reason above.
     StateFile(
         key="outbound_writes",
         snapshot=SnapshotRole.SURVIVES_ROLLBACK,
@@ -2434,7 +2129,7 @@ STATE_FILES: tuple[StateFile, ...] = (
             "for the inode reason every lock here shares."
         ),
     ),
-    # ── U130's two entries, appended ───────────────────────────────────────
+    # U130's entries, appended.
     StateFile(
         key="playlist_pairs",
         snapshot=SnapshotRole.SURVIVES_ROLLBACK,
@@ -2520,18 +2215,11 @@ STATE_FILES: tuple[StateFile, ...] = (
 
 _STATE_BY_KEY: Mapping[str, StateFile] = MappingProxyType({s.key: s for s in STATE_FILES})
 
-#: The Cratekit-owned directory inside the user's sets directory. Named here so
-#: the entry above and the resolver below cannot disagree about it.
+#: The Cratekit-owned directory inside the user's sets directory.
 SET_WORKSPACE_DIRNAME = ".cratekit_workspaces"
 
-#: The two entries whose location is COMPOSED from configured values rather than
-#: from a fixed relative path, each with the function that composes it.
-#:
-#: A table rather than a chain of branches inside ``state_path``, because there
-#: are now two of them and a branch per row stops being readable at the third.
-#: They stay out of ``relative`` because neither is a constant: the database's
-#: location is the user's decision made in rekordbox, and the sets directory's
-#: name is a config value the user can change.
+#: The entries whose location is composed from configured values rather than a
+#: fixed relative path, each with the function that composes it.
 _COMPOSED_PATHS: Mapping[str, Callable[["Config"], Path]] = MappingProxyType(
     {
         "rekordbox_db": lambda config: config.library.db_path,
@@ -2561,10 +2249,8 @@ def state_file(key: str) -> StateFile:
 def state_path(key: str, config: Config | None = None) -> Path:
     """Resolve one state entry to a path. Creates nothing (Rule 1).
 
-    A library-scoped entry needs a ``Config`` because its root is the configured
-    library. Asking for one without a config raises rather than falling back to
-    the installation root, since a silent fallback is how the write lock ends up
-    per installation again.
+    A library-scoped entry needs a ``Config``; without one it raises rather than
+    fall back to the installation root (KTD21).
     """
     entry = state_file(key)
     if entry.medium is Medium.KEYCHAIN:
@@ -2576,10 +2262,7 @@ def state_path(key: str, config: Config | None = None) -> Path:
     if entry.root is StateRoot.INSTALLATION:
         if key in _PROVIDER_GATE_KEYS:
             return provider_gate_dir() / entry.relative
-        # The installation root spans two physical directories with different
-        # backup and sync semantics, and the entry says which one it means. It
-        # used to be implicit, which is how the config file came to be declared
-        # under the state directory while every loader read the config directory.
+        # The entry names which of the two installation directories it means.
         base = (
             config_dir()
             if entry.installation_area is InstallationArea.CONFIG
@@ -2597,9 +2280,7 @@ def state_path(key: str, config: Config | None = None) -> Path:
         return composed(config)
     if entry.at_library_root:
         return config.library.root / entry.relative
-    # One subdirectory per snapshot role, DERIVED from the role the entry already
-    # declared. That is what makes the KTD21b coupled set a directory boundary
-    # instead of a list U8 and U32 have to keep in sync with this table.
+    # The subdirectory derives from the declared role (KTD21b).
     return library_state_dir(config) / _LIBRARY_SUBDIR_BY_ROLE[entry.snapshot] / entry.relative
 
 
@@ -2611,10 +2292,7 @@ def state_files_for(root: StateRoot) -> tuple[StateFile, ...]:
 def coupled_state_files() -> tuple[StateFile, ...]:
     """Every entry a KTD21b snapshot must capture and a restore must replace.
 
-    Derived from the schema so U8 and U32 never maintain a second copy of it. A
-    hand-mirrored list is the drift this repository already refuses for its CI
-    dependency list and its extras table, and here the cost of that drift is the
-    plan's top-ranked risk: the registry rolling back while the database does not.
+    Derived from the schema so U8 and U32 never keep a second copy.
     """
     return tuple(s for s in STATE_FILES if s.snapshot is SnapshotRole.COUPLED)
 
@@ -2623,17 +2301,9 @@ def out_of_band_effects() -> tuple[tuple[StateFile, RollbackEffect], ...]:
     """Every coupled entry that reaches outside the set a restore replaces, paired
     with each effect it declares.
 
-    DERIVED FROM THE SAME PREDICATE ``coupled_state_files`` uses, so the set a
-    restore reconciles and the set a restore replaces can never be two different
-    sets. A reconciler carrying its own list would answer about entries the
-    inventory no longer declares, and would say nothing at all about the next
-    entry somebody adds, which is the direction that fails silently.
-
-    ``RollbackEffect.NONE`` is filtered here rather than at each call site. It is
-    declared on the entry because "somebody decided nothing leaves the database"
-    and "nobody decided" have to look different in the source; it is dropped here
-    because a marker for it would ask a person to disposition an effect that does
-    not exist.
+    Uses the same predicate as ``coupled_state_files``, so the set a restore
+    reconciles is the set it replaces. ``NONE`` is dropped here, since there is
+    nothing to disposition.
     """
     return tuple(
         (entry, effect)
@@ -2646,15 +2316,9 @@ def out_of_band_effects() -> tuple[tuple[StateFile, RollbackEffect], ...]:
 def sidecar_paths(key: str, config: Config, *, restored_only: bool = False) -> tuple[Path, ...]:
     """The sidecar paths that travel with one entry. Composed, never listed.
 
-    ``restored_only`` is the difference between the two consumers. A CAPTURE
-    wants every sidecar, because the log holds transactions the database file
-    does not. A RESTORE wants only the ones it writes back, because the
-    shared-memory index is derived from the log and a stale one put back beside
-    a fresh log describes a database that no longer exists. Both answers come
-    from the same declaration, so they cannot disagree.
-
-    These are paths, not files: any of them may be absent, which is normal (see
-    ``StateFile.sidecars``). Resolving a path never touches the disk (Rule 1).
+    A capture wants every sidecar; a restore passes ``restored_only`` because a
+    stale index beside a fresh log describes a database that no longer exists.
+    Any path may be absent, which is normal. Touches no disk (Rule 1).
     """
     entry = state_file(key)
     base = state_path(key, config)
@@ -2669,25 +2333,11 @@ def snapshot_sources(config: Config) -> tuple[Path, ...]:
     """Every path a KTD21b capture copies: the coupled directory, the database,
     and the database's SQLite sidecars.
 
-    Few entries, not many, and that is the point of the layout. Everything
-    coupled except the database lives inside one directory, so capture is a
-    directory copy and restore is a directory replace. The database is the one
-    exception because its location is the user's decision, which is exactly why
-    ``validate`` constrains it: on one filesystem these two rename atomically, on
-    two they do not.
-
-    THE SIDECARS ARE PART OF THE ANSWER, NOT A DETAIL FOR THE CALLER. An entry
-    declares one path, and for a SQLite database that path is not the whole file
-    set: the write-ahead log beside it holds committed transactions the database
-    file does not yet contain. A consumer that copied exactly the paths this
-    function used to return would produce a database silently missing them. They
-    are expanded from ``StateFile.sidecars`` rather than appended by U8, because
-    a companion list in the capture unit is the hand-maintained set this schema
-    exists to abolish.
-
-    Some of the returned paths will not exist, and that is expected rather than
-    exceptional: see ``StateFile.sidecars`` for when a database legitimately has
-    no log beside it. Copy what is there.
+    Everything coupled but the database lives in one directory, so capture is a
+    directory copy and restore a directory replace; the database sits where the
+    user chose, which is why ``validate`` constrains it to one filesystem. The
+    sidecars are included because the log holds committed transactions the
+    database file lacks. Some returned paths may not exist; copy what is there.
     """
     coupled_dir = library_coupled_dir(config)
     sources = [coupled_dir]
@@ -2709,15 +2359,9 @@ def rekey_records(
 ) -> tuple[dict[str, object], tuple[str, ...]]:
     """The one-time re-key D5 requires, as a pure function.
 
-    A record keyed by a display name is orphaned the instant the user renames
-    the thing it describes, and the orphan is invisible: the code simply finds no
-    entry and starts over. ``resolve_identifier`` maps an old display-name key to
-    the stable identifier, returning None when it no longer resolves.
-
-    Returns the re-keyed records and the keys that did not resolve. Unresolved
-    keys are RETURNED rather than dropped, because a record that cannot be
-    re-keyed is exactly the orphan the rule exists to surface, and dropping it
-    silently would make the migration look clean.
+    ``resolve_identifier`` maps a display-name key to its stable identifier, or
+    None. Returns the re-keyed records and the keys that did not resolve, which
+    are returned rather than dropped so the orphans surface.
     """
     migrated: dict[str, object] = {}
     unresolved: list[str] = []
@@ -2730,59 +2374,40 @@ def rekey_records(
     return migrated, tuple(unresolved)
 
 
-# ---------------------------------------------------------------------------
-# The typed schema
-#
-# Frozen dataclasses, not a dict. Every access is attribute access, so a typo is
-# an AttributeError at the call site rather than a None that travels three
-# functions before it fails as something else.
-# ---------------------------------------------------------------------------
+# The typed schema: frozen dataclasses, so a typo is an AttributeError at the
+# call site rather than a None that travels.
 
 
 @dataclass(frozen=True, slots=True)
 class PrefixMapping:
     """One entry of the ordered location prefix map (S1).
 
-    The TOML keys are ``from`` and ``to``. ``from`` is a Python keyword, so the
-    fields carry a suffix and the serializer maps them back. That mapping is
-    declared once, in ``_PREFIX_TOML_KEYS``, rather than spelled at each end.
-
-    On disk this is an ordered array of tables. The writer emits it as an inline
-    array of inline tables rather than repeated ``[[library.location_prefix_map]]``
-    headers, which is the same TOML value by every parser and only differs in how
-    it reads by hand. What matters, and what is asserted, is that ORDER survives:
-    one prefix can be another's prefix, first match wins, and an unordered map
-    resolves those two differently on different runs.
+    The TOML keys are ``from`` and ``to``, mapped to suffixed fields once in
+    ``_PREFIX_TOML_KEYS``. Order must survive a round trip: one prefix can be
+    another's prefix, and the first match wins.
     """
 
     from_prefix: str
     to_prefix: str
-    #: R38, per rule. The recorded identity of the volume ``to`` sits on, in the
-    #: shape ``library.volume_id`` has and for the same reason: a destructive
-    #: pass that follows this rule writes to that volume, and a mount path does
-    #: not say which disk is mounted there today. Unset is correct for a target
-    #: inside the library root, which the library's own identity answers for. A
-    #: target anywhere else with nothing recorded here refuses a destructive pass
-    #: rather than being trusted because its directory exists.
+    #: R38, per rule: the recorded identity of the volume ``to`` sits on, since a
+    #: mount path does not say which disk is there. Unset is correct for a target
+    #: inside the library root; a target elsewhere with nothing recorded refuses a
+    #: destructive pass.
     volume_id: str | None = None
 
 
 _PREFIX_TOML_KEYS = (("from", "from_prefix"), ("to", "to_prefix"))
 
-#: The one OPTIONAL key of a prefix mapping, and its TOML spelling is its field
-#: name. Separate from the pairs above because those are required and this is
-#: written only when set: a rule with no identity must serialize to the bytes it
-#: always did, or every existing configuration changes fingerprint (KTD9).
+#: The one optional key of a prefix mapping, written only when set so a rule
+#: without one keeps its bytes and its fingerprint (KTD9).
 PREFIX_VOLUME_IDENTITY_KEY = "volume_id"
 
-#: The one interpolation token a prefix mapping's ``to`` may contain. Keeping the
-#: map interpolated rather than absolute is what lets it survive the user
-#: remounting the library somewhere else without a rewrite.
+#: The one interpolation token a prefix mapping's ``to`` may contain, so the map
+#: survives remounting the library.
 LIBRARY_ROOT_TOKEN = "{library.root}"
 
-#: The processed tree's default name, the one the author kept by hand before
-#: the product filed anything (U154). Named once so the setup wizard's default
-#: and the dataclass default cannot come to differ.
+#: The processed tree's default name (U154), shared by the wizard and the
+#: dataclass.
 DEFAULT_PROCESSED_DIR = "Processed_Tracks"
 
 
@@ -2792,43 +2417,25 @@ class LibraryConfig:
 
     root: Path
     #: R38. The recorded identity of the volume, asserted before any destructive
-    #: operation. A UUID or serial, NEVER a mount path: a mount path is exactly
-    #: what R38 says not to identify a volume by, because two different drives
-    #: mount at the same path on different days.
+    #: operation. A UUID or serial, never a mount path.
     volume_id: str
-    #: The rekordbox database. Declared in ``STATE_FILES`` as ``rekordbox_db``,
-    #: library-scoped and COUPLED, and CONSTRAINED: it is expected under ``root``.
+    #: The rekordbox database (``rekordbox_db``, COUPLED), expected under ``root``.
     db_path: Path
     #: The date the user accepted that their database sits outside the library
-    #: root. Unset means the containment rule applies and a database elsewhere
-    #: refuses at load.
-    #:
-    #: WHY THE RULE EXISTS, AND WHY IT IS NOT AN OUTRIGHT REFUSAL. KTD21b requires
-    #: the database and its coupled state to be captured in ONE atomic commit, and
-    #: the only atomic commit available is a rename, which is atomic only within
-    #: one filesystem. A friend who leaves rekordbox at its default location puts
-    #: the database in their home directory while the coupled state sits on the
-    #: music volume, and the plan's stated premise for the decision, "the coupled
-    #: state is a handful of small files beside the database", is then false for
-    #: that install. Refusing outright would lock out the platform default, so the
-    #: non-contained case stays supported and becomes a recorded decision with its
-    #: consequence attached. What is not acceptable is the silent default: the
-    #: failure has to be visible at setup, while the user can still move the
-    #: database, rather than at the first snapshot, when they cannot.
+    #: root. Unset, a database elsewhere refuses at load. KTD21b needs one atomic
+    #: rename across the database and its coupled state, which works only on one
+    #: filesystem; rekordbox's default location breaks that, so the case is
+    #: allowed as a decision made visibly at setup rather than refused.
     db_outside_root_acknowledged_on: str | None = None
     music_dir: str = "Music"
     #: The directory under ``music_dir`` where ``intake shelve`` files a landed
-    #: batch once it is imported, ``<processed_dir>/<year>/<MM_DD_YY subject>``
-    #: (U154). A setup answer, asked once with this default and kept, so the
-    #: layout a person already keeps by hand is the one the verb continues.
+    #: batch, ``<processed_dir>/<year>/<MM_DD_YY subject>`` (U154). A setup answer.
     processed_dir: str = DEFAULT_PROCESSED_DIR
     sets_dir: str = "Set_Recordings"
     #: The library-scoped state root's directory name, relative to ``root``.
     state_dirname: str = ".cratekit"
-    #: Ordered; FIRST MATCH WINS. Order is load-bearing because one prefix can be
-    #: another's prefix, and an unordered map resolves those two differently on
-    #: different runs. Populated at setup from what the database actually
-    #: contains, never from a constant.
+    #: Ordered, first match wins, since one prefix can be another's prefix.
+    #: Populated at setup from what the database contains.
     location_prefix_map: tuple[PrefixMapping, ...] = ()
 
 
@@ -2836,9 +2443,8 @@ class LibraryConfig:
 class PathsConfig:
     """Paths that are not inside the library."""
 
-    #: Where fresh downloads land before they are moved into the library. It must
-    #: round-trip into the acquisition adapter's own setting (KTD20), which is why
-    #: it is one configured value rather than two that can disagree.
+    #: Where fresh downloads land before moving into the library. One value that
+    #: round-trips into the acquisition adapter's setting (KTD20).
     download_staging: Path
 
 
@@ -2851,13 +2457,10 @@ class ProfileConfig:
 
 @dataclass(frozen=True, slots=True)
 class ModulesConfig:
-    """Per-module toggles the user set EXPLICITLY.
+    """Per-module toggles the user set explicitly.
 
-    Only what the file actually contains. Absence matters: a module the file does
-    not mention takes the profile's answer, and a module the file does mention
-    overrides it (D6). If this stored a fully defaulted mapping there would be no
-    way left to tell "the user chose off" from "the profile says off", and the
-    precedence rule would become unexpressible.
+    Only what the file contains: a module it omits takes the profile's answer
+    (D6), so "chose off" and "profile says off" stay distinguishable.
     """
 
     explicit: Mapping[str, bool] = field(default_factory=lambda: MappingProxyType({}))
@@ -2865,10 +2468,10 @@ class ModulesConfig:
 
 @dataclass(frozen=True, slots=True)
 class TaxonomyConfig:
-    """The taxonomy SELECTION only (S6).
+    """The taxonomy selection only (S6).
 
-    The active template itself is library-scoped state. Config records which
-    template was chosen at setup, so a re-run of setup can seed the same one.
+    The active template is library-scoped state; config records the setup
+    choice so a re-run of setup seeds the same one.
     """
 
     template: str = "default"
@@ -2876,30 +2479,22 @@ class TaxonomyConfig:
 
 @dataclass(frozen=True, slots=True)
 class NamingConfig:
-    """Naming POLICY values (S3).
+    """Naming policy values (S3).
 
-    U2 owns these values; the naming engine owns the mechanism and takes them as
-    parameters. The engine must not read config: a function that reaches for
-    global configuration cannot be exercised against two taxonomies in one
-    process, and proving a second template works needs exactly that.
+    The naming engine takes these as parameters and never reads config, so it
+    can run against two taxonomies in one process.
     """
 
     lossy_marker: str = "[MP3]"
-    #: Both budgets are UTF-8 BYTES, not characters. The margin below the
-    #: filesystem's own ceiling is deliberate: a later zero-padding pass grows the
-    #: key field, and measuring against the padded form pre-reserves that growth.
+    #: Both budgets are UTF-8 bytes, not characters. The margin below the
+    #: filesystem ceiling reserves room for a later zero-padding pass.
     path_budget_bytes: int = 250
     filename_max_bytes: int = 255
 
 
-#: Adapter names a configuration file once recorded, each to the name the same
-#: adapter goes by now. The vendored downloader's key was its upstream project's
-#: name until U197 renamed it to a neutral one; a file written before that still
-#: says the old name, and reading it must select the same adapter rather than
-#: refuse. The fold happens where the file is read, so doctor, every report and
-#: every receipt name the adapter by its current key, and the acquisition
-#: registry consults the same mapping for a caller holding an old name. It lives
-#: here rather than beside the registry because a foundation module may not
+#: Retired adapter names a config file may hold, each mapped to its current
+#: name (U197), so an old file selects the same adapter rather than refuse.
+#: Folded where the file is read; here because a foundation module may not
 #: import ``cratekit.acquire``.
 RETIRED_ADAPTER_NAMES: Mapping[str, str] = MappingProxyType({"tidal_dl_ng": "vendored"})
 
@@ -2917,39 +2512,26 @@ class AcquisitionConfig:
     quality: str = "lossless"
     #: None means "the adapter's own default". The adapter owns pacing (KTD20).
     pacing_delay_s: float | None = None
-    #: How many acquisitions run at once (R10). The value the system Cratekit
-    #: replaces could not express at all: there it was a constant written into
-    #: the wrapped tool's global settings file by a subprocess call before every
-    #: run, shared with any other process using that tool, and reset to lossy
-    #: factory defaults twice by a racing write. Here it is one declared value
-    #: the adapter carries in memory for one invocation, and the bounded pool
-    #: reads it rather than declaring a second cap.
+    #: How many acquisitions run at once (R10). One declared value the adapter
+    #: carries in memory per invocation; the bounded pool reads it rather than
+    #: declaring a second cap.
     concurrency: int = 1
-    #: R21 and S3. Two values only. There is deliberately no third value in which
-    #: a lossy file goes UNMARKED: marking is mandatory wherever lossy is
-    #: permitted at all, so a "lossy allowed, marking off" combination cannot be
-    #: expressed, which is stronger than validating it away.
+    #: R21 and S3. Two values only: marking is mandatory wherever lossy is
+    #: permitted, so an unmarked lossy file cannot be expressed.
     lossless_policy: str = "strict"
 
 
-#: The tempo window the head's estimate is chosen inside, in beats per minute,
-#: both ends included. The window is the source system's default, and it is
-#: the one setting that decides which metrical level a head names: a track
-#: whose pulse reads as 83 or 166 is named by the value inside the window
-#: (R-744). A DJ whose library is drum and bass raises both bounds in the
-#: config file; nothing here reads a genre.
+#: The tempo window the head's estimate is chosen inside, in BPM, both ends
+#: included. It decides which metrical level a head names (83 or 166, R-744); a
+#: drum and bass library raises both bounds in the config file.
 DEFAULT_TEMPO_FLOOR = 80
 DEFAULT_TEMPO_CEILING = 160
 
 #: The drift at or above which a track reads as variable and its landed row is
-#: marked ``dyn`` for rekordbox's Dynamic analysis (U157), a percent spread of
-#: the tempo over the track's length (``core.drift``). Synthetic steady tracks
-#: measured 0.0 to 0.3 and a three beat ramp over two minutes 1.7, so the
-#: default sits above every steady reading and leans toward Normal, because a
-#: steady track sent to Dynamic comes back with a wobbling grid while a live
-#: track sent to Normal keeps the grid every track had before this setting.
-#: NOT YET CALIBRATED ON A LIBRARY: the card owes a sitting that reads the
-#: drifts of a batch holding both kinds and sets this from them.
+#: marked ``dyn`` for rekordbox's Dynamic analysis (U157), as a percent tempo
+#: spread (``core.drift``). Set above every synthetic steady reading (0.0 to 0.3)
+#: and leaning toward Normal, since a steady track sent to Dynamic gets a
+#: wobbling grid. Not yet calibrated on a real library; the card owes that.
 DEFAULT_DRIFT_CUT = 1.5
 
 
@@ -2972,40 +2554,30 @@ class AnalysisConfig:
 class RekordboxConfig:
     """The version pins the guarded writer refuses on.
 
-    ``pinned_app_version`` is None by default and None REFUSES (S2). It is never
-    auto-recorded from whatever is installed: a pin the software copies from the
-    running install is a tautology that refuses nothing, forever, which is the
-    entire property the pin exists to provide. Setup may READ the installed
-    version and PROPOSE it; recording it takes an explicit decision from the user.
+    ``pinned_app_version`` defaults to None, and None refuses (S2). It is never
+    auto-recorded from the installed app, since a copied pin refuses nothing;
+    setup may propose it, and the user records it.
     """
 
     pinned_pyrekordbox: str = "0.4.4"
     pinned_db_version: str = "6000"
     pinned_app_version: str | None = None
-    #: The date the user confirmed this pin against a real write. Without it, a
-    #: pin is a number somebody typed; with it, a stale pin is visible as stale.
+    #: The date the user confirmed this pin against a real write, so a stale pin
+    #: shows as stale.
     validated_on: str | None = None
     app_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class BackupConfig:
-    """Remote backup destinations. All None by default, all wizard-supplied.
+    """Remote backup destinations. All None by default, all wizard supplied.
 
-    Every one of these is a hardcoded literal in the source system's backup
-    script, naming one person's remote and one person's bucket names.
-
-    EACH DESTINATION NAMES AN RCLONE REMOTE, ``remote:path``, AND ``validate``
-    REFUSES ONE THAT DOES NOT (R-345). The three are handed to rclone exactly as
-    typed, and rclone reads a value with no colon as a LOCAL path relative to
-    the working directory of whatever process runs it. Typed as bare folder
-    names, a dry run succeeded in four seconds because listing a folder that
-    does not exist is instant, and a real run would have copied the library
-    beside the detached worker's working directory and published a backup age
-    for that copy. ``remote`` is the name before the colon, derived from the
-    destinations when the file does not spell it and checked against them when
-    it does, so the name doctor looks up in rclone's configuration is the name
-    the transfers actually use.
+    Each destination must name an rclone remote, ``remote:path``, and
+    ``validate`` refuses one that does not (R-345): rclone reads a value with no
+    colon as a local path relative to its working directory, and would back the
+    library up beside the worker. ``remote`` is derived from the destinations
+    when unset and checked against them when set, so doctor looks up the remote
+    the transfers use.
     """
 
     remote: str | None = None
@@ -3014,37 +2586,27 @@ class BackupConfig:
     db_dest_root: str | None = None
 
 
-#: The three configuration keys rclone is handed as targets, in the order the
-#: wizard asks for them. Named once so the validator, the wizard and the backup
-#: verb's own refusal cannot disagree about which keys are destinations.
+#: The three keys rclone is handed as targets, in wizard order, shared by the
+#: validator, the wizard and the backup verb.
 BACKUP_DESTINATION_KEYS: tuple[str, ...] = (
     "backup.dest",
     "backup.archive_root",
     "backup.db_dest_root",
 )
 
-#: An rclone remote name, as rclone's own configuration rule has it since
-#: 1.61: letters and digits in any script, underscore, dot, plus, at sign,
-#: hyphen and space, not starting with a hyphen or a space, not ending with a
-#: space. A value that fails it cannot be a configured remote whatever else it
-#: is. ``\w`` is Unicode aware here, which is what admits a letter rclone
-#: admits and a hand list of ASCII ranges would refuse.
+#: An rclone remote name by rclone's own rule since 1.61: letters and digits in
+#: any script, underscore, dot, plus, at sign, hyphen and space, not starting
+#: with a hyphen or space nor ending with a space. ``\w`` is Unicode aware.
 _RCLONE_REMOTE_NAME = re.compile(r"^[\w.+@][\w.+@ -]*(?<! )$")
 
 
 def backup_remote_name(value: object) -> str | None:
     """The rclone remote a destination names, or None when it names none.
 
-    ``remote:path`` is rclone's spelling and the part before the FIRST colon is
-    the remote. Four shapes answer None and each is a value rclone would read
-    as something other than a configured remote: no colon at all is a local
-    relative path; an empty name before the colon is an on the fly backend
-    (``:local:/x`` is the local disk again); a single character before the
-    colon is a Windows drive letter, ``C:\\x`` and ``C:/x`` alike, which rclone
-    reads as a local path on that platform; and a name rclone's configuration
-    cannot hold, which therefore names nothing rclone has. Public because the
-    wizard derives ``backup.remote`` through the same rule the validator judges
-    by, and the doctor's lookup splits on the same colon.
+    The remote is the part before the first colon. None for no colon (a local
+    path), an empty name (an on the fly backend), a single character (a Windows
+    drive letter), or a name rclone's configuration cannot hold. Public so the
+    wizard and doctor split by the same rule.
     """
     if not isinstance(value, str):
         return None
@@ -3059,13 +2621,9 @@ def backup_remote_name(value: object) -> str | None:
 def _validate_backup_destinations(data: Mapping) -> list[str]:
     """Every backup destination names one rclone remote, and ``remote`` agrees.
 
-    Decided against the EFFECTIVE mapping, since ``validate`` applies the
-    environment overrides before this runs (P2). An UNSET destination is not a
-    problem here whether the backup module is on or off: the full preset turns
-    the module on for everybody, doctor already reports an unset remote as
-    INFO for that reason, and the backup verb refuses on its own missing
-    destination. What is refused is a value that IS set and would send rclone
-    somewhere other than a configured remote.
+    Judged on the effective mapping, overrides applied (P2). An unset
+    destination is not a problem here, since doctor and the backup verb report
+    it; a set value that is not a configured remote is.
     """
     problems: list[str] = []
     named: dict[str, str] = {}
@@ -3111,17 +2669,9 @@ def backup_remote_disagreement(data: Mapping) -> tuple[str, str] | None:
     """The spelled ``backup.remote`` and the one remote the destinations name,
     when the two differ; None otherwise.
 
-    None when no remote is spelled, and None when the set destinations do not
-    name exactly one remote, since destinations that disagree among themselves
-    are their own problem and give nothing to compare against. ``remote`` may be
-    spelled bare, ``gdrive``, or as ``gdrive:`` or ``gdrive:path``; the name is
-    what is compared, which is also what doctor looks up in rclone's
-    configuration.
-
-    Public because the wizard asks the same question to decide whether a re-run
-    may repair the remote and what its refusal tells a person to type (R-662).
-    One rule in one place, so the refusal and the repair cannot disagree about
-    whether there is a disagreement.
+    None when no remote is spelled or the destinations do not name exactly one.
+    Compares names, so ``gdrive``, ``gdrive:`` and ``gdrive:path`` agree. Public
+    so the wizard's repair and its refusal ask the same question (R-662).
     """
     remote = _dig(data, "backup.remote")
     if not isinstance(remote, str) or not remote.strip():
@@ -3139,22 +2689,16 @@ def backup_remote_disagreement(data: Mapping) -> tuple[str, str] | None:
     return remote, expected
 
 
-#: The intake ages the source system wrote into its own module as constants.
-#: Named HERE rather than only as field defaults, because ``slots=True`` replaces
-#: a dataclass field default with a descriptor on the class, so validation could
-#: not read them back off ``ReportsConfig`` and would have had to keep a second
-#: copy. Two copies of a default is how the file and the check come to disagree.
+#: The default intake ages, named as constants because ``slots=True`` hides a
+#: field default from the validator, which would otherwise keep a second copy.
 DEFAULT_INTAKE_STALE_DAYS = 30
 DEFAULT_INTAKE_EXPIRED_DAYS = 90
 
-#: How long an open gate may sit idle before ``crate status`` folds it into
-#: one line and ``crate run retire`` offers to answer it (U170). A week, since
-#: sitting 47 opened on seventeen gates between one and five weeks old, every
-#: one a run nobody would resume. Named here for the reason the intake ages are.
+#: How long an open gate may sit idle before ``crate status`` folds it into one
+#: line and ``crate run retire`` offers to answer it (U170).
 DEFAULT_OPEN_GATE_STALE_DAYS = 7
 
-#: Ten years, the ceiling ``MAX_EXPORT_STALE_DAYS`` gives and for its reason:
-#: the count becomes a duration, and a number with no bound overflows one.
+#: Ten years, a ceiling so the day count never overflows a duration.
 MAX_OPEN_GATE_STALE_DAYS = 3650
 
 
@@ -3162,17 +2706,8 @@ MAX_OPEN_GATE_STALE_DAYS = 3650
 class ReportsConfig:
     """Policy the read-only reports age against (R5, feature row 20).
 
-    These are DAY COUNTS and they live here rather than in the report module for
-    the reason S3 gives everywhere else: the mechanism belongs to the module and
-    the values belong to the user. The system Cratekit replaces wrote both of
-    them into the module as constants, so the only way to hold intake for longer
-    was to edit the software.
-
-    Defaults reproduce the source convention exactly, thirty days and ninety, so
-    an existing user's report says what it used to say. A default here is
-    correct where one on ``AgingThresholds`` would not be: this is the file that
-    OWNS the answer, and the report module has no way to construct the value
-    without being handed both halves.
+    Day counts the user owns (S3); the report module owns the mechanism. The
+    defaults, thirty and ninety days, reproduce the source convention.
     """
 
     intake_stale_days: int = DEFAULT_INTAKE_STALE_DAYS
@@ -3182,20 +2717,17 @@ class ReportsConfig:
     open_gate_stale_days: int = DEFAULT_OPEN_GATE_STALE_DAYS
 
 
-#: How old a hand made collection export may be before the outbound verbs say so.
-#: Named here as well as on the field for the reason the intake ages above give:
-#: ``slots=True`` hides a field default from the validator.
+#: How old a hand made collection export may be before the outbound verbs say
+#: so. A constant for the reason the intake ages give.
 DEFAULT_EXPORT_STALE_DAYS = 7
 
-#: Ten years. NOT A POLICY, A CEILING: nobody means a longer one, and a number
-#: with no bound reaches a duration that cannot hold it. Ten billion days, a
-#: guess at switching the warning off, passed validation and then crashed all
-#: three outbound verbs at the gate with an ``OverflowError``.
+#: Ten years, a ceiling rather than a policy: a larger count overflows a
+#: duration and crashed the outbound verbs at the gate.
 MAX_EXPORT_STALE_DAYS = 3650
 
 
 #: The rekordbox top folders a sync of every pair skips unless the file says
-#: otherwise (U198), decided by Phillip on 2026-11-04.
+#: otherwise (U198).
 DEFAULT_PAIR_SKIP_FOLDERS: tuple[str, ...] = ("ARCHIVE",)
 
 PAIR_SKIP_FOLDERS_KEY = "outbound.pair_skip_folders"
@@ -3209,46 +2741,32 @@ PAIR_ORDER_EVERY_PAIR_KEY = "outbound.pair_order_every_pair"
 class OutboundConfig:
     """Policy for the verbs that write to a streaming account (R-227).
 
-    ``export_stale_days`` is A WARNING THRESHOLD AND NEVER A REFUSAL. Both
-    outbound verbs read a rekordbox collection export somebody made by hand, so
-    a sweep is only as current as that file, and past this many days the plan a
-    person confirms names the file's date and says it is old. The person still
-    decides: somebody who has not touched their library in a month has a month
-    old export that is exactly right, and only they know that.
-
-    A day count in the user's file rather than a constant in the module, on the
-    rule ``ReportsConfig`` states: the mechanism belongs to the module and the
-    value belongs to the user.
+    ``export_stale_days`` is a warning threshold, never a refusal: past it the
+    plan names the hand made export's date and says it is old, and the person
+    still decides. A user value, on the rule ``ReportsConfig`` states.
     """
 
     export_stale_days: int = DEFAULT_EXPORT_STALE_DAYS
     #: The rekordbox top folders ``crate sync pair`` lists and never pairs
-    #: when it finds the author's own playlists (U198), by exact name. ARCHIVE
-    #: by Phillip's answer of 2026-11-04; an empty list pairs every folder.
+    #: (U198), by exact name; an empty list pairs every folder.
     pair_skip_folders: tuple[str, ...] = DEFAULT_PAIR_SKIP_FOLDERS
-    #: U231. ``crate sync pair`` puts an account playlist in rekordbox's order
-    #: only when its rekordbox playlist sits under the top folder GIG READY,
-    #: the one played from, since every move is a provider call and Sitting
-    #: 86's 65 orders took thousands of them. True keeps the order of every
-    #: pair; a pair outside the scope still syncs its tracks both ways.
+    #: U231. ``crate sync pair`` orders an account playlist only when its
+    #: rekordbox playlist is under GIG READY, since every move is a provider
+    #: call. True orders every pair; tracks still sync both ways regardless.
     pair_order_every_pair: bool = False
 
 
 #: The recognition service's identify endpoint for the region most accounts are
-#: made in. Named here as well as on the field for the reason the intake ages
-#: give: ``slots=True`` hides a field default from the validator.
+#: made in. A constant for the reason the intake ages give.
 DEFAULT_RECOGNITION_HOST = "identify-us-west-2.acrcloud.com"
 
-#: Paid recognition calls this machine may make in one calendar month before
-#: it refuses. About three two hour sets. A DEFAULT RATHER THAN NO BOUND, because
-#: the source system shipped with none and spent 565 calls into a spent quota
-#: before anyone noticed; a person on a larger plan raises it in one line, and
-#: the refusal names the line.
+#: Paid recognition calls this machine may make in one calendar month before it
+#: refuses, about three two hour sets. A default bound rather than none, so a
+#: spent quota cannot be overrun unnoticed; the refusal names the line to raise.
 DEFAULT_RECOGNITION_MONTHLY_CALLS = 1000
 
-#: The only domain a recognition host may sit under. The access key and a
-#: signature over it go to this host with every paid call, so a typed value that
-#: named some other domain would hand them to whoever holds it.
+#: The only domain a recognition host may sit under, since the access key and
+#: its signature go to that host with every paid call.
 RECOGNITION_HOST_DOMAIN = "acrcloud.com"
 
 _HOST_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
@@ -3258,80 +2776,52 @@ _HOST_LABEL = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
 class RecognitionConfig:
     """Where paid recognition is sent and how much of it a month may cost (R-301).
 
-    ``host`` is the account's regional identify endpoint. An account belongs to
-    one region, and asking another region's host is an HTTP answer the
-    identifier reads as transient, five times, before it stops.
-
-    ``monthly_calls`` is A REFUSAL AND NEVER A WARNING. The identifier checks
-    what is owed against what the ledger already holds for the month before the
-    first chunk is carved, and refuses naming this key. The ledger counts what
-    THIS machine spent, so the service's own quota answer is still the ceiling
-    when another tool shares the key.
-
-    Both live in the user's file rather than as constants in the module, on the
-    rule ``ReportsConfig`` states, and both are frozen with a queued job like
-    everything else the job reads.
+    ``host`` is the account's regional endpoint; another region's host answers
+    with errors the identifier reads as transient. ``monthly_calls`` is a
+    refusal, never a warning, checked against this machine's ledger before the
+    first chunk is carved. Both are user values frozen with a queued job.
     """
 
     host: str = DEFAULT_RECOGNITION_HOST
     monthly_calls: int = DEFAULT_RECOGNITION_MONTHLY_CALLS
 
 
-#: The least time between two consecutive calls to the streaming provider, from
-#: any process on this machine. One a second is well under any published music
-#: API allowance; the eleventh sitting's sweep, unpaced, tripped the account in
-#: minutes. Named here as well as on the field for the reason the intake ages
-#: give: ``slots=True`` hides a field default from the validator.
+#: The least time between two consecutive calls to the streaming provider from
+#: any process on this machine, well under any published allowance. Each
+#: provider default is a constant for the reason the intake ages give.
 DEFAULT_PROVIDER_MIN_INTERVAL_S = 1.0
 
-#: How long every provider call is refused after the breaker trips. Fifteen
-#: minutes, because the sitting's limit cleared in about ten and a window
-#: shorter than the clearing time is a second trip.
+#: How long every provider call is refused after the breaker trips, longer than
+#: the observed clearing time so the cooldown is not a second trip.
 DEFAULT_PROVIDER_COOLDOWN_S = 900
 
 #: The most calls to the streaming provider one command may make before it
 #: stops, keeping what it did, and names the command that continues (U193).
-#: Five hundred, Phillip's answer on the decisions page: a full label build of
-#: Defected spent 3,026 calls before the breaker parked it, against an estimate
-#: near 24,700. A person raises it for one run with ``--calls`` or for every run
-#: here. Named here as well as on the field for the reason the intake ages give.
+#: Raised for one run with ``--calls`` or for every run here.
 DEFAULT_PROVIDER_CALLS_PER_COMMAND = 500
 
-#: How many days an answer the streaming provider gave for an ISRC is reused
-#: before it is asked again (U206). Thirty, because a catalogue's filing of a
-#: recording moves rarely and a rehearsal and its live run are hours apart. A
-#: not found is kept a week at most, in ``acquire.isrc_cache``. Zero turns the
-#: cache off. Named here as well as on the field for the reason the intake ages
-#: give.
+#: How many days a provider answer for an ISRC is reused before it is asked
+#: again (U206). A not found is kept a week at most, in ``acquire.isrc_cache``.
+#: Zero turns the cache off.
 DEFAULT_PROVIDER_ISRC_CACHE_DAYS = 30
 
-#: How many calls each identity, the account session and Cratekit's app
-#: credentials, may make to the streaming provider in any sixty minutes, from
-#: every command and every process that reads the one gate (U278). Fifteen
-#: hundred, well under the 7,800 in twenty minutes that preceded the block of
-#: 2026-11-12, and under the 3,600 the default pacing allows, so a day of reads
-#: can no longer use up what a label go needs. A person raises it for one run
-#: with ``--calls-per-hour`` or for every run here. Named here as well as on the
-#: field for the reason the intake ages give.
+#: How many calls each identity (the account session, Cratekit's app
+#: credentials) may make in any sixty minutes across every process reading the
+#: one gate (U278), below the default pacing so a day of reads cannot use up
+#: what a label go needs. Raised for one run with ``--calls-per-hour``.
 DEFAULT_PROVIDER_CALLS_PER_HOUR = 1500
 
-#: How many calls the night pass may make to the streaming provider in one
-#: night, across every firing of it that night and every process that reads the
-#: one gate (U293). Twelve hundred: a hundred track pass spends about four
-#: hundred and fifty (sitting 100 measured 42 calls for a ten track download),
-#: and the whole is far below the 7,800 calls in twenty minutes that locked the
-#: account at sitting 94. A night runs from noon to noon, local time. Named here
-#: as well as on the field for the reason the intake ages give.
+#: How many calls the night pass may make in one night, across every firing and
+#: every process reading the one gate (U293). A night runs noon to noon, local
+#: time.
 DEFAULT_PROVIDER_NIGHT_CALLS = 1200
 
-#: The hour's budget the night pass holds the account to (U293), lower than
-#: ``calls_per_hour`` so an unattended run spends at most this much in any
-#: sixty minutes. Six hundred. The lower of this and ``calls_per_hour`` holds.
+#: The hour's budget the night pass holds the account to (U293). The lower of
+#: this and ``calls_per_hour`` holds.
 DEFAULT_PROVIDER_NIGHT_CALLS_PER_HOUR = 600
 
-#: The share of the hour's budget a command that only reads may never spend,
-#: kept for the verbs that write the account or download (U278). A quarter, the
-#: brief's default: reads stop at 1,125 of 1,500 and a label go keeps 375.
+#: The share of the hour's budget a read-only command may never spend, kept for
+#: the verbs that write the account or download (U278).
 DEFAULT_PROVIDER_RESERVE_SHARE = 0.25
 
 
@@ -3339,36 +2829,15 @@ DEFAULT_PROVIDER_RESERVE_SHARE = 0.25
 class ProviderConfig:
     """How the streaming provider's account is protected from this machine (R-705).
 
-    ``min_interval_s`` is the pacing every call goes through, in
-    ``core.provider_gate``, measured from the last call ANY process made.
-    ``cooldown_s`` is how long the breaker holds once a rate limit has survived
-    the retry ladder. Both are refusals and never warnings: a call inside the
-    cooldown is not made, and the refusal names this section.
-
-    Both live in the user's file rather than as constants in the module, on the
-    rule ``ReportsConfig`` states, and both are frozen with a queued job like
-    everything else the job reads. There is no value that switches either off.
-
-    ``calls_per_command`` is the call ceiling (U193): the most calls one
-    command may make before the gate stops it the way a trip does. It is a
-    line per command and never per day, Phillip's answer, so the next run
-    starts fresh. There is no value that switches it off either.
-
-    ``isrc_cache_days`` is how long an ISRC the provider answered is not asked
-    again (U206), by any verb, in a rehearsal or a live run. Zero turns the
-    cache off and every lookup asks; that saves nothing and costs nothing but
-    calls.
-
-    ``calls_per_hour`` is the hour's budget (U278): the most calls each identity
-    may make in any sixty minutes, counted in the one gate across every command
-    and every process, and ``reserve_share`` the part of it a command that only
-    reads may never spend. Neither has a value that switches it off.
-
-    ``night_calls`` and ``night_calls_per_hour`` are the night pass's own
-    ceilings (U293): the most calls the night pass, ``sync.night``, may make in
-    one night, counted in the one gate across every firing and every process, and the
-    hour's budget it holds the account to while it runs. Both only lower what
-    the lines above allow; neither has a value that switches it off.
+    Every field is a refusal, never a warning, none can be switched off, and
+    all are frozen with a queued job. ``min_interval_s`` paces from the last
+    call any process made; ``cooldown_s`` holds the breaker after a rate limit
+    survives the retry ladder; ``calls_per_command`` is per command, never per
+    day (U193); ``isrc_cache_days`` reuses an ISRC answer, zero asking every
+    time (U206); ``calls_per_hour`` is each identity's budget in the one gate,
+    of which ``reserve_share`` is barred to read-only commands (U278);
+    ``night_calls`` and ``night_calls_per_hour`` only lower these for the night
+    pass (U293).
     """
 
     min_interval_s: float = DEFAULT_PROVIDER_MIN_INTERVAL_S
@@ -3382,10 +2851,8 @@ class ProviderConfig:
 
 
 #: How many releases one sweep of one favourite label may offer for review,
-#: counting the ones already in the queue (R-790). Ten, because the first sweep
-#: of 32 labels at the old cap of four hundred filed 2,832 items nobody could
-#: answer in a sitting. Named here as well as on the field for the reason the
-#: intake ages give: ``slots=True`` hides a field default from the validator.
+#: counting those already queued (R-790), small enough to answer in a sitting.
+#: A constant for the reason the intake ages give.
 DEFAULT_LABEL_OFFER = 10
 
 #: How many days a dated new releases playlist beside a label's year may sit
@@ -3397,18 +2864,12 @@ DEFAULT_NEW_PLAYLIST_AGE_DAYS = 30
 class LabelsConfig:
     """How much of a favourite label's catalogue one sweep offers (R-790).
 
-    ``offer_per_sweep`` IS A WINDOW OVER THE NEWEST RELEASES, NEVER A DATE.
-    A sweep walks the catalogue newest first and fills this many places with
-    releases the queue already holds and releases it files now, so a first
-    sweep files this many and a later one files only what has appeared above
-    them. The walk still reads the whole catalogue, which is what lets a
-    release owned without ever being offered be skipped without taking a place
-    (R-137), and what the window did not reach is counted rather than dropped,
-    less each release whose copyright line names another label (U238). A label's own registry entry may
-    raise or lower it for that label alone.
-
-    No value switches it off. A person who wants a label's back catalogue
-    raises the number for that label and decides what it files.
+    ``offer_per_sweep`` is a window over the newest releases, never a date: a
+    sweep walks newest first and fills this many places with queued and newly
+    filed releases. The whole catalogue is still read, so an owned release is
+    skipped without taking a place (R-137), and what the window misses is
+    counted, less releases whose copyright names another label (U238). A
+    label's registry entry may override it. No value switches it off.
     """
 
     offer_per_sweep: int = DEFAULT_LABEL_OFFER
@@ -3421,11 +2882,8 @@ class LabelsConfig:
 class Config:
     """The whole validated configuration, frozen.
 
-    Frozen matters beyond hygiene. KTD9 says a job runs against the configuration
-    frozen when it was QUEUED and reports drift rather than silently choosing a
-    version. A mutable config makes "the configuration it was queued against"
-    unanswerable, because the object the job holds could have been edited by
-    whatever queued it.
+    Frozen so a job runs against the configuration as it was queued (KTD9),
+    which a mutable object could not guarantee.
     """
 
     schema_version: int
@@ -3439,17 +2897,14 @@ class Config:
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
     rekordbox: RekordboxConfig = field(default_factory=RekordboxConfig)
     backup: BackupConfig = field(default_factory=BackupConfig)
-    # APPENDED rather than filed alphabetically, for the reason the verb registry
-    # and the pending register both give for the same choice: two fields inserted
-    # into the middle of one dataclass by two units auto-merge, and an append
-    # conflicts textually, which is a conflict somebody reads.
+    # Later sections are appended, never inserted, so concurrent units conflict.
     reports: ReportsConfig = field(default_factory=ReportsConfig)
     outbound: OutboundConfig = field(default_factory=OutboundConfig)
     recognition: RecognitionConfig = field(default_factory=RecognitionConfig)
     provider: ProviderConfig = field(default_factory=ProviderConfig)
     labels: LabelsConfig = field(default_factory=LabelsConfig)
 
-    # -- derived views -----------------------------------------------------
+    # Derived views.
 
     def enabled_modules(self) -> frozenset[str]:
         """Effective module membership: the profile's preset, then explicit overrides."""
@@ -3462,10 +2917,9 @@ class Config:
     def resolved_prefix_map(self) -> tuple[tuple[str, str], ...]:
         """The prefix map with ``{library.root}`` interpolated, in declared order.
 
-        Returned as plain pairs because the consumer is a resolver that walks
-        them in order and takes the first match. Order is preserved end to end;
-        nothing here sorts or dedupes.
-        """
+    Plain pairs for a resolver that takes the first match; never sorted or
+    deduped.
+    """
         root = str(self.library.root)
         return tuple(
             (m.from_prefix, m.to_prefix.replace(LIBRARY_ROOT_TOKEN, root))
@@ -3475,13 +2929,9 @@ class Config:
     def resolved_prefix_rules(self) -> tuple[tuple[str, str, str | None], ...]:
         """The resolved prefix map with each rule's recorded volume identity.
 
-        A SECOND SHAPE RATHER THAN A WIDER FIRST ONE. Every reader of
-        ``resolved_prefix_map`` unpacks pairs, and only a pass that WRITES through
-        a rule has any use for the identity, so widening the pairs would break
-        ten callers to serve one. Built from the pairs rather than beside them so
-        the interpolation is written once and the two cannot disagree about where
-        a rule points.
-        """
+    A second shape so readers of ``resolved_prefix_map`` keep their pairs; built
+    from those pairs so the interpolation is written once.
+    """
         return tuple(
             (source, target, mapping.volume_id)
             for (source, target), mapping in zip(
@@ -3489,19 +2939,14 @@ class Config:
             )
         )
 
-    # -- serialization and identity ---------------------------------------
+    # Serialization and identity.
 
     def to_toml_dict(self) -> dict:
         """A TOML-safe, deterministically ordered plain dict.
 
-        Deterministic is a hard requirement, not a nicety: ``fingerprint`` hashes
-        exactly these bytes, and a fingerprint that depends on dict ordering
-        would report drift on a config nobody edited.
-
-        None values are OMITTED. TOML has no null, so an omitted key and a null
-        key are the same state, and writing one requires inventing a sentinel
-        that would then have to be un-invented on read.
-        """
+    Determinism is required because ``fingerprint`` hashes these bytes. None
+    values are omitted, since TOML has no null.
+    """
         return _to_toml_value(self)
 
     def to_toml_bytes(self) -> bytes:
@@ -3511,39 +2956,29 @@ class Config:
     def fingerprint(self) -> str:
         """A stable identity for this configuration (KTD9).
 
-        The job engine records this at queue time alongside the specific values a
-        job needs, and compares at run time. Equal fingerprint means nothing
-        drifted; different means something did, and the job reports which rather
-        than silently picking a version.
-        """
+    Recorded at queue time and compared at run time, so a job reports drift
+    rather than silently picking a version.
+    """
         return hashlib.sha256(self.to_toml_bytes()).hexdigest()
 
     def db_is_inside_library_root(self) -> bool:
         """True when the database and its coupled state share a filesystem (KTD21b).
 
-        A FACT, with no prose and no verb attached, because the two callers want
-        different things from it: validation refuses on it at load, and doctor
-        reports it on every run so a user who acknowledged the consequence months
-        ago is reminded that their snapshots are copies rather than atomic
-        commits.
+        A bare fact: validation refuses on it at load, and doctor reports it on
+        every run as a reminder that snapshots are copies, not atomic commits.
         """
         return is_inside(self.library.db_path, self.library.root)
 
-    # -- preconditions -----------------------------------------------------
+    # Preconditions.
 
     def assert_rekordbox_pin_recorded(self) -> None:
         """Refuse when the application pin has never been explicitly recorded (S2).
 
-        Called by the guarded writer before it opens the database. Unset is a
-        refusal to WRITE, not a refusal to load: doctor, help, and every read-only
-        verb must still run on a config whose pin was never set, or a user could
-        not reach the setup step that sets it.
+        Called by the guarded writer before it opens the database. Unset refuses
+        a write, not a load, so read-only verbs still reach the setup step.
         """
         if not self.rekordbox.pinned_app_version:
-            # The message STATES what is wrong; the remedy token says what to do
-            # about it, and the CLI renders that token (D2). The two are separate
-            # because a caller choosing between "record this pin" and "fix these
-            # values" by string-matching a sentence is the KTD25 failure again.
+            # The message states the problem; the remedy token says what to do (D2).
             raise ConfigInvalid(
                 [
                     "rekordbox.pinned_app_version is not set, and an unset pin "
@@ -3557,16 +2992,10 @@ class Config:
             )
 
 
-# ---------------------------------------------------------------------------
-# Validation
-#
-# Collects EVERY problem before raising. The plan's first test scenario for this
-# unit is that a config missing required keys names each missing key.
-# ---------------------------------------------------------------------------
+# Validation collects every problem before raising.
 
-#: Dotted paths that have no default and must appear in the file. Six of them,
-#: deliberately: a short required list is a short first-run wizard, and every
-#: other key is a decision the product can make on the user's behalf.
+#: Dotted paths that have no default and must appear in the file, kept short so
+#: the first-run wizard is short.
 REQUIRED_KEYS: tuple[str, ...] = (
     "schema_version",
     "library.root",
@@ -3590,12 +3019,7 @@ def _dig(data: Mapping, dotted: str):
 
 
 def _env_path(variable: str) -> Path | None:
-    """An override path from the environment, or None.
-
-    Returns None for an unset variable so the caller can tell "relocate this"
-    from "leave it alone". Never used to SUPPLY a value that the file omitted;
-    see the note on the ENV_ constants above.
-    """
+    """An override path from the environment, or None. Relocates, never supplies."""
     value = os.environ.get(variable)
     return Path(value) if value else None
 
@@ -3603,31 +3027,11 @@ def _env_path(variable: str) -> Path | None:
 def _apply_env_overrides(data: Mapping) -> dict:
     """Return a copy of ``data`` with the relocation overrides applied.
 
-    THE ONE PLACE THE ENVIRONMENT ENTERS. Everything downstream, validation and
-    construction alike, reads the mapping this returns, so there is no longer a
-    "raw" answer and an "effective" answer for any rule to disagree about. The
-    defect this closes is recorded on the ENV_ constants: the containment rule
-    was decided against the file's root while every runtime consumer read the
-    overridden one.
-
-    Two properties, and both are load-bearing:
-
-    RELOCATE, NEVER SUPPLY. A key the file does not carry stays absent, so a
-    machine with no setup at all cannot resolve a library root out of the
-    environment and start writing to it (R38). Validation then reports the key
-    as missing, which is the correct outcome.
-
-    A RELOCATED ROOT CARRIES ITS DATABASE. What the file records is where the
-    database sits RELATIVE to the library, so a db_path that was under the old
-    root is re-based onto the new one. Leaving it behind would aim it into a
-    tree that is no longer the library, and would make a relocation violate the
-    containment rule for no reason the user could act on. A db_path that was
-    NOT under the old root is left exactly where it is: it was never expressed
-    relative to the library, so it still needs its own acknowledgment.
-
-    Idempotent, which matters because ``from_dict`` applies it and then calls
-    ``validate``, which applies it again: re-basing a path already under the
-    effective root maps it onto itself.
+    The one place the environment enters. It relocates and never supplies, so a
+    machine with no setup cannot resolve a library root (R38). A relocated root
+    carries a db_path that was under it; one outside stays put and still needs
+    its acknowledgment. Idempotent, since ``from_dict`` and ``validate`` both
+    apply it.
     """
     working = {key: (dict(value) if isinstance(value, Mapping) else value)
                for key, value in data.items()}
@@ -3667,19 +3071,11 @@ def _apply_env_overrides(data: Mapping) -> dict:
 
 
 def validate(data: Mapping) -> list[str]:
-    """Return EVERY problem with the EFFECTIVE configuration, as readable lines.
+    """Return every problem with the effective configuration, as readable lines.
 
-    Side-effect free and list-returning rather than raising, so the setup wizard
-    can show a user all of their remaining work at once and the loader can raise
-    with the same content. One implementation, two consumers, no drift.
-
-    NOT A FUNCTION OF ``data`` ALONE, DELIBERATELY. The environment overrides are
-    applied here first, so every rule below is decided against the values the
-    running process will actually use. Validating the raw file mapping instead is
-    what let a config violate the containment rule at runtime and still validate
-    clean: the rule was checked against a root that nothing downstream read.
-    Callers do not have to remember to pre-apply anything, because there is no
-    way to reach these rules without going through this line.
+    Side-effect free, so the wizard shows all remaining work and the loader
+    raises the same content. The environment overrides are applied first, so
+    every rule is decided against the values the process will use.
     """
     data = _apply_env_overrides(data)
     problems: list[str] = []
@@ -3786,9 +3182,8 @@ def validate(data: Mapping) -> list[str]:
 def _validate_labels(data: Mapping) -> list[str]:
     """The per sweep offer of a favourite label (R-790).
 
-    Zero is refused rather than read as "offer nothing": a sweep that filed
-    nothing on purpose looks exactly like a label with nothing new, and the
-    person would never learn which it was.
+    Zero is refused, since a sweep that offers nothing on purpose looks like a
+    label with nothing new.
     """
     key = "labels.offer_per_sweep"
     offer = _dig(data, key)
@@ -3814,9 +3209,7 @@ def _validate_provider(data: Mapping) -> list[str]:
     """The pacing interval, the breaker's cooldown (R-705), the call ceiling (U193)
     and how long an ISRC answer is kept (U206).
 
-    Checked here for the reason the recognition bound is: a wrong value in a
-    file is a problem with a key name attached, and a wrong interval reaching
-    the gate is an account rate limited with a clean configuration.
+    A wrong value is reported with its key rather than reaching the gate.
     """
     problems: list[str] = []
     key = "provider.min_interval_s"
@@ -3881,8 +3274,7 @@ def _validate_provider(data: Mapping) -> list[str]:
             f"{key} must be a number from 0 up to but not including 1, the share of "
             f"the hour's budget kept for writes and downloads, found {share!r}."
         )
-    # U293. The night pass's own two lines, each a positive whole number, since
-    # a night pass that may make no call is a schedule that does nothing.
+    # U293. The night pass's own lines; zero would schedule a pass that does nothing.
     for key, what in (
         ("provider.night_calls", "the night pass may make in one night"),
         ("provider.night_calls_per_hour", "the night pass may make in an hour"),
@@ -3902,20 +3294,11 @@ def _validate_provider(data: Mapping) -> list[str]:
 def _validate_aging_thresholds(data: Mapping) -> list[str]:
     """The two day counts the intake aging report bands against (feature row 20).
 
-    Checked HERE rather than only where the report builds its value, because a
-    wrong number in a file is a problem with a key name attached and a wrong
-    number reaching the report is a stack trace. The report's own value object
-    still refuses, since it is constructible from code that never touched a file,
-    and the two agree on the rule: both positive, and expiry no earlier than
-    staleness or the two bands overlap and a grouping is reported twice.
-
-    THE PAIR CHECK IS SKIPPED WHEN EITHER VALUE WAS SET AND REJECTED. A field the
-    user wrote and got wrong has already produced its own message naming the key;
-    substituting the DEFAULT for it and then reporting the pair would tell them
-    that a number they never wrote is in conflict with one they did, which sends
-    them to fix the wrong line. A field they left out genuinely does take its
-    default, and that case still reports, because it is the one that makes
-    changing only one of the two able to invert the pair.
+    Both positive, and expiry no earlier than staleness, as the report's own
+    value object also requires. The pair check is skipped when either value was
+    set and rejected, so the user is never told a default they did not write
+    conflicts with one they did; an omitted value takes its default and is
+    still compared.
     """
     problems: list[str] = []
     read: dict[str, int] = {}
@@ -3958,10 +3341,8 @@ def _day_count_problem(
 ) -> str | None:
     """What is wrong with one configured day count, or none. The rule, once.
 
-    A ``bool`` is refused by name because it IS an ``int`` to ``isinstance``, and
-    ``true`` read as one day looks like a switch somebody turned on. ``maximum``
-    is optional because only a count that becomes a duration has a ceiling to
-    respect; the intake ages are compared as whole days and have never had one.
+    A ``bool`` is refused by name because it is an ``int`` to ``isinstance``.
+    ``maximum`` applies only to a count that becomes a duration.
     """
     if not isinstance(value, int) or isinstance(value, bool) or value < 1:
         return (
@@ -3978,11 +3359,7 @@ def _day_count_problem(
 
 
 def _validate_export_staleness(data: Mapping) -> list[str]:
-    """The age past which an outbound verb calls its export old (R-227).
-
-    Checked here for the reason the intake ages are: a wrong number in a file is
-    a problem with a key name attached.
-    """
+    """The age past which an outbound verb calls its export old (R-227)."""
     key = "outbound.export_stale_days"
     value = _dig(data, key)
     if value is None:
@@ -4048,10 +3425,8 @@ def _validate_open_gate_staleness(data: Mapping) -> list[str]:
 def recognition_host_problem(value: object) -> str | None:
     """What is wrong with a recognition host, or none. The rule, once.
 
-    A BARE HOSTNAME UNDER ``RECOGNITION_HOST_DOMAIN``, lowercase, nothing else.
-    The identifier composes ``https://`` and the endpoint around it, so a scheme,
-    a path, a port or a space would build an address nobody meant, and the
-    domain is checked because the credential travels to it.
+    A bare lowercase hostname under ``RECOGNITION_HOST_DOMAIN``: the identifier
+    composes the URL around it, and the credential travels to that domain.
     """
     key = "recognition.host"
     if not isinstance(value, str):
@@ -4072,9 +3447,8 @@ def recognition_host_problem(value: object) -> str | None:
 def _validate_tempo_window(data: Mapping) -> list[str]:
     """The tempo window is two whole numbers, floor below ceiling (R-744).
 
-    An empty window would leave the estimator no bin to choose, and the head
-    would carry no tempo on every track with no problem named. Refused at load
-    with the key names attached, as the analysis job count is.
+    An empty window leaves the estimator no bin, so every head would silently
+    carry no tempo.
     """
     problems: list[str] = []
     bounds: dict[str, object] = {}
@@ -4103,10 +3477,8 @@ def _validate_tempo_window(data: Mapping) -> list[str]:
 def _validate_drift_cut(data: Mapping) -> list[str]:
     """The drift cut is a finite percent above zero (U157).
 
-    A cut of zero or below would mark every measured track ``dyn`` and send a
-    whole batch of steady tracks to Dynamic analysis, and a NaN would mark
-    none while every row read as checked, so both are refused at load with
-    the key named, as the tempo window is.
+    Zero or below would mark every track ``dyn``, and a NaN would mark none
+    while every row read as checked.
     """
     key = "analysis.drift_cut"
     value = _dig(data, key)
@@ -4127,12 +3499,7 @@ def _validate_drift_cut(data: Mapping) -> list[str]:
 
 
 def _validate_recognition(data: Mapping) -> list[str]:
-    """The recognition host and the monthly call bound (R-301).
-
-    Checked here for the reason the intake ages are: a wrong value in a file is
-    a problem with a key name attached, and a wrong host reaching the identifier
-    is five paid attempts read as a network blip.
-    """
+    """The recognition host and the monthly call bound (R-301)."""
     problems: list[str] = []
     host = _dig(data, "recognition.host")
     if host is not None:
@@ -4153,38 +3520,29 @@ def _validate_recognition(data: Mapping) -> list[str]:
 
 
 def is_inside(child: Path, parent: Path) -> bool:
-    """True when ``child`` is ``parent`` or sits under it. PURELY TEXTUAL.
+    """True when ``child`` is ``parent`` or sits under it. Purely textual.
 
-    No ``resolve()`` and no ``exists()``: Rule 1 forbids this module from touching
-    the filesystem, and validation runs before anything is mounted. ``normpath``
-    collapses ``..`` so a path cannot escape by spelling, which is the only
-    evasion that matters for a value the user typed.
+    No ``resolve()`` or ``exists()`` (Rule 1); ``normpath`` collapses ``..`` so
+    a typed path cannot escape by spelling.
     """
     child_parts = Path(os.path.normpath(str(child))).parts
     parent_parts = Path(os.path.normpath(str(parent))).parts
     return child_parts[: len(parent_parts)] == parent_parts
 
 
-#: The shape ``library.db_outside_root_acknowledged_on`` must take. Anchored at
-#: both ends: a substring match would accept a date buried in a sentence.
+#: The shape ``library.db_outside_root_acknowledged_on`` must take, anchored at
+#: both ends.
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 ACKNOWLEDGMENT_KEY = "library.db_outside_root_acknowledged_on"
 
 
 def _validate_acknowledgment_date(value: object) -> list[str]:
-    """Shape-check the containment acknowledgment. It is a DATE, never a flag.
+    """Shape-check the containment acknowledgment. It is a date, never a flag.
 
-    Accepting any non-empty string made ``no``, ``true``, and ``2026-13-99`` all
-    switch the containment refusal off, and two of those read to a human as the
-    opposite of what they did. Its sibling in this same validator,
-    ``library.volume_id``, is shape-checked for exactly this reason: a value that
-    is merely truthy passes a truthiness test while meaning nothing.
-
-    A real calendar date, not just a date-shaped string, because the point of
-    recording WHEN the consequence was accepted is that something can later
-    compare it to today. ``fromisoformat`` alone would accept the compact
-    ``20260801`` form, so the pattern runs first and pins the layout.
+    A merely truthy value such as ``no`` would switch the refusal off. It must
+    be a real calendar date so a later run can compare it to today; the pattern
+    runs before ``fromisoformat`` to refuse the compact ``20260801`` form.
     """
     if not isinstance(value, str) or not _ISO_DATE.match(value.strip()):
         return [
@@ -4208,13 +3566,8 @@ def _validate_acknowledgment_date(value: object) -> list[str]:
 def _validate_db_containment(data: Mapping) -> list[str]:
     """The containment rule for the rekordbox database (KTD21b).
 
-    See ``LibraryConfig.db_outside_root_acknowledged_on`` for why the rule exists
-    and why it is a recorded acknowledgment rather than a flat refusal.
-
-    Decided against the EFFECTIVE root: ``validate`` applies the environment
-    overrides before this runs, so the root judged here is the root every runtime
-    consumer reads. It used to be the file's raw value, which meant the rule was
-    decided against one root and enforced against another.
+    See ``LibraryConfig.db_outside_root_acknowledged_on`` for why. Decided
+    against the effective root, overrides applied.
     """
     root = _dig(data, "library.root")
     db_path = _dig(data, "library.db_path")
@@ -4223,9 +3576,7 @@ def _validate_db_containment(data: Mapping) -> list[str]:
     problems: list[str] = []
     accepted = False
     if acknowledged is not None:
-        # Shape-checked whether or not the database is actually outside the root,
-        # because a malformed date is a defect in the file either way, and the
-        # user should learn about it while they are still looking at the file.
+        # Shape-checked even when the database is inside the root.
         shape_problems = _validate_acknowledgment_date(acknowledged)
         problems += shape_problems
         accepted = not shape_problems
@@ -4252,12 +3603,9 @@ def _validate_db_containment(data: Mapping) -> list[str]:
 def _mount_path_problem(key: str, volume_id: str) -> list[str]:
     """Refuse a volume identity that is shaped like a path. One rule, two keys.
 
-    R38 identifies a volume by RECORDED IDENTITY, not by mount path. A value
-    shaped like a path means somebody recorded where the drive happened to be
-    mounted, which is the failure the requirement names: the next drive to mount
-    there would pass the assertion. Shared by ``library.volume_id`` and by every
-    prefix rule's ``volume_id`` so the two cannot come to mean different things
-    by an identity.
+    R38 identifies a volume by recorded identity, never by mount path, or the
+    next drive mounted there would pass. Shared by ``library.volume_id`` and
+    each prefix rule's ``volume_id``.
     """
     if volume_id.startswith(("/", "\\")) or ":\\" in volume_id:
         return [
@@ -4299,10 +3647,8 @@ def _validate_prefix_map(raw: object) -> list[str]:
                     f"interpolated"
                 )
         if PREFIX_VOLUME_IDENTITY_KEY in entry:
-            # PRESENT AND UNUSABLE IS A PROBLEM, NEVER A DEFAULT. Reading a blank
-            # or mistyped identity as "none recorded" would send the rule down
-            # the library's own identity for a target inside the root, which is
-            # a check passing on a value the person got wrong.
+            # Present and unusable is a problem, never read as "none recorded",
+            # which would let the check pass on a mistyped value.
             identity = entry[PREFIX_VOLUME_IDENTITY_KEY]
             key = f"{where}.{PREFIX_VOLUME_IDENTITY_KEY}"
             if not isinstance(identity, str) or not identity.strip():
@@ -4331,24 +3677,16 @@ def _unknown_tokens(text: str) -> set[str]:
     return found
 
 
-# ---------------------------------------------------------------------------
-# dict -> typed, typed -> dict
-# ---------------------------------------------------------------------------
+# Dict to typed and back.
 
 
 def from_dict(data: Mapping, *, path: Path | None = None) -> Config:
     """Build a validated, frozen ``Config``, or raise ``ConfigInvalid`` with all problems.
 
-    Optional keys are merged OVER freshly constructed defaults, so a missing or
-    unknown optional key degrades instead of crashing. Required keys do the
-    opposite and fail loudly. Those two policies are written as two separate code
-    paths on purpose: in the source system they were one function, and the
-    tolerant half quietly swallowed the intolerant half's failures.
-
-    The environment overrides are applied ONCE, up front, and everything below
-    reads the result. Applying them here rather than field by field inside
-    ``_build`` is what makes the values this returns the same values ``validate``
-    just judged; the two used to disagree about the library root.
+    Optional keys are merged over defaults, so a missing or unknown one
+    degrades; required keys fail loudly, on a separate code path so the
+    tolerant half never swallows the strict half's failures. The overrides are
+    applied once, up front, so this returns the values ``validate`` judged.
     """
     data = _apply_env_overrides(data)
     problems = validate(data)  # re-applies the overrides; the operation is idempotent
@@ -4388,11 +3726,8 @@ def from_dict(data: Mapping, *, path: Path | None = None) -> Config:
         acquisition=_acquisition(data.get("acquisition") or {}),
         analysis=_build(AnalysisConfig, data.get("analysis") or {}),
         rekordbox=_build(RekordboxConfig, data.get("rekordbox") or {}),
-        # ``remote`` DERIVED from the destinations when the file does not spell
-        # it. Validation above has already established that every set
-        # destination names one remote, so the first one's name is the name.
-        # A file that spells the remote keeps its own spelling, which validation
-        # has checked against the same destinations.
+        # ``remote`` is derived from the destinations when the file omits it;
+        # validation has checked that they name one remote.
         backup=_build(
             BackupConfig,
             data.get("backup") or {},
@@ -4409,15 +3744,9 @@ def from_dict(data: Mapping, *, path: Path | None = None) -> Config:
 def derived_backup_remote(data: Mapping) -> str | None:
     """The remote name the destinations carry, when the file spells none.
 
-    None when ``backup.remote`` is already set, so the file's own value wins
-    (the two were checked to agree), and None when no destination is set, so a
-    configuration with no backup at all keeps ``remote`` unset and the backup
-    verb's own refusal still names it.
-
-    Public because the wizard writes the same derivation INTO the document it
-    saves, so the file carries the name doctor looks up. One rule in one place:
-    a second copy in the wizard is how the file and the load come to derive two
-    different names.
+    None when ``backup.remote`` is set, so the file's value wins, or when no
+    destination is set, so the backup verb's refusal still names it. Public so
+    the wizard writes the same derivation into the file.
     """
     remote = _dig(data, "backup.remote")
     if isinstance(remote, str) and remote.strip():
@@ -4432,11 +3761,8 @@ def derived_backup_remote(data: Mapping) -> str | None:
 def _build(cls, raw: Mapping, *, overrides: Mapping[str, object] | None = None):
     """Construct one schema dataclass from a raw mapping.
 
-    Unknown keys are ignored rather than rejected. That is deliberate for a
-    FORWARD-only migration model: a file written by a newer build is refused
-    outright by version, so an unknown key here can only come from a hand edit,
-    and crashing on a stray key would lock a user out of their own config over a
-    typo they can still see.
+    Unknown keys are ignored: a newer build's file is refused by version, so a
+    stray key is a hand edit and should not lock the user out.
     """
     kwargs: dict[str, object] = {}
     for f in fields(cls):
@@ -4483,11 +3809,8 @@ def _to_toml_value(value):
             if item is None:
                 continue  # TOML has no null; absent and null are the same state
             converted = _to_toml_value(item)
-            # An all-default section serializes to an empty table, and an empty
-            # table means exactly what its absence means. Emitting one would make
-            # two configurations with identical meaning produce different bytes,
-            # and therefore different fingerprints, which is the one thing the
-            # fingerprint must never do (KTD9).
+            # An empty table means what its absence means; emitting one would
+            # change the fingerprint of an unchanged meaning (KTD9).
             if isinstance(converted, dict) and not converted:
                 continue
             out[f.name] = converted
@@ -4504,14 +3827,9 @@ def _to_toml_value(value):
 def _apply_toml_key_aliases(source, out: dict) -> dict:
     """Reshape the two dataclasses whose TOML form differs from their field names.
 
-    ``PrefixMapping`` uses ``from`` and ``to`` on disk, because those read as
-    English in a file a user edits by hand, and ``from`` cannot be a Python
-    field name.
-
-    ``ModulesConfig`` FLATTENS: the file has ``[modules]`` with one key per
-    module, not ``[modules.explicit]``. The wrapper exists in code so that
-    "explicitly set" stays distinguishable from "defaulted" (see the class), and
-    that distinction is a code concern the user should never have to type.
+    ``PrefixMapping`` uses ``from`` and ``to`` on disk, since ``from`` cannot be
+    a Python field name. ``ModulesConfig`` flattens to one key per module under
+    ``[modules]``; the ``explicit`` wrapper is a code concern only.
     """
     if isinstance(source, PrefixMapping):
         aliased = {toml_key: out[field_name] for toml_key, field_name in _PREFIX_TOML_KEYS}
@@ -4523,23 +3841,15 @@ def _apply_toml_key_aliases(source, out: dict) -> dict:
     return out
 
 
-# ---------------------------------------------------------------------------
-# Forward-only migrations
-#
-# Applied IN MEMORY over a deep copy, validated in full, and only then written.
-# ---------------------------------------------------------------------------
+# Forward-only migrations, applied in memory over a deep copy, validated in
+# full, and only then written.
 
-#: Every migration is ``dict -> dict``. No I/O, no Path, no network. That is what
-#: makes each one a two-line unit test, and it is also what makes the "a failed
-#: migration leaves the original untouched" property true BY CONSTRUCTION rather
-#: than by a cleanup path that can itself fail.
+#: Every migration is ``dict -> dict`` with no I/O, which makes "a failed
+#: migration leaves the original untouched" true by construction.
 Migration = Callable[[dict], dict]
 
-#: Keyed by the version the step upgrades FROM. Empty at schema 1 because there
-#: is nothing before schema 1. Inventing historical versions to exercise the
-#: machinery would make the version number a lie, so the machinery is exercised
-#: with a ladder supplied by the test instead, and the shipped table is checked
-#: for gaps by ``test_config_migration.py``.
+#: Keyed by the version the step upgrades from. Empty at schema 1; tests supply
+#: their own ladder, and ``test_config_migration.py`` checks this one for gaps.
 MIGRATIONS: Mapping[int, Migration] = MappingProxyType({})
 
 
@@ -4549,14 +3859,10 @@ def migrate(
     current: int = CURRENT_SCHEMA_VERSION,
     migrations: Mapping[int, Migration] = MIGRATIONS,
 ) -> dict:
-    """Upgrade a raw config dict to ``current``. Pure, forward-only.
+    """Upgrade a raw config dict to ``current``. Pure, forward only.
 
-    Steps run in ascending version order over a deep copy of the input, so a step
-    that raises halfway leaves the caller's data untouched and leaves nothing at
-    all on disk. The plan phrases this as "applied to a temporary file that
-    replaces the original only after all steps succeed"; in memory is strictly
-    stronger, because a temp file still has to be cleaned up when step two of
-    three raises, and the cleanup is one more thing that can fail.
+    Steps run in ascending order over a deep copy, so a step that raises leaves
+    the caller's data untouched and nothing on disk, with no cleanup to fail.
     """
     found = data.get("schema_version")
     if found is None:
@@ -4589,9 +3895,7 @@ def migrate(
     return working
 
 
-# ---------------------------------------------------------------------------
-# Reading and writing
-# ---------------------------------------------------------------------------
+# Reading and writing.
 
 
 def _read_raw(path: Path) -> dict:
@@ -4599,9 +3903,7 @@ def _read_raw(path: Path) -> dict:
     try:
         raw = path.read_bytes()
     except FileNotFoundError:
-        # No instruction in the message: the remedy is the RUN_SETUP token on the
-        # class, and only the CLI knows what running setup looks like from
-        # wherever the user is (D2).
+        # No instruction in the message; the remedy token carries it (D2).
         raise ConfigMissing(f"no configuration file at {path}") from None
     except OSError as exc:
         raise ConfigCorrupt(f"{path} could not be read: {exc}") from exc
@@ -4620,24 +3922,13 @@ def load_from_path(
 ) -> Config:
     """Read, migrate, validate, and only then write. Not memoized.
 
-    Order is the whole design:
+    1. parse, 2. migrate in memory over a deep copy, 3. validate the fully
+    migrated data, 4. back up the original, 5. atomically replace it. No byte
+    reaches disk before step 3 passes.
 
-    1. parse, 2. migrate in memory over a deep copy, 3. validate the FULLY
-    migrated data, 4. back up the original, 5. atomically replace it.
-
-    No byte reaches the disk before step 3 passes. So a migration that raises at
-    step two of three leaves the original file byte-identical and leaves no
-    orphan behind, because there was never a partial artifact to orphan.
-
-    THE DECISION IS MADE TWICE, AND THE SECOND TIME IS UNDER THE LOCK. The first
-    pass answers the caller: parse, migrate, validate, return a Config even when
-    nothing is written. The write then re-reads the file with the lock held and
-    re-decides from what is actually there. Deciding once, outside the lock, is
-    the shape that lets two processes reach an unmigrated config in the same
-    second, both decide to migrate, and the second one copy ALREADY-MIGRATED bytes
-    into a backup named for the version it came from. A file called
-    ``config.toml.v1.bak`` holding version 3 is the half-safe outcome the lock's
-    own docstring says it exists to prevent.
+    The decision is made twice, the second time under the lock: the write
+    re-reads and re-decides, so two processes migrating at once cannot copy
+    already-migrated bytes into a backup named for an older version.
     """
     raw = _read_raw(path)
     found = raw.get("schema_version")
@@ -4648,53 +3939,37 @@ def load_from_path(
         return config
 
     with _write_lock(path):
-        # Re-read and re-decide. Everything above ran without the lock, so the
-        # file may have been migrated by another process while this one waited.
+        # Re-read: another process may have migrated while this one waited.
         current_raw = _read_raw(path)
         found_now = current_raw.get("schema_version")
         if found_now == current:
-            # Another process did the work, including its own backup. Rebuild from
-            # what is on disk rather than returning the value derived from the
-            # bytes that are no longer there.
+            # Another process did the work; rebuild from what is on disk.
             return from_dict(current_raw, path=path)
 
         migrated = migrate(current_raw, current=current, migrations=migrations)
         config = from_dict(migrated, path=path)
-        # The backup holds the bytes this call is about to replace, re-read under
-        # the lock, so it can no longer hold a version other than the one its name
-        # claims. Overwriting an older backup of the same version is correct for
-        # the same reason: what a user needs back is what was just replaced.
+        # The backup holds the bytes about to be replaced, re-read under the
+        # lock, so its name always matches its version.
         _back_up_version(path, found_now)
         atomic_write_bytes(tomli_w.dumps(migrated).encode("utf-8"), path)
     return config
 
 
 def _write_lock(path: Path) -> exclusive_lock:
-    """The ONE lock every writer of the configuration document takes.
+    """The one lock every writer of the configuration document takes, the
+    migration included, so no write lands inside another's cycle (R-116).
 
-    It is the lock the migration has always taken, under the name it has always
-    had, because a migration IS a writer: a wizard's write landing between a
-    migration's re-read and its replace would be erased by it, exactly as one
-    wizard erased another in R-116. One lock for all of them is what makes
-    "re-read under the lock" mean the bytes cannot move before the write.
-
-    NEVER CALL ``load`` OR ``load_from_path`` WHILE HOLDING IT. ``flock`` locks
-    belong to the open file description, so a second open of the lock file from
-    the same process blocks on the first for ever, and a load of an unmigrated
-    file takes this lock to write back. Code under the lock reads through
-    ``_document_on_disk``, which migrates in memory and writes nothing.
-
-    It is also where a write under pytest is checked against the test root
-    (R-926), before the lock file exists, because every writer comes here first.
+    Never call ``load`` or ``load_from_path`` while holding it: ``flock`` locks
+    belong to the open file description, so a second open from the same process
+    blocks for ever. Code under the lock reads through ``_document_on_disk``.
+    Also checks a write under pytest against the test root (R-926).
     """
     _refuse_write_outside_test_root(path)
     return exclusive_lock(path.with_name(path.name + ".migrate.lock"))
 
 
-#: Where a state write may land while this process runs under pytest.
-#: The suite's isolation fixture sets it to pytest's base temporary directory
-#: for the life of each test. None under pytest means that fixture never ran
-#: for this test, and then every write is refused.
+#: Where a state write may land while this process runs under pytest, set by
+#: the suite's isolation fixture. None under pytest refuses every write.
 _TEST_WRITE_ROOT: Path | None = None
 
 
@@ -4705,34 +3980,14 @@ class WriteOutsideTestRoot(RuntimeError):
 def _refuse_write_outside_test_root(path: Path, *, system_temporary: bool = False) -> None:
     """Under pytest, refuse a state write that would land outside the test root.
 
-    R-926. On 2026-10-08 a probe test run from a folder outside ``tests/`` wrote
-    a pytest library into the real ``config.toml``, because ``tests/conftest.py``
-    loads only for files under ``tests/`` and the isolation it gives is the
-    environment it sets. This check reads no environment variable on purpose. It
-    asks whether pytest is loaded in this process and whether the resolved
-    target sits under the root the isolation fixture registered, so a probe
-    that skips the conftest, a test that undoes its patches, or a mutant of the
-    path resolution all fail loudly here instead of writing the user's file.
-
-    Resolved on both sides, unlike ``is_inside`` alone, because the temporary
-    folder is reached through a symlink on macOS and a link inside the root can
-    point anywhere. A process without pytest loaded is never checked.
-
-    Called from the four primitives every state writer in the package goes
-    through, ``_write_lock`` for the configuration document, then
+    R-926. Reads no environment variable: it asks whether pytest is loaded and
+    whether the resolved target (resolved on both sides, for macOS symlinks)
+    sits under the registered root. Called from ``_write_lock``,
     ``atomic_write_bytes``, ``append_durable_bytes`` (U254) and
-    ``exclusive_lock``, so a ledger, a watermark or a session lock written by
-    an unisolated test is refused the same way, and a link swapped in after the
-    configuration check is caught again at the write.
-
-    ``system_temporary`` is what those three primitives pass. Shipped code writes
-    its own scratch files through them into a folder ``tempfile.mkdtemp`` made,
-    the provider session's token among them, and the user's state never lives
-    there, so the system temporary directory is a second allowed root for them
-    and never for the configuration document. Without it 101 tests were
-    refused, measured 2026-10-09. It holds with no root registered too, because
-    a test's child process that imports a helper from ``tests`` has pytest
-    loaded and no conftest, and writes its locks under the test's own folder.
+    ``exclusive_lock``, so every state writer is covered. ``system_temporary``,
+    passed by the last three, also allows the system temporary directory for
+    shipped scratch files, even with no root registered; never for the
+    configuration document.
     """
     if "pytest" not in sys.modules:
         return
@@ -4766,14 +4021,10 @@ _MEMO: dict[tuple, Config] = {}
 def load(path: Path | None = None) -> Config:
     """The ordinary entry point: the validated config, memoized on file identity.
 
-    Memoized on ``(path, inode, mtime, size)``. The inode is in the key because
-    every write here goes through an atomic replace, which mints a NEW inode, so
-    a rewritten file can never be served from the cache even on a filesystem
-    whose timestamp resolution is coarse.
-
-    Memoization is what makes it safe for callers to call ``load()`` wherever they
-    need a value instead of binding one at their own import time. Removing the
-    reason to snapshot is the only thing that actually stops the snapshotting.
+    Memoized on ``(path, inode, mtime, size)``; every write is an atomic replace
+    that mints a new inode, so a rewritten file is never served stale. Memoized
+    so callers call ``load()`` where they need a value instead of binding one at
+    import.
     """
     target = config_path() if path is None else path
     try:
@@ -4794,43 +4045,19 @@ def reset_cache() -> None:
 def save(config: Config, path: Path | None = None) -> Path:
     """Write the config atomically and return where it went.
 
-    IT REFUSES TO WRITE A FILE THIS MODULE WOULD REFUSE TO LOAD. That is not
-    belt-and-braces; it is the property that stops a save from locking a user out
-    of their own configuration. The concrete case it was added for: an
-    environment override relocated the library root, ``save`` serialized the
-    relocated root beside a db_path the override had not touched, and the
-    resulting file failed the containment rule at the next load. The user had
-    never edited it and had no way to know what to change.
+    Refuses to write a file this module would refuse to load, so a save never
+    locks a user out. Creates its directory through ``mkdir_private`` just
+    before the write, never at import.
 
-    That specific inconsistency is now impossible upstream, because a relocated
-    root carries its database with it (see ``_apply_env_overrides``). The check
-    stays because the CLASS of failure is not specific to those two fields: any
-    future pair of values that a validation rule relates can drift apart in
-    memory, and a write is the moment that turns a runtime inconsistency into a
-    permanent one. Validating the exact bytes about to be written closes all of
-    them at once, and costs one pure function call on a path that runs at setup.
-
-    DIRECTORY CREATION. This is one of three places in the module that creates a
-    directory (the others are ``atomic_write_bytes`` and ``exclusive_lock``),
-    and all three go through ``mkdir_private`` so no state directory's
-    permissions depend on the user's umask. Each creates immediately before a
-    write, never at import (Rule 1).
-
-    THIS IS A WHOLE-DOCUMENT WRITE, FOR A CALLER WITH NO PRIOR READ. It takes
-    the write lock, so it cannot land inside another writer's cycle, and it
-    replaces whatever is there. A caller that READ the document, decided
-    something, and is now writing the result back must go through ``update``
-    instead, because between that read and this write another command may have
-    written answers this call would erase while reporting success (R-116).
-    Nothing under ``src/`` outside this module calls ``save``, and a guard in
-    ``tests/test_config_update.py`` keeps it that way.
+    A whole-document write for a caller with no prior read; a caller that read
+    and writes back uses ``update`` (R-116). Nothing under ``src/`` outside this
+    module calls ``save``, which ``tests/test_config_update.py`` guards.
     """
     target = config_path() if path is None else path
     problems = validate(config.to_toml_dict())
     if problems:
         raise ConfigInvalid(problems, path=target)
-    # Created under the lock rather than before it, so a write the test root
-    # refuses (see ``_write_lock``) leaves no directory behind either.
+    # Created under the lock, so a refused write leaves no directory behind.
     with _write_lock(target):
         mkdir_private(target.parent)
         atomic_write_bytes(config.to_toml_bytes(), target)
@@ -4839,20 +4066,17 @@ def save(config: Config, path: Path | None = None) -> Path:
 
 
 def _document_on_disk(path: Path) -> tuple[dict, int | None]:
-    """The document as it is NOW, and the schema version its bytes carry.
+    """The document as it is now, and the schema version its bytes carry.
 
-    For code holding the write lock, so it migrates in memory and never writes
-    (see ``_write_lock`` for why a ``load`` here would hang). Three shapes, the
-    same three the setup wizard reads before it asks anything, so a caller
-    comparing its first read with this one compares like with like:
+    For code holding the write lock: migrates in memory and never writes. The
+    same three shapes the setup wizard reads, so first and second reads compare
+    like with like:
 
     * no file: an empty document and no version;
-    * a file that loads: its EFFECTIVE form, migrated, overrides applied,
-      defaults filled, which is what ``load().to_toml_dict()`` returns;
-    * a file that parses and is merely incomplete: the migrated raw document.
+    * a file that loads: its effective form, as ``load().to_toml_dict()``;
+    * a file that parses but is incomplete: the migrated raw document.
 
-    A corrupt file or one from a newer build raises, so nothing is written over
-    a document a person has to look at.
+    A corrupt or newer file raises, so nothing is written over it.
     """
     try:
         raw = _read_raw(path)
@@ -4868,36 +4092,23 @@ def _document_on_disk(path: Path) -> tuple[dict, int | None]:
 def update(
     revise: Callable[[dict], Mapping], path: Path | None = None
 ) -> tuple[Config, Path]:
-    """The configuration read-modify-write, as ONE locked cycle every writer uses.
+    """The configuration read-modify-write, as one locked cycle every writer uses.
 
-    Take the lock, read what is on disk, hand it to ``revise``, validate what
-    comes back, write it, release. Returns the configuration that was written and
-    where it went.
+    Take the lock, read the document on disk, hand it to ``revise``, validate,
+    write, release. Returns the written configuration and its path.
 
-    THE DECISION IS MADE TWICE, AND THE SECOND TIME IS UNDER THE LOCK, which is
-    the shape ``load_from_path`` documents for a migration. A caller reads the
-    document and decides whatever it needs to OUTSIDE the lock, as slowly as it
-    likes: the setup wizard asks a person questions, the profile verb waits
-    on a gate. ``revise`` is then the re-decision, handed the document that is
-    actually there, which may hold another command's answers the first read
-    never saw. Deciding once, outside, is how two wizards each reported success
-    and the second erased the first.
+    The caller decides outside the lock as slowly as it likes; ``revise`` is the
+    re-decision under the lock against what is actually there, which may hold
+    another command's answers (R-116). ``revise`` must not prompt, since it
+    holds the lock; it computes or raises, and a raise writes nothing.
 
-    ``revise`` MAY NOT ASK ANYBODY ANYTHING. It runs with the lock held, and a
-    lock held across a prompt blocks every other command on somebody typing.
-    It computes, or it raises to refuse, in which case nothing is written:
-    ``merge_changes`` raises ``ConfigConflict``, and the profile verb
-    raises its stale decision when the membership it showed has moved.
-
-    An unmigrated document gets the same version backup a migration writes,
-    because this write replaces those bytes just as finally.
+    An unmigrated document gets the same version backup a migration writes.
     """
     target = config_path() if path is None else path
     with _write_lock(target):
         current, found = _document_on_disk(target)
         config = from_dict(revise(current), path=target)
-        # The serialized form is what the next load reads, so it is what gets
-        # judged. See ``save`` for the defect that made this a rule.
+        # Judge the serialized form, which is what the next load reads.
         problems = validate(config.to_toml_dict())
         if problems:
             raise ConfigInvalid(problems, path=target)
@@ -4908,8 +4119,7 @@ def update(
     return config, target
 
 
-#: What a leaf holds when the key is not in the document at all. TOML has no
-#: null, so "absent" cannot be spelled as a value and needs a marker of its own.
+#: What a leaf holds when the key is absent, since TOML has no null.
 _ABSENT = object()
 
 
@@ -4931,18 +4141,11 @@ def _leaves(document: Mapping, prefix: tuple[str, ...] = ()) -> dict[tuple[str, 
 def merge_changes(base: Mapping, desired: Mapping, current: Mapping) -> dict:
     """``current`` with the changes between ``base`` and ``desired`` laid over it.
 
-    The re-decision for a writer that holds answers rather than a rule. ``base``
-    is the document as the caller first read it, ``desired`` is what it would
-    have written, and ``current`` is what ``update`` found under the lock. Only
-    the leaves the caller actually CHANGED are applied, so a value it merely
-    carried through from its first read cannot overwrite what another writer
-    has put there since. That distinction is the whole repair: a wizard that
-    kept the recorded ``profile.name`` without asking has no answer about it to
-    lose, and the one that changed it does.
-
-    A leaf both sides changed, to different values, raises ``ConfigConflict``
-    naming every such key, and the caller writes nothing. Both arriving at the
-    same value is agreement and is not a conflict.
+    ``base`` is the caller's first read, ``desired`` what it would write, and
+    ``current`` what ``update`` found under the lock. Only leaves the caller
+    changed are applied, so a value merely carried through cannot overwrite
+    another writer's. A leaf both changed to different values raises
+    ``ConfigConflict`` naming every such key; the same value is agreement.
     """
     if current == base:
         return copy.deepcopy(dict(desired))
@@ -4975,40 +4178,22 @@ def merge_changes(base: Mapping, desired: Mapping, current: Mapping) -> dict:
 #: The mode every state file this package writes lands at, on every machine.
 PRIVATE_FILE_MODE = 0o600
 
-#: The mode every directory this package CREATES lands at, on every machine.
-#:
-#: A 0600 file inside a 0777 directory is not a private file. Directory write
-#: permission is what governs unlink and rename, so any local account can delete
-#: the file and put its own in place, whatever the file's own mode says. The
-#: credential presence index is the sharp case: it carries no credential values,
-#: but replacing it lets any local account decide what doctor reports about which
-#: credentials are set.
+#: The mode every directory this package creates lands at. Directory write
+#: permission governs unlink and rename, so a 0600 file in a 0777 directory can
+#: be replaced by any local account.
 PRIVATE_DIR_MODE = 0o700
 
-#: True when this platform has POSIX modes at all. Probed once, so every
-#: mode-setting call site degrades the same way instead of each guessing.
+#: True when this platform has POSIX modes, probed once for every call site.
 _CAN_SET_MODE = hasattr(os, "chmod")
 
 
 def mkdir_private(path: Path) -> None:
     """Create ``path`` and any missing parent, owner-only, on any umask.
 
-    NOT ``Path.mkdir(mode=...)``, and the difference is the whole reason this
-    function exists. ``mkdir`` applies the process umask to the mode it is given,
-    and with ``parents=True`` it creates the intermediate levels at the DEFAULT
-    0o777 rather than at the mode the caller asked for. Under a permissive umask
-    that leaves a world-writable directory one level above a 0600 file, which
-    negates the file's mode entirely: the observed result was a 0o777 config
-    directory and a 0o777 installation state directory holding correctly-moded
-    0600 files.
-
-    So each missing level is created and then chmodded explicitly. Only levels
-    this call actually created are touched: a directory that already existed
-    belongs to the user, and tightening their home directory because a state root
-    happened to be under it would be a far worse bug than the one being fixed.
-
-    Guarded on ``_CAN_SET_MODE`` so a platform with no POSIX modes degrades to an
-    ordinary mkdir rather than crashing (R1, KTD6).
+    Not ``Path.mkdir(mode=...)``: the umask applies to that mode, and with
+    ``parents=True`` intermediate levels get 0o777. Each missing level is
+    created then chmodded; levels that already existed belong to the user and
+    are never touched. Degrades to a plain mkdir without POSIX modes (R1, KTD6).
     """
     if path.is_dir():
         return
@@ -5018,43 +4203,23 @@ def mkdir_private(path: Path) -> None:
         try:
             level.mkdir()
         except FileExistsError:
-            # Another process won the race. Not ours to create, so not ours to
-            # re-mode either.
+            # Another process created it, so it is not ours to re-mode.
             continue
         if _CAN_SET_MODE:
             os.chmod(level, PRIVATE_DIR_MODE)
 
 
 def atomic_write_bytes(payload: bytes, path: Path, *, mode: int = PRIVATE_FILE_MODE) -> None:
-    """Write ``payload`` to ``path`` atomically at an EXPLICIT mode, or not at all.
+    """Write ``payload`` to ``path`` atomically at an explicit mode, or not at all.
 
-    Two properties, and both were learned from a defect.
+    Atomic: the temp file is in the target's directory so ``os.replace`` is a
+    same-filesystem rename, and it is fsynced first so a crash cannot leave a
+    correctly named file with unwritten contents.
 
-    ATOMIC. The temp file is created in the TARGET's directory so ``os.replace``
-    is a same-filesystem rename and therefore atomic; a temp file in the system
-    temp directory would make it a copy, which can be interrupted halfway. The
-    fsync before the replace is the source system's one omission: without it a
-    crash can leave a correctly named file whose contents never reached the
-    platter.
-
-    0600 REGARDLESS OF UMASK. ``mkstemp`` already creates at 0600, so the mode was
-    previously an undocumented side effect that nothing would have caught if the
-    writer changed. The explicit chmod makes it a stated property, and it is the
-    reason this function is the shared writer for every state file, beside only
-    the append :func:`append_durable_bytes` makes to a file this one created,
-    rather than one of two: the sibling that wrote the credential presence index with
-    ``write_text`` inherited the user's umask and landed 0666 under umask 000,
-    which is the exact defect class ``secrets.py`` was chartered to end. That file
-    carries no credential VALUES, but world-writable means any local account can
-    forge or erase the answer doctor gives about which credentials are set.
-
-    THE DIRECTORY MODE IS PART OF THE FILE MODE. A 0600 file inside a
-    world-writable directory is not private: unlink and rename are governed by
-    the DIRECTORY's permissions, so anyone who can write the directory can
-    replace the file whatever its own mode says. The mkdir here therefore goes
-    through ``mkdir_private`` rather than through ``Path.mkdir``, which would
-    take its mode from the umask (see that function for why the obvious
-    ``mode=`` argument does not fix it).
+    0600 regardless of umask, by an explicit chmod. This is the shared writer
+    for every state file, with :func:`append_durable_bytes` for appends, so no
+    state file inherits the umask. Its directory goes through ``mkdir_private``,
+    since a world-writable directory makes the file's mode meaningless.
     """
     _refuse_write_outside_test_root(path, system_temporary=True)
     mkdir_private(path.parent)
@@ -5075,24 +4240,16 @@ def atomic_write_bytes(payload: bytes, path: Path, *, mode: int = PRIVATE_FILE_M
 
 
 def append_durable_bytes(payload: bytes, path: Path) -> None:
-    """Append ``payload`` to the EXISTING file at ``path`` and sync it, or raise.
+    """Append ``payload`` to the existing file at ``path`` and sync it, or raise.
 
-    The second shared state writer, beside :func:`atomic_write_bytes`, for a
-    ledger that grows a record at a time (U254). Rewriting a whole ledger to add
-    one record makes N records cost N squared bytes, and every one of them a
-    synced write; appending makes them cost N.
+    The second shared state writer, for a ledger that grows a record at a time
+    (U254), so N records cost N bytes rather than N squared.
 
-    WHAT IT DOES NOT PROMISE IS ATOMICITY, and the caller is built for that. A
-    kill partway through leaves the file with a torn last line, so a caller
-    appends only whole lines, one per call, under its own lock, and reads a torn
-    last line as the record that did not land. It never creates the file: the
-    first write of a file goes through :func:`atomic_write_bytes`, which sets
-    the owner only mode and the private directory this keeps.
-
-    SYNCED BEFORE IT RETURNS, which is the durability the atomic writer's fsync
-    gives: a record a caller was told is written is on the disk. The same test
-    root refusal as every other state writer, so a test that escaped its
-    isolation cannot append to a real file either.
+    Not atomic: a kill can leave a torn last line, so a caller appends whole
+    lines under its own lock and reads a torn last line as a record that did
+    not land. Never creates the file; the first write goes through
+    :func:`atomic_write_bytes` for its mode. Synced before it returns, and
+    refused outside the test root like every state writer.
     """
     _refuse_write_outside_test_root(path, system_temporary=True)
     fd = os.open(path, os.O_WRONLY | os.O_APPEND)
@@ -5105,21 +4262,15 @@ def append_durable_bytes(payload: bytes, path: Path) -> None:
         os.close(fd)
 
 
-#: The request that empties the drive's OWN write cache as well as the
-#: operating system's, on the platforms that have one, and None where a plain
-#: sync is the strongest flush on offer. Read from the platform, never spelled.
-#:
-#: On macOS ``fsync`` hands the bytes to the drive and returns; the drive may
-#: still hold them in its cache, and a pulled cable or a power cut loses them.
-#: ``F_FULLFSYNC`` asks the drive to write its cache out before answering. A
-#: capture asks for it, decided in U272 as the conservative reading of
-#: Phillip's answer of 2026-11-13, because the restore point lives under the
-#: library root and on most libraries that is an external drive.
+#: The request that empties the drive's own write cache as well as the
+#: operating system's, or None where a plain sync is the strongest flush. On
+#: macOS ``fsync`` returns with the bytes possibly still in the drive cache;
+#: ``F_FULLFSYNC`` does not. A capture asks for it (U272), since the restore
+#: point usually lives on an external drive.
 _FULL_FLUSH: int | None = getattr(_fcntl_module, "F_FULLFSYNC", None)
 
-#: What a filesystem answers when it has no full flush to give: the request is
-#: not supported, not a request it knows, or not one its descriptor takes.
-#: Every other error is a flush that failed, and raises.
+#: What a filesystem answers when it has no full flush to give. Every other
+#: error is a flush that failed, and raises.
 _FULL_FLUSH_UNSUPPORTED = frozenset({errno.ENOTSUP, errno.EOPNOTSUPP, errno.EINVAL, errno.ENOTTY})
 
 
@@ -5131,24 +4282,14 @@ def _full_flush(fd: int, operation: int) -> None:
 def flush_to_disk(path: Path) -> None:
     """Flush one file's or one directory's contents and entries to the device, or raise.
 
-    The third durability primitive, beside :func:`atomic_write_bytes` and
-    :func:`append_durable_bytes`, for bytes another writer put on disk: a copy
-    taken with ``shutil``, which writes and never syncs (U272). A directory is
-    flushed through the same call, because a file created in it is an entry in
-    the directory, and an unflushed directory loses the entry exactly as an
-    unflushed file loses its bytes.
+    The third durability primitive, for bytes another writer put on disk, such
+    as a ``shutil`` copy (U272). A directory is flushed too, since an unflushed
+    directory loses a new file's entry.
 
-    THE FULL FLUSH WHERE THE PLATFORM HAS ONE, see ``_FULL_FLUSH``. A
-    filesystem that answers it does not support one gets the plain sync, which
-    is the strongest flush it has, as SQLite does; refusing there would leave
-    every write on such a drive with no restore point at all.
-
-    NOTHING IS SWALLOWED. Every other error, from either flush or from opening
-    the path, raises, because the caller records a verdict on the strength of
-    this returning, and a flush that failed quietly is a verdict about bytes
-    that may not be there. Not to be confused with the directory flush in
-    ``core/jobs.py``, which ignores its errors for a reason that does not hold
-    here.
+    Uses the full flush where the platform has one (``_FULL_FLUSH``), falling
+    back to the plain sync where the filesystem does not support it, as SQLite
+    does. Nothing else is swallowed, because the caller records a verdict on
+    this returning; unlike the directory flush in ``core/jobs.py``.
     """
     if os.name == "nt" and Path(path).is_dir():  # pragma: no cover - needs Windows
         # A directory cannot be opened for a flush on Windows, and NTFS
@@ -5158,9 +4299,7 @@ def flush_to_disk(path: Path) -> None:
     try:
         _flush_descriptor(fd)
     except OSError as exc:
-        # A flush is asked of a descriptor, so its error names no file, and a
-        # refusal that cannot say which file of a capture failed is one a
-        # person cannot act on.
+        # A descriptor's error names no file, so name it for the person.
         if exc.filename is not None:
             raise
         raise OSError(exc.errno, exc.strerror or str(exc), str(path)) from exc
@@ -5181,28 +4320,15 @@ def _flush_descriptor(fd: int) -> None:
 
 
 class exclusive_lock:
-    """An exclusive advisory lock that REFUSES rather than proceeding unlocked.
+    """An exclusive advisory lock that refuses rather than proceeding unlocked.
 
-    The source system's equivalent tolerates a failed ``flock`` and carries on,
-    which is defensible for an advisory ledger and wrong here. Two ``crate``
-    subprocesses (KTD26) can reach an unmigrated config in the same second, and
-    two concurrent migrations of one file is how it ends up half-upgraded.
+    Two ``crate`` subprocesses (KTD26) migrating one file at once would leave it
+    half-upgraded.
 
-    THE LOCK FILE PERSISTS AFTER A SUCCESSFUL MIGRATION, DELIBERATELY. Unlinking
-    a lock file on release is the classic way to lose the exclusion it provides:
-    process A holds the lock on inode X and unlinks the NAME, process B creates a
-    fresh file at that name and takes the lock on inode Y, and both then believe
-    they hold the only lock with nothing raised. That failure is silent and
-    survives review, which is exactly the failure the lock exists to prevent, so
-    the file stays. The source system's own write-session lock is never unlinked
-    for the same reason.
-
-    What made a persistent lock file a real exposure was its MODE, not its
-    lifetime. Opened through the builtin ``open(path, "w")`` it landed 0666 under
-    a permissive umask, in a directory that was itself 0777, so any local account
-    could hold it, making every future migration refuse, or truncate it out from
-    under the process holding it. It is created 0600 now, inside a 0700
-    directory, which makes persisting cost one empty file and nothing else.
+    The lock file persists after release on purpose: unlinking the name lets a
+    second process lock a fresh inode while the first still holds the old one,
+    and both believe they hold the only lock. It is created 0600 inside a 0700
+    directory, so no other account can hold or truncate it.
     """
 
     def __init__(self, path: Path) -> None:
@@ -5215,17 +4341,13 @@ class exclusive_lock:
         try:
             import fcntl
 
-            # os.open with an explicit mode rather than the builtin open(): the
-            # builtin creates at 0666 masked by the umask, so a permissive umask
-            # yields a world-writable lock. The mode here is masked too, but 0600
-            # carries no group or other bits for a mask to add, so masking can
-            # only ever leave it at or below 0600.
+            # os.open at 0600 rather than the builtin open(), which creates at
+            # 0666 masked by the umask.
             fd = os.open(self.path, os.O_CREAT | os.O_RDWR, PRIVATE_FILE_MODE)
             self.handle = os.fdopen(fd, "r+b")
             if _CAN_SET_MODE:
-                # O_CREAT sets the mode only when it CREATES the file. A lock
-                # left behind by a build from before this fix is already there,
-                # already 0666, and would keep that mode forever without this.
+                # O_CREAT sets the mode only on creation; an older lock file
+                # may still be 0666.
                 os.chmod(self.path, PRIVATE_FILE_MODE)
             fcntl.flock(self.handle, fcntl.LOCK_EX)
         except (ImportError, OSError) as exc:
@@ -5246,16 +4368,14 @@ class exclusive_lock:
             self.handle = None
 
 
-# ---------------------------------------------------------------------------
-# What every state document's store did for itself, once (U298)
-# ---------------------------------------------------------------------------
+# What every state document's store did for itself, once (U298).
 
 
 @contextmanager
 def held(lock_path: Path, refused: Callable[[ConfigLockUnavailable], BaseException]) -> Iterator[None]:
     """Hold the exclusive lock at ``lock_path`` across one read then write cycle.
 
-    ONLY THE ACQUISITION is translated, by ``refused``, into the store's own
+    Only the acquisition is translated, by ``refused``, into the store's own
     refusal. A failure raised by the body keeps its own identity.
     """
     lock = exclusive_lock(lock_path)
@@ -5275,10 +4395,8 @@ def lock_within(
 ) -> Iterator[bool]:
     """Hold the lock at ``lock_path`` and yield True, or yield False when it was not had in time.
 
-    For a writer that would rather skip one write than wait on another process,
-    a cache or a tally. THE LOCK FILE IS NEVER UNLINKED, for the reason
-    :class:`exclusive_lock`'s is not: one holder unlinking the name while another
-    creates a fresh file at it is how two processes each hold "the" lock.
+    For a writer that would rather skip one write than wait, a cache or a
+    tally. The lock file is never unlinked, for :class:`exclusive_lock`'s reason.
     """
     try:
         mkdir_private(lock_path.parent)
@@ -5306,19 +4424,13 @@ def lock_within(
 
 
 def lock_now(path: Path) -> tuple[Any, bool]:
-    """Open the lock file at ``path`` and take its lock WITHOUT WAITING.
+    """Open the lock file at ``path`` and take its lock without waiting.
 
-    Returns the open handle, whose close releases the lock, and whether the
-    lock was had. A lock another process holds is ``False`` with the handle
-    still open: the holder's own words are in the file, and the caller refuses
-    with them. ``os.open`` with an explicit mode and never the builtin
-    ``open``, which creates at 0666 masked by the umask and would leave a lock
-    any local account could hold, refusing every later run.
-
-    A platform with no advisory locks reads as had. Refusing there would make
-    the product unusable on it, and what each caller guards is a transaction
-    of its own. The handle is closed on any other failure, which leaves as
-    itself.
+    Returns the open handle, whose close releases the lock, and whether the lock
+    was had. A lock held elsewhere is ``False`` with the handle open, so the
+    caller can quote the holder's words from the file. Opened at 0600 through
+    ``os.open``. A platform with no advisory locks reads as had. On any other
+    failure the handle is closed and the failure leaves as itself.
     """
     mkdir_private(path.parent)
     handle = os.fdopen(os.open(path, os.O_CREAT | os.O_RDWR, PRIVATE_FILE_MODE), "r+")
@@ -5340,13 +4452,10 @@ def lock_now(path: Path) -> tuple[Any, bool]:
 def flock_exclusive(target: Path, harden: Callable[[Path], None]):
     """Open ``target`` owner only, harden it, and take its exclusive lock.
 
-    Returns the open handle, whose close releases the lock. THE HANDLE IS
-    CLOSED ON ANY FAILURE, an interrupt included, and the failure leaves as
-    itself, so the caller decides which of them is its own refusal.
-    ``os.open`` with an explicit mode and never the builtin ``open``, which
-    creates at 0666 masked by the umask (P1). ``harden`` is the caller's,
-    because ``O_CREAT`` applies the mode only when it CREATES the file and each
-    caller decides what a lock left behind at another mode means.
+    Returns the open handle, whose close releases the lock. On any failure,
+    an interrupt included, the handle is closed and the failure leaves as
+    itself. Opened at 0600 through ``os.open`` (P1). ``harden`` is the caller's,
+    since ``O_CREAT`` sets the mode only on creation.
     """
     handle = None
     try:
@@ -5366,9 +4475,7 @@ def flock_exclusive(target: Path, harden: Callable[[Path], None]):
 def read_bytes_if_present(path: Path) -> bytes | None:
     """A state file's bytes, or None when there is no file.
 
-    Absent is an answer, the empty record every ledger names. Any other
-    failure to read leaves as the ``OSError`` it is, for the caller to refuse
-    in its own words.
+    Any other read failure leaves as its ``OSError`` for the caller to refuse.
     """
     try:
         return path.read_bytes()
@@ -5379,11 +4486,9 @@ def read_bytes_if_present(path: Path) -> bytes | None:
 def read_json(path: Path, unusable: Callable[[str], BaseException]) -> tuple[bool, Any]:
     """Whether a state document exists at ``path``, and what it parses to.
 
-    A DOCUMENT THAT EXISTS AND CANNOT BE READ IS REFUSED, never read as empty:
-    an unreadable record read as unset asks every question again, and the next
-    write then persists that emptiness over the real one. ``unusable`` builds
-    the store's own refusal from the clause that says what was wrong. An
-    absent file is ``(False, None)``, which is not a document holding ``null``.
+    A document that exists and cannot be read is refused, never read as empty,
+    or the next write would persist the emptiness. ``unusable`` builds the
+    store's refusal from a clause. An absent file is ``(False, None)``.
     """
     if not path.exists():
         return False, None
@@ -5398,8 +4503,8 @@ def read_json(path: Path, unusable: Callable[[str], BaseException]) -> tuple[boo
 def read_json_map(path: Path, unusable: Callable[[str], BaseException]) -> Mapping[str, Any] | None:
     """:func:`read_json` for a document that must be a map, None when the file is absent.
 
-    Anything else at the top level is refused in the store's own words, since
-    a list or a scalar read as an empty record is deleted by the next write.
+    Any other top level is refused, since read as empty it would be deleted by
+    the next write.
     """
     found, raw = read_json(path, unusable)
     if not found:
@@ -5412,9 +4517,8 @@ def read_json_map(path: Path, unusable: Callable[[str], BaseException]) -> Mappi
 def read_json_as_text(path: Path, unusable: Callable[[str], BaseException]) -> tuple[bool, Any]:
     """:func:`read_json`, for the two stores that read the file in the platform's encoding.
 
-    Not merged with it, because the two differ in what a person sees: here a
-    file that is not text in that encoding leaves as the ``UnicodeDecodeError``
-    it is, where :func:`read_json` refuses it as not JSON.
+    Kept apart because a file that is not text in that encoding leaves here as
+    a ``UnicodeDecodeError`` rather than being refused as not JSON.
     """
     if not path.exists():
         return False, None

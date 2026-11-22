@@ -1,48 +1,11 @@
 """The declared taxonomy: one table, loaded and validated before anything routes.
 
-WHY THIS MODULE EXISTS. The system this replaces spread one person's playlist
-tree across eight genre resolvers, twelve energy mappings, four definitions of a
-single sub-playlist name, and six inline copies of the bucket that catches
-everything else. None of them shared a constant. Adding one genre meant editing
-four tables and remembering the fifth, and the drift that produced was not
-theoretical: two of those resolvers disagree today on strings the library
-actually contains, and a third silently degrades tempo detection for anyone whose
-folders are not named exactly like the author's.
-
-KTD13 is the ordering rule that fixes it: consolidate FIRST, parameterise SECOND.
-Parameterising five drifted copies would have preserved the drift in a config
-file, where it is harder to see. So the drift was resolved against the live
-library, and only the resolved result became declarable.
-
-WHY IT TAKES NO CONFIGURATION. This module reads no configuration VALUE (KTD23,
-seam decision S3). A resolver that reaches for global configuration cannot be
-tested against two different taxonomies in one process, and proving that a
-friend's differently-named tree routes correctly with no code change is exactly
-the verification this unit owes. So a Taxonomy is a value the caller supplies,
-and the only file this module reads is the read-only default that ships inside
-the wheel.
-
-The one thing it does import from ``core/config`` is a pure predicate over a
-string, ``template_name_is_usable``, and the distinction is worth stating because
-the sentence above used to say "imports none". Nothing is READ: no path is
-resolved, no document is loaded, no global is consulted, and every function here
-is still a function of its arguments. What the import buys is that the set of
-template names this module OFFERS and the set configuration ACCEPTS are one set.
-Spelling the rule twice is how a wizard comes to offer a name that validation
-then refuses, which is the same two-answers-to-one-question defect the shared
-walk below exists to close.
-
-THE ONE THING IT REMEMBERS is its own parse (U247). :func:`load_taxonomy`
-keeps the taxonomy built from each of a handful of texts, keyed on the text
-itself. That changes no answer, since the answer was already a function of the
-text, and it is why a job that reads its library's copy for every item parses
-it once. It is a memo of a pure function, not configuration, so two taxonomies
-still load side by side in one process.
-
-WHY VALIDATION HAPPENS AT LOAD. Every rule below fails at load time and again in
-the setup wizard, never at write time. A friend whose template omits a tempo
-prior should learn during setup, not three hours into their first intake with a
-library half-written.
+Every resolver reads this one table (KTD13). It reads no configuration value
+(KTD23, S3): a Taxonomy is a value the caller supplies, so two can be tested in
+one process; the only file read is the default in the wheel. The one import
+from ``core/config``, ``template_name_is_usable``, keeps the names offered here
+and the names configuration accepts one set. :func:`load_taxonomy` memoises its
+pure parse per text (U247). Every rule fails at load, never at write time.
 """
 
 from __future__ import annotations
@@ -58,96 +21,58 @@ from typing import Any, Mapping, Sequence
 
 from cratekit.core import config
 
-# A stable identifier. Lowercase snake, because it is compared, persisted, and
-# never rendered. The pattern is enforced rather than documented so that a
-# template cannot smuggle a display name in as an id and re-orphan state on the
-# next rename (R19).
+# A stable identifier: lowercase snake, compared and persisted, never rendered.
+# Enforced so a display name cannot pose as an id and orphan state on rename (R19).
 _ID = re.compile(r"^[a-z][a-z0-9_]*$")
 
 SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2, 3, 4, 5})
 
-# The schema version a template has to state before it may declare a former
-# place (R-797). A former place changes what competes, and a loader ignores a
-# key it does not know. So a build older than this unit, handed a library's
-# copy that declares one, would load it cleanly, see no competing place for the
-# old playlist, and file every track into a band while it still sat there. The
-# version is what such a build refuses by name, so the declaration is tied to
-# it: version 1 with a former place is refused here, and version 2 is refused
-# there.
+# The schema version a template must state to declare a former place (R-797).
+# An older build ignores the unknown key and would file tracks still sitting in
+# the old playlist, so the declaration is tied to a version it refuses by name.
 FORMER_PLACE_SCHEMA_VERSION = 2
 
-# The schema version a template has to state before it may declare a split
-# place (U118), for the former place's reason: a build that reads version 2
-# ignores the key, sees no competing place in the folder the genre left, and
-# files every track into the new folder while it still sits in the old one.
+# The schema version needed to declare a split place (U118), for the same reason.
 SPLIT_PLACE_SCHEMA_VERSION = 3
 
-# The schema version a template has to state before it may declare a sub class
-# derived from a PLAYLIST (U119), the genre Favorites, for the same reason one
-# version on: a build that reads version 3 refuses two additive classes by
-# count, loudly, and a build that knows only one signal would otherwise read
-# the second class as a vocal one and ask the rebuild to derive it from a
-# reading it does not have.
+# The schema version needed to declare a sub class derived from a playlist
+# (U119), so a build knowing only the vocal signal refuses rather than misreads it.
 PLAYLIST_SIGNAL_SCHEMA_VERSION = 4
 
-# The schema version a template has to state before it may declare a genre sub
-# (U155), for the former place's reason one version on: a build that reads
-# version 4 ignores the key, routes a Rominimal track into its band alone, and
-# reports the genre sub's playlist as one nobody declared. The version is what
-# such a build refuses by name.
+# The schema version needed to declare a genre sub (U155), for the same reason.
 GENRE_SUB_SCHEMA_VERSION = 5
 
-# What a derived sub class is derived FROM (U119). The vocal class reads the
-# file's vocal prominence against the calibrated cut; a playlist class mirrors
-# another playlist's membership into every genre folder, which is the genre
-# Favorites. ONE additive class per signal: two classes on one signal would be
-# one dimension declared twice.
+# What a derived sub class is derived from (U119): vocal prominence against the
+# calibrated cut, or another playlist's membership (the genre Favorites). One
+# additive class per signal, since two would declare one dimension twice.
 SIGNAL_VOX = "vox"
 SIGNAL_PLAYLIST = "playlist"
 SIGNALS = frozenset({SIGNAL_VOX, SIGNAL_PLAYLIST})
 
-# The sources whose words are read through a table of their own (R-799), by the
-# name a file's record gives each. THREE: the general catalogue, Discogs, whose
-# collector styles are a vocabulary of their own (U244), and Cyanite, whose
-# words the Cyanite trial resolves (U245); the shipped template declares no
-# table for Cyanite, so a copy that wants one writes it. The record shops
-# asked by page are not here: their words are resolved by the buckets' aliases,
-# which were written for them, and a table declared for one would be read by
-# nothing. A name outside this tuple is refused at load for the same reason,
-# since a misspelled table loads clean and changes nothing, with nothing said.
-# The tagging package owns the names and cannot be imported from here, so the
-# two are pinned equal by a test, as the tree depth below is.
+# The sources whose words are read through a table of their own (R-799, U244,
+# U245). Record shops are absent: the bucket aliases resolve their words. Any
+# other name is refused at load, since a misspelled table would silently do
+# nothing. The tagging package owns these names; a test pins the two equal.
 VOCABULARY_SOURCES: tuple[str, ...] = ("deezer", "discogs", "cyanite")
 
-# How many levels a declared routing tree may nest: a root child, a folder, and a
-# sub-playlist (KTD14). Named here rather than written as a literal in the check
-# and again in its message, because it is the SAME number the XML bridge's
-# indentation encodes as ``cratekit.write.rbxml.TREE_DEPTH``. The bridge cannot
-# be imported from here, since it imports this module, so the two are pinned
-# equal by a test instead. One number in two files with nothing holding them
-# together is how a template starts loading at a depth the writer cannot emit.
+# How many levels a routing tree may nest: root child, folder, sub-playlist
+# (KTD14). Must equal ``cratekit.write.rbxml.TREE_DEPTH``, which imports this
+# module, so a test pins the two equal.
 SUPPORTED_TREE_DEPTH = 3
 
-# How a shipped template is named on disk. The short name between the two is the
-# stable identifier configuration records, so both halves are declared once and
-# the walk below and the reader below cannot disagree about which files count.
+# How a shipped template is named on disk; the short name between is the
+# identifier configuration records. Declared once so the walk and reader agree.
 _TEMPLATE_PREFIX = "taxonomy."
 _TEMPLATE_SUFFIX = ".toml"
 
-# The name of the packaged default. Read-only data inside the wheel; a library's
-# ACTIVE template is a copy in its own state root (seam decision S6), which is
-# what lets one library be self-describing and lets a snapshot roll the taxonomy
-# back alongside the database it describes.
+# The packaged default, read-only in the wheel. A library's active template is a
+# copy in its own state root (S6), so a snapshot rolls it back with the database.
 DEFAULT_TEMPLATE_NAME = "default"
 DEFAULT_TEMPLATE = f"{_TEMPLATE_PREFIX}{DEFAULT_TEMPLATE_NAME}{_TEMPLATE_SUFFIX}"
 
 
 class TaxonomyError(ValueError):
-    """A template that cannot be trusted to route anything.
-
-    Carries EVERY problem, not the first. A friend fixing their template one
-    error per run is a friend who gives up on the third run.
-    """
+    """A template that cannot be trusted to route anything; carries every problem."""
 
     def __init__(self, problems: Sequence[str]) -> None:
         self.problems = tuple(problems)
@@ -155,16 +80,11 @@ class TaxonomyError(ValueError):
 
 
 class SubPolicy(str, Enum):
-    """How automation is allowed to treat a sub-playlist.
+    """How automation may treat a sub-playlist.
 
-    Two values rather than one "excluded" flag, and the distinction is the whole
-    point. In the system this came from, five separate places excluded two subs
-    from being touched, for two different reasons, using one shape. Collapsing
-    them loses the reason, and the reason is what stops the bug: a curated sub
-    must never be written OR read as a move source, while a derived sub IS
-    written by automation and is still never a move source, because moving a
-    track out of it without re-deriving the signal silently drops the routing
-    that put it there.
+    A manual sub is never written nor read as a move source. A derived sub is
+    written by automation but is still never a move source, since moving a track
+    out without re-deriving the signal drops the routing that put it there.
     """
 
     MANUAL = "manual"
@@ -182,7 +102,7 @@ class Sub:
 
 @dataclass(frozen=True)
 class Band:
-    """One energy band. ``max`` is an INCLUSIVE upper bound on the level scale."""
+    """One energy band. ``max`` is an inclusive upper bound on the level scale."""
 
     id: str
     display: str
@@ -199,13 +119,9 @@ class RatingCut:
 
 @dataclass(frozen=True)
 class BpmPrior:
-    """A tempo detection window, per bucket.
+    """A tempo detection window, on the bucket so a renamed folder keeps it.
 
-    This lives on the bucket rather than in a separate table because of a
-    concrete failure: the source system keyed its priors by folder DISPLAY name,
-    so a user whose folders are named anything else got the generic window for
-    every track in their library, silently. A window spanning a full octave folds
-    nothing, which disables the exact defence the priors exist to provide.
+    A window spanning a full octave folds nothing and defeats the prior.
     """
 
     start: float
@@ -217,10 +133,8 @@ class BpmPrior:
 class SubClass:
     """A sub-playlist that exists under many buckets and carries a write policy.
 
-    ``signal`` says what a derived class is derived from, :data:`SIGNAL_VOX` or
-    :data:`SIGNAL_PLAYLIST`, and ``signal_playlist`` names the playlist a
-    playlist class mirrors, by the display name rekordbox shows, since that
-    playlist is the author's and has no stable id of this product's (U119).
+    ``signal`` is what a derived class is derived from; ``signal_playlist`` names
+    a playlist class's source by display name, as it has no id of ours (U119).
     """
 
     id: str
@@ -234,13 +148,7 @@ class SubClass:
 
 @dataclass(frozen=True)
 class BucketEnergy:
-    """A bucket's relationship to the energy dimension.
-
-    ``band_display`` overrides only the LABEL of a global band, never its cut.
-    That split matters: one bucket in the shipped default names its bands
-    differently while splitting at exactly the same levels, and encoding that as
-    a second set of cuts would let the two drift apart the moment either moved.
-    """
+    """A bucket's energy settings; ``band_display`` relabels a band, never its cut."""
 
     enabled: bool = True
     band_display: Mapping[str, str] = field(default_factory=dict)
@@ -248,13 +156,7 @@ class BucketEnergy:
 
 @dataclass(frozen=True)
 class SubBySource:
-    """A bucket that routes by the SOURCE genre instead of by energy.
-
-    ``default`` is explicit on purpose. The source system hardcoded one sub as
-    the landing place for anything unrecognised, with no way to see it from
-    outside the function, so unrelated styles accumulated there and looked like
-    real classifications.
-    """
+    """A bucket that routes by source genre instead of energy; ``default`` is explicit."""
 
     default: str
     map: Mapping[str, str]
@@ -264,23 +166,10 @@ class SubBySource:
 class FormerPlace:
     """A playlist a bucket's tracks were filed in before the bucket had its folder.
 
-    WHY IT IS DECLARED (R-797). A genre promoted from a sub of one folder to a
-    folder of its own leaves its tracks sitting in the old playlist, and every
-    reader of the tree asks the taxonomy what a place is. A playlist the
-    taxonomy stopped declaring is no place at all, so nothing would withhold a
-    second filing over it and nothing could plan leaving it. Declaring it on
-    the bucket that took its tracks over makes it one of that bucket's
-    competing subs, which is the single question the adoption plan, the
-    placement reader and the move already ask.
-
-    ``id`` is the identifier it competes under in the bucket that declares it.
-    ``bucket`` is the declared bucket whose folder holds the playlist, ``sub``
-    the identifier the playlist had there, which is what a previous write
-    recorded its node under, and ``display`` the name it carries.
-
-    A FORMER PLACE IS ONLY EVER LEFT. No resolver answers with one, so nothing
-    is filed into it, and the loader refuses one that names a place the
-    taxonomy still declares.
+    Declared so it competes as one of the declaring bucket's subs (R-797).
+    ``id`` is its competing id, ``bucket`` the bucket whose folder holds it,
+    ``sub`` the id it had there, ``display`` its name. It is only ever left:
+    no resolver answers with one, and it may not name a live place.
     """
 
     id: str
@@ -293,27 +182,11 @@ class FormerPlace:
 class SplitPlace:
     """A band of another bucket that this bucket's tracks still sit in (U118).
 
-    WHY IT IS NOT A FORMER PLACE. Soul was filed under R&B's energy bands as
-    one folder until the author split it out. Those bands are still R&B's, so
-    a former place naming one is refused by design: leaving it would take
-    R&B's own tracks out of a playlist that is theirs. A split place is the
-    other half of that rule. It names a playlist the holder still files into,
-    and a track leaves it only when its genre names the bucket that declares
-    the place, so an R&B track in ``R&B / Med`` is never touched and a Soul
-    track there moves to ``Soul / Med``.
-
-    IT COMPETES IN THE DECLARING BUCKET ONLY. In the holder it is already one
-    of the holder's own bands, and competing a second time there would read
-    every track in it as holding two places.
-
-    ``id`` is the identifier it competes under in the declaring bucket.
-    ``bucket`` is the holder, ``sub`` the band's identifier there, and
-    ``display`` the name the holder gives that band, which the loader checks.
-    ``sub`` may instead be the holder's own former place, the playlist both
-    genres sat in before either had a folder, and is then left the same way.
-
-    A SPLIT PLACE IS ONLY EVER LEFT. No resolver answers with one, so nothing
-    is filed into it through the declaring bucket.
+    The holder still files into it, so only tracks whose genre names the
+    declaring bucket leave it, and it competes in the declaring bucket only.
+    ``id`` is its competing id, ``bucket`` the holder, ``sub`` the band's id
+    there (or the holder's former place), ``display`` the holder's name for
+    it. It is only ever left: no resolver answers with one.
     """
 
     id: str
@@ -326,18 +199,9 @@ class SplitPlace:
 class GenreSub:
     """A sub of an energy bucket chosen by the track's source genre (U155).
 
-    WHY IT IS NOT ``sub_by_source``. A bucket that routes by source genre never
-    reads energy at all, so declaring Rominimal that way on Minimal / Deep Tech
-    would take Low, Med and High away from every track in the bucket. A genre
-    sub sits BESIDE the bands instead: a track whose genre is one of
-    ``sources`` files into its band as before and into this sub as well, the
-    way "with vox" sits beside a band. It is additive, so it never competes,
-    nothing is ever moved out of it, and no band loses a track to it.
-
-    ``sources`` are exact, case sensitive source genres, each one an exact
-    routing alias of the bucket, so a track wearing one is filed by this
-    bucket and reaches this sub, and ``Minimal`` beside ``Rominimal`` does not.
-    The first source is the word the tagger writes for the sub.
+    Additive beside the bands, unlike ``sub_by_source``: it never competes and
+    nothing is moved out of it. ``sources`` are exact routing aliases of the
+    bucket; the first is the word the tagger writes for the sub.
     """
 
     id: str
@@ -389,11 +253,9 @@ class Split:
 class SuggestRule:
     """One ordered tagging rule.
 
-    Three match kinds, and which one a rule uses decides WHEN it runs, not just
-    what it matches. ``equals`` is an exact refusal or an exact answer and runs
-    before the alias lookup; ``all_of`` and ``any_of`` are substring guesses and
-    run after it. That precedence is what lets one rule refuse a catch-all
-    without also refusing every specific sub-genre whose name contains it.
+    The match kind decides when it runs: ``equals`` runs before the alias
+    lookup, ``all_of`` and ``any_of`` (substring guesses) after it, so a rule
+    can refuse a catch-all without refusing every sub-genre containing it.
     """
 
     equals: tuple[str, ...] = ()
@@ -407,7 +269,7 @@ class SuggestRule:
 
 @dataclass(frozen=True)
 class GateRule:
-    """One ordered acquisition-gate rule over the SOURCE vocabulary."""
+    """One ordered acquisition-gate rule over the source vocabulary."""
 
     all_of: tuple[str, ...] = ()
     any_of: tuple[str, ...] = ()
@@ -424,26 +286,20 @@ ANY_KIND = "any"
 #: ``default_kind`` is declared.
 DEFAULT_LABEL_KIND = "dance"
 
-#: The word that CLEARS a label's kind, so it follows ``default_kind`` again.
-#: Reserved like :data:`ANY_KIND`: a rule naming it would declare a kind no
-#: label could be marked with, since marking with it means "none".
+#: The word that clears a label's kind, so it follows ``default_kind`` again.
+#: Reserved like :data:`ANY_KIND`, since marking with it means "none".
 NO_KIND = "default"
 
-#: The shape of a kind's name, once folded: one word. ONE PATTERN FOR THE
-#: TAXONOMY AND THE REGISTRY. A person types a kind on a command line to mark a
-#: label with it, so a rule naming a kind in a shape the registry refuses would
-#: declare a kind no label could ever be given: it could hold releases and
-#: never pass one.
+#: The shape of a kind's name, once folded: one word. Shared with the registry,
+#: so a rule cannot name a kind no label could ever be marked with.
 KIND_NAME = re.compile(r"[a-z0-9][a-z0-9_-]*")
 
 
 @dataclass(frozen=True)
 class PublishedRule:
-    """One ordered rule saying what KIND of music a general catalogue's word is.
+    """One ordered rule saying what kind of music a general catalogue's word is.
 
-    The matchers are :class:`GateRule`'s, held lowercase. The vocabulary is not:
-    these read the words a general catalogue publishes for an album, where
-    :class:`GateRule` reads the record shops' (R-798).
+    Matchers as in :class:`GateRule`, lowercase, over catalogue words (R-798).
     """
 
     kind: str
@@ -472,12 +328,8 @@ class LabelGate:
 class VocabularyWord:
     """One word of a source's own vocabulary, and the genre written for it (R-799).
 
-    ``word`` is the source's word as the template spells it, matched whole and
-    without regard to case. ``tag`` is the genre written onto the file.
-    ``bucket`` and ``sub`` are the place routing files that tag in, resolved
-    by the loader and never declared, so a row cannot say one folder and write
-    a word that files in another. ``sub`` is None for a bucket that splits by
-    energy, where the band is the reading's to choose.
+    ``word`` matches whole, ignoring case. ``bucket`` and ``sub`` are resolved
+    from ``tag`` by the loader, never declared; ``sub`` is None for an energy bucket.
     """
 
     word: str
@@ -488,19 +340,11 @@ class VocabularyWord:
 
 @dataclass(frozen=True)
 class Vocabulary:
-    """Where each word of ONE source's vocabulary goes (R-799).
+    """Where each word of one source's vocabulary goes (R-799).
 
-    WHY A TABLE PER SOURCE. The alias lists on the buckets were written against
-    the record shops' words, where Pop is a dance genre. A general catalogue
-    says Pop of every kind of pop, so one table read for both files a pop
-    record beside dance tracks. ``source`` is the name a file's record gives
-    the source, which is the name the tag summary counts under.
-
-    THE TABLE IS ASKED FIRST. A word with no row goes on to the buckets'
-    aliases, as every word did before the table existed, so a specific word
-    those aliases already file correctly is not lost. What the table changes
-    for such a word is one thing: on a copy that declares a table, the answer
-    must still name a folder, see :meth:`Taxonomy.named_folder`.
+    Per source, since bucket aliases were written for record shop words. Asked
+    first; a word with no row falls through to the aliases, but must still
+    name a folder (:meth:`Taxonomy.named_folder`).
     """
 
     source: str
@@ -532,9 +376,7 @@ class FamilyAffinity:
     unrelated: float
     unknown_anchor: float
     supergroup: Mapping[str, str]
-    # The family that means "nothing in common". Declared rather than inferred,
-    # because two buckets share it without being alike, and rewarding them for
-    # sharing it would make the least informative answer the strongest signal.
+    # The family that means "nothing in common", so sharing it earns no affinity.
     catch_all: str | None = None
 
 
@@ -546,19 +388,14 @@ class Node:
     display: str
 
 
-#: The source system's threshold for a set rather than a track: twenty minutes.
-#: A template that declares the long track playlist and omits the threshold
-#: takes this one, which is the separation a person had before the port.
+#: The threshold for a set rather than a track, twenty minutes, used when a
+#: template declares the long track playlist without one.
 DEFAULT_LONG_TRACK_SECONDS = 1200
 
 
 @dataclass(frozen=True)
 class LongTracks:
-    """The root playlist every collection track over a length is a member of.
-
-    ``over_seconds`` is a strict bound, as the source system's was: a track of
-    exactly that length is not a member.
-    """
+    """The root playlist of every collection track strictly over ``over_seconds``."""
 
     id: str
     display: str
@@ -582,47 +419,27 @@ class Taxonomy:
     label_gate: LabelGate
     family: FamilyAffinity
 
-    # The tree a whole-catalog import writes into: one folder per catalogued
-    # source, each holding one playlist per year. It sits here beside the routing
-    # tree and the intake flow rather than in the writer that emits it, because
-    # R19 puts every playlist display name in the declared template and the write
-    # layer is forbidden from carrying one at all.
-    #
-    # OPTIONAL, unlike the other two, and that is a decision rather than an
-    # omission. A library that never imports a catalog has no such tree, and a
-    # template declaring none is complete rather than deficient. The writer
-    # refuses by name when asked to write a tree nobody declared, which beats
-    # inventing a folder in somebody's library from a default they never saw.
+    # The tree a whole-catalog import writes into: a folder per source, a
+    # playlist per year. Here because R19 keeps every display name in the
+    # template. Optional: the writer refuses by name rather than invent a folder
+    # from a default nobody saw. The optional nodes below follow the same rule.
     catalog: Node | None = None
 
-    # The playlist that keeps sets apart from tracks, a direct child of the
-    # playlist root. OPTIONAL for the catalog's reason: a template without it
-    # builds no such playlist rather than one named by a default nobody saw.
+    # The root playlist that keeps sets apart from tracks.
     long_tracks: LongTracks | None = None
 
-    # The folder inside the intake flow that a batch is rotated into once it is
-    # stale (U111), ``INBOX / Old`` in the shipped template. OPTIONAL for the
-    # catalog's reason: a library whose active copy predates the section has no
-    # such folder declared, and ``inbox rotate`` refuses by name rather than
-    # creating a folder from a default nobody saw.
+    # The intake folder a stale batch is rotated into (U111), ``INBOX / Old``.
     intake_old: Node | None = None
 
-    # The folder at the playlist root that keeps a set's playlist for good
-    # (U121), ``INSPIRATION`` in the shipped template: a set intake lands its
-    # batch under the intake flow, which the rotation clears, and writes the
-    # whole set once more here, which nothing rotates. OPTIONAL for the
-    # catalog's reason: a library whose active copy predates the section has
-    # no such folder declared, and the set playlist is refused by name rather
-    # than written under a folder nobody declared.
+    # The root folder that keeps a set's playlist for good, never rotated (U121),
+    # ``INSPIRATION`` in the shipped template.
     inspiration: Node | None = None
 
-    # The vocabularies of the sources that have one of their own (R-799), in
-    # declared order. EMPTY in a copy written before that unit, and then every
-    # source's word is resolved by the buckets' aliases, as it always was.
+    # Per-source vocabularies (R-799), in declared order. Empty in an older copy,
+    # where every word is resolved by the bucket aliases.
     vocabularies: tuple[Vocabulary, ...] = ()
 
-    # Indexes, built once at construction. They are derived data, so they can
-    # never disagree with the declaration they came from.
+    # Indexes derived once at construction, so they cannot disagree with it.
     _by_id: Mapping[str, Bucket] = field(repr=False, default_factory=dict)
     _by_display: Mapping[str, str] = field(repr=False, default_factory=dict)
     _routing_alias: Mapping[str, str] = field(repr=False, default_factory=dict)
@@ -642,11 +459,8 @@ class Taxonomy:
     def vocabulary(self, source: str) -> Mapping[str, VocabularyWord] | None:
         """One source's own table, by lowercased word, or None when it has none.
 
-        NONE AND AN EMPTY TABLE ARE DIFFERENT ANSWERS. None says this taxonomy
-        declares nothing for the source, so its words are resolved exactly as
-        they were before any table existed. A table with no rows is a
-        declaration: it answers for no word, and the copy has still taken the
-        rule that a genre written from that source names a folder.
+        None and an empty table differ: an empty table answers no word but still
+        imposes the rule that a genre written from that source names a folder.
         """
         return self._vocabulary.get(source)
 
@@ -654,11 +468,9 @@ class Taxonomy:
         """The place a written genre names by an exact declaration, or None.
 
         The bucket and, in a bucket that files by source genre, the style sub.
-        None when the genre is filed by a keyword or the fallback, is too
-        coarse to be a final genre, or is such a bucket's bare name or a word
-        that would land in its default sub. ONE RULE WITH THE LOADER: this is
-        the test a vocabulary row's tag passed to be declared, asked again of
-        a genre the buckets' aliases answered.
+        None for a keyword or fallback match, a too coarse genre, or such a
+        bucket's bare name or default sub word. The same test the loader puts
+        to a vocabulary row's tag.
         """
         place, _problem = _tag_place(
             genre, self._by_id, self._by_display, self._routing_alias, self.fallback
@@ -666,20 +478,14 @@ class Taxonomy:
         return place
 
     def former_places(self, bucket_id: str) -> tuple[tuple[str, "FormerPlace"], ...]:
-        """Every former place that competes in one bucket, with its declarer.
-
-        The ones the bucket declares and the ones its folder holds for another
-        bucket, in declared order. Built once at load, since what competes is
-        asked per track and per bucket.
-        """
+        """Every former place one bucket declares or holds, with its declarer."""
         return self._former_places.get(bucket_id, ())
 
     def split_places(self, bucket_id: str) -> tuple[tuple[str, "SplitPlace"], ...]:
         """Every split place one bucket declares or holds, with its declarer.
 
-        BOTH SIDES, as :meth:`former_places` answers, though a split place
-        competes only where it is declared: the holder's side is what the move
-        asks to know a band of its own is settled by the declaring bucket.
+        Both sides, though it competes only where declared: the move reads the
+        holder's side to know the declaring bucket settles that band.
         """
         return self._split_places.get(bucket_id, ())
 
@@ -702,96 +508,52 @@ class Taxonomy:
         raise KeyError(f"no sub_class declared with id {sub_class_id!r}")
 
     def routing_alias(self, source_genre: str) -> str | None:
-        """The bucket a source string is DECLARED to route to, exactly.
-
-        Case-sensitive, because the strings these aliases came from are exact
-        vendor genre names and a case-insensitive match would silently merge two
-        that a source taxonomy keeps apart.
-        """
+        """The bucket a source string is declared to route to, exactly, case included."""
         return self._routing_alias.get(source_genre)
 
     def bucket_for_display(self, display: str) -> str | None:
         """The bucket whose display name is exactly ``display``, if any.
 
-        This is a lookup FROM a display name, not a record keyed BY one. The
-        distinction is the whole of R19: nothing persisted keys on a display
-        name, but a tagger that writes bucket names back onto files means routing
-        constantly has to recognise one.
-
-        BUCKETS ONLY, AND EXACT, WHICH IS NOW LOAD BEARING TWICE. It places a
-        name in the tree, so a sub's display must not answer it and put a track
-        one level up. ``suggest_tag``'s last tier reads it for the other half of
-        the same fact: a word this answers for is one routing will place where
-        the template says, and a word it does not is one the file wears while
-        landing somewhere the template did not choose (R-650).
+        A lookup from a display name, not a record keyed by one (R19). Buckets
+        only and exact, so a sub's display cannot place a track one level up;
+        ``suggest_tag``'s last tier relies on that to know routing will place
+        the word where the template says (R-650).
         """
         return self._by_display.get(display)
 
     def tagging_alias(self, lowered_source_genre: str) -> tuple[str, str | None] | None:
-        """The (bucket id, sub id) a source string is declared to tag as.
-
-        Case-INSENSITIVE, unlike the routing lookup, because these strings are
-        scraped from pages whose capitalisation varies run to run.
-        """
+        """The (bucket id, sub id) a source string tags as; case insensitive."""
         return self._tagging_alias.get(lowered_source_genre)
 
     def buckets_without_bpm_prior(self) -> tuple[str, ...]:
-        """Buckets that declare no tempo window.
-
-        A caller that needs priors asks this once and refuses by name, rather
-        than detecting every track against a generic window and reporting
-        nothing. Silent defaulting here is the exact failure that made a custom
-        taxonomy degrade detection across a whole library.
-        """
+        """Buckets with no tempo window, so a caller can refuse by name, not default."""
         return tuple(b.id for b in self.buckets if b.bpm is None)
 
     def is_too_coarse_as_source(self, value: str) -> bool:
-        """Whether a source string is too coarse to accept as a final genre tag.
-
-        Replaces two separate constants in the source system: a reject set used
-        to decide whether a lookup improved on an existing tag, and a fallback
-        folder name used to decide whether a track counted as a taxonomy gap.
-        They always meant the same thing and were never the same string.
-        """
+        """Whether a source string is too coarse to accept as a final genre tag."""
         return (value or "").strip() in self.fallback.too_coarse_as_source
 
 
-# ---------------------------------------------------------------------------
 # Loading
-# ---------------------------------------------------------------------------
 
 
-#: The names of the top level folders another app owns in rekordbox's tree,
-#: exactly as it writes them (U185). Declared HERE, in the domain layer, since
-#: it is a fact about names a declared tree may not take; the writer's guard,
-#: :mod:`cratekit.core.foreign_tree`, reads it from here, downward.
+#: Top level folder names another app owns in rekordbox's tree (U185), which a
+#: declared tree may not take; :mod:`cratekit.core.foreign_tree` reads it.
 FOREIGN_ROOT_NAMES: frozenset[str] = frozenset({"DEADCA7"})
 
 
-#: How many distinct template texts one process keeps parsed (U247). A handful,
-#: because a process asks for very few: a verb reads its library's one active
-#: copy, and doctor and the upgrade read that copy and a shipped template or two
-#: beside it. Past the bound, the text asked for least recently is parsed again
-#: when it is next asked for.
+#: How many distinct template texts one process keeps parsed (U247); a process
+#: reads very few, and past the bound the least recent is parsed again.
 _PARSED_LIMIT = 8
 
 
 def load_taxonomy(text: str) -> Taxonomy:
     """Parse and validate a template from TOML text.
 
-    Text rather than a path, so the caller owns the input and this stays a pure
-    function of its argument. That is what lets one test drive two taxonomies
-    through the same process, which is the verification this unit owes.
-
-    PARSED ONCE PER TEXT IN A PROCESS (U247). A job reads its library's active
-    copy for every item, and parsing that copy again for each one was most of
-    the CPU of the adopt scan. The answer is a function of the text alone,
-    so the text itself is the key, never a path, a size or a time: a copy edited
-    between two items is a different key and is parsed and judged afresh, and
-    two copies holding different text are two keys whatever paths they sit at.
-    A text that does not load raises on every call, since a raise is never
-    remembered. The answer is the frozen ``Taxonomy`` the first parse built,
-    one object shared by every caller that hands in the same text, which is
+    Text rather than a path, so this stays a pure function of its argument.
+    Parsed once per text in a process (U247): the whole text is the key, never a
+    path or time, so an edited copy is parsed afresh. A raise is never
+    remembered. Every caller with the same text shares one frozen ``Taxonomy``,
     safe only because nothing in the package mutates one.
     """
     return _parsed(text)
@@ -810,11 +572,8 @@ def _parsed(text: str) -> Taxonomy:
 def default_taxonomy() -> Taxonomy:
     """The template that ships in the wheel, read-only.
 
-    The ONE input this module performs, and it is against packaged data that
-    cannot vary at runtime. It is NOT the taxonomy a verb routes by: a library's
-    active template is read by :func:`cratekit.core.active_taxonomy.load`, and
-    ``tests/test_active_taxonomy.py`` refuses a call to this from any other
-    module in the package (R-685). No verb read the active copy until then.
+    Not what a verb routes by: that is :func:`cratekit.core.active_taxonomy.load`,
+    and a test refuses a call to this from any other module (R-685).
     """
     return load_taxonomy(shipped_template_text(DEFAULT_TEMPLATE_NAME))
 
@@ -822,66 +581,26 @@ def default_taxonomy() -> Taxonomy:
 def shipped_template_names() -> tuple[str, ...]:
     """Every taxonomy template that ships in the wheel, by its short name.
 
-    Walked rather than listed, so a second template is offered by the wizard and
-    accepted by the health check on the day it is added (P3).
+    Walked rather than listed, so a new template is offered and accepted the day
+    it is added (P3). Shared by the wizard and doctor so both give one answer.
 
-    It lives HERE rather than in the wizard that first needed it because two
-    layers ask the same question and the answers have to be one answer: the
-    wizard offers the shipped names as a closed set, and doctor refuses a
-    configuration naming a template that is not one of them. A copy of this walk
-    in the CLI would let a name be offered that the check rejects, or accepted by
-    the check with nothing shipping it.
-
-    IT NEVER RAISES, and that is not defensive habit. Its caller is an ARGUMENT
-    PARSER, and the whole command tree is built before anything dispatches, so a
-    packaged directory that is missing or unreadable used to take every command
-    down with an unhandled error, including the health report. That report exists
-    for the broken machine, and a partial install is a broken machine: it has to
-    be able to describe one. An empty answer here is the honest one, and the
-    caller reports the missing template as a finding rather than as a traceback.
-
-    ``ValueError`` IS CAUGHT BESIDE ``OSError``, and the reason is that the claim
-    above was false without it. ``importlib.resources`` does not promise one
-    exception family: a filesystem-backed traversable raises ``FileNotFoundError``
-    or ``NotADirectoryError``, both of which are ``OSError``, while a zip-backed
-    one raises ``ValueError("Can't listdir a file")``, which is not. Catching one
-    family and writing "never raises" is the shape of overclaim this unit has
-    been shipping all week, so both are caught and the sentence is true.
-
-    WHICH LEAVES THE OTHER HALF, and it is why this delegates. An empty answer is
-    honest to an argument parser, which only ever needed a list of choices, and
-    it is a LIE to a health check, which needs to know whether nothing ships or
-    nothing could be read. Those have opposite remedies and the check was giving
-    the wrong one. :func:`shipped_templates` returns both halves; this returns
-    the half a parser can use.
+    Never raises: its caller is the argument parser, built before any verb
+    dispatches, so a broken install must still reach the health report. A
+    health check needing the reason uses :func:`shipped_templates`.
     """
     return shipped_templates()[0]
 
 
 def shipped_templates() -> tuple[tuple[str, ...], str | None]:
-    """The shipped template names, AND why the directory could not be listed.
+    """The shipped template names, and why the directory could not be listed.
 
-    Two returns rather than one because "no template ships under that name" and
-    "the packaged directory could not be read" are different diagnoses with
-    opposite remedies, and collapsing them into an empty tuple gave every caller
-    the first sentence for the second condition. Doctor told a user with a
-    damaged install that their configuration named a template nothing ships and
-    sent them to re-run setup, which cannot repair packaged data.
+    Two returns, because "nothing ships under that name" and "the directory
+    could not be read" have opposite remedies. The reason is a sentence for a
+    report. A name is offered only if configuration would accept it, so
+    ``taxonomy.deep.house.toml`` is skipped.
 
-    The problem is a SENTENCE rather than the exception, because the caller
-    renders it into a report and the only thing it needs from the failure is what
-    went wrong with which directory.
-
-    A NAME IS ONLY OFFERED IF CONFIGURATION WOULD ACCEPT IT. Anything between the
-    prefix and the suffix is a candidate on disk, so ``taxonomy.deep.house.toml``
-    yields ``deep.house``, which ``config.validate`` refuses because the name is
-    composed into a resource path. Offering a value that is then rejected one
-    layer down is the same two-answers-to-one-question defect this function was
-    written to close, so the filter is applied here, from the module that owns
-    the rule.
-
-    IT NEVER RAISES either, for the reason above it: the argument parser reaches
-    this through :func:`shipped_template_names` on every invocation of every verb.
+    Never raises, for the argument parser's sake. ``ValueError`` is caught
+    beside ``OSError`` because a zip-backed resource raises it on listdir.
     """
     try:
         entries = list((resources.files("cratekit") / "templates").iterdir())
@@ -899,29 +618,18 @@ def shipped_templates() -> tuple[tuple[str, ...], str | None]:
 
 
 def shipped_template_text(name: str) -> str:
-    """The packaged text of one template, by its short name.
-
-    Raises ``FileNotFoundError`` when nothing ships under that name, which is the
-    answer a caller wants: the shipped set is read-only data, so a name outside
-    it is a configuration error rather than a transient failure.
-    """
+    """The packaged text of one template by short name; ``FileNotFoundError`` if none."""
     source = resources.files("cratekit") / "templates" / f"{_TEMPLATE_PREFIX}{name}{_TEMPLATE_SUFFIX}"
     return source.read_text(encoding="utf-8")
 
 
-# ---------------------------------------------------------------------------
 # The origin record (R-689)
-# ---------------------------------------------------------------------------
 
 
 def template_digest(text: str) -> str:
-    """The fingerprint of one template's TEXT, as setup records it and doctor compares it.
+    """The fingerprint of one template's text, as setup records it and doctor compares it.
 
-    ONE DEFINITION, used by both, because the comparison is only meaningful if
-    the two sides hashed the same bytes the same way. It is taken over the text
-    as read, not over the bytes on disk: ``Path.read_text`` folds a Windows line
-    ending to a newline, so an editor that rewrote the line endings and nothing
-    else is not counted as an edit, and the shipped text is read the same way.
+    Taken over the text as read, so a change of line endings alone is no edit.
     """
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -951,12 +659,9 @@ def template_fingerprint(text: str) -> Fingerprint:
 def shipped_template_fingerprint(name: str) -> Fingerprint:
     """The fingerprint of the packaged text of one template, by its short name.
 
-    THE SHIPPED TEXT STAYS IN THIS MODULE. Doctor compares a library's active copy
-    against the shipped template by this and never reads the text itself, so the
-    guard in ``tests/test_active_taxonomy.py`` can keep doctor off the list of
-    modules that read the shipped text: a module holding both that text and the
-    parser is one line from routing by a template that is not the library's.
-    Raises what :func:`shipped_template_text` raises.
+    Doctor compares by this so it never reads the shipped text itself, which a
+    test guards: a module holding both that text and the parser is one line from
+    routing by the wrong template. Raises as :func:`shipped_template_text`.
     """
     return template_fingerprint(shipped_template_text(name))
 
@@ -1000,11 +705,7 @@ _DIGEST = re.compile(r"[0-9a-f]{64}")
 
 
 def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
-    """Validate a parsed template and freeze it into a Taxonomy.
-
-    Every problem is collected before anything is raised. Reporting the first
-    error only is how a bad template turns into a long evening.
-    """
+    """Validate a parsed template and freeze it, raising every problem at once."""
     problems: list[str] = []
 
     version = data.get("schema_version")
@@ -1020,16 +721,9 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
     tree = Node(str(tree_raw.get("id", "")), str(tree_raw.get("display", "")))
     intake = Node(str(intake_raw.get("id", "")), str(intake_raw.get("display", "")))
     tree_depth = int(tree_raw.get("depth", 0))
-    # Declared or absent, never half declared. A section carrying an id and no
-    # display, or the reverse, is validated exactly as strictly as the two
-    # mandatory trees: an optional section is optional to WRITE, not optional to
-    # get right, and a half-declared tree would reach a writer as a folder named
-    # the empty string.
-    # Keyed on PRESENCE, never on truthiness. An empty ``[catalog]`` table is a
-    # declaration, and it is falsy, so a truthiness test reads "the user wrote a
-    # section" as "the user wrote no section" and skips the very validation the
-    # paragraph above promises. That is the shape this whole block exists to
-    # refuse, arriving through the check meant to enforce it.
+    # An optional section is declared or absent, never half declared, and is
+    # validated as strictly as the mandatory trees. Keyed on presence, never
+    # truthiness, since an empty table is falsy but still a declaration.
     catalog_raw = data.get("catalog") if "catalog" in data else None
     catalog = (
         Node(str(catalog_raw.get("id", "")), str(catalog_raw.get("display", "")))
@@ -1038,24 +732,20 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
     )
     long_tracks, long_problems = _build_long_tracks(data)
     problems += long_problems
-    # Keyed on PRESENCE, for the catalog section's reason, and a value that is
-    # not a table is a problem reported by name rather than a traceback.
+    # Keyed on presence; a value that is not a table is reported by name.
     old_raw = data.get("intake_old") if "intake_old" in data else None
     intake_old: Node | None = None
     if old_raw is not None and not isinstance(old_raw, Mapping):
         problems.append("[intake_old] must be a table with an id and a display")
     elif old_raw is not None:
         intake_old = Node(str(old_raw.get("id", "")), str(old_raw.get("display", "")))
-        # A rotation tells INBOX from Old by the tree, but an Old that shares
-        # the intake flow's id or display is a declaration of one folder twice.
+        # An Old sharing the intake flow's id or display declares one folder twice.
         if intake_old.id == intake.id or intake_old.display == intake.display:
             problems.append(
                 "[intake_old] must differ from [intake] in both id and display; "
                 "it declares a folder inside the intake flow, not the flow itself"
             )
-    # Keyed on PRESENCE, for the catalog section's reason (U121). A folder at
-    # the playlist root and not inside the intake flow, so it shares nothing
-    # with [intake] and [intake_old] except the shape of its declaration.
+    # Keyed on presence (U121); a root folder, not inside the intake flow.
     inspiration_raw = data.get("inspiration") if "inspiration" in data else None
     inspiration: Node | None = None
     if inspiration_raw is not None and not isinstance(inspiration_raw, Mapping):
@@ -1084,9 +774,7 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
                 f"[{label}] display {node.display!r} is the folder another app owns at "
                 f"the top of rekordbox's tree, and a tree of that name would adopt it"
             )
-    # KTD14: the XML bridge's indentation constants encode exactly three levels.
-    # A template that declares another depth is refused BY NAME here, rather than
-    # emitting bytes that rekordbox reads as a different tree.
+    # KTD14: the XML bridge encodes exactly this depth; any other is refused here.
     if tree_depth != SUPPORTED_TREE_DEPTH:
         problems.append(
             f"[tree] depth is {tree_depth}, and only {SUPPORTED_TREE_DEPTH} is "
@@ -1127,8 +815,7 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
     routing_alias, tagging_alias, alias_problems = _build_alias_indexes(buckets)
     problems += alias_problems
 
-    # Keyed on PRESENCE, for the catalog section's reason above: an empty
-    # table is a declaration and must be read as one.
+    # Keyed on presence: an empty table is a declaration.
     by_display = {b.display: b.id for b in buckets}
     vocabularies, vocabulary_problems = _build_vocabularies(
         data.get("vocabulary") if "vocabulary" in data else None,
@@ -1197,22 +884,16 @@ def _index_split_places(
     return {bucket_id: tuple(places) for bucket_id, places in found.items()}
 
 
-# ---------------------------------------------------------------------------
 # Section builders. Each returns (value, problems) so one bad section never
-# hides the next one.
-# ---------------------------------------------------------------------------
+# hides the next.
 
 
 def _build_long_tracks(data: Mapping[str, Any]) -> tuple[LongTracks | None, list[str]]:
     """The long track playlist, or None when the template declares none.
 
-    Keyed on PRESENCE, for the reason the catalog section gives: an empty table
-    is a declaration and is validated as one. The id and display are checked
-    with the other declared nodes; the threshold is checked here.
-
-    THE THRESHOLD IS A WHOLE NUMBER OF SECONDS ABOVE ZERO, and a boolean is
-    refused rather than read as 1, because ``true`` would put every track in the
-    collection into the playlist. A zero or negative bound does the same.
+    Keyed on presence. The id and display are checked with the other nodes. The
+    threshold must be a whole number of seconds above zero, and a boolean is
+    refused, since ``true`` read as 1 would take in the whole collection.
     """
     if "long_tracks" not in data:
         return None, []
@@ -1280,11 +961,8 @@ def _build_energy(raw: Mapping[str, Any]) -> tuple[Energy, list[str]]:
         problems.append(
             f"[energy.rating] the last cut ends at {cuts[-1].max}, not at scale_max {scale_max}"
         )
-    # The rating cuts are NOT required to align with the band cuts. They are
-    # decoupled deliberately: energy is decile-calibrated, so an even five-way
-    # star spread and a three-way tree split are both correct and neither should
-    # be forced to follow the other. Requiring alignment here would silently
-    # re-rate a whole library the first time a band moved.
+    # Rating cuts need not align with band cuts: both are valid splits of a
+    # decile scale, and coupling them would re-rate a library when a band moved.
 
     no_energy_raw = raw.get("no_energy_sub")
     no_energy = None
@@ -1393,11 +1071,9 @@ def _build_buckets(
                 f"splits by energy or has one sub, never both"
             )
 
-        # THE SHAPE IS CHECKED BEFORE A ROW IS READ. A person edits a library's
-        # copy by hand, and `[bucket.formerly]` with one pair of brackets is
-        # valid TOML that arrives here as a table, not a list of them. Read as
-        # rows it raised an attribute error out of the loader, which every verb
-        # then reported as a defect in this product instead of a line to fix.
+        # The shape is checked before a row is read: a hand-written
+        # `[bucket.formerly]` arrives as a table, not a list, and must be
+        # reported as a line to fix rather than raise.
         formerly_raw = entry.get("formerly") or []
         if not isinstance(formerly_raw, list) or not all(
             isinstance(row, Mapping) for row in formerly_raw
@@ -1416,7 +1092,7 @@ def _build_buckets(
             )
             for row in formerly_raw
         )
-        # THE SAME SHAPE CHECK, for the same hand edit (U118).
+        # The same shape check (U118).
         split_raw = entry.get("split_from") or []
         if not isinstance(split_raw, list) or not all(
             isinstance(row, Mapping) for row in split_raw
@@ -1436,9 +1112,8 @@ def _build_buckets(
             for row in split_raw
         )
 
-        # THE SAME SHAPE CHECK, for the same hand edit (U155). A row whose
-        # sources are not a list of strings is read as having none, which the
-        # genre sub check then refuses by name.
+        # The same shape check (U155). Sources that are not a list of strings
+        # read as none, which the genre sub check refuses by name.
         genre_raw = entry.get("genre_sub") or []
         if not isinstance(genre_raw, list) or not all(
             isinstance(row, Mapping) for row in genre_raw
@@ -1493,15 +1168,10 @@ def live_places(
 ) -> tuple[set[str], set[str]]:
     """The identifiers and the names of every sub one bucket's folder can hold.
 
-    The declared subs and the single sub, the bands under the bucket's own
-    labels and the no reading sub when the bucket splits by energy, and every
-    sub class, and since U155 every genre sub. This is what a former place
-    must not be.
-
-    PUBLIC, because the adoption plan asks it too (R-788): handed the sub
-    classes without the vocal one, it answers whether a bucket's own places
-    take the vocal sub's name. One list of what a folder can hold, so a shape
-    added here is a shape both askers see.
+    Declared subs, the single sub, the bands under the bucket's labels and the
+    no reading sub when it splits by energy, every sub class and every genre sub
+    (U155). What a former place must not be. Public, since the adoption plan
+    asks it too (R-788), so a shape added here reaches both.
     """
     ids = {sub.id for sub in bucket.subs}
     displays = {sub.display for sub in bucket.subs}
@@ -1528,17 +1198,11 @@ def _check_former_places(
 ) -> list[str]:
     """Refuse a former place that is still a place (R-797).
 
-    A FORMER PLACE IS REMOVED FROM, so every way of naming a live playlist
-    through one is refused here, before any plan is built. Its bucket has to be
-    declared, since the folder is found by that bucket's name. The sub
-    identifier and the name it carries must not be ones that bucket still
-    holds, or a move would leave a playlist tracks are still filed into. Its
-    own identifier must not be one the declaring bucket or the holding bucket
-    already competes on, since it competes in both, and no two former places
-    share one. And one playlist cannot be the former place of two buckets,
-    since a track leaving it would be claimed twice.
-
-    THE TEMPLATE HAS TO STATE THE VERSION THAT KNOWS ONE. See
+    Tracks are removed from a former place, so it must not name a live
+    playlist. Its bucket must be declared (the folder is found by it); its sub
+    and name must not be ones that bucket still holds; its own id must be free
+    in both the declaring and holding bucket and unique among former places;
+    and one playlist is the former place of one bucket only. Requires
     :data:`FORMER_PLACE_SCHEMA_VERSION`.
     """
     problems: list[str] = []
@@ -1614,12 +1278,9 @@ def _check_former_places(
 
 
 def _band_names(bucket: Bucket, energy: Energy) -> dict[str, str]:
-    """The bands and the no reading sub one bucket files into, by identifier.
+    """The bands and no reading sub one energy bucket files into, by id, its labels.
 
-    EMPTY FOR A BUCKET THAT DOES NOT SPLIT BY ENERGY. ONE BODY for
-    :func:`live_places` and the split place check, so the two cannot disagree
-    about which buckets have bands or what each band is called. Each under the
-    bucket's own label for it.
+    Shared by :func:`live_places` and the split place check.
     """
     if bucket.sub_by_source is not None or not energy.enabled or not bucket.energy.enabled:
         return {}
@@ -1639,19 +1300,12 @@ def _check_split_places(
 ) -> list[str]:
     """Refuse a split place that is not one of its holder's live bands (U118).
 
-    THE REVERSE OF :func:`_check_former_places`. A split place is left by the
-    tracks whose genre names the declaring bucket and stays the holder's for
-    every other track, so it has to be a place the holder still competes on,
-    a band it files into or its own former place, under the name the holder
-    gives it, or a move would leave a playlist the writer cannot find. The
-    declaring bucket has to split by energy, since a track leaves the holder's
-    place for the band its reading names. Its identifier is its own: not a place the declaring bucket
-    already holds, and not shared with any other former or split place. And
-    one band is split out by one bucket, since a track leaving it would
-    otherwise be claimed twice.
-
-    THE TEMPLATE HAS TO STATE THE VERSION THAT KNOWS ONE. See
-    :data:`SPLIT_PLACE_SCHEMA_VERSION`.
+    The reverse of :func:`_check_former_places`: it must be a band the holder
+    still files into (or the holder's own former place), under the holder's
+    name for it, or a move would leave a playlist the writer cannot find. The
+    declaring bucket must split by energy; the id must be its own and unique
+    among former and split places; one band is split out by one bucket.
+    Requires :data:`SPLIT_PLACE_SCHEMA_VERSION`.
     """
     problems: list[str] = []
     by_id = {bucket.id: bucket for bucket in buckets}
@@ -1694,11 +1348,8 @@ def _check_split_places(
                     f"bucket; a split place is a band of the folder the genre was split from"
                 )
                 continue
-            # A BAND OF THE HOLDER, OR THE HOLDER'S OWN FORMER PLACE. The second
-            # is the playlist the genre sat in with the holder's before either
-            # had a folder: Soul tracks left in NonElectronic's old "Soul / R&B"
-            # playlist leave it for Soul, where R&B's former place alone would
-            # send them nowhere.
+            # A band of the holder, or its own former place: the playlist both
+            # genres sat in before either had a folder.
             bands = _band_names(holder, energy)
             bands.update((former.id, former.display) for former in holder.formerly)
             if place.sub not in bands:
@@ -1732,17 +1383,10 @@ def _check_genre_subs(
 ) -> list[str]:
     """Refuse a genre sub that is not a place of its own beside a bucket's bands (U155).
 
-    It needs a bucket that splits by energy, since it sits beside the bands; a
-    bucket that routes by source genre already files each source into a style
-    sub of its own, and one with no energy dimension has a single sub. Its
-    identifier and its name are its own: not a band under the bucket's label
-    for it, not the no reading sub, not a sub class, not a declared sub, and
-    not another genre sub of the bucket, or two places would be one playlist.
-    Each source is an exact routing alias of the bucket, so a track wearing it
-    is filed by this bucket and no other, and one source names one genre sub.
-
-    THE TEMPLATE HAS TO STATE THE VERSION THAT KNOWS ONE. See
-    :data:`GENRE_SUB_SCHEMA_VERSION`.
+    The bucket must split by energy. Its id and name must not be taken by any
+    other place in the bucket, or two places would be one playlist. Each
+    source is an exact routing alias of the bucket, and one source names one
+    genre sub. Requires :data:`GENRE_SUB_SCHEMA_VERSION`.
     """
     problems: list[str] = []
     for bucket in buckets:
@@ -1824,8 +1468,7 @@ def _build_fallback(
         )
     tagging_uses = bool(raw.get("tagging_uses_fallback", False))
     if tagging_uses:
-        # R21's sibling rule, and the one the source system enforces by deleting
-        # a tag rather than leaving a stale guess on the file.
+        # R21's sibling: tagging must be free to decline rather than guess.
         problems.append(
             "[fallback] tagging_uses_fallback is true; tagging must be allowed to decline. "
             "A blanket genre written onto a file outlives the run that guessed it"
@@ -1866,11 +1509,8 @@ def _build_sub_classes(
                 f"[[sub_class]] {entry_id!r}: additive is only meaningful for a derived sub, "
                 f"which coexists with the sub a track is already in"
             )
-        # THE SIGNAL (U119). Absent, it is the vocal reading, which is what
-        # every class declared before the key existed meant. A playlist signal
-        # names the playlist it mirrors and is only ever derived and additive,
-        # and it needs the schema version that knows it, so a build that does
-        # not refuses the copy by name rather than reading it as a vocal class.
+        # The signal (U119), vocal when absent. A playlist signal names its
+        # playlist, is derived and additive, and needs its schema version.
         signal = str(entry.get("signal", SIGNAL_VOX))
         signal_playlist = str(entry.get("signal_playlist", "") or "").strip()
         if signal not in SIGNALS:
@@ -1916,10 +1556,8 @@ def _build_sub_classes(
         )
     for signal, ids in additive_by_signal.items():
         if len(ids) > 1:
-            # ONE ADDITIVE CLASS PER SIGNAL (U119, lifting the one class limit
-            # the pinned tree depth was once said to need): a second class on
-            # one signal is one dimension declared twice, so the rebuild would
-            # file every vocal track into two playlists for one reading.
+            # One additive class per signal (U119): a second would file each
+            # track into two playlists for one reading.
             problems.append(
                 f"{len(ids)} additive sub classes declared on the {signal!r} signal "
                 f"({', '.join(ids)}); only one is supported per signal"
@@ -2006,8 +1644,7 @@ def _build_gate(raw: Mapping[str, Any]) -> tuple[LabelGate, list[str]]:
         problems.append(f"[label_gate] out_of_place_share {share} must be between 0 and 1")
     rules: list[GateRule] = []
     for index, entry in enumerate(raw.get("rule") or []):
-        # FOLDED LOWERCASE HERE, as the published rules' needles are, because a
-        # word is matched lowercase and ``routing._rule_matches`` folds nothing.
+        # Folded lowercase here, since ``routing._rule_matches`` folds nothing.
         rule = GateRule(
             all_of=tuple(str(one).lower() for one in entry.get("all_of") or ()),
             any_of=tuple(str(one).lower() for one in entry.get("any_of") or ()),
@@ -2034,8 +1671,7 @@ def _build_gate(raw: Mapping[str, Any]) -> tuple[LabelGate, list[str]]:
         )
         default_kind = DEFAULT_LABEL_KIND
     default_kind = default_kind.strip().lower()
-    # CHECKED ONLY WHEN SOMETHING IS DECLARED. A copy with no published rule
-    # judges nothing, so its default names nothing that could be wrong.
+    # Checked only when a published rule exists; otherwise nothing is judged.
     if published and default_kind != ANY_KIND and default_kind not in kinds:
         problems.append(
             f"[label_gate] default_kind {default_kind!r} is not a kind any "
@@ -2047,11 +1683,7 @@ def _build_gate(raw: Mapping[str, Any]) -> tuple[LabelGate, list[str]]:
 
 
 def _needles(entry: Mapping[str, Any], key: str) -> tuple[tuple[str, ...], bool]:
-    """One matcher list, folded to lowercase, and whether it was a list of words.
-
-    FOLDED HERE AND NOT AT EACH MATCH. A word is matched lowercase, and a needle
-    typed with a capital would never match and would say nothing about it.
-    """
+    """One matcher list, folded to lowercase, and whether it was a list of words."""
     raw = entry.get(key)
     if raw is None:
         return (), True
@@ -2063,10 +1695,7 @@ def _needles(entry: Mapping[str, Any], key: str) -> tuple[tuple[str, ...], bool]
 def _build_published(raw: Any) -> tuple[tuple[PublishedRule, ...], list[str]]:
     """The ``[[label_gate.published]]`` rules, and what is wrong with them.
 
-    A RULE THAT COULD NEVER MATCH, OR THAT NAMES NO KIND, IS A PROBLEM AND NOT A
-    SKIP. These rules decide what a sweep holds back, and one dropped silently
-    would leave its words unknown, which the gate reads as not judged: the
-    music the rule was written to hold would be filed with nothing said.
+    An unusable rule is a problem, not a skip, or its music would pass unjudged.
     """
     problems: list[str] = []
     if raw is None:
@@ -2125,20 +1754,13 @@ def _tag_place(
 ) -> tuple[tuple[str, str | None] | None, str]:
     """The place routing files one written genre in, or why it names no folder.
 
-    THE FIRST TWO TIERS OF ``routing.resolve_bucket`` AND NOT THE OTHER TWO. A
-    genre a table declares must be filed by a declaration: an exact routing
-    alias, or a bucket's own name. A keyword rule is a guess and the fallback
-    is nowhere, and a table that wrote a word either of those catches would
-    put a genre on a file that this taxonomy has no folder for. Spelled here
-    because routing imports this module and cannot be asked, and held to
-    routing's own answer by a test over every string the template declares.
-    The indexes are the loader's, built once, and the built taxonomy's.
+    The first two tiers of ``routing.resolve_bucket`` only, an exact routing
+    alias or a bucket's own name, since a keyword guess or the fallback would
+    write a genre with no folder. Spelled here because routing imports this
+    module; a test holds it to routing's answer.
 
-    IN A BUCKET THAT FILES BY SOURCE GENRE THE TAG NEEDS A ROW OF ITS OWN in
-    that bucket's map. The bucket's bare name has none and lands in the default
-    sub, which is how Alternative came to be written as the bucket's name and
-    filed under another style with its word lost (R-799). A word with no row
-    lands there too, so both are refused, by the one test.
+    In a bucket that files by source genre the tag needs its own row in the
+    map, or it lands in the default sub with its word lost (R-799).
     """
     bucket_id = routing_alias.get(tag) or by_display.get(tag)
     bucket = by_id.get(bucket_id or "")
@@ -2174,13 +1796,9 @@ def _build_vocabularies(
 ) -> tuple[tuple[Vocabulary, ...], list[str]]:
     """The ``[vocabulary.SOURCE]`` tables, and what is wrong with them (R-799).
 
-    A ROW THAT CANNOT BE USED IS A PROBLEM AND NOT A SKIP. A word whose row was
-    dropped silently would go on to the buckets' aliases, which is the filing
-    the row was written to replace, and nothing would say so.
-
-    THE SHAPE IS CHECKED BEFORE A ROW IS READ, for the reason the former place
-    check gives: a person edits a library's copy by hand, and a table in the
-    wrong shape must be a line to fix and not a crash.
+    An unusable row is a problem, not a skip, since a dropped row would silently
+    fall back to the bucket aliases. The shape is checked before a row is read,
+    so a hand edit in the wrong shape is a line to fix, not a crash.
     """
     problems: list[str] = []
     if raw is None:
@@ -2193,17 +1811,14 @@ def _build_vocabularies(
     tables: list[Vocabulary] = []
     for source, table in raw.items():
         where = f"[vocabulary.{source}]"
-        # LOWERCASE, AS A FILE'S RECORD NAMES THE SOURCE. A capital would be a
-        # table no source is ever looked up under, and its words would go on
-        # being filed by the buckets' aliases with nothing said.
+        # Lowercase, as a file's record names the source, or it is never looked up.
         if not _ID.match(str(source)):
             problems.append(
                 f"{where}: the source name must match {_ID.pattern}, the name a "
                 f"file's record gives the source"
             )
             continue
-        # A TABLE NOTHING READS IS REFUSED, NOT IGNORED. A misspelled name, or
-        # a record shop's, would load clean and file every word as before.
+        # A table nothing reads is refused, not ignored.
         if source not in VOCABULARY_SOURCES:
             problems.append(
                 f"{where}: no source's words are read through a table of this "
@@ -2260,10 +1875,7 @@ def _build_family(
     for bucket in buckets:
         if bucket.family is not None and not str(bucket.family).strip():
             problems.append(f"[[bucket]] {bucket.id}: family must be a non-empty string if present")
-    # A family with one member can never award a same-family bonus, which makes
-    # it dead weight in the ranker rather than an error. Warned about in the
-    # template, not rejected here: a user mid-way through re-grouping their tree
-    # should not be blocked by it.
+    # A one-member family is dead weight, not an error, so it is not rejected.
     for name in supergroup.values():
         if name not in families and name not in supergroup:
             problems.append(
@@ -2292,17 +1904,9 @@ def _build_family(
 def _build_alias_indexes(
     buckets: Sequence[Bucket],
 ) -> tuple[dict[str, str], dict[str, tuple[str, str | None]], list[str]]:
-    """Build the two alias lookups and reject the collisions that matter.
+    """Build the routing (exact) and tagging (case insensitive) alias lookups.
 
-    ROUTING aliases are matched exactly, case included, because the source
-    strings they came from are exact vendor genre names. TAGGING aliases are
-    matched case-insensitively, because the tagger reads them from web pages
-    whose capitalisation varies.
-
-    A tagging alias may deliberately disagree with routing: three source strings
-    in the shipped default resolve to one bucket for routing and a different one
-    for tagging, which is honest, documented drift the two old tables hid. What
-    is never allowed is the SAME index disagreeing with itself.
+    Tagging may deliberately disagree with routing, never with itself.
     """
     problems: list[str] = []
     routing: dict[str, str] = {}
@@ -2317,17 +1921,10 @@ def _build_alias_indexes(
                 )
             routing[alias] = bucket.id
 
-    # Bucket-level first, sub-level second: a sub alias is the more specific
-    # statement, and the tagger's own table answers with the sub's name.
-    #
-    # AND WITHIN THE BUCKET LEVEL, ROUTING ALIASES FIRST AND TAGGING-ONLY ONES
-    # SECOND (U118), for the same reason one level up: a word a bucket lists
-    # for tagging alone is the more specific statement about what to write.
-    # "Trap / Wave" routes to the breaks bucket and has always tagged as
-    # Hip-Hop, through a sub alias while Hip-Hop was a sub. Hip-Hop is a bucket
-    # now, so its word is a bucket's tagging alias and must still win over the
-    # routing alias. Two routing aliases, or two tagging-only aliases, of two
-    # buckets still refuse.
+    # Bucket level first, sub level second, and within the bucket level routing
+    # aliases before tagging-only ones (U118): the later statement is the more
+    # specific one and wins. Two routing aliases, or two tagging-only aliases,
+    # of two buckets still refuse.
     tagged: dict[str, str] = {}
     for bucket in buckets:
         for alias in bucket.aliases:
@@ -2361,12 +1958,8 @@ def _build_alias_indexes(
                         f"{existing} and ({bucket.id!r}, {sub.id!r})"
                     )
                 tagging[key] = (bucket.id, sub.id)
-    # A GENRE SUB'S SOURCE TAGS AS THAT SUB (U155), last because it is the most
-    # specific statement of all. Each source is one of its bucket's routing
-    # aliases, which the bucket level pass above answers with the bucket's own
-    # name, and the tagger would then rewrite ``Rominimal`` on a file to
-    # ``Minimal / Deep Tech`` and take the track out of the very sub its genre
-    # names. The loader has already refused a source that is not the bucket's.
+    # A genre sub's source tags as that sub (U155), last as the most specific,
+    # or the tagger would rewrite it to the bucket's name and lose the sub.
     for bucket in buckets:
         for genre in bucket.genre_subs:
             for source in genre.sources:
