@@ -273,26 +273,6 @@ old = '''
 new = ''
 
 [[rows]]
-id = "r926.G7_no_root_allows_all"
-source = { table = "r926.json", id = "G7_no_root_allows_all" }
-description = "With no root registered the allowed set is the filesystem root, so the R-926 probe writes the live config again"
-file = "src/cratekit/core/config.py"
-surface = "maintainer"
-tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
-old = '    allowed = [] if root is None else [root.resolve()]'
-new = '    allowed = [Path(os.sep)] if root is None else [root.resolve()]'
-
-[[rows]]
-id = "u254.C4_append_not_append"
-source = { table = "u254.json", id = "C4_append_not_append" }
-description = "append_durable_bytes: open for writing at the start of the file rather than its end"
-file = "src/cratekit/core/config.py"
-surface = "user"
-tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_config_test_root.py", "tests/test_config.py", "tests/test_adoption.py"]
-old = '    fd = os.open(path, os.O_WRONLY | os.O_APPEND)'
-new = '    fd = os.open(path, os.O_WRONLY)'
-
-[[rows]]
 id = "r740-a.N5_no_marker_fill"
 source = { table = "r740-a.json", id = "N5_no_marker_fill" }
 description = "normalize_spec: a marker in the stripped head no longer marks the spec, so R21's marker is dropped"
@@ -384,3 +364,23 @@ old = '''
         return None
     folded = word.casefold()'''
 new = '    folded = word.casefold()'
+
+[[rows]]
+id = "r926.G7_no_root_allows_all"
+source = { table = "r926.json", id = "G7_no_root_allows_all" }
+description = "With no root registered the allowed set is the filesystem root, so the R-926 probe writes the live config again"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '    allowed = [] if root is None else [root.resolve()]'
+new = '    allowed = [Path(os.sep)] if root is None else [root.resolve()]'
+
+[[rows]]
+id = "u254.C4_append_not_append"
+source = { table = "u254.json", id = "C4_append_not_append" }
+description = "append_durable_bytes: open for writing at the start of the file rather than its end"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_config_test_root.py", "tests/test_config.py", "tests/test_adoption.py"]
+old = '    fd = os.open(path, os.O_WRONLY | os.O_APPEND)'
+new = '    fd = os.open(path, os.O_WRONLY)'
