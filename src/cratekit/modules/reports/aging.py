@@ -193,10 +193,7 @@ def intake_aging(
 
     ``today`` has no default, so the answer never depends on the wall clock.
     """
-    expired: list[Grouping] = []
-    stale: list[Grouping] = []
-    current: list[Grouping] = []
-    undated: list[Grouping] = []
+    expired, stale, current, undated = [], [], [], []
     for grouping in intake_groupings(view, intake=intake, today=today):
         if grouping.age_days is None:
             undated.append(grouping)
@@ -219,15 +216,3 @@ def intake_aging(
 def _oldest_first(groupings: list[Grouping]) -> tuple[Grouping, ...]:
     """Oldest first, then by path, so ties keep one order across runs."""
     return tuple(sorted(groupings, key=lambda item: (-(item.age_days or 0), item.path)))
-
-
-__all__ = [
-    "AgingPolicyInvalid",
-    "AgingReport",
-    "AgingThresholds",
-    "Grouping",
-    "intake_aging",
-    "intake_groupings",
-    "parse_intake_date",
-    "thresholds_from",
-]

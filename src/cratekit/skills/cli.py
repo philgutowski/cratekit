@@ -201,17 +201,3 @@ def _detail(was: str, name: str, into: Path) -> str:
         f"the copy at {where} was written by a different build and has been "
         f"replaced; anything reading it was following older instructions"
     )
-
-
-__all__ = [
-    "DEFAULT_TARGET",
-    "STAMP_NAME",
-    "build",
-    "default_target",
-    "install_one",
-    "stamped_files",
-    "install_skills",
-    "installed_version",
-    "packaged_root",
-    "shipped_names",
-]

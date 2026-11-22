@@ -199,9 +199,7 @@ def _read_nodes(
     the ``Type`` seen), each with its display path. The root is located by
     position and never classified.
     """
-    playlists: list[Playlist] = []
-    folders: list[tuple[str, ...]] = []
-    unreadable: list[tuple[tuple[str, ...], str]] = []
+    playlists, folders, unreadable = [], [], []
     for path, node in rbxml.walk_nodes(content, root):
         kind = rbxml.node_kind(node.node_type)
         if kind == rbxml.KIND_PLAYLIST:
@@ -234,14 +232,3 @@ def _read_entries(
         )
         for track in tracks
     )
-
-
-__all__ = [
-    "DOCUMENT_ELEMENT",
-    "ENTRY_COUNT_ATTRIBUTE",
-    "CollectionEntry",
-    "LibraryView",
-    "Playlist",
-    "read_export",
-    "read_export_file",
-]

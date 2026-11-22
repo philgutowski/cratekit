@@ -95,14 +95,9 @@ def _pipx_source(metadata: Path) -> tuple[str, tuple[str, ...]]:
     is the failure the pipx form exists to prevent.
     """
     spec = _recorded_spec(metadata)
-    if spec is None:
-        return ".", ()
-    match = _SPEC.match(spec)
+    match = _SPEC.match(spec) if spec is not None else None
     if match is None:
         return ".", ()
     chosen = _extras(match)
     source = match["source"] if Path(match["source"]).is_dir() else "."
     return source, chosen
-
-
-__all__ = ["DISTRIBUTION", "PIPX_METADATA", "install_command"]

@@ -220,16 +220,3 @@ def statistics(
             entries_in_no_playlist=sum(1 for entry in view.entries if not entry.playlists),
         ),
     )
-
-
-__all__ = [
-    "Gaps",
-    "GenreRow",
-    "LibraryStatistics",
-    "TempoSpread",
-    "TreeShape",
-    "genre_rows",
-    "statistics",
-    "tempo_spread",
-    "tree_shape",
-]

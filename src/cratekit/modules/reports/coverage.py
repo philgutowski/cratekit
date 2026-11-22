@@ -115,12 +115,10 @@ def survey(view: LibraryView, *, tree: taxonomy.Node) -> CoverageReport:
             counts[playlist.path] += 1
             held.setdefault(track_id, []).append(playlist.path)
 
-    covered: list[Placement] = []
-    uncovered: list[Placement] = []
+    covered, uncovered = [], []
     for entry in view.entries:
         paths = tuple(held.get(entry.track_id, ()))
-        placement = Placement(entry=entry, paths=paths)
-        (covered if paths else uncovered).append(placement)
+        (covered if paths else uncovered).append(Placement(entry=entry, paths=paths))
 
     return CoverageReport(
         tree_id=tree.id,
@@ -134,6 +132,3 @@ def survey(view: LibraryView, *, tree: taxonomy.Node) -> CoverageReport:
 def _by_name(placement: Placement) -> tuple[str, str, str]:
     """Artist, then name, then identifier, so two runs of one library agree."""
     return (placement.entry.artist, placement.entry.name, placement.entry.track_id)
-
-
-__all__ = ["CoverageReport", "Placement", "governed_paths", "survey"]

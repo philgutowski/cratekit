@@ -198,17 +198,3 @@ def audit_and_offer(
 ) -> DuplicateReport:
     """The audit and the offer as one call; not ``run``, which ``cli.run`` owns."""
     return offer_groups(store, audit(view, template=template), handler_key=handler_key)
-
-
-__all__ = [
-    "HANDLER_KEY",
-    "KIND",
-    "DuplicateGroup",
-    "DuplicateReport",
-    "Recording",
-    "audit",
-    "audit_and_offer",
-    "normalize",
-    "offer_groups",
-    "recording_of",
-]
