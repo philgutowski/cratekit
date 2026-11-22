@@ -1,22 +1,11 @@
 """U240: tag folder tags each file by the registered label its copyright line names.
 
-The attended label pass of 2026-11-10 measured the cost this unit removes.
-``tag folder`` over 106 staged files of five registered labels failed every
-item ``catalogue-unreachable``: Beatport answered 403, Traxsource 403 and
-Bandcamp a client challenge, so no catalogue was left. Every label carried a
-genre in the registry, and ``tag folder --label`` would have tagged a folder of
-one label with no catalogue asked, but the batch was five labels in one folder,
-so a person split it by hand. The label go's tail queues ``tag folder`` with no
-``--label`` at all.
-
-So a file with no label tag, swept with no ``--label``, is matched to the
-registry by its copyright line, the line the downloader writes on every file
-it delivers. Exactly one registered label named, and it carries a genre: the
-file takes that genre and no catalogue is asked. Anything else is asked of the
-catalogues as before.
-
-Four sections: the copyright line read off each container, the engine's tier,
-the sweep through the real dispatcher, and the label go's tail step.
+A file with no label tag, swept with no ``--label``, is matched to the
+registry by the copyright line the downloader writes. Exactly one registered
+label named, carrying a genre: the file takes it and no catalogue is asked;
+anything else is asked of the catalogues as before. Four sections: the line
+read off each container, the engine's tier, the sweep through the real
+dispatcher, and the label go's tail step.
 """
 
 from __future__ import annotations

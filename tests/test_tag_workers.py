@@ -1,29 +1,9 @@
-"""U3: what both tagging verbs stand on, before either one of them exists.
+"""U3 and U4: the shell and artifact helper the tagging verbs stand on, and tag folder end to end.
 
-WHY THIS FILE EXISTS BEFORE ITS CALLERS DO. ``crate tag folder`` and ``crate tag
-retag`` both queue a job today and neither one runs an item. The two pieces they
-will share, the payload shell and the per item report helper, are ported from
-``src/cratekit/adopt``, and a port is exactly the shape of change that arrives
-green and wrong: the code compiles, the suite passes, and one of the properties
-the original spelled out is quietly missing. So each property the original
-states is asserted here against the copy rather than assumed to have travelled
-with it.
-
-THE THREE GUARDS THAT ARE NOT ABOUT BEHAVIOUR. A name (``drive``), a call shape
-(``store_dir()`` with no argument), and a sort key are each invisible to a green
-suite over this module, and each one breaks something in a file that is not this
-one. They are asserted by parsing the source, which is the only place the
-property lives.
-
-U4 APPENDED THE SECOND HALF, and the first sentence above is no longer the whole
-story. The section at the foot of this file drives ``crate tag folder`` end to
-end through the real dispatcher, so the shell and the artifact helper are now
-asserted twice: once as properties of their own, and once as the thing a verb
-stands on while it tags real files. The two halves are kept in one file because
-the second is what the first exists for, and splitting them would let a change
-to one pass while the other went unread.
-
-D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
+Each property the adoption original states is asserted against the copy, and
+three that no behaviour shows (a name, a call shape, a sort key) by parsing
+the source. The second half drives ``crate tag folder`` through the real
+dispatcher. Nothing here names a real volume, person or track (D1).
 """
 
 from __future__ import annotations
@@ -60,14 +40,7 @@ from tests.test_published_genre import (
 )
 from tests.test_published_genre import UNKNOWN as DEEZER_UNKNOWN
 
-# THE FIXTURE BUILDERS ARE IMPORTED RATHER THAN COPIED. ``place`` is one opinion
-# about what a real audio file carrying a genre is, and ``answering`` is one
-# opinion about what a fake searcher remembers being asked. A second copy of
-# either is a second opinion, and the copy that drifts is whichever one the next
-# change does not touch. ``SPECIFIC`` is read off the same module so the genre
-# this suite writes is the one the engine suite already proved writable, and
-# ``CATCH_ALL`` so the value ``tag.retag`` selects on is the taxonomy's own
-# rather than a string typed here that a template edit would leave behind.
+# Imported, never copied, so the builders and the genres cannot drift apart.
 from tests.test_tagging_engine import CATCH_ALL, SPECIFIC, TAXONOMY, answering, place
 
 SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
@@ -381,12 +354,8 @@ def test_the_artifact_helper_never_resolves_the_queue_root_for_itself():
     )
 
 
-# U4: ``crate tag folder`` walking a real folder, end to end
-#
-# EVERY CASE BELOW GOES THROUGH THE VERB rather than through :func:`handle`. The
-# binding is half of what this unit lands, and a test that called the worker
-# directly would pass against a handler key still sitting in
-# ``HANDLERS_NOT_YET_BOUND``, which is the exact state this unit leaves behind.
+# U4: ``crate tag folder`` walking a real folder, end to end, always through the
+# verb, so an unbound handler key would fail.
 
 
 @pytest.fixture(scope="module")
@@ -406,10 +375,8 @@ def folder(tmp_path) -> Path:
 def bound(monkeypatch, searcher):
     """Bind ``searcher`` where the worker looks one up (KTD11, R23)."""
     monkeypatch.setattr(searchers, "for_taxonomy", lambda declared=None, refusals=None: searcher)
-    # THE GENERAL CATALOGUE IS BOUND TOO, to a lookup that fails the test on any
-    # request (R-796). The worker hands every searched file to it, and a file
-    # carrying an ISRC would otherwise be asked about on the real network. A
-    # test that wants an answer calls :func:`general` after this.
+    # The general catalogue too, to a lookup failing on any request (R-796);
+    # a test wanting an answer calls :func:`general` after this.
     general(monkeypatch, None)
     return searcher
 
@@ -655,8 +622,7 @@ def test_the_report_names_each_off_taxonomy_genre_and_the_sweep_warns(
     assert tag_cli.OFF_TAXONOMY in warnings
     message = warnings[tag_cli.OFF_TAXONOMY]
     assert "3 of the 4 files" in message
-    # SORTED AND NOT IN WALK ORDER, so two runs over one unchanged folder agree.
-    # The files were committed with gqom first, and the message must not say so.
+    # Sorted, not in walk order (gqom was committed first).
     assert "bubblegum bass, gqom" in message
     assert "Deep House" not in message
     assert "Techno" not in message, "a decline is the other map's, and nothing was written"
@@ -1900,18 +1866,8 @@ def test_the_resume_argv_round_trips_the_frozen_folder_and_asks_for_no_run(
     assert "--run" not in argv, argv
 
 
-# U5: ``crate tag retag`` from the confirmation to the corrected file
-#
-# EVERY CASE BELOW GOES THROUGH THE VERB, for the reason the U4 section gives:
-# the binding is half of what this unit lands, and a case that called
-# :func:`cratekit.tagging.retag_cli.handle` directly would pass against a handler
-# key still sitting in ``HANDLERS_NOT_YET_BOUND``.
-#
-# AND EVERY ONE OF THEM ANSWERS THE GATE THROUGH ``approve_and_queue``, which is
-# R34's two acts rather than one. A helper that answered the confirmation inline
-# would be asserting that a destructive sweep can be approved by the very
-# invocation that discovered it needed approving, which is what the contract
-# forbids.
+# U5: ``crate tag retag`` from the confirmation to the corrected file, through
+# the verb, each gate answered by ``approve_and_queue`` as R34's two acts.
 
 #: The confirmation this verb raises over its plan. Spelled once here so the
 #: cases below cannot disagree with each other about which gate they answered.
@@ -2083,48 +2039,33 @@ def test_the_report_is_derived_from_what_ran_rather_than_from_what_was_planned(
 # The zeroes, which are asked about and then queue nothing
 
 
-def test_an_empty_plan_is_still_asked_about_and_still_queues_nothing(repair_on, folder, silence):
-    """R12, and the reversal that got this verb back in line with its sibling."""
-    place(folder, silence, "already-specific", SPECIFIC)
-
-    code, refused = drive(["tag", "retag", str(folder)])
+def answered(argv: list[str], answer: str) -> tuple[int, dict]:
+    """Drive ``argv`` to the retag gate, answer it as a person, and drive it on that run."""
+    code, refused = drive(argv)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
-    assert refused["cause"]["detail"]["gate"] == "tag.retag.confirm"
-
+    assert refused["cause"]["detail"]["gate"] == RETAG_GATE
     run_id = refused["run_id"]
-    decided, envelope = drive(
-        ["run", "decide", run_id, "tag.retag.confirm", "apply", "--actor", "a-person"]
-    )
+    decided, envelope = drive(["run", "decide", run_id, RETAG_GATE, answer, "--actor", "a-person"])
     assert decided == int(ExitCode.OK), envelope
+    return drive(["--run", run_id, *argv])
 
-    code, envelope = drive(["--run", run_id, "tag", "retag", str(folder)])
+
+@pytest.mark.parametrize("absent", [False, True])
+def test_an_empty_plan_is_still_asked_about_and_queues_nothing_and_says_which_zero(
+    repair_on, folder, silence, absent
+):
+    """R12: asked about like its sibling; nothing coarse and no folder are two zeroes."""
+    place(folder, silence, "already-specific", SPECIFIC)
+    named = str(folder.parent / "no-such-folder") if absent else str(folder)
+
+    code, envelope = answered(["tag", "retag", named], "apply")
 
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
     assert envelope["data"]["job_id"] == ""
-    assert [warning["code"] for warning in envelope["warnings"]] == ["tag-retag-nothing-coarse"]
-    assert queued_jobs() == ()
-
-
-def test_a_folder_that_is_not_there_is_a_different_zero_from_one_with_nothing_coarse(
-    repair_on, tmp_path
-):
-    """Both walk to nothing, and the person's next move differs for each."""
-    absent = str(tmp_path / "no-such-folder")
-
-    code, refused = drive(["tag", "retag", absent])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    decided, envelope = drive(
-        ["run", "decide", run_id, "tag.retag.confirm", "apply", "--actor", "a-person"]
-    )
-    assert decided == int(ExitCode.OK), envelope
-
-    code, envelope = drive(["--run", run_id, "tag", "retag", absent])
-
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["outcome"] == "no_op"
-    assert [warning["code"] for warning in envelope["warnings"]] == ["tag-retag-folder-absent"]
+    assert [warning["code"] for warning in envelope["warnings"]] == [
+        "tag-retag-folder-absent" if absent else "tag-retag-nothing-coarse"
+    ]
     assert queued_jobs() == ()
 
 
@@ -2135,15 +2076,7 @@ def test_answering_the_confirmation_with_abort_queues_nothing_and_writes_nothing
     coarse(folder, silence, "a")
     bound(monkeypatch, answering({}))
 
-    code, refused = drive(["tag", "retag", str(folder)])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    decided, _envelope = drive(
-        ["run", "decide", run_id, RETAG_GATE, "abort", "--actor", "a-person"]
-    )
-    assert decided == int(ExitCode.OK)
-
-    code, envelope = drive(["--run", run_id, "tag", "retag", str(folder)])
+    code, envelope = answered(["tag", "retag", str(folder)], "abort")
 
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
@@ -2156,42 +2089,26 @@ def test_answering_the_confirmation_with_abort_queues_nothing_and_writes_nothing
 # The file moved between the confirmation and the drive
 
 
-def test_a_genre_made_specific_between_the_confirm_and_the_drive_is_not_rewritten(
-    repair_on, folder, silence, monkeypatch
+@pytest.mark.parametrize(
+    ("by_hand", "read_back", "reason"),
+    [("Ambient", ("Ambient",), retag.GENRE_SPECIFIC), ("", (None, ""), retag.NO_GENRE)],
+)
+def test_a_genre_changed_between_the_confirm_and_the_drive_is_left_to_its_owner(
+    repair_on, folder, silence, monkeypatch, by_hand, read_back, reason
 ):
-    """Somebody corrected it already, and their curation outranks this sweep."""
+    """A curation made since outranks this sweep; a blank genre is fill if empty's."""
     coarse(folder, silence, "a")
     searcher = bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
     _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
 
-    by_hand = "Ambient"
     assert tags.write_genre(folder / "a.flac", by_hand)
     code, resumed = drive(resume_argv(job_id))
 
     assert code == int(ExitCode.OK), resumed
-    assert tags.read_genre_from_file(folder / "a.flac") == by_hand
+    assert tags.read_genre_from_file(folder / "a.flac") in read_back
     assert searcher.asked == [], "the catalogue was asked about a file nobody may write"
     report = retag_reports(repair_on, job_id)[str(folder / "a.flac")]
-    assert report["reason"] == retag.GENRE_SPECIFIC
-    assert report["written"] is None
-
-
-def test_a_genre_made_blank_between_the_confirm_and_the_drive_is_left_to_its_owner(
-    repair_on, folder, silence, monkeypatch
-):
-    """The one state two verbs could both claim, and neither may."""
-    coarse(folder, silence, "a")
-    searcher = bound(monkeypatch, answering({"a": hit("deep house", SPECIFIC)}))
-    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
-
-    assert tags.write_genre(folder / "a.flac", "")
-    code, resumed = drive(resume_argv(job_id))
-
-    assert code == int(ExitCode.OK), resumed
-    assert tags.read_genre_from_file(folder / "a.flac") in (None, "")
-    assert searcher.asked == []
-    report = retag_reports(repair_on, job_id)[str(folder / "a.flac")]
-    assert report["reason"] == retag.NO_GENRE
+    assert report["reason"] == reason
     assert report["written"] is None
 
 
@@ -2639,9 +2556,7 @@ def test_the_retag_resume_argv_carries_the_gate_run_before_the_verb_path(
     assert argv == ["--run", gate_run, "tag", "retag", str(folder), "--job", job_id]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-678: the queueing half names the job it queued
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_queueing_a_folder_names_the_job_and_the_command_that_drives_it(cfg, folder, silence):
@@ -2666,9 +2581,7 @@ def test_a_folder_with_nothing_to_tag_names_no_job(cfg, folder):
     assert "  job:" not in text, text
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U192: run by hand, the verb drives the sweep it queues, in one command
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_tag_folder_by_hand_queues_and_drives_its_sweep_to_succeeded_in_one_call(

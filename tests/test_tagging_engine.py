@@ -1,29 +1,10 @@
 """U56: the fill-if-empty engine, and the split that makes it drivable as a job.
 
-WHY THIS FILE DID NOT EXIST UNTIL NOW, WHICH IS THE POINT OF IT.
-``cratekit.tagging.tag`` shipped in an early unit and had NO test anywhere in
-this suite: a grep for ``tag_folder`` over ``tests/`` before this unit returned
-``tests/test_cli_contract.py``, which names the verb rather than the engine, and
-``tests/test_genre_retag.py``, which mentions it only in prose. It also had no
-caller in ``src``. U56 is both, so under
-``docs/solutions/workflow-issues/adding-the-first-caller-makes-you-the-owner-of-its-unreviewed-defects.md``
-its unreviewed failure paths are this unit's to drive rather than to inherit.
-
-WHAT THE SPLIT IS FOR. A queued verb populates its items at enqueue and its
-worker runs one of them, so the walk and the per file work have to be reachable
-separately. They are :func:`tag.audio_files` and :func:`tag.tag_one`, and
-:func:`tag.tag_folder` is now the first applied to every result of the second.
-The property that matters is that there is only one of each: a shell that walked
-the folder itself would be a second opinion about which files the job covers,
-and the drift runs in the expensive direction, a job reporting done over files it
-never queued.
-
-THE RETAG SIDE IS CHARACTERIZED RATHER THAN RE-ASSERTED. ``retag_one`` is the
-body of ``retag_folder``'s loop lifted out unchanged, and the evidence that it
-came out unchanged is that every one of ``tests/test_genre_retag.py``'s
-assertions still passes with no edit. What is added here is the property that
-file makes only implicitly, that driving one candidate at a time and driving the
-whole folder produce the same results in the same order.
+The walk (:func:`tag.audio_files`) and the per file work (:func:`tag.tag_one`)
+are reachable apart and there is one of each, so the queue and the engine
+cover one set of files; :func:`tag.tag_folder` is the one applied to the
+other. ``retag_one`` is ``retag_folder``'s loop body lifted out, and one
+candidate at a time must equal the whole folder.
 """
 
 from __future__ import annotations
