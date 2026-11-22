@@ -238,8 +238,7 @@ def world(seams):
     tracklist = Path(cfg.library.root).parent / "lists" / f"{SET_NAME}.txt"
     tracklist.parent.mkdir(parents=True, exist_ok=True)
     tracklist.write_text("".join(f"{a} - {t}\n" for a, t in ROWS), encoding="utf-8")
-    code, built = _two_acts(["export", "set", str(tracklist)], SET_BUILD)
-    assert code == int(ExitCode.OK), built
+    _two_acts_ok(["export", "set", str(tracklist)], SET_BUILD)
     _proof(cfg, SET_NAME)
     # THE ACCOUNT LISTS WHAT THE PRODUCT MADE TOO, at its root, so an
     # assertion that the set is not the author's has something to exclude.
@@ -269,15 +268,33 @@ def _answered(db: str = "approve", acct: str = "apply", *extra: str) -> tuple[in
     return code, done, first
 
 
+def _applied(db: str = "approve", acct: str = "apply", *extra: str) -> dict:
+    """:func:`_answered`'s final envelope, which must have exited OK."""
+    code, done, _first = _answered(db, acct, *extra)
+    assert code == int(ExitCode.OK), done
+    return done
+
+
+def _ok(argv: list[str]) -> dict:
+    """One drive over a fresh collection read, which must exit OK."""
+    collection.reset_cache()
+    code, envelope = drive(argv)
+    assert code == int(ExitCode.OK), envelope
+    return envelope
+
+
+def _two_acts_ok(argv: list[str], gate: str, option: str = "apply") -> dict:
+    code, done = _two_acts(argv, gate, option)
+    assert code == int(ExitCode.OK), done
+    return done
+
+
 def _steps(envelope: dict, area: str) -> dict[str, dict]:
     return {step["step"]: step for step in envelope["data"]["summary"]["areas"][area]["steps"]}
 
 
 def _report() -> dict:
-    collection.reset_cache()
-    code, envelope = drive([*VERB, "--report"])
-    assert code == int(ExitCode.OK), envelope
-    return envelope
+    return _ok([*VERB, "--report"])
 
 
 def _parent(cfg: config.Config, playlist_id: str) -> str:
@@ -317,7 +334,17 @@ def test_the_adoption_step_queues_under_the_handler_key_adopt_apply_owns():
 
 
 def test_one_step_of_each_kind_is_planned_in_its_own_area(world):
+    """Planned in their own areas by a report that writes and asks nothing."""
+    cfg, _fake, held, _inbox, _ids = world
+    before = _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID")
+    members = _query(cfg, "SELECT * FROM djmdSongPlaylist ORDER BY ID")
+    created = list(held.created)
     envelope = _report()
+    assert envelope["outcome"] == "no_op"
+    assert envelope["data"]["summary"]["answers"] == {}
+    assert _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID") == before
+    assert _query(cfg, "SELECT * FROM djmdSongPlaylist ORDER BY ID") == members
+    assert held.created == created and held.folders_created == [] and held.moves == []
     database = _steps(envelope, rekordbox.AREA)
     remote = _steps(envelope, account_area.AREA)
     assert database[rekordbox.ADOPT]["state"] == "planned"
@@ -353,12 +380,13 @@ def test_what_the_author_made_is_listed_with_a_home_and_never_a_write(world):
         step for step in areas[account_area.AREA]["steps"] if step["step"] == account_area.FILE
     ]
     assert [row["id"] for row in filed["plan"] if row.get("kind_folder") == "Mine"] == []
+    (row,) = [one for one in filed["plan"] if one["id"] == "mine-1"]
+    assert row["action"] == filing.LEFT and row["why"] == filing.WORKING_CUSTOM
     # The run named batch is a suggestion, never a step.
     assert [one["name"] for one in areas[rekordbox.AREA]["suggested"]] == [RUN_NAMED]
-    code, done, _first = _answered()
-    assert code == int(ExitCode.OK), done
+    done = _applied()
     assert ("mine-1", MINE_ON_ACCOUNT) not in held.renamed
-    assert "mine-1" not in held.placed
+    assert "mine-1" not in held.placed and held.folders_created.count("Mine") == 0
     assert ("mine-1", "empty") not in held.root_removed and "mine-1" in held.titles
     assert _parent(cfg, ids["mine"]) in rb_writer.ROOT_PARENT_SENTINELS
     assert _parent(cfg, ids["listen later"]) == inbox
@@ -387,8 +415,7 @@ def test_deadca7s_folder_is_named_once_as_foreign_and_a_full_apply_leaves_it_as_
     # NAMED ONCE, as the folder: the playlists in it are never listed.
     for name in deadca7_fixtures.PLAYLISTS.values():
         assert name not in str(envelope)
-    code, done, _first = _answered()
-    assert code == int(ExitCode.OK), done
+    _applied()
     assert deadca7_fixtures.written(cfg.library.db_path, pushed) == before
     # Organize filed the tracks the push holds, into its own tree, and that
     # took nothing from the push's playlists.
@@ -463,8 +490,7 @@ def test_a_push_stamped_with_the_zero_date_reads_as_no_push_at_all_west_of_utc(e
     assert area["facts"][rekordbox.FOREIGN_FACT].startswith(f"{deadca7_fixtures.FOLDER} at")
     for name in deadca7_fixtures.PLAYLISTS.values():
         assert name not in str(area)
-    code, done, _first = _answered()
-    assert code == int(ExitCode.OK), done
+    _applied()
     assert deadca7_fixtures.written(cfg.library.db_path, pushed) == written
     again = _report()["data"]["summary"]["areas"][rekordbox.AREA]
     assert deadca7_fixtures.FOLDER not in {one["name"] for one in again["yours"]}
@@ -474,8 +500,7 @@ def test_a_push_stamped_with_the_zero_date_reads_as_no_push_at_all_west_of_utc(e
 def test_approving_rekordbox_and_aborting_the_account_writes_only_rekordbox(world):
     cfg, _fake, held, inbox, ids = world
     assert _filed(cfg) == []
-    code, done, _first = _answered("approve", "abort")
-    assert code == int(ExitCode.OK), done
+    _applied("approve", "abort")
     assert _filed(cfg) == ["r-one", "r-two"]
     assert _parent(cfg, ids["batch"]) != inbox
     assert held.folders_created == []
@@ -485,8 +510,7 @@ def test_approving_rekordbox_and_aborting_the_account_writes_only_rekordbox(worl
 
 def test_aborting_rekordbox_and_applying_the_account_writes_only_the_account(world):
     cfg, _fake, held, inbox, ids = world
-    code, done, _first = _answered("abort", "apply")
-    assert code == int(ExitCode.OK), done
+    _applied("abort", "apply")
     assert _filed(cfg) == []
     assert _parent(cfg, ids["batch"]) == inbox
     assert LABEL in held.folders_created
@@ -494,19 +518,6 @@ def test_aborting_rekordbox_and_applying_the_account_writes_only_the_account(wor
     from cratekit.sync import mark_record
     assert mark_record.MarkRecord(cfg).taken_ids()
     assert not any(name.startswith("DOWNLOADED ") for _pid, name in held.renamed)
-
-
-def test_report_writes_nothing_and_asks_nothing(world):
-    cfg, _fake, held, inbox, ids = world
-    before = _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID")
-    members = _query(cfg, "SELECT * FROM djmdSongPlaylist ORDER BY ID")
-    created = list(held.created)
-    envelope = _report()
-    assert envelope["outcome"] == "no_op"
-    assert envelope["data"]["summary"]["answers"] == {}
-    assert _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID") == before
-    assert _query(cfg, "SELECT * FROM djmdSongPlaylist ORDER BY ID") == members
-    assert held.created == created and held.folders_created == [] and held.moves == []
 
 
 def test_one_steps_refusal_leaves_every_other_plan_on_screen(world):
@@ -523,8 +534,7 @@ def test_one_steps_refusal_leaves_every_other_plan_on_screen(world):
 
 
 def test_a_second_run_after_a_full_apply_plans_nothing(world):
-    code, done, _first = _answered()
-    assert code == int(ExitCode.OK), done
+    _applied()
     # U147. THE MIRROR READS THE TREE BEFORE THE DATABASE AREA WRITES IT, plan
     # then ask then write, so a playlist the adoption made in a run is mirrored
     # by the next one, and the mirror is all the second run plans.
@@ -535,8 +545,7 @@ def test_a_second_run_after_a_full_apply_plans_nothing(world):
         if step["state"] == "planned"
     ]
     assert lagging and all(key.startswith("mirror:") for key in lagging), lagging
-    code, done, _first = _answered()
-    assert code == int(ExitCode.OK), done
+    _applied()
     envelope = _report()
     for area in envelope["data"]["summary"]["areas"].values():
         planned = [step["step"] for step in area["steps"] if step["state"] == "planned"]
@@ -551,8 +560,7 @@ def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(seams):
     code, first = drive(VERB)
     assert code == int(ExitCode.DECISION_REQUIRED), first
     assert first["cause"]["detail"]["gate"] == ACCOUNT_GATE
-    code, done = _two_acts(VERB, ACCOUNT_GATE, "apply")
-    assert code == int(ExitCode.OK), done
+    done = _two_acts_ok(VERB, ACCOUNT_GATE, "apply")
     refused = done["data"]["summary"]["areas"][rekordbox.AREA]["refused"]
     assert refused["reason"] == "backup-acknowledgment-missing"
     assert done["data"]["summary"]["areas"][rekordbox.AREA]["steps"] == []
@@ -600,6 +608,8 @@ def test_an_area_with_nothing_to_do_still_asks(seams):
         ("anything", None),
     ],
 )
+
+
 def test_an_account_home_is_a_label_then_a_year_and_otherwise_none(name, home):
     assert own.account_home(name, ("Kompakt",)) == home
 
@@ -621,8 +631,7 @@ def test_a_rekordbox_home_needs_a_declared_label_tree():
 def test_the_adoption_job_carries_a_run_its_own_resume_can_answer(world):
     from cratekit.cli import gates
     from cratekit.core import jobs
-    code, done, _first = _answered("approve", "abort")
-    assert code == int(ExitCode.OK), done
+    done = _applied("approve", "abort")
     step = _steps(done, rekordbox.AREA)[rekordbox.ADOPT]
     with jobs.open_store() as store:
         (job,) = [one for one in jobs.list_jobs(store) if one.handler_key == rekordbox.ADOPT_HANDLER]
@@ -753,8 +762,7 @@ def test_a_playlist_of_yours_already_in_a_folder_of_yours_is_not_listed(world):
 
 
 def test_a_run_that_writes_nothing_ends_as_a_no_op(world):
-    code, done, _first = _answered("abort", "abort")
-    assert code == int(ExitCode.OK), done
+    done = _applied("abort", "abort")
     assert done["outcome"] == "no_op"
     assert done["data"]["summary"]["answers"] == {
         rekordbox.AREA: "abort",
@@ -808,8 +816,7 @@ def test_a_marked_playlist_at_the_root_moves_into_its_year_folder(world):
     assert _file_rows({"data": {"summary": {"areas": {account_area.AREA: {"steps": [step]}}}}})[
         MARKED_ID
     ]["action"] == filing.MOVE
-    code, done, _first = _answered()
-    assert code == int(ExitCode.OK), done
+    done = _applied()
     folder = held.placed[MARKED_ID]
     assert held.folder_names[folder] == MARKED_YEAR
     applied = _steps(done, account_area.AREA)[account_area.FILE]["applied"]
@@ -825,8 +832,7 @@ def test_a_missing_year_folder_is_created_once_and_reused(world):
     cfg, fake, held, _inbox, _ids = world
     _marked(cfg, fake, held)
     _marked(cfg, fake, held, "custom-2", "DOWNLOADED Phil 10_9_26")
-    code, done, _first = _answered()
-    assert code == int(ExitCode.OK), done
+    _applied()
     assert held.folders_created.count(MARKED_YEAR) == 1
     assert held.placed[MARKED_ID] == held.placed["custom-2"]
     # A second pass reads the folder the first made, and moves nothing again.
@@ -840,32 +846,20 @@ def test_an_existing_year_folder_on_the_account_is_adopted_not_made_again(world)
     existing = held.create_folder(MARKED_YEAR)
     held.folders_created.clear()
     _marked(cfg, fake, held)
-    code, done, _first = _answered()
-    assert code == int(ExitCode.OK), done
+    _applied()
     assert held.placed[MARKED_ID] == existing
     assert MARKED_YEAR not in held.folders_created
 
 
-def test_an_unmarked_playlist_of_the_authors_stays_at_the_root_as_a_working_custom(world):
-    """U143 REVERSES U131's MOVE INTO MINE for an unmarked, unclaimed playlist:
-    by Phillip's rule of 2026-10-13 it is the one playlist the root is for."""
-    _cfg, _fake, held, _inbox, _ids = world
-    row = _file_rows(_report())["mine-1"]
-    assert row["action"] == filing.LEFT and row["why"] == filing.WORKING_CUSTOM
-    code, done, _first = _answered()
-    assert code == int(ExitCode.OK), done
-    assert "mine-1" not in held.placed and held.folders_created.count("Mine") == 0
-
-
 def test_a_prefixed_playlist_no_sync_recorded_is_still_filed_in_mine(world):
+    """No mark says when, so no year: it is the author's own, and has its own reason."""
     cfg, fake, held, _inbox, _ids = world
     fake.account.append(AccountPlaylist("own-2", "DOWNLOADED by hand", 2))
     held.titles["own-2"] = "DOWNLOADED by hand"
     row = _file_rows(_report())["own-2"]
     assert row["action"] == filing.MOVE and row["why"] == filing.PREFIXED_UNMARKED
     assert row["kind_folder"] == "Mine" and row["folder"] == "create"
-    code, done, _first = _answered()
-    assert code == int(ExitCode.OK), done
+    _applied()
     assert held.folder_names[held.placed["own-2"]] == "Mine"
 
 
@@ -878,15 +872,19 @@ def test_a_mark_put_back_is_no_mark_and_the_playlist_stays(world):
     assert _file_rows(_report())[MARKED_ID]["why"] == filing.PREFIXED_UNMARKED
 
 
-def test_a_marked_playlist_already_in_a_folder_is_left_where_it_is(world):
+@pytest.mark.parametrize("nested", [False, True])
+def test_a_marked_playlist_already_in_a_folder_is_left_where_it_is(world, nested):
+    """In a root folder, or two folders down, which no root folder's listing shows."""
     cfg, fake, held, _inbox, _ids = world
     _marked(cfg, fake, held)
-    elsewhere = held.create_folder("Old faves")
+    elsewhere = held.create_folder("Archive" if nested else "Old faves")
+    if nested:
+        elsewhere = held.nest_folder("2025", elsewhere)
     held.placed[MARKED_ID] = elsewhere
     assert MARKED_ID not in _file_rows(_report())
-    code, done, _first = _answered()
-    assert code == int(ExitCode.OK), done
+    _applied()
     assert held.placed[MARKED_ID] == elsewhere
+    assert all(playlist_id != MARKED_ID for playlist_id, _folder in held.moves)
 
 
 def test_a_label_playlist_is_the_label_steps_and_a_set_the_archives(world):
@@ -922,16 +920,22 @@ def test_two_root_folders_named_as_the_year_leave_its_playlists_reported(world):
     assert row["action"] == filing.LEFT and "2 root folders" in row["why"]
 
 
-def test_a_provider_refusal_mid_pass_stops_and_names_what_moved(world):
+@pytest.mark.parametrize("cratekit_refusal", [False, True])
+def test_a_provider_refusal_mid_pass_stops_and_names_what_moved(world, cratekit_refusal):
+    """A provider's own failure, or its refusal as Cratekit's, which carries the moved list."""
     cfg, fake, held, _inbox, _ids = world
     _marked(cfg, fake, held, "custom-a", "DOWNLOADED A pass")
     _marked(cfg, fake, held, "custom-b", "DOWNLOADED B pass")
     held.fail_on = frozenset({"custom-b"})
+    held.provider_error = cratekit_refusal
     code, done, _first = _answered()
     assert code != int(ExitCode.OK)
     assert "custom-a" in held.placed and "custom-b" not in held.placed
     assert "1 playlist(s) were moved" in done["cause"]["message"]
-    assert f"custom-a into {held.placed['custom-a']}" in done["cause"]["message"]
+    if cratekit_refusal:
+        assert done["cause"]["detail"]["moved"] == [["custom-a", held.placed["custom-a"]]]
+    else:
+        assert f"custom-a into {held.placed['custom-a']}" in done["cause"]["message"]
 
 
 def test_a_marks_year_is_local_and_an_unreadable_one_is_empty():
@@ -948,8 +952,7 @@ def test_a_year_folder_already_on_the_account_is_adopted_with_no_set_to_make_it(
     existing = held.create_folder(MARKED_YEAR)
     held.folders_created.clear()
     _marked(cfg, fake, held)
-    code, done = _two_acts(VERB, ACCOUNT_GATE, "apply")
-    assert code == int(ExitCode.OK), done
+    _two_acts_ok(VERB, ACCOUNT_GATE, "apply")
     assert held.placed[MARKED_ID] == existing
     # No folder is made: the year's is adopted, and the author's working custom
     # playlist stays at the root (U143) rather than making a Mine for it.
@@ -963,35 +966,8 @@ def test_a_playlist_marked_twice_is_filed_by_its_latest_mark(seams):
     mark_record.MarkRecord(cfg).record_marked(
         "a later pass", {MARKED_ID: ("Phil 10_8_26", MARKED_NAME)}, now="2026-01-02T10:00:00+00:00"
     )
-    code, done = _two_acts(VERB, ACCOUNT_GATE, "apply")
-    assert code == int(ExitCode.OK), done
+    _two_acts_ok(VERB, ACCOUNT_GATE, "apply")
     assert held.folder_names[held.placed[MARKED_ID]] == "2026"
-
-def test_a_playlist_two_folders_down_is_left_where_it_is(world):
-    cfg, fake, held, _inbox, _ids = world
-    _marked(cfg, fake, held)
-    archive = held.create_folder("Archive")
-    nested = held.nest_folder("2025", archive)
-    held.placed[MARKED_ID] = nested
-    assert MARKED_ID not in _file_rows(_report())
-    code, done, _first = _answered()
-    assert code == int(ExitCode.OK), done
-    assert held.placed[MARKED_ID] == nested
-    assert all(playlist_id != MARKED_ID for playlist_id, _folder in held.moves)
-
-
-def test_a_provider_cratekit_refusal_mid_pass_carries_the_moved_list(world):
-    cfg, fake, held, _inbox, _ids = world
-    _marked(cfg, fake, held, "custom-a", "DOWNLOADED A pass")
-    _marked(cfg, fake, held, "custom-b", "DOWNLOADED B pass")
-    held.fail_on = frozenset({"custom-b"})
-    held.provider_error = True
-    code, done, _first = _answered()
-    assert code != int(ExitCode.OK)
-    assert "custom-a" in held.placed and "custom-b" not in held.placed
-    detail = done["cause"]["detail"]
-    assert detail["moved"] == [["custom-a", held.placed["custom-a"]]]
-    assert "1 playlist(s) were moved" in done["cause"]["message"]
 
 
 def test_a_folder_made_before_a_failed_ledger_write_is_named(seams, monkeypatch):
@@ -1012,18 +988,6 @@ def test_a_folder_made_before_a_failed_ledger_write_is_named(seams, monkeypatch)
     assert MARKED_YEAR in held.folders_created
     assert "1 year folder(s) were created" in str(raised.value)
     assert MARKED_ID not in held.placed
-
-
-def test_a_prefixed_but_unmarked_playlist_has_its_own_reason(world):
-    _cfg, fake, held, _inbox, _ids = world
-    fake.account.append(AccountPlaylist("hand-1", "DOWNLOADED Hand marked", 2))
-    held.titles["hand-1"] = "DOWNLOADED Hand marked"
-    row = _file_rows(_report())["hand-1"]
-    # No mark says when, so no year: it is the author's own and goes to Mine.
-    assert row["action"] == filing.MOVE and row["why"] == filing.PREFIXED_UNMARKED
-    code, done, _first = _answered()
-    assert code == int(ExitCode.OK), done
-    assert held.folder_names[held.placed["hand-1"]] == "Mine"
 
 
 # U137: one kind of step runs alone, ``--only``
@@ -1048,9 +1012,7 @@ def test_only_file_plans_the_filing_alone_and_the_database_is_not_asked(world, m
     # author's unmarked one at the root).
     _marked(cfg, fake, held)
     folders, renamed, added = list(held.folders_created), list(held.renamed), list(held.added)
-    collection.reset_cache()
-    code, envelope = drive([*ONLY_FILE, "--report"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = _ok([*ONLY_FILE, "--report"])
     areas = envelope["data"]["summary"]["areas"]
     assert list(areas) == [account_area.AREA]
     assert [step["step"] for step in areas[account_area.AREA]["steps"]] == [account_area.FILE]
@@ -1076,15 +1038,12 @@ def test_only_mirror_plans_and_writes_the_mirror_alone_and_a_rerun_plans_nothing
     folders = list(held.folders_created)
     only = [*VERB, "--only", account_area.MIRROR]
     renamed = list(held.renamed)
-    collection.reset_cache()
-    code, envelope = drive([*only, "--report"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = _ok([*only, "--report"])
     steps = envelope["data"]["summary"]["areas"][account_area.AREA]["steps"]
     assert steps and all(step["step"].startswith("mirror:") for step in steps), steps
     assert any(step["state"] == "planned" for step in steps), steps
     collection.reset_cache()
-    code, done = _two_acts(only, ACCOUNT_GATE, "apply")
-    assert code == int(ExitCode.OK), done
+    done = _two_acts_ok(only, ACCOUNT_GATE, "apply")
     applied = [
         step["applied"]
         for step in done["data"]["summary"]["areas"][account_area.AREA]["steps"]
@@ -1092,9 +1051,7 @@ def test_only_mirror_plans_and_writes_the_mirror_alone_and_a_rerun_plans_nothing
     ]
     assert applied and all("requests" in one and "seconds" in one for one in applied)
     assert len(held.folders_created) > len(folders) and held.renamed == renamed
-    collection.reset_cache()
-    code, again = drive([*only, "--report"])
-    assert code == int(ExitCode.OK), again
+    again = _ok([*only, "--report"])
     states = {step["state"] for step in again["data"]["summary"]["areas"][account_area.AREA]["steps"]}
     assert "planned" not in states and "refused" not in states, again
 
@@ -1145,9 +1102,7 @@ def test_a_library_write_between_the_mirrors_two_acts_applies_the_approved_plan(
     frozen = config.state_path("mirror_plans", cfg)
     before = sorted(path.name for path in frozen.glob("*.json"))
     assert f"{done['run_id']}.json" in before
-    collection.reset_cache()
-    code, again = drive([*VERB, "--only", account_area.MIRROR, "--report"])
-    assert code == int(ExitCode.OK), again
+    again = _ok([*VERB, "--only", account_area.MIRROR, "--report"])
     planned = [
         item
         for step in again["data"]["summary"]["areas"][account_area.AREA]["steps"]
@@ -1168,9 +1123,7 @@ def test_the_gate_freezes_every_step_of_the_full_account_area(world):
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     frozen, said = mirror_frozen.load(cfg, refused["run_id"])
     assert frozen is not None, said
-    collection.reset_cache()
-    code, report = drive([*VERB, "--report"])
-    assert code == int(ExitCode.OK), report
+    report = _ok([*VERB, "--report"])
     keys = [step["step"] for step in report["data"]["summary"]["areas"][account_area.AREA]["steps"]]
     assert len(keys) > len([one for one in keys if one.startswith("mirror:")]) > 0, keys
     assert sorted(frozen.steps) == sorted(keys)
@@ -1218,9 +1171,7 @@ def test_only_file_moves_a_marked_playlist_as_the_full_verb_does_and_then_plans_
     assert held.folder_names[folder] == MARKED_YEAR
     applied = _steps(done, account_area.AREA)[account_area.FILE]["applied"]
     assert applied["moved"] == [[MARKED_ID, folder]]
-    collection.reset_cache()
-    code, again = drive([*ONLY_FILE, "--report"])
-    assert code == int(ExitCode.OK), again
+    again = _ok([*ONLY_FILE, "--report"])
     assert _steps(again, account_area.AREA)[account_area.FILE]["state"] == "nothing"
 
 
@@ -1230,9 +1181,7 @@ def test_only_files_digest_is_not_the_full_areas_and_an_answer_over_one_is_stale
     register(LABEL)
     collection.reset_cache()
     full = _report()["data"]["summary"]["areas"][account_area.AREA]["digest"]
-    collection.reset_cache()
-    code, narrowed = drive([*ONLY_FILE, "--report"])
-    assert code == int(ExitCode.OK), narrowed
+    narrowed = _ok([*ONLY_FILE, "--report"])
     assert narrowed["data"]["summary"]["areas"][account_area.AREA]["digest"] != full
     code, first = drive(VERB)
     assert first["cause"]["detail"]["gate"] == ACCOUNT_GATE, first
@@ -1247,9 +1196,7 @@ def test_the_selection_alone_moves_the_digest_when_it_names_every_step(world):
     """``--only`` over every kind plans what the full verb plans, and is still its own answer."""
     full = _report()["data"]["summary"]["areas"]
     every = [arg for kind in organize_cli.KINDS for arg in ("--only", kind)]
-    collection.reset_cache()
-    code, named = drive([*VERB, "--report", *every])
-    assert code == int(ExitCode.OK), named
+    named = _ok([*VERB, "--report", *every])
     for name, area in named["data"]["summary"]["areas"].items():
         assert [step["step"] for step in area["steps"]] == [
             step["step"] for step in full[name]["steps"]
@@ -1275,9 +1222,7 @@ def test_report_with_only_file_makes_no_provider_write(world):
         list(held.created), list(held.folders_created), list(held.moves),
         list(held.renamed), list(held.added), dict(held.placed),
     )
-    collection.reset_cache()
-    code, envelope = drive([*ONLY_FILE, "--report"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = _ok([*ONLY_FILE, "--report"])
     assert envelope["outcome"] == "no_op"
     assert _steps(envelope, account_area.AREA)[account_area.FILE]["state"] == "planned"
     assert before == (
@@ -1290,9 +1235,7 @@ def test_an_unread_label_registry_refuses_the_filing_rather_than_plan_it_over_no
     from cratekit.label import registry as labels
     _cfg, _fake, held, _inbox, _ids = world
     labels.RegistryStore().path.write_text("{ not json", encoding="utf-8")
-    collection.reset_cache()
-    code, envelope = drive([*ONLY_FILE, "--report"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = _ok([*ONLY_FILE, "--report"])
     step = _steps(envelope, account_area.AREA)[account_area.FILE]
     assert step["state"] == "refused" and step["reason"] == "label-intent-unusable"
     code, first = drive(ONLY_FILE)
@@ -1306,8 +1249,7 @@ def test_only_a_database_kind_asks_the_database_alone(world, monkeypatch):
     monkeypatch.setattr(account_area, "plan_area", _not_planned)
     argv = [*VERB, "--only", rekordbox.ADOPT]
     collection.reset_cache()
-    code, done = _two_acts(argv, DB_GATE, "approve")
-    assert code == int(ExitCode.OK), done
+    done = _two_acts_ok(argv, DB_GATE, "approve")
     assert [step["step"] for step in _steps(done, rekordbox.AREA).values()] == [rekordbox.ADOPT]
     assert _filed(cfg) == ["r-one", "r-two"]
     assert list(done["data"]["summary"]["areas"]) == [rekordbox.AREA]
@@ -1321,9 +1263,7 @@ def test_only_yours_lists_on_each_side_exactly_what_the_full_verb_lists(world):
     fake.account.append(AccountPlaylist("kept-1", "Kept in place", 2))
     held.placed["kept-1"] = held.create_folder("My sets")
     full = _report()["data"]["summary"]["areas"]
-    collection.reset_cache()
-    code, envelope = drive([*VERB, "--report", "--only", "yours"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = _ok([*VERB, "--report", "--only", "yours"])
     areas = envelope["data"]["summary"]["areas"]
     assert areas[rekordbox.AREA]["yours"] == full[rekordbox.AREA]["yours"]
     assert areas[rekordbox.AREA]["suggested"] == full[rekordbox.AREA]["suggested"]
@@ -1358,9 +1298,7 @@ def test_a_registry_the_profile_does_not_use_does_not_refuse_the_filing(world, m
         return real(profile, {**dict(explicit or {}), account_area.LABELS_MODULE: False})
 
     monkeypatch.setattr(organize_cli.profiles, "resolve", without_labels)
-    collection.reset_cache()
-    code, envelope = drive([*ONLY_FILE, "--report"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = _ok([*ONLY_FILE, "--report"])
     assert _steps(envelope, account_area.AREA)[account_area.FILE]["state"] == "planned"
 
 
@@ -1368,9 +1306,7 @@ def test_only_yours_shows_a_refused_rotation_since_it_is_why_the_listing_is_shor
     """No tree has cut over here, so the rotation refuses, and says so under yours."""
     cfg, _fake, _held = seams
     session.record_acknowledgment(cfg, terminal=lambda: True)
-    collection.reset_cache()
-    code, envelope = drive([*VERB, "--report", "--only", "yours"])
-    assert code == int(ExitCode.OK), envelope
+    envelope = _ok([*VERB, "--report", "--only", "yours"])
     steps = _steps(envelope, rekordbox.AREA)
     assert list(steps) == [rekordbox.ROTATE, rekordbox.YOURS]
     assert steps[rekordbox.ROTATE]["state"] == "refused"
@@ -1389,6 +1325,8 @@ def test_only_yours_shows_a_refused_rotation_since_it_is_why_the_listing_is_shor
         (account_area.YOURS, ["_file_step", "_yours"]),
     ],
 )
+
+
 def test_each_account_kind_runs_its_own_builder_and_no_other(seams, monkeypatch, kind, called):
     """No world here holds a landed sync pass, so the marks are pinned at their seam."""
     ran: list[str] = []
@@ -1404,9 +1342,7 @@ def test_each_account_kind_runs_its_own_builder_and_no_other(seams, monkeypatch,
         monkeypatch.setattr(account_area, name, recorder(name))
     if kind not in rekordbox.STEPS:
         monkeypatch.setattr(rekordbox, "plan_area", _not_planned)
-    collection.reset_cache()
-    code, envelope = drive([*VERB, "--report", "--only", kind])
-    assert code == int(ExitCode.OK), envelope
+    _ok([*VERB, "--report", "--only", kind])
     assert ran == called
 
 
@@ -1434,8 +1370,7 @@ def test_a_set_with_no_intake_file_and_an_inspiration_playlist_of_its_name_is_ar
     step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
     assert step["state"] == "planned", step
     assert f"proven by the INSPIRATION playlist {SET_NAME}" in step["detail"]
-    code, done, _first = _answered("abort", "apply")
-    assert code == int(ExitCode.OK), done
+    _applied("abort", "apply")
     recorded = ledger.set_playlist(cfg, SET_NAME)
     assert held.folder_names[held.placed[recorded.remote_id]] == f"Downloaded Sets {recorded.year}"
     assert held.titles[recorded.remote_id] == SET_NAME, "no title written (U242)"
@@ -1478,8 +1413,7 @@ def test_a_set_already_prefixed_in_its_downloaded_sets_folder_plans_nothing(worl
     held.titles[recorded.remote_id] = f"DOWNLOADED {SET_NAME}"
     step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
     assert step["state"] == "nothing", step
-    code, done, _first = _answered("abort", "apply")
-    assert code == int(ExitCode.OK), done
+    _applied("abort", "apply")
     assert recorded.remote_id not in [pid for pid, _folder in held.moves]
     assert recorded.remote_id not in [pid for pid, _title in held.renamed]
     assert ledger.set_folder(cfg, f"Downloaded Sets {recorded.year}") == ""
@@ -1501,8 +1435,7 @@ def test_a_downloaded_sets_folder_made_by_hand_is_adopted_and_the_filing_keeps_i
     made_by_hand = len(held.folders_created)
     assert ledger.reserve_set_folder(cfg, year, lambda: plain) == (plain, True)
     _marked(cfg, fake, held, when=f"{year}-06-15T12:00:00+00:00")
-    code, done, _first = _answered("abort", "apply")
-    assert code == int(ExitCode.OK), done
+    _applied("abort", "apply")
     assert held.placed[recorded.remote_id] == by_hand
     assert held.placed[MARKED_ID] == plain
     assert not {year, f"Downloaded Sets {year}"} & set(held.folders_created[made_by_hand:])
@@ -1522,8 +1455,7 @@ def test_a_year_record_whose_folder_now_carries_the_sets_name_is_not_the_filings
     made_by_hand = len(held.folders_created)
     assert ledger.reserve_set_folder(cfg, year, lambda: renamed) == (renamed, True)
     _marked(cfg, fake, held, when=f"{year}-06-15T12:00:00+00:00")
-    code, done, _first = _answered("abort", "apply")
-    assert code == int(ExitCode.OK), done
+    _applied("abort", "apply")
     assert held.placed[recorded.remote_id] == renamed
     custom = held.placed[MARKED_ID]
     assert custom != renamed
@@ -1538,8 +1470,7 @@ def test_a_set_archived_by_its_inspiration_proof_stays_archived_once_that_playli
     cfg, _fake, _held, _inbox, _ids = world
     _no_intake_file(cfg)
     _inspiration(cfg, SET_NAME)
-    code, done, _first = _answered("abort", "apply")
-    assert code == int(ExitCode.OK), done
+    _applied("abort", "apply")
     connection = sqlite3.connect(cfg.library.db_path)
     try:
         connection.execute(
@@ -1582,8 +1513,7 @@ def test_a_set_in_its_folder_with_its_built_title_is_taken_and_not_moved(world):
     assert step["state"] == "planned", step
     assert step["detail"].startswith("record it as taken where it is"), step
     assert "file it in" not in step["detail"]
-    code, done, _first = _answered("abort", "apply")
-    assert code == int(ExitCode.OK), done
+    _applied("abort", "apply")
     assert recorded.remote_id not in [pid for pid, _folder in held.moves]
     assert held.titles[recorded.remote_id] == SET_NAME
     from cratekit.sync import mark_record
@@ -1595,8 +1525,7 @@ def test_no_downloaded_sets_folder_is_made_once_and_the_year_folder_beside_it(wo
     cfg, fake, held, _inbox, _ids = world
     year = ledger.set_playlist(cfg, SET_NAME).year
     _marked(cfg, fake, held, when=f"{year}-06-15T12:00:00+00:00")
-    code, done, _first = _answered("abort", "apply")
-    assert code == int(ExitCode.OK), done
+    _applied("abort", "apply")
     made = [name for name in held.folders_created if year in name]
     assert sorted(made) == sorted([f"Downloaded Sets {year}", year])
     set_id = ledger.set_playlist(cfg, SET_NAME).remote_id
@@ -1717,9 +1646,7 @@ def test_only_root_removes_debris_and_empties_on_the_gate_and_files_the_legacy_f
     assert rows["old-1"]["action"] == "move" and "custom-1" not in rows
     run_id = first["run_id"]
     assert drive(["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person"])[0] == 0
-    collection.reset_cache()
-    code, done = drive(["--run", run_id, *ONLY_ROOT])
-    assert code == int(ExitCode.OK), done
+    done = _ok(["--run", run_id, *ONLY_ROOT])
     assert held.root_removed == [("debris-1", "debris"), ("debris-2", "debris"), ("empty-1", "empty")]
     applied = _steps(done, account_area.AREA)[account_area.ROOT]["applied"]
     assert [name for _kind, _id, name in applied["removed"]] == [
@@ -1736,12 +1663,9 @@ def test_only_root_removes_debris_and_empties_on_the_gate_and_files_the_legacy_f
     assert held.placed["spotify-1"] == "hand-spotify" and "custom-1" not in held.placed
     _listing_without_removed(fake, held)
     collection.reset_cache()
-    code, second = _two_acts(ONLY_ROOT, ACCOUNT_GATE, "apply")
-    assert code == int(ExitCode.OK), second
+    _two_acts_ok(ONLY_ROOT, ACCOUNT_GATE, "apply")
     assert held.folders_removed == ["hand-legacy"]
-    collection.reset_cache()
-    code, again = drive([*ONLY_ROOT, "--report"])
-    assert code == int(ExitCode.OK), again
+    again = _ok([*ONLY_ROOT, "--report"])
     step = _steps(again, account_area.AREA)[account_area.ROOT]
     assert step["state"] == "nothing" and step["plan"] == []
 
@@ -1832,9 +1756,7 @@ def test_a_stale_mirror_refusal_shows_the_moved_plan_and_the_decide_after_it_app
     code, decided = drive(["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person"])
     assert code == int(ExitCode.OK), decided
     assert gates.load(run_id).decisions[ACCOUNT_GATE].digest == detail["shown"]["digest"]
-    collection.reset_cache()
-    code, done = drive(["--run", run_id, *VERB, "--only", account_area.MIRROR])
-    assert code == int(ExitCode.OK), done
+    _ok(["--run", run_id, *VERB, "--only", account_area.MIRROR])
     assert any("Made After The Gate" in title for title in held.titles.values())
 
 
@@ -1888,9 +1810,7 @@ def test_a_stale_rekordbox_refusal_shows_the_moved_plan_and_the_decide_after_it_
     assert code == int(ExitCode.DECISION_REQUIRED), second
     assert second["cause"]["detail"]["gate"] == ACCOUNT_GATE
     assert drive(["run", "decide", run_id, ACCOUNT_GATE, "abort", "--actor", "a-person"])[0] == 0
-    collection.reset_cache()
-    code, done = drive(["--run", run_id, *VERB])
-    assert code == int(ExitCode.OK), done
+    _ok(["--run", run_id, *VERB])
     assert _parent(cfg, landed) != inbox
 
 

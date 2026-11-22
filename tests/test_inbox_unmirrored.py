@@ -501,6 +501,8 @@ def test_a_rebuild_from_the_frozen_plan_still_names_them(installed, monkeypatch)
     ["INBOX Old", [["a label only"]], [["a label", 3]], [("a", "b", "c")]],
     ids=["text", "one part", "not text", "three parts"],
 )
+
+
 def test_frozen_unmirrored_nodes_that_are_not_pairs_of_text_are_not_read(installed, held):
     library = account_mirror.Library(folders=(_with_unmirrored((BATCH, (1,))),))
     mirror_frozen.freeze(installed, "2026-11-05T00:00:00Z-ab12", library, {})

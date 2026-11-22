@@ -249,6 +249,8 @@ def test_the_prefix_is_the_one_the_mark_and_the_sweep_spell():
         ("2026", False),
     ],
 )
+
+
 def test_only_a_year_of_downloaded_sets_is_a_sets_folder(name, is_sets):
     assert inspiration.sets_folder(name) is is_sets
     assert inspiration.sets_folder(sets.folder_name("2026"))

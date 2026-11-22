@@ -1,13 +1,9 @@
 """U169: a ``--root`` is read against the library root, and a missing one refuses.
 
-Sitting 47 ran ``crate name apply --root Downloads`` meaning the library's
-Downloads folder. It was read against the shell's working directory, found no
-files, and planned 0 renames as an ordinary empty plan, which is the answer a
-tidy folder gives too. Every ``--root`` now goes through one reading: ``~``
-expanded, a relative path joined to the library root, the library root when
-omitted, and a folder that is not there refused naming the path it tried.
-``repair paths --apply`` takes the reading and not the refusal, because its
-root filters accepted proposals rather than naming a folder to walk.
+``~`` is expanded, a relative path joined to the library root, the library
+root taken when omitted, and a folder that is not there refused naming the
+path tried. ``repair paths --apply`` takes the reading and not the refusal,
+since its root filters accepted proposals.
 """
 
 from __future__ import annotations
@@ -40,54 +36,47 @@ def standing_elsewhere(tmp_path, monkeypatch) -> Path:
     return here
 
 
-def _cfg(tmp_path: Path) -> config.Config:
+@pytest.fixture
+def cfg(tmp_path: Path) -> config.Config:
     root = tmp_path / "lib"
     root.mkdir()
     return config.from_dict(valid_data(root))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The reading itself
-# ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_a_relative_root_is_read_against_the_library_root(tmp_path, standing_elsewhere):
-    cfg = _cfg(tmp_path)
+def test_a_relative_root_is_read_against_the_library_root(cfg, standing_elsewhere):
     root = Path(cfg.library.root)
     assert naming_cli.root_path("Downloads", cfg, verb="v") == root / "Downloads"
     assert naming_cli.root_path("Music/wave", cfg, verb="v") == root / "Music" / "wave"
 
 
-def test_an_absolute_root_is_taken_as_it_is(tmp_path):
-    cfg = _cfg(tmp_path)
+def test_an_absolute_root_is_taken_as_it_is(cfg, tmp_path):
     elsewhere = tmp_path / "other"
     assert naming_cli.root_path(str(elsewhere), cfg, verb="v") == elsewhere
 
 
-def test_a_home_relative_root_is_expanded_not_joined_to_the_library(tmp_path, monkeypatch):
-    cfg = _cfg(tmp_path)
+def test_a_home_relative_root_is_expanded_not_joined_to_the_library(cfg, tmp_path, monkeypatch):
     home = tmp_path / "home"
     (home / "Downloads").mkdir(parents=True)
     monkeypatch.setenv("HOME", str(home))
     assert naming_cli.root_folder("~/Downloads", cfg, verb="v") == home / "Downloads"
 
 
-def test_an_omitted_root_is_the_library_root(tmp_path):
-    cfg = _cfg(tmp_path)
+def test_an_omitted_root_is_the_library_root(cfg):
     assert naming_cli.root_folder(None, cfg, verb="v") == Path(cfg.library.root)
 
 
 @pytest.mark.parametrize("given", ["", "   "])
-def test_an_empty_root_is_refused_rather_than_read_as_the_working_directory(tmp_path, given):
-    cfg = _cfg(tmp_path)
+def test_an_empty_root_is_refused_rather_than_read_as_the_working_directory(cfg, given):
     with pytest.raises(CratekitError) as caught:
         naming_cli.root_path(given, cfg, verb="name apply")
     assert caught.value.cause.reason == naming_cli.ROOT_MISSING
     assert "empty path" in caught.value.cause.message
 
 
-def test_a_missing_relative_root_refuses_naming_the_path_it_tried(tmp_path, standing_elsewhere):
-    cfg = _cfg(tmp_path)
+def test_a_missing_relative_root_refuses_naming_the_path_it_tried(cfg, standing_elsewhere):
     tried = Path(cfg.library.root) / "Downloads"
     with pytest.raises(CratekitError) as caught:
         naming_cli.root_folder("Downloads", cfg, verb="name apply")
@@ -99,16 +88,14 @@ def test_a_missing_relative_root_refuses_naming_the_path_it_tried(tmp_path, stan
     assert cause.detail == {"tried": str(tried), "given": "Downloads"}
 
 
-def test_a_missing_absolute_root_refuses_naming_it(tmp_path):
-    cfg = _cfg(tmp_path)
+def test_a_missing_absolute_root_refuses_naming_it(cfg, tmp_path):
     gone = tmp_path / "gone"
     with pytest.raises(CratekitError) as caught:
         naming_cli.root_folder(str(gone), cfg, verb="repair paths")
     assert caught.value.cause.message.startswith(f"--root {gone} is not a folder on this machine")
 
 
-def test_a_file_where_the_folder_should_be_is_refused(tmp_path):
-    cfg = _cfg(tmp_path)
+def test_a_file_where_the_folder_should_be_is_refused(cfg):
     (Path(cfg.library.root) / "notes.txt").write_text("x")
     with pytest.raises(CratekitError) as caught:
         naming_cli.root_folder("notes.txt", cfg, verb="name apply")
@@ -125,9 +112,7 @@ def test_a_missing_library_root_is_refused_when_no_root_was_given(tmp_path, monk
     assert caught.value.cause.message.startswith("the library root ")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # name apply, driven
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _plan(*extra: str) -> tuple[int, dict]:
@@ -159,9 +144,7 @@ def test_name_apply_refuses_a_relative_root_with_no_folder_in_the_library(
     assert tried in envelope["cause"]["message"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # repair paths, driven in both modes
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_repair_paths_scans_a_relative_root_inside_the_library(

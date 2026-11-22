@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from cratekit.core.cause import CratekitError
+from cratekit.core.cause import CratekitError, refuse
 from cratekit.favorites import placeholders
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.modules.outbound import kinds, ledger, tidal_account
@@ -87,17 +87,19 @@ class World:
         self.listed = [one for one in self.listed if one.playlist_id in self.account.titles]
 
 
+@pytest.fixture
+def world() -> World:
+    return World()
+
+
 def _rows(planned: root.RootPlan) -> dict[str, root.RootRow]:
     return {row.target: row for row in planned.rows}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. Label debris
-# ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_four_identical_debris_copies_with_every_track_filed_plan_four_removals(installed):
-    world = World()
+def test_four_identical_debris_copies_with_every_track_filed_plan_four_removals(installed, world):
     folder = world.label_folder()
     for n in range(1, 5):
         world.playlist(f"debris-{n}", DEBRIS, CATALOGUE[:3])
@@ -116,8 +118,7 @@ def test_four_identical_debris_copies_with_every_track_filed_plan_four_removals(
     assert world.account.playlists["year-1"] == list(CATALOGUE)
 
 
-def test_a_debris_copy_with_a_track_the_label_folder_lacks_is_left_naming_it(installed):
-    world = World()
+def test_a_debris_copy_with_a_track_the_label_folder_lacks_is_left_naming_it(installed, world):
     world.label_folder(CATALOGUE[:3])
     world.playlist("debris-1", DEBRIS, ("t1", "t9"))
     world.account.names["t9"] = ("Some Artist", "Lost Track")
@@ -128,8 +129,7 @@ def test_a_debris_copy_with_a_track_the_label_folder_lacks_is_left_naming_it(ins
     assert world.account.root_removed == []
 
 
-def test_a_debris_copy_whose_tracks_could_not_all_be_read_is_left(installed):
-    world = World()
+def test_a_debris_copy_whose_tracks_could_not_all_be_read_is_left(installed, world):
     world.label_folder()
     # Declared four, three read: the provider leaves out a track it cannot play.
     world.playlist("debris-1", DEBRIS, CATALOGUE[:3], declared=4)
@@ -137,8 +137,7 @@ def test_a_debris_copy_whose_tracks_could_not_all_be_read_is_left(installed):
     assert row.action == root.LEFT and "3 of its 4 track(s) could be read" in row.why
 
 
-def test_debris_with_no_label_folder_or_two_of_them_is_left_with_why(installed):
-    world = World()
+def test_debris_with_no_label_folder_or_two_of_them_is_left_with_why(installed, world):
     world.playlist("debris-1", DEBRIS, CATALOGUE[:2])
     assert "no root folder is named" in _rows(world.kept(installed))["debris-1"].why
     world.folder(LABEL)
@@ -146,8 +145,7 @@ def test_debris_with_no_label_folder_or_two_of_them_is_left_with_why(installed):
     assert "2 root folders named" in _rows(world.kept(installed))["debris-1"].why
 
 
-def test_a_label_folder_with_no_downloaded_playlist_proves_nothing(installed):
-    world = World()
+def test_a_label_folder_with_no_downloaded_playlist_proves_nothing(installed, world):
     folder = world.folder(LABEL)
     world.playlist("year-1", f"{LABEL} {YEAR}", CATALOGUE, folder=folder)
     world.playlist("debris-1", DEBRIS, CATALOGUE[:2])
@@ -157,10 +155,8 @@ def test_a_label_folder_with_no_downloaded_playlist_proves_nothing(installed):
     assert row.action == root.LEFT and "folder holds no downloaded playlist" in row.why
 
 
-def test_a_year_playlist_held_as_taken_with_no_prefix_proves_its_tracks_downloaded(installed):
-    """U242: ``label mark`` takes a year playlist and writes no title, and the
-    strip takes an old prefix off; either way the record is what says so."""
-    world = World()
+def test_a_year_playlist_held_as_taken_with_no_prefix_proves_its_tracks_downloaded(installed, world):
+    """U242: the record, not a title, says a year playlist was taken."""
     folder = world.folder(LABEL)
     world.playlist("year-1", f"{LABEL} {YEAR}", CATALOGUE, folder=folder)
     world.playlist("debris-1", DEBRIS, CATALOGUE[:2])
@@ -178,10 +174,8 @@ def _found(cfg, playlist_id: str, name: str) -> None:
     )
 
 
-def test_filing_reads_a_stripped_hand_mark_as_it_read_the_prefixed_one(installed):
-    """A prefix no sync dated, found by the migration and taken off by the
-    strip, is still the undated downloaded playlist it was: filed in Mine."""
-    world = World()
+def test_filing_reads_a_stripped_hand_mark_as_it_read_the_prefixed_one(installed, world):
+    """A found prefix taken off by the strip is still undated: filed in Mine."""
     world.playlist("hand-p", "DOWNLOADED By Hand", ("t1",))
     world.playlist("hand-s", "Stripped By Hand", ("t2",))
     world.playlist("plain", "Working On It", ("t3",))
@@ -193,8 +187,7 @@ def test_filing_reads_a_stripped_hand_mark_as_it_read_the_prefixed_one(installed
     assert (rows["plain"].action, rows["plain"].why) == (filing.LEFT, filing.WORKING_CUSTOM)
 
 
-def test_filing_files_a_playlist_a_pass_took_by_the_year_it_was_taken(installed):
-    world = World()
+def test_filing_files_a_playlist_a_pass_took_by_the_year_it_was_taken(installed, world):
     world.playlist("pass-s", "Warmup", ("t1",))
     mark_record.MarkRecord(installed).take(
         [mark_record.Taken("pass-s", "Warmup", "a-pass", mark_record.BY_PASS, "2025-06-01T12:00:00+00:00")]
@@ -203,8 +196,7 @@ def test_filing_files_a_playlist_a_pass_took_by_the_year_it_was_taken(installed)
     assert (row.action, row.year) == (filing.MOVE, "2025")
 
 
-def test_a_followed_labels_recorded_folder_is_read_whatever_it_is_called_now(installed):
-    world = World()
+def test_a_followed_labels_recorded_folder_is_read_whatever_it_is_called_now(installed, world):
     folder = world.label_folder()
     world.account.folder_names[folder] = f"{LABEL} (kept)"
     ledger.reserve_label_folder(installed, LABEL_ID, LABEL, lambda: "unused", adopt=folder)
@@ -213,21 +205,17 @@ def test_a_followed_labels_recorded_folder_is_read_whatever_it_is_called_now(ins
     assert (row.action, row.folder) == (root.REMOVE, folder)
 
 
-def test_a_debris_playlist_a_ledger_claims_is_not_the_root_steps(installed):
-    world = World()
+def test_a_debris_playlist_a_ledger_claims_is_not_the_root_steps(installed, world):
     world.label_folder()
     ledger.reserve_playlist(installed, "crate-x", lambda: "debris-1")
     world.playlist("debris-1", DEBRIS, CATALOGUE[:2])
     assert "debris-1" not in _rows(world.kept(installed))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. Working custom playlists, empties, and what is never touched
-# ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_a_working_custom_playlist_is_left_and_nothing_is_planned_for_it(installed):
-    world = World()
+def test_a_working_custom_playlist_is_left_and_nothing_is_planned_for_it(installed, world):
     world.playlist("custom-1", "tech_house_hits - Phil", CATALOGUE)
     filed, planned = world.plans(installed)
     (row,) = filed.rows
@@ -235,8 +223,7 @@ def test_a_working_custom_playlist_is_left_and_nothing_is_planned_for_it(install
     assert planned.rows == () and not planned.writes and not filed.writes
 
 
-def test_an_empty_root_playlist_plans_a_removal(installed):
-    world = World()
+def test_an_empty_root_playlist_plans_a_removal(installed, world):
     world.playlist("empty-1", "Untitled Playlist", ())
     filed, planned = world.plans(installed)
     assert {row.playlist_id: row.why for row in filed.rows} == {"empty-1": filing.EMPTY}
@@ -247,21 +234,18 @@ def test_an_empty_root_playlist_plans_a_removal(installed):
     assert world.account.root_removed == [("empty-1", kinds.EMPTY)]
 
 
-def test_a_playlist_whose_count_the_listing_did_not_give_is_not_empty(installed):
-    world = World()
+def test_a_playlist_whose_count_the_listing_did_not_give_is_not_empty(installed, world):
     world.playlist("unknown-1", "Untitled Playlist", (), declared=None)
     filed, planned = world.plans(installed)
     assert filed.rows[0].why == filing.WORKING_CUSTOM and planned.rows == ()
 
 
-def test_an_empty_debris_copy_is_removed_as_empty(installed):
-    world = World()
+def test_an_empty_debris_copy_is_removed_as_empty(installed, world):
     world.playlist("debris-1", DEBRIS, ())
     assert _rows(world.kept(installed))["debris-1"].kind == kinds.EMPTY
 
 
-def test_an_empty_playlist_the_product_made_or_a_placeholder_is_never_removed(installed):
-    world = World()
+def test_an_empty_playlist_the_product_made_or_a_placeholder_is_never_removed(installed, world):
     ledger.reserve_playlist(installed, "crate-x", lambda: "made-1")
     world.playlist("made-1", "Exported, nothing yet", ())
     world.playlist("held-1", placeholders.placeholder_name("2026-Q4"), ())
@@ -271,8 +255,7 @@ def test_an_empty_playlist_the_product_made_or_a_placeholder_is_never_removed(in
     assert {row.playlist_id for row in filed.rows if row.why == filing.EMPTY} == set()
 
 
-def test_folders_a_person_made_never_appear_and_nothing_in_them_is_read_for_removal(installed):
-    world = World()
+def test_folders_a_person_made_never_appear_and_nothing_in_them_is_read_for_removal(installed, world):
     spotify = world.folder("Phil's Spotify")
     trivia = world.folder("Genre Trivia!")
     mine = world.folder(kinds.MINE)
@@ -285,13 +268,10 @@ def test_folders_a_person_made_never_appear_and_nothing_in_them_is_read_for_remo
     assert planned.rows == () and filed.rows == ()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The legacy year folder
-# ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_a_legacy_year_folder_is_emptied_into_its_year_then_removed_on_a_later_run(installed):
-    world = World()
+def test_a_legacy_year_folder_is_emptied_into_its_year_then_removed_on_a_later_run(installed, world):
     year = world.folder(YEAR)
     legacy = world.folder(LEGACY)
     for n in range(1, 4):
@@ -317,8 +297,7 @@ def test_a_legacy_year_folder_is_emptied_into_its_year_then_removed_on_a_later_r
     assert world.kept(installed).rows == ()
 
 
-def test_a_legacy_folder_holding_a_folder_stays_and_its_folder_is_not_moved(installed):
-    world = World()
+def test_a_legacy_folder_holding_a_folder_stays_and_its_folder_is_not_moved(installed, world):
     legacy = world.folder(LEGACY)
     world.account.nest_folder("Deeper", legacy)
     planned = world.kept(installed)
@@ -327,8 +306,7 @@ def test_a_legacy_folder_holding_a_folder_stays_and_its_folder_is_not_moved(inst
     assert not planned.writes
 
 
-def test_a_legacy_year_with_two_year_folders_leaves_its_playlists(installed):
-    world = World()
+def test_a_legacy_year_with_two_year_folders_leaves_its_playlists(installed, world):
     world.folder(YEAR)
     world.folder(YEAR)
     legacy = world.folder(LEGACY)
@@ -348,13 +326,13 @@ def test_a_legacy_year_with_two_year_folders_leaves_its_playlists(installed):
         (YEAR, ""),
     ],
 )
+
+
 def test_only_a_year_and_these_exact_words_name_a_legacy_folder(name, year):
     assert kinds.legacy_year(name) == year
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. The whole root, twice, and a refusal part way
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _messy(world: World) -> None:
@@ -368,8 +346,7 @@ def _messy(world: World) -> None:
     world.playlist("custom-1", "tech_house_hits - Phil", CATALOGUE)
 
 
-def test_a_second_run_on_a_clean_root_plans_nothing(installed):
-    world = World()
+def test_a_second_run_on_a_clean_root_plans_nothing(installed, world):
     _messy(world)
     root.apply(installed, world.account, world.kept(installed))
     world.forget_removed()
@@ -382,8 +359,7 @@ def test_a_second_run_on_a_clean_root_plans_nothing(installed):
     ]
 
 
-def test_a_refusal_part_way_stops_and_names_what_was_removed(installed):
-    world = World()
+def test_a_refusal_part_way_stops_and_names_what_was_removed(installed, world):
     _messy(world)
     world.account.fail_on = frozenset({"debris-2"})
     world.account.provider_error = True
@@ -395,8 +371,7 @@ def test_a_refusal_part_way_stops_and_names_what_was_removed(installed):
     assert "empty-1" in world.account.titles
 
 
-def test_the_plans_digest_moves_when_a_row_changes(installed):
-    world = World()
+def test_the_plans_digest_moves_when_a_row_changes(installed, world):
     _messy(world)
     before = world.kept(installed).identity()
     world.account.playlists["debris-1"].append("t9")
@@ -407,9 +382,7 @@ def test_the_plans_digest_moves_when_a_row_changes(installed):
     assert world.kept(installed).identity() != before
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. The adapter's root removals, over a stand in for the client
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class ObjectNotFound(Exception):
@@ -500,6 +473,8 @@ def test_the_adapter_removes_an_empty_playlist(installed):
         (("Untitled Playlist", None, 0), kinds.EMPTY),
     ],
 )
+
+
 def test_a_playlist_the_provider_serves_as_not_of_the_kind_is_refused_before_any_delete(
     installed, served, kind
 ):
@@ -562,6 +537,8 @@ def test_the_adapter_removes_an_empty_legacy_folder_and_reads_the_root_again(ins
         (LEGACY, 2, "not-empty"),
     ],
 )
+
+
 def test_a_folder_not_legacy_or_not_empty_is_refused_before_any_removal(
     installed, name, inside, problem
 ):
@@ -593,13 +570,10 @@ def test_a_folder_removal_the_client_answers_false_is_a_failure(installed):
     assert client.folder_calls == [(["f-1"], "folder")] and "f-1" in client.root
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. The review round's findings, each driven
-# ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_a_debris_copy_given_a_track_since_the_plan_is_kept_and_the_rest_removed(installed):
-    world = World()
+def test_a_debris_copy_given_a_track_since_the_plan_is_kept_and_the_rest_removed(installed, world):
     world.label_folder()
     world.playlist("debris-1", DEBRIS, CATALOGUE[:2])
     world.playlist("empty-1", "Untitled Playlist", ())
@@ -612,8 +586,7 @@ def test_a_debris_copy_given_a_track_since_the_plan_is_kept_and_the_rest_removed
     ]
 
 
-def test_a_playlist_moved_into_a_folder_since_the_plan_is_kept(installed):
-    world = World()
+def test_a_playlist_moved_into_a_folder_since_the_plan_is_kept(installed, world):
     world.playlist("empty-1", "Untitled Playlist", ())
     planned = world.kept(installed)
     world.account.placed["empty-1"] = world.folder("Phil's Spotify")
@@ -623,10 +596,8 @@ def test_a_playlist_moved_into_a_folder_since_the_plan_is_kept(installed):
 
 
 def test_a_removal_the_account_refuses_before_sending_is_kept_and_the_apply_goes_on(
-    installed, monkeypatch
+    installed, world, monkeypatch
 ):
-    from cratekit.core.cause import refuse
-    world = World()
     world.playlist("empty-1", "Untitled Playlist", ())
     world.playlist("empty-2", "Videos only", ())
     real = world.account.remove_root_playlist
@@ -647,10 +618,8 @@ def test_a_removal_the_account_refuses_before_sending_is_kept_and_the_apply_goes
 
 
 def test_a_label_folder_that_cannot_be_read_leaves_its_debris_and_refuses_nothing_else(
-    installed, monkeypatch
+    installed, world, monkeypatch
 ):
-    from cratekit.core.cause import refuse
-    world = World()
     folder = world.label_folder()
     world.playlist("debris-1", DEBRIS, CATALOGUE[:2])
     world.playlist("empty-1", "Untitled Playlist", ())
@@ -671,8 +640,7 @@ def test_a_label_folder_that_cannot_be_read_leaves_its_debris_and_refuses_nothin
     assert rows["empty-1"].action == root.REMOVE
 
 
-def test_a_debris_copy_with_no_listed_count_is_left_before_any_read(installed, monkeypatch):
-    world = World()
+def test_a_debris_copy_with_no_listed_count_is_left_before_any_read(installed, monkeypatch, world):
     world.label_folder()
     world.playlist("debris-1", DEBRIS, CATALOGUE[:2], declared=None)
     monkeypatch.setattr(
@@ -682,8 +650,7 @@ def test_a_debris_copy_with_no_listed_count_is_left_before_any_read(installed, m
     assert row.action == root.LEFT and "no track count" in row.why
 
 
-def test_a_year_record_whose_folder_now_carries_a_legacy_name_is_not_reused(installed):
-    world = World()
+def test_a_year_record_whose_folder_now_carries_a_legacy_name_is_not_reused(installed, world):
     legacy = world.folder(LEGACY)
     ledger.reserve_set_folder(installed, YEAR, lambda: "unused", adopt=legacy)
     world.playlist("old-1", "Custom 1", ("t1",), folder=legacy)
@@ -694,8 +661,7 @@ def test_a_year_record_whose_folder_now_carries_a_legacy_name_is_not_reused(inst
     assert world.account.folder_names[world.account.placed["old-1"]] == YEAR
 
 
-def test_a_legacy_folder_whose_year_is_undecided_says_so(installed):
-    world = World()
+def test_a_legacy_folder_whose_year_is_undecided_says_so(installed, world):
     world.folder(YEAR)
     world.folder(YEAR)
     legacy = world.folder(LEGACY)
