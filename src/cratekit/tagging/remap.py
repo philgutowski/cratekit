@@ -1,62 +1,14 @@
 """Rewrite the genres an older mapping wrote from the general catalogue's words (R-799).
 
-WHY THIS EXISTS. The tagger writes a genre once, fill if empty, so a word
-filed by a mapping that has since changed stays on the file. The general
-catalogue's Pop was written as the dance bucket's name and its Alternative as
-a bucket's bare name, by aliases written for the record shops. The taxonomy
-now gives that catalogue a table of its own, and the files tagged before it
-did are the ones this module finds and plans the rewrite of.
-
-THE SELECTION IS WHAT THE TAG JOBS RECORDED, AND NOT THE GENRE ON THE FILE. A
-file carrying the dance bucket's name got it from a record shop or from the
-general catalogue, and only the first is right. The file cannot say which. The
-tagging job's item record can: it names the path, the genre written, the
-source that supplied it and that source's word. So every committed record is
-read, and a record whose source is the general catalogue names a file to look
-at.
-
-ONLY A FILE UNDER THIS LIBRARY'S ROOT IS OPENED. The queue the records sit in
-is the installation's, so it holds records of folders tagged before they were
-landed and of any other library this machine has tagged. Those files are
-resolved by another taxonomy or are gone, and are counted apart and never
-read. A FILE IS FOLLOWED ONLY WHERE IT WAS TAGGED: one tagged in a staging
-folder and landed since is not found, because nothing in its record says
-where it went.
-
-THE WORD IS RESOLVED AGAIN, ALONE, through :func:`cratekit.tagging.published.choose`,
-which is what the tagger asks. The record carries the one word the tagger
-picked from the album's list and not the list.
-
-A FILE IS REWRITTEN ONLY WHEN IT STILL CARRIES WHAT A RECORD SAYS WAS WRITTEN.
-Anything else on it was put there since, by a person or by another verb, and
-is not this module's to replace. The same holds when two records explain the
-file's genre with different words or different sources: the records carry no
-time, so which of them wrote it is not known, and the file is listed and left.
-
-A REWRITE IS RECORDED AS A TAGGING RECORD OF ITS OWN, committed beside the
-others once the file reads back. Without it this module's own write would
-look like a hand edit to the next run, and a word the taxonomy gives a new
-genre a second time could never be corrected a second time.
-
-A REWRITE RETIRES THE RECORD IT REPLACED. The records carry no time, so each
-rewrite's record carries a GENERATION, one past the record that explained the
-file, and only the highest generation of the source's records on a file is
-still in force. Without that, a genre a person put back by hand after a
-rewrite matched the retired record and was planned for rewrite on every run,
-which is the undo this verb's own message describes being undone.
-
-ONE FILE IS ONE GROUP, WHATEVER ITS RECORDS CALL IT. A folder tagged twice
-under two spellings of its path, or two cases on a volume that folds case,
-records one file under two strings. Grouped by the string, a record shop's
-record of the same genre was never seen beside the general catalogue's, and
-one file was planned twice.
-
-EVERY PATH LANDS IN ONE OUTCOME, counted zero filled. A plan that names only
-what it writes makes "nothing else was found" and "nothing else was looked at"
-the same output. A file that is gone or cannot be read is counted under its
-own name and never as agreeing.
-
-NOTHING HERE OPENS A DATABASE. The row's genre follows by the row verb.
+THE SELECTION IS WHAT THE TAG JOBS RECORDED, NOT THE GENRE ON THE FILE, which
+cannot say who supplied it. Only a file under this library's root is opened,
+followed only where it was tagged, and its word resolved again through
+:func:`cratekit.tagging.published.choose`. A FILE IS REWRITTEN ONLY WHILE IT
+CARRIES WHAT A RECORD SAYS WAS WRITTEN; two records explaining it differently
+leave it as ambiguous. A rewrite is recorded one GENERATION past the record it
+replaced and only the highest is in force, so a genre put back by hand is not
+planned again. One file is one group however its path is spelled; every path
+lands in one outcome. Nothing here opens a database.
 
 Layer: modules.
 """
@@ -76,8 +28,7 @@ from cratekit.tagging.tag import file_genres
 #: The name a plan digests under.
 WORKFLOW = "tag-remap"
 
-#: The source whose words are resolved again: the general catalogue, by the
-#: name a tagging record gives it.
+#: The source whose words are resolved again, as a tagging record names it.
 SOURCE = published.SOURCE
 
 #: The outcomes, in the order a summary lists them.
@@ -91,22 +42,14 @@ FILE_UNREADABLE = "file-unreadable"
 OUTSIDE_LIBRARY = "outside-library"
 
 OUTCOMES: tuple[str, ...] = (
-    AGREE,
-    WRITE,
-    CHANGED_SINCE,
-    WORD_DECLINED,
-    AMBIGUOUS_RECORD,
-    FILE_MISSING,
-    FILE_UNREADABLE,
+    AGREE, WRITE, CHANGED_SINCE, WORD_DECLINED, AMBIGUOUS_RECORD, FILE_MISSING, FILE_UNREADABLE,
     OUTSIDE_LIBRARY,
 )
 
-#: The outcomes of a file that was read, does not carry what the taxonomy now
-#: gives its word, and is left alone. Each is listed in the plan as an item.
+#: The outcomes of a file read, not carrying its word's genre, and left; each an item.
 LEFT: tuple[str, ...] = (CHANGED_SINCE, WORD_DECLINED, AMBIGUOUS_RECORD)
 
-#: The outcomes of a file under the library whose genre was never learned.
-#: Each is listed too.
+#: The outcomes of a file under the library whose genre was never learned, listed.
 UNREAD: tuple[str, ...] = (FILE_MISSING, FILE_UNREADABLE)
 
 #: What an item that is not written says it does.
@@ -121,11 +64,8 @@ _JOINED = " | "
 
 @dataclass(frozen=True, slots=True)
 class Recorded:
-    """One tagging record of a genre written onto a file.
-
-    ``generation`` is zero for a tagging job's record and, for a rewrite's
-    record, one past the record that explained the file when it was rewritten.
-    """
+    """One tagging record of a genre written onto a file. ``generation`` is zero
+    for a tagging job's, and one past the record it replaced for a rewrite's."""
 
     job_id: str
     path: str
@@ -137,15 +77,7 @@ class Recorded:
 
 @dataclass(frozen=True, slots=True)
 class Item:
-    """One file under the library that does not agree, or could not be read.
-
-    ``word`` is the general catalogue's word a record carries for the file and
-    ``recorded`` the genre that record says was written. ``current`` is what
-    the file carries now, empty when it is blank or was not read. ``wanted`` is
-    the genre the taxonomy gives the word now, empty when it gives none.
-    ``action`` is :data:`WRITE` or :data:`LEAVE`, and ``reason`` is the outcome
-    a left file was counted under, empty on a write.
-    """
+    """One file under the library that does not agree, or could not be read."""
 
     path: str
     word: str
@@ -154,8 +86,7 @@ class Item:
     wanted: str
     action: str
     reason: str = ""
-    #: The generation of the record that explains the file, which the record
-    #: of a rewrite goes one past. Bookkeeping, and not shown or digested.
+    #: The explaining record's generation. Bookkeeping, not shown or digested.
     generation: int = 0
 
     def to_json(self) -> dict[str, str]:
@@ -173,11 +104,8 @@ class Item:
 @dataclass(frozen=True, slots=True)
 class RemapPlan:
     """Every file that does not agree, and the count of every outcome.
-
-    ``declared`` says whether the taxonomy has a table for the source at all.
-    ``records_unread`` counts committed records that could not be parsed, each
-    a file this plan might have needed to look at and did not.
-    """
+    ``declared`` says the taxonomy has a table for the source; ``records_unread``
+    counts committed records that could not be parsed."""
 
     items: tuple[Item, ...]
     counts: Mapping[str, int]
@@ -208,12 +136,8 @@ class RemapPlan:
 
     @property
     def digest(self) -> str:
-        """The fingerprint an approval is bound to.
-
-        OVER THE ITEMS, THE COUNTS AND WHAT COULD NOT BE READ. The path is in
-        it: this plan is about files where they are, and a decision about one
-        folder's files is not a decision about another's.
-        """
+        """The fingerprint an approval is bound to, paths included: a decision
+        about one folder's files is not one about another's."""
         return digest_of(
             {
                 "kind": WORKFLOW,
@@ -228,17 +152,8 @@ class RemapPlan:
 
 @dataclass(frozen=True, slots=True)
 class Written:
-    """What an apply did. The four tuples are paths, and empty on a clean run.
-
-    ``written`` counts the files whose write the tag writer said it made, and
-    ``read_back`` those of them that read back as the genre wanted. ``moved``
-    is a file that no longer carried what the plan read when the write reached
-    it, and was not written. ``failed`` is a file the tag writer could not
-    write, which is untouched. ``wrong`` is a file that was written and does
-    not read back as wanted. ``unrecorded`` is a file that was rewritten and
-    read back and whose record could not be committed. ``rewritten`` is every
-    item that read back, which is what an undo needs when the run refuses.
-    """
+    """What an apply did, the tuples paths and empty on a clean run;
+    ``rewritten`` is every item that read back, the undo of a run that refuses."""
 
     written: int
     read_back: int
@@ -253,24 +168,9 @@ class Written:
         return not (self.wrong or self.moved or self.failed or self.unrecorded)
 
 
-# ---------------------------------------------------------------------------
-# The records
-# ---------------------------------------------------------------------------
-
-
 def recorded(reports: Iterable[tuple[str, Mapping[str, Any]]]) -> tuple[Recorded, ...]:
-    """The records that say a genre was written, by any source.
-
-    EVERY SOURCE IS KEPT, not only the general catalogue's. A record shop's
-    record of the same genre on the same path is what makes a file's genre
-    ambiguous, and a reader that dropped it would plan the rewrite of a genre
-    a record shop supplied.
-
-    A record with no path or no genre written says nothing was written, which
-    is what the coarse genre correction's records look like too, so both are
-    passed over by shape. This module's own records carry both and are read
-    like any tagging record, which is the point of them.
-    """
+    """The records that say a genre was written, by ANY source, since a shop's
+    record is what makes a file ambiguous; a record with no path or genre is not."""
     found: list[Recorded] = []
     for job_id, report in reports:
         path, written = report.get("path"), report.get("genre_written")
@@ -313,15 +213,8 @@ def _resolved(path: str) -> Path | None:
 
 
 def _inside(resolved: Path, root: Path) -> bool:
-    """Whether a resolved path is under the library's resolved root.
-
-    BY NAME, AND THEN BY THE DIRECTORY ITSELF. A volume that folds case names
-    one directory two ways, and resolving a path does not fold it, so a folder
-    typed in another case than the configured root reads as outside it while
-    being the same directory. So a path that is not under the root by name is
-    asked whether any directory above it IS the root. A directory that is not
-    there is not the root.
-    """
+    """Whether a resolved path is under the library's resolved root: by name,
+    then by whether a directory above it IS the root, for a volume that folds case."""
     if resolved.is_relative_to(root):
         return True
     for parent in resolved.parents:
@@ -334,11 +227,8 @@ def _inside(resolved: Path, root: Path) -> bool:
 
 
 def _identity(resolved: Path) -> tuple[str, int, int] | tuple[str, str]:
-    """What makes two recorded paths one file: the file itself, where it exists.
-
-    The device and the inode, so two spellings and two cases of one file are
-    one group. A file that is gone has only its resolved name to go by.
-    """
+    """What makes two recorded paths one file: its device and inode, else its
+    resolved name when it is gone."""
     try:
         stat = resolved.stat()
     except OSError:
@@ -349,15 +239,8 @@ def _identity(resolved: Path) -> tuple[str, int, int] | tuple[str, str]:
 def _settle(
     path: str, records: Sequence[Recorded], declared: taxonomy.Taxonomy
 ) -> tuple[str, Item | None]:
-    """One file's outcome, and its item unless it agrees.
-
-    ``records`` is every record of a genre written onto this file, and at
-    least one of them is the source's. THEY CARRY NO TIME. What stands in for
-    one is the generation a rewrite's record carries: only the source's
-    records of the highest generation are still in force, and every lower one
-    was replaced by a rewrite. When several are in force, the one a left item
-    shows is whichever sorts last, which is display and no more.
-    """
+    """One file's outcome, and its item unless it agrees. Only the source's
+    records of the highest generation are in force."""
     newest = max(record.generation for record in records if record.source == SOURCE)
     mine = [
         record
@@ -374,8 +257,8 @@ def _settle(
     try:
         present = target.is_file()
     except OSError:
-        # A directory above it this account cannot enter. Not gone, and not
-        # a reason to end the plan over every other file.
+        # A directory above it this account cannot enter: not gone, and not
+        # a reason to end the plan.
         return left(FILE_UNREADABLE)
     if not present:
         return left(FILE_MISSING)
@@ -384,14 +267,11 @@ def _settle(
         return left(FILE_UNREADABLE)
     current = _JOINED.join(values)
 
-    # WHICH RECORDS EXPLAIN WHAT THE FILE CARRIES. One value, and a record that
-    # wrote exactly it.
+    # THE RECORDS THAT WROTE EXACTLY THE ONE VALUE THE FILE CARRIES.
     explaining = [record for record in in_force if values == (record.written,)]
     if not explaining:
-        # No record in force says this was written. It agrees when it is
-        # already what one of the source's words is given now, which is a file
-        # a person corrected, and is otherwise somebody's own value, a genre a
-        # person put back after a rewrite among them.
+        # Not written by a record in force: agreeing when it is already what a
+        # word is given now, otherwise somebody's own value.
         if any(current and current == _wanted(declared, record.word) for record in mine):
             return AGREE, None
         return left(CHANGED_SINCE, current=current, wanted=_wanted(declared, shown.word))
@@ -399,9 +279,7 @@ def _settle(
         return left(AMBIGUOUS_RECORD, current=current)
     wrote = explaining[0]
     if wrote.source != SOURCE:
-        # A record shop wrote what the file carries, on a path the general
-        # catalogue once wrote too. The shops' words resolve as they always
-        # did, so there is nothing to correct.
+        # A record shop's genre, whose words resolve as they always did.
         return AGREE, None
     wanted = _wanted(declared, wrote.word)
     if not wanted:
@@ -414,11 +292,8 @@ def _settle(
 
 
 def plan(cfg: config.Config, declared: taxonomy.Taxonomy) -> RemapPlan:
-    """Plan the rewrite over every tagging record this installation committed.
-
-    Paths in sorted order, so two plans over one unchanged queue and one
-    unchanged set of files digest equal.
-    """
+    """Plan the rewrite over every tagging record this installation committed,
+    in sorted path order so an unchanged queue digests equal."""
     reports, unread = artifacts.every_committed(cfg)
     return plan_records(
         recorded(reports), declared, root=cfg.library.root, records_unread=unread
@@ -437,9 +312,8 @@ def plan_records(
         library = root.resolve()
     except (OSError, RuntimeError):
         library = root
-    # ONE GROUP PER FILE. Under the library a group is keyed by the file
-    # itself, and named by the first of its resolved spellings in sorted
-    # order. Outside it nothing is opened, so a group is its resolved name.
+    # ONE GROUP PER FILE, keyed by the file and named by its first resolved
+    # spelling; outside the library nothing is opened, so by its name.
     groups: dict[object, list[Recorded]] = {}
     named: dict[object, str] = {}
     outside: set[object] = set()
@@ -459,9 +333,7 @@ def plan_records(
         if not any(record.source == SOURCE for record in group):
             continue
         if key in outside:
-            # COUNTED AND NEVER OPENED. Not this library's file, or not where
-            # it was when it was tagged, and this library's taxonomy is not
-            # the one to resolve its word by.
+            # COUNTED AND NEVER OPENED: not this library's file, or moved.
             counts[OUTSIDE_LIBRARY] += 1
             continue
         outcome, item = _settle(named[key], group, declared)
@@ -476,18 +348,9 @@ def plan_records(
     )
 
 
-# ---------------------------------------------------------------------------
-# The write
-# ---------------------------------------------------------------------------
-
-
 def _record(cfg: config.Config, name: str, ordinal: int, item: Item) -> bool:
-    """Commit the tagging record of one rewrite. False when it could not be.
-
-    Through the engine's own commit, staged and then renamed into place, so a
-    run killed part way never leaves half a record for every later plan to
-    count as unread.
-    """
+    """Commit the tagging record of one rewrite, staged and renamed into place.
+    False when it could not be."""
     try:
         artifacts.commit(
             cfg,
@@ -510,32 +373,15 @@ def _record(cfg: config.Config, name: str, ordinal: int, item: Item) -> bool:
 
 
 def apply(cfg: config.Config, remap_plan: RemapPlan) -> Written:
-    """Write each planned genre onto its file, read it back and record it.
-
-    EACH FILE IS READ AGAIN BEFORE IT IS WRITTEN. The plan was approved over
-    what the files carried when it was made, and a file that carries something
-    else by now is left and named rather than written over.
-
-    THE WRITER'S OWN ANSWER IS KEPT. A file it says it could not write is
-    untouched and is named as that, apart from one it wrote that does not read
-    back, so a person is not sent looking for damage on a file nothing changed.
-
-    THE RECORD FOLLOWS THE READ BACK, per file. Committed first, a write that
-    then failed would leave a record of a genre the file never carried.
-    Committed last of all, a run that died half way would leave every file it
-    had rewritten looking like a hand edit to the next run.
-
-    Nothing here raises for one file, so one that cannot be written does not
-    stop the rest, and the caller refuses over what is named.
-    """
+    """Write each planned genre onto its file, read it back and record it. Each
+    file is read again first, and nothing raises for one file."""
     written = read_back = 0
     wrong: list[str] = []
     moved: list[str] = []
     failed: list[str] = []
     unrecorded: list[str] = []
     rewritten: list[Item] = []
-    # ONCE. The digest serializes every item, and the records of one plan sit
-    # under one name.
+    # ONCE: the records of one plan sit under one name.
     name = f"{RECORD_PREFIX}{remap_plan.digest}"
     for ordinal, item in enumerate(remap_plan.writes):
         target = Path(item.path)
@@ -565,27 +411,8 @@ def apply(cfg: config.Config, remap_plan: RemapPlan) -> Written:
 
 
 __all__ = [
-    "AGREE",
-    "AMBIGUOUS_RECORD",
-    "CHANGED_SINCE",
-    "FILE_MISSING",
-    "FILE_UNREADABLE",
-    "LEAVE",
-    "LEFT",
-    "OUTCOMES",
-    "OUTSIDE_LIBRARY",
-    "RECORD_PREFIX",
-    "SOURCE",
-    "UNREAD",
-    "WORD_DECLINED",
-    "WORKFLOW",
-    "WRITE",
-    "Item",
-    "Recorded",
-    "RemapPlan",
-    "Written",
-    "apply",
-    "plan",
-    "plan_records",
-    "recorded",
+    "AGREE", "AMBIGUOUS_RECORD", "CHANGED_SINCE", "FILE_MISSING", "FILE_UNREADABLE", "LEAVE",
+    "LEFT", "OUTCOMES", "OUTSIDE_LIBRARY", "RECORD_PREFIX", "SOURCE", "UNREAD", "WORD_DECLINED",
+    "WORKFLOW", "WRITE", "Item", "Recorded", "RemapPlan", "Written", "apply", "plan",
+    "plan_records", "recorded",
 ]
