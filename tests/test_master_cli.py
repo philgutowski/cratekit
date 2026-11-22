@@ -24,21 +24,12 @@ from cratekit.master import cli as master_cli
 from cratekit.modules.tools import mastering
 from tests._containers import require_ffmpeg
 
-#: One loudnorm report, carrying both halves. The measure passes read the
-#: ``input_*`` keys and the encode's own report supplies the ``output_*`` ones,
-#: so a single block answers every stage that parses stderr.
-LOUDNORM = json.dumps(
-    {
-        "input_i": "-20.0",
-        "input_lra": "5.0",
-        "input_tp": "-3.0",
-        "input_thresh": "-30.0",
-        "target_offset": "0.5",
-        "output_i": "-14.0",
-        "output_lra": "5.0",
-        "output_tp": "-1.0",
-    }
-)
+#: One loudnorm report carrying both halves, so a single block answers the
+#: measure passes (``input_*``) and the encode's own report (``output_*``).
+LOUDNORM = json.dumps({
+    "input_i": "-20.0", "input_lra": "5.0", "input_tp": "-3.0", "input_thresh": "-30.0",
+    "target_offset": "0.5", "output_i": "-14.0", "output_lra": "5.0", "output_tp": "-1.0",
+})
 
 
 @pytest.fixture
@@ -53,21 +44,22 @@ def library(tmp_path, monkeypatch) -> Path:
 @pytest.fixture
 def configured(library):
     """A set-up machine with NO DATABASE, which is all this verb may have."""
-    cfg = config.from_dict(
-        {
-            "schema_version": config.CURRENT_SCHEMA_VERSION,
-            "library": {
-                "root": str(library),
-                "volume_id": "F1E2-D3C4",
-                "db_path": str(library / "db" / "master.db"),
-            },
-            "paths": {"download_staging": str(library.parent / "staging")},
-            "profile": {"name": "full"},
-        }
-    )
+    cfg = _config(library, library.parent / "staging")
     config.save(cfg)
     config.reset_cache()
     return cfg
+
+
+def _config(library: Path, staging: Path) -> config.Config:
+    return config.from_dict({
+        "schema_version": config.CURRENT_SCHEMA_VERSION,
+        "library": {
+            "root": str(library), "volume_id": "F1E2-D3C4",
+            "db_path": str(library / "db" / "master.db"),
+        },
+        "paths": {"download_staging": str(staging)},
+        "profile": {"name": "full"},
+    })
 
 
 def _entry() -> registry.Entry:
@@ -77,14 +69,44 @@ def _entry() -> registry.Entry:
 def _recording(tmp_path: Path, name: str = "REC001.wav", *, seconds: int = 1) -> Path:
     """A real container, so the digest assertions are over real audio bytes."""
     require_ffmpeg()
-    out = tmp_path / name
+    return _synthesize(tmp_path / name, "anullsrc=r=44100:cl=stereo", seconds)
+
+
+#: ffmpeg's rendering of each lavfi source, kept so a second request copies it.
+_RENDERED: dict[tuple, bytes] = {}
+
+
+def _synthesize(out: Path, source: str, seconds: int, *codec: str) -> Path:
+    """Render ``source`` to ``out`` with ffmpeg the first time, and copy those bytes after.
+
+    Rendered at ``out`` itself and never through ``tempfile``, whose name sequence
+    the behaviour scenarios seed.
+    """
+    key = (out.suffix, source, seconds, codec)
+    if key in _RENDERED:
+        out.write_bytes(_RENDERED[key])
+        return out
     proc = subprocess.run(
-        ["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-         "-t", str(seconds), str(out)],
+        ["ffmpeg", "-y", "-f", "lavfi", "-i", source, "-t", str(seconds), *codec, str(out)],
         capture_output=True, text=True,
     )
     assert proc.returncode == 0 and out.exists(), proc.stderr[-400:]
+    _RENDERED[key] = out.read_bytes()
     return out
+
+
+def _master(*parts: Path, output_dir=None, overwrite=False, runner=None):
+    """``run_master`` over the payload the shell freezes for these parts."""
+    recording = str(parts[0]) if len(parts) == 1 else [str(p) for p in parts]
+    payload = master_cli.frozen_payload(recording, output_dir, overwrite)
+    return master_cli.run_master(payload, runner=runner or _encoder())
+
+
+def _refused(*parts: Path, **kwargs):
+    """The cause a ``run_master`` refusal carries."""
+    with pytest.raises(CratekitError) as excinfo:
+        _master(*parts, **kwargs)
+    return excinfo.value.cause
 
 
 def _encoder(*, encode_returncode: int = 0, encode_writes: bool = True):
@@ -92,9 +114,8 @@ def _encoder(*, encode_returncode: int = 0, encode_writes: bool = True):
     def run(command: mastering.Command) -> mastering.CommandResult:
         argv = list(command.argv)
         if argv[0].endswith("ffprobe"):
-            return mastering.CommandResult(
-                returncode=0, stdout="sample_rate=44100\nsample_fmt=s16\n"
-            )
+            probed = "sample_rate=44100\nsample_fmt=s16\n"
+            return mastering.CommandResult(returncode=0, stdout=probed)
         if "-f" in argv and "null" in argv:
             return mastering.CommandResult(returncode=0, stderr=LOUDNORM)
         if "pcm_s24le" in argv:
@@ -113,16 +134,11 @@ def _encoder(*, encode_returncode: int = 0, encode_writes: bool = True):
 
 def test_the_parser_accepts_the_whole_declared_argument_shape():
     parser = cli.build_parser([_entry()])
-    args = parser.parse_args(
-        ["master", "/tmp/REC001.wav", "--output-dir", "/tmp/out", "--overwrite"]
-    )
-    # A LIST SINCE U105, which widened the positional to take every part of a
-    # split recording. One path is a list of one.
+    argv = ["master", "/tmp/REC001.wav", "--output-dir", "/tmp/out", "--overwrite"]
+    args = parser.parse_args(argv)
+    # A list since the positional takes every part of a split recording.
     assert args.recording == ["/tmp/REC001.wav"]
-    assert args.output_dir == "/tmp/out"
-    assert args.overwrite is True
-    assert args.job is None
-    assert args.lufs is None
+    assert (args.output_dir, args.overwrite, args.job, args.lufs) == ("/tmp/out", True, None, None)
 
 
 def test_the_verb_is_absent_from_a_slim_profile(configured):
@@ -135,8 +151,7 @@ def test_the_verb_is_absent_from_a_slim_profile(configured):
 def test_the_entry_is_landed_and_declares_no_gate():
     """Both halves matter and they are different claims."""
     entry = _entry()
-    assert entry.landed
-    assert entry.gates == ()
+    assert entry.landed and entry.gates == ()
     assert entry.long_running and entry.argv_builder == "master_argv"
     assert entry.destructive and entry.writes == frozenset({"files"})
 
@@ -159,9 +174,8 @@ def test_queueing_exits_ok_with_no_ffmpeg_and_no_recording(configured):
     """R3. Queueing needs neither, which is what makes the split worth having."""
     code, envelope = _drive(["master", str(configured.library.root / "nope.wav")])
     assert code == int(ExitCode.OK), envelope
-    assert envelope["verb"] == "master"
+    assert (envelope["verb"], envelope["schema"]) == ("master", "job_state/1")
     assert envelope["data"]["job_id"]
-    assert envelope["schema"] == "job_state/1"
 
 
 def test_an_empty_recording_refuses_from_the_vocabulary(configured):
@@ -206,22 +220,16 @@ class _Job:
         self.payload = payload
 
 
-def test_the_resume_argv_rebuilds_every_frozen_flag():
-    argv = master_cli.master_argv(
-        _Job({"source": "/tmp/REC001.wav", "output_dir": "/tmp/out", "overwrite": True})
-    )
+def test_the_resume_argv_rebuilds_every_frozen_flag_and_omits_absent_ones():
+    full = {"source": "/tmp/REC001.wav", "output_dir": "/tmp/out", "overwrite": True}
+    argv = master_cli.master_argv(_Job(full))
     assert argv[argv.index("--output-dir") + 1] == "/tmp/out"
     assert "--overwrite" in argv
     assert argv[argv.index("--job") + 1] == "job-1"
     assert argv[0] == "master" and argv[1] == "/tmp/REC001.wav"
 
-
-def test_the_resume_argv_omits_flags_the_payload_does_not_hold():
-    argv = master_cli.master_argv(
-        _Job({"source": "/tmp/REC001.wav", "output_dir": None, "overwrite": False})
-    )
-    assert "--output-dir" not in argv
-    assert "--overwrite" not in argv
+    argv = master_cli.master_argv(_Job({**full, "output_dir": None, "overwrite": False}))
+    assert "--output-dir" not in argv and "--overwrite" not in argv
     assert argv[:2] == ["master", "/tmp/REC001.wav"]
     assert "--job" in argv
 
@@ -234,12 +242,9 @@ def test_the_resume_argv_carries_no_run_flag():
 
 def test_an_empty_output_dir_and_an_omitted_one_freeze_identically():
     """The divergence R10 forbids, closed at the freeze rather than in two places."""
-    assert master_cli.frozen_payload("/tmp/a.wav", "", False) == master_cli.frozen_payload(
-        "/tmp/a.wav", None, False
-    )
-    assert "--output-dir" not in master_cli.master_argv(
-        _Job(master_cli.frozen_payload("/tmp/a.wav", "", False))
-    )
+    empty = master_cli.frozen_payload("/tmp/a.wav", "", False)
+    assert empty == master_cli.frozen_payload("/tmp/a.wav", None, False)
+    assert "--output-dir" not in master_cli.master_argv(_Job(empty))
 
 
 def test_a_payload_missing_this_builds_keys_still_builds_a_command_line():
@@ -252,29 +257,16 @@ def test_a_payload_missing_this_builds_keys_still_builds_a_command_line():
 # ---------------------------------------------------------------------------
 
 
-def test_the_source_is_byte_identical_after_a_full_run(tmp_path):
-    """R6, asserted by digest rather than by mtime, over a real container."""
+def test_the_source_is_byte_identical_and_its_archive_verified_after_a_full_run(tmp_path):
+    """R6 and R7, asserted by digest over a real container."""
     source = _recording(tmp_path)
     before = mastering.digest(source)
 
-    reported = master_cli.run_master(
-        master_cli.frozen_payload(str(source), None, False), runner=_encoder()
-    )
+    reported = _master(source)
 
     assert mastering.digest(source) == before
     assert source.stat().st_size > 0
     assert reported["source"] == str(source)
-
-
-def test_the_archive_is_taken_and_verified_against_the_source(tmp_path):
-    """R7. The copy is the fallback the rest of the run depends on."""
-    source = _recording(tmp_path)
-    before = mastering.digest(source)
-
-    reported = master_cli.run_master(
-        master_cli.frozen_payload(str(source), None, False), runner=_encoder()
-    )
-
     archived = Path(reported["archived_to"])
     assert archived.parent.name == mastering.ARCHIVE_DIRNAME
     assert mastering.digest(archived) == before
@@ -288,12 +280,7 @@ def test_an_archive_holding_different_audio_refuses_and_keeps_both(tmp_path):
     impostor.write_bytes(b"a different recording with the same name")
     impostor_digest = mastering.digest(impostor)
 
-    with pytest.raises(CratekitError) as excinfo:
-        master_cli.run_master(
-            master_cli.frozen_payload(str(source), None, False), runner=_encoder()
-        )
-
-    assert excinfo.value.cause.reason == "archive-holds-a-different-recording"
+    assert _refused(source).reason == "archive-holds-a-different-recording"
     assert mastering.digest(impostor) == impostor_digest, "the earlier recording was destroyed"
     assert source.exists()
 
@@ -304,12 +291,7 @@ def test_an_archive_holding_different_audio_refuses_and_keeps_both(tmp_path):
 
 
 def test_a_recording_that_is_not_there_refuses_rather_than_raising(tmp_path):
-    with pytest.raises(CratekitError) as excinfo:
-        master_cli.run_master(
-            master_cli.frozen_payload(str(tmp_path / "absent.wav"), None, False),
-            runner=_encoder(),
-        )
-    cause = excinfo.value.cause
+    cause = _refused(tmp_path / "absent.wav")
     assert cause.reason == "source-missing"
     assert cause.code is ExitCode.PRECONDITION
     assert cause.code is not ExitCode.INTERNAL, "a mistyped path is not a defect in this program"
@@ -320,11 +302,7 @@ def test_a_container_the_engine_does_not_read_refuses_under_its_own_slug(tmp_pat
     unsupported = tmp_path / "REC001.m4a"
     unsupported.write_bytes(b"not a container this reads")
 
-    with pytest.raises(CratekitError) as excinfo:
-        master_cli.run_master(
-            master_cli.frozen_payload(str(unsupported), None, False), runner=_encoder()
-        )
-    assert excinfo.value.cause.reason == "source-unsupported"
+    assert _refused(unsupported).reason == "source-unsupported"
 
 
 def test_an_existing_master_refuses_without_overwrite_and_proceeds_with_it(tmp_path):
@@ -333,39 +311,21 @@ def test_an_existing_master_refuses_without_overwrite_and_proceeds_with_it(tmp_p
     target.write_bytes(b"a master somebody already kept")
     kept = target.read_bytes()
 
-    with pytest.raises(CratekitError) as excinfo:
-        master_cli.run_master(
-            master_cli.frozen_payload(str(source), None, False), runner=_encoder()
-        )
-    assert excinfo.value.cause.reason == "output-exists"
+    assert _refused(source).reason == "output-exists"
     assert target.read_bytes() == kept, "a refusal that leaves a trace has already done something"
-
-    reported = master_cli.run_master(
-        master_cli.frozen_payload(str(source), None, True), runner=_encoder()
-    )
-    assert reported["output"] == str(target)
+    assert _master(source, overwrite=True)["output"] == str(target)
 
 
 def test_a_failing_encode_does_not_report_success(tmp_path):
     source = _recording(tmp_path)
-    with pytest.raises(CratekitError) as excinfo:
-        master_cli.run_master(
-            master_cli.frozen_payload(str(source), None, False),
-            runner=_encoder(encode_returncode=1),
-        )
-    assert excinfo.value.cause.reason == "encoder-failed"
+    assert _refused(source, runner=_encoder(encode_returncode=1)).reason == "encoder-failed"
 
 
 def test_an_encode_that_exits_zero_and_writes_nothing_does_not_report_success(tmp_path):
     """The defect U44 drove, and the guard that keeps it closed."""
-    source = _recording(tmp_path)
-    with pytest.raises(CratekitError) as excinfo:
-        master_cli.run_master(
-            master_cli.frozen_payload(str(source), None, False),
-            runner=_encoder(encode_writes=False),
-        )
-    assert excinfo.value.cause.reason == "encoder-failed"
-    assert "produced no output" in excinfo.value.cause.message
+    cause = _refused(_recording(tmp_path), runner=_encoder(encode_writes=False))
+    assert cause.reason == "encoder-failed"
+    assert "produced no output" in cause.message
 
 
 def test_an_encode_that_writes_an_empty_file_does_not_report_success(tmp_path):
@@ -379,11 +339,7 @@ def test_an_encode_that_writes_an_empty_file_does_not_report_success(tmp_path):
             Path(argv[-1]).write_bytes(b"")
         return result
 
-    with pytest.raises(CratekitError) as excinfo:
-        master_cli.run_master(
-            master_cli.frozen_payload(str(source), None, False), runner=empty
-        )
-    assert excinfo.value.cause.reason == "encoder-failed"
+    assert _refused(source, runner=empty).reason == "encoder-failed"
 
 
 def test_a_failed_encode_under_overwrite_says_what_the_person_is_left_holding(tmp_path):
@@ -393,13 +349,9 @@ def test_a_failed_encode_under_overwrite_says_what_the_person_is_left_holding(tm
     target = mastering.output_path(source)
     target.write_bytes(b"a master somebody already kept")
 
-    with pytest.raises(CratekitError) as excinfo:
-        master_cli.run_master(
-            master_cli.frozen_payload(str(source), None, True),
-            runner=_encoder(encode_returncode=1),
-        )
-
-    assert excinfo.value.cause.reason == "encoder-failed"
+    assert _refused(source, overwrite=True, runner=_encoder(encode_returncode=1)).reason == (
+        "encoder-failed"
+    )
     assert mastering.digest(source) == before
     archived = tmp_path / mastering.ARCHIVE_DIRNAME / source.name
     assert archived.exists() and mastering.digest(archived) == before
@@ -410,9 +362,7 @@ def test_the_output_directory_is_honoured_and_never_the_source(tmp_path):
     source = _recording(tmp_path)
     elsewhere = tmp_path / "masters"
 
-    reported = master_cli.run_master(
-        master_cli.frozen_payload(str(source), str(elsewhere), False), runner=_encoder()
-    )
+    reported = _master(source, output_dir=str(elsewhere))
 
     assert Path(reported["output"]).parent == elsewhere
     assert Path(reported["output"]) != source
@@ -435,19 +385,12 @@ def test_a_corrupt_archive_copy_refuses_and_leaves_no_false_safety_copy(tmp_path
 
     monkeypatch.setattr(mastering.shutil, "copy2", corrupting_copy2)
 
-    with pytest.raises(CratekitError) as excinfo:
-        master_cli.run_master(
-            master_cli.frozen_payload(str(source), None, False), runner=_encoder()
-        )
-
-    cause = excinfo.value.cause
+    cause = _refused(source)
     assert cause.reason == "archive-verify-failed"
     assert cause.code is ExitCode.PRECONDITION
-    assert not (tmp_path / mastering.ARCHIVE_DIRNAME / source.name).exists(), (
-        "a copy that failed verification was left where a later run would trust it"
-    )
+    assert not (tmp_path / mastering.ARCHIVE_DIRNAME / source.name).exists(), "a bad copy stayed"
     assert mastering.digest(source) == before
-    assert not mastering.output_path(source).exists(), "the run proceeded without a verified archive"
+    assert not mastering.output_path(source).exists(), "the run went on without an archive"
 
 
 def test_an_impostor_matching_the_first_chunk_is_still_a_different_recording(tmp_path):
@@ -462,23 +405,13 @@ def test_an_impostor_matching_the_first_chunk_is_still_a_different_recording(tmp
     impostor.write_bytes(source.read_bytes()[:chunk] + b"a different set after the first chunk")
     impostor_digest = mastering.digest(impostor)
 
-    with pytest.raises(CratekitError) as excinfo:
-        master_cli.run_master(
-            master_cli.frozen_payload(str(source), None, False), runner=_encoder()
-        )
-
-    assert excinfo.value.cause.reason == "archive-holds-a-different-recording"
+    assert _refused(source).reason == "archive-holds-a-different-recording"
     assert mastering.digest(impostor) == impostor_digest
     assert not mastering.output_path(source).exists()
 
 
 # ---------------------------------------------------------------------------
-# U46: the queued work is actually run
-#
-# Everything above this line drives ``run_master`` directly, which is the engine
-# side. These drive the QUEUE: enqueue through the real dispatcher, then re-enter
-# the verb with ``--job`` the way the child a resume spawns does, and read the
-# item's row back from the store rather than inferring it from an exit status.
+# U46: the queued work is actually run, read back from the item's row
 # ---------------------------------------------------------------------------
 
 
@@ -554,11 +487,8 @@ def test_the_encode_lands_in_staging_and_is_committed_rather_than_written_in_pla
     monkeypatch.setattr(mastering, "subprocess_runner", watching)
     _drive(["master", str(source), "--job", job_id])
 
-    staging = master_cli.MASTER_STAGING_DIRNAME
-    assert any(staging in target for target in seen), seen
-    assert not any(
-        target == str(mastering.output_path(source)) for target in seen
-    ), "the encoder was pointed straight at the destination"
+    assert any(master_cli.MASTER_STAGING_DIRNAME in target for target in seen), seen
+    assert str(mastering.output_path(source)) not in seen, "the encode aimed at the destination"
 
 
 def test_a_partial_file_left_in_staging_does_not_refuse_the_next_attempt(
@@ -609,12 +539,8 @@ def test_a_job_that_failed_on_a_missing_source_is_not_reopened_and_a_fresh_job_m
     assert reported["outcome"] == "failed", reported
     assert _items(job_id)[0].state == jobs.ItemState.FAILED
 
-    # THE REOPENING IS REFUSED (R-390). The item failed as ``source-missing``,
-    # which the mastering module records as permanent, and ``jobs.retry`` reads
-    # that flag before it re-arms anything. The recording arriving later is a
-    # repair the person made, and the path for that is a fresh job, which is
-    # what the refusal's steps say. Whether a repairable failure should stay
-    # permanent is the residual the R-390 unit filed in the ledger.
+    # The reopening is refused (R-390): ``source-missing`` is permanent, and a
+    # recording that arrives later takes a fresh job.
     _recording(configured.library.root)
     monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
     with jobs.open_store() as store:
@@ -639,9 +565,11 @@ def test_an_existing_master_is_refused_before_the_engine_runs(configured, monkey
     final.write_bytes(b"a master somebody kept")
 
     ran: list[str] = []
-    monkeypatch.setattr(
-        mastering, "subprocess_runner", lambda command: ran.append("ran") or (_ for _ in ()).throw(AssertionError("the engine ran"))
-    )
+    def engine(command):
+        ran.append("ran")
+        raise AssertionError("the engine ran")
+
+    monkeypatch.setattr(mastering, "subprocess_runner", engine)
     job_id = _queued(source)
     code, envelope = _drive(["master", str(source), "--job", job_id])
 
@@ -674,8 +602,7 @@ def test_a_missing_encoder_reports_that_refusal_rather_than_an_internal_defect(
     source = _recording(configured.library.root)
     job_id = _queued(source)
 
-    # Through the OVERRIDE the resolver actually reads, rather than by replacing
-    # the resolver. A stand-in that raises would prove this test can raise.
+    # Through the override the resolver reads, not a stand-in resolver.
     monkeypatch.setenv("CRATEKIT_BIN_FFMPEG", str(configured.library.root / "no-ffmpeg"))
     code, envelope = _drive(["master", str(source), "--job", job_id])
 
@@ -731,14 +658,10 @@ def test_a_job_show_says_when_a_queued_verb_has_no_worker(configured, monkeypatc
 
     moved = sorted(handlers.HANDLERS)[0]
     reason = "no worker in this build, a declaration this test made"
-    monkeypatch.setattr(
-        handlers, "HANDLERS", {k: v for k, v in handlers.HANDLERS.items() if k != moved}
-    )
-    monkeypatch.setattr(
-        handlers,
-        "HANDLERS_NOT_YET_BOUND",
-        {**handlers.HANDLERS_NOT_YET_BOUND, moved: reason},
-    )
+    bound = {k: v for k, v in handlers.HANDLERS.items() if k != moved}
+    monkeypatch.setattr(handlers, "HANDLERS", bound)
+    unbound = {**handlers.HANDLERS_NOT_YET_BOUND, moved: reason}
+    monkeypatch.setattr(handlers, "HANDLERS_NOT_YET_BOUND", unbound)
     with jobs.open_store() as store:
         other = jobs.enqueue(store, handler_key=moved, payload={}, cfg=configured)
     code, envelope = _drive(["job", "show", other.job_id])
@@ -788,10 +711,7 @@ def test_nothing_is_created_beside_a_destination_for_a_recording_that_is_not_the
 
     _drive(["master", str(source), "--job", job_id])
 
-    assert not source.parent.exists(), (
-        "a staging tree was built beside a destination for a recording that "
-        "does not exist, which falsifies the refusal's own remediation"
-    )
+    assert not source.parent.exists(), "a staging tree was built for a missing recording"
     assert _items(job_id)[0].cause.reason == "source-missing"
 
 
@@ -802,19 +722,7 @@ def test_a_configuration_that_moved_reaches_the_person_as_a_warning_on_the_resum
     source = _recording(configured.library.root)
     job_id = _queued(source)
 
-    moved = config.from_dict(
-        {
-            "schema_version": config.CURRENT_SCHEMA_VERSION,
-            "library": {
-                "root": str(configured.library.root),
-                "volume_id": "F1E2-D3C4",
-                "db_path": str(configured.library.root / "db" / "master.db"),
-            },
-            "paths": {"download_staging": str(tmp_path / "moved-staging")},
-            "profile": {"name": "full"},
-        }
-    )
-    config.save(moved)
+    config.save(_config(configured.library.root, tmp_path / "moved-staging"))
     config.reset_cache()
 
     monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
@@ -832,18 +740,10 @@ def test_a_configuration_that_moved_reaches_the_person_as_a_warning_on_the_resum
 
 
 def _tone(directory: Path, name: str, *, seconds: int, rate: int = 44100) -> Path:
-    """A real sine recording. Silence measures as negative infinity and a real encode then refuses
-    for the missing measurement, so the joined-duration proof needs a signal.
-    """
+    """A real sine recording: silence measures as negative infinity, which a real encode refuses."""
     require_ffmpeg()
-    out = directory / name
-    proc = subprocess.run(
-        ["ffmpeg", "-y", "-f", "lavfi", "-i", f"sine=frequency=220:r={rate}",
-         "-t", str(seconds), "-c:a", "pcm_s16le", str(out)],
-        capture_output=True, text=True,
-    )
-    assert proc.returncode == 0 and out.exists(), proc.stderr[-400:]
-    return out
+    sine = f"sine=frequency=220:r={rate}"
+    return _synthesize(directory / name, sine, seconds, "-c:a", "pcm_s16le")
 
 
 def _duration(path: Path) -> float:
@@ -872,17 +772,14 @@ def _recorder(layouts: dict[str, dict[str, str]] | None = None):
         argv = list(command.argv)
         if argv[0].endswith("ffprobe"):
             fields = {**PROBED, **(layouts or {}).get(Path(argv[-1]).name, {})}
-            return mastering.CommandResult(
-                returncode=0, stdout="".join(f"{k}={v}\n" for k, v in fields.items())
-            )
+            stdout = "".join(f"{k}={v}\n" for k, v in fields.items())
+            return mastering.CommandResult(returncode=0, stdout=stdout)
         return inner(command)
 
     return run, seen
 
 
-#: One FLAC frame at 44.1 kHz, the tolerance the brief's "within a frame" names.
-#: FLAC encodes in blocks of 4096 samples at compression level 8, so a length
-#: that differs by less than one block is the same length for this purpose.
+#: One FLAC block of 4096 samples at 44.1 kHz, the brief's "within a frame".
 ONE_FRAME_SECONDS = 4096 / 44100
 
 
@@ -898,9 +795,8 @@ def test_two_parts_produce_one_master_whose_duration_is_their_sum(tmp_path):
 
     output = Path(reported["output"])
     assert output == tmp_path / "REC001_set_mastered.flac"
-    assert _duration(output) == pytest.approx(
-        _duration(first) + _duration(second), abs=ONE_FRAME_SECONDS
-    )
+    joined = _duration(first) + _duration(second)
+    assert _duration(output) == pytest.approx(joined, abs=ONE_FRAME_SECONDS)
     # The parts are untouched and each has its own verified archive copy.
     assert [mastering.digest(first), mastering.digest(second)] == digests
     assert reported["parts"] == [str(first), str(second)]
@@ -923,14 +819,9 @@ def test_the_parts_are_joined_in_the_order_given_and_never_sorted(tmp_path):
             listed.extend(listing.read_text().splitlines())
         return run(command)
 
-    reported = master_cli.run_master(
-        master_cli.frozen_payload([str(later), str(earlier)], None, False),
-        runner=capture,
-    )
+    reported = _master(later, earlier, runner=capture)
 
-    assert [line.split("/")[-1].rstrip("'") for line in listed] == [
-        "REC002.wav", "REC001.wav"
-    ]
+    assert [line.split("/")[-1].rstrip("'") for line in listed] == ["REC002.wav", "REC001.wav"]
     assert reported["parts"] == [str(later), str(earlier)]
     assert Path(reported["output"]).name == "REC002_set_mastered.flac"
 
@@ -956,17 +847,10 @@ def test_the_order_printed_is_the_order_given(configured):
 def test_one_input_freezes_queues_and_resumes_exactly_as_before(configured):
     """The brief's third scenario. No new key, no new flag, no notice."""
     source = configured.library.root / "REC001.wav"
-    assert master_cli.frozen_payload([str(source)], None, False) == {
-        "source": str(source),
-        "output_dir": None,
-        "overwrite": False,
-    }
-    assert master_cli.frozen_payload([str(source)], None, False) == (
-        master_cli.frozen_payload(str(source), None, False)
-    )
-    assert master_cli.master_argv(
-        _Job(master_cli.frozen_payload([str(source)], None, False))
-    ) == ["master", str(source), "--job", "job-1"]
+    one = master_cli.frozen_payload([str(source)], None, False)
+    assert one == {"source": str(source), "output_dir": None, "overwrite": False}
+    assert one == master_cli.frozen_payload(str(source), None, False)
+    assert master_cli.master_argv(_Job(one)) == ["master", str(source), "--job", "job-1"]
 
     code, envelope = _drive(["master", str(source)])
     assert code == int(ExitCode.OK), envelope
@@ -977,31 +861,26 @@ def test_one_input_masters_through_the_unchanged_engine_path(tmp_path):
     """A single recording's report carries no join keys and its own archive."""
     source = _recording(tmp_path)
     run, seen = _recorder()
-    reported = master_cli.run_master(
-        master_cli.frozen_payload([str(source)], None, False), runner=run
-    )
+    payload = master_cli.frozen_payload([str(source)], None, False)
+    reported = master_cli.run_master(payload, runner=run)
     assert "parts" not in reported and "archives" not in reported
     assert Path(reported["output"]).name == "REC001_mastered.flac"
     assert not any("concat" in c.argv for c in seen)
 
 
-@pytest.mark.parametrize("value", [-4.0, -70.5, float("nan"), float("inf")])
-def test_an_out_of_range_target_is_refused_by_the_engine(value):
-    with pytest.raises(ValueError, match="target_lufs"):
-        mastering.Settings(target_lufs=value)
-
-
-@pytest.mark.parametrize("value", [-70.0, -5.0, -14.0])
-def test_the_range_bounds_are_inclusive(value):
-    assert mastering.Settings(target_lufs=value).target_lufs == value
+def test_the_engine_refuses_an_out_of_range_target_and_takes_the_bounds_inclusively():
+    for value in (-4.0, -70.5, float("nan"), float("inf")):
+        with pytest.raises(ValueError, match="target_lufs"):
+            mastering.Settings(target_lufs=value)
+    for value in (-70.0, -5.0, -14.0):
+        assert mastering.Settings(target_lufs=value).target_lufs == value
 
 
 @pytest.mark.parametrize("value", ["-4", "-71", "nan"])
 def test_an_out_of_range_target_refuses_and_queues_nothing(configured, value):
     """The brief's fourth scenario, through the verb."""
-    code, envelope = _drive(
-        ["master", str(configured.library.root / "REC001.wav"), f"--lufs={value}"]
-    )
+    recording = str(configured.library.root / "REC001.wav")
+    code, envelope = _drive(["master", recording, f"--lufs={value}"])
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "target-lufs-out-of-range"
     with jobs.open_store() as store:
@@ -1012,12 +891,9 @@ def test_the_target_reaches_every_loudnorm_filter(tmp_path):
     """A frozen target that the engine never sees is a flag that does nothing."""
     source = _recording(tmp_path)
     run, seen = _recorder()
-    master_cli.run_master(
-        master_cli.frozen_payload([str(source)], None, False, lufs=-9.0), runner=run
-    )
-    filters = [
-        c.argv[c.argv.index("-af") + 1] for c in seen if "loudnorm" in " ".join(c.argv)
-    ]
+    payload = master_cli.frozen_payload([str(source)], None, False, lufs=-9.0)
+    master_cli.run_master(payload, runner=run)
+    filters = [c.argv[c.argv.index("-af") + 1] for c in seen if "loudnorm" in " ".join(c.argv)]
     assert len(filters) == 3, filters
     assert all("I=-9.0:" in f for f in filters), filters
 
@@ -1030,9 +906,10 @@ def test_a_split_recording_and_its_target_survive_the_resume_argv(configured):
     )
     argv = master_cli.master_argv(_Job(frozen))
     args = cli.build_parser([_entry()]).parse_args(argv)
-    assert master_cli.frozen_payload(
+    rebuilt = master_cli.frozen_payload(
         args.recording, args.output_dir, args.overwrite, lufs=args.lufs
-    ) == frozen
+    )
+    assert rebuilt == frozen
     assert args.job == "job-1"
 
 
@@ -1047,49 +924,27 @@ def test_parts_at_different_sample_rates_refuse_before_anything_is_written(tmp_p
     second = _recording(tmp_path, "REC002.wav")
     run, seen = _recorder({"REC002.wav": {"sample_rate": "48000"}})
 
-    with pytest.raises(CratekitError) as excinfo:
-        master_cli.run_master(
-            master_cli.frozen_payload([str(first), str(second)], None, False), runner=run
-        )
+    cause = _refused(first, second, runner=run)
 
-    assert excinfo.value.cause.reason == "source-unsupported"
-    assert "48000" in excinfo.value.cause.message
+    assert cause.reason == "source-unsupported"
+    assert "48000" in cause.message
     assert not (tmp_path / mastering.ARCHIVE_DIRNAME).exists()
     assert not any("concat" in c.argv for c in seen)
     assert set(tmp_path.iterdir()) == {first, second}
 
 
-def test_a_part_named_twice_refuses(tmp_path):
-    part = _recording(tmp_path)
-    run, seen = _recorder()
-    with pytest.raises(CratekitError) as excinfo:
-        master_cli.run_master(
-            master_cli.frozen_payload([str(part), str(part)], None, False), runner=run
-        )
-    assert excinfo.value.cause.reason == "source-unsupported"
-    assert seen == []
-
-
-def test_parts_in_different_containers_refuse(tmp_path):
+@pytest.mark.parametrize("second", ["REC001.wav", "REC002.flac"], ids=["twice", "containers"])
+def test_a_part_named_twice_or_in_another_container_refuses_before_any_command(tmp_path, second):
     first = _recording(tmp_path, "REC001.wav")
-    second = _recording(tmp_path, "REC002.flac")
+    other = _recording(tmp_path, second)
     run, seen = _recorder()
-    with pytest.raises(CratekitError) as excinfo:
-        master_cli.run_master(
-            master_cli.frozen_payload([str(first), str(second)], None, False), runner=run
-        )
-    assert excinfo.value.cause.reason == "source-unsupported"
+    assert _refused(first, other, runner=run).reason == "source-unsupported"
     assert seen == []
 
 
 def test_a_missing_part_refuses_as_missing(tmp_path):
     first = _recording(tmp_path, "REC001.wav")
-    with pytest.raises(CratekitError) as excinfo:
-        master_cli.run_master(
-            master_cli.frozen_payload([str(first), str(tmp_path / "REC002.wav")], None, False),
-            runner=_encoder(),
-        )
-    assert excinfo.value.cause.reason == "source-missing"
+    assert _refused(first, tmp_path / "REC002.wav").reason == "source-missing"
 
 
 def test_a_queued_split_recording_lands_as_one_master_through_the_resume(
@@ -1110,11 +965,8 @@ def test_a_queued_split_recording_lands_as_one_master_through_the_resume(
     assert not (root / "REC001_mastered.flac").exists()
     assert (root / mastering.ARCHIVE_DIRNAME / "REC002.wav").is_file()
     assert any("concat" in c.argv for c in seen)
-    assert all(
-        "I=-12.0:" in c.argv[c.argv.index("-af") + 1]
-        for c in seen
-        if "loudnorm" in " ".join(c.argv)
-    )
+    loudnorm = [c for c in seen if "loudnorm" in " ".join(c.argv)]
+    assert all("I=-12.0:" in c.argv[c.argv.index("-af") + 1] for c in loudnorm)
 
 
 def test_an_existing_joined_master_is_refused_on_the_real_destination(
@@ -1140,27 +992,16 @@ def test_an_existing_joined_master_is_refused_on_the_real_destination(
 
 @pytest.mark.parametrize(
     "differs",
-    [
-        {"channels": "1"},
-        {"codec_name": "pcm_s32le", "sample_fmt": "s32"},
-        {"sample_fmt": "s32"},
-    ],
+    [{"channels": "1"}, {"codec_name": "pcm_s32le", "sample_fmt": "s32"}, {"sample_fmt": "s32"}],
     ids=["mono-beside-stereo", "codec", "sample-format"],
 )
 def test_parts_differing_in_any_copied_field_refuse(tmp_path, differs):
-    """Found by this unit's review: rate alone admitted a mono part and a 24 bit part beside a 32
-    bit one, both copied across unconverted.
-    """
+    """Rate alone admitted a mono part, and a 24 bit part beside a 32 bit one."""
     first = _recording(tmp_path, "REC001.wav")
     second = _recording(tmp_path, "REC002.wav")
     run, seen = _recorder({"REC002.wav": differs})
 
-    with pytest.raises(CratekitError) as excinfo:
-        master_cli.run_master(
-            master_cli.frozen_payload([str(first), str(second)], None, False), runner=run
-        )
-
-    assert excinfo.value.cause.reason == "source-unsupported"
+    assert _refused(first, second, runner=run).reason == "source-unsupported"
     assert not (tmp_path / mastering.ARCHIVE_DIRNAME).exists()
     assert not any("concat" in c.argv for c in seen)
 
@@ -1170,15 +1011,11 @@ def test_a_24_bit_and_a_32_bit_part_are_told_apart_by_codec_alone(tmp_path):
     first = _recording(tmp_path, "REC001.wav")
     second = _recording(tmp_path, "REC002.wav")
     same_fmt = {"sample_fmt": "s32"}
-    run, _ = _recorder(
-        {"REC001.wav": {**same_fmt, "codec_name": "pcm_s24le"},
-         "REC002.wav": {**same_fmt, "codec_name": "pcm_s32le"}}
-    )
-    with pytest.raises(CratekitError) as excinfo:
-        master_cli.run_master(
-            master_cli.frozen_payload([str(first), str(second)], None, False), runner=run
-        )
-    assert "pcm_s32le" in excinfo.value.cause.message
+    run, _ = _recorder({
+        "REC001.wav": {**same_fmt, "codec_name": "pcm_s24le"},
+        "REC002.wav": {**same_fmt, "codec_name": "pcm_s32le"},
+    })
+    assert "pcm_s32le" in _refused(first, second, runner=run).message
 
 
 def test_a_joined_wav_is_written_as_rf64_when_it_needs_to_be(tmp_path):
@@ -1186,9 +1023,7 @@ def test_a_joined_wav_is_written_as_rf64_when_it_needs_to_be(tmp_path):
     first = _recording(tmp_path, "REC001.wav")
     second = _recording(tmp_path, "REC002.wav")
     run, seen = _recorder()
-    master_cli.run_master(
-        master_cli.frozen_payload([str(first), str(second)], None, False), runner=run
-    )
+    _master(first, second, runner=run)
     join = next(c for c in seen if "concat" in c.argv)
     assert join.argv[join.argv.index("-rf64") + 1] == "auto"
     drift = next(c for c in seen if "pcm_s24le" in c.argv)
@@ -1201,9 +1036,7 @@ def test_a_joined_flac_carries_no_wav_muxer_option(tmp_path):
     first.write_bytes(b"one")
     second.write_bytes(b"two")
     run, seen = _recorder()
-    master_cli.run_master(
-        master_cli.frozen_payload([str(first), str(second)], None, False), runner=run
-    )
+    _master(first, second, runner=run)
     join = next(c for c in seen if "concat" in c.argv)
     assert "-rf64" not in join.argv
 
