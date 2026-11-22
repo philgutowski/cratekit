@@ -1,14 +1,8 @@
 """R-501: a landed batch can be followed to a library the cutover precheck passes.
 
-Every landing left an ``open`` intake session and an intake file at the library
-root. Each refused ``tree_registry.assert_cutover_ready`` and no shipped verb
-cleared either. These tests drive the whole path through the real command line:
-land, do what the pending action says, and ask the precheck.
-
-THE IMPORT IS SIMULATED BY THE ONE THING IT CHANGES. rekordbox importing an
-intake file makes collection rows for the tracks it names, and a Fresh Export
-taken afterwards names them. The intake file's own bytes, under a name that is
-not an intake file's, are exactly that export, so that is what stands in for it.
+THE IMPORT IS SIMULATED BY THE ONE THING IT CHANGES: the intake file's own bytes,
+under a name that is not an intake file's, are the Fresh Export rekordbox would
+take after importing it.
 """
 
 from __future__ import annotations

@@ -1,17 +1,7 @@
 """U69 and U73: ``crate intake missing --job JOB`` and ``--run RUN``, driven
-through the real dispatcher.
-
-A finished playlist intake leaves one committed report per track saying owned,
-offered, suppressed or missing. This verb turns the missing ones into the list
-document ``acquire download`` reads, through the one emitter U68 landed. The
-proofs here are that only missing rows are written, that a job which has not
-resolved every track is refused rather than half listed, that a person reading
-the DEFAULT output sees the path and the next command, and that the file really
-is accepted by the download verb and downloads against the fake adapter.
-
-Every expected value is a literal taken from the fixture hearts, never a value
-the verb or the emitter produced. D1 applies: nothing here names a real volume,
-a real person or a real track.
+through the real dispatcher: only missing rows are written, a job that has not
+resolved every track is refused, and the file downloads against the fake adapter.
+Every expected value is a literal from the fixture hearts. D1 applies.
 """
 
 from __future__ import annotations

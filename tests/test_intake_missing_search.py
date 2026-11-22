@@ -1,19 +1,7 @@
 """U79: a row nothing names exactly gets provider candidates, and never a pick.
 
-``crate intake missing --list PATH`` reads a text list, the unlisted list of an
-earlier run or any tracklist, resolves every row against the library, and asks
-the catalogue's text search about each row that is still missing. Exactly one
-candidate matching under the product's own fold is listed. Anything else is
-offered into the review queue with its candidates and its scores, and the next
-run lists what a person accepted. No candidate is reported, never silent.
-
-EVERYTHING BUT THE CATALOGUE IS REAL. The list is read by ``match_cli.read_list``,
-the library is a folder of files the real index walks, the review store is the
-real store, and an answer is recorded through ``crate review resolve`` on the
-real dispatcher. Only the provider is a fake, substituted where the verb looks
-it up.
-
-D1 applies. Nothing here names a real volume, a real person, or a real track.
+Everything but the catalogue is real: the list reader, the library index, the
+review store and ``crate review resolve``. D1 applies.
 """
 
 # ruff: noqa: F811 - the fixtures are imported from the ISRC suite by name

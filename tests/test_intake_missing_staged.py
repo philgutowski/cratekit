@@ -1,16 +1,7 @@
 """U212: ``intake missing`` never lists a track already staged in the downloads folder.
 
-Sitting 55 (A70) ran ``crate sync land`` over an account that still had two
-tracks an earlier pass had downloaded, tagged and named in the staging folder,
-that pass's landing gate never answered. The pass downloaded them again, the
-copies took placeholder names, and ``name apply`` refused ``rename-incomplete``
-because their names were taken. The listing now reads the ISRC the downloader
-writes on every file it delivers from each staged file, through the reader the
-landing uses, and a missing track a staged file carries is counted as staged
-and not listed.
-
-Every expected value is a literal from the fixture rows. A staged file is a
-real container carrying real tags, since the identity is read from the file.
+A staged file is a real container carrying real tags, since the identity is read
+from the file. Every expected value is a literal from the fixture rows.
 """
 
 # ruff: noqa: F811, the fixtures below are imported from the missing list suite by name

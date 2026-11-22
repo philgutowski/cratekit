@@ -1,20 +1,8 @@
 """U78: a set's missing tracks are named by exact ISRC, and the rest handed on.
 
-``crate intake set`` identifies a recording and resolves every track, and a
-recognised track carries no provider identifier, so before U78 ``intake missing``
-had nothing it could list for a set (R-401). It now asks the catalogue for each
-such row's ISRC. Exactly one distinct identifier lists the row. Anything else,
-no ISRC, a malformed one, none filed or several filed (R-356), writes the row to
-``<name>.unlisted.json``, a text list ``match run`` reads, with the reason above
-it. A provider that cannot answer refuses before any file is written.
-
-THE SET JOBS HERE ARE REAL. Recognition runs through the carver and transport
-fakes ``tests/intake/test_workers.py`` uses, the job is queued and driven through
-the dispatcher, and the reports this verb reads are the ones the worker wrote.
-Only the catalogue is a fake, and it is substituted where the verb looks it up.
-
-D1 applies. Nothing here names a real volume, a real person, or a real track,
-and every ISRC is in a registrant range nobody holds.
+The set jobs are real, recognised through the fakes ``tests/intake/test_workers.py``
+uses; only the catalogue is a fake. D1 applies, and every ISRC is in a registrant
+range nobody holds.
 """
 
 from __future__ import annotations
