@@ -258,7 +258,6 @@ def _installation(
     *,
     medium: Medium = Medium.FILE,
     area: InstallationArea = InstallationArea.STATE,
-    **extra: Any,
 ) -> StateFile:
     """An installation entry. Never restored: a library snapshot covers a library."""
     return StateFile(
@@ -269,7 +268,6 @@ def _installation(
         why=why,
         snapshot=SnapshotRole.NEVER_RESTORED,
         installation_area=area,
-        **extra,
     )
 
 
