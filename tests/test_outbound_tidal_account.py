@@ -15,6 +15,7 @@ D1 applies. Nothing here names a real volume, a real person, or a real track.
 from __future__ import annotations
 
 import ast
+import functools
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,7 +23,7 @@ from types import SimpleNamespace
 import pytest
 
 from cratekit.acquire import isrc_cache, listing, provider_session
-from cratekit.core import config, jobs, locations, secrets, tags
+from cratekit.core import jobs, locations, secrets, tags
 from cratekit.core.cause import CratekitError, Scope
 from cratekit.core.exit_codes import ExitCode
 from cratekit.export import cli as export_cli
@@ -31,7 +32,7 @@ from cratekit.modules.outbound.service import RemoteAccount
 from tests import outbound_fakes
 from tests._containers import synth_container
 from tests.cli_drive import approve_and_queue, drive, drive_human
-from tests.test_config import valid_data
+from tests.test_outbound_workers import installed as installed  # noqa: PLC0414 - fixture
 
 #: Every module the adapter is made of: the structural guards read them all.
 ADAPTER_SOURCES = sorted(Path(tidal_account.__file__).parent.glob("tidal_*.py"))
@@ -257,20 +258,6 @@ def refused(call):
     with pytest.raises(CratekitError) as excinfo:
         call()
     return excinfo.value.cause
-
-
-@pytest.fixture
-def installed(tmp_path, monkeypatch) -> config.Config:
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    (root / "db").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    built = config.from_dict(valid_data(root, profile={"name": "full"}))
-    config.save(built)
-    config.reset_cache()
-    source.forget_libraries()
-    yield built
-    source.forget_libraries()
 
 
 # ── 1. the seam ─────────────────────────────────────────────────────────────
@@ -1219,8 +1206,10 @@ def test_an_unmatched_row_with_nothing_said_about_it_adds_no_reason_to_the_envel
 # ── 6. structural guards over the adapter's own source ──────────────────────
 
 
-def _trees() -> list[ast.Module]:
-    return [ast.parse(path.read_text(encoding="utf-8")) for path in ADAPTER_SOURCES]
+@functools.cache
+def _trees() -> tuple[ast.Module, ...]:
+    """Each adapter module parsed once for every guard."""
+    return tuple(ast.parse(path.read_text(encoding="utf-8")) for path in ADAPTER_SOURCES)
 
 
 def test_the_adapter_imports_nothing_vendored():
