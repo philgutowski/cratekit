@@ -663,7 +663,7 @@ def test_the_lock_is_released_by_every_refusal(
     assert seen == ["job-driver-held", "job-driver-held"]
 
 
-def test_an_unwritable_lock_directory_refuses_by_name(cfg, silence, export):
+def test_a_lock_directory_this_account_cannot_write_refuses_by_name_and_moves_nothing(cfg, silence, export):
     """The lock is taken before the first move, so a state directory that
     refuses leaves staging whole, named by path and permission."""
     _stage(cfg, silence, "One.flac")
