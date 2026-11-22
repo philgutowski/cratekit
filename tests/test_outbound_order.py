@@ -1,25 +1,14 @@
 """U220: the account adapter puts a playlist it just added to in order, over a provider that lags.
 
-Sitting 62's live ``crate sync pair`` added six tracks to a paired playlist,
-then its order failed: a 412 from the provider on the first move, then on each
-continue a read back that was "not what it held with that track moved to the
-end", although the moves had landed. These tests drive ``order_tracks``
-against a stand in for the provider's client that keeps a version tag the way
-the provider does, answers a write carrying a tag other than the current one
-with a 412 and changes nothing, and can serve a read that lags its writes.
-
-The three shapes the card names are each a provider here: one whose move to
-the playlist's length lands one short of the end, one that answers 412 on a
-stale tag until the playlist is read again, and one whose read lags a write.
-Which of them the live provider is was not measured from this container; the
-adapter is held to reaching the asked order under every one of them, or to
-refusing before its first move with nothing moved.
-
-U231 changed what a lag after a move costs: Sitting 86's reads lagged the
-moves for minutes, so the moves are now sent with no read back between them,
-a 412 resends the same move, and one later reading (``settled_order``) says
-whether the order landed. The read back tests U220 wrote are rewritten to
-that contract here.
+These tests drive ``order_tracks`` against a stand in for the provider's client
+that keeps a version tag the way the provider does, answers a write carrying a
+tag other than the current one with a 412 and changes nothing, and can serve a
+read that lags its writes, a move to the length that lands one short, or a
+stale tag until the playlist is read again (Sitting 62). The adapter is held to
+reaching the asked order under each, or to refusing before its first move with
+nothing moved. Since U231 the moves are sent with no read back between them, a
+412 resends the same move, and one later reading (``settled_order``) says
+whether the order landed.
 
 D1 applies. Nothing here names a real account, a real person or a real track.
 """
@@ -46,30 +35,24 @@ class Stale(Exception):
 class Provider:
     """The provider's playlists, versioned, shared by every object the client opens.
 
-    ``landing`` is where a move to the playlist's length lands: ``"end"``, or
-    ``"short"`` for one short of the end. ``lag`` is how many reads of the
-    tracks after each write still answer the playlist as it was before that
-    write, with the tag it had then. ``stale_tags`` is how many reads answer
-    the current tracks with the previous tag. ``elsewhere`` makes the next
-    move land at position one whatever was asked.
+    ``landing`` is where a move to the length lands, ``"end"`` or ``"short"``.
+    ``lag`` is how many readings after each write still serve the playlist as
+    it was, with its old tag, and ``whole`` makes them lag the declared count
+    too; ``stale_tags`` is how many readings serve the current tracks with the
+    previous tag; ``elsewhere`` lands the next move at position one.
 
-    R-1308 adds a removal by position, as the client's ``remove_by_indices``
-    sends it, with the same tag and the same lag. ``count_lag`` is how many
-    openings after each write declare the count the playlist had before it
-    while the tracks read current; ``wrong`` takes that position instead of
-    the asked ones, once; ``remove_fails`` raises before anything changes;
-    ``shown`` is the ``(num_tracks, num_videos)`` every opening after a
-    removal declares; ``drift`` is what the tracks become once a lag is spent.
+    For a removal (R-1308): ``count_lag`` is how many openings after each write
+    declare the old count while the tracks read current; ``wrong`` takes that
+    position instead of the asked ones, once; ``remove_fails`` raises before
+    anything changes; ``shown`` is the ``(num_tracks, num_videos)`` every
+    opening after a removal declares; ``drift`` is what the tracks become once
+    a lag is spent.
 
-    U226 reads every playlist twice, its window and then the client's unpaged
-    read, so a lag is counted per READING, one opened playlist, decided at its
-    first read and held for every read of that object. ``window_only`` makes a
-    lag hold for the window read alone, the unpaged read serving the playlist
-    as it is, as Sitting 84 measured; ``unpaged_size`` is how many tracks the
-    unpaged read serves, a first page, None for all of them; ``walk_lags``
-    makes the unpaged read's later pages, asked with an offset, lag as the
-    window does (R-1360), so only its first page is current; ``declared``
-    overrides the count every opening declares.
+    U226 reads every playlist twice, its window and then the unpaged read, so a
+    lag is decided at a reading's first read and held for that object.
+    ``window_only`` lags the window alone; ``unpaged_size`` caps the unpaged
+    read's first page; ``walk_lags`` lags its later pages too (R-1360);
+    ``declared`` overrides the count every opening declares.
     """
 
     def __init__(
@@ -89,13 +72,11 @@ class Provider:
         self.lagging = 0
         self.stale_tags = stale_tags
         self.elsewhere = False
-        #: Whether a lagging read lags the declared count too, not the tracks alone.
         self.whole = whole
         #: How many reads lag after a move the provider refuses 412.
         self.lag_after_refusal = 0
         #: Every move asked, as ``(indices, position, tag)``, refused or not.
         self.moves: list[tuple[tuple[int, ...], int, int]] = []
-        #: Every move refused with a 412.
         self.refused = 0
         self.opened = 0
         self.reads = 0
@@ -137,8 +118,7 @@ class Movable:
         if provider.declared is not None:
             self.num_tracks = provider.declared
         self._etag = provider.version
-        #: Whether this reading lags and whether it carries the previous tag,
-        #: decided at its first read.
+        #: Whether this reading lags and whether it carries the previous tag.
         self._read_as: tuple[bool, bool] | None = None
 
     def _reading(self) -> tuple[bool, bool]:
@@ -232,29 +212,47 @@ class Client:
         return Movable(self.provider, playlist_id)
 
 
-def _adapter(cfg, provider: Provider, slept: list[float] | None = None):
+class Refusing(Movable):
+    """An opened playlist whose every move is answered 412, a tag that never comes fresh."""
+
+    def move_by_indices(self, indices, position: int) -> bool:
+        self.provider.moves.append((tuple(indices), position, self._etag))
+        self.provider.refused += 1
+        raise Stale()
+
+
+class RefusingClient(Client):
+    def playlist(self, playlist_id: str) -> Movable:
+        return Refusing(self.provider, playlist_id)
+
+
+def _adapter(cfg, provider: Provider, slept: list | None = None, *, client=Client, sleep=None):
+    """An adapter over ``provider``, the playlist ``mine`` paired, its pauses kept in ``slept``."""
     pairs.PairStore(cfg).mark("mine", "rb-mine", name="Mine")
-    pause = slept.append if slept is not None else (lambda seconds: None)
-    return tidal_account.TidalAccount(Client(provider), sleep=pause, cfg=cfg)
+    pause = sleep or (slept.append if slept is not None else (lambda seconds: None))
+    return tidal_account.TidalAccount(client(provider), sleep=pause, cfg=cfg)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Where a move lands
-# ═══════════════════════════════════════════════════════════════════════════
+def _moves(provider: Provider, part: int = 0) -> list:
+    """One part of each move asked: 0 the indices, 1 the position, 2 the tag."""
+    return [move[part] for move in provider.moves]
+
+
+# ── where a move lands ──────────────────────────────────────────────────────
 
 
 def test_a_provider_whose_move_to_the_length_lands_one_short_still_takes_the_order(installed):
     provider = Provider(["a", "b", "c", "d"], landing="short")
-    after = _adapter(installed, provider).order_tracks("mine", ("d", "c", "b", "a"))
-    assert after == ("d", "c", "b", "a")
+    assert _adapter(installed, provider).order_tracks("mine", ("d", "c", "b", "a")) == (
+        "d", "c", "b", "a"
+    )
     assert provider.members == ["d", "c", "b", "a"]
 
 
 def test_every_move_is_to_the_front_where_both_ways_of_counting_agree(installed):
     provider = Provider(["a", "b", "c", "d"])
     _adapter(installed, provider).order_tracks("mine", ("c", "a", "b", "d"))
-    # "a", "b", "d" already stand in order at the tail of the asked order, so
-    # "c" alone is moved, from position two to the front.
+    # "a", "b", "d" already stand in order at the tail, so "c" alone moves.
     assert [(asked, to) for asked, to, _tag in provider.moves] == [((2,), 0)]
     assert provider.members == ["c", "a", "b", "d"]
 
@@ -262,7 +260,7 @@ def test_every_move_is_to_the_front_where_both_ways_of_counting_agree(installed)
 def test_the_tracks_before_the_kept_tail_are_moved_last_first(installed):
     provider = Provider(["a", "b", "c", "d"])
     _adapter(installed, provider).order_tracks("mine", ("d", "c", "a", "b"))
-    assert [asked for asked, _to, _tag in provider.moves] == [(2,), (3,)]
+    assert _moves(provider) == [(2,), (3,)]
     assert provider.members == ["d", "c", "a", "b"]
 
 
@@ -283,14 +281,8 @@ def test_a_move_that_lands_anywhere_else_is_not_read_back_and_the_settle_reading
 
 
 def test_each_planned_move_is_sent_once_however_the_planner_answers(installed, monkeypatch):
-    """A planner that never runs out of moves cannot keep the order writing (U231).
-
-    The moves are planned once from one reading and each is sent once, so a
-    planner that keeps no tail sends no more moves than it named. The
-    mutation table's planner that kept no tail once moved the playlist until
-    the run was killed; a write loop on the account with no bound is the
-    hazard, so the bound is held here.
-    """
+    """A planner that never runs out of moves cannot keep the order writing (U231): each
+    planned move is sent once, so an unbounded write loop on the account cannot happen."""
     monkeypatch.setattr(
         tidal_account, "_to_the_front", lambda before, remote_ids: list(reversed(remote_ids))
     )
@@ -300,46 +292,27 @@ def test_each_planned_move_is_sent_once_however_the_planner_answers(installed, m
     assert sorted(provider.members) == ["a", "b", "c"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# A stale version tag
-# ═══════════════════════════════════════════════════════════════════════════
+# ── a stale version tag ─────────────────────────────────────────────────────
 
 
 def test_a_412_on_a_stale_tag_is_read_again_and_the_move_made_on_the_new_reading(installed):
     provider = Provider(["a", "b", "c"], stale_tags=1)
-    after = _adapter(installed, provider).order_tracks("mine", ("c", "a", "b"))
-    assert after == ("c", "a", "b")
+    assert _adapter(installed, provider).order_tracks("mine", ("c", "a", "b")) == ("c", "a", "b")
     assert provider.refused == 1
-    # The move the provider refused carried the stale tag and changed nothing;
-    # the one after it was sent with the tag of the new reading.
-    assert [tag for _asked, _to, tag in provider.moves] == [0, 1]
-
-
-class Refusing(Movable):
-    """An opened playlist whose every move the provider answers 412, a tag that never comes fresh."""
-
-    def move_by_indices(self, indices, position: int) -> bool:
-        self.provider.moves.append((tuple(indices), position, self._etag))
-        self.provider.refused += 1
-        raise Stale()
-
-
-class RefusingClient(Client):
-    def playlist(self, playlist_id: str) -> Movable:
-        return Refusing(self.provider, playlist_id)
+    # The refused move carried the stale tag; the one after it the new reading's.
+    assert _moves(provider, 2) == [0, 1]
 
 
 def test_a_move_whose_tag_never_comes_fresh_is_sent_a_bounded_number_of_times(installed):
     provider = Provider(["a", "b", "c"])
-    pairs.PairStore(installed).mark("mine", "rb-mine", name="Mine")
     slept: list[float] = []
-    account = tidal_account.TidalAccount(RefusingClient(provider), sleep=slept.append, cfg=installed)
+    account = _adapter(installed, provider, slept, client=RefusingClient)
     with pytest.raises(CratekitError) as refused:
         account.order_tracks("mine", ("c", "a", "b"))
     assert refused.value.cause.reason == "unavailable-transient"
     assert provider.members == ["a", "b", "c"]
     assert provider.refused == len(provider.moves) == tidal_account.ORDER_REREADS + 1
-    assert {asked for asked, _to, _tag in provider.moves} == {(2,)}, "another move was sent"
+    assert set(_moves(provider)) == {(2,)}, "another move was sent"
     assert slept == list(tidal_account.ORDER_PAUSES)
     record = account.read_backs()[-1]
     assert (record["after"], record["outcome"], record["stale"]) == (
@@ -361,19 +334,14 @@ def test_a_failure_other_than_a_stale_tag_is_never_sent_again(installed):
         def playlist(self, playlist_id: str) -> Movable:
             return Dropped(self.provider, playlist_id)
 
-    pairs.PairStore(installed).mark("mine", "rb-mine", name="Mine")
-    account = tidal_account.TidalAccount(
-        DroppingClient(provider), sleep=lambda seconds: None, cfg=installed
-    )
+    account = _adapter(installed, provider, client=DroppingClient)
     with pytest.raises(CratekitError) as refused:
         account.order_tracks("mine", ("c", "a", "b"))
     assert refused.value.cause.reason == "unavailable-transient"
     assert len(provider.moves) == 1
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# A read that lags a write
-# ═══════════════════════════════════════════════════════════════════════════
+# ── a read that lags a write ────────────────────────────────────────────────
 
 
 def test_the_reading_after_adds_that_lags_them_is_read_again_before_the_first_move(installed):
@@ -405,9 +373,7 @@ def test_a_reading_holding_what_the_adds_left_in_another_order_is_not_stale(inst
     assert account.order_tracks("mine", ("a", "b", "x")) == ("a", "b", "x")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# A reading the caller expects
-# ═══════════════════════════════════════════════════════════════════════════
+# ── a reading the caller expects ────────────────────────────────────────────
 
 
 def test_a_reading_that_never_agrees_with_the_expected_one_refuses_with_nothing_moved(installed):
@@ -424,8 +390,7 @@ def test_a_reading_that_never_agrees_with_the_expected_one_refuses_with_nothing_
 
 
 def test_a_reading_that_agrees_with_the_expected_one_takes_the_order(installed):
-    provider = Provider(["a", "b", "c"])
-    after = _adapter(installed, provider).order_tracks(
+    after = _adapter(installed, Provider(["a", "b", "c"])).order_tracks(
         "mine", ("c", "a", "b"), expect=("a", "b", "c")
     )
     assert after == ("c", "a", "b")
@@ -441,9 +406,7 @@ def test_a_reading_that_lags_the_expected_one_is_read_again(installed):
     assert after == ("c", "b", "a")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Round one's review
-# ═══════════════════════════════════════════════════════════════════════════
+# ── round one's review ──────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize("whole", [False, True])
@@ -477,13 +440,12 @@ def test_a_412_whose_body_is_not_json_is_still_read_as_a_stale_tag():
 
 def test_more_412s_than_pauses_repeat_the_last_pause(installed, monkeypatch):
     monkeypatch.setattr(tidal_account, "ORDER_REREADS", 5)
-    provider = Provider(["a", "b", "c"])
-    pairs.PairStore(installed).mark("mine", "rb-mine", name="Mine")
     slept: list[float] = []
-    account = tidal_account.TidalAccount(RefusingClient(provider), sleep=slept.append, cfg=installed)
+    account = _adapter(installed, Provider(["a", "b", "c"]), slept, client=RefusingClient)
     with pytest.raises(CratekitError):
         account.order_tracks("mine", ("c", "a", "b"))
-    assert slept == [*tidal_account.ORDER_PAUSES, tidal_account.ORDER_PAUSES[-1], tidal_account.ORDER_PAUSES[-1]]
+    last = tidal_account.ORDER_PAUSES[-1]
+    assert slept == [*tidal_account.ORDER_PAUSES, last, last]
 
 
 @pytest.mark.parametrize(
@@ -499,26 +461,30 @@ def test_the_fake_account_orders_by_the_adapters_rule(installed, before, order):
     """R4 of round one: a sync suite's snapshot is the one the live adapter would leave."""
     from tests.outbound_fakes import FakeAccount
 
-    provider = Provider(before)
-    live = _adapter(installed, provider).order_tracks("mine", order)
+    live = _adapter(installed, Provider(before)).order_tracks("mine", order)
     fake = FakeAccount()
     fake.playlists["mine"] = list(before)
     assert fake.order_tracks("mine", order) == live
 
 
-def test_the_pauses_after_a_412_start_again_for_each_move(installed, monkeypatch):
-    """U231: a 412 on one move does not shorten the pauses another move's 412 is given."""
-    provider = Provider(["a", "b", "c", "d"])
+def _stale_on(monkeypatch, *sends: int) -> None:
+    """Make the moves sent at these counts carry a stale tag, so each is refused 412 once."""
     real = Movable.move_by_indices
     sent: list[int] = []
 
-    def stale_each_first(self, indices, position):
+    def stale_then_real(self, indices, position):
         sent.append(1)
-        if len(sent) in (1, 3):
+        if len(sent) in sends:
             self._etag = -1
         return real(self, indices, position)
 
-    monkeypatch.setattr(Movable, "move_by_indices", stale_each_first)
+    monkeypatch.setattr(Movable, "move_by_indices", stale_then_real)
+
+
+def test_the_pauses_after_a_412_start_again_for_each_move(installed, monkeypatch):
+    """U231: a 412 on one move does not shorten the pauses another move's 412 is given."""
+    provider = Provider(["a", "b", "c", "d"])
+    _stale_on(monkeypatch, 1, 3)
     slept: list[float] = []
     after = _adapter(installed, provider, slept).order_tracks("mine", ("d", "c", "a", "b"))
     assert after == ("d", "c", "a", "b")
@@ -526,9 +492,7 @@ def test_the_pauses_after_a_412_start_again_for_each_move(installed, monkeypatch
     assert slept == [tidal_account.ORDER_PAUSES[0], tidal_account.ORDER_PAUSES[0]]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# U231: the moves sent with no read back between them
-# ═══════════════════════════════════════════════════════════════════════════
+# ── U231: the moves sent with no read back between them ─────────────────────
 
 
 def test_every_move_is_planned_from_one_reading_and_sent_with_no_read_between(
@@ -564,16 +528,7 @@ def test_a_read_that_lags_every_move_does_not_stop_the_order(installed):
 
 def test_a_412_on_the_third_move_resends_that_move_once_and_no_other(installed, monkeypatch):
     provider = Provider(["a", "b", "c", "d", "e"])
-    real = Movable.move_by_indices
-    sent: list[int] = []
-
-    def third_stale(self, indices, position):
-        sent.append(1)
-        if len(sent) == 3:
-            self._etag = -1
-        return real(self, indices, position)
-
-    monkeypatch.setattr(Movable, "move_by_indices", third_stale)
+    _stale_on(monkeypatch, 3)
     slept: list[float] = []
     after = _adapter(installed, provider, slept).order_tracks("mine", ("e", "d", "c", "a", "b"))
     assert after == ("e", "d", "c", "a", "b")
@@ -607,9 +562,8 @@ def test_a_caller_that_cannot_record_the_moves_has_none_sent(installed):
 
 
 def test_nothing_to_move_tells_the_caller_nothing(installed):
-    provider = Provider(["a", "b", "c"])
     told: list[object] = []
-    after = _adapter(installed, provider).order_tracks(
+    after = _adapter(installed, Provider(["a", "b", "c"])).order_tracks(
         "mine", ("a", "b", "c"), begun=lambda start, end: told.append(start)
     )
     assert after == ("a", "b", "c") and told == []
@@ -632,9 +586,7 @@ def test_the_settle_reading_waits_then_reads_once_and_names_a_lag(installed):
     assert record["outcome"] == "lags"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# R-1394: the caller is told, before each move, how far the moves can have got
-# ═══════════════════════════════════════════════════════════════════════════
+# ── R-1394: the caller is told, before each move, how far the moves can have got ──
 
 
 def _counting(provider: Provider, told: list[tuple[int, int, int]]):
@@ -649,6 +601,10 @@ def _counting(provider: Provider, told: list[tuple[int, int, int]]):
     return begun
 
 
+def _counts(told: list[tuple[int, int, int]]) -> list[tuple[int, int]]:
+    return [(sent, landed) for sent, landed, _moves in told]
+
+
 def test_the_caller_is_told_before_each_move_how_many_may_have_landed(installed):
     provider = Provider(["a", "b", "c", "d"])
     told: list[tuple[int, int, int]] = []
@@ -661,32 +617,26 @@ def test_the_caller_is_told_before_each_move_how_many_may_have_landed(installed)
 
 def test_a_move_spent_on_its_412s_is_told_as_not_landed(installed):
     provider = Provider(["a", "b", "c"])
-    pairs.PairStore(installed).mark("mine", "rb-mine", name="Mine")
-    account = tidal_account.TidalAccount(
-        RefusingClient(provider), sleep=lambda seconds: None, cfg=installed
-    )
+    account = _adapter(installed, provider, client=RefusingClient)
     told: list[tuple[int, int, int]] = []
     with pytest.raises(CratekitError):
         account.order_tracks("mine", ("c", "a", "b"), begun=_counting(provider, told))
     # Told before each send and, after each 412, that the move changed nothing.
-    assert [(sent, landed) for sent, landed, _moves in told] == [(1, 0), (0, 0)] * (
-        tidal_account.ORDER_REREADS + 1
-    )
+    assert _counts(told) == [(1, 0), (0, 0)] * (tidal_account.ORDER_REREADS + 1)
 
 
 def test_a_stop_in_the_pause_after_a_412_is_recorded_as_no_move_in_flight(installed):
     """Round one's row 4: the 412 is recorded before the pause, so a stop inside it reads true."""
     provider = Provider(["a", "b", "c"])
-    pairs.PairStore(installed).mark("mine", "rb-mine", name="Mine")
 
     def stopped(seconds: float) -> None:
         raise KeyboardInterrupt
 
-    account = tidal_account.TidalAccount(RefusingClient(provider), sleep=stopped, cfg=installed)
+    account = _adapter(installed, provider, client=RefusingClient, sleep=stopped)
     told: list[tuple[int, int, int]] = []
     with pytest.raises(KeyboardInterrupt):
         account.order_tracks("mine", ("c", "a", "b"), begun=_counting(provider, told))
-    assert [(sent, landed) for sent, landed, _moves in told] == [(1, 0), (0, 0)]
+    assert _counts(told) == [(1, 0), (0, 0)]
     assert provider.members == ["a", "b", "c"]
 
 
@@ -706,7 +656,7 @@ def test_a_move_that_failed_another_way_is_left_as_maybe_landed(installed, monke
         _adapter(installed, provider).order_tracks(
             "mine", ("d", "c", "b", "a"), begun=_counting(provider, told)
         )
-    assert [(sent, landed) for sent, landed, _moves in told] == [(1, 0), (2, 1)]
+    assert _counts(told) == [(1, 0), (2, 1)]
 
 
 def test_a_recorder_that_cannot_record_has_no_further_move_sent(installed):
@@ -727,17 +677,15 @@ def test_a_recorder_that_cannot_record_has_no_further_move_sent(installed):
     assert len(provider.moves) == 1, "a move was sent that no record names"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# R-1411: a reading the caller agreed on, beside what the write left
-# ═══════════════════════════════════════════════════════════════════════════
+# ── R-1411: a reading the caller agreed on, beside what the write left ─────
 
 
 def _one_move_in_then_added(installed, *, lag: int):
     """A stopped order one move in, b, a, c, then x added, its next readings serving a, b, c, x.
 
-    The provider's reading lags the stopped move and not the addition, so it
-    holds every track the write left and stands in the order from before the
-    move: what the adapter's own check of what the playlist holds cannot see.
+    The reading lags the stopped move and not the addition, so it holds every
+    track the write left in the order from before the move: what the check of
+    what the playlist holds cannot see.
     """
     provider = Provider(["b", "a", "c"])
     account = _adapter(installed, provider)
@@ -787,7 +735,7 @@ def test_a_track_this_write_took_off_is_not_asked_of_the_reading(installed):
 
 
 def test_the_agreed_order_does_not_stand_in_for_what_the_write_left(installed):
-    """Beside the membership check, not instead of it: a reading lacking the add is still refused."""
+    """Beside the membership check, not instead of it: a reading lacking the add is refused."""
     provider = Provider(["b", "a", "c"], whole=True)
     account = _adapter(installed, provider)
     account.add_tracks("mine", ("x",))
