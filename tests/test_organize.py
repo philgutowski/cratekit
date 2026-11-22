@@ -1544,8 +1544,8 @@ def test_only_yours_shows_a_refused_rotation_since_it_is_why_the_listing_is_shor
 @pytest.mark.parametrize(
     ("kind", "called"),
     [
-        (account_area.LABELS, ["_labels"]),
-        (account_area.SETS, ["_sets"]),
+        (account_area.LABELS, ["_label_steps"]),
+        (account_area.SETS, ["_set_steps"]),
         (account_area.MARKS, ["_mark_steps"]),
         (account_area.FILE, ["_file_step"]),
         (account_area.ROOT, ["_root_step"]),
@@ -1565,7 +1565,7 @@ def test_each_account_kind_runs_its_own_builder_and_no_other(seams, monkeypatch,
 
         return built
 
-    for name in ("_labels", "_sets", "_mark_steps", "_file_step", "_root_step", "_yours"):
+    for name in ("_label_steps", "_set_steps", "_mark_steps", "_file_step", "_root_step", "_yours"):
         monkeypatch.setattr(account_area, name, recorder(name))
     if kind not in rekordbox.STEPS:
         monkeypatch.setattr(rekordbox, "plan_area", _not_planned)

@@ -1,8 +1,7 @@
 """One area of ``crate organize`` and the steps it is made of (U112).
 
-A STEP is one plan a composed verb made: one label's folder, one pass's marks,
-one set's archive, the adoption, the rotation. Each is of one KIND, the word
-``--only`` selects it by (U137). It is in exactly one state:
+A STEP is one plan a composed verb made, of one KIND, the word ``--only``
+selects it by (U137). It is in exactly one state:
 
 ==============  ===============================================================
 ``planned``     the step's own plan writes, and runs once its area is approved
@@ -13,18 +12,18 @@ one set's archive, the adoption, the rotation. Each is of one KIND, the word
 ==============  ===============================================================
 
 THE AREA'S DIGEST IS TAKEN OVER EVERY STEP'S KEY, STATE AND OWN DIGEST, a
-refused step's reason standing in for a digest. So an approval binds to the
-plans the screen showed: a step that refused when the question was asked and
-plans by the time it is answered moves the digest, and the answer is stale
-rather than honoured over a write nobody saw.
+refused step's reason standing in for a digest, so a step that refused when
+the question was asked and plans by the time it is answered makes the answer
+stale rather than honoured over a write nobody saw.
 
 Layer: modules.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any
 
 from cratekit.cli.output import digest_of
@@ -95,6 +94,35 @@ def refused(key: str, title: str, cause: Cause) -> Step:
     return Step(key=key, title=title, state=REFUSED, detail=cause.message, cause=cause)
 
 
+def planned_step(
+    key: str,
+    title: str,
+    writes: bool,
+    detail: str,
+    *,
+    digest: str | None = None,
+    counts: dict[str, Any] | None = None,
+    items: Iterable[dict[str, Any]] = (),
+    apply: Callable[[Step], dict[str, Any]] | None = None,
+) -> Step:
+    """A step its verb planned: ``planned`` when it writes, else ``nothing``.
+
+    ``apply`` is handed the step, so a write can add the warnings it raised.
+    """
+    step = Step(
+        key=key,
+        title=title,
+        state=PLANNED if writes else NOTHING,
+        detail=detail,
+        digest=digest,
+        counts=dict(counts or {}),
+        items=list(items),
+    )
+    if writes and apply is not None:
+        step.apply = partial(apply, step)
+    return step
+
+
 #: The fact a narrowed area shows in front of its steps (U137).
 ONLY_FACT = "only these steps"
 
@@ -127,8 +155,7 @@ class Area:
     #: the gate in place of the line that says nothing is removed.
     deletes: list[str] = field(default_factory=list)
     #: What a stale answer on this area says beside the two digests (U222):
-    #: each step that moved since its gate showed it, and how the plan was
-    #: made, one sentence each, when a step can say. Never digested.
+    #: each step that moved since its gate showed it, one sentence each. Never digested.
     stale: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -152,9 +179,9 @@ class Area:
     def identity(self) -> dict[str, Any]:
         """The document the area's digest is taken over, every step's own digest in it.
 
-        A NARROWED AREA NAMES ITS SELECTION (U137), so an answer given over the
-        steps ``--only`` chose is never read as one given over the whole area.
-        The key is absent with no selection, which keeps the full digest as it was.
+        A NARROWED AREA NAMES ITS SELECTION (U137), so an answer over the steps
+        ``--only`` chose is never read as one over the whole area; with no
+        selection the key is absent and the full digest stays as it was.
         """
         identity: dict[str, Any] = {
             "kind": "organize",
@@ -213,9 +240,8 @@ class Area:
             ],
             "yours": list(self.yours),
             "suggested": list(self.suggested),
-            # THE FACTS RIDE THE REPORT TOO, not only the gate's screen, since
-            # ``--report`` asks nothing and a missing backup acknowledgment it
-            # notes would otherwise reach no one.
+            # THE FACTS RIDE THE REPORT TOO, since ``--report`` asks nothing and a
+            # missing backup acknowledgment it notes would otherwise reach no one.
             "facts": dict(self.facts),
         }
         if self.cause is not None:
@@ -230,6 +256,16 @@ def _your_line(one: dict[str, Any]) -> str:
     )
 
 
+def _with_steps(cause: Cause) -> str:
+    """A refusal's message with its remediation's steps after it."""
+    steps = cause.remediation.steps
+    return cause.message + ("; " + "; ".join(steps) if steps else "")
+
+
+def _row(key: str, title: str, status: str, detail: str, remedy: str | None) -> dict[str, Any]:
+    return {"key": key, "title": title, "status": status, "detail": detail, "remedy": remedy}
+
+
 def check(area: Area, step: Step) -> dict[str, Any]:
     """One step as a ``diagnostic/1`` check row, since the default output prints rows."""
     status = {PLANNED: "info", NOTHING: "ok", REFUSED: "fail", LISTED: "info"}[step.state]
@@ -237,8 +273,7 @@ def check(area: Area, step: Step) -> dict[str, Any]:
     remedy = None
     if step.cause is not None:
         remedy = str(step.cause.remediation.remedy)
-        if step.cause.remediation.steps:
-            detail += "; " + "; ".join(step.cause.remediation.steps)
+        detail = _with_steps(step.cause)
     if step.failed is not None:
         status = "fail"
         detail = f"failed on apply: {step.failed.message}"
@@ -246,66 +281,30 @@ def check(area: Area, step: Step) -> dict[str, Any]:
     elif step.applied is not None:
         status = "ok"
         detail = f"{APPLIED}: {step.detail}"
-    return {
-        "key": f"organize.{area.name}.{step.key}",
-        "title": f"{area.name}: {step.title}",
-        "status": status,
-        "detail": detail,
-        "remedy": remedy,
-    }
+    key = f"organize.{area.name}.{step.key}"
+    return _row(key, f"{area.name}: {step.title}", status, detail, remedy)
 
 
 def area_check(area: Area) -> dict[str, Any]:
     """The area's own row: its refusal, or what the author made, listed."""
+    key = f"organize.{area.name}"
     if area.cause is not None:
-        detail = area.cause.message
-        if area.cause.remediation.steps:
-            detail += "; " + "; ".join(area.cause.remediation.steps)
-        return {
-            "key": f"organize.{area.name}",
-            "title": area.name,
-            "status": "fail",
-            "detail": f"not planned: {detail}",
-            "remedy": str(area.cause.remediation.remedy),
-        }
+        detail = f"not planned: {_with_steps(area.cause)}"
+        return _row(key, area.name, "fail", detail, str(area.cause.remediation.remedy))
     facts = "; ".join(
-        f"{key}: {value}" for key, value in area.facts.items() if isinstance(value, (str, int))
+        f"{name}: {value}" for name, value in area.facts.items() if isinstance(value, (str, int))
     )
-    return {
-        "key": f"organize.{area.name}",
-        "title": area.name,
-        "status": "info",
-        "detail": (
-            (f"{facts}; " if facts else "")
-            + f"{len(area.yours)} of your own listed and not moved"
-            + (
-                ": " + "; ".join(_your_line(one) for one in area.yours)
-                if area.yours
-                else ""
-            )
-            + (
-                f"; {len(area.suggested)} suggestion(s) nothing writes: "
-                + "; ".join(one["suggestion"] for one in area.suggested)
-                if area.suggested
-                else ""
-            )
-        ),
-        "remedy": None,
-    }
+    detail = (f"{facts}; " if facts else "") + f"{len(area.yours)} of your own listed and not moved"
+    if area.yours:
+        detail += ": " + "; ".join(_your_line(one) for one in area.yours)
+    if area.suggested:
+        detail += f"; {len(area.suggested)} suggestion(s) nothing writes: " + "; ".join(
+            one["suggestion"] for one in area.suggested
+        )
+    return _row(key, area.name, "info", detail, None)
 
 
 __all__ = [
-    "APPLIED",
-    "FAILED",
-    "LISTED",
-    "NOTHING",
-    "ONLY_FACT",
-    "PLANNED",
-    "REFUSED",
-    "Area",
-    "Step",
-    "area_check",
-    "check",
-    "refused",
-    "selection",
+    "APPLIED", "FAILED", "LISTED", "NOTHING", "ONLY_FACT", "PLANNED", "REFUSED", "Area", "Step",
+    "area_check", "check", "planned_step", "refused", "selection",
 ]
