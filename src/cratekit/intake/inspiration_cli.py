@@ -1,19 +1,13 @@
 """``crate intake inspiration``: the set's permanent playlist for a set already landed (U121).
 
-``intake land --set`` writes the playlist in the landing's own commit. This
-verb is the backfill for a set job whose files landed before that existed, or
-landed without ``--set``: the Vonking set and the sitting 11 sets. It reads
-the same job, names the playlist the same way, resolves every row against the
-library as it is now, shows the plan, asks its explicit gate, and writes the
-playlist in a session of its own through the guarded writer, reading it back
-from SQL before it answers. It adds nothing to INBOX and touches no content
-row.
-
-THE ORDER IS THE NATIVE LANDING'S, :func:`land_cli.ask_then_write`: the
-database opened with write intent before the plan, the acknowledgment read
-before the gate (R-733), the write only on ``apply``. Database native intake
-trees only, since the playlist is a database node and the bridge's writers
-emit an export.
+``intake land --set`` writes the playlist in the landing's own commit; this
+verb is the backfill for a set job landed before that, or without ``--set``.
+It names the playlist the same way, resolves every row against the library as
+it is now, asks its explicit gate and writes in a session of its own through
+the guarded writer, read back from SQL. It adds nothing to INBOX and touches
+no content row. The order is the native landing's (:func:`land_cli.ask_then_write`):
+plan, acknowledgment before the gate (R-733), write only on ``apply``.
+Database native intake trees only, since the playlist is a database node.
 
 Layer: modules.
 """
@@ -65,9 +59,7 @@ def planned(
         rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
     )
     try:
-        return set_playlist.plan_for_backfill(
-            cfg, db, declared, job, words, reports, posted=posted
-        )
+        return set_playlist.plan_for_backfill(cfg, db, declared, job, words, reports, posted=posted)
     finally:
         rb_writer.close_db(db)
 
@@ -100,10 +92,9 @@ def written(
 def intake_inspiration(ctx) -> Envelope:
     """Name the set, plan its playlist over the library now, ask, write, read back.
 
-    THE ORDER IS THE ROTATION'S: the plan on a read handle, the acknowledgment
-    before the gate (R-733), the gate over the digested plan, the write on a
-    handle opened with write intent that takes the plan again and refuses a
-    digest that moved.
+    The rotation's order: the plan on a read handle, the acknowledgment before
+    the gate (R-733), the write on a handle opened to write that takes the
+    plan again and refuses a digest that moved.
     """
     cfg = load_config(("intake.inspiration_cli",))
     medium = _native_or_refuse(cfg)
@@ -122,9 +113,7 @@ def intake_inspiration(ctx) -> Envelope:
     if ctx.gate.require(spec, plan=payload, context=set_playlist.facts(plan)) != "apply":
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
     if not plan.members:
-        # AN EMPTY PLAN IS STILL A PLAN A PERSON CAN ABORT, as the rotation's
-        # is, so the gate was asked; once answered, a set with no member to
-        # hold writes nothing and says so.
+        # An empty plan is still one a person can abort, so the gate was asked.
         return ctx.envelope(
             data=payload,
             outcome=Outcome.NO_OP,
@@ -139,15 +128,8 @@ def intake_inspiration(ctx) -> Envelope:
     set_playlist.assert_read_back(kept)
     data: dict[str, Any] = {
         **payload,
-        "items": [
-            *payload["items"],
-            land_cli.set_playlist_item(kept, session_id=""),
-        ],
-        "totals": {
-            **payload["totals"],
-            "added": kept.added,
-            "read back": len(kept.read_back),
-        },
+        "items": [*payload["items"], land_cli.set_playlist_item(kept, session_id="")],
+        "totals": {**payload["totals"], "added": kept.added, "read back": len(kept.read_back)},
     }
     return ctx.envelope(
         data=data,
@@ -157,6 +139,3 @@ def intake_inspiration(ctx) -> Envelope:
             *set_playlist.left_warning(kept.left),
         ],
     )
-
-
-__all__ = ["APPROVE_GATE", "build", "intake_inspiration", "planned", "written"]
