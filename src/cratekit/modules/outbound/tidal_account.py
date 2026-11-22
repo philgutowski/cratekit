@@ -123,12 +123,12 @@ def _stale_tag(exc: BaseException) -> bool:
 
 
 def _to_the_front(before: list[str], remote_ids: Iterable[str]) -> list[str]:
-    """The tracks to move to the front, in the order to move them (U220), by ``front_moves``'s rule."""
+    """The tracks to move to the front, in the order to move them (U220): ``front_moves``."""
     return front_moves(before, remote_ids)
 
 
 def _fronted(order: list[str], one: str) -> list[str]:
-    """``order`` with the track ``one``, held once, moved to the front, as a move to the front leaves it (U231)."""
+    """``order`` with the track ``one``, held once, moved to the front, as a move leaves it (U231)."""
     return [one, *(other for other in order if other != one)]
 
 
@@ -160,23 +160,16 @@ def _waited(seconds: float) -> str:
 def _refused(message: str, step: str, scope: Scope, **detail: str) -> CratekitError:
     """A write or a removal refused with nothing (more) sent, ``outbound-remove-refused``."""
     return refuse(
-        "outbound-remove-refused",
-        message,
-        steps=(step,),
-        scope=scope,
-        origin=("outbound", "account"),
-        detail=detail,
+        "outbound-remove-refused", message, steps=(step,), scope=scope,
+        origin=("outbound", "account"), detail=detail,
     )
 
 
 def _root_refusal(what: str, said: str, problem: str, **detail: str) -> CratekitError:
     """A root removal refused with nothing sent, in words and by problem."""
     return _refused(
-        f"{said}, so {what} was not removed",
-        f"remove {what} by hand in the provider's own player",
-        Scope.SOURCE,
-        **detail,
-        problem=problem,
+        f"{said}, so {what} was not removed", f"remove {what} by hand in the provider's own player",
+        Scope.SOURCE, **detail, problem=problem,
     )
 
 
@@ -199,8 +192,7 @@ def _window_lags(
         f"the whole playlist, so it may lag a recent change and which position "
         f"holds which track is not known; {kept}",
         "wait a few minutes for the provider to serve the playlist as it stands, then run it again",
-        Scope.RUN,
-        **detail,
+        Scope.RUN, **detail,
     )
 
 
@@ -222,16 +214,11 @@ def _created(created: Any, what: str, doing: str) -> str:
 
 
 class TidalAccount(Reads):
-    """The ``RemoteAccount`` members over one logged in client: the reads of :class:`Reads` and the writes here."""
+    """The ``RemoteAccount`` members over one logged in client: :class:`Reads` and the writes."""
 
     def __init__(
-        self,
-        session: Any,
-        *,
-        sleep: Callable[[float], None] | None = None,
-        cfg: Any = None,
-        catalogue: Any = None,
-        cache: isrc_cache.Cache | None = None,
+        self, session: Any, *, sleep: Callable[[float], None] | None = None, cfg: Any = None,
+        catalogue: Any = None, cache: isrc_cache.Cache | None = None,
     ) -> None:
         self._session = session
         #: Where catalogue lookups go: the app client when the opener built one (U205).
@@ -333,21 +320,14 @@ class TidalAccount(Reads):
     def _held(self, playlist_id: str) -> Any:
         """The playlist's held object, opened through :meth:`_playlist` only if none is held.
 
-        ONE OPEN FOR A RUN OF ADDS, NOT ONE PER ADD (U255). An open is two GETs
-        (the client fetches a ``Playlist``, then the ``UserPlaylist`` its
-        factory builds) and the client's add reads the playlist again after its
-        POST for the next version tag: opening per add cost 4,003 requests for
-        1,000 adds. Through the held object an add costs the POST and that read.
-
-        THE TAG AND THE POSITION COME FROM ONE ANSWER. The client's add sends the
-        object's tag and puts the track at the object's length, both set by its
-        open or its own read after each write. So :meth:`_membership` reads the
-        tracks through a copy, since the client's track read overwrites the tag
-        and leaves the length, and nothing is held until the read it was opened
-        for has succeeded. A held tag the provider has moved on from is refused
-        412 with nothing changed (Sitting 62), and :meth:`add_to_playlist` meets
-        that by opening afresh. Held for the life of the adapter, which
-        ``account.forget`` drops.
+        ONE OPEN FOR A RUN OF ADDS (U255): an open is two GETs and the client's
+        add reads the playlist again after its POST, so opening per add cost
+        four requests a track. THE TAG AND THE POSITION COME FROM ONE ANSWER:
+        the client's add sends the object's tag and puts the track at its
+        length, both set by one read, which is why :meth:`_membership` reads the
+        tracks through a copy and holds nothing until that read succeeds. A
+        stale held tag is refused 412 with nothing changed (Sitting 62), and
+        :meth:`add_to_playlist` then opens afresh.
         """
         held = self._opened.get(playlist_id)
         if held is None:
@@ -385,16 +365,11 @@ class TidalAccount(Reads):
     def _make_private(self, created: Any, identifier: str) -> None:
         """Set a playlist this account just created private. Retried like a write.
 
-        A REFUSAL IS NOT RAISED, AND THAT IS THE WHOLE POINT OF ITS SHAPE. The
-        playlist already exists, and raising would keep its identifier out of the
-        ledger, so the next item of the export would create another, one public
-        playlist per track (driven on 2026-09-02). So the one playlist is
-        recorded and the refusal costs its visibility instead (R-849). That
-        includes a park from the provider gate: its cooldown is written to the
-        shared gate file, so the next gated call refuses at once anyway. It runs
-        inside the ledger's lock, so a kill leaves an unrecorded playlist only
-        within the create and this step. A client with no such call is passed
-        over the same way; a guard in the suite pins the call on the library.
+        A REFUSAL IS NOT RAISED, a gate's park included: the playlist exists, and
+        raising would keep it out of the ledger, so the next item would create
+        another, one public playlist per track. The refusal costs its visibility
+        instead (R-849); a park's cooldown still stops the next gated call. A
+        client with no such call is passed over too; a suite guard pins it.
         """
         try:
             self._call(
@@ -442,10 +417,9 @@ class TidalAccount(Reads):
         if identifier not in {str(item) for item in added or ()}:
             del self._members[playlist_id]
             if identifier not in self._membership(playlist_id):
-                raise account.provider_failure(
-                    LookupError(f"the provider added nothing for the track {identifier!r}"),
-                    doing,
-                )
+                raise account.provider_failure(LookupError(
+                    f"the provider added nothing for the track {identifier!r}"
+                ), doing)
             return
         members.append(identifier)
 
@@ -471,20 +445,15 @@ class TidalAccount(Reads):
                 f"a rename of the playlist {playlist_id} was asked for with no "
                 f"title; the client reads a falsy title as keep the current one "
                 f"and answers that it succeeded, so nothing was sent",
-                scope=Scope.SOURCE,
-                origin=("outbound", "account"),
+                scope=Scope.SOURCE, origin=("outbound", "account"),
                 detail={"playlist_id": str(playlist_id)},
             )
         playlist = self._playlist(playlist_id)
         retitle = getattr(playlist, "edit", None)
         if not callable(retitle):
-            raise account.provider_failure(
-                LookupError(
-                    f"the provider's playlist {playlist_id!r} cannot be retitled by "
-                    f"this account"
-                ),
-                doing,
-            )
+            raise account.provider_failure(LookupError(
+                f"the provider's playlist {playlist_id!r} cannot be retitled by this account"
+            ), doing)
         # The client answers a refused edit with ``False`` rather than a raise.
         accepted = self._call(doing, lambda: retitle(title=wanted))
         if accepted is False or accepted is _ABSENT:
@@ -572,13 +541,8 @@ class TidalAccount(Reads):
         the reading leaves it recorded as ``"refused"``.
         """
         note: dict[str, Any] = {
-            "playlist_id": str(playlist_id),
-            "after": after,
-            "readings": 0,
-            "waited": 0.0,
-            "window_lagged": 0,
-            "outcome": "refused",
-            **more,
+            "playlist_id": str(playlist_id), "after": after, "readings": 0, "waited": 0.0,
+            "window_lagged": 0, "outcome": "refused", **more,
         }
         self._read_backs.append(note)
         return note
@@ -586,17 +550,12 @@ class TidalAccount(Reads):
     def read_backs(self) -> tuple[dict[str, Any], ...]:
         """Every reading this adapter judged a write or an order by, in order (U226).
 
-        Each is ``{"playlist_id", "after", "readings", "waited",
-        "window_lagged", "outcome"}``. ``after`` is ``"order"`` for the reading
-        an order is planned from, ``"removal positions"`` for a removal's,
-        ``"removal"`` for a removal's read back, ``"moves"`` for an order's
-        moves (U231), which adds ``moved``, the moves accepted, and ``stale``,
-        the 412s sent again, and ``"settle"`` for the reading an order is
-        decided by, whose outcome is ``"lags"`` when its window lagged.
-        ``window_lagged`` counts readings whose window read disagreed with an
-        unpaged read that was not the whole playlist; ``outcome`` is ``"done"``
-        or ``"refused"``. Copies, so a caller cannot change what is recorded;
-        ``crate sync pair`` carries them as the run's facts.
+        Copies of :meth:`_noting`'s records. ``after`` is ``"order"``,
+        ``"removal positions"``, ``"removal"`` (a removal's read back),
+        ``"moves"`` (U231, adding ``moved`` and ``stale``, the 412s sent again)
+        or ``"settle"``, whose outcome is ``"lags"`` when its window lagged;
+        ``window_lagged`` counts readings whose window disagreed with an unpaged
+        read that was not whole. ``crate sync pair`` carries them as its facts.
         """
         return tuple(dict(note) for note in self._read_backs)
 
@@ -606,59 +565,44 @@ class TidalAccount(Reads):
         note["waited"] += seconds
 
     def _reading(self, playlist_id: str, playlist: Any) -> tuple[list[str], Any, Any, str]:
-        """One reading of an opened playlist: its tracks by position, declared tracks and videos, and how its two reads stood.
+        """One reading of an opened playlist: tracks by position, declared tracks and videos, and its window.
 
-        TWO READS, THE WINDOW AND THEN THE UNPAGED ONE (U226). Sitting 84
-        measured the window read serving a playlist's old order for minutes
-        after a move while the unpaged read served the new one at once.
-        :func:`listing.judge_window` reads them against the declared count: the
-        unpaged tracks when it is the whole playlist (``WINDOW_UNPAGED``), else
-        the window's, agreeing (``WINDOW_AGREES``) or marked ``WINDOW_LAGS``,
-        which no caller takes as the playlist as it stands.
-
-        THE UNPAGED READ IS TAKEN LAST, so the version tag the client keeps is
-        its own: a window served from before a write carries that write's old
-        tag. Past a capped first page it walks on (R-1360), and a walk that
-        broke on a page with an older tag is not whole, so it lags. Nothing is
-        judged here: each caller judges by its own rule.
+        TWO READS, THE WINDOW AND THEN THE UNPAGED ONE (U226): Sitting 84
+        measured the window serving an old order for minutes after a move while
+        the unpaged read served the new one. :func:`listing.judge_window` takes
+        the unpaged tracks when that read is the whole playlist, else the
+        window's, agreeing or marked ``WINDOW_LAGS``. The unpaged read is LAST,
+        so the version tag the client keeps is its own (R-1360). Each caller
+        judges the reading by its own rule.
         """
         paged = [listing.row_id(track) for track in self._listed(playlist_id, playlist)]
         unpaged = [
             listing.row_id(track)
             for track in self._read(
-                f"read the playlist {playlist_id}", lambda: listing.playlist_tracks_unpaged(playlist)
+                f"read the playlist {playlist_id}",
+                lambda: listing.playlist_tracks_unpaged(playlist),
             )
         ]
         declared = getattr(playlist, "num_tracks", None)
         window = listing.judge_window(paged, unpaged, declared)
         return (
-            unpaged if window == listing.WINDOW_UNPAGED else paged,
-            declared,
-            getattr(playlist, "num_videos", None),
-            window,
+            unpaged if window == listing.WINDOW_UNPAGED else paged, declared,
+            getattr(playlist, "num_videos", None), window,
         )
 
     def _positions(self, playlist_id: str, playlist: Any) -> list[str]:
         """The playlist's tracks by position, refused when a position is unknowable.
 
         THE PROVIDER LEAVES OUT A TRACK THIS ACCOUNT CANNOT PLAY AND STILL COUNTS
-        IT (``listing.playlist_tracks``), so a read short of the declared total
-        has positions shifted from the provider's, and a removal by position
-        would take the wrong track; a playlist declaring no total cannot be
-        checked. The client removes by ITEM position, tracks and videos
-        together, so any video, or no video count, refuses too. A window that
-        disagrees with the unpaged read (U226) refuses first, ``window-lags``;
-        each caller says whether that reading is read again.
+        IT, so a read short of the declared total, or of none, has positions
+        shifted and a removal by position would take the wrong track. The client
+        removes by ITEM position, videos included, so any video, or no video
+        count, refuses too. A window that lags (U226) refuses first.
         """
         members, declared, videos, window = self._reading(playlist_id, playlist)
         if window == listing.WINDOW_LAGS:
             raise _window_lags(str(playlist_id), "nothing was sent on that reading")
-        if (
-            not _count(declared)
-            or declared != len(members)
-            or not _count(videos)
-            or videos != 0
-        ):
+        if not _count(declared) or declared != len(members) or not _count(videos) or videos != 0:
             raise _refused(
                 f"the playlist {playlist_id} declares {declared!r} track(s) and "
                 f"{videos!r} video(s), and {len(members)} track(s) could be read, so "
@@ -666,9 +610,7 @@ class TidalAccount(Reads):
                 f"taken off it",
                 "take the tracks off by hand in the provider's own player, or "
                 "remove the tracks this account cannot play first",
-                Scope.SOURCE,
-                playlist_id=str(playlist_id),
-                problem="positions-unknown",
+                Scope.SOURCE, playlist_id=str(playlist_id), problem="positions-unknown",
             )
         self._members[playlist_id] = members
         return members
@@ -690,9 +632,7 @@ class TidalAccount(Reads):
             f"one this product created and no playlist pair names it, so "
             f"{kept} and the provider was not asked",
             "change the playlist by hand in the provider's own player",
-            Scope.SOURCE,
-            playlist_id=identifier,
-            problem="not-product-made",
+            Scope.SOURCE, playlist_id=identifier, problem="not-product-made",
         )
 
     def _settled(
@@ -705,26 +645,21 @@ class TidalAccount(Reads):
         kept: str = "no track was moved",
         agreed: tuple[str, ...] | None = None,
     ) -> tuple[Any, list[str]]:
-        """The playlist opened and read for an order or a removal, once the reading agrees with ``known`` (U220).
+        """The playlist opened and read for an order or a removal, once the reading agrees (U220).
 
-        ``known`` is what was last known of the playlist, None for nothing, and
-        then the first reading is taken as it is. ``exact`` compares the
-        distinct tracks in order, for a reading the caller took; otherwise the
-        tracks held, since a provider may put an added track somewhere other
-        than where this adapter appended it. ``agreed`` (R-1411) is an order the
-        caller agreed on before this command wrote the playlist, which every
-        track of it the reading holds must stand in (:func:`_in_agreed_order`).
+        ``known`` is what was last known of the playlist, None for nothing.
+        ``exact`` compares its distinct tracks in order, for a reading the
+        caller took; otherwise the tracks held, since a provider may place an
+        add elsewhere. ``agreed`` (R-1411) is an order the caller agreed on
+        before this command wrote, which the tracks of it held must stand in.
 
-        A READING THAT LAGS A WRITE IS WHAT THIS IS FOR: Sitting 62's order ran
-        straight after six additions, and a reading not yet showing them puts
-        every later position wrong. A reading that disagrees, or is short of its
-        declared count while something is known, is taken again after each
-        pause of :data:`ORDER_PAUSES`, and once :data:`ORDER_REREADS` are spent
-        the last refusal is raised with nothing sent; with nothing known a short
-        reading refuses at once, as there is no write for it to lag. A window
-        that lags its unpaged read (U226) is read again whether or not anything
-        is known, and once spent is refused ``window-lags``. ``after`` names the
-        record and ``kept`` what a refusal says was not done.
+        A READING THAT LAGS A WRITE IS WHAT THIS IS FOR (Sitting 62): one that
+        disagrees, or is short of its count while something is known, is taken
+        again after each pause of :data:`ORDER_PAUSES`, and once
+        :data:`ORDER_REREADS` are spent the last refusal is raised with nothing
+        sent. With nothing known a short reading refuses at once, having no
+        write to lag; a lagging window (U226) is read again either way.
+        ``after`` names the record, ``kept`` what a refusal says was not done.
         """
 
         def agrees(reading: list[str]) -> bool:
@@ -766,9 +701,7 @@ class TidalAccount(Reads):
                 + kept,
                 "check the playlist by hand in the provider's own player, then "
                 "run the sync again",
-                Scope.RUN,
-                playlist_id=identifier,
-                problem="read-differs",
+                Scope.RUN, playlist_id=identifier, problem="read-differs",
             )
         assert last is not None
         raise last
@@ -785,39 +718,21 @@ class TidalAccount(Reads):
         | None = None,
         agreed: tuple[str, ...] | None = None,
     ) -> tuple[str, ...]:
-        """Put the playlist's tracks in this order, the moves sent with no read back between. NO MOVE IS SENT TWICE.
+        """Put the playlist's tracks in this order, the moves sent with no read back between.
 
-        The two records :meth:`_vouched` names are asked first, before the
-        playlist is opened.
+        Asked of :meth:`_vouched` before the playlist is opened. EVERY MOVE IS
+        TO THE FRONT (U220), the one move whose landing does not depend on how
+        the provider counts its target; the longest run already in order at the
+        tail stays. PLANNED FROM ONE JUDGED READING (:meth:`_settled`), SENT
+        BLIND (U231): Sitting 86 measured reads lagging moves for minutes, so
+        the caller reads once, later (:meth:`settled_order`).
 
-        EVERY MOVE IS TO THE FRONT (U220), the one move whose landing does not
-        depend on how the provider counts its target (Sitting 62's provider
-        lands a move to the length one short). The longest run at the tail of
-        ``remote_ids`` already in order stays, and the tracks before it are
-        moved to the front, the last first. A track not asked stays among the
-        kept tail.
-
-        PLANNED FROM ONE JUDGED READING, SENT BLIND (U231). The reading must
-        agree with ``expect``, else with what this adapter's own writes left,
-        and with ``agreed`` (:meth:`_settled`); then every move's position is
-        worked out from it and sent with NO READ BACK BETWEEN, since Sitting 86
-        measured reads lagging moves for minutes. Whether the order landed is
-        read once, later, by the caller (:meth:`settled_order`).
-
-        ``begun`` is called with the reading planned from and the order the
-        moves leave, before the first move and not at all when nothing moves;
-        whatever it raises sends nothing. It may answer a recorder (R-1394),
-        called with ``(sent, landed)`` before each move is sent (and sent
-        again), whatever it raises sending no further move. A 412 changed
-        nothing (Sitting 62), so the recorder is then told with ``sent`` brought
-        back down, before the pause; the adapter pauses, opens the playlist for
-        its current tag and sends THE SAME MOVE again, at most
-        :data:`ORDER_REREADS` times. Any other failure is raised and nothing is
-        sent again, since a move that landed and timed out, sent again, would
-        move whatever stands at that position now.
-
-        A track the playlist does not hold, or holds twice, is not moved. The
-        return is the order the moves leave, as sent and not read back.
+        ``begun`` and the recorder it may answer (R-1394) are told before any
+        move and before each, as the protocol says; whatever either raises
+        sends nothing further. A 412 changed nothing (Sitting 62): the recorder
+        is told so before the pause, and THE SAME MOVE is sent again on a fresh
+        open, at most :data:`ORDER_REREADS` times. NO MOVE IS SENT TWICE for any
+        other failure, since one that landed would then move another track.
         """
         identifier = str(playlist_id)
         self._vouched(identifier, "no track was moved")
@@ -844,9 +759,7 @@ class TidalAccount(Reads):
                     told(number, number - 1)
                 try:
                     accepted = self._call(
-                        doing,
-                        lambda at=at, playlist=playlist: playlist.move_by_indices([at], 0),
-                        retries=0,
+                        doing, lambda: playlist.move_by_indices([at], 0), retries=0
                     )
                     break
                 except CratekitError as exc:
@@ -903,19 +816,12 @@ class TidalAccount(Reads):
     def remove_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
         """Take tracks off one playlist the product made or the author paired. NEVER RETRIED.
 
-        The two records :meth:`_vouched` names are asked first, before the
-        playlist is opened.
-
-        BY POSITION, BECAUSE THE CLIENT'S REMOVE BY IDENTIFIER READS ONE PAGE.
-        The positions are read here through ``listing`` as an order's first
-        reading is (:meth:`_settled`), so a window that lags is read again, and
-        :meth:`_positions` refuses positions that cannot be trusted. Each
-        request carries the version tag of the read it was planned from.
-
-        NOT RETRIED: a removal by position that landed and then timed out, sent
-        again, would take off whatever moved into those positions. READ BACK,
-        NOT TRUSTED: see :meth:`_removal_read_back`, whose reading is the next
-        request's.
+        Asked of :meth:`_vouched` before the playlist is opened. BY POSITION,
+        since the client's remove by identifier reads one page: the positions
+        are read as an order's first reading is (:meth:`_settled`). Not retried,
+        since a removal that landed and timed out, sent again, would take off
+        whatever moved into those positions; read back by
+        :meth:`_removal_read_back`, whose reading the next request is planned on.
         """
         identifier = str(playlist_id)
         wanted = [str(one) for one in dict.fromkeys(remote_ids) if str(one)]
@@ -933,9 +839,7 @@ class TidalAccount(Reads):
             at = sorted(i for i, one in enumerate(before) if one in asked)[:REMOVE_CHUNK]
             if not at:
                 break
-            accepted = self._call(
-                doing, lambda at=at, playlist=playlist: playlist.remove_by_indices(at), retries=0
-            )
+            accepted = self._call(doing, lambda: playlist.remove_by_indices(at), retries=0)
             if accepted is False or accepted is _ABSENT:
                 raise account.provider_failure(
                     RuntimeError("the provider did not accept the removal"), doing
@@ -951,16 +855,11 @@ class TidalAccount(Reads):
     ) -> tuple[Any, list[str]]:
         """The playlist opened and read after a removal, which must be ``expected`` (R-1308).
 
-        EACH READING IS JUDGED ON ITS TWO HALVES, the tracks read and the
-        declared count, each the playlist BEFORE the removal or AFTER it, with
-        no video declared. Both after is done, and only that reading is
-        remembered and carried as the next request's positions and tag. Either
-        half still before, the other before or after, is a read that LAGS the
-        removal (as U220 measured for a move): it is read again after each pause
-        of :data:`ORDER_PAUSES`, at most :data:`ORDER_REREADS` times, then
-        refused saying the removal may have landed. Anything else, a wrong track
-        gone or a count that is neither, is refused at once. The removal is
-        never sent again from here.
+        EACH READING IS JUDGED ON ITS TWO HALVES, tracks and declared count,
+        each BEFORE the removal or AFTER it, no video declared. Both after is
+        done. Either half before, the other before or after, LAGS the removal:
+        read again as :meth:`_settled` reads, then refused saying it may have
+        landed. Anything else, a wrong track gone, refuses at once.
         """
         note = self._noting(identifier, "removal")
         lagged = False
@@ -1035,11 +934,8 @@ class TidalAccount(Reads):
             ),
             "check the playlist by hand in the provider's own player "
             "before running anything on it again",
-            Scope.RUN,
-            playlist_id=identifier,
-            problem="read-back-differs",
-            lagged="yes" if lagged else "no",
-            readings=str(note["readings"]),
+            Scope.RUN, playlist_id=identifier, problem="read-back-differs",
+            lagged="yes" if lagged else "no", readings=str(note["readings"]),
             waited=_waited(note["waited"]),
         )
 
@@ -1069,9 +965,7 @@ class TidalAccount(Reads):
                 f"{named} is still served by the provider after it was asked to "
                 f"remove it, so it was not removed",
                 "check the playlist by hand in the provider's own player",
-                Scope.RUN,
-                playlist_id=identifier,
-                problem="read-back-differs",
+                Scope.RUN, playlist_id=identifier, problem="read-back-differs",
             )
         self._members.pop(identifier, None)
 
@@ -1089,9 +983,7 @@ class TidalAccount(Reads):
                 f"one this product created, so it was not removed and the provider "
                 f"was not asked",
                 "remove the playlist by hand in the provider's own player",
-                Scope.SOURCE,
-                playlist_id=identifier,
-                problem="not-product-made",
+                Scope.SOURCE, playlist_id=identifier, problem="not-product-made",
             )
         doing = f"remove the playlist {identifier}"
         found = self._served(doing, identifier)
@@ -1105,9 +997,7 @@ class TidalAccount(Reads):
                 f"the provider does not serve the playlist {identifier} as one this "
                 f"account owns, so it was not removed",
                 "remove the playlist by hand in the provider's own player",
-                Scope.SOURCE,
-                playlist_id=identifier,
-                problem="not-owned",
+                Scope.SOURCE, playlist_id=identifier, problem="not-owned",
             )
         self._sent_and_read_back(doing, remove, identifier, f"the playlist {identifier}")
 
@@ -1126,14 +1016,11 @@ class TidalAccount(Reads):
     def remove_root_playlist(self, playlist_id: str, kind: str) -> None:
         """Remove one root playlist of the named kind (U143). NEVER RETRIED, read back.
 
-        THE KIND IS ASKED FIRST, then the ledger: a kind other than debris or
-        empty, and a playlist any ledger record names, are refused with no
-        provider call (the product's own are :meth:`remove_playlist`'s). THE
-        PROVIDER'S OWN ANSWER MUST BE OF THE KIND: debris must carry the label
-        batch's suffix, case exactly, and an empty one must declare no track and
-        no video, both readable; else it is refused before the delete. Where it
-        sits and whether debris's tracks are still filed the caller reads again
-        before it asks (``organize.root.apply``).
+        THE KIND IS ASKED FIRST, then the ledger, with no provider call. THE
+        PROVIDER'S OWN ANSWER MUST BE OF THE KIND: debris carries the label
+        batch's suffix, case exactly; an empty one declares no track and no
+        video. Where it sits, and whether debris's tracks are filed, the caller
+        reads again before it asks (``organize.root.apply``).
         """
         from cratekit.sync.playlists import is_library_debris
 
@@ -1141,18 +1028,15 @@ class TidalAccount(Reads):
         what = f"the playlist {identifier}"
         if kind not in kinds.ROOT_REMOVALS:
             raise _root_refusal(
-                what,
-                f"{kind!r} is not a kind of root playlist this account removes",
-                "not-a-root-kind",
-                playlist_id=identifier,
+                what, f"{kind!r} is not a kind of root playlist this account removes",
+                "not-a-root-kind", playlist_id=identifier,
             )
         if self._cfg is None or self._claimed(identifier):
             raise _root_refusal(
                 what,
                 "a ledger record names it, or no ledger could be read, and the "
                 "product's own playlists are not removed as root debris or empties",
-                "ledger-claimed",
-                playlist_id=identifier,
+                "ledger-claimed", playlist_id=identifier,
             )
         doing = f"remove the {kind} playlist {identifier}"
         found = self._served(doing, identifier)
@@ -1170,16 +1054,12 @@ class TidalAccount(Reads):
                 what,
                 f"the provider serves it as {name!r} with {tracks!r} track(s) and "
                 f"{videos!r} video(s), which is not {kind}",
-                "not-this-kind",
-                playlist_id=identifier,
-                kind=kind,
+                "not-this-kind", playlist_id=identifier, kind=kind,
             )
         remove = found.delete if hasattr(found, "delete") else None
         if not callable(remove):
             raise _root_refusal(
-                what,
-                "the provider does not serve it as one this account owns",
-                "not-owned",
+                what, "the provider does not serve it as one this account owns", "not-owned",
                 playlist_id=identifier,
             )
         self._sent_and_read_back(doing, remove, identifier, f"the {kind} playlist {identifier}")
@@ -1201,17 +1081,13 @@ class TidalAccount(Reads):
         name = root[identifier]
         if not kinds.legacy_year(name):
             raise _root_refusal(
-                what,
-                f"its name {name!r} is not a legacy year folder's",
-                "not-a-legacy-folder",
+                what, f"its name {name!r} is not a legacy year folder's", "not-a-legacy-folder",
                 folder_id=identifier,
             )
         held = len(self.folder_playlists(identifier)) + len(self.folder_folders(identifier))
         if held:
             raise _root_refusal(
-                what,
-                f"{name!r} still holds {held} playlist(s) or folder(s)",
-                "not-empty",
+                what, f"{name!r} still holds {held} playlist(s) or folder(s)", "not-empty",
                 folder_id=identifier,
             )
         doing = f"remove the folder {identifier}"
@@ -1234,9 +1110,7 @@ class TidalAccount(Reads):
                 f"the folder {identifier} is still listed at the root after it was "
                 f"asked to remove it, so it was not removed",
                 "check the folder by hand in the provider's own player",
-                Scope.RUN,
-                folder_id=identifier,
-                problem="read-back-differs",
+                Scope.RUN, folder_id=identifier, problem="read-back-differs",
             )
 
 

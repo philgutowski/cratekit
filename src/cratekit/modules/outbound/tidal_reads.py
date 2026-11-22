@@ -34,11 +34,7 @@ from urllib.parse import urlsplit
 
 from cratekit.acquire import isrc_cache, listing, match
 from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
-from cratekit.modules.outbound.service import (
-    AGREEING_RELEASES,
-    UNREADABLE_CANDIDATE,
-    PlaylistListing,
-)
+from cratekit.modules.outbound import service
 
 #: Hosts a provider track URL is read from, the three the catalogue reads a
 #: playlist URL from.
@@ -99,9 +95,7 @@ def _row_of(title: str, artist: str) -> match.Wanted | None:
     """
     try:
         return match.read_row(
-            {"title": str(title or ""), "artist": str(artist or "")},
-            origin=match.TEXT,
-            position=1,
+            {"title": str(title or ""), "artist": str(artist or "")}, origin=match.TEXT, position=1
         )
     except match.UnreadableList:
         return None
@@ -219,7 +213,7 @@ def _streamable(track: Any) -> bool:
 
 
 class Reads:
-    """The reads ``TidalAccount`` is composed from, over its ``_call``, ``_read`` and ``_playlist``."""
+    """The reads ``TidalAccount`` is composed from, over its ``_call``, ``_read``, ``_playlist``."""
 
     # ── matching ────────────────────────────────────────────────────────────
 
@@ -236,15 +230,8 @@ class Reads:
         return self._screen.screen_uncached(self._lookups, self._cache, codes)
 
     def match_track(
-        self,
-        *,
-        identity: str,
-        isrc: str = "",
-        title: str = "",
-        artist: str = "",
-        agree: bool = False,
-        album: str = "",
-        any_agreeing: bool = False,
+        self, *, identity: str, isrc: str = "", title: str = "", artist: str = "",
+        agree: bool = False, album: str = "", any_agreeing: bool = False,
     ) -> str | None:
         """The one provider track this row names exactly, or ``None``.
 
@@ -287,9 +274,7 @@ class Reads:
         reference = track_reference(identity)
         if reference is None:
             return None
-        track = self._call(
-            f"look up the track {reference}", lambda: self._lookups.track(reference)
-        )
+        track = self._call(f"look up the track {reference}", lambda: self._lookups.track(reference))
         if track is _ABSENT or track is None:
             return None
         resolved = _identifier(track)
@@ -331,13 +316,7 @@ class Reads:
         return found
 
     def _among(
-        self,
-        tracks: dict[str, Any],
-        *,
-        isrc: str,
-        title: str,
-        artist: str,
-        album: str = "",
+        self, tracks: dict[str, Any], *, isrc: str, title: str, artist: str, album: str = "",
         any_agreeing: bool = False,
     ) -> tuple[str | None, str, bool]:
         """One of several tracks sharing an ISRC, or ``None`` and why not, and whether a tie chose.
@@ -375,9 +354,7 @@ class Reads:
                 f"among them by"
             ), False
         verdicts = {
-            remote: _agrees(row, track)
-            for remote, track in tracks.items()
-            if _streamable(track)
+            remote: _agrees(row, track) for remote, track in tracks.items() if _streamable(track)
         }
         withdrawn = len(tracks) - len(verdicts)
         unreadable = sum(1 for verdict in verdicts.values() if verdict is None)
@@ -386,7 +363,7 @@ class Reads:
             return agreeing[0], "", False
         aside = (
             (f", {withdrawn} cannot be streamed" if withdrawn else "")
-            + (f", {unreadable} {UNREADABLE_CANDIDATE}" if unreadable else "")
+            + (f", {unreadable} {service.UNREADABLE_CANDIDATE}" if unreadable else "")
         )
         if not agreeing:
             rest = "the rest" if aside else "them"
@@ -405,7 +382,7 @@ class Reads:
             narrowed = _on_album(hearted or agreeing, tracks, album)
             return _lowest(narrowed), "", bool(hearted) or len(narrowed) > 1
         said = (
-            f"{named}{aside}, {len(agreeing)} {AGREEING_RELEASES} and the "
+            f"{named}{aside}, {len(agreeing)} {service.AGREEING_RELEASES} and the "
             f"account hearts {len(hearted)} of those"
         )
         if hearted:
@@ -476,7 +453,7 @@ class Reads:
         """
         return self.playlist_listing(playlist_id).names
 
-    def playlist_listing(self, playlist_id: str) -> PlaylistListing:
+    def playlist_listing(self, playlist_id: str) -> service.PlaylistListing:
         """Every track on the playlist with its added time and the declared count (U201).
 
         One read, remembered as :meth:`track_names` remembers it. The added time
@@ -497,10 +474,8 @@ class Reads:
             if moment := _added_at(track):
                 added[identifier] = moment
         declared = getattr(playlist, "num_tracks", None)
-        return PlaylistListing(
-            names=names,
-            added=added,
-            listed=len(ids),
+        return service.PlaylistListing(
+            names=names, added=added, listed=len(ids),
             declared=declared if isinstance(declared, int) and not isinstance(declared, bool) else None,
         )
 
@@ -517,7 +492,7 @@ class Reads:
         handle.id = str(folder_id)
         return handle
 
-    def _in_folder(self, folder_id: str, doing: str, reader: Callable[[Any], list[Any]]) -> list[Any]:
+    def _in_folder(self, folder_id: str, doing: str, reader: Callable[[Any], Any]) -> list[Any]:
         """One paged read of what one folder holds."""
         handle = self._folder(folder_id)
         return self._read(doing, lambda: reader(handle))
