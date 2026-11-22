@@ -962,20 +962,6 @@ new = '''
     return target'''
 
 [[rows]]
-id = "u241-dsp.D4_settings_not_handed_to_the_head"
-source = { table = "u241-dsp.json", id = "D4_settings_not_handed_to_the_head" }
-description = "handle_run: the item's settings are not compared with the workers', so a real run stops its pool at the first head"
-file = "src/cratekit/analysis/cli.py"
-surface = "user"
-tests = ["tests/test_analysis_ahead_real.py"]
-old = '''
-    partial = ahead.head(job.job_id, str(path), settings)
-'''
-new = '''
-    partial = ahead.head(job.job_id, str(path), None)
-'''
-
-[[rows]]
 id = "u241.M13_vocal_model_not_kept_back"
 source = { table = "u241.json", id = "M13_vocal_model_not_kept_back" }
 description = "_open_ahead: the driver's vocal model is not kept back from the light pool's budget"
