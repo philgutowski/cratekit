@@ -1588,3 +1588,73 @@ tests resolve titles across every ledger file.
 **Closes when:** the next docs sweep card, after the area cards under #847
 land, either repoints each citation to its archive file or settles that
 `docs/residual-findings.md` names the ledger as a whole. Ledger only.
+
+---
+
+## R-1865. The rest of core ends a fifth smaller in lines but misses its code line target by about 550
+
+**Found:** at the record of #858, U301, 2026-11-22.
+
+**The mechanism.** #858 asked the rest of core (`core/review.py`, `jobs.py`,
+`pool.py`, `provider_gate.py` and ten smaller modules, with the parts split
+from them) to end at or under 10,816 lines and 5,771 code lines. Measured by
+`scripts/refactor_measure.py lines` on the merged head it ends at 10,113 lines,
+met, and 6,323 code lines, about 550 over. The cut came from prose, which
+Phillip allowed on #847, from folding copied steps into helpers, and from the
+duplication; what is left is mostly code a recorded mutation kill anchors byte
+for byte, refusal and message text that is output, and the import lines the
+splits added (each part imports what it reads from its parent and the parent
+imports it back).
+
+**Measured cost.** None to a person: behaviour is frozen and compared base
+against branch. The cost is point 2 of #847's audit, which reads code lines
+as well as lines.
+
+**Closes when:** the final audit (#872) reads the epic's totals; a further
+cut of these modules' code would have to rewrite anchored guards and carry
+their kills by hand, which is a card of its own if the audit wants it.
+Ledger only.
+
+---
+
+## R-1866. A part split from core.jobs or core.review cannot be imported before its parent
+
+**Found:** at the review of #858, U301, 2026-11-22.
+
+**The mechanism.** U301 split `core/jobs.py` (the drive loop into
+`core/jobs_drive.py`) and `core/review.py` (into `review_holds`,
+`review_exchange`, `review_groups` and `review_surfaces`). Each part imports
+names from its parent and the parent imports the part back at its foot, so
+`import cratekit.core.jobs_drive` in a fresh interpreter, before
+`cratekit.core.jobs`, raises ImportError on a partially initialized module.
+Every moved class and function carries its parent's `__module__`, so a pickle
+names the parent and a fresh process imports the parent first; the side
+effect is that `inspect.getsource` cannot find a pinned class's source.
+
+**Measured cost.** None driven: three candidates were driven and none imports
+a part first (the module walk in `tests/test_cli_contract.py` imports parents
+first and swallows errors; a pickle round trip of `Hold`, `DriveResult` and
+`Interrupt` into a fresh interpreter works; no base caller of a part exists).
+Nothing in `src` or `tests` calls `inspect.getsource` on a moved class.
+
+**Closes when:** a caller needs a part on its own; then the part reads its
+parent lazily inside the functions that need it. Ledger only.
+
+---
+
+## R-1867. The two processes claiming one job test waits a fixed half second for both to start
+
+**Found:** at the test trim of #858, U301, 2026-11-22.
+
+**The mechanism.** `tests/test_jobs.py::test_two_processes_claiming_the_same_job_never_claim_one_item_twice`
+starts two real worker processes and gives them a fixed 0.5 second sleep to
+import before they race. Under a load average near 10 on the four core cloud
+container one worker had not finished importing in time, claimed nothing, and
+the test failed once. The test's code is the base's, unchanged by U301.
+
+**Measured cost.** A false red under load, seen once in several runs; no
+product defect. Not on the base's Linux baseline list.
+
+**Closes when:** the workers signal that they are ready (a marker file each,
+as the suite's other process tests do) and the race starts on both signals.
+Ledger only.
