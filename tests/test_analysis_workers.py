@@ -29,7 +29,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from cratekit.analysis import artifacts, detect, energy, light, vocals
+from cratekit.analysis import artifacts, calibrate, detect, energy, light, vocals
 from cratekit.analysis import cli as analysis_cli
 from cratekit.cli import handlers, registry
 from cratekit.core import config, jobs, routing, tags, taxonomy
@@ -1623,15 +1623,15 @@ def test_calibrate_cuts_the_vocal_threshold_between_the_two_clusters(
     assert code == int(ExitCode.OK), envelope
     checks = {check["key"]: check for check in envelope["data"]["checks"]}
     assert checks["calibrate.vocals"]["status"] == "ok"
-    written = json.loads(analysis_cli.vocal_calibration_path(cfg).read_text())
+    written = json.loads(calibrate.vocal_calibration_path(cfg).read_text())
     assert 2 < written["threshold"] <= 40
     assert written["n_tracks"] == 12 and written["method"] == "otsu"
 
 
 def test_otsu_separates_a_bimodal_distribution():
-    cut = analysis_cli.otsu_threshold([0.0, 1.0, 2.0, 3.0] * 10 + [35.0, 40.0, 45.0] * 4)
+    cut = calibrate.otsu_threshold([0.0, 1.0, 2.0, 3.0] * 10 + [35.0, 40.0, 45.0] * 4)
     assert 3.0 < cut <= 35.0
-    assert analysis_cli.otsu_threshold([]) == analysis_cli.DEFAULT_VOCAL_THRESHOLD
+    assert calibrate.otsu_threshold([]) == analysis_cli.DEFAULT_VOCAL_THRESHOLD
 
 
 def test_a_single_cluster_is_not_cut_down_the_middle(cfg, folder, silence, monkeypatch):
@@ -1646,12 +1646,12 @@ def test_a_single_cluster_is_not_cut_down_the_middle(cfg, folder, silence, monke
     checks = {check["key"]: check for check in envelope["data"]["checks"]}
     assert checks["calibrate.vocals"]["status"] == "skipped"
     assert "do not split into two clusters" in checks["calibrate.vocals"]["detail"]
-    assert not analysis_cli.vocal_calibration_path(cfg).exists()
+    assert not calibrate.vocal_calibration_path(cfg).exists()
 
 
 def test_cluster_separation_is_none_with_nothing_on_one_side():
-    assert analysis_cli.cluster_separation([1.0, 2.0], 50.0) is None
-    assert analysis_cli.cluster_separation([1.0, 41.0], 20.0) == 40.0
+    assert calibrate.cluster_separation([1.0, 2.0], 50.0) is None
+    assert calibrate.cluster_separation([1.0, 41.0], 20.0) == 40.0
 
 
 # ---------------------------------------------------------------------------
@@ -1663,7 +1663,7 @@ HAND_DAY = "2026-09-17"
 
 @pytest.fixture
 def hand_day(monkeypatch):
-    monkeypatch.setattr(analysis_cli, "_today", lambda: HAND_DAY)
+    monkeypatch.setattr(calibrate, "_today", lambda: HAND_DAY)
 
 
 def test_a_hand_cut_is_written_and_the_one_loader_reads_it_back(cfg, hand_day):
@@ -1711,12 +1711,12 @@ def test_a_cut_outside_the_score_range_refuses_and_writes_nothing(cfg, cut):
     code, envelope = drive(["analyze", "calibrate", f"--vocal-cut={cut}"])
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "vocal-cut-out-of-range"
-    assert not analysis_cli.vocal_calibration_path(cfg).exists()
+    assert not calibrate.vocal_calibration_path(cfg).exists()
 
 
 def test_a_refused_cut_leaves_the_cut_on_record_byte_for_byte(cfg, hand_day):
     drive(["analyze", "calibrate", "--vocal-cut", "5"])
-    path = analysis_cli.vocal_calibration_path(cfg)
+    path = calibrate.vocal_calibration_path(cfg)
     before = path.read_bytes()
     code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "101"])
     assert code == int(ExitCode.PRECONDITION), envelope
@@ -1726,11 +1726,11 @@ def test_a_refused_cut_leaves_the_cut_on_record_byte_for_byte(cfg, hand_day):
 def test_a_folder_and_a_hand_cut_together_are_refused_by_the_parser(cfg, folder):
     code, _ = drive(["analyze", "calibrate", str(folder), "--vocal-cut", "5"])
     assert code == int(ExitCode.USAGE)
-    assert not analysis_cli.vocal_calibration_path(cfg).exists()
+    assert not calibrate.vocal_calibration_path(cfg).exists()
 
 
 def test_a_hand_cut_replaces_an_unreadable_calibration_and_says_it_could_not_be_read(cfg):
-    path = analysis_cli.vocal_calibration_path(cfg)
+    path = calibrate.vocal_calibration_path(cfg)
     config.mkdir_private(path.parent)
     path.write_text("{not json", encoding="utf-8")
     code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "5"])
@@ -1743,7 +1743,7 @@ def test_a_threshold_written_as_text_comes_back_from_the_one_reader_as_a_float(c
     """A hand edited file can carry "5.0". The reader checks and converts it, and
     the record it returns carries the converted number, not the text, so the
     calibrate report and every tagging comparison meet a float."""
-    path = analysis_cli.vocal_calibration_path(cfg)
+    path = calibrate.vocal_calibration_path(cfg)
     config.mkdir_private(path.parent)
     path.write_text('{"threshold": "5.0", "method": "hand"}', encoding="utf-8")
     assert metadata_cli.load_vocal_calibration(cfg)["threshold"] == 5.0
@@ -1756,7 +1756,7 @@ def test_a_threshold_written_as_text_comes_back_from_the_one_reader_as_a_float(c
 
 def test_a_calibration_the_account_cannot_read_refuses_and_is_not_replaced(cfg):
     """Not the unreadable slug the hand cut writes over: a permission refusal."""
-    path = analysis_cli.vocal_calibration_path(cfg)
+    path = calibrate.vocal_calibration_path(cfg)
     config.mkdir_private(path.parent)
     path.write_text('{"threshold": 9.0, "method": "otsu"}', encoding="utf-8")
     path.chmod(0)
@@ -1778,7 +1778,7 @@ def test_a_fit_over_a_cut_it_cannot_open_reports_the_energy_it_wrote(
     for index, name in enumerate(names):
         place(folder, silence, name, voxlevel=2 if index < 8 else 40)
     bind_measuring(monkeypatch, {name: index for index, name in enumerate(names)})
-    path = analysis_cli.vocal_calibration_path(cfg)
+    path = calibrate.vocal_calibration_path(cfg)
     config.mkdir_private(path.parent)
     path.write_text('{"threshold": 9.0, "method": "hand"}', encoding="utf-8")
     path.chmod(0)
@@ -1801,7 +1801,7 @@ def test_a_hand_cut_refuses_with_the_library_away(cfg):
     code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "5"])
     assert code == int(ExitCode.LIBRARY_UNAVAILABLE), envelope
     assert envelope["cause"]["reason"] == "library-volume-unmounted"
-    assert not analysis_cli.vocal_calibration_path(cfg).exists()
+    assert not calibrate.vocal_calibration_path(cfg).exists()
 
 
 def test_a_fit_after_a_hand_cut_replaces_it_and_says_so(
@@ -2532,7 +2532,7 @@ def test_a_single_genre_folder_without_the_flag_writes_nothing_and_says_why(
     assert envelope["data"]["summary"]["calibrated"] is False
     assert seen == [], "a refused sample is refused BEFORE anything is measured"
     assert energy.load_calibration(cfg) is None
-    assert not analysis_cli.vocal_calibration_path(cfg).exists()
+    assert not calibrate.vocal_calibration_path(cfg).exists()
 
 
 def test_a_recursive_run_at_the_root_writes_a_calibration_with_the_sample_note(
@@ -2554,7 +2554,7 @@ def test_a_recursive_run_at_the_root_writes_a_calibration_with_the_sample_note(
         "folder": str(root), "calibrated": True, "tracks": 16,
         "recursive": True, "sampled": 16,
     }
-    assert analysis_cli.PARTIAL_SAMPLE not in codes_of(envelope)
+    assert calibrate.PARTIAL_SAMPLE not in codes_of(envelope)
 
 
 def test_the_same_tree_gives_the_same_sample_twice(cfg, silence, monkeypatch):
@@ -2590,7 +2590,7 @@ def test_accept_partial_writes_and_warns(cfg, silence, monkeypatch):
     )
     assert "--accept-partial was given" in checks["calibrate.sample"]["detail"]
     assert checks["calibrate.energy"]["status"] == "ok"
-    (warning,) = [w for w in envelope["warnings"] if w["code"] == analysis_cli.PARTIAL_SAMPLE]
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == calibrate.PARTIAL_SAMPLE]
     assert str(house) in warning["message"]
     loaded = energy.load_calibration(cfg)
     assert loaded is not None and loaded.note == f"fitted over 12 of 12 under {house}"
@@ -2626,7 +2626,7 @@ def test_the_music_folder_walked_recursively_is_the_library_too(cfg, silence, mo
     code, envelope = drive(["analyze", "calibrate", str(music), "--recursive"])
     assert code == int(ExitCode.OK), envelope
     assert checks_of(envelope)["calibrate.sample"]["status"] == "ok"
-    assert analysis_cli.PARTIAL_SAMPLE not in codes_of(envelope)
+    assert calibrate.PARTIAL_SAMPLE not in codes_of(envelope)
     loaded = energy.load_calibration(cfg)
     assert loaded is not None and loaded.note == f"fitted over 16 of 16 under {music}"
 
@@ -2689,7 +2689,7 @@ def test_a_sample_below_the_fit_floor_is_refused_before_measuring(
 ):
     """The floor is a different question from partiality, so the flag does not waive it."""
     root, seen = genre_tree(cfg, silence, monkeypatch)
-    below = str(analysis_cli.MIN_CALIBRATION_TRACKS - 1)
+    below = str(calibrate.MIN_CALIBRATION_TRACKS - 1)
     code, envelope = drive(
         ["analyze", "calibrate", str(root), "--recursive", "--sample", below, *extra]
     )
@@ -2703,11 +2703,11 @@ def test_a_sample_below_the_fit_floor_is_refused_before_measuring(
 
 def test_a_sample_at_the_fit_floor_is_accepted(cfg, silence, monkeypatch):
     root, seen = genre_tree(cfg, silence, monkeypatch)
-    at = str(analysis_cli.MIN_CALIBRATION_TRACKS)
+    at = str(calibrate.MIN_CALIBRATION_TRACKS)
     code, envelope = drive(["analyze", "calibrate", str(root), "--recursive", "--sample", at])
     assert code == int(ExitCode.OK), envelope
     assert checks_of(envelope)["calibrate.energy"]["status"] == "ok"
-    assert len(seen) == analysis_cli.MIN_CALIBRATION_TRACKS
+    assert len(seen) == calibrate.MIN_CALIBRATION_TRACKS
 
 
 def test_the_vocal_cut_reads_every_tagged_file_while_energy_reads_the_sample(
@@ -2765,7 +2765,7 @@ def test_a_walk_that_left_a_folder_out_is_not_the_library(cfg, silence, monkeypa
     code, fitted = drive(["analyze", "calibrate", str(root), "--recursive", "--accept-partial"])
     assert code == int(ExitCode.OK), fitted
     assert checks_of(fitted)["calibrate.sample"]["status"] == "skipped"
-    assert {"linked-folder-skipped", analysis_cli.PARTIAL_SAMPLE} <= set(codes_of(fitted))
+    assert {"linked-folder-skipped", calibrate.PARTIAL_SAMPLE} <= set(codes_of(fitted))
     loaded = energy.load_calibration(cfg)
     assert loaded is not None
     assert loaded.note == f"fitted over 16 of 16 under {root}, with 1 folder not walked", (
@@ -2808,7 +2808,7 @@ def test_a_run_where_only_the_vocal_half_wrote_does_not_answer_no_op(
     assert checks["calibrate.vocals"]["status"] == "ok"
     assert envelope["outcome"] == "ok", "a file was replaced, so something changed"
     assert envelope["data"]["summary"]["calibrated"] is False
-    assert analysis_cli.vocal_calibration_path(cfg).exists()
+    assert calibrate.vocal_calibration_path(cfg).exists()
 
 
 def test_a_partial_fit_that_wrote_nothing_does_not_warn_about_a_calibration(
@@ -2820,12 +2820,12 @@ def test_a_partial_fit_that_wrote_nothing_does_not_warn_about_a_calibration(
     code, envelope = drive(["analyze", "calibrate", str(folder), "--accept-partial"])
     assert code == int(ExitCode.OK), envelope
     assert checks_of(envelope)["calibrate.energy"]["status"] == "failed"
-    assert analysis_cli.PARTIAL_SAMPLE not in codes_of(envelope)
+    assert calibrate.PARTIAL_SAMPLE not in codes_of(envelope)
 
 
 def test_the_stride_sample_is_even_ordered_and_reaches_the_tail():
     items = [f"{index:04d}" for index in range(1003)]
-    taken = analysis_cli.stride_sample(items, 100)
+    taken = calibrate.stride_sample(items, 100)
     assert len(taken) == 100 == len(set(taken))
     assert taken == sorted(taken) and taken[0] == items[0]
     assert items.index(taken[-1]) >= len(items) - 11, (
@@ -2834,14 +2834,14 @@ def test_the_stride_sample_is_even_ordered_and_reaches_the_tail():
     )
     gaps = {items.index(b) - items.index(a) for a, b in zip(taken, taken[1:])}
     assert gaps <= {10, 11}
-    assert analysis_cli.stride_sample(items, 100) == taken
+    assert calibrate.stride_sample(items, 100) == taken
 
 
 def test_the_stride_sample_takes_everything_when_there_is_less_than_asked():
-    assert analysis_cli.stride_sample(["a", "b", "c"], 500) == ["a", "b", "c"]
-    assert analysis_cli.stride_sample(["a", "b", "c"], 3) == ["a", "b", "c"]
-    assert analysis_cli.stride_sample(["a", "b", "c"], 0) == []
-    assert analysis_cli.stride_sample([], 10) == []
+    assert calibrate.stride_sample(["a", "b", "c"], 500) == ["a", "b", "c"]
+    assert calibrate.stride_sample(["a", "b", "c"], 3) == ["a", "b", "c"]
+    assert calibrate.stride_sample(["a", "b", "c"], 0) == []
+    assert calibrate.stride_sample([], 10) == []
 
 
 def test_the_restamp_refusal_names_the_library_wide_calibrate(cfg, folder, silence):
