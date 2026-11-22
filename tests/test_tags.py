@@ -359,7 +359,6 @@ def test_an_isrc_another_tagger_wrote_is_read_from_the_standard_frame(container,
 def test_clearing_a_file_with_no_tag_block_writes_nothing(container, suffix):
     """U301. An ID3 container with nothing to remove is left byte for byte."""
     from cratekit.core.tags import clear_tags, strip_tags
-
     path = container(suffix)
     assert strip_tags(path) is True
     before = path.read_bytes()

@@ -367,7 +367,6 @@ def test_a_refused_look_raises_rather_than_reading_as_no_mount(tmp_path, monkeyp
     import os
 
     from cratekit.core import preflight
-
     real_lstat = os.lstat
 
     def refused(path, *args, **kwargs):
