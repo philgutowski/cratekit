@@ -1,15 +1,13 @@
 """U154: ``crate intake shelve`` files an imported batch into the processed tree.
 
-Every test here lands real files through the native landing first, so the rows
-the shelve moves are rows the product made, then drives the shelve through the
-real dispatcher against the same disposable database. The guard is pinned on
-its own, from the pure whitelist, before any drive.
-
-D1 applies. Nothing here names a real volume, a real person or a real track.
+Real files are landed through the native landing first, so the rows shelved are
+rows the product made, then the shelve is driven through the real dispatcher.
+D1 applies.
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import sqlite3
@@ -22,6 +20,7 @@ from cratekit.core import config, rb_writer, session
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import batch_name, shelve, shelve_cli
 from tests.cli_drive import drive
+from tests.test_inbox_rotate import _two_acts as _gated
 from tests.test_intake_land_native import BATCH, _query, _stage, _two_acts
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_intake_land_native import (
@@ -37,11 +36,6 @@ GATE = shelve_cli.SHELVE_GATE
 #: What ``BATCH``, ``2026-09-29_favourites``, files as.
 FILED = "09_29_26 favourites"
 FILES = ("One.flac", "Three.flac", "Two.flac")
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def _music(cfg: config.Config) -> Path:
@@ -78,13 +72,7 @@ def _land_three(cfg: config.Config, silence: Path, *, name: str = BATCH) -> list
 
 
 def _as_landed_before_u164(cfg: config.Config, batch: str) -> None:
-    """Put a batch where a landing put one before U164, ``Music/<batch>``, rows and all.
-
-    A native landing now files its batch under the processed tree from the
-    first commit, so what a shelve is for, a batch landed before that or on
-    the bridge, is made here: the filed folder renamed back to the music
-    folder and every row's stored folder rewritten to match, as it read then.
-    """
+    """Put a batch where a landing put one before U164, ``Music/<batch>``, rows and all."""
     from cratekit.intake import batch_name as names
 
     when, said = shelve.filed_parts(batch, on=names.today())
@@ -94,28 +82,13 @@ def _as_landed_before_u164(cfg: config.Config, batch: str) -> None:
         if not any(emptied.iterdir()):
             emptied.rmdir()
     suffix = f"/{cfg.library.processed_dir}/{when.year}/{shelve.filed_name(when, said)}/"
-    conn = sqlite3.connect(cfg.library.db_path)
-    try:
-        conn.execute(
-            "UPDATE djmdContent SET FolderPath = replace(FolderPath, ?, ?) WHERE FolderPath LIKE ?",
-            (suffix, f"/{batch}/", f"%{suffix}%"),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    sql = "UPDATE djmdContent SET FolderPath = replace(FolderPath, ?, ?) WHERE FolderPath LIKE ?"
+    with contextlib.closing(sqlite3.connect(cfg.library.db_path)) as conn, conn:
+        conn.execute(sql, (suffix, f"/{batch}/", f"%{suffix}%"))
 
 
 def _two_acts_of(verb: list[str], gate: str) -> tuple[int, dict, dict]:
-    """R34's two acts against ``gate``, then the acting drive."""
-    code, refused = drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    detail = refused["cause"]["detail"]
-    assert detail["gate"] == gate and detail["explicit"] is True
-    run_id = refused["run_id"]
-    decided, envelope = drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), envelope
-    code, acted = drive(["--run", run_id, *verb])
-    return code, acted, refused
+    return _gated(verb, gate=gate, answer="apply")
 
 
 def _shelve(*args: str) -> list[str]:
@@ -124,11 +97,6 @@ def _shelve(*args: str) -> list[str]:
 
 def _records(cfg: config.Config, workflow: str) -> list[session.SessionRecord]:
     return [record for record in session.records(cfg) if record.workflow == workflow]
-
-
-# ---------------------------------------------------------------------------
-# The guard, before any drive
-# ---------------------------------------------------------------------------
 
 
 def test_a_path_write_is_refused_by_the_whitelist_unless_the_shelve_policy_is_registered():
@@ -144,11 +112,6 @@ def test_the_shelve_policy_owns_the_path_column_and_nothing_else():
     assert dict(rb_writer.SHELVE_POLICY.fields) == {
         rb_writer.FOLDER_PATH_COLUMN: rb_writer.Ownership.OWNED
     }
-
-
-# ---------------------------------------------------------------------------
-# Names, pure
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -183,11 +146,6 @@ def test_parse_name_reads_the_two_shapes_and_refuses_the_rest(batch, expected):
 def test_filed_name_is_the_hand_convention_zero_padded():
     assert shelve.filed_name(date(2026, 9, 3), "Favorites") == "09_03_26 Favorites"
     assert shelve.filed_name(date(2025, 12, 19), "labels") == "12_19_25 labels"
-
-
-# ---------------------------------------------------------------------------
-# The plan
-# ---------------------------------------------------------------------------
 
 
 def test_the_report_names_the_target_every_row_and_a_digest_and_moves_nothing(
@@ -301,11 +259,6 @@ def test_the_command_line_refusals_name_the_flag(native_library):
         code, envelope = drive(_shelve(*args))
         assert code == int(ExitCode.PRECONDITION), (args, envelope)
         assert envelope["cause"]["remediation"]["remedy"] == "fix-command-line", (args, envelope)
-
-
-# ---------------------------------------------------------------------------
-# The write
-# ---------------------------------------------------------------------------
 
 
 def test_apply_moves_the_folder_rewrites_the_paths_and_keeps_every_other_column(
@@ -442,12 +395,7 @@ def test_a_running_rekordbox_refuses_before_the_plan_is_shown(native_library, si
 def test_a_run_identifier_named_batch_files_as_downloads_or_as_the_subject_given(
     native_library, silence, run_named
 ):
-    """A batch named for a run, as ``default_name`` spells one, at either width.
-
-    A run identifier's tail was four hex characters until U235 widened it to
-    sixteen, and a batch a person named for a run of either era files by its
-    date, never refused as carrying no date.
-    """
+    """A batch named for a run, as ``default_name`` spells one, at either width."""
     cfg, _root = native_library
     _land_three(cfg, silence, name=run_named)
 
@@ -512,11 +460,6 @@ def test_a_library_whose_drive_was_renamed_stores_and_confines_under_the_base_dr
     for was, now in zip(before, _rows(cfg)):
         assert now[1] == f"{stored_target}/{was[2]}", "the row is not stored under the base drive"
         assert now[2:] == was[2:]
-
-
-# ---------------------------------------------------------------------------
-# Review round one
-# ---------------------------------------------------------------------------
 
 
 def test_a_target_free_on_disk_but_holding_rows_in_the_collection_is_passed_over(
@@ -596,11 +539,6 @@ def test_an_unreadable_session_record_makes_the_name_rule_refuse_rather_than_rea
     with pytest.raises(Exception) as caught:
         batch_name.free(cfg, BATCH)
     assert "cannot read" in str(caught.value)
-
-
-# ---------------------------------------------------------------------------
-# The guards the first table found no test for
-# ---------------------------------------------------------------------------
 
 
 def _plant_ghost_row(cfg: config.Config, path: Path) -> None:

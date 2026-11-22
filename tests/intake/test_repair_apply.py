@@ -1,12 +1,8 @@
 """U102: ``repair paths --apply`` renames what a person accepted, and only that.
 
-Every test drives the real dispatcher. The proposals are made by the verb's own
-scan, the verdicts are recorded through the review store the way ``review
-resolve`` records one, and the collection guard is driven against a disposable
-database, never a stub, wherever the test is about the guard.
-
-THE EXPECTED NAMES ARE WRITTEN OUT, never read back from the plan, so an
-assertion here cannot reduce to the code agreeing with itself.
+The real dispatcher, the verb's own scan, verdicts recorded through the review
+store, and a disposable database wherever a test is about the collection guard.
+THE EXPECTED NAMES ARE WRITTEN OUT, never read back from the plan.
 """
 
 from __future__ import annotations
@@ -110,9 +106,7 @@ def _scan(folder: Path) -> dict:
 
 def _decide(cfg, path: Path, verdict: Verdict | None, option: str | None = None) -> None:
     """Record a verdict on the one item offered for ``path``, as a person would."""
-    wanted = review.item_id_for(
-        str(Queue.PATH_REPAIR), repair.KIND, {"path": str(path.resolve())}
-    )
+    wanted = review.item_id_for(str(Queue.PATH_REPAIR), repair.KIND, {"path": str(path.resolve())})
     with review.open_store(cfg) as store:
         assert review.find(store, wanted) is not None, "the scan offered no item for it"
         if verdict is not None:
@@ -124,11 +118,18 @@ def _accept(cfg, path: Path) -> None:
 
 
 def _answer(option: str, *extra: str) -> tuple[int, dict]:
-    code, out, _ = drive([
-        "--output", "json", "-d", f"repair.paths.confirm={option}",
-        "repair", "paths", "--apply", *extra,
-    ])
+    argv = ["--output", "json", "-d", f"repair.paths.confirm={option}", "repair", "paths"]
+    code, out, _ = drive([*argv, "--apply", *extra])
     return code, json.loads(out)
+
+
+def _one_accepted(cfg, body: bytes = b"fLaC") -> tuple[Path, Path]:
+    """One file named LONG, scanned, its proposal accepted. Answers (folder, file)."""
+    folder = _folder(cfg)
+    path = _audio(folder, LONG, body)
+    _scan(folder)
+    _accept(cfg, path)
+    return folder, path
 
 
 def _actions(plan: dict) -> dict[str, str]:
@@ -137,11 +138,6 @@ def _actions(plan: dict) -> dict[str, str]:
 
 def _names(folder: Path) -> set[str]:
     return {path.name for path in folder.iterdir()}
-
-
-# ---------------------------------------------------------------------------
-# The brief's four scenarios
-# ---------------------------------------------------------------------------
 
 
 def test_an_accepted_proposal_renames_its_file(configured):
@@ -163,10 +159,7 @@ def test_a_dark_row_under_a_proposal_name_refuses_the_repair(collected):
     """R-500's guard, through this verb: a row no rule resolves, whose file is
     absent and whose name is one this pass would rename, refuses before any
     rename, in name apply's words. The candidates are this verb's own (R-675)."""
-    folder = _folder(collected)
-    held = _audio(folder, LONG)
-    _scan(folder)
-    _accept(collected, held)
+    folder, held = _one_accepted(collected)
     _record(collected, f"/mnt/volume/Music/{LONG}", identifier="10")
 
     code, envelope = _answer("apply")
@@ -182,10 +175,7 @@ def test_a_dark_row_under_a_proposal_name_refuses_the_repair(collected):
 def test_a_dark_row_under_a_proposal_name_refuses_the_repair_plan_too(collected):
     """The abort answer reads the plan, and the plan's own read carries the
     guard, so a hole in the collection is seen before anyone is asked."""
-    folder = _folder(collected)
-    held = _audio(folder, LONG)
-    _scan(folder)
-    _accept(collected, held)
+    folder, held = _one_accepted(collected)
     _record(collected, f"/mnt/volume/Music/{LONG}", identifier="10")
 
     code, envelope = _answer("abort")
@@ -201,10 +191,7 @@ def test_a_dark_row_recorded_after_the_gate_refuses_the_repair_before_any_rename
     """The apply's own read, with its own candidates: the plan saw a collection
     every row of which resolved, and the read after the gate finds a dark row
     under the name of the file about to be renamed."""
-    folder = _folder(collected)
-    held = _audio(folder, LONG)
-    _scan(folder)
-    _accept(collected, held)
+    folder, held = _one_accepted(collected)
     reads = iter([(), (f"/mnt/volume/Music/{LONG}",)])
     monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: next(reads))
 
@@ -219,10 +206,7 @@ def test_a_dark_row_recorded_after_the_gate_refuses_the_repair_before_any_rename
 
 
 def test_a_dark_row_under_another_name_lets_the_repair_run(collected):
-    folder = _folder(collected)
-    held = _audio(folder, LONG)
-    _scan(folder)
-    _accept(collected, held)
+    folder, held = _one_accepted(collected)
     _record(collected, "/mnt/volume/Music/elsewhere.flac", identifier="10")
 
     code, envelope = _answer("apply")
@@ -302,16 +286,8 @@ def test_a_collision_refuses_that_file_and_names_it(configured):
     assert SHORT in envelope["cause"]["detail"]["incomplete"][0]["why"]
 
 
-# ---------------------------------------------------------------------------
-# The gate, convergence, and the guards around the rename
-# ---------------------------------------------------------------------------
-
-
 def test_the_gate_refuses_unanswered_and_an_abort_touches_nothing(configured):
-    folder = _folder(configured)
-    path = _audio(folder, LONG)
-    _scan(folder)
-    _accept(configured, path)
+    folder, path = _one_accepted(configured)
 
     code, out, _ = drive(["--output", "json", "repair", "paths", "--apply"])
     assert code == int(ExitCode.DECISION_REQUIRED)
@@ -325,19 +301,13 @@ def test_the_gate_refuses_unanswered_and_an_abort_touches_nothing(configured):
 
 
 def test_without_the_flag_an_accepted_proposal_is_not_applied(configured):
-    folder = _folder(configured)
-    path = _audio(folder, LONG)
-    _scan(folder)
-    _accept(configured, path)
+    folder, path = _one_accepted(configured)
     _scan(folder)
     assert _names(folder) == {LONG}
 
 
 def test_a_second_apply_converges_and_claims_only_what_it_observed(configured):
-    folder = _folder(configured)
-    path = _audio(folder, LONG)
-    _scan(folder)
-    _accept(configured, path)
+    folder, path = _one_accepted(configured)
     assert _answer("apply")[0] == int(ExitCode.OK)
 
     code, envelope = _answer("apply")
@@ -351,10 +321,7 @@ def test_a_second_apply_converges_and_claims_only_what_it_observed(configured):
 
 
 def test_an_accepted_file_that_is_gone_says_no_file_carries_the_name(configured):
-    folder = _folder(configured)
-    path = _audio(folder, LONG)
-    _scan(folder)
-    _accept(configured, path)
+    folder, path = _one_accepted(configured)
     path.unlink()
 
     code, envelope = _answer("apply")
@@ -367,10 +334,7 @@ def test_an_accepted_file_that_is_gone_says_no_file_carries_the_name(configured)
 
 
 def test_a_proposal_that_asked_for_no_change_is_listed_with_its_reason(configured):
-    folder = _folder(configured)
-    path = _audio(folder, LONG)
-    _scan(folder)
-    _accept(configured, path)
+    folder, path = _one_accepted(configured)
     # What a proposal that failed to fit looks like: its own name, and why.
     _rewrite_payload(configured, path, proposed=LONG, error="the path is over budget")
 
@@ -403,13 +367,8 @@ def test_a_linked_file_is_never_renamed_through_its_link(configured, tmp_path):
     assert "linked file" in envelope["cause"]["detail"]["incomplete"][0]["why"]
 
 
-def test_an_interrupt_between_the_claim_and_the_rename_leaves_no_stub(
-    configured, monkeypatch
-):
-    folder = _folder(configured)
-    path = _audio(folder, LONG, b"fLaC mine")
-    _scan(folder)
-    _accept(configured, path)
+def test_an_interrupt_between_the_claim_and_the_rename_leaves_no_stub(configured, monkeypatch):
+    folder, path = _one_accepted(configured, b"fLaC mine")
 
     def interrupted(self, target):
         raise KeyboardInterrupt
@@ -423,10 +382,7 @@ def test_an_interrupt_between_the_claim_and_the_rename_leaves_no_stub(
 
 
 def test_a_refused_rename_is_named_and_leaves_no_stub(configured, monkeypatch):
-    folder = _folder(configured)
-    path = _audio(folder, LONG)
-    _scan(folder)
-    _accept(configured, path)
+    folder, path = _one_accepted(configured)
 
     def refused(self, target):
         raise PermissionError(13, "Permission denied")
@@ -462,10 +418,7 @@ def test_two_accepted_proposals_for_one_name_rename_neither(configured):
 
 
 def test_a_row_that_appears_after_the_gate_holds_the_file(configured, monkeypatch):
-    folder = _folder(configured)
-    path = _audio(folder, LONG)
-    _scan(folder)
-    _accept(configured, path)
+    folder, path = _one_accepted(configured)
     reads = iter([(), (str(path),)])
     monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: next(reads))
 
@@ -479,10 +432,7 @@ def test_a_row_that_appears_after_the_gate_holds_the_file(configured, monkeypatc
 
 
 def test_an_unreadable_collection_refuses_and_renames_nothing(configured, monkeypatch):
-    folder = _folder(configured)
-    path = _audio(folder, LONG)
-    _scan(folder)
-    _accept(configured, path)
+    folder, path = _one_accepted(configured)
     # No database was ever built under this library, so the read fails for real.
     monkeypatch.setattr(naming_cli, "_recorded", _REAL_RECORDED)
 
@@ -495,9 +445,7 @@ def test_an_unreadable_collection_refuses_and_renames_nothing(configured, monkey
 
 def _rewrite_payload(cfg, path: Path, **fields: str) -> None:
     """Put values in the stored payload, as an edited import document could."""
-    wanted = review.item_id_for(
-        str(Queue.PATH_REPAIR), repair.KIND, {"path": str(path.resolve())}
-    )
+    wanted = review.item_id_for(str(Queue.PATH_REPAIR), repair.KIND, {"path": str(path.resolve())})
     with review.open_store(cfg) as store:
         payload = {**review.get(store, wanted).payload, **fields}
         with store.immediate() as conn:
@@ -523,10 +471,7 @@ def _rewrite_proposed(cfg, path: Path, proposed: str) -> None:
 def test_a_proposed_name_that_is_not_a_same_suffix_filename_is_never_applied(
     configured, proposed, said
 ):
-    folder = _folder(configured)
-    path = _audio(folder, LONG)
-    _scan(folder)
-    _accept(configured, path)
+    folder, path = _one_accepted(configured)
     _rewrite_proposed(configured, path, proposed)
 
     code, envelope = _answer("apply")
@@ -539,10 +484,7 @@ def test_a_proposed_name_that_is_not_a_same_suffix_filename_is_never_applied(
 
 
 def test_an_item_with_no_stored_path_is_held_and_never_guessed_at(configured):
-    folder = _folder(configured)
-    path = _audio(folder, LONG)
-    _scan(folder)
-    _accept(configured, path)
+    folder, path = _one_accepted(configured)
     # How an item that arrived by import reads: the identity column is empty.
     with review.open_store(configured) as store, store.immediate() as conn:
         conn.execute("UPDATE review_items SET identity = NULL")
@@ -557,12 +499,7 @@ def test_an_item_with_no_stored_path_is_held_and_never_guessed_at(configured):
 
 
 def _after_the_gate(monkeypatch, act) -> None:
-    """Run ``act`` between the plan's collection read and the apply's.
-
-    The verb reads the collection twice, once for the plan and once after the
-    gate, so the second read is the one moment a test can stand where rekordbox
-    or another process stands in the race the post gate checks exist for.
-    """
+    """Run ``act`` between the plan's collection read and the apply's."""
     reads = {"count": 0}
 
     def recorded(cfg):
@@ -575,10 +512,7 @@ def _after_the_gate(monkeypatch, act) -> None:
 
 
 def test_a_name_taken_after_the_gate_is_never_overwritten(configured, monkeypatch):
-    folder = _folder(configured)
-    path = _audio(folder, LONG, b"fLaC mine")
-    _scan(folder)
-    _accept(configured, path)
+    folder, path = _one_accepted(configured, b"fLaC mine")
     _after_the_gate(monkeypatch, lambda: _audio(folder, SHORT, b"fLaC theirs"))
 
     code, envelope = _answer("apply")
@@ -590,13 +524,8 @@ def test_a_name_taken_after_the_gate_is_never_overwritten(configured, monkeypatc
     assert "already taken" in envelope["cause"]["detail"]["incomplete"][0]["why"]
 
 
-def test_a_file_deleted_after_the_gate_is_named_and_not_called_renamed(
-    configured, monkeypatch
-):
-    folder = _folder(configured)
-    path = _audio(folder, LONG)
-    _scan(folder)
-    _accept(configured, path)
+def test_a_file_deleted_after_the_gate_is_named_and_not_called_renamed(configured, monkeypatch):
+    folder, path = _one_accepted(configured)
     _after_the_gate(monkeypatch, path.unlink)
 
     code, envelope = _answer("apply")
@@ -608,10 +537,7 @@ def test_a_file_deleted_after_the_gate_is_named_and_not_called_renamed(
 
 
 def test_a_name_the_filesystem_refuses_to_claim_is_named(configured, monkeypatch):
-    folder = _folder(configured)
-    path = _audio(folder, LONG)
-    _scan(folder)
-    _accept(configured, path)
+    folder, path = _one_accepted(configured)
 
     def refused(target):
         raise OSError(63, "File name too long")
@@ -644,10 +570,7 @@ def test_a_root_limits_the_apply_and_counts_what_it_left_out(configured):
 
 
 def test_a_root_typed_in_another_case_still_names_the_folder(configured):
-    folder = _folder(configured)
-    path = _audio(folder, LONG)
-    _scan(folder)
-    _accept(configured, path)
+    folder, path = _one_accepted(configured)
     shouted = folder.parent / folder.name.upper()
 
     code, envelope = _answer("apply", "--root", str(shouted))
@@ -685,33 +608,20 @@ def test_the_decided_reader_pages_through_a_queue_larger_than_one_page(configure
 
 
 def test_the_decided_reader_reads_accepted_as_verdict_and_option_together(configured):
-    folder = _folder(configured)
-    path = _audio(folder, LONG)
-    _scan(folder)
-    _accept(configured, path)
+    folder, path = _one_accepted(configured)
     with review.open_store(configured) as store:
         decided = repair.decided(store)
     assert [(a.path, a.proposed) for a in decided.accepted] == [(str(path.resolve()), SHORT)]
     assert (decided.kept, decided.rejected, decided.still_open) == (0, 0, 0)
 
 
-# ---------------------------------------------------------------------------
-# R-693: the gate shows the plan it asks about
-# ---------------------------------------------------------------------------
-
-
 def test_the_gate_shows_every_item_the_digest_was_taken_over(configured):
     """The gate carried the question and not one rename (R-693). Its ``shown``
     now holds the declined run's items, the digest they were taken over, the
     root and the totals, so a person confirms renames they have read."""
-    folder = _folder(configured)
-    path = _audio(folder, LONG)
-    _scan(folder)
-    _accept(configured, path)
+    folder, path = _one_accepted(configured)
 
-    code, out, _ = drive(
-        ["--output", "json", "repair", "paths", "--apply", "--root", str(folder)]
-    )
+    code, out, _ = drive(["--output", "json", "repair", "paths", "--apply", "--root", str(folder)])
     assert code == int(ExitCode.DECISION_REQUIRED), out
     shown = json.loads(out)["cause"]["detail"]["shown"]
     code, declined = _answer("abort", "--root", str(folder))

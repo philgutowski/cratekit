@@ -1,15 +1,13 @@
 """U166: every native landing fills INBOX / Analyze, and ``crate inbox analyzed`` empties it.
 
-Driven against the disposable database the native landing suite builds. Files
-are landed through the real dispatcher, rekordbox's analysis is simulated by
-setting the two columns it writes, ``Analysed`` and ``AnalysisDataPath``, from
-SQL, and the clear is driven over the result.
-
-D1 applies. Nothing here names a real volume, a real person or a real track.
+Files are landed through the real dispatcher on the native landing suite's
+database, rekordbox's analysis is simulated by setting ``Analysed`` and
+``AnalysisDataPath`` from SQL, and the clear is driven over the result. D1 applies.
 """
 
 from __future__ import annotations
 
+import contextlib
 import sqlite3
 from datetime import date
 from pathlib import Path
@@ -22,6 +20,8 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import analyzed, analyzed_cli, land_cli, native, rotate
 from tests.cli_drive import drive
 from tests.test_inbox_refill import offline as offline  # noqa: PLC0414
+from tests.test_inbox_rotate import _handle
+from tests.test_inbox_rotate import _two_acts as _gated
 from tests.test_intake_land_account_playlists_native import (
     pinned_day as pinned_day,  # noqa: PLC0414
 )
@@ -89,27 +89,14 @@ def _content_id(cfg: config.Config, stem: str) -> str:
 
 def _analysed(cfg: config.Config, *stems: str, path: str | None = ANALYSIS_PATH) -> None:
     """Simulate rekordbox's analysis of each row: the two columns it writes."""
-    conn = sqlite3.connect(cfg.library.db_path)
-    with conn:
+    sql = "UPDATE djmdContent SET Analysed = 105, AnalysisDataPath = ? WHERE ID = ?"
+    with contextlib.closing(sqlite3.connect(cfg.library.db_path)) as conn, conn:
         for stem in stems:
-            conn.execute(
-                "UPDATE djmdContent SET Analysed = 105, AnalysisDataPath = ? WHERE ID = ?",
-                (path, _content_id(cfg, stem)),
-            )
-    conn.close()
+            conn.execute(sql, (path, _content_id(cfg, stem)))
 
 
 def _clear_acts() -> tuple[int, dict, dict]:
-    """R34's two acts against the clear's explicit gate, then the acting drive."""
-    code, refused = drive(VERB)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    detail = refused["cause"]["detail"]
-    assert detail["gate"] == GATE and detail["explicit"] is True
-    run_id = refused["run_id"]
-    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), envelope
-    code, acted = drive(["--run", run_id, *VERB])
-    return code, acted, refused
+    return _gated(VERB, gate=GATE, answer="apply")
 
 
 def _screen(refused: dict) -> dict:
@@ -121,14 +108,7 @@ FIVE = ("Alpha", "Bravo", "Charlie", "Delta", "Echo")
 TWO = ("Foxtrot", "Golf")
 
 
-# ---------------------------------------------------------------------------
-# The landing fills one playlist
-# ---------------------------------------------------------------------------
-
-
-def test_a_landing_of_five_adds_five_memberships_to_analyze_under_the_root(
-    native_library, silence
-):
+def test_a_landing_of_five_adds_five_memberships_to_analyze_under_the_root(native_library, silence):
     cfg, root_id = native_library
     acted = _land(cfg, silence, "2026-10-28_five", FIVE)
 
@@ -247,11 +227,6 @@ def test_the_rotation_leaves_analyze_alone(native_library, silence):
     touched = {one.playlist_id for one in (*plan.moves, *plan.removals, *plan.kept)}
     assert analyze_id not in touched
     assert touched, "the batch a year old was not planned, so the probe proves nothing"
-
-
-# ---------------------------------------------------------------------------
-# The clear
-# ---------------------------------------------------------------------------
 
 
 def test_after_an_analysis_of_three_the_clear_removes_exactly_three_and_no_track(
@@ -406,9 +381,7 @@ def test_an_intake_tree_on_the_bridge_is_refused_naming_the_cutover(acknowledged
     assert "tree cutover" in str(refused["cause"])
 
 
-def test_an_analysis_finished_after_the_approval_is_refused_by_the_engine(
-    native_library, silence
-):
+def test_an_analysis_finished_after_the_approval_is_refused_by_the_engine(native_library, silence):
     """The engine's own stale check, with no gate in front (the gated verb solution)."""
     cfg, root_id = native_library
     _land(cfg, silence, "2026-10-28_two", TWO)
@@ -469,11 +442,6 @@ def test_the_digest_names_every_row_and_its_answer():
     assert analyzed.identity(base) != analyzed.identity(waiting)
 
 
-# ---------------------------------------------------------------------------
-# The name is reserved, and the guards the first review found unpinned
-# ---------------------------------------------------------------------------
-
-
 def test_the_playlist_is_inbox_slash_analyze_as_the_brief_names_it():
     """A literal, so a rename of the constant is a failure and not X equals X."""
     assert native.ANALYZE == "Analyze"
@@ -529,9 +497,7 @@ def test_an_analyze_playlist_outside_the_root_is_never_written_into(native_libra
     assert _titles(cfg, _analyze_id(cfg, root_id)) == list(TWO)
 
 
-def test_analyze_removed_after_the_approval_is_refused_and_nothing_lands(
-    native_library, silence
-):
+def test_analyze_removed_after_the_approval_is_refused_and_nothing_lands(native_library, silence):
     """The digest names the playlist the plan found, so its removal is another plan."""
     cfg, root_id = native_library
     _land(cfg, silence, "2026-10-28_one", ("Alpha",))
@@ -566,13 +532,10 @@ def test_a_track_held_twice_is_one_row_cleared_and_counted_once(native_library, 
     _land(cfg, silence, "2026-10-28_two", TWO)
     analyze_id = _analyze_id(cfg, root_id)
     foxtrot = _content_id(cfg, "Foxtrot")
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
-    try:
+    with _handle(cfg) as handle:
         # A second membership of the same track, the way the binding adds one.
         handle.add_to_playlist(handle.get_playlist(ID=analyze_id), foxtrot)
         handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
     _analysed(cfg, *TWO)
 
     code, acted, _ = _clear_acts()
@@ -588,11 +551,7 @@ def test_a_track_held_twice_is_one_row_cleared_and_counted_once(native_library, 
 def test_inbox_refill_never_takes_analyze_for_an_account_playlist_of_that_name(
     native_library, silence, offline
 ):
-    """The second review's drive: an account playlist named Analyze, every track owned.
-
-    The pass's landing writes nothing, so no record names a mirror, and the
-    refill's fallback to the account's name must not find the queue.
-    """
+    """The second review's drive: an account playlist named Analyze, every track owned."""
     from tests.test_inbox_refill import _two_acts as _refill_acts
     from tests.test_intake_land_account_playlists_native import PASS, _owned, swept
 
@@ -633,18 +592,13 @@ def test_the_rotation_never_takes_analyze_for_a_batch_whatever_a_record_says():
         empty,
         row,
         place="INBOX",
-        in_old=False,
-        recorded={"q": date(2025, 1, 1)},
+        found=rotate.Landings(by_id={"q": date(2025, 1, 1)}, by_name={}, unreadable=0),
         today=date(2026, 10, 28),
-        stale_days=30,
-        expired_days=90,
     )
     assert isinstance(found, rotate.Left) and found.kind == "analyze", found
 
 
-def test_a_membership_whose_collection_row_is_missing_stays_and_is_named(
-    native_library, silence
-):
+def test_a_membership_whose_collection_row_is_missing_stays_and_is_named(native_library, silence):
     """The first mutation table's zero: a row nothing in the collection answers is never cleared."""
     cfg, root_id = native_library
     _land(cfg, silence, "2026-10-28_one", ("Alpha",))
@@ -668,9 +622,9 @@ def test_a_membership_whose_collection_row_is_missing_stays_and_is_named(
     assert code == int(ExitCode.OK), acted
     (ghost,) = [item for item in acted["data"]["items"] if item["content_id"] == "ghost"]
     assert ghost["action"] == analyzed.WAIT and ghost["why"] == analyzed.NO_ROW
-    assert _query(
-        cfg, "SELECT rb_local_deleted FROM djmdSongPlaylist WHERE ID = 'sp-ghost'"
-    ) == [(0,)]
+    assert _query(cfg, "SELECT rb_local_deleted FROM djmdSongPlaylist WHERE ID = 'sp-ghost'") == [
+        (0,)
+    ]
     assert acted["data"]["totals"]["removed"] == 1
 
 
