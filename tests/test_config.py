@@ -41,7 +41,7 @@ import keyring.errors
 import pytest
 import tomli_w
 
-from cratekit.core import config, profiles, secrets
+from cratekit.core import config, config_validate, profiles, secrets
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode, Remedy
 
@@ -482,16 +482,20 @@ def test_the_composed_path_lint_covers_every_directory_accessor_the_module_expor
     )
 
 
+#: The modules that define the roots and resolve the inventory over them.
+INVENTORY_MODULES = frozenset({"cratekit/core/config.py", "cratekit/core/state_files.py"})
+
+
 def test_no_module_composes_its_own_path_under_a_state_root():
     """Every path under a state root comes from ``state_path``, so it is declared.
 
-    ``config.py`` is excluded because it is the module that DEFINES the roots and
-    resolves the inventory; everywhere else, composing a root path by hand is how
-    a file ends up outside the audit.
+    The inventory's own modules are excluded, since they define the roots and
+    resolve the entries; anywhere else a root path composed by hand is a file
+    outside the audit.
     """
     offenders: list[str] = []
     for path in sorted(SRC_ROOT.rglob("*.py")):
-        if path.relative_to(SRC_ROOT).as_posix() == "cratekit/core/config.py":
+        if path.relative_to(SRC_ROOT).as_posix() in INVENTORY_MODULES:
             continue
         for hit in _paths_composed_from_a_state_root(path.read_text()):
             offenders.append(f"{path.relative_to(SRC_ROOT)}: {hit}")
@@ -1343,7 +1347,10 @@ def test_the_backup_destination_check_reads_the_effective_mapping(library, monke
         effective["backup"]["dest"] = "gdrive:" + effective["backup"]["dest"]
         return effective
 
+    # The seam is named in both modules that pass through it: ``validate`` lives
+    # in ``config_validate`` and ``from_dict`` in ``config`` (U299).
     monkeypatch.setattr(config, "_apply_env_overrides", relocating)
+    monkeypatch.setattr(config_validate, "_apply_env_overrides", relocating)
     assert config.validate(data) == []
     assert config.from_dict(data).backup.dest == "gdrive:MusicBackup"
 

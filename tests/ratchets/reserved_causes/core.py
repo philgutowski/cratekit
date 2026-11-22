@@ -283,22 +283,17 @@ KEBAB_LITERALS = {
         'write-lock-held',
         'yt-dlp-missing',
     ],
+    # 2026-11-22, U299: the state inventory moved to its own module.
     'core/config.py': [
-        'downloaded-file',
         'fix-config-values',
-        'never-restored',
         'record-rekordbox-pin',
-        'remote-playlist-prefix',
         'repair-config-file',
         'retry-when-unlocked',
         'run-setup',
-        'runs-held',  # 2026-11-05, U209: the held plans' state directory.
-        'survives-rollback',
-        'trashed-file',
         'upgrade-cratekit',
         'utf-8',
-        'written-file-tag',
     ],
+    'core/config_schema.py': ['utf-8'],  # 2026-11-22, U299
     'core/convergence.py': [
         'library-fingerprint-unreadable',
         'rows-moved-at-a-standstill',
@@ -501,6 +496,16 @@ KEBAB_LITERALS = {
     # 2026-11-21, U293: the staging lock joined.
     'core/staging_lock.py': ['staging-held'],
     'core/tags.py': ['utf-8'],
+    # 2026-11-22, U299: the state inventory, moved from core/config.py.
+    'core/state_files.py': [
+        'downloaded-file',
+        'never-restored',
+        'remote-playlist-prefix',
+        'runs-held',  # 2026-11-05, U209: the held plans' state directory.
+        'survives-rollback',
+        'trashed-file',
+        'written-file-tag',
+    ],
     'core/taxonomy.py': ['utf-8'],
     # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
     # a new module, the taxonomy upgrade planner (U132), holding two causes
@@ -577,19 +582,14 @@ NAMED_WITH_OWN = {
         'install-binary-source-unknown',
         'unsupported-platform',
     ],
+    # 2026-11-22, U299: the state inventory's literals moved to core/state_files.py,
+    # and the pin's refusal to core/config_schema.py.
     'core/config.py': [
-        'downloaded-file',
         'fix-config-values',
-        'never-restored',
-        'record-rekordbox-pin',
-        'remote-playlist-prefix',
         'repair-config-file',
         'retry-when-unlocked',
         'run-setup',
-        'survives-rollback',
-        'trashed-file',
         'upgrade-cratekit',
-        'written-file-tag',
     ],
     'core/convergence.py': ['rows-moved-at-a-standstill', 'sequence-went-backward'],
     'core/exit_codes.py': [
@@ -640,13 +640,21 @@ NAMED_WITH_OWN = {
     ],
     'core/routing.py': ['not-judged'],
     'core/secrets.py': ['install-keychain-backend', 'repair-credential-store', 'set-credential'],
+    'core/state_files.py': [  # 2026-11-22, U299
+        'downloaded-file',
+        'never-restored',
+        'remote-playlist-prefix',
+        'survives-rollback',
+        'trashed-file',
+        'written-file-tag',
+    ],
     # 2026-11-21, U293: the staging lock joined.
     'core/staging_lock.py': ['staging-held'],
     'core/session.py': ['awaiting-import', 'committed-unverified'],
 }
 
 NAMED_WITH_INTEGER = frozenset({
-    'core/config.py',
+    # 2026-11-22, U299: core/config.py holds no exit code range integer since the split.
     'core/convergence.py',
     'core/exit_codes.py',
     'core/preflight.py',
@@ -781,7 +789,7 @@ LITERAL_HOLDERS = {
 }
 
 LITERAL_HOLDERS_WITH_INTEGER = frozenset({
-    'core/config.py',
+    # 2026-11-22, U299: core/config.py holds no exit code range integer since the split.
     'core/convergence.py',
     'core/exit_codes.py',
     'core/rb_writer.py',
