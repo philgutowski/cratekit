@@ -35,7 +35,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from cratekit.cli.output import timestamp
 from cratekit.core import config
-from cratekit.core.cause import CratekitError, Scope, refuse
+from cratekit.core.cause import CratekitError, refuse
 
 #: The version this module writes, and READS BACK (a stamp nobody reads proves
 #: nothing). Version 2 added the sightings (R-1037); version 1 reads as none.
@@ -89,13 +89,9 @@ def contiguous_sequence(
     watermark: moving back would re-present answered removals.
     """
     pairs = list(handled.items()) if isinstance(handled, Mapping) else list(handled)
-    outstanding = sorted({sequence for sequence, done in pairs if not done})
-    reached = floor
-    for sequence in sorted({sequence for sequence, _done in pairs}):
-        if outstanding and sequence >= outstanding[0]:
-            break
-        reached = max(reached, sequence)
-    return reached
+    first_open = min((sequence for sequence, done in pairs if not done), default=None)
+    done = [sequence for sequence, _done in pairs if first_open is None or sequence < first_open]
+    return max([floor, *done])
 
 
 class WatermarkStore:
@@ -115,7 +111,6 @@ class WatermarkStore:
             "it as unset would present every removal this library has ever had as if it had just "
             "happened",
             steps=("repair or restore the deletion watermark before running deletion",),
-            scope=Scope.RUN,
             origin=("deletion.watermark",),
             detail={"problem": what, "path": str(self.path)},
         )
@@ -133,7 +128,6 @@ class WatermarkStore:
                 f"advancing it unlocked discards whatever a second pass is "
                 f"recording at the same time, silently, while reporting success",
                 steps=("make the library's state directory writable by this account",),
-                scope=Scope.RUN,
                 origin=("deletion.watermark",),
                 detail={"lock": str(self.lock_path)},
             ),

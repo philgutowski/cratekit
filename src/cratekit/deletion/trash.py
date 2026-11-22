@@ -23,6 +23,7 @@ run in a test on one machine.
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import os
 import sys
@@ -304,10 +305,8 @@ def move_to_trash(path: Path | str, *, layout: TrashLayout) -> Path:
     except BaseException:
         # The placeholder is ours: created with O_EXCL, and nothing since writes
         # this name.
-        try:
+        with contextlib.suppress(OSError):
             target.unlink()
-        except OSError:  # pragma: no cover - the placeholder was already gone
-            pass
         raise
     return target
 

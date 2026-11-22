@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping
 
-from cratekit.core.cause import CratekitError, Scope, refuse
+from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.tombstone import reads_as_version
 from cratekit.write import trees
@@ -80,11 +80,11 @@ class CollectionRead:
     uuids: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
 
 
-def _unreadable(reason: str, message: str, remedy: Remedy, detail: dict[str, Any]) -> CratekitError:
+def _unreadable(
+    reason: str, message: str, detail: dict[str, Any], remedy: Remedy = Remedy.RUN_DOCTOR
+) -> CratekitError:
     """A run scoped refusal of this module's evidence."""
-    return refuse(
-        reason, message, remedy=remedy, scope=Scope.RUN, origin=("deletion.library",), detail=detail
-    )
+    return refuse(reason, message, remedy=remedy, origin=("deletion.library",), detail=detail)
 
 
 def database_identity(db: Any) -> str:
@@ -104,7 +104,6 @@ def database_identity(db: Any) -> str:
             f"the rekordbox database could not report its own identity ({exc}), so the deletion "
             "watermark cannot be bound to it and a rebuilt library would silently inherit a "
             "position measured in a sequence space that no longer exists",
-            Remedy.RUN_DOCTOR,
             {"column": "DBID"},
         ) from exc
     if not identity:
@@ -112,7 +111,6 @@ def database_identity(db: Any) -> str:
             "canary-read-failed",
             "the rekordbox database reports no identity of its own, so the "
             "deletion watermark has nothing to be bound to",
-            Remedy.RUN_DOCTOR,
             {"column": "DBID"},
         )
     return str(identity)
@@ -132,7 +130,6 @@ def current_sequence(db: Any) -> int:
             "canary-read-failed",
             f"the rekordbox database could not report its update counter "
             f"({exc}), so a first run has no position to baseline at",
-            Remedy.RUN_DOCTOR,
             {"column": "localUpdateCount"},
         ) from exc
 
@@ -152,7 +149,6 @@ def _sequence_of(row: Any) -> int:
             "was removed by, so this run cannot tell whether it is a removal somebody has already "
             "answered for; there is no safe default, because guessing low re-offers every removal "
             "in the library and guessing high hides this one forever",
-            Remedy.RUN_DOCTOR,
             detail,
         )
     try:
@@ -162,7 +158,6 @@ def _sequence_of(row: Any) -> int:
             "removal-sequence-unreadable",
             f"the removed collection row {getattr(row, 'ID', '?')!r} reports {value!r} as its "
             "update sequence, which is not a number this run can compare a watermark against",
-            Remedy.RUN_DOCTOR,
             detail,
         ) from exc
 
@@ -221,11 +216,8 @@ def _version_of(row: Any) -> tuple[str, str, str]:
 
 
 def _size_of(row: Any) -> int | None:
-    value = getattr(row, "FileSize", None)
-    if value is None:
-        return None
     try:
-        size = int(value)
+        size = int(getattr(row, "FileSize", None))
     except (TypeError, ValueError):
         return None
     return size if size > 0 else None
@@ -324,7 +316,6 @@ def playlist_referenced(memberships: Any) -> frozenset[str]:
             f"({exc}), so the set of files a playlist still points at is whatever happened to "
             "arrive before the failure; every file missing from it would be proved unreferenced "
             "against a question that was never fully asked",
-            Remedy.RUN_DOCTOR,
             {"walked": walked},
         ) from exc
     if "" in referenced:
@@ -334,7 +325,6 @@ def playlist_referenced(memberships: Any) -> frozenset[str]:
             "a live playlist membership in this library names no collection row, so what it "
             "points at cannot be worked out; a reference this pass cannot address would read as "
             "no reference at all, and the file it protects would be offered for deletion",
-            Remedy.RUN_DOCTOR,
             {"walked": walked},
         )
     if declared is None:
@@ -344,8 +334,8 @@ def playlist_referenced(memberships: Any) -> frozenset[str]:
             f"walk that just returned {walked} of them cannot be shown to have seen all of them; a "
             "membership this pass did not see is a playlist reference nothing reports, and the "
             "file it protects would be offered for deletion",
-            Remedy.REPORT_DEFECT,
             {"walked": walked},
+            Remedy.REPORT_DEFECT,
         )
     if walked != declared:
         raise _unreadable(
@@ -354,7 +344,6 @@ def playlist_referenced(memberships: Any) -> frozenset[str]:
             f"{walked} of them, so the set of files a playlist still points at cannot be shown to "
             "be the whole set; every file missing from it would be proved unreferenced against a "
             "question that was never fully asked",
-            Remedy.RUN_DOCTOR,
             {"declared": declared, "walked": walked},
         )
     return frozenset(referenced)
@@ -387,10 +376,6 @@ class _Recorded:
             setattr(self, name, columns.get(name))
 
 
-def _recorded_row(columns: Mapping[str, Any], sequence: int) -> RemovedRow:
-    return _removed_row(_Recorded(columns), sequence)
-
-
 #: The key a native landing (``intake.native``) names the rows it made under,
 #: held equal by ``tests/test_delete_landed_removed.py``. Its rows keep
 #: :data:`RECORDED_COLUMNS` and the row's UUID under :data:`LANDED_UUID_KEY`.
@@ -411,7 +396,7 @@ class LandedAbsence:
 
     def row(self, sequence: int) -> RemovedRow:
         """The removal, at the sequence its first sighting was given."""
-        return _recorded_row(self.columns, sequence)
+        return _removed_row(_Recorded(self.columns), sequence)
 
 
 @dataclass(frozen=True, slots=True)
@@ -556,7 +541,7 @@ def recorded_removals(
     found: dict[str, RemovedRow] = {}
     for recorded, sequence in _records(details, RECORDED_REMOVALS_KEY, database_identity):
         for columns, _entry in _columns_of(recorded):
-            row = _recorded_row(columns, sequence)
+            row = _removed_row(_Recorded(columns), sequence)
             if not row.content_id or row.content_id in held:
                 continue
             seen = found.get(row.content_id)
