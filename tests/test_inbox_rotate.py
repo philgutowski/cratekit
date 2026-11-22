@@ -735,3 +735,10 @@ def test_a_landing_record_that_committed_nothing_dates_nothing(native_library):
     _record_landing(cfg, batch, "2026-09-30 Set", TODAY - timedelta(days=60), source=refused[0])
     (kept,) = _plan(cfg).kept
     assert (kept.aged_from, kept.age_days) == (rotate.AGED_FROM_CREATED, 3)
+
+
+def test_an_empty_analysis_watch_is_refused_for_every_write_that_shares_it():
+    """The one home of the roots guard: a watch over no roots would pass any grid change."""
+    with pytest.raises(ValueError, match="analysis_roots is empty"):
+        rotate.watched_roots([])
+    assert rotate.watched_roots(["/a", Path("/b")]) == [Path("/a"), Path("/b")]
