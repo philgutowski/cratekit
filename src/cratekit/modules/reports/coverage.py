@@ -1,40 +1,18 @@
 """Feature Inventory row 14's reporting half: what the governed tree does not hold.
 
-The source system answers this question twice and never the same way. One script
-walks the genre folders and prints what it finds; another sweeps unplaced tracks
-and prints what it moved. Neither of them can say "the tree covers 9,842 of your
-10,070 tracks and here are the 228 it misses", because both of them are passes
-rather than reports, and a pass tells you what it did rather than what is true.
+A report rather than a pass: ``route.unplaced`` moves tracks, and this moves
+nothing, opens no database, and answers which collection entries sit in no
+playlist under the DECLARED routing tree, so it is safe to read before sweeping.
 
-**This is the report, and the sweep is a different verb.** ``route.unplaced``
-moves tracks. This one moves nothing, opens no database, and answers exactly one
-question: which collection entries sit in no playlist under the DECLARED routing
-tree. That separation is what makes the answer safe to look at before deciding
-whether to run the sweep, and it is why the two live in different layers.
+An entry is covered when the tree's display sits ANYWHERE above a playlist
+holding it, as :func:`aging.intake_groupings` decides, so a tree filed inside
+another folder still counts. A tree absent from the export refuses rather than
+reporting every track uncovered. Placements are counted, so a track filed three
+times is covered once and shown filed three times.
 
-**Coverage is membership under the tree, at any depth.** An entry is covered when
-one of its placements has the tree's declared display ANYWHERE above the playlist
-holding it, exactly as :func:`aging.intake_groupings` decides what counts as an
-intake grouping. Anchoring at position zero reported nothing at all for a person
-who had filed the tree inside another folder, and that person has organized their
-library rather than hidden it.
-
-**A tree that is not in the export refuses.** Reporting every entry as uncovered
-would be technically true and useless: a person whose export predates the tree, or
-whose export was taken from the wrong library, would be told to re-file ten
-thousand tracks. The two facts ``export`` already refuses to render identically,
-"the structure is absent" and "the structure is empty", are kept apart here for
-the same reason one module down.
-
-**Placement is counted, not just presence.** An entry in three folders under the
-tree is covered once and reported as filed three times, because a track that is
-genuinely in three places is a different thing to look at from a track in one, and
-the source system's per-playlist walk could not see it at all.
-
-Layer note: MODULES. Row 14 is a Core row and this report is reachable without
-enabling a module, which is why the entry declares no ``module_id``. The engine
-lives here because it reads an export through :mod:`export` and the allowlist that
-governs this package is what keeps it read only.
+Layer note: MODULES. Row 14 is a Core row, so the entry declares no
+``module_id``; the engine lives here because it reads an export through
+:mod:`export`, under this package's read only allowlist.
 """
 
 from __future__ import annotations
@@ -48,11 +26,7 @@ from cratekit.modules.reports.export import CollectionEntry, LibraryView
 
 @dataclass(frozen=True, slots=True)
 class Placement:
-    """One entry and every path under the governed tree that holds it.
-
-    ``paths`` is empty exactly when the entry is uncovered, so the two halves of
-    the report are one type asked two ways rather than two types that can drift.
-    """
+    """One entry and every governed path holding it; empty when it is uncovered."""
 
     entry: CollectionEntry
     paths: tuple[tuple[str, ...], ...] = ()
@@ -66,13 +40,8 @@ class Placement:
 class CoverageReport:
     """Every collection entry, partitioned by whether the governed tree holds it.
 
-    The two tuples partition the collection and the suite asserts that they do. An
-    entry in both is an entry somebody acts on twice, and an entry in neither is
-    one the report was supposed to surface and did not.
-
-    ``folders`` is the tree's own shape as the export has it, one row per folder
-    directly beneath the tree, so a person reading a large uncovered count can see
-    whether the tree is thin or whether the sweep simply has not run.
+    ``folders`` is the export's count per playlist under the tree, so a large
+    uncovered count can be read as a thin tree or an unrun sweep.
     """
 
     tree_id: str
@@ -87,23 +56,13 @@ class CoverageReport:
 
     @property
     def placements(self) -> int:
-        """How many times the tree files something, which exceeds ``covered``.
-
-        A track filed under two energy bands is one covered track and two
-        placements, and the difference is the number a person actually asks about
-        when a folder count looks too high.
-        """
+        """How many times the tree files something, which can exceed ``covered``."""
         return sum(len(item.paths) for item in self.covered)
 
 
 def _refuse_absent(tree: taxonomy.Node):
-    """The refusal for a governed tree the export does not contain.
-
-    Worded around what the reader has to do rather than around what this module
-    observed, because the two acts are different: an export taken before the tree
-    existed is re-exported, and a tree the template misnames is a template to
-    correct. Naming both is what stops somebody renaming folders to match the
-    software, which is the direction R19 exists to prevent.
+    """The refusal for a governed tree the export does not contain, naming both
+    fixes so nobody renames folders to match the software.
     """
     return refuse(
         "governed-tree-absent",
@@ -125,43 +84,19 @@ def _refuse_absent(tree: taxonomy.Node):
 
 
 def governed_paths(view: LibraryView, *, tree: taxonomy.Node) -> tuple[tuple[str, ...], ...]:
-    """Every playlist path the governed tree holds, in export order.
-
-    A path qualifies when the declared display sits ABOVE the playlist rather
-    than at the front of the path, which is the same widening
-    :func:`aging.intake_groupings` makes and for the same reason. A tree carrying
-    the declared display twice yields playlists from both, because a report that
-    silently picked one would hide the duplication from the person who has to fix
-    it.
-    """
+    """Every playlist path with the tree's display ABOVE it, in export order."""
     wanted = tree.display
     return tuple(
         playlist.path for playlist in view.playlists if wanted in playlist.path[:-1]
-    )
+    )  # fmt: skip
 
 
 def survey(view: LibraryView, *, tree: taxonomy.Node) -> CoverageReport:
     """Partition the collection by whether the governed tree files it.
 
-    NOT CALLED ``coverage``, which is this module's own name. The sibling engine
-    states the rule and follows it, and the first version of this file broke the
-    rule its own sibling states in the same change: a function whose dotted path
-    repeats its module reads as a package attribute rather than as a call at
-    every site that uses it, which is how ``run`` came to mean two things here.
-
-    Indexed once rather than asked per entry. ``LibraryView.entry`` is a linear
-    scan and says so; calling it per placement is the N times M shape U18 shipped
-    and then had to remove.
-
-    ``held`` IS BUILT FROM TRACK IDS THAT RESOLVE, and the folder counts are
-    built from the same set, so the per-folder rows always sum to
-    ``placements``. Counting a playlist's raw length instead lets an export whose
-    playlist references a collection entry that is not there report a folder
-    holding tracks while the placement count says nothing is filed, and those two
-    numbers are printed beside each other. The export reader validates the
-    collection's own count and its duplicate identifiers but does not check a
-    playlist reference against the collection, so this is where the two are
-    reconciled.
+    Not called ``coverage``, its module's name. ``held`` and the folder counts
+    are built from the same RESOLVING track ids, so the folder rows always sum
+    to ``placements`` even when a playlist names an entry the collection lacks.
     """
     if not view.has_folder(tree.display):
         raise _refuse_absent(tree)
@@ -197,13 +132,7 @@ def survey(view: LibraryView, *, tree: taxonomy.Node) -> CoverageReport:
 
 
 def _by_name(placement: Placement) -> tuple[str, str, str]:
-    """Artist, then name, then identifier, so two runs of one library agree.
-
-    The identifier is last rather than first because a person reads this list
-    looking for records they recognise, and it is present at all because two
-    entries can genuinely carry one artist and one name, which is the pair the
-    duplicate audit exists to ask about.
-    """
+    """Artist, then name, then identifier, so two runs of one library agree."""
     return (placement.entry.artist, placement.entry.name, placement.entry.track_id)
 
 
