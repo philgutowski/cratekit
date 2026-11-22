@@ -173,14 +173,13 @@ def _refused(call, reason: str = "decision-stale"):
     ("energy", "held", "add", "remove"),
     [
         (8, (MED,), HIGH, (MED,)),
-        (8, (MED, HIGH), "", (MED,)),
         (8, (LOW, MED, HIGH), "", tuple(sorted((LOW, MED)))),
         (5, (SINK,), MED, (SINK,)),
         # R-758's rule in the entry's own bucket, untouched by R-780: a reading
         # naming a third band adds it, as adoption itself would file it there.
         (1, (MED, HIGH), LOW, tuple(sorted((MED, HIGH)))),
     ],
-    ids=["leaves-med", "in-both", "three-bands", "leaves-the-sink", "a-third-band"],
+    ids=["leaves-med", "three-bands", "leaves-the-sink", "a-third-band"],
 )
 def test_a_track_in_a_band_its_reading_does_not_name_moves_to_the_one_it_does(
     energy, held, add, remove
@@ -197,6 +196,12 @@ def test_a_track_in_a_band_its_reading_does_not_name_moves_to_the_one_it_does(
     assert plan.left == ()
     assert plan.counts()["memberships_added"] == (1 if add else 0)
     assert plan.counts()["memberships_removed"] == len(remove)
+
+
+def test_a_track_in_both_has_only_the_stale_one_removed():
+    test_a_track_in_a_band_its_reading_does_not_name_moves_to_the_one_it_does(
+        8, (MED, HIGH), "", (MED,)
+    )
 
 
 @pytest.mark.parametrize("sub_class", sorted(CLASSES))
