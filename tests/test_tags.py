@@ -353,3 +353,15 @@ def test_an_isrc_another_tagger_wrote_is_read_from_the_standard_frame(container,
     handle.tags.add(id3.TSRC(encoding=3, text=["ZZX9A2600042"]))
     handle.save()
     assert read_tag(path, "isrc") == "ZZX9A2600042"
+
+
+@pytest.mark.parametrize("suffix", [".mp3", ".aiff", ".wav"])
+def test_clearing_a_file_with_no_tag_block_writes_nothing(container, suffix):
+    """U301. An ID3 container with nothing to remove is left byte for byte."""
+    from cratekit.core.tags import clear_tags, strip_tags
+
+    path = container(suffix)
+    assert strip_tags(path) is True
+    before = path.read_bytes()
+    assert clear_tags(path, ["genre", "title"]) is True
+    assert path.read_bytes() == before
