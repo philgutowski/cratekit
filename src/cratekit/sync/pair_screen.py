@@ -49,25 +49,18 @@ from cratekit.write import playlist_pair
 
 @dataclass(frozen=True, slots=True)
 class Unpaired:
-    """A custom playlist twin's pair whose account playlist the account no longer lists (U149).
-
-    Its pair is forgotten and its rekordbox playlist is left where it is,
-    named, never removed: the account side is gone, and the twin is still the
-    list it was.
-    """
+    """A pair one of whose sides is gone (U149), forgotten, its survivor left and named, never removed."""
 
     account_id: str
     rekordbox_id: str
     name: str
     rekordbox_name: str
-    #: U198. The side that is GONE, and whether the product made the account
-    #: side for a discovered playlist, whose survivor is then released. The
-    #: default is ``pairs.ACCOUNT_SIDE``, written out so this package imports
-    #: the outbound module only where a function needs it (U304).
+    #: U198. The side that is gone, and whether Cratekit made the account side.
+    #: The default is ``pairs.ACCOUNT_SIDE`` written out, so the outbound module
+    #: is imported only inside functions (U304).
     gone: str = "account"
     made: bool = False
-    #: Why the rekordbox side is let go when it is still there: moved under a
-    #: folder the configuration skips (U198, the review's finding).
+    #: Why a rekordbox side still there is let go: moved under a skipped folder (U198).
     why: str = ""
 
     def identity(self) -> dict[str, str]:
@@ -89,23 +82,19 @@ class Plan:
     unpaired: tuple[Unpaired, ...] = ()
     #: U198. Every rekordbox playlist a sync of every pair left out and named.
     listed: tuple[Any, ...] = ()
-    #: U198, R-988. Rows the account had no track for, asked fresh by this
-    #: plan, and rows remembered as misses that matched since.
+    #: U198, R-988. Misses asked fresh by this plan, and remembered misses that matched.
     misses: dict[str, Any] = field(default_factory=dict)
     matched: frozenset[str] = frozenset()
     #: U202. Every account playlist in a synced folder left out and named.
     listed_back: tuple[Any, ...] = ()
-    #: U225. Runs' steps the plan could not read, each said, so a write that
-    #: stopped part way in one of them was not looked for.
+    #: U225. Runs' steps the plan could not read, so a stop in them went unseen.
     stopped_unread: tuple[str, ...] = ()
-    #: R-1383. The session log's entries the plan could not read when it
-    #: looked for a landing, each said, or the log itself when it cannot be listed.
+    #: R-1383. Unreadable session log entries, or the log itself when unlistable.
     landings_unread: tuple[str, ...] = ()
 
     @property
     def digest(self) -> str:
-        # THE UNPAIRED ONLY WHEN THERE ARE ANY, so a plan with none digests
-        # as it did before U149.
+        # The unpaired only when there are any, so older digests still match.
         extra = (
             {"unpaired": [one.identity() for one in self.unpaired]} if self.unpaired else {}
         )
@@ -127,9 +116,8 @@ def plan(
 ) -> Plan:
     """Read the account and the database once, and plan every pair.
 
-    ``every`` says the pairs are every marked pair rather than one named, and
-    then a pair whose own playlist is gone is left out and named rather than
-    refusing the rest.
+    With ``every``, a pair whose own playlist is gone is left out and named
+    rather than refusing the rest.
     """
     from cratekit.modules.outbound.pairs import REKORDBOX_SIDE
     if not wanted and not every:
@@ -141,10 +129,8 @@ def plan(
     store_of_pairs = pairs.PairStore(cfg)
     document = store_of_pairs._document()
     held = document.pairs
-    # U198. THE ACCOUNT IS LISTED ONLY FOR A MARKED PAIR: a sync that only
-    # discovers plans its new pairs over an empty account side, and asks the
-    # account seam for its root folders only when it found something. U202:
-    # or when a sync of every pair has root folders recorded to look in.
+    # U198, U202. The account is listed only for a marked pair, or for a sync
+    # of every pair with root folders recorded.
     reads_account = bool(wanted) or (every and bool(document.folders))
     found = catalogue.resolve(cfg) if reads_account else None
     listed = (
@@ -175,9 +161,8 @@ def plan(
         left_out: dict[str, str] = {}
         unpaired: list[Unpaired] = []
         for target in wanted:
-            # A TWIN WHOSE ACCOUNT PLAYLIST IS GONE IS UNPAIRED (U149), never
-            # refused and never removed: its rekordbox playlist is left and
-            # named. A pair the person made is refused or left out as before.
+            # U149. A twin or made pair whose account playlist is gone is
+            # unpaired, never refused; its rekordbox playlist is left.
             pair = held.get(target.account_id)
             if pair is not None and (pair.twin or pair.made) and target.account_id not in listed:
                 twin = playlist_pair.read_playlist(db, pair.rekordbox_id)
@@ -192,8 +177,7 @@ def plan(
                 )
                 continue
             if pair is not None and pair.made:
-                # U198. A MADE PAIR WHOSE REKORDBOX PLAYLIST IS GONE IS UNPAIRED,
-                # and its account playlist left where it is, named.
+                # U198. A made pair whose rekordbox playlist is gone is unpaired.
                 there = playlist_pair.read_playlist(db, pair.rekordbox_id)
                 moved = ""
                 if there is not None and not there.removed:
@@ -208,10 +192,8 @@ def plan(
                         skip=cfg.outbound.pair_skip_folders,
                     )
                 if moved:
-                    # MOVED WHERE NO PAIR IS KEPT, under ARCHIVE, another app's
-                    # folder or the Favorites folder, is let go as a rekordbox
-                    # side gone, so nothing there is written and the account
-                    # playlist stays.
+                    # Moved where no pair is kept: let go as a gone rekordbox
+                    # side, so nothing there is written.
                     unpaired.append(
                         Unpaired(
                             account_id=target.account_id,
@@ -239,10 +221,8 @@ def plan(
             try:
                 planned.append(plan_pair(reader, target, held.get(target.account_id)))
             except CratekitError as exc:
-                # ONE PAIR WHOSE PLAYLIST IS GONE DOES NOT HOLD EVERY OTHER. Only
-                # when every marked pair was asked for, and only for the two
-                # refusals that are about that pair's own playlists; a pair
-                # named on the command line refuses as itself.
+                # ONE PAIR WHOSE PLAYLIST IS GONE DOES NOT HOLD EVERY OTHER, only
+                # in a sync of every pair; a named pair refuses as itself.
                 if not every or exc.cause.reason not in PER_PAIR_REASONS:
                     raise
                 left_out[target.account_id] = exc.cause.message
@@ -259,8 +239,8 @@ def plan(
                 try:
                     planned.append(plan_pair(reader, target, None, home=home))
                 except CratekitError as exc:
-                    # ONE ACCOUNT PLAYLIST THE PROVIDER CANNOT LIST DOES NOT HOLD
-                    # EVERY PAIR (U202, from the review): it is listed, never made.
+                    # U202. One account playlist the provider cannot list is
+                    # named, never made, and holds no other pair.
                     if exc.cause.reason not in BROUGHT_REASONS:
                         raise
                     from cratekit.sync import pair_discover
@@ -311,14 +291,9 @@ def _landings_said(cfg: config.Config, unread: Sequence[Path]) -> tuple[str, ...
 def _discovered(cfg: config.Config, reader: _Reader, db: Any, document) -> tuple[list, list]:
     """Every discovered playlist to pair, each with its account place, and every one left out.
 
-    U198. The rekordbox side is :mod:`pair_discover`'s. The account side is
-    read only when something was found: the root folders once, and each
-    folder's playlists once. A root folder is the one the pairs document
-    records, else the one root folder of the name, else a new one. Two root
-    folders of the name, or one another list of Cratekit's keeps, leave that
-    folder's playlists out and named; a playlist of the title already in the
-    folder is a person's or another pair's, and is left and named rather than
-    joined or made twice.
+    U198. The account is read only when something was found. The root folder
+    is the recorded one, else the one of the name, else a new one; an
+    ambiguous or foreign folder, or a title already in it, is left and named.
     """
     from cratekit.core import active_taxonomy
     from cratekit.favorites import placement
@@ -393,8 +368,7 @@ def _discovered(cfg: config.Config, reader: _Reader, db: Any, document) -> tuple
                         action,
                         folder_id,
                         stale,
-                        # U216. WHAT AN ADOPTED FOLDER HOLDS NOW is what it held
-                        # before any sync, recorded when the folder is adopted.
+                        # U216. An adopted folder's playlists before any sync.
                         held=frozenset(inside) if action == FOLDER_ADOPT else None,
                     ),
                 )
@@ -406,16 +380,10 @@ def _discovered(cfg: config.Config, reader: _Reader, db: Any, document) -> tuple
 def _discovered_back(cfg: config.Config, reader: _Reader, db: Any, document) -> tuple[list, list]:
     """Every account playlist in a recorded root folder to bring to rekordbox, and every one left.
 
-    U202. Only the root folders the pairs document records are read, each
-    once, and a folder the account no longer lists is passed over, since
-    U198's discovery makes it again when rekordbox still has playlists for it.
-    A playlist a pair holds is not offered. Listed and never made: a released
-    one, one the account does not list among the author's own or that a pair
-    may not hold, one ``pair_discover.home_of`` places nowhere, and two that
-    would take one rekordbox name in one folder, which refuse that name only.
-    U216: and one the folder held before a sync adopted it
-    (``pair_discover.before_adoption``), or a ``DOWNLOADED `` copy of one a
-    pair in the folder holds (``pair_discover.downloaded_copy``).
+    U202. Only recorded root folders still listed are read. Named and never
+    made: a released playlist, one a pair may not hold, one with no home,
+    two taking one rekordbox name, and (U216) one held before adoption or a
+    ``DOWNLOADED `` copy.
     """
     from cratekit.core import active_taxonomy
     from cratekit.favorites import placement
@@ -432,8 +400,7 @@ def _discovered_back(cfg: config.Config, reader: _Reader, db: Any, document) -> 
 
     root = reader.root_folders
     paired_ids = set(document.pairs)
-    # U242. WHAT THE RECORD HOLDS AS TAKEN, so a downloaded copy stripped of
-    # its old prefix is still read as the copy it is.
+    # U242. Taken ids, so a copy stripped of its prefix still reads as a copy.
     taken = playlists.taken_ids(cfg)
     released = document.released.account
     favorites = placement.source_name(active_taxonomy.load(cfg))
@@ -442,8 +409,8 @@ def _discovered_back(cfg: config.Config, reader: _Reader, db: Any, document) -> 
         if recorded.folder_id not in root:
             continue
         inside = reader.folder_listing(recorded.folder_id)
-        # U216. A FOLDER ADOPTED BEFORE ITS RECORD SAID WHAT IT HELD is read by
-        # time: the earliest mark of a playlist made in it dates the adoption.
+        # U216. An adoption with no record of what it held is dated by its
+        # earliest made pair's mark.
         unrecorded = recorded.held is None and not recorded.created
         adopted = (
             pair_discover.adoption_moment(
@@ -471,9 +438,8 @@ def _discovered_back(cfg: config.Config, reader: _Reader, db: Any, document) -> 
                     "again; pair it by hand with crate sync pair to sync it once more",
                 )
                 continue
-            # U216. ONLY A PLAYLIST MADE ON THE ACCOUNT AFTER THE SYNC COMES IN,
-            # decided by Phillip on 2026-11-04: one the folder held before a
-            # sync adopted it is the account's own, and is named, never made.
+            # U216. Only a playlist made after adoption comes in; an older one
+            # is the account's own.
             before = pair_discover.before_adoption(
                 account_id,
                 held=recorded.held,
@@ -491,9 +457,8 @@ def _discovered_back(cfg: config.Config, reader: _Reader, db: Any, document) -> 
                 continue
             fresh.append((account_id, title))
         for account_id, title in fresh:
-            # AND A DOWNLOADED COPY of a playlist a pair in this folder holds, or
-            # of one this sync brings in beside it (U216, from the review), is
-            # that playlist again, so making it would put it in rekordbox twice.
+            # U216. A downloaded copy of a playlist held or brought in here would
+            # put it in rekordbox twice.
             beside = pair_discover.copy_candidates(fresh, account_id, title, taken)
             copied = pair_discover.downloaded_copy(
                 folder, title, [*paired_titles, *beside], taken=account_id in taken
@@ -532,9 +497,7 @@ def _discovered_back(cfg: config.Config, reader: _Reader, db: Any, document) -> 
                 left(account_id, title, folder, pair_discover.TAKEN, home)
                 continue
             wanted.append((account_id, title, folder, home))
-    # TWO ACCOUNT PLAYLISTS TAKING ONE REKORDBOX NAME IN ONE FOLDER REFUSE
-    # THAT NAME, and only that one: which of them the rekordbox playlist
-    # copies is not something a name decides.
+    # TWO ACCOUNT PLAYLISTS TAKING ONE REKORDBOX NAME REFUSE THAT NAME only.
     counted: dict[tuple[str, str], int] = {}
     for _account_id, _title, _folder, home in wanted:
         place = (home.parent_id, home.name)
@@ -638,8 +601,7 @@ def _items(one: PairPlan) -> list[dict[str, Any]]:
         items.append(row("rekordbox", "ambiguous", named))
     for named in one.unread:
         items.append(row("account", "unread", named))
-    # U202. EVERY CALL BETWEEN AN ADDITION AND A REMOVAL IS NAMED, with the
-    # moments it was decided on, empty where unknown.
+    # U202. Every call between an addition and a removal, with its moments.
     for call in one.merged.calls:
         items.append(
             row(
@@ -746,7 +708,7 @@ def facts(planned: Plan) -> dict[str, Any]:
             }[one.place.action]
             made = f"made on the account in {folder} {one.place.folder!r}, "
         if one.home is not None:
-            # U202, from the review: the rekordbox side has no identifier yet.
+            # U202. The rekordbox side has no identifier yet.
             head = (
                 f"{one.name!r} on the account, made in rekordbox as {one.home.where!r}; "
             )
@@ -903,9 +865,8 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
         )
     awaiting = [row for one in planned.pairs for row in one.awaiting]
     if awaiting:
-        # R-1385, from the review. A TRACK ANOTHER PAIR OF THIS PLAN QUEUES is
-        # said apart, since no job holds it unless that pair's rekordbox side
-        # is applied, and a skip leaves it for the next sync to queue.
+        # R-1385. One another pair of this plan queues is said apart, since no
+        # job holds it until that pair's rekordbox side is applied.
         here = [row for row in awaiting if row.reason.startswith(QUEUED_HERE)]
         before = [row for row in awaiting if not row.reason.startswith(QUEUED_HERE)]
         parts: list[str] = []
@@ -1053,11 +1014,8 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
         )
     unread = [(one, named) for one in planned.pairs for named in one.unread]
     if unread:
-        # R-1432. A finish of a stopped order puts an unread track where that
-        # order was taking it, which is not where an interrupted move left it.
-        # R-1446. Not one whose unread tracks the person moved since the
-        # stop, which keep the place they were given, unless another unread
-        # track is still placed by the target.
+        # R-1432, R-1446. A finish places unread tracks by the stopped order,
+        # unless the person moved them all.
         finished_unread = any(
             one.finishing_order
             and one.account_order
@@ -1140,8 +1098,7 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
                             for one, named in waiting
                         )
                         if waiting
-                        # THE SCAN WAS READ AND NOTHING WAITED ON IT (round one's
-                        # finding 7): said as that, never as zero tracks held.
+                        # THE SCAN WAS READ AND NOTHING WAITED ON IT, never zero held.
                         else "no track this plan would queue waited on it"
                     )
                     + ". Unread: "

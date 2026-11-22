@@ -44,8 +44,7 @@ from cratekit.write import playlist_pair
 HELD_KIND = "sync.pair"
 
 
-#: The warning a command carries when it planned again under a run that was
-#: meant to hold its plan, naming why the held one could not be used.
+#: The warning a command carries when it planned again instead of using its run's held plan.
 REPLANNED = "sync-pair-replanned"
 
 
@@ -99,10 +98,9 @@ def _held_plan(
 ) -> tuple[Plan | None, int, str]:
     """The plan held for this run, the calls its plan took, and why not when there is none.
 
-    The held plan answers only when it digests to EVERY offer this run
-    recorded, which is the plan each gate showed, and when it was made for the
-    pairs this command asks for; any other plan is planned again, digest
-    bound, and the gates refuse it stale if it moved.
+    It answers only when it digests to EVERY offer this run recorded and was
+    made for the pairs this command asks for; otherwise the plan is made
+    again and the gates refuse it stale if it moved.
     """
     from cratekit.core import held_plan
 
@@ -119,8 +117,7 @@ def _held_plan(
     if extra.get("asked") != dict(asked) and extra.get("asked") != _asked_before(
         run_id, asked, planned, digest
     ):
-        # THE SAME RUN, OTHER PAIRS: a command run again under the run with
-        # another account playlist named, or a pair marked or forgotten since.
+        # THE SAME RUN, OTHER PAIRS: another playlist named, or a pair marked or forgotten.
         return None, 0, "the held plan was made for other pairs than this command asks for"
     calls = extra.get("plan_calls")
     return planned, calls if isinstance(calls, int) and calls >= 0 else 0, ""
@@ -132,15 +129,11 @@ def _asked_before(
 ) -> dict[str, Any]:
     """What this command asks for, read as it was before this run's own write began (U210).
 
-    A write that stopped part way has marked pairs: every account playlist it
-    made for a rekordbox one, every rekordbox playlist it made for an account
-    one, and every pair it marked on its first sync. A sync of every pair now
-    finds those among the marked pairs, so what it asks for is no longer what
-    the held plan was made for, though nothing but this run moved it. So the
-    pairs this run's recorded steps account for are read back as the plan
-    read them: a made side's new pair left out, and a pair the write touched
-    read with the mark the plan gave it. Answers ``asked`` unchanged when the
-    run recorded no step.
+    A write stopped part way has made and marked pairs, so a sync of every
+    pair would no longer ask what the held plan was made for though only this
+    run moved it. The pairs its recorded steps account for are read back as
+    the plan read them: a made side's new pair left out, a touched pair with
+    the plan's mark.
     """
     from cratekit.core import held_plan
 
@@ -232,35 +225,19 @@ def check(
 ) -> dict[str, tuple[str, ...]]:
     """Refuse a write whose lists moved since the plan the gates showed, before anything is written.
 
-    U209. A plan held across its gates is not made again, so before the first
-    write this reads only the lists the write is merged from: each pair's
-    rekordbox playlist membership in the database against what the plan read,
-    each pair's account listing against what the plan read, its shortfall
-    included, the rows a pair adds still live, the folder a made account side
-    goes in still there and free of a playlist of its title, a made rekordbox
-    side's home still free (``pair_reverse.recheck``, read here so it stops
-    the sync before any pair is written), and a playlist the product pairs by
-    itself still where a pair is kept, or still not where a pair it let go
-    for that is kept. EVERY PAIR, whichever gate applied, because each side's writes were
-    merged from both sides. It never matches a track and asks the provider
-    nothing about one. Anything moved refuses ``decision-stale`` naming every
-    list that moved, and nothing is written.
+    U209. A held plan is not made again, so this reads every list the write
+    is merged from against what the plan read: rekordbox memberships, account
+    listings with their shortfall, rows to add, a made side's folder or home,
+    and where a product paired playlist stands. EVERY PAIR, whichever gate
+    applied, since each side's writes were merged from both. It never matches
+    a track. Anything moved refuses ``decision-stale`` naming every list.
 
-    Answers each account playlist's listing as the check read it, which equals
-    the plan's with each unread track in its place (R-1264), so a pair with
-    nothing to write there records it as its snapshot without listing it
-    again.
+    Answers each account listing as read, every unread track in its place
+    (R-1264), so a pair with nothing to write there keeps it as its snapshot.
 
-    ``steps`` is the run's record of what an earlier command of it already
-    wrote (U210), read when a write that stopped part way is continued. A pair
-    it records done is not read at all. A pair part written is read for what
-    its own write could have done and nothing else: on the account, no track
-    gained but the plan's additions, none lost but its removals and the order
-    the plan read kept until the write began to order it, the playlist this
-    run made for it read in its place; in rekordbox, the memberships the
-    commit that landed left; the folder this run made, a job it queued and a
-    pair it reserved are not read as moved. Anything else moved refuses stale
-    as above, and nothing more is written.
+    ``steps`` (U210) is what an earlier command of the run wrote. A done pair
+    is not read; a part written pair is read only for what its own write
+    could not have done.
     """
     from cratekit.label import catalogue
     from cratekit.modules.outbound import pairs
@@ -273,8 +250,7 @@ def check(
     document = pairs.PairStore(cfg)._document()
     todo = [one for one in planned.pairs if not of(one).has(STEP_DONE)]
     begun = steps is not None and steps.started()
-    # U210. THE ACCOUNT PLAYLISTS THIS RUN MADE, by the pair's key: recorded
-    # made, or begun and reserved in the pairs document for this pair here.
+    # U210. THE ACCOUNT PLAYLISTS THIS RUN MADE, recorded made or begun and reserved here.
     ours: dict[str, str] = {}
     for one in planned.pairs:
         if not one.target.new:
@@ -305,8 +281,7 @@ def check(
         for one in on_account:
             account_id = one.target.account_id or ours[one.target.key]
             try:
-                # READ AS THE PLAN READ IT (R-1264), row by row, and its
-                # unpaged read beside the window (U226).
+                # READ AS THE PLAN READ IT (R-1264), with its unpaged read beside (U226).
                 listing = intake_cli.list_playlist_readable(found, account_id, current=True)
             except CratekitError as exc:
                 if exc.cause.reason not in BROUGHT_REASONS:
@@ -321,8 +296,7 @@ def check(
                 )
                 continue
             if listing.window == provider_listing.WINDOW_LAGS:
-                # U226. Neither read is the playlist as it stands, so what it
-                # holds now is not known: read as moved, nothing written.
+                # U226. Neither read is the playlist as it stands: read as moved.
                 moved.append(
                     Moved(
                         ACCOUNT_SIDE,
@@ -335,9 +309,7 @@ def check(
                 continue
             now = pair_merge.distinct(listing.tracks)
             withheld = listing.short.block() if listing.short is not None else None
-            # AS A SET (R-1264, the review's round one): where an unread track
-            # sits decides nothing the merge did, and the snapshot is read off
-            # the listing as the write leaves it.
+            # AS A SET (R-1264): where an unread track sits decides nothing the merge did.
             unread_moved = set(listing.unread) != {named.remote_id for named in one.unread}
             #: R-1264. Said when only the tracks it cannot read moved.
             unread_said = "lists a different set of tracks it cannot read than the plan read"
@@ -358,8 +330,7 @@ def check(
                 elif unread_moved:
                     moved.append(Moved(ACCOUNT_SIDE, account_id, one.name, unread_said))
                 else:
-                    # U220. The listing a refused order is checked against,
-                    # every id in its place as the adapter reads it (R-1264).
+                    # U220. The listing a refused order is checked against (R-1264).
                     listed[account_id] = tuple(listing.order)
             elif now != tuple(one.account_now):
                 moved.append(
@@ -377,8 +348,7 @@ def check(
             elif unread_moved:
                 moved.append(Moved(ACCOUNT_SIDE, account_id, one.name, unread_said))
             else:
-                # EVERY ID IN ITS PLACE, an unread one included (R-1264), since
-                # this is the snapshot a pair with nothing to write there keeps.
+                # EVERY ID IN ITS PLACE (R-1264), the snapshot a pair with nothing to write keeps.
                 listed[account_id] = tuple(listing.order)
     brought = [one for one in todo if one.target.rekordbox_new and one.home is not None]
     folders = document.folders
@@ -400,8 +370,7 @@ def check(
                     seen[recorded.folder_id] = dict(remote.folder_playlists(recorded.folder_id))
                 listing = seen[recorded.folder_id]
             if listing.get(one.target.account_id) != one.target.title:
-                # TAKEN OUT OF THE SYNCED FOLDER, or retitled, since the plan:
-                # a plan made now would bring it nowhere, or somewhere else.
+                # TAKEN OUT OF THE SYNCED FOLDER OR RETITLED since the plan.
                 moved.append(
                     Moved(
                         ACCOUNT_SIDE,
@@ -415,8 +384,7 @@ def check(
     asking = [one for one in todo if one.acquire and not of(one).has(STEP_QUEUED)]
     if asking:
         # R-1385. EVERY PAIR'S JOBS, since a plan made now would name a track
-        # any of them holds as awaiting. A job this run queued holds none of a
-        # pair's still to queue, since one plan asks each track of one pair.
+        # any of them holds as awaiting.
         now = {
             str(item)
             for job in pair_jobs(cfg, store)
@@ -426,8 +394,7 @@ def check(
             owner = one.target.account_id
             again = sorted(set(one.acquire) & now)
             if again:
-                # ANOTHER SYNC QUEUED THEM SINCE THE PLAN, which a plan made now
-                # would name as awaiting rather than queue twice.
+                # ANOTHER SYNC QUEUED THEM SINCE THE PLAN; never queued twice.
                 moved.append(
                     Moved(
                         "library",
@@ -445,8 +412,7 @@ def check(
         for one in made:
             place = one.place
             assert place is not None
-            # U210. A FOLDER THIS RUN MADE for an earlier pair is read as the
-            # folder this pair goes in, as a folder the plan found is.
+            # U210. A FOLDER THIS RUN MADE for an earlier pair counts as found.
             folder_id = place.folder_id or our_folders.get(place.folder, "")
             if folder_id:
                 if root is None:
@@ -506,8 +472,7 @@ def check(
                     tops=tops,
                     favorites=favorites,
                     skip=skip,
-                    # U210. NOT THE PAIRS THIS RUN MADE, which discovery
-                    # found before the write paired them.
+                    # U210. NOT THE PAIRS THIS RUN MADE, found unpaired by the plan.
                     paired=(
                         pair.rekordbox_id
                         for pair in document.pairs.values()
@@ -524,9 +489,8 @@ def check(
                 _landed_moved(db, one, landed, moved)
                 continue
             if one.target.rekordbox_new:
-                # U202. THE HOME IT IS MADE AT, read now rather than at its
-                # turn in the write, so a name taken or a row gone since the
-                # plan stops the sync before any pair is written.
+                # U202. THE HOME IT IS MADE AT, read now so a change stops the
+                # sync before any pair is written.
                 try:
                     pair_reverse.recheck(db, one.home, one.change.order)
                 except CratekitError as exc:
@@ -574,11 +538,8 @@ def check(
                 )
                 continue
             if one.place is not None:
-                # A DISCOVERED PLAYLIST IS READ AS DISCOVERY READS IT NOW: still
-                # found, under the same account folder and title. Moved to
-                # another folder, the root, a subfolder or anywhere discovery
-                # lists rather than finds, a plan made now would make another
-                # account playlist or none.
+                # A DISCOVERED PLAYLIST IS READ AS DISCOVERY READS IT NOW, still
+                # found under the same account folder and title.
                 now_found = discovered.get(one.target.rekordbox_id)
                 if now_found is None or (now_found.folder, now_found.title) != (
                     one.place.folder,
@@ -602,9 +563,7 @@ def check(
             held = document.pairs.get(one.target.account_id)
             if held is not None and held.made:
                 # A PLAYLIST THE PRODUCT PAIRS BY ITSELF IS KEPT ONLY WHERE
-                # DISCOVERY WOULD FIND IT (U198), which the plan read as so:
-                # one dragged under ARCHIVE since is let go by a plan made
-                # now, never written.
+                # DISCOVERY WOULD FIND IT (U198); one moved away since is never written.
                 why = pair_discover.left_behind(db, there, favorites=favorites, skip=skip)
                 if why:
                     moved.append(
@@ -652,8 +611,7 @@ def check(
             f"{len(moved)} list(s) moved since the plan the gates showed, so nothing "
             f"{'more ' if begun else ''}was written: "
             + "; ".join(one.said() for one in moved)
-            # U210. STEPS THAT COULD NOT BE READ are why a continue reads every
-            # list as the plan read it, so the refusal says so.
+            # U210. Unreadable steps are why every list was read as the plan read it.
             + (f"; {unread}, so every list was read as the plan read it" if unread else ""),
             steps=(
                 "run crate sync pair again and answer both gates over the plan it shows now",
@@ -695,17 +653,11 @@ def _landed_moved(db: Any, one: PairPlan, landed: Mapping[str, Any], moved: list
 def _ordered_by_this_run(one: PairPlan, steps: PairSteps) -> bool:
     """Whether a part written pair's account order can be this run's own doing, so the check leaves it unread.
 
-    U210. Once the write began to order the playlist, its order is read as
-    the moves' and not judged. R-1420. BUT AN ORDER WHOSE MOVES NEVER BEGAN
-    moved nothing: since U231 the moves are recorded (``moving``) before the
-    first is sent, so an order stopped with no such step, refused, parked or
-    stopped with the whole write, left the playlist where the plan read it,
-    with this write's removals and additions. Unread, a person's reorder
-    between that command and a continue passed the check and was written
-    over. So the order is read as before the write began, and a change
-    refuses as moved. A FINISH OF A STOPPED ORDER is left as R-1411 holds
-    it, to the plan's reading at the adapter, since the plan read it where
-    earlier moves left it and the check's listing can lag them.
+    U210. Once moves were sent its order is theirs. R-1420. AN ORDER WHOSE
+    MOVES NEVER BEGAN (no ``moving`` step) moved nothing, so it is judged,
+    and a person's reorder before a continue refuses rather than being
+    written over. A FINISH OF A STOPPED ORDER is held at the adapter instead
+    (R-1411), since the check's listing can lag the earlier moves.
     """
     return steps.has(STEP_ORDERING) and (steps.has(STEP_MOVING) or one.finishing_order)
 
@@ -714,14 +666,9 @@ def _ordered_by_this_run(one: PairPlan, steps: PairSteps) -> bool:
 def _beyond(one: PairPlan, now: Sequence[str], *, ordering: bool = False) -> str:
     """What an account playlist part written by this run holds beyond its own write, or ``""``.
 
-    U210. Every track the plan read, less the ones this write takes off, must
-    still be there, and nothing may be there that the plan did not read or
-    this write does not add. Until the write began to put the playlist in
-    order (``ordering``), the order is read as well, as the write leaves it:
-    the tracks the plan read in the order it read them, then this write's
-    additions after them, so a person's reorder in between refuses rather
-    than being written over. Once the order was begun, its moves are this
-    run's own and the order is not read.
+    U210. Only the plan's tracks less its removals, plus its additions, may
+    be there. Until ``ordering``, the order is read too, the plan's order then
+    the additions, so a person's reorder refuses rather than being written over.
     """
     before = set(one.account_now)
     held = set(now)

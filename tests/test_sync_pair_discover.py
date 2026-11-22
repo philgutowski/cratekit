@@ -1,10 +1,8 @@
 """U198, ``crate sync pair`` with no argument: every playlist the author made, paired by itself.
 
-Driven through the dispatcher on a disposable database and a fake account that
-both the catalogue (which lists) and the account seam (which writes) read, so a
-playlist the sync makes is one the next sync lists. Every scenario the brief
-keeps after its split (U202 takes the rest) is driven here end to end, both
-explicit gates and their recorded answers included.
+The catalogue (which lists) and the account seam (which writes) read one fake
+account, so a playlist the sync makes is one the next sync lists. U202's
+scenarios live in ``tests/test_sync_pair_back.py``.
 """
 
 from __future__ import annotations
@@ -592,10 +590,8 @@ def test_rows_the_account_cannot_carry_are_counted_skipped_and_never_asked_again
 def test_a_sync_screens_every_code_it_will_ask_and_never_a_linked_row_or_a_remembered_miss(
     world, cfg
 ):
-    """U207. The plan hands the account every code it is about to ask, before
-    asking any, so the codes the catalogue files nothing under are screened in
-    batches; a row with no code, a linked row and a remembered miss are never
-    handed over, since none of them is asked."""
+    """U207. Every code the plan will ask is screened in batches before any is
+    asked; a row with no code, a linked row and a remembered miss are not asked."""
     world.sql("UPDATE djmdContent SET ISRC = '' WHERE ID = '2'")
     del world.account.catalog["3"]
     world.account.reasons["3"] = "the provider has no track under this ISRC"
@@ -609,20 +605,17 @@ def test_a_sync_screens_every_code_it_will_ask_and_never_a_linked_row_or_a_remem
     assert all(set(screened) <= asked for screened in first)
 
     assert sync()[0] == int(ExitCode.OK)
-    # Rows 1 and 4 are linked and row 3 is a remembered miss: nothing is asked
-    # and nothing is screened.
+    # Rows 1 and 4 linked, row 3 a remembered miss, so nothing is asked or screened.
     assert world.account.screened == first
 
 
 def test_a_code_the_account_playlist_already_holds_is_never_screened(world, cfg):
-    """U207. A row whose code exactly one track of the account playlist carries
-    is taken from the playlist with no lookup, so its code is not screened."""
+    """U207. A code one track of the account playlist carries needs no lookup or screen."""
     gig = world.folder("GIG READY")
     opener = world.playlist("Opener", "1", "2", under=gig)
     assert sync()[0] == int(ExitCode.OK)
     made = world.titled("GIG READY Opener")
-    # Rows 3 and 4 are added in rekordbox, and row 4's track on the account by
-    # hand, so on the next sync row 4's code is held by the account playlist.
+    # Row 4's track is added on the account by hand, so the playlist holds its code.
     world.rekordbox_add(opener, "3", "4")
     world.account.playlists[made].append(remote("4"))
     before = len(world.account.screened)
@@ -743,7 +736,7 @@ def test_title_of_names_each_place():
     )
 
 
-# The review's findings, round one
+# Archive, favourites, ties and the document's version
 
 
 def test_a_made_pair_moved_into_archive_is_let_go_and_never_written_again(world, cfg):
@@ -832,7 +825,7 @@ def test_a_version_one_document_is_read_and_written_as_version_two(world, cfg):
     assert json.loads(path.read_text())["version"] == pairs.PAIRS_VERSION == 2
 
 
-# The review's findings, round two
+# Skip folders and archive, by name and by place
 
 
 @pytest.mark.parametrize("where", ["foreign", "favorites"])

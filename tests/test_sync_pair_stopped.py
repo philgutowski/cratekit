@@ -1,11 +1,9 @@
 """U225, pure: a write stopped part way through its order, read back from its run's steps.
 
-The front rule copied from the account adapter is held to the adapter's own,
-the orders a stopped write can have left are the ones that rule passes
-through, and a record of a write is read back only as this unit writes it.
-``tests/test_sync_pair_stopped_order.py`` drives the same rules through the verb.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+The front rule is held to the adapter's own, and a record of a write is read
+back only as it was written. ``tests/test_sync_pair_stopped_order.py`` drives
+the same rules through the verb. D1 applies, nothing here names a real
+account, person or track.
 """
 
 from __future__ import annotations
@@ -155,7 +153,7 @@ def test_an_ordering_step_of_this_version_with_no_moving_step_sent_nothing():
 
 
 def test_an_ordering_step_from_before_u234_says_nothing_of_its_moves():
-    """Sitting 86's records sent their moves with no moving step, so none is read as sending nothing."""
+    """A record from before U234 has no moving step, so none is read as sending nothing."""
     began = _WHEN.isoformat()
     old = _ordering()
     old.pop(pair_stopped.MOVES_RECORDED)
@@ -198,7 +196,7 @@ def test_a_later_run_that_finished_the_pair_hides_the_stopped_write_in_either_or
 
 
 def test_a_later_run_that_stopped_before_its_order_began_hides_nothing():
-    """Round one's review: its steps are kept, and it is no finish."""
+    """Its steps are kept, and it is no finish."""
     early = _steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}})
     later = _WHEN.replace(hour=18).isoformat()
     failed = _steps("run-2", {"pl-1": {"account": later, "rekordbox": {}, "queued": ""}})
@@ -478,7 +476,7 @@ def test_a_carried_record_naming_another_run_is_named(cfg):
 
 
 def test_a_carried_directory_that_cannot_be_listed_is_named_never_read_as_none(cfg):
-    """No directory is no record; one that cannot be listed says so (the round one review)."""
+    """No directory is no record; one that cannot be listed says so."""
     assert held_plan.carried() == ([], [])
     where = held_plan.carried_dir()
     where.parent.mkdir(parents=True, exist_ok=True)
@@ -515,8 +513,7 @@ def test_positions_counts_the_moves_that_leave_each_order_on_the_path():
 
 
 def test_orders_on_the_path_that_differ_only_by_a_track_taken_off_all_count():
-    # The first move fronts e and the second a, back in front of it; with e
-    # taken off since, the order before them and after each read the same.
+    # Moves front e then a; with e taken off since, before and after read the same.
     seen = pair_stopped.passed(START, TARGET)
     assert seen[1][0] == "e"
     shown = tuple(one for one in seen[0] if one != "e")
@@ -592,7 +589,7 @@ def _read_moving(*records):
 
 
 def test_a_later_write_that_sent_no_move_does_not_hide_a_pending_one():
-    """R-1394, round two: a refused finish left the account where the pending moves left it."""
+    """R-1394: a refused finish left the account where the pending moves left it."""
     early = _WHEN.replace(second=40).isoformat()
     pending = _steps(
         "run-1",

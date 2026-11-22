@@ -1,43 +1,24 @@
 """``sync.unmark``: let go what a pass took, and put back a title a mark wrote, behind one gate (R-838).
 
-SINCE U242 A MARK IS A TAKEN ENTRY, not a title. ``sync mark``, ``label mark``
-and the set archive hold a playlist as taken in Cratekit's own record and
-change no title, so undoing one is a release in that record and nothing on
-the account. A playlist the migration copied from a pass's legacy prefix mark
-is held under that pass, so this lets it go as well. What follows is the rule
-for a TITLE a mark wrote, which still holds for every legacy prefix a pass
-wrote and for ``crate sync strip``'s renames, recorded under its own pass, so
-``--pass prefix-strip`` puts each old title back.
+SINCE U242 A MARK IS A TAKEN ENTRY, not a title, so undoing one is a release
+in the record and nothing on the account. The title rule below still holds for
+legacy prefix marks and for ``crate sync strip``'s renames (``--pass
+prefix-strip``).
 
-The source system strips its swept prefix again when a run is abandoned. Here
-``sync mark`` renames and this is the verb that renames back, so a mark written
-by mistake is undone by the product and not by hand on the account.
+THE RECORD SAYS WHAT A PASS MARKED, AND NOTHING ELSE DOES, since a title cannot
+say who wrote a prefix. A playlist the record does not hold under the named
+pass is never planned, and naming one with ``--playlist`` is refused.
 
-THE RECORD SAYS WHAT A PASS MARKED, AND NOTHING ELSE DOES. ``sync mark`` keeps
-:mod:`cratekit.sync.mark_record`, one entry per playlist a pass renamed, with
-the title before and the title written. A playlist's title cannot say who put
-the prefix on it, since the source system writes the same prefix and a person
-can type it, so a playlist the record does not hold under the named pass is
-never planned, and one named with ``--playlist`` is refused.
+ONLY THE TITLE THE MARK WROTE IS PUT BACK. A title changed since is somebody's
+later decision and is listed and left, as is a playlist no longer listed.
 
-ONLY THE TITLE THE MARK WROTE IS PUT BACK. A playlist whose title on the
-account is still exactly what the mark wrote is renamed to what it was before.
-One retitled since, with the prefix or without it, is somebody's later decision
-and is listed and left, and so is one the account no longer lists.
+THE PASS IS NAMED, NOT FOUND, by its name or the intake file ``sync mark`` was
+handed. A name with no mark is a gated plan of nothing, decided before the
+account is listed.
 
-THE PASS IS NAMED, NOT FOUND. ``--pass`` takes the name the pass's list, batch
-and intake file share, ``<run>_synced``, or the intake file ``sync mark`` was
-handed, retired or not, from which that name is read. A name the record holds no
-mark for is a plan of nothing, still gated, decided before the account is
-listed or a credential is asked for, on ``sync mark``'s precedent.
-
-THE PLAN IS SHOWN BEFORE ANYTHING IS RENAMED, and the run that carries out the
-answer lists the account again and rechecks each title before its rename, so a
-playlist retitled between the answer and the write is skipped and said.
-
-IDEMPOTENT BY THE RECORD. Each rename that lands is stamped in the record as it
-lands, so a second run finds every playlist already put back, plans nothing and
-needs no account listing to say so.
+The plan is shown first, and the apply rechecks each title against a fresh
+listing. IDEMPOTENT BY THE RECORD: each landed rename is stamped as it lands,
+so a second run plans nothing without listing the account.
 
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23).
@@ -65,13 +46,11 @@ SKIP = mark_cli.SKIP
 ALREADY_UNMARKED = "already-unmarked"
 NOT_LISTED = mark_cli.NOT_LISTED
 RENAMED_SINCE = "renamed-since-mark"
-#: Another pass marked the playlist after this one did, so the prefix it
-#: carries now is that pass's, and only that pass's unmark takes it off.
+#: A later pass marked the playlist again, so only that pass's unmark takes it off.
 MARKED_AGAIN = "marked-again"
 #: Why a planned playlist was not renamed after all: the recheck.
 CHANGED_SINCE = mark_cli.CHANGED_SINCE
-#: A playlist the pass holds as taken and whose title nothing changes: the
-#: release in the record is the whole undo (U242).
+#: A taken playlist with no title to change, where the release is the whole undo.
 RELEASE = "release"
 RELEASED = "released"
 
@@ -146,14 +125,9 @@ def _narrowed(
 def _later(entry: mark_record.Marked, every: tuple[mark_record.Marked, ...]) -> str:
     """The pass that marked the same playlist after ``entry``'s did, or ``""``.
 
-    Timestamps are the record's own, written in one zone by one clock, so they
-    order as text.
-
-    OF THE SAME KIND ONLY (U242, round one of its review). A title ``sync
-    strip`` wrote taking a prefix off is not a pass marking the playlist
-    again: with the strip standing the title is the one before the mark, and
-    with the strip put back it is the one the mark wrote, and either way the
-    earlier pass's mark is decided by the title as any other is.
+    The record's timestamps share one zone and clock, so they order as text.
+    OF THE SAME KIND ONLY, since a strip's rename is not a pass marking again
+    and the earlier mark is still decided by the title.
     """
     later = [
         other.pass_name
@@ -173,8 +147,7 @@ def _item(
 ) -> dict[str, Any]:
     """One playlist the pass marked, decided against the account's titles now.
 
-    ``listed`` is ``None`` when nothing asked for a listing, which is only ever
-    a pass whose every mark has already been put back or superseded.
+    ``listed`` is ``None`` only when every mark is already put back or superseded.
     """
     current = None if listed is None else listed.get(entry.playlist_id)
     base: dict[str, Any] = {
@@ -210,7 +183,6 @@ def _item(
         }
     if current == entry.name:
         # PUT BACK ALREADY, by hand or by an unmark whose stamp did not land.
-        # The title is the one this verb would write, so there is nothing to do.
         return {
             **base,
             "action": SKIP,
@@ -240,18 +212,12 @@ def _with_taken(
 ) -> dict[str, Any]:
     """One playlist of the pass: its title's undo and its taken entry's, as one item (U242).
 
-    ``item`` is the title's decision, or ``None`` when the pass wrote no title
-    on it. ``held`` is the pass's taken entry on it, or ``None``. A title to put
-    back is put back and its entry let go with it; an entry still held with no
-    title to put back is a release alone, which writes nothing on the account;
-    an entry already let go says so.
+    ``item`` is the title's decision or ``None``; ``held`` is the pass's taken
+    entry or ``None``. A title put back lets its entry go too; a held entry
+    with no title to put back is a release alone.
 
-    A TITLE STILL CARRYING A PREFIX THIS PASS DOES NOT OWN IS LEFT ALONE, with
-    the reason the title half gave, as before U242 (round two of its review):
-    retitled since the mark and still prefixed, or marked again by a later
-    pass. Letting its entry go would say it is no longer taken while its title
-    still says it is. Every release the apply makes stamps the pass's legacy
-    mark with it, so no later migration takes it again.
+    A TITLE STILL CARRYING A PREFIX THIS PASS DOES NOT OWN IS LEFT ALONE, since
+    releasing it would say it is no longer taken while its title says it is.
     """
     taken_held = held is not None and held.held
     if item is not None and item["action"] == UNMARK:
@@ -301,7 +267,7 @@ def _payload(items: list[dict[str, Any]], *, name: str) -> dict[str, Any]:
     }
     releases = sorted(item["id"] for item in items if item.get("release"))
     if releases:
-        # LEFT OUT WHEN NONE, so a legacy pass's digest is as it was.
+        # LEFT OUT WHEN NONE, so a legacy pass's digest is unchanged.
         identity["releases"] = releases
     return {
         "digest": digest_of(identity),
@@ -347,10 +313,10 @@ def _failed_part_way(
     planned: list[str],
     released: list[str] | None = None,
 ) -> CratekitError:
-    """The failure, with what was already put back named in it.
+    """The failure, naming what was already put back.
 
-    ``sync mark``'s rule: a refusal the account raised keeps its reason and its
-    remedy, and anything else is this build's own defect and says so.
+    An account refusal keeps its reason and remedy; anything else is this
+    build's own defect.
     """
     back = [titles.get(identity, identity) for identity in landed]
     said = (
@@ -397,14 +363,11 @@ def sync_unmark(ctx) -> Envelope:
     cfg = sync_cli._load()
     name = _pass_name(str(ctx.args.pass_name))
     record = mark_record.MarkRecord(cfg)
-    # THE RECORD FIRST, before the account is listed or a credential is asked
-    # for. Neither can change which playlists the pass marked or took.
+    # THE RECORD FIRST, before the account is listed or a credential asked for.
     every = record.all()
     taken = record.taken()
-    # A PLAYLIST THE MIGRATION FOUND PREFIXED IS NO PASS'S (U242, round one of
-    # its review). Nothing Cratekit did is undone by letting it go, and once
-    # its prefix is stripped nothing but this entry keeps it from being
-    # offered as new, so no unmark ever releases one.
+    # A PLAYLIST THE MIGRATION FOUND PREFIXED IS NO PASS'S, and once stripped
+    # only its entry keeps it from being offered as new, so no unmark releases one.
     took = frozenset(
         identity
         for identity, entry in taken.items()
@@ -467,23 +430,20 @@ def sync_unmark(ctx) -> Envelope:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
 
     # THE RECORD IS LOCKABLE BEFORE THE FIRST WRITE, so a stamp that cannot
-    # land refuses while every title and every hold is still the mark's.
+    # land refuses while nothing has changed.
     record.ready()
     titles_put = {identity: by_id[identity].to for identity in planned}
     landed: list[str] = []
     changed: list[str] = []
     released: list[str] = []
     try:
-        # THE RELEASES FIRST: they write nothing on the account, so a provider
-        # that fails the renames below cannot leave one undone.
+        # THE RELEASES FIRST, since they write nothing on the account and a
+        # failing provider cannot then leave one undone.
         for identity in letting:
             record.release(name, identity)
             released.append(identity)
-            # THE PASS'S LEGACY MARK IS STAMPED WITH IT, when one stands: no
-            # title of the pass's is left to put back (the cases where one is
-            # are left alone above), so the release is the whole undo, and an
-            # unstamped mark would be taken again by the next migration or
-            # strip (U242, rounds one and two of its review).
+            # THE PASS'S LEGACY MARK IS STAMPED WITH IT, or the next migration
+            # or strip would take it again.
             if identity in by_id and not by_id[identity].unmarked:
                 record.record_unmarked(name, identity)
         if planned:

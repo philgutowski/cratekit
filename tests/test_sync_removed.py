@@ -1,12 +1,10 @@
 """U287: ``crate sync removed`` reads each downloaded playlist again and answers every removed track.
 
-Driven against the disposable database the native landing suite builds. A
-pass is swept and landed as U128 lands one, then the account is a fake
-catalogue listing each playlist as it stands after Phillip took tracks off it,
-and ``crate sync removed`` is driven over both. Nothing is written by the verb,
-so no gate is answered anywhere in this file.
+A pass is swept and landed on the native landing suite's disposable database,
+then a fake catalogue lists each playlist as it stands after tracks were
+taken off, and the verb is driven over both.
 
-D1 applies. Nothing here names a real volume, a real person or a real track.
+D1 applies. Nothing here names a real volume, person or track.
 """
 
 from __future__ import annotations
@@ -99,9 +97,8 @@ def swept(
 ) -> None:
     """One job per playlist, ``id -> (account name, titles)``, queued as a sweep does and run.
 
-    ``tests/test_intake_land_account_playlists_native.py``'s helper, with an
-    ISRC on each track when ``codes`` asks, so the identity rule's second test
-    is reachable from a recorded pass.
+    The native landing suite's helper, with an ISRC on each track when
+    ``codes`` asks, so the identity rule's second test is reachable.
     """
     queued = []
     with jobs.open_store() as store:
@@ -152,7 +149,7 @@ class Account:
 
     def __init__(self, monkeypatch) -> None:
         # ONE HEART THE PASS NEVER ASKED FOR, so the hearts read whole and keep
-        # nothing unless a test hearts one of its own tracks.
+        # nothing unless a test hearts its own track.
         self.fake = FakeCatalogue(hearts=[track("Elsewhere", track_id="tid-heart")])
         monkeypatch.setattr(catalogue, "resolve", catalogue_factory(self.fake))
 
@@ -182,11 +179,10 @@ class Account:
 
 
 def _run() -> dict:
-    """The plan as the verb shows it: a plan that offers a row meets the gate, answered abort.
+    """The plan as the verb shows it, a plan offering a row answered abort at the gate.
 
-    ABORT IS A RECORDED ACT AND WRITES NOTHING (U288), so the envelope it ends
-    on carries the same plan, items, totals and warnings a plan that offers
-    nothing ends on, and the suite's reading of every answer is unchanged.
+    ABORT WRITES NOTHING (U288), so its envelope carries the same plan, items,
+    totals and warnings as a plan offering nothing.
     """
     code, out = drive(VERB)
     if code == int(ExitCode.DECISION_REQUIRED):
@@ -291,10 +287,10 @@ def test_a_track_still_on_another_synced_playlist_is_kept_by_id_isrc_and_recordi
         codes=True,
     )
     account = Account(monkeypatch)
-    # Both new tracks are off Sunset Warmup, which now lists New5 under another
-    # id. Deep Cuts holds New1 by its id, New2 by its ISRC under another id and
-    # title, and New3 under another id with the same artist and title, which is
-    # a relinked track still on its playlist rather than a removal.
+    # Both new tracks are off Sunset Warmup, which lists New5 under another id.
+    # Deep Cuts holds New1 by id, New2 by ISRC under another id and title, and
+    # New3 under another id with the same artist and title, a relinked track
+    # rather than a removal.
     account.lists(
         "pl-a",
         SUNSET,
@@ -390,8 +386,8 @@ def test_a_synced_playlist_not_read_whole_offers_nothing_from_any_playlist(
     answers = _by_title(out)
     assert answers["New1"]["action"] == removed.KEPT
     assert answers["New1"]["why"] == removed.PARTIAL_READ
-    # A playlist not read whole says nothing about its own tracks: none of
-    # Deep Cuts' is a removal, kept or otherwise.
+    # A playlist not read whole says nothing about its tracks, so none of
+    # Deep Cuts' is a removal.
     assert "New3" not in answers
     assert out["data"]["totals"][removed.OFFERED] == 0
     assert out["data"]["totals"]["partial"] is True
@@ -435,10 +431,9 @@ def test_hearts_not_read_whole_offer_nothing(
 
         def short():
             # THE REAL CATALOGUE'S SHAPE: it raises the shortfall with the rows
-            # it served when the account declares more (R-504). With no heart
-            # served at all it is short by more than what the provider
-            # withholds, so it stays partial; served hearts and a count above
-            # them read whole (U320, tests/test_sync_removed_gone.py).
+            # served when the account declares more (R-504). No heart served
+            # stays partial; served hearts and a count above them read whole
+            # (U320, tests/test_sync_removed_gone.py).
             raise catalogue.HeartsShortfall((), 5)
 
         account.fake.favourite_tracks = short
@@ -491,8 +486,8 @@ def test_a_playlist_the_account_list_omits_and_its_id_opens_is_read_and_keeps_it
     _five(cfg, silence, also={"pl-b": (DEEP, ("New3",))})
     account = Account(monkeypatch)
     account.lists("pl-a", SUNSET, [track("Held1")])
-    # Deep Cuts still opens by its id and holds New1, though the account's own
-    # list of playlists stopped before it.
+    # Deep Cuts still opens by id and holds New1, though the account's list
+    # of playlists stopped before it.
     account.fake.playlists["pl-b"] = FakePagedPlaylist([track("New3"), track("New1")], declared=2)
 
     out = _run()
@@ -535,8 +530,8 @@ def test_a_match_on_a_file_the_pass_did_not_file_is_kept(
     _five(cfg, silence)
     landed = _row(cfg, "New1")
     ((folder,),) = _query(cfg, "SELECT FolderPath FROM djmdContent WHERE ID = ?", landed)
-    # The landed row and file are gone, and a copy of the same track brought in
-    # by hand sits elsewhere in the library under a row of its own.
+    # The landed row and file are gone, and a hand copy of the track sits
+    # elsewhere under its own row.
     elsewhere = Path(cfg.library.root) / cfg.library.music_dir / "By Hand" / "New1.flac"
     elsewhere.parent.mkdir(parents=True)
     shutil.move(str(folder), elsewhere)
@@ -579,7 +574,7 @@ def test_a_job_no_landing_names_is_not_read_as_downloaded(
 def test_a_playlist_a_later_pass_swept_and_never_landed_still_keeps_its_tracks(
     native_library, silence, monkeypatch, offline
 ):
-    """Round one's finding: the cursor's file holds a finished job only after the next sweep."""
+    """The cursor's file holds a finished job only after the next sweep."""
     cfg, _root = native_library
     _five(cfg, silence)
     swept(cfg, {"pl-c": (DEEP, ("New1",))}, run_id=OTHER_RUN)
@@ -600,8 +595,8 @@ def test_a_gone_downloaded_playlist_holds_what_its_pass_recorded(
     cfg, _root = native_library
     _five(cfg, silence, also={"pl-b": (DEEP, ("New1", "New3"))})
     account = Account(monkeypatch)
-    # Deep Cuts is neither listed nor openable: gone, and still read as holding
-    # New1 and New3, which its pass recorded.
+    # Deep Cuts is neither listed nor openable, so gone, still holding the
+    # New1 and New3 its pass recorded.
     account.lists("pl-a", SUNSET, [track("Held1")])
 
     out = _run()
@@ -718,7 +713,7 @@ def test_a_genre_playlist_of_a_native_routing_tree_keeps_nothing(
 
 
 def _damage_reports(job_id: str) -> None:
-    """Take one committed report of the job off disk, as a store from before U57 lacks one."""
+    """Take one committed report of the job off disk, as a pre U57 store lacks one."""
     import os
 
     for base in {os.environ.get(key) for key in ("XDG_STATE_HOME", "XDG_DATA_HOME", "HOME")}:
@@ -741,7 +736,7 @@ def _job_of(account: str) -> str:
 def test_a_damaged_job_of_another_playlist_never_refuses_the_verb(
     native_library, silence, monkeypatch, offline, listed
 ):
-    """Round two: the recorded contents are read only of a playlist that reads gone."""
+    """The recorded contents are read only of a playlist that reads gone."""
     cfg, _root = native_library
     _five(cfg, silence)
     swept(cfg, {"pl-z": ("Other", ("Zed1", "Zed2"))}, run_id=OTHER_RUN)
@@ -781,7 +776,7 @@ def test_a_gone_playlist_a_pass_swept_and_never_landed_holds_what_it_recorded(
 def test_a_playlist_still_titled_with_the_old_prefix_is_synced(
     native_library, silence, monkeypatch, offline
 ):
-    """Round two: the prefix holds a playlist as taken until the strip records it (U242)."""
+    """The prefix holds a playlist as taken until the strip records it (U242)."""
     cfg, _root = native_library
     _five(cfg, silence)
     account = Account(monkeypatch)
@@ -848,7 +843,7 @@ def test_nothing_downloaded_asks_the_account_nothing(native_library, monkeypatch
 
 
 def test_the_verb_declares_the_collection_its_explicit_gate_and_the_cloud_decision():
-    """U288. The write surface, destructive, and the confirm gate R34 holds explicit."""
+    """U288: the write surface is destructive and R34's confirm gate explicit."""
     entry = registry.entry("sync.removed")
     assert entry.writes == frozenset({"db_tree", "db_metadata"})
     assert entry.destructive
@@ -908,8 +903,8 @@ def test_a_routing_tree_on_the_bridge_names_no_playlist_of_the_pass(native_libra
 # U288: the gate, and the offered rows taken out of the collection
 # ---------------------------------------------------------------------------
 
-#: The tables a track's own rows sit in beside the content row, each given one
-#: here so the apply has every kind A185 measured to delete.
+#: The tables a track's rows sit in beside the content row, one each here so
+#: the apply has every kind A185 measured to delete.
 _BESIDE = ("djmdCue", "contentCue", "contentFile", "djmdSongHistory", "djmdMixerParam")
 
 
@@ -959,13 +954,12 @@ def _without(tables: dict[str, list[tuple]], cfg: config.Config, gone: set[str])
 
 
 def _closed_up(tables: dict[str, list[tuple]], cfg: config.Config, before: dict[str, list[tuple]], gone: set[str]) -> dict:
-    """``tables`` with each playlist a removed membership left numbered one through N again (R-1830).
+    """``tables`` with each playlist a removed membership left renumbered one through N (R-1830).
 
-    An expectation written apart from the writer's rule: on a fixture whose
-    playlists are each numbered one through N with no gap, which this asserts,
-    rekordbox's renumbering (A197, sitting 102) leaves every playlist a removed
-    track left numbered one through N over the members it keeps, in their
-    order, and every other column of every row as it was.
+    Written apart from the writer's rule: on a fixture numbered one through N
+    with no gap (asserted), rekordbox's renumbering (A197) leaves each such
+    playlist numbered one through N over its kept members in order, every
+    other column as it was.
     """
     columns = _columns_of(cfg, "djmdSongPlaylist")
     pid, cid, number = (columns.index(name) for name in ("PlaylistID", "ContentID", "TrackNo"))
@@ -1034,17 +1028,16 @@ def test_apply_takes_out_exactly_the_offered_rows_and_every_row_naming_them(
     assert any("New1" in line and str(music) in line for line in shown["offered"]), shown
     assert acted["data"]["totals"]["removed"] == 1
     # New1 sat second of five on two pass playlists and fourth of five on
-    # INBOX / Analyze: three, three and one members after it are renumbered.
+    # INBOX / Analyze, so three, three and one members are renumbered.
     assert shown["memberships renumbered"] == 7, shown
     assert acted["data"]["totals"]["memberships renumbered"] == 7
     (applied,) = [one for one in acted["warnings"] if one["code"] == removed_cli.APPLIED]
     assert "7 playlist membership(s) after them renumbered" in applied["message"], applied
     after = _every_table(cfg)
     expected = _closed_up(_without(before, cfg, {offered}), cfg, before, {offered})
-    # Read from SQL, table by table: the offered row and every row naming it
-    # are gone, the members after it in each playlist it left are numbered
-    # down with no other column moved (R-1830), and nothing else moved but
-    # the update count.
+    # Read from SQL: the offered row and every row naming it are gone, later
+    # members are numbered down with no other column moved (R-1830), and only
+    # the update count moved besides.
     registry_at = _columns_of(cfg, "agentRegistry").index("registry_id")
     for name in sorted(set(expected) | set(after)):
         if name == "agentRegistry":
@@ -1057,8 +1050,8 @@ def test_apply_takes_out_exactly_the_offered_rows_and_every_row_naming_them(
         assert _query(cfg, f'SELECT COUNT(*) FROM "{table}" WHERE ContentID = ?', offered) == [(0,)]
         assert _query(cfg, f'SELECT COUNT(*) FROM "{table}" WHERE ContentID = ?', held) == [(1,)]
     assert _query(cfg, "SELECT COUNT(*) FROM djmdSongPlaylist WHERE ContentID = ?", offered) == [(0,)]
-    # The playlist rows are untouched, left as rekordbox leaves them, and the
-    # file is not touched at all: the Trash is delete review's.
+    # The playlist rows stay as rekordbox leaves them, and the file is
+    # untouched, the Trash being delete review's.
     assert _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID") == playlists
     assert music.exists() and music.stat().st_size == size
 
@@ -1115,8 +1108,8 @@ def test_a_plan_that_moved_before_the_write_refuses_with_nothing_written(
     seen: dict = {}
 
     def moved_first(cfg_, plan, **kwargs):
-        # A person puts the offered track in a playlist of their own between
-        # the gate and the write: it is kept now, so the plan moved.
+        # A person puts the offered track in their own playlist between the
+        # gate and the write, so it is kept and the plan moved.
         _hand_made(cfg_, "Mine", "New1")
         seen["tables"] = _every_table(cfg_)
         return real(cfg_, plan, **kwargs)
@@ -1133,7 +1126,7 @@ def test_a_plan_that_moved_before_the_write_refuses_with_nothing_written(
 def test_a_row_a_my_tag_names_is_kept_and_never_offered_and_the_rest_is_removed(
     native_library, silence, monkeypatch, offline
 ):
-    """Round one's B1: the landing's own vox My Tag would make the removal refuse, so it keeps."""
+    """The landing's own vox My Tag would make the removal refuse, so the track keeps."""
     cfg, _root = native_library
     _five(cfg, silence)
     account = Account(monkeypatch)
@@ -1213,8 +1206,8 @@ def test_delete_review_after_the_apply_offers_the_removed_file_and_none_other(
     _one_offered(cfg, silence, monkeypatch)
     offered = _row(cfg, "New1")
     music = Path(_query(cfg, "SELECT FolderPath FROM djmdContent WHERE ID = ?", offered)[0][0])
-    # NO DELETE REVIEW HAS EVER RUN ON THIS LIBRARY (round one's B2): the
-    # removal gives the pass its first position, below its own commit.
+    # NO DELETE REVIEW HAS EVER RUN ON THIS LIBRARY: the removal gives the pass
+    # its first position, below its own commit.
     assert watermark.WatermarkStore(cfg).read() is None
     code, acted, _ = _apply()
     mark = watermark.WatermarkStore(cfg).read()
@@ -1256,9 +1249,9 @@ def test_delete_review_after_the_apply_offers_the_removed_file_and_none_other(
 def test_only_the_collection_removal_asks_a_commit_to_admit_a_delete():
     """A source guard, as the creation's is: who may ask is the property.
 
-    READ AS SYNTAX, not as text (round one's R8): any call in the package that
-    passes ``deletions``, or hands one of the writer's three judges a ``**``
-    mapping that could carry it, outside the writer itself.
+    READ AS SYNTAX, not text: any call outside the writer that passes
+    ``deletions``, or hands one of its three judges a ``**`` mapping that
+    could carry it.
     """
     import ast
     import re
@@ -1308,11 +1301,10 @@ def _handle(cfg: config.Config):
 def test_another_writer_deleting_a_content_row_through_the_binding_is_refused_at_its_commit(
     native_library, silence, monkeypatch, offline
 ):
-    """Every commit but the removal's still refuses a delete the binding made, the content table above all.
+    """Every commit but the removal's still refuses a binding delete, the content table above all.
 
-    Through the binding's own delete, which reaches its update buffer. A delete
-    made on the raw session and flushed reaches neither source the whitelist
-    reads, which predates this unit and is a residual.
+    Through the binding's own delete, which reaches its update buffer; a raw
+    session delete reaches neither source the whitelist reads, a residual.
     """
     cfg, _root = native_library
     _one_offered(cfg, silence, monkeypatch)
@@ -1419,7 +1411,7 @@ def test_a_recorded_removal_is_read_only_for_its_own_database_and_a_row_still_ab
 
 
 # ---------------------------------------------------------------------------
-# U288, round one: the guards a first table killed nothing with
+# U288: the write's guards, a restored row and the deletion pass's position
 # ---------------------------------------------------------------------------
 
 
@@ -1570,8 +1562,8 @@ def test_a_removed_row_the_database_holds_again_is_not_offered_by_delete_review(
 
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     assert refused["cause"]["detail"]["shown"]["offered"] == 0, refused
-    # Not merely refused by the reference proof: the live row means the
-    # recorded removal is no removal at all, so the pass never judges it.
+    # The live row means the recorded removal is none, so the pass never
+    # judges it, not merely refused by the reference proof.
     from cratekit.deletion import run as deletion_run
 
     handle = _handle(cfg)
@@ -1585,7 +1577,7 @@ def test_a_removed_row_the_database_holds_again_is_not_offered_by_delete_review(
 def test_a_track_added_after_a_removal_goes_past_the_highest_position(
     native_library, silence, monkeypatch, offline
 ):
-    """Round one's R1: the binding's count plus one would land on a live row's position."""
+    """The binding's count plus one would land on a live row's position."""
     cfg, _root = native_library
     _one_offered(cfg, silence, monkeypatch)
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
@@ -1622,7 +1614,7 @@ def test_two_appends_after_a_removal_each_take_the_next_position(
 def test_a_refused_removal_gives_the_deletion_pass_no_position(
     native_library, silence, monkeypatch, offline
 ):
-    """Round two: the first position is written only once the removal's commit lands."""
+    """The first position is written only once the removal's commit lands."""
     from cratekit.deletion import watermark
 
     cfg, _root = native_library
@@ -1644,7 +1636,7 @@ def test_a_refused_removal_gives_the_deletion_pass_no_position(
 def test_a_position_the_pass_holds_is_kept_and_the_collection_not_walked(
     native_library, silence, monkeypatch, offline
 ):
-    """Round two: with a position held, a marked row the pass could not read stops nothing here."""
+    """With a position held, a marked row the pass could not read stops nothing."""
     from cratekit.deletion import library as deletion_library
     from cratekit.deletion import watermark
 
@@ -1720,8 +1712,8 @@ def test_a_removed_member_in_the_middle_of_three_leaves_one_and_two_and_nothing_
     removal = _remove(cfg, "New1")
 
     assert _titles(_numbers(cfg, mine)) == [("Held1", 1), ("Held2", 2)]
-    # The renumbered row is the same row, every column as it was but TrackNo:
-    # no updated_at, no rb_local_usn, as rekordbox left it.
+    # The renumbered row keeps every column but TrackNo, no updated_at or
+    # rb_local_usn, as rekordbox left it.
     columns = _columns_of(cfg, "djmdSongPlaylist")
     (now,) = _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE ID = ?", third[0])
     at = columns.index("TrackNo")
@@ -1908,12 +1900,11 @@ def test_a_renumbering_that_moved_between_the_gate_and_the_write_refuses_as_stal
 def test_a_track_only_marked_out_of_a_playlist_renumbers_none_of_its_live_members(
     native_library, silence, monkeypatch, offline
 ):
-    """Review round one's B1 and R2, through the verb.
+    """A track only marked out of a playlist renumbers none of its live members.
 
-    ``sync pair`` takes a track off by marking its membership and numbers the
-    live rows one through N, so the marked New1 sits at 2 beside the live
-    Held2 at 2. Counting the marked row lowered Held3 onto Held2's place, two
-    live rows on one number, an order ``sync pair`` would then read by row id.
+    ``sync pair`` marks a removed membership and numbers live rows one through
+    N, so marked New1 and live Held2 share 2. Counting the marked row would
+    put two live rows on one number, an order then read by row id.
     """
     cfg, _root = native_library
     _one_offered(cfg, silence, monkeypatch)
@@ -1964,7 +1955,7 @@ def test_renumbering_writes_trackno_alone_and_a_held_row_reads_the_new_number(
 
 
 def test_only_the_collection_removal_renumbers_memberships():
-    """Review round one's R3: the one TrackNo write the whitelist does not see has one caller."""
+    """The one TrackNo write the whitelist does not see has one caller."""
     import ast
 
     root = Path(rb_writer.__file__).resolve().parents[1]
@@ -1983,7 +1974,7 @@ def test_only_the_collection_removal_renumbers_memberships():
 def test_an_unreadable_marker_in_a_playlist_to_renumber_refuses_with_nothing_written(
     native_library, silence, monkeypatch, offline
 ):
-    """Round two's X1: other readers take a NULL marker as live, so the renumbering refuses it."""
+    """Other readers take a NULL marker as live, so the renumbering refuses it."""
     cfg, _root = native_library
     _one_offered(cfg, silence, monkeypatch)
     mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2", "Held3")
