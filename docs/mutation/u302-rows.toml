@@ -160,3 +160,39 @@ new = '''                _record_favorites_commit(record, plan.tree_id, added=0,
                 convergence.record_fingerprint(cfg, db)
             raise
     return removed'''
+
+[[rows]]
+id = "W16_move_removes_without_proof_of_the_target"
+description = "_proven_leavers: a track not proven in its target is removed from where it was"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_tree_writer.py", "tests/test_adopt_move.py"]
+old = '''        if not places.holds(move.target, move.content_id):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "W17_landed_removal_not_recorded"
+description = "_remove_leavers: a removal commit that landed and then raised is not recorded"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_tree_writer.py", "tests/test_write_session.py", "tests/test_adopt_move.py"]
+old = '''                _record_removal_commit(run.record, run.tree_id, run.removed, run.cfg)'''
+new = '''                pass'''
+
+[[rows]]
+id = "W18_removed_folder_read_as_live"
+description = "_add_favorites: a soft deleted folder is written into instead of refused as stale"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py", "tests/test_genre_favorites_adoption.py"]
+old = '''                if parent is None or rb_writer.node_removed(parent):'''
+new = '''                if parent is None:'''
+
+[[rows]]
+id = "W19_emptied_source_mirrored"
+description = "source_playlist: an emptied playlist of the source name is taken as the source"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py", "tests/test_genre_favorites_adoption.py"]
+old = '''    if len(live) == 1 and live_members(db, str(live[0].ID)):'''
+new = '''    if len(live) == 1:'''
