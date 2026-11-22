@@ -1888,6 +1888,6 @@ it refreshes stale copies.
 | Which workflows have run for real | [`cutover.md`](cutover.md) |
 | Signing in, switching downloader | [`adapters.md`](adapters.md) |
 | A term that means something specific here | `CONCEPTS.md` |
-| Known problems, recorded and not fixed | [`residual-findings.md`](residual-findings.md) |
+| Known problems, recorded and not fixed | [`residual-findings.md`](residual-findings.md), the older ones in `ledger/` |
 | Past problems and their causes | `solutions/` |
 | Working on Cratekit | [`DEVELOPING.md`](DEVELOPING.md), [`METHOD.md`](METHOD.md) |
