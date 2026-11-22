@@ -1,11 +1,8 @@
 """U119: the end of an adoption that files a track runs the additive refresh.
 
 Driven through the real dispatcher on the cutover suite's library: two tracks
-of one genre, the routing tree cut over, one of the two hearted into All
-Favorites. The adoption files both into their band, and the favourite reaches
-its folder's Favorites in the same job, the resume reporting what it added.
-
-D1 applies. Nothing here names a real volume, a real person or a real track.
+of one genre, the routing tree cut over, one hearted into All Favorites. The
+favourite reaches its folder's Favorites in the same job. D1 applies.
 """
 
 from __future__ import annotations
@@ -78,6 +75,10 @@ def test_an_adoption_that_files_a_favourite_puts_it_in_its_folders_favorites(rea
 
 
 def test_an_adoption_with_no_source_playlist_files_its_tracks_and_says_the_refresh_skipped(ready):
+    """The skip carries its own cause in its note (U132)."""
+    from cratekit.adopt import apply_cli
+    from cratekit.write import genre_favorites
+
     cfg, export, _root_id = ready
     _cut_over(export)
 
@@ -87,6 +88,9 @@ def test_an_adoption_with_no_source_playlist_files_its_tracks_and_says_the_refre
     assert _favorites_playlists(cfg) == {}
     kept = resumed["data"]["progress"]["adoption"]["favorites"]
     assert kept["added"] == 0 and "no live playlist" in kept["skipped"]
+    assert kept["cause"] == genre_favorites.SOURCE_MISSING
+    (note,) = [w for w in resumed["warnings"] if w["code"] == apply_cli.FAVORITES_SKIPPED]
+    assert note["message"].endswith(f"({genre_favorites.SOURCE_MISSING})")
 
 
 # ---------------------------------------------------------------------------
@@ -130,19 +134,3 @@ def test_an_adoption_over_a_taxonomy_without_the_class_names_the_skipped_step(re
     assert "genre Favorites step was skipped" in message
     assert f"schema_version {DECLARED.schema_version}" in message
     assert "crate taxonomy upgrade" in message
-
-
-def test_a_skip_for_another_cause_carries_that_cause_in_its_note(ready):
-    from cratekit.adopt import apply_cli
-    from cratekit.write import genre_favorites
-
-    cfg, export, _root_id = ready
-    _cut_over(export)
-
-    code, resumed = _adopt()
-
-    assert code == int(ExitCode.OK), resumed
-    kept = resumed["data"]["progress"]["adoption"]["favorites"]
-    assert kept["cause"] == genre_favorites.SOURCE_MISSING
-    (note,) = [w for w in resumed["warnings"] if w["code"] == apply_cli.FAVORITES_SKIPPED]
-    assert note["message"].endswith(f"({genre_favorites.SOURCE_MISSING})")

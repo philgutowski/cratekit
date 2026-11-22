@@ -43,6 +43,8 @@ OTHER = DECLARED.bucket("electronica_other")
 VERB = ["favorites", "refresh"]
 APPROVE = refresh_cli.APPROVE_GATE
 ROWS = ("1", "2", "3", "4", "5", "6")
+#: The shipped taxonomy without the Favorites class.
+UNDECLARED = replace(DECLARED, sub_classes=tuple(c for c in DECLARED.sub_classes if c.id != "favorites"))
 
 
 # ---------------------------------------------------------------------------
@@ -152,13 +154,8 @@ def _plan(cfg, db, tree: Tree, declared=DECLARED):
 
 def _apply(cfg, db, tree: Tree, plan, *, remove=True, declared=DECLARED):
     return genre_favorites.apply_refresh(
-        cfg,
-        db,
-        plan,
-        declared=declared,
-        registry=tree.registry,
-        analysis_roots=[Path(cfg.library.root)],
-        remove=remove,
+        cfg, db, plan, declared=declared, registry=tree.registry,
+        analysis_roots=[Path(cfg.library.root)], remove=remove,
     )
 
 
@@ -386,7 +383,7 @@ def test_a_taxonomy_declaring_no_playlist_class_refuses_by_name(cfg, gates_pass,
     tree = Tree(cfg, db)
     tree.playlist(DEEP, "Med", "1")
     tree.source("1")
-    trimmed = replace(DECLARED, sub_classes=tuple(c for c in DECLARED.sub_classes if c.id != "favorites"))
+    trimmed = UNDECLARED
     with pytest.raises(CratekitError) as caught:
         _plan(cfg, db, tree, declared=trimmed)
     assert caught.value.cause.reason == genre_favorites.CLASS_UNDECLARED
@@ -469,6 +466,28 @@ def _rows(cfg) -> list[trees.ContentRow]:
     ]
 
 
+def _check(cfg, db, tree: Tree, placed, gaps):
+    return rebuild.check(
+        cfg, db, tree_id=TREE, registry=tree.registry, declared=DECLARED, placements=placed,
+        rows=_rows(cfg), root_exists=lambda _root: True, not_compared=gaps,
+    )
+
+
+def _rebuild_track_one(cfg, db, tree: Tree):
+    """The rebuild over track 1 alone, untagged, at the top of the energy scale."""
+    truth = [
+        rebuild.Truth(
+            location=f"{cfg.library.root}/Music/track 1.flac", genre=None,
+            energy=DECLARED.energy.scale_max, voxlevel=None,
+        )
+    ]
+    return rebuild.rebuild_tree(
+        cfg, db, tree_id=TREE, registry=tree.registry, declared=DECLARED, rows=_rows(cfg)[:1],
+        root_exists=lambda _root: True, analysis_roots=[Path(cfg.library.root)],
+        vocal_threshold=None, truth=truth,
+    )
+
+
 def test_the_favourites_become_declared_placements_and_a_missing_source_a_gap(
     cfg, gates_pass, db
 ):
@@ -496,17 +515,7 @@ def test_the_check_reports_a_favourite_missing_from_its_favorites_and_not_a_hand
     tree.playlist(DEEP, FAVORITES.display, "2")
     tree.source("1")
     placed, gaps = genre_favorites.placements(cfg, db, DECLARED, tree.registry, _rows(cfg))
-    report = rebuild.check(
-        cfg,
-        db,
-        tree_id=TREE,
-        registry=tree.registry,
-        declared=DECLARED,
-        placements=placed,
-        rows=_rows(cfg),
-        root_exists=lambda _root: True,
-        not_compared=gaps,
-    )
+    report = _check(cfg, db, tree, placed, gaps)
     missing = {(d.bucket, d.sub, d.content_id) for d in report.missing}
     unexpected = {(d.bucket, d.sub, d.content_id) for d in report.unexpected}
     assert (DEEP.id, FAVORITES.id, "1") in missing
@@ -520,7 +529,7 @@ def test_with_favorites_leaves_another_tree_and_an_undeclared_class_alone(cfg, g
         cfg, db, DECLARED, tree.registry, _rows(cfg), (), ("vocal",), tree_id="another_tree"
     )
     assert placements == () and gaps == ("vocal",)
-    trimmed = replace(DECLARED, sub_classes=tuple(c for c in DECLARED.sub_classes if c.id != "favorites"))
+    trimmed = UNDECLARED
     placements, gaps = rebuild.with_favorites(
         cfg, db, trimmed, tree.registry, _rows(cfg), (), (), tree_id=TREE
     )
@@ -542,7 +551,7 @@ def test_the_additive_refresh_at_an_adoptions_end_skips_what_it_cannot_read_and_
     outcome = genre_favorites.refresh_additive(cfg, DECLARED, analysis_roots=roots)
     assert outcome.refreshed is None and "no live playlist" in outcome.skipped
 
-    trimmed = replace(DECLARED, sub_classes=tuple(c for c in DECLARED.sub_classes if c.id != "favorites"))
+    trimmed = UNDECLARED
     outcome = genre_favorites.refresh_additive(cfg, trimmed, analysis_roots=roots)
     assert outcome.refreshed is None and "declares no sub class" in outcome.skipped
 
@@ -651,7 +660,7 @@ def test_the_verb_refuses_an_undeclared_class_by_name(cfg, gates_pass, db, monke
     tree = Tree(cfg, db)
     tree.source("1")
     _closed(db)
-    trimmed = replace(DECLARED, sub_classes=tuple(c for c in DECLARED.sub_classes if c.id != "favorites"))
+    trimmed = UNDECLARED
     monkeypatch.setattr(active_taxonomy, "load", lambda _cfg: trimmed)
     code, refused = drive(VERB)
     assert refused["cause"]["reason"] == genre_favorites.CLASS_UNDECLARED, refused
@@ -735,26 +744,7 @@ def test_the_rebuild_files_a_favourite_into_the_folder_it_moves_it_to(cfg, gates
     tree = Tree(cfg, db)
     tree.source("1")
     bucket_id = rebuild.routing.resolve_bucket(DECLARED, None).bucket_id
-    truth = [
-        rebuild.Truth(
-            location=f"{cfg.library.root}/Music/track 1.flac",
-            genre=None,
-            energy=DECLARED.energy.scale_max,
-            voxlevel=None,
-        )
-    ]
-    report = rebuild.rebuild_tree(
-        cfg,
-        db,
-        tree_id=TREE,
-        registry=tree.registry,
-        declared=DECLARED,
-        rows=_rows(cfg)[:1],
-        root_exists=lambda _root: True,
-        analysis_roots=[Path(cfg.library.root)],
-        vocal_threshold=None,
-        truth=truth,
-    )
+    report = _rebuild_track_one(cfg, db, tree)
     nodes = {
         (node.folder_display, node.playlist_display): node for node in rebuild.read_tree(db, str(tree.root.ID))
     }
@@ -864,11 +854,10 @@ def test_a_removed_favorites_under_the_folder_is_not_written_into(cfg, gates_pas
 
 
 def _record_band(cfg, bucket: taxonomy.Bucket, folder_id: str, playlist_id: str, sub: str) -> None:
-    convergence.record_nodes(
-        cfg,
-        TREE,
-        [convergence.DestinationNode(bucket=bucket.id, sub=sub, folder_id=folder_id, playlist_id=playlist_id)],
+    node = convergence.DestinationNode(
+        bucket=bucket.id, sub=sub, folder_id=folder_id, playlist_id=playlist_id
     )
+    convergence.record_nodes(cfg, TREE, [node])
 
 
 def test_the_rebuild_puts_a_first_favorites_under_a_renamed_folder_its_record_binds(
@@ -887,27 +876,8 @@ def test_the_rebuild_puts_a_first_favorites_under_a_renamed_folder_its_record_bi
     folder.Name = f"{bucket.display} ✦"
     db.session.commit()
     tree.source("1")
-    truth = [
-        rebuild.Truth(
-            location=f"{cfg.library.root}/Music/track 1.flac",
-            genre=None,
-            energy=DECLARED.energy.scale_max,
-            voxlevel=None,
-        )
-    ]
 
-    report = rebuild.rebuild_tree(
-        cfg,
-        db,
-        tree_id=TREE,
-        registry=tree.registry,
-        declared=DECLARED,
-        rows=_rows(cfg)[:1],
-        root_exists=lambda _root: True,
-        analysis_roots=[Path(cfg.library.root)],
-        vocal_threshold=None,
-        truth=truth,
-    )
+    report = _rebuild_track_one(cfg, db, tree)
 
     folders = {node.folder_display for node in rebuild.read_tree(db, str(tree.root.ID))}
     assert folders == {f"{bucket.display} ✦"}, folders
@@ -955,17 +925,7 @@ def test_a_check_with_no_source_leaves_the_recorded_favorites_out_and_names_the_
 
     placed, gaps = genre_favorites.placements(cfg, db, DECLARED, tree.registry, _rows(cfg))
     assert placed == () and gaps == (genre_favorites.FAVORITES_DIMENSION,)
-    report = rebuild.check(
-        cfg,
-        db,
-        tree_id=TREE,
-        registry=tree.registry,
-        declared=DECLARED,
-        placements=(),
-        rows=_rows(cfg),
-        root_exists=lambda _root: True,
-        not_compared=gaps,
-    )
+    report = _check(cfg, db, tree, (), gaps)
     assert report.unexpected == ()
     assert not any(FAVORITES.display in name for name in report.foreign)
     assert genre_favorites.FAVORITES_DIMENSION in report.not_compared
