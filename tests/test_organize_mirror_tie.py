@@ -1,12 +1,9 @@
 """R-1032: the mirror takes one of several agreeing releases where a heart would refuse.
 
-Driven at the organize step, :func:`account_mirror.add_steps`, with every write
-through the recording fake account U147's suite uses and every MATCH through
-the real adapter over the fake provider client, so the choice between releases
-is the one ``match_track`` makes and not one a fake was told to make. The heart
-side of the same tie, which must still refuse (AE5), is driven end to end in
-``tests/test_outbound_tidal_account.py`` by the favourites sweep over
-``_releases_for_three_rows``, whose row 2 is this tie.
+Driven at the organize step with every write through U147's recording fake and
+every MATCH through the real adapter over the fake provider client, so the
+choice is the one ``match_track`` makes. The heart side of the tie, which still
+refuses (AE5), is driven in ``tests/test_outbound_tidal_account.py``.
 
 D1 applies. Nothing here names a real account, a real person or a real track.
 """
@@ -43,9 +40,11 @@ def _alike(*ids: str) -> list[Track]:
     return [Track(one, "Sun Path", None, ("Nova Reef",)) for one in ids]
 
 
-def _world(installed, monkeypatch, isrcs: dict[str, list], hearts=()) -> World:
+def _world(installed, monkeypatch, isrcs: dict[str, list], *rows: mirror.Row) -> World:
+    """A world over ``isrcs`` mirroring Soul High with ``rows``, the row of c1 by default."""
     world = World(installed, monkeypatch)
-    world.account = Matched(FakeClient(isrcs=isrcs, hearts=list(hearts)))
+    world.account = Matched(FakeClient(isrcs=isrcs, hearts=[]))
+    world.mirror(_soul_high(*(rows or (_row(),))))
     return world
 
 
@@ -60,10 +59,7 @@ def _soul_high(*rows: mirror.Row) -> mirror.Folder:
 def test_a_tie_between_agreeing_releases_is_mirrored_as_one_and_recorded(installed, monkeypatch):
     """AE4. Two releases agree, neither hearted, no album: one is added and recorded."""
     world = _world(installed, monkeypatch, {CODE: _alike("202", "101")})
-    world.mirror(_soul_high(_row()))
-
     area = world.run()
-
     assert world.held("Soul High") == ["101"]
     assert ledger.mirror_links(installed)["c1"] == ("101", CODE)
     assert "c1" not in ledger.mirror_misses(installed)
@@ -76,14 +72,11 @@ def test_the_next_refresh_keeps_the_chosen_release_and_asks_the_provider_nothing
 ):
     """AE4's second half, and a heart placed later does not move the copy."""
     world = _world(installed, monkeypatch, {CODE: _alike("101", "202")})
-    world.mirror(_soul_high(_row()))
     world.run()
     asked = list(world.account.client.isrc_asked)
     writes = (list(world.account.chunks), list(world.account.taken))
     world.account.client.user.favorites.hearts.append("202")
-
     area = world.run()
-
     assert world.account.client.isrc_asked == asked
     assert (list(world.account.chunks), list(world.account.taken)) == writes
     assert world.held("Soul High") == ["101"]
@@ -95,7 +88,7 @@ def test_a_tie_remembered_as_a_miss_before_the_tie_was_broken_is_asked_again(
 ):
     """The live ledger holds thousands of tie misses R-1031 remembered; each is asked once."""
     tied, absent = _row("c1"), _row("c2", isrc=OTHER)
-    world = _world(installed, monkeypatch, {CODE: _alike("101", "202")})
+    world = _world(installed, monkeypatch, {CODE: _alike("101", "202")}, tied, absent)
     matcher = mirror.Matcher(world.account, {}, lambda _row: mirror.Identity())
     ledger.record_mirror_misses(
         installed,
@@ -109,10 +102,7 @@ def test_a_tie_remembered_as_a_miss_before_the_tie_was_broken_is_asked_again(
             "c2": (mirror.NO_MATCH, matcher.under(absent)),
         },
     )
-    world.mirror(_soul_high(tied, absent))
-
     world.run()
-
     assert world.account.client.isrc_asked == [CODE]
     assert world.held("Soul High") == ["101"]
     assert ledger.mirror_links(installed)["c1"] == ("101", CODE)
@@ -126,10 +116,7 @@ def test_a_tie_beside_a_release_that_cannot_be_read_is_left_out_and_asked_again(
     world = _world(
         installed, monkeypatch, {CODE: [*_alike("101", "202"), Track("303", "", None, ())]}
     )
-    world.mirror(_soul_high(_row()))
-
     area = world.run()
-
     (item,) = area.steps[0].items[1:]
     (said,) = item["unmatched"]
     assert service.UNREADABLE_CANDIDATE in said and service.AGREEING_RELEASES in said
@@ -146,8 +133,5 @@ def test_a_release_that_does_not_agree_is_never_the_one_taken(installed, monkeyp
         monkeypatch,
         {CODE: [Track("101", "Sun Path", "Radio Edit", ("Nova Reef",)), *_alike("303", "202")]},
     )
-    world.mirror(_soul_high(_row()))
-
     world.run()
-
     assert world.held("Soul High") == ["202"]
