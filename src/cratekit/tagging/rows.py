@@ -1,51 +1,27 @@
 """Write a row's genre from its file where the two disagree (R-816).
 
-WHY THIS EXISTS. The source system's research pass wrote a specific genre onto
-each file and never reloaded the database rows, so 773 rows of one library went
-on carrying a word their files had stopped carrying. Adoption and the genre
-report read the row. The only way to bring a row into agreement was a reload in
-rekordbox, which overwrites every tag field, and at one sitting changed keys.
+The source system wrote a specific genre onto each file and never reloaded the
+rows, and the only other repair was a reload in rekordbox, which overwrites
+every tag field.
 
-WHAT IT WRITES IS ``GenreID`` AND NOTHING ELSE. The plan is built by
+WHAT IT WRITES IS ``GenreID`` AND NOTHING ELSE, planned by
 :func:`cratekit.write.metadata.plan_genre_retag` and applied by
-:func:`cratekit.tagging.retag.apply_library`, under the ``RETAG_GENRE`` policy.
-Both sat with no caller in ``src`` from the unit that wrote them until this
-one, so their failure paths are this module's to hold, and the read back below
-is where they are held: every written row is read again from SQL after the
-commit, its genre must be the file's word, and no column other than the genre
-and the binding's bookkeeping columns may have moved. A beat grid, a tempo or
-a BPM moving refuses there by name, after the guard already refused it before
-the commit.
+:func:`cratekit.tagging.retag.apply_library` under the ``RETAG_GENRE`` policy.
+Every written row is read again from SQL after the commit: its genre must be
+the file's word, and no column but the genre and the binding's bookkeeping may
+have moved, so a beat grid, tempo or BPM moving refuses by name. NOTHING HERE
+WRITES A FILE, and a genre lookup row is linked and never created.
 
-THE FILE IS THE AUTHORITY IN THIS DIRECTION ONLY. Nothing here writes a file.
-This module calls the tag reader and no tag writer.
+EVERY DISAGREEMENT IS READ AS THE ROW LAGGING ITS FILE, except a row a person
+holds out, a too coarse file word against a specific row word, a file holding
+more than one genre, and a word with no lookup row: each is listed with its
+reason and left. EVERY LIVE ROW LANDS IN EXACTLY ONE OUTCOME, zero filled, and
+an unreadable file is counted apart from a blank one. The row's word is read
+as adoption reads it, :func:`cratekit.adopt.collection.genre_of`.
 
-A GENRE LOOKUP ROW IS LINKED AND NEVER CREATED. A file word the library has no
-active lookup row for is left alone and counted, for the reason
-:func:`cratekit.write.metadata.resolve_genre_id` gives.
-
-EVERY DISAGREEMENT IS READ AS THE ROW LAGGING ITS FILE, EXCEPT WHERE SOMETHING
-SAYS OTHERWISE, and four things can: a person holding the row out by name,
-because they set its genre by hand; a file word the taxonomy calls too coarse
-against a specific word on the row; a file holding more than one genre; and a
-word the library has no lookup row for. Each such row is listed in the plan
-with its reason and left.
-
-EVERY LIVE ROW LANDS IN EXACTLY ONE OUTCOME, :data:`OUTCOMES`, and the counts
-are zero filled, so "none of those here" and "this build does not count that"
-are never the same output. A file that could not be read is counted apart from
-a file that holds no genre, through the checked reader, because folding the two
-together reports a damaged file as an untagged one.
-
-THE ROW'S WORD IS READ THE WAY ADOPTION READS IT, through
-:func:`cratekit.adopt.collection.genre_of`, because what this verb repairs is
-what that reader returns.
-
-TWO NAMES HERE MEAN SOMETHING ELSE ONE PACKAGE OVER, and it is said in both
-directions. ``cratekit.intake.native`` has a ``plan_rows`` and an
-``apply_rows`` too: there a row is a content row the landing ADDS, and here it
-is a row that exists and whose genre is written. Neither module imports the
-other and nothing should pass one's plan to the other's apply.
+``plan_rows`` AND ``apply_rows`` MEAN SOMETHING ELSE IN
+``cratekit.intake.native``, where a row is one the landing adds; neither module
+imports the other.
 
 Layer: modules. It opens no database of its own and names no verb.
 """
@@ -80,9 +56,8 @@ from cratekit.write import metadata, row_defaults, trees
 #: The name a session record carries for this write.
 WORKFLOW = "tag-rows"
 
-#: What the write is filed under in a session record's change summary. A stable
-#: identifier and never a display name, for the reason
-#: ``cratekit.write.metadata_cli.CHANGE_KEY`` gives.
+#: What the write is filed under in a session record's change summary, a stable
+#: identifier for the reason ``cratekit.write.metadata_cli.CHANGE_KEY`` gives.
 CHANGE_KEY = "content.genre"
 
 #: The outcomes, in the order a summary lists them.
@@ -114,12 +89,10 @@ OUTCOMES: tuple[str, ...] = (
     NO_PATH,
 )
 
-#: The outcomes of a row that differs from its file and is left alone. Each is
-#: listed in the plan as an item, with the outcome as its reason.
+#: The outcomes of a row that differs from its file and is left, each an item.
 LEFT: tuple[str, ...] = (HELD_OUT, FILE_TOO_COARSE, FILE_MULTI_VALUED, GENRE_UNKNOWN)
 
-#: The outcomes in which the file's genre was never learned. A summary names
-#: these apart, because a clean answer over rows nobody could read is not one.
+#: The outcomes in which the file's genre was never learned, named apart.
 UNREAD: tuple[str, ...] = (
     FILE_UNREADABLE,
     FILE_ONLINE_ONLY,
@@ -128,8 +101,8 @@ UNREAD: tuple[str, ...] = (
     NO_PATH,
 )
 
-#: What the census's answers about a row's file are counted as here. Anything
-#: it adds later reads as unreadable until it is given a name of its own.
+#: What the census's answers about a row's file count as; a new one reads as
+#: unreadable until named.
 _PROBED: Mapping[adopt_scan.Readability, str] = MappingProxyType(
     {
         adopt_scan.Readability.UNMAPPED: PATH_UNMAPPED,
@@ -146,7 +119,6 @@ LEAVE = "leave"
 #: How many word pairs a summary names.
 NAMED_PAIRS = 5
 
-
 _ORIGIN = ("tagging", "rows")
 
 
@@ -154,9 +126,8 @@ _ORIGIN = ("tagging", "rows")
 class Item:
     """One row whose word differs from a non blank word on its file.
 
-    ``action`` is :data:`WRITE` or :data:`LEAVE`. ``reason`` is the outcome a
-    left row was counted under and is empty on a write. ``genre_id`` is the
-    lookup row a write links and is empty on a left row.
+    ``action`` is :data:`WRITE` or :data:`LEAVE`; ``reason`` is a left row's
+    outcome, and ``genre_id`` the lookup row a write links.
     """
 
     content_id: str
@@ -211,9 +182,8 @@ class RowsPlan(Tallied):
     items: tuple[Item, ...]
     counts: Mapping[str, int]
     changes: metadata.Plan
-    #: Identifiers a person asked to leave that name no row differing from its
-    #: file. Shown at the gate and covered by the digest, because a mistyped
-    #: identifier is a row the person meant to hold and the plan writes.
+    #: ``--leave`` identifiers naming no differing row, shown and digested, since
+    #: a mistyped one is a row the person meant to hold and the plan writes.
     leave_unmatched: tuple[str, ...] = ()
 
     def unknown_words(self) -> list[tuple[str, int]]:
@@ -223,13 +193,9 @@ class RowsPlan(Tallied):
 
     @property
     def digest(self) -> str:
-        """The fingerprint an approval is bound to.
-
-        OVER THE ITEMS AND THE COUNTS, AND NOTHING THAT NAMES A COPY. No
-        database path, no state path, no resolved file path and no time, so a
-        rehearsal on a disposable copy of the database digests equal to the
-        live plan when the rows and the files are the same.
-        """
+        """The fingerprint an approval is bound to: the items and the counts and
+        NOTHING THAT NAMES A COPY, no path and no time, so a rehearsal on a copy
+        digests equal to the live plan."""
         return digest_of(
             {
                 "kind": WORKFLOW,
@@ -250,21 +216,15 @@ class RowsPlan(Tallied):
 class Written(row_defaults.RowsWritten):
     """What one apply did, and what the database says about it afterwards.
 
-    ``wrong`` names each written row whose genre does not read back as its
-    file's word. ``moved`` names each written row with a column other than the
-    genre and the bookkeeping columns changed. Both are empty on a good run and
-    :func:`assert_read_back` refuses when either is not.
+    ``wrong`` names a written row whose genre does not read back as its file's,
+    ``moved`` one with another column changed; :func:`assert_read_back` refuses
+    over either.
     """
 
 
-# ---------------------------------------------------------------------------
-# The plan
-# ---------------------------------------------------------------------------
-
-
 def _no_energy(path: Path) -> int | None:
-    """The census reads an energy tag off every adoptable file. This walk does
-    not route, so it hands the census a reader that opens nothing."""
+    """The energy reader the census is handed: this walk does not route, so it
+    opens nothing."""
     del path
     return None
 
@@ -272,13 +232,9 @@ def _no_energy(path: Path) -> int | None:
 def _file_word(path: Path) -> tuple[str, str]:
     """The file's genre, or why it has none to give. Answers (word, outcome).
 
-    THE FIRST VALUE, ON EVERY CONTAINER. The checked reader answers the first
-    value of a list on the containers that store one, and on ID3 the frame's
-    values joined on a null byte. Compared as it came, an ID3 file holding two
-    genres never agreed with a row a FLAC holding the same two agreed with, and
-    one holding a single genre and an empty second value read as a word no
-    lookup row matches. So the joined text is split and its first non empty
-    value is the word, which is what the other containers already answer.
+    THE FIRST NON EMPTY VALUE, ON EVERY CONTAINER: the checked reader answers
+    ID3's values joined on a null byte, so that text is split, as the other
+    containers already answer their first value.
     """
     try:
         text = tags.read_tags_checked(path, ("genre",))["genre"] or ""
@@ -291,12 +247,9 @@ def _file_word(path: Path) -> tuple[str, str]:
 def _file_words(path: Path) -> tuple[str, ...]:
     """Every genre value the file holds, when it holds more than one, else empty.
 
-    :func:`_file_word` ANSWERS THE FIRST VALUE, so a row written from it would
-    carry part of what a file holding two genres says. So a row about to be
-    written has its file asked again for every value, and a file holding more
-    than one is left alone.
-    Asked only of a differing row, so the second open is paid a few hundred
-    times and not once per track.
+    :func:`_file_word` answers the first value, so a row about to be written has
+    its file asked again, and one holding several is left. Only differing rows
+    pay this second open.
     """
     values = tags.read_tag_values(path, "genre") or ()
     words = tuple(word for word in (value.strip() for value in values) if word)
@@ -304,12 +257,8 @@ def _file_words(path: Path) -> tuple[str, ...]:
 
 
 def _protected(declared: taxonomy.Taxonomy, row_word: str, file_word: str) -> bool:
-    """A too coarse file word does not replace a specific word on the row.
-
-    SPECIFIC MEANS NON BLANK AND NOT TOO COARSE ITSELF. A blank row, or a row
-    carrying a catch all, loses nothing to another catch all and gains
-    agreement with its file, so it is written.
-    """
+    """A too coarse file word does not replace a specific (non blank, not too
+    coarse) word on the row; a blank or catch all row is written."""
     return (
         declared.is_too_coarse_as_source(file_word)
         and bool(row_word)
@@ -327,44 +276,21 @@ def plan_rows(
 ) -> RowsPlan:
     """Walk the collection once and sort every live row into one outcome.
 
-    THE WALK IS ADOPTION'S CENSUS, :func:`cratekit.adopt.scan.scan_rows`, and
-    not a third decode, resolve and classify of a recorded path. The census
-    skips a tombstone, decodes and resolves the location, and asks its probe
-    what is there, which is total by construction and answers whether a file's
-    bytes are here without reading them. So a directory this account cannot
-    enter is counted and does not end the walk, a file a synchroniser evicted
-    is counted ``file-online-only`` and never opened, and the row's word is
-    the one adoption reads because it is adoption that read it.
+    THE WALK IS ADOPTION'S CENSUS, :func:`cratekit.adopt.scan.scan_rows`, whose
+    probe is total and reads no bytes: a directory this account cannot enter is
+    counted, an evicted file is ``file-online-only`` and never opened, a
+    tombstone is skipped uncounted, and an unmounted volume is ``file-missing``.
+    ``probe`` is the census's own parameter, handed through.
 
-    A TOMBSTONE IS SKIPPED AND NOT COUNTED, as the genre report skips it: a row
-    the person removed is not a row whose genre anybody reads.
+    ``leave`` NAMES ROWS A PERSON HOLDS OUT, for a genre set by hand, since the
+    gate is apply or abort over the whole plan; an identifier naming no
+    differing row is carried, shown and digested. A differing row is asked in
+    order whether it is held, whether its file's word is too coarse, whether its
+    file holds several genres, and whether the word has a lookup row.
 
-    A VOLUME THAT IS NOT MOUNTED IS ``file-missing`` AND NEVER A FAILURE. Its
-    rows resolve to a path nothing is at, exactly as a deleted file's do.
-
-    ``probe`` is the census's own parameter, handed through. The census does
-    not trust an injected one to be total and names what it raises.
-
-    ``leave`` NAMES ROWS A PERSON HOLDS OUT, by content identifier. Every
-    disagreement is otherwise read as the row lagging its file, and that is
-    false of a genre somebody set on the row by hand in rekordbox: the gate is
-    apply or abort over the whole plan, so without this one hand set row would
-    cost the rest of the plan or be overwritten with it. A held row that
-    differs is listed and left. An identifier that names no differing row is
-    carried on the plan, shown and digested, never dropped.
-
-    A DIFFERING ROW IS ASKED FOUR QUESTIONS IN ORDER: whether a person held it
-    out, whether its file's word is too coarse to replace a specific one,
-    whether its file holds more than one genre, and whether the library has a
-    lookup row for the word. The first to say leave names the reason.
-
-    THE ITEMS ARE ORDERED BY CONTENT IDENTIFIER, so two walks of one library
-    digest the same whatever order the database returned its rows in.
-
-    NOTHING IS PENDING ON THE HANDLE WHEN THIS RETURNS, AND NO MAPPED ROW
-    LEAVES WITH THE PLAN. It reads rows and resolves lookup rows and sets
-    nothing, and what it returns is values, so the handle may be a read one
-    that is closed before the gate is asked.
+    Items are ordered by content identifier so the digest is stable. Nothing is
+    set on the handle and only values are returned, so it may be a read handle
+    closed before the gate.
     """
     held_out = frozenset(str(content_id) for content_id in leave)
     counts = dict.fromkeys(OUTCOMES, 0)
@@ -437,13 +363,9 @@ def plan_rows(
 def narrowed(plan: RowsPlan, keep: Iterable[str]) -> RowsPlan:
     """The plan with every write not named in ``keep`` held out, as ``--leave`` holds it.
 
-    FOR A COMPOSER THAT MAY WRITE ONLY WHAT IT SHOWED (U294). ``tag campaign``
-    writes the rows the backlog named and no other, and a row this plan would
-    write that the backlog did not name, a routed row whose file carries
-    another genre or one ``tag rows`` would move into needs genre, is held out
-    here rather than by a second walk of every file. A held write becomes the
-    item ``--leave`` makes, counted under :data:`HELD_OUT`, and its change
-    leaves the write, so :func:`apply_rows` cannot reach it. Pure.
+    For ``tag campaign``, which writes only the rows the backlog named (U294). A
+    held write becomes a :data:`HELD_OUT` item and its change leaves the write,
+    so :func:`apply_rows` cannot reach it. Pure.
     """
     kept = frozenset(str(content_id) for content_id in keep)
     held = {item.content_id for item in plan.writes if item.content_id not in kept}
@@ -471,11 +393,6 @@ def narrowed(plan: RowsPlan, keep: Iterable[str]) -> RowsPlan:
     )
 
 
-# ---------------------------------------------------------------------------
-# The apply and the read back
-# ---------------------------------------------------------------------------
-
-
 def _genre_names(db: Any) -> dict[str, str]:
     """Every genre lookup row's name by identifier, from SQL."""
     from sqlalchemy import text
@@ -492,10 +409,9 @@ def judge(
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """What the read back found wrong. Answers (wrong, moved). Pure.
 
-    ``wrong`` is a written row whose genre is not its file's word now, or that
-    cannot be found. ``moved`` is a written row with any column changed other
-    than the genre and :data:`cratekit.core.rb_writer.BOOKKEEPING_COLUMNS`,
-    which the binding bumps on every commit.
+    ``wrong`` is a written row not now carrying its file's word, or not found;
+    ``moved`` one with a column changed other than the genre and
+    :data:`cratekit.core.rb_writer.BOOKKEEPING_COLUMNS`.
     """
     wrong: list[str] = []
     moved: list[str] = []
@@ -524,16 +440,12 @@ def _empty(value: Any) -> bool:
 
 
 def assert_rows_as_planned(plan: RowsPlan, mapped: Mapping[str, Any]) -> None:
-    """Refuse when a row to be written is not the row the plan read.
+    """Refuse, writing nothing, when a row to be written no longer carries the
+    genre the plan read or is no longer live: the plan was made on another handle.
 
-    THE PLAN IS MADE ON A READ HANDLE AND THE WRITE ON ANOTHER, so the one thing
-    the apply asks the database again is whether each row still carries the
-    genre the plan saw it carrying, and is still a live row. A row that moved
-    is a row nobody was shown, and nothing is written for any of them.
-
-    ``mapped`` is the write handle's own rows, so the tombstone is read through
-    :func:`cratekit.write.trees.soft_delete_marker`, the one reader of that
-    column, which refuses a row that cannot say.
+    ``mapped`` is the write handle's rows; the tombstone is read through
+    :func:`cratekit.write.trees.soft_delete_marker`, which refuses a row that
+    cannot say.
     """
     moved: list[str] = []
     for change in plan.changes.changes:
@@ -567,42 +479,21 @@ def apply_rows(
 ) -> Written:
     """Write the plan's genres, commit behind the guard, and read them back.
 
-    THE SESSION SPINE IS CALLED, NOT REBUILT, and it is the one every database
-    writer here uses: the three gates with a record kept, a capture the commit
-    happens behind, the analysis watch over the roots named, the commit
-    witness, and the guarded commit.
+    THE SESSION SPINE IS CALLED, NOT REBUILT: the gates with a record, the
+    capture, the analysis watch, the commit witness and the guarded commit. The
+    rows are checked against the plan before it is entered, and an out of band
+    restore is looked for first, since this write records a fingerprint.
 
-    THE ROWS ARE CHECKED AGAINST THE PLAN BEFORE THE SESSION IS ENTERED, by
-    :func:`assert_rows_as_planned`, as the native landing checks its plan. A
-    stale plan refuses with no session record, no capture and nothing pending.
+    NOTHING IS READ BETWEEN THE FIRST SET AND THE COMMIT, which would flush the
+    work before the whitelist judged it. THE READ BACK IS JUDGED BY THE CALLER,
+    :func:`assert_read_back`, after the session closed, so a refusal leaves the
+    capture as the undo. ``analysis_roots`` has no default: a watch over nothing
+    reports every session clean. ``workflow`` is the name the record carries.
 
-    AN OUT OF BAND RESTORE IS LOOKED FOR BEFORE THE WRITE, because this write
-    records a fingerprint after its commit and every other caller that records
-    one runs the detection first.
-
-    THE MAPPED ROWS AND THE SNAPSHOT ARE READ BEFORE THE FIRST FIELD IS SET,
-    and nothing is read between the first set and the commit. A query there
-    would flush the pending work before the whitelist has judged it.
-
-    THE READ BACK IS TAKEN HERE AND JUDGED BY THE CALLER, through
-    :func:`assert_read_back`, after the session has closed. The commit has
-    landed by then and the record says so, so a refusal over what was read
-    back leaves the capture as the undo instead of an abandoned session over
-    rows that are durable.
-
-    ``analysis_roots`` has no default for the reason the membership writer
-    gives: a watch that watches nothing reports every session clean.
-
-    ``workflow`` is the name the session record carries. ``tag suggest`` writes
-    its rows through this function under its own name, so a restore lists the
-    write as the verb that made it.
-
-    ``narrow`` IS CALLED INSIDE THE SESSION, after the capture is verified and
-    before the first field is set, and answers the part of the plan to write.
-    ``tag suggest`` writes its files there, so a file is written only behind the
-    library lock and the volume check the session spine takes, and only the rows
-    whose file took the genre are written. It reads no row, so nothing is
-    flushed before the guard has judged it.
+    ``narrow`` IS CALLED INSIDE THE SESSION, after the capture and before the
+    first set, and answers the part of the plan to write; ``tag suggest`` writes
+    its files there, behind the library lock and the volume check. It reads no
+    row.
     """
     watched = [Path(root) for root in analysis_roots]
     if not watched:
@@ -615,12 +506,9 @@ def apply_rows(
     content_ids = [item.content_id for item in writes]
     mapped = row_defaults.read_mapped(db, content_ids)
     assert_rows_as_planned(plan, mapped)
-    # THE EVIDENCE IS READ BEFORE IT IS REPLACED. The fingerprint recorded after
-    # the commit is what the next tree write compares against, and recording it
-    # over a database recovered out of band would bless the recovered reading
-    # and leave every native tree the restore emptied unmarked for good. The
-    # detection marks them and never refuses: a genre write is as true of a
-    # restored database as of any other, and it is no tree's membership.
+    # THE EVIDENCE IS READ BEFORE IT IS REPLACED: a fingerprint recorded over a
+    # restored database would leave the trees it emptied unmarked. It marks and
+    # never refuses.
     convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
     with (
         session.assert_gates(
@@ -670,10 +558,8 @@ def apply_rows(
 def assert_read_back(written: Written) -> None:
     """Refuse when the database does not say what the plan said it would.
 
-    A COLUMN THAT MOVED IS REPORTED AS THE GUARD'S DEFECT, because the guard
-    holds that before the commit and reaching here means it did not. A genre
-    that reads wrong is this module's. Either way the write is durable, so the
-    refusal names the session whose capture undoes it.
+    A moved column is the guard's defect, a wrong genre this module's; the write
+    is durable either way, so the refusal names the session that undoes it.
     """
     if not written.wrong and not written.moved:
         return

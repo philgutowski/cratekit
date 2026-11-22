@@ -1,63 +1,26 @@
 """Correct a genre that is already wrong (U40, Feature Inventory row 18).
 
-WHY THIS IS A SECOND VERB AND NOT A FLAG ON THE FIRST.
-:func:`cratekit.tagging.tag.tag_folder` is fill-if-empty BY CONSTRUCTION: it
-reads the file's genre and skips any file that already carries one. That is the
-right policy for a file with no genre, and it is precisely why a vendor's
-catch-all survives for ever. The file HAS a genre, so no verb ever looks a better
-one up, routing parks the track in the fallback bucket, and that bucket only
-grows. Two policies over one field is not a flag, it is two verbs: one fills,
-this one corrects, and the ownership each claims over the genre is different.
+A SECOND VERB, NOT A FLAG: :func:`cratekit.tagging.tag.tag_folder` is fill if
+empty by construction, which is why a vendor's catch all survives for ever.
+Two policies over one field are two verbs: one fills, this one corrects.
 
-THE SELECTION IS THE TAXONOMY'S OWN AND NEVER A LIST WRITTEN HERE.
-:meth:`cratekit.core.taxonomy.Taxonomy.is_too_coarse_as_source` reads the user's
-declared ``too_coarse_as_source``, so the capability is general rather than one
-person's catch-all. R19 forbids a display name in code below the modules layer
-and this is the reason that rule exists: a name hardcoded here would work for one
-library and quietly do nothing in the next.
+THE SELECTION IS THE TAXONOMY'S OWN,
+:meth:`cratekit.core.taxonomy.Taxonomy.is_too_coarse_as_source`, never a list
+written here (R19). A BLANK GENRE IS NOT SELECTED although the taxonomy calls
+it too coarse: it is ``tag.folder``'s, and one field under two policies loses a
+hand set value to whichever ran last. AN ANSWER THAT IS ITSELF TOO COARSE IS
+REFUSED, never laundered into a value this verb would not select again.
 
-A BLANK GENRE IS NOT SELECTED, AND THE TAXONOMY SAYS IT IS TOO COARSE.
-``is_too_coarse_as_source("")`` is True, because the declared list carries the
-empty string. Selecting on that predicate alone would put this verb and
-``tag.folder`` on the same state under DIFFERENT ownership: fill-if-empty there,
-OWNED here. One field owned by two operations with two policies is how a value a
-person set by hand eventually loses to whichever ran last. So the selection is
-"carries a genre AND that genre is too coarse", and a file with no genre is
-skipped by name with the verb that owns it in the reason.
+A DECLINE IS A QUESTION, NOT A FAILURE. No answer, or one refused, goes into
+the GENRE review queue as ONE item per file with the declared buckets as its
+candidates; :func:`cratekit.core.review.offer` is idempotent, so a verdict
+survives and the question is asked once.
 
-AN ANSWER THAT IS ITSELF TOO COARSE IS REFUSED, NEVER WRITTEN. The same
-predicate, at the other end. Without it a lookup returning the same catch-all
-launders it into a value this verb would never select again, because writing
-counts as progress and re-reading the write does not.
-
-A DECLINE IS A QUESTION, NOT A FAILURE. A searcher that returns nothing and an
-answer refused above both leave the file unfixed, and both are things a person
-can settle. They go into the GENRE review queue as ONE item per file, offered
-with the declared buckets as its candidates, and :func:`cratekit.core.review.offer`
-is idempotent on the identity, so a verdict survives every later run and the
-question is asked once.
-
-THE DATABASE HALF IS PLANNED, NEVER WRITTEN HERE. :func:`plan_library` builds a
-:class:`cratekit.write.metadata.Plan` under the ``RETAG_GENRE`` policy and
-:func:`apply_library` registers that policy before applying it. Registering is
-not optional and not a convenience: an unregistered operation decides
-``SKIP_UNOWNED`` for every change, which writes nothing and reports success, and
-a sweep that silently wrote nothing looks exactly like a sweep with nothing to do.
-
-THIS VERB CALLS NEITHER OF THEM, WHICH THE REGISTRY SAYS. The shipped retag
-corrects the file and leaves the row. That deferral is R-185 and is still open.
-What is no longer true is the claim about it: the ``tag.retag`` entry declared
-``db_metadata`` among its write surfaces and now declares ``files`` alone
-(R-246), and ``cratekit.tagging.retag_cli`` ends the run by naming the verb
-that brings the rows back into agreement.
-
-:func:`apply_library` HAS ONE CALLER, ``cratekit.tagging.rows``, since the
-residual on stale row genres. That module plans every row against its own file
-through ``metadata.plan_genre_retag`` and applies the plan here, so registering
-the policy before applying it still has one home. :func:`plan_library` has no
-caller: it matches the files one retag wrote back to rows, and the row verb
-walks the rows instead, which covers a retagged file and every other stale row
-alike.
+THE DATABASE HALF: :func:`apply_library` registers the ``RETAG_GENRE`` policy
+before applying, since an unregistered operation skips every change and
+reports success. The shipped retag writes the file only (R-185, R-246), and
+:func:`apply_library`'s one caller is ``cratekit.tagging.rows``;
+:func:`plan_library` has none, since the row verb walks the rows instead.
 
 LAYER: modules.
 """
@@ -76,17 +39,12 @@ from cratekit.tagging import titles
 from cratekit.tagging.tag import Searcher
 from cratekit.write import metadata, trees
 
-#: The producing verb, in the registry's own vocabulary. Carried onto every review
-#: item as a VALUE, exactly as the job engine carries the command line it
-#: re-invokes, so this module never names the CLI layer.
+#: The producing verb, carried onto every review item as a VALUE, so this module
+#: never names the CLI layer.
 HANDLER_KEY = "tag.retag"
 
-#: ONE kind for BOTH unanswered shapes, deliberately. A searcher that declined and
-#: a searcher whose answer was refused are two reasons for one question, "what
-#: genre is this really". Two kinds would hash to two item identifiers on one file,
-#: so a run whose searcher flipped from one shape to the other would put the same
-#: question in front of the same person twice under two identities, and answering
-#: one would leave the other asking.
+#: ONE kind for BOTH unanswered shapes, which are two reasons for one question;
+#: two kinds would ask it twice under two item identifiers.
 KIND = "coarse-genre"
 
 #: Why a file was passed over during selection.
@@ -98,11 +56,8 @@ NO_ANSWER = "no-answer"
 ANSWER_TOO_COARSE = "answer-too-coarse"
 DECLINED_IN_REVIEW = "declined-in-review"
 
-#: The file would not take the answer (R-1103). ALSO THE REFUSAL'S SLUG, so
-#: the reason a sweep reports and the cause a queued item fails with are one
-#: name. ``tags.write_genre`` answers False rather than raising for a file it
-#: could not save, locked or on a read only volume, and a pass that ignored the
-#: answer reported a genre the file does not carry.
+#: The file would not take the answer, ``tags.write_genre`` answering False
+#: (R-1103). Also the refusal's slug, so the reason and the cause are one name.
 UNWRITTEN_REASON = "tag-retag-unwritten"
 
 
@@ -116,11 +71,8 @@ class Candidate:
 
 @dataclass(frozen=True, slots=True)
 class Passed:
-    """One file the selection did not take, and why.
-
-    Surfaced rather than dropped. "Nothing was selected" and "nothing was looked
-    at" are different answers and a person's next move after each is different.
-    """
+    """One file the selection did not take, and why. Surfaced, since "nothing
+    selected" and "nothing looked at" are different answers."""
 
     path: Path
     reason: str
@@ -136,11 +88,8 @@ class Selection:
 
 @dataclass(frozen=True, slots=True)
 class RetagResult:
-    """What happened to one candidate.
-
-    ``written`` is the genre now on the file, or None. ``reason`` is empty exactly
-    when ``written`` is set, so the two can never both describe the same file.
-    """
+    """What happened to one candidate. ``written`` is the genre now on the file,
+    or None; ``reason`` is empty exactly when it is set."""
 
     path: Path
     current: str
@@ -163,14 +112,8 @@ class RetagOutcome:
 
     @property
     def asked(self) -> tuple[RetagResult, ...]:
-        """Results that put a question in the review queue on THIS run.
-
-        A file settled against every candidate carries an item id too, because the
-        item is what settled it, so "has an id and was not written" would count a
-        decision as an open question and a report would tell a person there is
-        work waiting for them that they already did. The reason is what separates
-        the two, not the presence of an identifier.
-        """
+        """Results that put a question in the review queue on THIS run, told by
+        the reason, since a file a verdict settled carries an item id too."""
         return tuple(
             result
             for result in self.results
@@ -178,19 +121,9 @@ class RetagOutcome:
         )
 
 
-# ---------------------------------------------------------------------------
-# Selection
-# ---------------------------------------------------------------------------
-
-
 def select(root: Path, *, declared: taxonomy.Taxonomy) -> Selection:
-    """Every audio file under ``root`` whose genre is too coarse to be final.
-
-    Sorted, so a plan digest over the result is stable across two runs on one
-    unchanged folder. An unsorted walk would make the digest depend on directory
-    order, and a gate answered against one digest would then be stale against a
-    second run that changed nothing.
-    """
+    """Every audio file under ``root`` whose genre is too coarse to be final,
+    sorted so a plan's digest is stable across two runs."""
     candidates: list[Candidate] = []
     passed: list[Passed] = []
     if not root.is_dir():
@@ -198,11 +131,7 @@ def select(root: Path, *, declared: taxonomy.Taxonomy) -> Selection:
     for path in sorted(root.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in AUDIO_EXTS:
             continue
-        # NOT STRIPPED HERE, and the missing call is deliberate. ``tags.read_tag``
-        # already trims every value it returns, at ``core/tags.py:489``, so a
-        # strip here was dead code: a mutation removing it killed nothing because
-        # no input can reach it padded. A second normalization beside the one that
-        # owns it is two opinions that agree until one of them moves.
+        # NOT STRIPPED HERE: ``tags.read_tag`` already trims every value.
         current = tags.read_genre_from_file(path) or ""
         if not current:
             # tag.folder's, under fill-if-empty. See the module docstring.
@@ -223,37 +152,17 @@ def plan_items(selection: Selection) -> list[dict[str, str]]:
     ]
 
 
-# ---------------------------------------------------------------------------
-# The review queue: one item per file, asked once
-# ---------------------------------------------------------------------------
-
-
 def identity_for(path: Path | str) -> dict[str, str]:
-    """What a review item about one file is addressed by.
-
-    THE PATH, and the cost of that is stated rather than left to be discovered: a
-    library that moves orphans every open item, because the identity hashes into
-    the item id. A bare audio file carries no identifier this pass could use
-    instead. The database half has content ids and this half runs before any row
-    is matched, on purpose, so that a folder with no library rows at all can still
-    be corrected.
-    """
+    """What a review item about one file is addressed by: THE PATH, so a library
+    that moves orphans every open item. A bare file carries no better identifier,
+    and this runs before any row is matched, so a folder with no rows is corrected."""
     return {"path": str(path)}
 
 
 def options_for(declared: taxonomy.Taxonomy) -> tuple[review.Option, ...]:
-    """The declared buckets, as the candidates a person may choose from.
-
-    ``review.resolve`` refuses an option the item does not offer, so a person
-    cannot answer with a genre nobody showed them. That makes the OFFER the place
-    the answer set is decided, and the declared taxonomy is the only defensible
-    source for it: these are exactly the genres this library routes by.
-
-    The too-coarse ones are filtered out here as well as at the write. Filtering
-    only here would let an item offered by an older build carry one; checking only
-    at the write would put an answer in front of a person that the verb is going
-    to refuse.
-    """
+    """The declared buckets, the only answers a person may give, since
+    ``review.resolve`` refuses an option not offered. Too coarse ones are left out
+    here as well as refused at the write, for items an older build offered."""
     return tuple(
         review.Option(
             option_id=bucket.id,
@@ -266,13 +175,8 @@ def options_for(declared: taxonomy.Taxonomy) -> tuple[review.Option, ...]:
 
 
 def accepted_genre(item: review.Item) -> str:
-    """The genre a resolved item settled on, or empty.
-
-    Reads the OPTION the person chose out of the item's own option list rather
-    than trusting the option id to be a genre name. The id is a bucket identifier
-    and the genre is its display name (R19), and an id that happened to read like
-    a display name is how the two silently become one thing.
-    """
+    """The genre a resolved item settled on, or empty, read off the chosen
+    OPTION: its id is a bucket identifier and the genre its display name (R19)."""
     if item.verdict is not review.Verdict.ACCEPTED or not item.option:
         return ""
     for option in item.options:
@@ -284,18 +188,8 @@ def accepted_genre(item: review.Item) -> str:
 
 
 def decided_index(store: review.ReviewStore | None) -> dict[str, review.Item]:
-    """Every item this pass has ever offered, read ONCE.
-
-    A per-file lookup would be one query per candidate over a folder that can hold
-    thousands. The whole queue for one kind is small enough to hold, and reading it
-    once is the same reasoning ``trees.index_active_rows`` states for the library.
-
-    PUBLIC BECAUSE THE JOB WORKER NEEDS IT TOO. A worker runs one candidate per
-    call and builds this index per call, which is one read of a small queue per
-    item rather than one per folder. The queue holds only unanswered coarse-genre
-    questions, so it is bounded by the size of that backlog rather than by the
-    library, and the cost is recorded as a residual rather than assumed away.
-    """
+    """Every item this pass has ever offered, read ONCE rather than per file.
+    Public for the job worker, which reads this small queue once per item."""
     if store is None:
         return {}
     predicate = review.Predicate(queue=str(Queue.GENRE), kind=KIND)
@@ -314,12 +208,8 @@ def _ask(
     declared: taxonomy.Taxonomy,
     handler_key: str,
 ) -> RetagResult:
-    """Put the question in the queue and report the file as unwritten.
-
-    With no store this still returns a result carrying the reason. A pass driven
-    without a queue is a pass that reports what it could not settle, not a pass
-    that pretends it settled it.
-    """
+    """Put the question in the queue and report the file as unwritten; with no
+    store the result still carries the reason."""
     item_id = ""
     if store is not None:
         item = review.offer(
@@ -346,11 +236,6 @@ def _ask(
     )
 
 
-# ---------------------------------------------------------------------------
-# The pass over the files
-# ---------------------------------------------------------------------------
-
-
 def retag_one(
     candidate: Candidate,
     *,
@@ -362,23 +247,11 @@ def retag_one(
 ) -> RetagResult:
     """Correct ONE candidate's genre, or record why it was not corrected.
 
-    THE PER CANDIDATE WORK, split out so a job worker can run exactly one of
-    them. :func:`retag_folder` is this function applied to every candidate the
-    selection took, so the sweep and the queued worker cannot come to hold two
-    different policies about one field.
-
-    A VERDICT ALREADY RECORDED IS READ BEFORE THE SEARCHER IS ASKED. That ordering
-    is the whole of "a resolved verdict is not re-asked": asking first and reading
-    afterwards would spend a lookup per run on a question a person has already
-    answered, and would let a fresh answer overwrite the recorded one.
-
-    A REJECTED item is settled AGAINST every candidate, so the file is left alone
-    and nothing is re-offered. ``review.offer`` would not reopen it, but calling it
-    would refresh nothing and would say in the code that this pass is still asking.
-
-    ``decided`` is passed in rather than read here, because the folder sweep reads
-    the queue once for the whole walk and a worker reads it once for its one item.
-    Reading it inside would make the sweep one query per candidate.
+    The per candidate work, shared by :func:`retag_folder` and the job worker so
+    they hold one policy. A VERDICT ALREADY RECORDED IS READ BEFORE THE SEARCHER
+    IS ASKED, so an answered question is not looked up again; a REJECTED one
+    leaves the file alone and offers nothing. ``decided`` is read once by the
+    caller.
     """
     item_id = review.item_id_for(Queue.GENRE, KIND, identity_for(candidate.path))
     item = decided.get(item_id)
@@ -447,11 +320,8 @@ def retag_folder(
     store: review.ReviewStore | None = None,
     handler_key: str = HANDLER_KEY,
 ) -> RetagOutcome:
-    """Correct every too-coarse genre under ``root`` that can be corrected.
-
-    The selection, the queue read, and :func:`retag_one` per candidate. Every
-    policy decision lives one function down, where the job worker reaches it too.
-    """
+    """Correct every too coarse genre under ``root`` that can be corrected: the
+    selection, one queue read, and :func:`retag_one` per candidate."""
     selection = select(root, declared=declared)
     decided = decided_index(store)
     results = [
@@ -466,11 +336,6 @@ def retag_folder(
         for candidate in selection.candidates
     ]
     return RetagOutcome(results=tuple(results), passed=selection.passed)
-
-
-# ---------------------------------------------------------------------------
-# The database half: plan under the RETAG_GENRE policy, then apply it
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -501,31 +366,11 @@ def plan_library(
 ) -> LibraryPlan:
     """Plan the ``GenreID`` write for every file this pass actually retagged.
 
-    THE WRITTEN RESULTS AND NOT THE SELECTION. A plan built from what was proposed
-    rather than from what happened is the reporting half of the first-caller defect
-    the corpus records: it would name a row for a file whose write was refused, and
-    the database would then disagree with the file on disk in the direction nobody
-    checks.
-
-    ROWS ARE MATCHED THROUGH :func:`cratekit.write.trees.match_active_rows`, which
-    drops tombstones before it compares. ``metadata.plan_genre_retag`` does not
-    read the soft-delete marker, and it is right not to: three sibling planners in
-    that module take the rows their caller chose. Choosing them is this caller's
-    job, and choosing them without reading the marker would retag rows the person
-    removed from the collection.
-
-    A file that resolves to no row, to more than one, or to nothing this machine
-    can see is SURFACED rather than dropped. The file is already corrected on disk,
-    so silence here would report a full sweep over a library half of which never
-    moved.
-
-    TWO FILES RESOLVING TO ONE ROW ARE BOTH SURFACED AND NEITHER IS WRITTEN. The
-    ambiguity above is one location claimed by two rows; this is its mirror, two
-    requested locations resolving onto one row, which a prefix rule can produce
-    from two paths that are different on disk. Keying a dictionary on the content
-    id and moving on would silently let whichever file came last decide the row,
-    and the report would name both as written. That is METHOD's second pattern,
-    an identity trusted alone, in the one place this function mints one.
+    THE WRITTEN RESULTS, NOT THE SELECTION, so no row is planned for a refused
+    write. Rows are matched through :func:`cratekit.write.trees.match_active_rows`,
+    which drops tombstones. A file resolving to no row, to several, or to nothing
+    visible is SURFACED, and TWO FILES RESOLVING TO ONE ROW are both surfaced and
+    neither written, rather than letting the last decide.
     """
     written = outcome.written
     matches = trees.match_active_rows(
@@ -574,15 +419,8 @@ def plan_library(
 def apply_library(library_plan: LibraryPlan, mapped: Mapping[str, Any]) -> metadata.Report:
     """Register the operation, refuse a plan outside its policy, then apply it.
 
-    REGISTERING IS NOT A CONVENIENCE. ``metadata_decision`` answers ``SKIP_UNOWNED``
-    for an operation nobody registered, so an unregistered sweep writes nothing,
-    raises nothing, and reports a clean run over a library it did not touch. This
-    is the one caller of that layer in ``src``, so the registration and the
-    refusal that catches its absence are both this function's rather than every
-    future caller's to remember.
-
-    DOES NOT COMMIT. ``rb_writer.commit_guarded`` is the caller's, because one
-    session carries several operations and is judged once.
+    An unregistered operation answers ``SKIP_UNOWNED``, writing nothing and
+    reporting clean. DOES NOT COMMIT: one session is judged once, by the caller.
     """
     metadata.enable((metadata.RETAG_GENRE,))
     metadata.assert_within_policy(library_plan.plan)
