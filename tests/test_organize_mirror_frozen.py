@@ -439,15 +439,8 @@ def test_a_plan_that_cannot_be_frozen_stands_and_the_apply_plans_afresh(world, i
 def test_each_folders_edit_rule_survives_the_freeze_and_a_version_3_record_is_planned_afresh(installed):
     """U204: the run that applies reads the Favorites folder and INBOX as edited too."""
     from cratekit.modules.outbound import mirror_edits
-    library = account_mirror.Library(
-        folders=tuple(
-            mirror.Folder(name=name, edits=rule)
-            for name, rule in (
-                ("Techno", mirror_edits.GENRE), ("Favorites", mirror_edits.FAVORITES),
-                ("INBOX", mirror_edits.INBOX), ("Mine", ""),
-            )
-        )
-    )
+    rules = (("Techno", mirror_edits.GENRE), ("Favorites", mirror_edits.FAVORITES), ("INBOX", mirror_edits.INBOX), ("Mine", ""))
+    library = account_mirror.Library(folders=tuple(mirror.Folder(name=name, edits=rule) for name, rule in rules))
     mirror_frozen.freeze(installed, RUN, library, {})
     frozen, _said = mirror_frozen.load(installed, RUN)
     assert [folder.edits for folder in frozen.library.folders] == ["genre", "favorites", "inbox", ""]

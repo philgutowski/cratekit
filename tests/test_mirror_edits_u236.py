@@ -75,11 +75,7 @@ def test_a_favourite_put_in_the_placed_month_on_the_account_is_agreed():
 
 def test_a_favourite_both_sides_put_in_another_month_leaves_the_placed_one():
     """Review round one, finding 5: never the later change rule against its own month."""
-    got = one(
-        held(AF, **ALL),
-        held(SEP, account=("t1",), rekordbox=("t1",)),
-        held(NOV, rekordbox=("t1",), placed=("t1",)),
-    )
+    got = one(held(AF, **ALL), held(SEP, account=("t1",), rekordbox=("t1",)), held(NOV, rekordbox=("t1",), placed=("t1",)))
     assert (got.outcome, got.to, got.away) == (edits.FAVOURITE, SEP, (NOV,))
 
 

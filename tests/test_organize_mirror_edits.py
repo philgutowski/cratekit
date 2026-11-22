@@ -108,19 +108,14 @@ class Machine:
         _build_disposable_database(self.db)
         for name, genre_id in GENRES.items():
             _query(
-                self.db,
-                "INSERT INTO djmdGenre (ID, Name, rb_local_deleted, created_at, updated_at) "
-                "VALUES (?, ?, 0, '2026-01-01', '2026-01-01')",
-                genre_id,
-                name,
+                self.db, "INSERT INTO djmdGenre (ID, Name, rb_local_deleted, created_at, updated_at) "
+                "VALUES (?, ?, 0, '2026-01-01', '2026-01-01')", genre_id, name,
             )
         for content_id, (genre, _band, energy) in TRACKS.items():
             path = self.files[content_id]
             shutil.copyfile(silence(scratch), path)
-            assert tags.write_tags(
-                path,
-                {"title": f"Track {content_id}", "artist": "Probe", "genre": genre, "energylevel": energy},
-            )
+            fields = {"title": f"Track {content_id}", "artist": "Probe", "genre": genre, "energylevel": energy}
+            assert tags.write_tags(path, fields)
             _query(
                 self.db,
                 f"UPDATE djmdContent SET FolderPath = ?, GenreID = ?, {rb_writer.ISRC_COLUMN} = ? WHERE ID = ?",
@@ -191,10 +186,10 @@ class Machine:
         if at:
             self.account.added_at[(self.remote(title), track)] = at
 
-    def move_on_account(self) -> None:
-        """Track 1 moved on the account from Deep House Low into Tech House Med."""
+    def move_on_account(self, at: str = "") -> None:
+        """Track 1 moved on the account from Deep House Low into Tech House Med, at ``at`` if given."""
         self.take_off("Deep House Low", "r1")
-        self.put_in("Tech House Med", "r1")
+        self.put_in("Tech House Med", "r1", at=at)
 
     def sql(self, statement: str, *args) -> list:
         return _query(self.db, statement, *args)
@@ -398,8 +393,7 @@ def test_a_track_the_library_lacks_added_on_the_account_is_held_there(machine):
 
 
 def test_two_moves_follow_the_later_rekordbox_move(machine):
-    machine.take_off("Deep House Low", "r1")
-    machine.put_in("Tech House Med", "r1", at="2026-11-04T09:00:00+00:00")
+    machine.move_on_account(at="2026-11-04T09:00:00+00:00")
     machine.move_in_rekordbox("1", ("Deep House", "High"), "2026-11-04 10:00:00.000 +00:00")
     _area, step = machine.run()
     assert step.state == NOTHING
@@ -410,8 +404,7 @@ def test_two_moves_follow_the_later_rekordbox_move(machine):
 
 
 def test_two_moves_follow_the_later_account_move(machine):
-    machine.take_off("Deep House Low", "r1")
-    machine.put_in("Tech House Med", "r1", at="2026-11-04T11:00:00+00:00")
+    machine.move_on_account(at="2026-11-04T11:00:00+00:00")
     machine.move_in_rekordbox("1", ("Deep House", "High"), "2026-11-04 10:00:00.000 +00:00")
     _area, step = machine.run()
     assert step.state == PLANNED
@@ -472,9 +465,7 @@ def test_an_account_that_cannot_be_read_refuses_the_step_alone(machine):
     def unreachable():
         raise refuse("credential-missing", "no account", origin=("test",))
     shared = account_mirror.Shared(machine.cfg, unreachable, None)
-    step = mirror_edits.add_step(
-        machine.cfg, active_taxonomy.load(machine.cfg), tree_registry.read(machine.cfg), shared
-    )
+    step = mirror_edits.add_step(machine.cfg, active_taxonomy.load(machine.cfg), tree_registry.read(machine.cfg), shared)
     assert step.state == REFUSED and step.cause.reason == "credential-missing"
 
 
@@ -497,14 +488,8 @@ def test_the_tags_are_the_nearest_pair_routing_files_into_the_place(folder, play
 
 def test_a_genre_folder_places_only_what_routing_files_into():
     declared = taxonomy.default_taxonomy()
-    folder = mirror.Folder(
-        name="Deep House",
-        playlists=tuple(
-            mirror.Source(name=f"Deep House {one}")
-            for one in ("Low", "Unsorted", "with vox", "Favorites", "Candy")
-        ),
-        edits=edits.GENRE,
-    )
+    sources = tuple(mirror.Source(name=f"Deep House {one}") for one in ("Low", "Unsorted", "with vox", "Favorites", "Candy"))
+    folder = mirror.Folder(name="Deep House", playlists=sources, edits=edits.GENRE)
     found = mirror_edits.places(declared, [folder, mirror.Folder(name="Not A Genre", edits=edits.GENRE)])
     assert {title: place.primary for title, place in found.items()} == {
         "Deep House Low": True, "Deep House Unsorted": True, "Deep House with vox": False,

@@ -201,12 +201,7 @@ def test_a_catalogue_read_as_empty_takes_nothing_off(built):
 
 def test_a_release_the_provider_no_longer_has_stops_the_unconfirmed_judgement(built):
     """r7 is confirmed and gone, so any track could be its: only holds are judged."""
-    _recatalogue(
-        built,
-        confirmed=CONFIRMED | {"r7"},
-        listed=[*LISTED, FakeRelease("r7", year="2020")],
-        elsewhere={"r2"},
-    )
+    _recatalogue(built, confirmed=CONFIRMED | {"r7"}, listed=[*LISTED, FakeRelease("r7", year="2020")], elsewhere={"r2"})
     _hold(built.cfg, "r1")
     shown = _shown()
     assert list(shown["take off"]) == ["Kompakt 2021"]

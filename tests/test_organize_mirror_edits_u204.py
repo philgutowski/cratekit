@@ -110,9 +110,8 @@ class World(Machine):
             for playlist, content_id in ((source, "1"), (month, "1"), (batch_a, "1"), (batch_b, "2")):
                 rb_writer.add_memberships(handle, playlist, [content_id])
             handle.session.commit()
-            made = dict(favorites=favorites, source=source, month=month, inbox=inbox, old=old)
-            return {**names, **{key: str(one.ID) for key, one in made.items()},
-                    "batch_a": str(batch_a.ID), "batch_b": str(batch_b.ID)}
+            made = dict(favorites=favorites, source=source, month=month, inbox=inbox, old=old, batch_a=batch_a, batch_b=batch_b)
+            return {**names, **{key: str(one.ID) for key, one in made.items()}}
         finally:
             rb_writer.close_db(handle)
 
@@ -206,11 +205,7 @@ def _named(step) -> list[dict]:
 
 def _queued(cfg) -> list[jobs.Job]:
     with jobs.open_store() as store:
-        return [
-            job
-            for job in jobs.list_jobs(store)
-            if (job.payload or {}).get("source_id") == mirror_downloads.SOURCE_ID
-        ]
+        return [job for job in jobs.list_jobs(store) if (job.payload or {}).get("source_id") == mirror_downloads.SOURCE_ID]
 
 
 def _set_state(job, state) -> None:
@@ -609,13 +604,8 @@ def test_a_playlist_the_provider_cannot_list_is_named_and_the_others_queue():
     from cratekit.core.cause import refuse
     one = edits.Place("Tech House Med", "Tech House", "Med", True)
     two = edits.Place("Deep House Low", "Deep House", "Low", True)
-    decided = edits.decide(
-        [
-            edits.Mirrored(place=one, account=frozenset({"r7"}), agreed=frozenset()),
-            edits.Mirrored(place=two, account=frozenset({"r8"}), agreed=frozenset()),
-        ],
-        {},
-    )
+    mirrored = [edits.Mirrored(place=place, account=frozenset({track}), agreed=frozenset()) for place, track in ((one, "r7"), (two, "r8"))]
+    decided = edits.decide(mirrored, {})
     recorded = {
         folder: SimpleNamespace(playlists={title: SimpleNamespace(remote_id=pid)})
         for folder, title, pid in (("Tech House", "Tech House Med", "p1"), ("Deep House", "Deep House Low", "p2"))
@@ -624,10 +614,8 @@ def test_a_playlist_the_provider_cannot_list_is_named_and_the_others_queue():
     def listed(pid):
         if pid == "p1":
             raise refuse("label-playlist-unreadable", "down", origin=("test",))
-        return intake_cli.Readable(
-            tracks={"r8": {"isrc": "ISRC00000008", "artist": "A", "title": "T"}}, short=None,
-            unread={}, order=("r8",),
-        )
+        tracks = {"r8": {"isrc": "ISRC00000008", "artist": "A", "title": "T"}}
+        return intake_cli.Readable(tracks=tracks, short=None, unread={}, order=("r8",))
     cfg = SimpleNamespace(library=SimpleNamespace(volume_id="v"))
     from unittest import mock
     with mock.patch.object(mirror_downloads, "queued", return_value={}):

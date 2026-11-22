@@ -109,10 +109,7 @@ def test_a_batch_the_rotation_moved_into_old_plans_the_removal_of_its_playlist_a
     assert [step.counts[k] for k in ("create playlist", "add", "remove")] == [0, 0, 0]
     (removal,) = [item for item in step.items if item.get("action") == mirror.RETIRE]
     assert removal["playlist"] == f"INBOX {BATCHES[0]}" and removal["remote_id"] == gone
-    assert area.deletes == [
-        f"the mirrored playlist 'INBOX {BATCHES[0]}' ({gone}) off the account, since what "
-        f"it mirrors left INBOX"
-    ]
+    assert area.deletes == [f"the mirrored playlist 'INBOX {BATCHES[0]}' ({gone}) off the account, since what it mirrors left INBOX"]
     (applied,) = world.apply(area)
     assert applied["retired"] == [f"INBOX {BATCHES[0]}"]
     assert world.account.deleted == [(gone, ("r1", "r2"))]
@@ -333,9 +330,7 @@ def batches(native_library):
     cfg, root_id = native_library
     old_id = _node(cfg, OLD, under=root_id, folder=True)
     ids = {
-        "dated": _node(
-            cfg, "2026-09-23 Tidal playlists", under=root_id, age=10, tracks=("t1", "t2"), batch_folder=True,
-        ),
+        "dated": _node(cfg, "2026-09-23 Tidal playlists", under=root_id, age=10, tracks=("t1", "t2"), batch_folder=True),
         "suffix": _node(cfg, "2026-09-13T101010Z-1_inboxed", under=root_id, age=20, tracks=("t5",)),
         "label": _node(cfg, "2026-10-01 Defected", under=root_id, age=2, tracks=("t3", "t4")),
         "old": _node(cfg, "2026-05-01 Tidal playlists", under=old_id, age=150, tracks=("t6",)),

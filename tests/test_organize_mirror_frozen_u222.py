@@ -195,17 +195,11 @@ def test_a_step_new_since_the_gate_and_one_gone_are_named():
             return [self.key, "planned", self._digest]
     then = [One("mirror:A", "mirror A onto the account", items=[{"playlist": "A Low"}])]
     gone = One("sets", "the sets step")
-    frozen = mirror_frozen.Frozen(
-        library=None,
-        matches={},
-        steps={
-            step.key: mirror_frozen.Shown(
-                title=step.title, digest=mirror_frozen._shown_json(step)["digest"],
-                lines=mirror_frozen._lines(step),
-            )
-            for step in (*then, gone)
-        },
-    )
+    shown = {
+        step.key: mirror_frozen.Shown(title=step.title, digest=mirror_frozen._shown_json(step)["digest"], lines=mirror_frozen._lines(step))
+        for step in (*then, gone)
+    }
+    frozen = mirror_frozen.Frozen(library=None, matches={}, steps=shown)
     now = [
         One("mirror:A", "mirror A onto the account", digest="e", items=[{"playlist": "A Low", "add": 1}]),
         One("mirror:B", "mirror B onto the account"),

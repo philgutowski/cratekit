@@ -81,18 +81,12 @@ def test_a_tie_remembered_as_a_miss_before_the_tie_was_broken_is_asked_again(ins
     tied, absent = _row("c1"), _row("c2", isrc=OTHER)
     world = _world(installed, monkeypatch, {CODE: _alike("101", "202")}, tied, absent)
     matcher = mirror.Matcher(world.account, {}, lambda _row: mirror.Identity())
-    ledger.record_mirror_misses(
-        installed,
-        {
-            "c1": (
-                f"the ISRC {CODE} names 2 provider tracks, 2 {service.AGREEING_RELEASES} "
-                "and the account hearts 0 of those, and the file carries no album tag, "
-                "so none was chosen",
-                matcher.under(tied),
-            ),
-            "c2": (mirror.NO_MATCH, matcher.under(absent)),
-        },
+    tie = (
+        f"the ISRC {CODE} names 2 provider tracks, 2 {service.AGREEING_RELEASES} and the account "
+        "hearts 0 of those, and the file carries no album tag, so none was chosen"
     )
+    misses = {"c1": (tie, matcher.under(tied)), "c2": (mirror.NO_MATCH, matcher.under(absent))}
+    ledger.record_mirror_misses(installed, misses)
     world.run()
     assert world.account.client.isrc_asked == [CODE]
     assert world.held("Soul High") == ["101"]

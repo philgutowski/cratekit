@@ -11,7 +11,7 @@ from cratekit.core import config
 from cratekit.modules.outbound import ledger
 from cratekit.modules.outbound import mirror_edits as edits
 from tests.test_organize_mirror_edits_u204 import _field_policies as _field_policies  # noqa: PLC0414
-from tests.test_organize_mirror_edits_u204 import _items
+from tests.test_organize_mirror_edits_u204 import _items, _queued
 from tests.test_organize_mirror_edits_u204 import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_organize_mirror_edits_u204 import _release_process_locks as _release_process_locks
 from tests.test_organize_mirror_edits_u204 import acknowledged as acknowledged  # noqa: PLC0414
@@ -106,12 +106,8 @@ def test_a_job_queued_from_another_playlist_does_not_lift_the_edited_ones_base(w
     from cratekit.intake import cli as intake_cli
     from cratekit.organize import mirror_downloads
     _landed_with_base(world, None)
+    (real,) = _queued(world.cfg)
     with jobs.open_store() as store:
-        (real,) = [
-            one
-            for one in jobs.list_jobs(store)
-            if (one.payload or {}).get("source_id") == mirror_downloads.SOURCE_ID
-        ]
         jobs.cancel(store, real.job_id)
         other = intake_cli.queue_playlist(
             store, world.cfg, handler_key=mirror_downloads.HANDLER,

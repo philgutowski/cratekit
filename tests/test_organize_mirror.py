@@ -64,9 +64,7 @@ class World:
 
     def __init__(self, cfg, monkeypatch, *, unmatched: tuple[int, ...] = ()) -> None:
         self.cfg = cfg
-        self.account = outbound_fakes.StrictAccount(
-            catalog={f"c{n}": f"r{n}" for n in range(1, 400) if n not in unmatched}
-        )
+        self.account = outbound_fakes.StrictAccount(catalog={f"c{n}": f"r{n}" for n in range(1, 400) if n not in unmatched})
         self.library = account_mirror.Library()
         monkeypatch.setattr(account_mirror, "read_library", lambda _cfg, **_: self.library)
 
@@ -220,12 +218,18 @@ def test_a_track_moved_from_med_to_high_is_added_to_one_and_removed_from_the_oth
     assert adds
 
 
-def test_a_track_added_by_hand_to_a_mirrored_playlist_is_removed_and_named(world, installed):
-    world.mirror(folder("Deep House", Low=(1, 2)))
+def _added_on_the_phone(world, **bands: tuple[int, ...]) -> str:
+    """Deep House mirrored once, then r77 added by hand to its Low playlist; answers Low's id."""
+    world.mirror(folder("Deep House", Low=(1, 2), **bands))
     world.run()
     low = world.playlist_id("Deep House Low")
     world.account.playlists[low].append("r77")
     world.account.names["r77"] = ("Someone", "Added On The Phone")
+    return low
+
+
+def test_a_track_added_by_hand_to_a_mirrored_playlist_is_removed_and_named(world, installed):
+    low = _added_on_the_phone(world)
     area = world.plan()
     (item,) = _steps(area)["mirror:Deep House"].items[1:]
     assert item["removed"] == ["Someone - Added On The Phone (r77)"]
@@ -235,9 +239,7 @@ def test_a_track_added_by_hand_to_a_mirrored_playlist_is_removed_and_named(world
 
 
 def test_a_removal_the_account_refuses_is_kept_named_and_the_apply_goes_on(world, monkeypatch):
-    world.mirror(folder("Deep House", Low=(1, 2), High=(3,)))
-    world.run()
-    world.account.playlists[world.playlist_id("Deep House Low")].append("r77")
+    _added_on_the_phone(world, High=(3,))
     def refused(_pid, _ids):
         raise refuse("outbound-remove-refused", "positions unknown", scope=Scope.SOURCE, origin=("test",))
     monkeypatch.setattr(world.account, "remove_tracks", refused)
@@ -250,9 +252,7 @@ def test_a_removal_the_account_refuses_is_kept_named_and_the_apply_goes_on(world
 
 
 def test_a_removal_whose_read_back_differs_is_raised_never_kept(world, monkeypatch):
-    world.mirror(folder("Deep House", Low=(1, 2)))
-    world.run()
-    world.account.playlists[world.playlist_id("Deep House Low")].append("r77")
+    _added_on_the_phone(world)
     def differs(_pid, _ids):
         raise refuse(
             "outbound-remove-refused",
@@ -267,10 +267,7 @@ def test_a_removal_whose_read_back_differs_is_raised_never_kept(world, monkeypat
 
 
 def test_every_track_a_refresh_takes_off_is_named_on_the_gate(world):
-    world.mirror(folder("Deep House", Low=(1, 2)))
-    world.run()
-    world.account.playlists[world.playlist_id("Deep House Low")].append("r77")
-    world.account.names["r77"] = ("Someone", "Added On The Phone")
+    _added_on_the_phone(world)
     area = world.plan()
     assert area.deletes == ["1 track(s) off the mirrored playlist 'Deep House Low': Someone - Added On The Phone (r77)"]
     assert area.shown()["deletes"] == area.deletes
@@ -316,21 +313,11 @@ def test_a_playlist_the_folder_no_longer_holds_is_left_and_named(world):
 
 
 def test_the_favorites_folder_mirrors_under_its_own_names(world):
-    world.mirror(
-        mirror.Folder(
-            name="Favorites",
-            playlists=(
-                mirror.Source(name="All Favorites", rows=(row(1), row(2))),
-                mirror.Source(name=mirror.title("Favorites", "2026-10"), rows=(row(1),)),
-                mirror.Source(name=mirror.title("Favorites", "Undated"), rows=(row(2),)),
-            ),
-        )
-    )
+    months = tuple(mirror.Source(name=mirror.title("Favorites", one), rows=(row(n),)) for one, n in (("2026-10", 1), ("Undated", 2)))
+    world.mirror(mirror.Folder(name="Favorites", playlists=(mirror.Source(name="All Favorites", rows=(row(1), row(2))), *months)))
     world.run()
     favorites = world.folder_id("Favorites")
-    assert sorted(world.account.folder_playlists(favorites).values()) == [
-        "All Favorites", "Favorites 2026-10", "Favorites Undated"
-    ]
+    assert sorted(world.account.folder_playlists(favorites).values()) == ["All Favorites", "Favorites 2026-10", "Favorites Undated"]
 
 
 def test_a_favourites_playlist_at_the_root_is_listed_and_not_mirrored(world):
