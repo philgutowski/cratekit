@@ -25,8 +25,6 @@ from cratekit.intake import ingest, land_cli, set_playlist
 #: written outside the intake flow, answered by a recorded act (R34).
 APPROVE_GATE = "intake.inspiration.approve"
 
-_ORIGIN = ("intake", "inspiration_cli")
-
 
 def build(parser, entry) -> None:
     parser.add_argument(
@@ -37,12 +35,6 @@ def build(parser, entry) -> None:
     )
     set_playlist.add_word_arguments(parser)
     parser.set_defaults(_handler=intake_inspiration)
-
-
-def _native_or_refuse(cfg: config.Config) -> ingest.IntakeMedium:
-    medium = ingest.intake_medium(cfg)
-    set_playlist.assert_native(medium, landing=False)
-    return medium
 
 
 def planned(
@@ -99,7 +91,8 @@ def intake_inspiration(ctx) -> Envelope:
     plan again and refuses a digest that moved.
     """
     cfg = load_config(("intake.inspiration_cli",))
-    medium = _native_or_refuse(cfg)
+    medium = ingest.intake_medium(cfg)
+    set_playlist.assert_native(medium, landing=False)
     declared = medium.declared
     posted = getattr(ctx.args, "posted", None)
     with jobs.open_store() as store:

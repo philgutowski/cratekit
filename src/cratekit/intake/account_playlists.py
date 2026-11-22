@@ -27,6 +27,7 @@ from cratekit.acquire import match, match_cli
 from cratekit.core import config, jobs, session
 from cratekit.intake import batch_name, ingest, native
 from cratekit.intake import cli as intake_cli
+from cratekit.intake.cli_identify import _note
 
 #: One row of an account playlist its INBOX playlist does not hold, and why:
 #: the row a set's playlist leaves out, which is the same five fields.
@@ -351,15 +352,10 @@ def hearted(
 
 def _named(job: jobs.Job) -> str | None:
     """The account's name the job recorded, or None for a job that is not one of his playlists."""
-    payload = job.payload or {}
-    if job.handler_key != PLAYLIST_KEY:
+    if job.handler_key != PLAYLIST_KEY or is_hearts_job(job):
         return None
-    if str(payload.get("source_id") or "") == intake_cli.FAVORITES_SOURCE_ID:
-        return None
-    name = payload.get(intake_cli.PLAYLIST_NAME)
-    if not isinstance(name, str) or not name.strip():
-        return None
-    return name
+    name = (job.payload or {}).get(intake_cli.PLAYLIST_NAME)
+    return name if isinstance(name, str) and name.strip() else None
 
 
 def sources(cfg: config.Config, pass_name: str) -> tuple[Source, ...]:
@@ -395,7 +391,6 @@ def read_source(store, job: jobs.Job, name: str) -> Source:
     """One account playlist job as a :class:`Source`, every report in item order (U128)."""
     from cratekit.intake import missing_cli
 
-    reports = missing_cli.job_reports(store, job)
     return Source(
         playlist_id=account_of(job),
         name=name,
@@ -407,7 +402,7 @@ def read_source(store, job: jobs.Job, name: str) -> Source:
                 wanted=intake_cli.thawed(report["track"]),
                 paths=tuple(str(path) for path in (report.get("paths") or ())),
             )
-            for position, report in enumerate(reports, start=1)
+            for position, report in enumerate(missing_cli.job_reports(store, job), start=1)
         ),
     )
 
@@ -598,15 +593,11 @@ def left_warning(left: Sequence[tuple[str, Left]]) -> list[dict[str, str]]:
         f"{playlist} {one.position}. {one.artist} - {one.title} ({one.why})"
         for playlist, one in left
     )
-    return [
-        {
-            "code": LEFT_OUT,
-            "message": (
-                f"{len(left)} track(s) of the account playlists are not in their INBOX "
-                f"playlist, each named with why: {named_rows}"
-            ),
-        }
-    ]
+    return [_note(
+        LEFT_OUT,
+        f"{len(left)} track(s) of the account playlists are not in their INBOX "
+        f"playlist, each named with why: {named_rows}",
+    )]
 
 
 def pending_names(cfg: config.Config) -> tuple[str, ...]:
