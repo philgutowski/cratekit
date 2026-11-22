@@ -1,23 +1,8 @@
 """U266: the set builder's index reads each file through one container open.
 
-``read_index_tags`` used to ask ``core.tags.read_tag`` for each of the seven
-``INDEX_FIELDS`` in turn, and each call opened the file again, so the first
-``crate setbuild`` over a library (and the first after any template or cache
-version change) opened every file seven times. It now reads the seven fields
-through one :func:`cratekit.core.tags.read_tags` call, the shared one open
-reader the match index and the derivations already use.
-
-WHAT THESE TESTS HOLD, and why the count is the assertion. The saving is an
-open count, so the proof is the number of ``mutagen.File`` calls, which is
-exact on any machine, rather than a wall clock threshold, which is not. The
-index must not move by a single value, because it decides which tracks a set
-is built from: every reading below is compared with the seven single field
-reads that were the function's whole body before this unit, and literal
-expectations pin the values themselves, so an equality cannot hold merely
-because both sides read nothing.
-
-D1 APPLIES TO EVERY NAME HERE. Nothing below names a real volume, a real
-person, or a real track.
+The assertion is the ``mutagen.File`` call count, exact on any machine, and every
+reading is compared with the seven single field reads it replaced, plus literal
+expectations. Nothing below names a real volume, person or track (D1).
 """
 
 from __future__ import annotations
@@ -165,11 +150,7 @@ def test_the_values_read_are_the_values_written(tmp_path, probes):
 def test_an_undecodable_field_reads_none_and_its_neighbours_still_read(
     tmp_path, probes, opens
 ):
-    """An MP4 freeform atom whose bytes are not text: that field alone reads None.
-
-    Today each field was its own read, so one bad field could not take its
-    neighbours with it. The one open reads per field leniently, and must agree.
-    """
+    """An MP4 freeform atom whose bytes are not text: that field alone reads None."""
     from mutagen.mp4 import MP4, MP4FreeForm
 
     path = _tagged(
@@ -259,11 +240,7 @@ def _mixed_library(probes, root: Path) -> list[Path]:
 def test_the_index_is_what_the_seven_open_reader_built_one_open_a_file(
     tmp_path, probes, opens
 ):
-    """A cold walk over mixed containers: one open a file, the same index and cache.
-
-    Then a warm walk opens only the files whose read held no index field, which
-    the cache refuses to store by design, and answers the same index.
-    """
+    """A cold walk over mixed containers: one open a file, the same index and cache."""
     root = tmp_path / "lib"
     made = _mixed_library(probes, root)
     walked = list(setbuilder.iter_audio(root))

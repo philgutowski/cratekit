@@ -1,18 +1,8 @@
 """U46: the resume guarantee, measured through the SHIPPED binding.
 
-``tests/test_jobs.py`` already kills a driver mid item and proves the engine
-redoes exactly one. That file calls ``jobs.drive`` with a handler written beside
-it, so it measures the engine and says nothing about the seam that reaches the
-engine from a verb. This file kills a process running ``cli.handlers.run_job``
-against the real ``master`` handler instead.
-
-It also measures the property a one-item job structurally cannot: that a resume
-redoes the unfinished item AND NO OTHER. "No other" needs something to range over,
-so every job here has several.
-
-THE PROCESS GENUINELY DIES. A thread cannot be killed this way and an in-process
-fake never leaves the driver lock behind for the kernel to release, which is the
-state the next process has to read correctly.
+A real process running ``cli.handlers.run_job`` against the ``master`` handler is
+killed mid job, and the resume must redo the unfinished item and no other, so
+every job here has several items.
 """
 
 from __future__ import annotations
@@ -37,14 +27,7 @@ WORKER = Path(__file__).resolve().parent / "job_worker.py"
 
 
 def fake_binaries(tmp_path: Path) -> tuple[Path, Path]:
-    """Two executables NAMED ffmpeg and ffprobe, so the stand-in can tell them apart.
-
-    ``core.binaries`` checks only that an override points at an executable file, so
-    a link to ``/bin/echo`` satisfies resolution and nothing here ever runs a real
-    encoder. The NAMES matter: the stand-in runner dispatches on ``argv[0]``, and
-    two overrides pointing at one path make every stage look like the same stage,
-    which is a harness failure that reads exactly like a broken handler.
-    """
+    """Two executables NAMED ffmpeg and ffprobe, so the stand-in can tell them apart."""
     directory = tmp_path / "bin"
     directory.mkdir(exist_ok=True)
     made = []
@@ -182,12 +165,7 @@ def test_a_driver_killed_inside_the_real_handler_resumes_redoing_exactly_that_it
 def test_the_partial_encode_a_kill_leaves_behind_is_in_staging_not_at_the_destination(
     queued
 ):
-    """The reason the handler stages at all.
-
-    A killed encode leaves a partial file. At the destination that file is
-    permanent damage: every later resume meets ``output-exists`` and is told it
-    would discard a master somebody kept, when the file is this queue's own corpse.
-    """
+    """The reason the handler stages at all."""
     job, db, root, sources = queued
     stall = "three"
     stalled_source = next(p for p in sources if p.stem == stall)

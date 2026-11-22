@@ -1,19 +1,9 @@
 """U44: ``crate master``, the shell over the mastering engine (row 30).
 
-WHAT THIS FILE IS FOR, since ``tests/modules/test_tools.py`` already drives the
-engine. Two different claims. That file proves the ENGINE keeps its promise when
-called directly. This one proves the SHELL reaches the engine in a way that keeps
-it: that the archive still happens on the path a person actually travels, that
-the engine's refusals arrive as refusals rather than as internal defects, and that
-a resume rebuilds the same run rather than a default version of it.
-
-THE STAND-IN ENCODER DISPATCHES ON ITS ARGV, and that is load bearing rather than
-tidy. A stand-in that answers every invocation the same way cannot reach the
-encode stage at all: with no loudness JSON on stderr the measure pass returns an
-empty measurement and ``apply_filter`` refuses for the missing values long before
-an encode command is built. A drive that "does not reproduce" for that reason is a
-harness failure wearing an absent defect's clothes. ``_fake_rclone`` in
-``tests/test_restore_cli.py`` is the shape this follows.
+``tests/modules/test_tools.py`` proves the engine; this file proves the shell
+reaches it on the path a person travels, with refusals arriving as refusals and
+a resume rebuilding the same run. The stand-in encoder dispatches on its argv,
+because one answering every call alike never reaches the encode stage.
 """
 
 from __future__ import annotations
@@ -62,14 +52,7 @@ def library(tmp_path, monkeypatch) -> Path:
 
 @pytest.fixture
 def configured(library):
-    """A set-up machine with NO DATABASE, which is all this verb may have.
-
-    Deliberately not the conformance suite's fixture, for the reason the set
-    builder's suite gives for the same choice: that one builds a disposable
-    rekordbox database because the destructive verbs it drives will not admit a
-    machine without one, and copying it here would imply this verb needs
-    something it never opens. Mastering touches audio files and a job store.
-    """
+    """A set-up machine with NO DATABASE, which is all this verb may have."""
     cfg = config.from_dict(
         {
             "schema_version": config.CURRENT_SCHEMA_VERSION,
@@ -105,12 +88,7 @@ def _recording(tmp_path: Path, name: str = "REC001.wav", *, seconds: int = 1) ->
 
 
 def _encoder(*, encode_returncode: int = 0, encode_writes: bool = True):
-    """A stand-in ffmpeg and ffprobe that answers each stage on its own terms.
-
-    Only the final encode invocation varies between arms. Every other stage
-    answers as a working toolchain would, which is what lets a drive reach the
-    encode at all.
-    """
+    """A stand-in ffmpeg and ffprobe that answers each stage on its own terms."""
     def run(command: mastering.Command) -> mastering.CommandResult:
         argv = list(command.argv)
         if argv[0].endswith("ffprobe"):
@@ -155,13 +133,7 @@ def test_the_verb_is_absent_from_a_slim_profile(configured):
 
 
 def test_the_entry_is_landed_and_declares_no_gate():
-    """Both halves matter and they are different claims.
-
-    Landed is what puts the verb into the conformance population. Declaring no
-    gate is what keeps it OUT of the queued-resume contract's derived population,
-    and asserting it as a property rather than by name means the day somebody adds
-    a gate this guard stops being true rather than staying quietly correct.
-    """
+    """Both halves matter and they are different claims."""
     entry = _entry()
     assert entry.landed
     assert entry.gates == ()
@@ -200,14 +172,7 @@ def test_an_empty_recording_refuses_from_the_vocabulary(configured):
 
 
 def test_naming_a_job_reports_it_rather_than_queueing_a_second(configured, monkeypatch):
-    """Still one job after a resume, and now the resume also DOES the work.
-
-    Rewritten for U46 rather than left alone. Before the handler binding a resume
-    reconciled and reported, so any recording worked; now it claims the item and
-    masters it, so this needs a real one and a stand-in encoder. The claim the test
-    was written for, that naming a job continues it instead of queueing a second,
-    is unchanged and is still what the last assertion measures.
-    """
+    """Still one job after a resume, and now the resume also DOES the work."""
     source = _recording(configured.library.root)
     monkeypatch.setattr(mastering, "subprocess_runner", _encoder())
     code, first = _drive(["master", str(source)])
@@ -268,12 +233,7 @@ def test_the_resume_argv_carries_no_run_flag():
 
 
 def test_an_empty_output_dir_and_an_omitted_one_freeze_identically():
-    """The divergence R10 forbids, closed at the freeze rather than in two places.
-
-    An empty string reaches ``output_path`` as ``Path(".")`` and lands the master
-    in the working directory, while the argv builder drops a falsy flag and the
-    respawned child writes beside the source. One invocation, two destinations.
-    """
+    """The divergence R10 forbids, closed at the freeze rather than in two places."""
     assert master_cli.frozen_payload("/tmp/a.wav", "", False) == master_cli.frozen_payload(
         "/tmp/a.wav", None, False
     )
@@ -356,11 +316,7 @@ def test_a_recording_that_is_not_there_refuses_rather_than_raising(tmp_path):
 
 
 def test_a_container_the_engine_does_not_read_refuses_under_its_own_slug(tmp_path):
-    """A different slug from the missing case, and the difference is the sentence.
-
-    A person told the file is absent goes looking for a file sitting in front of
-    them.
-    """
+    """A different slug from the missing case, and the difference is the sentence."""
     unsupported = tmp_path / "REC001.m4a"
     unsupported.write_bytes(b"not a container this reads")
 
@@ -401,13 +357,7 @@ def test_a_failing_encode_does_not_report_success(tmp_path):
 
 
 def test_an_encode_that_exits_zero_and_writes_nothing_does_not_report_success(tmp_path):
-    """The defect U44 drove, and the guard that keeps it closed.
-
-    Before the fix this returned a report whose ``output`` named a file that was
-    not there, whose ``output_bytes`` was 0, and whose ``size_reduction`` was
-    therefore 1.0: a master that saved one hundred percent of the source's bytes.
-    The zero exit status is a CLAIM about the output, and nothing read the output.
-    """
+    """The defect U44 drove, and the guard that keeps it closed."""
     source = _recording(tmp_path)
     with pytest.raises(CratekitError) as excinfo:
         master_cli.run_master(
@@ -419,11 +369,7 @@ def test_an_encode_that_exits_zero_and_writes_nothing_does_not_report_success(tm
 
 
 def test_an_encode_that_writes_an_empty_file_does_not_report_success(tmp_path):
-    """A zero-byte FLAC is not a master, and 1.0 is the same false saving.
-
-    Separate from the branch above because the two are different states of the
-    filesystem and only one of them is caught by an existence check.
-    """
+    """A zero-byte FLAC is not a master, and 1.0 is the same false saving."""
     source = _recording(tmp_path)
 
     def empty(command):
@@ -441,13 +387,7 @@ def test_an_encode_that_writes_an_empty_file_does_not_report_success(tmp_path):
 
 
 def test_a_failed_encode_under_overwrite_says_what_the_person_is_left_holding(tmp_path):
-    """The branch KTD1's first argument does not cover, driven rather than argued.
-
-    ``archive_source`` archives the SOURCE only and the encode writes straight to
-    the destination, so the previous master is gone before the failure. The test
-    asserts BOTH halves: no success is reported, and the source and its archive
-    are still intact, which is what the refusal's own message promises.
-    """
+    """The branch KTD1's first argument does not cover, driven rather than argued."""
     source = _recording(tmp_path)
     before = mastering.digest(source)
     target = mastering.output_path(source)
@@ -485,13 +425,7 @@ def test_the_output_directory_is_honoured_and_never_the_source(tmp_path):
 
 
 def test_a_corrupt_archive_copy_refuses_and_leaves_no_false_safety_copy(tmp_path, monkeypatch):
-    """Closes A1 in ``docs/mutation/u44-author.md``, and drives ``archive-verify-failed``.
-
-    With the post-copy digest comparison dropped, a copy that does not match the
-    source is reported as the safety copy the rest of the run depends on. No
-    filesystem here corrupts a write on demand, so the copy itself is stood in
-    for: a ``copy2`` that writes the source and then one byte more.
-    """
+    """Closes A1 in ``docs/mutation/u44-author.md``, and drives ``archive-verify-failed``."""
     source = _recording(tmp_path)
     before = mastering.digest(source)
 
@@ -517,12 +451,7 @@ def test_a_corrupt_archive_copy_refuses_and_leaves_no_false_safety_copy(tmp_path
 
 
 def test_an_impostor_matching_the_first_chunk_is_still_a_different_recording(tmp_path):
-    """Closes A4. The digest must read the whole file, not its first chunk.
-
-    THE PREMISE IS ASSERTED, per the fixture-position lesson: the source has to
-    be longer than one digest chunk, or an impostor identical up to that chunk is
-    identical full stop and the row it exists to kill cannot matter.
-    """
+    """Closes A4. The digest must read the whole file, not its first chunk."""
     source = _recording(tmp_path, seconds=8)
     chunk = 1 << 20
     assert source.stat().st_size > chunk, "the fixture sits where the guard cannot matter"
@@ -565,8 +494,9 @@ def _items(job_id: str) -> tuple[jobs.Item, ...]:
 
 
 def test_queueing_a_recording_gives_the_driver_one_item_to_claim(configured):
-    """Without this the queue holds a job with nothing in it, and drive succeeds
-    over work it never did."""
+    """Without this the queue holds a job with nothing in it, and drive succeeds over work it never
+    did.
+    """
     source = configured.library.root / "REC001.wav"
     job_id = _queued(source)
 
@@ -650,14 +580,7 @@ def test_a_partial_file_left_in_staging_does_not_refuse_the_next_attempt(
 
 
 def test_a_missing_recording_reports_the_engines_own_cause_on_the_item(configured):
-    """Closes the half of R-191 that a driven job can close.
-
-    The item carries ``source-missing``. The JOB carries the engine's partial
-    failure cause, and the envelope carries ``no-evidence``, because a one-item
-    job whose item failed is a TOTAL failure and the driver refuses to report an
-    empty success. All three are asserted rather than one, because a reader who
-    knows only the envelope would look for the slug in the wrong place.
-    """
+    """Closes the half of R-191 that a driven job can close."""
     source = configured.library.root / "nope.wav"
     job_id = _queued(source)
 
@@ -675,18 +598,7 @@ def test_a_missing_recording_reports_the_engines_own_cause_on_the_item(configure
 def test_a_job_that_failed_on_a_missing_source_is_not_reopened_and_a_fresh_job_masters_it(
     configured, monkeypatch
 ):
-    """Reopening is ``job resume``'s act, and driving is this verb's.
-
-    The two halves are asserted separately because the split is easy to read the
-    wrong way round. Re-entering the verb on a job the engine has already recorded
-    as failed does not re-drive it, a terminal job is not re-driven and
-    ``jobs.drive`` refuses one outright, and it REFUSES with the job's own cause
-    rather than reporting it (R-225: this asserted ``ExitCode.OK`` over the failed
-    job until that closed here). What reopens it is ``crate job resume``, which calls
-    ``jobs.retry`` and then spawns the child that arrives here. This drives
-    ``retry`` directly rather than the spawning verb, because the child that verb
-    starts is detached and the item's row is what this measures.
-    """
+    """Reopening is ``job resume``'s act, and driving is this verb's."""
     source = configured.library.root / "REC001.wav"
     job_id = _queued(source)
     _drive(["master", str(source), "--job", job_id])
@@ -775,15 +687,7 @@ def test_a_missing_encoder_reports_that_refusal_rather_than_an_internal_defect(
 def test_an_encode_that_produces_nothing_reaches_the_item_as_the_engines_own_cause(
     configured, monkeypatch
 ):
-    """An encoder that reports success and writes nothing.
-
-    THE CAUSE IS ASSERTED, not just the failure, and that is what this test is for.
-    The handler carried its own "the reported file is not there" check until this
-    was driven; the check killed zero tests because the engine refuses first, and
-    an unreachable branch is a finding rather than a guard. What a person actually
-    sees is ``encoder-failed`` with the engine's remediation, and this is what says
-    so.
-    """
+    """An encoder that reports success and writes nothing."""
     source = _recording(configured.library.root)
     job_id = _queued(source)
     monkeypatch.setattr(mastering, "subprocess_runner", _encoder(encode_writes=False))
@@ -816,19 +720,7 @@ def test_a_handler_that_raises_an_undeclared_error_fails_the_item_not_the_driver
 
 
 def test_a_job_show_says_when_a_queued_verb_has_no_worker(configured, monkeypatch):
-    """One verb working and nineteen silent is worse than all of them silent.
-
-    THE UNBOUND SUBJECT IS DERIVED, never named. It was ``rebuild`` until U53
-    bound that key, and a name here expires silently every time a unit binds one:
-    the assertion would then be reading a bound verb's answer and comparing it to
-    the unbound wording.
-
-    AND SINCE U61 IT IS MADE UNBOUND HERE, because R-203 closed: every queued
-    verb now has a worker, and the one declaration left in the unbound table is
-    ``job.resume``, which is never queued. The property is ``job show`` reading
-    the table, which is the same whichever key the table names, so one bound key
-    is moved across for this test and the reading is asserted over it.
-    """
+    """One verb working and nineteen silent is worse than all of them silent."""
     source = configured.library.root / "REC001.wav"
     job_id = _queued(source)
 
@@ -855,12 +747,7 @@ def test_a_job_show_says_when_a_queued_verb_has_no_worker(configured, monkeypatc
 
 
 def test_a_relative_output_dir_is_frozen_absolute_too(configured, tmp_path, monkeypatch):
-    """The directory needs it as much as the recording does.
-
-    ``master_argv`` rebuilds ``--output-dir`` from the payload verbatim, and the
-    child inherits the RESUMING process's working directory, so a relative one
-    sends the master somewhere the person did not ask for and reports success.
-    """
+    """The directory needs it as much as the recording does."""
     monkeypatch.chdir(configured.library.root)
     (configured.library.root / "out").mkdir()
     job_id = _queued(Path("REC001.wav"), "--output-dir", "out")
@@ -911,12 +798,7 @@ def test_nothing_is_created_beside_a_destination_for_a_recording_that_is_not_the
 def test_a_configuration_that_moved_reaches_the_person_as_a_warning_on_the_resume(
     configured, tmp_path, monkeypatch
 ):
-    """Drift, driven through the verb's own envelope rather than through the driver.
-
-    The two halves are each covered elsewhere. What nothing measured until this is
-    the wiring between them: a resume that dropped its warnings would report a run
-    against a configuration the person had already changed, silently.
-    """
+    """Drift, driven through the verb's own envelope rather than through the driver."""
     source = _recording(configured.library.root)
     job_id = _queued(source)
 
@@ -950,9 +832,9 @@ def test_a_configuration_that_moved_reaches_the_person_as_a_warning_on_the_resum
 
 
 def _tone(directory: Path, name: str, *, seconds: int, rate: int = 44100) -> Path:
-    """A real sine recording. Silence measures as negative infinity and a real
-    encode then refuses for the missing measurement, so the joined-duration proof
-    needs a signal."""
+    """A real sine recording. Silence measures as negative infinity and a real encode then refuses
+    for the missing measurement, so the joined-duration proof needs a signal.
+    """
     require_ffmpeg()
     out = directory / name
     proc = subprocess.run(
@@ -981,12 +863,7 @@ PROBED = {"sample_rate": "44100", "sample_fmt": "s16", "channels": "2", "codec_n
 
 
 def _recorder(layouts: dict[str, dict[str, str]] | None = None):
-    """The stand-in encoder, recording every command, with a per-part probe.
-
-    ``layouts`` maps a file NAME to the probe fields that differ from
-    ``PROBED`` for it, which is how a split recording at mixed rates, channel
-    counts or codecs is produced without encoding one.
-    """
+    """The stand-in encoder, recording every command, with a per-part probe."""
     seen: list[mastering.Command] = []
     inner = _encoder()
 
@@ -1010,11 +887,7 @@ ONE_FRAME_SECONDS = 4096 / 44100
 
 
 def test_two_parts_produce_one_master_whose_duration_is_their_sum(tmp_path):
-    """The brief's first scenario, over a REAL encode rather than a stand-in.
-
-    A stand-in cannot prove a duration, and the failure this exists for is a join
-    that drops or repeats a part, which only the audio shows.
-    """
+    """The brief's first scenario, over a REAL encode rather than a stand-in."""
     first = _tone(tmp_path, "REC001.wav", seconds=2)
     second = _tone(tmp_path, "REC002.wav", seconds=3)
     digests = [mastering.digest(first), mastering.digest(second)]
@@ -1038,10 +911,7 @@ def test_two_parts_produce_one_master_whose_duration_is_their_sum(tmp_path):
 
 
 def test_the_parts_are_joined_in_the_order_given_and_never_sorted(tmp_path):
-    """The brief's second scenario, measured at the join itself.
-
-    Named so a sort would reverse them: the second part is given first.
-    """
+    """The brief's second scenario, measured at the join itself."""
     later = _recording(tmp_path, "REC002.wav")
     earlier = _recording(tmp_path, "REC001.wav")
     run, _ = _recorder()
@@ -1278,8 +1148,9 @@ def test_an_existing_joined_master_is_refused_on_the_real_destination(
     ids=["mono-beside-stereo", "codec", "sample-format"],
 )
 def test_parts_differing_in_any_copied_field_refuse(tmp_path, differs):
-    """Found by this unit's review: rate alone admitted a mono part and a 24 bit
-    part beside a 32 bit one, both copied across unconverted."""
+    """Found by this unit's review: rate alone admitted a mono part and a 24 bit part beside a 32
+    bit one, both copied across unconverted.
+    """
     first = _recording(tmp_path, "REC001.wav")
     second = _recording(tmp_path, "REC002.wav")
     run, seen = _recorder({"REC002.wav": differs})
@@ -1295,9 +1166,7 @@ def test_parts_differing_in_any_copied_field_refuse(tmp_path, differs):
 
 
 def test_a_24_bit_and_a_32_bit_part_are_told_apart_by_codec_alone(tmp_path):
-    """Both are ``s32`` as a sample format, so the codec is the only field that
-    separates them. Pinned alone so the codec comparison cannot hide behind the
-    sample format one."""
+    """Both are ``s32`` as a sample format, so the codec is the only field that separates them."""
     first = _recording(tmp_path, "REC001.wav")
     second = _recording(tmp_path, "REC002.wav")
     same_fmt = {"sample_fmt": "s32"}
@@ -1313,8 +1182,7 @@ def test_a_24_bit_and_a_32_bit_part_are_told_apart_by_codec_alone(tmp_path):
 
 
 def test_a_joined_wav_is_written_as_rf64_when_it_needs_to_be(tmp_path):
-    """Found by this unit's review. A plain WAV header's length wraps at 4 GiB,
-    and a split recording is split because it is long."""
+    """Found by this unit's review."""
     first = _recording(tmp_path, "REC001.wav")
     second = _recording(tmp_path, "REC002.wav")
     run, seen = _recorder()
@@ -1341,10 +1209,7 @@ def test_a_joined_flac_carries_no_wav_muxer_option(tmp_path):
 
 
 def test_the_engine_refuses_an_existing_joined_master_before_archiving(tmp_path):
-    """The engine's own check, not the handler's pre-check. ``master`` would
-    also refuse the same destination, but only after every part was archived
-    and the whole set joined, which is minutes of writes for a refusal that was
-    decidable by reading."""
+    """The engine's own check, not the handler's pre-check."""
     first = _recording(tmp_path, "REC001.wav")
     second = _recording(tmp_path, "REC002.wav")
     (tmp_path / "REC001_set_mastered.flac").write_bytes(b"kept")
