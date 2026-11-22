@@ -48,18 +48,14 @@ def cfg(tmp_path, monkeypatch) -> config.Config:
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "config"))
     monkeypatch.setenv("CRATEKIT_BIN_FFMPEG", str(ffmpeg))
     monkeypatch.setenv("CRATEKIT_BIN_FFPROBE", str(ffprobe))
-    built = config.from_dict(
-        {
-            "schema_version": config.CURRENT_SCHEMA_VERSION,
-            "library": {
-                "root": str(root),
-                "volume_id": "F1E2-D3C4",
-                "db_path": str(root / "db" / "master.db"),
-            },
-            "paths": {"download_staging": str(tmp_path / "staging")},
-            "profile": {"name": "full"},
-        }
-    )
+    built = config.from_dict({
+        "schema_version": config.CURRENT_SCHEMA_VERSION,
+        "library": {
+            "root": str(root), "volume_id": "F1E2-D3C4", "db_path": str(root / "db" / "master.db"),
+        },
+        "paths": {"download_staging": str(tmp_path / "staging")},
+        "profile": {"name": "full"},
+    })
     config.save(built)
     config.reset_cache()
     return built
@@ -80,26 +76,23 @@ def queued(cfg, tmp_path):
     root.mkdir()
     db = root / jobs.QUEUE_FILENAME
     with jobs.open_store(db) as store:
-        job = jobs.enqueue(
-            store,
-            handler_key="master",
-            payload=master_cli.frozen_payload(str(sources[0]), None, False),
-            cfg=cfg,
-            item_ids=tuple(str(p) for p in sources),
-        )
+        payload = master_cli.frozen_payload(str(sources[0]), None, False)
+        items = tuple(str(p) for p in sources)
+        job = jobs.enqueue(store, handler_key="master", payload=payload, cfg=cfg, item_ids=items)
     return job, db, root, sources
 
 
-def _spawn(*args: str) -> subprocess.Popen:
-    env = dict(os.environ)
-    env["PYTHONPATH"] = str(SRC_ROOT)
-    return subprocess.Popen(
-        [sys.executable, str(WORKER), *args],
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+def _kill_at(stall: str, db: Path, job, root: Path, ledger: Path) -> None:
+    """Run the seam worker over the job and kill it once it stalls inside ``stall``."""
+    env = {**os.environ, "PYTHONPATH": str(SRC_ROOT)}
+    argv = [sys.executable, str(WORKER), "seam", str(db), job.job_id, str(root), str(ledger), stall]
+    pipe = subprocess.PIPE
+    worker = subprocess.Popen(argv, env=env, stdout=pipe, stderr=pipe, text=True)
+    try:
+        _wait_for(root / f"stalled-{stall}")
+    finally:
+        worker.kill()
+        worker.wait(timeout=30)
 
 
 def _wait_for(path: Path, *, seconds: float = 30.0) -> None:
@@ -128,12 +121,7 @@ def test_a_driver_killed_inside_the_real_handler_resumes_redoing_exactly_that_it
     first.write_text("")
     stall = "three"
 
-    worker = _spawn("seam", str(db), job.job_id, str(root), str(first), stall)
-    try:
-        _wait_for(root / f"stalled-{stall}")
-    finally:
-        worker.kill()
-        worker.wait(timeout=30)
+    _kill_at(stall, db, job, root, first)
 
     before = _attempts(first)
     assert before[-1] == stall, before
@@ -155,9 +143,8 @@ def test_a_driver_killed_inside_the_real_handler_resumes_redoing_exactly_that_it
 
     redone = _attempts(second)
     assert stall in redone, redone
-    assert not (set(redone) & set(finished)), (
-        f"the resume redid work that was already done: {sorted(set(redone) & set(finished))}"
-    )
+    again = sorted(set(redone) & set(finished))
+    assert not again, f"the resume redid work that was already done: {again}"
     assert result.failed == 0
     assert all(state == jobs.ItemState.DONE for state in _states(db, job.job_id).values())
 
@@ -170,12 +157,7 @@ def test_the_partial_encode_a_kill_leaves_behind_is_in_staging_not_at_the_destin
     ledger = root / "kill.log"
     ledger.write_text("")
 
-    worker = _spawn("seam", str(db), job.job_id, str(root), str(ledger), stall)
-    try:
-        _wait_for(root / f"stalled-{stall}")
-    finally:
-        worker.kill()
-        worker.wait(timeout=30)
+    _kill_at(stall, db, job, root, ledger)
 
     final = mastering.output_path(stalled_source)
     assert not final.exists(), "a killed encode left a partial file at the destination"
