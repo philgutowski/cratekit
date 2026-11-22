@@ -1,77 +1,19 @@
 """``acquire.bandcamp`` and ``acquire.bandcamp-fetch``: the account's purchases, into staging.
 
-U176. Sitting 46 took 45 releases from one seller to download staging by hand:
-a third party tool, a cookie pasted into a file, a name match on file paths
-that read 49 of 102 releases as owned and missed a compilation track already in
-the library, an ignore file kept by hand and a flatten with ``mv``. These two
-verbs are that lane.
+``crate acquire bandcamp`` plans and writes nothing: every purchase, newest first,
+with its seller, label and :class:`Disposition`. ``bandcamp-fetch`` queues one job
+item per ``new`` or ``held`` purchase and drives it; the worker fetches each
+release by the lossless policy and stages the files the library lacks flat into
+``<download_staging>/<batch>`` (U176). Not gated: it only adds files there.
 
-``crate acquire bandcamp [--seller NAME]...`` PLANS AND WRITES NOTHING. It lists
-every purchase the account holds, newest first, each with its seller account
-and one disposition:
+Ownership is the product's matcher per track, checked again by each file's tags
+after download. A missing library, session, record or label registry refuses
+rather than reading as empty. The record is by purchase and never a checkpoint.
+The session and every signed link stay out of the job, every message and file.
 
-* ``new``, nothing of it is in the library, so all of it is fetched;
-* ``owned``, every track of it is, and the owned files are named;
-* ``held``, some tracks are, those are named and held back, the rest fetched;
-* ``not-downloadable``, a preorder, or a purchase with no digital download;
-* ``hidden``, a purchase the account hid;
-* ``filtered``, a seller ``--seller`` did not name;
-* ``fetched``, an earlier run of this library took it.
-
-``crate acquire bandcamp-fetch [--seller NAME]... [--batch NAME]`` plans the
-same way, queues one job item per ``new`` or ``held`` purchase, and drives the
-job here; ``--job JOB_ID`` continues one. The worker downloads each release in
-the format the lossless policy calls for, checks every file against the library
-again, moves the rest flat into ``<download_staging>/<batch>`` and records the
-purchase as fetched.
-
-OWNERSHIP IS THE PRODUCT'S MATCHER, per track. Each track of a release's list
-is resolved with :func:`cratekit.acquire.match.resolve_one` over the library
-view every other acquisition verb reads, never by a substring of a path. A
-track the library holds, or one somebody deleted on purpose and left a
-tombstone over, is held back. A track the matcher only has a question about is
-not held: the library holds something else, and the landing is where a person
-answers that. The files are checked a SECOND time after the download, by their
-own tags, because a release's list and its files can spell a track two ways.
-
-AN ABSENT LIBRARY IS NOT AN EMPTY ONE. Every track would resolve missing and
-every purchase would read new, so the plan refuses when the music folder is not
-there. AN ABSENT SESSION IS NOT AN EMPTY ACCOUNT EITHER: a missing, expired or
-refused session is ``auth-failed`` naming the login step, never a plan of zero.
-A RECORD THAT CANNOT BE READ IS NOT AN EMPTY RECORD: it refuses rather than
-offering every purchase again.
-
-THE RECORD IS BY PURCHASE AND NEVER A CHECKPOINT. A later run plans only the
-purchases not yet fetched, and a purchase ``--seller`` filtered out today is
-offered tomorrow, because nothing records it until it is fetched.
-
-THE SESSION AND EVERY SIGNED LINK STAY OUT OF EVERYTHING THAT IS KEPT. The job
-freezes what each purchase is, never the link it downloads from: the worker
-lists the collection again for the link, holds it in this process only, and no
-message, cause or file it writes names one. The session is read from the
-keychain at the moment it is used and passed to the transport and nowhere else.
-
-NOT GATED, for the reason ``acquire download`` and ``acquire fallback-fetch``
-declare none: the verb ADDS files into download staging, replaces nothing and
-publishes nothing. Nothing is written outside the batch folder, the holding
-folder under staging that each release is emptied out of, and the record.
-Never the music folder, never the database.
-
-THE LABEL IS THE REGISTRY'S (U177). A label in ``crate label registry`` names
-its Bandcamp seller account, and a purchase sold from it is that label's: the
-plan names it on the row, every file of it is staged with the label's display
-name in its ``label`` tag before it moves into the batch, and the record names
-it. A seller no label names is shown on the plan with the command that
-registers it, and its files are staged as they came, never with a guessed
-label. The label tag is what ``crate intake land --label-from-tags`` files each
-file under, so one batch folder holding several sellers' purchases files each
-under its own label and the rest under none. ``--seller`` takes a registered
-label's name as well as an account. A REGISTRY THAT CANNOT BE READ IS NOT AN
-EMPTY ONE: the plan refuses, rather than staging every purchase untagged.
-
-WHAT IT DOES NOT DO. The genre is U178's, the tagging, the landing and the one
-command over all of it U179's. A purchase already recorded is not fetched
-again here; a person who wants it again takes its entry out of the record.
+A registered label names its seller account (U177), and its files are staged with
+its name in the ``label`` tag, which ``crate intake land --label-from-tags`` files
+by; an unregistered seller's files stay untagged.
 """
 
 from __future__ import annotations
@@ -109,45 +51,33 @@ FETCH_ORIGIN = ("acquire.bandcamp-fetch",)
 #: The ``origin`` a release's track carries into the matcher, as provenance.
 SOURCE = "bandcamp"
 
-#: The command a person records a session with. Named in every refusal that a
-#: session would answer, because a refusal that does not say how to satisfy it
-#: is a dead end.
+#: The command that records a session, named in every refusal a session answers.
 LOGIN_STEP = (
     f"copy the Cookie request header your browser sends to bandcamp.com into a "
     f"file only you can read, then run: crate login "
     f"{secrets.Credential.BANDCAMP_SESSION} --from-file PATH"
 )
 
-#: The batch folder's name when ``--batch`` names none. A folder of its own
-#: under download staging, so a landing of staging itself never sweeps it.
+#: The default batch folder, its own under staging so a landing of staging skips it.
 BATCH_PREFIX = "Bandcamp"
 
-#: Payload keys. ``BATCH`` is the folder name under staging every item of the
-#: job stages into. ``RELEASES`` is what each item IS, keyed by purchase id,
-#: frozen at the queue so the worker reads nothing but the job and the account
-#: (KTD9); it never holds a signed link.
+#: Payload keys: the batch folder, and each purchase frozen at the queue, never its link (KTD9).
 BATCH = "batch"
 RELEASES = "releases"
 
 #: The record's format version.
 RECORD_VERSION = 1
 
-#: The refusal an item fails with when a file of a registered label's purchase
-#: would not take the label tag (U177). The file is staged all the same, since
-#: it is a track the person paid for, and named, so its landing files it under
-#: no label knowingly rather than silently.
+#: An item's refusal when a file would not take its label tag; it is staged anyway (U177).
 LABEL_UNWRITTEN = "bandcamp-label-unwritten"
 
-#: The warning a plan carries for each seller it would fetch from that no
-#: label in the registry names, with the command that registers it.
+#: The plan's warning per seller to fetch from that no registered label names.
 SELLER_UNREGISTERED = "bandcamp-seller-unregistered"
 
-#: The flag of ``crate intake land`` that files each file under its own label
-#: tag, which the fetch names as the landing's next step.
+#: The ``crate intake land`` flag that files each file under its own label tag.
 LAND_FLAG = "--label-from-tags"
 
-#: The warning a fetch that staged a label's releases carries, naming that
-#: landing, since the closed ``job_state/1`` surface has no field for it.
+#: The fetch's warning naming that landing; ``job_state/1`` has no field for it.
 LAND_BY_LABEL = "bandcamp-land-by-label"
 
 
@@ -167,17 +97,8 @@ class Disposition(StrEnum):
 TO_FETCH = frozenset({Disposition.NEW, Disposition.HELD})
 
 
-# ---------------------------------------------------------------------------
-# The seams
-# ---------------------------------------------------------------------------
-
-
 def transport() -> bandcamp.Transport:
-    """The transport a run uses, looked up on the module at call time.
-
-    THE NETWORK SEAM. The suite replaces this function, so no test builds the
-    shipped transport and no test reaches Bandcamp.
-    """
+    """The transport a run uses, looked up at call time so the suite replaces it."""
     return bandcamp.CurlTransport()
 
 
@@ -193,13 +114,8 @@ def _auth_failed(message: str, *, origin: Sequence[str], remedy: Remedy) -> Crat
 
 
 def session_cookie(origin: Sequence[str]) -> str:
-    """The recorded Bandcamp session, or the refusal that names the login step.
-
-    A MISSING SESSION IS ``auth-failed``, the code a refused one gets, because
-    for the person both are the same act: sign in and record it. A keychain
-    that cannot be reached is the store's own failure and keeps the remedy the
-    store gave it, since telling that person to sign in again fixes nothing.
-    """
+    """The recorded session; missing is ``auth-failed``, while an unreachable keychain
+    keeps the store's own remedy, since signing in again fixes nothing."""
     name = str(secrets.Credential.BANDCAMP_SESSION)
     try:
         return secrets.get(name)
@@ -251,11 +167,6 @@ def collection(origin: Sequence[str], cookie: str | None = None) -> bandcamp.Col
         raise _rejected(exc, origin) from None
     except bandcamp.BandcampError as exc:
         raise _unavailable(exc, origin) from None
-
-
-# ---------------------------------------------------------------------------
-# The record of what this library fetched
-# ---------------------------------------------------------------------------
 
 
 def _record_unusable(path: Path, what: str) -> CratekitError:
@@ -312,11 +223,6 @@ def record_fetched(cfg: config.Config, item_id: str, entry: Mapping[str, Any]) -
         lock.__exit__(None, None, None)
 
 
-# ---------------------------------------------------------------------------
-# The plan
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True, slots=True)
 class Held:
     """One track of a purchase the library already holds, and where."""
@@ -355,18 +261,12 @@ class Planned:
         }
 
 
-#: ``Artist - Title`` in a track title, the shape a compilation's list takes
-#: when the release names no artist per track.
+#: ``Artist - Title`` in a track title, a compilation's list naming no artist per track.
 _CREDITED = re.compile(r"^(?P<artist>.+?) - (?P<title>.+)$")
 
 
 def track_wanted(track: bandcamp.Track, purchase: bandcamp.Purchase, position: int) -> match.Wanted | None:
-    """The track as the matcher reads it, or None when it names too little.
-
-    A track's own artist wins over the release's. A compilation that lists its
-    tracks as ``Artist - Title`` under the release artist is read that way,
-    which is the compilation track sitting 46's path match missed.
-    """
+    """The track as the matcher reads it, or None; ``Artist - Title`` is split."""
     artist, title = track.artist, track.title
     if not artist:
         credited = _CREDITED.match(title)
@@ -385,12 +285,8 @@ def track_wanted(track: bandcamp.Track, purchase: bandcamp.Purchase, position: i
 
 
 def holding(found: match.TrackMatch) -> tuple[str, tuple[str, ...]] | None:
-    """Why and where the library holds a resolved track, or None when it does not.
-
-    Matched is held, with its paths. Suppressed is held too: a tombstone is a
-    deliberate decision not to hold that recording, and fetching it would undo
-    it. A question is NOT held, because the library holds something else.
-    """
+    """Why and where the library holds a track: matched, or suppressed since a tombstone
+    is deliberate. A question is not held."""
     if found.state is match.MatchState.MATCHED:
         return str(found.why), tuple(found.paths)
     if found.state is match.MatchState.SUPPRESSED:
@@ -422,12 +318,7 @@ class Library:
 
 
 def registry(origin: Sequence[str]) -> labels.Registry:
-    """The label registry, or the refusal that it could not be read (U177).
-
-    UNREADABLE IS NOT EMPTY. Every seller would read unregistered and every
-    purchase stage untagged, the clean report over state the verb could not
-    read, so the store's own refusal, ``label-intent-unusable``, stands.
-    """
+    """The label registry; unreadable refuses rather than stage every purchase untagged."""
     from cratekit.label import registry as labels
 
     del origin
@@ -435,13 +326,7 @@ def registry(origin: Sequence[str]) -> labels.Registry:
 
 
 def _sellers(named: Iterable[str] | None, held: labels.Registry) -> frozenset[str]:
-    """The seller accounts ``--seller`` names, a registered label read as its account.
-
-    A REGISTERED LABEL'S NAME OR IDENTIFIER IS ITS ACCOUNT (U177), so ``--seller
-    PULS`` and ``--seller pulsromania`` plan the same releases. A label with no
-    account, or a name no label holds, is taken as an account name, which is
-    what the flag meant before labels carried one.
-    """
+    """The accounts ``--seller`` names; a registered label's name reads as its account."""
     found: set[str] = set()
     for raw in named or ():
         name = raw.strip()
@@ -460,14 +345,7 @@ def plan(
     record: Mapping[str, Any],
     registered: labels.Registry | None = None,
 ) -> tuple[Planned, ...]:
-    """Every purchase, in the order given, with its disposition and its label.
-
-    THE ORDER OF THE QUESTIONS is the order of what each one costs to ask: a
-    hidden or filtered purchase is never matched, a recorded one never fetched
-    again, and only a purchase that can be downloaded is asked of the library.
-    The label is the registry's answer for the seller, asked of every row so
-    the plan names it whatever the row's disposition.
-    """
+    """Every purchase with its disposition and label, the cheapest question first."""
     from cratekit.label import registry as labels
 
     known = registered if registered is not None else labels.empty()
@@ -514,13 +392,7 @@ class Asked:
 
 
 def _planned(cfg: config.Config, named: Iterable[str] | None, origin: Sequence[str]) -> Asked:
-    """The plan, with each question asked before the one that costs more.
-
-    The session is asked of the keychain first, since that is local and a
-    missing one would make the library walk wasted. The record, the label
-    registry and the library come next, so a refusal over any of them costs no
-    request, and the account last.
-    """
+    """The plan, local questions before the account, so a refusal costs no request."""
     cookie = session_cookie(origin)
     record = fetched(cfg)
     held = registry(origin)
@@ -551,8 +423,7 @@ def _seller_warnings(
     from cratekit.label import registry as labels
 
     known = held if held is not None else labels.empty()
-    # A FOLLOWED LABEL WITH NO ACCOUNT is said as that, since the person named
-    # the label and the cure is to give it one, not to spell the account.
+    # A followed label with no account is said as that: the cure is to give it one.
     accountless = [
         entry.name
         for name in unmatched
@@ -628,11 +499,6 @@ def labels_of(planned: Sequence[Planned]) -> dict[str, str]:
         for one in sorted(planned, key=lambda one: one.purchase.seller)
         if one.disposition in TO_FETCH and one.label is not None
     }
-
-
-# ---------------------------------------------------------------------------
-# acquire.bandcamp: the plan
-# ---------------------------------------------------------------------------
 
 
 def _add_sellers(parser) -> None:
@@ -733,11 +599,6 @@ def acquire_bandcamp(ctx) -> Envelope:
     )
 
 
-# ---------------------------------------------------------------------------
-# acquire.bandcamp-fetch: the job
-# ---------------------------------------------------------------------------
-
-
 def build_fetch(parser, entry) -> None:
     del entry
     _add_sellers(parser)
@@ -765,27 +626,18 @@ def fetch_argv(job) -> list[str]:
 
 
 def land_command(job) -> str | None:
-    """The landing that files the batch's files each under its own label tag, or None (U177).
-
-    NAMED ONLY WHEN A RELEASE OF THE JOB WAS A LABEL'S, since without one the
-    flag files nothing. The batch folder is the job's own, frozen at the queue.
-    """
+    """The landing that files the batch by label tag, or None when no release was a label's."""
     payload = job.payload or {}
     releases = payload.get(RELEASES) or {}
     if not any(isinstance(one, Mapping) and one.get("label") for one in releases.values()):
         return None
     folder = Path(jobs.frozen_config(job).paths.download_staging) / str(payload.get(BATCH) or "")
-    # SHELL QUOTING, not a location's encoding: the batch folder holds a space.
+    # Shell quoting, since the batch folder holds a space.
     return shlex.join(["crate", "intake", "land", str(folder), LAND_FLAG])
 
 
 def _land_warnings(job) -> tuple[dict[str, str], ...]:
-    """The one line naming the landing that files the batch by label, when it has one.
-
-    A WARNING AND NOT A FIELD, since ``job_state/1`` is closed and a field
-    added to it is a schema break for every consumer; ``acquire bandcamp``'s
-    plan says the same through its own surface.
-    """
+    """The warning naming the landing by label; a field would break ``job_state/1``."""
     command = land_command(job)
     if command is None:
         return ()
@@ -809,8 +661,7 @@ def frozen_release(planned: Planned) -> dict[str, Any]:
     purchase = planned.purchase
     return {
         "seller": purchase.seller,
-        # THE LABEL IS FROZEN WITH THE RELEASE (KTD9, U177), so a resume tags by
-        # what was registered when the fetch was asked for.
+        # Frozen too (KTD9, U177), so a resume tags by what was registered then.
         "label": planned.label.name if planned.label is not None else None,
         "label_id": planned.label.label_id if planned.label is not None else None,
         "artist": purchase.artist,
@@ -821,10 +672,7 @@ def frozen_release(planned: Planned) -> dict[str, Any]:
     }
 
 
-#: Signed download pages, by job and purchase, held in this process only. The
-#: queue path seeds it from the listing it planned with, so the drive that
-#: follows in the same process asks the account nothing more; a resume in a new
-#: process lists the account once and fills it.
+#: Signed download pages by job and purchase, held in this process only.
 _LINKS: dict[str, dict[str, str]] = {}
 
 #: The library each job's worker checks files against, built once per job.
@@ -853,13 +701,8 @@ def staging_batch(given: str | None) -> str:
 
 
 def acquire_bandcamp_fetch(ctx) -> Envelope:
-    """Queue one item per purchase to fetch and drive the job, or drive one queued.
-
-    THE STAGING SWEEP RUNS ON BOTH PATHS, for the reason ``acquire
-    fallback-fetch`` gives: this verb's holding folders live in the tree
-    ``acquire download`` sweeps, and a person who works only this lane would
-    otherwise grow that tree without bound.
-    """
+    """Queue and drive the fetch, or drive one queued. Both paths sweep staging, which
+    this lane's holding folders would otherwise grow without bound."""
     if ctx.args.job is not None:
         if not ctx.args.job.strip():
             raise refuse(
@@ -921,11 +764,6 @@ def acquire_bandcamp_fetch(ctx) -> Envelope:
         )
 
 
-# ---------------------------------------------------------------------------
-# The worker
-# ---------------------------------------------------------------------------
-
-
 def _parked(cause: Cause) -> jobs.Parked:
     """A park: a fact about the session or the machine, never about one release."""
     return jobs.Parked(cause)
@@ -938,10 +776,7 @@ def _links_for(job_id: str) -> dict[str, str]:
     try:
         listed = collection(FETCH_ORIGIN)
     except CratekitError as exc:
-        # PARKED WHATEVER THE REASON. The listing is the account's, not one
-        # release's: a refused session and an outage both meet every later
-        # item the same way, and failing each one in turn would spend a
-        # listing per item and strand the job failed rather than resumable.
+        # Parked whatever the reason: the listing is the account's, so every item fails alike.
         raise _parked(exc.cause) from None
     known = {purchase.item_id: purchase.download_page for purchase in listed.purchases}
     _LINKS[job_id] = known
@@ -954,8 +789,7 @@ def _library_for(job_id: str, cfg: config.Config) -> Library:
         try:
             known = Library(cfg, FETCH_ORIGIN)
         except CratekitError as exc:
-            # An unmounted volume is a fact about the machine, so every later
-            # item would fail the same way: parked, not failed.
+            # An unmounted volume would fail every later item: parked, not failed.
             raise _parked(exc.cause) from None
         _LIBRARIES[job_id] = known
     return known
@@ -966,14 +800,8 @@ _NUMBERED = re.compile(r"(?P<number>\d{1,3}) ")
 
 
 def number_in(name: str, artist: str, title: str) -> int | None:
-    """The track number in a release's file name, ``Artist - Album - NN Title``.
-
-    READ AFTER THE PREFIX THE RELEASE IS KNOWN BY, never as the first `` - NN ``
-    in the name: an album titled ``2 Step Anthems`` puts a number there that
-    is not a track's, and holding by it held every file of the release. A name
-    that does not begin with the release's own artist and title gives no
-    number, and only the file's tags can hold it back.
-    """
+    """The track number after the release's own ``Artist - Album - `` prefix, never the
+    first number in the name, which an album title can hold."""
     prefix = f"{artist} - {title} - "
     if not artist or not title or not name.startswith(prefix):
         return None
@@ -1046,13 +874,8 @@ def _item_failure(exc: bandcamp.BandcampError, detail: dict[str, Any]) -> Cratek
 
 
 def _empty_holding(holding_dir: Path, *, keep: Iterable[Path]) -> None:
-    """Empty a release's holding folder, but for the copies a collision refused.
-
-    A refused copy IS KEPT, because it is the only copy of a track the person
-    paid for that this run has, and the refusal tells them to compare it with
-    the file already in the batch. Everything else, the archive's cover and
-    whatever the release held back, goes.
-    """
+    """Empty a release's holding folder but for refused copies, the run's only copy of
+    a paid track, which the refusal names."""
     kept = {path.resolve() for path in keep}
     if not kept:
         shutil.rmtree(holding_dir, ignore_errors=True)
@@ -1070,25 +893,10 @@ def _empty_holding(holding_dir: Path, *, keep: Iterable[Path]) -> None:
 def handle_fetch(job, item, cfg) -> jobs.Produced:
     """Fetch ONE purchase into the batch folder, the library's tracks held back.
 
-    The order is the order of what each step can cost:
-
-    * a purchase the record already holds is done, so a resume after a crash
-      between the record and the item's completion fetches nothing twice;
-    * the session, the link and the library are asked for before anything
-      downloads, and a refusal of the session or an unmounted volume PARKS the
-      job, since every later item would meet the same;
-    * the format is chosen by the frozen policy before the download, FLAC
-      whenever it is offered, a lossy file only when no lossless one is and the
-      policy permits it, and then marked;
-    * every file is checked against the policy by ``checked_landing``, the one
-      place every acquisition's file passes, and against the library again by
-      its own tags and by the track numbers the plan held;
-    * a name already in the batch folder is refused for that file alone, after
-      the rest are moved, unless the file there holds the same bytes; the
-      refusal names it and the downloaded copy is kept where it names;
-    * a file is marked lossy by what it IS, not only by the format offered;
-    * the holding folder is emptied of all but a refused copy and the purchase
-      recorded whatever was refused, since the release itself was taken.
+    A recorded purchase is done, so a resume fetches nothing twice; a refused
+    session or unmounted volume parks the job. A name already in the batch with
+    other bytes is refused for that file alone, and the purchase is recorded
+    whatever was refused, since the release itself was taken.
     """
     said = dict(((job.payload or {}).get(RELEASES) or {}).get(item.item_id) or {})
     batch = str((job.payload or {}).get(BATCH) or "")
@@ -1172,19 +980,13 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
             continue
         marked = lossy or acquire_cli.lossy_landing(path, policy=policy)
         final = target / acquire_cli.marked_name(path, marker, required=marked)
-        # THE LABEL IS WRITTEN BEFORE THE MOVE (U177), in the holding folder, so
-        # a file in the batch either carries its label or is named as one that
-        # would not take it. THE WRITER'S FALSE IS A FAILURE, NOT A TAG: the
-        # file is staged all the same, since it is a track the person paid for,
-        # and the item fails naming it below, so its landing files it under no
-        # label knowingly. An unregistered seller's file is left as it came.
+        # The label is written before the move (U177); a file that will not take it
+        # is staged anyway and the item fails naming it.
         if label and not tags.write_tags(path, {"label": label}):
             untagged.append(final.name)
         if final.exists():
             if final.is_file() and filecmp.cmp(path, final, shallow=False):
-                # THE SAME BYTES ARE ALREADY THERE, which is what a resume after
-                # a kill between these moves and the record finds. Staged, not
-                # refused: nothing differs for a person to choose between.
+                # The same bytes, as a resume after a kill finds: staged, not refused.
                 staged.append(final.name)
                 path.unlink()
                 continue
