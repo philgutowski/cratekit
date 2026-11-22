@@ -495,1721 +495,1202 @@ class StateFile:
     rollback_effects: tuple[RollbackEffect, ...] = ()
 
 
+def _installation(
+    key: str,
+    relative: str,
+    why: str,
+    *,
+    medium: Medium = Medium.FILE,
+    area: InstallationArea = InstallationArea.STATE,
+    **extra: Any,
+) -> StateFile:
+    """An installation entry. Never restored: a library snapshot covers a library."""
+    return StateFile(
+        key=key,
+        root=StateRoot.INSTALLATION,
+        medium=medium,
+        relative=relative,
+        why=why,
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        installation_area=area,
+        **extra,
+    )
+
+
+def _library(
+    key: str,
+    relative: str,
+    snapshot: SnapshotRole,
+    why: str,
+    *,
+    medium: Medium = Medium.FILE,
+    **extra: Any,
+) -> StateFile:
+    """A library entry, with what a restore does to it."""
+    return StateFile(
+        key=key,
+        root=StateRoot.LIBRARY,
+        medium=medium,
+        relative=relative,
+        why=why,
+        snapshot=snapshot,
+        **extra,
+    )
+
+
 STATE_FILES: tuple[StateFile, ...] = (
     # Installation-scoped. All NEVER_RESTORED: a library snapshot never rolls
     # back the machine's own state.
-    StateFile(
-        key="config",
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative=CONFIG_FILENAME,
-        why=(
-            "Config records decisions about THIS machine: which library is "
-            "mounted where, which adapter, which modules. Two machines "
-            "legitimately answer those differently for one library, so a shared "
-            "config would force one machine's mount path onto the other."
-        ),
-        snapshot=SnapshotRole.NEVER_RESTORED,
+    _installation(
+        "config", CONFIG_FILENAME,
+        "Config records decisions about THIS machine: which library is "
+        "mounted where, which adapter, which modules. Two machines "
+        "legitimately answer those differently for one library, so a shared "
+        "config would force one machine's mount path onto the other.",
         # The config directory, which differs from the state directory off macOS.
-        installation_area=InstallationArea.CONFIG,
+        area=InstallationArea.CONFIG,
     ),
-    StateFile(
-        key="credentials",
-        root=StateRoot.INSTALLATION,
+    _installation(
+        "credentials", "",
+        "Was a plaintext env file whose 0600 came from the author's umask "
+        "rather than from any code, so on a machine with a laxer umask it "
+        "landed world readable. A credential is an account fact, not a "
+        "library fact: the same account serves every library, and no library "
+        "should carry a credential a second user of that library can read.",
         medium=Medium.KEYCHAIN,
-        relative="",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        why=(
-            "Was a plaintext env file whose 0600 came from the author's umask "
-            "rather than from any code, so on a machine with a laxer umask it "
-            "landed world readable. A credential is an account fact, not a "
-            "library fact: the same account serves every library, and no library "
-            "should carry a credential a second user of that library can read."
-        ),
     ),
-    StateFile(
-        key="provider_session",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
+    _installation(
+        "provider_session", "",
+        "A long-lived refresh token written by a third-party library that "
+        "does no chmod at all. Stored as ONE blob under one key so the token, "
+        "its refresh token, and the session fields cannot be updated apart "
+        "and leave a half-refreshed session that authenticates once and then "
+        "fails in a way that looks like a service outage.",
         medium=Medium.KEYCHAIN,
-        relative="",
-        why=(
-            "A long-lived refresh token written by a third-party library that "
-            "does no chmod at all. Stored as ONE blob under one key so the token, "
-            "its refresh token, and the session fields cannot be updated apart "
-            "and leave a half-refreshed session that authenticates once and then "
-            "fails in a way that looks like a service outage."
-        ),
     ),
-    StateFile(
-        key="provider_folder_cache",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="provider_folder_cache.json",
-        why=(
-            "Remote folder identifiers keyed by year. It describes the remote "
-            "ACCOUNT, not the library, and a second install that loses it "
-            "re-derives it on the next run at the cost of one API call."
-        ),
+    _installation(
+        "provider_folder_cache", "provider_folder_cache.json",
+        "Remote folder identifiers keyed by year. It describes the remote "
+        "ACCOUNT, not the library, and a second install that loses it "
+        "re-derives it on the next run at the cost of one API call.",
     ),
-    StateFile(
-        key="identify_usage",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="identify_usage.json",
-        why=(
-            "The monthly call counter for the identification service. It is "
-            "bound to the CREDENTIAL's quota, not to a library: two libraries "
-            "identified on one account share one quota, so one counter beside "
-            "the credential is the only placement that can tell the truth."
-        ),
+    _installation(
+        "identify_usage", "identify_usage.json",
+        "The monthly call counter for the identification service. It is "
+        "bound to the CREDENTIAL's quota, not to a library: two libraries "
+        "identified on one account share one quota, so one counter beside "
+        "the credential is the only placement that can tell the truth.",
     ),
-    StateFile(
-        key="identify_usage_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="identify_usage.lock",
-        why=(
-            "A sibling lock serializing the read-modify-write of the counter "
-            "beside it. It follows its file to the same root by necessity: a lock "
-            "under a different root than the thing it protects is a lock two "
-            "processes can each hold while both edit the same file."
-        ),
+    _installation(
+        "identify_usage_lock", "identify_usage.lock",
+        "A sibling lock serializing the read-modify-write of the counter "
+        "beside it. It follows its file to the same root by necessity: a lock "
+        "under a different root than the thing it protects is a lock two "
+        "processes can each hold while both edit the same file.",
     ),
-    StateFile(
-        key="provider_gate",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="provider_gate.json",
-        why=(
-            "The streaming provider's pacing state (R-705): when the last call "
-            "went out, how many rate limit answers came back in a row, when the "
-            "breaker tripped and when its cooldown lifts, and the running call "
-            "totals, and each identity's calls in the last hour (U278). It "
-            "describes the ACCOUNT's allowance, not a library: two libraries "
-            "swept on one account share one limit, so one file beside the "
-            "credential is the only placement that can tell the truth. Resolved "
-            "under provider_gate_dir, never under a redirected state directory, "
-            "so a copy run spends from the same allowance as the live run."
-        ),
+    _installation(
+        "provider_gate", "provider_gate.json",
+        "The streaming provider's pacing state (R-705): when the last call "
+        "went out, how many rate limit answers came back in a row, when the "
+        "breaker tripped and when its cooldown lifts, and the running call "
+        "totals, and each identity's calls in the last hour (U278). It "
+        "describes the ACCOUNT's allowance, not a library: two libraries "
+        "swept on one account share one limit, so one file beside the "
+        "credential is the only placement that can tell the truth. Resolved "
+        "under provider_gate_dir, never under a redirected state directory, "
+        "so a copy run spends from the same allowance as the live run.",
     ),
-    StateFile(
-        key="provider_gate_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="provider_gate.lock",
-        why=(
-            "The one call at a time lock over the streaming provider, held for "
-            "the whole of each call so two drivers never have a request in "
-            "flight together. It follows its file to the same root by necessity: "
-            "a lock under a different root than the state it protects is a lock "
-            "two processes can each hold while both pace off the same account."
-        ),
+    _installation(
+        "provider_gate_lock", "provider_gate.lock",
+        "The one call at a time lock over the streaming provider, held for "
+        "the whole of each call so two drivers never have a request in "
+        "flight together. It follows its file to the same root by necessity: "
+        "a lock under a different root than the state it protects is a lock "
+        "two processes can each hold while both pace off the same account.",
     ),
-    StateFile(
-        key="night_budget",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="night_budget.json",
-        why=(
-            "What the night pass has spent of its night's budget (U293): the "
-            "night, the calls its finished firings made, and the gate's running "
-            "total when a firing began, written before its first call so a run "
-            "that died is still charged. A fact about the ACCOUNT's allowance, "
-            "so it sits beside the gate under provider_gate_dir and a copy run "
-            "reads the same night."
-        ),
+    _installation(
+        "night_budget", "night_budget.json",
+        "What the night pass has spent of its night's budget (U293): the "
+        "night, the calls its finished firings made, and the gate's running "
+        "total when a firing began, written before its first call so a run "
+        "that died is still charged. A fact about the ACCOUNT's allowance, "
+        "so it sits beside the gate under provider_gate_dir and a copy run "
+        "reads the same night.",
     ),
-    StateFile(
-        key="night_status",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="night_status.json",
-        why=(
-            "The last night pass's one line of status and what it stopped on "
-            "(U293), which crate doctor shows and crate sync night --last "
-            "prints. It describes this installation's last unattended run, "
-            "not a library, and losing it loses only the line."
-        ),
+    _installation(
+        "night_status", "night_status.json",
+        "The last night pass's one line of status and what it stopped on "
+        "(U293), which crate doctor shows and crate sync night --last "
+        "prints. It describes this installation's last unattended run, "
+        "not a library, and losing it loses only the line.",
     ),
-    StateFile(
-        key="schedule_log",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="schedule/sync-night.log",
-        why=(
-            "What the scheduled night pass printed (U295): launchd appends the "
-            "agent's output and errors here, the one place a night that never "
-            "reached its own record says why. It describes this installation's "
-            "schedule, not a library, and losing it loses only the output."
-        ),
+    _installation(
+        "schedule_log", "schedule/sync-night.log",
+        "What the scheduled night pass printed (U295): launchd appends the "
+        "agent's output and errors here, the one place a night that never "
+        "reached its own record says why. It describes this installation's "
+        "schedule, not a library, and losing it loses only the output.",
     ),
-    StateFile(
-        key="staging_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="staging.lock",
-        why=(
-            "One pass stages at a time (U293): crate sync land, crate label "
-            "sync --go and crate sync night hold it for the whole of a run, so "
-            "the night pass and a pass by hand never download into the one "
-            "staging folder together; crate schedule install and remove hold "
-            "it around their bootout (U295), so they never end a night pass. The kernel releases it when its holder "
-            "dies; the holder written inside is for the refusal's words."
-        ),
+    _installation(
+        "staging_lock", "staging.lock",
+        "One pass stages at a time (U293): crate sync land, crate label "
+        "sync --go and crate sync night hold it for the whole of a run, so "
+        "the night pass and a pass by hand never download into the one "
+        "staging folder together; crate schedule install and remove hold "
+        "it around their bootout (U295), so they never end a night pass. The kernel releases it when its holder "
+        "dies; the holder written inside is for the refusal's words.",
     ),
-    StateFile(
-        key="isrc_cache",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="isrc_cache.json",
-        why=(
-            "What the streaming provider answered for an ISRC, by ISRC and "
-            "country, and when it was asked (U206). A fact about the provider's "
-            "CATALOGUE, not about a library, so it sits beside the pacing state "
-            "and a copy run that redirects the library's state shares it with "
-            "the live run. Losing it costs calls and no data: the next lookup "
-            "asks again."
-        ),
+    _installation(
+        "isrc_cache", "isrc_cache.json",
+        "What the streaming provider answered for an ISRC, by ISRC and "
+        "country, and when it was asked (U206). A fact about the provider's "
+        "CATALOGUE, not about a library, so it sits beside the pacing state "
+        "and a copy run that redirects the library's state shares it with "
+        "the live run. Losing it costs calls and no data: the next lookup "
+        "asks again.",
     ),
-    StateFile(
-        key="isrc_cache_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="isrc_cache.lock",
-        why=(
-            "A sibling lock serializing the read, merge and replace of the ISRC "
-            "cache beside it, so two processes never lose each other's answers. "
-            "It follows its file to the same root by necessity: a lock under a "
-            "different root than the thing it protects is a lock two processes "
-            "can each hold while both edit the same file."
-        ),
+    _installation(
+        "isrc_cache_lock", "isrc_cache.lock",
+        "A sibling lock serializing the read, merge and replace of the ISRC "
+        "cache beside it, so two processes never lose each other's answers. "
+        "It follows its file to the same root by necessity: a lock under a "
+        "different root than the thing it protects is a lock two processes "
+        "can each hold while both edit the same file.",
     ),
-    StateFile(
-        key="catalogue_refusals",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="catalogue_refusals.json",
-        why=(
-            "When each record shop began refusing this client, and its latest "
-            "refusal (U284), so a sweep's report and the refusal a sync pass "
-            "stops on can say how long a catalogue has refused. A fact about "
-            "this machine's client, not about a library. Losing it costs the "
-            "date and nothing else: the next refusal starts it again."
-        ),
+    _installation(
+        "catalogue_refusals", "catalogue_refusals.json",
+        "When each record shop began refusing this client, and its latest "
+        "refusal (U284), so a sweep's report and the refusal a sync pass "
+        "stops on can say how long a catalogue has refused. A fact about "
+        "this machine's client, not about a library. Losing it costs the "
+        "date and nothing else: the next refusal starts it again.",
     ),
-    StateFile(
-        key="catalogue_refusals_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="catalogue_refusals.lock",
-        why=(
-            "A sibling lock serializing the read, merge and replace of the "
-            "catalogue refusal record beside it, so two sweeps never lose each "
-            "other's dates. It follows its file to the same root by necessity, "
-            "for the ISRC cache lock's reason."
-        ),
+    _installation(
+        "catalogue_refusals_lock", "catalogue_refusals.lock",
+        "A sibling lock serializing the read, merge and replace of the "
+        "catalogue refusal record beside it, so two sweeps never lose each "
+        "other's dates. It follows its file to the same root by necessity, "
+        "for the ISRC cache lock's reason.",
     ),
-    StateFile(
-        key="identify_cache",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
+    _installation(
+        "identify_cache", "identify_cache",
+        "What the identification service answered about one recording, one "
+        "document per recording, named by a digest of the recording's bytes "
+        "and its chunk plan. An answer is a fact about the AUDIO and was paid "
+        "for on the credential's quota, so it sits beside the counter and "
+        "serves every library. Losing it costs money and no data: the next "
+        "pass over that recording pays for every chunk again.",
         medium=Medium.DIRECTORY,
-        relative="identify_cache",
-        why=(
-            "What the identification service answered about one recording, one "
-            "document per recording, named by a digest of the recording's bytes "
-            "and its chunk plan. An answer is a fact about the AUDIO and was paid "
-            "for on the credential's quota, so it sits beside the counter and "
-            "serves every library. Losing it costs money and no data: the next "
-            "pass over that recording pays for every chunk again."
-        ),
     ),
-    StateFile(
-        key="mix_scratch",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
+    _installation(
+        "mix_scratch", "mix_scratch",
+        "Where a mix fetched from a web address sits while it is identified, "
+        "one folder per address, removed when the pass ends. A mix is INPUT "
+        "and never library material, so this is under the installation root "
+        "and never under the library: a file left beside the music is one "
+        "rekordbox can be pointed at and one a library walk would index. "
+        "Losing it costs a download and no data.",
         medium=Medium.DIRECTORY,
-        relative="mix_scratch",
-        why=(
-            "Where a mix fetched from a web address sits while it is identified, "
-            "one folder per address, removed when the pass ends. A mix is INPUT "
-            "and never library material, so this is under the installation root "
-            "and never under the library: a file left beside the music is one "
-            "rekordbox can be pointed at and one a library walk would index. "
-            "Losing it costs a download and no data."
-        ),
     ),
-    StateFile(
-        key="genre_lookup_cache",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="genre_lookup_cache.json",
-        why=(
-            "A cache of third-party catalog lookups keyed by track. Every entry "
-            "is replayable from the network, so losing it costs time and no data. "
-            "It also has nothing to do with which library asked."
-        ),
+    _installation(
+        "genre_lookup_cache", "genre_lookup_cache.json",
+        "A cache of third-party catalog lookups keyed by track. Every entry "
+        "is replayable from the network, so losing it costs time and no data. "
+        "It also has nothing to do with which library asked.",
     ),
-    StateFile(
-        key="label_crawl_cache",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
+    _installation(
+        "label_crawl_cache", "label_crawl",
+        "Half of a source directory that straddled both roots (D4). The crawl "
+        "half is what a catalog lookup returned: replayable, library-agnostic, "
+        "and 53 directories of it live in the source install. What actually "
+        "LANDED in a library is the other half, and it is library-scoped. "
+        "Since R-1091 each label's directory also holds the release reads a "
+        "full label playlists build keeps, so a build stopped part way "
+        "resumes; losing them costs provider calls and no data.",
         medium=Medium.DIRECTORY,
-        relative="label_crawl",
-        why=(
-            "Half of a source directory that straddled both roots (D4). The crawl "
-            "half is what a catalog lookup returned: replayable, library-agnostic, "
-            "and 53 directories of it live in the source install. What actually "
-            "LANDED in a library is the other half, and it is library-scoped. "
-            "Since R-1091 each label's directory also holds the release reads a "
-            "full label playlists build keeps, so a build stopped part way "
-            "resumes; losing them costs provider calls and no data."
-        ),
     ),
-    StateFile(
-        key="label_intent",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="label_intent.json",
-        why=(
-            "Half of a file that straddled both roots (D4). This half is curated "
-            "intent: the labels a user chose to follow and how deep to sweep them. "
-            "In the source system the whole file is COMMITTED TO GIT, so cloning "
-            "the repository hands every friend one person's label list AND their "
-            "watermarks. Splitting it makes the intent half exportable on purpose "
-            "and leaves the watermarks where they belong."
-        ),
+    _installation(
+        "label_intent", "label_intent.json",
+        "Half of a file that straddled both roots (D4). This half is curated "
+        "intent: the labels a user chose to follow and how deep to sweep them. "
+        "In the source system the whole file is COMMITTED TO GIT, so cloning "
+        "the repository hands every friend one person's label list AND their "
+        "watermarks. Splitting it makes the intent half exportable on purpose "
+        "and leaves the watermarks where they belong.",
     ),
-    StateFile(
-        key="label_intent_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="label_intent.lock",
-        why=(
-            "The sibling lock for the curated label list. Two processes adding "
-            "one label each would both read the same document, both write, and "
-            "the second rename would discard the first add while reporting that "
-            "it saved. NEVER_RESTORED for the inode reason every lock here "
-            "shares: a restore that replaced the lock file would leave a live "
-            "holder believing it still owns a file whose inode is gone."
-        ),
+    _installation(
+        "label_intent_lock", "label_intent.lock",
+        "The sibling lock for the curated label list. Two processes adding "
+        "one label each would both read the same document, both write, and "
+        "the second rename would discard the first add while reporting that "
+        "it saved. NEVER_RESTORED for the inode reason every lock here "
+        "shares: a restore that replaced the lock file would leave a live "
+        "holder believing it still owns a file whose inode is gone.",
     ),
-    StateFile(
-        key="landing_locks",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
+    _installation(
+        "landing_locks", "landing_locks",
+        "One lock per batch name, held by ``intake land`` across its moves "
+        "(R-432). The landing engine asks whether a target is free and then "
+        "renames over it, so two landings under one batch name could take "
+        "each other's files and intake file with neither told. Installation "
+        "scoped ON PURPOSE, against the rule that a lock follows what it "
+        "protects: the library volume is commonly exFAT, where an advisory "
+        "lock was never verified to hold, and a lock that silently does not "
+        "exclude is worse than one a second machine cannot see. Two machines "
+        "landing into one library at once is the case this gives up. "
+        "NEVER_RESTORED for the inode reason every lock here shares.",
         medium=Medium.DIRECTORY,
-        relative="landing_locks",
-        why=(
-            "One lock per batch name, held by ``intake land`` across its moves "
-            "(R-432). The landing engine asks whether a target is free and then "
-            "renames over it, so two landings under one batch name could take "
-            "each other's files and intake file with neither told. Installation "
-            "scoped ON PURPOSE, against the rule that a lock follows what it "
-            "protects: the library volume is commonly exFAT, where an advisory "
-            "lock was never verified to hold, and a lock that silently does not "
-            "exclude is worse than one a second machine cannot see. Two machines "
-            "landing into one library at once is the case this gives up. "
-            "NEVER_RESTORED for the inode reason every lock here shares."
-        ),
     ),
-    StateFile(
-        key="credential_index",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="credential_index.json",
-        why=(
-            "The NAMES of the credentials this installation has recorded, never "
-            "their values. It exists so doctor can answer 'is a credential set' "
-            "without retrieving one, which on macOS would raise the keychain's "
-            "authorization prompt during a health check that is supposed to be "
-            "unattended."
-        ),
+    _installation(
+        "credential_index", "credential_index.json",
+        "The NAMES of the credentials this installation has recorded, never "
+        "their values. It exists so doctor can answer 'is a credential set' "
+        "without retrieving one, which on macOS would raise the keychain's "
+        "authorization prompt during a health check that is supposed to be "
+        "unattended.",
     ),
-    StateFile(
-        key="credential_index_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="credential_index.lock",
-        why=(
-            "A sibling lock serializing the read-modify-write of the presence "
-            "index beside it, for the reason the identification counter's lock "
-            "gives: a lock under a different root than the file it protects is a "
-            "lock two processes can each hold while both edit that file. Measured "
-            "before it existed: two processes recording one credential each left "
-            "the keychain holding both and the index naming one, in 23 of 25 "
-            "trials, and a lost name reads as 'not recorded', which sends a user "
-            "to re-record a credential the keychain already holds."
-        ),
+    _installation(
+        "credential_index_lock", "credential_index.lock",
+        "A sibling lock serializing the read-modify-write of the presence "
+        "index beside it, for the reason the identification counter's lock "
+        "gives: a lock under a different root than the file it protects is a "
+        "lock two processes can each hold while both edit that file. Measured "
+        "before it existed: two processes recording one credential each left "
+        "the keychain holding both and the index naming one, in 23 of 25 "
+        "trials, and a lost name reads as 'not recorded', which sends a user "
+        "to re-record a credential the keychain already holds.",
     ),
-    StateFile(
-        key="job_queue",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
+    _installation(
+        "job_queue", "jobs",
+        "KTD21 names the job queue installation-scoped, and it is: a detached "
+        "job belongs to the machine running it. One consequence follows and "
+        "the unit that builds the queue owns it: because the queue is per "
+        "install and a library is per config, a job record must NAME the "
+        "library it targets, or a queue drained after the user reconfigures "
+        "runs against the wrong volume.",
         medium=Medium.DIRECTORY,
-        relative="jobs",
-        why=(
-            "KTD21 names the job queue installation-scoped, and it is: a detached "
-            "job belongs to the machine running it. One consequence follows and "
-            "the unit that builds the queue owns it: because the queue is per "
-            "install and a library is per config, a job record must NAME the "
-            "library it targets, or a queue drained after the user reconfigures "
-            "runs against the wrong volume."
-        ),
     ),
-    StateFile(
-        key="backup_outcomes",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
+    _installation(
+        "backup_outcomes", "backup_outcomes",
+        "What each queued backup item actually ran, one JSON file per job "
+        "and item: every rclone argv and its return code (R-349). Without it "
+        "a failed transfer could not be diagnosed from the job record, "
+        "because the job keeps counts and a cause and the per command report "
+        "left the claimed item with nowhere to go. A FAILED item writes here "
+        "directly rather than through the engine's artifact commit, since a "
+        "commit completes the item and a completed item is never re-armed. "
+        "Installation-scoped beside the job queue it is keyed by, so job "
+        "show finds it from the job identifier alone. NEVER_RESTORED for the "
+        "job queue's reason: it describes one machine's work, not the library.",
         medium=Medium.DIRECTORY,
-        relative="backup_outcomes",
-        why=(
-            "What each queued backup item actually ran, one JSON file per job "
-            "and item: every rclone argv and its return code (R-349). Without it "
-            "a failed transfer could not be diagnosed from the job record, "
-            "because the job keeps counts and a cause and the per command report "
-            "left the claimed item with nowhere to go. A FAILED item writes here "
-            "directly rather than through the engine's artifact commit, since a "
-            "commit completes the item and a completed item is never re-armed. "
-            "Installation-scoped beside the job queue it is keyed by, so job "
-            "show finds it from the job identifier alone. NEVER_RESTORED for the "
-            "job queue's reason: it describes one machine's work, not the library."
-        ),
     ),
-    StateFile(
-        key="backup_manifest",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="backup_manifest.json.gz",
-        why=(
-            "What the last completed file mirror left on the remote, path by "
-            "path, so a backup that changed little sends only the change and one "
-            "that changed nothing is skipped (U317). INSTALLATION and never "
-            "library state: the library's state folder is inside the mirrored "
-            "tree, so a record kept there would change the tree each time it was "
-            "written and no run could skip. It names the library, the mirror and "
-            "the exclude set it was kept for, and carries a token the library's "
-            "files fact is published with, so a record for any other library or "
-            "remote, or one a second installation or an older build has since "
-            "backed up past, is not trusted: either costs one full run and never "
-            "a wrong skip. NEVER_RESTORED: it describes the remote, which a "
-            "restore does not roll back."
-        ),
+    _installation(
+        "backup_manifest", "backup_manifest.json.gz",
+        "What the last completed file mirror left on the remote, path by "
+        "path, so a backup that changed little sends only the change and one "
+        "that changed nothing is skipped (U317). INSTALLATION and never "
+        "library state: the library's state folder is inside the mirrored "
+        "tree, so a record kept there would change the tree each time it was "
+        "written and no run could skip. It names the library, the mirror and "
+        "the exclude set it was kept for, and carries a token the library's "
+        "files fact is published with, so a record for any other library or "
+        "remote, or one a second installation or an older build has since "
+        "backed up past, is not trusted: either costs one full run and never "
+        "a wrong skip. NEVER_RESTORED: it describes the remote, which a "
+        "restore does not roll back.",
     ),
-    StateFile(
-        key="backup_database_fingerprint",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="backup_database_fingerprint.json",
-        why=(
-            "The content fingerprint of the database set the last completed "
-            "snapshot copied, so a database that has not changed since is not "
-            "copied again (U317). Installation state for the manifest's reason, "
-            "and keyed by the database path, the snapshot root and the library "
-            "identity, so a fingerprint taken for another is not compared. "
-            "NEVER_RESTORED: it describes a snapshot on the remote."
-        ),
+    _installation(
+        "backup_database_fingerprint", "backup_database_fingerprint.json",
+        "The content fingerprint of the database set the last completed "
+        "snapshot copied, so a database that has not changed since is not "
+        "copied again (U317). Installation state for the manifest's reason, "
+        "and keyed by the database path, the snapshot root and the library "
+        "identity, so a fingerprint taken for another is not compared. "
+        "NEVER_RESTORED: it describes a snapshot on the remote.",
     ),
-    StateFile(
-        key="backup_census",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="backup_census.json",
-        why=(
-            "How many files outside the library's own state folder the last "
-            "completed file mirror walked, for this library root and mirror "
-            "(R-1761). It is what lets a backup refuse an empty folder left "
-            "where an unmounted volume was, which a full sync would otherwise "
-            "empty the mirror to match. INSTALLATION for the manifest's reason, "
-            "and also because the library's own state goes with the volume it "
-            "would be guarding. Unlike the manifest it is NEVER removed before a "
-            "transfer, so a failed run still leaves it saying what the library "
-            "held. NEVER_RESTORED: it describes the remote."
-        ),
+    _installation(
+        "backup_census", "backup_census.json",
+        "How many files outside the library's own state folder the last "
+        "completed file mirror walked, for this library root and mirror "
+        "(R-1761). It is what lets a backup refuse an empty folder left "
+        "where an unmounted volume was, which a full sync would otherwise "
+        "empty the mirror to match. INSTALLATION for the manifest's reason, "
+        "and also because the library's own state goes with the volume it "
+        "would be guarding. Unlike the manifest it is NEVER removed before a "
+        "transfer, so a failed run still leaves it saying what the library "
+        "held. NEVER_RESTORED: it describes the remote.",
     ),
-    StateFile(
-        key="run_state",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
+    _installation(
+        "run_state", "runs",
+        "One record per run, holding the gates it reached, the decisions "
+        "recorded against them, and any human action still outstanding. It "
+        "is what makes R33 real: a gate is answerable from a DIFFERENT "
+        "process in a LATER session, which is impossible if the only place "
+        "an answer can live is the invocation that hit the gate."
+        " Installation-scoped alongside the job queue and for the same "
+        "reason: a detached run belongs to the machine executing it, and its "
+        "records name the library they target rather than assuming one."
+        " NEVER_RESTORED: a run is not library content. Rolling one back "
+        "would resurrect decisions a person made about work that no longer "
+        "exists.",
         medium=Medium.DIRECTORY,
-        relative="runs",
-        why=(
-            "One record per run, holding the gates it reached, the decisions "
-            "recorded against them, and any human action still outstanding. It "
-            "is what makes R33 real: a gate is answerable from a DIFFERENT "
-            "process in a LATER session, which is impossible if the only place "
-            "an answer can live is the invocation that hit the gate."
-            " Installation-scoped alongside the job queue and for the same "
-            "reason: a detached run belongs to the machine executing it, and its "
-            "records name the library they target rather than assuming one."
-            " NEVER_RESTORED: a run is not library content. Rolling one back "
-            "would resurrect decisions a person made about work that no longer "
-            "exists."
-        ),
     ),
-    StateFile(
-        key="held_plans",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
+    _installation(
+        "held_plans", "runs-held",
+        "One plan per run, held by a verb whose gates are answered in later "
+        "commands (U209), so the gate a person answers and the write that "
+        "follows use the plan the first command showed rather than planning "
+        "again, which for crate sync pair over a hundred playlists cost "
+        "thousands of provider calls a gate. A sibling of the run records "
+        "and not inside them, because every reader of a run record would "
+        "otherwise read the whole plan, and because that directory's files "
+        "are each read as a run. NEVER_RESTORED for the run records' reason: "
+        "a plan is about one run's work, and a rolled back one would answer "
+        "for a library that moved. Losing it costs a plan, never a write: a "
+        "run whose plan is not held plans again, digest bound.",
         medium=Medium.DIRECTORY,
-        relative="runs-held",
-        why=(
-            "One plan per run, held by a verb whose gates are answered in later "
-            "commands (U209), so the gate a person answers and the write that "
-            "follows use the plan the first command showed rather than planning "
-            "again, which for crate sync pair over a hundred playlists cost "
-            "thousands of provider calls a gate. A sibling of the run records "
-            "and not inside them, because every reader of a run record would "
-            "otherwise read the whole plan, and because that directory's files "
-            "are each read as a run. NEVER_RESTORED for the run records' reason: "
-            "a plan is about one run's work, and a rolled back one would answer "
-            "for a library that moved. Losing it costs a plan, never a write: a "
-            "run whose plan is not held plans again, digest bound."
-        ),
     ),
-    StateFile(
-        key="app_token",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="app_token",
-        why=(
-            "A random token minted per server start for the local control plane. "
-            "It is not a service credential and must NOT survive a restart, which "
-            "is exactly why it stays a file with explicit 0600 rather than "
-            "joining the keychain."
-        ),
+    _installation(
+        "app_token", "app_token",
+        "A random token minted per server start for the local control plane. "
+        "It is not a service credential and must NOT survive a restart, which "
+        "is exactly why it stays a file with explicit 0600 rather than "
+        "joining the keychain.",
     ),
-    StateFile(
-        key="dashboard_snapshot",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="dashboard_snapshot.json",
-        why=(
-            "Last-good render numbers so a dashboard still draws when the volume "
-            "is unmounted. Pure presentation cache: if it were library-scoped it "
-            "would be unreadable in exactly the situation it exists to serve."
-        ),
+    _installation(
+        "dashboard_snapshot", "dashboard_snapshot.json",
+        "Last-good render numbers so a dashboard still draws when the volume "
+        "is unmounted. Pure presentation cache: if it were library-scoped it "
+        "would be unreadable in exactly the situation it exists to serve.",
     ),
     # Library-scoped.
-    StateFile(
-        key="rekordbox_db",
-        snapshot=SnapshotRole.COUPLED,
+    _library(
+        # Composed from library.db_path, since rekordbox decides where it sits.
+        "rekordbox_db", "", SnapshotRole.COUPLED,
+        "The single most important piece of library-scoped state in the "
+        "product, and it had no row at all: an inventory that omits it looks "
+        "complete while the thing every other entry describes goes "
+        "undispositioned. It is library-scoped because a database is a "
+        "library, so a second installation that adopted a per-installation "
+        "database would adopt a DIFFERENT library under the same name. It is "
+        "COUPLED because KTD21b exists to roll it back together with the "
+        "registry, watermarks, tombstones and declines that describe it; that "
+        "coupling is the whole answer to the plan's top-ranked risk. Its "
+        "location is constrained rather than free: see the containment rule on "
+        "LibraryConfig.db_outside_root_acknowledged_on, which makes a database "
+        "on another filesystem an explicit decision at setup instead of a "
+        "surprise at the first snapshot.",
         # The centre of the coupled set; what reaches outside is declared by the
         # entries below.
         rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        # Composed from library.db_path, since rekordbox decides where it sits.
-        relative="",
-        why=(
-            "The single most important piece of library-scoped state in the "
-            "product, and it had no row at all: an inventory that omits it looks "
-            "complete while the thing every other entry describes goes "
-            "undispositioned. It is library-scoped because a database is a "
-            "library, so a second installation that adopted a per-installation "
-            "database would adopt a DIFFERENT library under the same name. It is "
-            "COUPLED because KTD21b exists to roll it back together with the "
-            "registry, watermarks, tombstones and declines that describe it; that "
-            "coupling is the whole answer to the plan's top-ranked risk. Its "
-            "location is constrained rather than free: see the containment rule on "
-            "LibraryConfig.db_outside_root_acknowledged_on, which makes a database "
-            "on another filesystem an explicit decision at setup instead of a "
-            "surprise at the first snapshot."
-        ),
         # The only SQLite database here, so the only entry with sidecars; this
         # keeps the KTD21b capture set derived.
         sidecars=SQLITE_SIDECARS,
     ),
-    StateFile(
-        key="write_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="write.lock",
-        why=(
-            "KTD17 and R31, non-negotiable. In the source system this is a flock "
-            "on a path under the installation root while the database it protects "
-            "travels with the library, so a second install holds a lock the first "
-            "install cannot see and both open the database at once. During the "
-            "migration overlap the old system must be able to open this exact "
-            "file, which only a path beside the library can provide."
-            " NEVER_RESTORED for a second reason: a restore that replaced the "
-            "directory holding this file would swap the inode a live flock is "
-            "held on, and every process holding the old one would keep believing "
-            "it had exclusive access, with nothing raised."
-        ),
+    _library(
+        "write_lock", "write.lock", SnapshotRole.NEVER_RESTORED,
+        "KTD17 and R31, non-negotiable. In the source system this is a flock "
+        "on a path under the installation root while the database it protects "
+        "travels with the library, so a second install holds a lock the first "
+        "install cannot see and both open the database at once. During the "
+        "migration overlap the old system must be able to open this exact "
+        "file, which only a path beside the library can provide."
+        " NEVER_RESTORED for a second reason: a restore that replaced the "
+        "directory holding this file would swap the inode a live flock is "
+        "held on, and every process holding the old one would keep believing "
+        "it had exclusive access, with nothing raised.",
     ),
-    StateFile(
-        key="session_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="session.lock",
-        why=(
-            "The whole-run lock, held for a destructive session end to end (R31). "
-            "Same failure as the write lock: per-installation placement makes two "
-            "machines mutually invisible."
-            " Same inode argument as the write lock: a restore must never "
-            "replace the file a live lock is held on."
-        ),
+    _library(
+        "session_lock", "session.lock", SnapshotRole.NEVER_RESTORED,
+        "The whole-run lock, held for a destructive session end to end (R31). "
+        "Same failure as the write lock: per-installation placement makes two "
+        "machines mutually invisible."
+        " Same inode argument as the write lock: a restore must never "
+        "replace the file a live lock is held on.",
     ),
-    StateFile(
-        key="session_log",
-        snapshot=SnapshotRole.SURVIVES_ROLLBACK,
-        root=StateRoot.LIBRARY,
+    _library(
+        "session_log", "sessions", SnapshotRole.SURVIVES_ROLLBACK,
+        "The per-run state machine, the frozen plans, and the created-playlist "
+        "ledger. Library-scoped for two reasons: KTD21b requires a snapshot to "
+        "cover the database and this log ATOMICALLY, and during the overlap a "
+        "Cratekit run that cannot read the old system's log treats its crash "
+        "debris as fresh intake."
+        " It SURVIVES a rollback rather than being part of one: rolling the "
+        "log back would erase the record of which sessions are restorable, "
+        "which is the one thing a user needs in order to restore again.",
         medium=Medium.DIRECTORY,
-        relative="sessions",
-        why=(
-            "The per-run state machine, the frozen plans, and the created-playlist "
-            "ledger. Library-scoped for two reasons: KTD21b requires a snapshot to "
-            "cover the database and this log ATOMICALLY, and during the overlap a "
-            "Cratekit run that cannot read the old system's log treats its crash "
-            "debris as fresh intake."
-            " It SURVIVES a rollback rather than being part of one: rolling the "
-            "log back would erase the record of which sessions are restorable, "
-            "which is the one thing a user needs in order to restore again."
-        ),
     ),
-    StateFile(
-        key="snapshots",
-        snapshot=SnapshotRole.SURVIVES_ROLLBACK,
-        root=StateRoot.LIBRARY,
+    _library(
+        "snapshots", "snapshots", SnapshotRole.SURVIVES_ROLLBACK,
+        "The headline case in KTD21. Restore lives per installation in the "
+        "source system while the database it restores lives per library, so a "
+        "second machine simply cannot roll back the first machine's write. "
+        "Beside the library, any installation can restore any session."
+        " It SURVIVES a rollback for a structural reason as well as a "
+        "practical one: a snapshot that captured the snapshot store would "
+        "nest every previous snapshot inside the new one, and each capture "
+        "would then cost the sum of every capture before it.",
         medium=Medium.DIRECTORY,
-        relative="snapshots",
-        why=(
-            "The headline case in KTD21. Restore lives per installation in the "
-            "source system while the database it restores lives per library, so a "
-            "second machine simply cannot roll back the first machine's write. "
-            "Beside the library, any installation can restore any session."
-            " It SURVIVES a rollback for a structural reason as well as a "
-            "practical one: a snapshot that captured the snapshot store would "
-            "nest every previous snapshot inside the new one, and each capture "
-            "would then cost the sum of every capture before it."
-        ),
     ),
-    StateFile(
-        key="favorites_state",
-        snapshot=SnapshotRole.COUPLED,
+    _library(
+        "favorites_state", "favorites_state.json", SnapshotRole.COUPLED,
+        "It records rekordbox row identifiers that have already been colored "
+        "and tagged. A second install starts from an empty list and re-applies "
+        "every one of them, turning what should be a no-op run into a full "
+        "guarded write session against the live database, which is the highest "
+        "risk operation in the product."
+        " COUPLED: the rows it names are database rows, so a restore that "
+        "rolled the database back without it would leave this file claiming "
+        "work that no longer exists, and the next run would skip it.",
         # The reverse half of the favorites sweep hearts a track at the
         # provider. Rolling this file back forgets that it did, and the heart
         # stays on somebody else's server.
         rollback_effects=(RollbackEffect.REMOTE_PLAYLIST_PREFIX,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="favorites_state.json",
-        why=(
-            "It records rekordbox row identifiers that have already been colored "
-            "and tagged. A second install starts from an empty list and re-applies "
-            "every one of them, turning what should be a no-op run into a full "
-            "guarded write session against the live database, which is the highest "
-            "risk operation in the product."
-            " COUPLED: the rows it names are database rows, so a restore that "
-            "rolled the database back without it would leave this file claiming "
-            "work that no longer exists, and the next run would skip it."
-        ),
     ),
-    StateFile(
-        key="favorites_state_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="favorites_state.lock",
-        why=(
-            "A sibling lock serializing the read-modify-write of the state file "
-            "beside it. Library-scoped for the same reason its file is: a lock in "
-            "a per-installation directory is invisible to a second machine, so "
-            "both would edit one library's record at once."
-            " NEVER_RESTORED for the inode reason every lock here shares."
-        ),
+    _library(
+        "favorites_state_lock", "favorites_state.lock", SnapshotRole.NEVER_RESTORED,
+        "A sibling lock serializing the read-modify-write of the state file "
+        "beside it. Library-scoped for the same reason its file is: a lock in "
+        "a per-installation directory is invisible to a second machine, so "
+        "both would edit one library's record at once."
+        " NEVER_RESTORED for the inode reason every lock here shares.",
     ),
-    StateFile(
-        key="energy_calibration",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="energy_calibration.json",
-        why=(
-            "Cut points fitted against THIS library's own values. KTD21 names "
-            "analysis calibration library-scoped, and the reason is that losing "
-            "it does not just cost a re-fit: it silently changes where the same "
-            "input track routes."
-            " NEVER_RESTORED: the restamp these cut points drove wrote values "
-            "into files on disk, and a database restore does not roll a file "
-            "write back. Rolling the cut points back alone would describe a "
-            "state the files are no longer in."
-        ),
+    _library(
+        "energy_calibration", "energy_calibration.json", SnapshotRole.NEVER_RESTORED,
+        "Cut points fitted against THIS library's own values. KTD21 names "
+        "analysis calibration library-scoped, and the reason is that losing "
+        "it does not just cost a re-fit: it silently changes where the same "
+        "input track routes."
+        " NEVER_RESTORED: the restamp these cut points drove wrote values "
+        "into files on disk, and a database restore does not roll a file "
+        "write back. Rolling the cut points back alone would describe a "
+        "state the files are no longer in.",
     ),
-    StateFile(
-        key="energy_feature_cache",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="energy_features.json",
-        why=(
-            "Per-file signal features keyed on this library's files. Losing it to "
-            "a reinstall costs a full re-analysis pass over thousands of files."
-            " NEVER_RESTORED: it is keyed on files, which do not roll back, and "
-            "it is re-derivable, so a rollback costs a re-analysis and buys "
-            "nothing."
-        ),
+    _library(
+        "energy_feature_cache", "energy_features.json", SnapshotRole.NEVER_RESTORED,
+        "Per-file signal features keyed on this library's files. Losing it to "
+        "a reinstall costs a full re-analysis pass over thousands of files."
+        " NEVER_RESTORED: it is keyed on files, which do not roll back, and "
+        "it is re-derivable, so a rollback costs a re-analysis and buys "
+        "nothing.",
     ),
-    StateFile(
-        key="energy_undo_log",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="energy_undo.json",
-        why=(
-            "The ONLY surviving copy of each file's pre-restamp energy value, "
-            "which the restamp overwrote on disk. A reinstall that loses this is "
-            "unrecoverable data loss against the user's own music files, and the "
-            "source system's re-rate path refuses outright when it is absent."
-            " Which is exactly why a restore must never roll it back: the values "
-            "it protects were written to files, a database restore does not undo "
-            "a file write, and discarding the log makes those writes permanent. "
-            "Rolling this back is not a stale record, it is data loss."
-        ),
+    _library(
+        "energy_undo_log", "energy_undo.json", SnapshotRole.NEVER_RESTORED,
+        "The ONLY surviving copy of each file's pre-restamp energy value, "
+        "which the restamp overwrote on disk. A reinstall that loses this is "
+        "unrecoverable data loss against the user's own music files, and the "
+        "source system's re-rate path refuses outright when it is absent."
+        " Which is exactly why a restore must never roll it back: the values "
+        "it protects were written to files, a database restore does not undo "
+        "a file write, and discarding the log makes those writes permanent. "
+        "Rolling this back is not a stale record, it is data loss.",
     ),
-    StateFile(
-        key="vocal_calibration",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="vocal_calibration.json",
-        why=(
-            "The hand-set vocal cut, fitted against this library. Same failure as "
-            "energy calibration: losing it changes routing outcomes for unchanged "
-            "input, silently."
-            " NEVER_RESTORED for the same reason as energy calibration: its "
-            "effects already landed on files that do not roll back."
-        ),
+    _library(
+        "vocal_calibration", "vocal_calibration.json", SnapshotRole.NEVER_RESTORED,
+        "The hand-set vocal cut, fitted against this library. Same failure as "
+        "energy calibration: losing it changes routing outcomes for unchanged "
+        "input, silently."
+        " NEVER_RESTORED for the same reason as energy calibration: its "
+        "effects already landed on files that do not roll back.",
     ),
-    StateFile(
-        key="genre_gaps",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="genre_gaps.json",
-        why=(
-            "Counts of incoming genre strings that resolved to no folder in THIS "
-            "library's taxonomy. The same string is a gap in one library and a "
-            "match in another, so the count is meaningless anywhere else. Note "
-            "the keys are external vendor strings, not taxonomy display names, "
-            "which is why R19's re-key does not apply: the whole point of the "
-            "record is that the string matched nothing we own."
-            " NEVER_RESTORED: a gap observed is a fact about what arrived, not "
-            "about what the database holds, and re-deriving it costs a pass."
-        ),
+    _library(
+        "genre_gaps", "genre_gaps.json", SnapshotRole.NEVER_RESTORED,
+        "Counts of incoming genre strings that resolved to no folder in THIS "
+        "library's taxonomy. The same string is a gap in one library and a "
+        "match in another, so the count is meaningless anywhere else. Note "
+        "the keys are external vendor strings, not taxonomy display names, "
+        "which is why R19's re-key does not apply: the whole point of the "
+        "record is that the string matched nothing we own."
+        " NEVER_RESTORED: a gap observed is a fact about what arrived, not "
+        "about what the database holds, and re-deriving it costs a pass.",
     ),
-    StateFile(
-        key="genre_tag_undo_log",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="genre_tag_undo.json",
-        why=(
-            "The replay source for reverting tag writes made to files on disk, "
-            "carrying each file's original value. Second undo log, same argument: "
-            "a reinstall that loses it makes hundreds of on-disk tag writes "
-            "permanent."
-            " And the same argument against rolling it back: the writes it "
-            "reverses are on disk, so a restore that discarded this log would "
-            "make them permanent too."
-        ),
+    _library(
+        "genre_tag_undo_log", "genre_tag_undo.json", SnapshotRole.NEVER_RESTORED,
+        "The replay source for reverting tag writes made to files on disk, "
+        "carrying each file's original value. Second undo log, same argument: "
+        "a reinstall that loses it makes hundreds of on-disk tag writes "
+        "permanent."
+        " And the same argument against rolling it back: the writes it "
+        "reverses are on disk, so a restore that discarded this log would "
+        "make them permanent too.",
     ),
-    StateFile(
-        key="playlist_parole_ledger",
-        snapshot=SnapshotRole.COUPLED,
+    _library(
+        "playlist_parole_ledger", "playlist_parole.json", SnapshotRole.COUPLED,
+        "First-seen dates for playlists sitting in the rotation's holding "
+        "area. It describes this library's playlists and nothing else."
+        " COUPLED: the playlists it dates are database rows. A restore that "
+        "brought a playlist back while its first-seen date stayed at the "
+        "rolled-forward value would put it straight past the rotation "
+        "deadline and delete it early.",
         # First-seen dates for database rows, and nothing else leaves the
         # database.
         rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="playlist_parole.json",
-        why=(
-            "First-seen dates for playlists sitting in the rotation's holding "
-            "area. It describes this library's playlists and nothing else."
-            " COUPLED: the playlists it dates are database rows. A restore that "
-            "brought a playlist back while its first-seen date stayed at the "
-            "rolled-forward value would put it straight past the rotation "
-            "deadline and delete it early."
-        ),
         rekey_from_display_name=True,
     ),
-    StateFile(
-        key="track_provider_id_cache",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="track_provider_ids.json",
-        why=(
-            "A map from file location to the provider's track identifier, keyed "
-            "on THIS library's file paths. On another library every key misses, so "
-            "an installation-scoped copy is a cache that can only ever be wrong "
-            "or empty."
-            " NEVER_RESTORED: keyed on file paths, which a database restore does "
-            "not move, and re-derivable at the cost of lookups."
-        ),
+    _library(
+        "track_provider_id_cache", "track_provider_ids.json", SnapshotRole.NEVER_RESTORED,
+        "A map from file location to the provider's track identifier, keyed "
+        "on THIS library's file paths. On another library every key misses, so "
+        "an installation-scoped copy is a cache that can only ever be wrong "
+        "or empty."
+        " NEVER_RESTORED: keyed on file paths, which a database restore does "
+        "not move, and re-derivable at the cost of lookups.",
     ),
-    StateFile(
-        key="review_queue",
-        snapshot=SnapshotRole.COUPLED,
+    _library(
+        "review_queue", "review", SnapshotRole.COUPLED,
+        "KTD12's one shared adjudication surface. Its items describe "
+        "candidates for THIS library, and an item adjudicated on one machine "
+        "must not be re-asked on another."
+        " COUPLED: an adjudicated item becomes a decline, and R30 rolls "
+        "declines back. Leaving the queue behind while the declines roll "
+        "back would leave an item simultaneously queued and already decided.",
+        medium=Medium.DIRECTORY,
         # Items and verdicts about this library's own candidates. An item is
         # a question, and asking one changes nothing outside.
         rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.DIRECTORY,
-        relative="review",
-        why=(
-            "KTD12's one shared adjudication surface. Its items describe "
-            "candidates for THIS library, and an item adjudicated on one machine "
-            "must not be re-asked on another."
-            " COUPLED: an adjudicated item becomes a decline, and R30 rolls "
-            "declines back. Leaving the queue behind while the declines roll "
-            "back would leave an item simultaneously queued and already decided."
-        ),
     ),
-    StateFile(
-        key="label_outcomes",
-        snapshot=SnapshotRole.COUPLED,
+    _library(
+        "label_outcomes", "label_outcomes", SnapshotRole.COUPLED,
+        "The other half of the split directory (D4): what a label sweep "
+        "actually landed in this library. Distinct from the crawl cache, which "
+        "is only what a lookup returned."
+        " COUPLED for the same reason the watermarks are: it is a per-source "
+        "audit record of what this library took in, and R25 is meaningless "
+        "if it survives a rollback of the intake it describes.",
+        medium=Medium.DIRECTORY,
         # What a sweep actually landed: the audio is on the music volume and
         # the rows that named it are about to go, so the next pass reads those
         # files as owned by nobody.
         rollback_effects=(RollbackEffect.DOWNLOADED_FILE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.DIRECTORY,
-        relative="label_outcomes",
-        why=(
-            "The other half of the split directory (D4): what a label sweep "
-            "actually landed in this library. Distinct from the crawl cache, which "
-            "is only what a lookup returned."
-            " COUPLED for the same reason the watermarks are: it is a per-source "
-            "audit record of what this library took in, and R25 is meaningless "
-            "if it survives a rollback of the intake it describes."
-        ),
     ),
-    StateFile(
-        key="label_watermarks",
-        snapshot=SnapshotRole.COUPLED,
+    _library(
+        "label_watermarks", "label_watermarks.json", SnapshotRole.COUPLED,
+        "The other half of the split registry file (D4). A watermark is a "
+        "per-source audit record of what this library has already taken in "
+        "(R25). Committed to git in the source system, which ships one "
+        "person's sweep history to everyone who clones."
+        " COUPLED, named by R30: a watermark that survives a rollback of the "
+        "intake it recorded makes the next sync skip exactly the tracks the "
+        "restore removed.",
         # Both directions: audio landed on the volume and the provider playlist
         # was renamed with the taken marker. Neither rolls back with the rows.
         rollback_effects=(
             RollbackEffect.DOWNLOADED_FILE,
             RollbackEffect.REMOTE_PLAYLIST_PREFIX,
         ),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="label_watermarks.json",
-        why=(
-            "The other half of the split registry file (D4). A watermark is a "
-            "per-source audit record of what this library has already taken in "
-            "(R25). Committed to git in the source system, which ships one "
-            "person's sweep history to everyone who clones."
-            " COUPLED, named by R30: a watermark that survives a rollback of the "
-            "intake it recorded makes the next sync skip exactly the tracks the "
-            "restore removed."
-        ),
     ),
-    StateFile(
-        key="label_watermarks_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="label_watermarks.lock",
-        why=(
-            "The sibling lock for the per-label last-pulled document. Two "
-            "sweeps finishing at once would both read the same years, both "
-            "write, and the second rename would discard the first label's "
-            "advance while reporting success. NEVER_RESTORED for the inode "
-            "reason every lock here shares, and it lives under local rather "
-            "than coupled so a restore cannot swap the inode a holder still "
-            "has open."
-        ),
+    _library(
+        "label_watermarks_lock", "label_watermarks.lock", SnapshotRole.NEVER_RESTORED,
+        "The sibling lock for the per-label last-pulled document. Two "
+        "sweeps finishing at once would both read the same years, both "
+        "write, and the second rename would discard the first label's "
+        "advance while reporting success. NEVER_RESTORED for the inode "
+        "reason every lock here shares, and it lives under local rather "
+        "than coupled so a restore cannot swap the inode a holder still "
+        "has open.",
     ),
-    StateFile(
-        key="label_sync",
-        snapshot=SnapshotRole.COUPLED,
+    _library(
+        "label_sync", "label_sync.json", SnapshotRole.COUPLED,
+        "The guided label sync's record (U107): per label, which releases a "
+        "person has been asked about and when, the question waiting to be "
+        "answered, and every answer given. LIBRARY scoped because what was "
+        "asked depends on this library's holdings and its review queue, and "
+        "a copy run redirects library state so a rehearsal cannot move the "
+        "live marker. COUPLED because the record describes review rows: a "
+        "restore that puts the review queue back must put the asked set "
+        "back with it, or a release answered in a rolled back run is never "
+        "asked again.",
         # The record describes review rows and itself. The download an answer
         # leads to is U108's, and lands as an intake whose own records declare
         # the downloaded file.
         rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="label_sync.json",
-        why=(
-            "The guided label sync's record (U107): per label, which releases a "
-            "person has been asked about and when, the question waiting to be "
-            "answered, and every answer given. LIBRARY scoped because what was "
-            "asked depends on this library's holdings and its review queue, and "
-            "a copy run redirects library state so a rehearsal cannot move the "
-            "live marker. COUPLED because the record describes review rows: a "
-            "restore that puts the review queue back must put the asked set "
-            "back with it, or a release answered in a rolled back run is never "
-            "asked again."
-        ),
     ),
-    StateFile(
-        key="tag_suggest_catalogue",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="tag_suggest_catalogue.json",
-        why=(
-            "What the catalogues answered for each row tag suggest offered a "
-            "genre for (U114), kept a week so the run that applies a plan "
-            "rebuilds it from the same answers the gate showed. LIBRARY scoped "
-            "because it is keyed by this library's content identifiers. NEVER "
-            "RESTORED because every entry is replayable from the network: "
-            "losing it costs paced lookups and no data."
-        ),
+    _library(
+        "tag_suggest_catalogue", "tag_suggest_catalogue.json", SnapshotRole.NEVER_RESTORED,
+        "What the catalogues answered for each row tag suggest offered a "
+        "genre for (U114), kept a week so the run that applies a plan "
+        "rebuilds it from the same answers the gate showed. LIBRARY scoped "
+        "because it is keyed by this library's content identifiers. NEVER "
+        "RESTORED because every entry is replayable from the network: "
+        "losing it costs paced lookups and no data.",
     ),
-    StateFile(
-        key="label_sync_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="label_sync.lock",
-        why=(
-            "The sibling lock for the guided label sync's record. An answer is "
-            "a read, modify, write of one document, and a structured answer "
-            "given beside an interactive run must not discard the other's. "
-            "NEVER_RESTORED for the inode reason every lock here shares."
-        ),
+    _library(
+        "label_sync_lock", "label_sync.lock", SnapshotRole.NEVER_RESTORED,
+        "The sibling lock for the guided label sync's record. An answer is "
+        "a read, modify, write of one document, and a structured answer "
+        "given beside an interactive run must not discard the other's. "
+        "NEVER_RESTORED for the inode reason every lock here shares.",
     ),
-    StateFile(
-        key="tree_registry",
-        snapshot=SnapshotRole.COUPLED,
+    _library(
+        "tree_registry", "tree_registry.json", SnapshotRole.COUPLED,
+        "KTD22. Cutover mode and the adopted root's identifier describe one "
+        "person's library. Committing them would ship the author's flips to "
+        "every friend, and would leave the old system, which cannot read the "
+        "new repository, unable to consult them at all. New state: the source "
+        "system has no equivalent."
+        " COUPLED, and it is the entry the plan's top-ranked risk is named "
+        "after: the registry rolling back while the database does not, or "
+        "the reverse, is the failure KTD21b exists to make impossible.",
         # A cutover's effect is inside the database. Reconciling the tree after a
         # pre-cutover restore is a separate marker, see cratekit.core.reconcile.
         rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="tree_registry.json",
-        why=(
-            "KTD22. Cutover mode and the adopted root's identifier describe one "
-            "person's library. Committing them would ship the author's flips to "
-            "every friend, and would leave the old system, which cannot read the "
-            "new repository, unable to consult them at all. New state: the source "
-            "system has no equivalent."
-            " COUPLED, and it is the entry the plan's top-ranked risk is named "
-            "after: the registry rolling back while the database does not, or "
-            "the reverse, is the failure KTD21b exists to make impossible."
-        ),
     ),
-    StateFile(
-        key="tree_registry_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="tree_registry.lock",
-        why=(
-            "Recording a cutover reads the registry, adds one tree's record, and "
-            "writes the whole file back, because trees flip one at a time and a "
-            "whole-file overwrite would erase every other tree's record. That "
-            "cycle is not made atomic by the atomic rename at the end of it: two "
-            "processes that both read, both add and both rename leave one flip "
-            "on the floor while the call that lost it returns a registry "
-            "reporting success, and a tree whose cutover was lost then takes its "
-            "next write through the XML bridge, which under U9's A2 verdict "
-            "replaces the database-native tree on import. Library-scoped because "
-            "the registry is: a lock under the installation root is invisible to "
-            "a second machine writing the same library."
-            " NEVER_RESTORED for the inode reason every lock here shares, and it "
-            "matters more than usual because the registry is COUPLED: a restore "
-            "replaces the directory holding it, so a lock beside it would have "
-            "its inode swapped under every process holding it."
-        ),
+    _library(
+        "tree_registry_lock", "tree_registry.lock", SnapshotRole.NEVER_RESTORED,
+        "Recording a cutover reads the registry, adds one tree's record, and "
+        "writes the whole file back, because trees flip one at a time and a "
+        "whole-file overwrite would erase every other tree's record. That "
+        "cycle is not made atomic by the atomic rename at the end of it: two "
+        "processes that both read, both add and both rename leave one flip "
+        "on the floor while the call that lost it returns a registry "
+        "reporting success, and a tree whose cutover was lost then takes its "
+        "next write through the XML bridge, which under U9's A2 verdict "
+        "replaces the database-native tree on import. Library-scoped because "
+        "the registry is: a lock under the installation root is invisible to "
+        "a second machine writing the same library."
+        " NEVER_RESTORED for the inode reason every lock here shares, and it "
+        "matters more than usual because the registry is COUPLED: a restore "
+        "replaces the directory holding it, so a lock beside it would have "
+        "its inode swapped under every process holding it.",
     ),
-    StateFile(
-        key="routing_intents",
-        snapshot=SnapshotRole.COUPLED,
+    _library(
+        "routing_intents", "routing_intents.json", SnapshotRole.COUPLED,
+        "Where each new track's intended placement is written down at the "
+        "moment it is decided, which is long before the library holds a row "
+        "for that track. It describes ONE library's files and one library's "
+        "playlist rows, so a second installation inheriting it would try to "
+        "place tracks that library has never seen, and a reinstall must find "
+        "it beside the library rather than beside the installation that "
+        "recorded it. New state: the source system decides placement and "
+        "writes it in one pass and therefore has nothing to persist."
+        " COUPLED, and this is the entry where the coupling is the entire "
+        "point. A track is marked routed only after its membership row is "
+        "committed, so a restore that rolled the membership back while the "
+        "mark survived would leave a run reporting placed tracks that sit in "
+        "no playlist at all, with nothing left on disk that knows to place "
+        "them again.",
         # Intents and marks, both about database rows.
         rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="routing_intents.json",
-        why=(
-            "Where each new track's intended placement is written down at the "
-            "moment it is decided, which is long before the library holds a row "
-            "for that track. It describes ONE library's files and one library's "
-            "playlist rows, so a second installation inheriting it would try to "
-            "place tracks that library has never seen, and a reinstall must find "
-            "it beside the library rather than beside the installation that "
-            "recorded it. New state: the source system decides placement and "
-            "writes it in one pass and therefore has nothing to persist."
-            " COUPLED, and this is the entry where the coupling is the entire "
-            "point. A track is marked routed only after its membership row is "
-            "committed, so a restore that rolled the membership back while the "
-            "mark survived would leave a run reporting placed tracks that sit in "
-            "no playlist at all, with nothing left on disk that knows to place "
-            "them again."
-        ),
     ),
-    StateFile(
-        key="routing_intents_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="routing_intents.lock",
-        why=(
-            "The ledger beside it accumulates several runs from several sources, "
-            "and every writer of it reads, modifies and writes. Two of those "
-            "interleaving erases a decision that was fully recorded, and the run "
-            "that made it then closes clean over a track sitting in no playlist. "
-            "Library-scoped for the same reason the write lock is: a "
-            "per-installation lock is invisible to a second install and to the "
-            "old system during the overlap, so neither can contend for a file "
-            "that only ever had one copy."
-            " NEVER_RESTORED for the inode reason the write lock records: a "
-            "restore that replaced the directory holding this file would swap "
-            "the inode a live lock is held on, and every process holding the old "
-            "one would keep believing it had exclusive access."
-        ),
+    _library(
+        "routing_intents_lock", "routing_intents.lock", SnapshotRole.NEVER_RESTORED,
+        "The ledger beside it accumulates several runs from several sources, "
+        "and every writer of it reads, modifies and writes. Two of those "
+        "interleaving erases a decision that was fully recorded, and the run "
+        "that made it then closes clean over a track sitting in no playlist. "
+        "Library-scoped for the same reason the write lock is: a "
+        "per-installation lock is invisible to a second install and to the "
+        "old system during the overlap, so neither can contend for a file "
+        "that only ever had one copy."
+        " NEVER_RESTORED for the inode reason the write lock records: a "
+        "restore that replaced the directory holding this file would swap "
+        "the inode a live lock is held on, and every process holding the old "
+        "one would keep believing it had exclusive access.",
     ),
     # NONE on purpose (U32): every record describes rows inside the database a
     # restore replaces, so nothing survives a rollback to reconcile.
-    StateFile(
-        key="tree_convergence",
-        snapshot=SnapshotRole.COUPLED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="tree_convergence.json",
+    _library(
+        "tree_convergence", "tree_convergence.json", SnapshotRole.COUPLED,
+        "R39. Three facts about THIS library's database-native trees: the "
+        "fingerprint of the database as Cratekit last left it, which tree is "
+        "unconverged and why, and the playlist row identifiers a previous "
+        "rebuild wrote each declared destination into. All three name rows in "
+        "one person's database, so a second installation inheriting them would "
+        "compare its own library against another one's counts and rebuild into "
+        "row identifiers it does not have. New state: the source system has no "
+        "convergence concept at all, which is the gap R39 names."
+        " COUPLED, and every one of the three fails differently if it is not. "
+        "A fingerprint that survived a rollback would report the restore it "
+        "was rolled back by as an out-of-band one, so Cratekit's own restore "
+        "would mark every native tree unconverged. A node map that survived "
+        "would point a rebuild at playlist rows the restore removed, and the "
+        "rebuild would create them again beside the real ones. An unconverged "
+        "flag that survived would outlive the damage it describes, exactly as "
+        "the committed-unverified session record did before U8 gave it a way "
+        "to be resolved.",
         rollback_effects=(RollbackEffect.NONE,),
-        why=(
-            "R39. Three facts about THIS library's database-native trees: the "
-            "fingerprint of the database as Cratekit last left it, which tree is "
-            "unconverged and why, and the playlist row identifiers a previous "
-            "rebuild wrote each declared destination into. All three name rows in "
-            "one person's database, so a second installation inheriting them would "
-            "compare its own library against another one's counts and rebuild into "
-            "row identifiers it does not have. New state: the source system has no "
-            "convergence concept at all, which is the gap R39 names."
-            " COUPLED, and every one of the three fails differently if it is not. "
-            "A fingerprint that survived a rollback would report the restore it "
-            "was rolled back by as an out-of-band one, so Cratekit's own restore "
-            "would mark every native tree unconverged. A node map that survived "
-            "would point a rebuild at playlist rows the restore removed, and the "
-            "rebuild would create them again beside the real ones. An unconverged "
-            "flag that survived would outlive the damage it describes, exactly as "
-            "the committed-unverified session record did before U8 gave it a way "
-            "to be resolved."
-        ),
     ),
-    StateFile(
-        key="tree_convergence_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="tree_convergence.lock",
-        why=(
-            "The document beside it is read, modified and written by the rebuild, "
-            "by the convergence check, and by every governed write that records a "
-            "fingerprint at its close, which is several processes against one "
-            "file. Two of those interleaving discards an unconverged flag that was "
-            "fully recorded, and the next sync then runs over a tree nothing "
-            "believes is damaged. Library-scoped because the document is: a lock "
-            "under the installation root is invisible to a second machine writing "
-            "the same library."
-            " NEVER_RESTORED for the inode reason every lock here shares, and it "
-            "matters more than usual because the document it guards is COUPLED: a "
-            "restore replaces the directory holding it, so a lock beside it would "
-            "have its inode swapped under every process holding it."
-        ),
+    _library(
+        "tree_convergence_lock", "tree_convergence.lock", SnapshotRole.NEVER_RESTORED,
+        "The document beside it is read, modified and written by the rebuild, "
+        "by the convergence check, and by every governed write that records a "
+        "fingerprint at its close, which is several processes against one "
+        "file. Two of those interleaving discards an unconverged flag that was "
+        "fully recorded, and the next sync then runs over a tree nothing "
+        "believes is damaged. Library-scoped because the document is: a lock "
+        "under the installation root is invisible to a second machine writing "
+        "the same library."
+        " NEVER_RESTORED for the inode reason every lock here shares, and it "
+        "matters more than usual because the document it guards is COUPLED: a "
+        "restore replaces the directory holding it, so a lock beside it would "
+        "have its inode swapped under every process holding it.",
     ),
-    StateFile(
-        key="tombstones",
-        snapshot=SnapshotRole.COUPLED,
+    _library(
+        "tombstones", "tombstones.json", SnapshotRole.COUPLED,
+        "R36. A suppressed acquisition is a fact about what this library has "
+        "deliberately declined to hold. New state; the source system has no "
+        "equivalent, so there is nothing to port and the shape is chosen here."
+        " COUPLED, named by R30.",
         # A tombstone is written when a file is removed, and removal here means
         # the Trash. The record rolls back; the file does not walk out of the
         # Trash on its own.
         rollback_effects=(RollbackEffect.TRASHED_FILE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="tombstones.json",
         decision_store=True,
-        why=(
-            "R36. A suppressed acquisition is a fact about what this library has "
-            "deliberately declined to hold. New state; the source system has no "
-            "equivalent, so there is nothing to port and the shape is chosen here."
-            " COUPLED, named by R30."
-        ),
     ),
-    StateFile(
-        key="declines",
-        snapshot=SnapshotRole.COUPLED,
+    _library(
+        "declines", "declines.json", SnapshotRole.COUPLED,
+        "R36's other half: candidates a human rejected. Library-scoped so the "
+        "rejection is not re-asked from a second machine. New state."
+        " COUPLED, named by R30, and paired with the review queue: the two "
+        "roll back together or an item ends up both open and decided.",
         # A decline suppresses an acquisition that never happened, so there is
         # nothing outside to undo.
         rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="declines.json",
         decision_store=True,
-        why=(
-            "R36's other half: candidates a human rejected. Library-scoped so the "
-            "rejection is not re-asked from a second machine. New state."
-            " COUPLED, named by R30, and paired with the review queue: the two "
-            "roll back together or an item ends up both open and decided."
-        ),
     ),
-    StateFile(
-        key="decision_store_locks",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
+    _library(
+        "decision_store_locks", "decision_locks", SnapshotRole.NEVER_RESTORED,
+        "One sibling lock per decision store, serializing the read then write "
+        "each of them performs on its document. Without it two processes both "
+        "read the same set, both add their own record, and the second rename "
+        "discards the first one's while the call that lost reports success: "
+        "eight processes recording two hundred decisions left seventy one on "
+        "disk. A lost record re-offers a declined file and re-acquires a "
+        "tombstoned version, and a lost revocation leaves a suppression "
+        "standing forever with nothing to notice it. Library-scoped for the "
+        "reason the stores are: a lock in a per-installation directory is "
+        "invisible to a second machine, so both would edit one library's "
+        "record at once."
+        " NEVER_RESTORED for the inode reason every lock here shares, and it "
+        "is why this is a directory of its own rather than a file beside each "
+        "store: the stores are COUPLED, so a restore replaces the directory "
+        "holding them, and a lock inside it would have its inode swapped "
+        "under every process holding it."
+        " A DIRECTORY rather than one entry per store, so the lock a store "
+        "uses is derived from the store's own key and a third decision store "
+        "cannot arrive without one.",
         medium=Medium.DIRECTORY,
-        relative="decision_locks",
-        why=(
-            "One sibling lock per decision store, serializing the read then write "
-            "each of them performs on its document. Without it two processes both "
-            "read the same set, both add their own record, and the second rename "
-            "discards the first one's while the call that lost reports success: "
-            "eight processes recording two hundred decisions left seventy one on "
-            "disk. A lost record re-offers a declined file and re-acquires a "
-            "tombstoned version, and a lost revocation leaves a suppression "
-            "standing forever with nothing to notice it. Library-scoped for the "
-            "reason the stores are: a lock in a per-installation directory is "
-            "invisible to a second machine, so both would edit one library's "
-            "record at once."
-            " NEVER_RESTORED for the inode reason every lock here shares, and it "
-            "is why this is a directory of its own rather than a file beside each "
-            "store: the stores are COUPLED, so a restore replaces the directory "
-            "holding them, and a lock inside it would have its inode swapped "
-            "under every process holding it."
-            " A DIRECTORY rather than one entry per store, so the lock a store "
-            "uses is derived from the store's own key and a third decision store "
-            "cannot arrive without one."
-        ),
     ),
-    StateFile(
-        key="deletion_watermark",
-        snapshot=SnapshotRole.COUPLED,
+    _library(
+        "deletion_watermark", "deletion_watermark.json", SnapshotRole.COUPLED,
+        "R35. It marks how far the deletion pass has read THIS library's "
+        "soft-delete markers, and the number each absent landed row was "
+        "given when a pass first saw it gone (R-1037). New state."
+        " COUPLED, named by R30: a deletion watermark that survives a "
+        "rollback skips markers the restore put back.",
         # How far the deletion pass read. The deletions themselves are recorded
         # as tombstones above, which is where the Trash effect is declared; this
         # is a position, and a position has no effect of its own.
         rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="deletion_watermark.json",
-        why=(
-            "R35. It marks how far the deletion pass has read THIS library's "
-            "soft-delete markers, and the number each absent landed row was "
-            "given when a pass first saw it gone (R-1037). New state."
-            " COUPLED, named by R30: a deletion watermark that survives a "
-            "rollback skips markers the restore put back."
-        ),
     ),
-    StateFile(
-        key="deletion_watermark_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="deletion_watermark.lock",
-        why=(
-            "The sibling lock for the watermark above, which is a read then a "
-            "write over one document exactly as the decision stores are. "
-            "``atomic_write_bytes`` makes the RENAME atomic and does nothing for "
-            "the cycle around it, so two passes finishing at once both read the "
-            "same watermark, both advance it from what they read, and the second "
-            "rename discards the first one's advance while the call that lost "
-            "reports success. What that loses is not a number: the watermark is "
-            "what makes a removal HANDLED, so a dropped advance re-offers files "
-            "somebody already answered for, and a dropped RE-BASELINE offers a "
-            "whole library's historical removals at once. Library-scoped for the "
-            "reason the watermark is: a lock in a per-installation directory is "
-            "invisible to a second machine, so both would advance one library's "
-            "watermark at once."
-            " NEVER_RESTORED for the inode reason every lock here shares, and it "
-            "is a sibling rather than a lock beside the document because the "
-            "watermark is COUPLED: a restore replaces the directory holding it, "
-            "and a lock inside that directory would have its inode swapped under "
-            "every process holding it."
-        ),
+    _library(
+        "deletion_watermark_lock", "deletion_watermark.lock", SnapshotRole.NEVER_RESTORED,
+        "The sibling lock for the watermark above, which is a read then a "
+        "write over one document exactly as the decision stores are. "
+        "``atomic_write_bytes`` makes the RENAME atomic and does nothing for "
+        "the cycle around it, so two passes finishing at once both read the "
+        "same watermark, both advance it from what they read, and the second "
+        "rename discards the first one's advance while the call that lost "
+        "reports success. What that loses is not a number: the watermark is "
+        "what makes a removal HANDLED, so a dropped advance re-offers files "
+        "somebody already answered for, and a dropped RE-BASELINE offers a "
+        "whole library's historical removals at once. Library-scoped for the "
+        "reason the watermark is: a lock in a per-installation directory is "
+        "invisible to a second machine, so both would advance one library's "
+        "watermark at once."
+        " NEVER_RESTORED for the inode reason every lock here shares, and it "
+        "is a sibling rather than a lock beside the document because the "
+        "watermark is COUPLED: a restore replaces the directory holding it, "
+        "and a lock inside that directory would have its inode swapped under "
+        "every process holding it.",
     ),
-    StateFile(
-        key="source_watermarks",
-        snapshot=SnapshotRole.COUPLED,
+    _library(
+        "source_watermarks", "source_watermarks.json", SnapshotRole.COUPLED,
+        "R25's per-source audit record of how far each increment got on THIS "
+        "library. The cursor does not decide the next scope; owned-dedup "
+        "does. A second install that kept the same file would report "
+        "completions that never happened on this machine, and a watermark "
+        "that survives a rollback of the intake it recorded would tell "
+        "status a source was clean after the restore removed that intake. "
+        "Distinct from label_watermarks.json, which is the per-label "
+        "last-pulled document U26 owns; this file is one cursor per source id.",
         rollback_effects=(
             RollbackEffect.DOWNLOADED_FILE,
             RollbackEffect.REMOTE_PLAYLIST_PREFIX,
         ),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="source_watermarks.json",
-        why=(
-            "R25's per-source audit record of how far each increment got on THIS "
-            "library. The cursor does not decide the next scope; owned-dedup "
-            "does. A second install that kept the same file would report "
-            "completions that never happened on this machine, and a watermark "
-            "that survives a rollback of the intake it recorded would tell "
-            "status a source was clean after the restore removed that intake. "
-            "Distinct from label_watermarks.json, which is the per-label "
-            "last-pulled document U26 owns; this file is one cursor per source id."
-        ),
     ),
-    StateFile(
-        key="source_watermarks_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="source_watermarks.lock",
-        why=(
-            "The sibling lock for the source watermark document. Two increments "
-            "finishing at once would both read the same cursors, both write, and "
-            "the second rename would discard the first source's advance while "
-            "reporting success. Library-scoped for the reason the document is: a "
-            "lock in a per-installation directory is invisible to a second "
-            "machine editing the same library. NEVER_RESTORED because the "
-            "document is COUPLED and a lock inside that directory would have its "
-            "inode swapped under every process holding it."
-        ),
+    _library(
+        "source_watermarks_lock", "source_watermarks.lock", SnapshotRole.NEVER_RESTORED,
+        "The sibling lock for the source watermark document. Two increments "
+        "finishing at once would both read the same cursors, both write, and "
+        "the second rename would discard the first source's advance while "
+        "reporting success. Library-scoped for the reason the document is: a "
+        "lock in a per-installation directory is invisible to a second "
+        "machine editing the same library. NEVER_RESTORED because the "
+        "document is COUPLED and a lock inside that directory would have its "
+        "inode swapped under every process holding it.",
     ),
-    StateFile(
-        key="bandcamp_fetched",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="bandcamp_fetched.json",
-        why=(
-            "U176. Every Bandcamp purchase this library has fetched into "
-            "download staging, by purchase id, so a later run plans only what "
-            "it has not taken. Kept by purchase and never as a checkpoint, "
-            "because a checkpoint hides every purchase older than it, which is "
-            "how a purchase filtered out once was never offered again. "
-            "Library-scoped because the files it records were staged for this "
-            "library. NEVER_RESTORED because what it records happened on disk "
-            "and at the account, and a database restore takes back neither: "
-            "rolled back, it would fetch a release again into staging beside "
-            "the copy already there."
-        ),
+    _library(
+        "bandcamp_fetched", "bandcamp_fetched.json", SnapshotRole.NEVER_RESTORED,
+        "U176. Every Bandcamp purchase this library has fetched into "
+        "download staging, by purchase id, so a later run plans only what "
+        "it has not taken. Kept by purchase and never as a checkpoint, "
+        "because a checkpoint hides every purchase older than it, which is "
+        "how a purchase filtered out once was never offered again. "
+        "Library-scoped because the files it records were staged for this "
+        "library. NEVER_RESTORED because what it records happened on disk "
+        "and at the account, and a database restore takes back neither: "
+        "rolled back, it would fetch a release again into staging beside "
+        "the copy already there.",
     ),
-    StateFile(
-        key="bandcamp_fetched_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="bandcamp_fetched.lock",
-        why=(
-            "The sibling lock for the record above. Two fetches finishing at "
-            "once would both read it, both add their purchase, and the second "
-            "rename would drop the first one's, so that purchase is fetched "
-            "again on the next run. NEVER_RESTORED for the inode reason every "
-            "lock here shares."
-        ),
+    _library(
+        "bandcamp_fetched_lock", "bandcamp_fetched.lock", SnapshotRole.NEVER_RESTORED,
+        "The sibling lock for the record above. Two fetches finishing at "
+        "once would both read it, both add their purchase, and the second "
+        "rename would drop the first one's, so that purchase is fetched "
+        "again on the next run. NEVER_RESTORED for the inode reason every "
+        "lock here shares.",
     ),
-    StateFile(
-        key="sync_mark_record",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="sync_marks.json",
-        why=(
-            "R-838. Which account playlists each sync pass renamed with the swept "
-            "prefix, the title before and the title written, so ``sync unmark`` "
-            "can put a mistaken mark back and refuse a prefix no pass of this "
-            "product wrote. The title alone cannot say who wrote it."
-            " NEVER_RESTORED for the undo logs' reason: the renames it records "
-            "are on somebody else's server and a database restore does not undo "
-            "them, so rolling the record back forgets a mark that is still there "
-            "and leaves the one verb that can remove it refusing to."
-        ),
+    _library(
+        "sync_mark_record", "sync_marks.json", SnapshotRole.NEVER_RESTORED,
+        "R-838. Which account playlists each sync pass renamed with the swept "
+        "prefix, the title before and the title written, so ``sync unmark`` "
+        "can put a mistaken mark back and refuse a prefix no pass of this "
+        "product wrote. The title alone cannot say who wrote it."
+        " NEVER_RESTORED for the undo logs' reason: the renames it records "
+        "are on somebody else's server and a database restore does not undo "
+        "them, so rolling the record back forgets a mark that is still there "
+        "and leaves the one verb that can remove it refusing to.",
     ),
-    StateFile(
-        key="sync_mark_record_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="sync_marks.lock",
-        why=(
-            "The sibling lock for the mark record, which is a read then a write "
-            "over one document. Two marks landing at once would both read the "
-            "same record and the second rename would discard the first one's "
-            "entries while reporting success. NEVER_RESTORED for the inode reason "
-            "every lock here shares."
-        ),
+    _library(
+        "sync_mark_record_lock", "sync_marks.lock", SnapshotRole.NEVER_RESTORED,
+        "The sibling lock for the mark record, which is a read then a write "
+        "over one document. Two marks landing at once would both read the "
+        "same record and the second rename would discard the first one's "
+        "entries while reporting success. NEVER_RESTORED for the inode reason "
+        "every lock here shares.",
     ),
-    StateFile(
-        key="sync_unavailable_record",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="sync_unavailable.json",
-        why=(
-            "U320. Which synced account playlists ``sync removed`` found absent "
-            "from the account's list with their id answering not found, the first "
-            "and latest time it did, and which are retired, so a playlist deleted "
-            "on the account stops holding back every removal once it has answered "
-            "not found a day apart or a person retired it at the gate."
-            " NEVER_RESTORED for the mark record's reason: it records what "
-            "somebody else's server answered, which a database restore does not "
-            "undo, and rolled back it would read a deleted playlist as live again."
-        ),
+    _library(
+        "sync_unavailable_record", "sync_unavailable.json", SnapshotRole.NEVER_RESTORED,
+        "U320. Which synced account playlists ``sync removed`` found absent "
+        "from the account's list with their id answering not found, the first "
+        "and latest time it did, and which are retired, so a playlist deleted "
+        "on the account stops holding back every removal once it has answered "
+        "not found a day apart or a person retired it at the gate."
+        " NEVER_RESTORED for the mark record's reason: it records what "
+        "somebody else's server answered, which a database restore does not "
+        "undo, and rolled back it would read a deleted playlist as live again.",
     ),
-    StateFile(
-        key="sync_unavailable_record_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="sync_unavailable.lock",
-        why=(
-            "The sibling lock for the record above, a read then a write over one "
-            "document: two runs recording at once would both read it and the "
-            "second write would drop the first one's sightings. NEVER_RESTORED "
-            "for the inode reason every lock here shares."
-        ),
+    _library(
+        "sync_unavailable_record_lock", "sync_unavailable.lock", SnapshotRole.NEVER_RESTORED,
+        "The sibling lock for the record above, a read then a write over one "
+        "document: two runs recording at once would both read it and the "
+        "second write would drop the first one's sightings. NEVER_RESTORED "
+        "for the inode reason every lock here shares.",
     ),
-    StateFile(
-        key="sync_artifacts",
-        snapshot=SnapshotRole.COUPLED,
+    _library(
+        "sync_artifacts", "sync_artifacts.json", SnapshotRole.COUPLED,
+        "The register of every file a sync run created, written at creation "
+        "time so crash debris in the staging directory cannot become the next "
+        "run's intake. Library-scoped because the files describe what THIS "
+        "library's run produced. COUPLED so a restore forgets registrations "
+        "for intake that no longer exists, and those leftover files become "
+        "debris again rather than being re-imported as if they were new.",
         rollback_effects=(RollbackEffect.DOWNLOADED_FILE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="sync_artifacts.json",
-        why=(
-            "The register of every file a sync run created, written at creation "
-            "time so crash debris in the staging directory cannot become the next "
-            "run's intake. Library-scoped because the files describe what THIS "
-            "library's run produced. COUPLED so a restore forgets registrations "
-            "for intake that no longer exists, and those leftover files become "
-            "debris again rather than being re-imported as if they were new."
-        ),
     ),
-    StateFile(
-        key="sync_artifacts_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="sync_artifacts.lock",
-        why=(
-            "The sibling lock for the artifact register. Two sources in one run "
-            "register files concurrently, and an unlocked read-modify-write would "
-            "drop one source's registrations, which is how crash debris becomes "
-            "invisible and then looks like next-run intake. NEVER_RESTORED for "
-            "the inode reason every lock here shares."
-        ),
+    _library(
+        "sync_artifacts_lock", "sync_artifacts.lock", SnapshotRole.NEVER_RESTORED,
+        "The sibling lock for the artifact register. Two sources in one run "
+        "register files concurrently, and an unlocked read-modify-write would "
+        "drop one source's registrations, which is how crash debris becomes "
+        "invisible and then looks like next-run intake. NEVER_RESTORED for "
+        "the inode reason every lock here shares.",
     ),
-    StateFile(
-        key="backup_ack",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="backup_ack.json",
-        why=(
-            "KTD18's queue-time acknowledgment and the backup age shown when it "
-            "was given. New state: the source system's backup script persists no "
-            "timestamp at all, it stats the remote, so there is nothing to port. "
-            "Library-scoped because the thing acknowledged is a backup of THIS "
-            "library."
-            " NEVER_RESTORED: the backup it acknowledges lives off this volume "
-            "and a restore does not un-take it, so rolling the record back would "
-            "demand the user re-acknowledge a backup that is still there."
-        ),
+    _library(
+        "backup_ack", "backup_ack.json", SnapshotRole.NEVER_RESTORED,
+        "KTD18's queue-time acknowledgment and the backup age shown when it "
+        "was given. New state: the source system's backup script persists no "
+        "timestamp at all, it stats the remote, so there is nothing to port. "
+        "Library-scoped because the thing acknowledged is a backup of THIS "
+        "library."
+        " NEVER_RESTORED: the backup it acknowledges lives off this volume "
+        "and a restore does not un-take it, so rolling the record back would "
+        "demand the user re-acknowledge a backup that is still there.",
     ),
-    StateFile(
-        key="backup_facts",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="backup_facts.json",
-        why=(
-            "When each portion of THIS library was last backed up, recorded PER "
-            "PORTION because the database portion refuses while rekordbox is "
-            "running and the file mirror completes anyway; one aggregate "
-            "timestamp would report a database that is weeks stale as fresh, "
-            "which is precisely the fact R15's warning exists to carry. It is a "
-            "FILE rather than a function call so R15's warning reads a fact "
-            "instead of importing a toggleable module (KTD23). New state: the "
-            "source system's script persists nothing and stats the remote "
-            "instead, so a machine that cannot reach the remote cannot answer "
-            "the question at all. Library-scoped because a second installation "
-            "must see the same answer; an installation-scoped copy reports "
-            "'never backed up' for a library that was backed up an hour ago "
-            "from the other machine, and a warning that cries wolf is one users "
-            "learn to click through."
-            " NEVER_RESTORED: the backup it describes lives off this volume and "
-            "a restore does not un-take it, so rolling the record back would "
-            "demand a fresh backup of something that is still there."
-        ),
+    _library(
+        "backup_facts", "backup_facts.json", SnapshotRole.NEVER_RESTORED,
+        "When each portion of THIS library was last backed up, recorded PER "
+        "PORTION because the database portion refuses while rekordbox is "
+        "running and the file mirror completes anyway; one aggregate "
+        "timestamp would report a database that is weeks stale as fresh, "
+        "which is precisely the fact R15's warning exists to carry. It is a "
+        "FILE rather than a function call so R15's warning reads a fact "
+        "instead of importing a toggleable module (KTD23). New state: the "
+        "source system's script persists nothing and stats the remote "
+        "instead, so a machine that cannot reach the remote cannot answer "
+        "the question at all. Library-scoped because a second installation "
+        "must see the same answer; an installation-scoped copy reports "
+        "'never backed up' for a library that was backed up an hour ago "
+        "from the other machine, and a warning that cries wolf is one users "
+        "learn to click through."
+        " NEVER_RESTORED: the backup it describes lives off this volume and "
+        "a restore does not un-take it, so rolling the record back would "
+        "demand a fresh backup of something that is still there.",
     ),
-    StateFile(
-        key="setbuilder_index_cache",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="setbuilder_index.json",
-        why=(
-            "Per-file ranking signals keyed on THIS library's file paths and "
-            "modification times, so a repeat run re-reads only what changed. "
-            "Every key misses against another library, which makes an "
-            "installation-scoped copy a cache that can only be empty or wrong, "
-            "and the whole-library tag scan it avoids costs minutes per run on a "
-            "library of this size."
-            " NEVER_RESTORED: it is keyed on files, which a database restore "
-            "does not move, and every entry is re-derivable from the files "
-            "themselves at the cost of that scan."
-        ),
+    _library(
+        "setbuilder_index_cache", "setbuilder_index.json", SnapshotRole.NEVER_RESTORED,
+        "Per-file ranking signals keyed on THIS library's file paths and "
+        "modification times, so a repeat run re-reads only what changed. "
+        "Every key misses against another library, which makes an "
+        "installation-scoped copy a cache that can only be empty or wrong, "
+        "and the whole-library tag scan it avoids costs minutes per run on a "
+        "library of this size."
+        " NEVER_RESTORED: it is keyed on files, which a database restore "
+        "does not move, and every entry is re-derivable from the files "
+        "themselves at the cost of that scan.",
     ),
-    StateFile(
-        key="taxonomy_active",
-        snapshot=SnapshotRole.COUPLED,
+    _library(
+        "taxonomy_active", "taxonomy.toml", SnapshotRole.COUPLED,
+        "S6. The SHIPPED default template is packaged read-only data in the "
+        "wheel; the ACTIVE template is a copy made here at setup. That makes "
+        "a library self-describing: a second installation or a reinstall "
+        "resolves the same tree without re-answering the wizard, and a "
+        "snapshot rolls the taxonomy back with the database it describes."
+        " Which is to say COUPLED, explicitly: the tree in the database and "
+        "the template that describes it are one decision in two files.",
         # A declaration of the tree this library means. Nothing outside the
         # database reads it.
         rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="taxonomy.toml",
-        why=(
-            "S6. The SHIPPED default template is packaged read-only data in the "
-            "wheel; the ACTIVE template is a copy made here at setup. That makes "
-            "a library self-describing: a second installation or a reinstall "
-            "resolves the same tree without re-answering the wizard, and a "
-            "snapshot rolls the taxonomy back with the database it describes."
-            " Which is to say COUPLED, explicitly: the tree in the database and "
-            "the template that describes it are one decision in two files."
-        ),
     ),
-    StateFile(
-        key="taxonomy_origin",
-        snapshot=SnapshotRole.COUPLED,
+    _library(
+        "taxonomy_origin", "taxonomy.origin.toml", SnapshotRole.COUPLED,
+        "R-689. Which shipped text the active taxonomy copy was made from: "
+        "the template's short name and a digest of the packaged text setup "
+        "copied. Without it a copy that fell behind the shipped template "
+        "cannot be told from one a person edited, so doctor could not say "
+        "why a section the shipped template gained after setup is absent "
+        "from every verb. It lives beside the copy it describes and rolls "
+        "back with it, because a restored older copy under a newer record "
+        "would read as edited when it is not. Setup writes it once, with the "
+        "copy, and never for a copy it left alone, since it cannot know "
+        "where an existing copy came from.",
         # A record about the active copy. Nothing routes by it; doctor reads it.
         rollback_effects=(RollbackEffect.NONE,),
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="taxonomy.origin.toml",
-        why=(
-            "R-689. Which shipped text the active taxonomy copy was made from: "
-            "the template's short name and a digest of the packaged text setup "
-            "copied. Without it a copy that fell behind the shipped template "
-            "cannot be told from one a person edited, so doctor could not say "
-            "why a section the shipped template gained after setup is absent "
-            "from every verb. It lives beside the copy it describes and rolls "
-            "back with it, because a restored older copy under a newer record "
-            "would read as edited when it is not. Setup writes it once, with the "
-            "copy, and never for a copy it left alone, since it cannot know "
-            "where an existing copy came from."
-        ),
     ),
-    StateFile(
-        key="active_run_sentinel",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative=".cratekit_active_run.json",
-        why=(
-            "The one entry the source system already places beside the library, "
-            "carried forward as-is rather than converted. It sits at the library "
-            "ROOT rather than inside the state directory on purpose: it is an "
-            "advisory cross-machine heartbeat, and a second system looking for it "
-            "should not have to know this layout."
-            " NEVER_RESTORED: it is a live heartbeat. Restoring one would "
-            "advertise a run that ended, to a machine that would then wait for it."
-        ),
+    _library(
+        "active_run_sentinel", ".cratekit_active_run.json", SnapshotRole.NEVER_RESTORED,
+        "The one entry the source system already places beside the library, "
+        "carried forward as-is rather than converted. It sits at the library "
+        "ROOT rather than inside the state directory on purpose: it is an "
+        "advisory cross-machine heartbeat, and a second system looking for it "
+        "should not have to know this layout."
+        " NEVER_RESTORED: it is a live heartbeat. Restoring one would "
+        "advertise a run that ended, to a machine that would then wait for it.",
         at_library_root=True,
     ),
-    StateFile(
-        key="set_workspaces",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
+    _library(
+        "set_workspaces", "", SnapshotRole.NEVER_RESTORED,
+        "Per-set stage artifacts, already correct by accident of location in "
+        "the source system: they live under the library's own sets directory "
+        "beside the audio they describe. Resolved from the CONFIGURED "
+        "directory names rather than from a literal, which is why its relative "
+        "path is empty here and ``state_path`` composes it. It names a "
+        "Cratekit-owned subdirectory INSIDE the sets directory, never the sets "
+        "directory itself: that directory holds the user's own recordings, and "
+        "an entry pointing at it puts the whole recordings tree into every "
+        "generic pass over the inventory. A snapshot would try to copy "
+        "hundreds of gigabytes of audio, a state report would list the user's "
+        "music as Cratekit state, and a future 'clear this library's state' "
+        "built off the inventory would target user content. NEVER_RESTORED "
+        "because a stage artifact belongs to a run, not to the database.",
         medium=Medium.DIRECTORY,
-        relative="",
-        why=(
-            "Per-set stage artifacts, already correct by accident of location in "
-            "the source system: they live under the library's own sets directory "
-            "beside the audio they describe. Resolved from the CONFIGURED "
-            "directory names rather than from a literal, which is why its relative "
-            "path is empty here and ``state_path`` composes it. It names a "
-            "Cratekit-owned subdirectory INSIDE the sets directory, never the sets "
-            "directory itself: that directory holds the user's own recordings, and "
-            "an entry pointing at it puts the whole recordings tree into every "
-            "generic pass over the inventory. A snapshot would try to copy "
-            "hundreds of gigabytes of audio, a state report would list the user's "
-            "music as Cratekit state, and a future 'clear this library's state' "
-            "built off the inventory would target user content. NEVER_RESTORED "
-            "because a stage artifact belongs to a run, not to the database."
-        ),
     ),
     # U32's entries. New entries are appended, never inserted, so two units
     # adding entries conflict textually instead of auto-merging a duplicate key.
-    StateFile(
-        key="restore_reconciliation",
-        snapshot=SnapshotRole.SURVIVES_ROLLBACK,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="restore_reconciliation.json",
-        why=(
-            "What a restore left behind that the restore itself could not undo, "
-            "and whether a person has dispositioned each one. A restore rolls the "
-            "database and its coupled state back together, which makes them agree "
-            "with each other and says nothing about the world: the audio the "
-            "discarded run downloaded is still on the volume, the playlist it "
-            "renamed at the provider is still renamed, and the file it moved to "
-            "the Trash is still in the Trash. Library-scoped because every one of "
-            "those facts is about THIS library, and a second machine restoring "
-            "the same session must see the same outstanding list rather than a "
-            "clean sheet. New state: the source system has no restore that "
-            "reconciles anything."
-            " It SURVIVES a rollback, for the reason the session log does and "
-            "one more. Rolling it back would erase the record of what is owed at "
-            "exactly the moment it is owed, and a second restore run against an "
-            "earlier point would wipe the first restore's outstanding list while "
-            "adding its own. It also holds the unconverged trees a pre-cutover "
-            "restore marks, and those must outlive every later rollback, because "
-            "the rebuild that clears them has not run yet."
-        ),
+    _library(
+        "restore_reconciliation", "restore_reconciliation.json", SnapshotRole.SURVIVES_ROLLBACK,
+        "What a restore left behind that the restore itself could not undo, "
+        "and whether a person has dispositioned each one. A restore rolls the "
+        "database and its coupled state back together, which makes them agree "
+        "with each other and says nothing about the world: the audio the "
+        "discarded run downloaded is still on the volume, the playlist it "
+        "renamed at the provider is still renamed, and the file it moved to "
+        "the Trash is still in the Trash. Library-scoped because every one of "
+        "those facts is about THIS library, and a second machine restoring "
+        "the same session must see the same outstanding list rather than a "
+        "clean sheet. New state: the source system has no restore that "
+        "reconciles anything."
+        " It SURVIVES a rollback, for the reason the session log does and "
+        "one more. Rolling it back would erase the record of what is owed at "
+        "exactly the moment it is owed, and a second restore run against an "
+        "earlier point would wipe the first restore's outstanding list while "
+        "adding its own. It also holds the unconverged trees a pre-cutover "
+        "restore marks, and those must outlive every later rollback, because "
+        "the rebuild that clears them has not run yet.",
     ),
-    StateFile(
-        key="restore_reconciliation_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="restore_reconciliation.lock",
-        why=(
-            "The sibling lock for the document above, which is read then written "
-            "as one cycle by a restore recording markers and by whoever "
-            "dispositions them. The rename at the end of that cycle is atomic and "
-            "the cycle is not: two processes both read the same set, both add "
-            "their own record, and the second rename discards the first one's "
-            "while the losing call returns a record reporting success. Two units "
-            "shipped exactly that bug before it was caught."
-            " NEVER_RESTORED for the inode reason every lock in this inventory "
-            "shares, and it matters here more than anywhere else in the file: the "
-            "process that replaces directories during a restore is the process "
-            "holding this lock. A lock inside a directory a restore replaces has "
-            "its inode swapped underneath every holder, and both then believe "
-            "they have exclusive access with nothing raised. The role-derived "
-            "layout is what enforces the separation rather than a convention: "
-            "NEVER_RESTORED resolves under the local directory and the document "
-            "resolves under the history directory, so the two cannot end up "
-            "beside each other by an edit to a relative path."
-        ),
+    _library(
+        "restore_reconciliation_lock", "restore_reconciliation.lock", SnapshotRole.NEVER_RESTORED,
+        "The sibling lock for the document above, which is read then written "
+        "as one cycle by a restore recording markers and by whoever "
+        "dispositions them. The rename at the end of that cycle is atomic and "
+        "the cycle is not: two processes both read the same set, both add "
+        "their own record, and the second rename discards the first one's "
+        "while the losing call returns a record reporting success. Two units "
+        "shipped exactly that bug before it was caught."
+        " NEVER_RESTORED for the inode reason every lock in this inventory "
+        "shares, and it matters here more than anywhere else in the file: the "
+        "process that replaces directories during a restore is the process "
+        "holding this lock. A lock inside a directory a restore replaces has "
+        "its inode swapped underneath every holder, and both then believe "
+        "they have exclusive access with nothing raised. The role-derived "
+        "layout is what enforces the separation rather than a convention: "
+        "NEVER_RESTORED resolves under the local directory and the document "
+        "resolves under the history directory, so the two cannot end up "
+        "beside each other by an edit to a relative path.",
     ),
-    StateFile(
-        key="recovery_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
-        medium=Medium.FILE,
-        relative="recovery.lock",
-        why=(
-            "The ONE gate a bare-metal recovery can still take. Every gate KTD21 "
-            "publishes is library-scoped on purpose, so that a second machine "
-            "contends with the first instead of holding an invisible lock of its "
-            "own. The cost is that all of them are unreachable when the library "
-            "volume is the thing that died, which is the one case a recovery "
-            "exists for. This is the substitute, and it is installation-scoped "
-            "because with the library gone the only contention that can exist is "
-            "between processes on this machine: there is no shared volume left "
-            "for two machines to contend over."
-            " NEVER_RESTORED for the inode reason every lock here shares, and "
-            "trivially so: it is installation-scoped, and a library snapshot has "
-            "no business reaching outside the library at all."
-        ),
+    _installation(
+        "recovery_lock", "recovery.lock",
+        "The ONE gate a bare-metal recovery can still take. Every gate KTD21 "
+        "publishes is library-scoped on purpose, so that a second machine "
+        "contends with the first instead of holding an invisible lock of its "
+        "own. The cost is that all of them are unreachable when the library "
+        "volume is the thing that died, which is the one case a recovery "
+        "exists for. This is the substitute, and it is installation-scoped "
+        "because with the library gone the only contention that can exist is "
+        "between processes on this machine: there is no shared volume left "
+        "for two machines to contend over."
+        " NEVER_RESTORED for the inode reason every lock here shares, and "
+        "trivially so: it is installation-scoped, and a library snapshot has "
+        "no business reaching outside the library at all.",
     ),
     # Appended, for the reason above.
-    StateFile(
-        key="adoption_ledger",
-        snapshot=SnapshotRole.COUPLED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="adoption_ledger.json",
+    _library(
+        "adoption_ledger", "adoption_ledger.json", SnapshotRole.COUPLED,
+        "Which entries of an approved adoption plan have already been applied "
+        "to this library. R26 says a plan applies incrementally and resumably, "
+        "and resumably across SESSIONS, so the record has to outlive the "
+        "process that made it. Losing it to a reinstall re-applies a plan from "
+        "its first item against a library that already holds most of it."
+        " COUPLED: every record it holds names a playlist membership row a "
+        "restore rolls back. A ledger that survived a rollback would report "
+        "those entries applied while the rows were gone, and the resume would "
+        "then skip exactly the work the restore undid.",
         # Every COUPLED entry names its effect; tests/test_restore.py checks.
         rollback_effects=(RollbackEffect.WRITTEN_FILE_TAG,),
-        why=(
-            "Which entries of an approved adoption plan have already been applied "
-            "to this library. R26 says a plan applies incrementally and resumably, "
-            "and resumably across SESSIONS, so the record has to outlive the "
-            "process that made it. Losing it to a reinstall re-applies a plan from "
-            "its first item against a library that already holds most of it."
-            " COUPLED: every record it holds names a playlist membership row a "
-            "restore rolls back. A ledger that survived a rollback would report "
-            "those entries applied while the rows were gone, and the resume would "
-            "then skip exactly the work the restore undid."
-        ),
     ),
-    StateFile(
-        key="adoption_tag_revert_log",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="adoption_tag_revert.json",
-        why=(
-            "The only surviving copy of each file's tag value from before adoption "
-            "overwrote it on disk. A tag write is the one thing an adoption run "
-            "does that the XML re-import safety net never covered: re-importing an "
-            "export does not put a genre string back into a file. A reinstall that "
-            "loses this makes every on-disk write permanent."
-            " NEVER_RESTORED, and this is the third entry to carry that argument "
-            "for the same reason the two undo logs already here do: the writes it "
-            "reverses landed on FILES, a database restore does not undo a file "
-            "write, and discarding the log would make them permanent. Rolling this "
-            "back is not a stale record, it is data loss."
-            " ITS OWN ENTRY RATHER THAN THE ADOPTION LEDGER'S FIELD, because the "
-            "two answer to opposite snapshot roles and one file cannot be both."
-        ),
+    _library(
+        "adoption_tag_revert_log", "adoption_tag_revert.json", SnapshotRole.NEVER_RESTORED,
+        "The only surviving copy of each file's tag value from before adoption "
+        "overwrote it on disk. A tag write is the one thing an adoption run "
+        "does that the XML re-import safety net never covered: re-importing an "
+        "export does not put a genre string back into a file. A reinstall that "
+        "loses this makes every on-disk write permanent."
+        " NEVER_RESTORED, and this is the third entry to carry that argument "
+        "for the same reason the two undo logs already here do: the writes it "
+        "reverses landed on FILES, a database restore does not undo a file "
+        "write, and discarding the log would make them permanent. Rolling this "
+        "back is not a stale record, it is data loss."
+        " ITS OWN ENTRY RATHER THAN THE ADOPTION LEDGER'S FIELD, because the "
+        "two answer to opposite snapshot roles and one file cannot be both.",
     ),
-    StateFile(
-        key="adoption_locks",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
+    _library(
+        "adoption_locks", "adoption_locks", SnapshotRole.NEVER_RESTORED,
+        "One sibling lock per adoption document, serializing the read then "
+        "write each of them performs. An atomic rename makes the WRITE atomic "
+        "and does nothing for the cycle around it: two processes both read the "
+        "same set, both add their record, and the second rename discards the "
+        "first while the call that lost reports success. A dropped applied "
+        "record re-applies work, and a dropped revert record loses the only "
+        "copy of an overwritten tag. Library-scoped because the documents are: "
+        "a lock in a per-installation directory is invisible to the second "
+        "machine editing the same library."
+        " NEVER_RESTORED for the inode reason every lock here shares, and it "
+        "is why this is a directory of its own rather than a file beside each "
+        "document: the ledger is COUPLED, so a restore replaces the directory "
+        "holding it, and a lock inside that directory would have its inode "
+        "swapped under every process holding it."
+        " A DIRECTORY rather than one entry per document, so a third adoption "
+        "document cannot arrive without a lock.",
         medium=Medium.DIRECTORY,
-        relative="adoption_locks",
-        why=(
-            "One sibling lock per adoption document, serializing the read then "
-            "write each of them performs. An atomic rename makes the WRITE atomic "
-            "and does nothing for the cycle around it: two processes both read the "
-            "same set, both add their record, and the second rename discards the "
-            "first while the call that lost reports success. A dropped applied "
-            "record re-applies work, and a dropped revert record loses the only "
-            "copy of an overwritten tag. Library-scoped because the documents are: "
-            "a lock in a per-installation directory is invisible to the second "
-            "machine editing the same library."
-            " NEVER_RESTORED for the inode reason every lock here shares, and it "
-            "is why this is a directory of its own rather than a file beside each "
-            "document: the ledger is COUPLED, so a restore replaces the directory "
-            "holding it, and a lock inside that directory would have its inode "
-            "swapped under every process holding it."
-            " A DIRECTORY rather than one entry per document, so a third adoption "
-            "document cannot arrive without a lock."
-        ),
     ),
     # U33's entries, appended for the reason above.
-    StateFile(
-        key="outbound_writes",
-        snapshot=SnapshotRole.SURVIVES_ROLLBACK,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="outbound_writes.json",
-        why=(
-            "The remote identifiers a playlist export or a heart-back already "
-            "wrote on THIS library's streaming account. A second install that "
-            "lost it would create a second remote playlist for a crate that "
-            "already has one, and would re-heart tracks the account already "
-            "hearts. Library-scoped because the records name this library's "
-            "playlists and favourites, not the machine."
-            " It SURVIVES a rollback: the remote account does not roll back, "
-            "and forgetting a remote playlist id is how the next export "
-            "duplicates one. Coupled would be the wrong role, because a "
-            "restore of the database must not make the next export create."
-        ),
+    _library(
+        "outbound_writes", "outbound_writes.json", SnapshotRole.SURVIVES_ROLLBACK,
+        "The remote identifiers a playlist export or a heart-back already "
+        "wrote on THIS library's streaming account. A second install that "
+        "lost it would create a second remote playlist for a crate that "
+        "already has one, and would re-heart tracks the account already "
+        "hearts. Library-scoped because the records name this library's "
+        "playlists and favourites, not the machine."
+        " It SURVIVES a rollback: the remote account does not roll back, "
+        "and forgetting a remote playlist id is how the next export "
+        "duplicates one. Coupled would be the wrong role, because a "
+        "restore of the database must not make the next export create.",
     ),
-    StateFile(
-        key="outbound_writes_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="outbound_writes.lock",
-        why=(
-            "The sibling lock for the outbound write ledger. Two exports "
-            "finishing at once would both miss the same remote id, both "
-            "create, and the second rename would discard the first playlist "
-            "while reporting success. Library-scoped for the reason the "
-            "document is: a lock in a per-installation directory is invisible "
-            "to a second machine editing the same library. NEVER_RESTORED "
-            "for the inode reason every lock here shares."
-        ),
+    _library(
+        "outbound_writes_lock", "outbound_writes.lock", SnapshotRole.NEVER_RESTORED,
+        "The sibling lock for the outbound write ledger. Two exports "
+        "finishing at once would both miss the same remote id, both "
+        "create, and the second rename would discard the first playlist "
+        "while reporting success. Library-scoped for the reason the "
+        "document is: a lock in a per-installation directory is invisible "
+        "to a second machine editing the same library. NEVER_RESTORED "
+        "for the inode reason every lock here shares.",
     ),
     # U130's entries, appended.
-    StateFile(
-        key="playlist_pairs",
-        snapshot=SnapshotRole.SURVIVES_ROLLBACK,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="playlist_pairs.json",
-        why=(
-            "U130. Every account playlist the author marked to stay the same "
-            "list as one rekordbox playlist, by both identifiers, with what "
-            "each side held when the last sync finished. The next sync merges "
-            "each side against that snapshot, so a lost document makes every "
-            "pair's next sync a first one, which adds and never removes."
-            " It SURVIVES a rollback for the outbound ledger's reason: the "
-            "account does not roll back, and a snapshot older than the account "
-            "would read the account's current tracks as additions."
-        ),
+    _library(
+        "playlist_pairs", "playlist_pairs.json", SnapshotRole.SURVIVES_ROLLBACK,
+        "U130. Every account playlist the author marked to stay the same "
+        "list as one rekordbox playlist, by both identifiers, with what "
+        "each side held when the last sync finished. The next sync merges "
+        "each side against that snapshot, so a lost document makes every "
+        "pair's next sync a first one, which adds and never removes."
+        " It SURVIVES a rollback for the outbound ledger's reason: the "
+        "account does not roll back, and a snapshot older than the account "
+        "would read the account's current tracks as additions.",
     ),
-    StateFile(
-        key="playlist_pairs_lock",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
-        medium=Medium.FILE,
-        relative="playlist_pairs.lock",
-        why=(
-            "The sibling lock for the playlist pairs, which are a read then a "
-            "write over one document. Two syncs recording at once would both "
-            "read the same document and the second would discard the first "
-            "one's snapshot. NEVER_RESTORED for the inode reason every lock "
-            "here shares."
-        ),
+    _library(
+        "playlist_pairs_lock", "playlist_pairs.lock", SnapshotRole.NEVER_RESTORED,
+        "The sibling lock for the playlist pairs, which are a read then a "
+        "write over one document. Two syncs recording at once would both "
+        "read the same document and the second would discard the first "
+        "one's snapshot. NEVER_RESTORED for the inode reason every lock "
+        "here shares.",
     ),
-    StateFile(
-        key="mirror_plans",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
+    _library(
+        "mirror_plans", "mirror_plans", SnapshotRole.NEVER_RESTORED,
+        "The account mirror's plan frozen on the organize run whose gate it "
+        "was shown at, one JSON file per run: the library it read and every "
+        "match it made (R-1031). The run that applies rebuilds the mirror "
+        "from it, reading the account listing alone, so the digest approved "
+        "is the digest applied and a library write between the two acts "
+        "does not stale the decision. Library-scoped because it names this "
+        "library's content rows. NEVER_RESTORED for the run record's "
+        "reason: a frozen plan belongs to a run, and restoring one would "
+        "apply a plan nobody was shown against the restored library.",
         medium=Medium.DIRECTORY,
-        relative="mirror_plans",
-        why=(
-            "The account mirror's plan frozen on the organize run whose gate it "
-            "was shown at, one JSON file per run: the library it read and every "
-            "match it made (R-1031). The run that applies rebuilds the mirror "
-            "from it, reading the account listing alone, so the digest approved "
-            "is the digest applied and a library write between the two acts "
-            "does not stale the decision. Library-scoped because it names this "
-            "library's content rows. NEVER_RESTORED for the run record's "
-            "reason: a frozen plan belongs to a run, and restoring one would "
-            "apply a plan nobody was shown against the restored library."
-        ),
     ),
-    StateFile(
-        key="rehearsal_areas",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.LIBRARY,
+    _library(
+        "rehearsal_areas", "rehearsals", SnapshotRole.NEVER_RESTORED,
+        "The volume half of each rehearsal's scratch area, one folder per "
+        "run (U162): a copy of the database file set, a copy of the library "
+        "state it reads, and clones of the files the verb moves. On the "
+        "library volume so a clone stays a clone. Removed when the "
+        "rehearsal ends and kept, named, only when it failed. "
+        "NEVER_RESTORED: a scratch copy is nobody's state, and restoring one "
+        "would put a rehearsal's files back beside a library that never "
+        "had them.",
         medium=Medium.DIRECTORY,
-        relative="rehearsals",
-        why=(
-            "The volume half of each rehearsal's scratch area, one folder per "
-            "run (U162): a copy of the database file set, a copy of the library "
-            "state it reads, and clones of the files the verb moves. On the "
-            "library volume so a clone stays a clone. Removed when the "
-            "rehearsal ends and kept, named, only when it failed. "
-            "NEVER_RESTORED: a scratch copy is nobody's state, and restoring one "
-            "would put a rehearsal's files back beside a library that never "
-            "had them."
-        ),
     ),
-    StateFile(
-        key="rehearsals",
-        snapshot=SnapshotRole.NEVER_RESTORED,
-        root=StateRoot.INSTALLATION,
+    _installation(
+        "rehearsals", "rehearsals",
+        "The local half of each rehearsal's scratch area, the redirected "
+        "config and installation state a rehearsal runs under, and one "
+        "record per finished rehearsal, its plan digest and plan lines, "
+        "which the live run of the same verb over the same input compares "
+        "its own plan against (U162). Installation-scoped beside the run "
+        "records, since a rehearsal is a run on this machine.",
         medium=Medium.DIRECTORY,
-        relative="rehearsals",
-        why=(
-            "The local half of each rehearsal's scratch area, the redirected "
-            "config and installation state a rehearsal runs under, and one "
-            "record per finished rehearsal, its plan digest and plan lines, "
-            "which the live run of the same verb over the same input compares "
-            "its own plan against (U162). Installation-scoped beside the run "
-            "records, since a rehearsal is a run on this machine."
-        ),
     ),
 )
 
