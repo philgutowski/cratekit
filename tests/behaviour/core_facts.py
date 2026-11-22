@@ -24,7 +24,8 @@ GIB = 1024**3
 
 def _caught(call) -> object:
     try:
-        return {"returned": repr(call())}
+        value = call()
+        return {"returned": getattr(value, "status_code", None) or repr(value)}
     except CratekitError as error:
         return error.cause.to_json()
     except Exception as error:  # noqa: BLE001, the capture holds what each refusal is
