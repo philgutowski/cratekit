@@ -1,0 +1,814 @@
+name = "u304-replay-before-h1"
+pass_kind = "replay"
+
+[[rows]]
+id = "r1446-c.F3_readable_ids_weighed_as_unread"
+source = { table = "r1446-c.json", id = "F3_readable_ids_weighed_as_unread" }
+description = "the shared run unweighted, so it may keep unread ids in place of a readable one and read the wrong unread track as moved"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py"]
+old = '        value = top[0] + (1 if one in left_out else heavy)'
+new = '        value = top[0] + 1'
+
+[[rows]]
+id = "r1446.M10_kept_order_with_unread"
+source = { table = "r1446.json", id = "M10_kept_order_with_unread" }
+description = "the settled reading compared with its unread ids in place, so a move of an unread track alone still reads as a reorder"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_repair_rows.py"]
+old = '        [one for one in kept.order if one not in left_out], readable'
+new = '        list(kept.order), readable'
+
+[[rows]]
+id = "r1446.M14_plan_flag_dropped"
+source = { table = "r1446.json", id = "M14_plan_flag_dropped" }
+description = "the plan never carries the flag, so the gate says the stopped order takes the unread track where it was taking it and never that only unread tracks moved"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '        stop_unread_moved=unread_moved,'
+new = '        stop_unread_moved=False,'
+
+[[rows]]
+id = "r1446.M1_no_readable_check"
+source = { table = "r1446.json", id = "M1_no_readable_check" }
+description = "the card's row: a reorder read after a stop stands whatever it moved, so a settled move of an unread track alone lets the account lead and undoes rekordbox's reorder"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''
+            reordered_since_stop
+            and unread
+            and not _readable_moved('''
+new = '''
+            False
+            and unread
+            and not _readable_moved('''
+
+[[rows]]
+id = "r1446.M4_unread_moved_not_set"
+source = { table = "r1446.json", id = "M4_unread_moved_not_set" }
+description = "the flag never set, so the finish places the moved unread track by the stopped write's target, over the person's place, and the gate says the stopped order takes it there"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''
+            moved_nothing = False
+            unread_moved = True'''
+new = '            moved_nothing = False'
+
+[[rows]]
+id = "r1446.M8_no_settled_reading_reads_no_move"
+source = { table = "r1446.json", id = "M8_no_settled_reading_reads_no_move" }
+description = "with no settled reading kept, the reorder is read as moving no readable track, so a reorder U234 read is dropped"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''
+    if kept is None or not kept.settled:
+        return True'''
+new = '''
+    if kept is None or not kept.settled:
+        return False'''
+
+[[rows]]
+id = "r1446.M9_unsettled_reading_compared"
+source = { table = "r1446.json", id = "M9_unsettled_reading_compared" }
+description = "an unsettled kept reading compared as though settled; unreachable while U234 reads a reorder only from a settled one"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "maintainer"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '    if kept is None or not kept.settled:'
+new = '    if kept is None:'
+
+[[rows]]
+id = "r1446.S1_u234_settled_reorder_never_leads"
+source = { table = "r1446.json", id = "S1_u234_settled_reorder_never_leads" }
+description = "sample, U234: a reorder settled readings show never leads"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''
+        and _now() - since >= AGREE_AFTER
+    ):
+        return True'''
+new = '''
+        and _now() - since >= AGREE_AFTER
+    ):
+        return False'''
+
+[[rows]]
+id = "r1446.S3_u225_finish_whatever_was_read"
+source = { table = "r1446.json", id = "S3_u225_finish_whatever_was_read" }
+description = "sample, U225: the stop finished even when a reorder was read"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '    if stopped_write is not None and not reordered_since_stop:'
+new = '    if stopped_write is not None:'
+
+[[rows]]
+id = "r1453.S4_unread_keys_keep_a_readable_release"
+source = { table = "r1453.json", id = "S4_unread_keys_keep_a_readable_release" }
+description = "the brief's row, R-1434's S4: the unread keys keep a key a readable release carries, so a row held as an unread release and a readable one is unread, left out of the order and its removal not read"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '    unread_keys = {alias(remote_id) for remote_id in unread} - readable_keys'
+new = '    unread_keys = {alias(remote_id) for remote_id in unread}'
+
+[[rows]]
+id = "r1453.U1_unread_keys_unaliased"
+source = { table = "r1453.json", id = "U1_unread_keys_unaliased" }
+description = "a nearby value: the unread keys read by each release's own key rather than its row's, so an unread release of a row held twice never meets the readable release's key"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '    unread_keys = {alias(remote_id) for remote_id in unread} - readable_keys'
+new = '    unread_keys = {remote_key(remote_id) for remote_id in unread} - readable_keys'
+
+[[rows]]
+id = "r1453.U2_base_keeps_unread_keys"
+source = { table = "r1453.json", id = "U2_base_keeps_unread_keys" }
+description = "R-1264's base strip gone: the base keeps an unread key, so an unread track is read as taken off the account"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''
+        if unread_keys:
+            unseen |= {key for key in base_account if key in unread_keys}'''
+new = '''
+        if False:
+            unseen |= {key for key in base_account if key in unread_keys}'''
+
+[[rows]]
+id = "r1453.U4_removal_takes_only_the_linked_release"
+source = { table = "r1453.json", id = "U4_removal_takes_only_the_linked_release" }
+description = "U208's every release of a removed track goes, narrowed to the key's own release, so the readable release of a row held twice stays on the account"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '                    [held for held in account_now if alias(held) == key] or [remote_of(key)]'
+new = '                    [remote_of(key)]'
+
+[[rows]]
+id = "r1453.U5_account_keys_take_unread_only_rows"
+source = { table = "r1453.json", id = "U5_account_keys_take_unread_only_rows" }
+description = "the account's keys read every listed id, an unread only row included, so it is placed by the merge as a readable row"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''
+            for remote_id in (listed_order or account_now)
+            if alias(remote_id) in readable_keys'''
+new = '            for remote_id in (listed_order or account_now)'
+
+[[rows]]
+id = "u130-b.B1_short_base_unnarrowed"
+source = { table = "u130-b.json", id = "B1_short_base_unnarrowed" }
+description = "A short listing's withheld tracks read as removed on the account"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''
+        if short is not None:
+            # A WITHHELD TRACK IS NOT A REMOVED ONE.'''
+new = '''
+        if False:
+            # A WITHHELD TRACK IS NOT A REMOVED ONE.'''
+
+[[rows]]
+id = "u130-b.B3_account_isrc_not_first"
+source = { table = "u130-b.json", id = "B3_account_isrc_not_first" }
+description = "Ask the provider even when exactly one account track carries the row's ISRC"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '            if isrc and len(held_there) == 1:'
+new = '            if False:'
+
+[[rows]]
+id = "u130-b.B4_no_isrc_still_asked"
+source = { table = "u130-b.json", id = "B4_no_isrc_still_asked" }
+description = "A row with no ISRC anywhere is still matched through the provider"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''
+            elif not isrc:
+                reason = NO_ISRC'''
+new = '''
+            elif False:
+                reason = NO_ISRC'''
+
+[[rows]]
+id = "u130-b.B5_readd_old_rule"
+source = { table = "u130-b.json", id = "B5_readd_old_rule" }
+description = "A re-add is any change of the first row, so a duplicate losing one copy reads as put back"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '            if content_id in base_rows and not (row_ids & base_rows[content_id])'
+new = '            if content_id in base_rows and row_ids != base_rows[content_id]'
+
+[[rows]]
+id = "u130-b.B6_requeue"
+source = { table = "u130-b.json", id = "B6_requeue" }
+description = "A track an earlier sync queued is queued again"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '        if remote_id in queued_before:'
+new = '        if False:'
+
+[[rows]]
+id = "u130-b.B7_set_playlist_in_scope"
+source = { table = "u130-b.json", id = "B7_set_playlist_in_scope" }
+description = "A set's playlist may be paired"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '    if account_id in set_built:'
+new = '    if False:'
+
+[[rows]]
+id = "u130-b.B8_tree_name_in_scope"
+source = { table = "u130-b.json", id = "B8_tree_name_in_scope" }
+description = "A playlist under a top level node the taxonomy names is in scope"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '    if any(node_id in roots for node_id, _name in chain) or top_name in names:'
+new = '    if any(node_id in roots for node_id, _name in chain):'
+
+[[rows]]
+id = "u130-b.B9_stale_pair_blocks_all"
+source = { table = "u130-b.json", id = "B9_stale_pair_blocks_all" }
+description = "With no argument, one pair whose playlist is gone refuses every pair"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '                if not every or exc.cause.reason not in PER_PAIR_REASONS:'
+new = '                if True:'
+
+[[rows]]
+id = "u130-c.C1_half_written_snapshot"
+source = { table = "u130-c.json", id = "C1_half_written_snapshot" }
+description = "Record the snapshot when either side was written, not both"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '    whole = rekordbox_after is not None and account_after is not None and not one.withheld'
+new = '    whole = (rekordbox_after is not None or account_after is not None) and not one.withheld'
+
+[[rows]]
+id = "u147-c.M20_pair_scope"
+source = { table = "u147-c.json", id = "M20_pair_scope" }
+description = "sync.pair_cli._scope_account: a mirrored playlist may be paired"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_organize_mirror.py"]
+old = '    if account_id in mirrored:'
+new = '    if False:'
+
+[[rows]]
+id = "u198.C10_unpair_account_gone"
+source = { table = "u198.json", id = "C10_unpair_account_gone" }
+description = "plan: a made pair whose account playlist is gone is planned, not unpaired"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '            if pair is not None and (pair.twin or pair.made) and target.account_id not in listed:'
+new = '            if pair is not None and pair.twin and target.account_id not in listed:'
+
+[[rows]]
+id = "u198.C11_unpair_rekordbox_gone"
+source = { table = "u198.json", id = "C11_unpair_rekordbox_gone" }
+description = "plan: a made pair whose rekordbox playlist is gone is left out, not released"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '                if there is None or there.removed:'
+new = '                if False:'
+
+[[rows]]
+id = "u198.C12_archive_move"
+source = { table = "u198.json", id = "C12_archive_move" }
+description = "plan: a made pair moved under a skipped folder keeps syncing"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '                if moved:'
+new = '                if False:'
+
+[[rows]]
+id = "u198.C1_miss_reuse"
+source = { table = "u198.json", id = "C1_miss_reuse" }
+description = "pair_cli._ask: a remembered miss is never reused"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '    if held is not None and held.isrc == isrc and AGREEING_RELEASES not in held.reason:'
+new = '    if False:'
+
+[[rows]]
+id = "u198.C2_miss_isrc"
+source = { table = "u198.json", id = "C2_miss_isrc" }
+description = "pair_cli._ask: a remembered miss is reused whatever the row's ISRC"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '    if held is not None and held.isrc == isrc and AGREEING_RELEASES not in held.reason:'
+new = '    if held is not None and AGREEING_RELEASES not in held.reason:'
+
+[[rows]]
+id = "u198.C3_unread_remembered"
+source = { table = "u198.json", id = "C3_unread_remembered" }
+description = "pair_cli._ask: an unreadable candidate is remembered"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '    if UNREADABLE_CANDIDATE not in reason and AGREEING_RELEASES not in reason:'
+new = '    if AGREEING_RELEASES not in reason:'
+
+[[rows]]
+id = "u198.C4_tie_remembered"
+source = { table = "u198.json", id = "C4_tie_remembered" }
+description = "pair_cli._ask: a tie is remembered"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '    if UNREADABLE_CANDIDATE not in reason and AGREEING_RELEASES not in reason:'
+new = '    if UNREADABLE_CANDIDATE not in reason:'
+
+[[rows]]
+id = "u198.C5_folder_twice"
+source = { table = "u198.json", id = "C5_folder_twice" }
+description = "pair_cli._discovered: two root folders of the name adopt the first"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '            if len(named) > 1:'
+new = '            if len(named) > 2:'
+
+[[rows]]
+id = "u198.C6_folder_others"
+source = { table = "u198.json", id = "C6_folder_others" }
+description = "pair_cli._discovered: a folder another list keeps is adopted"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '            elif named and named[0] in others:'
+new = '            elif False:'
+
+[[rows]]
+id = "u198.C7_title_taken"
+source = { table = "u198.json", id = "C7_title_taken" }
+description = "pair_cli._discovered: a person's playlist of the title gets a second beside it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '            if one.title in taken:'
+new = '            if False:'
+
+[[rows]]
+id = "u198.C8_folder_gone"
+source = { table = "u198.json", id = "C8_folder_gone" }
+description = "pair_cli._discovered: a recorded folder is reused though the account deleted it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '        if recorded is not None and recorded.folder_id in root:'
+new = '        if recorded is not None:'
+
+[[rows]]
+id = "u198.C9_account_only"
+source = { table = "u198.json", id = "C9_account_only" }
+description = "apply_pair: a new pair is made when only rekordbox was approved"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''
+        if not account:
+            return done'''
+new = '''
+        if False:
+            return done'''
+
+[[rows]]
+id = "u202-composites.C10_reads_account"
+source = { table = "u202-composites.json", id = "C10_reads_account" }
+description = "plan: a sync of every pair with no marked pair never lists the account, so nothing comes back"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_back.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '    reads_account = bool(wanted) or (every and bool(document.folders))'
+new = '    reads_account = bool(wanted)'
+
+[[rows]]
+id = "u202-composites.C3_composite"
+source = { table = "u202-composites.json", id = "C3_composite" }
+description = "composite for C3_removed_only in u202.md: plan_pair never dates a rekordbox removal, so a removal later than the account's put back reads as no moment"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_back.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '                rekordbox_removed[as_key(content_id)] = max('
+new = '                _undated = max('
+
+[[rows]]
+id = "u202-composites.C8_scope"
+source = { table = "u202-composites.json", id = "C8_scope" }
+description = "_discovered_back: an account playlist a pair may not hold is brought over"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_back.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''
+            try:
+                _scope_account(
+                    account_id, reader.listed, reader.label_owned, reader.set_built, reader.mirrored
+                )
+            except CratekitError as exc:'''
+new = '''
+            try:
+                pass
+            except CratekitError as exc:'''
+
+[[rows]]
+id = "u202.C1_after_synced"
+source = { table = "u202.json", id = "C1_after_synced" }
+description = "plan_pair: an account date not after the base's sync still reads the track as put back"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_back.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''
+                    and now > was
+                    and now > synced'''
+new = '                    and now > was'
+
+[[rows]]
+id = "u202.C4_dates_recorded"
+source = { table = "u202.json", id = "C4_dates_recorded" }
+description = "_record: the account's added dates are never recorded with the snapshot"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_back.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''
+            if whole
+            else None
+        ),
+        rekordbox=('''
+new = '''
+            if False
+            else None
+        ),
+        rekordbox=('''
+
+[[rows]]
+id = "u202.C5_released"
+source = { table = "u202.json", id = "C5_released" }
+description = "_discovered_back: a released account playlist is made in rekordbox again"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_back.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '            if account_id in released:'
+new = '            if False:'
+
+[[rows]]
+id = "u202.C7_twice"
+source = { table = "u202.json", id = "C7_twice" }
+description = "_discovered_back: two account playlists of one rekordbox name are both made"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_back.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '        if many > 1:'
+new = '        if many > 2:'
+
+[[rows]]
+id = "u207.P1_pair_screens_remembered_miss"
+source = { table = "u207.json", id = "P1_pair_screens_remembered_miss" }
+description = "sync pair: a remembered miss's code is screened though it is never asked"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_isrc_screen.py"]
+old = '''
+        and _remembered_miss(reader, content_id, code) is None
+'''
+new = ''
+
+[[rows]]
+id = "u207.P2_pair_never_screens"
+source = { table = "u207.json", id = "P2_pair_never_screens" }
+description = "sync pair: the plan never screens, so every code is asked alone"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_isrc_screen.py"]
+old = '''
+    if asked:
+        reader.remote.screen_isrcs(asked)'''
+new = '''
+    if False:
+        reader.remote.screen_isrcs(asked)'''
+
+[[rows]]
+id = "u208.M10_here_database_only"
+source = { table = "u208.json", id = "M10_here_database_only" }
+description = "here: read only the database ISRC, never the row's file"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''
+            if code is None:
+                code = match.isrc_token(row.isrc) or file_identity(cfg, row.path)[0]
+            if code:
+                codes.setdefault(code, []).append(row.content_id)'''
+new = '''
+            if code is None:
+                code = match.isrc_token(row.isrc)
+            if code:
+                codes.setdefault(code, []).append(row.content_id)'''
+
+[[rows]]
+id = "u208.M11_alias_off"
+source = { table = "u208.json", id = "M11_alias_off" }
+description = "alias: read every account track as its own key, so two releases of one row are two keys again"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '        return aliased.get(remote_id) or remote_key(remote_id)'
+new = '        return remote_key(remote_id)'
+
+[[rows]]
+id = "u208.M18_held_there_asks_provider"
+source = { table = "u208.json", id = "M18_held_there_asks_provider" }
+description = "plan_pair: with several releases of the row on the account, ask the provider as round one did"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '            elif isrc and held_there:'
+new = '            elif False:'
+
+[[rows]]
+id = "u208.M1_ask_any_agreeing"
+source = { table = "u208.json", id = "M1_ask_any_agreeing" }
+description = "_ask: ask the account without any_agreeing, so a tie between agreeing releases is refused as before U208"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''
+            album=album,
+            any_agreeing=True,
+        )
+        or ""'''
+new = '''
+            album=album,
+            any_agreeing=False,
+        )
+        or ""'''
+
+[[rows]]
+id = "u208.M24_alias_unfrozen"
+source = { table = "u208.json", id = "M24_alias_unfrozen" }
+description = "alias: read the links live, as the first fix round did, so a link the library lookup makes after the merge changes the key space"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '        return aliased.get(remote_id) or remote_key(remote_id)'
+new = '        return remote_key(canon[known[remote_id]]) if known.get(remote_id) in canon else remote_key(remote_id)'
+
+[[rows]]
+id = "u208.M2_old_tie_miss_reused"
+source = { table = "u208.json", id = "M2_old_tie_miss_reused" }
+description = "_ask: reuse a miss remembered with the tie's words, so a tie remembered before U208 is never asked again nor linked"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '    if held is not None and held.isrc == isrc and AGREEING_RELEASES not in held.reason:'
+new = '    if held is not None and held.isrc == isrc:'
+
+[[rows]]
+id = "u208.M4_tie_flag_dropped"
+source = { table = "u208.json", id = "M4_tie_flag_dropped" }
+description = "_ask: never say a tie was broken, so the gate counts none"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py"]
+old = '        return remote_id, "", bool(remote.tie_broken(row.content_id))'
+new = '        return remote_id, "", False'
+
+[[rows]]
+id = "u208.M5_tied_rows_not_gathered"
+source = { table = "u208.json", id = "M5_tied_rows_not_gathered" }
+description = "plan_pair: gather no tied rows, so the facts line, the totals and the item flag say nothing"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py"]
+old = '''
+        elif broke:
+            tied.append(names[key])'''
+new = '''
+        elif False:
+            tied.append(names[key])'''
+
+[[rows]]
+id = "u208.M6_facts_line_dropped"
+source = { table = "u208.json", id = "M6_facts_line_dropped" }
+description = "facts: leave the broken tie count off the pair's line on the gate"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py"]
+old = '''
+                if one.tied
+                else ""'''
+new = '''
+                if False
+                else ""'''
+
+[[rows]]
+id = "u208.M7_totals_tied_zero"
+source = { table = "u208.json", id = "M7_totals_tied_zero" }
+description = "payload: report totals.tied as zero whatever the plan broke"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py"]
+old = '            "tied": sum(len(one.tied) for one in planned.pairs),'
+new = '            "tied": 0,'
+
+[[rows]]
+id = "u208.M8_item_flag_dropped"
+source = { table = "u208.json", id = "M8_item_flag_dropped" }
+description = "_items: mark no account add as chosen by a broken tie"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py"]
+old = '                **({"tied": True} if remote_id in broken else {}),'
+new = '                **({}),'
+
+[[rows]]
+id = "u208.M9_here_lookup_dropped"
+source = { table = "u208.json", id = "M9_here_lookup_dropped" }
+description = "_owned: never look among the pair's own rows, so a sibling of a file ISRC row is queued for acquisition"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '    if rest and here is not None:'
+new = '    if False:'
+
+[[rows]]
+id = "u209.C10_reverse_recheck"
+source = { table = "u209.json", id = "C10_reverse_recheck" }
+description = "check: run no recheck of a made rekordbox side's home before the write"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '                    pair_reverse.recheck(db, one.home, one.change.order)'
+new = '                    pass'
+
+[[rows]]
+id = "u209.C11_home_of"
+source = { table = "u209.json", id = "C11_home_of" }
+description = "check: compare no home a made rekordbox side goes to with the plan's"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '                if now != one.home:'
+new = '                if False:'
+
+[[rows]]
+id = "u209.C12_brought_folder"
+source = { table = "u209.json", id = "C12_brought_folder" }
+description = "check: read no brought playlist taken out of its account folder"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '            if listing.get(one.target.account_id) != one.target.title:'
+new = '            if False:'
+
+[[rows]]
+id = "u209.C13_jobs_queued"
+source = { table = "u209.json", id = "C13_jobs_queued" }
+description = "check: read no acquisitions another sync queued since the plan"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '            again = sorted(set(one.acquire) & now)'
+new = '            again = []'
+
+[[rows]]
+id = "u209.C3_withheld"
+source = { table = "u209.json", id = "C3_withheld" }
+description = "check: read no change in the account's withheld count"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '            elif withheld != one.withheld:'
+new = '            elif False:'
+
+[[rows]]
+id = "u209.C4_rekordbox_gone"
+source = { table = "u209.json", id = "C4_rekordbox_gone" }
+description = "check: read no rekordbox playlist deleted or turned into a folder"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''
+            if there is None or there.removed or not there.plain:
+                moved.append(
+                    Moved(
+                        REKORDBOX_SIDE,
+                        one.target.rekordbox_id,'''
+new = '''
+            if there is None:
+                moved.append(
+                    Moved(
+                        REKORDBOX_SIDE,
+                        one.target.rekordbox_id,'''
+
+[[rows]]
+id = "u209.C5_memberships"
+source = { table = "u209.json", id = "C5_memberships" }
+description = "check: read no moved rekordbox membership"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '            if there.memberships() != tuple(tuple(row) for row in one.rekordbox_before):'
+new = '            if False:'
+
+[[rows]]
+id = "u209.C6_discovered_place"
+source = { table = "u209.json", id = "C6_discovered_place" }
+description = "check: read no move of a discovered playlist's place"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '                if now_found is None or (now_found.folder, now_found.title) != ('
+new = '                if False and (now_found.folder, now_found.title) != ('
+
+[[rows]]
+id = "u209.C7_made_left_behind"
+source = { table = "u209.json", id = "C7_made_left_behind" }
+description = "check: read no made pair dragged where no pair is kept"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''
+                why = pair_discover.left_behind(db, there, favorites=favorites, skip=skip)
+                if why:'''
+new = '''
+                why = pair_discover.left_behind(db, there, favorites=favorites, skip=skip)
+                if False:'''
+
+[[rows]]
+id = "u209.C8_rows_gone"
+source = { table = "u209.json", id = "C8_rows_gone" }
+description = "check: read no row the plan adds gone from the collection"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '            gone = sorted(set(one.change.adds) - set(playlist_pair.content(db, one.change.adds)))'
+new = '            gone = []'
+
+[[rows]]
+id = "u209.C9_unpaired_back"
+source = { table = "u209.json", id = "C9_unpaired_back" }
+description = "check: read no let go playlist back where its pair is kept"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '            if not pair_discover.left_behind(db, there, favorites=favorites, skip=skip):'
+new = '            if False:'
+
+[[rows]]
+id = "u209.H1_offer_mismatch_ignored"
+source = { table = "u209.json", id = "H1_offer_mismatch_ignored" }
+description = "_held_plan: read back a held plan whatever offer the run recorded"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''
+    if moved:
+        return None, 0, f"the held plan is not the plan {', '.join(moved)} showed"'''
+new = '''
+    if False:
+        return None, 0, f"the held plan is not the plan {', '.join(moved)} showed"'''
+
+[[rows]]
+id = "u210.R10_check_todo"
+source = { table = "u210.json", id = "R10_check_todo" }
+description = "check: read every pair, a finished one included"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '    todo = [one for one in planned.pairs if not of(one).has(STEP_DONE)]'
+new = '    todo = list(planned.pairs)'
+
+[[rows]]
+id = "u210.R11_part_written"
+source = { table = "u210.json", id = "R11_part_written" }
+description = "check: read a part written existing pair exactly, as one not started"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '            if one.target.new or of(one).has(STEP_ACCOUNT):'
+new = '            if one.target.new:'
