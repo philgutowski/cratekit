@@ -2,24 +2,6 @@ name = "u326"
 pass_kind = "light"
 
 [[rows]]
-id = "R1_roots_inside_base_temp"
-description = "_fresh_root: make each isolation root in the system temporary directory, outside the base temp R-926's write root names"
-file = "tests/conftest.py"
-surface = "maintainer"
-tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_isolation_survives_undo.py"]
-old = '''    return Path(tempfile.mkdtemp(prefix=prefix, dir=base))'''
-new = '''    return Path(tempfile.mkdtemp(prefix=prefix))'''
-
-[[rows]]
-id = "R2_state_root_per_test"
-description = "_isolate_state_roots: hand every test in a worker the one shared isolation directory as its state root"
-file = "tests/conftest.py"
-surface = "maintainer"
-tests = ["tests/test_isolation_survives_undo.py", "tests/test_config_test_root.py"]
-old = '''    root = _fresh_root(_isolation_base, "state_roots")'''
-new = '''    root = _isolation_base'''
-
-[[rows]]
 id = "R3_library_root_redirected"
 description = "_block_real_library_paths: leave CRATEKIT_LIBRARY_ROOT as the process found it, the no real library path detonator"
 file = "tests/conftest.py"

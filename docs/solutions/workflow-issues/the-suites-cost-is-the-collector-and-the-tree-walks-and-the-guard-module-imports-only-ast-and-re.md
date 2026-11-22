@@ -48,8 +48,15 @@ per question.
   a rule. A memo keyed on a source text, a `hashlib` digest, `weakref` and
   `collections.deque` are all refused there. U326 dropped a text keyed memo
   for this reason and held the walk cache to one module by identity.
-- **`tmp_path_factory.mktemp` lists the whole base temp** to find its next
-  number, so a per test fixture using it pays a listing that grows with every
-  test the worker ran. `tempfile.mkdtemp` under one session directory lists
-  nothing. On this container's filesystem the listing was cheap at the suite's
-  scale; it grows linearly all the same.
+- **Leave the per test roots where `tmp_path_factory.mktemp` puts them.**
+  It lists the whole base temp to number each directory, a cost that grows
+  with every test a worker ran, and U326 moved the state root and the library
+  root into one subdirectory made by `tempfile.mkdtemp` to avoid it. On this
+  container's filesystem the listing was cheap at the suite's scale, and the
+  move changed where ext4 placed every test's own directory:
+  `tests/test_repair_rows.py::test_an_id_above_the_bound_that_is_the_files_inode_is_not_random`
+  passes on Linux only when its file's inode lands above 2,000,000, which a
+  base temp filling its block group with three directories a test happens to
+  give it, and it failed in four of nine branch runs against none of seven on
+  the base. The move was reverted. A layout change to the base temp moves the
+  machine's failures, so read the full suite on it several times.
