@@ -141,16 +141,12 @@ def test_the_parser_accepts_the_whole_declared_argument_shape():
     assert (args.output_dir, args.overwrite, args.job, args.lufs) == ("/tmp/out", True, None, None)
 
 
-def test_the_verb_is_absent_from_a_slim_profile(configured):
-    """R1's second half. The toggle decides, so this is a property of the entry."""
+def test_the_entry_is_landed_declares_no_gate_and_is_absent_from_a_slim_profile(configured):
+    """R1's second half: the toggle decides, so this is a property of the entry."""
     del configured
-    assert not _entry().available_to(profiles.resolve("slim"))
-    assert _entry().available_to(profiles.resolve("full"))
-
-
-def test_the_entry_is_landed_and_declares_no_gate():
-    """Both halves matter and they are different claims."""
     entry = _entry()
+    assert not entry.available_to(profiles.resolve("slim"))
+    assert entry.available_to(profiles.resolve("full"))
     assert entry.landed and entry.gates == ()
     assert entry.long_running and entry.argv_builder == "master_argv"
     assert entry.destructive and entry.writes == frozenset({"files"})
@@ -178,11 +174,15 @@ def test_queueing_exits_ok_with_no_ffmpeg_and_no_recording(configured):
     assert envelope["data"]["job_id"]
 
 
-def test_an_empty_recording_refuses_from_the_vocabulary(configured):
+def test_an_empty_recording_and_an_unknown_job_refuse_from_the_vocabulary(configured):
     del configured
     code, envelope = _drive(["master", ""])
     assert code == int(ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "source-missing"
+    code, envelope = _drive(["master", "/tmp/a.wav", "--job", "no-such-job"])
+    assert code != int(ExitCode.OK)
+    assert code in {int(c) for c in ExitCode}
+    assert envelope["cause"]["reason"] == "job-unknown"
 
 
 def test_naming_a_job_reports_it_rather_than_queueing_a_second(configured, monkeypatch):
@@ -198,14 +198,6 @@ def test_naming_a_job_reports_it_rather_than_queueing_a_second(configured, monke
     assert again["data"]["job_id"] == job_id
     with jobs.open_store() as store:
         assert len(jobs.list_jobs(store)) == 1
-
-
-def test_an_unknown_job_refuses_rather_than_raising(configured):
-    del configured
-    code, envelope = _drive(["master", "/tmp/a.wav", "--job", "no-such-job"])
-    assert code != int(ExitCode.OK)
-    assert code in {int(c) for c in ExitCode}
-    assert envelope["cause"]["reason"] == "job-unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -233,11 +225,10 @@ def test_the_resume_argv_rebuilds_every_frozen_flag_and_omits_absent_ones():
     assert argv[:2] == ["master", "/tmp/REC001.wav"]
     assert "--job" in argv
 
-
-def test_the_resume_argv_carries_no_run_flag():
-    """The verb declares no gate, so there is no run for --run to name."""
+    # No --run, since the verb declares no gate, and a payload missing keys still builds.
     argv = master_cli.master_argv(_Job({"source": "/tmp/a.wav", jobs.GATE_RUN_KEY: "r-1"}))
     assert "--run" not in argv
+    assert master_cli.master_argv(_Job({"source": "/tmp/a.wav"}))[:2] == ["master", "/tmp/a.wav"]
 
 
 def test_an_empty_output_dir_and_an_omitted_one_freeze_identically():
@@ -245,11 +236,6 @@ def test_an_empty_output_dir_and_an_omitted_one_freeze_identically():
     empty = master_cli.frozen_payload("/tmp/a.wav", "", False)
     assert empty == master_cli.frozen_payload("/tmp/a.wav", None, False)
     assert "--output-dir" not in master_cli.master_argv(_Job(empty))
-
-
-def test_a_payload_missing_this_builds_keys_still_builds_a_command_line():
-    argv = master_cli.master_argv(_Job({"source": "/tmp/a.wav"}))
-    assert argv[:2] == ["master", "/tmp/a.wav"]
 
 
 # ---------------------------------------------------------------------------
@@ -295,10 +281,7 @@ def test_a_recording_that_is_not_there_refuses_rather_than_raising(tmp_path):
     assert cause.reason == "source-missing"
     assert cause.code is ExitCode.PRECONDITION
     assert cause.code is not ExitCode.INTERNAL, "a mistyped path is not a defect in this program"
-
-
-def test_a_container_the_engine_does_not_read_refuses_under_its_own_slug(tmp_path):
-    """A different slug from the missing case, and the difference is the sentence."""
+    # A container the engine does not read has a slug of its own.
     unsupported = tmp_path / "REC001.m4a"
     unsupported.write_bytes(b"not a container this reads")
 
@@ -436,17 +419,18 @@ def test_queueing_a_recording_gives_the_driver_one_item_to_claim(configured):
     assert items[0].state == jobs.ItemState.PENDING
 
 
-def test_a_relative_recording_is_frozen_absolute_so_the_child_masters_the_same_file(
-    configured, tmp_path, monkeypatch
-):
+def test_a_relative_recording_and_output_dir_are_frozen_absolute(configured, monkeypatch):
     """The child inherits the RESUMING process's directory, not the queueing one."""
     monkeypatch.chdir(configured.library.root)
-    job_id = _queued(Path("REC001.wav"))
+    (configured.library.root / "out").mkdir()
+    job_id = _queued(Path("REC001.wav"), "--output-dir", "out")
 
     with jobs.open_store() as store:
         payload = jobs.get(store, job_id).payload
     assert payload[master_cli.SOURCE] == str(configured.library.root / "REC001.wav")
     assert Path(payload[master_cli.SOURCE]).is_absolute()
+    assert payload[master_cli.OUTPUT_DIR] == str(configured.library.root / "out")
+    assert Path(payload[master_cli.OUTPUT_DIR]).is_absolute()
 
 
 def test_a_queued_recording_runs_from_pending_to_done_through_the_resume_branch(
@@ -661,18 +645,6 @@ def test_a_job_show_says_when_a_queued_verb_has_no_worker(configured, monkeypatc
     code, envelope = _drive(["job", "show", other.job_id])
     assert envelope["data"]["progress"]["worker"] == "none"
     assert envelope["data"]["progress"]["worker_reason"] == reason
-
-
-def test_a_relative_output_dir_is_frozen_absolute_too(configured, tmp_path, monkeypatch):
-    """The directory needs it as much as the recording does."""
-    monkeypatch.chdir(configured.library.root)
-    (configured.library.root / "out").mkdir()
-    job_id = _queued(Path("REC001.wav"), "--output-dir", "out")
-
-    with jobs.open_store() as store:
-        payload = jobs.get(store, job_id).payload
-    assert payload[master_cli.OUTPUT_DIR] == str(configured.library.root / "out")
-    assert Path(payload[master_cli.OUTPUT_DIR]).is_absolute()
 
 
 def test_a_relative_recording_masters_the_same_file_when_the_resume_runs_elsewhere(
@@ -903,9 +875,7 @@ def test_a_split_recording_and_its_target_survive_the_resume_argv(configured):
     )
     assert rebuilt == frozen
     assert args.job == "job-1"
-
-
-def test_a_negative_target_parses_as_two_tokens_as_well():
+    # A negative target parses as two tokens as well.
     args = cli.build_parser([_entry()]).parse_args(["master", "/tmp/a.wav", "--lufs", "-16"])
     assert args.lufs == -16.0 and args.recording == ["/tmp/a.wav"]
 
@@ -1017,10 +987,9 @@ def test_a_joined_wav_is_written_as_rf64_when_it_needs_to_be(tmp_path):
     drift = next(c for c in seen if "pcm_s24le" in c.argv)
     assert drift.argv[drift.argv.index("-rf64") + 1] == "auto"
 
-
-def test_a_joined_flac_carries_no_wav_muxer_option(tmp_path):
-    first = tmp_path / "REC001.flac"
-    second = tmp_path / "REC002.flac"
+    # A joined FLAC, in a folder of its own, carries no WAV muxer option.
+    (tmp_path / "flac").mkdir()
+    first, second = tmp_path / "flac" / "REC001.flac", tmp_path / "flac" / "REC002.flac"
     first.write_bytes(b"one")
     second.write_bytes(b"two")
     run, seen = _recorder()

@@ -321,16 +321,11 @@ def test_the_set_builder_produces_a_sequence_from_a_snapshot_index(snapshot_inde
     assert all(s.track.match != plan.anchor.track.match for s in plan.pool)
 
 
-def test_the_set_builder_writes_nothing_when_no_cache_path_is_given(tmp_path, snapshot_index):
-    """"No write" as a structural assertion rather than a promise."""
+def test_the_set_builder_writes_nothing_and_always_gives_the_same_answer(tmp_path, snapshot_index):
+    """"No write" and determinism, as assertions rather than promises."""
     before = sorted(p.name for p in tmp_path.rglob("*"))
-    setbuilder.build_set("Alder - Anchor Work", snapshot_index, taxonomy=default_taxonomy())
-    assert sorted(p.name for p in tmp_path.rglob("*")) == before
-
-
-def test_the_same_anchor_always_produces_the_same_answer(snapshot_index):
-    """Determinism is the product feature, so it is asserted rather than assumed."""
     first = setbuilder.build_set("Alder - Anchor Work", snapshot_index, taxonomy=default_taxonomy())
+    assert sorted(p.name for p in tmp_path.rglob("*")) == before
     second = setbuilder.build_set(
         "Alder - Anchor Work", tuple(reversed(snapshot_index)), taxonomy=default_taxonomy()
     )
@@ -549,16 +544,22 @@ def test_the_index_cache_skips_unchanged_files_and_re_reads_changed_ones(tmp_pat
     assert reads == ["a.flac", "a.flac"]
 
 
-def test_a_cache_written_by_another_build_is_discarded_rather_than_deserialized(tmp_path):
-    """Discarding costs one scan. Deserializing costs a crash mid-run."""
-    root = tmp_path / "music"
+@pytest.mark.parametrize("stamped", [False, True], ids=["other-build", "unstamped"])
+def test_a_cache_from_another_build_or_with_no_template_stamp_is_discarded(tmp_path, stamped):
+    """Discarding costs one scan; deserializing or trusting it costs a wrong answer mid-run."""
+    root = tmp_path / "lib"
     root.mkdir()
-    (root / "a.flac").write_bytes(b"")
+    audio = root / "a.flac"
+    audio.touch()
     cache = tmp_path / "cache.json"
-    cache.write_text(json.dumps({"cache_version": 0, "entries": {"x": {"nope": 1}}}))
-
+    if stamped:
+        stale = {"mtime": audio.stat().st_mtime, "track": None}
+        document = {"cache_version": setbuilder.CACHE_VERSION, "entries": {str(audio): stale}}
+    else:
+        document = {"cache_version": 0, "entries": {"x": {"nope": 1}}}
+    cache.write_text(json.dumps(document))
     index = setbuilder.build_index(root, template=TEMPLATE, cache_path=cache, reader=lambda p: GOOD)
-    assert [t.title for t in index] == ["Title"]
+    assert [t.title for t in index] == ["Title"], "a stale cache was trusted"
 
 
 def test_a_cache_parsed_under_another_template_is_discarded(tmp_path):
@@ -590,20 +591,6 @@ def test_the_template_stamp_is_the_same_string_in_every_process():
     stamp = setbuilder._template_stamp(Shape(frozenset({"key", "bpm", "energy", "vox"})))
     assert stamp == "head_optional=['bpm', 'energy', 'key', 'vox'];head_sep=' - '"
     assert setbuilder._template_stamp(TEMPLATE) != setbuilder._template_stamp(NameTemplate())
-
-
-def test_a_cache_with_no_template_stamp_is_discarded(tmp_path):
-    root = tmp_path / "lib"
-    root.mkdir()
-    audio = root / "a.flac"
-    audio.touch()
-    cache = tmp_path / "cache.json"
-    stale = {"mtime": audio.stat().st_mtime, "track": None}
-    cache.write_text(
-        json.dumps({"cache_version": setbuilder.CACHE_VERSION, "entries": {str(audio): stale}})
-    )
-    index = setbuilder.build_index(root, template=TEMPLATE, cache_path=cache, reader=lambda p: GOOD)
-    assert [t.title for t in index] == ["Title"], "an unstamped cache was trusted"
 
 
 def _one_file_library(tmp_path):
@@ -1011,6 +998,7 @@ def db_file(cfg):
 #: the spelling ``stamp_for`` writes, because the rotation compares names with
 #: the record's stamp and a word like "one" sorts after every date.
 SETTLED_ARCHIVES = "".join(f"2026-0{month}-01T000000Z/\n" for month in (1, 2, 3, 4))
+THREE_ARCHIVES = "".join(f"2026-0{month}-01T000000Z/\n" for month in (1, 2, 3))
 
 
 @pytest.fixture
@@ -1044,32 +1032,35 @@ def test_the_agent_alone_refuses_and_an_unrelated_process_named_rekordbox_does_n
     assert plan.portion(backup_facts.Portion.DATABASE).will_run is True
 
 
-def test_the_process_probe_cannot_be_switched_off_by_the_environment():
-    """The source lets an environment variable fake its answer."""
+def test_the_backup_source_reads_no_environment_and_spells_no_remote():
+    """The source system's probe could be faked by the environment, and it spelled destinations."""
     source = (SRC_ROOT / "cratekit" / "modules" / "tools" / "backup.py").read_text()
     tree = ast.parse(source)
     reads = [
         ast.unparse(node)
         for node in ast.walk(tree)
-        if isinstance(node, ast.Attribute)
-        and node.attr in {"getenv", "environ"}
+        if isinstance(node, ast.Attribute) and node.attr in {"getenv", "environ"}
     ]
     assert reads == [], f"the backup module reads the environment: {reads}"
+    offenders = [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        # A remote reference is `name:path`; the interpolated forms and prose are not.
+        and re.fullmatch(r"[A-Za-z0-9_-]+:[A-Za-z0-9_./-]*", node.value)
+    ]
+    assert not offenders, f"remote literals survive in the source: {offenders}"
 
 
 def test_the_database_fileset_never_rides_the_file_mirror(cfg, db_file, rclone):
     """A live mirror of an open database captures a torn copy."""
     plan = backup.plan_backup(cfg, process_lister=no_processes)
     mirror = plan.portion(backup_facts.Portion.FILES).commands[0]
-    excluded = {
-        mirror.argv[i + 1] for i, arg in enumerate(mirror.argv) if arg == "--exclude"
-    }
+    excluded = {mirror.argv[i + 1] for i, arg in enumerate(mirror.argv) if arg == "--exclude"}
     for path in backup.database_fileset(cfg):
         assert "/" + str(path.relative_to(cfg.library.root)) in excluded
-
-
-def test_the_database_fileset_is_derived_from_the_state_inventory(cfg):
-    """A hand-kept list is how a capture loses the write-ahead log."""
+    # Derived from the state inventory: a hand-kept list is how a capture loses the log.
     names = [p.name for p in backup.database_fileset(cfg)]
     base = config.state_path("rekordbox_db", cfg).name
     assert names[0] == base
@@ -1093,6 +1084,14 @@ def test_the_dated_stamp_sorts_as_text_in_chronological_order():
     autumn_first = backup.stamp_for(datetime(2026, 11, 1, 5, 30, tzinfo=UTC))
     autumn_second = backup.stamp_for(datetime(2026, 11, 1, 6, 30, tzinfo=UTC))
     assert autumn_first < autumn_second
+    # And every stamp the backup writes passes the shape the restore demands.
+    for moment in (
+        datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
+        datetime(1999, 12, 31, 23, 59, 59, tzinfo=timezone.utc),
+        datetime(2026, 8, 1, 9, 5, 7, tzinfo=timezone(timedelta(hours=-4))),
+    ):
+        assert backup.is_stamp(backup.stamp_for(moment)), backup.stamp_for(moment)
+    assert backup.is_stamp(backup.STAMP_EXAMPLE), "the refusal shows a stamp it would refuse"
 
 
 def test_every_destination_in_every_command_traces_back_to_configuration(cfg, db_file, rclone):
@@ -1112,22 +1111,6 @@ def test_every_destination_in_every_command_traces_back_to_configuration(cfg, db
                     f"nor the library root"
                 )
     assert seen, "no remote destination appeared at all, so this proved nothing"
-
-
-def test_the_backup_source_contains_no_remote_literal():
-    """The other half: nothing in the source spells a destination at all."""
-    source = (SRC_ROOT / "cratekit" / "modules" / "tools" / "backup.py").read_text()
-    offenders = [
-        node.value
-        for node in ast.walk(ast.parse(source))
-        if isinstance(node, ast.Constant)
-        and isinstance(node.value, str)
-        # A remote reference is `name:path`. Excluded: the interpolated forms,
-        # which carry the configured value, and prose, which has no colon
-        # followed immediately by a path segment.
-        and re.fullmatch(r"[A-Za-z0-9_-]+:[A-Za-z0-9_./-]*", node.value)
-    ]
-    assert not offenders, f"remote literals survive in the source: {offenders}"
 
 
 def test_an_unconfigured_remote_refuses_before_anything_runs(library, rclone):
@@ -1174,23 +1157,18 @@ def test_a_dry_run_publishes_no_backup_age(cfg, db_file, rclone):
     assert backup.backup_facts.read_facts(cfg) == {}
 
 
-def test_a_dry_run_never_purges(cfg, db_file, rclone, mirrored):
-    recorder = Recorder(stdout_for={backup.PRUNE_ARCHIVE: SETTLED_ARCHIVES})
+def test_the_prune_keeps_the_newest_removes_the_rest_and_warns_about_nothing(
+    cfg, db_file, rclone, mirrored
+):
+    """A prune that completed is not an assertion of absence: it purged two."""
+    recorder = Recorder(stdout_for={backup.PRUNE_ARCHIVE: THREE_ARCHIVES})
     plan = backup.plan_backup(cfg, process_lister=no_processes)
-    backup.run_backup(cfg, plan, runner=recorder, dry_run=True)
-    assert backup.PRUNE_ARCHIVE_FOLDER not in recorder.labels()
-
-
-def test_the_prune_keeps_the_newest_and_removes_the_rest(cfg, db_file, rclone, mirrored):
-    recorder = Recorder(
-        stdout_for={backup.PRUNE_ARCHIVE: "2026-01-01T000000Z/\n2026-02-01T000000Z/\n2026-03-01T000000Z/\n"}
-    )
-    plan = backup.plan_backup(cfg, process_lister=no_processes)
-    backup.run_backup(cfg, plan, runner=recorder)
+    outcome = backup.run_backup(cfg, plan, runner=recorder)
 
     purged = [c for c in recorder.commands if c.label == backup.PRUNE_ARCHIVE_FOLDER]
     assert len(purged) == 2
     assert all("2026-03-01T000000Z" not in c.argv[-1] for c in purged)
+    assert all(w == () for w in (p.warnings for p in outcome.portions))
 
 
 def test_the_retention_the_plan_declared_is_the_retention_the_run_applies(
@@ -1202,10 +1180,7 @@ def test_the_retention_the_plan_declared_is_the_retention_the_run_applies(
     assert plan.archive_keep == 3
     backup.run_backup(cfg, plan, runner=recorder)
     assert len([c for c in recorder.commands if c.label == backup.PRUNE_ARCHIVE_FOLDER]) == 1
-
-
-def test_a_negative_retention_never_prunes_at_all(cfg, db_file, rclone):
-    """For a user with room who would rather keep every run's rollback."""
+    # A negative retention never prunes at all, for a user who keeps every rollback.
     plan = backup.plan_backup(cfg, process_lister=no_processes, archive_keep=-1)
     labels = [c.label for c in plan.portion(backup_facts.Portion.FILES).commands]
     assert backup.PRUNE_ARCHIVE not in labels
@@ -1248,9 +1223,7 @@ def test_a_failed_listing_reports_the_rotation_and_leaves_the_backup_successful(
 def test_a_failed_purge_reports_how_many_folders_survived_it(cfg, db_file, rclone, mirrored):
     """The second condition, which has a different fix from the first."""
     recorder = Recorder(
-        stdout_for={
-            backup.PRUNE_ARCHIVE: "2026-01-01T000000Z/\n2026-02-01T000000Z/\n2026-03-01T000000Z/\n"
-        },
+        stdout_for={backup.PRUNE_ARCHIVE: THREE_ARCHIVES},
         fail_labels={backup.PRUNE_ARCHIVE_FOLDER},
     )
     plan = backup.plan_backup(cfg, process_lister=no_processes)
@@ -1261,21 +1234,6 @@ def test_a_failed_purge_reports_how_many_folders_survived_it(cfg, db_file, rclon
     assert [w["code"] for w in files.warnings] == [backup.ARCHIVE_PURGE_FAILED]
     assert "2 dated folder(s)" in files.warnings[0]["message"], files.warnings
     assert files.results[0].returncode == 0, "the listing is reported as having failed"
-
-
-def test_a_prune_that_completed_warns_about_nothing(cfg, db_file, rclone, mirrored):
-    """The companion to the two above, and not an assertion of absence."""
-    recorder = Recorder(
-        stdout_for={
-            backup.PRUNE_ARCHIVE: "2026-01-01T000000Z/\n2026-02-01T000000Z/\n2026-03-01T000000Z/\n"
-        }
-    )
-    plan = backup.plan_backup(cfg, process_lister=no_processes)
-    outcome = backup.run_backup(cfg, plan, runner=recorder)
-
-    purged = [c for c in recorder.commands if c.label == backup.PRUNE_ARCHIVE_FOLDER]
-    assert len(purged) == 2
-    assert all(w == () for w in (p.warnings for p in outcome.portions))
 
 
 def test_the_portion_with_no_prune_command_carries_no_warning(cfg, db_file, rclone):
@@ -1588,23 +1546,15 @@ def test_a_refused_portion_leaves_its_previous_age_untouched(cfg, db_file, rclon
     assert facts[backup_facts.Portion.DATABASE].completed_at == first
 
 
-def test_the_reported_age_covers_every_declared_portion(cfg):
-    """P3: the set is derived from the enum, so a new portion cannot be absent."""
-    reported = backup_facts.ages(cfg)
-    assert {a.portion for a in reported} == set(backup_facts.Portion)
-
-
 def test_never_recorded_is_a_different_answer_from_very_old(cfg):
-    """They have different fixes, so collapsing them costs the caller the choice."""
+    """They have different fixes; and every declared portion is reported (P3)."""
+    assert {a.portion for a in backup_facts.ages(cfg)} == set(backup_facts.Portion)
     now = datetime(2026, 8, 1, tzinfo=UTC)
     _record(cfg, "FILES", now - timedelta(days=400), "remote:mirror")
     by_portion = {a.portion: a for a in backup_facts.ages(cfg, now=now)}
     assert by_portion[backup_facts.Portion.FILES].state is backup_facts.AgeState.KNOWN
     assert by_portion[backup_facts.Portion.FILES].age == timedelta(days=400)
-    assert (
-        by_portion[backup_facts.Portion.DATABASE].state
-        is backup_facts.AgeState.NEVER_RECORDED
-    )
+    assert by_portion[backup_facts.Portion.DATABASE].state is backup_facts.AgeState.NEVER_RECORDED
 
 
 @pytest.mark.parametrize(
@@ -1979,17 +1929,6 @@ def test_a_snapshot_value_that_is_not_a_stamp_is_refused_before_the_remote_is_as
     assert recorder.commands == [], (
         f"the remote was asked {recorder.labels()} about a value that is not a stamp"
     )
-
-
-def test_every_stamp_the_backup_writes_passes_the_shape_the_restore_demands():
-    """The two ends of one coupling, held together by a test rather than by hope."""
-    for moment in (
-        datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc),
-        datetime(1999, 12, 31, 23, 59, 59, tzinfo=timezone.utc),
-        datetime(2026, 8, 1, 9, 5, 7, tzinfo=timezone(timedelta(hours=-4))),
-    ):
-        assert backup.is_stamp(backup.stamp_for(moment)), backup.stamp_for(moment)
-    assert backup.is_stamp(backup.STAMP_EXAMPLE), "the refusal shows a stamp it would refuse"
 
 
 def test_a_snapshot_marked_for_another_library_is_refused(cfg, tmp_path, rclone):

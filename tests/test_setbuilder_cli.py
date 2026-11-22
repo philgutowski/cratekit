@@ -124,12 +124,8 @@ def test_two_plans_over_the_same_anchor_and_different_companions_digest_apart(in
     assert full["items"] != narrowed["items"], "the two indexes gave the same items"
     assert full["totals"]["anchor"] == narrowed["totals"]["anchor"], "the anchor moved too"
     assert full["digest"] != narrowed["digest"]
-
-
-def test_the_same_anchor_and_index_always_digest_the_same(index):
-    first = plan_of(anchor_of(index), index)
-    second = plan_of(anchor_of(index), tuple(reversed(index)))
-    assert first["digest"] == second["digest"]
+    # And the same anchor over the same index, in any order, always digests the same.
+    assert plan_of(anchor, tuple(reversed(index)))["digest"] == full["digest"]
 
 
 def test_an_unowned_anchor_in_8a_ranks_the_library_against_it(index):
@@ -185,14 +181,11 @@ def test_an_unowned_sequence_places_each_companion_once(index):
     assert plan["totals"]["sequence"] == len(placed)
 
 
-def test_an_unowned_anchor_with_no_key_refuses():
+def test_an_unowned_anchor_with_no_key_or_no_label_refuses():
     with pytest.raises(CratekitError) as caught:
         setbuild_cli.unowned_anchor("Oak - Not Bought Yet", None, None)
     assert caught.value.cause.reason == "setbuild-unowned-key-missing"
     assert caught.value.cause.remediation.steps
-
-
-def test_an_empty_unowned_label_refuses_as_an_unknown_anchor():
     with pytest.raises(CratekitError) as caught:
         setbuild_cli.unowned_anchor("", "8A", None)
     assert caught.value.cause.reason == "setbuild-anchor-unknown"
@@ -485,31 +478,23 @@ def test_an_anchor_spelled_through_a_symlink_still_resolves(tmp_path):
 
     assert through_link != audio, "the two spellings are identical, so this proves nothing"
     assert setbuild_cli.anchor_in_index(through_link, (indexed,)) is indexed
-
-
-def test_an_anchor_the_index_does_not_hold_is_absent_rather_than_approximated():
+    # An anchor the index does not hold is absent rather than approximated.
     index = (track("Alder", "Anchor Work", "8A", path="/library/orig.flac"),)
     assert setbuild_cli.anchor_in_index(Path("/library/elsewhere.flac"), index) is None
 
 
-def test_a_relative_anchor_is_taken_against_the_library_and_not_the_process(tmp_path):
-    root = tmp_path / "library"
-    root.mkdir()
-    assert setbuild_cli.anchor_path("Music/x.flac", root) == root / "Music" / "x.flac"
-
-
-def test_an_anchor_that_walks_out_of_the_library_is_refused(tmp_path):
+def test_an_anchor_path_is_taken_against_the_library_and_never_walks_out_or_defaults(tmp_path):
+    """Relative to the library and not the process; outside it or empty is refused."""
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
-    with pytest.raises(CratekitError) as caught:
-        setbuild_cli.anchor_path("../elsewhere/x.flac", root)
-    assert caught.value.cause.reason == "setbuild-anchor-outside-library"
-
-
-def test_an_empty_anchor_is_refused_rather_than_defaulted(tmp_path):
-    with pytest.raises(CratekitError) as caught:
-        setbuild_cli.anchor_path("", tmp_path)
-    assert caught.value.cause.reason == "setbuild-anchor-unknown"
+    assert setbuild_cli.anchor_path("Music/x.flac", root) == root / "Music" / "x.flac"
+    for typed, reason in (
+        ("../elsewhere/x.flac", "setbuild-anchor-outside-library"),
+        ("", "setbuild-anchor-unknown"),
+    ):
+        with pytest.raises(CratekitError) as caught:
+            setbuild_cli.anchor_path(typed, root)
+        assert caught.value.cause.reason == reason
 
 
 # ── the disk half: a real library, tagged through the product's own writer ────
