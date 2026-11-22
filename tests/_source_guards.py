@@ -71,8 +71,14 @@ def _walk(node: ast.AST):
     104.5 holding eight and 113.6 holding every one, since a held tree is
     memory the collector walks. Held by identity, so an equal text parsed again
     is a new tree and is walked afresh, and only one tree outlives its question.
-    Sound because nothing here writes to a tree, the contract
-    ``tests/_parse_memo.py`` drives.
+
+    SOUND ONLY WHILE NO TREE IS WRITTEN between two questions about it, and
+    that is a condition on callers too, not on this module alone. Nothing here
+    writes to a tree, which ``tests/_parse_memo.py`` drives for the trees its
+    scopes hand out; a test that parses its own tree, asks, edits it and asks
+    again would be answered from the walk before the edit. No caller does that
+    today, read on 2026-11-22 across every site that hands this module a tree
+    of its own, and one that needs to should parse the edited text afresh.
     """
     if not isinstance(node, ast.Module):
         return _breadth_first(node)
