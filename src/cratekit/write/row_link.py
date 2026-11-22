@@ -34,10 +34,10 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import digest_of
-from cratekit.core import config, convergence, rb_writer, tree_registry
+from cratekit.core import config, convergence, rb_writer, session, tree_registry
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.write import row_defaults
+from cratekit.write import row_defaults, trees
 
 #: The name a session record carries for this write.
 WORKFLOW = "repair-link"
@@ -439,8 +439,7 @@ def apply_probes(
 ) -> Written:
     """Write every planned value, commit behind the guard, and read the rows back.
 
-    The spine is :func:`row_defaults.commit_rows`, as ``repair rows`` uses it. The
-    rows are checked against the plan before the session is entered, so a stale
+    The session spine as ``repair rows`` calls it. The rows are checked against the plan before the session is entered, so a stale
     plan refuses with no record and no capture. The policy names exactly the
     columns written.
     """
@@ -460,29 +459,44 @@ def apply_probes(
     convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
     policy = rb_writer.row_probe_policy(p.column for p in plan.writing)
 
-    def fill() -> int:
-        written = 0
-        for probe in plan.writing:
-            decision = rb_writer.write_metadata_field(
-                mapped[probe.content_id], policy.owner, probe.column, probe.value
-            )
-            if decision is not rb_writer.Decision.WRITE:
-                raise refuse(
-                    "internal-error",
-                    f"the row {probe.content_id} was planned to have "
-                    f"{probe.column} written and the field policy answered "
-                    f"{decision}, so nothing was written",
-                    remedy=Remedy.REPORT_DEFECT,
-                    origin=_ORIGIN,
-                    detail={"content_id": probe.content_id, "column": probe.column},
-                )
-            written += 1
-        return written
+    with rb_writer.field_policies_for_commit(policy):
+        with (
+            session.assert_gates(
+                cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
+            ) as gates,
+            rb_writer.commit_witness(db) as witness,
+        ):
+            record, _capture = trees.attached_capture(gates, cfg, db)
+            before = row_defaults.read_columns(db, ids)
+            written = 0
+            try:
+                for probe in plan.writing:
+                    decision = rb_writer.write_metadata_field(
+                        mapped[probe.content_id], policy.owner, probe.column, probe.value
+                    )
+                    if decision is not rb_writer.Decision.WRITE:
+                        raise refuse(
+                            "internal-error",
+                            f"the row {probe.content_id} was planned to have "
+                            f"{probe.column} written and the field policy answered "
+                            f"{decision}, so nothing was written",
+                            remedy=Remedy.REPORT_DEFECT,
+                            origin=_ORIGIN,
+                            detail={"content_id": probe.content_id, "column": probe.column},
+                        )
+                    written += 1
+                rb_writer.commit_guarded(db)
+            except BaseException:
+                trees.rollback_quietly(db)
+                # An exception is not proof nothing landed; the witness is.
+                if witness.landed:
+                    row_defaults.record_commit(record, CHANGE_KEY, len(ids), cfg)
+                raise
+            row_defaults.record_commit(record, CHANGE_KEY, len(ids), cfg)
+            convergence.record_fingerprint(cfg, db)
+            after = row_defaults.read_columns(db, ids)
+            session_id = record.session_id
 
-    session_id, before, after, written = row_defaults.commit_rows(
-        cfg, db, ids, (policy,), workflow=WORKFLOW, key=CHANGE_KEY,
-        analysis_roots=watched, fill=fill, rows_of=lambda _filled: len(ids),
-    )
     wrong, moved = judge(plan, before, after)
     return Written(
         session_id=session_id,

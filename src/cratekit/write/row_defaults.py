@@ -34,7 +34,7 @@ from __future__ import annotations
 import os
 import stat
 import tempfile
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -599,51 +599,6 @@ def watched_roots(analysis_roots: Iterable[Path | str]) -> list[Path]:
     return watched
 
 
-def commit_rows(
-    cfg: config.Config,
-    db: Any,
-    content_ids: Sequence[str],
-    policies: Sequence[rb_writer.FieldPolicy],
-    *,
-    workflow: str,
-    key: str,
-    analysis_roots: Sequence[Path],
-    fill: Callable[[], Any],
-    rows_of: Callable[[Any], int],
-) -> tuple[str, dict[str, dict[str, Any]], dict[str, dict[str, Any]], Any]:
-    """The session spine both row repairs call, ``policies`` registered for the commit.
-
-    The gates with a record kept, a capture the commit happens behind, the
-    commit witness and the guarded commit, then the fingerprint. ``fill`` sets
-    the fields; ``rows_of`` turns what it answered, None when it raised, into
-    the rows the record claims, recorded even on a failure the witness says
-    landed. Answers the session id, the rows read before and after, and what
-    ``fill`` answered.
-    """
-    with rb_writer.field_policies_for_commit(*policies):
-        with (
-            session.assert_gates(
-                cfg, workflow=workflow, analysis_roots=analysis_roots, keep=session.Keep.RECORD
-            ) as gates,
-            rb_writer.commit_witness(db) as witness,
-        ):
-            record, _capture = trees.attached_capture(gates, cfg, db)
-            before = read_columns(db, content_ids)
-            filled = None
-            try:
-                filled = fill()
-                rb_writer.commit_guarded(db)
-            except BaseException:
-                trees.rollback_quietly(db)
-                if witness.landed:
-                    record_commit(record, key, rows_of(filled), cfg)
-                raise
-            record_commit(record, key, rows_of(filled), cfg)
-            convergence.record_fingerprint(cfg, db)
-            after = read_columns(db, content_ids)
-    return record.session_id, before, after, filled
-
-
 def apply_rows(
     cfg: config.Config,
     db: Any,
@@ -653,7 +608,9 @@ def apply_rows(
 ) -> Written:
     """Fill the planned defaults, commit behind the guard, and read them back.
 
-    The rows are checked against the plan before the session is entered, so a
+    The session spine every database writer calls: the gates with a record
+    kept, a capture the commit happens behind, the commit witness, the guarded
+    commit, then the fingerprint. The rows are checked against the plan before the session is entered, so a
     stale plan refuses with no record, no capture and nothing pending. The
     out of band check reads the evidence before the commit replaces it, as
     ``tag rows`` does. The file id policy is registered only when the plan
@@ -667,11 +624,29 @@ def apply_rows(
     policies = [rb_writer.ROW_DEFAULTS_POLICY]
     if plan.renumbers:
         policies.append(rb_writer.FILE_ID_POLICY)
-    session_id, before, after, (written, renumbered) = commit_rows(
-        cfg, db, content_ids, policies, workflow=WORKFLOW, key=CHANGE_KEY,
-        analysis_roots=watched, fill=lambda: _fill(plan, mapped),
-        rows_of=lambda filled: filled[0] if filled else 0,
-    )
+    with rb_writer.field_policies_for_commit(*policies):
+        with (
+            session.assert_gates(
+                cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
+            ) as gates,
+            rb_writer.commit_witness(db) as witness,
+        ):
+            record, _capture = trees.attached_capture(gates, cfg, db)
+            before = read_columns(db, content_ids)
+            written = renumbered = 0
+            try:
+                written, renumbered = _fill(plan, mapped)
+                rb_writer.commit_guarded(db)
+            except BaseException:
+                trees.rollback_quietly(db)
+                # An exception is not proof nothing landed; the witness is.
+                if witness.landed:
+                    record_commit(record, CHANGE_KEY, written, cfg)
+                raise
+            record_commit(record, CHANGE_KEY, written, cfg)
+            convergence.record_fingerprint(cfg, db)
+            after = read_columns(db, content_ids)
+            session_id = record.session_id
     wrong, moved = judge(plan, before, after)
     return Written(
         session_id=session_id,
