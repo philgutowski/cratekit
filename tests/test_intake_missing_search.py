@@ -215,15 +215,18 @@ def test_two_exact_candidates_are_offered_and_neither_is_picked(
     assert "Harbour Lights" in item.options[1].summary
     assert "2 tracks that match it exactly" in item.payload["why"]
     row = summary["rows"][0]
-    assert (row["state"], row["item_id"], row["candidates"]) == (
-        candidates.OFFERED,
-        item.item_id,
-        2,
-    )
+    assert (row["state"], row["item_id"], row["candidates"]) == (candidates.OFFERED, item.item_id, 2)
     check = checks(envelope)["candidates"]
     assert check["status"] == "fail"
     assert item.item_id in check["detail"]
     assert f"--queue {candidates.QUEUE} --kind {candidates.KIND}" in check["detail"]
+    # AN ACCEPTANCE NAMING NEITHER of the two candidates lists nothing and says how to clear it.
+    resolve(item.item_id, "accepted")
+    envelope = refused(path)
+    assert envelope["cause"]["reason"] == "intake-list-unusable"
+    assert "without naming which of its 2 candidates" in envelope["cause"]["message"]
+    assert "crate review clear" in " ".join(envelope["cause"]["remediation"]["steps"])
+    assert not list(lists_dir(library).glob("*"))
 
 
 def test_an_exact_candidate_beside_a_row_that_cannot_be_read_is_offered(
@@ -302,8 +305,9 @@ def near_miss() -> FakeCatalogue:
 def test_a_near_miss_is_offered_with_its_score_and_is_not_listed(
     cfg, library, tmp_path, monkeypatch
 ):
+    """A near miss is offered, asked once however often it is listed, and listed as accepted."""
     path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
-    bind(monkeypatch, near_miss())
+    fake = bind(monkeypatch, near_miss())
     envelope, summary = ok(path)
     assert (summary["written"], summary["by_search"], summary["candidates_offered"]) == (0, 0, 1)
     item = the_item(cfg)
@@ -316,46 +320,28 @@ def test_a_near_miss_is_offered_with_its_score_and_is_not_listed(
     assert [o.option_id for o in item.options] == ["7002", "7005"], "best score first"
     assert "score 100" in item.options[0].summary
     assert "never picked from a score" in item.payload["why"]
-
-
-def test_a_second_run_offers_nothing_new_and_spends_no_search(
-    cfg, library, tmp_path, monkeypatch
-):
-    path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
-    fake = bind(monkeypatch, near_miss())
-    found(path)
-    first = the_item(cfg)
+    # A SECOND RUN offers nothing new and spends no search.
     envelope = ok(path)[0]
     assert fake.searched_for == [SUN], "an open question was searched for again"
     again = the_item(cfg)
-    assert (again.item_id, again.updated) == (first.item_id, first.updated)
+    assert (again.item_id, again.updated) == (item.item_id, item.updated)
     assert envelope["data"]["summary"]["rows"][0]["state"] == candidates.WAITING
-
-
-def test_the_same_row_in_two_lists_is_one_question(cfg, library, tmp_path, monkeypatch):
-    bind(monkeypatch, near_miss())
-    found(tracklist(tmp_path, "Aurora Bloom - Sun Path", name="one.txt"))
+    # THE SAME ROW IN ANOTHER LIST is the same question.
     found(tracklist(tmp_path, "1. aurora bloom - SUN PATH", name="two.txt"))
     the_item(cfg)
-
-
-# An accepted candidate is listed by the next run
-
-
-def test_an_accepted_candidate_is_listed_by_the_next_run(cfg, library, tmp_path, monkeypatch):
-    path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
-    fake = bind(monkeypatch, near_miss())
-    found(path)
-    resolve(the_item(cfg).item_id, "accepted", "--option", "7005")
+    # AN ACCEPTED CANDIDATE is listed by the next run, as the candidate's row.
+    resolve(item.item_id, "accepted", "--option", "7005")
     envelope, summary = ok(path)
     assert fake.searched_for == [SUN], "an answered row was searched for again"
     assert (summary["written"], summary["by_review"], summary["by_search"]) == (1, 1, 0)
     body = json.loads(Path(summary["list"]).read_text())
-    # THE ROW IS THE CANDIDATE'S, since that is the track the download fetches.
     assert [(t["id"], t["artist"], t["title"]) for t in body["tracks"]] == [
         ("7005", "Aurora Bloome", "Sun Path")
     ]
     assert checks(envelope)["candidates"]["status"] == "ok"
+
+
+# An accepted candidate is listed by the next run
 
 
 def test_an_acceptance_of_the_only_candidate_needs_no_option(cfg, library, tmp_path, monkeypatch):
@@ -368,21 +354,6 @@ def test_an_acceptance_of_the_only_candidate_needs_no_option(cfg, library, tmp_p
     resolve(the_item(cfg).item_id, "accepted")
     envelope = ok(path)[0]
     assert ids(envelope["data"]["summary"]) == ["7002"]
-
-
-def test_an_acceptance_naming_none_of_several_candidates_lists_nothing(
-    cfg, library, tmp_path, monkeypatch
-):
-    path = tracklist(tmp_path, "Aurora Bloom - Sun Path")
-    bind(monkeypatch, two_exact())
-    found(path)
-    item_id = the_item(cfg).item_id
-    resolve(item_id, "accepted")
-    envelope = refused(path)
-    assert envelope["cause"]["reason"] == "intake-list-unusable"
-    assert "without naming which of its 2 candidates" in envelope["cause"]["message"]
-    assert "crate review clear" in " ".join(envelope["cause"]["remediation"]["steps"])
-    assert not list(lists_dir(library).glob("*"))
 
 
 def test_an_accepted_candidate_the_library_now_holds_is_not_listed_again(
@@ -638,20 +609,15 @@ def test_the_run_after_an_answer_lists_more_than_the_first_and_is_not_refused(
             }
         ),
     )
-    first = ok(path)[0]
+    _code, first = found(path)
+    # THE SAME WORK TWICE rewrites the same list.
+    again = ok(path)[0]
+    assert again["data"]["summary"]["list"] == first["data"]["summary"]["list"]
+    assert len(list(lists_dir(library).glob("*.list.json"))) == 1
     resolve(the_item(cfg).item_id, "accepted", "--option", "7002")
     second = ok(path)[0]
     assert ids(second["data"]["summary"]) == ["7010", "7002"]
     assert second["data"]["summary"]["list"] != first["data"]["summary"]["list"]
-
-
-def test_the_same_work_twice_rewrites_the_same_list(cfg, library, tmp_path, monkeypatch):
-    path = tracklist(tmp_path, "Nova Reef - Tide")
-    bind(monkeypatch, FakeCatalogue(searches={TIDE: [Hit("7010", *TIDE)]}))
-    _code, first = found(path)
-    second = ok(path)[0]
-    assert second["data"]["summary"]["list"] == first["data"]["summary"]["list"]
-    assert len(list(lists_dir(library).glob("*.list.json"))) == 1
 
 
 def test_two_tracklists_of_one_file_name_in_two_folders_do_not_collide(
