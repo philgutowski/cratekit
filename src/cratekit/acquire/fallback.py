@@ -1,36 +1,9 @@
 """Second source candidates for a track the configured provider does not carry (U80).
 
-A bootleg, a white label, an unreleased promo: a set holds tracks no streaming
-catalogue sells, and before this module every one of them ended the set short
-with no route inside the product. The source system searched SoundCloud and
-then YouTube with ``yt-dlp``, ranked what came back, and wrote a review file a
-person judged before anything downloaded (``DJ_setid/fetch_others.py``). This
-module is that search half, and it keeps the source system's order.
-
-A SEARCH IS A PROPOSAL, NEVER A PICK, as it is for the provider's own search
-(:mod:`cratekit.intake.candidates`). A second source is an upload somebody
-titled by hand, a DJ mix that happens to carry the track name, a re-upload at a
-lower bitrate. Nothing here is ever listed or downloaded without a person, so
-every ranked hit is an OPTION on one review item and the score only orders the
-screen. That is also why there is no floor: a bootleg's upload title is noisy
-by nature, and a hit dropped for a low score is a hit nobody can choose.
-
-THE NETWORK IS A PARAMETER. :class:`FallbackSearcher` is the seam, and the one
-implementation that touches the network, :class:`YtDlpSearcher`, runs a
-subprocess through an injectable runner. The suite drives it with a fake runner
-and never executes ``yt-dlp``.
-
-AN ANSWER THAT COULD NOT BE READ IS NOT AN EMPTY ONE. A nonzero exit, a timeout
-and a program that could not be started all raise :class:`FallbackUnavailable`,
-so "the search failed" can never read as "nothing was found". That is why the
-subprocess is run WITHOUT ``--ignore-errors``, which the source system passed:
-it turns a failed search into an empty answer at exit zero.
-
-THE DOWNLOAD HALF IS A SECOND SEAM (U81). :class:`FallbackFetcher` saves one
-accepted upload into one directory, and :class:`YtDlpFetcher` is the shipped
-one, run through an injectable runner exactly as the searcher is. What the
-download is FOR, the lossless policy, the marker and the tags, is decided by
-the worker in :mod:`cratekit.acquire.fallback_cli` and not here.
+A search of SoundCloud then YouTube with ``yt-dlp`` is a proposal, never a pick: every
+ranked hit is an option on one review item and the score only orders the screen. A
+search that could not be read raises :class:`FallbackUnavailable`, never an empty
+answer. The download half (U81) is a second seam; both take an injectable runner.
 
 Layer: modules. Nothing here writes a file except the fetcher's download.
 """
@@ -49,15 +22,13 @@ from typing import Any, Protocol
 from cratekit.acquire import match
 from cratekit.core import binaries, review
 
-#: The queue. Declared by U11 for exactly this question and unused until now.
+#: The queue, declared by U11 for this question.
 QUEUE = review.Queue.FALLBACK_SOURCE
 
 #: The one kind on it: which upload, if any, is the wanted recording.
 KIND = "fallback-candidate"
 
-#: The platforms searched, in order. SoundCloud first, then YouTube, as the
-#: source system did: a bootleg or an edit is most often a SoundCloud upload,
-#: and the order is also the tie break between two equal scores.
+#: The platforms searched, in order, which is also the tie break between equal scores.
 SOUNDCLOUD = "soundcloud"
 YOUTUBE = "youtube"
 PLATFORMS: tuple[str, ...] = (SOUNDCLOUD, YOUTUBE)
@@ -68,9 +39,8 @@ SEARCH_LIMIT = 4
 #: The binary the shipped searcher runs.
 BINARY = "yt-dlp"
 
-#: A "track" longer than this is almost always a DJ mix or a set that matched
-#: on stuffed keywords, so its score is scaled by :data:`MIX_FACTOR`. Both are
-#: the source system's values, carried over unmeasured here.
+#: A "track" longer than this is almost always a mix, so its score is scaled by
+#: :data:`MIX_FACTOR`. Both are the source system's values, unmeasured here.
 LIKELY_MIX_SECONDS = 900
 MIX_FACTOR = 0.4
 
@@ -118,17 +88,12 @@ _FIELDS = "%(.{title,uploader,channel,webpage_url,url,duration})j"
 #: The ``yt-dlp`` search prefix for each platform.
 _PREFIX: Mapping[str, str] = {SOUNDCLOUD: "scsearch", YOUTUBE: "ytsearch"}
 
-#: Seconds one search may take. The source system's value.
+#: Seconds one search may take.
 TIMEOUT_SECONDS = 180
 
 
 def _hit(platform: str, line: str) -> Hit | None:
-    """One printed line as a hit, or ``None`` when it names no usable page.
-
-    A SoundCloud search in flat mode can yield an ``api.soundcloud.com`` URL
-    the extractor cannot resolve again, so only the web page URL is kept for
-    those, the source system's rule.
-    """
+    """One printed line as a hit, or ``None`` when it names no usable page."""
     said = json.loads(line)
     if not isinstance(said, dict):
         raise ValueError("not an object")
@@ -155,10 +120,7 @@ def _hit(platform: str, line: str) -> Hit | None:
 
 
 class YtDlpSearcher:
-    """The shipped searcher: ``yt-dlp`` in flat playlist mode, nothing downloaded.
-
-    ``run`` is ``subprocess.run`` in production and a fake in every test.
-    """
+    """The shipped searcher: ``yt-dlp`` in flat playlist mode, nothing downloaded."""
 
     def __init__(
         self,
@@ -172,8 +134,8 @@ class YtDlpSearcher:
         self._timeout = timeout
 
     def argv(self, platform: str, query: str, limit: int) -> list[str]:
-        # ONE ARGUMENT, NEVER A SHELL. The query is a person's text and the
-        # search prefix in front of it keeps it from ever reading as an option.
+        # One argument, never a shell; the search prefix keeps the query from reading
+        # as an option.
         return [
             self.binary,
             "--flat-playlist",
@@ -228,44 +190,29 @@ def yt_dlp_searcher() -> YtDlpSearcher:
     return YtDlpSearcher(binaries.resolve(BINARY))
 
 
-# ---------------------------------------------------------------------------
 # The download half (U81)
-# ---------------------------------------------------------------------------
 
-#: What an accepted upload is saved as. The source system forced MP3 at the
-#: best variable quality for two reasons that both still hold: a second source
-#: is lossy whatever it serves, so nothing is lost that was there, and one
+#: What an accepted upload is saved as: a second source is lossy anyway, and one
 #: container keeps every fetched file on the ID3 path the later stages read.
-#: It also makes the lossy marker literally true of every file this lands.
 FETCH_SUFFIX = ".mp3"
 
-#: Seconds one download may take. A long upload at a slow edge is minutes, and
-#: a download that never ends holds the job's claim for ever.
+#: Seconds one download may take, so a stalled download cannot hold the claim forever.
 FETCH_TIMEOUT_SECONDS = 900
 
 
 class FallbackFetcher(Protocol):
-    """The download seam. One upload into one empty directory, or :class:`FallbackUnavailable`.
-
-    What lands is named for nothing in particular. The name the file is
-    committed under is the ROW's, decided by the worker, so an upload title
-    never becomes a file name and never becomes a tag.
-    """
+    """The download seam. One upload into one empty directory, or :class:`FallbackUnavailable`."""
 
     def fetch(self, url: str, directory: Path) -> Path: ...
 
 
-#: The stem a download is saved under inside its own staging directory. Fixed
-#: rather than built from the row, because ``yt-dlp`` reads its output name as a
-#: template, and a title holding a percent sign would be read as a field.
+#: The stem a download is saved under, fixed because ``yt-dlp`` reads its output name
+#: as a template and a percent sign in a title would read as a field.
 FETCH_STEM = "fetched"
 
 
 class YtDlpFetcher:
-    """The shipped fetcher: ``yt-dlp`` extracting the audio as MP3 into one directory.
-
-    ``run`` is ``subprocess.run`` in production and a fake in every test.
-    """
+    """The shipped fetcher: ``yt-dlp`` extracting the audio as MP3 into one directory."""
 
     def __init__(
         self,
@@ -279,13 +226,9 @@ class YtDlpFetcher:
         self._timeout = timeout
 
     def argv(self, url: str, directory: Path) -> list[str]:
-        # THE UPLOAD'S OWN METADATA IS DROPPED, ``-map_metadata -1``, when the
-        # tool converts. It does not convert an upload already in the target
-        # format, so this is not the guard against a tempo frame (R17): the
-        # worker strips every tag the landing carries before it writes the
-        # row's artist and title. ``--`` keeps the address from ever reading as an option,
-        # and ``--no-playlist`` keeps a track page that is also a set page from
-        # fetching the set.
+        # The upload's metadata is dropped on conversion only, so the worker strips
+        # tags itself (R17). The option terminator keeps the address from reading as an option,
+        # and ``--no-playlist`` keeps a set page from fetching the set.
         return [
             self.binary,
             "--no-playlist",
@@ -332,11 +275,8 @@ class YtDlpFetcher:
 def landed_in(directory: Path) -> Path:
     """The one MP3 a download left in its directory, or :class:`FallbackUnavailable`.
 
-    AN EXIT OF ZERO IS NOT A FILE. A tool that reports success and leaves no
-    MP3, or leaves two, has not said which bytes are the track, and a guess
-    would commit a partial or an intermediate as it. The directory is the
-    item's own and is cleared before every attempt, so anything in it is this
-    attempt's.
+    An exit of zero is not a file: none or two MP3s would make the track a guess.
+    The directory is cleared before every attempt, so anything in it is this one's.
     """
     found = (
         sorted(
@@ -366,11 +306,8 @@ def query(wanted: match.Wanted) -> str:
 
 
 def search_all(searcher: FallbackSearcher, wanted: match.Wanted) -> Answer:
-    """Every platform, in order, for one row. One failure fails the row whole.
-
-    A row whose SoundCloud answer arrived and whose YouTube search failed is not
-    offered on half an answer, because the half that failed may hold the one
-    upload that is the track.
+    """Every platform, in order, for one row; one failure fails the row whole,
+    since the failed half may hold the track.
     """
     hits: list[Hit] = []
     unreadable = 0
@@ -392,10 +329,8 @@ class Candidate:
 def score(wanted: match.Wanted, hit: Hit) -> float:
     """0 to 100: how much the upload's uploader and title read like the row.
 
-    The source system's measure over ``match``'s own fold: half the sequence
-    similarity of the two strings, half the share of the row's words the upload
-    carries. An upload longer than :data:`LIKELY_MIX_SECONDS` is scaled down,
-    because a mix that names the track in its title is not the track.
+    Half sequence similarity, half the share of the row's words the upload carries,
+    scaled down past :data:`LIKELY_MIX_SECONDS` because a mix naming the track is not it.
     """
     want = match.fold(f"{wanted.artist} {wanted.listed}")
     have = match.fold(f"{hit.uploader} {hit.title}")
@@ -411,11 +346,7 @@ def score(wanted: match.Wanted, hit: Hit) -> float:
 
 
 def ranked(wanted: match.Wanted, answer: Answer) -> tuple[Candidate, ...]:
-    """Best score first, then platform order, then the platform's own order.
-
-    ONE CANDIDATE PER URL. The same upload returned twice is one option, and
-    the ordering is total so a repeat run offers the same screen.
-    """
+    """Best score first, then platform order, then the platform's own; one per URL."""
     order = {platform: n for n, platform in enumerate(PLATFORMS)}
     scored = sorted(
         (
@@ -458,13 +389,8 @@ class Proposal:
 
 
 def identity(wanted: match.Wanted) -> dict[str, str]:
-    """The folded row, the same three fields the provider's question is keyed on.
-
-    Keyed on the row and not on the list, so one track in two lists is one
-    question. A different queue and kind keep it a different item from the
-    provider's question about the same row. The title is its
-    :func:`match.title_identity`, as the provider's question reads it, so two
-    titles of emoji alone by one artist are two questions.
+    """The folded row, keyed like the provider's question, so one track in two lists
+    is one question; the queue and kind keep it apart from the provider's item.
     """
     return wanted.folded_row()
 
@@ -480,12 +406,7 @@ def _summary(one: Candidate) -> str:
 
 
 def settled(items: review.ReviewStore, wanted: match.Wanted) -> Proposal | None:
-    """What the queue already says about this row, or ``None`` when nobody was asked.
-
-    READ BEFORE ANY SEARCH, so a row already in front of a person or already
-    answered spends no search. An acceptance names its upload or it stalls,
-    the provider question's rule.
-    """
+    """What the queue already says about this row, or ``None`` when nobody was asked."""
     held = review.find(items, item_id(wanted))
     if held is None:
         return None

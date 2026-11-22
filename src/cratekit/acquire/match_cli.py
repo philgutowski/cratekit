@@ -1,63 +1,12 @@
 """``crate match run``: resolve a list against the library, in three states.
 
-The verb is thin on purpose. ``cratekit.acquire.match`` decides what each track
-is; this file is where the decision meets persistence, and it owns exactly three
-things the engine must not: configuration, the review queue, and the envelope.
-
-**THE SPLIT U11 SETTLED, IMPLEMENTED HERE.** R11 has three states and only one
-of them is a question. The needs-review state becomes a persisted review item in
-the version-match queue; matched and missing are results, and neither ever
-reaches the queue.
-
-**THE JUSTIFICATION THAT USED TO BE HERE WAS FALSE, and deleting it is part of
-the record.** It argued that queueing a missing row would ask a person to confirm
-the same track once per run forever. It would not: ``review.offer`` is
-idempotent, so the same identity finds the same item, keeps its verdict, and
-writes no second row. A review proved that against the real store. What is
-actually true is narrower and is a matter of authority rather than mechanics.
-Issue #16 says twice that missing items become review items with acquisition
-options, and plan line 271 AE11 agrees; U11 declared matched and missing as
-OUTPUTS and registered a countdown against this unit for that reading. Two
-briefs disagree, the disagreement is a product decision, and it belongs to
-Phillip rather than to whoever writes this file. It is recorded in
-``docs/residual-findings.md`` under the title **Two briefs disagree about
-whether a missing track is a review item** and needs its own issue.
-
-**EVERY RESIDUAL THIS UNIT CITES IS CITED BY TITLE.** Six residual numbers are
-claimed by two branches at once with different content on each side, so a
-citation by number points at a different subject the moment either side
-renumbers, and that has already caused one silent break on this wave.
-``test_every_residual_this_unit_cites_is_a_heading_that_exists`` checks each
-cited title against the headings in that file, so a citation that stops
-resolving fails a test rather than reading plausibly.
-
-What this file owes either way is that the sentence it prints be true. A missing
-row now genuinely carries its acquisition options as DATA in the match result,
-under ``acquisition``, where the next verb reads them. It used to carry an empty
-candidate list, an empty path list, and nothing else, while the docstring claimed
-otherwise.
-
-**ONE CLASS OF QUESTION IS QUEUED WITHOUT GATING THE RUN**, which is a product
-decision and is argued at ``UNGATED``. A list line whose dash tail is a bare
-one-word qualifier reads two ways and no rule over the string decides it, so it
-becomes a question; but ``- Edit``, ``- Mix`` and ``- Live`` are three of the
-commonest spellings a public playlist ships, and gating on them exits 12 on
-almost every run of almost every list. The row stays in ``needs_review``, the
-item stays answerable, the warning channel says so, and the caller's pipeline is
-not stopped by an ambiguity in somebody else's spelling.
-
-**WHY THE QUEUE IS READ BEFORE IT IS WRITTEN.** An item that already carries a
-verdict is not offered again. ``offer`` is idempotent and would leave a resolved
-item alone anyway, so this is not about correctness of the store; it is about
-the sentence being literally true. A run whose every question was answered last
-week writes nothing to the queue at all.
-
-**THE SUPPRESSED CHANNEL.** A tombstoned version appears in none of the three
-arrays and is reported as a warning naming its suppression identifier, so it is
-skipped by anything reading ``missing`` to decide what to acquire, and is still
-visible and revocable (R36). The reverse disagreement is reported too: a
-tombstone standing over a version the library actually holds is a stale record,
-and saying so is cheaper than letting somebody discover it during a deletion.
+``cratekit.acquire.match`` decides what each track is; this verb owns the
+configuration, the review queue and the envelope. Only needs-review becomes a
+review item; matched and missing are results, a missing row carrying its
+acquisition options. Whether missing should be a review item is open: **Two
+briefs disagree about whether a missing track is a review item**. Residuals are
+cited by title, since numbers collide across branches. A tombstoned version is
+reported as a warning rather than in the arrays (R36).
 """
 
 from __future__ import annotations
@@ -77,108 +26,61 @@ from cratekit.core import config, naming, review
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import ExitCode
 
-#: The one adjudication surface this verb produces. Assigned once at module
-#: scope so the offer below reads as one idea rather than as a queue name typed
-#: at a call site, which is how a producer ends up inventing a second surface.
+#: The one adjudication surface this verb produces.
 QUEUE = review.Queue.VERSION_MATCH
 
-#: The decision store R36's tombstones live in. A declared inventory key, and
-#: the store refuses an undeclared one by name, so a typo here fails loudly
-#: rather than writing a file nobody chose a root for.
+#: The decision store R36's tombstones live in; an undeclared key is refused.
 TOMBSTONE_STORE = "tombstones"
 
-#: The version of the list document this verb reads AND the version it refuses
-#: anything else at. Reading a document without checking its version is how a
-#: newer build's file is read as an empty list and the run reports a clean
-#: match over nothing.
+#: The list document version this verb reads, and refuses any other, so a newer
+#: build's file is never read as an empty list.
 LIST_VERSION = 1
 
-#: Every key a list document may carry. Anything else is refused rather than
-#: ignored: a misspelled ``tracks`` would otherwise parse as a valid document
-#: holding no tracks, and an empty list and a typo look identical afterwards.
+#: Every key a list document may carry. Anything else is refused, since a
+#: misspelled ``tracks`` would otherwise read as an empty list.
 LIST_KEYS = frozenset({"list", "origin", "tracks"})
 
-#: Warning codes this verb emits. Identifiers a consumer can switch on, never
-#: sentences.
-#:
 #: The word a settled row is counted under by the verbs that list what a
-#: resolve left missing. A missing row has no entry: each verb decides for
-#: itself whether to list it, and counts it then.
+#: resolve left missing. A missing row has no entry; each verb decides.
 SETTLED_WORDS = {
     match.MatchState.MATCHED: "owned",
     match.MatchState.NEEDS_REVIEW: "offered",
     match.MatchState.SUPPRESSED: "suppressed",
 }
 
-#: NOT called ``SUPPRESSED``. ``match.MatchState.SUPPRESSED`` is a state and this
-#: is a warning code, and one name meaning two things in two modules of one unit
-#: is a defect no passing test can see.
+#: Warning codes, identifiers a consumer switches on. Not named ``SUPPRESSED``,
+#: which is a match state.
 SUPPRESSED_WARNING = "acquisition-suppressed"
 TOMBSTONE_OVER_OWNED = "tombstone-over-owned"
 
-#: A stored verdict that could not be applied, on the channel that can carry the
-#: item identifier. Without it the only sign is an exit status: the item is
-#: RESOLVED in the queue, so a listing of open items shows nothing and resolving
-#: it again is refused, and a caller reading the exit code and then the verify
-#: verb is told "blocked" and "nothing to do" in the same breath.
+#: A stored verdict that could not be applied. The item is resolved, so it is
+#: absent from the open listing, and only this warning names it.
 VERDICT_UNAPPLICABLE = "verdict-unapplicable"
 
-#: An approximate offer that was truncated. A silently truncated offer looks
-#: exactly like an offer of everything the library resembles, so a person who
-#: rejects it has rejected answers they were never shown, and the run then
-#: acquires a track the library already holds, which is what the approximate pass
-#: exists to prevent.
+#: An approximate offer that was truncated, so a rejection does not pass for
+#: a rejection of everything the library resembles.
 CANDIDATES_WITHHELD = "candidates-withheld"
 
-#: A list line this module could not read one way, queued as a question and NOT
-#: gating the run. See :data:`UNGATED` for the whole argument.
+#: A list line that reads two ways, queued as a question and not gating the run.
 READING_UNSETTLED = "reading-unsettled"
 
-#: The whys that are queued as questions but do not by themselves make a run
-#: PENDING_HUMAN. Exactly one, and the reason it is not simply "every question"
-#: is the point.
-#:
-#: A key question and a version question are about the LIBRARY: the person holds
-#: a different record from the one the list names, and until somebody says
-#: whether it is the same record, this run genuinely cannot say what is owned. A
-#: READING question is about the LIST'S OWN SPELLING. ``Sun Path - Live`` is
-#: either a live cut of "Sun Path" or a record called "Sun Path - Live", no rule
-#: over the string decides it, and ``- Edit``, ``- Mix`` and ``- Live`` are three
-#: of the commonest spellings a public playlist ships. Gating on them costs a
-#: measured 14 of 68 cells in the library-state table, all in one direction, so a
-#: 40,000 track library run against public playlists exits 12 on almost every
-#: run: a gate that fires every time is a gate nobody reads, and a queue nobody
-#: empties is worse than the wrong guess this class exists to avoid making.
-#:
-#: WHAT IS NOT GIVEN UP. The row is still NEEDS_REVIEW, so nothing counts it
-#: owned and nothing acquires it; the item is still offered, so the question is
-#: still answerable and the answer still persists; and the run still says so out
-#: loud on :data:`READING_UNSETTLED`. R11's silence is a question nobody is told
-#: about, not a question that did not stop the pipeline. A row of this class that
-#: later carries a verdict this build cannot apply leaves this set on its own,
-#: because ``apply_verdict`` rewrites the why into one of :data:`match.STALLED`,
-#: and those gate: a stalled item is invisible to the open listing and needs an
-#: act nobody will perform unless told.
+#: The whys queued as questions that do not make a run PENDING_HUMAN. A reading
+#: question is about the list's own spelling (``Sun Path - Live``), common enough
+#: that gating would exit 12 on almost every run; it stays NEEDS_REVIEW, offered,
+#: and reported on :data:`READING_UNSETTLED`. A stalled why (:data:`match.STALLED`)
+#: still gates.
 UNGATED: frozenset[match.Why] = frozenset({match.Why.READING_AMBIGUOUS})
 
 #: The verb that shows a person the questions this run left open.
 REVIEW_VERB = "review.list"
 
-#: The verb that puts a stalled item back in front of a person. Named because it
-#: is the ONLY escape from a verdict that cannot be applied, and a pending action
-#: naming a remedy nobody can execute is the printed instruction this field
-#: exists to replace.
+#: The verb that puts a stalled item back in front of a person, the only
+#: escape from a verdict that cannot be applied.
 CLEAR_VERB = "review.clear"
 
-#: A URL scheme at the start of an argument, matched against the form a path
-#: leaves it in. ``Path`` COLLAPSES the double slash, so "https://host/x" is
-#: "https:/host/x" by the time it is text again and a check for "://" finds
-#: nothing. That is how a web address arrives as "no such file or directory".
-#: Two or more characters before the colon, so a Windows drive letter is not a
-#: scheme. Matched against a STRIPPED name: a leading space survives a copy and
-#: paste, is legal in a filename and therefore cannot be refused on its own, and
-#: anchoring at the first character sent " https://host/x" back out as "no such
-#: file or directory", which is the exact failure this pattern exists to stop.
+#: A URL scheme at the start of an argument, matched against the stripped form a
+#: ``Path`` leaves it in, which collapses ``://`` to ``:/``. Two or more
+#: characters before the colon, so a Windows drive letter is not a scheme.
 _URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]+:/")
 
 
@@ -187,10 +89,8 @@ _URL_SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]+:/")
 # ---------------------------------------------------------------------------
 
 
-#: What a person does about a list this verb will not read. Carried as steps
-#: rather than as a token because the fix is not a command: nothing this product
-#: runs repairs somebody's tracklist, and rendering a command here would send
-#: them to a verb that cannot help.
+#: What a person does about a list this verb will not read. Steps, not a
+#: command, since nothing this product runs repairs a tracklist.
 _LIST_STEPS: tuple[str, ...] = (
     "point at a tracklist of 'Artist - Title' lines, or at a list document this "
     "product wrote",
@@ -198,12 +98,7 @@ _LIST_STEPS: tuple[str, ...] = (
 
 
 def _refuse(message: str, *steps: str, **detail: Any) -> CratekitError:
-    """One refusal for every way a list is not a list this verb can read.
-
-    One slug, in the same shape the configuration layer uses for five ways a
-    config can be unusable: what differs between them is what a person does
-    next, and that travels on the steps rather than on the code.
-    """
+    """One refusal slug for every unreadable list; what differs rides on the steps."""
     return refuse(
         "intake-list-unusable",
         message,
@@ -227,12 +122,8 @@ def _load() -> config.Config:
 def _document_tracks(document: Mapping[str, Any]) -> tuple[match.Wanted, ...]:
     """Recognize a list document field by field, and refuse everything else.
 
-    POSITIVE RECOGNITION, not "did the parse raise". A top level array, a bare
-    number, a null ``tracks``, or rows under a key a newer build introduced all
-    parse as JSON perfectly well, and a reader that only catches a decoding
-    error reads every one of them as a list with no tracks. The match then
-    reports nothing missing and nothing to review, which is indistinguishable
-    from a list that was genuinely all owned.
+    Positive recognition, since many wrong shapes parse as JSON and would
+    otherwise read as a list with no tracks, indistinguishable from all owned.
     """
     unknown = sorted(set(document) - LIST_KEYS)
     if unknown:
@@ -277,12 +168,8 @@ def _document_tracks(document: Mapping[str, Any]) -> tuple[match.Wanted, ...]:
                     f"track {position} of a text list is not a line of text",
                     position=position,
                 )
-        # ROW BY ROW rather than joined and re-split. Joining made a refusal cite
-        # a line number in a string nobody has, let a row carrying a newline
-        # become two tracks, and stopped the array's length being the number of
-        # tracks read. An explicitly empty array is allowed here and refused on
-        # the plain-text path, because a document that declares zero tracks has
-        # said something and a file with no readable line in it has not.
+        # Row by row, so one array entry is one track. An empty array is allowed
+        # here: a document declaring zero tracks has said something.
         try:
             return match.read_text_rows(rows)
         except match.UnreadableList as exc:
@@ -293,10 +180,7 @@ def _document_tracks(document: Mapping[str, Any]) -> tuple[match.Wanted, ...]:
                 f"track {position} of a {origin} list is not a track record",
                 position=position,
             )
-    # POSITIVE RECOGNITION OF THE ROW ITSELF, not only of its container. A
-    # mapping is not a track record: two rows carrying nothing but an identifier
-    # used to fold to one match identifier, and an anonymous row resolved
-    # "matched" against any file in the library whose name folded to nothing.
+    # Each row is recognized too; a mapping alone is not a track record.
     try:
         return match.READERS[origin](rows)
     except match.UnreadableList as exc:
@@ -313,10 +197,8 @@ def _text(raw: str) -> tuple[match.Wanted, ...]:
 def read_list(path: Path) -> tuple[match.Wanted, ...]:
     """One list, from a text tracklist or from a list document.
 
-    A URL is refused with its own sentence rather than as an unreadable file.
-    Fetching a playlist needs a provider session and pagination, both of which
-    belong to the intake verbs; this verb matches a list somebody already has,
-    which is what keeps the whole unit provable without an account.
+    A URL is refused with its own sentence: fetching belongs to the intake verbs,
+    and this verb matches a list somebody already has.
     """
     name = str(path)
     if _URL_SCHEME.match(name.strip()):
@@ -326,20 +208,14 @@ def read_list(path: Path) -> tuple[match.Wanted, ...]:
             source=name,
         )
     try:
-        # utf-8-sig, so a byte order mark left by an editor comes off the first
-        # artist's name rather than travelling into the identity it is hashed
-        # into. Folding happens to remove it too, and relying on that would be
-        # relying on a coincidence in a function that exists for another reason.
+        # utf-8-sig, so an editor's byte order mark stays out of the first identity.
         raw = path.read_text(encoding="utf-8-sig")
     except OSError as exc:
         raise _refuse(f"{name} could not be read: {exc.strerror}", source=name) from exc
     except ValueError as exc:
         raise _refuse(f"{name} is not readable as text: {exc}", source=name) from exc
-    # A LEADING BRACKET COUNTS AS JSON, not only a leading brace. A top level
-    # array falls through to the line reader otherwise, and ``["Artist - Title"]``
-    # splits on the separator perfectly happily, so a JSON document of the wrong
-    # shape is read as one track with punctuation in its name. That is the same
-    # defect as reading a wrong document as an empty one, wearing a different hat.
+    # A leading bracket counts as JSON too, so a top level array is refused
+    # rather than read as one track by the line reader.
     if raw.lstrip()[:1] in {"{", "["}:
         try:
             document = json.loads(raw)
@@ -365,12 +241,8 @@ def suppression_view(
 ) -> tuple[Callable[[str, Mapping[str, Any]], bool], Callable[..., str]]:
     """One snapshot of what the store suppresses, plus the identifier rule.
 
-    The store answers ``suppresses`` by reading its whole document, which is
-    right for a caller asking once and wrong for a caller asking per track in a
-    three hundred track list. The snapshot is taken once so a run sees one
-    consistent world, and membership is tested against identifiers built by the
-    store's OWN identifier function, so there is no second implementation of the
-    identity rule to drift from the first.
+    Taken once so a run sees one world, and tested with the store's own
+    identifier function so the identity rule has one implementation.
     """
     identify = partial(review.suppression_id_for, tombstones.key)
     live = {record.suppression_id for record in tombstones.suppressions()}
@@ -389,11 +261,8 @@ def suppression_view(
 def _options(found: match.TrackMatch) -> tuple[review.Option, ...]:
     """The owned versions a person may say yes to.
 
-    There is deliberately no "none of these" option. Saying no to every
-    candidate is a REJECTED verdict, which the queue already models and which
-    suppresses the item until somebody clears it; an option meaning the same
-    thing would give one answer two representations and the store would have to
-    guess which one a later reader meant.
+    No "none of these" option: that answer is the REJECTED verdict, and one
+    answer must not have two representations.
     """
     return tuple(
         review.Option(
@@ -424,15 +293,9 @@ def owned_by_a_rule(found: match.TrackMatch) -> bool:
 def touches_the_queue(found: match.TrackMatch) -> bool:
     """Whether ``adjudicate`` has anything to do with this row.
 
-    A question is offered or read back, and a row a rule owns retires the
-    question an earlier run asked about it. EVERY CALLER GATES ON THIS and not
-    on the needs-review state alone. Four of the five used to, opening the
-    store "only for a question", and the retirement was unreachable from every
-    verb but ``match run``: the intake worker, the missing pass, the label
-    sweep and the fallback pass, which between them filed the 85 stale items
-    the residual measured, would have re-resolved the owning job and retired
-    none of them. A row that is owned or missing with no question in its batch
-    still costs no store open.
+    A question is offered or read back, and a row a rule owns retires an earlier
+    question. Every caller gates on this rather than on needs-review alone, or
+    the retirement is unreachable from it.
     """
     return found.state is match.MatchState.NEEDS_REVIEW or owned_by_a_rule(found)
 
@@ -440,14 +303,10 @@ def touches_the_queue(found: match.TrackMatch) -> bool:
 def retire_questions(
     items: review.ReviewStore, found: match.TrackMatch
 ) -> tuple[review.Item, ...]:
-    """Supersede every OPEN question about a row resolution now owns.
+    """Supersede every open question about a row resolution now owns.
 
-    A line can have been asked about under any of the four question shapes, and
-    the retiring side has no why to derive one from, so it asks about all of
-    them in one call. ``supersede`` reads which are open once, writes only
-    over an empty column, and reports what it retired, so a row nobody ever
-    asked about costs one read, and a question a person answered before the
-    rule existed is left exactly as they left it.
+    Every question shape is asked about, since the retiring side has no why. A
+    question a person already answered is left as they left it.
     """
     return review.supersede(
         items,
@@ -469,50 +328,32 @@ def adjudicate(
 ) -> match.MatchResult:
     """Turn the needs-review state into queue items, and read back the answers.
 
-    Matched and missing pass through untouched. They are results, and a result
-    pushed into the queue asks a person to confirm an answer (R12, and the split
-    U11 recorded when it declared these surfaces).
-
-    The tombstone view is threaded through because a REJECTION reaches "missing"
-    by a road resolution never walks, and the row it produces is the one that
-    tells acquisition what to go and get. Passing the same snapshot the match
-    used, rather than re-reading the store, is what keeps one run seeing one
-    world.
+    Matched and missing pass through as results (R12). The match's own tombstone
+    snapshot is passed in, since a rejection reaches missing here and must see
+    the same world.
     """
     settled: list[match.TrackMatch] = []
     for found in result.matches:
         if owned_by_a_rule(found):
-            # RESOLUTION OWNED THIS ROW on its own evidence, under a rule that
-            # never consults the queue. Any question an earlier run filed about
-            # the same line is no longer one, so it is retired here, naming the
-            # rule, rather than left open for ever. The residual titled "A review
-            # item outlives its question: a later resolution that owns the row
-            # leaves the version-match item open, and no verdict or predicate
-            # can retire it honestly" measured 85 of the 88 open version
-            # questions on the live library asking about rows the ISRC and
-            # credited rules had since settled, and nothing withdrew them.
+            # A rule owns this row, so an earlier question about it is retired,
+            # naming the rule. See the residual "A review item outlives its
+            # question: a later resolution that owns the row leaves the
+            # version-match item open, and no verdict or predicate can retire it
+            # honestly".
             retire_questions(items, found)
             settled.append(found)
             continue
         if found.state is not match.MatchState.NEEDS_REVIEW:
             settled.append(found)
             continue
-        # THE QUESTION'S identity, not the tombstone's. They address different
-        # things and they are two functions for that reason: a tombstone is a
-        # fact about a version that outlives every list, and a review item is the
-        # answer to something somebody was asked, which for two of these whys is
-        # a question about the key.
+        # The question's identity, not the tombstone's: a review item answers
+        # what was asked, which for two whys is about the key.
         identity = found.question_identity
         held = _item(items, review.item_id_for(QUEUE, match.QUESTION_KIND, identity))
         if held is not None and held.verdict is review.Verdict.SUPERSEDED:
-            # THE RULE THAT RETIRED THIS QUESTION NO LONGER OWNS THE ROW: the
-            # file carrying the ISRC is gone, or the exact copy was, and the
-            # line is a question again. The machine's verdict is revoked by the
-            # machine, since the fact it recorded has stopped being true, and
-            # the question is put back in front of a person by the re-offer
-            # below. Left standing, the verdict would reach ``apply_verdict``
-            # as "not accepted", which reads as a rejection nobody made and
-            # sends acquisition after a record that may be owned.
+            # The rule that retired this question no longer owns the row, so the
+            # machine's verdict is cleared and re-offered; left standing it would
+            # read as a rejection nobody made.
             held = review.clear(items, held.item_id, actor=handler_key)
         if held is None or not held.resolved:
             held = review.offer(
@@ -524,11 +365,8 @@ def adjudicate(
                 options=_options(found),
                 handler_key=handler_key,
             )
-        # THREE ANSWERS. A verdict this build cannot read coerces to None, which
-        # leaves the track a question rather than freezing it into a state
-        # nobody can reach to correct. Only a PERSON'S verdict is an answer at
-        # all, which is the layer under the clear above: a verdict the product
-        # wrote, and any it may write later, is never read as a rejection.
+        # Only a person's verdict is an answer; anything else reads as None and
+        # leaves the track a question.
         titles = {
             one.option_id: (one.detail or {}).get("title") for one in held.options
         }
@@ -541,19 +379,13 @@ def adjudicate(
             match.apply_verdict(
                 found,
                 accepted=accepted,
-                # AN ANSWER RECORDED BEFORE A TITLE'S IDENTITY WAS READ names
-                # an emoji titled file by its former identifier, which is
-                # carried to the file it was about, by its stored title.
+                # An older answer's identifier is carried to its file by title.
                 option=(
                     None if held.option is None
                     else match.current_option(found, held.option, titles.get(held.option))
                 ),
-                # WHAT THE ANSWER WAS ABOUT. The store keeps the options an item
-                # was offered with and ``offer`` leaves a RESOLVED item's row
-                # alone, so this is the candidate list that was on the screen
-                # when somebody answered, not the one this run just built. An
-                # unspecific yes is bound to it, which is the only thing that
-                # tells "yes, that copy" apart from "yes, whatever you hold now".
+                # The candidates on screen when the person answered, so an
+                # unspecific yes binds to what they saw.
                 offered=tuple(
                     match.current_option(found, one.option_id, titles.get(one.option_id))
                     for one in held.options
@@ -572,15 +404,8 @@ def adjudicate(
 
 
 def build(parser: argparse.ArgumentParser, entry: Any) -> None:
-    """Declare the command line. ``entry`` is untyped, and that is KTD23.
-
-    A verb whose module lives in the acquisition package sits at the modules
-    layer, and the registry that defines ``Entry`` sits at the CLI layer above
-    it. Naming the type would be an upward import, including under
-    ``TYPE_CHECKING``, which the layering guard reads because a lazy import is
-    exactly the shape it exists to catch. The verbs that DO name it are the ones
-    that live in the CLI package.
-    """
+    """Declare the command line. ``entry`` is untyped (KTD23): naming it would be
+    an upward import from the modules layer to the CLI layer."""
     parser.add_argument(
         "list",
         help="a tracklist of 'Artist - Title' lines, or a list document",
@@ -594,13 +419,8 @@ def _warnings(
     suppresses: Callable[[str, Mapping[str, Any]], bool],
     identify: Callable[..., str],
 ) -> tuple[dict[str, str], ...]:
-    """What the three arrays cannot say, said on the envelope's own channel.
-
-    R36 requires the suppression to be REPORTED rather than omitted silently,
-    and the payload surface is closed at three arrays. Every value is text
-    because a warning is declared as a mapping of text and a consumer reading
-    one should not have to ask which fields are.
-    """
+    """What the three arrays cannot say, on the warning channel (R36). Every
+    value is text."""
     found: list[dict[str, str]] = []
     for track in result.suppressed:
         found.append(
@@ -616,29 +436,18 @@ def _warnings(
                 "remedy": "",
             }
         )
-    # A TOMBSTONE THAT DID NOT SUPPRESS IS STILL REPORTED. The match consults the
-    # store last, so a version the library can say something about becomes a
-    # matched row or a question rather than a suppression, and the tombstone
-    # would otherwise leave no trace at all. The two cases are different facts
-    # and get different codes: over a held file the record is STALE and the disk
-    # wins, while over a question the record still stands and whatever the person
-    # answers, acquisition must not go and fetch it.
+    # A tombstone that did not suppress is still reported: over a held file it is
+    # stale, over a question it still stands and acquisition must skip it.
     seen: set[tuple[str, str]] = set()
     for state in match.PAYLOAD_STATES:
         for track in result.of(state):
-            # ASKED UNDER EVERY SPELLING, the same set the suppression itself is
-            # asked under. Reporting on ``track.identity`` alone asked under ONE
-            # of them, so a tombstone recorded from the row ``Sun Path (Live)``
-            # left no trace at all against a list line spelling it ``Aurora Bloom
-            # - Sun Path [Live]``, which is the case the extra spellings exist
-            # for: a report narrower than the rule it reports on is silent on
-            # exactly the rows the rule was widened to catch.
+            # Asked under every spelling the suppression itself is asked under.
             held = state is match.MatchState.MATCHED
             standing = match.standing_tombstone(
                 track.wanted,
                 suppresses=suppresses,
                 suppression_id=identify,
-                # A HELD FILE CANNOT CALL A COMPANION STALE. See the argument.
+                # A held file cannot call a companion stale.
                 companions=not held,
             )
             if standing is None or (track.match_id, standing) in seen:
@@ -663,24 +472,9 @@ def _warnings(
                     "remedy": "",
                 }
             )
-    # AND THE FILE BEING OFFERED AS THE ANSWER IS A SECOND PLACE A TOMBSTONE CAN
-    # STAND, which the loop above cannot see and which went unreported in every
-    # state. It asks under the addresses of the reading the LIST spelled, and a
-    # candidate is by construction a version the list did NOT spell: that is what
-    # makes it a question. So with a tombstone under ``Sun Path (Live)`` and the
-    # library still holding that file, the list line ``Aurora Bloom - Sun Path -
-    # Live`` reported the candidate, said nothing about the tombstone, and after
-    # somebody accepted it came back MATCHED with an empty warning array. This
-    # file's own docstring promises the opposite in as many words, that a
-    # tombstone over a version the library actually holds is a stale record and
-    # saying so is cheaper than letting somebody find out during a deletion.
-    #
-    # ALWAYS ``TOMBSTONE_OVER_OWNED``, never the suppression code, and in every
-    # state including SUPPRESSED. A candidate is a file this run read off the
-    # disk, so the disk has already won: the record is stale whatever the row
-    # around it resolved to. The pair (row, suppression) is the dedupe key, so a
-    # candidate standing under the same tombstone the row already reported is one
-    # warning rather than two.
+    # A tombstone over an offered candidate, a version the list did not spell, is
+    # stale in every state, since the candidate was read off the disk. The pair
+    # (row, suppression) dedupes against the loop above.
     for track in result.matches:
         for candidate in track.candidates:
             offered = match.Wanted(
@@ -713,9 +507,7 @@ def _warnings(
     for track in result.of(match.MatchState.NEEDS_REVIEW):
         if track.why not in match.STALLED:
             continue
-        # ONE WARNING PER ITEM. Two rows of one list can resolve to one question,
-        # and a second warning about it is a second thing to clear that is not
-        # there.
+        # One warning per item, since two rows can resolve to one question.
         if track.item_id and track.item_id in named:
             continue
         named.add(track.item_id or "")
@@ -734,12 +526,8 @@ def _warnings(
                 "remedy": CLEAR_VERB,
             }
         )
-    # THE QUESTIONS THAT DO NOT GATE, SAID OUT LOUD, and this is the whole price
-    # of not gating. A row of this class leaves the run at exit zero, so the only
-    # thing standing between it and R11's silence is this warning and the
-    # needs-review array. One per ITEM, for the reason the stalled loop above
-    # gives: two rows of one list can resolve to one question, and two warnings
-    # about one question is one thing to answer wearing two hats.
+    # The questions that do not gate, said out loud, one per item, since this is
+    # all that stands between an exit zero and R11's silence.
     asked: set[str] = set()
     for track in result.of(match.MatchState.NEEDS_REVIEW):
         if track.why not in UNGATED:
@@ -763,13 +551,7 @@ def _warnings(
                 "remedy": REVIEW_VERB,
             }
         )
-    # EVERY STATE, not only the one where nothing is acquired. This warning's own
-    # reason for existing is that "the run then acquires a track the library
-    # already holds", and the run that acquires is the one AFTER the rejection:
-    # ``apply_verdict`` carries the withheld count onto the rejected MISSING row,
-    # so run one exited 12 saying candidates were kept back and run two exited 0
-    # with an acquisition option, no pending action and no warning at all. Silent
-    # on the only run the sentence is about.
+    # Every state, since the run that acquires is the one after the rejection.
     for track in result.matches:
         if not track.withheld:
             continue
@@ -795,43 +577,14 @@ def _warnings(
 def _pending(result: match.MatchResult, *, run_id: str) -> PendingHumanAction | None:
     """The outstanding questions, as a state rather than as a printed sentence.
 
-    A run that produced version questions and exited zero is exactly the silence
-    R11 exists to remove: the caller's next step reads ``missing``, acquires it,
-    and never learns that four more tracks were a remix away from being right.
-    Nothing is put in ``blocks``: an open version question stops nobody from
-    working, it only stops the run from claiming it is finished.
-
-    TWO KINDS OF OUTSTANDING, and conflating them parked a run at
-    ``PENDING_HUMAN`` forever naming a remedy nobody could execute. An ANSWERABLE
-    question is in the open queue and ``review list`` shows it. A STALLED one
-    carries a verdict this run could not apply, which leaves the item RESOLVED:
-    it is absent from the open listing, resolving it again is refused, and the
-    only way forward is to clear it. That was reachable by deleting or retagging
-    one file, and every later run repeated the same exit status while the verb it
-    named reported nothing to do. So the verb the action names is the verb that
-    can act, and the item identifiers ride in the steps.
-
-    COUNTED BY QUESTION, not by row, IN BOTH HALVES OF THE SENTENCE. The first
-    version of this counted the total by question and the stalled part by row, so
-    one line pasted twice produced "1 tracks ... need a person; 2 of them carry a
-    verdict that could not be applied", which is arithmetic nobody can follow, and
-    then printed one identifier for the two.
-
-    ONE CLASS OF QUESTION DOES NOT GATE, and it is a decision rather than an
-    oversight: see :data:`UNGATED`, which also says what is not given up. It is
-    filtered here rather than left out of the queue, so the question is still
-    asked and still answerable; what changes is only whether one common public
-    playlist spelling stops the caller's pipeline.
-
-    IT IS FILTERED OUT OF THE GATE AND NOT OUT OF THE SENTENCE, and for one round
-    it was filtered out of both. Measured on a 200 line list: 4 rows gate, 20
-    more queue ungated, ``needs_review`` holds 24, and the summary a caller reads
-    said "4 tracks ... need a person". Undercounting the outstanding questions
-    six fold is the same silence R11 exists to remove wearing this unit's own fix
-    as a costume, since the caller who reads the summary is exactly the caller
-    who does not read every warning. So the ungated rows are counted in the
-    sentence and named in a step, and what they do not do is change the exit
-    status.
+    A run with open version questions must not exit zero (R11). Nothing goes in
+    ``blocks``: an open question stops nobody working. An answerable question is
+    in the open queue; a stalled one carries a verdict this run could not apply,
+    is resolved and absent from the listing, and is only cleared, so the verb
+    named is the one that can act and each stalled item gets its own step.
+    Counted by question, not by row, throughout. :data:`UNGATED` questions are
+    left out of the gate but counted in the sentence and named in a step, since
+    the summary is what a caller reads.
     """
     open_questions = [
         found
@@ -867,12 +620,7 @@ def _pending(result: match.MatchResult, *, run_id: str) -> PendingHumanAction | 
             f"they are resolved, invisible to the open listing, and refused by "
             f"review resolve; clear each one to put it back in front of a person"
         )
-        # ONE STEP PER ITEM, each a command that runs. Joining the identifiers
-        # into one line rendered "crate review clear a, b", and the verb takes a
-        # single positional, so the shell answered "unrecognized arguments" and
-        # exit 2. A pending action naming a remedy nobody can execute is the
-        # printed instruction this field exists to replace, so rendering one here
-        # was the same defect wearing this unit's own fix as a costume.
+        # One step per item, each a command that runs: the verb takes one id.
         steps.extend(f"crate review clear {item_id}" for item_id in stalled)
     if ungated:
         steps.append(
@@ -913,15 +661,8 @@ def library_template(cfg: config.Config) -> naming.NameTemplate:
 def library_view(cfg: config.Config) -> tuple[match.LibraryIndex, Callable[..., bool], Callable[..., str]]:
     """The library as the match engine sees it: the index, and the tombstone view.
 
-    ONE BUILDER FOR EVERY CALLER, because the intake worker resolves one track
-    at a time against exactly this view and a second copy of these three lines
-    is a second opinion about which directory is the library and which
-    template reads its names.
-
-    THE TOMBSTONE SNAPSHOT COMES BEFORE THE LIBRARY WALK. A store that cannot
-    be read refuses, and a refusal that arrives after a scan of every file on
-    the music volume is a refusal the user waited minutes for. The order costs
-    nothing and is the same argument U8 makes for its three gates.
+    One builder for every caller. The tombstone snapshot comes before the library
+    walk, so an unreadable store refuses before a long scan.
     """
     suppresses, identify = suppression_view(review.DecisionStore(TOMBSTONE_STORE, cfg))
     index = match.index_library(
@@ -948,13 +689,8 @@ def resolve_list(
 ) -> ListResolved:
     """Resolve ``wanted`` against the library and offer what needs a person.
 
-    THE ONE SPELLING OF "WHAT DOES THE LIBRARY SAY ABOUT THIS LIST". This verb
-    reads a list off disk and ``intake identify`` hears one in a recording, and
-    the question after that is the same question: the library view, the
-    resolution, the offer to the review queue under the asking verb's own key,
-    the pending action and the warnings. A second copy of these steps is how
-    identification came to report every owned track missing: it had the rows
-    and never asked.
+    The one implementation shared with ``intake identify``, so the two never
+    disagree about what the library holds.
     """
     index, suppresses, identify = library_view(cfg)
     result = match.resolve_all(
@@ -976,12 +712,7 @@ def resolve_list(
 
 
 def match_list(ctx: Any) -> Envelope:
-    """The handler. NOT called ``run``: ``cli.run`` is the dispatcher.
-
-    Two things called ``run`` in one call path is the collision the repository
-    already records three times over, and here the two would sit one frame apart
-    in every traceback this verb ever produces.
-    """
+    """The handler. Not called ``run``, which is the dispatcher's name."""
     cfg = _load()
     wanted = read_list(Path(ctx.args.list))
     resolved = resolve_list(

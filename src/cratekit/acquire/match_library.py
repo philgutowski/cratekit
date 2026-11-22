@@ -26,35 +26,14 @@ from cratekit.acquire.match_identity import (
 )
 from cratekit.core import naming, tags
 
-#: A short CURATED list of slang and numeral spellings, each folded word
-#: beside the folded word it stands for (card 833, chosen by Phillip on
-#: 2026-11-15). ``Luv U`` against a held ``Love You`` and ``4 U`` against
-#: ``For You`` by one artist share no word and score on their letters alone,
-#: 61.5 and 40.0, under :data:`APPROXIMATE_TITLE_FLOOR`, exactly where the
-#: unrelated ``Get Out`` against ``Agenou`` sits, so no floor tells them apart
-#: and the row read missing and downloaded a record the library holds.
-#:
-#: READ ONLY WHEN TWO TITLES ARE COMPARED. Nothing is ever spelled out in a
-#: token, an identity, a candidate, a review item or anything written: the
-#: approximate pass reads a title this way (:func:`_agree` and
-#: :meth:`LibraryIndex.spelled_alike`) and nothing else does, so a pair it
-#: joins is OFFERED for review, never called owned.
-#:
-#: DELIBERATELY SHORT, and a word missing from it reads as it always did. A
-#: spelling with more than one reading takes the one a title means most
-#: (``2`` is ``to``), and ``too`` is read as ``to`` so that ``Luv U 2`` is
-#: ``Love You Too``; it is the one real word listed. ``two`` and ``four``
-#: were measured and left out: read as ``to`` and ``for`` with the spaces
-#: gone, ``Two Day`` became ``Today`` and ``Four Tune`` ``Fortune``
-#: (review round one). The spaces are gone because ``2 Nite`` is
-#: ``Tonight``, so a few spelled out words can still run together into an
-#: unrelated title (``B Side`` and ``Beside``); that costs a question, never
-#: ownership, and is the residual this card filed. Not here: ``da`` (``Da
-#: Funk`` is not ``The Funk``), ``ya`` (you or yeah), and cardinals (``1``
-#: for ``One``), which agree already wherever the titles share another word.
-#: ``test_every_listed_spelling_offers_its_spelled_out_title`` drives each
-#: entry and ``test_the_word_list_maps_no_word_to_itself_and_only_folded_words``
-#: holds its form.
+#: A short curated list of slang and numeral spellings, each folded word beside
+#: the folded word it stands for (card 833). ``Luv U`` against a held ``Love
+#: You`` shares no word and scores under :data:`APPROXIMATE_TITLE_FLOOR`, where
+#: unrelated pairs sit, so no floor can join them. Read only when two titles are
+#: compared, never in a token, identity or anything written, so a pair it joins
+#: is offered for review, never called owned. A word missing reads as it always
+#: did; ``two`` and ``four`` are left out because, with spaces gone, ``Two Day``
+#: would read as ``Today``.
 _SPELLED_OUT: Mapping[str, str] = MappingProxyType(
     {
         "u": "you",
@@ -101,14 +80,10 @@ class Owned(Recorded):
     title: str
     version: str
     key: str | None
-    #: THE FILE'S ISRC, FOLDED, or empty when the tag is absent or malformed.
-    #: 1691 of 9868 files on the live volume carry none, and those are held by
-    #: the credited list rule or by the recording token alone.
+    #: The file's ISRC, folded, or empty when the tag is absent or malformed.
     isrc: str = ""
-    #: THE FOLDED NAMES THE ARTIST TAG CREDITS, for the credited list rule.
-    #: Computed once when the file is read, not on every lookup, because the
-    #: index answers one membership question per row over every file under a
-    #: title and the inputs never change between rows.
+    #: The folded names the artist tag credits, computed once per file for the
+    #: credited list rule.
     members: frozenset[str] = field(init=False, default=frozenset())
 
     def __post_init__(self) -> None:
@@ -123,36 +98,24 @@ class Owned(Recorded):
 
 @dataclass(frozen=True, slots=True)
 class LibraryIndex:
-    """Ownership as MEMBERSHIP, which is the shape the source repo got right.
-
-    Ownership being a lookup in this index, rather than a filter somebody
-    applies at each call site, is what stops a caller forgetting it. A caller
-    that forgets a filter gets a plausible answer; a caller that forgets a
-    lookup gets nothing and notices.
-    """
+    """Ownership as membership: a caller that forgets a lookup gets nothing and
+    notices, where one that forgets a filter gets a plausible answer."""
 
     by_recording: Mapping[str, tuple[Owned, ...]]
     #: Every file under the folded ISRC it carries. A file with no ISRC tag is
     #: in :attr:`by_recording` and not here.
     by_isrc: Mapping[str, tuple[Owned, ...]] = field(default_factory=dict)
-    #: Every file under its folded title alone, the lookup the credited list
-    #: rule reads. Membership is decided at the lookup, not here, so one file
-    #: is indexed once however many artists its tag credits and ``__len__``
-    #: still counts files.
+    #: Every file under its folded title alone, for the credited list rule, so a
+    #: file is indexed once however many artists it credits.
     by_title: Mapping[str, tuple[Owned, ...]] = field(default_factory=dict)
-    #: The recordings beside their words sorted, built the first time the
-    #: approximate pass asks and kept for the life of the index (U265), so a
-    #: library name is sorted once and not once for every wanted row. Built
-    #: lazily because a landing or a set build that never reaches the
-    #: approximate pass should not pay for it; read it through
+    #: The recordings beside their words sorted, built lazily on the approximate
+    #: pass's first ask and kept for the index's life (U265); read it through
     #: :meth:`sorted_recordings`.
     _sorted: tuple[tuple[str, ...], tuple[str, ...]] | None = field(
         default=None, init=False, repr=False, compare=False
     )
-    #: The recordings under their artist and their title spelled out (see
-    #: :func:`_spelled_key`), built the first time the approximate pass asks
-    #: and kept for the life of the index, as :attr:`_sorted` is. Read it
-    #: through :meth:`spelled_alike`.
+    #: The recordings under their spelled out key (:func:`_spelled_key`), built
+    #: lazily like :attr:`_sorted`; read it through :meth:`spelled_alike`.
     _spelled: Mapping[str, tuple[str, ...]] | None = field(
         default=None, init=False, repr=False, compare=False
     )
@@ -162,11 +125,8 @@ class LibraryIndex:
         return tuple(self.by_recording)
 
     def sorted_recordings(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
-        """The recordings, and each one's words sorted, position for position.
-
-        The two tuples are taken together so a position the scorer returns in
-        the second names the recording at the same position in the first.
-        """
+        """The recordings, and each one's words sorted, position for position, so
+        a position the scorer returns names a recording."""
         cached = self._sorted
         if cached is None:
             recordings = self.recordings
@@ -178,19 +138,12 @@ class LibraryIndex:
         return self.by_recording.get(recording, ())
 
     def spelled_alike(self, recording: str) -> tuple[str, ...]:
-        """The recordings by this recording's artist whose title is this
-        one's once each word of :data:`_SPELLED_OUT` is spelled out and the
-        spaces are gone, where one of the two titles holds such a word
-        (card 833), in token order.
+        """The recordings by this artist whose title equals this one's spelled
+        out by :data:`_SPELLED_OUT` with spaces gone, where either title holds a
+        listed word (card 833), in token order.
 
-        AN EXACT LOOKUP BESIDE THE DISCOVERY SCORE, NEVER IN PLACE OF IT. The
-        score reads the artist and the title together, and a short slang
-        title against its spelled out form falls under its floor for a short
-        artist: ``Prince, 4 U`` against ``Prince, For You`` scores 75.0, so
-        the title test never saw the pair and the row was downloaded. Read
-        only when one title holds a listed word, so a pair the list does not
-        join, ``OK`` against ``O.K.`` included, is found by the score alone,
-        exactly as before.
+        An exact lookup beside the discovery score, never in place of it, because
+        a short slang title falls under the score's floor for a short artist.
         """
         cached = self._spelled
         if cached is None:
@@ -212,38 +165,18 @@ class LibraryIndex:
         return self.by_isrc.get(isrc, ()) if isrc else ()
 
     def held(self, artist: str, title: str) -> tuple[Owned, ...]:
-        """Every file that IS this recording, under two rules in order.
+        """Every file that is this recording, under two rules in order.
 
-        The recording token first, the exact text rule every caller had. Then
-        THE CREDITED LIST RULE: a file whose folded title is this title and
-        whose artist tag credits this artist as one whole member. In this
-        library the artist tag of a processed file lists every credited
-        artist, ``Malive, Tito Azevedo, MRQZ``, where the provider row names
-        the primary one, ``Malive``, so the token can never agree and the
-        approximate pass either offered the file or scored it under the floor.
-        The finding is the residual titled "The match engine never consults the
-        ISRC, and a processed file's artist tag lists every credited artist, so
-        a quarter of the hearts the library holds read missing or offered",
-        cited by title for the reason given under :func:`split_title`.
-
-        Whole names, never substrings: ``Tito`` is not a member of that list.
-        The two rules are unioned, token hits first, because a file tagged with
-        the one artist and a file tagged with the list are both copies the
-        library holds.
-
-        A COMMA IS THE ONLY JOINER, and that is a measured limit rather than an
-        oversight. Walked on the live volume on 2026-09-23, 3041 of 9868 artist
-        tags carry a comma, and of the tags with no comma 105 carry an
-        ampersand, 25 a feat or ft, and 12 an x or an and. The ampersand is a
-        band's own name far more often than a join, ``Above & Beyond``, so
-        splitting on it would invent members, and the other two are a
-        population of 37 a person can answer from the review queue.
-
-        BOTH RULES READ THE TITLE BY :func:`title_identity`. A token and a
-        folded title agree for every title that folds to nothing, so a held
-        ``🔥`` answered for a wanted ``💧`` by the same artist, the row was
-        called owned and never downloaded. Files under the token or the title
-        whose title identity differs from the row's are not this recording.
+        The recording token first. Then the credited list rule: a file whose
+        folded title is this title and whose artist tag credits this artist as
+        one whole member, because a processed file's tag lists every credited
+        artist where a provider row names one, the residual titled "The match
+        engine never consults the ISRC, and a processed file's artist tag lists
+        every credited artist, so a quarter of the hearts the library holds read
+        missing or offered". Whole names, never substrings, and a comma is the
+        only joiner, since an ampersand is more often a band's own name. Both
+        rules read the title by :func:`title_identity`, so titles folding to
+        nothing never answer for each other.
         """
         distinct = recording_identity(artist, title)
         exact = tuple(
@@ -272,48 +205,23 @@ class _Remembered:
     owned: Owned
 
 
-#: THE INDEX READER'S MEMORY, one entry per file read cleanly in this process
-#: (U249). A sync pass builds one index of the whole music folder per intake
-#: job and one more for ``intake missing``, and each used to open every file
-#: again although nothing landed between them: (P + 1) x N opens for P
-#: playlists over N files, on a volume where one walk of the live library was
-#: measured at nine to twelve seconds. Every index is still a FRESH WALK of the
-#: folder as it is now, so a file that is gone is absent and a new one is read;
-#: only what an unchanged file's tags say is remembered.
+#: The index reader's memory, one entry per file read cleanly in this process
+#: (U249), so the several index builds of one sync pass do not reopen every file.
+#: Every index is still a fresh walk; only an unchanged file's tags are recalled.
 #:
-#: THE KEY IS NEVER THE PATH ALONE. An entry answers only while the path, the
-#: name template it was parsed under and the file's whole stamp agree: size,
-#: modification time, change time, inode and device. Size and modification
-#: time are what the set builder's cache keys on; the change time is added
-#: because ``rsync -a``, ``cp -p`` and ``os.utime`` put the old modification
-#: time back over new bytes and none of them can set it, and the inode pair
-#: because a rename can put another file of the same size and times under the
-#: same name. A field too many costs a read, never a stale answer.
-#:
-#: THE WINDOW. A file whose modification time is not at least
-#: :data:`REMEMBER_WINDOW_NS` older than the moment its entry was made is never
-#: answered from memory, because a FAT volume stamps in two second steps and a
-#: rewrite inside one step keeps every field above on a volume with no change
-#: time of its own. The moment is taken BEFORE the stat and the read, so a
-#: write that lands during or after the read either changes the stamp or falls
-#: inside the window.
-#:
-#: ONLY A WHOLE READ IS REMEMBERED. A read that failed anywhere is answered
-#: through its one open exactly as the lenient reader always answered it, and
-#: remembered never, because a failed read on an external volume can be a
-#: moment's I/O error and the next job must be free to read the file properly.
-#: A file that cannot be stat'ed is read as before and remembered never.
-#:
-#: Nothing is kept across processes, so a resume in a new process walks and
-#: reads as before. :func:`reset_cache` forgets every entry, and the suite
-#: calls it around every test.
+#: An entry answers only while the path, the name template and the file's whole
+#: stamp agree: size, modification time, change time, inode and device, because
+#: copy tools can restore an old modification time over new bytes and a rename
+#: can put a lookalike under the name. A file modified within
+#: :data:`REMEMBER_WINDOW_NS` of the entry's moment is never answered from memory,
+#: for volumes stamping in two second steps. Only a whole read is remembered.
+#: Nothing outlives the process, and :func:`reset_cache` forgets every entry.
 _REMEMBERED: dict[tuple[Path, naming.NameTemplate], _Remembered] = {}
 
 #: Two seconds, a FAT volume's modification time step.
 REMEMBER_WINDOW_NS = 2_000_000_000
 
-#: The clock an entry's moment is read from, the wall clock a file's
-#: modification time is stamped by. A name of its own so a test can hold it.
+#: The clock an entry's moment is read from, named so a test can hold it.
 _now_ns = time.time_ns
 
 #: The four fields the index reads from every file, through one open.
@@ -342,11 +250,8 @@ def _stamp_of(path: Path) -> tuple[int, int, int, int, int] | None:
 
 
 def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
-    """What this file is, read once per process while it stays unchanged (U249).
-
-    The index's one reader, so every caller of :func:`index_library` and
-    :func:`index_paths` gains and none changes. The rules are the note above
-    :data:`_REMEMBERED`; :func:`_read_fresh` is what a miss reads.
+    """What this file is, read once per process while it stays unchanged (U249),
+    by the rules noted at :data:`_REMEMBERED`; a miss reads :func:`_read_fresh`.
     """
     made_ns = _now_ns()
     stamp = _stamp_of(path)
@@ -374,45 +279,13 @@ def _read_fresh(path: Path, template: naming.NameTemplate) -> tuple[Owned, bool]
     """What this file is, from its tags first and its filename second, and
     whether the read was whole enough to remember.
 
-    Tags first because a tag is what the file itself says; the filename second
-    because the library's own naming convention carries the Camelot head and,
-    for anything acquired before it was tagged, the artist and title too.
-    Neither alone is enough, and an export is neither.
-
-    THE ARTIST AND THE TITLE FALL BACK AS A PAIR, AND A PRESENT VALUE IS NEVER
-    DISCARDED. Three rules in precedence order, because two of them alone each
-    lose a file. Field by field, a title tag with no artist tag gave an identity
-    assembled from two sources matching neither the tags nor the name. As a
-    plain pair, an artist tag with no title tag and a filename carrying no
-    separator threw the artist away entirely, so the file was found by no list
-    naming its artist and a held track reported missing. So: both tags win when
-    both are there; otherwise the NAME wins when the name carries both halves;
-    otherwise each field takes whatever it has, which is the only case where the
-    two sources mix and the only case where mixing beats losing a value.
-
-    THE KEY'S PRECEDENCE RUNS THE OTHER WAY, on purpose. The Camelot head is
-    written into the filename by this product, following the library's own
-    convention, so for the key the NAME is the library's own statement and the
-    tag is whatever some other tool last wrote. For the artist and the title
-    there is no such convention and the tag is the file speaking.
-
-    THE TITLE TAG IS STRIPPED OF ITS HEAD THE WAY THE STEM IS. The live library
-    writes ``KEY - BPM - `` into the title tag as well as the filename, the live
-    system's convention, and 9767 of 9868 files on the volume carry it there. A
-    tag taken verbatim put the head inside every recording token, so no
-    processed file could match a provider row exactly and the first live
-    favourites job resolved 206 hearts as 0 owned over a library holding at
-    least 96 of them. The finding is the residual titled "The index takes the
-    title tag with its head on, so no processed file resolves owned and every
-    heart is offered or missing", cited by title for the reason given under
-    :func:`split_title`. A tag that is nothing but a head strips to empty and
-    takes the branch an absent tag takes, which is the filename. The head found
-    inside the tag carries the key when the stem has none, below the stem's
-    head and above the ``initialkey`` tag, which is the opinion
-    ``write/naming_cli.py`` already holds about the same bytes: the first draft
-    read nothing off the tag's head, and the review drove a file that indexed
-    with no key until a rename padded the same head into its filename, so one
-    file gave two answers depending on whether ``naming apply`` had run.
+    Artist and title fall back as a pair and a present value is never discarded:
+    both tags win when both are there, otherwise the name when it carries both
+    halves, otherwise each field takes what it has. The key runs the other way,
+    the filename's Camelot head first, since this product writes it there, then a
+    head found in the title tag, then ``initialkey``. The title tag is stripped of
+    its head as the stem is, since the live library writes ``KEY - BPM - `` there
+    too and a head inside the token would match no provider row.
     """
     stem = path.stem
     head = naming.parse_head(stem, template=template) or {}
@@ -421,11 +294,8 @@ def _read_fresh(path: Path, template: naming.NameTemplate) -> tuple[Owned, bool]
     if not separator:
         artist_part, title_part = "", body
 
-    # ONE CONTAINER OPEN FOR THE FOUR FIELDS. Three opens per file was the shape
-    # the residual titled "The index reader opens every container three times,
-    # and the walk is the library" recorded, and the ISRC is not a fourth.
-    # The lenient answer, and whether any part of it failed, through that one
-    # open: a failed read is indexed as it always was and never remembered.
+    # One container open for the four fields; a failed read is indexed as it
+    # always was and never remembered.
     read, whole = tags.read_tags_noting(path, _INDEX_FIELDS)
     tagged_artist = str(read["artist"] or "").strip()
     spelled_tag = read["title"] or ""
@@ -460,11 +330,8 @@ def index_library(
 ) -> LibraryIndex:
     """Walk the library's music tree and index what it holds.
 
-    ``reader`` is injected so a test can drive the grouping without synthesizing
-    a valid container for every fixture. Its default is the real disk reader, so
-    the production path is the one that runs unless somebody deliberately
-    replaces it; a default that read nothing would make an empty library and a
-    forgotten argument look identical.
+    ``reader`` is injected for tests, and defaults to the real disk reader so a
+    forgotten argument never looks like an empty library.
     """
     return index_paths(
         sorted(root.rglob("*")) if root.is_dir() else (), template=template, reader=reader
@@ -477,13 +344,9 @@ def index_paths(
     template: naming.NameTemplate | None = None,
     reader: Callable[[Path, naming.NameTemplate], Owned] = _read_from_disk,
 ) -> LibraryIndex:
-    """Index exactly the files named, the way :func:`index_library` indexes a tree.
-
-    For a caller that knows which files it means and must not be answered from
-    anything else beside them: a landing ties its planned files to the rows that
-    asked for them before they move (U113), and download staging also holds the
-    partial downloads of attempts that never finished. A name that is not an
-    audio file, or not a file, is passed over exactly as the walk passes it.
+    """Index exactly the files named, the way :func:`index_library` indexes a tree,
+    for a caller that must not be answered from anything beside them (U113). A
+    name that is not an audio file is passed over as the walk passes it.
     """
     shape = template or naming.NameTemplate()
     suffixes = {suffix.lower() for suffix in naming.AUDIO_EXTS}
@@ -518,8 +381,7 @@ def _holds_spelling(recording: str) -> bool:
 
 
 def _spelled_key(recording: str) -> str:
-    """A recording token with its title read by :func:`_spelled_out`, what
-    :meth:`LibraryIndex.spelled_alike` looks a recording up by. The artist is
-    kept as it folds, so the lookup is the same artist always."""
+    """A recording token with its title read by :func:`_spelled_out`, the key
+    :meth:`LibraryIndex.spelled_alike` looks up; the artist is kept as it folds."""
     artist, separator, title = recording.partition("\x1f")
     return f"{artist}{separator}{_spelled_out(title)}"

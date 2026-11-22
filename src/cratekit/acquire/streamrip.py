@@ -1,43 +1,9 @@
-"""The alternative adapter that proves R9 (KTD5). Written against the same contract.
+"""The alternative adapter that proves R9 (KTD5), written against the same contract.
 
-WHY THIS ONE. R9 requires at least one alternative proven against the interface
-BEFORE launch, not after the outage that needs it, and the alternative was chosen
-on evidence rather than popularity: this tool broke on the same provider
-authentication change in March 2026 that killed the vendored downloader, and it
-shipped a confirmed fix. That is the resilience the boundary exists to exploit.
-It also locates the boundary correctly. What both the provider and the competing
-forks contest is credentials and authentication, so that is the layer the adapter
-must isolate, and it is the layer these two implementations differ most in.
-
-WHAT "PROVEN" MEANS HERE, PRECISELY. Not that a download runs. This adapter is
-implemented against the declared contract and tested with the third-party tool
-ABSENT, which is the state of the machine that runs the suite and of any friend's
-clone that never needed a replacement. What is proven is that the interface can
-EXPRESS a second tool: its quality vocabulary, its credential shape, its error
-translation, and its absence all have a place in the contract without the
-contract bending. An interface that could only describe the tool it was extracted
-from would look identical to this one right up until it was needed.
-
-WHAT MAKES IT A REAL SECOND IMPLEMENTATION AND NOT A COPY:
-
-* Its quality vocabulary is numeric tiers, not the streaming client's enum names,
-  so the settings translation is genuinely a translation.
-* It takes quality per call rather than from a settings object it keeps, so there
-  is no persistent file here to revert and nothing to verify after a write. KTD20
-  is satisfied by a different route, which is worth noticing: the decision moved
-  the setting into the adapter, and how each tool then receives it is the tool's
-  business.
-* Its credential is a configuration file it reads, not a token file the client
-  library manages, so the session materialisation writes a different shape.
-* It is absent by design. The vendored adapter's failure mode is a broken import
-  of code that is present; this one's is a package that was never installed, and
-  the two need different remedies.
-
-WHAT IS SHARED, AND WHY THAT IS CORRECT. The acquisition loop. The order of
-operations, authenticate then per track offer, policy, fetch, pace, is the
-contract itself, not an implementation detail. Letting each adapter write its own
-order is how the source system ended up with two call sites that classify the
-same provider failure differently.
+It proves the interface can express a second tool, tested with the tool absent: a
+numeric quality vocabulary, quality passed per call (KTD20 by another route), a
+configuration file as its credential, and an uninstalled package as its failure mode.
+The acquisition loop stays shared because its order is the contract itself.
 """
 
 from __future__ import annotations
@@ -58,24 +24,18 @@ from cratekit.acquire.adapter import (
     TrackSource,
 )
 
-#: The distribution that provides this adapter. A NAME, never an install command:
-#: what the user types depends on their platform and package manager, and only
-#: the CLI layer knows either (D2).
+#: The distribution that provides this adapter, a name and never an install command (D2).
 DISTRIBUTION = "streamrip"
 
-#: Cratekit's quality vocabulary to this tool's numeric tiers. The tool grades
-#: quality as an integer rather than a name, and its own default is the lossy
-#: tier, so the value is pushed on every invocation for the same reason it is
-#: pushed for the vendored one (KTD20).
+#: Cratekit's quality vocabulary to this tool's numeric tiers, pushed on every call
+#: because the tool's own default is lossy (KTD20).
 QUALITY_TIERS: dict[str, int] = {
     "lossy": 1,
     "lossless": 2,
     "hi_res": 3,
 }
 
-#: Tiers at or above this are lossless. Expressed as a threshold rather than a
-#: set because the tool adds higher tiers over time and a set would start
-#: refusing new ones under strict policy.
+#: Tiers at or above this are lossless; a threshold so newer higher tiers still pass.
 LOSSLESS_TIER_FLOOR = 2
 
 #: The file name this tool expects its credentials in.
@@ -83,12 +43,8 @@ CREDENTIAL_FILENAME = "config.toml"
 
 
 def quality_tier(settings: AdapterSettings) -> int:
-    """The numeric tier this run requires.
-
-    An unrecognised quality name is a refusal rather than a fallback. Falling
-    back would silently pick a tier, and the only sensible fallback value is the
-    tool's default, which is the lossy one; that is the precise shape of the
-    failure KTD20 exists to remove.
+    """The numeric tier this run requires; an unknown name refuses rather than fall back
+    to the tool's lossy default (KTD20).
     """
     try:
         return QUALITY_TIERS[settings.quality]
@@ -106,13 +62,10 @@ def offer_from_tier(tier: int) -> Offer:
 
 
 class _StreamripSource:
-    """The I/O half. Imports the third-party tool only when a run actually starts.
+    """The I/O half, importing the tool only when a run starts.
 
-    The import failure is handled as a distinct case rather than folded into a
-    generic breakage, because "you chose an adapter whose tool is not installed"
-    is the single most likely way this adapter fails and it has a remedy the user
-    can act on immediately. A generic "adapter broken" would send them looking
-    for a defect.
+    A missing install is its own case, since it is the likeliest failure and the user
+    can act on it at once.
     """
 
     def __init__(self, settings: AdapterSettings, credential_path: Path) -> None:
@@ -133,17 +86,11 @@ class _StreamripSource:
         return streamrip
 
     def authenticate(self) -> None:
-        # Resolved BEFORE anything is downloaded, for the same reason the other
-        # adapter verifies its settings before its first fetch: a quality this
-        # adapter cannot express must stop the run at track zero, not at track
-        # forty, and certainly not by quietly taking the tool's lossy default.
+        # Resolved before any download, so an inexpressible quality stops at track zero.
         self._tier = quality_tier(self._settings)
         module = self._load()
-        # The tool authenticates from a configuration file it is given the path
-        # to, which is why the session materialisation writes one and erases it
-        # afterwards. Its client surface has moved between releases, so the entry
-        # point is resolved by name and a missing one is reported as breakage
-        # rather than raising an attribute error from inside a library.
+        # The client entry point moves between releases, so it is resolved by name and
+        # a missing one reported as breakage.
         factory = getattr(module, "Client", None) or getattr(module, "client", None)
         if factory is None:
             raise AdapterBroken(
@@ -155,8 +102,7 @@ class _StreamripSource:
             self._client = factory(config_path=str(self._credential_path))
             self._client.login()
         except (AdapterAuthFailed, AdapterBroken):
-            # Already in the contract's vocabulary. Re-wrapping would relabel a
-            # broken install as a stale session and send the user to the wrong fix.
+            # Already contract vocabulary; re-wrapping would point at the wrong fix.
             raise
         except Exception as exc:  # noqa: BLE001 - translated, never swallowed
             raise AdapterAuthFailed(
@@ -165,12 +111,10 @@ class _StreamripSource:
             ) from exc
 
     def offer(self, request: TrackRequest) -> Offer:
-        """Ask the tool what it has, in ITS vocabulary, and answer in the contract's.
+        """Ask the tool for its tier and answer in the contract's vocabulary.
 
-        A missing quality field reads as tier zero, which is below the lossless
-        floor and therefore refused under strict policy. Defaulting the other way
-        would let a tool that stopped reporting quality quietly fill the library
-        with lossy files, which is the same failure KTD20 removes from settings.
+        A missing quality reads as tier zero, refused under strict policy, so a tool
+        that stops reporting quality cannot fill the library with lossy files.
         """
         metadata = self._client.get(request.key, media_type="track")
         return offer_from_tier(int(metadata.get("quality", 0)))

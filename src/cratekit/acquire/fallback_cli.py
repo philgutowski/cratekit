@@ -1,43 +1,9 @@
 """``acquire.fallback``: second source candidates for the rows a provider does not carry.
 
-R-404's search half. ``crate acquire fallback PATH`` reads a text list, the
-unlisted list ``intake missing`` writes or any list ``match run`` reads,
-resolves every row against the library exactly as ``intake missing --list``
-does, and searches SoundCloud and then YouTube for each row that is still
-missing. What comes back is ranked and OFFERED into the ``fallback-source``
-review queue, one item per row. Nothing is picked and nothing downloads here.
-
-A ROW WITH A PROVIDER ROUTE IS NOT SEARCHED. A row carrying the provider's own
-id, and a row whose provider candidate is waiting in review or was accepted
-there, already has a route to a lossless download, and a second source offer
-beside it would ask a person to choose a worse copy of a track they are about
-to get. A row whose provider candidates were all rejected is exactly the row
-this verb is for, and it is searched. WHAT THIS CANNOT SEE: a row the
-provider's text search would list without a person leaves no trace in the
-queue, so run ``intake missing --list`` first and pass the rows it could not
-route; asking the provider again here would spend a login on every run.
-
-THE QUEUE BEFORE THE SEARCH. A row already offered, answered or rejected here
-spends no search, so a second run over the same list offers nothing twice.
-
-AN OUTAGE NAMES WHAT WAS ALREADY OFFERED. Unlike the provider search, each row
-is offered as its answer arrives, because a second source is two slow
-subprocesses a row and a list of forty should not be searched again from the
-top because the thirty first failed. So a search that fails refuses the verb
-and names every item this run already put in front of a person, and the next
-run skips those and carries on.
-
-NO CANDIDATE ANYWHERE IS REPORTED, NEVER SILENT. A run that offered nothing,
-has nothing waiting and nothing accepted, over missing rows, refuses: a no-op
-would read exactly like a list the library already holds.
-
-Not gated and not destructive: it writes nothing but review items.
-
-THE DOWNLOAD IS A SECOND VERB (U81). ``crate acquire fallback-fetch PATH`` takes
-the same list, resolves it the same way, and queues one job item per row whose
-candidate a person ACCEPTED. The worker downloads that upload into staging,
-lossy and marked, tagged from the row, and a strict lossless policy refuses
-each such item before anything downloads.
+``crate acquire fallback PATH`` searches SoundCloud then YouTube for each list row the
+library lacks and that has no provider route, offering the hits for review; nothing is
+picked or downloaded. ``crate acquire fallback-fetch PATH`` (U81) queues each accepted
+row for a lossy, marked download into staging, tagged from the row.
 """
 
 from __future__ import annotations
@@ -61,11 +27,7 @@ ORIGIN = ("acquire.fallback",)
 
 
 def searcher() -> fallback.FallbackSearcher:
-    """The searcher a run uses, looked up on the module at call time.
-
-    THE NETWORK SEAM. The suite replaces this function, so no test ever builds
-    the shipped searcher and no test ever runs ``yt-dlp``.
-    """
+    """The searcher a run uses, looked up at call time so the suite can replace it."""
     return fallback.yt_dlp_searcher()
 
 
@@ -126,20 +88,12 @@ def _outage(
 def missing_rows(
     ctx, path: Path, subject: dict[str, Any]
 ) -> tuple[config.Config, dict[str, int], list[match.Wanted]]:
-    """The list's rows the library does not hold, one per question, and the counts.
-
-    SHARED BY BOTH VERBS, so the rows ``acquire fallback-fetch`` downloads for
-    are exactly the rows ``acquire fallback`` searched for: the same reader, the
-    same library resolution, the same answered version questions, and the same
-    fold to one row per question. A row the library came to hold between the
-    search and the download resolves owned here and is not fetched.
-    """
+    """The list's rows the library does not hold, one per question, and the counts."""
     cfg = match_cli._load()
     wanted = match_cli.read_list(path)
     music = Path(cfg.library.root) / cfg.library.music_dir
     if not music.is_dir():
-        # AN ABSENT LIBRARY IS NOT AN EMPTY ONE. Every row would resolve missing
-        # and every track the library holds would be searched for elsewhere.
+        # An absent library is not an empty one; every row would resolve missing.
         raise refuse(
             "library-volume-unmounted",
             f"this library's music folder {str(music)!r} is not there, so no row of "
@@ -171,10 +125,8 @@ def missing_rows(
             counts["suppressed"] += 1
         else:
             counts["missing"] += 1
-            # ONE ROW PER QUESTION, on the fallback item's own identity. The
-            # match identifier carries the musical key and the question does
-            # not, so the same track typed with and without a key would be
-            # searched twice and reported offered twice under one item.
+            # One row per question, on the fallback item's identity, which ignores
+            # the musical key the match identifier carries.
             asked = fallback.item_id(one.wanted)
             if asked not in seen:
                 seen.add(asked)
@@ -183,12 +135,7 @@ def missing_rows(
 
 
 def provider_routed(items: review.ReviewStore, one: match.Wanted) -> bool:
-    """Whether a lossless route to this row exists, so no second source is used.
-
-    THE PROVIDER'S OWN ID IS A ROUTE. ``intake missing --list`` lists such a row
-    without a search, and a lossless download of it is one command away. So is a
-    provider candidate waiting or accepted in review.
-    """
+    """Whether a provider id or a waiting or accepted provider candidate routes this row."""
     if missing_cli.provider_ref(one):
         return True
     on_provider = candidates.settled(items, one)
@@ -349,32 +296,22 @@ def acquire_fallback(ctx) -> Envelope:
 
 
 
-# ---------------------------------------------------------------------------
 # acquire.fallback-fetch (U81): the accepted candidates, downloaded
-# ---------------------------------------------------------------------------
 
 #: The fetch verb's origin on every refusal it raises.
 FETCH_ORIGIN = ("acquire.fallback-fetch",)
 
-#: Payload keys. ``LIST`` is the frozen list path the resume argv is rebuilt
-#: from. ``ROWS`` is what each item IS, keyed by the review item it came from:
-#: the row's artist and title and the upload a person accepted, frozen at the
-#: queue so the worker reads nothing but the job (KTD9). An answer changed in
-#: review after queueing does not change what a queued item downloads.
+#: Payload keys. ``LIST`` is the frozen list path the resume argv is rebuilt from;
+#: ``ROWS`` holds each item's row and accepted upload, frozen at the queue (KTD9).
 LIST = "list"
 ROWS = "rows"
 
-#: The longest file stem a fetched track is committed under, the source
-#: system's cap. The naming stage renames it to the library's own form later.
+#: The longest file stem a fetched track is committed under, the source system's cap.
 STEM_LIMIT = 120
 
 
 def fetcher() -> fallback.FallbackFetcher:
-    """The fetcher a run uses, looked up on the module at call time.
-
-    THE NETWORK SEAM, the searcher's twin. The suite replaces this function, so
-    no test builds the shipped fetcher and no test downloads anything.
-    """
+    """The fetcher a run uses, looked up at call time so the suite can replace it."""
     return fallback.yt_dlp_fetcher()
 
 
@@ -405,24 +342,14 @@ def fetch_argv(job) -> list[str]:
 def accepted_rows(
     items: review.ReviewStore, missing: list[match.Wanted]
 ) -> dict[str, dict[str, str]]:
-    """Each missing row whose second source candidate was ACCEPTED, as a job item.
-
-    A row with a lossless route is not fetched lossy, the rule the search keeps
-    for the same reason: a provider id, or a provider candidate waiting or
-    accepted in review, is a better copy one command away. A row waiting,
-    rejected or stalled in review has no upload anybody chose, so it is not an
-    item. The artist and the title are the ROW's, never the upload's.
-    """
+    """Each unrouted missing row whose candidate was ACCEPTED, as a job item."""
     rows: dict[str, dict[str, str]] = {}
     for one in missing:
         if provider_routed(items, one):
             continue
         said = fallback.settled(items, one)
-        # ONE CHECK, THE STATE. ``settled`` names an upload only on an accepted
-        # answer, so a second check for the URL could never be the one that
-        # decided, and u81-fetch-b measured it covering this one to a zero. An
-        # accepted answer with no upload would reach the worker as an empty
-        # address and be refused there, never downloaded.
+        # The state is the one check; an accepted answer with no upload is refused
+        # by the worker.
         if said is None or said.state != fallback.ACCEPTED:
             continue
         rows.setdefault(
@@ -435,31 +362,16 @@ def accepted_rows(
 def acquire_fallback_fetch(ctx) -> Envelope:
     """Queue one item per accepted second source candidate, or drive the job.
 
-    No gate, for the reason ``acquire download`` declares none: the verb ADDS
-    files into the configured download staging directory and publishes nothing.
-    Every upload it fetches was chosen by a person in review, which is the
-    decision a gate would have asked for.
-
-    THE STAGING SWEEP RUNS ON BOTH PATHS, because this verb stages through
-    ``acquire_cli.staging_dir`` and so shares one tree with ``acquire download``.
-    Leaving the sweep to that verb alone would let the tree grow without bound
-    for anybody who works the second source path and never runs the first, which
-    is R-291 unfixed for half its writers. The resume path sweeps the root the
-    JOB froze rather than a fresh load, which is both the root this job actually
-    staged into (KTD9) and the reason this path still reads no live
-    configuration.
+    No gate, since a person chose every upload. Both paths sweep staging (R-291).
     """
     if ctx.args.job:
         with jobs.open_store() as store:
-            # RECONCILE FIRST. A claim left behind by a driver that died is
-            # state the queue cannot see for itself.
+            # Reconcile first: a dead driver's claim is invisible to the queue.
             job = jobs.reconcile(store, ctx.args.job)
             acquire_cli.sweep_staging(
                 Path(jobs.frozen_config(job).paths.download_staging), store
             )
-            # The same tail as ``acquire download``, for the same two reasons: a
-            # job parked on a missing ``yt-dlp`` reported ``ok`` (R-290), and a
-            # list half fetched exited 0 (R-225).
+            # The same tail as ``acquire download`` (R-290, R-225).
             job, warnings = jobs.resumed(ctx, store, job)
             return ctx.envelope(data=jobs.reported(store, job), warnings=warnings)
     path = Path(str(ctx.args.list)).expanduser().absolute()
@@ -506,22 +418,7 @@ def _exists(final: Path, detail: dict[str, Any]) -> CratekitError:
 def handle_fetch(job, item, cfg) -> jobs.Produced:
     """Download ONE accepted upload into staging, marked lossy and tagged from its row.
 
-    The order is the order of what each step can cost:
-
-    * a strict policy refuses the item BEFORE anything downloads, because a
-      second source is lossy whatever it serves, so the answer is already known
-      and a download would only be thrown away;
-    * the final name is known before the download, because it is the row's, so
-      a file already there refuses the item without spending one;
-    * the landing goes through ``checked_landing``, the one place every
-      acquisition's file passes, and is marked through ``marked_name``, which
-      refuses a configuration that names no marker text;
-    * every tag the upload carried is stripped, a tempo frame included, and the
-      artist and title tags are written from the ROW, never from the upload's
-      page, so the tagger and the naming stage downstream read the track a
-      person asked for;
-    * the engine commits it into the staging root, where the ordinary tag, name
-      and land tail picks it up.
+    Ordered by cost, so a strict policy or an existing name refuses before downloading.
     """
     said = dict(((job.payload or {}).get(ROWS) or {}).get(item.item_id) or {})
     artist = str(said.get("artist") or "")
@@ -544,8 +441,7 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
         )
     where = urlsplit(url)
     if where.scheme not in ("http", "https") or not where.netloc:
-        # The review store takes an imported document, so an accepted option is
-        # whatever that document said. Only a web page is handed to the tool.
+        # An imported review document may say anything; only a web page reaches the tool.
         raise refuse(
             "unavailable-permanent",
             f"the upload accepted for {artist} - {title} is not a web address "
@@ -579,8 +475,7 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
     try:
         found = fetcher()
     except binaries.BinaryNotFound as exc:
-        # PARKED, NOT FAILED. A missing program is a fact about the machine and
-        # never about the track, so every later item would fail the same way.
+        # Parked, not failed: a missing program fails every later item alike.
         raise jobs.Parked(
             binary_refusal.yt_dlp_missing(
                 exc,
@@ -614,10 +509,8 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
         f"is not committed; it stays queued"
     )
     try:
-        # EVERY TAG THE UPLOAD CARRIED GOES FIRST. The tool drops the upload's
-        # metadata only when it converts, and an upload already served as MP3
-        # is not converted, so a tempo frame an uploader wrote would otherwise
-        # survive under the row's artist and title (R17).
+        # Every upload tag goes first, since an MP3 upload is not converted and could
+        # keep a tempo frame (R17).
         written = tags.strip_tags(landed) and tags.write_tags(
             landed, {"artist": artist or None, "title": title or None}
         )
