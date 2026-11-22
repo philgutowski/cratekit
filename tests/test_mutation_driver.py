@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import platformdirs
 import pytest
@@ -531,6 +532,35 @@ ONE_ROW_SPEC = (
     'description = "Drop the guard"\nfile = "src/fixtpkg/guards.py"\n'
     "old = 'if value > limit:'\nnew = \"\"\n"
 )
+
+
+@pytest.mark.parametrize(
+    ("stop", "heading", "code"),
+    [
+        ("DriverRefusal", "refused", 2),
+        ("RestoreVerificationError", "RESTORE FAILED", 3),
+        ("MeasurementFailure", "NOTHING MEASURED", 5),
+        ("StateLeak", "STATE LEAK", 6),
+        (None, "INVALID BATCH", 4),
+    ],
+)
+def test_each_stop_exits_with_its_own_code(tmp_path, monkeypatch, capsys, stop, heading, code):
+    """Other threads read these exit codes, so each is held: the docstring's table."""
+    spec = tmp_path / "rows.toml"
+    spec.write_text(ONE_ROW_SPEC, encoding="utf-8")
+
+    def measured(*_a, **_k):
+        if stop:
+            raise getattr(mutate, stop)("why")
+        return SimpleNamespace(
+            baseline_source="measured", baseline_note="", valid=False, invalid_reason="why"
+        )
+
+    monkeypatch.setattr(mutate, "measure_batch", measured)
+    monkeypatch.setattr(mutate, "write_outputs", lambda *_a: (tmp_path / "t.md", tmp_path / "t"))
+    argv = ["mutate.py", str(spec), "--repo-root", str(tmp_path), "--out-dir", str(tmp_path)]
+    assert mutate.main(argv) == code
+    assert capsys.readouterr().err == f"{heading}: why\n"
 
 
 def _refused(tmp_path: Path, capsys, listed: Path, root: Path | None = None) -> str:

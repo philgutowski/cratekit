@@ -6,9 +6,28 @@ deaths counted off pytest report objects, and the file restored and verified
 against `git show HEAD`. Run as `scripts/mutate.py rows.toml [--name N] [--resume]
 [--known-failures FILE]`; it writes `docs/mutation/<name>.md` and `.json`.
 
-A row file, TOML or JSON, holds `name`, `pass_kind` and `[[rows]]` (`id`,
-`description`, `file`, `old`, `new`, optional `tests`, `surface`, `pairs_with`),
-and `[[dropped]]` with a `reason`. `light` caps at 25 rows and `full` at 45;
+A row file is TOML or JSON, by its suffix; TOML's triple quoted strings hold code
+exactly:
+
+    name = "u34-round-2"
+    pass_kind = "light"
+    [[rows]]
+    id = "G1_empty_name"
+    description = "Drop the empty name guard in tree_registry.register"
+    file = "src/cratekit/core/tree_registry.py"
+    surface = "user"                      # or "maintainer", the default
+    tests = ["tests/test_tree_registry.py"]   # optional; derived when omitted
+    old = '''        if not name.strip():'''
+    new = '''        if False:'''
+    [[dropped]]
+    id = "G7_lock_timeout"
+    description = "Halve the lock timeout coefficient"
+    reason = "ranked below the cap: same guard family as G3, which is measured"
+
+`id`, `description`, `file`, `old` and `new` are required, and an empty `new`
+deletes the guard. A zero row on a `user` surface owes a composite, a row naming
+it in `pairs_with`. A `[[dropped]]` row was considered and not run, so a cut at
+the cap is visible. `light` caps at 25 rows and `full` at 45;
 `replay` (U297) has none, since each row names the recorded table and id in
 `source`, says `moved` when its text differs, and may carry `[[mapped]]` entries.
 Each batch takes a green baseline (U271 may read it from the cloud battery), a
