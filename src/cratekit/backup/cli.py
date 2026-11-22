@@ -110,19 +110,17 @@ def kind_warning(outcomes, ages: list[dict] | None) -> tuple[dict[str, str], ...
     portion beside a new database snapshot is a quick run. The next full check
     is read back from the fact file, so a rehearsal never invents a date.
     """
+    file_kinds = (backup.KIND_FULL, backup.KIND_QUICK, backup.KIND_SKIPPED)
     files, rehearsed = _outcome_row(outcomes, backup_facts.Portion.FILES)
     database, db_rehearsed = _outcome_row(outcomes, backup_facts.Portion.DATABASE)
     rehearsed = rehearsed or db_rehearsed
     parts: list[str] = []
     overall: str | None = None
-    if files is not None and files.get("ran") and files.get("kind") in (
-        backup.KIND_FULL, backup.KIND_QUICK, backup.KIND_SKIPPED,
-    ):
+    if files is not None and files.get("ran") and files.get("kind") in file_kinds:
         overall = files["kind"]
         parts.append(_files_sentence(files, rehearsed))
-    if database is not None and database.get("ran") and database.get("kind") in (
-        backup.KIND_SNAPSHOT, backup.KIND_UNCHANGED,
-    ):
+    database_kinds = (backup.KIND_SNAPSHOT, backup.KIND_UNCHANGED)
+    if database is not None and database.get("ran") and database.get("kind") in database_kinds:
         if database["kind"] == backup.KIND_SNAPSHOT:
             parts.append(
                 "the database would have been snapshotted"
@@ -307,59 +305,42 @@ def _reported(store, job) -> dict:
     outcomes = backup_facts.read_outcomes(job.job_id)
     if outcomes is not None:
         progress[OUTCOMES] = outcomes
-    return {
-        "job_id": job.job_id,
-        "state": str(job.state),
-        "cause": job.cause.to_json() if job.cause is not None else None,
-        "progress": progress,
-    }
+    cause = job.cause.to_json() if job.cause is not None else None
+    return {"job_id": job.job_id, "state": str(job.state), "cause": cause, "progress": progress}
 
 
 def build(parser, entry) -> None:
     """Declare the surface. ``entry`` is untyped so this layer does not name it."""
     del entry
-    parser.add_argument(
-        "--job", default=None, metavar="JOB_ID",
-        help="continue the backup already queued under this identifier",
-    )
-    parser.add_argument(
-        "--dry-run", action="store_true", dest="dry_run",
-        help=(
-            "walk the same plan with every transfer neutralized, copying nothing "
-            "and recording no backup age"
-        ),
-    )
-    parser.add_argument(
-        "--check", action="store_true", dest="check",
-        help=(
-            "run the full check now: list the remote, compare every file, and "
-            "snapshot the database whether or not it changed. Without it a "
-            "backup lists the remote when the last full check is a week old or "
-            "when it cannot trust its record of the last backup, and otherwise "
-            "sends only what changed since then, snapshots the database only if "
-            "it changed, or is skipped when nothing did"
-        ),
-    )
-    parser.add_argument(
-        "--full", action="store_true", dest="full",
-        help=(
-            "run the full check listing the remote folder by folder instead of "
-            "in one recursive pass, which takes most of an hour on a large "
-            "library and does not depend on the recursive listing being complete"
-        ),
-    )
-    parser.add_argument(
-        backup.EMPTIED_FLAG, action="store_true", dest="library_emptied",
-        help=(
-            "back up a library its owner emptied on purpose. Without it a backup "
-            "refuses a library root that holds none of the library's files, or "
-            "under a tenth of what the last backup held, because that is what an "
-            "unmounted or lost volume leaves, and mirroring it would move the "
-            "whole remote into the archive. It passes only a root that still "
-            "carries the library's own record of a completed files backup, and "
-            "never one on another volume than the library's"
-        ),
-    )
+    parser.add_argument("--job", default=None, metavar="JOB_ID", help=(
+        "continue the backup already queued under this identifier"
+    ))
+    parser.add_argument("--dry-run", action="store_true", dest="dry_run", help=(
+        "walk the same plan with every transfer neutralized, copying nothing "
+        "and recording no backup age"
+    ))
+    parser.add_argument("--check", action="store_true", dest="check", help=(
+        "run the full check now: list the remote, compare every file, and "
+        "snapshot the database whether or not it changed. Without it a "
+        "backup lists the remote when the last full check is a week old or "
+        "when it cannot trust its record of the last backup, and otherwise "
+        "sends only what changed since then, snapshots the database only if "
+        "it changed, or is skipped when nothing did"
+    ))
+    parser.add_argument("--full", action="store_true", dest="full", help=(
+        "run the full check listing the remote folder by folder instead of "
+        "in one recursive pass, which takes most of an hour on a large "
+        "library and does not depend on the recursive listing being complete"
+    ))
+    parser.add_argument(backup.EMPTIED_FLAG, action="store_true", dest="library_emptied", help=(
+        "back up a library its owner emptied on purpose. Without it a backup "
+        "refuses a library root that holds none of the library's files, or "
+        "under a tenth of what the last backup held, because that is what an "
+        "unmounted or lost volume leaves, and mirroring it would move the "
+        "whole remote into the archive. It passes only a root that still "
+        "carries the library's own record of a completed files backup, and "
+        "never one on another volume than the library's"
+    ))
     parser.set_defaults(_handler=backup_library)
 
 
@@ -620,20 +601,19 @@ def published_ages(cfg: config.Config, *, now: datetime | None = None) -> list[d
             "portion": str(entry.portion),
             "state": str(entry.state),
             "age_seconds": entry.age.total_seconds() if entry.age is not None else None,
-            "completed_at": (
-                entry.completed_at.isoformat() if entry.completed_at is not None else None
-            ),
+            "completed_at": _iso(entry.completed_at),
             "destination": entry.destination,
             # U317: the files portion's next full check as a date, None when the
             # next backup runs one, and always for the database.
-            "full_check_due": (
-                entry.full_check_due.date().isoformat()
-                if entry.full_check_due is not None
-                else None
-            ),
+            "full_check_due": _iso(entry.full_check_due and entry.full_check_due.date()),
         }
         for entry in reported
     ]
+
+
+def _iso(moment) -> str | None:
+    """A date or time as ISO 8601, or None for none."""
+    return moment.isoformat() if moment is not None else None
 
 
 def refusal_for(outcome: backup.BackupOutcome) -> CratekitError | None:
@@ -759,20 +739,12 @@ def _with_outcome_recorded(
         backup_facts.write_outcome(job_id, item_id, backup.outcome_payload(outcome))
     except OSError as exc:
         cause = refusal.cause
-        return rebuilt(
-            refusal,
-            replace(
-                cause,
-                remediation=replace(
-                    cause.remediation,
-                    steps=(
-                        *cause.remediation.steps,
-                        f"the record of which commands this run ran could not be "
-                        f"written, so job show will not list them: {exc}",
-                    ),
-                ),
-            ),
+        steps = (
+            *cause.remediation.steps,
+            f"the record of which commands this run ran could not be "
+            f"written, so job show will not list them: {exc}",
         )
+        return rebuilt(refusal, replace(cause, remediation=replace(cause.remediation, steps=steps)))
     return refusal
 
 
