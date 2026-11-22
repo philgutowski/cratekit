@@ -31,6 +31,84 @@ from __future__ import annotations
 import ast
 import re
 
+_AST = ast.AST
+
+
+def _children(node: ast.AST) -> list[ast.AST]:
+    """``list(ast.iter_child_nodes(node))``, in its order, at a fraction of its cost.
+
+    U326. Every guard here spends its time walking trees, and the standard
+    library's walk is three generators deep for each node: ``walk`` over
+    ``iter_child_nodes`` over ``iter_fields``. This is the same reading in one
+    frame: each field in ``_fields`` order, a node field as itself, a list
+    field's nodes in list order, and a field the node does not carry skipped,
+    which is what ``iter_fields`` does when ``getattr`` raises.
+    """
+    found: list[ast.AST] = []
+    for name in node._fields:
+        value = getattr(node, name, None)
+        if isinstance(value, _AST):
+            found.append(value)
+        elif isinstance(value, list):
+            found.extend([item for item in value if isinstance(item, _AST)])
+    return found
+
+
+def _walk(node: ast.AST):
+    """Every node under ``node``, itself first, in exactly ``ast.walk``'s order.
+
+    Breadth first, each node yielded after its children are queued, so a guard
+    that stops at the first match stops at the node ``ast.walk`` would have
+    given it. Only the cost differs (U326).
+
+    THE LAST MODULE WALKED IS WALKED ONCE. One question about a module walks
+    the whole tree several times over, the soft delete reading six or seven,
+    and the questions a sweep asks of one file come one after another, so the
+    module most recently walked is held with its walk and handed back while the
+    same tree object is asked about again. Measured on 2026-11-22 over the
+    files that ask these questions, one process: 126.5 seconds of test calls
+    with ``ast.walk``, 113.1 with this walk alone, 99.3 holding the last module,
+    104.5 holding eight and 113.6 holding every one, since a held tree is
+    memory the collector walks. Held by identity, so an equal text parsed again
+    is a new tree and is walked afresh, and only one tree outlives its question.
+
+    SOUND ONLY WHILE NO TREE IS WRITTEN between two questions about it, and
+    that is a condition on callers too, not on this module alone. Nothing here
+    writes to a tree, which ``tests/_parse_memo.py`` drives for the trees its
+    scopes hand out; a test that parses its own tree, asks, edits it and asks
+    again would be answered from the walk before the edit. No caller does that
+    today, read on 2026-11-22 across every site that hands this module a tree
+    of its own, and one that needs to should parse the edited text afresh.
+    """
+    if not isinstance(node, ast.Module):
+        return _breadth_first(node)
+    if not (_LAST_MODULE_WALK and _LAST_MODULE_WALK[0] is node):
+        walked = _breadth_first(node)
+        next(walked)
+        _LAST_MODULE_WALK[:] = [node, list(walked)]
+    return _module_then(node, _LAST_MODULE_WALK[1])
+
+
+#: The module tree walked last and every node under it, in walk order, or empty.
+_LAST_MODULE_WALK: list = []
+
+
+def _module_then(module: ast.Module, below: list[ast.AST]):
+    yield module
+    yield from below
+
+
+def _breadth_first(node: ast.AST):
+    """``ast.walk`` over ``node``, its queue a list read by position."""
+    todo = [node]
+    index = 0
+    while index < len(todo):
+        node = todo[index]
+        index += 1
+        todo.extend(_children(node))
+        yield node
+
+
 #: The module every question here is asked about. The package it lives in, which
 #: is what ``from cratekit.core import review`` names, is DERIVED from this
 #: rather than written out a second time. It was a second constant until the
@@ -197,7 +275,7 @@ class ImportsOf:
                     return ancestors[path]
             return None
 
-        for node in ast.walk(tree):
+        for node in _walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     if alias.name in ancestors:
@@ -300,7 +378,7 @@ def calls_attribute(source: str, module: str, wanted: str, *, package: str | Non
         return False
     return any(
         isinstance(node, ast.Call) and imports.resolves(node.func, wanted)
-        for node in ast.walk(tree)
+        for node in _walk(tree)
     )
 
 
@@ -312,7 +390,7 @@ def _assignments(tree: ast.AST) -> list[tuple[str, ast.AST]]:
     fail on the shape most likely to be correct.
     """
     found: list[tuple[str, ast.AST]] = []
-    for node in ast.walk(tree):
+    for node in _walk(tree):
         if isinstance(node, ast.Assign):
             for target in node.targets:
                 name = _dotted(target)
@@ -339,7 +417,7 @@ def calls_review(source: str, wanted: str, package: str | None = None) -> bool:
         return False
     return any(
         isinstance(node, ast.Call) and imports.resolves(node.func, wanted)
-        for node in ast.walk(tree)
+        for node in _walk(tree)
     )
 
 
@@ -361,7 +439,7 @@ def offers_into(source: str, queue: str, package: str | None = None) -> bool:
         for name, value in _assignments(tree)
         if imports.resolves(value, queue)
     }
-    for node in ast.walk(tree):
+    for node in _walk(tree):
         if not isinstance(node, ast.Call) or not imports.resolves(node.func, "offer"):
             continue
         for keyword in node.keywords:
@@ -400,9 +478,9 @@ def methods_on_review_construction(
 
     factories = {
         function.name
-        for function in ast.walk(tree)
+        for function in _walk(tree)
         if isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
-        for statement in ast.walk(function)
+        for statement in _walk(function)
         if isinstance(statement, ast.Return)
         and statement.value is not None
         and is_construction(statement.value)
@@ -418,7 +496,7 @@ def methods_on_review_construction(
         )
     }
     found: set[str] = set()
-    for node in ast.walk(tree):
+    for node in _walk(tree):
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
             continue
         receiver = node.func.value
@@ -450,20 +528,20 @@ def constructs_a_csv_writer(source: str) -> list[str]:
     tree = ast.parse(source)
     module_names = {
         alias.asname or "csv"
-        for node in ast.walk(tree)
+        for node in _walk(tree)
         if isinstance(node, ast.Import)
         for alias in node.names
         if alias.name == "csv"
     }
     imported = {
         alias.asname or alias.name
-        for node in ast.walk(tree)
+        for node in _walk(tree)
         if isinstance(node, ast.ImportFrom) and node.module == "csv"
         for alias in node.names
         if alias.name in CSV_WRITER_NAMES
     }
     found: list[str] = []
-    for node in ast.walk(tree):
+    for node in _walk(tree):
         if not isinstance(node, ast.Call):
             continue
         func = node.func
@@ -671,7 +749,7 @@ class ExitCodeImports:
         #: Local names that ARE the ``ExitCode`` class itself.
         self.class_names: set[str] = set()
         leaf = EXIT_CODE_MODULE.rpartition(".")[2]
-        for node in ast.walk(tree):
+        for node in _walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     if alias.name == EXIT_CODE_MODULE:
@@ -763,7 +841,7 @@ def _class_level_literals(tree: ast.AST) -> dict[str, dict[str, ast.AST]]:
     which is the same table written with a namespace round it.
     """
     found: dict[str, dict[str, ast.AST]] = {}
-    for node in ast.walk(tree):
+    for node in _walk(tree):
         if not isinstance(node, ast.ClassDef):
             continue
         members: dict[str, ast.AST] = {}
@@ -818,7 +896,7 @@ def _enum_bases(tree: ast.AST) -> set[str]:
     it is gone rather than kept as something a reader would take for a rule.
     """
     found: set[str] = set()
-    for node in ast.walk(tree):
+    for node in _walk(tree):
         if not isinstance(node, ast.ImportFrom) or node.level or node.module != "enum":
             continue
         for alias in node.names:
@@ -869,7 +947,7 @@ def _declared_enum_values(tree: ast.AST) -> set[str]:
     """
     bound = _enum_bases(tree)
     found: set[str] = set()
-    for node in ast.walk(tree):
+    for node in _walk(tree):
         if not isinstance(node, ast.ClassDef):
             continue
         bases = [_dotted(base) or "" for base in node.bases]
@@ -1250,7 +1328,7 @@ class ReservedCodeTable:
         literal does, so this reads more spellings rather than treating more
         strings as causes.
         """
-        return [element for element in ast.walk(node) if self.cause_key(element)]
+        return [element for element in _walk(node) if self.cause_key(element)]
 
     def _resolved(self, node: ast.AST | None) -> ast.AST | None:
         """A key expression reduced to what it holds: a name or a class attribute.
@@ -1399,7 +1477,7 @@ class ReservedCodeTable:
         rule, which is why the list is this specific.
         """
         found: list[tuple[ast.AST, ast.AST, str | None]] = []
-        for node in ast.walk(self.tree):
+        for node in _walk(self.tree):
             if isinstance(node, ast.Dict):
                 # A mapping literal, including the one inside ``dict(**{...})``,
                 # ``MappingProxyType({...})`` and ``CODES.update({...})``. Keys
@@ -1494,7 +1572,7 @@ class ReservedCodeTable:
         ways; it asks once now.
         """
         found: list[tuple[ast.AST, ast.AST, str | None]] = []
-        for node in ast.walk(self.tree):
+        for node in _walk(self.tree):
             if isinstance(node, ast.Match):
                 for case in node.cases:
                     found.extend(
@@ -1646,7 +1724,7 @@ def _walk_scope(node: ast.AST):
     it and NOT inside a function that takes a parameter of the same name, and a
     guard that walked the whole module fired on the second.
     """
-    stack = list(ast.iter_child_nodes(node))
+    stack = list(_children(node))
     while stack:
         current = stack.pop()
         yield current
@@ -1654,7 +1732,7 @@ def _walk_scope(node: ast.AST):
             current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
         ):
             continue
-        stack.extend(ast.iter_child_nodes(current))
+        stack.extend(_children(current))
 
 
 def _parameter_names(node: ast.AST) -> set[str]:
@@ -2034,7 +2112,7 @@ class SoftDeleteNames:
         self.module_names: set[str] = set()
         #: Local names bound directly to the constant.
         self.constant_names: set[str] = set()
-        for node in ast.walk(tree):
+        for node in _walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     if alias.name == RB_WRITER_MODULE:
@@ -2223,7 +2301,7 @@ def _soft_delete_reads(
     silence for every ``row.get(COL, 0)`` below it. A row is not a dict literal.
     """
     found: list[tuple[ast.AST, ast.AST | None]] = []
-    for node in ast.walk(tree):
+    for node in _walk(tree):
         if isinstance(node, ast.Attribute) and node.attr == SOFT_DELETE_COLUMN_LITERAL:
             # ``row.rb_local_deleted``. No default is possible, so it cannot be
             # permissive; it is recorded because the READER pin below counts it.
@@ -2315,7 +2393,7 @@ def _local_names(scope: ast.AST) -> set[str]:
         """Every name a binding target introduces, through any nesting of it."""
         if target is None:
             return
-        for node in ast.walk(target):
+        for node in _walk(target):
             if isinstance(node, ast.Name):
                 found.add(node.id)
 
@@ -2398,7 +2476,7 @@ def _own_nodes(scope: ast.AST):
     fires on a one-line unrelated edit to the file it protects is a guard that
     gets switched off.
     """
-    for child in ast.iter_child_nodes(scope):
+    for child in _children(scope):
         if isinstance(child, _SCOPE_NODES):
             continue
         yield child
@@ -2414,7 +2492,7 @@ def _scopes(tree: ast.AST):
     variable.
     """
     yield tree
-    for node in ast.walk(tree):
+    for node in _walk(tree):
         # ClassDef is here because `_own_nodes` stops AT one, so without it no
         # scope ever walks a class body and the launder rules were blind to
         # every statement written directly in a class. The direct permissive rule
@@ -2479,7 +2557,7 @@ def _laundered_reads(tree: ast.AST, names: SoftDeleteNames) -> list[ast.AST]:
             if name in holders and names.is_permissive(statement.value):
                 found.append(statement)
 
-    for node in ast.walk(tree):
+    for node in _walk(tree):
         if not isinstance(node, ast.IfExp):
             continue
         for kept, other in ((node.body, node.orelse), (node.orelse, node.body)):
@@ -2523,16 +2601,16 @@ def _rebinding_statements(scope: ast.AST, holders: dict[str, ast.AST]):
     for statement in _own_nodes(scope):
         if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
             yield statement
-    for node in ast.walk(scope):
+    for node in _walk(scope):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         declared: set[str] = set()
-        for inner in ast.walk(node):
+        for inner in _walk(node):
             if isinstance(inner, (ast.Nonlocal, ast.Global)):
                 declared.update(inner.names)
         if not declared & set(holders):
             continue
-        for inner in ast.walk(node):
+        for inner in _walk(node):
             if isinstance(inner, ast.Assign) and len(inner.targets) == 1:
                 if _dotted(inner.targets[0]) in declared:
                     yield inner

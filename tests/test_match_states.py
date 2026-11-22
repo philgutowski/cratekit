@@ -38,6 +38,7 @@ MATCH_SOURCES = tuple(
     for name in ("match", "match_identity", "match_list", "match_library")
 )
 MATCH_CLI_SOURCE = SRC_ROOT / "cratekit" / "acquire" / "match_cli.py"
+# The working file; its archives are in docs/ledger/ (U314).
 RESIDUALS_DOC = REPO_ROOT / "docs" / "residual-findings.md"
 
 
@@ -4668,7 +4669,8 @@ def test_every_residual_this_unit_cites_is_a_heading_that_exists():
     fails a test."""
     headings = {
         line.split(". ", 1)[1].strip()
-        for line in RESIDUALS_DOC.read_text(encoding="utf-8").splitlines()
+        for path in [*sorted((RESIDUALS_DOC.parent / "ledger").glob("*.md")), RESIDUALS_DOC]
+        for line in path.read_text(encoding="utf-8").splitlines()
         if line.startswith("## ") and ". " in line
     }
     missing = [title for title in RESIDUALS if title not in headings]

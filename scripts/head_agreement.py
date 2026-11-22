@@ -13,15 +13,7 @@ rate. Writes nothing. Refuses while rekordbox or its agent is running.
     .venv/bin/python scripts/head_agreement.py --analyse 300 --step 4
     .venv/bin/python scripts/head_agreement.py --analyse 300 --step 4 --key windows
 
-``--key`` chooses how the detector takes the key's chroma for ``--analyse``:
-``plain``, which is what ships and what is read when no ``--key`` is named,
-``whole`` or ``windows`` (U241). ``plain`` became the default with U276,
-after A121 read it within one percentage point of the whole track's
-agreement over the same sample, in about half the time.
-
-The recorded numbers in ``cratekit.analysis.detect`` were taken with
-``--analyse 300 --step 4`` on 2026-09-30, the key with ``whole``, and each
-method's key agreement again on 2026-11-12; they are replaced by hand from
+The recorded numbers in ``cratekit.analysis.detect`` are replaced by hand from
 this script's output after any change to the detector.
 """
 
@@ -43,22 +35,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
-        "--database",
-        type=Path,
-        default=None,
+        "--database", type=Path, default=None,
         help="a rekordbox database to read a copy of, instead of the configured one",
     )
     parser.add_argument(
-        "--analyse",
-        type=int,
-        default=0,
-        metavar="N",
+        "--analyse", type=int, default=0, metavar="N",
         help="also run the detector over N files rekordbox analysed itself",
     )
     parser.add_argument(
-        "--step",
-        type=int,
-        default=1,
+        "--step", type=int, default=1,
         help="take every STEP-th eligible file for --analyse, spreading the sample",
     )
     parser.add_argument(
@@ -107,9 +92,7 @@ def main(argv: list[str] | None = None) -> int:
         reports["detector_against_rekordbox_own_analysis"] = agreement.reanalyse(
             rows,
             cfg,
-            detector=lambda path: detect.analyse_file(
-                path, tempo_window=window, key=args.key
-            ),
+            detector=lambda path: detect.analyse_file(path, tempo_window=window, key=args.key),
             limit=args.analyse,
             step=args.step,
         )

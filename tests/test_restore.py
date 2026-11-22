@@ -4501,7 +4501,13 @@ def test_round4_the_residual_findings_this_module_names_still_exist():
         match.group(1).strip()
         for match in re.finditer(
             r"^## R-\d+\.\s*(.+)$",
-            (REPO_ROOT / "docs" / "residual-findings.md").read_text(encoding="utf-8"),
+            "".join(
+                path.read_text(encoding="utf-8")
+                for path in [
+                    *sorted((REPO_ROOT / "docs" / "ledger").glob("*.md")),
+                    REPO_ROOT / "docs" / "residual-findings.md",
+                ]
+            ),
             re.MULTILINE,
         )
     }
