@@ -1,11 +1,7 @@
 """U227: a track queued for download by an account edit is filed where the edit put it.
 
-Sitting 85: the landing filed the downloaded row by its own tags into another
-band, and the next plan read that as rekordbox's later change, so the mirror
-would have taken the track off the playlist the person put it in. The landing's
-own filing is read as the landing's, by the places it filed the row into, and
-the account's edit is carried once; a change made in rekordbox after the landing
-still goes by the later change rule. Pure, so driven without a database.
+The landing's own filing is read as the landing's and the edit carried once; a change in
+rekordbox after the landing goes by the later change rule. Pure.
 """
 
 from __future__ import annotations
@@ -28,10 +24,8 @@ FILED = {"t9": frozenset({("Afro House", "High")})}
 
 def _m(place, *, account=False, rekordbox=False, agreed=False, **added) -> edits.Mirrored:
     """``place`` read three ways, each side holding t9 or not, the snapshot never ``None``."""
-
     def t9(on: bool) -> frozenset[str]:
         return frozenset({"t9"}) if on else frozenset()
-
     return edits.Mirrored(place, t9(account), t9(rekordbox), t9(agreed), **added)
 
 
@@ -83,12 +77,8 @@ def test_a_second_band_added_in_rekordbox_after_the_landing_stands():
 
 
 def test_a_track_a_snapshot_held_is_read_by_the_later_change_rule_alone():
-    """ONCE: after the edit is carried the snapshot holds the track, and the
-    account side did not change since, so the landing's record is never read."""
-    playlists = [
-        _m(JZM, account=True, agreed=True),
-        _m(AHH, rekordbox=True, rekordbox_added={"t9": LANDED_AT}),
-    ]
+    """ONCE: the snapshot holds the carried track and the account is unchanged, so no landing is read."""
+    playlists = [_m(JZM, account=True, agreed=True), _m(AHH, rekordbox=True, rekordbox_added={"t9": LANDED_AT})]
     assert edits.decide(playlists, OWNED, FILED).decisions == ()
 
 
@@ -104,9 +94,7 @@ def test_a_folder_edit_for_a_landed_track_takes_the_folder_over_the_landings_ban
 
 
 def test_a_hand_move_back_into_the_landings_band_after_the_edit_was_carried_stands():
-    """ONCE, pinned (the review of U227, K1): once the snapshot holds the track,
-    a person's move back into the band its landing first filed is rekordbox's
-    change, even though the ledger still names that band."""
+    """K1: once the snapshot holds the track, a move back into the landing's band is rekordbox's."""
     jzh = edits.Place("Jazz High", "Jazz", "High", True)
     one = _one(
         [

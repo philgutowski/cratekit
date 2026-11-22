@@ -1,27 +1,22 @@
-"""U236: a favourite put in on the account and taken off again before the next organize.
+"""U236: the library's own month placement of a favourite is never read as rekordbox's addition.
 
-Sitting 88: the library's own month placement is never read as a change made in
-rekordbox. On U204's library, each pass a new organize run. D1 applies.
+Sitting 88 on U204's library: put in on the account, taken off before the next organize. D1 applies.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from cratekit.core import rb_writer
 from cratekit.core.cause import refuse
 from cratekit.modules.outbound import ledger
 from cratekit.modules.outbound import mirror_edits as edits
 from cratekit.organize import mirror_frozen
-from cratekit.organize.steps import LISTED, NOTHING
-from tests.test_label_workers import installed as installed  # noqa: PLC0414
+from cratekit.organize.steps import NOTHING
 from tests.test_organize_mirror_edits import _field_policies as _field_policies  # noqa: PLC0414
 from tests.test_organize_mirror_edits_u204 import MONTH, SOURCE, _items, _named, _second_month
 from tests.test_organize_mirror_edits_u204 import world as world  # noqa: PLC0414
 from tests.test_routing_workers import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_routing_workers import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
+from tests.test_routing_workers import _release_process_locks as _release_process_locks
 from tests.test_routing_workers import acknowledged as acknowledged  # noqa: PLC0414
 from tests.test_routing_workers import configured as configured  # noqa: PLC0414
 from tests.test_routing_workers import library as library  # noqa: PLC0414
@@ -41,21 +36,11 @@ def _placed(world) -> dict[str, frozenset[str]]:
 
 def _by_hand(world, name: str, content_id: str) -> str:
     """A person puts a row in a Favorites playlist in rekordbox, making it if absent."""
-    handle = rb_writer.open_db(world.db, unlock=False, cfg=world.cfg)
-    try:
-        folder = handle.get_playlist(ID=world.favorites)
-        found = [
-            one
-            for one in handle.get_playlist(ParentID=world.favorites)
-            if str(one.Name) == name and not rb_writer.node_removed(one)
-        ]
-        playlist = found[0] if found else handle.create_playlist(name, parent=folder)
-        handle.session.flush()
-        rb_writer.add_memberships(handle, playlist, [content_id])
-        handle.session.commit()
-        return str(playlist.ID)
-    finally:
-        rb_writer.close_db(handle)
+    live = "AND COALESCE(rb_local_deleted, 0) = 0"
+    found = world.sql(f"SELECT ID FROM djmdPlaylist WHERE ParentID = ? AND Name = ? {live}", world.favorites, name)
+    if found:
+        return world.playlist("", str(found[0][0]), [content_id])
+    return world.playlist(name, world.favorites, [content_id])
 
 
 def _favourited(world, *, at: str) -> None:
@@ -67,6 +52,15 @@ def _favourited(world, *, at: str) -> None:
     assert world.members(world.source) == {"1", "2"}
 
 
+def _unfavourited(world) -> dict:
+    """The next organize unfavourites r2: it leaves All Favorites and the change says so."""
+    _area, step, _queue = world.run_all()
+    (change,) = _items(step)
+    assert change["edit"] == edits.UNFAVOURITE, step.items
+    assert world.members(world.source) == {"1"}
+    return change
+
+
 def test_a_favourite_taken_off_again_before_another_organize_is_unfavourited(world):
     """Sitting 88: the month the library placed it in is never read as rekordbox's addition."""
     _favourited(world, at=IN_MONTH)
@@ -75,19 +69,12 @@ def test_a_favourite_taken_off_again_before_another_organize_is_unfavourited(wor
     assert world.held(SHOWN) == ["r1"]
     assert _placed(world) == {SHOWN: frozenset({"r2"})}
     world.take_off(SOURCE, "r2")
-    _area, step, _queue = world.run_all()
-    (change,) = _items(step)
-    assert change["edit"] == edits.UNFAVOURITE, step.items
+    change = _unfavourited(world)
     assert sorted(change["leaves"]) == [f"Favorites / {MONTH}", f"Favorites / {SOURCE}"]
-    assert world.members(world.source) == {"1"}
     assert world.members(world.month) == {"1"}
     assert world.held(SOURCE) == ["r1"]
     assert _placed(world) == {}
-    # And the organize after it plans nothing anywhere.
-    area, step, queue, shared = world.plan_all()
-    assert step.state == NOTHING and queue.state == NOTHING
-    assert {one.state for one in area.steps} <= {NOTHING, LISTED}
-    assert shared.reading().decided.decisions == ()
+    world.plans_nothing()
 
 
 def test_the_same_when_the_write_made_the_month(world):
@@ -97,10 +84,7 @@ def test_the_same_when_the_write_made_the_month(world):
     assert world.members(made) == {"2"}
     assert _placed(world) == {f"Favorites {NEW_MONTH}": frozenset({"r2"})}
     world.take_off(SOURCE, "r2")
-    _area, step, _queue = world.run_all()
-    (change,) = _items(step)
-    assert change["edit"] == edits.UNFAVOURITE, step.items
-    assert world.members(world.source) == {"1"}
+    _unfavourited(world)
     assert world.members(made) == set()
 
 
@@ -124,9 +108,7 @@ def test_the_organize_after_the_favourite_puts_it_in_the_accounts_month(world):
     assert world.held(SHOWN) == ["r1", "r2"]
     assert _placed(world) == {}
     assert "r2" in ledger.mirror_folders(world.cfg)["Favorites"].playlists[SHOWN].agreed
-    area, step, queue, _shared = world.plan_all()
-    assert step.state == NOTHING and queue.state == NOTHING
-    assert {one.state for one in area.steps} <= {NOTHING, LISTED}
+    world.plans_nothing()
 
 
 def test_a_hand_addition_after_the_placement_is_dropped_is_read_as_one(world):
@@ -157,9 +139,7 @@ def test_a_favourite_put_in_another_month_on_the_account_leaves_the_placed_month
     assert world.members(world.month) == {"1"}
     assert world.members(world.source) == {"1", "2"}
     assert _placed(world) == {}
-    _area, step, queue, shared = world.plan_all()
-    assert step.state == NOTHING and queue.state == NOTHING
-    assert shared.reading().decided.decisions == ()
+    world.plans_nothing()
 
 
 def test_the_placements_are_read_as_the_gate_read_them_after_a_write_between_the_acts(world):
@@ -206,10 +186,7 @@ def test_a_placement_the_account_refused_to_take_still_lets_the_unfavourite_thro
     assert world.held(SHOWN) == ["r1"]
     assert _placed(world) == {SHOWN: frozenset({"r2"})}
     world.take_off(SOURCE, "r2")
-    _area, step, _queue = world.run_all()
-    (change,) = _items(step)
-    assert change["edit"] == edits.UNFAVOURITE, step.items
-    assert world.members(world.source) == {"1"}
+    _unfavourited(world)
     assert world.members(world.month) == {"1"}
 
 
@@ -253,8 +230,5 @@ def test_a_month_whose_listing_fails_at_the_unfavourite_still_reads_its_placemen
             raise refuse("unavailable-transient", "the month could not be listed")
         return real(playlist_id)
     monkeypatch.setattr(world.account, "playlist_listing", listing)
-    _area, step, _queue = world.run_all()
-    (change,) = _items(step)
-    assert change["edit"] == edits.UNFAVOURITE, step.items
-    assert world.members(world.source) == {"1"}
+    _unfavourited(world)
     assert world.members(world.month) == {"1"}

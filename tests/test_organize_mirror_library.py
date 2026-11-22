@@ -20,9 +20,7 @@ def _read(cfg, db, monkeypatch) -> account_mirror.Library:
 
 def _shape(library: account_mirror.Library) -> dict[str, dict[str, list[str]]]:
     return {
-        folder.name: {
-            source.name: [row.content_id for row in source.rows] for source in folder.playlists
-        }
+        folder.name: {source.name: [row.content_id for row in source.rows] for source in folder.playlists}
         for folder in library.folders
     }
 
@@ -47,9 +45,7 @@ def test_every_genre_folder_and_the_favorites_folder_is_read_under_its_account_t
     assert _shape(read) == {
         AFRO.display: {f"{AFRO.display} High": ["3"]},
         DEEP.display: {f"{DEEP.display} Low": ["1", "2"], f"{DEEP.display} with vox": ["2"]},
-        "Favorites": {
-            "All Favorites": ["1", "3"], "Favorites 2026-10": ["1"], "Favorites Undated": ["3"],
-        },
+        "Favorites": {"All Favorites": ["1", "3"], "Favorites 2026-10": ["1"], "Favorites Undated": ["3"]},
     }
 
 

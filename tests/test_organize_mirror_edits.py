@@ -1,8 +1,6 @@
 """U201: an edit made on the account to a mirrored genre playlist changes the library.
 
-Driven end to end on a disposable BY GENRE + ENERGY tree and the strict fake
-account, each pass a new organize run; asserted on what the account, files and
-database hold. D1 applies.
+End to end on a disposable tree and the strict fake account, a new organize run each pass. D1 applies.
 """
 
 from __future__ import annotations
@@ -13,6 +11,7 @@ import shutil
 import sqlite3
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -29,9 +28,7 @@ from tests.test_active_taxonomy import write_active
 from tests.test_label_workers import installed as installed  # noqa: PLC0414
 from tests.test_rb_writer_db import _build_disposable_database
 from tests.test_routing_workers import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_routing_workers import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
+from tests.test_routing_workers import _release_process_locks as _release_process_locks
 from tests.test_routing_workers import acknowledged as acknowledged  # noqa: PLC0414
 from tests.test_routing_workers import configured as configured  # noqa: PLC0414
 from tests.test_routing_workers import library as library  # noqa: PLC0414
@@ -60,6 +57,14 @@ def silence(scratch: Path) -> Path:
 def without_fsync(monkeypatch) -> None:
     """Nothing here asks whether a write reached the disk, so no write waits for it to (U309)."""
     monkeypatch.setattr(os, "fsync", lambda _fd: None)
+
+
+def tree(tree_id: str, root_id: str) -> tree_registry.TreeRecord:
+    """A tree cut over to the database on 2026-08-01, rooted at ``root_id``."""
+    return tree_registry.TreeRecord(
+        tree_id=tree_id, mode=tree_registry.Mode.DATABASE, cutover_on=date(2026, 8, 1),
+        root_id=root_id, source=tree_registry.DerivationSource.TAXONOMY,
+    )
 
 
 def _query(db: Path, sql: str, *args) -> list:
@@ -103,19 +108,14 @@ class Machine:
         _build_disposable_database(self.db)
         for name, genre_id in GENRES.items():
             _query(
-                self.db,
-                "INSERT INTO djmdGenre (ID, Name, rb_local_deleted, created_at, updated_at) "
-                "VALUES (?, ?, 0, '2026-01-01', '2026-01-01')",
-                genre_id,
-                name,
+                self.db, "INSERT INTO djmdGenre (ID, Name, rb_local_deleted, created_at, updated_at) "
+                "VALUES (?, ?, 0, '2026-01-01', '2026-01-01')", genre_id, name,
             )
         for content_id, (genre, _band, energy) in TRACKS.items():
             path = self.files[content_id]
             shutil.copyfile(silence(scratch), path)
-            assert tags.write_tags(
-                path,
-                {"title": f"Track {content_id}", "artist": "Probe", "genre": genre, "energylevel": energy},
-            )
+            fields = {"title": f"Track {content_id}", "artist": "Probe", "genre": genre, "energylevel": energy}
+            assert tags.write_tags(path, fields)
             _query(
                 self.db,
                 f"UPDATE djmdContent SET FolderPath = ?, GenreID = ?, {rb_writer.ISRC_COLUMN} = ? WHERE ID = ?",
@@ -138,18 +138,7 @@ class Machine:
 
     def register(self) -> None:
         """The state a library's trees are read by, written for every test."""
-        tree_registry.write(
-            self.cfg,
-            tree_registry.Registry(
-                (
-                    tree_registry.TreeRecord(
-                        tree_id=taxonomy.default_taxonomy().tree.id,
-                        mode=tree_registry.Mode.DATABASE, cutover_on=date(2026, 8, 1),
-                        root_id=self.root_id, source=tree_registry.DerivationSource.TAXONOMY,
-                    ),
-                )
-            ),
-        )
+        tree_registry.write(self.cfg, tree_registry.Registry((tree(taxonomy.default_taxonomy().tree.id, self.root_id),)))
 
     def shared(self) -> account_mirror.Shared:
         self.runs += 1
@@ -175,6 +164,13 @@ class Machine:
                 one.applied = one.apply()
         return area, step
 
+    def plans_nothing(self) -> None:
+        """The next run plans nothing on either side and decides nothing."""
+        area, step, shared = self.plan()
+        assert step.state == NOTHING
+        assert {one.state for one in area.steps} <= {NOTHING, LISTED}
+        assert shared.reading().decided.decisions == ()
+
     def remote(self, title: str) -> str:
         (found,) = [pid for pid, name in self.account.titles.items() if name == title]
         return found
@@ -190,10 +186,10 @@ class Machine:
         if at:
             self.account.added_at[(self.remote(title), track)] = at
 
-    def move_on_account(self) -> None:
-        """Track 1 moved on the account from Deep House Low into Tech House Med."""
+    def move_on_account(self, at: str = "") -> None:
+        """Track 1 moved on the account from Deep House Low into Tech House Med, at ``at`` if given."""
         self.take_off("Deep House Low", "r1")
-        self.put_in("Tech House Med", "r1")
+        self.put_in("Tech House Med", "r1", at=at)
 
     def sql(self, statement: str, *args) -> list:
         return _query(self.db, statement, *args)
@@ -255,6 +251,25 @@ def _writes(account) -> tuple:
     return (list(account.created), list(account.chunks), list(account.taken))
 
 
+def refused(step) -> str:
+    """The reason the step's apply refuses with."""
+    with pytest.raises(CratekitError) as caught:
+        step.apply()
+    return caught.value.cause.reason
+
+
+def latched(monkeypatch) -> list[str]:
+    """Every tree's latch refuses; answers the trees it was asked for."""
+    from cratekit.core import convergence
+    from cratekit.core.cause import refuse
+    asked: list[str] = []
+    def refusing(_cfg, _db, tree_id, _registry, **_kwargs):
+        asked.append(tree_id)
+        raise refuse("tree-unconverged", "the tree is latched", origin=("test",))
+    monkeypatch.setattr(convergence, "assert_tree_writable", refusing)
+    return asked
+
+
 def test_the_first_run_mirrors_one_way_and_records_every_playlists_snapshot(machine):
     assert machine.held("Deep House Low") == ["r1"]
     assert machine.held("Deep House Med") == ["r2"]
@@ -266,9 +281,7 @@ def test_the_first_run_mirrors_one_way_and_records_every_playlists_snapshot(mach
 
 
 def test_a_second_run_with_nothing_changed_plans_nothing_on_either_side(machine):
-    area, step, _shared = machine.plan()
-    assert step.state == NOTHING
-    assert {one.state for one in area.steps} <= {NOTHING, LISTED}
+    machine.plans_nothing()
 
 
 def test_an_edit_on_a_playlist_never_agreed_is_put_back_and_nothing_in_the_library_changes(machine):
@@ -301,11 +314,7 @@ def test_a_track_moved_on_the_account_is_retagged_refiled_and_the_next_run_plans
     assert machine.held("Tech House Med") == ["r1"]
     assert machine.held("Deep House Low") == []
     assert _writes(machine.account) == before
-    # AND THE NEXT RUN PLANS NOTHING ON EITHER SIDE.
-    area, step, shared = machine.plan()
-    assert step.state == NOTHING
-    assert {one.state for one in area.steps} <= {NOTHING, LISTED}
-    assert shared.reading().decided.decisions == ()
+    machine.plans_nothing()
 
 
 def test_a_move_in_rekordbox_after_an_edit_was_taken_is_rekordboxs(machine):
@@ -352,9 +361,7 @@ def test_a_track_removed_on_the_account_and_added_nowhere_is_unfiled_and_listed(
     assert "1" in {one.get("content_id") or one.get("id") for one in unplaced}
     # IT STAYS IN THE COLLECTION.
     assert machine.sql("SELECT rb_local_deleted FROM djmdContent WHERE ID = '1'") == [(0,)]
-    area, step, _shared = machine.plan()
-    assert step.state == NOTHING
-    assert {one.state for one in area.steps} <= {NOTHING, LISTED}
+    machine.plans_nothing()
 
 
 def test_the_gate_names_every_membership_the_step_takes_away(machine):
@@ -386,8 +393,7 @@ def test_a_track_the_library_lacks_added_on_the_account_is_held_there(machine):
 
 
 def test_two_moves_follow_the_later_rekordbox_move(machine):
-    machine.take_off("Deep House Low", "r1")
-    machine.put_in("Tech House Med", "r1", at="2026-11-04T09:00:00+00:00")
+    machine.move_on_account(at="2026-11-04T09:00:00+00:00")
     machine.move_in_rekordbox("1", ("Deep House", "High"), "2026-11-04 10:00:00.000 +00:00")
     _area, step = machine.run()
     assert step.state == NOTHING
@@ -398,15 +404,13 @@ def test_two_moves_follow_the_later_rekordbox_move(machine):
 
 
 def test_two_moves_follow_the_later_account_move(machine):
-    machine.take_off("Deep House Low", "r1")
-    machine.put_in("Tech House Med", "r1", at="2026-11-04T11:00:00+00:00")
+    machine.move_on_account(at="2026-11-04T11:00:00+00:00")
     machine.move_in_rekordbox("1", ("Deep House", "High"), "2026-11-04 10:00:00.000 +00:00")
     _area, step = machine.run()
     assert step.state == PLANNED
     assert machine.places("1") == {("Tech House", "Med")}
     assert machine.held("Tech House Med") == ["r1"]
-    area, step, _shared = machine.plan()
-    assert step.state == NOTHING and {one.state for one in area.steps} <= {NOTHING, LISTED}
+    machine.plans_nothing()
 
 
 def test_two_moves_with_the_account_time_unknown_keep_rekordboxs(machine):
@@ -427,9 +431,7 @@ def test_a_library_moved_since_the_plan_writes_nothing(machine):
         "created_at, updated_at) VALUES ('late', ?, '1', 2, 0, '2026-11-04', '2026-11-04')",
         machine.playlists[("Tech House", "High")],
     )
-    with pytest.raises(CratekitError) as caught:
-        step.apply()
-    assert caught.value.cause.reason == "decision-stale"
+    assert refused(step) == "decision-stale"
     assert tags.read_genre_from_file(machine.files["1"]) == "Deep House"
 
 
@@ -448,10 +450,10 @@ def test_without_the_backup_acknowledgment_the_rekordbox_area_is_not_planned(mac
     assert tags.read_genre_from_file(machine.files["1"]) == "Deep House"
 
 
-def test_the_step_is_a_kind_the_rekordbox_area_names_and_listed_with_no_reading(machine):
+def test_the_step_is_a_kind_the_rekordbox_area_names_and_listed_with_no_reading(acknowledged):
     assert rekordbox.MIRROR_EDITS in rekordbox.STEPS
     area = rekordbox.plan_area(
-        machine.cfg, None, gate="organize.rekordbox.approve", today=date(2026, 11, 4), labels=(),
+        acknowledged, None, gate="organize.rekordbox.approve", today=date(2026, 11, 4), labels=(),
         report=False, only=frozenset({rekordbox.MIRROR_EDITS}),
     )
     (step,) = area.steps
@@ -463,9 +465,7 @@ def test_an_account_that_cannot_be_read_refuses_the_step_alone(machine):
     def unreachable():
         raise refuse("credential-missing", "no account", origin=("test",))
     shared = account_mirror.Shared(machine.cfg, unreachable, None)
-    step = mirror_edits.add_step(
-        machine.cfg, active_taxonomy.load(machine.cfg), tree_registry.read(machine.cfg), shared
-    )
+    step = mirror_edits.add_step(machine.cfg, active_taxonomy.load(machine.cfg), tree_registry.read(machine.cfg), shared)
     assert step.state == REFUSED and step.cause.reason == "credential-missing"
 
 
@@ -488,14 +488,8 @@ def test_the_tags_are_the_nearest_pair_routing_files_into_the_place(folder, play
 
 def test_a_genre_folder_places_only_what_routing_files_into():
     declared = taxonomy.default_taxonomy()
-    folder = mirror.Folder(
-        name="Deep House",
-        playlists=tuple(
-            mirror.Source(name=f"Deep House {one}")
-            for one in ("Low", "Unsorted", "with vox", "Favorites", "Candy")
-        ),
-        edits=edits.GENRE,
-    )
+    sources = tuple(mirror.Source(name=f"Deep House {one}") for one in ("Low", "Unsorted", "with vox", "Favorites", "Candy"))
+    folder = mirror.Folder(name="Deep House", playlists=sources, edits=edits.GENRE)
     found = mirror_edits.places(declared, [folder, mirror.Folder(name="Not A Genre", edits=edits.GENRE)])
     assert {title: place.primary for title, place in found.items()} == {
         "Deep House Low": True, "Deep House Unsorted": True, "Deep House with vox": False,
@@ -506,9 +500,7 @@ def test_a_folder_that_is_not_a_genre_folder_is_mirrored_one_way(installed, monk
     account = outbound_fakes.StrictAccount(catalog={"c1": "r1"})
     favorites = mirror.Folder(
         name="Favorites",
-        playlists=(
-            mirror.Source(name="All Favorites", rows=(mirror.Row(content_id="c1", isrc="ISRC00001"),)),
-        ),
+        playlists=(mirror.Source(name="All Favorites", rows=(mirror.Row(content_id="c1", isrc="ISRC00001"),)),),
     )
     monkeypatch.setattr(account_mirror, "read_library", lambda _cfg, **_: account_mirror.Library(folders=(favorites,)))
     def run() -> None:
@@ -526,38 +518,14 @@ def test_a_folder_that_is_not_a_genre_folder_is_mirrored_one_way(installed, monk
 
 
 def _dated_adapter(cfg, members, *, hidden=0, declared=True, times=None):
-    from datetime import datetime
-
+    """The real adapter over the prune suite's stand in client, holding playlist ``p``."""
     from cratekit.modules.outbound import tidal_account
     from tests import test_prune
-
     store = test_prune._Store()
-    store.members["p"] = list(members)
-    store.hidden["p"] = hidden
-    stamped = dict(times or {})
-
-    class Track(test_prune._Track):
-        def __init__(self, track_id: str) -> None:
-            super().__init__(track_id)
-            at = stamped.get(track_id)
-            self.user_date_added = datetime.fromisoformat(at) if at else None
-
-    class Playlist(test_prune._Playlist):
-        def __init__(self, store, playlist_id) -> None:
-            super().__init__(store, playlist_id)
-            if not declared:
-                self.num_tracks = None
-
-        def tracks(self, limit=None, offset=0):
-            size = 100 if limit is None else limit
-            return [Track(one) for one in self.store.members[self.id][offset : offset + size]]
-
-    class Client(test_prune._Client):
-        def playlist(self, playlist_id):
-            self.store.opened.append(playlist_id)
-            return Playlist(self.store, playlist_id)
-
-    return tidal_account.TidalAccount(Client(store), sleep=lambda seconds: None, cfg=cfg)
+    store.members["p"], store.hidden["p"], store.added = list(members), hidden, dict(times or {})
+    if not declared:
+        store.undeclared.add("p")
+    return tidal_account.TidalAccount(test_prune._Client(store), sleep=lambda seconds: None, cfg=cfg)
 
 
 def test_the_adapter_lists_each_track_with_its_added_time_and_the_declared_count(installed):
@@ -568,9 +536,7 @@ def test_the_adapter_lists_each_track_with_its_added_time_and_the_declared_count
     # A TIME WITH NO ZONE IS UNKNOWN, never guessed.
     assert listing.added == {"a": "2026-11-04T10:00:00+00:00"}
     assert (listing.listed, listing.declared, listing.short) == (3, 3, False)
-
-
-def test_a_listing_the_provider_counts_more_than_it_lists_is_short(installed):
+    # One the provider counts and does not list is short.
     listing = _dated_adapter(installed, ["a"], hidden=1).playlist_listing("p")
     assert (listing.listed, listing.declared, listing.short) == (1, 2, True)
 
@@ -588,9 +554,7 @@ def test_the_ledger_keeps_a_snapshot_apart_from_none_and_only_on_its_own_playlis
     ledger.record_mirror_agreed(
         installed,
         "Deep House",
-        {
-            "Deep House Low": ("p1", {"r1", "r2"}, set()), "Deep House Med": ("another", {"r3"}, set()),
-        },
+        {"Deep House Low": ("p1", {"r1", "r2"}, set()), "Deep House Med": ("another", {"r3"}, set())},
     )
     held = ledger.mirror_folders(installed)["Deep House"].playlists
     assert held["Deep House Low"].agreed == {"r1", "r2"}
@@ -611,9 +575,7 @@ def test_a_short_playlists_snapshot_advances_so_a_rekordbox_move_is_never_read_a
     machine.move_in_rekordbox("1", ("Deep House", "Med"), "2026-11-05 10:00:00.000 +00:00")
     machine.run()
     assert machine.held("Deep House Med") == ["r2", "r1"]
-    _area, step, shared = machine.plan()
-    assert step.state == NOTHING
-    assert shared.reading().decided.decisions == ()
+    machine.plans_nothing()
     # AND A REAL EDIT ON A WHOLE PLAYLIST IS CARRIED, not held.
     machine.take_off("Deep House Med", "r1")
     _area, step = machine.run()
@@ -636,18 +598,10 @@ def test_a_track_moved_to_its_own_genres_with_vox_is_held_and_nothing_is_written
 
 def test_a_tree_the_product_latched_refuses_the_write_before_any_file_is_tagged(machine, monkeypatch):
     """Finding 2: the tree's own latch, before a tag, a row or a membership."""
-    from cratekit.core import convergence
-    from cratekit.core.cause import refuse
-    asked: list[str] = []
-    def latched(_cfg, _db, tree_id, _registry, **_kwargs):
-        asked.append(tree_id)
-        raise refuse("tree-unconverged", "the tree is latched", origin=("test",))
-    monkeypatch.setattr(convergence, "assert_tree_writable", latched)
+    asked = latched(monkeypatch)
     machine.move_on_account()
     _area, step, _shared = machine.plan()
-    with pytest.raises(CratekitError) as caught:
-        step.apply()
-    assert caught.value.cause.reason == "tree-unconverged"
+    assert refused(step) == "tree-unconverged"
     assert asked == [taxonomy.default_taxonomy().tree.id]
     assert tags.read_genre_from_file(machine.files["1"]) == "Deep House"
     assert machine.places("1") == {("Deep House", "Low")}
@@ -699,18 +653,10 @@ def test_a_read_back_that_differs_from_the_plan_is_refused():
         genre_was="Deep House", genre="Tech House", energy_was=2, energy=4,
         leave=(("p-low", "Deep House", "Low"),), join=(("p-med", "Tech House", "Med"),), tree=edits.GENRE,
     )
-    class Held:
-        def __init__(self, rows):
-            self.rows = rows
-        def fetchall(self):
-            return self.rows
-    class Session:
-        def execute(self, *_args, **_kwargs):
-            return Held([("p-low",)])
-    class Db:
-        session = Session()
+    held = SimpleNamespace(fetchall=lambda: [("p-low",)])
+    db = SimpleNamespace(session=SimpleNamespace(execute=lambda *_args, **_kwargs: held))
     with pytest.raises(CratekitError) as caught:
-        mirror_edits.assert_read_back(Db(), [change])
+        mirror_edits.assert_read_back(db, [change])
     assert caught.value.cause.reason == "session-committed-unverified"
     assert caught.value.cause.detail == {"content_id": "1", "stayed": ["p-low"], "absent": ["p-med"]}
 

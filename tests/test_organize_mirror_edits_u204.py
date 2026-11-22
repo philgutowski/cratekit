@@ -1,7 +1,6 @@
 """U204: an edit made on the account to the Favorites folder or INBOX changes the library.
 
-U201's disposable library grown a Favorites folder and an INBOX of two live
-batches, each pass a new organize run written in organize's order. D1 applies.
+U201's library grown a Favorites folder and an INBOX of two live batches. D1 applies.
 """
 
 from __future__ import annotations
@@ -9,11 +8,11 @@ from __future__ import annotations
 import shutil
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from cratekit.core import config, jobs, rb_writer, tags, taxonomy, tree_registry
-from cratekit.core.cause import CratekitError
 from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue
 from cratekit.modules.outbound import ledger
@@ -22,13 +21,10 @@ from cratekit.organize import mirror_downloads, mirror_edits, rekordbox
 from cratekit.organize.steps import LISTED, NOTHING, PLANNED
 from tests.label_fakes import FakeCatalogue, catalogue_factory
 from tests.test_inbox_rotate import _record_landing
-from tests.test_label_workers import installed as installed  # noqa: PLC0414
-from tests.test_organize_mirror_edits import Machine, silence, without_fsync
+from tests.test_organize_mirror_edits import Machine, latched, refused, silence, tree, without_fsync
 from tests.test_organize_mirror_edits import _field_policies as _field_policies  # noqa: PLC0414
 from tests.test_routing_workers import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_routing_workers import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
+from tests.test_routing_workers import _release_process_locks as _release_process_locks
 from tests.test_routing_workers import acknowledged as acknowledged  # noqa: PLC0414
 from tests.test_routing_workers import configured as configured  # noqa: PLC0414
 from tests.test_routing_workers import library as library  # noqa: PLC0414
@@ -39,16 +35,6 @@ MONTH = "2026-10"
 BATCH_A = "2026-10-20 Tidal playlists"
 BATCH_B = "2026-10-31 Defected"
 PINK = "1"
-
-
-class Listed:
-    """A provider track in the shape the playlist reader reads."""
-
-    def __init__(self, track_id: str, code: str) -> None:
-        self.id = track_id
-        self.name = f"Title {track_id}"
-        self.artist = {"name": f"Artist {track_id}"}
-        self.isrc = code
 
 
 class LivePlaylist:
@@ -67,12 +53,14 @@ class LivePlaylist:
     def tracks(self, limit=None, offset=0):
         size = self.page_size if limit is None else limit
         members = self.world.account.playlists[self.playlist_id][offset : offset + size]
-        listed = [Listed(one, self.world.codes.get(one, "")) for one in members]
-        for one in listed:
-            if one.id in self.world.untitled:
-                # R-1289: a row the account lists with no title.
-                one.name = ""
-        return listed
+        # R-1289: a row the account lists with no title.
+        return [
+            SimpleNamespace(
+                id=one, name="" if one in self.world.untitled else f"Title {one}",
+                artist={"name": f"Artist {one}"}, isrc=self.world.codes.get(one, ""),
+            )
+            for one in members
+        ]
 
 
 class World(Machine):
@@ -122,24 +110,14 @@ class World(Machine):
             for playlist, content_id in ((source, "1"), (month, "1"), (batch_a, "1"), (batch_b, "2")):
                 rb_writer.add_memberships(handle, playlist, [content_id])
             handle.session.commit()
-            made = dict(favorites=favorites, source=source, month=month, inbox=inbox, old=old)
-            return {**names, **{key: str(one.ID) for key, one in made.items()},
-                    "batch_a": str(batch_a.ID), "batch_b": str(batch_b.ID)}
+            made = dict(favorites=favorites, source=source, month=month, inbox=inbox, old=old, batch_a=batch_a, batch_b=batch_b)
+            return {**names, **{key: str(one.ID) for key, one in made.items()}}
         finally:
             rb_writer.close_db(handle)
 
     def register(self) -> None:
         super().register()
-        tree_registry.write(
-            self.cfg,
-            tree_registry.read(self.cfg).with_record(
-                tree_registry.TreeRecord(
-                    tree_id=DECLARED.intake.id, mode=tree_registry.Mode.DATABASE,
-                    cutover_on=date(2026, 8, 1), root_id=self.inbox,
-                    source=tree_registry.DerivationSource.TAXONOMY,
-                )
-            ),
-        )
+        tree_registry.write(self.cfg, tree_registry.read(self.cfg).with_record(tree(DECLARED.intake.id, self.inbox)))
         _record_landing(self.cfg, self.batch_a, BATCH_A, date(2026, 10, 20))
         _record_landing(self.cfg, self.batch_b, BATCH_B, date(2026, 10, 31))
 
@@ -147,6 +125,13 @@ class World(Machine):
         area, step, shared = self.plan()
         queue = mirror_downloads.add_step(self.cfg, shared)
         return area, step, queue, shared
+
+    def plans_nothing(self) -> None:
+        """The next run plans nothing to the library, the queue or the account, and decides nothing."""
+        area, step, queue, shared = self.plan_all()
+        assert step.state == queue.state == NOTHING
+        assert {one.state for one in area.steps} <= {NOTHING, LISTED}
+        assert shared.reading().decided.decisions == ()
 
     def run_all(self):
         area, step, queue, _shared = self.plan_all()
@@ -220,11 +205,7 @@ def _named(step) -> list[dict]:
 
 def _queued(cfg) -> list[jobs.Job]:
     with jobs.open_store() as store:
-        return [
-            job
-            for job in jobs.list_jobs(store)
-            if (job.payload or {}).get("source_id") == mirror_downloads.SOURCE_ID
-        ]
+        return [job for job in jobs.list_jobs(store) if (job.payload or {}).get("source_id") == mirror_downloads.SOURCE_ID]
 
 
 def _set_state(job, state) -> None:
@@ -244,10 +225,7 @@ def test_the_first_run_mirrors_favorites_and_inbox_and_records_their_snapshots(w
 
 
 def test_a_second_run_with_nothing_changed_plans_nothing_anywhere(world):
-    area, step, queue, _shared = world.plan_all()
-    assert step.state == NOTHING
-    assert queue.state == NOTHING
-    assert {one.state for one in area.steps} <= {NOTHING, LISTED}
+    world.plans_nothing()
 
 
 def test_edits_on_playlists_never_agreed_change_nothing_in_the_library(world):
@@ -282,10 +260,7 @@ def test_a_track_added_to_all_favorites_is_favourited_in_its_month_and_coloured(
     # The next run mirrors the month it made, and the one after plans nothing.
     world.run_all()
     assert world.held("Favorites 2026-09") == ["r2"]
-    area, step, queue, shared = world.plan_all()
-    assert step.state == NOTHING and queue.state == NOTHING
-    assert {one.state for one in area.steps} <= {NOTHING, LISTED}
-    assert shared.reading().decided.decisions == ()
+    world.plans_nothing()
 
 
 def test_a_track_added_to_all_favorites_with_no_time_goes_to_undated(world):
@@ -326,8 +301,7 @@ def test_a_track_removed_from_all_favorites_leaves_the_favorites_folder(world):
     assert world.held(SOURCE) == []
     world.run_all()
     assert world.held(f"Favorites {MONTH}") == []
-    _area, step, queue, _shared = world.plan_all()
-    assert step.state == NOTHING and queue.state == NOTHING
+    world.plans_nothing()
 
 
 def test_a_track_removed_from_a_month_alone_is_listed_and_not_carried(world):
@@ -375,8 +349,7 @@ def test_a_track_added_to_an_inbox_batch_joins_it_and_one_taken_off_leaves_it(wo
     assert world.places("2") == {("Deep House", "Med")}
     assert world.held(f"INBOX {BATCH_A}") == ["r1", "r2"]
     assert world.held(f"INBOX {BATCH_B}") == []
-    _area, step, queue, _shared = world.plan_all()
-    assert step.state == NOTHING and queue.state == NOTHING
+    world.plans_nothing()
 
 
 def test_a_batch_moved_into_old_since_the_plan_is_never_touched(world):
@@ -384,9 +357,7 @@ def test_a_batch_moved_into_old_since_the_plan_is_never_touched(world):
     _area, step, _queue, _shared = world.plan_all()
     assert step.state == PLANNED
     world.into_old(world.batch_a)
-    with pytest.raises(CratekitError) as raised:
-        step.apply()
-    assert raised.value.cause.reason == "decision-stale"
+    assert refused(step) == "decision-stale"
     assert world.members(world.batch_a) == {"1"}
 
 
@@ -460,7 +431,7 @@ def test_a_track_added_to_inbox_or_favorites_that_the_library_lacks_is_queued(wo
     assert world.held(f"INBOX {BATCH_A}") == ["r1", "r3"]
 
 
-def test_a_track_a_snapshot_once_held_is_never_queued_again(world):
+def test_a_track_a_snapshot_once_held_is_never_queued_again():
     decided = edits.decide(
         [
             edits.Mirrored(
@@ -477,11 +448,6 @@ def test_a_track_a_snapshot_once_held_is_never_queued_again(world):
     assert decided.wanted == ()
 
 
-def test_the_steps_are_kinds_the_rekordbox_area_names():
-    assert rekordbox.MIRROR_DOWNLOADS in rekordbox.STEPS
-    assert rekordbox.STEPS.index(rekordbox.MIRROR_EDITS) < rekordbox.STEPS.index(rekordbox.MIRROR_DOWNLOADS)
-
-
 def test_never_a_beat_grid(world):
     world.put_in(SOURCE, "r2")
     world.put_in(f"INBOX {BATCH_A}", "r2")
@@ -490,9 +456,11 @@ def test_never_a_beat_grid(world):
 
 
 def test_without_a_reading_the_downloads_step_is_listed(acknowledged):
-    from datetime import date as day
+    # A step the rekordbox area names, after the edits step.
+    assert rekordbox.MIRROR_DOWNLOADS in rekordbox.STEPS
+    assert rekordbox.STEPS.index(rekordbox.MIRROR_EDITS) < rekordbox.STEPS.index(rekordbox.MIRROR_DOWNLOADS)
     area = rekordbox.plan_area(
-        acknowledged, None, gate="organize.rekordbox", today=day(2026, 11, 5), labels=(),
+        acknowledged, None, gate="organize.rekordbox", today=date(2026, 11, 5), labels=(),
         report=True, only=frozenset({rekordbox.MIRROR_DOWNLOADS}),
     )
     (step,) = area.steps
@@ -520,9 +488,7 @@ def test_a_track_moved_between_months_leaves_the_old_month(world):
     assert world.members(world.month) == set()
     assert world.members(world.source) == {"1"}
     assert world.held(f"Favorites {MONTH}") == []
-    _area, step, queue, shared = world.plan_all()
-    assert step.state == NOTHING and queue.state == NOTHING
-    assert shared.reading().decided.decisions == ()
+    world.plans_nothing()
 
 
 def test_another_release_of_an_owned_recording_is_never_queued_nor_swapped(world):
@@ -553,18 +519,10 @@ def test_a_recording_the_library_holds_in_no_playlist_is_never_queued(world):
 
 
 def test_an_inbox_edit_over_a_latched_intake_tree_writes_nothing(world, monkeypatch):
-    from cratekit.core import convergence
-    from cratekit.core.cause import refuse
-    asked: list[str] = []
-    def latched(_cfg, _db, tree_id, _registry, **_kwargs):
-        asked.append(tree_id)
-        raise refuse("tree-unconverged", "the tree is latched", origin=("test",))
-    monkeypatch.setattr(convergence, "assert_tree_writable", latched)
+    asked = latched(monkeypatch)
     world.put_in(f"INBOX {BATCH_A}", "r2")
     _area, step, _queue, _shared = world.plan_all()
-    with pytest.raises(CratekitError) as caught:
-        step.apply()
-    assert caught.value.cause.reason == "tree-unconverged"
+    assert refused(step) == "tree-unconverged"
     assert asked == [DECLARED.intake.id]
     assert world.members(world.batch_a) == {"1"}
 
@@ -594,9 +552,7 @@ def test_a_favourite_the_placement_did_not_write_is_refused_at_the_read_back(wor
     monkeypatch.setattr(placement, "place", short)
     world.put_in(f"Favorites {MONTH}", "r2")
     _area, step, _queue, _shared = world.plan_all()
-    with pytest.raises(CratekitError) as caught:
-        step.apply()
-    assert caught.value.cause.reason == "session-committed-unverified"
+    assert refused(step) == "session-committed-unverified"
 
 
 def test_a_track_put_in_a_quarter_is_named_and_not_filed(world):
@@ -645,32 +601,21 @@ def test_an_untitled_track_on_a_mirrored_playlist_is_named_and_the_others_queue(
 
 
 def test_a_playlist_the_provider_cannot_list_is_named_and_the_others_queue():
-    from types import SimpleNamespace
-
     from cratekit.core.cause import refuse
     one = edits.Place("Tech House Med", "Tech House", "Med", True)
     two = edits.Place("Deep House Low", "Deep House", "Low", True)
-    decided = edits.decide(
-        [
-            edits.Mirrored(place=one, account=frozenset({"r7"}), agreed=frozenset()),
-            edits.Mirrored(place=two, account=frozenset({"r8"}), agreed=frozenset()),
-        ],
-        {},
-    )
+    mirrored = [edits.Mirrored(place=place, account=frozenset({track}), agreed=frozenset()) for place, track in ((one, "r7"), (two, "r8"))]
+    decided = edits.decide(mirrored, {})
     recorded = {
         folder: SimpleNamespace(playlists={title: SimpleNamespace(remote_id=pid)})
-        for folder, title, pid in (
-            ("Tech House", "Tech House Med", "p1"), ("Deep House", "Deep House Low", "p2"),
-        )
+        for folder, title, pid in (("Tech House", "Tech House Med", "p1"), ("Deep House", "Deep House Low", "p2"))
     }
     reading = SimpleNamespace(decided=decided, recorded=recorded)
     def listed(pid):
         if pid == "p1":
             raise refuse("label-playlist-unreadable", "down", origin=("test",))
-        return intake_cli.Readable(
-            tracks={"r8": {"isrc": "ISRC00000008", "artist": "A", "title": "T"}}, short=None,
-            unread={}, order=("r8",),
-        )
+        tracks = {"r8": {"isrc": "ISRC00000008", "artist": "A", "title": "T"}}
+        return intake_cli.Readable(tracks=tracks, short=None, unread={}, order=("r8",))
     cfg = SimpleNamespace(library=SimpleNamespace(volume_id="v"))
     from unittest import mock
     with mock.patch.object(mirror_downloads, "queued", return_value={}):
@@ -698,9 +643,7 @@ def test_a_favorites_edit_planned_and_not_applied_is_taken_whole_by_the_next_run
     assert change["leaves"] == [f"Favorites / {MONTH}"]
     assert world.members(world.month) == set()
     assert world.members(september) == {"1"}
-    _area, step, _queue, shared = world.plan_all()
-    assert step.state == NOTHING
-    assert shared.reading().decided.decisions == ()
+    world.plans_nothing()
 
 
 @pytest.mark.parametrize(
@@ -744,9 +687,7 @@ def test_a_month_the_placement_did_not_make_is_refused_at_the_read_back(world, m
     monkeypatch.setattr(placement, "place", no_month)
     world.put_in(SOURCE, "r2", at="2026-09-14T10:00:00+00:00")
     _area, step, _queue, _shared = world.plan_all()
-    with pytest.raises(CratekitError) as caught:
-        step.apply()
-    assert caught.value.cause.reason == "session-committed-unverified"
+    assert refused(step) == "session-committed-unverified"
 
 
 def test_the_downloads_plan_reads_the_library_through_a_reports_one_handle(world, monkeypatch):

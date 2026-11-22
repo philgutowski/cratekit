@@ -1,8 +1,4 @@
-"""U150: INBOX mirrored onto the account, live batches only, a retired batch's playlist removed.
-
-At the step over U147's fake account, on a disposable database whose intake
-tree is cut over, and through a label landing's record. D1 applies.
-"""
+"""U150: INBOX mirrored onto the account, live batches only, a retired batch's playlist removed. D1 applies."""
 
 from __future__ import annotations
 
@@ -19,21 +15,14 @@ from cratekit.modules.outbound import ledger, mirror
 from cratekit.organize import account_mirror, mirror_frozen
 from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area
 from cratekit.sync import playlists
-from tests.test_inbox_rotate import (
-    INTAKE,
-    OLD,
-    TODAY,
-    _node,
-    _open,
-    _record_landing,
-)
+from tests.test_inbox_rotate import INTAKE, OLD, TODAY, _node, _open, _record_landing
 from tests.test_inbox_rotate import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_inbox_rotate import _release_process_locks as _release_process_locks  # noqa: PLC0414
 from tests.test_inbox_rotate import acknowledged as acknowledged  # noqa: PLC0414 - fixture
 from tests.test_inbox_rotate import machine as machine  # noqa: PLC0414 - fixture
 from tests.test_inbox_rotate import native_library as native_library  # noqa: PLC0414 - fixture
 from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
-from tests.test_organize_mirror import folder, row
+from tests.test_organize_mirror import folder, persons_playlist, row
 from tests.test_organize_mirror import world as world  # noqa: PLC0414 - fixture
 
 BATCHES = ("2026-10-20 Tidal playlists", "2026-10-25 Favorites", "2026-10-31 Defected")
@@ -49,9 +38,7 @@ def inbox(*batches: tuple[str, tuple[int, ...]], present: tuple[str, ...] = ()) 
         name="INBOX",
         playlists=sources,
         retire=True,
-        present=frozenset(
-            {source.name for source in sources} | {mirror.title("INBOX", one) for one in present}
-        ),
+        present=frozenset({source.name for source in sources} | {mirror.title("INBOX", one) for one in present}),
     )
 
 
@@ -62,6 +49,13 @@ def _step(area: Area, name: str = "INBOX"):
 
 def _three() -> mirror.Folder:
     return inbox((BATCHES[0], (1, 2)), (BATCHES[1], (3,)), (BATCHES[2], (4, 5, 6)))
+
+
+@pytest.fixture
+def mirrored(world) -> None:
+    """The three live batches mirrored by one refresh."""
+    world.mirror(_three())
+    world.run()
 
 
 def test_three_live_batches_plan_three_inbox_playlists_with_their_account_tracks(world):
@@ -79,9 +73,7 @@ def test_three_live_batches_plan_three_inbox_playlists_with_their_account_tracks
     assert world.account.deleted == []
 
 
-def test_a_second_refresh_with_nothing_changed_plans_nothing(world):
-    world.mirror(_three())
-    world.run()
+def test_a_second_refresh_with_nothing_changed_plans_nothing(world, mirrored):
     created, deleted = list(world.account.created), list(world.account.deleted)
     area = world.plan()
     assert [step.state for step in area.steps] == [NOTHING] and not area.writes
@@ -91,10 +83,7 @@ def test_a_second_refresh_with_nothing_changed_plans_nothing(world):
 
 def test_a_persons_playlist_titled_inbox_batch_in_the_folder_is_left_and_named(world):
     world.mirror(_three())
-    world.account.folder_names["hand-1"] = "INBOX"
-    world.account.titles["mine-1"] = f"INBOX {BATCHES[1]}"
-    world.account.playlists["mine-1"] = ["r99"]
-    world.account.placed["mine-1"] = "hand-1"
+    persons_playlist(world.account, "INBOX", f"INBOX {BATCHES[1]}", ["r99"])
     area = world.run()
     items = {item["playlist"]: item for item in _step(area).items[1:]}
     assert items[f"INBOX {BATCHES[1]}"]["action"] == mirror.LEFT
@@ -108,9 +97,7 @@ def test_a_persons_playlist_titled_inbox_batch_in_the_folder_is_left_and_named(w
     assert world.account.playlists["mine-1"] == ["r99"]
 
 
-def test_a_batch_the_rotation_moved_into_old_plans_the_removal_of_its_playlist_and_nothing_else(world, installed):
-    world.mirror(_three())
-    world.run()
+def test_a_batch_the_rotation_moved_into_old_plans_the_removal_of_its_playlist_and_nothing_else(world, mirrored, installed):
     gone = world.playlist_id(f"INBOX {BATCHES[0]}")
     others = {name: world.held(f"INBOX {name}") for name in BATCHES[1:]}
     chunks, moves, taken = list(world.account.chunks), list(world.account.moves), list(world.account.taken)
@@ -122,10 +109,7 @@ def test_a_batch_the_rotation_moved_into_old_plans_the_removal_of_its_playlist_a
     assert [step.counts[k] for k in ("create playlist", "add", "remove")] == [0, 0, 0]
     (removal,) = [item for item in step.items if item.get("action") == mirror.RETIRE]
     assert removal["playlist"] == f"INBOX {BATCHES[0]}" and removal["remote_id"] == gone
-    assert area.deletes == [
-        f"the mirrored playlist 'INBOX {BATCHES[0]}' ({gone}) off the account, since what "
-        f"it mirrors left INBOX"
-    ]
+    assert area.deletes == [f"the mirrored playlist 'INBOX {BATCHES[0]}' ({gone}) off the account, since what it mirrors left INBOX"]
     (applied,) = world.apply(area)
     assert applied["retired"] == [f"INBOX {BATCHES[0]}"]
     assert world.account.deleted == [(gone, ("r1", "r2"))]
@@ -137,10 +121,8 @@ def test_a_batch_the_rotation_moved_into_old_plans_the_removal_of_its_playlist_a
     assert [one.state for one in world.plan().steps] == [NOTHING]
 
 
-def test_a_batch_still_under_inbox_that_no_longer_reads_as_one_is_left_not_removed(world, installed):
+def test_a_batch_still_under_inbox_that_no_longer_reads_as_one_is_left_not_removed(world, mirrored, installed):
     """An unreadable landing record unrecognises a batch that never left."""
-    world.mirror(_three())
-    world.run()
     kept = world.playlist_id(f"INBOX {BATCHES[2]}")
     world.mirror(inbox((BATCHES[0], (1, 2)), (BATCHES[1], (3,)), present=(BATCHES[2],)))
     area = world.run()
@@ -162,9 +144,7 @@ def test_a_genre_folder_never_removes_a_playlist_it_no_longer_declares(world):
     assert _step(area, "Techno").counts["left"] == 1
 
 
-def test_a_playlist_removal_refused_with_nothing_sent_is_kept_named_and_planned_again(world, installed, monkeypatch):
-    world.mirror(_three())
-    world.run()
+def test_a_playlist_removal_refused_with_nothing_sent_is_kept_named_and_planned_again(world, mirrored, installed, monkeypatch):
     gone = world.playlist_id(f"INBOX {BATCHES[0]}")
     def refused(_pid):
         raise refuse("outbound-remove-refused", "not vouched for", scope=Scope.SOURCE, origin=("test",))
@@ -180,9 +160,7 @@ def test_a_playlist_removal_refused_with_nothing_sent_is_kept_named_and_planned_
     assert _step(world.plan()).counts["remove playlist"] == 1
 
 
-def test_a_playlist_removal_refused_for_any_other_reason_is_raised(world, installed, monkeypatch):
-    world.mirror(_three())
-    world.run()
+def test_a_playlist_removal_refused_for_any_other_reason_is_raised(world, mirrored, installed, monkeypatch):
     def differs(_pid):
         raise refuse("outbound-remove-refused", "still served", scope=Scope.RUN, origin=("test",))
     monkeypatch.setattr(world.account, "remove_playlist", differs)
@@ -194,9 +172,7 @@ def test_a_playlist_removal_refused_for_any_other_reason_is_raised(world, instal
     assert world.playlist_id(f"INBOX {BATCHES[0]}") in ledger.mirror_playlist_ids(installed)
 
 
-def test_a_playlist_already_gone_from_the_account_is_still_forgotten(world, installed):
-    world.mirror(_three())
-    world.run()
+def test_a_playlist_already_gone_from_the_account_is_still_forgotten(world, mirrored, installed):
     gone = world.playlist_id(f"INBOX {BATCHES[0]}")
     world.account.playlists.pop(gone)
     world.account.titles.pop(gone)
@@ -240,24 +216,16 @@ def test_a_row_the_ledger_already_links_keeps_its_link_over_a_landing_track(worl
     assert account_mirror.KNOWN_FACT not in area.facts
 
 
-def test_the_sweep_still_excludes_every_mirrored_inbox_playlist(world, installed):
-    world.mirror(_three())
-    world.run()
+def test_the_sweep_still_excludes_every_mirrored_inbox_playlist(world, mirrored, installed):
     ids = {world.playlist_id(f"INBOX {name}") for name in BATCHES}
-    assert ids <= ledger.mirror_playlist_ids(installed)
+    known = ledger.mirror_playlist_ids(installed)
+    assert ids <= known
     for playlist_id in ids:
         listed = playlists.AccountPlaylist(playlist_id, "INBOX x", 1)
-        assert (
-            playlists.exclusion(
-                listed, recorded=set(), in_flight=set(), mirrored=ledger.mirror_playlist_ids(installed)
-            )
-            == playlists.Excluded.MIRROR
-        )
+        assert playlists.exclusion(listed, recorded=set(), in_flight=set(), mirrored=known) == playlists.Excluded.MIRROR
 
 
-def test_the_digest_covers_the_removal(world):
-    world.mirror(_three())
-    world.run()
+def test_the_digest_covers_the_removal(world, mirrored):
     world.mirror(inbox((BATCHES[1], (3,)), (BATCHES[2], (4, 5, 6))))
     retiring = _step(world.plan()).digest
     world.mirror(inbox((BATCHES[1], (3,)), (BATCHES[2], (4, 5, 6)), present=(BATCHES[0],)))
@@ -278,9 +246,7 @@ def test_a_genre_folder_with_no_playlist_still_makes_its_folder(world):
     assert world.account.folders_created == ["Techno"]
 
 
-def test_a_deleted_inbox_folder_with_only_removals_left_is_not_made_again(world, installed):
-    world.mirror(_three())
-    world.run()
+def test_a_deleted_inbox_folder_with_only_removals_left_is_not_made_again(world, mirrored, installed):
     ids = {world.playlist_id(f"INBOX {name}") for name in BATCHES}
     del world.account.folder_names[world.folder_id("INBOX")]
     world.mirror(inbox(present=(OLD,)))
@@ -291,9 +257,7 @@ def test_a_deleted_inbox_folder_with_only_removals_left_is_not_made_again(world,
     assert not ids & ledger.mirror_playlist_ids(installed)
 
 
-def test_an_inbox_that_cannot_be_read_is_listed_and_nothing_of_it_is_removed(world):
-    world.mirror(_three())
-    world.run()
+def test_an_inbox_that_cannot_be_read_is_listed_and_nothing_of_it_is_removed(world, mirrored):
     world.library = account_mirror.Library(inbox="INBOX is not mirrored: the intake tree is on the xml bridge")
     area = world.run()
     listed = {step.key: step for step in area.steps}
@@ -342,22 +306,22 @@ def test_a_rebuild_from_a_frozen_plan_reads_no_landing_record(world, installed, 
     assert _step(area).state == PLANNED
 
 
-def _live(cfg) -> rotate.Live:
+def _read(cfg, read):
+    """``read(handle, declared, registry)`` on a handle of the library, closed after."""
     declared = active_taxonomy.load(cfg)
     handle = _open(cfg)
     try:
-        return rotate.live_batches(cfg, handle, declared=declared, registry=tree_registry.read(cfg), today=TODAY)
+        return read(handle, declared, tree_registry.read(cfg))
     finally:
         rb_writer.close_db(handle)
+
+
+def _live(cfg) -> rotate.Live:
+    return _read(cfg, lambda handle, declared, registry: rotate.live_batches(cfg, handle, declared=declared, registry=registry, today=TODAY))
 
 
 def _inbox_folder(cfg) -> tuple[str, object]:
-    declared = active_taxonomy.load(cfg)
-    handle = _open(cfg)
-    try:
-        return account_mirror._inbox(cfg, handle, declared, tree_registry.read(cfg), TODAY)
-    finally:
-        rb_writer.close_db(handle)
+    return _read(cfg, lambda handle, declared, registry: account_mirror._inbox(cfg, handle, declared, registry, TODAY))
 
 
 @pytest.fixture
@@ -366,9 +330,7 @@ def batches(native_library):
     cfg, root_id = native_library
     old_id = _node(cfg, OLD, under=root_id, folder=True)
     ids = {
-        "dated": _node(
-            cfg, "2026-09-23 Tidal playlists", under=root_id, age=10, tracks=("t1", "t2"), batch_folder=True,
-        ),
+        "dated": _node(cfg, "2026-09-23 Tidal playlists", under=root_id, age=10, tracks=("t1", "t2"), batch_folder=True),
         "suffix": _node(cfg, "2026-09-13T101010Z-1_inboxed", under=root_id, age=20, tracks=("t5",)),
         "label": _node(cfg, "2026-10-01 Defected", under=root_id, age=2, tracks=("t3", "t4")),
         "old": _node(cfg, "2026-05-01 Tidal playlists", under=old_id, age=150, tracks=("t6",)),
@@ -484,24 +446,18 @@ def test_a_passs_dated_account_playlist_is_mirrored_beside_its_batch_under_its_d
     batch = _node(cfg, "2026-10-27 Tidal playlists", under=root_id, age=3, tracks=("t1",))
     dated = _node(cfg, "Lisa_10_27_26 2026-10-27", under=root_id, age=3, tracks=("t2", "t3"))
     started = datetime.combine(landed, datetime.min.time().replace(hour=12)).astimezone()
-    session.write_record(
-        session.SessionRecord(
-            session_id=f"{started.strftime('%Y%m%dT%H%M%S')}-landing",
-            workflow=native.WORKFLOW,
-            started=started.isoformat(),
-            state=session.SessionState.CLOSED,
-            sources={INTAKE: str(session.SourceState.COMMITTED)},
-            ended=started.isoformat(),
-            detail={
-                native.BATCH_PLAYLIST_KEY: {"id": batch, "name": "2026-10-27 Tidal playlists"},
-                native.INBOX_PLAYLISTS_KEY: [
-                    {"id": dated, "name": "Lisa_10_27_26 2026-10-27", "account": "pl-l",
-                     "pass": "2026-10-27T101500Z-cd34_synced"},
-                ],
-            },
-        ),
-        cfg,
+    detail = {
+        native.BATCH_PLAYLIST_KEY: {"id": batch, "name": "2026-10-27 Tidal playlists"},
+        native.INBOX_PLAYLISTS_KEY: [
+            {"id": dated, "name": "Lisa_10_27_26 2026-10-27", "account": "pl-l", "pass": "2026-10-27T101500Z-cd34_synced"},
+        ],
+    }
+    record = session.SessionRecord(
+        session_id=f"{started.strftime('%Y%m%dT%H%M%S')}-landing", workflow=native.WORKFLOW, started=started.isoformat(),
+        state=session.SessionState.CLOSED, sources={INTAKE: str(session.SourceState.COMMITTED)},
+        ended=started.isoformat(), detail=detail,
     )
+    session.write_record(record, cfg)
     name, read = _inbox_folder(cfg)
     assert isinstance(read, mirror.Folder)
     assert {source.name: [one.content_id for one in source.rows] for source in read.playlists} == {

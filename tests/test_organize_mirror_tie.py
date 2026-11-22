@@ -1,11 +1,6 @@
 """R-1032: the mirror takes one of several agreeing releases where a heart would refuse.
 
-Driven at the organize step with every write through U147's recording fake and
-every MATCH through the real adapter over the fake provider client, so the
-choice is the one ``match_track`` makes. The heart side of the tie, which still
-refuses (AE5), is driven in ``tests/test_outbound_tidal_account.py``.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+Every write through U147's recording fake, every match through the real adapter. D1 applies.
 """
 
 from __future__ import annotations
@@ -67,9 +62,7 @@ def test_a_tie_between_agreeing_releases_is_mirrored_as_one_and_recorded(install
     assert area.steps[0].counts["add"] == 1
 
 
-def test_the_next_refresh_keeps_the_chosen_release_and_asks_the_provider_nothing(
-    installed, monkeypatch
-):
+def test_the_next_refresh_keeps_the_chosen_release_and_asks_the_provider_nothing(installed, monkeypatch):
     """AE4's second half, and a heart placed later does not move the copy."""
     world = _world(installed, monkeypatch, {CODE: _alike("101", "202")})
     world.run()
@@ -83,25 +76,17 @@ def test_the_next_refresh_keeps_the_chosen_release_and_asks_the_provider_nothing
     assert all(step.apply is None for step in area.steps)
 
 
-def test_a_tie_remembered_as_a_miss_before_the_tie_was_broken_is_asked_again(
-    installed, monkeypatch
-):
+def test_a_tie_remembered_as_a_miss_before_the_tie_was_broken_is_asked_again(installed, monkeypatch):
     """The live ledger holds thousands of tie misses R-1031 remembered; each is asked once."""
     tied, absent = _row("c1"), _row("c2", isrc=OTHER)
     world = _world(installed, monkeypatch, {CODE: _alike("101", "202")}, tied, absent)
     matcher = mirror.Matcher(world.account, {}, lambda _row: mirror.Identity())
-    ledger.record_mirror_misses(
-        installed,
-        {
-            "c1": (
-                f"the ISRC {CODE} names 2 provider tracks, 2 {service.AGREEING_RELEASES} "
-                "and the account hearts 0 of those, and the file carries no album tag, "
-                "so none was chosen",
-                matcher.under(tied),
-            ),
-            "c2": (mirror.NO_MATCH, matcher.under(absent)),
-        },
+    tie = (
+        f"the ISRC {CODE} names 2 provider tracks, 2 {service.AGREEING_RELEASES} and the account "
+        "hearts 0 of those, and the file carries no album tag, so none was chosen"
     )
+    misses = {"c1": (tie, matcher.under(tied)), "c2": (mirror.NO_MATCH, matcher.under(absent))}
+    ledger.record_mirror_misses(installed, misses)
     world.run()
     assert world.account.client.isrc_asked == [CODE]
     assert world.held("Soul High") == ["101"]
@@ -109,13 +94,9 @@ def test_a_tie_remembered_as_a_miss_before_the_tie_was_broken_is_asked_again(
     assert set(ledger.mirror_misses(installed)) == {"c2"}
 
 
-def test_a_tie_beside_a_release_that_cannot_be_read_is_left_out_and_asked_again(
-    installed, monkeypatch
-):
+def test_a_tie_beside_a_release_that_cannot_be_read_is_left_out_and_asked_again(installed, monkeypatch):
     """Not only the tie refuses here, so the rule stands and the miss is not remembered."""
-    world = _world(
-        installed, monkeypatch, {CODE: [*_alike("101", "202"), Track("303", "", None, ())]}
-    )
+    world = _world(installed, monkeypatch, {CODE: [*_alike("101", "202"), Track("303", "", None, ())]})
     area = world.run()
     (item,) = area.steps[0].items[1:]
     (said,) = item["unmatched"]
@@ -128,10 +109,6 @@ def test_a_tie_beside_a_release_that_cannot_be_read_is_left_out_and_asked_again(
 
 def test_a_release_that_does_not_agree_is_never_the_one_taken(installed, monkeypatch):
     """The lowest identifier is a radio edit; the row is the plain record."""
-    world = _world(
-        installed,
-        monkeypatch,
-        {CODE: [Track("101", "Sun Path", "Radio Edit", ("Nova Reef",)), *_alike("303", "202")]},
-    )
+    world = _world(installed, monkeypatch, {CODE: [Track("101", "Sun Path", "Radio Edit", ("Nova Reef",)), *_alike("303", "202")]})
     world.run()
     assert world.held("Soul High") == ["202"]

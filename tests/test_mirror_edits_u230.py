@@ -1,44 +1,28 @@
 """U230: a download an account edit queued is filed there even when that playlist already lists it.
 
-Sitting 86: the playlist the person edited held the track in its own base (its
-account side, never agreed), so U227's rule never fired. The base of the
-playlist whose mirror job queued the track is read without it, as it stood at
-the queue, while the landing's filing stands and the account still lists it
-there; every other base counts as before. Pure, so driven without a database.
+The base of the playlist whose job queued the track is read without it while the landing's
+filing stands; every other base counts as before. Pure.
 """
 
 from __future__ import annotations
 
 from cratekit.modules.outbound import mirror_edits as edits
-
-AHH = edits.Place("Afro House High", "Afro House", "High", True)
-AHM = edits.Place("Afro House Med", "Afro House", "Med", True)
-JZM = edits.Place("Jazz Med", "Jazz", "Med", True)
-JZV = edits.Place("Jazz with vox", "Jazz", "with vox", False)
+from tests.test_mirror_edits_u227 import ACCOUNT_AT, AHH, AHM, FILED, JZM, JZV, LANDED_AT, MOVED_AT
 
 OWNED = {"t9": ["c9"]}
+
 T9 = frozenset({"t9"})
 NONE = frozenset()
-ACCOUNT_AT = "2026-11-06T14:56:32.535000+00:00"
-LANDED_AT = "2026-11-06 15:11:15.593 +00:00"
-MOVED_AT = "2026-11-06 16:00:00.000 +00:00"
-#: Where the landing filed the row, by the adoption ledger.
-FILED = {"t9": frozenset({("Afro House", "High")})}
 #: Which mirrored playlist's job queued the download.
 QUEUED = {"t9": frozenset({"Jazz Med"})}
 
 
 def _read(*, agreed=None, rekordbox_in=(AHH,), at=LANDED_AT, edited=JZM, others=None):
-    """The edited playlist listing t9 on the account, its snapshot ``agreed``; ``others``
-    maps a band to its snapshot and account side, for another playlist that held t9."""
+    """The edited playlist listing t9, snapshot ``agreed``; ``others`` maps a band to its two sides."""
     others = others or {}
-
     def side(place) -> dict:
         return {"rekordbox": T9, "rekordbox_added": {"t9": at}} if place in rekordbox_in else {}
-
-    playlists = [
-        edits.Mirrored(edited, T9, agreed=agreed, account_added={"t9": ACCOUNT_AT}, **side(edited))
-    ]
+    playlists = [edits.Mirrored(edited, T9, agreed=agreed, account_added={"t9": ACCOUNT_AT}, **side(edited))]
     for place in (AHH, AHM):
         snapshot, account = others.get(place, (NONE, NONE))
         playlists.append(edits.Mirrored(place, account, agreed=snapshot, **side(place)))
@@ -66,9 +50,7 @@ def test_a_never_agreed_playlist_whose_account_side_holds_the_track_carries_it()
 
 
 def test_an_agreed_snapshot_that_holds_the_track_is_the_librarys_word():
-    """An agreed snapshot of the queuing playlist takes a queued track only once
-    the library took the edit (the review of U230, round one), so lifting it
-    would carry a person's later move back."""
+    """An agreed snapshot takes a queued track only once the library took the edit: never lifted."""
     assert _decided(_read(agreed=T9)) == ()
     # Only the base of the playlist whose job queued the track is lifted.
     assert _decided(_read(agreed=T9), queued={"t9": frozenset({"Jazz High"})}) == ()
@@ -114,16 +96,13 @@ def test_once_the_library_holds_it_where_the_account_put_it_nothing_is_read():
 
 
 def test_a_later_account_move_then_a_rekordbox_move_back_into_the_landings_band_stands():
-    """U227's K1 with the queue named: the account no longer lists the track on
-    the queuing playlist, so its snapshot counts and the rekordbox move stands."""
+    """U227's K1 with the queue named: off the queuing playlist, its snapshot counts."""
     jzh = edits.Place("Jazz High", "Jazz", "High", True)
     one = _one(
         [
             edits.Mirrored(JZM, NONE, agreed=T9),
             edits.Mirrored(jzh, T9, agreed=NONE, account_added={"t9": "2026-11-07T17:00:00+00:00"}),
-            edits.Mirrored(
-                AHH, NONE, T9, NONE, rekordbox_added={"t9": "2026-11-07 18:00:00.000 +00:00"}
-            ),
+            edits.Mirrored(AHH, NONE, T9, NONE, rekordbox_added={"t9": "2026-11-07 18:00:00.000 +00:00"}),
         ]
     )
     assert one.outcome == edits.REKORDBOX
@@ -140,15 +119,12 @@ def test_a_short_listing_of_the_queuing_playlist_lifts_nothing():
     """The review of U230, round one: a short listing carries no edit of its own."""
     for agreed in (None, T9):
         playlists = _read(agreed=agreed)
-        playlists[0] = edits.Mirrored(
-            JZM, T9, agreed=agreed, short=True, account_added={"t9": ACCOUNT_AT}
-        )
+        playlists[0] = edits.Mirrored(JZM, T9, agreed=agreed, short=True, account_added={"t9": ACCOUNT_AT})
         assert _decided(playlists) == (), agreed
 
 
 def test_a_band_a_person_chose_before_any_carry_is_not_lifted_over():
-    """The landing's filing must still stand: a row a person moved, or gave a
-    second band, in rekordbox before the carry reads as before, no edit."""
+    """A row a person moved, or gave a second band, in rekordbox before the carry is no edit."""
     for rekordbox_in, at in (((AHM,), MOVED_AT), ((AHH, AHM), LANDED_AT)):
         assert _decided(_read(rekordbox_in=rekordbox_in, at=at)) == (), rekordbox_in
 

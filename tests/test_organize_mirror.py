@@ -1,8 +1,6 @@
 """U147: the genre tree and the Favorites folder mirrored onto the account.
 
-Driven at :func:`account_mirror.add_steps` over the recording fake account, the
-library handed in as values, so each scenario reads what the account holds. D1
-applies: nothing here names a real account, person or track.
+At :func:`account_mirror.add_steps` over the recording fake account, the library handed in. D1 applies.
 """
 
 from __future__ import annotations
@@ -40,6 +38,12 @@ def folder(name: str, **playlists: tuple[int, ...]) -> mirror.Folder:
     )
 
 
+def persons_playlist(account, folder: str, title: str, held=(), *, folder_id="hand-1", playlist_id="mine-1") -> None:
+    """A root folder and a playlist in it holding ``held``, made by a person on the account."""
+    account.folder_names[folder_id] = folder
+    account.titles[playlist_id], account.playlists[playlist_id], account.placed[playlist_id] = title, list(held), folder_id
+
+
 def single(name: str, title: str, *rows: mirror.Row) -> mirror.Folder:
     """A folder of one playlist holding ``rows``."""
     return mirror.Folder(name=name, playlists=(mirror.Source(name=title, rows=rows),))
@@ -60,9 +64,7 @@ class World:
 
     def __init__(self, cfg, monkeypatch, *, unmatched: tuple[int, ...] = ()) -> None:
         self.cfg = cfg
-        self.account = outbound_fakes.StrictAccount(
-            catalog={f"c{n}": f"r{n}" for n in range(1, 400) if n not in unmatched}
-        )
+        self.account = outbound_fakes.StrictAccount(catalog={f"c{n}": f"r{n}" for n in range(1, 400) if n not in unmatched})
         self.library = account_mirror.Library()
         monkeypatch.setattr(account_mirror, "read_library", lambda _cfg, **_: self.library)
 
@@ -92,9 +94,7 @@ class World:
         return found
 
     def held(self, title: str) -> list[str]:
-        """What the account playlist of this title holds, by title among the mirror's."""
-        (found,) = [pid for pid, name in self.account.titles.items() if name == title]
-        return list(self.account.playlists[found])
+        return list(self.account.playlists[self.playlist_id(title)])
 
     def playlist_id(self, title: str) -> str:
         (found,) = [pid for pid, name in self.account.titles.items() if name == title]
@@ -192,10 +192,7 @@ def test_two_root_folders_of_the_name_refuse_that_genre_and_the_rest_proceeds(wo
 
 
 def test_a_persons_playlist_of_the_same_title_is_left_and_nothing_made_beside_it(world):
-    world.account.folder_names["hand-1"] = "Techno"
-    world.account.titles["mine-1"] = "Techno Low"
-    world.account.playlists["mine-1"] = ["r99"]
-    world.account.placed["mine-1"] = "hand-1"
+    persons_playlist(world.account, "Techno", "Techno Low", ["r99"])
     world.mirror(folder("Techno", Low=(1,), High=(2,)))
     area = world.run()
     items = {item["playlist"]: item for item in _steps(area)["mirror:Techno"].items[1:]}
@@ -221,12 +218,18 @@ def test_a_track_moved_from_med_to_high_is_added_to_one_and_removed_from_the_oth
     assert adds
 
 
-def test_a_track_added_by_hand_to_a_mirrored_playlist_is_removed_and_named(world, installed):
-    world.mirror(folder("Deep House", Low=(1, 2)))
+def _added_on_the_phone(world, **bands: tuple[int, ...]) -> str:
+    """Deep House mirrored once, then r77 added by hand to its Low playlist; answers Low's id."""
+    world.mirror(folder("Deep House", Low=(1, 2), **bands))
     world.run()
     low = world.playlist_id("Deep House Low")
     world.account.playlists[low].append("r77")
     world.account.names["r77"] = ("Someone", "Added On The Phone")
+    return low
+
+
+def test_a_track_added_by_hand_to_a_mirrored_playlist_is_removed_and_named(world, installed):
+    low = _added_on_the_phone(world)
     area = world.plan()
     (item,) = _steps(area)["mirror:Deep House"].items[1:]
     assert item["removed"] == ["Someone - Added On The Phone (r77)"]
@@ -236,9 +239,7 @@ def test_a_track_added_by_hand_to_a_mirrored_playlist_is_removed_and_named(world
 
 
 def test_a_removal_the_account_refuses_is_kept_named_and_the_apply_goes_on(world, monkeypatch):
-    world.mirror(folder("Deep House", Low=(1, 2), High=(3,)))
-    world.run()
-    world.account.playlists[world.playlist_id("Deep House Low")].append("r77")
+    _added_on_the_phone(world, High=(3,))
     def refused(_pid, _ids):
         raise refuse("outbound-remove-refused", "positions unknown", scope=Scope.SOURCE, origin=("test",))
     monkeypatch.setattr(world.account, "remove_tracks", refused)
@@ -251,9 +252,7 @@ def test_a_removal_the_account_refuses_is_kept_named_and_the_apply_goes_on(world
 
 
 def test_a_removal_whose_read_back_differs_is_raised_never_kept(world, monkeypatch):
-    world.mirror(folder("Deep House", Low=(1, 2)))
-    world.run()
-    world.account.playlists[world.playlist_id("Deep House Low")].append("r77")
+    _added_on_the_phone(world)
     def differs(_pid, _ids):
         raise refuse(
             "outbound-remove-refused",
@@ -268,10 +267,7 @@ def test_a_removal_whose_read_back_differs_is_raised_never_kept(world, monkeypat
 
 
 def test_every_track_a_refresh_takes_off_is_named_on_the_gate(world):
-    world.mirror(folder("Deep House", Low=(1, 2)))
-    world.run()
-    world.account.playlists[world.playlist_id("Deep House Low")].append("r77")
-    world.account.names["r77"] = ("Someone", "Added On The Phone")
+    _added_on_the_phone(world)
     area = world.plan()
     assert area.deletes == ["1 track(s) off the mirrored playlist 'Deep House Low': Someone - Added On The Phone (r77)"]
     assert area.shown()["deletes"] == area.deletes
@@ -317,21 +313,11 @@ def test_a_playlist_the_folder_no_longer_holds_is_left_and_named(world):
 
 
 def test_the_favorites_folder_mirrors_under_its_own_names(world):
-    world.mirror(
-        mirror.Folder(
-            name="Favorites",
-            playlists=(
-                mirror.Source(name="All Favorites", rows=(row(1), row(2))),
-                mirror.Source(name=mirror.title("Favorites", "2026-10"), rows=(row(1),)),
-                mirror.Source(name=mirror.title("Favorites", "Undated"), rows=(row(2),)),
-            ),
-        )
-    )
+    months = tuple(mirror.Source(name=mirror.title("Favorites", one), rows=(row(n),)) for one, n in (("2026-10", 1), ("Undated", 2)))
+    world.mirror(mirror.Folder(name="Favorites", playlists=(mirror.Source(name="All Favorites", rows=(row(1), row(2))), *months)))
     world.run()
     favorites = world.folder_id("Favorites")
-    assert sorted(world.account.folder_playlists(favorites).values()) == [
-        "All Favorites", "Favorites 2026-10", "Favorites Undated"
-    ]
+    assert sorted(world.account.folder_playlists(favorites).values()) == ["All Favorites", "Favorites 2026-10", "Favorites Undated"]
 
 
 def test_a_favourites_playlist_at_the_root_is_listed_and_not_mirrored(world):
@@ -439,6 +425,9 @@ def test_a_library_name_two_folders_take_is_refused_by_name(world):
     steps = _steps(world.plan())
     assert steps["mirror:Soul"].state == REFUSED and "two of folders" in steps["mirror:Soul"].detail
     assert steps["mirror:Techno"].state == PLANNED
+    # And the refusal names its remedy in rekordbox.
+    assert cause.reason == mirror.AMBIGUOUS_REASON
+    assert any("in rekordbox" in step for step in cause.remediation.steps)
 
 
 def test_a_row_whose_database_code_changed_is_matched_again(world):
@@ -465,10 +454,7 @@ def test_a_code_read_off_the_file_asks_the_one_track_to_agree_and_a_database_cod
 
 
 def test_a_persons_playlist_left_alone_costs_no_match(world):
-    world.account.folder_names["hand-1"] = "Techno"
-    world.account.titles["mine-1"] = "Techno Low"
-    world.account.playlists["mine-1"] = []
-    world.account.placed["mine-1"] = "hand-1"
+    persons_playlist(world.account, "Techno", "Techno Low")
     world.mirror(folder("Techno", Low=(1, 2)))
     world.plan()
     assert world.account.matches == []
@@ -487,12 +473,6 @@ def test_rows_a_folder_with_nothing_to_write_matched_are_linked_by_another_folde
     area = world.run()
     assert _steps(area)["mirror:Techno"].state == NOTHING
     assert set(ledger.mirror_links(installed)) == {"c1", "c2"}
-
-
-def test_a_library_name_two_folders_take_names_its_remedy_in_rekordbox(installed, monkeypatch):
-    cause = account_mirror._twice("Soul", "folders")
-    assert cause.reason == mirror.AMBIGUOUS_REASON
-    assert any("in rekordbox" in step for step in cause.remediation.steps)
 
 
 def test_sync_pair_refuses_to_pair_a_mirrored_playlist():

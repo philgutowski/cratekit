@@ -1,7 +1,6 @@
 """U230: a download an account edit queued is filed there even though that playlist already lists it.
 
-On U204's world with U227's producers, the edited playlist's base written by
-hand through the ledger's file (sitting 86). D1 applies.
+Sitting 86 on U204's world, the edited playlist's base written by hand in the ledger. D1 applies.
 """
 
 from __future__ import annotations
@@ -12,14 +11,11 @@ from cratekit.core import config
 from cratekit.modules.outbound import ledger
 from cratekit.modules.outbound import mirror_edits as edits
 from tests.test_organize_mirror_edits_u204 import _field_policies as _field_policies  # noqa: PLC0414
-from tests.test_organize_mirror_edits_u204 import _items
+from tests.test_organize_mirror_edits_u204 import _items, _queued
 from tests.test_organize_mirror_edits_u204 import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_organize_mirror_edits_u204 import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
+from tests.test_organize_mirror_edits_u204 import _release_process_locks as _release_process_locks
 from tests.test_organize_mirror_edits_u204 import acknowledged as acknowledged  # noqa: PLC0414
 from tests.test_organize_mirror_edits_u204 import configured as configured  # noqa: PLC0414
-from tests.test_organize_mirror_edits_u204 import installed as installed  # noqa: PLC0414
 from tests.test_organize_mirror_edits_u204 import library as library  # noqa: PLC0414
 from tests.test_organize_mirror_edits_u204 import world as world  # noqa: PLC0414
 from tests.test_organize_mirror_edits_u227 import MOVED_AT, _queued_landed_and_filed
@@ -60,9 +56,7 @@ def _landed_with_base(world, agreed) -> None:
 
 
 def test_a_never_agreed_playlist_holding_the_track_files_it_where_the_account_put_it(world):
-    """Sitting 86's shape, the brief's verification: planned into the edited
-    playlist as landed for the account's edit, then a further organize plans
-    nothing."""
+    """Sitting 86's shape: carried into the edited playlist as landed, and once only."""
     _landed_with_base(world, None)
     _area, step, _queue = world.run_all()
     (change,) = _items(step)
@@ -78,9 +72,7 @@ def test_a_never_agreed_playlist_holding_the_track_files_it_where_the_account_pu
 
 
 def test_an_agreed_snapshot_holding_the_track_is_the_librarys_word(world):
-    """An agreed snapshot of the queuing playlist takes a queued track only
-    once the library took the edit, so it is never lifted, and the account
-    side reads as no change, U227's reading."""
+    """An agreed snapshot holds a queued track only once the library took the edit: never lifted."""
     _landed_with_base(world, {"r3"})
     _area, step, _queue = world.run_all()
     assert _items(step) == []
@@ -88,8 +80,7 @@ def test_an_agreed_snapshot_holding_the_track_is_the_librarys_word(world):
 
 
 def test_a_move_in_rekordbox_after_the_carry_still_stands(world):
-    """Once: the library took the edit, and a person's move in rekordbox after
-    it is rekordbox's, mirrored onto the account."""
+    """Once the library took the edit, a person's move in rekordbox after it is rekordbox's."""
     _landed_with_base(world, None)
     _area, step, _queue = world.run_all()
     assert [one["edit"] for one in _items(step)] == [edits.MOVE]
@@ -110,19 +101,13 @@ def test_another_playlists_snapshot_holding_the_track_keeps_rekordboxs_place(wor
 
 
 def test_a_job_queued_from_another_playlist_does_not_lift_the_edited_ones_base(world):
-    """The queue names its playlist by its remote identifier, read back to the
-    title the mirror recorded it under: a job from another playlist lifts
-    nothing here."""
+    """The queue names its playlist by remote identifier: a job from another one lifts nothing."""
     from cratekit.core import jobs
     from cratekit.intake import cli as intake_cli
     from cratekit.organize import mirror_downloads
     _landed_with_base(world, None)
+    (real,) = _queued(world.cfg)
     with jobs.open_store() as store:
-        (real,) = [
-            one
-            for one in jobs.list_jobs(store)
-            if (one.payload or {}).get("source_id") == mirror_downloads.SOURCE_ID
-        ]
         jobs.cancel(store, real.job_id)
         other = intake_cli.queue_playlist(
             store, world.cfg, handler_key=mirror_downloads.HANDLER,
@@ -138,17 +123,12 @@ def test_a_job_queued_from_another_playlist_does_not_lift_the_edited_ones_base(w
 
 def _rotate_landed_batch(world) -> None:
     """The landing's batch leaves INBOX for INBOX / Old, as ``inbox rotate`` moves it."""
-
     ((landed,),) = world.sql("SELECT ID FROM djmdPlaylist WHERE Name = ? AND ParentID = ?", "2026-11-02 Landed", world.inbox)
     world.into_old(landed)
 
 
 def test_a_drag_back_into_the_landings_band_after_the_batch_left_inbox_stands(world):
-    """The review of U230, round one, BLOCKING: once the edit was carried the
-    mirror agrees the edited playlist with the track, and once the landing's
-    batch left INBOX no other snapshot holds it, so a person's drag in
-    rekordbox back into the band the landing's tags chose must stand, not be
-    carried back as the landing's."""
+    """Review round one, BLOCKING: a drag back after the carry and the rotation is a person's."""
     _landed_with_base(world, None)
     _area, step, _queue = world.run_all()
     assert [one["edit"] for one in _items(step)] == [edits.MOVE]

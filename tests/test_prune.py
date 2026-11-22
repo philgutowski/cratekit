@@ -1,17 +1,14 @@
 """R-836: a dropped track leaves a playlist this product made, and nothing else does.
 
-The two prune verbs are driven through the real dispatcher with the provider
-seams faked (the label catalogue and the streaming account) and the review
-database's holds real; the adapter's one removal is driven against a stand in
-for the client. The live prune of one label is owed to an attended sitting.
-
-D1 applies. Nothing here names a real volume, a real person, or a real track.
+Both prune verbs through the real dispatcher, the provider seams faked and the review holds
+real; the adapter's removal over a stand in for the client. D1 applies.
 """
 
 from __future__ import annotations
 
 import copy
 import os
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -31,6 +28,7 @@ from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedArtist, FakeRelease, catalogue_factory
 from tests.test_label_playlists import LABEL, LABEL_ID, RELEASES
 from tests.test_label_workers import register
+from tests.test_organize_mirror import persons_playlist
 from tests.test_outbound_workers import bind as bind_account
 from tests.test_outbound_workers import installed as installed  # noqa: PLC0414 - fixture
 
@@ -149,10 +147,7 @@ def _year(cfg, year: str = "2023"):
 
 
 def test_both_prune_verbs_write_only_the_account_behind_an_explicit_gate():
-    for name, gate, module, row in (
-        ("label.prune", PRUNE, "labels", 23),
-        ("export.prune", EXPORT_PRUNE, "export", 36),
-    ):
+    for name, gate, module, row in (("label.prune", PRUNE, "labels", 23), ("export.prune", EXPORT_PRUNE, "export", 36)):
         entry = registry.entry(name)
         assert entry.writes == frozenset({"remote"}), name
         assert entry.destructive is True, name
@@ -162,12 +157,9 @@ def test_both_prune_verbs_write_only_the_account_behind_an_explicit_gate():
         assert spec.digest_source == "plan"
     # The protocol's removals: R-836's tracks, U123's playlist, U143's two root removals.
     removals = {name for name in outbound_fakes.PROTOCOL_METHODS if "remove" in name}
-    assert removals == {
-        "remove_tracks", "remove_playlist", "remove_root_playlist", "remove_legacy_folder"
-    }
+    assert removals == {"remove_tracks", "remove_playlist", "remove_root_playlist", "remove_legacy_folder"}
     # The client library still offers the removal the adapter makes.
     import tidalapi.playlist
-
     assert callable(getattr(tidalapi.playlist.UserPlaylist, "remove_by_indices", None))
     assert "remove_by_indices" in Path(tidal_account.__file__).read_text(encoding="utf-8")
 
@@ -209,12 +201,7 @@ def test_a_catalogue_read_as_empty_takes_nothing_off(built):
 
 def test_a_release_the_provider_no_longer_has_stops_the_unconfirmed_judgement(built):
     """r7 is confirmed and gone, so any track could be its: only holds are judged."""
-    _recatalogue(
-        built,
-        confirmed=CONFIRMED | {"r7"},
-        listed=[*LISTED, FakeRelease("r7", year="2020")],
-        elsewhere={"r2"},
-    )
+    _recatalogue(built, confirmed=CONFIRMED | {"r7"}, listed=[*LISTED, FakeRelease("r7", year="2020")], elsewhere={"r2"})
     _hold(built.cfg, "r1")
     shown = _shown()
     assert list(shown["take off"]) == ["Kompakt 2021"]
@@ -278,10 +265,7 @@ def test_a_year_adopted_from_the_account_is_said_and_left_alone(installed, monke
     register(LABEL)
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(_catalogue()))
     account = outbound_fakes.StrictAccount()
-    account.folder_names["folder-made"] = LABEL
-    account.playlists["by-hand"] = []
-    account.titles["by-hand"] = "Kompakt 2023"
-    account.placed["by-hand"] = "folder-made"
+    persons_playlist(account, LABEL, "Kompakt 2023", folder_id="folder-made", playlist_id="by-hand")
     bind_account(monkeypatch, account)
     assert _two_acts(["label", "playlists", LABEL], BUILD)[0] == OK
     assert _year(installed).created is False
@@ -303,9 +287,7 @@ def _plan(kind: str, subject: str, key: str, name: str, remote_id: str, **step) 
     return prune.Plan(kind, subject, (prune.PlaylistPrune(key, name, remote_id, **step),))
 
 
-def test_the_apply_asks_the_ledger_again_and_refuses_a_playlist_it_no_longer_vouches_for(
-    installed,
-):
+def test_the_apply_asks_the_ledger_again_and_refuses_a_playlist_it_no_longer_vouches_for(installed):
     account = outbound_fakes.FakeAccount()
     account.playlists["elsewhere"] = ["t1"]
     taken = (prune.Taken("t1"),)
@@ -355,16 +337,12 @@ def _crate(cfg, *rows: int, under: str = "outbound", **kwargs) -> Path:
 
 
 def _export_prune(path) -> dict:
-    code, done = _two_acts(
-        ["export", "prune", outbound_fakes.CRATE, "--export", str(path)], EXPORT_PRUNE
-    )
+    code, done = _two_acts(["export", "prune", outbound_fakes.CRATE, "--export", str(path)], EXPORT_PRUNE)
     assert code == OK, done
     return done
 
 
-def test_an_exported_playlist_whose_library_playlist_lost_a_track_plans_exactly_it(
-    installed, monkeypatch
-):
+def test_an_exported_playlist_whose_library_playlist_lost_a_track_plans_exactly_it(installed, monkeypatch):
     account = _bound(monkeypatch)
     _exported(installed, account)
     now = _crate(installed, 1, 2)
@@ -376,9 +354,7 @@ def test_an_exported_playlist_whose_library_playlist_lost_a_track_plans_exactly_
     assert account.taken == [("pl-1", ("tid-3",))]
 
 
-def test_a_row_whose_match_failed_today_does_not_stop_a_track_recorded_by_its_row(
-    installed, monkeypatch
-):
+def test_a_row_whose_match_failed_today_does_not_stop_a_track_recorded_by_its_row(installed, monkeypatch):
     account = _bound(monkeypatch)
     _exported(installed, account)
     del account.catalog["2"]
@@ -412,9 +388,7 @@ def test_a_match_that_moved_never_takes_off_a_track_recorded_by_its_row(installe
     assert account.playlists["pl-1"] == ["tid-1", "tid-2", "tid-3"]
 
 
-def test_a_playlist_written_before_rows_is_pruned_by_match_when_every_row_agrees(
-    installed, monkeypatch
-):
+def test_a_playlist_written_before_rows_is_pruned_by_match_when_every_row_agrees(installed, monkeypatch):
     _written_before_rows(installed, _bound(monkeypatch))
     assert _taken(_export_prune(_crate(installed, 1, 2))) == [("pl-1", "tid-3")]
 
@@ -456,10 +430,11 @@ def test_adopted_anywhere_wins_over_another_record_of_the_same_playlist(installe
 
 
 class _Track:
-    def __init__(self, track_id: str) -> None:
+    def __init__(self, track_id: str, at: str = "") -> None:
         self.id = track_id
         self.name = self.full_name = f"Title {track_id}"
         self.artists = [SimpleNamespace(name=f"Artist {track_id}")]
+        self.user_date_added = datetime.fromisoformat(at) if at else None
 
 
 class _Store:
@@ -475,18 +450,22 @@ class _Store:
         self.answer = True
         #: Positions the provider takes off instead of the asked ones, once.
         self.wrong: list[int] | None = None
+        #: When each track was added, and the playlists that declare no count.
+        self.added: dict[str, str] = {}
+        self.undeclared: set[str] = set()
 
 
 class _Playlist:
     def __init__(self, store: _Store, playlist_id: str) -> None:
         self.store = store
         self.id = playlist_id
-        self.num_tracks = len(store.members[playlist_id]) + store.hidden.get(playlist_id, 0)
+        declared = len(store.members[playlist_id]) + store.hidden.get(playlist_id, 0)
+        self.num_tracks = None if playlist_id in store.undeclared else declared
         self.num_videos = store.videos.get(playlist_id, 0)
 
     def tracks(self, limit: int | None = None, offset: int = 0) -> list[_Track]:
         size = 100 if limit is None else limit
-        return [_Track(one) for one in self.store.members[self.id][offset : offset + size]]
+        return [_Track(one, self.store.added.get(one, "")) for one in self.store.members[self.id][offset : offset + size]]
 
     def remove_by_indices(self, indices) -> bool:
         asked = tuple(indices)
@@ -535,9 +514,7 @@ def _refused(cfg, store: _Store, playlist: str = "mine", ids=("b",)):
     return refused.value.cause
 
 
-def test_a_removal_from_a_playlist_the_product_did_not_create_is_refused_before_any_call(
-    installed,
-):
+def test_a_removal_from_a_playlist_the_product_did_not_create_is_refused_before_any_call(installed):
     store = _Store()
     store.members["theirs"] = ["a", "b"]
     cause = _refused(installed, store, "theirs", ("a",))
@@ -603,7 +580,6 @@ def test_a_removal_that_took_the_wrong_position_is_read_back_and_refused(install
 
 def test_the_hold_reader_returns_the_held_release_identifiers(installed):
     from cratekit.label import prune_cli
-
     register(LABEL)
     entry = labels.RegistryStore().load().resolve(LABEL)
     _hold(installed, "r3", "r5")
@@ -614,8 +590,7 @@ def test_the_hold_reader_returns_the_held_release_identifiers(installed):
 
 
 def test_a_track_already_off_the_playlist_is_settled_through_the_removals_own_read(built):
-    """A removal that landed before a failure leaves the track recorded as added;
-    the next prune records it as taken off once the adapter's read vouches it is."""
+    """A removal landed before a failure is recorded as taken off once the adapter's read vouches."""
     _hold(built.cfg, "r3")
     built.account.playlists["pl-3"].remove("t4")
     done = _pruned()
@@ -648,9 +623,7 @@ def test_an_unplayable_track_on_a_kept_release_stays(built):
     assert "t6" in built.account.playlists["pl-3"]
 
 
-def test_an_export_older_than_the_last_one_written_leaves_the_playlist_alone(
-    installed, monkeypatch
-):
+def test_an_export_older_than_the_last_one_written_leaves_the_playlist_alone(installed, monkeypatch):
     account = _bound(monkeypatch)
     _exported(installed, account, written="2026-10-02T12:00:00+00:00")
     old = _crate(installed, 1, 2, under="older")
@@ -664,7 +637,6 @@ def test_an_export_older_than_the_last_one_written_leaves_the_playlist_alone(
 def test_the_export_worker_records_the_date_of_the_export_it_read(installed, monkeypatch):
     from tests.cli_drive import approve_and_queue
     from tests.test_outbound_workers import _resume
-
     _bound(monkeypatch)
     path = outbound_fakes.write_export(installed.library.root / "outbound")
     _run, job_id = approve_and_queue(
@@ -683,7 +655,6 @@ def test_the_export_worker_records_the_date_of_the_export_it_read(installed, mon
 def test_a_later_export_date_moves_the_record_and_an_earlier_one_does_not(installed):
     def on(day: str) -> str:
         return f"2026-10-{day}T00:00:00+00:00"
-
     for day, kept in (("02", "02"), ("01", "02"), ("03", "03")):
         ledger.reserve_playlist(installed, "crate", lambda: "pl", written=on(day))
         assert ledger.exported_playlist(installed, "crate").written == on(kept)
@@ -693,9 +664,7 @@ def test_a_later_export_date_moves_the_record_and_an_earlier_one_does_not(instal
 
 
 def test_a_settled_track_the_listing_hides_is_not_recorded_as_off(installed):
-    """The provider leaves an unplayable track out of the listing and still counts
-    it, so the plan reads it as off. The removal's own read refuses, and the
-    ledger still says added."""
+    """A track the listing hides and counts reads as off; the removal's read refuses, still added."""
     store = _Store()
     ledger.reserve_label_year(installed, "lbl", "2021", "L 2021", lambda: "mine")
     ledger.record_label_tracks(installed, "lbl", "2021", added=["shown", "hidden"])
@@ -714,7 +683,6 @@ def test_an_account_that_does_not_vouch_for_every_asked_track_is_refused(install
         def remove_tracks(self, playlist_id, remote_ids):
             super().remove_tracks(playlist_id, remote_ids)
             return remote_ids[:1]
-
     account = Partial()
     ledger.reserve_set_playlist(installed, "A Set", "2026", lambda: "mine")
     ledger.reserve_playlist(installed, "crate", lambda: "mine")
@@ -729,9 +697,7 @@ def test_an_account_that_does_not_vouch_for_every_asked_track_is_refused(install
 def test_the_export_date_goes_on_the_record_the_job_was_confirmed_to_update(installed):
     ledger.reserve_playlist(installed, "J", lambda: "Y")
     ledger.reserve_playlist(installed, "K", lambda: "X")
-    ledger.reserve_playlist(
-        installed, "K", lambda: "never", expected="Y", written="2026-10-03T00:00:00+00:00"
-    )
+    ledger.reserve_playlist(installed, "K", lambda: "never", expected="Y", written="2026-10-03T00:00:00+00:00")
     assert ledger.exported_playlist(installed, "J").written == "2026-10-03T00:00:00+00:00"
     assert ledger.exported_playlist(installed, "K").written == ""
 
@@ -749,15 +715,11 @@ def test_a_year_recorded_before_the_field_is_said_as_such_not_as_adopted(built):
 def test_a_read_back_that_differed_is_not_told_to_run_again():
     def steps(problem: str) -> tuple[str, ...]:
         refused = refuse(
-            "outbound-remove-refused",
-            "refused",
-            steps=("check by hand",),
-            origin=("test",),
+            "outbound-remove-refused", "refused", steps=("check by hand",), origin=("test",),
             detail={"problem": problem},
         )
         failed = prune.failed_part_way(refused, prune.Pruned(), origin=("test",), again="again")
         return failed.cause.remediation.steps
-
     assert "again" not in steps("read-back-differs")
     assert "again" in steps("positions-unknown")
 
