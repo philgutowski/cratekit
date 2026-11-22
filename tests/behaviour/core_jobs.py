@@ -19,7 +19,9 @@ from tests.test_jobs import _blocked, _lossy, _throttled
 from tests.test_jobs import cfg as cfg  # noqa: PLC0414
 
 OK = int(ExitCode.OK)
-KEY = "job.resume"
+#: A handler no registry binds, so `crate job resume` refuses rather than
+#: spawning a worker that would outlive the scenario.
+KEY = "core.scenario"
 
 
 def _queued(store, cfg, *items: str) -> str:
