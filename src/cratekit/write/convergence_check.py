@@ -1,12 +1,10 @@
 """Where a governed tree's declared destinations land, and whether the tree matches (U36).
 
-The destination planning and the read-only convergence check that
-:mod:`cratekit.write.rebuild` runs before and after its write, and that a
-diagnostic runs alone. Every name here is also reachable from that module.
-
-A destination resolves through the node identifiers a previous write recorded
-first and by display name only when nothing was recorded, so a rebuild after a
-rename writes into the renamed folder instead of doubling the tree.
+The destination planning and the read-only check :mod:`cratekit.write.rebuild`
+runs around its write, and a diagnostic runs alone; every name is also
+reachable from that module. A destination resolves through the recorded node
+identifiers first and by display name only when nothing was recorded, so a
+rename is written into rather than doubled.
 
 LAYER: write. Read only: nothing here opens a session, takes a lock or writes.
 """
@@ -74,16 +72,12 @@ def resolve_destinations(
 ) -> tuple[Destination, ...]:
     """Bind each declared destination to the node a previous write actually used.
 
-    THE RESOLUTION ORDER: recorded identifier (the one thing a rename does not
-    move), then declared display name (nothing recorded yet), then nothing (the
-    write creates it under the declared name). A recorded identifier that no
-    longer resolves falls back rather than refusing, because refusing would
-    let the damage break the one operation that repairs it.
-
-    THE DESTINATION SET IS THE UNION OF WHAT THIS RUN DERIVED AND WHAT A PREVIOUS
-    WRITE RECORDED, so a destination that lost every declared track is still
-    compared and its contents reported as unexpected, rather than falling into
-    ``foreign`` and reporting the tree converged.
+    THE RESOLUTION ORDER: recorded identifier, then declared display name, then
+    nothing (the write creates it). A recorded identifier that no longer
+    resolves falls back rather than refusing, or the damage would break its own
+    repair. THE DESTINATION SET IS THE UNION OF WHAT THIS RUN DERIVED AND WHAT A
+    PREVIOUS WRITE RECORDED, so a destination that lost every declared track is
+    still compared rather than falling into ``foreign``.
     """
     by_ids = {(node.folder_id, node.playlist_id): node for node in nodes}
     by_display = by_display_pair(nodes)
@@ -98,9 +92,7 @@ def resolve_destinations(
         names = _declared_display(declared, bucket, sub, derived=(bucket, sub) in derived)
         if names is None:
             # A RECORDED DESTINATION THIS TAXONOMY NO LONGER DECLARES IS SKIPPED,
-            # not refused, so removing a sub-class or re-declaring the bands does
-            # not refuse both the rebuild and the check. Its node is reported as
-            # ``undeclared`` and its contents fall to ``foreign``.
+            # not refused; it is reported as ``undeclared``.
             continue
         folder_display, sub_display = names
         recorded = None if record is None else record.node(bucket, sub)
@@ -125,11 +117,9 @@ def _declared_display(
     """The two display names a destination means, None, or a structured refusal.
 
     ``derived=True``: this run's own derivation produced an identifier the same
-    taxonomy cannot name, a contradiction inside one document, so it refuses
-    with a defect remedy (S4). ``derived=False``: only the node record names it,
-    which is an ordinary template edit, so it answers None and the caller
-    reports it. The record entry is kept either way, so a reverted edit still
-    resolves through its node identifier.
+    taxonomy cannot name, so it refuses with a defect remedy (S4).
+    ``derived=False``: only the node record names it, an ordinary template edit,
+    so it answers None and the caller reports it.
     """
     try:
         return routing_pass.destination(declared, bucket, sub)
@@ -178,17 +168,10 @@ def assert_addressable(
     """Refuse a destination set a name-targeted write cannot tell apart.
 
     Every find-or-create in the guarded writer targets a playlist by the name
-    rekordbox shows, the condition ``trees.DuplicateFolders`` refuses on the
-    XML side. Three shapes are refused before anything is written:
-
-    * two declared destinations on one display pair (a bucket consolidated by a
-      rename), which files both sets of tracks into one playlist;
-    * two declared destinations on one node, which the record would then make
-      permanent, reporting the other one short forever;
-    * one display pair carried by two nodes under the root, which the write
-      reaches twice and the other never.
-
-    Refused rather than half served: a person has to say which node is real.
+    rekordbox shows, so three shapes are refused before anything is written:
+    two declared destinations on one display pair, two on one node, and one
+    display pair carried by two nodes under the root. A person has to say
+    which node is real.
     """
     by_pair: dict[tuple[str, str], Destination] = {}
     by_node: dict[tuple[str, str], Destination] = {}
@@ -287,11 +270,10 @@ def plan_destinations(
 ) -> tuple[tuple[Destination, ...], dict[tuple[str, str], list[str]]]:
     """Resolve every declared placement into the two names the writer targets.
 
-    One copy of the three steps, in order: resolve through the node map, refuse
-    an ambiguous pair, key the plan on the display names. Keying on the pair is
-    safe only because :func:`assert_addressable` has just refused every way two
-    destinations could share one. The destinations come back beside the plan so
-    the writer records where each landed without re-resolving by name.
+    Resolve through the node map, refuse an ambiguous pair, key the plan on the
+    display names, which is safe only after :func:`assert_addressable`. The
+    destinations come back beside the plan so the writer records where each
+    landed without re-resolving by name.
     """
     destinations = resolve_destinations(declared, placements, standing, record)
     assert_addressable(tree_id, destinations, standing)
@@ -311,10 +293,8 @@ def _under_recorded_folders(
 ) -> tuple[tuple[Destination, ...], dict[tuple[str, str], list[str]]]:
     """A Favorites with no node of its own goes under the folder its bucket's record binds.
 
-    A renamed folder has its bands recorded and no Favorites on first rollout;
-    resolving the Favorites by the declared name would make a second folder
-    holding only Favorites, and the next refresh would read every favourite in
-    the real folder as a removal.
+    Resolving it by the declared name under a renamed folder would make a
+    second folder holding only Favorites.
     """
     if record is None:
         return tuple(destinations), plan
@@ -368,8 +348,8 @@ class Difference:
     def summary(self) -> str:
         """One line naming the difference by its STABLE identifiers.
 
-        The clear-the-flag refusal repeats it back, and a folder name somebody
-        has since renamed would name something they cannot find.
+        A folder name somebody has since renamed would name something they
+        cannot find.
         """
         what = self.content_id or self.location or "?"
         return f"{self.direction}:{self.bucket}/{self.sub}:{what}"
@@ -379,16 +359,10 @@ class Difference:
 class ConvergenceReport:
     """What one tree's declaration and one tree's database rows say, side by side.
 
-    Two sets are reported and are NOT differences. ``unmatched`` is every
-    declared file that reached no single active row (not imported yet, claimed
-    twice, unmapped): a playlist cannot hold a row the library lacks, and
-    counting them would make convergence unreachable. ``foreign`` is every node
-    under the governed root no declared destination resolves to, a person's own
-    playlist or a curated sub-playlist.
-
-    THE ACTIVE-ROW RULE APPLIES TO BOTH DIRECTIONS: a declared file with no
-    active row is not missing, and a membership on an inactive row is not
-    unexpected.
+    Two sets are reported and are NOT differences: ``unmatched``, every declared
+    file that reached no single active row, which no playlist can hold, and
+    ``foreign``, every node under the governed root no declared destination
+    resolves to. THE ACTIVE-ROW RULE APPLIES TO BOTH DIRECTIONS.
     """
 
     tree_id: str
@@ -399,16 +373,13 @@ class ConvergenceReport:
     foreign: tuple[str, ...] = ()
     renamed: tuple[str, ...] = ()
     not_compared: tuple[str, ...] = ()
-    #: How many placements the derivation produced. ZERO IS NOT CONVERGED, and
-    #: carrying it here keeps ``converged`` from answering True for a comparison
-    #: with nothing on one side.
+    #: How many placements the derivation produced. ZERO IS NOT CONVERGED.
     derived: int = 0
     #: Every declared destination holding a track more than once, as
     #: ``bucket/sub:content_id``. A doubling an additive write cannot undo.
     doubled: tuple[str, ...] = ()
-    #: Destinations the NODE RECORD names that this taxonomy no longer declares.
-    #: Not a difference, for the reason ``foreign`` is not; reported so a reader
-    #: can tell "not compared because nobody declares it" from "matched".
+    #: Destinations the NODE RECORD names that this taxonomy no longer declares,
+    #: reported so "not compared" reads apart from "matched".
     undeclared: tuple[str, ...] = ()
 
     @property
@@ -420,19 +391,17 @@ class ConvergenceReport:
     def converged(self) -> bool:
         """Whether this tree matches what the library declares. THREE conditions.
 
-        No difference in either direction; a derivation that placed something
-        (an empty one has no destinations and so no differences); and no
-        playlist holding a track twice (set membership cannot see a doubling,
-        and an additive rebuild cannot repair one).
+        No difference in either direction; a derivation that placed something;
+        and no playlist holding a track twice, which an additive rebuild cannot
+        repair.
         """
         return not self.differences and self.derived > 0 and not self.doubled
 
     def summaries(self) -> tuple[str, ...]:
         """Everything that stands between this tree and a cleared flag.
 
-        The doubled rows are in here because this is the evidence the clearing
-        call is handed, and a blocking fact absent from it would let the flag
-        be cleared over it.
+        The doubled rows included, since this is the evidence the clearing call
+        is handed.
         """
         return tuple(entry.summary() for entry in self.differences) + tuple(
             f"doubled:{entry}" for entry in self.doubled
@@ -444,10 +413,8 @@ def _uncompared_playlist_subs(
 ) -> set[str]:
     """The playlist signal classes whose source this run could not read (U119).
 
-    The favourites and not the vocal sub: their source is a playlist a person
-    can empty on any day, and a tree read unconverged over that would refuse
-    the refresh that reads it again. Their differences leave the comparison;
-    their destinations stay resolved and are never somebody's own.
+    Their source is a playlist a person can empty on any day, so their
+    differences leave the comparison; their destinations stay resolved.
     """
     if genre_favorites.FAVORITES_DIMENSION not in tuple(not_compared):
         return set()
@@ -473,18 +440,12 @@ def check(
 ) -> ConvergenceReport:
     """Report, for one governed tree, how the declaration and the database differ.
 
-    READ ONLY, so it runs against a library that is refusing every write: it is
-    what a person is told to run when a tree is flagged. It resolves
-    destinations through the recorded node identifiers exactly as the rebuild
-    does (two locates would disagree), and refuses an unaddressable tree for
-    the same reason the rebuild does.
+    READ ONLY, so it runs against a library that is refusing every write. It
+    resolves destinations exactly as the rebuild does and refuses an
+    unaddressable tree for the same reason.
     """
     root_id = tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
-    rules = (
-        [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
-        if prefix_map is None
-        else list(prefix_map)
-    )
+    rules = trees.prefix_rules(cfg, prefix_map)
 
     # ONE walk of the library, before anything is compared: ``rows`` may be a
     # database cursor, which reads empty to whoever walks it second.

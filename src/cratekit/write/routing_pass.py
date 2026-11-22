@@ -1,30 +1,14 @@
 """Deferred routing: what a run meant to place, and whether it ever landed (U19).
 
-A new track's placement is decided during acquisition, when the library holds
-no row for it; the row appears only when a person imports the intake export.
-Everything here follows from that gap, through four properties.
-
-**The decision is persisted when it is MADE**, so the process that picks the
-work up after a crash reads what its predecessor believed.
-
-**The mark comes AFTER the commit, never before.** A track becomes routed only
-once its membership is committed and a read-back proves it. A crash in between
-costs a re-run, cheap because membership deduplicates; a mark before a commit
-that never happens strands the track for good.
-
-**Outstanding is DERIVED from per-track state.** There is no completion flag,
-since a flag beside the states is a second answer that a crash makes disagree.
-
-**Readiness is row presence, read-only, and fail-safe.** Before the import the
-pass resolves nothing, marks nothing and opens nothing. A pass that cannot tell
-whether the import happened BEHAVES like one that knows it has not, but
-REPORTS differently: a location no prefix maps, or a destination no longer
-declared, is fixed by configuration and never by importing, so the question
-has three answers rather than two.
-
-rekordbox soft-deletes, so a track imported then removed still has a row with
-the removal marker. It is surfaced as withdrawn, never skipped: a skip looks
-like a placement that worked.
+A new track's placement is decided during acquisition, before the library holds
+a row for it; the row appears only when a person imports the intake export. So
+the decision is persisted when it is MADE; a track is marked routed only AFTER
+its membership is committed and a read-back proves it (a crash between costs a
+re-run, a mark before a lost commit strands the track); outstanding is DERIVED
+from per-track state, with no completion flag; and readiness is row presence,
+read-only and fail-safe, with three answers, since a location no prefix maps or
+a destination no longer declared is fixed by configuration, never by importing.
+A track imported then soft-deleted is surfaced as withdrawn, never skipped.
 
 LAYER: write. It calls the session spine rather than rebuilding it, and NAMES
 NO VERB (D2): the CLI layer renders commands from a remediation token.
@@ -151,10 +135,9 @@ class Readiness(StrEnum):
 class RoutingLedgerUnreadable(CratekitError):
     """The ledger exists and cannot be understood.
 
-    Never collapsed into "no records", which would read as nothing outstanding and
-    admit the close this module refuses. A ``CratekitError`` (S4), so the remedy
-    survives the command-line boundary: one slug, and the remedy differs, an
-    upgrade for a newer build's file and the doctor for a corrupt one.
+    Never collapsed into "no records", which would admit the close this module
+    refuses. A ``CratekitError`` (S4); one slug, with an upgrade remedy for a
+    newer build's file and the doctor for a corrupt one.
     """
 
     def __init__(self, message: str, *, path: Path, remedy: Remedy) -> None:
@@ -260,9 +243,8 @@ class RoutingIntent:
 def _key(intent: RoutingIntent) -> tuple[str, str]:
     """What identifies one record: the RUN and the track, never the track alone.
 
-    Two runs owing one file is ordinary, and keyed on the track alone the second
-    would take over the first's obligation, letting the first close over a track
-    in no playlist, or one run's mark settle another's record.
+    Two runs owing one file is ordinary, and keyed on the track alone one run's
+    mark would settle another's record.
     """
     return (intent.session_id, intent.track)
 
@@ -323,8 +305,7 @@ class Ledger:
         """One run's ``tracks`` moved to ``state``. Unknown tracks are ignored.
 
         Ignored, since another process may have removed one. ``session_id`` IS
-        REQUIRED: a mark matched on the track alone settled every run's record for
-        that file, including one whose destination was never written.
+        REQUIRED, or a mark would settle every run's record for that file.
         """
         wanted = frozenset(str(track) for track in tracks)
         return Ledger(
@@ -520,9 +501,7 @@ def content_rows(db: Any) -> Iterator[trees.ContentRow]:
     it. A row with no path drops out later, in the module that owns paths.
 
     THE SOFT-DELETE MARKER IS READ, NEVER DEFAULTED, AND A ROW THAT CANNOT REPORT
-    IT REFUSES: a default of active hands every tombstone to the matcher as live,
-    and the pass would place and mark a deleted track. The read is
-    :func:`cratekit.write.trees.soft_delete_marker`, the one copy of the rule (U24).
+    IT REFUSES, through :func:`cratekit.write.trees.soft_delete_marker` (U24).
     """
     for row in db.get_content():
         yield trees.ContentRow(
@@ -585,11 +564,9 @@ def destination(declared: taxonomy.Taxonomy, bucket_id: str, sub_id: str) -> tup
     """The folder and sub-playlist display names a stable destination names.
 
     Resolved at WRITE time from the active taxonomy, never persisted, so a rename
-    orphans nothing (R19, D5). The shapes a sub identifier takes: a bucket's own
-    sub, its single sub, the shared no energy sink, an energy BAND with the
-    bucket's label, an additive sub-class, and a genre sub (U155), each checked
-    against what the rules return (P4). An identifier none declares REFUSES rather
-    than naming a folder after an internal key.
+    orphans nothing (R19, D5). Each shape a sub identifier takes is checked
+    against what the rules return (P4); an identifier none declares REFUSES
+    rather than naming a folder after an internal key.
     """
     bucket = declared.bucket(bucket_id)
     for sub in bucket.subs:
@@ -698,11 +675,9 @@ def resolve_placements(
 def readiness(placed: Sequence[Placed]) -> Readiness:
     """Whether the library holds rows for the tracks this run is waiting on.
 
-    THE SIGNAL IS ROW PRESENCE, fail-safe: before the import nothing reaches a row
-    and the answer is not-ready. Nothing pending is READY, so a run with nothing to
-    place is not refused. A run that reached no row and could not ask for one of
-    its tracks is UNANSWERABLE, since telling that person to import sends them
-    round the same act for ever.
+    THE SIGNAL IS ROW PRESENCE, fail-safe: before the import the answer is
+    not-ready. Nothing pending is READY. A run that reached no row and could not
+    ask for one of its tracks is UNANSWERABLE, since importing would not help.
     """
     if not placed:
         return Readiness.READY
@@ -751,9 +726,8 @@ def assert_destinations_are_not_renamed(
     """Refuse a write that would file a track twice under two names for one place.
 
     Recovery is a re-run, deduplicated by display name, so a renamed folder would
-    be created a second time and the track filed in both (R19, D5). The node map
-    :func:`cratekit.write.rebuild.resolve_destinations` reads names a rename
-    first; this fires only where it cannot.
+    be created a second time and the track filed in both (R19, D5). This fires
+    only where the recorded node map cannot name the rename.
 
     NARROW ON PURPOSE (P7): only when the destination folder is not under the root
     AND the track already sits there in a folder the taxonomy declares no bucket
@@ -820,11 +794,8 @@ def _converge_destinations(
     by_key = {(entry.bucket, entry.sub): entry for entry in destinations}
     remapped: list[Placed] = []
     for item in group:
-        destination = by_key.get((item.intent.bucket, item.intent.sub))
-        if destination is None:
-            remapped.append(item)
-            continue
-        remapped.append(replace(item, folder=destination.folder, sub=destination.playlist))
+        found = by_key.get((item.intent.bucket, item.intent.sub))
+        remapped.append(item if found is None else replace(item, folder=found.folder, sub=found.playlist))
     return remapped
 
 
@@ -842,10 +813,7 @@ def _record_routed_nodes(
     """
     from cratekit.write import rebuild
 
-    standing = rebuild.read_tree(db, root_id)
-    by_display: dict[tuple[str, str], list[Any]] = {}
-    for node in standing:
-        by_display.setdefault((node.folder_display, node.playlist_display), []).append(node)
+    by_display = rebuild.by_display_pair(rebuild.read_tree(db, root_id))
     recorded: list[convergence.DestinationNode] = []
     seen: set[tuple[str, str]] = set()
     for item in group:
@@ -853,10 +821,9 @@ def _record_routed_nodes(
         if key in seen:
             continue
         seen.add(key)
-        candidates = by_display.get((item.folder, item.sub), ())
-        if len(candidates) != 1:
+        node = rebuild.only_one(by_display.get((item.folder, item.sub), ()))
+        if node is None:
             continue
-        node = candidates[0]
         recorded.append(
             convergence.DestinationNode(
                 bucket=item.intent.bucket,
@@ -904,10 +871,9 @@ class RoutingReport:
 def membership_proven(db: Any, placed: Placed, *, root_id: str) -> bool:
     """Read the library back and say whether this track really is where it belongs.
 
-    THE WALK GOES UP, from the membership row to the root, never down by name, so
-    a namesake cannot pass it, and it never calls the find-or-create helpers, which
-    would make true what they were asked. A BOOLEAN, never raising for an absent
-    row: unproven tries again. A membership marked removed proves nothing (R-758),
+    THE WALK GOES UP, from the membership row to the root, never down by name or
+    through a find-or-create. A BOOLEAN, never raising for an absent row:
+    unproven tries again. A membership marked removed proves nothing (R-758),
     and nor does one that cannot say.
     """
     if placed.content_id is None:
@@ -954,17 +920,12 @@ def route(
     committed and marked.
 
     ``rows`` is walked EXACTLY ONCE, here. Plans are rewritten through the recorded
-    node map before any find-or-create, so a rename converges, and
-    :func:`assert_destinations_are_not_renamed` is the leftover. It places what it
+    node map before any find-or-create, so a rename converges. It places what it
     can and reports the rest, one reason per track.
     """
     watched = [Path(root) for root in analysis_roots]
     pending = read(cfg).outstanding(session_id)
-    rules = (
-        [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
-        if prefix_map is None
-        else list(prefix_map)
-    )
+    rules = trees.prefix_rules(cfg, prefix_map)
 
     index = index_rows(rows, root=cfg.library.root, prefix_map=rules)
     placed = resolve_placements(pending, index, declared, root=cfg.library.root, prefix_map=rules)
@@ -1095,9 +1056,8 @@ def assert_import_settled(record: session.SessionRecord) -> None:
     """Refuse while this run's export is still sitting there un-imported.
 
     ``awaiting-import`` is a run whose XML half is written and whose import has
-    not happened, and ``close_session`` asked only whether the target state is
-    terminal, so such a run closed while the spine still refused it. It reuses the
-    slug :func:`cratekit.core.session.assert_database_surface_allowed` reports.
+    not happened. It reuses the slug
+    :func:`cratekit.core.session.assert_database_surface_allowed` reports.
     """
     if record.state is not session.SessionState.AWAITING_IMPORT:
         return
@@ -1130,9 +1090,8 @@ def close_run(
     """Close a run, refusing while anybody still owes it an act.
 
     TWO GATES, for an unlanded placement and an unimported export. Closing is
-    gated and abandoning is not: a run nobody can finish or give up on is how
-    people edit state files by hand. The close is
-    :func:`cratekit.core.session.close_session`, which releases the capture.
+    gated and abandoning is not, or a run nobody can finish gets hand edited.
+    The close is :func:`cratekit.core.session.close_session`.
     """
     if state is session.SessionState.CLOSED:
         assert_import_settled(record)

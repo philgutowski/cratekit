@@ -569,6 +569,15 @@ def located(
     return decoded, locations.resolve_recorded_path(decoded, root=root, prefix_map=prefix_map)
 
 
+def prefix_rules(
+    cfg: config.Config, prefix_map: Sequence[locations.PrefixRule] | None = None
+) -> list[locations.PrefixRule]:
+    """The rules a write resolves recorded paths through: the caller's, else the configuration's."""
+    if prefix_map is None:
+        return list(locations.prefix_rules(cfg.resolved_prefix_map()))
+    return list(prefix_map)
+
+
 def _comparable(recorded: str, *, root: Path | str, prefix_map: Sequence[locations.PrefixRule]):
     """One recorded path, decoded and resolved into the form both sides compare in.
 
@@ -856,11 +865,7 @@ def write_tree_membership(
     """
     watched = _watched(analysis_roots)
     root_id = _writable_root(cfg, db, tree_id, registry, root_exists, purpose)
-    resolved_map = (
-        [locations.PrefixRule(source, target) for source, target in cfg.resolved_prefix_map()]
-        if prefix_map is None
-        else list(prefix_map)
-    )
+    resolved_map = prefix_rules(cfg, prefix_map)
     # ONE walk of the library, before the loop, since rows may be a cursor.
     index = index_active_rows(rows, root=cfg.library.root, prefix_map=resolved_map)
 
@@ -1203,6 +1208,6 @@ __all__ = [
     "add_to_root_playlist", "add_vox_playlists", "apply_playlist_changes", "apply_rating_changes",
     "apply_unplaced_changes", "check_record_labels_tree", "index_active_rows",
     "insert_record_labels_tree", "insert_record_labels_trees", "match_active_rows",
-    "match_indexed_rows", "membership_positions", "attached_capture", "rollback_quietly",
+    "match_indexed_rows", "membership_positions", "attached_capture", "prefix_rules", "rollback_quietly",
     "root_playlist_members", "soft_delete_marker", "write_tree_membership",
 ]
