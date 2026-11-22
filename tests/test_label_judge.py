@@ -1,20 +1,9 @@
 """R-815: the label releases already in review are judged without a sweep.
 
-The genre gate of R-798 judges a release a sweep is about to file. A release
-already in the queue takes a place in its label's window and is never asked
-about, so the releases filed before the gate had a genre stayed in review
-whatever kind of music they were. ``crate label judge`` judges them where they
-sit, and moves the ones the gate would not have filed into a hold.
-
-These tests drive the verb where a person meets it, through the real
-dispatcher, queue and worker, with a fake provider and a fake general
-catalogue, and through the review store where the property is the store's.
-
-NOTHING HERE REACHES A NETWORK, and nothing accepts or rejects a release on
-its own account: a test that needs a decided item decides it as a person would.
-
-Every expected value is a literal from the fixtures. D1 applies: no real label,
-artist or track is named.
+Driven through the real dispatcher, queue and worker with a fake provider and
+general catalogue, and through the review store where the property is its own.
+Nothing reaches a network, and a decided item is decided as a person would.
+Every expected value is a literal from the fixtures (D1).
 """
 
 from __future__ import annotations
@@ -39,7 +28,6 @@ from cratekit.sync import run
 from cratekit.tagging import published
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedArtist, FakeRelease, catalogue_factory
-from tests.test_config import valid_data
 from tests.test_label_genre_gate import (
     LABEL,
     SLUG,
@@ -57,24 +45,12 @@ from tests.test_label_genre_gate import (
     register,
     sweep_once,
 )
+from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
+from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 from tests.test_label_workers import queued_sweep
 
 QUEUE = str(Queue.LABEL_RELEASE)
 FILED_BY = "sweep-1"
-
-
-@pytest.fixture
-def installed(tmp_path, monkeypatch):
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    (root / "db").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    data = valid_data(root)
-    data["profile"] = {"name": "full"}
-    resolved = config.from_dict(data)
-    config.save(resolved)
-    config.reset_cache()
-    return resolved
 
 
 def queue_release(
@@ -105,6 +81,13 @@ def queue_release(
             run_id=filed_by,
         )
     return item.item_id
+
+
+def catalogues(monkeypatch, releases: dict[str, str], lookup):
+    """Bind the provider to ``releases`` and the general catalogue to ``lookup``."""
+    provider = provider_of(monkeypatch, releases)
+    bind_lookup(monkeypatch, lookup)
+    return provider
 
 
 def judge(*argv: str) -> tuple[int, dict]:
@@ -158,9 +141,7 @@ def warning_codes(envelope: dict) -> list[str]:
     return [warning["code"] for warning in envelope["warnings"]]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 1. The store: an open item becomes a hold in one write
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 1. The store: an open item becomes a hold in one write ───────────────────
 
 
 def withhold(store, item_id: str, *, run_id: str = "judge-1", reason: str = "another kind"):
@@ -173,6 +154,22 @@ def withhold(store, item_id: str, *, run_id: str = "judge-1", reason: str = "ano
         detail={"genres": ["Christian"], "kind": "dance", "placed": [["Christian", "christian"]]},
         run_id=run_id,
     )
+
+
+def held_by_hand(store, *, release_id: str = "r-1", payload: dict, reason: str, run_id: str,
+                 **kwargs):
+    """A hold written straight through the store, under this file's label."""
+    return review.hold(
+        store, queue=QUEUE, kind=sweep.KIND, identity={"release_id": release_id},
+        payload=payload, group=SLUG, name=LABEL, reason=reason, detail={}, run_id=run_id,
+        **kwargs,
+    )
+
+
+def deferred(store, item_id: str) -> None:
+    """Give the item a verdict this build cannot read, as a newer build would."""
+    with store.immediate() as conn:
+        conn.execute("UPDATE review_items SET verdict = 'deferred' WHERE item_id = ?", (item_id,))
 
 
 def test_an_open_item_leaves_the_queue_and_becomes_a_hold_carrying_what_it_carried(installed):
@@ -226,10 +223,7 @@ def test_an_item_carrying_a_verdict_this_build_cannot_read_is_not_withheld(insta
     """A newer build's decision on a shared queue is a decision. It lists as open here."""
     item_id = queue_release(installed, "r-1")
     with review.open_store(installed) as store:
-        with store.immediate() as conn:
-            conn.execute(
-                "UPDATE review_items SET verdict = 'deferred' WHERE item_id = ?", (item_id,)
-            )
+        deferred(store, item_id)
         assert review.get(store, item_id).verdict is None
 
         assert withhold(store, item_id) is None
@@ -241,18 +235,9 @@ def test_an_item_carrying_a_verdict_this_build_cannot_read_is_not_withheld(insta
 def test_a_release_a_person_returned_is_never_withheld_again(installed):
     item_id = queue_release(installed, "r-1")
     with review.open_store(installed) as store:
-        review.hold(
-            store,
-            queue=QUEUE,
-            kind=sweep.KIND,
-            identity={"release_id": "r-1"},
-            payload={},
-            group=SLUG,
-            name=LABEL,
-            reason="returned by hand while it was in review",
-            detail={},
-            run_id="",
-            returned=True,
+        held_by_hand(
+            store, payload={}, reason="returned by hand while it was in review",
+            run_id="", returned=True,
         )
 
         assert withhold(store, item_id) is None
@@ -270,18 +255,7 @@ def test_withholding_an_identifier_nothing_answers_to_moves_nothing(installed):
 def test_a_hold_in_force_beside_an_open_item_is_refreshed_and_keeps_its_first_run(installed):
     item_id = queue_release(installed, "r-1")
     with review.open_store(installed) as store:
-        review.hold(
-            store,
-            queue=QUEUE,
-            kind=sweep.KIND,
-            identity={"release_id": "r-1"},
-            payload={"title": "stale"},
-            group=SLUG,
-            name=LABEL,
-            reason="an older reason",
-            detail={},
-            run_id="sweep-0",
-        )
+        held_by_hand(store, payload={"title": "stale"}, reason="an older reason", run_id="sweep-0")
 
         hold = withhold(store, item_id, reason="another kind")
 
@@ -368,10 +342,7 @@ def test_redescribing_a_decided_item_changes_nothing(installed):
 def test_redescribing_an_item_with_an_unreadable_verdict_changes_nothing(installed):
     item_id = queue_release(installed, "r-1")
     with review.open_store(installed) as store:
-        with store.immediate() as conn:
-            conn.execute(
-                "UPDATE review_items SET verdict = 'deferred' WHERE item_id = ?", (item_id,)
-            )
+        deferred(store, item_id)
         before = review.get(store, item_id)
 
         assert review.redescribe(store, item_id, {"said": "more"}) is None
@@ -396,16 +367,8 @@ def test_a_refreshed_hold_keeps_the_run_its_release_was_filed_under(installed):
         withhold(store, item_id)
 
         def refresh(payload: dict):
-            return review.hold(
-                store,
-                queue=QUEUE,
-                kind=sweep.KIND,
-                identity={"release_id": "r-1"},
-                payload=payload,
-                group=SLUG,
-                name=LABEL,
-                reason="still another kind",
-                detail={},
+            return held_by_hand(
+                store, payload=payload, reason="still another kind",
                 run_id="sweep-2",
             )
 
@@ -425,24 +388,14 @@ def test_a_refreshed_hold_keeps_the_run_its_release_was_filed_under(installed):
 def test_a_refreshed_hold_that_never_named_a_run_gains_none(installed):
     with review.open_store(installed) as store:
         for title in ("first", "second"):
-            hold = review.hold(
-                store,
-                queue=QUEUE,
-                kind=sweep.KIND,
-                identity={"release_id": "r-1"},
-                payload={"identity": "r-1", "title": title},
-                group=SLUG,
-                name=LABEL,
-                reason="another kind",
-                detail={},
+            hold = held_by_hand(
+                store, payload={"identity": "r-1", "title": title}, reason="another kind",
                 run_id="sweep-1",
             )
     assert hold.payload == {"identity": "r-1", "title": "second"}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 2. The verb: what happens to one pending release
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 2. The verb: what happens to one pending release ─────────────────────────
 
 
 def test_a_queued_release_of_another_kind_is_held_listed_and_returned(installed, monkeypatch):
@@ -491,8 +444,7 @@ def test_a_queued_release_of_another_kind_is_held_listed_and_returned(installed,
 def test_a_returned_release_is_not_judged_again_and_nobody_is_asked(installed, monkeypatch):
     register()
     queue_release(installed, "r-christian")
-    provider = provider_of(monkeypatch, {"r-christian": isrc(1)})
-    bind_lookup(monkeypatch, Lookup({isrc(1): ("Christian",)}))
+    provider = catalogues(monkeypatch, {"r-christian": isrc(1)}, Lookup({isrc(1): ("Christian",)}))
     judge_once()
     assert held_verb("return", "r-christian")[0] == int(ExitCode.OK)
     asked_before = list(provider.releases_asked_for)
@@ -513,8 +465,7 @@ def test_a_queued_release_of_the_labels_kind_stays_and_says_the_gate_passed_it(
 ):
     register()
     queue_release(installed, "r-dance")
-    provider_of(monkeypatch, {"r-dance": isrc(2)})
-    bind_lookup(monkeypatch, Lookup({isrc(2): ("Dance",)}))
+    catalogues(monkeypatch, {"r-dance": isrc(2)}, Lookup({isrc(2): ("Dance",)}))
 
     job_id, envelope = judge_once()
 
@@ -534,8 +485,7 @@ def test_a_release_the_catalogue_does_not_know_stays_and_is_marked_not_judged(
 ):
     register()
     queue_release(installed, "r-unknown")
-    provider_of(monkeypatch, {"r-unknown": isrc(3)})
-    bind_lookup(monkeypatch, Lookup({}))
+    catalogues(monkeypatch, {"r-unknown": isrc(3)}, Lookup({}))
 
     _, envelope = judge_once()
 
@@ -575,8 +525,7 @@ def test_an_item_decided_before_the_run_is_no_part_of_it(installed, monkeypatch,
 def test_an_item_decided_after_the_job_was_queued_is_untouched(installed, monkeypatch, verdict):
     register()
     item_id = queue_release(installed, "r-christian")
-    provider = provider_of(monkeypatch, {"r-christian": isrc(1)})
-    bind_lookup(monkeypatch, never_asked)
+    provider = catalogues(monkeypatch, {"r-christian": isrc(1)}, never_asked)
     job_id = queued_job()
     with review.open_store(installed) as store:
         decided = review.resolve(store, item_id, verdict, actor="suite")
@@ -641,8 +590,7 @@ def test_an_artist_put_right_while_a_release_was_being_judged_is_kept_by_the_sta
 def test_a_label_marked_any_has_nothing_held_and_nobody_is_asked(installed, monkeypatch):
     register("--kind", "any")
     queue_release(installed, "r-christian")
-    provider = provider_of(monkeypatch, {"r-christian": isrc(1)})
-    bind_lookup(monkeypatch, never_asked)
+    provider = catalogues(monkeypatch, {"r-christian": isrc(1)}, never_asked)
 
     _, envelope = judge_once()
 
@@ -661,8 +609,7 @@ def test_a_release_on_a_label_nobody_follows_any_more_is_judged_as_the_default_k
     installed, monkeypatch
 ):
     queue_release(installed, "r-christian", label_id="gone-label", label_name="Gone Label")
-    provider_of(monkeypatch, {"r-christian": isrc(1)})
-    bind_lookup(monkeypatch, Lookup({isrc(1): ("Christian",)}))
+    catalogues(monkeypatch, {"r-christian": isrc(1)}, Lookup({isrc(1): ("Christian",)}))
 
     _, envelope = judge_once()
 
@@ -675,9 +622,7 @@ def test_a_release_on_a_label_nobody_follows_any_more_is_judged_as_the_default_k
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 3. What the item records is used first
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 3. What the item records is used first ───────────────────────────────────
 
 
 def test_words_the_item_recorded_pass_a_release_with_no_request_at_all(installed, monkeypatch):
@@ -692,8 +637,7 @@ def test_words_the_item_recorded_pass_a_release_with_no_request_at_all(installed
         genre_gate_answer="matched",
         published_genres=["Dance"],
     )
-    provider = provider_of(monkeypatch, {"r-dance": isrc(2)})
-    bind_lookup(monkeypatch, never_asked)
+    provider = catalogues(monkeypatch, {"r-dance": isrc(2)}, never_asked)
 
     _, envelope = judge_once()
 
@@ -735,11 +679,7 @@ def test_recorded_words_that_would_hold_are_asked_about_before_the_release_is_he
 def test_a_record_of_one_tracks_album_does_not_hold_a_release_its_next_track_passes(
     installed, monkeypatch
 ):
-    """A sweep stops asking at the first passing track, so its record can be one album.
-
-    Filed when the label was followed for christian music, on its first track
-    alone. The label is a dance label now, and the second track's album is.
-    """
+    """A sweep stops asking at the first passing track, so its record can be one album."""
     register()
     queue_release(
         installed,
@@ -752,10 +692,7 @@ def test_a_record_of_one_tracks_album_does_not_hold_a_release_its_next_track_pas
     fake = FakeCatalogue(
         releases={
             "r-two": (
-                [
-                    Track("t-1", "Artist", "One", isrc(1)),
-                    Track("t-2", "Artist", "Two", isrc(2)),
-                ],
+                [Track("t-1", "Artist", "One", isrc(1)), Track("t-2", "Artist", "Two", isrc(2))],
                 2026,
             )
         }
@@ -786,8 +723,7 @@ def test_a_release_the_catalogue_already_had_no_word_for_is_not_asked_about_agai
         genre_gate_note="what the sweep was told",
         genre_gate_answer=answer,
     )
-    provider = provider_of(monkeypatch, {"r-known-nothing": isrc(4)})
-    bind_lookup(monkeypatch, never_asked)
+    provider = catalogues(monkeypatch, {"r-known-nothing": isrc(4)}, never_asked)
 
     job_id, envelope = judge_once()
 
@@ -837,8 +773,7 @@ def test_a_fresh_answer_with_no_word_takes_the_old_words_off_the_item(installed,
         genre_gate_answer="matched",
         published_genres=["Christian"],
     )
-    provider = provider_of(monkeypatch, {"r-1": isrc(1)})
-    bind_lookup(monkeypatch, Lookup({}))
+    provider = catalogues(monkeypatch, {"r-1": isrc(1)}, Lookup({}))
 
     judge_once()
 
@@ -865,8 +800,7 @@ def test_an_item_that_names_no_release_is_not_judged_and_nothing_is_read(install
                 "UPDATE review_items SET identity = NULL, payload = ? WHERE item_id = ?",
                 ('{"label_id": "tide-works", "label_name": "Tide Works"}', item_id),
             )
-    provider = provider_of(monkeypatch, {"r-1": isrc(1)})
-    bind_lookup(monkeypatch, never_asked)
+    provider = catalogues(monkeypatch, {"r-1": isrc(1)}, never_asked)
 
     job_id, envelope = judge_once()
 
@@ -910,8 +844,7 @@ def test_an_item_that_names_another_items_release_is_not_read_and_stamps_only_it
                 ('{"identity": "r-2", "label_id": "tide-works"}', item_id),
             )
         untouched = review.get(store, other)
-    provider = provider_of(monkeypatch, {"r-1": isrc(1), "r-2": isrc(2)})
-    bind_lookup(monkeypatch, never_asked)
+    provider = catalogues(monkeypatch, {"r-1": isrc(1), "r-2": isrc(2)}, never_asked)
 
     job_id, _ = judge_once()
 
@@ -930,9 +863,7 @@ def test_an_item_that_names_another_items_release_is_not_read_and_stamps_only_it
     assert "is not the one release r-2 is addressed by" in wrong[0]["reason"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 4. The run: queueing, resuming, and stopping
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 4. The run: queueing, resuming, and stopping ─────────────────────────────
 
 
 def test_nothing_pending_queues_nothing_and_says_so(installed):
@@ -1032,11 +963,7 @@ class Interrupting(Lookup):
 def test_a_run_stopped_part_way_and_resumed_judges_none_twice_and_skips_none(
     installed, monkeypatch, words, expected
 ):
-    """The release in flight when the run stopped was written and not marked done.
-
-    The engine redoes it, and redoing it asks nobody: a held one is found as the
-    hold this job made, and a passed one is judged from what it stamped.
-    """
+    """The release in flight when the run stopped was written and not marked done."""
     register()
     for release_id in ("r-1", "r-2", "r-3"):
         queue_release(installed, release_id)
@@ -1329,8 +1256,7 @@ def test_a_taxonomy_that_stops_being_readable_parks_the_run_and_fails_no_release
     register()
     for release_id in ("r-1", "r-2"):
         queue_release(installed, release_id)
-    provider = provider_of(monkeypatch, {"r-1": isrc(1), "r-2": isrc(2)})
-    bind_lookup(monkeypatch, never_asked)
+    provider = catalogues(monkeypatch, {"r-1": isrc(1), "r-2": isrc(2)}, never_asked)
     job_id = queued_job()
     unreadable_taxonomy(installed)
 
@@ -1349,8 +1275,7 @@ def test_a_library_whose_taxonomy_has_no_published_rules_holds_nothing_and_asks_
     register()
     queue_release(installed, "r-christian")
     active_copy_without_published_rules(installed)
-    provider = provider_of(monkeypatch, {"r-christian": isrc(1)})
-    bind_lookup(monkeypatch, never_asked)
+    provider = catalogues(monkeypatch, {"r-christian": isrc(1)}, never_asked)
 
     _, envelope = judge_once()
 
@@ -1461,8 +1386,7 @@ def test_a_release_filed_under_a_labels_old_identifier_is_in_a_run_scoped_to_the
     register()
     queue_release(installed, "r-1", label_id="tide-works-old")
     moved_registry(monkeypatch, "tide-works-old")
-    provider_of(monkeypatch, {"r-1": isrc(1)})
-    bind_lookup(monkeypatch, Lookup({isrc(1): ("Christian",)}))
+    catalogues(monkeypatch, {"r-1": isrc(1)}, Lookup({isrc(1): ("Christian",)}))
 
     _, envelope = judge_once("--label", LABEL)
 
@@ -1480,20 +1404,8 @@ def test_a_release_held_under_an_earlier_holds_run_is_counted_held_when_it_is_re
     register()
     item_id = queue_release(installed, "r-1")
     with review.open_store(installed) as store:
-        review.hold(
-            store,
-            queue=QUEUE,
-            kind=sweep.KIND,
-            identity={"release_id": "r-1"},
-            payload={"identity": "r-1"},
-            group=SLUG,
-            name=LABEL,
-            reason="an older reason",
-            detail={},
-            run_id="sweep-0",
-        )
-    provider_of(monkeypatch, {"r-1": isrc(1)})
-    bind_lookup(monkeypatch, Lookup({isrc(1): ("Christian",)}))
+        held_by_hand(store, payload={"identity": "r-1"}, reason="an older reason", run_id="sweep-0")
+    catalogues(monkeypatch, {"r-1": isrc(1)}, Lookup({isrc(1): ("Christian",)}))
     job_id, _ = judge_once()
     with review.open_store(installed) as store:
         assert review.find_hold(store, queue=QUEUE, item_id=item_id).run_id == "sweep-0"
@@ -1562,15 +1474,12 @@ def test_the_reader_forgets_each_release_and_keeps_its_count_of_failures(install
 
     register()
     queue_release(installed, "r-1")
-    provider_of(monkeypatch, {"r-1": isrc(1)})
-    bind_lookup(monkeypatch, Lookup({isrc(1): ("Dance",)}))
+    catalogues(monkeypatch, {"r-1": isrc(1)}, Lookup({isrc(1): ("Dance",)}))
     job_id, _ = judge_once()
     assert judge_cli._JOB_TOOLS[job_id].reader._read == {}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 5. What the sweep and ``label held`` make of a judge run
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 5. What the sweep and ``label held`` make of a judge run ─────────────────
 
 
 def test_the_next_sweep_keeps_the_hold_and_does_not_file_the_release_again(installed, monkeypatch):
@@ -1608,11 +1517,8 @@ def test_label_held_does_not_say_a_sweep_was_refused_over_what_a_judge_run_met(
     register()
     queue_release(installed, "r-1")
     with review.open_store(installed) as store:
-        review.record_round(
-            store, queue=QUEUE, run_id=FILED_BY, group=SLUG, name=LABEL, beyond=0
-        )
-    provider_of(monkeypatch, {"r-1": isrc(1)})
-    bind_lookup(monkeypatch, Lookup({isrc(1): "unreachable"}))
+        review.record_round(store, queue=QUEUE, run_id=FILED_BY, group=SLUG, name=LABEL, beyond=0)
+    catalogues(monkeypatch, {"r-1": isrc(1)}, Lookup({isrc(1): "unreachable"}))
     judge_once()
     assert item_of(installed, "r-1").payload[genre_gate.GATE_ANSWER_FIELD] == "unreachable"
 
@@ -1695,8 +1601,7 @@ def test_a_withheld_release_filed_before_runs_were_recorded_is_returned_under_no
     register()
     queue_release(installed, "r-legacy", filed_by=None)
     assert sweep.SWEEP_RUN not in item_of(installed, "r-legacy").payload
-    provider_of(monkeypatch, {"r-legacy": isrc(1)})
-    bind_lookup(monkeypatch, Lookup({isrc(1): ("Christian",)}))
+    catalogues(monkeypatch, {"r-legacy": isrc(1)}, Lookup({isrc(1): ("Christian",)}))
     judge_once()
 
     code, returned = held_verb("return", "r-legacy")
@@ -1712,20 +1617,11 @@ def test_a_stale_hold_beside_a_release_the_gate_passes_is_dropped(installed, mon
     register()
     item_id = queue_release(installed, "r-dance")
     with review.open_store(installed) as store:
-        review.hold(
-            store,
-            queue=QUEUE,
-            kind=sweep.KIND,
-            identity={"release_id": "r-dance"},
-            payload={"identity": "r-dance"},
-            group=SLUG,
-            name=LABEL,
-            reason="an older reason",
-            detail={},
+        held_by_hand(
+            store, release_id="r-dance", payload={"identity": "r-dance"}, reason="an older reason",
             run_id="sweep-0",
         )
-    provider_of(monkeypatch, {"r-dance": isrc(2)})
-    bind_lookup(monkeypatch, Lookup({isrc(2): ("Dance",)}))
+    catalogues(monkeypatch, {"r-dance": isrc(2)}, Lookup({isrc(2): ("Dance",)}))
 
     judge_once()
 
@@ -1734,9 +1630,7 @@ def test_a_stale_hold_beside_a_release_the_gate_passes_is_dropped(installed, mon
     assert item_of(installed, "r-dance").payload[genre_gate.GATE_FIELD] == "passed"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 6. The declaration, and what a person reads in a terminal
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 6. The declaration, and what a person reads in a terminal ────────────────
 
 
 def test_the_verb_is_declared_queued_adjudicating_and_not_destructive():

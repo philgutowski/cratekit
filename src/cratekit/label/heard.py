@@ -1,49 +1,14 @@
 """A label's dated playlist heard: merged into the year and removed (U123).
 
-U117 (:mod:`cratekit.label.dated`) keeps the releases a go took apart from the
-ones already heard, in a playlist beside the year, ``<Label> <year> new
-<date>``. This module is the other half: once the author has heard them, it
-records them heard, puts the dated playlist's tracks in the year playlist, and
-removes the dated playlist from the account.
-
-THE RELEASES OF A DATED PLAYLIST are decided by the dated plan's own rule, so
-the two can never disagree about which playlist a release is in: every release
-a go took for the label on that local day, ``dated.taken_by_goes``, that the
-catalogue dates to that year. One named on the command line that is not among
-them is refused by name before the gate, and nothing is written.
-
-HEARD IS A LIST OF RELEASE IDENTIFIERS per label in ``label_sync.json``,
-``labels.<id>.heard``, and this module is the only writer. It is written LAST,
-after the account, under the record's own lock, so a run that fails part way
-leaves the releases unheard and a second run finishes what is left. A second
-run over a playlist already merged plans nothing.
-
-THE MERGE ADDS BEFORE IT REMOVES. Every track the dated playlist holds that the
-year does not is added to the year first, and the dated playlist is removed
-only once every track it held is in the year or is one the year must not hold.
-A track the provider would not add leaves the dated playlist where it is,
-said, rather than removed with the one copy of that track. The year keeps
-every confirmed track as it does today.
-
-A TRACK THE YEAR MUST NOT HOLD IS NEVER MERGED (U243): one the library removed
-through ``crate delete review``, a tombstone standing over it, and one the
-outbound ledger records as taken off that year by ``label prune``. Either
-leaves with the dated playlist and nothing puts it back, so hearing a playlist
-never undoes a prune or a removal.
-
-SOME OF THE RELEASES, NOT ALL. Naming releases with ``--release`` marks those
-heard. While another release of the playlist is still unheard, the named ones'
-tracks are taken off the dated playlist, after the adds, and the playlist
-stays; the run that hears the last one removes it.
-
-A REMOVAL IS ASKED ONLY OF A PLAYLIST THE OUTBOUND LEDGER VOUCHES FOR, which is
-one the dated plan created (``ledger.reserve_label_dated``). One reused by its
-name was made by somebody else and the plan refuses it before the gate.
-
-THE RECORD LABELS TREE IN REKORDBOX IS NOT WRITTEN, and the verb says so on
-every run. It is the catalogue tree, which ``tree_registry.cutover_trees``
-keeps on the xml bridge for good (R39), so the database writer ``inbox
-rotate`` uses refuses it, and nothing writes a dated playlist there to merge.
+The other half of :mod:`cratekit.label.dated`. Its releases are the dated
+plan's own rule, so the two never disagree. The record's ``heard`` list is
+written LAST, under its lock, so a run that fails part way finishes on the
+next. The merge adds before it removes, and a track the provider would not add
+keeps the playlist. A track the year must not hold (U243), removed from the
+library or pruned off the year, is never merged. With ``--release`` the named
+releases' tracks come off while another is unheard. A removal is asked only of
+a playlist the outbound ledger vouches for. The Record Labels tree in
+rekordbox is never written (R39).
 
 Layer: modules.
 """
@@ -54,14 +19,16 @@ import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from cratekit.cli.output import digest_of
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.label import dated, sync_cli
-from cratekit.modules.outbound import folders, ledger
+
+if TYPE_CHECKING:
+    from cratekit.modules.outbound import folders
 
 _ORIGIN = ("label.heard",)
 
@@ -73,9 +40,6 @@ REMOVE = "remove"
 TAKE_OFF = "take off"
 KEEP = "keep"
 ABSENT = "absent"
-
-#: How many tracks one add carries, the year build's own chunk.
-CHUNK = folders.CHUNK
 
 #: What every run says about the rekordbox half.
 TREE_SAID = (
@@ -118,11 +82,8 @@ def checked_day(raw: str) -> str:
 def releases_of(
     document: Mapping[str, Any], catalogue: folders.LabelCatalogue, year: str, day: str
 ) -> tuple[str, ...]:
-    """Every release the dated playlist ``<year> new <day>`` is for, heard or not.
-
-    The dated plan's rule: taken by a go on ``day``, in the catalogue, dated
-    to ``year``.
-    """
+    """Every release the dated playlist ``<year> new <day>`` is for, heard or not:
+    taken by a go on ``day``, in the catalogue, dated to ``year``."""
     took = dated.taken_by_goes(document, catalogue.label_id)
     return tuple(
         sorted(
@@ -155,15 +116,11 @@ class HeardPlan:
     year_id: str = ""
     #: Every track the dated playlist holds.
     tracks: tuple[str, ...] = ()
-    #: The tracks this run puts in the year: all of them on a removal, the
-    #: named releases' on a take off.
+    #: The tracks this run puts in the year, all on a removal.
     merging: tuple[str, ...] = ()
     #: Those of ``merging`` the year does not hold yet, less ``tombstoned``.
     add: tuple[str, ...] = ()
-    #: Those of ``merging`` the year must not hold (U243): removed from the
-    #: library through ``crate delete review``, or recorded as taken off the
-    #: year by ``label prune``. They leave the dated playlist with the rest and
-    #: are never put in the year, so hearing a playlist undoes neither.
+    #: Those of ``merging`` the year must not hold (U243): removed or pruned.
     tombstoned: tuple[str, ...] = ()
     #: The year is the one the ledger records, so what is added is recorded on it.
     year_recorded: bool = False
@@ -213,6 +170,8 @@ class HeardPlan:
             }
         )
         if self.year_id and (self.add or self.merging):
+            from cratekit.modules.outbound import folders
+
             items.append(
                 {
                     "id": self.year_id,
@@ -227,20 +186,17 @@ class HeardPlan:
         return items
 
     def payload(self) -> dict[str, Any]:
-        items = self.items()
-        return {
-            "digest": digest_of(self.identity()),
-            "items": items,
-            "totals": {
-                "count": len(items),
+        return dated.gate_plan(
+            digest_of(self.identity()),
+            self.items(),
+            {
                 "heard": len(self.newly),
                 "add": len(self.add),
                 "remove": int(self.action == REMOVE),
                 "take off": len(self.merging) if self.action == TAKE_OFF else 0,
                 "writes": self.writes,
             },
-            "chunk": None,
-        }
+        )
 
 
 def _why(planned: HeardPlan) -> str:
@@ -275,14 +231,7 @@ def _why(planned: HeardPlan) -> str:
 
 
 def _refused(reason: str, message: str, *steps: str, **detail: Any) -> CratekitError:
-    return refuse(
-        reason,
-        message,
-        steps=steps,
-        scope=Scope.RUN,
-        origin=_ORIGIN,
-        detail=detail,
-    )
+    return refuse(reason, message, steps=steps, scope=Scope.RUN, origin=_ORIGIN, detail=detail)
 
 
 def _one_named(inside: Mapping[str, str], name: str, *also: str) -> str:
@@ -312,6 +261,8 @@ def plan(
     named: Sequence[str] = (),
 ) -> HeardPlan:
     """Decide what hearing one dated playlist writes, or refuse before anything is."""
+    from cratekit.modules.outbound import folders, ledger
+
     name = dated.dated_name(catalogue.name, year, day)
     releases = releases_of(document, catalogue, year, day)
     if not releases:
@@ -356,16 +307,11 @@ def plan(
     inside = account.folder_playlists(shape.folder_id) if shape.folder_id else {}
     dated_id = _one_named(inside, name)
     if not dated_id:
-        # A DATED PLAYLIST THE LEDGER RECORDS AND THE FOLDER DOES NOT HOLD is
-        # one whose move into the folder failed, or one a person moved or
-        # removed. The protocol lists no playlist at the root, so which of
-        # those it is cannot be read; the releases are still heard, and the
-        # run says where the playlist may be rather than reporting nothing.
+        # ONE THE LEDGER RECORDS OUTSIDE THE FOLDER is said; the releases are heard.
         return replace(base, stray_id=shape.dated.get(name, ""))
     tracks = tuple(account.playlist_tracks(dated_id))
     if unheard:
-        # A TRACK AN UNHEARD RELEASE ALSO CARRIES STAYS, so the dated plan
-        # does not put it back on its next run for that release.
+        # A TRACK AN UNHEARD RELEASE ALSO CARRIES STAYS.
         def tracks_of(releases: Sequence[str]) -> set[str]:
             return {
                 track
@@ -398,13 +344,10 @@ def plan(
         set(year_record.pruned) if year_record is not None else set()
     )
     if all(one in taken_away for one in merging):
-        # EVERY TRACK IT WOULD MERGE WAS REMOVED (U243), so no year is needed
-        # to hold them and none is asked for: a year whose every track was
-        # removed is never built, and refusing for it would stop the verb.
+        # EVERY TRACK WAS REMOVED (U243), so no year, which is never built, is asked.
         return replace(planned, tombstoned=merging)
     year_name = folders.year_name(catalogue.name, year)
-    # THE RECORDED YEAR FIRST, when the folder still holds it, then one by its
-    # name or by the name the mark gave it before U242, as the year build adopts one.
+    # THE RECORDED YEAR FIRST, then one by its name or pre U242 marked name.
     recorded = shape.years.get(year)
     year_id = recorded.remote_id if recorded is not None and recorded.remote_id in inside else ""
     year_id = year_id or _one_named(inside, year_name, folders.MARK_PREFIX + year_name)
@@ -418,9 +361,7 @@ def plan(
             name=year_name,
         )
     have = set(account.playlist_tracks(year_id))
-    # A TRACK THE LIBRARY REMOVED IS NEVER ADDED (U243). It is counted held by
-    # the apply, as a track the year already has is, so the dated playlist is
-    # still removed or taken off with it on it, and nothing puts it back.
+    # A TRACK THE LIBRARY REMOVED IS NEVER ADDED (U243), but counted held.
     return replace(
         planned,
         year_id=year_id,
@@ -435,8 +376,7 @@ class Heard:
     """What an apply wrote, for the report and for a failure part way."""
 
     added: int = 0
-    #: Tracks of ``merging`` the year does not hold once the adds are done and
-    #: that it must hold, so not ``tombstoned``.
+    #: Tracks of ``merging`` the year must hold and does not, once the adds are done.
     missing: list[str] = field(default_factory=list)
     taken_off: int = 0
     removed: bool = False
@@ -467,27 +407,8 @@ def _failed_part_way(exc: Exception, done: Heard, planned: HeardPlan) -> Crateki
         "taken_off": done.taken_off,
         "removed": done.removed,
     }
-    if isinstance(exc, CratekitError):
-        cause = exc.cause
-        return refuse(
-            cause.reason,
-            f"{wrote}. {cause.message}",
-            remedy=cause.remediation.remedy,
-            steps=(*cause.remediation.steps, again),
-            scope=Scope.RUN,
-            retryable=cause.retryable,
-            origin=_ORIGIN,
-            detail={**dict(cause.detail), **detail},
-            inner=cause,
-        )
-    return refuse(
-        "internal-error",
-        f"{wrote}. Hearing the playlist failed in a way this build does not expect "
-        f"({type(exc).__name__}: {exc})",
-        steps=(again,),
-        scope=Scope.RUN,
-        origin=_ORIGIN,
-        detail={**detail, "kind": type(exc).__name__},
+    return dated.refused_part_way(
+        exc, wrote, again, detail, failed="Hearing the playlist", origin=_ORIGIN
     )
 
 
@@ -508,16 +429,17 @@ def record_heard(cfg: config.Config, label_id: str, releases: Sequence[str]) -> 
 
 def apply(cfg: config.Config, account, planned: HeardPlan) -> Heard:
     """Write what the plan names, the account first and the record last."""
+    from cratekit.modules.outbound import folders, ledger
+
     done = Heard()
     try:
         held: set[str] = set(planned.merging) - set(planned.add)
-        for start in range(0, len(planned.add), CHUNK):
-            chunk = planned.add[start : start + CHUNK]
+        for start in range(0, len(planned.add), folders.CHUNK):
+            chunk = planned.add[start : start + folders.CHUNK]
             answered = set(account.add_tracks(planned.year_id, chunk))
             done.added += sum(1 for one in chunk if one in answered)
             held |= answered
-            # RECORDED ON THE YEAR as the year build records its own adds, so
-            # a prune can take one off and a person's removal is not undone.
+            # RECORDED ON THE YEAR as the year build's adds are.
             if planned.year_recorded:
                 ledger.record_label_tracks(
                     cfg,

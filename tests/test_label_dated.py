@@ -1,11 +1,8 @@
 """U117: new label releases kept apart from the ones already heard.
 
-Each scenario the brief names, narrowed by the watcher's two answers to the
-account half: the label review store is the record of what a go took and of
-what was heard, the dated playlist is planned by ``crate organize``'s account
-step beside the year playlist, and the year playlist is left as it was. The
-account and the catalogue are the suite's fakes. Nothing here names a real
-volume, a real person or a real track.
+The record of what a go took and heard is the label review store; the dated
+playlist is planned by ``crate organize``'s account step beside the year,
+which is left as it was. Fakes only; D1 applies.
 """
 
 from __future__ import annotations
@@ -25,7 +22,7 @@ from cratekit.organize import account as organize_account
 from cratekit.organize.steps import NOTHING, PLANNED, REFUSED, Area
 from tests.label_fakes import FakeTrack
 from tests.test_label_playlists import LABEL, LABEL_ID, _entry, _years
-from tests.test_label_playlists import followed as followed  # noqa: PLC0414 - fixture
+from tests.test_label_playlists import kompakt as kompakt  # noqa: PLC0414 - fixture
 from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
 
 TODAY = date(2026, 10, 9)
@@ -38,12 +35,7 @@ def _instant(day: str, hour: int = 12) -> str:
 
 
 def _answer(taken: list[str], day: str, *, answer: str = sync_cli.ALL, settled: bool = True):
-    """A saved answer in the shape ``sync_cli`` writes it, ``Answered.to_json``.
-
-    Settled at 22:00 local, an evening instant, so a reading that kept the
-    recorded UTC day instead of the local one files it under the wrong day
-    in any zone west of UTC.
-    """
+    """A saved answer as ``Answered.to_json`` writes it, settled at 22:00 local."""
     taking = answer in (sync_cli.ALL, sync_cli.PICK)
     entry = {
         "label_id": LABEL_ID,
@@ -100,7 +92,6 @@ def test_the_go_day_is_the_local_day_of_the_settling():
 
 def test_an_evening_go_west_of_utc_keeps_its_local_day():
     import time
-
     with pytest.MonkeyPatch.context() as zone:
         zone.setenv("TZ", "America/New_York")
         time.tzset()
@@ -134,54 +125,50 @@ def test_the_name_is_the_year_name_then_new_then_the_day():
 # 2. A go into a year that exists
 
 
-def test_a_go_into_an_existing_year_makes_a_dated_playlist_and_leaves_the_year(followed):
-    cfg, fake, account = followed
+def test_a_go_into_an_existing_year_makes_a_dated_playlist_and_leaves_the_year(kompakt):
+    cfg, fake, account = kompakt
     year_plan = _built(cfg, fake, account)
     (folder_id,) = account.folder_names
     before = _years(account, folder_id)
     assert "Kompakt 2023" in before
     _record(cfg, [_answer(["r3"], "2026-10-09")])
-
     planned = _plan(cfg, fake, account)
     assert [(s.name, s.action, s.add) for s in planned.steps] == [
         ("Kompakt 2023 new 2026-10-09", dated.CREATE, ("t4", "t5"))
     ]
     dated.apply(cfg, account, planned)
-
     after = _years(account, folder_id)
     assert after["Kompakt 2023 new 2026-10-09"] == ["t4", "t5"]
     assert {k: v for k, v in after.items() if " new " not in k} == before
     assert not year_plan.writes
 
 
-def test_a_second_go_the_same_day_appends_to_the_same_dated_playlist(followed):
-    cfg, fake, account = followed
+def test_a_second_go_the_same_day_appends_to_the_same_dated_playlist(kompakt):
+    cfg, fake, account = kompakt
     _built(cfg, fake, account)
     (folder_id,) = account.folder_names
     _record(cfg, [_answer(["r3"], "2026-10-09")])
     dated.apply(cfg, account, _plan(cfg, fake, account))
-
     _record(cfg, [_answer(["r3"], "2026-10-09"), _answer(["r4"], "2026-10-09")])
     planned = _plan(cfg, fake, account)
     assert [(s.action, s.add) for s in planned.steps] == [(dated.REUSE, ("t6", "t7"))]
     dated.apply(cfg, account, planned)
-
     held = _years(account, folder_id)
     assert held["Kompakt 2023 new 2026-10-09"] == ["t4", "t5", "t6", "t7"]
     assert sum(1 for title in account.titles.values() if " new " in title) == 1
     assert not _plan(cfg, fake, account).writes
 
 
-def test_a_go_on_another_day_makes_its_own_dated_playlist(followed):
-    cfg, fake, account = followed
+def test_a_go_on_another_day_makes_its_own_dated_playlist(kompakt):
+    cfg, fake, account = kompakt
     _built(cfg, fake, account)
     _record(cfg, [_answer(["r3"], "2026-10-08"), _answer(["r4"], "2026-10-09")])
     names = [step.name for step in _plan(cfg, fake, account).steps]
     assert names == ["Kompakt 2023 new 2026-10-08", "Kompakt 2023 new 2026-10-09"]
 
 
-def test_a_heard_release_is_left_out_and_the_record_is_not_written(followed):
-    cfg, fake, account = followed
+def test_a_heard_release_is_left_out_and_the_record_is_not_written(kompakt):
+    cfg, fake, account = kompakt
     _built(cfg, fake, account)
     _record(cfg, [_answer(["r3", "r4"], "2026-10-09")], heard=["r3"])
     path = config.state_path("label_sync", cfg)
@@ -193,8 +180,8 @@ def test_a_heard_release_is_left_out_and_the_record_is_not_written(followed):
     assert path.read_bytes() == before
 
 
-def test_a_release_the_catalogue_does_not_confirm_is_left_out(followed):
-    cfg, fake, account = followed
+def test_a_release_the_catalogue_does_not_confirm_is_left_out(kompakt):
+    cfg, fake, account = kompakt
     _built(cfg, fake, account)
     _record(cfg, [_answer(["r6", "r5"], "2026-10-09")])
     planned = _plan(cfg, fake, account)
@@ -202,8 +189,8 @@ def test_a_release_the_catalogue_does_not_confirm_is_left_out(followed):
     assert planned.left_out == {"not in the catalogue": 1, "undated": 1}
 
 
-def test_two_playlists_with_the_dated_name_are_left_alone(followed):
-    cfg, fake, account = followed
+def test_two_playlists_with_the_dated_name_are_left_alone(kompakt):
+    cfg, fake, account = kompakt
     _built(cfg, fake, account)
     (folder_id,) = account.folder_names
     for _ in range(2):
@@ -213,8 +200,8 @@ def test_two_playlists_with_the_dated_name_are_left_alone(followed):
     assert step.action == dated.AMBIGUOUS and not step.writes
 
 
-def test_a_track_the_provider_will_not_play_is_never_planned_on_the_dated_path(followed):
-    cfg, fake, account = followed
+def test_a_track_the_provider_will_not_play_is_never_planned_on_the_dated_path(kompakt):
+    cfg, fake, account = kompakt
     withdrawn = FakeTrack("t12")
     withdrawn.available = False
     fake.releases["r3"] = ([FakeTrack("t4"), FakeTrack("t5"), withdrawn], 2023)
@@ -229,13 +216,12 @@ def test_a_track_the_provider_will_not_play_is_never_planned_on_the_dated_path(f
 # 3. The age report
 
 
-def test_organize_reports_a_dated_playlist_past_the_age_and_moves_nothing(followed):
-    cfg, fake, account = followed
+def test_organize_reports_a_dated_playlist_past_the_age_and_moves_nothing(kompakt):
+    cfg, fake, account = kompakt
     _built(cfg, fake, account)
     _record(cfg, [_answer(["r3"], "2026-09-01"), _answer(["r4"], "2026-10-01")])
     dated.apply(cfg, account, _plan(cfg, fake, account, today=date(2026, 9, 2)))
     writes = len(account.chunks), len(account.moves), len(account.created)
-
     planned = _plan(cfg, fake, account)
     assert [(one.name, one.days) for one in planned.aged] == [
         ("Kompakt 2023 new 2026-09-01", 38)
@@ -247,8 +233,8 @@ def test_organize_reports_a_dated_playlist_past_the_age_and_moves_nothing(follow
     assert "never merged" in item["why"] and "30" in item["why"]
 
 
-def test_the_age_is_the_configured_one(followed):
-    cfg, fake, account = followed
+def test_the_age_is_the_configured_one(kompakt):
+    cfg, fake, account = kompakt
     _built(cfg, fake, account)
     _record(cfg, [_answer(["r3"], "2026-10-01")])
     dated.apply(cfg, account, _plan(cfg, fake, account))
@@ -268,8 +254,8 @@ def test_the_age_key_defaults_to_thirty_and_refuses_zero():
 # 4. The account refusing part way
 
 
-def test_the_account_refusing_mid_pass_names_what_was_written_and_a_rerun_finishes(followed):
-    cfg, fake, account = followed
+def test_the_account_refusing_mid_pass_names_what_was_written_and_a_rerun_finishes(kompakt):
+    cfg, fake, account = kompakt
     _built(cfg, fake, account)
     (folder_id,) = account.folder_names
     _record(cfg, [_answer(["r1"], "2026-10-08"), _answer(["r3"], "2026-10-09")])
@@ -284,7 +270,6 @@ def test_the_account_refusing_mid_pass_names_what_was_written_and_a_rerun_finish
     cause = raised.value.cause
     assert "1 dated playlist(s) were created and 2 track(s) added" in cause.message
     assert cause.detail["created"] == ["Kompakt 2021 new 2026-10-08"]
-
     account.fail_on = frozenset()
     again = _plan(cfg, fake, account)
     assert [(s.action, s.add) for s in again.steps] == [
@@ -298,16 +283,15 @@ def test_the_account_refusing_mid_pass_names_what_was_written_and_a_rerun_finish
 
 
 def test_a_move_refused_after_the_create_names_the_playlist_left_at_the_root(
-    followed, monkeypatch
+    kompakt, monkeypatch
 ):
-    cfg, fake, account = followed
+    cfg, fake, account = kompakt
     _built(cfg, fake, account)
     _record(cfg, [_answer(["r3"], "2026-10-09")])
     planned = _plan(cfg, fake, account)
 
     def refuse_move(playlist_id, folder_id):
         raise RuntimeError("the provider dropped the connection")
-
     monkeypatch.setattr(account, "move_to_folder", refuse_move)
     with pytest.raises(CratekitError) as raised:
         dated.apply(cfg, account, planned)
@@ -322,8 +306,8 @@ def test_a_move_refused_after_the_create_names_the_playlist_left_at_the_root(
     assert any("into the label's folder" in one for one in cause.remediation.steps)
 
 
-def test_a_label_with_no_folder_yet_refuses_the_apply_before_any_write(followed):
-    cfg, fake, account = followed
+def test_a_label_with_no_folder_yet_refuses_the_apply_before_any_write(kompakt):
+    cfg, fake, account = kompakt
     _record(cfg, [_answer(["r3"], "2026-10-09")])
     planned = _plan(cfg, fake, account)
     assert planned.folder_id == "" and planned.writes
@@ -338,7 +322,7 @@ def test_a_label_with_no_folder_yet_refuses_the_apply_before_any_write(followed)
 
 def _organize(cfg) -> Area:
     return organize_account.plan_area(
-        cfg, available=frozenset({"labels"}), followed=[_entry()]
+        cfg, available=frozenset({"labels"}), kompakt=[_entry()]
     )
 
 
@@ -347,8 +331,8 @@ def _step(area: Area):
     return step
 
 
-def test_organize_plans_the_dated_playlist_after_the_label_folder_and_applies_in_order(followed):
-    cfg, _fake, account = followed
+def test_organize_plans_the_dated_playlist_after_the_label_folder_and_applies_in_order(kompakt):
+    cfg, _fake, account = kompakt
     _record(cfg, [_answer(["r3"], "2026-10-09")])
     area = _organize(cfg)
     keys = [one.key for one in area.steps]
@@ -364,14 +348,14 @@ def test_organize_plans_the_dated_playlist_after_the_label_folder_and_applies_in
     assert held["Kompakt 2023 new 2026-10-09"] == ["t4", "t5"]
 
 
-def test_organize_with_nothing_taken_plans_nothing(followed):
-    cfg, _fake, _account = followed
+def test_organize_with_nothing_taken_plans_nothing(kompakt):
+    cfg, _fake, _account = kompakt
     step = _step(_organize(cfg))
     assert step.state == NOTHING and step.apply is None
 
 
-def test_an_unreadable_record_refuses_the_dated_step_alone(followed):
-    cfg, _fake, _account = followed
+def test_an_unreadable_record_refuses_the_dated_step_alone(kompakt):
+    cfg, _fake, _account = kompakt
     path = config.state_path("label_sync", cfg)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{not json", encoding="utf-8")

@@ -1,10 +1,9 @@
 """Catalogue verification. A name match is a heuristic, never an identity.
 
-The crawl finds candidates by copyright text and artist credits. That is
-discovery. This module asks an external catalogue whether the claimed label
-is actually credited, caches the answer per release, and drops anything that
-is not confirmed. Guessing would acquire a compilation, a distributor credit,
-or a neighbour imprint.
+The crawl finds candidates by copyright text and artist credits, which is
+discovery. This module asks a catalogue whether the claimed label is actually
+credited and drops anything not confirmed, since a guess would acquire a
+compilation, a distributor credit or a neighbour imprint.
 """
 
 from __future__ import annotations
@@ -42,13 +41,10 @@ def _fold_words(value: str) -> str:
 def credit_names(needle: str, credit: str) -> bool:
     """Whether ``credit`` carries the whole of ``needle``, as whole words. One way only.
 
-    For a reader that WRITES on the answer (U240): ``tag folder`` gives a file
-    its label's genre on it. So it is stricter than :func:`labels_match` twice
-    over. The other half, a credit inside a longer needle, is left out, so a
-    line reading ``Music`` never names ``Aus Music``. And a letter of any script
-    stays a letter, where :func:`fold_label` drops every one outside ASCII, so
-    ``Âme`` never shrinks to ``me`` inside ``Give Me Records`` and ``東京
-    Records`` never to ``records`` (U240's review, round two).
+    For a reader that writes on the answer (U240), so stricter than
+    :func:`labels_match` twice over: a credit inside a longer needle does not
+    count (``Music`` never names ``Aus Music``), and a letter of any script
+    stays a letter, so ``Âme`` never shrinks to ``me``.
     """
     left, right = _fold_words(needle), _fold_words(credit)
     return bool(left) and bool(right) and _words_within(left, right)
@@ -80,10 +76,8 @@ def load_cache(label_id: str) -> dict[str, dict[str, Any]]:
     return raw if isinstance(raw, dict) else {}
 
 
-def save_cache(label_id: str, cache: Mapping[str, Mapping[str, Any]]) -> None:
-    path = cache_path(label_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(dict(cache), indent=2, ensure_ascii=False) + "\n")
+def _verdict(verdict: str, resolved: str, source: str, notes: str) -> dict[str, Any]:
+    return {"verdict": verdict, "resolved_label": resolved, "source": source, "notes": notes}
 
 
 def verify_release(
@@ -93,49 +87,18 @@ def verify_release(
     search: Callable[[str, Any], Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Verify one release. Does not touch the cache. ``search`` is injectable."""
-    if search is not None:
-        result = dict(search(claimed_label, release))
-        if "verdict" in result:
-            return result
-        resolved = str(result.get("resolved_label") or result.get("label_name") or "")
-        if not resolved:
-            return {
-                "verdict": "unconfirmed",
-                "resolved_label": "",
-                "source": str(result.get("source") or ""),
-                "notes": "no label credit",
-            }
-        matched = labels_match(claimed_label, resolved)
-        return {
-            "verdict": "confirmed" if matched else "mismatch",
-            "resolved_label": resolved,
-            "source": str(result.get("source") or "search"),
-            "notes": "" if matched else f"credited as {resolved!r}",
-        }
-    return {
-        "verdict": "unconfirmed",
-        "resolved_label": "",
-        "source": "",
-        "notes": "no verifier supplied",
-    }
-
-
-def cached_verdict(
-    label_id: str,
-    claimed_label: str,
-    release: Any,
-    *,
-    search: Callable[[str, Any], Mapping[str, Any]] | None = None,
-    cache: dict[str, dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    """Return a cached verdict, or verify and store anything except errors."""
-    held = cache if cache is not None else load_cache(label_id)
-    release_id = str(getattr(release, "id", "") or "")
-    if release_id and release_id in held:
-        return held[release_id]
-    verdict = verify_release(claimed_label, release, search=search)
-    if verdict.get("verdict") != "error" and release_id:
-        held[release_id] = verdict
-        if cache is None:
-            save_cache(label_id, held)
-    return verdict
+    if search is None:
+        return _verdict("unconfirmed", "", "", "no verifier supplied")
+    result = dict(search(claimed_label, release))
+    if "verdict" in result:
+        return result
+    resolved = str(result.get("resolved_label") or result.get("label_name") or "")
+    if not resolved:
+        return _verdict("unconfirmed", "", str(result.get("source") or ""), "no label credit")
+    matched = labels_match(claimed_label, resolved)
+    return _verdict(
+        "confirmed" if matched else "mismatch",
+        resolved,
+        str(result.get("source") or "search"),
+        "" if matched else f"credited as {resolved!r}",
+    )

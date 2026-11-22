@@ -1,30 +1,21 @@
 """``crate favorites backfill``: every owned heart, put where a landing now puts them (U120, U146).
 
-The attended half of the favourites placement. Since U146 a heart on any
-track the library owns is a favourite, so this verb finds every heart a
-hearts job reported whose track the library holds and All Favorites lacks,
-shows each one with the month it goes to and the count per month, asks, and
-adds it to All Favorites and its month playlist in one guarded commit. It
-removes nothing and moves nothing, so a second run over a placed library
-asks and writes nothing.
-
-THE ORDER IS THE REFRESH VERB'S: the backup acknowledgment before anything
-is gathered (R-733), the plan on a handle opened to read and closed, the gate
-over the digested plan, the write on a handle opened with write intent that
-takes the plan again and refuses a digest that moved. The hearts themselves
-are gathered once, since finding them walks the library.
+The attended half of the favourites placement: every heart a hearts job
+reported whose track the library holds and All Favorites lacks is shown with
+its month and the count per month, and on approval added to All Favorites and
+its month in one guarded commit. It removes and moves nothing, so a second
+run over a placed library writes nothing. The order is :func:`spine.run`'s,
+the gate asked before the nothing to place check; the hearts are gathered
+once, since finding them walks the library.
 
 Layer: modules.
 """
 
 from __future__ import annotations
 
-from typing import Any
-
-from cratekit.cli.output import Envelope, declared_gate, load_config
-from cratekit.core import active_taxonomy, analysis_store, config, rb_writer, session
-from cratekit.core.cause import Outcome
-from cratekit.favorites import backfill, colour, placement
+from cratekit.cli.output import Envelope, load_config
+from cratekit.core import active_taxonomy, analysis_store, config
+from cratekit.favorites import backfill, colour, placement, spine
 
 #: The gate, explicit: a write to the live library's playlists.
 APPROVE_GATE = "favorites.backfill.approve"
@@ -50,158 +41,107 @@ def build(parser, entry) -> None:
 
 def planned(cfg: config.Config, *, source: str) -> backfill.BackfillPlan:
     """The plan over the library as it stands, through a handle opened to read and closed."""
-    db = rb_writer.open_db(
-        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
-    )
-    try:
+    with spine.handle(cfg) as db:
         return backfill.plan(cfg, db, source=source)
-    finally:
-        rb_writer.close_db(db)
 
 
 def written(
     cfg: config.Config, approved: backfill.BackfillPlan, *, source: str
 ) -> backfill.Backfilled:
     """Apply the plan through a handle of this function's own, opened to write."""
-    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
-    try:
+    with spine.handle(cfg, write=True) as db:
         return backfill.apply(
             cfg, db, approved, source=source, analysis_roots=analysis_store.watch_roots(cfg)
         )
-    finally:
-        rb_writer.close_db(db)
 
 
 def _notes(plan: backfill.BackfillPlan) -> list[dict[str, str]]:
     """What a person reads about the plan beside its counts, whatever the answer."""
-    notes: list[dict[str, str]] = []
-    if plan.undated:
-        notes.append(
-            {
-                "code": UNDATED,
-                "message": (
-                    f"{plan.undated} heart(s) carry no date on their job or on the account, "
-                    f"so they go to {placement.placeholders.UNDATED!r} "
-                    f"and stay there; nothing moves a heart to its month later"
-                ),
-            }
-        )
-    if plan.held_back:
-        why = (
-            f"the account's hearts listed short, {plan.withheld} withheld by the provider"
-            if plan.withheld
-            else "the account's hearts listed with no published count"
-        )
-        notes.append(
-            {
-                "code": HELD_BACK,
-                "message": (
-                    f"{len(plan.held_back)} heart(s) were held back unplaced: "
-                    f"{why}, so a heart the listing lacks cannot be told from one "
-                    f"withheld; run again when the listing is whole"
-                ),
-            }
-        )
-    if plan.taken_back:
-        notes.append(
-            {
-                "code": TAKEN_BACK,
-                "message": (
-                    f"{len(plan.taken_back)} heart(s) the author took back were not placed: "
-                    + "; ".join(f"{one.title} ({one.dated_by})" for one in plan.taken_back)
-                ),
-            }
-        )
-    if plan.unreadable:
-        notes.append(
-            {
-                "code": JOBS_UNREAD,
-                "message": (
-                    f"{len(plan.unreadable)} hearts job(s) could not be read and were "
-                    f"skipped: {', '.join(plan.unreadable)}; a heart only such a job "
-                    f"carried is not placed"
-                ),
-            }
-        )
-    if plan.placements.colour_skipped:
-        notes.append(
-            {
-                "code": PINK_MISSING,
-                "message": (
-                    f"no row is coloured: {plan.placements.colour_skipped}; the "
-                    f"memberships are placed all the same, and a later run colours "
-                    f"them once the library carries Pink again"
-                ),
-            }
-        )
-    if plan.placements.held:
-        notes.append(
-            {
-                "code": COLOUR_HELD,
-                "message": (
-                    f"{len(plan.placements.held)} row(s) carry a colour a person chose "
-                    f"and keep it: "
-                    + "; ".join(one.said() for one in plan.placements.held)
-                ),
-            }
-        )
-    return notes
+    why = (
+        f"the account's hearts listed short, {plan.withheld} withheld by the provider"
+        if plan.withheld
+        else "the account's hearts listed with no published count"
+    )
+    shown = plan.placements
+    return spine.notes(
+        (
+            plan.undated,
+            UNDATED,
+            f"{plan.undated} heart(s) carry no date on their job or on the account, "
+            f"so they go to {placement.placeholders.UNDATED!r} "
+            f"and stay there; nothing moves a heart to its month later",
+        ),
+        (
+            plan.held_back,
+            HELD_BACK,
+            f"{len(plan.held_back)} heart(s) were held back unplaced: "
+            f"{why}, so a heart the listing lacks cannot be told from one "
+            f"withheld; run again when the listing is whole",
+        ),
+        (
+            plan.taken_back,
+            TAKEN_BACK,
+            f"{len(plan.taken_back)} heart(s) the author took back were not placed: "
+            + "; ".join(f"{one.title} ({one.dated_by})" for one in plan.taken_back),
+        ),
+        (
+            plan.unreadable,
+            JOBS_UNREAD,
+            f"{len(plan.unreadable)} hearts job(s) could not be read and were "
+            f"skipped: {', '.join(plan.unreadable)}; a heart only such a job "
+            f"carried is not placed",
+        ),
+        (
+            shown.colour_skipped,
+            PINK_MISSING,
+            f"no row is coloured: {shown.colour_skipped}; the "
+            f"memberships are placed all the same, and a later run colours "
+            f"them once the library carries Pink again",
+        ),
+        (
+            shown.held,
+            COLOUR_HELD,
+            f"{len(shown.held)} row(s) carry a colour a person chose "
+            f"and keep it: " + "; ".join(one.said() for one in shown.held),
+        ),
+    )
+
+
+def _done(plan: backfill.BackfillPlan, done: backfill.Backfilled) -> tuple[dict, dict[str, str]]:
+    placed = done.placed
+    totals = {
+        "added": placed.added,
+        "created": len(placed.created),
+        "coloured": len(placed.coloured),
+    }
+    return totals, spine.note(
+        PLACED,
+        f"{placed.said()}, for {len(plan.hearts)} owned heart(s) and "
+        f"{len(plan.placements.recolour)} placed row(s); every "
+        f"playlist read back from the database holds its hearts, every "
+        f"coloured row reads Pink, and no track left the collection; undo "
+        f"with a restore of session {done.session_id}",
+    )
 
 
 def favorites_backfill(ctx) -> Envelope:
     """Find the owned hearts to place, ask, then place them and read them back."""
     cfg = load_config(_ORIGIN)
     source = placement.source_name(active_taxonomy.load(cfg))
-    spec = declared_gate(ctx.entry, APPROVE_GATE)
-    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
-    session.assert_backup_acknowledged(cfg)
-
-    plan = planned(cfg, source=source)
-    data = backfill.payload(plan, cfg)
-    warnings = _notes(plan)
-    if ctx.gate.require(spec, plan=data, context=backfill.facts(plan)) != "approve":
-        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
-    if not plan.writes:
-        return ctx.envelope(
-            data=data,
-            outcome=Outcome.NO_OP,
-            warnings=[
-                *warnings,
-                {
-                    "code": NOTHING_TO_PLACE,
-                    "message": (
-                        f"no owned heart needs placing, {plan.already} already in "
-                        f"{source!r} and a month playlist, and every member of "
-                        f"{source!r} is coloured or held, so nothing was written"
-                    ),
-                },
-            ],
-        )
-
-    done = written(cfg, plan, source=source)
-    backfill.assert_read_back(done)
-    placed = done.placed
-    totals: dict[str, Any] = {
-        **data["totals"],
-        "added": placed.added,
-        "created": len(placed.created),
-        "coloured": len(placed.coloured),
-    }
-    return ctx.envelope(
-        data={**data, "totals": totals},
-        warnings=[
-            *warnings,
-            {
-                "code": PLACED,
-                "message": (
-                    f"{placed.said()}, for {len(plan.hearts)} owned heart(s) and "
-                    f"{len(plan.placements.recolour)} placed row(s); every "
-                    f"playlist read back from the database holds its hearts, every "
-                    f"coloured row reads Pink, and no track left the collection; undo "
-                    f"with a restore of session {done.session_id}"
-                ),
-            },
-        ],
+    return spine.run(
+        ctx, cfg, APPROVE_GATE, backfill,
+        planned=lambda: planned(cfg, source=source),
+        written=lambda plan: written(cfg, plan, source=source),
+        payload=lambda plan: backfill.payload(plan, cfg),
+        idle=lambda plan: spine.note(
+            NOTHING_TO_PLACE,
+            f"no owned heart needs placing, {plan.already} already in "
+            f"{source!r} and a month playlist, and every member of "
+            f"{source!r} is coloured or held, so nothing was written",
+        ),
+        told=_notes,
+        done=_done,
+        gate_first=True,
     )
 
 

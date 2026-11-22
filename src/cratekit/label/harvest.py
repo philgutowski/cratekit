@@ -41,11 +41,9 @@ class HarvestReport:
 class Decided:
     """The harvest's items on the queue, split by what a person decided.
 
-    ``accepted`` pairs each accepted item's identifier with the label name it
-    names. ``nameless`` is the accepted items that name no label at all, kept
-    so they are reported rather than skipped. An item whose stored verdict this
-    build cannot read counts as OPEN, the direction ``review`` argues for
-    everywhere: undecided rather than decided the wrong way.
+    ``accepted`` pairs each accepted item's identifier with its label name.
+    ``nameless`` is the accepted items naming no label, so they are reported
+    rather than skipped. A verdict this build cannot read counts as open.
     """
 
     accepted: tuple[tuple[str, str], ...]
@@ -63,10 +61,8 @@ def _text(value: Any) -> str | None:
 def decided(store: review.ReviewStore) -> Decided:
     """Every harvested label on the queue, in queue order, split by verdict.
 
-    The name is read from the item's IDENTITY before its payload, as
-    ``label approved`` reads a release: the identity is what harvest keyed the
-    item on, and an item that arrived through ``review import`` carries none,
-    so the payload's copy is what is left.
+    The name is read from the item's identity, what harvest keyed it on, before
+    its payload, which is all an item brought in by ``review import`` carries.
     """
     page = review.list_items(
         store,
@@ -90,12 +86,7 @@ def decided(store: review.ReviewStore) -> Decided:
             rejected += 1
         else:
             still_open += 1
-    return Decided(
-        accepted=tuple(accepted),
-        nameless=tuple(nameless),
-        rejected=rejected,
-        still_open=still_open,
-    )
+    return Decided(tuple(accepted), tuple(nameless), rejected, still_open)
 
 
 def labels_from_copyright(track: Any) -> tuple[str, ...]:

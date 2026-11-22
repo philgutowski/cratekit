@@ -1,9 +1,8 @@
 """The curated favourite-label list. Identity is not the display name.
 
-D4 split the source file: this document is installation-scoped intent
-(``label_intent``). Per-label last-pulled years live in ``label_watermarks``.
-D5 forbids keying a persisted record on a display name, so a rename changes
-the name and leaves the identifier (and every watermark keyed on it) alone.
+Installation scoped intent (``label_intent``, D4); per label watermarks live
+elsewhere. No record is keyed on a display name (D5), so a rename leaves the
+identifier, and every watermark keyed on it, alone.
 """
 
 from __future__ import annotations
@@ -38,22 +37,16 @@ def _fold(text: str) -> str:
 
 
 def _legacy_slug(name: str) -> str:
-    """The identifier a name got before R-381, the fold with no transliteration.
-
-    Kept for the loader and for :meth:`RegistryStore.add` only, to recognise an
-    entry written under it. Nothing new is ever keyed on it.
-    """
+    """The identifier a name got before R-381, kept only to recognise an entry written under it."""
     return _fold(name)
 
 
 def slug(name: str) -> str:
     """Stable identifier derived from a name at creation time, never later.
 
-    TRANSLITERATED BEFORE IT FOLDS (R-381). The umlauts and ``ß`` first, then
-    NFKD with the combining marks dropped, so ``Sueño`` is ``sueno`` and
-    ``Voll Schön`` is ``voll-schoen``, the identifiers the source system used.
-    The umlauts go first because NFC gives ``ö`` as one code point, so the table
-    catches it before NFKD can split it into ``o`` and a mark.
+    Transliterated before it folds (R-381): the umlauts and ``ß`` first, on the
+    NFC form so ``ö`` is one code point, then NFKD with combining marks dropped,
+    so ``Voll Schön`` is ``voll-schoen`` as the source system had it.
     """
     composed = unicodedata.normalize("NFC", name).translate(_TRANSLITERATE)
     stripped = "".join(
@@ -75,8 +68,7 @@ def slug(name: str) -> str:
     return folded
 
 
-#: The one identifier seed shape R-351 defined. ASCII digits only, so a seed
-#: stored here is one the adapter's own ``^id:(\d+)$`` reads as an identifier.
+#: The one identifier seed shape (R-351), ASCII digits only, as the adapter reads it.
 _ID_SEED = re.compile(r"id:[0-9]+")
 
 
@@ -94,11 +86,8 @@ def _field_invalid(message: str, step: str, detail: dict[str, Any]) -> CratekitE
 def check_seed(seed: str) -> str:
     """A seed the registry can store, stripped, or a refusal.
 
-    AN ``id:`` SEED THAT IS NOT DIGITS IS REFUSED, NOT STORED AS A NAME. The
-    adapter reads anything that is not exactly ``id:<digits>`` as an artist
-    name, so ``id:12a`` or ``ID:12`` would be searched for as an act called
-    that, match nobody, and refuse the label on every sweep with nothing on the
-    screen saying the seed was mistyped.
+    An ``id:`` seed that is not digits is refused rather than stored as a name,
+    which would be searched for as an act and match nobody on every sweep.
     """
     text = str(seed).strip()
     if not text:
@@ -143,10 +132,8 @@ def check_offer(offer: int) -> int:
 def check_kind(kind: str) -> str:
     """A label's kind, folded, or a refusal for a value that could never be one.
 
-    THE SHAPE ONLY. Which kinds exist is the library's taxonomy's to say, and
-    this registry is the installation's, so the verb that sets a kind checks it
-    against the taxonomy and this store keeps a word no taxonomy could name
-    out of the file (R-798).
+    The shape only: which kinds exist is the library's taxonomy's to say, checked
+    by the verb that sets one (R-798).
     """
     folded = kind.strip().lower() if isinstance(kind, str) else ""
     if not KIND_NAME.fullmatch(folded):
@@ -158,21 +145,15 @@ def check_kind(kind: str) -> str:
     return folded
 
 
-#: The longest genre a label may carry. Generous for any genre a catalogue or a
-#: person spells, and short enough that a pasted paragraph is refused rather
-#: than written onto every file of the label.
+#: The longest genre a label may carry, short enough that a pasted paragraph is refused.
 GENRE_MAX = 64
 
 
 def check_genre(genre: str) -> str:
     """A label's genre, stripped and composed, or a refusal for a value that could never be one.
 
-    THE SHAPE ONLY, as for a kind (U178). Where the word routes is the library's
-    taxonomy's to say, so the verb that sets a genre asks it. KEPT AS TYPED, case
-    and all, because this is the word written onto every file of the label, and
-    a folded copy would write ``rominimal`` where Phillip wrote ``Rominimal``.
-    One line with a letter or a digit in it, since a tag holding a control
-    character or only punctuation is not a genre anything could route.
+    The shape only, as for a kind (U178). Kept as typed, since it is the word
+    written onto every file of the label. One line with a letter or a digit.
     """
     text = unicodedata.normalize("NFC", genre.strip()) if isinstance(genre, str) else ""
     if (
@@ -190,28 +171,21 @@ def check_genre(genre: str) -> str:
     return text
 
 
-#: A Bandcamp seller account as the registry keeps it: the account name in the
-#: address of its releases, ``pulsromania`` for ``pulsromania.bandcamp.com``,
-#: or the whole host of a seller on a domain of its own. Lowercase letters,
-#: digits and hyphens, dot separated, as a host name is.
+#: A Bandcamp seller account as the registry keeps it: the name in its address,
+#: ``pulsromania`` for ``pulsromania.bandcamp.com``, or the whole host of a seller
+#: on its own domain, dot separated as a host name is.
 _ACCOUNT = re.compile(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*")
 
-#: The suffix of a seller account's own address, which the account name is
-#: read from before it, as ``acquire.bandcamp.seller_of`` reads a purchase's.
+#: The suffix of a seller account's own address, as a purchase's seller is read.
 _ACCOUNT_HOST = ".bandcamp.com"
 
 
 def bandcamp_account(account: str) -> str:
     """The seller account ``account`` names, as a purchase's seller is read (U177).
 
-    THE FORM A PURCHASE IS COMPARED IN, so a label registered by its address
-    and a purchase read from its address are one account: ``PulsRomania``,
-    ``pulsromania.bandcamp.com`` and ``https://pulsromania.bandcamp.com/music``
-    are all ``pulsromania``. A seller on a domain of its own keeps the whole
-    host, which is the only name its address gives. Anything else, a blank, a
-    path with no host, or a name holding a space, is refused, since an account
-    stored that way would match no purchase and the label would stage untagged
-    with nothing saying why.
+    ``PulsRomania``, ``pulsromania.bandcamp.com`` and its https address are all
+    ``pulsromania``; a seller on its own domain keeps the whole host. Anything
+    else is refused, since it would match no purchase.
     """
     text = account.strip().lower() if isinstance(account, str) else ""
     if "/" in text:
@@ -235,6 +209,22 @@ def _checked_seeds(seed_artists: Sequence[str]) -> tuple[str, ...]:
     return tuple(check_seed(seed) for seed in seed_artists)
 
 
+def _checked(
+    track_limit: int | None, offer: int | None, kind: str | None, genre: str | None,
+    bandcamp: str | None,
+) -> tuple[str | None, str | None, str | None]:
+    """Check every given field before a lock is taken; the kind, genre and account as stored."""
+    if track_limit is not None:
+        check_track_limit(track_limit)
+    if offer is not None:
+        check_offer(offer)
+    return (
+        check_kind(kind) if kind is not None else None,
+        check_genre(genre) if genre is not None else None,
+        bandcamp_account(bandcamp) if bandcamp is not None else None,
+    )
+
+
 def _name_key(name: str) -> str:
     """NFC then casefold. Not ``rbxml._folded``, which is NFC and never case."""
     return unicodedata.normalize("NFC", name.strip()).casefold()
@@ -244,10 +234,9 @@ def _coerce_int(value: Any) -> int | None:
     if value is None or (isinstance(value, str) and not value.strip()):
         return None
     try:
-        number = int(value)
+        return int(value)
     except (TypeError, ValueError):
         return None
-    return number
 
 
 def effective_limit(entry: LabelEntry, default: int = DEFAULT_TRACK_LIMIT) -> int:
@@ -260,11 +249,8 @@ def effective_limit(entry: LabelEntry, default: int = DEFAULT_TRACK_LIMIT) -> in
 def effective_offer(entry: LabelEntry, default: int) -> int:
     """How many places one sweep of this label fills in review (R-790).
 
-    The entry's own ``offer`` when it set one, else ``default``, which the
-    caller takes from ``labels.offer_per_sweep`` in the configuration. Bounded
-    by :func:`effective_limit`, because the increment slices to that number
-    after the listing, and a window wider than the slice would file fewer than
-    it reported and drop the rest without counting them.
+    The entry's own ``offer``, else ``default`` from ``labels.offer_per_sweep``,
+    bounded by :func:`effective_limit`, the slice the increment takes after.
     """
     offer = entry.offer if entry.offer is not None and entry.offer > 0 else default
     return min(offer, effective_limit(entry))
@@ -274,9 +260,8 @@ def effective_offer(entry: LabelEntry, default: int) -> int:
 class LabelEntry:
     """One followed label. ``label_id`` is the identity; ``name`` is display.
 
-    ``seed_artists`` holds names, or provider identifiers of the form
-    ``id:<digits>``. A name is resolved by exact fold. An identifier is
-    looked up with no search.
+    ``seed_artists`` holds names, resolved by exact fold, or ``id:<digits>``
+    identifiers, looked up with no search.
     """
 
     label_id: str
@@ -284,22 +269,16 @@ class LabelEntry:
     match: str | None = None
     seed_artists: tuple[str, ...] = ()
     track_limit: int | None = None
-    #: This label's own window of releases per sweep, or None for the
-    #: configuration's ``labels.offer_per_sweep``. See :func:`effective_offer`.
+    #: This label's own window per sweep, or None for ``labels.offer_per_sweep``.
     offer: int | None = None
-    #: The kind of music this label is followed for, or None for the taxonomy's
-    #: ``label_gate.default_kind``. It decides which releases the genre gate
-    #: passes (R-798). Folded lowercase, and checked against the taxonomy by
-    #: the verb that sets it, never here.
+    #: The kind of music the genre gate passes (R-798), or None for the taxonomy's
+    #: default. Folded lowercase and checked by the verb that sets it.
     kind: str | None = None
-    #: The genre every file of this label is tagged with when it carries none,
-    #: or None for a label whose files are asked of the catalogues (U178). Kept
-    #: as typed, and checked against the taxonomy by the verb that sets it.
+    #: The genre every file of this label is tagged with when it has none, or None
+    #: (U178). Kept as typed and checked by the verb that sets it.
     genre: str | None = None
     #: The Bandcamp seller account this label's releases are sold from, or None
-    #: (U177). One account per label and one label per account: a purchase
-    #: from it is staged tagged with this label and filed under it. Kept in the
-    #: form :func:`bandcamp_account` gives, so it compares with a purchase's.
+    #: (U177), one per label and one label per account, in :func:`bandcamp_account` form.
     bandcamp: str | None = None
 
     def to_json(self) -> dict[str, Any]:
@@ -320,10 +299,8 @@ class LabelEntry:
 class Registry:
     """The intent document, keyed by ``label_id``.
 
-    ``renamed`` is every identifier the loader moved, old to new, kept so a
-    library scoped watermark keyed on the old one can follow it later
-    (:mod:`cratekit.label.marks`). The registry cannot move those itself, it is
-    installation scoped and has no configuration naming a library.
+    ``renamed`` is every identifier the loader moved, old to new, so a library
+    scoped watermark can follow it later (:mod:`cratekit.label.marks`).
     """
 
     labels: dict[str, LabelEntry]
@@ -332,10 +309,8 @@ class Registry:
     def by_id(self, label_id: str) -> LabelEntry | None:
         """The entry, following an R-381 move when the old identifier is free.
 
-        A sweep job queued before the move froze the old identifier as its
-        item, and refusing it ``label-unknown`` would send a person to add a
-        label literally named that. A held identifier always wins, so an old one
-        reused by a new label is that label's.
+        A job queued before the move froze the old identifier; a held identifier
+        always wins.
         """
         found = self.labels.get(label_id)
         if found is None and label_id in self.renamed:
@@ -356,10 +331,7 @@ class Registry:
     def named(self, name: str) -> tuple[LabelEntry, ...]:
         """Every label whose display name is ``name``, in registry order.
 
-        MORE THAN ONE IS REACHABLE: ``rename`` accepts a name another label
-        carries. :meth:`by_name` answers the first of them; a caller that must
-        not guess between them asks this instead, as ``tag folder`` reads a
-        file's label tag naming two as no one label (R-1476).
+        ``rename`` allows two; a caller that must not guess asks this (R-1476).
         """
         wanted = _name_key(name)
         return tuple(entry for entry in self.labels.values() if _name_key(entry.name) == wanted)
@@ -367,10 +339,7 @@ class Registry:
     def claimants(self, account: str) -> tuple[LabelEntry, ...]:
         """Every label naming ``account`` as its Bandcamp seller, in registry order.
 
-        ONE IS THE ONLY ANSWER (U177). The verbs that set an account refuse a
-        second claimant, so two can only be a file edited by hand, and then
-        which label the account's releases belong to is not something either
-        entry decides: a caller reads two as no label, and says why.
+        Two can only be a hand edited file, and a caller reads two as no label (U177).
         """
         try:
             wanted = bandcamp_account(account)
@@ -384,28 +353,21 @@ class Registry:
         return found[0] if len(found) == 1 else None
 
     def resolve(self, name_or_id: str) -> LabelEntry | None:
-        found = self.by_id(name_or_id)
-        if found is not None:
+        found = self.by_id(name_or_id) or self.by_name(name_or_id)
+        if found is not None or not name_or_id.strip():
             return found
-        found = self.by_name(name_or_id)
-        if found is not None:
-            return found
-        return self.by_id(slug(name_or_id)) if name_or_id.strip() else None
+        return self.by_id(slug(name_or_id))
 
 
 def _entry_from(label_id: str, raw: Mapping[str, Any]) -> LabelEntry:
-    seeds = raw.get("seed_artists")
-    seed_list = tuple(str(item) for item in seeds) if isinstance(seeds, list) else ()
-    name = str(raw.get("name") or label_id)
-    match = raw.get("match")
-    kind = raw.get("kind")
-    genre = raw.get("genre")
+    seeds, match = raw.get("seed_artists"), raw.get("match")
+    kind, genre = raw.get("kind"), raw.get("genre")
     return LabelEntry(
         bandcamp=_stored_account(raw.get("bandcamp")),
         label_id=str(raw.get("label_id") or label_id),
-        name=name,
+        name=str(raw.get("name") or label_id),
         match=str(match) if match else None,
-        seed_artists=seed_list,
+        seed_artists=tuple(str(item) for item in seeds) if isinstance(seeds, list) else (),
         track_limit=_coerce_int(raw.get("track_limit")),
         offer=_coerce_int(raw.get("offer")),
         kind=kind.strip().lower() or None if isinstance(kind, str) else None,
@@ -414,11 +376,10 @@ def _entry_from(label_id: str, raw: Mapping[str, Any]) -> LabelEntry:
 
 
 def _stored_account(value: Any) -> str | None:
-    """A stored account in the form a purchase compares with, or None for none or a malformed one.
+    """A stored account in purchase form, or None for none or a malformed one.
 
-    A MALFORMED ONE IS NO ACCOUNT rather than a crash, as ``recognize`` degrades
-    every field it cannot read: the label's other fields stay, and its releases
-    stage untagged until the account is set again.
+    A malformed one is no account rather than a crash, as ``recognize`` degrades
+    every field it cannot read.
     """
     if not isinstance(value, str) or not value.strip():
         return None
@@ -430,9 +391,7 @@ def _stored_account(value: Any) -> str | None:
 
 def recognize(raw: Any) -> Registry:
     """Load a document. Malformed input degrades to empty rather than crashing."""
-    if not isinstance(raw, Mapping):
-        return Registry(labels={})
-    records = raw.get("labels")
+    records = raw.get("labels") if isinstance(raw, Mapping) else None
     if not isinstance(records, Mapping):
         return Registry(labels={})
     found: dict[str, LabelEntry] = {}
@@ -453,10 +412,8 @@ def recognize(raw: Any) -> Registry:
 def _migrated_id(entry: LabelEntry) -> str | None:
     """The identifier R-381 moves this entry to, or None if it stays.
 
-    Only an entry whose identifier is EXACTLY the old fold of its own name
-    moves. A label renamed since it was created, or one added under an
-    identifier the source system chose, was not produced by the old fold and is
-    left alone, because a slug is stable once created.
+    Only an identifier exactly the old fold of its own name moves; a slug is
+    stable once created.
     """
     try:
         new = slug(entry.name)
@@ -470,10 +427,8 @@ def _migrated_id(entry: LabelEntry) -> str | None:
 def migrate(held: Registry) -> tuple[Registry, dict[str, str]]:
     """Re-key every entry the old fold produced, and say which moved.
 
-    A NEW IDENTIFIER ALREADY TAKEN IS NOT A MOVE. The entry keeps its old
-    identifier, so neither label loses its record or its watermarks, and the
-    collision stays visible as an old style identifier rather than a merge.
-    Taken means held by another entry now, or by one this pass already moved.
+    A new identifier already taken, now or by an earlier move in this pass, is
+    not a move: the entry keeps its old one, so no record merges.
     """
     taken = set(held.labels)
     labels: dict[str, LabelEntry] = {}
@@ -499,10 +454,8 @@ def empty() -> Registry:
 class Adopted:
     """What :meth:`RegistryStore.adopt` did with one offered name.
 
-    ``added`` is False when the registry already held the label, and then
-    ``held_name`` is the display name it is held under, which may be a
-    different spelling of the offered one. ``refused`` carries the reason a name
-    could not become an entry at all, and then ``label_id`` is empty.
+    ``added`` is False when already held, under ``held_name``. ``refused`` is why
+    a name could not become an entry, and then ``label_id`` is empty.
     """
 
     name: str
@@ -512,19 +465,16 @@ class Adopted:
     refused: str | None = None
 
 
-#: The ``--bandcamp`` word that clears a label's account, the word ``--kind``
-#: and ``--genre`` clear with. Matched only as typed, so an account literally
-#: named that is still set by its address, ``default.bandcamp.com``.
+#: The ``--bandcamp`` word that clears a label's account, as for ``--kind`` and
+#: ``--genre``. Matched as typed, so an account named that is set by its address.
 CLEAR_BANDCAMP = "default"
 
 
 def _claim(current: Mapping[str, LabelEntry], label_id: str, account: str | None) -> None:
     """Refuse ``account`` when a label other than ``label_id`` already names it (U177).
 
-    ONE LABEL PER ACCOUNT, checked INSIDE THE LOCK against the entries as they
-    stand, so two concurrent sets of one account cannot both land. Two labels
-    naming one account would leave which label its releases are staged under
-    to the order the file happens to hold them in.
+    Checked inside the lock against the entries as they stand, so two concurrent
+    sets of one account cannot both land.
     """
     if account is None:
         return
@@ -567,14 +517,10 @@ class RegistryStore:
         )
 
     def load(self) -> Registry:
-        """The registry, with every R-381 move made and written.
+        """The registry, with every R-381 move made and written under the lock.
 
-        A move is written through :meth:`update`, under the lock, so a load
-        racing an edit re-reads and re-plans rather than writing a stale copy.
-        IF THE MOVE CANNOT BE WRITTEN, THE DOCUMENT IS RETURNED AS STORED.
-        Returning the moved view unwritten would hand a caller identifiers the
-        file does not hold, and a queued item frozen on one would name a label
-        the next process cannot find.
+        If the move cannot be written, the document is returned as stored, never an
+        unwritten view naming identifiers the file does not hold.
         """
         held = self._read()
         if not migrate(held)[1]:
@@ -602,10 +548,8 @@ class RegistryStore:
         }
         renamed = held.live_renames()
         if renamed:
-            # Only when something moved, so a registry R-381 never touched
-            # keeps the shape it has always had. A move whose old identifier a
-            # new label now holds is dropped, so it can never hand that label's
-            # watermark to the label that moved.
+            # Only when something moved. A move whose old identifier a new label holds is
+            # dropped, so it can never hand that label's watermark over.
             payload["renamed"] = renamed
         config.atomic_write_bytes(
             (json.dumps(payload, indent=2) + "\n").encode("utf-8"),
@@ -615,9 +559,7 @@ class RegistryStore:
     def update(self, mutator: Callable[[dict[str, LabelEntry]], bool | None]) -> Registry:
         """Locked read, modify, write. A mutator returning ``False`` writes nothing.
 
-        The opt out is for a caller that may find nothing to change. A rewrite is
-        not free even when the entries are equal: ``recognize`` drops a record it
-        cannot read, so saving what it loaded discards that record from the file.
+        A rewrite is not free: ``recognize`` drops a record it cannot read.
         """
         lock = config.exclusive_lock(self.lock_path)
         try:
@@ -634,8 +576,7 @@ class RegistryStore:
                 detail={"lock": str(self.lock_path)},
             ) from exc
         try:
-            # The R-381 move is made here, inside the lock, before the mutator
-            # sees the entries, and it is written even when the mutator opts out.
+            # The R-381 move is made inside the lock and written even when the mutator opts out.
             stored, moved = migrate(self._read())
             current = dict(stored.labels)
             changed = mutator(current)
@@ -663,28 +604,16 @@ class RegistryStore:
     ) -> str:
         """Add or update by identifier. Re-adding keeps the same ``label_id``.
 
-        Every seed and the limit are checked before the lock is taken, so a
-        refused field writes nothing, not even the fields beside it.
+        Every field is checked before the lock, so a refused one writes nothing.
         """
         new_id = slug(name)
         seeds = _checked_seeds(seed_artists)
-        if track_limit is not None:
-            check_track_limit(track_limit)
-        if offer is not None:
-            check_offer(offer)
-        if kind is not None:
-            kind = check_kind(kind)
-        if genre is not None:
-            genre = check_genre(genre)
-        if bandcamp is not None:
-            bandcamp = bandcamp_account(bandcamp)
+        kind, genre, bandcamp = _checked(track_limit, offer, kind, genre, bandcamp)
         written: list[str] = []
 
         def mutate(current: dict[str, LabelEntry]) -> None:
-            # AN ENTRY THE MIGRATION LEFT UNDER ITS OLD IDENTIFIER IS THIS
-            # LABEL, not the one holding the new slug. That is the collision
-            # case, and keying on the new slug would overwrite the other label's
-            # display name with this one's.
+            # An entry the migration left under its old identifier is this label, not
+            # the one holding the new slug.
             legacy = current.get(_legacy_slug(name))
             label_id = (
                 legacy.label_id
@@ -692,32 +621,20 @@ class RegistryStore:
                 else new_id
             )
             written.append(label_id)
-            existing = current.get(label_id)
+            held = current.get(label_id) or LabelEntry(label_id=label_id, name=name)
             _claim(current, label_id, bandcamp)
-            current[label_id] = LabelEntry(
-                label_id=label_id,
+            current[label_id] = replace(
+                held,
                 name=name,
-                match=match if match is not None else (existing.match if existing else None),
-                seed_artists=seeds if seeds else (
-                    existing.seed_artists if existing else ()
-                ),
-                track_limit=track_limit if track_limit is not None else (
-                    existing.track_limit if existing else None
-                ),
-                offer=offer if offer is not None else (existing.offer if existing else None),
-                kind=None
-                if clear_kind
-                else (kind if kind is not None else (existing.kind if existing else None)),
-                genre=None
-                if clear_genre
-                else (genre if genre is not None else (existing.genre if existing else None)),
+                match=match if match is not None else held.match,
+                seed_artists=seeds or held.seed_artists,
+                track_limit=track_limit if track_limit is not None else held.track_limit,
+                offer=offer if offer is not None else held.offer,
+                kind=None if clear_kind else (kind if kind is not None else held.kind),
+                genre=None if clear_genre else (genre if genre is not None else held.genre),
                 bandcamp=None
                 if clear_bandcamp
-                else (
-                    bandcamp
-                    if bandcamp is not None
-                    else (existing.bandcamp if existing else None)
-                ),
+                else (bandcamp if bandcamp is not None else held.bandcamp),
             )
 
         self.update(mutate)
@@ -726,19 +643,10 @@ class RegistryStore:
     def adopt(self, names: Sequence[str]) -> tuple[Adopted, ...]:
         """Add each name the registry does not already hold, under one lock.
 
-        NOT :meth:`add`, which re-adds by identifier and overwrites the display
-        name a person chose. A name is PRESENT when it resolves the way every
-        other verb resolves one: by identifier, by folded display name, then by
-        its slug. The fold is what R-381 made load bearing. A label carried over
-        under an identifier the source system chose, which need not be what
-        :func:`slug` derives from its name, would be filed a second time by a
-        check on the slug alone, with watermarks nobody can see from the first.
-
-        Resolution is against the registry AS IT STANDS INSIDE THE LOCK, entries
-        this call has already added included, so two spellings of one label in
-        one batch add it once, and a concurrent add is seen rather than doubled.
-        A name that yields no identifier is refused on its own and the rest
-        still land.
+        Not :meth:`add`, which overwrites a display name. A name is present when it
+        resolves as every verb resolves one, against the registry inside the lock,
+        this batch included, so two spellings add once. A name yielding no
+        identifier is refused alone.
         """
         results: list[Adopted] = []
 
@@ -756,19 +664,12 @@ class RegistryStore:
                 held = Registry(labels=current).resolve(name)
                 if held is not None:
                     results.append(
-                        Adopted(
-                            name=name,
-                            label_id=held.label_id,
-                            added=False,
-                            held_name=held.name,
-                        )
+                        Adopted(name=name, label_id=held.label_id, added=False, held_name=held.name)
                     )
                     continue
                 current[label_id] = LabelEntry(label_id=label_id, name=name)
                 results.append(Adopted(name=name, label_id=label_id, added=True))
-            # NOTHING ADDED, NOTHING WRITTEN, so a second run leaves the file
-            # byte for byte as it found it. See :meth:`update` for why a rewrite
-            # of equal entries is not harmless.
+            # Nothing added, nothing written, so a second run leaves the file as it was.
             return any(result.added for result in results)
 
         self.update(mutate)
@@ -791,23 +692,11 @@ class RegistryStore:
     ) -> LabelEntry:
         """Change the given fields of a held entry and keep every other one.
 
-        Not ``update``, which is the locked read, modify, write this calls. The
-        entry is resolved INSIDE the lock, by identifier or display name, so a
-        concurrent remove is a refusal rather than a resurrection. A name that
-        resolves nothing refuses rather than creating an entry, which is what
-        separates this from :meth:`add`.
+        Resolved inside the lock, so a concurrent remove is a refusal, and a name
+        resolving nothing refuses rather than creating an entry.
         """
         seeds = _checked_seeds(seed_artists) if seed_artists is not None else None
-        if track_limit is not None:
-            check_track_limit(track_limit)
-        if offer is not None:
-            check_offer(offer)
-        if kind is not None:
-            kind = check_kind(kind)
-        if genre is not None:
-            genre = check_genre(genre)
-        if bandcamp is not None:
-            bandcamp = bandcamp_account(bandcamp)
+        kind, genre, bandcamp = _checked(track_limit, offer, kind, genre, bandcamp)
         edited: list[LabelEntry] = []
 
         def mutate(current: dict[str, LabelEntry]) -> None:
@@ -828,12 +717,9 @@ class RegistryStore:
                 seed_artists=seeds if seeds is not None else existing.seed_artists,
                 track_limit=track_limit if track_limit is not None else existing.track_limit,
                 offer=offer if offer is not None else existing.offer,
-                # ``clear_kind`` IS THE ONLY WAY BACK TO NONE. A kind of None
-                # means "keep what is held", as it does for every field here.
+                # A None field keeps what is held; a clear flag is the way back to None.
                 kind=None if clear_kind else (kind if kind is not None else existing.kind),
-                # ``clear_genre`` is the way back to None, as ``clear_kind`` is.
                 genre=None if clear_genre else (genre if genre is not None else existing.genre),
-                # ``clear_bandcamp`` is the way back to None, as ``clear_kind`` is.
                 bandcamp=None
                 if clear_bandcamp
                 else (bandcamp if bandcamp is not None else existing.bandcamp),

@@ -1,41 +1,34 @@
 """The quarter playlists under Favorites, split into months and retired (U145).
 
-Until U145 a landed heart went into the playlist of the UTC quarter it was
-hearted in, ``Favorites / 2026-Q4``, the source system's grain. The author
-chose a month grain on 2026-10-14, and so the folder reads one way, the
-quarters already there are split once: every live member of every quarter
-playlist joins the playlist of its own month, ``2026-10``, and the emptied
-quarter playlists are retired. ``crate favorites split`` asks; this module
-plans and writes.
+A landed heart went into its UTC quarter's playlist, ``Favorites / 2026-Q4``,
+until the author chose a month grain (U145). So the folder reads one way, the
+quarters are split once: every live member of every quarter playlist joins its
+own month's playlist, ``2026-10``, and the emptied quarters are retired.
+``crate favorites split`` asks; this module plans and writes.
 
-**THE DATE IS THE JOB'S FIRST AND THE ACCOUNT'S SECOND, LISTED ONCE.** A hearts
-job freezes each heart's date on its row (``intake.cli.HEARTED``), so every
-row of every hearts job on this library is read, whatever its match state,
-and tied to the library's rows by the one match rule. A member no job dates
-is looked for among the account's hearts, listed once and only when some
-member needs it. A member dated nowhere goes to ``Undated`` and is named,
-since its quarter is retired and Undated is the folder's one home for a heart
-with no date.
+**THE DATE IS THE JOB'S FIRST AND THE ACCOUNT'S SECOND, LISTED ONCE.** Every row
+of every hearts job on this library is read, whatever its match state, and tied
+to the library's rows by the one match rule. A member no job dates is looked
+for among the account's hearts, listed once and only when needed; a member
+dated nowhere goes to ``Undated`` and is named, since its quarter is retired.
 
 **ADD ONLY, THEN RETIRE.** The memberships go in one commit, through the one
-writer that owns "only when absent", and no heart is taken out of a month or
-moved between months. The quarters are retired in a SECOND commit, each by
-:func:`rb_writer.remove_playlist_node`, the soft delete the INBOX rotation
-uses, and only once every member a quarter holds reads back live in its
-month. A quarter the first commit did not empty is not retired.
+writer that owns "only when absent". The quarters are retired in a SECOND
+commit by :func:`rb_writer.remove_playlist_node`, the INBOX rotation's soft
+delete, and only once every member a quarter holds reads back live in its
+month.
 
 **A RUN STOPPED PARTWAY RE-PLANS TO THE SAME DIGEST.** The digest covers what
-the split is FOR, the home, each quarter's row and members and each member's
-month, and never what the months hold already or whether they exist yet. So a
-run whose first commit landed and whose second did not plans the same split,
-is approved against the same digest, adds nothing and retires the quarters.
-Once they are retired there is nothing to plan, and the verb asks nothing.
+the split is FOR, never what the months hold already or whether they exist,
+so a run whose second commit did not land is approved against the same
+digest, adds nothing and retires the quarters.
 
 Layer: modules.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
@@ -43,12 +36,11 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from cratekit.acquire import match, match_cli
 from cratekit.cli.output import digest_of
-from cratekit.core import config, convergence, jobs, rb_writer, session, tree_registry
-from cratekit.core.cause import CratekitError, refuse
-from cratekit.favorites import backfill, placeholders, placement
-from cratekit.intake import account_playlists, native
+from cratekit.core import config, convergence, rb_writer, session, tree_registry
+from cratekit.core.cause import refuse
+from cratekit.favorites import backfill, placeholders, placement, spine
 from cratekit.intake import cli as intake_cli
-from cratekit.label import catalogue
+from cratekit.intake import native
 from cratekit.write import trees
 
 #: The session workflow the split is recorded under, and its plan's kind.
@@ -71,11 +63,6 @@ BY_NONE = "none"
 _ORIGIN = ("favorites", "split")
 
 
-# ---------------------------------------------------------------------------
-# What the folder holds
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True, slots=True)
 class Quarter:
     """One quarter playlist under the folder, and the content rows it holds live."""
@@ -86,12 +73,10 @@ class Quarter:
 
 
 def quarters(db: Any, home: placement.Home) -> tuple[Quarter, ...]:
-    """Every live plain playlist beside the source whose whole name is a quarter.
+    """Every live plain playlist beside the source whose whole name is a quarter, ``2026-Q4``.
 
-    By name, ``2026-Q4``, the name U120 and the source system gave them, read
-    from the home the placement resolved, so a quarter is only ever one that
-    sits where a landing would have put it. In name order, so the screen and
-    the digest read in one order.
+    Read from the home the placement resolved, so a quarter is only one where a
+    landing would have put it, and in name order for the screen and the digest.
     """
     found: list[Quarter] = []
     for name, row in sorted(home.present.items()):
@@ -104,11 +89,6 @@ def quarters(db: Any, home: placement.Home) -> tuple[Quarter, ...]:
         ]
         found.append(Quarter(name=name, playlist_id=str(row), members=tuple(dict.fromkeys(held))))
     return tuple(found)
-
-
-# ---------------------------------------------------------------------------
-# The dating: the job first, the account second
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,9 +121,8 @@ def _tied(
 ) -> dict[str, datetime]:
     """The date of each wanted content row the dated ``rows`` resolve to, the first mention winning.
 
-    THE ONE MATCH RULE THE INTAKE WORKER USES, tombstones included, then the
-    one rule for a path against a row. A row two hearts resolve to takes the
-    first one's date, which is the order the caller hands them in.
+    THE ONE MATCH RULE THE INTAKE WORKER USES, tombstones included, then the one
+    rule for a path against a row.
     """
     if not rows or not wanted:
         return {}
@@ -169,36 +148,27 @@ def _tied(
 def _job_rows(cfg: config.Config) -> tuple[list[tuple[match.Wanted, datetime]], tuple[str, ...]]:
     """Each heart a hearts job on this library dated, once, oldest job first, whatever its state.
 
-    NOT ONLY THE ROWS A DOWNLOAD WAS MADE FROM, as the backfill's are: a heart
-    the library owned when its job ran is still dated on its row, and the
-    quarters hold owned hearts above all. Read through the one reader of a
-    hearts job's frozen rows, every state admitted. A PROVIDER IDENTIFIER IS
-    RESOLVED ONCE, its first dated mention winning, since every sync freezes
-    the whole listing again and the match is the slow part. A job whose
-    reports cannot be read is skipped and named, for the backfill's reason.
+    EVERY STATE, since a heart the library owned when its job ran is still
+    dated on its row and the quarters hold owned hearts above all. A PROVIDER
+    IDENTIFIER IS RESOLVED ONCE, its first dated mention winning, since every
+    sync freezes the whole listing again and the match is the slow part.
     """
+    rows, unreadable = backfill.reported(cfg)
     found: dict[str, tuple[match.Wanted, datetime]] = {}
-    unreadable: list[str] = []
-    with jobs.open_store() as store:
-        for job in backfill.hearts_jobs(cfg):
-            try:
-                rows = account_playlists.carried_hearts(store, job, states=None)
-            except CratekitError:
-                unreadable.append(job.job_id)
-                continue
-            for row in rows:
-                if row.hearted is not None and row.ref not in found:
-                    found[row.ref] = (row.wanted, row.hearted)
-    return list(found.values()), tuple(unreadable)
+    for row in rows:
+        if row.hearted is not None and row.ref not in found:
+            found[row.ref] = (row.wanted, row.hearted)
+    return list(found.values()), unreadable
 
 
 def date_members(cfg: config.Config, db: Any, content_ids: Iterable[str]) -> Dating:
     """Each content row's date: a hearts job's frozen one, else the account's, else none.
 
-    The library is walked once for both, and the account is listed once, only
-    when some row no job dates, through the hearts listing every favourites
-    verb reads, so a listing that cannot be read refuses with its own reason.
+    The library is walked once for both, and the account listed once, only when
+    some row no job dates; a listing that cannot be read refuses with its reason.
     """
+    from cratekit.label import catalogue
+
     wanted = {str(content_id) for content_id in content_ids}
     if not wanted:
         return Dating(by_row={})
@@ -227,11 +197,6 @@ def date_members(cfg: config.Config, db: Any, content_ids: Iterable[str]) -> Dat
     return Dating(by_row=by_row, listed=listed, withheld=withheld, unreadable=unreadable)
 
 
-# ---------------------------------------------------------------------------
-# The plan
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True, slots=True)
 class Member:
     """One content row a quarter holds, the quarters it sits in, and its month."""
@@ -246,6 +211,10 @@ class Member:
     def month(self) -> str:
         return placeholders.month_label(self.hearted)
 
+    def said(self, row: str = "") -> str:
+        """The member as a person reads it, by title, with the quarters it came from."""
+        return f"{self.title or 'row ' + self.content_id} ({row}from {', '.join(self.quarters)})"
+
 
 @dataclass(frozen=True, slots=True)
 class SplitPlan:
@@ -253,19 +222,15 @@ class SplitPlan:
 
     home: placement.Home
     quarters: tuple[Quarter, ...]
-    #: The members a month takes, every live member of a quarter but those
-    #: the author took back.
+    #: Every live member of a quarter but those the author took back.
     members: tuple[Member, ...]
-    #: Each month the members go to, by name in order, with its members in
-    #: quarter order. Derived from ``members`` once, by :func:`_planned`.
+    #: Each month by name in order, with its members in quarter order.
     months: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
-    #: Each planned month's live members when planned, for the counts. NOT
-    #: DIGESTED, so a run whose additions landed plans the same split.
+    #: Each month's live members when planned, for the counts. NOT DIGESTED, so
+    #: a run whose additions landed plans the same split.
     held: Mapping[str, frozenset[str]] = field(default_factory=dict)
-    #: Members whose All Favorites membership rekordbox marked removed and
-    #: that All Favorites no longer holds live: the author took the heart
-    #: back, so no month takes it, as the backfill never puts one back. Named,
-    #: and the quarter holding it still retires.
+    #: Members the author took out of All Favorites by hand: no month takes
+    #: them, as the backfill never puts one back, and their quarter retires.
     taken_back: tuple[Member, ...] = ()
     digest: str = ""
     listed: bool = False
@@ -297,13 +262,10 @@ class SplitPlan:
         return bool(self.quarters)
 
     def identity(self) -> dict[str, Any]:
-        """What the digest covers: the split's intent, never the months' state.
+        """What the digest covers: the home, each quarter's row and members, each member's month.
 
-        The home's rows, each quarter's row and live members, and each member's
-        month. The month rows and what they hold are left out on purpose, so a
-        run stopped after its additions re-plans to the digest it was approved
-        for; a quarter that gained or lost a member, or a member whose date
-        reads differently, is another plan.
+        Never the months' rows or what they hold, so a run stopped after its
+        additions re-plans to the digest it was approved for.
         """
         return {
             "kind": WORKFLOW,
@@ -343,10 +305,8 @@ def _in_quarters(held_quarters: Sequence[Quarter]) -> dict[str, list[str]]:
 def taken_back(db: Any, home: placement.Home, content_ids: Iterable[str]) -> frozenset[str]:
     """The rows among ``content_ids`` the author took out of the source by hand.
 
-    THE BACKFILL'S RULE (U120), read the same way: a membership of the source
-    that rekordbox marked removed is the author un-hearting the track in the
-    library. A row that is back in the source live was hearted again, so it
-    is not taken back.
+    THE BACKFILL'S RULE (U120): a membership of the source rekordbox marked
+    removed, unless the row is back in the source live, hearted again.
     """
     wanted = {str(content_id) for content_id in content_ids}
     removed = placement.members_marked_removed(db, home.source_id) & wanted
@@ -364,16 +324,11 @@ def _planned(
     in_quarters = _in_quarters(held_quarters)
     gone = taken_back(db, home, in_quarters)
     titles = _titles(db, in_quarters)
-    every = [
-        Member(
-            content_id=content_id,
-            title=titles.get(content_id, ""),
-            quarters=tuple(names),
-            hearted=dating.by_row.get(content_id, Dated(None, BY_NONE)).hearted,
-            dated_by=dating.by_row.get(content_id, Dated(None, BY_NONE)).dated_by,
-        )
-        for content_id, names in in_quarters.items()
-    ]
+    every: list[Member] = []
+    for content_id, names in in_quarters.items():
+        dated = dating.by_row.get(content_id, Dated(None, BY_NONE))
+        title = titles.get(content_id, "")
+        every.append(Member(content_id, title, tuple(names), dated.hearted, dated.dated_by))
     members = tuple(one for one in every if one.content_id not in gone)
     by_month: dict[str, list[str]] = {}
     for one in members:
@@ -400,9 +355,8 @@ def _planned(
 def plan(cfg: config.Config, db: Any, *, source: str) -> SplitPlan:
     """The quarters under the home, each member dated, planned against what the folder holds.
 
-    A library with no quarter playlist plans nothing, and nothing is dated,
-    so the account is never asked and the library never walked. A member the
-    author took back is not dated, since no month takes it.
+    With no quarter nothing is dated, so the account is never asked and the
+    library never walked; a member the author took back is not dated either.
     """
     home = placement.resolve_home(db, source)
     held = quarters(db, home)
@@ -415,10 +369,9 @@ def plan(cfg: config.Config, db: Any, *, source: str) -> SplitPlan:
 def replan(db: Any, approved: SplitPlan, *, source: str) -> SplitPlan:
     """The split planned again on this handle, the approved dates reused, so the digest compares the database.
 
-    THE MEMBERS ARE NOT DATED AGAIN: dating walks the library and may list the
-    account, and what can move between the approval and the write is the home,
-    the quarters and what they hold, which is what the digest covers. A member
-    the approved plan never dated is undated here, which moves the digest.
+    NOT DATED AGAIN: dating walks the library and may list the account, and
+    what can move in between is the home and the quarters, which the digest
+    covers. A member the approved plan never dated is undated here.
     """
     home = placement.resolve_home(db, source)
     dating = Dating(
@@ -432,30 +385,21 @@ def replan(db: Any, approved: SplitPlan, *, source: str) -> SplitPlan:
 
 def payload(planned: SplitPlan) -> dict[str, Any]:
     """The plan as the gate shows it: one item per month to fill and one per quarter to retire."""
-    items: list[dict[str, Any]] = []
-    for name, ids in planned.months.items():
-        held = planned.held.get(name, frozenset())
-        items.append(
-            {
-                "action": "fill",
-                "playlist": name,
-                "count": len(ids),
-                "adds": sum(1 for content_id in ids if content_id not in held),
-                "made": name in planned.creates,
-            }
-        )
-    for one in planned.quarters:
-        items.append(
-            {
-                "action": "retire",
-                "playlist": one.name,
-                "row": one.playlist_id,
-                "count": len(one.members),
-            }
-        )
-    by_source: dict[str, int] = {}
-    for one in planned.members:
-        by_source[one.dated_by] = by_source.get(one.dated_by, 0) + 1
+    items: list[dict[str, Any]] = [
+        {
+            "action": "fill",
+            "playlist": name,
+            "count": len(ids),
+            "adds": sum(1 for one in ids if one not in planned.held.get(name, frozenset())),
+            "made": name in planned.creates,
+        }
+        for name, ids in planned.months.items()
+    ]
+    items.extend(
+        {"action": "retire", "playlist": q.name, "row": q.playlist_id, "count": len(q.members)}
+        for q in planned.quarters
+    )
+    by_source = Counter(one.dated_by for one in planned.members)
     return {
         "digest": planned.digest,
         "items": items,
@@ -467,8 +411,8 @@ def payload(planned: SplitPlan) -> dict[str, Any]:
             "retires": len(planned.quarters),
             "undated": len(planned.undated),
             "taken back": len(planned.taken_back),
-            "dates from jobs": by_source.get(BY_JOB, 0),
-            "dates from the account": by_source.get(BY_ACCOUNT, 0),
+            "dates from jobs": by_source[BY_JOB],
+            "dates from the account": by_source[BY_ACCOUNT],
             "jobs unread": len(planned.unreadable),
         },
         "chunk": None,
@@ -479,26 +423,22 @@ def facts(planned: SplitPlan) -> dict[str, Any]:
     """The facts beside the items on the gate screen, one line per fact."""
     home = planned.home
     where = repr(home.folder_name) if home.folder_name else "the playlist root"
-    months = planned.months
     shown: dict[str, Any] = {
         "under": f"{where}, beside {home.source_name!r} (row {home.source_id})",
         "quarters to retire": [f"{one.name} ({len(one.members)})" for one in planned.quarters],
         "month playlists": [
             f"{name} ({len(ids)})" + (", made" if name in planned.creates else "")
-            for name, ids in months.items()
+            for name, ids in planned.months.items()
         ],
         "memberships to add": planned.adds,
     }
     if planned.undated:
         shown["undated"] = [
-            f"{one.title or 'row ' + one.content_id} (row {one.content_id}, from "
-            f"{', '.join(one.quarters)})"
-            for one in planned.undated
+            one.said(f"row {one.content_id}, ") for one in planned.undated
         ]
     if planned.taken_back:
         shown["taken back"] = [
-            f"{one.title or 'row ' + one.content_id} (row {one.content_id}, from "
-            f"{', '.join(one.quarters)}), removed from {home.source_name!r} in rekordbox"
+            f"{one.said(f'row {one.content_id}, ')}, removed from {home.source_name!r} in rekordbox"
             for one in planned.taken_back
         ]
     if planned.withheld:
@@ -511,11 +451,6 @@ def facts(planned: SplitPlan) -> dict[str, Any]:
     return shown
 
 
-# ---------------------------------------------------------------------------
-# The confinement of the additions
-# ---------------------------------------------------------------------------
-
-
 def addition_violations(
     before: rb_writer.NodeTables,
     after: rb_writer.NodeTables,
@@ -525,21 +460,16 @@ def addition_violations(
 ) -> list[str]:
     """Every difference between two readings that the planned additions do not explain.
 
-    ``planned`` maps each month playlist row the write used to the content rows
-    the plan names for it, and ``created`` each playlist row the write made to
-    its ``(name, parent)``. Empty means the additions were confined.
-
-    PURE, as :func:`rb_writer.node_change_violations` is, so every branch is
-    reachable with literal readings. What it explains, and nothing more:
+    ``planned`` maps each month row the write used to the content rows the plan
+    names for it, ``created`` each row the write made to its ``(name, parent)``.
+    PURE, so every branch is reachable with literal readings. It explains:
 
     * no content row differs, is added or disappears;
-    * no membership row disappears or changes, and every membership row added
-      is live and joins a planned month with a content row the plan names for
-      THAT month, so the writer cannot add a membership the plan did not name;
+    * no membership row disappears or changes, and every one added is live and
+      joins a planned month with a content row the plan names for THAT month;
     * the playlist rows added are exactly ``created``, live, plain, of the
-      planned name and under the planned parent, and no playlist row
-      disappears; an existing one may move only its bookkeeping, and only
-      when it is a planned month or sits beside a made one.
+      planned name and parent, and none disappears; an existing one moves only
+      its bookkeeping, and only when it is a planned month or beside a made one.
     """
     violations: list[str] = []
     wanted = {str(row): {str(content_id) for content_id in ids} for row, ids in planned.items()}
@@ -618,30 +548,13 @@ def assert_additions_confined(
     planned: Mapping[str, Iterable[str]],
     created: Mapping[str, tuple[str, str]],
 ) -> None:
-    """Refuse, before the commit, an addition the plan did not name, read from SQL.
-
-    The pending work is flushed DELIBERATELY, inside the transaction, so the
-    second reading sees it and a refusal still rolls back, as
-    :func:`rb_writer.assert_node_changes_confined` does for the same reason.
-    """
-    db.session.flush()
-    violations = addition_violations(
-        before, rb_writer.node_tables(db), planned=planned, created=created
+    """Refuse, before the commit, an addition the plan did not name, read from SQL."""
+    spine.confined(
+        db,
+        lambda after: addition_violations(before, after, planned=planned, created=created),
+        "the split's additions reached rows the plan did not name",
+        _ORIGIN,
     )
-    if violations:
-        db.rollback()
-        raise refuse(
-            "whitelist-violation",
-            "the split's additions reached rows the plan did not name, read from SQL "
-            "before the commit, so nothing was written:\n  - " + "\n  - ".join(violations),
-            origin=_ORIGIN,
-            detail={"violations": violations},
-        )
-
-
-# ---------------------------------------------------------------------------
-# The write
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -664,16 +577,8 @@ def _record_split_commit(
     record: session.SessionRecord, *, added: int, retired: int, cfg: config.Config
 ) -> None:
     """Record a commit on the session, as rows created and rows changed under the favourites key."""
-    if added <= 0 and retired <= 0:
-        return
-    session.record_commit(
-        record,
-        placement.RECORD_KEY,
-        session.ChangeSummary(
-            (session.TreeChange(tree=placement.RECORD_KEY, created=added, updated=retired),)
-        ),
-        cfg,
-    )
+    if added > 0 or retired > 0:
+        session.record_commit(record, placement.RECORD_KEY, spine.change(added, retired), cfg)
 
 
 def _unemptied(db: Any, planned: SplitPlan, rows: Mapping[str, str]) -> list[str]:
@@ -716,39 +621,23 @@ def apply(
     """Add every member to its month in one commit, then retire the emptied quarters in a second.
 
     THE PLAN IS TAKEN AGAIN ON THIS HANDLE FIRST and a digest that moved
-    refuses, since the approved one was read on a handle that has since
-    closed. THE SESSION SPINE IS CALLED, NOT REBUILT, as the genre Favorites
-    refresh calls it for its own two commits: the gates with a record kept,
-    one capture verified before anything is written, the analysis watch over
-    the roots named, a commit witness on each commit, and the guarded commit,
-    the second admitting the playlist and the membership tables alone.
-
-    EACH COMMIT IS CONFINED FROM SQL BEFORE IT LANDS: the additions by
-    :func:`assert_additions_confined`, the retirements by
-    :func:`rb_writer.assert_node_changes_confined`. And no quarter is retired
-    until every member it holds reads back live in its month.
+    refuses, the approved one having been read on a handle since closed. THE
+    SESSION SPINE IS CALLED, NOT REBUILT, as the genre Favorites refresh calls
+    it for its own two commits, the second admitting the playlist and the
+    membership tables alone. EACH COMMIT IS CONFINED FROM SQL BEFORE IT LANDS,
+    and no quarter is retired until every member it holds reads back live in
+    its month.
     """
-    watched = [Path(root) for root in analysis_roots]
-    if not watched:
-        raise ValueError(
-            "analysis_roots is empty, so the analysis-file watch would watch nothing "
-            "and this session would report itself clean whatever happened to the "
-            "library's grids; name the roots this write could touch"
-        )
-    again = replan(db, approved, source=source)
-    if again.digest != approved.digest:
-        raise refuse(
-            "decision-stale",
-            "the quarter playlists are not as the approved plan read them, so nothing "
-            "was written; run it again and approve what it shows now",
-            origin=_ORIGIN,
-            detail={"approved": approved.digest, "now": again.digest},
-        )
-    planned = again
+    watched = spine.watched(analysis_roots)
+    planned = spine.fresh(
+        replan(db, approved, source=source),
+        approved,
+        "the quarter playlists are not as the approved plan read them, so nothing was written",
+        _ORIGIN,
+    )
     home = planned.home
-    # THE OUT OF BAND RESTORE IS DETECTED BEFORE THE FINGERPRINT IS TOUCHED,
-    # as the backfill does: the Favorites folder is no tree, so the detection
-    # marks and never refuses here.
+    # THE OUT OF BAND RESTORE IS DETECTED BEFORE THE FINGERPRINT IS TOUCHED:
+    # the Favorites folder is no tree, so the detection marks and never refuses.
     convergence.detect_out_of_band_restore(cfg, db, tree_registry.read(cfg))
 
     written: list[tuple[str, str, int]] = []
@@ -762,45 +651,41 @@ def apply(
 
         # ── the additions, and their own commit ────────────────────────────
         added = 0
-        with rb_writer.commit_witness(db) as witness:
-            try:
-                parent = None
-                if home.folder_id:
-                    parent = db.get_playlist(ID=home.folder_id)
-                    if parent is None or rb_writer.node_removed(parent):
-                        raise refuse(
-                            "decision-stale",
-                            f"the folder {home.folder_name!r} (row {home.folder_id}) is not "
-                            f"live any more, so nothing was written",
-                            origin=_ORIGIN,
-                            detail={"folder": home.folder_id},
-                        )
-                parent_id = str(parent.ID) if parent is not None else ""
-                before = rb_writer.node_tables(db)
-                made: dict[str, tuple[str, str]] = {}
-                for name, ids in planned.months.items():
-                    row, fresh = placement.month_row(db, name, parent, source_id=home.source_id)
-                    rows[name] = str(row.ID)
-                    if fresh:
-                        db.session.flush()
-                        made[str(row.ID)] = (name, parent_id or str(row.ParentID))
-                        created.append(name)
-                    count = len(rb_writer.add_memberships(db, row, ids))
-                    added += count
-                    written.append((name, str(row.ID), count))
-                assert_additions_confined(
-                    db,
-                    before,
-                    planned={rows[name]: ids for name, ids in planned.months.items()},
-                    created=made,
-                )
-                if added or made:
-                    rb_writer.commit_guarded(db)
-            except BaseException:
-                trees.rollback_quietly(db)
-                if witness.landed:
-                    _record_split_commit(record, added=added, retired=0, cfg=cfg)
-                raise
+        with spine.witnessed(
+            db, lambda: _record_split_commit(record, added=added, retired=0, cfg=cfg)
+        ):
+            parent = None
+            if home.folder_id:
+                parent = db.get_playlist(ID=home.folder_id)
+                if parent is None or rb_writer.node_removed(parent):
+                    raise refuse(
+                        "decision-stale",
+                        f"the folder {home.folder_name!r} (row {home.folder_id}) is not "
+                        f"live any more, so nothing was written",
+                        origin=_ORIGIN,
+                        detail={"folder": home.folder_id},
+                    )
+            parent_id = str(parent.ID) if parent is not None else ""
+            before = rb_writer.node_tables(db)
+            made: dict[str, tuple[str, str]] = {}
+            for name, ids in planned.months.items():
+                row, fresh = placement.month_row(db, name, parent, source_id=home.source_id)
+                rows[name] = str(row.ID)
+                if fresh:
+                    db.session.flush()
+                    made[str(row.ID)] = (name, parent_id or str(row.ParentID))
+                    created.append(name)
+                count = len(rb_writer.add_memberships(db, row, ids))
+                added += count
+                written.append((name, str(row.ID), count))
+            assert_additions_confined(
+                db,
+                before,
+                planned={rows[name]: ids for name, ids in planned.months.items()},
+                created=made,
+            )
+            if added or made:
+                rb_writer.commit_guarded(db)
         _record_split_commit(record, added=added, retired=0, cfg=cfg)
         if added:
             convergence.record_fingerprint(cfg, db)
@@ -815,24 +700,17 @@ def apply(
                 origin=_ORIGIN,
                 detail={"unemptied": unemptied, "session": record.session_id},
             )
-        with rb_writer.commit_witness(db) as witness:
-            try:
-                before = rb_writer.node_tables(db)
-                for one in planned.quarters:
-                    rb_writer.remove_playlist_node(db, db.get_playlist(ID=one.playlist_id))
-                    retired.append(one.name)
-                rb_writer.assert_node_changes_confined(
-                    db,
-                    before,
-                    moved={},
-                    removed=[one.playlist_id for one in planned.quarters],
-                )
-                rb_writer.commit_guarded(db, removals=REMOVALS)
-            except BaseException:
-                trees.rollback_quietly(db)
-                if witness.landed:
-                    _record_split_commit(record, added=0, retired=len(retired), cfg=cfg)
-                raise
+        with spine.witnessed(
+            db, lambda: _record_split_commit(record, added=0, retired=len(retired), cfg=cfg)
+        ):
+            before = rb_writer.node_tables(db)
+            for one in planned.quarters:
+                rb_writer.remove_playlist_node(db, db.get_playlist(ID=one.playlist_id))
+                retired.append(one.name)
+            rb_writer.assert_node_changes_confined(
+                db, before, moved={}, removed=[one.playlist_id for one in planned.quarters]
+            )
+            rb_writer.commit_guarded(db, removals=REMOVALS)
         _record_split_commit(record, added=0, retired=len(retired), cfg=cfg)
         convergence.record_fingerprint(cfg, db)
         disagreements = _read_back(db, planned, rows)
@@ -848,15 +726,12 @@ def apply(
 
 def assert_read_back(done: Split) -> None:
     """Refuse an answer the database does not hold."""
-    if done.disagreements:
-        raise refuse(
-            "session-committed-unverified",
-            "the favourites read back from the database are not the split's: "
-            + "; ".join(done.disagreements)
-            + "; the commits landed and this answer cannot be vouched for",
-            origin=_ORIGIN,
-            detail={"disagreements": list(done.disagreements), "session": done.session_id},
-        )
+    spine.verified(
+        done,
+        "the favourites read back from the database are not the split's",
+        _ORIGIN,
+        commits="commits",
+    )
 
 
 __all__ = [

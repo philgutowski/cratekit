@@ -1,14 +1,13 @@
-"""A label catalogue as a sync source: newest-N, verified, not tombstoned.
+"""A label catalogue as a sync source: newest N, verified, not tombstoned.
 
-``list_recent`` does not read a watermark and does not apply a date floor.
-U22's increment owns the source cursor. This module owns verification,
-tombstone consultation, the review-queue offer, and since R-259 the question of
-which releases the library already holds, :class:`OwnedReleases`.
+``list_recent`` reads no watermark and applies no date floor; the increment
+owns the cursor. This module owns verification, the tombstone consult, the
+review queue offer and which releases the library holds (:class:`OwnedReleases`,
+R-259).
 
-It also owns one refusal, and it is the module's sharpest rule: a catalogue
-that could not be READ raises ``run.LookupFailure`` and never returns an empty
-listing. Empty means the crawl was exhausted, and nothing else may mean it.
-R-135 is what happens when those two answers share a shape.
+Its sharpest rule: a catalogue that could not be read raises
+``run.LookupFailure`` and never returns an empty listing. Empty means the crawl
+was exhausted and nothing else (R-135).
 """
 
 from __future__ import annotations
@@ -38,8 +37,7 @@ from cratekit.label.catalogue import (
 )
 from cratekit.sync import run
 
-#: The review kind a release is filed under. The gate module declares the
-#: word, since this module imports that one, and this is the same object.
+#: The review kind a release is filed under, the gate module's word.
 KIND = genre_gate.RELEASE_KIND
 HANDLER_KEY = "sync.labels"
 
@@ -57,10 +55,9 @@ class Dropped:
 class Gated:
     """One release the genre gate is holding back, and what it judged (R-798).
 
-    ``standing`` says the hold was already recorded by an earlier sweep and was
-    judged again from its own words. Such a release was not verified this
-    sweep, which is why the worker's "confirmed none" refusal counts it with
-    the queued ones.
+    ``standing`` is a hold an earlier sweep recorded, judged again from its own
+    words and not verified this sweep, so the worker's "confirmed none" refusal
+    counts it with the queued ones.
     """
 
     candidate: run.Candidate
@@ -72,20 +69,14 @@ class Gated:
 class Canary:
     """The one held release a sweep verified again, and what the verifier answered (U277).
 
-    Asked only when the sweep turned down every release it asked about and
-    holds one, chosen as :func:`_canary_of` says. Carried on the listing so the
-    run can say which release it was and what it answered: ``unconfirmed`` is
-    a release the verifier found no label credit for, the answer a provider
-    that is not answering gives, ``mismatch`` one credited to a name the
-    needle does not match, with the name in ``notes``, and ``gone`` one the
-    provider no longer has (R-1634), which refuses only when no other held
-    release could be read in its place.
+    Asked only when the sweep turned down every release it asked about, chosen as
+    :func:`_canary_of` says. ``unconfirmed`` is no label credit, ``mismatch`` a
+    credit the needle does not match (the name in ``notes``), and ``gone`` a
+    release the provider no longer has (R-1634).
 
-    ``basis`` IS WHAT THE ANSWER RESTED ON (R-1634): :data:`READ_PROVIDER`, the
-    provider was read for the release; :data:`READ_LINE`, it was judged from
-    its own copyright line with no provider call, which says the needle is
-    right and nothing of the provider; :data:`READ_NONE`, no provider read was
-    to hand, so it was not asked and counts as not confirmed.
+    ``basis`` is what the answer rested on (R-1634): :data:`READ_PROVIDER`,
+    :data:`READ_LINE` (its own copyright line, nothing of the provider), or
+    :data:`READ_NONE` (not asked, counted as not confirmed).
     """
 
     identity: str
@@ -100,7 +91,7 @@ class Canary:
         return self.verdict == "confirmed"
 
     def how(self) -> str:
-        """How the release was verified again, in words a person reads before :meth:`said`."""
+        """How the release was verified again, read before :meth:`said`."""
         return _BASIS_SAID.get(self.basis, "")
 
     def said(self) -> str:
@@ -138,75 +129,44 @@ _BASIS_SAID = {
 class LabelListing:
     """What one label's crawl produced after verification and tombstones.
 
-    ``listed`` IS HOW MANY RELEASES THE CRAWL READ, before any of them was
-    classified, and it is carried because the three tuples do not add up to it.
-    A release the library already owns is skipped without a record, and the
-    newest-N cap stops the loop with releases still unread. The worker that
-    refuses "read N and confirmed none" needs the N, and ``len(dropped)`` alone
-    was that number only when nothing else happened to the listing: a label
-    whose confirmed releases were all tombstoned and whose others were dropped
-    was refused as a catalogue nobody could verify a line of, with
-    ``confirmed: 0``, over a release that verified fine.
+    ``listed`` is how many releases the crawl read, since the tuples do not add up
+    to it: an owned release is skipped without a record and the window stops the
+    loop early. The worker's "read N and confirmed none" refusal needs the N.
     """
 
     candidates: tuple[run.Candidate, ...]
     dropped: tuple[Dropped, ...]
     suppressed: tuple[run.Candidate, ...]
     listed: int = 0
-    #: The parts of the catalogue the crawl could not read. Non empty means
-    #: ``listed`` is a count of part of the label, not of all of it (R-261).
+    #: The parts of the catalogue the crawl could not read; non empty means
+    #: ``listed`` counts part of the label (R-261).
     unread: tuple[Unread, ...] = ()
-    #: Releases ALREADY IN THE REVIEW QUEUE that took a place in the offer
-    #: window and were not filed again (R-790).
+    #: Releases already in the review queue that took a place in the window (R-790).
     held: int = 0
-    #: Releases the crawl listed past the full window that may still be the
-    #: label's: each whose copyright line names the label by its needle, and
-    #: each with no line at all (U238). A release whose line plainly names
-    #: another label is left out, since verification would call it a mismatch
-    #: and it is only another artist of the roster's release elsewhere. NOT a
-    #: count of unowned releases: nothing past the window was verified with a
-    #: provider read, tombstone checked or asked about ownership, because each
-    #: of those questions costs a call or a judgement the window never made. It
-    #: is the most the label could still offer, and the number a person raises
-    #: the window against.
+    #: Releases listed past the full window that may still be the label's: each
+    #: whose copyright line names the label's needle, and each with no line (U238).
+    #: Nothing past the window was verified, tombstone checked or asked about
+    #: ownership; it is the most the label could still offer.
     beyond: int = 0
-    #: The part of ``beyond`` with NO COPYRIGHT LINE, so whether each is the
-    #: label's is unknown until the provider is read again, the read a sweep
-    #: makes only inside its window (U238). Counted in ``beyond`` rather than
-    #: dropped from it, because a field the listing omitted is not evidence of
-    #: another label, and said as a bound rather than as the label's releases.
+    #: The part of ``beyond`` with no copyright line, unknown until read (U238).
     beyond_unchecked: int = 0
-    #: ``held`` when the sweep confirmed nothing new and the one held release
-    #: it then re-verified did not confirm either, else zero. The worker's
-    #: "confirmed none of what it read" refusal counts these with ``dropped``,
-    #: because before R-790 every held release was verified again and a dead
-    #: endpoint dropped them too; without this, a label with anything in the
-    #: queue would report "nothing new" over a verifier that answers nothing.
-    #: A release the genre gate was already holding counts here too, since it
-    #: is not verified again either (R-798).
+    #: ``held``, plus the standing gate holds, when the sweep confirmed nothing new
+    #: and the held release re-verified did not confirm either, else zero (R-790,
+    #: R-798). The worker counts these with ``dropped``.
     held_unconfirmed: int = 0
-    #: The held release re-verified for ``held_unconfirmed`` and its answer, or
-    #: ``None`` when none was asked (U277). The run says it, so a person
-    #: reading a refusal knows what was asked and what the verifier answered.
+    #: The held release re-verified for ``held_unconfirmed``, or ``None`` (U277).
     canary: Canary | None = None
-    #: Releases THE GENRE GATE IS HOLDING BACK, each of which took a place in
-    #: the offer window and was not filed (R-798). Not ``held`` above, which is
-    #: the releases already in the queue: the two words met by accident, and
-    #: this one is the gate's.
+    #: Releases the genre gate is holding back, each taking a place in the window
+    #: and not filed (R-798). Not ``held``, which is the queue's.
     gated: tuple[Gated, ...] = ()
-    #: The identities of standing holds this pass RELEASED, because the gate no
-    #: longer holds them. Each is in ``candidates``, and its hold is dropped
-    #: once it is filed.
+    #: Standing holds this pass released; each is in ``candidates`` and its hold is
+    #: dropped once filed.
     released: tuple[str, ...] = ()
-    #: The identities of holds in force that are HOLDS NO LONGER and will not be
-    #: filed by this pass: the release was deleted on purpose, the library came
-    #: to own it, or the window does not reach it and the gate would now pass
-    #: it. Each hold is dropped, so the held count is of releases the gate is
-    #: actually keeping out. One the window does not reach becomes what any
-    #: release past the window is, unexamined, and is judged when it is reached.
+    #: Holds in force that are holds no longer and will not be filed by this pass:
+    #: deleted on purpose, now owned, or past the window and now passing. Each hold
+    #: is dropped.
     stale: tuple[str, ...] = ()
-    #: What the label's roster made of its kept listing (U217): reused from an
-    #: earlier run, asked now and why. ``None`` from a catalogue that keeps none.
+    #: What the roster made of its kept listing (U217), ``None`` if it keeps none.
     kept: kept_listing.Summary | None = None
 
 
@@ -229,38 +189,12 @@ def _title_of(release: Any) -> str:
 
 
 def _suppression_reader(cfg: config.Config) -> Callable[[Any], bool]:
-    """One tombstone question, answered against ONE read of the store.
+    """One tombstone question, answered against one read of the store.
 
-    **THIS BRANCH IS WHAT MADE THE OLD SHAPE COST ANYTHING.** The previous form
-    built a :class:`DecisionStore` and called ``suppresses`` per release, and
-    ``suppresses`` reads the whole document and re-materializes every record on
-    every call. Nothing drove this path from ``src`` before the label handlers
-    were bound, so a per release re-read of a file that cannot change mid loop
-    was free in the only way that matters: nobody ran it. Measured on a five
-    hundred record store at roughly 367 microseconds per call, a hundred release
-    crawl of one label spent about 37 milliseconds re-reading one unchanging
-    document, multiplied by the number of favourite labels in the sweep.
-
-    ``DecisionStore``'s own docstring already says the intended shape, that a
-    decision store is "read whole by an acquisition pass", so this is the class
-    being used as documented rather than a new optimization.
-
-    **THE READ IS LAZY ON PURPOSE, AND THAT IS THE BEHAVIOUR PRESERVING HALF.**
-    ``_read`` REFUSES a store it cannot recognize rather than reading it as
-    empty, because an unreadable suppression list read as empty un-suppresses
-    everything in it. Reading at the top of the sweep would fire that refusal for
-    a label whose crawl listed nothing, which the per release form never did.
-    Deferring to the first release that actually asks keeps the refusal off
-    exactly those runs. The question is now asked BEFORE verification rather
-    than after it, so a label with releases and an unreadable store refuses
-    whether or not any of them would have confirmed; that is one more run than
-    the per release form refused on, and it is the right one, because the
-    alternative was a provider call per release whose answer the tombstone
-    then discarded.
-
-    A release with neither an artist nor a title is answered without reading at
-    all, which is the same short circuit the per release form had and the reason
-    it comes before the snapshot.
+    ``DecisionStore.suppresses`` reads the whole document per call, so the store is
+    snapshotted once, as its docstring intends. The read is lazy, at the first
+    release that asks, so an unreadable store refuses only a sweep with releases.
+    A release with neither artist nor title is answered without reading.
     """
     snapshot: set[str] | None = None
 
@@ -272,10 +206,7 @@ def _suppression_reader(cfg: config.Config) -> Callable[[Any], bool]:
             return False
         if snapshot is None:
             store = DecisionStore(tombstone.STORE_KEY, cfg)
-            # SUPPRESSING RECORDS ONLY, which is what ``suppresses`` reports:
-            # it answers ``found is not None and found.suppressing``, and
-            # ``suppressions`` with its default filters to exactly that set. A
-            # revoked tombstone is kept in the document and must not suppress.
+            # Suppressing records only: a revoked tombstone stays in the document.
             snapshot = {record.suppression_id for record in store.suppressions()}
         identity = tombstone.version_identity(artist=artist, title=title)
         return (
@@ -297,8 +228,7 @@ def _candidate(
         identity=identity,
         recency=_year_of(release),
         payload={
-            # The seam's reader, never ``str``: the provider's artist is an
-            # object and its text is a memory address (R-379).
+            # The seam's reader, never ``str`` of a provider object (R-379).
             "artist": artist_name(release),
             "title": _title_of(release),
             "label_id": entry.label_id,
@@ -310,30 +240,13 @@ def _candidate(
 
 
 def _lookup_failure(message: str, exc: BaseException) -> run.LookupFailure:
-    """``message`` as a lookup failure, marked rate limited when the provider said so.
+    """``message`` as a lookup failure, marked rate limited when the provider said so (R-704).
 
-    R-704. The eleventh sitting's sweep failed 20 of 47 labels over
-    ``TooManyRequests: Album unavailable`` and recorded every one permanent,
-    so resuming could not retry what a wait would have cleared. The question
-    is asked of the error and of every error it was declared from, ``raise X
-    from exc``, because a client that wraps the provider's answer still carries
-    it. The classifier is the one R-703's download adapter uses, so the two
-    readers of one answer cannot disagree.
-
-    AN IMPLICIT ``__context__`` COUNTS ONLY WHEN IT CARRIES THE STATUS ITSELF.
-    ``core.cause._chain`` does not follow context, because "raised while
-    handling" is not "is", and a guess from a context's type or words would be
-    exactly that. The provider's structured 429 is not a guess. The client
-    translates an HTTP error by reading the response body as JSON first, so a
-    429 whose body is not JSON, a gateway's page, arrives as a decode error
-    raised while handling the 429 and names the limit nowhere else; the 429
-    sits two contexts down, under the standard library's own decode error.
-
-    Six rate limit answers in a row trip the provider gate (R-705), which
-    parks the item as ``Parked``, a ``CratekitError`` that passes every
-    boundary here unchanged. What reaches this helper is a limit that did not
-    trip it, most often on a call with no retry ladder of its own,
-    verification or the artist resolve.
+    Asked of the error and every ``__cause__``, by the classifier the download
+    adapter uses, so a resume retries what a wait would clear. An implicit
+    ``__context__`` counts only when it carries the 429 status itself, as when a
+    non JSON 429 body arrives as a decode error. A limit that trips the provider
+    gate (R-705) parks the item as a ``CratekitError`` and never reaches here.
     """
     if any(is_rate_limit(link) for link in _linked(exc, "__cause__")):
         return run.LookupFailure(message, rate_limited=True)
@@ -343,11 +256,7 @@ def _lookup_failure(message: str, exc: BaseException) -> run.LookupFailure:
 
 
 def _linked(exc: BaseException, attribute: str) -> Iterator[BaseException]:
-    """``exc`` and every error one link attribute leads to, once each.
-
-    The ``seen`` set is ``core.cause._chain``'s: both links are assignable, so
-    two errors can name each other and the walk would never end.
-    """
+    """``exc`` and every error one link attribute leads to, once each, since links can loop."""
     seen: set[int] = set()
     current: BaseException | None = exc
     while current is not None and id(current) not in seen:
@@ -361,48 +270,14 @@ def _crawl_or_refuse(
 ) -> tuple[list[Any], tuple[Unread, ...]]:
     """Every release for one label and what could not be read, or a refusal.
 
-    Never a silent empty list, and since R-261 never a silent half of one
-    either. The second value names every listing the crawl skipped: the ones
-    this object lacks, found here, and the ones a roster could not read while
-    it was built, off its ``unread``. The caller decides what they mean.
-
-    R-135 IS ABSENCE READ AS EVIDENCE OF ABSENCE, and this call had three ways to
-    produce ``[]`` from a catalogue nobody had read. Two of them close here, on
-    the checking path rather than in each caller that reports a result:
-
-    * an artist object exposing NONE of the listing methods.
-      ``listing.artist_releases`` skips a method it cannot find, one at a time,
-      until it has skipped all of them and returns an empty list.
-    * an exception out of the crawl. ``listing.fetch_with_retry`` re-raises the
-      provider's own error once its retry ladder is spent, and
-      ``listing._paged_caller`` raises ``ListingNotPaginated`` for a method that
-      exists and cannot page. Both mean the listing was not read, and neither is
-      caught anywhere between here and the increment.
-
-    The third stays open and U7 records it: ``listing.paginate`` treats a ``None``
-    first answer as exhaustion. An EMPTY first page from a method that exists is
-    NOT a producer at all. That is a genuinely exhausted crawl, and it has to
-    keep reporting empty, or every quiet label becomes an error and R-135 has
-    been traded for its mirror image.
-
-    ``run.LookupFailure`` rather than a ``refuse`` cause, because
-    ``run.increment`` is the one place that knows a source failed to list and it
-    already converts this into ``sync-source-lookups-failed``. Raising a cause
-    here would give the same condition two vocabularies.
-
-    A ``CratekitError`` PASSES THROUGH UNCHANGED, as it does at the other two
-    seam boundaries in this module and for the same reason: an adapter that
-    discovers mid page that the stored session has expired refuses
-    ``credential-missing``, and that names an act the person can take. Wrapped
-    into a lookup failure it would become "retry when the provider is
-    reachable", which sends somebody to wait for a network that is fine.
-
-    THE PROBE IS INSIDE THE BOUNDARY TOO. ``crawl.can_list`` reads attributes
-    off the artist object, and an adapter's artist may be a lazy proxy that
-    fetches on attribute access, so the probe itself can raise the provider's
-    own error. Outside the ``try`` that error would bypass the increment's
-    conversion and fail the item as an internal error telling the person to
-    file a defect over an outage.
+    Never a silent empty list (R-135) and never a silent half of one (R-261): the
+    second value names every listing skipped, missing methods found here and the
+    roster's own ``unread``. An object exposing no listing method, and an
+    exception out of the probe or the crawl, raise ``run.LookupFailure``, which
+    the increment turns into ``sync-source-lookups-failed``. An empty first page
+    from a method that exists is a genuinely exhausted crawl. A
+    ``CratekitError`` passes through unchanged, since an expired session names an
+    act the person can take.
     """
     try:
         listable = crawl.can_list(artist)
@@ -436,69 +311,38 @@ def _crawl_or_refuse(
     return releases, (*built, *(missing_listing(artist, method) for method in skipped))
 
 
-#: The library as the match engine sees it: the index and the tombstone view.
-#: What :func:`cratekit.acquire.match_cli.library_view` returns.
+#: The library as the match engine sees it, what ``match_cli.library_view`` returns.
 LibraryView = tuple[match.LibraryIndex, Callable[..., bool], Callable[..., str]]
 
-#: How many release track reads IN A ROW may fail before the rest of a label's
-#: releases are not asked. Three, on ``label.approved_cli.OUTAGE_AFTER``'s
-#: reasoning: one is a bad release, two a coincidence, and each has already
-#: spent a full retry ladder by the time it is counted.
-#: THE SAME NUMBER AS THE SHARED READER'S, by being it. The rule itself lives
-#: in :class:`~cratekit.label.catalogue.ReleaseTracks` since R-798, and this
-#: name is kept for the callers and the docstrings that cite it.
+#: How many release track reads in a row may fail before a label's other
+#: releases are not asked; the shared reader's rule (R-798), kept by this name.
 OUTAGE_AFTER = READS_FAILED_IN_A_ROW
 
 
 def every_track_owned(resolved: Iterable[match.Match]) -> bool:
     """Whether a release's resolved tracks say the library holds it in full.
 
-    EVERY TRACK, AND AT LEAST ONE. ``all`` over nothing would say owned. One
-    spelling, for the sweep's ownership question and for ``label approved``,
-    which asks it to decide whether a release still needs judging (R-798).
+    Every track, and at least one, since ``all`` over nothing says owned. One
+    spelling for the sweep and ``label approved`` (R-798).
     """
     states = [one.state for one in resolved]
     return bool(states) and all(state is match.MatchState.MATCHED for state in states)
 
 
 class OwnedReleases:
-    """The release identities the library already holds, asked one at a time.
+    """The release identities the library already holds, asked one at a time (R-259).
 
-    R-259. A release is known here only by the provider's identifier, and the
-    library knows tracks, so ownership is a read: the release's tracks from the
-    catalogue, each resolved against the library index the match engine uses,
-    :func:`cratekit.acquire.match_cli.library_view`. That is why this is a
-    container and not a set. Nobody can list the owned identities up front
-    without reading every release on the label, so each is asked when a
-    membership test reaches it, and the answer is kept, because the labels path
-    asks twice: once in :func:`list_for_label` and again in the increment's
-    ``scope.scoped``.
+    Ownership is a read: the release's tracks, each resolved against the library
+    index. So this is a container that answers each identity when asked and keeps
+    the answer, since the sweep and the increment both ask.
 
-    OWNED MEANS EVERY TRACK, AND AT LEAST ONE. A release is owned when the
-    provider lists at least one track on it and every track resolves
-    ``MATCHED``. Everything short of that answers not owned, and so is offered:
-    no track at all, where ``all`` over nothing would say owned; a row the
-    reader cannot read; a track held only in another version, which is a
-    question for the person and never an answer; and a release the provider no
-    longer has. The direction is deliberate. An offer wrongly made costs a
-    person one decline, and a release wrongly called owned is music they never
-    see and nothing tells them about.
-
-    A TRACK READ THE PROVIDER COULD NOT ANSWER IS NOT OWNED, and the release is
-    offered. This is not the rule the listing and the verifier keep, where one
-    unreadable label refuses the source, and the difference is deliberate: by
-    the time this is asked the label was listed and the release confirmed, so
-    the sweep has real offers in hand, and refusing would withhold every new
-    release on the label over a question whose worst answer is one extra row a
-    person declines. Before R-259 every release took that path. :data:`OUTAGE_AFTER`
-    failures in a row stop the asking, so a provider that is down costs three
-    retry ladders and not one per release. A ``CratekitError`` passes through
-    unchanged, as at the other seam boundaries in this module, because an
-    expired session names an act the person can take.
-
-    THE LIBRARY IS WALKED ONCE, AND ONLY WHEN A RELEASE HAS TRACKS TO RESOLVE.
-    A label whose confirmed releases all turn out gone never walks it.
-    ``library`` lets the worker share one walk across every label in a job.
+    Owned means every track, and at least one, resolves ``MATCHED``. Anything
+    short of that, an unreadable row, another version, a gone release or a track
+    read the provider could not answer, is not owned and so is offered: a wrong
+    offer costs one decline, a wrong owned costs music never seen. The shared
+    reader stops asking after :data:`OUTAGE_AFTER` failures in a row. A
+    ``CratekitError`` passes through. The library is walked once, only when a
+    release has tracks to resolve, and ``library`` lets a job share one walk.
     """
 
     def __init__(
@@ -509,12 +353,8 @@ class OwnedReleases:
         library: Callable[[], LibraryView] | None = None,
     ) -> None:
         self.cfg = cfg
-        #: ALWAYS A :class:`ReleaseTracks`, the worker's when it hands one, so
-        #: the genre gate shares its reads, else one of this object's own. The
-        #: outage rule is that reader's and is counted nowhere else (R-798):
-        #: this class kept a counter of its own until the second review, two
-        #: counters on one read path that could come to disagree about when
-        #: the provider is down.
+        #: Always a :class:`ReleaseTracks`, the worker's when it hands one, so the gate
+        #: shares its reads and the outage rule is counted once (R-798).
         self.catalogue = (
             catalogue if isinstance(catalogue, ReleaseTracks) else ReleaseTracks(catalogue)
         )
@@ -543,9 +383,7 @@ class OwnedReleases:
         except CratekitError:
             raise
         except Exception:  # noqa: BLE001 - not owned, and the release is offered
-            # A release that is gone, one the provider failed on, and one the
-            # reader did not ask for because the provider is failing: each is
-            # not owned, and the reader keeps the count.
+            # Gone, failed, or not asked: each is not owned, and the reader keeps count.
             return False
         if not rows:
             return False
@@ -561,19 +399,11 @@ class OwnedReleases:
 
 
 class QueuedReleases:
-    """The release identities the label-release queue already holds, in any state.
+    """The release identities the label-release queue already holds, in any state (R-790).
 
-    R-790. A release with an item is a release somebody was already offered:
-    open, accepted, declined or superseded, the sweep never files it again,
-    and :func:`list_for_label` counts it toward the offer window instead. Asked
-    one identity at a time against the open store, because the window stops the
-    walk long before a label's catalogue runs out.
-
-    ``also`` is a second container of identities that take a place as a queued
-    release does (U107): the releases a person was ASKED about by the guided
-    sync and answered for, which were never filed when the answer did not
-    take them. Asked first, because its answer is a set lookup and the
-    queue's is a database read.
+    Such a release is never filed again and counts toward the window. ``also``
+    holds identities that take a place the same way (U107), the releases the
+    guided sync asked about, asked first as a set lookup.
     """
 
     def __init__(self, store: review.ReviewStore, also: Container[str] | None = None) -> None:
@@ -588,10 +418,8 @@ class QueuedReleases:
         return review.find(self.store, genre_gate.release_item_id(identity)) is not None
 
 
-#: How a release's own copyright line reads against a label's needle, by
-#: harvest's one extractor and ``labels_match``, with no provider call (U238,
-#: U277). Ordered: a line naming the label first, no line second, a line
-#: naming another label last.
+#: How a release's own copyright line reads against a label's needle, with no
+#: provider call (U238, U277), in this order.
 LINE_NAMES_LABEL = 0
 LINE_ABSENT = 1
 LINE_NAMES_OTHER = 2
@@ -607,8 +435,7 @@ def line_reading(release: Any, claimed: str) -> int:
     return LINE_NAMES_OTHER
 
 
-#: The verdict ``verify_release`` gives a release whose credit names another
-#: label: the verifier answered, with a name the needle does not match.
+#: The verdict ``verify_release`` gives a credit the needle does not match.
 MISMATCH = "mismatch"
 
 
@@ -625,39 +452,20 @@ def _canary_of(held: Sequence[Any], claimed: str, dropped: Sequence[Dropped]) ->
 def _canary_order(
     held: Sequence[Any], claimed: str, dropped: Sequence[Dropped]
 ) -> list[Any]:
-    """The held releases in the order they are verified again, chosen by what the sweep's drops say.
+    """The held releases in the order they are verified again, chosen by the sweep's drops.
 
-    Only the first is asked, except where a forced read answers that the
-    provider no longer has it (R-1634), when the second is asked in its place.
+    Only the first is asked, except that a forced read answering gone asks the
+    next in its place (R-1634). A held release can be another act's, which the
+    newest first order before U277 refused a label over.
 
-    THE NEWEST HELD RELEASE WAS THE CANARY BEFORE U277, and a held release can
-    be another act's: a sync that asked about releases a looser needle once
-    confirmed holds them still. Sitting 94 read Rawax's listing with three
-    ``RAWAXXX`` releases held newest and four ``Rawax`` ones below them, the
-    newest answered mismatch, and the label refused as one whose catalogue
-    nothing could confirm.
+    Every drop a mismatch: the verifier is answering, so the question is whether
+    the needle still names the label's releases, and a held release whose line
+    names the label goes first, then no line, then another label's line.
 
-    EVERY DROP A MISMATCH: the verifier answered each release it was asked
-    about with another label's name, so it is answering, and what is left to
-    know is whether the needle still names any of the label's releases. A held
-    release whose own line names the label shows it does, so it is asked
-    first, then one with no line, then one whose line names another label.
-
-    ANY DROP THE VERIFIER GAVE NO ANSWER FOR: the question is whether the
-    provider is answering at all, so the release chosen is READ AGAIN FROM THE
-    PROVIDER whatever line it carries (R-1634), :func:`list_for_label` says
-    how. Before R-1634 the catalogue judged a held release carrying a line
-    from that line with no call, so a held label line answered confirmed
-    whatever the provider was doing and the label said nothing new over
-    releases nobody confirmed. The order is a held release with no line first,
-    as U277 chose it, then one whose line names the label, then another
-    act's, newest first within each: a healthy provider's read confirms the
-    first two, since each was confirmed when it was filed, and answers another
-    act's held release ``mismatch`` however healthy it is. So an old hold of
-    another act's release no longer refuses the label while a held release of
-    its own is there to ask (R-1635).
-
-    ALWAYS ASKED OF A VERIFIER, never answered here from the line.
+    Any other drop: the question is whether the provider answers at all, so the
+    release is read from the provider whatever its line (R-1634), no line first,
+    then the label's line, then another act's, which answers ``mismatch`` however
+    healthy the provider is (R-1635). Always asked of a verifier.
     """
     if _answered_by_name(dropped):
         return sorted(held, key=lambda release: line_reading(release, claimed))
@@ -672,14 +480,8 @@ def _canary_order(
 def _past_window(beyond: Iterable[Any], claimed: str) -> tuple[int, int]:
     """How many releases past the window may be the label's, and how many of those are unchecked.
 
-    JUDGED BY EACH RELEASE'S OWN COPYRIGHT LINE, WITH NO PROVIDER CALL (U238).
-    The line is already on every listed release, and it is what the provider's
-    verifier judges a release by inside the window: harvest's one extractor,
-    then ``labels_match`` against the same needle. A line naming the label
-    counts; a line naming another label does not; no line counts as
-    unchecked, because confirming it is the read the window exists to bound.
-    Before this every release of every artist on the roster was counted, and
-    a label with about 27 of its own left said 414.
+    Judged by each release's own copyright line with no provider call (U238): a
+    line naming the label counts, another label's does not, no line is unchecked.
     """
     own = unchecked = 0
     for release in beyond:
@@ -689,6 +491,21 @@ def _past_window(beyond: Iterable[Any], claimed: str) -> tuple[int, int]:
         elif reading == LINE_NAMES_LABEL:
             own += 1
     return own, unchecked
+
+
+def _turned_down(
+    claimed: str, release: Any, verify: Callable[[str, Any], Mapping[str, Any]]
+) -> Dropped | None:
+    """The drop for a release the verifier does not confirm as the label's, else None."""
+    verdict = label_verify.verify_release(claimed, release, search=verify)
+    status = str(verdict.get("verdict") or "unconfirmed")
+    if status == "confirmed":
+        return None
+    return Dropped(
+        identity=str(getattr(release, "id", "") or ""),
+        reason=status,
+        notes=str(verdict.get("notes") or ""),
+    )
 
 
 def list_for_label(
@@ -706,63 +523,26 @@ def list_for_label(
 ) -> LabelListing:
     """Crawl, verify, drop unconfirmed, report tombstones. Ignore ``last_pulled``.
 
-    ``reread`` IS THE FORCED PROVIDER READ (R-1634), a catalogue's
-    ``reread_release``: who the provider credits on a release, read again by
-    its identifier rather than judged from the line the listing carries. Asked
-    only for the one held release re-verified when a drop was not a mismatch.
-    ``None``, from a source built with a bare verifier, leaves a held release
-    that carries a line unasked and counted as not confirmed, never judged
-    from that line.
+    ``reread`` is the forced provider read (R-1634), asked only for the one held
+    release re-verified when a drop was not a mismatch; ``None`` leaves a held
+    release carrying a line unasked and not confirmed. ``last_pulled`` is accepted
+    and not read. A listing that could not be read raises ``run.LookupFailure``.
 
-    ``last_pulled`` is accepted so a caller that still thinks in date floors
-    cannot accidentally get a different function. It is not read.
+    The offer is a window over the newest releases, never a date (R-790, KTD11):
+    ``limit``, or :func:`registry.effective_offer`, places. A release already in
+    the queue (``offered``) takes a place and is not filed again, even once owned;
+    a release filed now takes a place; one owned without being offered, or
+    tombstoned, takes none. What the window never reached is counted in
+    ``beyond``, less each release whose line names another label (U238).
 
-    A listing that could not be READ raises ``run.LookupFailure`` rather than
-    returning an empty :class:`LabelListing`. See :func:`_crawl_or_refuse`.
-
-    THE OFFER IS A WINDOW OVER THE NEWEST RELEASES, AND NEVER A DATE (R-790,
-    KTD11). ``limit``, or the label's :func:`registry.effective_offer`, is how
-    many places the window has. A release already in the queue, ``offered``,
-    takes a place and is not filed again, EVEN ONCE IT IS OWNED, because a
-    release accepted and downloaded must not hand its place to the next slice
-    of back catalogue; a release filed now takes a place; a release owned
-    without ever being offered, or tombstoned, takes none. So a first sweep
-    files the window, and a later one files only what has appeared above the
-    releases it already holds, whatever any watermark says. What the window
-    never reached is counted in ``beyond`` rather than dropped, less each
-    release whose copyright line names another label (U238).
-
-    THE GENRE GATE IS ASKED LAST, ABOUT A RELEASE THAT WOULD OTHERWISE BE FILED
-    (R-798). ``gate`` judges it by what a general catalogue publishes for its
-    tracks, and a release that is not the kind of music the label is followed
-    for is HELD: reported in ``gated``, not a candidate, and never filed. Left
-    as None nothing is judged and every candidate is filed as before.
-
-    A HELD RELEASE TAKES A PLACE IN THE WINDOW. A label whose newest releases
-    are all another label's music would otherwise be read to the end of its
-    catalogue looking for ones that pass, three calls a release, which is the
-    bulk reading a provider rate limits. The cost is that such a label offers
-    less until its window is raised, and its held count says why.
-
-    A RELEASE THE GATE IS ALREADY HOLDING IS ASKED BEFORE VERIFICATION, as a
-    queued one is and for the same reason: its answer is local. It is judged
-    again from the words its hold recorded, so a label whose kind changed
-    files what now fits with no request made.
-
-    EVERY HOLD IN FORCE ON THE LABEL IS JUDGED AGAIN, NOT ONLY THE ONES THE
-    WINDOW REACHES. Newer releases push a held one past the window, and a hold
-    nothing looks at again would stay counted as held under a reason that
-    stopped being true when the label's kind changed. One the window does not
-    reach and the gate would now pass is reported in ``stale`` and its hold is
-    dropped. So is a hold on a release deleted on purpose since, and one on a
-    release the library has come to own.
-
-    EXCEPT A RELEASE THAT WAS TAKEN BACK OUT OF REVIEW (R-815). Dropping a
-    hold past the window is safe for a release never filed: it becomes what
-    any release past the window is, unexamined, and is judged when it is
-    reached. A release ``label judge`` withheld WAS in front of a person, and
-    dropped it would be in neither place with nothing said. Its hold stands,
-    ``crate label held`` lists it, and ``return`` files it.
+    The genre gate (R-798) is asked last, about a release that would otherwise be
+    filed; a held release is reported in ``gated``, takes a place in the window so
+    a label of another kind is not read to its end, and is never filed. A release
+    the gate already holds is judged again from its recorded words before
+    verification, and every hold in force is judged again, reached or not: one
+    past the window that would now pass, deleted on purpose or now owned is
+    reported in ``stale`` and its hold dropped, except one ``label judge``
+    withheld from review (R-815), whose hold stands.
     """
     del last_pulled
     claimed = entry.match or entry.name
@@ -780,31 +560,11 @@ def list_for_label(
     dropped: list[Dropped] = []
     suppressed: list[run.Candidate] = []
     tombstoned = _suppression_reader(cfg)
-    # THE LOCAL QUESTION COMES FIRST AND THE PROVIDER CALLS AFTER IT. A
-    # tombstone is a decision the person already made, answered from this
-    # machine. Verifying before asking it spent a provider round trip per
-    # release whose answer the tombstone then threw away, which on a label with
-    # a long deleted back catalogue is most of the sweep's network calls, and
-    # each wasted one is a step closer to the rate limited endpoint the
-    # worker's refusal exists for. A tombstoned release therefore counts as
-    # suppressed whether or not the catalogue would have confirmed it, which is
-    # the honest reading: it was never a candidate, so nothing about it was for
-    # the provider to decide.
-    #
-    # OWNERSHIP IS ASKED AFTER VERIFICATION, and before R-259 it came first.
-    # It was a local question only while nothing on this path produced an owned
-    # set; :class:`OwnedReleases` answers it by reading the release's tracks
-    # from the provider, so asking first would read the tracks of every release
-    # the catalogue then refuses to confirm as the label's. Asked here, a
-    # release that is not the label's is never read, and the verification
-    # outcomes the worker's "confirmed none" refusal counts are exactly the ones
-    # it counted before. An owned release does not count toward the cap, which
-    # is what drops owned before newest N rather than after it (R-137).
-    #
-    # A RELEASE ALREADY IN THE QUEUE IS ASKED BEFORE VERIFICATION, because it
-    # was verified when it was filed and the answer is local. It takes a place
-    # in the window, which is what keeps a later sweep from filing the next
-    # slice of back catalogue every time (R-790).
+    # The local questions first: a tombstone is the person's decision, so a
+    # tombstoned release is suppressed before any provider call. Ownership is asked
+    # after verification, since it reads the release's tracks (R-259), and an owned
+    # release takes no place (R-137). A release already in the queue is asked before
+    # verification too: it was verified when filed and takes a place (R-790).
     held = 0
     held_releases: list[Any] = []
     examined = 0
@@ -820,8 +580,7 @@ def list_for_label(
         reached.add(identity)
         if tombstoned(release):
             suppressed.append(_candidate(entry, release))
-            # DELETED ON PURPOSE OUTRANKS HELD. The release is not one the gate
-            # is keeping out of review any more, so its hold goes.
+            # Deleted on purpose outranks held, so its hold goes.
             was = gate.standing(identity) if gate is not None else None
             if was is not None and was.state == review.HOLD_HELD:
                 stale.append(identity)
@@ -830,17 +589,13 @@ def list_for_label(
         if identity in offered_ids:
             held += 1
             held_releases.append(release)
-            # IN THE QUEUE AND STILL HELD is a state two writes can leave when
-            # a process dies between them, and one a queue brought in from
-            # another machine can make. The queue is the truth: the release is
-            # in review, so its hold goes.
+            # In the queue and still held, which a process dying between two writes or a
+            # moved queue can leave: the queue is the truth, so its hold goes.
             if standing is not None and standing.state == review.HOLD_HELD:
                 stale.append(identity)
             continue
         if standing is not None and standing.state == review.HOLD_RETURNED:
-            # A PERSON RETURNED IT AND THE QUEUE DOES NOT HOLD IT, which a
-            # queue moved between machines can produce. Filed, and never
-            # judged: their answer outranks the catalogue's.
+            # A person returned it and the queue does not hold it: filed, never judged.
             candidates.append(_candidate(entry, release, genre_gate.returned_stamp()))
             continue
         if standing is not None:
@@ -849,25 +604,16 @@ def list_for_label(
                 gated.append(Gated(_candidate(entry, release), again, standing=True))
                 held_releases.append(release)
             elif identity in owned_ids:
-                # THE LIBRARY CAME TO OWN IT WHILE IT WAS HELD. Nothing to file
-                # and nothing to hold, and like any owned release it takes no
-                # place. Asked only of a hold being released, since the answer
-                # is a provider read and a hold that stands does not need it.
+                # Owned while held: nothing to file or hold, and no place taken. Asked only
+                # of a hold being released, since the answer is a provider read.
                 stale.append(identity)
             else:
                 candidates.append(_candidate(entry, release, again.stamp()))
                 released.append(identity)
             continue
-        verdict = label_verify.verify_release(claimed, release, search=verify)
-        status = str(verdict.get("verdict") or "unconfirmed")
-        if status != "confirmed":
-            dropped.append(
-                Dropped(
-                    identity=identity,
-                    reason=status,
-                    notes=str(verdict.get("notes") or ""),
-                )
-            )
+        drop = _turned_down(claimed, release, verify)
+        if drop is not None:
+            dropped.append(drop)
             continue
         if identity in owned_ids:
             continue
@@ -879,23 +625,14 @@ def list_for_label(
             gated.append(Gated(_candidate(entry, release), judged))
         else:
             candidates.append(_candidate(entry, release, judged.stamp()))
-    # ONE HELD RELEASE IS RE-VERIFIED, AND ONLY WHEN THE SWEEP CONFIRMED NOTHING
-    # IT ASKED ABOUT. It was confirmed when it was filed, so it is the one
-    # release whose answer is known: confirmed again means the endpoint is up
-    # and what failed really is unconfirmed, and unconfirmed means nothing this
-    # sweep asked could have been confirmed. Which held release is chosen by
-    # what the drops say and by each held release's own line (U277),
-    # :func:`_canary_of`.
+    # One held release is re-verified, only when the sweep confirmed nothing it
+    # asked about: it was confirmed when filed, so its answer says whether the
+    # endpoint is up. Chosen by :func:`_canary_of` (U277).
     #
-    # EVERY DROP A MISMATCH: the verifier answered each with another label's
-    # name, or the release's own line named one, so nothing turned down waits
-    # on the provider, and the ordinary verifier is asked, which judges a held
-    # label line from that line with no call. ANY OTHER DROP: the provider is
-    # READ for the release chosen through ``reread``, whatever line it carries
-    # (R-1634), one provider call on the path where the worker is deciding
-    # whether to refuse. Without ``reread`` a release with no line is still
-    # asked of the verifier, which reads the provider for it, and one carrying
-    # a line is not asked and counts as not confirmed.
+    # Every drop a mismatch: the ordinary verifier is asked, which judges a held
+    # label line from that line. Any other drop: the provider is read through
+    # ``reread`` whatever the line (R-1634). Without ``reread`` a release with no
+    # line is asked of the verifier and one with a line counts as not confirmed.
     held_unconfirmed = 0
     canary: Canary | None = None
     if held_releases and dropped and not candidates:
@@ -908,17 +645,10 @@ def list_for_label(
         elif reread is not None:
             answered = label_verify.verify_release(claimed, chosen, search=reread)
             basis = READ_PROVIDER
-            # A HELD RELEASE THE PROVIDER HAS WITHDRAWN is still listed by a
-            # kept listing for up to its seven days, and a 404 says nothing of
-            # whether the provider's reads carry a credit. Refusing on it
-            # refused a healthy label on every ask until the keep aged out
-            # (round one of R-1634's review). So the next held release is read
-            # in its place, ONE more read and only after a gone answer; a
-            # second gone answer, or none to ask, stands and refuses. ONLY ONE
-            # THE LABEL CAN STILL CONFIRM: a held release whose line names
-            # another act answers mismatch however healthy the provider is, and
-            # its refusal would name that act's credit as the needle to set
-            # (round two of R-1634's review).
+            # A held release the provider has withdrawn is still listed by a kept listing
+            # for up to seven days, and its 404 says nothing of credits, so the next held
+            # release the label can still confirm is read in its place, once (R-1634). A
+            # second gone answer, or none to ask, stands and refuses.
             following = [
                 one for one in order[1:] if line_reading(one, claimed) != LINE_NAMES_OTHER
             ]
@@ -980,9 +710,8 @@ def list_for_label(
     )
 
 
-#: The payload field naming the sweep run that filed a label release (R-790).
-#: Spelled once, in the review module, because ``review list --group-by run``
-#: reads the same field.
+#: The payload field naming the sweep run that filed a label release (R-790),
+#: spelled once in the review module for ``review list --group-by run``.
 SWEEP_RUN = review.RUN_FIELD
 
 
@@ -995,10 +724,8 @@ def offer_release(
 ) -> review.Item:
     """File one release, recording ``run_id`` as the sweep that filed it.
 
-    THE FIRST RUN STAYS THE FILING RUN. ``review.offer`` rewrites an open
-    item's payload on a re-offer, so an item already in the queue keeps the run
-    it carries rather than taking the later one's, which would make an old
-    release read as new in a grouping by run.
+    An item already in the queue keeps the run that first filed it, so an old
+    release never reads as new in a grouping by run.
     """
     payload = dict(candidate.payload or {})
     payload.setdefault("identity", candidate.identity)
@@ -1017,11 +744,9 @@ def offer_release(
 
 
 def _guarded(read: Callable[[str, Any], Mapping[str, Any]]) -> Callable[[str, Any], Mapping[str, Any]]:
-    """A catalogue's verifying read, with a provider failure turned into a lookup failure.
+    """A catalogue's verifying read, a provider failure turned into ``run.LookupFailure``.
 
-    See :meth:`LabelSource._verifier` for why: a ``CratekitError`` passes
-    through unchanged, and anything else the read raises is
-    ``run.LookupFailure``, never an internal error.
+    A ``CratekitError`` passes through unchanged.
     """
 
     def verified(claimed: str, release: Any) -> Mapping[str, Any]:
@@ -1046,13 +771,8 @@ class LabelSource:
 
     id = "labels"
 
-    #: This source OFFERS, it does not acquire. :meth:`process` calls
-    #: ``offer_release``, which is ``review.offer``: it queues an item into the
-    #: label-release queue and hands the item back with a verdict of ``None``.
-    #: No file was downloaded and nothing entered the library, so the increment
-    #: must not append this release to the run's importable file and must not
-    #: advance the labels watermark over it. R-140 is what this closes, and
-    #: ``run.Source.acquires`` carries the rest of the reasoning.
+    #: This source offers, it does not acquire: the increment appends nothing to
+    #: the importable file and moves no watermark over it (R-140).
     acquires = False
 
     def __init__(
@@ -1070,126 +790,51 @@ class LabelSource:
         offered: Container[str] | None = None,
     ) -> None:
         self.cfg = cfg
-        #: The genre gate every label's listing is judged by, or None to judge
-        #: nothing (R-798). The worker builds one per item.
+        #: The genre gate every listing is judged by, or None (R-798).
         self.gate = gate
-        #: Identities that take a place in the offer window BESIDE the queued
-        #: releases (U107): what the guided sync already asked a person about.
-        #: None adds nothing, and the queue alone decides, as before.
+        #: Identities that take a place in the window beside the queued releases: what
+        #: the guided sync already asked about (U107).
         self.offered = offered
-        #: The sweep run a hold made by this source is recorded under, so a
-        #: grouping by run counts what each sweep held. The listing pass is
-        #: handed no run by the increment, which is why it is taken here.
+        #: The sweep run a hold is recorded under; the increment hands the listing none.
         self.run_id = run_id
         #: The standing holds the last pass released, dropped as each is filed.
         self._released: frozenset[str] = frozenset()
-        #: The release identities the library already holds, handed to every
-        #: label's listing so an owned release is dropped before the per label
-        #: cap rather than after the increment has sliced newest N (R-137).
-        #: The worker passes an :class:`OwnedReleases` and the same object to
-        #: the increment, so the two filters on this path ask one question and
-        #: read each release once. ``None`` holds nothing.
+        #: The release identities the library holds, handed to every listing so an
+        #: owned release is dropped before the window (R-137). The worker passes the
+        #: same :class:`OwnedReleases` to the increment, so each release is read once.
         self.owned = owned
         self.registry = registry
         self.artists = dict(artists or {})
         self.verify = verify
-        #: An OPEN review store to offer into, or ``None`` to open one per offer.
-        #: ``run.increment`` calls :meth:`process` with no store, so without this
-        #: every offered release opened, migrated and checkpointed the review
-        #: database on its own: measured at 0.386 ms per round trip, which on a
-        #: label at the default cap of four hundred is a hundred and fifty
-        #: milliseconds of connection churn per label and four hundred WAL
-        #: checkpoints. The worker opens one store around the increment and
-        #: hands it here. ``review.offer`` still commits per call, so the per
-        #: offer durability the harvest boundary relies on is unchanged.
+        #: An open review store to offer into, or ``None`` to open one per offer. The
+        #: worker opens one around the increment so offers do not reopen and checkpoint
+        #: the database each time; ``review.offer`` still commits per call.
         self.store = store
-        #: A ``label.catalogue.Catalogue``, which supplies both of the other two
-        #: from one object. Kept beside them rather than replacing them because
-        #: the pre-seam callers pass the pieces and there is no reason to rewrite
-        #: them; a caller that has the whole capability passes this instead.
+        #: A ``label.catalogue.Catalogue``, supplying both pieces above from one object.
         self.catalogue = catalogue
-        #: EVERY RELEASE THIS SOURCE READ AND THEN DISCARDED, across all of the
-        #: labels one :meth:`list_recent` pass listed. ``list_for_label`` reports
-        #: it per label and this class used to drop it on the floor, which is
-        #: what let a catalogue that confirms NOTHING look like a catalogue with
-        #: nothing new: no candidate is offered, ``run.increment`` sees no
-        #: processed item and no error, and it answers ``shortfall="empty"``.
-        #: The two are the same envelope and a caller cannot tell them apart
-        #: without this. ``label/cli.py``'s worker is that caller.
-        #:
-        #: INSTANCE STATE IS SAFE HERE, and it is worth saying why rather than
-        #: leaving a reader to work it out. This object is constructed fresh per
-        #: queued item, inside ``label.cli.handle``, and it is the only
-        #: constructor in ``src``. Nothing shares one across items, across jobs
-        #: or across threads, so an attribute a listing pass writes cannot carry
-        #: one label's answer into another's. A source that ever became long
-        #: lived would have to move this onto the return value instead, which is
-        #: :class:`LabelListing`'s job one layer down and R-136's contract change
-        #: one layer up.
+        #: Every release the last pass read and discarded, across its labels, so the
+        #: worker can tell a catalogue that confirms nothing from one with nothing new.
+        #: Instance state is safe: the worker builds one source per item. This and the
+        #: three below are rebuilt per pass.
         self.dropped: tuple[Dropped, ...] = ()
-        #: HOW MANY RELEASES THE LAST PASS READ, summed over its labels. The
-        #: worker's "read N and confirmed none" refusal is keyed on this against
-        #: ``dropped``, and not on ``dropped`` being non-empty, because a
-        #: listing whose confirmed releases were all tombstoned and whose others
-        #: were dropped is a label with nothing new and not a catalogue nobody
-        #: could verify a line of.
+        #: How many releases the last pass read, summed over its labels.
         self.read = 0
-        #: WHAT THE LAST PASS COULD NOT READ, across its labels, rebuilt per
-        #: pass on the rule ``dropped`` states. The worker refuses a sweep that
-        #: left anything here, after the increment has offered what was read,
-        #: because a crawl that skipped a listing is not a crawl of the label
-        #: (R-261, R-393).
+        #: What the last pass could not read (R-261, R-393).
         self.unread: tuple[Unread, ...] = ()
-        #: EVERY LABEL THE LAST PASS LISTED, with its listing, rebuilt per pass
-        #: on the rule ``dropped`` states. The worker records each label's
-        #: ``beyond`` from here, since the increment's result carries only
-        #: identities (R-790).
+        #: Every label the last pass listed, with its listing, for each ``beyond`` (R-790).
         self.listings: tuple[tuple[registry.LabelEntry, LabelListing], ...] = ()
-        #: HELD RELEASES THE LAST PASS COULD NOT CONFIRM AGAIN, summed over its
-        #: labels. See :attr:`LabelListing.held_unconfirmed`.
+        #: Held releases the last pass could not confirm again, summed.
         self.held_unconfirmed = 0
 
     def _artist_for(self, entry: registry.LabelEntry) -> Any:
         """The provider artist object for one favourite label, or a refusal.
 
-        **THE BARE ``continue`` THAT USED TO BE HERE WAS R-135 IN MINIATURE, AND
-        THE PATH IS STILL REACHABLE, SO IT RAISES RATHER THAN BEING DECLARED
-        DEAD.** ``Catalogue.artist_for`` is contracted to raise rather than
-        return ``None``, which closes the seam side of it. It does not close this
-        side: ``artists`` is still a plain mapping a caller builds, so a
-        favourite label with no entry in it is a condition that can still arrive,
-        and skipping it silently means a registry of five labels and five missing
-        objects produces a sweep that reports it looked and found nothing new.
-        So the path is reachable, and it is closed here rather than annotated
-        with a comment claiming it cannot happen.
-
-        A FOREIGN exception from the seam is flattened into this one, and the
-        original stays reachable as ``__cause__``, so
-        ``sync-source-lookups-failed`` stays the single vocabulary for "this
-        source could not list". A ``CratekitError`` PASSES THROUGH UNCHANGED,
-        on the same rule :meth:`_verifier` and :func:`_crawl_or_refuse` state:
-        an adapter's own refusal names an act the person can take, and the
-        first draft of this method flattened it too, which would have told
-        somebody whose session had expired to wait for the network.
-
-        ONE UNREADABLE LABEL REFUSES THE WHOLE SOURCE, which is a choice worth
-        naming. ``run.increment`` turns this into ``sync-source-lookups-failed``
-        and no watermark moves, so the cost is that a run with four readable
-        labels and one unreadable one offers nothing rather than offering four.
-        The alternative costs more: a person is told the sweep succeeded while
-        one of their labels was never read, which is the exact reading R-135
-        exists to stop. Nothing is lost by refusing, because the next run
-        re-lists from scratch.
-
-        THE EXPLICIT PIECE WINS OVER THE CATALOGUE, and it wins in
-        :meth:`_verifier` too, because ONE precedence rule is the whole value of
-        having one. The two methods disagreed when this constructor first grew
-        its fourth parameter, artist preferring the catalogue and verification
-        preferring the piece, which is the shape where a caller that passes both
-        gets half of each and nothing says so. Narrower beats broader: a caller
-        who names the object for one label means that object. Every shipped
-        caller passes exactly one of the two, so the rule decides nothing today
-        and is written down for the caller that passes both.
+        A label with no object is reachable through the plain ``artists`` mapping, and
+        skipping it would report a sweep that found nothing new (R-135), so it raises.
+        A foreign exception from the seam becomes ``run.LookupFailure`` with its cause
+        kept; a ``CratekitError`` passes through. One unreadable label refuses the
+        whole source: nothing is lost, since the next run lists from scratch. The
+        explicit piece wins over the catalogue, as in :meth:`_verifier`.
         """
         artist = self.artists.get(entry.label_id)
         if artist is not None:
@@ -1215,37 +860,10 @@ class LabelSource:
     def _verifier(self) -> Callable[[str, Any], Mapping[str, Any]]:
         """The release verification callable, or a refusal for the same reason.
 
-        A sweep that cannot verify cannot honestly report anything: every
-        release it listed would be dropped as unconfirmed and the run would look
-        like a label with nothing new. Returning an empty list here was the same
-        absence-as-evidence shape the artist lookup above had.
-
-        Explicit piece first, then the catalogue, then a refusal. The same order
-        :meth:`_artist_for` uses and for the reason stated there.
-
-        **THE SEAM CALL IS WRAPPED, WHICH IS THE HALF THIS METHOD USED TO SKIP.**
-        It returned ``self.catalogue.search_release`` bare while
-        :meth:`_artist_for` wrapped its own seam call, so an exception out of
-        verification, which is exactly what ``listing.fetch_with_retry``
-        re-raises once its retry ladder is spent, flew straight past
-        ``run.increment``'s ``except LookupFailure`` and failed the item through
-        ``jobs.drive``'s generic handler as ``internal-error``. A provider outage
-        told the person to file a defect. Guarding only the case where no
-        verifier OBJECT exists, which is all this method did, is METHOD's defect
-        pattern three: the condition the docstring above describes was left open
-        while the missing-object case beside it was closed.
-
-        ``run.LookupFailure`` rather than a cause, for the reason
-        :func:`_crawl_or_refuse` states: the increment owns the conversion into
-        ``sync-source-lookups-failed``, which stays the single vocabulary for
-        "this source could not list".
-
-        A ``CratekitError`` PASSES THROUGH UNCHANGED, which is where this differs
-        from :meth:`_artist_for` and the difference is deliberate. An adapter that
-        discovers at call time that the stored provider session has expired
-        refuses ``credential-missing``, and that names an act the person can take;
-        flattening it into "this source could not list" would send somebody to
-        wait for a network that is fine.
+        A sweep that cannot verify would drop every release and look like a label
+        with nothing new. Explicit piece first, then the catalogue's read, guarded so
+        a provider failure is ``run.LookupFailure`` rather than an internal error,
+        then a refusal. A ``CratekitError`` passes through unchanged.
         """
         if self.verify is not None:
             return self.verify
@@ -1259,39 +877,23 @@ class LabelSource:
     def _rereader(self) -> Callable[[str, Any], Mapping[str, Any]] | None:
         """The forced provider read for the one held release re-verified (R-1634), or ``None``.
 
-        The catalogue's ``reread_release``, wrapped as :meth:`_verifier` wraps
-        its read, so a provider failure on it is a lookup failure and never an
-        internal error. Taken only when the verifier is the catalogue's own: a
-        source handed a bare verifier has no read to force, and
-        :func:`list_for_label` then counts a held release carrying a line as
-        not confirmed rather than judging it from that line.
+        The catalogue's ``reread_release``, guarded as :meth:`_verifier` is, taken
+        only when the verifier is the catalogue's own.
         """
         if self.verify is not None or self.catalogue is None:
             return None
         catalogue = self.catalogue
-        # LOOKED UP WHEN ASKED, so a pass that never re-verifies a release
-        # never names the method.
+        # Looked up when asked, so a pass that never re-verifies never names it.
         return _guarded(lambda claimed, release: catalogue.reread_release(claimed, release))
 
     def list_recent(self, n: int) -> list[run.Candidate]:
         """The newest N candidates, and a record of what was thrown away getting them.
 
-        ``self.dropped`` is rebuilt from this pass rather than appended to, so a
-        second call answers about the second call. It is assigned once the loop
-        has finished because a pass that raises refuses the whole source through
-        ``run.LookupFailure``, and a half filled record of a listing nobody is
-        going to report on is a thing a later reader would have to reason about.
-
-        THE TRUNCATION TO ``n`` DOES NOT TOUCH IT. A candidate cut by the
-        newest-N limit was confirmed and merely deferred to the next run, and a
-        discarded release was never a candidate at all. Counting the two together
-        would make a busy label look like an unverifiable one.
+        The records are rebuilt from this pass and assigned once the loop finishes,
+        since a pass that raises refuses the whole source. Truncation to ``n`` does
+        not touch them: a deferred candidate was confirmed, a discarded one never was.
         """
-        # THE VERIFIER IS RESOLVED ONLY ONCE THERE IS A LABEL TO VERIFY FOR, and
-        # once rather than per label. A source over an empty registry has nothing
-        # to confirm, and refusing it for lacking a way to confirm would turn a
-        # no-op into "retry when the provider is reachable" for a source that
-        # never needed a provider.
+        # The verifier is resolved once, and only when there is a label to verify for.
         verify = self._verifier() if self.registry.labels else None
         reread = self._rereader()
         found: list[run.Candidate] = []
@@ -1335,12 +937,9 @@ class LabelSource:
     ) -> None:
         """Record every release the gate held in this listing, as it was judged.
 
-        WRITTEN WHEN THE LISTING IS MADE, not when the item succeeds. A hold is a
-        judgment of one release and is true whatever happens to the rest of the
-        sweep, the way an offer already made stays in the queue when a later
-        one fails. A standing hold is written again too, which refreshes its
-        reason and keeps the run that first held it. A hold the listing found
-        stale is dropped here, for the same reason it is recorded here.
+        Written when the listing is made, since a hold is true whatever happens to
+        the rest of the sweep. A standing hold is refreshed and keeps its first run;
+        a stale hold is dropped here.
         """
         for identity in listing.stale:
             review.release_hold(
@@ -1364,13 +963,7 @@ class LabelSource:
 
     @contextmanager
     def _queue(self) -> Iterator[review.ReviewStore | None]:
-        """The open store when the worker handed one, else one for this pass.
-
-        None over an empty registry, for the reason the verifier is resolved
-        lazily in :meth:`list_recent`: a source with no label to list has no
-        queue to ask, and opening one would create a review database for a
-        pass that never needed it.
-        """
+        """The open store the worker handed, else one for this pass, or None for no label."""
         if self.store is not None:
             yield self.store
             return
@@ -1396,11 +989,7 @@ class LabelSource:
             self._file(own, candidate, run_id)
 
     def _file(self, store: review.ReviewStore, candidate: run.Candidate, run_id: str) -> None:
-        """Offer one release, then drop the hold it was released from, if any.
-
-        THE OFFER FIRST. A hold dropped before its release was filed would be a
-        release nothing holds and nothing offers if the offer then failed.
-        """
+        """Offer one release, then drop the hold it was released from, if any. The offer first."""
         offer_release(store, candidate, run_id=run_id)
         if candidate.identity in self._released:
             review.release_hold(
@@ -1414,10 +1003,8 @@ class LabelSource:
 class Confirmed:
     """A label's whole catalogue as the crawl and the verifier confirm it (R-835).
 
-    ``releases`` is every confirmed release that no tombstone suppresses, newest
-    first. ``listed`` is everything the crawl read, so the plan can say what it
-    left out, and ``unread`` is what the crawl could not read, which a caller
-    must not present as the whole label.
+    ``releases`` is every confirmed release no tombstone suppresses, newest first;
+    ``listed`` everything the crawl read; ``unread`` what it could not read.
     """
 
     releases: tuple[Any, ...]
@@ -1425,10 +1012,7 @@ class Confirmed:
     dropped: tuple[Dropped, ...]
     suppressed: int
     unread: tuple[Unread, ...]
-    #: The releases a tombstone suppressed, counted in ``suppressed``. Carried
-    #: so a reader can judge their tracks (U243): a single is named for its one
-    #: track, so the tombstone ``crate delete review`` writes for the track
-    #: suppresses the release too, and its track would otherwise go unjudged.
+    #: The releases a tombstone suppressed, so a reader can judge their tracks (U243).
     suppressed_releases: tuple[Any, ...] = ()
 
 
@@ -1436,12 +1020,8 @@ class Confirmed:
 class Listed:
     """One label's catalogue as the crawl lists it, before anything is read per release.
 
-    The first half of :func:`confirmed_releases` (U191): the roster and the
-    paged listing, and no question asked about any one release. ``releases`` is
-    everything the crawl read, in the listing's order, and ``unread`` is every
-    listing it could not read, which a caller must not present as the whole
-    label. ``claimed`` and ``verify`` are what the second half confirms with,
-    built before the crawl so a missing verifier refuses before any call.
+    The first half of :func:`confirmed_releases` (U191). ``claimed`` and ``verify``
+    are built before the crawl, so a missing verifier refuses before any call.
     """
 
     releases: tuple[Any, ...]
@@ -1455,13 +1035,7 @@ class Listed:
 def listed_releases(
     cfg: config.Config, entry: registry.LabelEntry, found: Catalogue
 ) -> Listed:
-    """Every release the crawl lists for one label, and nothing read per release.
-
-    What a full build counts before it decides whether to crawl (U191). A
-    listing that could not be read raises ``run.LookupFailure``, and a
-    ``CratekitError`` passes through unchanged, as :func:`confirmed_releases`
-    says.
-    """
+    """Every release the crawl lists for one label, and nothing read per release (U191)."""
     source = LabelSource(
         cfg, registry=registry.Registry(labels={entry.label_id: entry}), catalogue=found
     )
@@ -1480,8 +1054,7 @@ def listed_releases(
 def confirm_listed(cfg: config.Config, listed: Listed) -> Confirmed:
     """The releases of one listing the catalogue confirms, the second half (U191).
 
-    The tombstone first because it is local, then the verifier, since a roster
-    artist's releases on another label are not this label's.
+    The tombstone first because it is local, then the verifier.
     """
     ordered = sorted(listed.releases, key=_year_of, reverse=True)
     tombstoned = _suppression_reader(cfg)
@@ -1494,16 +1067,9 @@ def confirm_listed(cfg: config.Config, listed: Listed) -> Confirmed:
             suppressed += 1
             held_back.append(release)
             continue
-        verdict = label_verify.verify_release(listed.claimed, release, search=listed.verify)
-        status = str(verdict.get("verdict") or "unconfirmed")
-        if status != "confirmed":
-            dropped.append(
-                Dropped(
-                    identity=str(getattr(release, "id", "") or ""),
-                    reason=status,
-                    notes=str(verdict.get("notes") or ""),
-                )
-            )
+        drop = _turned_down(listed.claimed, release, listed.verify)
+        if drop is not None:
+            dropped.append(drop)
             continue
         confirmed.append(release)
     return Confirmed(
@@ -1521,23 +1087,12 @@ def confirmed_releases(
 ) -> Confirmed:
     """Every release of one label the catalogue confirms, with no window and no gate.
 
-    THE SAME CRAWL :func:`list_for_label` READS, asked the same questions in the
-    same order: the roster through :meth:`LabelSource._artist_for`, the listing
-    through :func:`_crawl_or_refuse`, the tombstone first because it is local,
-    then the verifier, since a roster artist's releases on another label are
-    not this label's. What it leaves out is the review half: no offer window,
-    no queue, no ownership and no genre gate, because a label's folder on the
-    account mirrors its catalogue and not the library.
-
-    Since U191 it is :func:`listed_releases` then :func:`confirm_listed`, so a
-    full build can count the listing before it reads any release.
-
-    A listing that could not be read raises ``run.LookupFailure`` here, as it
-    does for the sweep, and a ``CratekitError`` passes through unchanged.
+    The crawl :func:`list_for_label` reads, asked the same questions in the same
+    order, without the review half, since a label's folder on the account mirrors
+    its catalogue. A listing that could not be read raises ``run.LookupFailure``.
     """
     return confirm_listed(cfg, listed_releases(cfg, entry, found))
 
 
-#: The year a release reads as, ``""`` when it carries none. Public for the
-#: label folder's read (R-835), which groups a catalogue by it.
+#: The year a release reads as, ``""`` when none, for the label folder (R-835).
 year_of = _year_of

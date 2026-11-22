@@ -1,18 +1,8 @@
-"""U99: the label registry verbs set a track limit and seed artists.
+"""U99: the label registry verbs set a track limit and seed artists (R-418).
 
-R-418 is the reason this file exists. On 2026-09-17, 31 of 47 labels refused
-for want of a seed artist, and the repair for each was a Python call, because
-``crate label registry`` took a name and a match and nothing else while the
-store held a track limit and seeds.
-
-EVERY DRIVE GOES THROUGH THE REAL DISPATCHER, and every read back goes through
-``list`` rather than the store. The property is that a person can set the field
-AND see it set with the verbs they have, so a test that read the file itself
-would pass over a ``list`` that dropped the field.
-
-A REFUSAL IS PROVEN BY THE FILE NOT MOVING as well as by its reason. A verb
-that wrote first and refused afterwards raises the same cause and leaves the
-bad seed stored for the next sweep to search for.
+Every drive goes through the real dispatcher and every read back through
+``list``, so a field a person cannot see set fails. A refusal is proven by the
+file not moving as well as by its reason.
 """
 
 from __future__ import annotations
@@ -27,8 +17,8 @@ from tests.cli_drive import drive
 from tests.test_config import valid_data
 
 
-@pytest.fixture
-def installed(tmp_path, monkeypatch):
+def install(tmp_path, monkeypatch) -> config.Config:
+    """A configured library on the full profile, which turns the label verbs on."""
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
     (root / "db").mkdir(parents=True)
@@ -39,6 +29,16 @@ def installed(tmp_path, monkeypatch):
     config.save(resolved)
     config.reset_cache()
     return resolved
+
+
+@pytest.fixture
+def installed(tmp_path, monkeypatch):
+    return install(tmp_path, monkeypatch)
+
+
+@pytest.fixture(autouse=True)
+def _library(installed):
+    """Every test here runs on a configured library."""
 
 
 def ok(argv: list[str]) -> dict:
@@ -65,14 +65,8 @@ def intent_bytes() -> bytes | None:
     return path.read_bytes() if path.exists() else None
 
 
-def test_an_add_with_a_limit_and_two_seeds_round_trips_through_list(installed):
-    del installed
-    ok([
-        "add", "Hotflush Recordings",
-        "--track-limit", "50",
-        "--seed", "Scuba",
-        "--seed", "id:4012",
-    ])
+def test_an_add_with_a_limit_and_two_seeds_round_trips_through_list():
+    ok(["add", "Hotflush Recordings", "--track-limit", "50", "--seed", "Scuba", "--seed", "id:4012"])
 
     entry = listed()["hotflush-recordings"]
     assert entry["track_limit"] == 50
@@ -80,9 +74,8 @@ def test_an_add_with_a_limit_and_two_seeds_round_trips_through_list(installed):
     assert entry["name"] == "Hotflush Recordings"
 
 
-def test_list_shows_the_limit_and_the_seeds_to_a_person(installed):
+def test_list_shows_the_limit_and_the_seeds_to_a_person():
     """The human rendering reads the check detail, so the fields ride there too."""
-    del installed
     ok(["add", "Kompakt", "--track-limit", "20", "--seed", "id:77"])
 
     envelope = ok([])
@@ -90,15 +83,9 @@ def test_list_shows_the_limit_and_the_seeds_to_a_person(installed):
     assert check["detail"] == "kompakt, track limit 20, seeds id:77"
 
 
-def test_set_changes_one_field_and_keeps_the_rest(installed):
-    del installed
-    ok([
-        "add", "Ostgut Ton",
-        "--match", "Ostgut",
-        "--track-limit", "30",
-        "--seed", "Ben Klock",
-        "--seed", "Marcel Dettmann",
-    ])
+def test_set_changes_one_field_and_keeps_the_rest():
+    ok(["add", "Ostgut Ton", "--match", "Ostgut", "--track-limit", "30",
+        "--seed", "Ben Klock", "--seed", "Marcel Dettmann"])
 
     envelope = ok(["set", "ostgut-ton", "--track-limit", "120"])
     assert envelope["data"]["summary"]["updated"] == "ostgut-ton"
@@ -110,8 +97,7 @@ def test_set_changes_one_field_and_keeps_the_rest(installed):
     assert entry["name"] == "Ostgut Ton"
 
 
-def test_set_seeds_replaces_the_list_and_keeps_the_limit(installed):
-    del installed
+def test_set_seeds_replaces_the_list_and_keeps_the_limit():
     ok(["add", "Ostgut Ton", "--track-limit", "30", "--seed", "Ben Klock"])
 
     ok(["set", "Ostgut Ton", "--seed", "id:9", "--seed", "Answer Code Request"])
@@ -121,8 +107,7 @@ def test_set_seeds_replaces_the_list_and_keeps_the_limit(installed):
     assert entry["track_limit"] == 30
 
 
-def test_set_on_an_unknown_label_refuses_by_name_and_creates_nothing(installed):
-    del installed
+def test_set_on_an_unknown_label_refuses_by_name_and_creates_nothing():
     ok(["add", "Kompakt"])
     before = intent_bytes()
 
@@ -135,8 +120,7 @@ def test_set_on_an_unknown_label_refuses_by_name_and_creates_nothing(installed):
 
 
 @pytest.mark.parametrize("seed", ["id:", "id:12a", "ID:12", "id: 12", "id:-4", "   "])
-def test_a_malformed_seed_on_add_refuses_and_writes_nothing(installed, seed):
-    del installed
+def test_a_malformed_seed_on_add_refuses_and_writes_nothing(seed):
     ok(["add", "Kompakt", "--seed", "Michael Mayer"])
     before = intent_bytes()
 
@@ -147,8 +131,7 @@ def test_a_malformed_seed_on_add_refuses_and_writes_nothing(installed, seed):
     assert listed()["kompakt"]["seed_artists"] == ["Michael Mayer"]
 
 
-def test_a_malformed_id_seed_on_set_refuses_and_writes_nothing(installed):
-    del installed
+def test_a_malformed_id_seed_on_set_refuses_and_writes_nothing():
     ok(["add", "Kompakt", "--track-limit", "40", "--seed", "id:1"])
     before = intent_bytes()
 
@@ -159,33 +142,28 @@ def test_a_malformed_id_seed_on_set_refuses_and_writes_nothing(installed):
     assert intent_bytes() == before
 
 
-def test_a_malformed_id_seed_on_a_new_label_creates_no_entry(installed):
-    del installed
+def test_a_malformed_id_seed_on_a_new_label_creates_no_entry():
     cause = refused(["add", "Kompakt", "--seed", "id:abc"])
     assert cause["reason"] == "label-name-invalid"
     assert intent_bytes() is None
 
 
-def test_a_name_seed_that_merely_contains_id_is_stored(installed):
+def test_a_name_seed_that_merely_contains_id_is_stored():
     """Only a seed that STARTS like an identifier is held to the digits rule."""
-    del installed
     ok(["add", "Kompakt", "--seed", "Kid:Nap"])
     assert listed()["kompakt"]["seed_artists"] == ["Kid:Nap"]
 
 
 @pytest.mark.parametrize("limit", ["0", "-5", "ten"])
-def test_a_track_limit_below_one_refuses_at_the_parser(installed, limit):
-    del installed
+def test_a_track_limit_below_one_refuses_at_the_parser(limit):
     code, _ = drive(["label", "registry", "add", "Kompakt", "--track-limit", limit])
     assert code == int(ExitCode.USAGE)
     assert intent_bytes() is None
 
 
 @pytest.mark.parametrize("limit", [0, -1, True])
-def test_the_store_refuses_a_limit_below_one_from_a_python_caller(installed, limit):
-    """The parser guards the verb. This guards the store, which the fourth
-    attended sitting carried 47 labels through directly."""
-    del installed
+def test_the_store_refuses_a_limit_below_one_from_a_python_caller(limit):
+    """The parser guards the verb; this guards the store, which Python callers reach directly."""
     from cratekit.core.cause import CratekitError
     from cratekit.label import registry as labels
 
@@ -200,8 +178,7 @@ def test_the_store_refuses_a_limit_below_one_from_a_python_caller(installed, lim
     assert store.load().by_id("kompakt").track_limit is None
 
 
-def test_set_with_no_field_refuses_rather_than_reporting_an_edit(installed):
-    del installed
+def test_set_with_no_field_refuses_rather_than_reporting_an_edit():
     ok(["add", "Kompakt", "--track-limit", "40"])
     before = intent_bytes()
 
@@ -215,8 +192,7 @@ def test_set_with_no_field_refuses_rather_than_reporting_an_edit(installed):
 @pytest.mark.parametrize(
     "field", [["--seed", "Michael Mayer"], ["--track-limit", "9"], ["--match", "Kompakt Rec"]]
 )
-def test_a_field_flag_on_an_action_that_does_not_set_it_refuses(installed, action, field):
-    del installed
+def test_a_field_flag_on_an_action_that_does_not_set_it_refuses(action, field):
     ok(["add", "Kompakt"])
     before = intent_bytes()
 
@@ -226,15 +202,8 @@ def test_a_field_flag_on_an_action_that_does_not_set_it_refuses(installed, actio
     assert intent_bytes() == before
 
 
-def test_set_finds_an_accented_name_typed_in_decomposed_form(installed):
-    """Hazard R-381: the name must resolve however the terminal composed it.
-
-    Written when ``Sueño`` slugged to ``sue-o`` and its decomposed form, an
-    ``n`` and a combining tilde, to ``suen-o``. Both now slug to ``sueno``, and
-    resolving by the normalized name still has to hold for a stored identifier
-    the slug does not derive.
-    """
-    del installed
+def test_set_finds_an_accented_name_typed_in_decomposed_form():
+    """Hazard R-381: the name must resolve however the terminal composed it."""
     composed = unicodedata.normalize("NFC", "Sueño")
     decomposed = unicodedata.normalize("NFD", "Sueño")
     assert composed != decomposed

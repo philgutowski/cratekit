@@ -1,19 +1,10 @@
 """U75: ``crate label approved``, driven through the real dispatcher.
 
-A label sweep offers releases into the review queue and a person accepts or
-rejects each. This verb turns the accepted ones into the list document
-``acquire download`` reads, through the one emitter U68 landed, with a manifest
-carrying the label and the year. The proofs here are that only an ACCEPTED
-release is read, that only a MISSING track is written, that a release the
-provider no longer has is named while the others still list, that nothing the
-review item's payload says about a track reaches the list, and that a person
-reading the DEFAULT output sees the path and the next command.
-
-Every release is offered by the sweep's own ``offer_release`` and answered by
-the queue's own ``resolve``, never by a row written straight into the store.
-Every expected value is a literal taken from the fixtures, never a value the
-verb or the emitter produced. D1 applies: nothing here names a real volume, a
-real person, a real label or a real track.
+Only an ACCEPTED release is read, only a MISSING track is written, a release
+the provider no longer has is named while the others still list, nothing the
+payload says about a track reaches the list, and the DEFAULT output names the
+path and the next command. Releases are offered and answered by the sweep's
+and the queue's own functions; every expected value is a literal (D1).
 """
 
 from __future__ import annotations
@@ -37,14 +28,13 @@ from cratekit.sync import run
 from tests.cli_drive import drive
 from tests.label_fakes import StrictCatalogue, UnreadableCatalogue, catalogue_factory
 from tests.test_config import valid_data
+from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 
 #: What a payload written before R-379 carries where the artist belongs.
 ADDRESS = "<provider.artist.Artist object at 0x10b77ec00>"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
+# ── Fixtures ─────────────────────────────────────────────────────────────────
 
 
 @pytest.fixture
@@ -113,6 +103,20 @@ def answered(cfg: config.Config, item_id: str, verdict: review.Verdict) -> None:
         review.resolve(items, item_id, verdict, actor="suite")
 
 
+def accepted_raw(
+    cfg: config.Config, identity: dict, payload: dict, *, kind: str = sweep.KIND,
+    handler_key: str = sweep.HANDLER_KEY,
+) -> str:
+    """An item offered straight into the label queue, then accepted. Its id."""
+    with review.open_store(cfg) as items:
+        item = review.offer(
+            items, queue=str(review.Queue.LABEL_RELEASE), kind=kind, identity=identity,
+            payload=payload, handler_key=handler_key,
+        )
+        review.resolve(items, item.item_id, review.Verdict.ACCEPTED, actor="suite")
+    return item.item_id
+
+
 def accepted(cfg: config.Config, release_id: str, **fields: str) -> str:
     item_id = offered(cfg, release_id, **fields)
     answered(cfg, item_id, review.Verdict.ACCEPTED)
@@ -125,6 +129,23 @@ def bind(monkeypatch, fake) -> None:
 
 def approved(*extra: str) -> tuple[int, dict]:
     return drive(["label", "approved", *extra])
+
+
+def listed(monkeypatch, fake, *extra: str) -> dict:
+    """Bind ``fake`` and run the verb, which must succeed. Its envelope."""
+    bind(monkeypatch, fake)
+    code, envelope = approved(*extra)
+    assert code == int(ExitCode.OK), envelope
+    return envelope
+
+
+def unusable(monkeypatch, fake, *extra: str) -> dict:
+    """Bind ``fake`` and run the verb, which must refuse the list as unusable. Its cause."""
+    bind(monkeypatch, fake)
+    code, envelope = approved(*extra)
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "label-list-unusable"
+    return envelope["cause"]
 
 
 def human(argv: list[str]) -> tuple[int, str]:
@@ -147,12 +168,7 @@ LIST_NAME = re.compile(r"label-approved-[0-9a-f]{12}\.list\.json")
 
 
 def the_list(folder: Path) -> Path:
-    """The ONE list in a folder, found on disk and never derived from the digest.
-
-    The digest is over everything the emitter writes, so deriving a name here
-    would be the module's own recipe copied into its test. What is pinned is
-    the shape of the name and that there is exactly one.
-    """
+    """The ONE list in a folder, found on disk and never derived from the digest."""
     found = sorted(folder.glob("*.list.json"))
     assert len(found) == 1, found
     assert LIST_NAME.fullmatch(found[0].name), found[0].name
@@ -169,9 +185,7 @@ def two_track_release() -> tuple[list[Track], int]:
     return [Track("301", "Aurora Bloom", "Sun Path"), Track("302", "Nova Reef", "Tide")], 2024
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# What is read, and what is listed
-# ═══════════════════════════════════════════════════════════════════════════
+# ── What is read, and what is listed ─────────────────────────────────────────
 
 
 def test_an_accepted_release_is_listed_and_a_rejected_or_open_one_is_never_read(
@@ -187,11 +201,8 @@ def test_an_accepted_release_is_listed_and_a_rejected_or_open_one_is_never_read(
             "r-3": ([Track("501", "Lumen Drift", "Salt Road")], 2022),
         }
     )
-    bind(monkeypatch, fake)
+    envelope = listed(monkeypatch, fake)
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "ok"
     assert fake.releases_asked_for == ["r-1"]
     summary = envelope["data"]["summary"]
@@ -210,9 +221,7 @@ def test_an_accepted_release_is_listed_and_a_rejected_or_open_one_is_never_read(
 
 def test_the_written_list_is_one_the_download_verbs_reader_accepts(cfg, library, monkeypatch):
     accepted(cfg, "r-1")
-    bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
-
-    _code, envelope = approved()
+    envelope = listed(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
 
     wanted = match_cli.read_list(Path(envelope["data"]["summary"]["list"]))
     assert [(one.ref, one.artist, one.title) for one in wanted] == [
@@ -224,11 +233,8 @@ def test_the_written_list_is_one_the_download_verbs_reader_accepts(cfg, library,
 def test_an_owned_track_is_skipped(cfg, library, monkeypatch):
     owned(library, "Aurora Bloom - Sun Path.flac")
     accepted(cfg, "r-1")
-    bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
+    envelope = listed(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.OK), envelope
     summary = envelope["data"]["summary"]
     assert (summary["written"], summary["owned"], summary["missing"]) == (1, 1, 1)
     body = json.loads(Path(summary["list"]).read_text())
@@ -270,9 +276,7 @@ def test_the_artist_comes_from_the_provider_and_never_from_the_review_payload(
 ):
     """R-379: 98 live rows carry an address where the artist belongs."""
     accepted(cfg, "r-1", artist=ADDRESS)
-    bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
-
-    _code, envelope = approved()
+    envelope = listed(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
 
     summary = envelope["data"]["summary"]
     written = Path(summary["list"]).read_text() + Path(summary["manifest"]).read_text()
@@ -307,19 +311,14 @@ def test_out_names_the_folder_the_list_is_written_into(cfg, library, tmp_path, m
     assert not lists_dir(library).exists()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# A release that cannot be read
-# ═══════════════════════════════════════════════════════════════════════════
+# ── A release that cannot be read ────────────────────────────────────────────
 
 
 def test_a_vanished_release_is_named_and_the_others_still_list(cfg, library, monkeypatch):
     gone_item = accepted(cfg, "r-gone", title="Withdrawn EP")
     accepted(cfg, "r-1")
-    bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
+    envelope = listed(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.OK), envelope
     summary = envelope["data"]["summary"]
     assert (summary["written"], summary["read"], summary["accepted"]) == (2, 1, 2)
     assert [(one["release_id"], one["item_id"], one["gone"]) for one in summary["failed"]] == [
@@ -350,11 +349,8 @@ def test_a_release_the_provider_could_not_answer_for_is_a_retry_and_not_a_revoke
 ):
     accepted(cfg, "r-down")
     accepted(cfg, "r-1")
-    bind(monkeypatch, OneOutage(releases={"r-1": two_track_release()}))
+    envelope = listed(monkeypatch, OneOutage(releases={"r-1": two_track_release()}))
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.OK), envelope
     failure = check(envelope, "release.r-down")
     assert "could not be read" in failure["detail"]
     assert "RuntimeError: the provider timed out" in failure["detail"]
@@ -365,9 +361,7 @@ def test_a_release_the_provider_could_not_answer_for_is_a_retry_and_not_a_revoke
 
 def test_every_release_read_is_said_so(cfg, library, monkeypatch):
     accepted(cfg, "r-1")
-    bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
-
-    _code, envelope = approved()
+    envelope = listed(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
 
     assert check(envelope, "releases") == {
         "key": "label.approved.releases",
@@ -382,14 +376,10 @@ def test_every_release_read_is_said_so(cfg, library, monkeypatch):
 def test_no_release_read_is_refused_and_never_a_clean_no_op(cfg, library, monkeypatch):
     accepted(cfg, "r-1")
     accepted(cfg, "r-2")
-    bind(monkeypatch, UnreadableCatalogue())
+    cause = unusable(monkeypatch, UnreadableCatalogue())
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "label-list-unusable"
-    assert "none of the 2 accepted release(s) could be read" in envelope["cause"]["message"]
-    assert [one["release_id"] for one in envelope["cause"]["detail"]["failed"]] == ["r-1", "r-2"]
+    assert "none of the 2 accepted release(s) could be read" in cause["message"]
+    assert [one["release_id"] for one in cause["detail"]["failed"]] == ["r-1", "r-2"]
     assert not lists_dir(library).exists()
 
 
@@ -398,14 +388,10 @@ def test_nothing_missing_with_a_release_unread_is_refused_too(cfg, library, monk
     owned(library, "Nova Reef - Tide.flac")
     accepted(cfg, "r-1")
     accepted(cfg, "r-gone")
-    bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
+    cause = unusable(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "label-list-unusable"
     assert "nothing is missing from the 1 release(s) that could be read, and 1 could not" in (
-        envelope["cause"]["message"]
+        cause["message"]
     )
     assert not lists_dir(library).exists()
 
@@ -435,25 +421,15 @@ def test_the_seams_own_refusal_passes_through_and_stops_the_run(cfg, library, mo
 
 
 def test_an_accepted_item_naming_no_release_is_a_named_failure(cfg, library, monkeypatch):
-    with review.open_store(cfg) as items:
-        stray = review.offer(
-            items,
-            queue=str(review.Queue.LABEL_RELEASE),
-            kind=sweep.KIND,
-            identity={"imported": "row-9"},
-            payload={"title": "No Identifier EP", "label_name": "Tide Works"},
-            handler_key=sweep.HANDLER_KEY,
-        )
-        review.resolve(items, stray.item_id, review.Verdict.ACCEPTED, actor="suite")
+    stray = accepted_raw(
+        cfg, {"imported": "row-9"}, {"title": "No Identifier EP", "label_name": "Tide Works"}
+    )
     accepted(cfg, "r-1")
     fake = StrictCatalogue(releases={"r-1": two_track_release()})
-    bind(monkeypatch, fake)
+    envelope = listed(monkeypatch, fake)
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.OK), envelope
     assert fake.releases_asked_for == ["r-1"]
-    failure = check(envelope, f"release.{stray.item_id}")
+    failure = check(envelope, f"release.{stray}")
     assert "names no release identifier" in failure["detail"]
 
 
@@ -463,25 +439,16 @@ def test_an_accepted_harvested_label_shares_the_queue_and_is_not_a_release(
     """Harvest offers label NAMES into the same queue, under another kind."""
     from cratekit.label import harvest
 
-    with review.open_store(cfg) as items:
-        name = review.offer(
-            items,
-            queue=str(review.Queue.LABEL_RELEASE),
-            kind=harvest.KIND,
-            identity={"name": "Tide Works"},
-            payload={"name": "Tide Works", "identity": "r-2"},
-            handler_key="label.harvest",
-        )
-        review.resolve(items, name.item_id, review.Verdict.ACCEPTED, actor="suite")
+    accepted_raw(
+        cfg, {"name": "Tide Works"}, {"name": "Tide Works", "identity": "r-2"},
+        kind=harvest.KIND, handler_key="label.harvest",
+    )
     accepted(cfg, "r-1")
     fake = StrictCatalogue(
         releases={"r-1": two_track_release(), "r-2": ([Track("401", "Mira Vale", "Glass Hour")], 2023)}
     )
-    bind(monkeypatch, fake)
+    envelope = listed(monkeypatch, fake)
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.OK), envelope
     assert fake.releases_asked_for == ["r-1"]
     assert envelope["data"]["summary"]["accepted"] == 1
     assert check(envelope, "releases")["status"] == "ok"
@@ -491,54 +458,29 @@ def test_the_items_identity_names_the_release_and_a_payload_that_disagrees_does_
     cfg, library, monkeypatch
 ):
     """Mutation row A8 found nothing holding the order of the two reads."""
-    with review.open_store(cfg) as items:
-        item = review.offer(
-            items,
-            queue=str(review.Queue.LABEL_RELEASE),
-            kind=sweep.KIND,
-            identity={"release_id": "r-1"},
-            payload={"identity": "r-2", "label_name": "Tide Works"},
-            handler_key=sweep.HANDLER_KEY,
-        )
-        review.resolve(items, item.item_id, review.Verdict.ACCEPTED, actor="suite")
+    accepted_raw(cfg, {"release_id": "r-1"}, {"identity": "r-2", "label_name": "Tide Works"})
     fake = StrictCatalogue(
         releases={"r-1": two_track_release(), "r-2": ([Track("401", "Mira Vale", "Glass Hour")], 2023)}
     )
-    bind(monkeypatch, fake)
+    listed(monkeypatch, fake)
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.OK), envelope
     assert fake.releases_asked_for == ["r-1"]
 
 
-def test_an_imported_item_is_read_by_the_identifier_its_payload_carries(
-    cfg, library, monkeypatch
-):
+def test_an_imported_item_is_read_by_the_identifier_its_payload_carries(cfg, library, monkeypatch):
     """``review import`` carries no identity, so the payload's copy is all there is."""
-    with review.open_store(cfg) as items:
-        carried = review.offer(
-            items,
-            queue=str(review.Queue.LABEL_RELEASE),
-            kind=sweep.KIND,
-            identity={"imported": "row-4"},
-            payload={"identity": "r-1", "label_id": "tide-works", "label_name": "Tide Works"},
-            handler_key=sweep.HANDLER_KEY,
-        )
-        review.resolve(items, carried.item_id, review.Verdict.ACCEPTED, actor="suite")
+    accepted_raw(
+        cfg, {"imported": "row-4"},
+        {"identity": "r-1", "label_id": "tide-works", "label_name": "Tide Works"},
+    )
     fake = StrictCatalogue(releases={"r-1": two_track_release()})
-    bind(monkeypatch, fake)
+    envelope = listed(monkeypatch, fake)
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.OK), envelope
     assert fake.releases_asked_for == ["r-1"]
     assert envelope["data"]["summary"]["written"] == 2
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Nothing to do
-# ═══════════════════════════════════════════════════════════════════════════
+# ── Nothing to do ────────────────────────────────────────────────────────────
 
 
 def test_nothing_accepted_is_a_no_op_that_never_opens_the_catalogue(cfg, library, monkeypatch):
@@ -563,20 +505,15 @@ def test_every_track_owned_is_a_no_op_and_writes_nothing(cfg, library, monkeypat
     owned(library, "Aurora Bloom - Sun Path.flac")
     owned(library, "Nova Reef - Tide.flac")
     accepted(cfg, "r-1")
-    bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
+    envelope = listed(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
     assert check(envelope, "written")["status"] == "info"
     assert "holds every track of the 1 accepted release(s)" in check(envelope, "written")["detail"]
     assert not lists_dir(library).exists()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# A second run
-# ═══════════════════════════════════════════════════════════════════════════
+# ── A second run ─────────────────────────────────────────────────────────────
 
 
 def test_the_same_work_twice_writes_the_same_file_and_refuses_nothing(cfg, library, monkeypatch):
@@ -597,9 +534,7 @@ def test_the_same_work_twice_writes_the_same_file_and_refuses_nothing(cfg, libra
     ]
 
 
-def test_a_track_landed_since_the_last_run_is_left_out_under_a_new_name(
-    cfg, library, monkeypatch
-):
+def test_a_track_landed_since_the_last_run_is_left_out_under_a_new_name(cfg, library, monkeypatch):
     accepted(cfg, "r-1")
     bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
     _code, first = approved()
@@ -648,9 +583,7 @@ def test_an_out_that_is_a_file_is_refused(cfg, library, tmp_path, monkeypatch):
     assert "is not a folder" in envelope["cause"]["message"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The other three states, and the same recording twice
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The other three states, and the same recording twice ─────────────────────
 
 
 def test_the_same_recording_on_two_releases_is_listed_once_under_the_first(
@@ -688,11 +621,8 @@ def test_a_track_held_in_another_version_is_offered_under_this_verb_and_not_list
 ):
     owned(library, "Nova Reef - Tide (Someone Remix).flac")
     accepted(cfg, "r-1")
-    bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
+    envelope = listed(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.OK), envelope
     summary = envelope["data"]["summary"]
     assert (summary["written"], summary["offered"]) == (1, 1)
     body = json.loads(Path(summary["list"]).read_text())
@@ -713,11 +643,8 @@ def test_a_track_deleted_on_purpose_is_not_listed(cfg, library, monkeypatch):
         actor="deletion",
     )
     accepted(cfg, "r-1")
-    bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
+    envelope = listed(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.OK), envelope
     summary = envelope["data"]["summary"]
     assert (summary["written"], summary["suppressed"]) == (1, 1)
     body = json.loads(Path(summary["list"]).read_text())
@@ -727,11 +654,8 @@ def test_a_track_deleted_on_purpose_is_not_listed(cfg, library, monkeypatch):
 def test_a_release_with_no_year_is_listed_and_said_to_be_undated(cfg, library, monkeypatch):
     accepted(cfg, "r-1")
     tracks, _year = two_track_release()
-    bind(monkeypatch, StrictCatalogue(releases={"r-1": (tracks, None)}))
+    envelope = listed(monkeypatch, StrictCatalogue(releases={"r-1": (tracks, None)}))
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.OK), envelope
     undated = check(envelope, "undated")
     assert undated["status"] == "fail"
     assert "release r-1" in undated["detail"]
@@ -742,9 +666,7 @@ def test_a_release_with_no_year_is_listed_and_said_to_be_undated(cfg, library, m
 
 def test_a_dated_release_says_every_release_carries_its_year(cfg, library, monkeypatch):
     accepted(cfg, "r-1")
-    bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
-
-    _code, envelope = approved()
+    envelope = listed(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
 
     assert check(envelope, "undated")["status"] == "ok"
     assert envelope["data"]["summary"]["undated"] == []
@@ -782,21 +704,12 @@ def test_missing_tracks_none_of_which_can_be_asked_for_is_refused_and_not_a_no_o
 ):
     """Mutation row B6 found nothing holding this refusal."""
     accepted(cfg, "r-1")
-    bind(
-        monkeypatch,
-        StrictCatalogue(releases={"r-1": ([Track("", "Nova Reef", "Tide")], 2024)}),
+    cause = unusable(
+        monkeypatch, StrictCatalogue(releases={"r-1": ([Track("", "Nova Reef", "Tide")], 2024)})
     )
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "label-list-unusable"
-    assert "1 missing track(s) and none carries a provider identifier" in (
-        envelope["cause"]["message"]
-    )
-    assert envelope["cause"]["detail"]["unlisted_tracks"] == [
-        {"artist": "Nova Reef", "title": "Tide"}
-    ]
+    assert "1 missing track(s) and none carries a provider identifier" in (cause["message"])
+    assert cause["detail"]["unlisted_tracks"] == [{"artist": "Nova Reef", "title": "Tide"}]
     assert not lists_dir(library).exists()
 
 
@@ -829,9 +742,7 @@ def test_the_verb_declares_what_it_is():
     assert entry.landed
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# What the unit's review found, each driven red before it was fixed
-# ═══════════════════════════════════════════════════════════════════════════
+# ── What the unit's review found, each driven red before it was fixed ────────
 
 
 class Parsing(StrictCatalogue):
@@ -850,9 +761,7 @@ def test_a_lookup_error_that_is_not_the_seams_own_is_never_read_as_a_gone_releas
     """``KeyError`` is a ``LookupError``. A parse failure is not a withdrawal."""
     accepted(cfg, "r-odd")
     accepted(cfg, "r-1")
-    bind(monkeypatch, Parsing(releases={"r-1": two_track_release()}))
-
-    _code, envelope = approved()
+    envelope = listed(monkeypatch, Parsing(releases={"r-1": two_track_release()}))
 
     failure = check(envelope, "release.r-odd")
     assert "is gone from the provider" not in failure["detail"]
@@ -880,10 +789,10 @@ def test_the_same_tracks_with_a_corrected_year_take_a_new_name_and_are_not_refus
 def test_a_folder_the_account_cannot_write_keeps_the_permission_refusal_and_its_path(
     cfg, library, monkeypatch
 ):
-    """The cause constructor reclassifies a refusal raised FROM a permission
-    error, so this verb's catch must not flatten the better answer. Built by
-    raising the error rather than by chmod, which a suite run as root defeats:
-    ``docs/solutions`` records both halves of that."""
+    """The cause constructor reclassifies a refusal raised FROM a permission error, so this
+    verb's catch must not flatten the better answer. Built by raising the error rather than by
+    chmod, which a suite run as root defeats: ``docs/solutions`` records both halves of that.
+    """
     import errno
 
     from cratekit.acquire import listdoc
@@ -959,23 +868,12 @@ def test_one_unreadable_row_is_reported_and_the_rest_of_the_release_still_lists(
 
 
 def test_an_item_naming_no_release_is_told_to_clear_it_and_not_to_wait(cfg, library, monkeypatch):
-    with review.open_store(cfg) as items:
-        stray = review.offer(
-            items,
-            queue=str(review.Queue.LABEL_RELEASE),
-            kind=sweep.KIND,
-            identity={"imported": "row-9"},
-            payload={"title": "No Identifier EP"},
-            handler_key=sweep.HANDLER_KEY,
-        )
-        review.resolve(items, stray.item_id, review.Verdict.ACCEPTED, actor="suite")
+    stray = accepted_raw(cfg, {"imported": "row-9"}, {"title": "No Identifier EP"})
     accepted(cfg, "r-1")
-    bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
+    envelope = listed(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
 
-    _code, envelope = approved()
-
-    failure = check(envelope, f"release.{stray.item_id}")
-    assert f"crate review clear {stray.item_id}" in failure["detail"]
+    failure = check(envelope, f"release.{stray}")
+    assert f"crate review clear {stray}" in failure["detail"]
     assert "once the provider answers" not in failure["detail"]
 
 
@@ -1024,11 +922,8 @@ def test_an_answer_resets_the_count_so_scattered_failures_never_stop_the_run(
             "r-6": ([Track("601", "Mira Vale", "Glass Hour")], 2020),
         }
     )
-    bind(monkeypatch, fake)
+    envelope = listed(monkeypatch, fake)
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.OK), envelope
     assert fake.releases_asked_for == ["r-1", "r-2", "r-3", "r-4", "r-5", "r-6"]
     assert envelope["data"]["summary"]["written"] == 3
 
@@ -1038,18 +933,13 @@ def test_a_gone_release_does_not_count_towards_an_outage(cfg, library, monkeypat
         accepted(cfg, name)
     accepted(cfg, "r-1")
     fake = StrictCatalogue(releases={"r-1": two_track_release()})
-    bind(monkeypatch, fake)
+    envelope = listed(monkeypatch, fake)
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.OK), envelope
     assert fake.releases_asked_for == ["g-1", "g-2", "g-3", "g-4", "r-1"]
     assert {one["kind"] for one in envelope["data"]["summary"]["failed"]} == {"gone"}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The genre gate, U101
-# ═══════════════════════════════════════════════════════════════════════════
+# ── The genre gate, U101 ─────────────────────────────────────────────────────
 #
 # The shipped taxonomy's gate drops a family under 10% of a label's classified
 # output. "Deep House" is claimed by no rule, so it counts toward the share and
@@ -1084,11 +974,8 @@ def test_a_release_of_an_out_of_place_genre_is_held_by_name_and_not_listed(
     accepted(cfg, "r-hh", title="Corner Talk", label_id="tide-works", label_name="Tide Works")
     releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
     fake = StrictCatalogue(releases=releases)
-    bind(monkeypatch, fake)
+    envelope = listed(monkeypatch, fake)
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.OK), envelope
     assert "r-hh" in fake.releases_asked_for
     assert "901" not in listed_ids(envelope)
     assert len(listed_ids(envelope)) == HOUSE_RELEASES
@@ -1119,9 +1006,7 @@ def test_a_held_release_is_never_offered_for_review(cfg, library, monkeypatch):
     house_label(cfg, releases)
     accepted(cfg, "r-hh", label_id="tide-works", label_name="Tide Works")
     releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
-    bind(monkeypatch, StrictCatalogue(releases=releases))
-
-    _code, envelope = approved()
+    envelope = listed(monkeypatch, StrictCatalogue(releases=releases))
 
     assert envelope["data"]["summary"]["offered"] == 0
     with review.open_store(cfg) as items:
@@ -1161,11 +1046,8 @@ def test_a_genre_the_label_makes_enough_of_is_listed(cfg, library, monkeypatch):
 
 def test_a_release_with_no_genre_known_is_listed_with_a_failing_line(cfg, library, monkeypatch):
     accepted(cfg, "r-1")
-    bind(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
+    envelope = listed(monkeypatch, StrictCatalogue(releases={"r-1": two_track_release()}))
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "ok"
     assert listed_ids(envelope) == ["301", "302"]
     ungated = check(envelope, "ungated")
@@ -1179,9 +1061,7 @@ def test_a_release_with_no_genre_known_is_listed_with_a_failing_line(cfg, librar
     assert envelope["data"]["summary"]["ungated"] == ["r-1"]
 
 
-def test_tracks_that_disagree_on_the_genre_are_not_judged_and_are_listed(
-    cfg, library, monkeypatch
-):
+def test_tracks_that_disagree_on_the_genre_are_not_judged_and_are_listed(cfg, library, monkeypatch):
     releases: dict = {}
     house_label(cfg, releases)
     accepted(cfg, "r-mix", label_id="tide-works", label_name="Tide Works")
@@ -1192,9 +1072,7 @@ def test_tracks_that_disagree_on_the_genre_are_not_judged_and_are_listed(
         ],
         2024,
     )
-    bind(monkeypatch, StrictCatalogue(releases=releases))
-
-    _code, envelope = approved()
+    envelope = listed(monkeypatch, StrictCatalogue(releases=releases))
 
     assert {"901", "902"} <= set(listed_ids(envelope))
     assert envelope["data"]["summary"]["held"] == []
@@ -1233,9 +1111,7 @@ def test_each_label_is_judged_against_its_own_output(cfg, library, monkeypatch):
     releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
     accepted(cfg, "r-other", label_id="salt-flats", label_name="Salt Flats")
     releases["r-other"] = ([Track("902", "Lumen Drift", "Iron", genre="Hip Hop")], 2024)
-    bind(monkeypatch, StrictCatalogue(releases=releases))
-
-    _code, envelope = approved()
+    envelope = listed(monkeypatch, StrictCatalogue(releases=releases))
 
     assert "902" in listed_ids(envelope)
     assert "901" not in listed_ids(envelope)
@@ -1252,9 +1128,7 @@ def test_releases_naming_no_label_are_each_judged_alone(cfg, library, monkeypatc
         )
     accepted(cfg, "r-hh", label_id="", label_name="")
     releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
-    bind(monkeypatch, StrictCatalogue(releases=releases))
-
-    _code, envelope = approved()
+    envelope = listed(monkeypatch, StrictCatalogue(releases=releases))
 
     assert "901" in listed_ids(envelope)
     assert envelope["data"]["summary"]["held"] == []
@@ -1269,11 +1143,8 @@ def test_every_release_held_or_owned_is_a_no_op_that_does_not_claim_the_held_one
         owned(library, f"House Artist h{n} - Deep Cut.flac")
     accepted(cfg, "r-hh", label_id="tide-works", label_name="Tide Works")
     releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
-    bind(monkeypatch, StrictCatalogue(releases=releases))
+    envelope = listed(monkeypatch, StrictCatalogue(releases=releases))
 
-    code, envelope = approved()
-
-    assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
     assert check(envelope, "written")["detail"] == (
         "nothing listed: the library holds every track of the 10 accepted release(s) "
@@ -1323,9 +1194,7 @@ def test_a_label_with_a_release_unread_this_run_is_not_judged_and_says_why(
     accepted(cfg, "r-hh", label_id="tide-works", label_name="Tide Works")
     releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
     accepted(cfg, "r-gone", label_id="tide-works", label_name="Tide Works")
-    bind(monkeypatch, StrictCatalogue(releases=releases))
-
-    _code, envelope = approved()
+    envelope = listed(monkeypatch, StrictCatalogue(releases=releases))
 
     assert "901" in listed_ids(envelope)
     assert envelope["data"]["summary"]["held"] == []
@@ -1344,9 +1213,7 @@ def test_a_release_unread_on_another_label_does_not_stop_this_label_being_judged
     accepted(cfg, "r-hh", label_id="tide-works", label_name="Tide Works")
     releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
     accepted(cfg, "r-gone", label_id="salt-flats", label_name="Salt Flats")
-    bind(monkeypatch, StrictCatalogue(releases=releases))
-
-    _code, envelope = approved()
+    envelope = listed(monkeypatch, StrictCatalogue(releases=releases))
 
     assert "901" not in listed_ids(envelope)
     assert [one["release_id"] for one in envelope["data"]["summary"]["held"]] == ["r-hh"]
@@ -1360,9 +1227,7 @@ def test_a_release_with_no_genre_is_not_counted_in_its_labels_share(cfg, library
     releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
     accepted(cfg, "r-none", label_id="tide-works", label_name="Tide Works")
     releases["r-none"] = ([Track("902", "Lumen Drift", "Iron")], 2024)
-    bind(monkeypatch, StrictCatalogue(releases=releases))
-
-    _code, envelope = approved()
+    envelope = listed(monkeypatch, StrictCatalogue(releases=releases))
 
     assert "902" in listed_ids(envelope)
     assert envelope["data"]["summary"]["ungated"] == ["r-none"]
@@ -1376,9 +1241,7 @@ def test_a_genre_on_a_mapping_row_is_read_like_one_on_an_object(cfg, library, mo
     accepted(cfg, "r-hh", label_id="tide-works", label_name="Tide Works")
     row = {"id": "901", "name": "Corner Talk", "artist": {"name": "Mira Vale"}, "genre": "Hip Hop"}
     releases["r-hh"] = ([row], 2024)
-    bind(monkeypatch, StrictCatalogue(releases=releases))
-
-    _code, envelope = approved()
+    envelope = listed(monkeypatch, StrictCatalogue(releases=releases))
 
     assert "901" not in listed_ids(envelope)
     assert [one["genre"] for one in envelope["data"]["summary"]["held"]] == ["Hip Hop"]
@@ -1396,9 +1259,7 @@ def test_a_family_exactly_at_the_share_belongs_and_is_listed(cfg, library, monke
         )
     accepted(cfg, "r-hh", label_id="tide-works", label_name="Tide Works")
     releases["r-hh"] = ([Track("901", "Mira Vale", "Corner Talk", genre="Hip Hop")], 2024)
-    bind(monkeypatch, StrictCatalogue(releases=releases))
-
-    _code, envelope = approved()
+    envelope = listed(monkeypatch, StrictCatalogue(releases=releases))
 
     assert "901" in listed_ids(envelope)
     assert envelope["data"]["summary"]["held"] == []

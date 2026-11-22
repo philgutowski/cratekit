@@ -1,39 +1,27 @@
 """``crate favorites refresh``: every genre folder's Favorites made to mirror All Favorites (U119).
 
 The one path that REMOVES a genre Favorites membership, behind its own
-explicit gate, the way every writer in this product that takes a membership
-away stands behind one. It plans every folder against the library as it
-stands, shows each folder's adds and removes, asks, and writes both halves
-through the genre favorites engine, the additions in one commit and the
-removals in a second. The additive half also runs at the end of an adoption
-that files a track, and the rebuild files the same placements, so this verb
-is where a favourite that left All Favorites, or a track added to a genre
-Favorites by hand, is taken out.
+explicit gate, as every writer that takes a membership away stands behind
+one. Every folder is planned against the library as it stands, its adds and
+removes shown, and on approval both halves are written through the genre
+favorites engine, the additions in one commit and the removals in a second.
+The additive half also runs after an adoption that files a track and in the
+rebuild, so this verb is where a favourite that left All Favorites, or a
+track added to a genre Favorites by hand, is taken out.
 
-THE ORDER IS THE MEMBERSHIP MOVE'S: the backup acknowledgment before the plan
-(R-733), the plan on a handle opened to read and closed, the gate over the
-digested plan, the write on a handle opened with write intent that takes the
-plan again and refuses a digest that moved. Database native routing trees
-only; the bridge's writers emit an export, and the engine refuses a tree on
-the bridge by name.
+The order is :func:`spine.run`'s, the gate asked before the nothing to
+refresh check. Database native routing trees only; the engine refuses a tree
+on the bridge by name.
 
 Layer: modules.
 """
 
 from __future__ import annotations
 
-from typing import Any
-
-from cratekit.cli.output import Envelope, declared_gate, load_config
-from cratekit.core import (
-    active_taxonomy,
-    analysis_store,
-    config,
-    rb_writer,
-    session,
-    tree_registry,
-)
-from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
+from cratekit.cli.output import Envelope, load_config
+from cratekit.core import active_taxonomy, analysis_store, config, tree_registry
+from cratekit.core.cause import CratekitError, Remedy, refuse
+from cratekit.favorites import spine
 from cratekit.write import genre_favorites
 
 #: The gate, explicit: a removal is the one write that takes something away.
@@ -55,13 +43,8 @@ def planned(
     cfg: config.Config, declared, registry: tree_registry.Registry
 ) -> genre_favorites.RefreshPlan:
     """The plan over the tree as it stands, through a handle opened to read and closed."""
-    db = rb_writer.open_db(
-        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
-    )
-    try:
+    with spine.handle(cfg) as db:
         return genre_favorites.plan_refresh(cfg, db, declared, registry)
-    finally:
-        rb_writer.close_db(db)
 
 
 def written(
@@ -71,8 +54,7 @@ def written(
     plan: genre_favorites.RefreshPlan,
 ) -> genre_favorites.Refreshed:
     """Apply the plan, both halves, through a handle of this function's own, opened to write."""
-    db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
-    try:
+    with spine.handle(cfg, write=True) as db:
         return genre_favorites.apply_refresh(
             cfg,
             db,
@@ -82,62 +64,27 @@ def written(
             analysis_roots=analysis_store.watch_roots(cfg),
             remove=True,
         )
-    finally:
-        rb_writer.close_db(db)
 
 
 def _left_alone(plan: genre_favorites.RefreshPlan) -> list[dict[str, str]]:
-    if not plan.unclaimed:
-        return []
-    return [
-        {
-            "code": LEFT_ALONE,
-            "message": (
-                f"{len(plan.unclaimed)} folder(s) under the tree are nobody's declared "
-                f"bucket, or two folders carry one bucket's name, and were left alone: "
-                + ", ".join(plan.unclaimed)
-            ),
-        }
-    ]
-
-
-def favorites_refresh(ctx) -> Envelope:
-    """Plan every folder's Favorites, ask, then add and remove and read back."""
-    cfg = load_config(_ORIGIN)
-    declared = active_taxonomy.load(cfg)
-    registry = tree_registry.read(cfg)
-    spec = declared_gate(ctx.entry, APPROVE_GATE)
-    # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).
-    session.assert_backup_acknowledged(cfg)
-
-    plan = planned(cfg, declared, registry)
-    data = genre_favorites.payload(plan)
-    warnings = _left_alone(plan)
-    if ctx.gate.require(spec, plan=data, context=genre_favorites.facts(plan)) != "approve":
-        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
-    if not plan.writes:
-        return ctx.envelope(
-            data=data,
-            outcome=Outcome.NO_OP,
-            warnings=[
-                *warnings,
-                {
-                    "code": NOTHING_TO_REFRESH,
-                    "message": (
-                        f"every genre Favorites already mirrors {plan.source_name!r}: "
-                        f"{len(plan.folders)} folder(s) checked, {plan.favourites} "
-                        f"favourite(s), nothing to add or remove"
-                    ),
-                },
-            ],
+    return spine.notes(
+        (
+            plan.unclaimed,
+            LEFT_ALONE,
+            f"{len(plan.unclaimed)} folder(s) under the tree are nobody's declared "
+            f"bucket, or two folders carry one bucket's name, and were left alone: "
+            + ", ".join(plan.unclaimed),
         )
+    )
 
+
+def _written(cfg, declared, registry, plan) -> genre_favorites.Refreshed:
+    """The write, an interruption between its two commits said with what landed."""
     try:
-        refreshed = written(cfg, declared, registry, plan)
+        return written(cfg, declared, registry, plan)
     except genre_favorites.RefreshInterrupted as exc:
-        # THE ADDITIONS LANDED. Said with the count and the session, and the
-        # failure that stopped the removals beside it, keeping its own reason
-        # when it has one.
+        # THE ADDITIONS LANDED: said with the count and the session, and the
+        # failure that stopped the removals, keeping its own reason when it has one.
         inner = exc.__cause__
         cause = inner.cause if isinstance(inner, CratekitError) else None
         raise refuse(
@@ -152,28 +99,40 @@ def favorites_refresh(ctx) -> Envelope:
             detail={"added": exc.partial.added, "session": exc.partial.session_id},
             inner=cause,
         ) from exc
-    genre_favorites.assert_read_back(refreshed)
-    totals: dict[str, Any] = {
-        **data["totals"],
-        "added": refreshed.added,
-        "removed": refreshed.removed,
-        "created": len(refreshed.created),
-    }
-    return ctx.envelope(
-        data={**data, "totals": totals},
-        warnings=[
-            *warnings,
-            {
-                "code": REFRESHED,
-                "message": (
-                    f"{refreshed.added} membership(s) added and {refreshed.removed} removed "
-                    f"across {len(plan.folders)} genre folder(s), "
-                    f"{len(refreshed.created)} Favorites playlist(s) created; every folder "
-                    f"read back from the database as its plan, and no track left the "
-                    f"collection; undo with a restore of session {refreshed.session_id}"
-                ),
-            },
-        ],
+
+
+def _done(
+    plan: genre_favorites.RefreshPlan, done: genre_favorites.Refreshed
+) -> tuple[dict, dict[str, str]]:
+    totals = {"added": done.added, "removed": done.removed, "created": len(done.created)}
+    return totals, spine.note(
+        REFRESHED,
+        f"{done.added} membership(s) added and {done.removed} removed "
+        f"across {len(plan.folders)} genre folder(s), "
+        f"{len(done.created)} Favorites playlist(s) created; every folder "
+        f"read back from the database as its plan, and no track left the "
+        f"collection; undo with a restore of session {done.session_id}",
+    )
+
+
+def favorites_refresh(ctx) -> Envelope:
+    """Plan every folder's Favorites, ask, then add and remove and read back."""
+    cfg = load_config(_ORIGIN)
+    declared = active_taxonomy.load(cfg)
+    registry = tree_registry.read(cfg)
+    return spine.run(
+        ctx, cfg, APPROVE_GATE, genre_favorites,
+        planned=lambda: planned(cfg, declared, registry),
+        written=lambda plan: _written(cfg, declared, registry, plan),
+        idle=lambda plan: spine.note(
+            NOTHING_TO_REFRESH,
+            f"every genre Favorites already mirrors {plan.source_name!r}: "
+            f"{len(plan.folders)} folder(s) checked, {plan.favourites} "
+            f"favourite(s), nothing to add or remove",
+        ),
+        told=_left_alone,
+        done=_done,
+        gate_first=True,
     )
 
 

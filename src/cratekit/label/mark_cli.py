@@ -1,53 +1,13 @@
 """``label.mark``: a landed label batch records its year playlists as taken (R-835, U242).
 
-After a label batch lands, the source system prefixed the label's year
-playlists ``DOWNLOADED ``, the same mark a swept playlist carried. This verb is
-that step for the year playlists ``label playlists`` built, behind one explicit
-gate. SINCE U242 NO TITLE CHANGES: the prefix is retired, decided by Phillip on
-2026-11-11, and a marked year playlist is held as taken in Cratekit's own
-record, which the root step reads to know a label's tracks are downloaded. The
-account's folder is read and never written. Where the rules below say rename,
-they now mean that record.
-
-THE INTAKE FILE IS THE PROOF THE BATCH LANDED, and it names the pass. The file
-``intake land`` wrote, retired or not, must exist and hold something, which is
-``sync/marks.py``'s rule for every irreversible mark: a title is changed only
-after the importable file is on disk. The pass's name is read off the file's
-name, as ``sync mark`` reads it.
-
-ONLY A YEAR THE BATCH FILED IS MARKED. ``intake land`` writes the batch's
-``Record Labels / <Label> / <Label> <year>`` tree into the intake file, so the
-file itself says which label and which years it carried, and a year playlist
-whose year it did not file under this label is listed and left. Without that a
-file from any landing marked every year of any label.
-
-ONLY A PLAYLIST THIS PRODUCT BUILT IS MARKED. The year playlists are the ones
-the outbound ledger records for the label, and each is planned only while its
-title in the label's folder is still exactly the one it was built under. One
-already prefixed, one retitled since, and one no longer in the folder are
-listed and left, and so is every year when the folder itself is gone.
-
-EVERY MARK IS A TAKEN ENTRY UNDER THE PASS, in ``sync mark``'s record. That
-is what ``sync unmark --pass`` lets go, so a label mark made by mistake is
-taken off by the same verb that takes off a sync's.
-
-A DATABASE NATIVE INTAKE TREE WRITES NO INTAKE FILE (R-1056), so there the
-pass is named with ``--pass`` instead of ``--xml``, proved the way ``sync mark
---pass`` proves it: the intake tree reads native and a closed native landing
-committed under that name. The label and the years filed are read off those
-landings' session records, the ``labels`` entries the commit wrote, in place
-of the file's tree, and every other rule above holds unchanged. The landings
-are in the plan's digest, so a landing of the pass after the answer is
-another plan, and the proof is read again before the first rename.
-
-A BATCH THAT FILED NONE OF THE BUILT YEARS SAYS SO, on either proof, with a
-warning beside each year's own reason, so a mark of the wrong pass or label
-is not read as a mark with nothing left to do.
-
-THE FOLDER IS READ, NOT THE ACCOUNT. The year playlists live in one folder, and
-listing it is one short read where listing every playlist on the account cost
-hundreds of provider calls when ``sync unmark`` was run live. The run that
-carries out the answer reads the folder again and rechecks each title first.
+Behind one explicit gate, each year playlist ``label playlists`` built, and the
+landed batch filed, is held as taken in ``sync mark``'s record under the pass,
+so ``sync unmark --pass`` lets it go. No title changes (U242); the account's
+folder is read, never written, and rechecked before the record is written.
+The proof is the intake file ``intake land`` wrote, whose tree names the years
+filed, or on a database native intake tree (R-1056) ``--pass`` and its
+landings' records, which the digest binds. Only a playlist still titled as
+built is marked; a batch that filed none of the built years says so.
 
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23).
@@ -56,16 +16,15 @@ import the CLI registry (KTD23).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from cratekit.cli.output import Envelope, digest_of, timestamp
 from cratekit.core import session
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.intake import label_filing
 from cratekit.label import cli as label_cli
+from cratekit.label import dated, playlists_cli
 from cratekit.label import registry as labels
-from cratekit.label.playlists_cli import NOT_FOLLOWED_SAID
-from cratekit.modules.outbound import ledger
 from cratekit.sync import mark_record, marks, playlists
 from cratekit.sync.mark_cli import (
     ALREADY_MARKED,
@@ -79,10 +38,12 @@ from cratekit.sync.mark_cli import (
 )
 from cratekit.write import rbxml
 
+if TYPE_CHECKING:
+    from cratekit.modules.outbound import ledger
+
 _ORIGIN = ("label.mark",)
 
-#: A year playlist whose title is neither the one it was built under nor that
-#: title marked, so somebody chose another and it is left alone.
+#: A year playlist somebody retitled since it was built, left alone.
 RETITLED = "retitled-since-built"
 #: A year the landed batch filed no track of under this label.
 NOT_IN_BATCH = "not-in-batch"
@@ -97,19 +58,14 @@ NOTHING_FILED_SAID = (
     "the landed batch filed no track under this label in any year built for it, "
     "so no year playlist is marked"
 )
-#: The verb a native proof's refusal tells the person to run again, and where
-#: a label batch's pass name comes from.
+#: The verb a native proof's refusal names, and where the pass name comes from.
 _VERB = "crate label mark"
 _NAMED = "the pass name crate label sync --go printed for the batch"
 
 
 def build_mark(parser, entry) -> None:
     del entry
-    parser.add_argument(
-        "name",
-        metavar="LABEL",
-        help="a followed label, by its name or its registry identifier",
-    )
+    playlists_cli.label_argument(parser)
     proof = parser.add_mutually_exclusive_group(required=True)
     proof.add_argument(
         "--xml",
@@ -133,13 +89,8 @@ def _blocked(message: str, *steps: str, **detail: Any) -> CratekitError:
 
 
 def batch_years(xml: Path, label: str) -> frozenset[str]:
-    """The years the landed batch filed tracks under ``label``, read off its file.
-
-    THE TREE ``intake land`` WROTE, and nothing else: a ``<Label> <year>``
-    playlist holding at least one track, directly under a ``<Label>`` folder.
-    The landing names both from the manifest's label, which is the registry's
-    name for it, so they are compared exactly.
-    """
+    """The years the batch's file holds a ``<Label> <year>`` playlist with a track
+    in, directly under a ``<Label>`` folder, compared exactly."""
     try:
         content = xml.read_bytes()
     except OSError as exc:
@@ -163,16 +114,9 @@ def batch_years(xml: Path, label: str) -> frozenset[str]:
     return frozenset(years)
 
 
-def native_years(
-    cfg, proof: marks.NativeLanding, label: str
-) -> frozenset[str]:
-    """The years the pass's native landings filed tracks under ``label``, read off their records.
-
-    EVERY LANDING THE PROOF NAMES, and nothing else: a pass landed twice filed
-    what either landing filed, and a landing abandoned or refused is in no
-    proof. A record whose ``labels`` entries this build cannot read is refused
-    by name, never read as a batch that filed nothing (pattern 1).
-    """
+def native_years(cfg, proof: marks.NativeLanding, label: str) -> frozenset[str]:
+    """The years every landing the proof names filed under ``label``; a record this
+    build cannot read is refused, never read as filing nothing (pattern 1)."""
     years: set[str] = set()
     for session_id in proof.landings:
         filed = label_filing.years_filed(session.read_record(session_id, cfg), label)
@@ -195,44 +139,29 @@ def _item(
     filed: frozenset[str],
     taken: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
-    """One year playlist, decided against the batch and its folder's titles now.
-
-    ``listed`` is ``None`` when the label's folder is no longer on the account.
-    """
+    """One year playlist, decided against the batch and the folder's titles now,
+    ``listed`` ``None`` when the folder is gone."""
     current = None if listed is None else listed.get(year.remote_id)
-    base: dict[str, Any] = {
-        "id": year.remote_id,
-        "year": year.year,
-        "name": current or "",
-        "built_as": year.name,
-    }
+    base = {"id": year.remote_id, "year": year.year, "name": current or "", "built_as": year.name}
+
+    def skip(reason: str, why: str) -> dict[str, Any]:
+        return {**base, "action": SKIP, "reason": reason, "why": why}
+
     if year.year not in filed:
-        return {
-            **base,
-            "action": SKIP,
-            "reason": NOT_IN_BATCH,
-            "why": "the landed batch filed no track of this year under the label",
-        }
+        return skip(NOT_IN_BATCH, "the landed batch filed no track of this year under the label")
     if current is None:
-        return {
-            **base,
-            "action": SKIP,
-            "reason": NOT_LISTED,
-            "why": (
-                "the label's folder is no longer on the account"
-                if listed is None
-                else "the label's folder no longer holds it, so there is nothing to record"
-            ),
-        }
+        return skip(
+            NOT_LISTED,
+            "the label's folder is no longer on the account"
+            if listed is None
+            else "the label's folder no longer holds it, so there is nothing to record",
+        )
     if playlists.is_taken(year.remote_id, current, taken):
-        return {**base, "action": SKIP, "reason": ALREADY_MARKED, "why": "Cratekit already holds it as taken"}
+        return skip(ALREADY_MARKED, "Cratekit already holds it as taken")
     if current != year.name:
-        return {
-            **base,
-            "action": SKIP,
-            "reason": RETITLED,
-            "why": f"it was retitled since it was built as {year.name!r}, so its title is left",
-        }
+        return skip(
+            RETITLED, f"it was retitled since it was built as {year.name!r}, so its title is left"
+        )
     return {**base, "action": MARK}
 
 
@@ -250,20 +179,13 @@ def _payload(
         "marks": sorted((item["id"], item["built_as"]) for item in items if item["action"] == MARK),
     }
     if native is not None:
-        # THE TREE AND THE LANDINGS THAT PROVE THE PASS, as ``sync mark --pass``
-        # binds them, so a landing of the pass since the plan is another plan.
+        # THE TREE AND THE LANDINGS THAT PROVE THE PASS bind the plan.
         identity["tree"] = native.tree_id
         identity["landings"] = list(native.landings)
-    return {
-        "digest": digest_of(identity),
-        "items": items,
-        "totals": {
-            "count": len(items),
-            MARK: sum(1 for item in items if item["action"] == MARK),
-            SKIP: sum(1 for item in items if item["action"] == SKIP),
-        },
-        "chunk": None,
-    }
+    actions = [item["action"] for item in items]
+    return dated.gate_plan(
+        digest_of(identity), items, {MARK: actions.count(MARK), SKIP: actions.count(SKIP)}
+    )
 
 
 def _shown(
@@ -297,11 +219,7 @@ def _shown(
 
 
 def _failed_part_way(exc: Exception, landed: list[str], planned: list[str]) -> CratekitError:
-    """The failure, with what was taken named in it.
-
-    ``sync mark``'s rule: a refusal the account or the record raised keeps its
-    reason and remedy, and anything else is this build's own defect and says so.
-    """
+    """The failure, with what was taken named in it, ``sync mark``'s rule."""
     said = (
         f"{len(landed)} year playlist(s) were recorded as taken before this failed, "
         f"and stay taken"
@@ -313,19 +231,6 @@ def _failed_part_way(exc: Exception, landed: list[str], planned: list[str]) -> C
         "still_unmarked": [one for one in planned if one not in landed],
     }
     again = "run crate label mark again; a playlist already taken is skipped"
-    if isinstance(exc, CratekitError):
-        cause = exc.cause
-        return refuse(
-            cause.reason,
-            f"{said}. {cause.message}",
-            remedy=cause.remediation.remedy,
-            steps=(*cause.remediation.steps, again),
-            scope=Scope.SOURCE,
-            retryable=cause.retryable,
-            origin=_ORIGIN,
-            detail={**dict(cause.detail), **detail},
-            inner=cause,
-        )
     if isinstance(exc, OSError):
         return refuse(
             "sync-mark-record-unusable",
@@ -335,20 +240,17 @@ def _failed_part_way(exc: Exception, landed: list[str], planned: list[str]) -> C
             origin=_ORIGIN,
             detail={**detail, "kind": type(exc).__name__},
         )
-    return refuse(
-        "internal-error",
-        f"{said}. The mark failed in a way this build does not expect "
-        f"({type(exc).__name__}: {exc})",
-        scope=Scope.SOURCE,
-        origin=_ORIGIN,
-        detail={**detail, "kind": type(exc).__name__},
+    return dated.refused_part_way(
+        exc, said, again, detail, failed="The mark", origin=_ORIGIN, scope=Scope.SOURCE,
+        steps=False,
     )
 
 
 def label_mark(ctx) -> Envelope:
+    from cratekit.modules.outbound import ledger
+
     cfg = label_cli._load()
-    # THE PROOF FIRST, before the ledger, the account or a credential: the
-    # intake file on the bridge, the native landings by the pass's name.
+    # THE PROOF FIRST, before the ledger, the account or a credential.
     xml: Path | None = None
     native: marks.NativeLanding | None = None
     if ctx.args.xml is not None:
@@ -372,8 +274,7 @@ def label_mark(ctx) -> Envelope:
         from cratekit.modules.outbound import account
 
         remote = account.resolve(cfg)
-        # THE FOLDER IS ASKED FOR FIRST. One deleted on the account is listed
-        # as gone for every year, rather than a provider failure on every run.
+        # THE FOLDER IS ASKED FOR FIRST: one deleted is gone, not a failure.
         listed = (
             remote.folder_playlists(shape.folder_id)
             if shape.folder_id in remote.folders()
@@ -382,8 +283,7 @@ def label_mark(ctx) -> Envelope:
         taken = playlists.taken_ids(cfg)
         items = [_item(year, listed, filed, taken) for year in built]
     elif built:
-        # Nothing the batch filed is recorded here, or no folder is: no year
-        # can be marked, so each is listed and left and the account is not read.
+        # Nothing filed is recorded, or no folder: listed, the account unread.
         items = [_item(year, {}, filed) for year in built]
     payload = _payload(items, label=label, pass_name=pass_name, native=native)
     # THE PLAN ITSELF, for the reason ``label playlists`` gives (R-693).
@@ -393,30 +293,20 @@ def label_mark(ctx) -> Envelope:
         context=_shown(payload, label=label, pass_name=pass_name, native=native),
     )
     if entry is None:
-        # NOT FOLLOWED is said as such, the build verb's warning, so a misspelled
-        # label is not read as one whose playlists were never built.
-        return ctx.envelope(
-            data=payload,
-            outcome=Outcome.NO_OP,
-            warnings=[{"code": "label-playlists-not-followed", "message": f"{name}: {NOT_FOLLOWED_SAID}"}],
-        )
+        # NOT FOLLOWED is said as such, not as never built.
+        return playlists_cli.not_followed(ctx, payload, name)
     if not items:
-        return ctx.envelope(
-            data=payload,
-            outcome=Outcome.NO_OP,
-            warnings=[{"code": "label-mark-nothing-built", "message": f"{label}: {NOTHING_BUILT_SAID}"}],
-        )
+        warning = {"code": "label-mark-nothing-built", "message": f"{label}: {NOTHING_BUILT_SAID}"}
+        return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=[warning])
     said: list[dict[str, str]] = []
     if not filed & {year.year for year in built}:
-        said.append({"code": "label-mark-nothing-filed", "message": f"{label}: {NOTHING_FILED_SAID}"})
+        said = [{"code": "label-mark-nothing-filed", "message": f"{label}: {NOTHING_FILED_SAID}"}]
     planned = [item["id"] for item in items if item["action"] == MARK]
     if option != "apply" or not planned or remote is None:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=said)
 
     if native is not None and native_proof(cfg, pass_name, verb=_VERB, named=_NAMED) != native:
-        # THE PROOF AGAIN, before the first rename, as ``sync mark --pass``
-        # reads it: a tree reverted to the bridge or a landing since the plan
-        # is not what the answer covered.
+        # THE PROOF AGAIN, before the first rename.
         raise _blocked(
             f"the intake tree or the landings of {pass_name!r} changed since the plan "
             f"was shown, so the answer does not cover them and nothing was marked",
@@ -430,8 +320,7 @@ def label_mark(ctx) -> Envelope:
     landed: list[str] = []
     changed: list[str] = []
     try:
-        # THE RECHECK, on the folder read again after the answer. NOTHING IS
-        # RENAMED (U242): each year still titled as built is held as taken.
+        # THE RECHECK: each year still titled as built is held as taken (U242).
         now = remote.folder_playlists(shape.folder_id)
         for identity in planned:
             item = by_id[identity]
@@ -459,24 +348,16 @@ def label_mark(ctx) -> Envelope:
         if item["id"] in landed:
             done.append({**item, "action": MARKED})
         elif item["id"] in changed:
-            done.append(
-                {
-                    **item,
-                    "action": SKIP,
-                    "reason": CHANGED_SINCE,
-                    "why": (
-                        "its title in the folder changed since the plan was shown, so it "
-                        "was not recorded as taken"
-                    ),
-                }
+            why = (
+                "its title in the folder changed since the plan was shown, so it "
+                "was not recorded as taken"
             )
-            warnings.append(
-                {
-                    "code": "label-mark-changed-since-plan",
-                    "message": f"{item['built_as']} changed since the plan was shown and "
-                    f"was not recorded as taken",
-                }
+            done.append({**item, "action": SKIP, "reason": CHANGED_SINCE, "why": why})
+            message = (
+                f"{item['built_as']} changed since the plan was shown and "
+                f"was not recorded as taken"
             )
+            warnings.append({"code": "label-mark-changed-since-plan", "message": message})
         else:
             done.append(item)
     totals = {

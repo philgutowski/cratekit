@@ -1,45 +1,13 @@
 """A full label build's release reads, kept across runs (R-1091).
 
-``crate label playlists LABEL`` without ``--releases`` reads every confirmed
-release's tracks, two provider calls a release, and a label the size of
-Defected is about 24,700 calls, nearly seven hours at the default pace. Held
-only in memory, a breaker trip part way dropped every read and the next run
-started from the first release, and the run that carries out an approved plan
-read the whole catalogue a second time. This store keeps each read per label,
-so a large label builds over several runs instead of starting over each time.
-
-A READ IS KEPT FOR :data:`KEPT_FOR` AND NO LONGER. A release whose tracks the
-provider changed after it was read is planned from the old rows until its read
-is that old, then it is read again. The screen says how many reads were reused
-and how old the oldest is, so the person approving a plan knows it was not all
-read that day. Seven days is the recommendation put to Phillip on the
-decisions page on 2026-11-01, and the one number to change if he picks another.
-
-WHAT IS KEPT is what the plan reads off a release and nothing else: each
-track's identifier, whether the provider will play it, and its artist and
-title, and the year the provider dates the release by. The artist and title
-are what a removed track is recognised by (U243), so a read kept before they
-were kept is read again rather than judged without them. A release the
-provider no longer has is the provider answering, and is kept as gone. A read
-that failed is not an answer and is never kept.
-
-WRITTEN AS IT GOES. :meth:`KeptReads.flush` writes the document whole and
-atomically, and the reader calls it every :data:`FLUSH_EVERY` new reads and on
-the way out, a breaker park included, so a stopped build loses at most the
-reads since its last flush and only when the process itself is killed. A write
-the filesystem refuses is recorded on the store as ``unkept`` and said on the
-screen and in the run's warnings, never raised in place of the plan.
-
-A STORE THAT CANNOT BE READ REFUSES, ``label-playlists-reads-unusable``, on
-the rule every state document here keeps. Read as empty it would cost nothing
-but calls, and that is still a clean read reported over a file the tool could
-not read; the person repairs or deletes it, and deleting it is safe.
-
-WHERE IT LIVES. Under the installation state entry ``label_crawl_cache``, one
-document per label beside the verifier's own cache, since the entry already
-declares what a catalogue lookup returned: replayable, library agnostic, and
-never restored. A read of the provider is the same answer whichever library
-asked for it.
+A full build reads two provider calls a release, hours on a large label. This
+store keeps each read per label for :data:`KEPT_FOR`, so a stopped build
+resumes and the apply run reads nothing again. It keeps each track's
+identifier, playability, artist and title (U243; a read without the words is
+read again) and the release's year, or that it is gone; a failed read is never
+kept. Written whole as it goes, a refused write is ``unkept`` and said, never
+raised. One that cannot be read refuses, ``label-playlists-reads-unusable``;
+deleting it is safe. One document per label under ``label_crawl_cache``.
 
 Layer: modules.
 """
@@ -60,10 +28,7 @@ from cratekit.label import tombstoned
 #: How long a kept read stays true before a build reads the release again.
 KEPT_FOR = timedelta(days=7)
 
-#: New reads between two writes of the document. Fifty releases is about a
-#: hundred seconds of calls at the default pace, so a kill loses that at most,
-#: and a label of twelve thousand releases is written some two hundred and
-#: fifty times rather than twelve thousand.
+#: New reads between two writes of the document, what a kill loses at most.
 FLUSH_EVERY = 50
 
 #: The document's version. Any other refuses rather than being read.
@@ -81,8 +46,7 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-#: The clock the store reads. A module attribute so a suite can age a read
-#: without writing a document by hand.
+#: The clock the store reads, a module attribute so a suite can age a read.
 clock: Callable[[], datetime] = _utcnow
 
 
@@ -96,10 +60,7 @@ class KeptTrack:
 
     id: str
     available: bool
-    #: The track's words as :func:`cratekit.label.tombstoned.track_artist` and
-    #: ``track_title`` read them off the provider row, ``None`` in a read kept
-    #: before they were kept (U243). Named ``artist`` and ``title`` so the same
-    #: readers read them back off this value.
+    #: The row's words as ``tombstoned`` reads them, ``None`` in an older read (U243).
     artist: str | None = None
     title: str | None = None
 
@@ -176,22 +137,14 @@ def _entry(path: Path, release_id: str, raw: Any) -> Kept:
         words = {key: track.get(key) for key in ("artist", "title")}
         if any(value is not None and not isinstance(value, str) for value in words.values()):
             raise _unusable(path, f"a track of the read of {release_id!r} is malformed")
-        kept.append(
-            KeptTrack(
-                id=track["id"],
-                available=track["available"],
-                artist=words["artist"],
-                title=words["title"],
-            )
-        )
+        kept.append(KeptTrack(id=track["id"], available=track["available"], **words))
     return Kept(read_at=read_at, gone=False, tracks=tuple(kept), year=year)
 
 
 def _row(track: Any) -> dict[str, Any]:
     return {
         "id": str(getattr(track, "id", "") or ""),
-        # THE PLAN'S OWN TEST, ``available is not False``, so a row that says
-        # nothing about playing reads as playable here exactly as it does live.
+        # THE PLAN'S OWN TEST, so a row silent on playing reads as playable.
         "available": getattr(track, "available", True) is not False,
         "artist": tombstoned.track_artist(track),
         "title": tombstoned.track_title(track),
@@ -211,47 +164,74 @@ def _stored(kept: Kept) -> dict[str, Any]:
     }
 
 
-class KeptReads:
-    """One label's kept release reads, and what this run made of them.
+class _Store:
+    """What both kept stores share: their counters, the header checks and the write."""
 
-    :meth:`fresh` answers a release from the store when its read is younger
-    than :data:`KEPT_FOR`, and counts the reuse. :meth:`keep` and
-    :meth:`keep_gone` hold a read this run made and write the document every
-    :data:`FLUSH_EVERY` of them. ``reused`` and ``oldest`` are what the screen
-    shows.
-    """
-
-    def __init__(self, label_id: str, held: Mapping[str, Kept], *, path: Path) -> None:
+    def __init__(self, label_id: str, path: Path) -> None:
         self.label_id = label_id
         self.path = path
-        self._held: dict[str, Kept] = dict(held)
         self._unwritten = 0
-        #: New reads since the last attempt to write, which paces the retries.
+        #: New answers since the last attempt to write, which paces the retries.
         self._since = 0
+        #: When the oldest answer this run reused was given, ``None`` before any.
+        self.oldest: datetime | None = None
+        #: Why the last write failed, ``""`` while nothing is owed.
+        self.unkept = ""
+
+    def _counted(self) -> None:
+        self._unwritten += 1
+        self._since += 1
+
+    def _reusing(self, read_at: datetime) -> None:
+        if self.oldest is None or read_at < self.oldest:
+            self.oldest = read_at
+
+    @staticmethod
+    def _document(
+        path: Path, label_id: str, unusable: Callable[[Path, str], CratekitError]
+    ) -> Mapping[str, Any] | None:
+        """The store's document, ``None`` when none was written, or the refusal."""
+        raw = config.read_json_map(path, lambda why: unusable(path, why))
+        if raw is None:
+            return None
+        version = raw.get("version")
+        if version != VERSION:
+            raise unusable(path, f"it says version {version!r} and this build writes {VERSION}")
+        if raw.get("label_id") != label_id:
+            raise unusable(path, f"it names the label {raw.get('label_id')!r}, not {label_id!r}")
+        return raw
+
+    def _write(self, document: Mapping[str, Any]) -> None:
+        """Write the document whole and atomically. A REFUSED WRITE IS SAID, NEVER
+        RAISED, as ``unkept``: it costs the next run calls, never this run its plan."""
+        try:
+            config.atomic_write_bytes(
+                (json.dumps(document, indent=1, sort_keys=True) + "\n").encode("utf-8"),
+                self.path,
+            )
+        except OSError as exc:
+            self.unkept = f"{type(exc).__name__}: {exc}"
+            return
+        self._unwritten = 0
+        self.unkept = ""
+
+
+class KeptReads(_Store):
+    """One label's kept release reads, and what this run made of them."""
+
+    def __init__(self, label_id: str, held: Mapping[str, Kept], *, path: Path) -> None:
+        super().__init__(label_id, path)
+        self._held: dict[str, Kept] = dict(held)
         self.reused = 0
         self.read_now = 0
-        #: When the oldest read this run reused was made, ``None`` before any.
-        self.oldest: datetime | None = None
-        #: Why the last write of the document failed, ``""`` while the reads
-        #: held are written or none needs writing.
-        self.unkept = ""
 
     @classmethod
     def load(cls, label_id: str) -> KeptReads:
         """The label's kept reads, an empty store when none was written, or the refusal."""
         path = path_for(label_id)
-        raw = config.read_json_map(path, lambda why: _unusable(path, why))
+        raw = cls._document(path, label_id, _unusable)
         if raw is None:
             return cls(label_id, {}, path=path)
-        version = raw.get("version")
-        if version != VERSION:
-            raise _unusable(
-                path, f"it says version {version!r} and this build writes {VERSION}"
-            )
-        if raw.get("label_id") != label_id:
-            raise _unusable(
-                path, f"it names the label {raw.get('label_id')!r}, not {label_id!r}"
-            )
         reads = raw.get("reads")
         if not isinstance(reads, Mapping):
             raise _unusable(path, "its reads are not a map")
@@ -262,19 +242,12 @@ class KeptReads:
         )
 
     def _is_fresh(self, kept: Kept) -> bool:
-        # A READ FROM THE FUTURE IS NOT FRESH. A clock set back would otherwise
-        # keep it for as long as the clock is wrong.
+        # NOT FRESH FROM THE FUTURE, NOR WITHOUT THE TRACKS' WORDS (U243).
         age = clock() - kept.read_at
-        # A READ WITHOUT THE TRACKS' WORDS IS NOT FRESH EITHER (U243): a
-        # removed track is recognised by them, and judged without them it
-        # would be added back to its year.
         return timedelta(0) <= age < KEPT_FOR and kept.named
 
     def kept(self, release_ids: Iterable[str]) -> tuple[int, str]:
-        """How many of ``release_ids`` the store keeps fresh, and how old the oldest is.
-
-        Counts no reuse: the estimate asks this before any release is read.
-        """
+        """How many of ``release_ids`` are kept fresh and the oldest's age, counting no reuse."""
         found = [
             held.read_at
             for one in dict.fromkeys(release_ids)
@@ -288,15 +261,13 @@ class KeptReads:
         if held is None or not self._is_fresh(held):
             return None
         self.reused += 1
-        if self.oldest is None or held.read_at < self.oldest:
-            self.oldest = held.read_at
+        self._reusing(held.read_at)
         return held
 
     def _hold(self, release_id: str, kept: Kept) -> None:
         self._held[release_id] = kept
         self.read_now += 1
-        self._unwritten += 1
-        self._since += 1
+        self._counted()
         if self._since >= FLUSH_EVERY:
             self.flush()
 
@@ -318,33 +289,17 @@ class KeptReads:
         self._hold(release_id, Kept(read_at=clock(), gone=True))
 
     def flush(self) -> None:
-        """Write every read held, whole and atomically, if any is unwritten.
-
-        A WRITE THE FILESYSTEM REFUSES IS SAID, NEVER RAISED. The store saves
-        provider calls and holds nothing else, so a full disk, a read only
-        volume or a file where the label's directory belongs costs the next run
-        its reads and must not cost this run its plan: ``unkept`` says why, the
-        screen and the run's warnings say so, and the next flush tries again
-        and clears it once the whole document is written.
-        """
+        """Write every read held, if any is unwritten, by :meth:`_Store._write`'s rule."""
         self._since = 0
         if not self._unwritten:
             return
-        document = {
-            "version": VERSION,
-            "label_id": self.label_id,
-            "reads": {key: _stored(value) for key, value in sorted(self._held.items())},
-        }
-        try:
-            config.atomic_write_bytes(
-                (json.dumps(document, indent=1, sort_keys=True) + "\n").encode("utf-8"),
-                self.path,
-            )
-        except OSError as exc:
-            self.unkept = f"{type(exc).__name__}: {exc}"
-            return
-        self._unwritten = 0
-        self.unkept = ""
+        self._write(
+            {
+                "version": VERSION,
+                "label_id": self.label_id,
+                "reads": {key: _stored(value) for key, value in sorted(self._held.items())},
+            }
+        )
 
     def age_said(self) -> str:
         """How old the oldest reused read is, as a person reads it."""

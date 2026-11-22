@@ -1,19 +1,8 @@
 """R-1056: ``label mark --pass`` marks a label batch a native landing filed.
 
-A native landing writes no intake file, so ``label mark --xml`` had nothing to
-read once U156 let a native landing file a label batch under Record Labels.
-Named by its pass, the mark is proved the way ``sync mark --pass`` is proved,
-and the label and years filed are read off the ``labels`` entries the
-landing's session record carries. Every other rule is the bridge's, which
-``tests/test_label_playlists.py`` drives unchanged.
-
-Two halves. The first writes the landing's session record by hand, as
-``tests/test_sync_mark.py`` does for ``sync mark --pass``, so each rule is
-driven alone. The second lands a real batch natively, with ``--label`` and
-with ``--manifest``, on the disposable database the native landing suite
-builds, and marks it.
-
-D1 applies. Nothing here names a real volume, a real person or a real track.
+Proved as ``sync mark --pass`` is, the years read off the landing's session
+record. The first half writes that record by hand; the second lands a real
+batch natively on the native landing suite's disposable database. D1 applies.
 """
 
 from __future__ import annotations
@@ -46,16 +35,17 @@ from tests.test_intake_land_native import library as library  # noqa: PLC0414
 from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
 from tests.test_intake_land_native import native_library as native_library  # noqa: PLC0414
 from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
-from tests.test_label_playlists import LABEL, MARK, _build, _catalogue, _landed, _two_acts
+from tests.test_label_playlists import LABEL, MARK, _build, _catalogue, _exits, _landed, _two_acts
+from tests.test_label_playlists import built as built  # noqa: PLC0414
 from tests.test_label_playlists import followed as followed  # noqa: PLC0414
+from tests.test_label_playlists import kompakt as kompakt  # noqa: PLC0414
 from tests.test_label_workers import installed as installed  # noqa: PLC0414
-from tests.test_label_workers import register
 from tests.test_outbound_workers import bind as bind_account
 from tests.test_sync_mark import _cut_over_intake
 
 PASS = "LABEL_RUN_synced"
 
-#: Every year the followed label's build makes, by the fake account's id.
+#: Every year the kompakt label's build makes, by the fake account's id.
 BUILT = {"pl-1": "Kompakt 2021", "pl-2": "Kompakt 2022", "pl-3": "Kompakt 2023"}
 
 def _took(account) -> list[str]:
@@ -81,8 +71,7 @@ def _record_landing(
     stamp: str = "120000",
     labels=None,
 ) -> str:
-    """The session record a native landing given ``--pass name`` commits,
-    with the year playlists it filed under ``labels``."""
+    """The session record a native landing given ``--pass name`` commits."""
     started = f"2026-10-07T{stamp[:2]}:{stamp[2:4]}:{stamp[4:]}+00:00"
     detail: dict = {native.PASS_KEY: name}
     if labels is not None:
@@ -107,30 +96,21 @@ def _mark(option: str = "apply", name: str = PASS) -> tuple[int, dict]:
 
 
 @pytest.fixture
-def native_followed(followed):
-    """Kompakt followed with its three years built, on a native intake tree."""
-    cfg, fake, account = followed
-    assert _build()[0] == int(ExitCode.OK)
-    _cut_over_intake(cfg)
-    return cfg, fake, account
+def native_followed(built):
+    """Kompakt kompakt with its three years built, on a native intake tree."""
+    _cut_over_intake(built[0])
+    return built
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The years are the landings' own
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_a_native_pass_marks_exactly_the_years_its_landing_filed(native_followed):
     cfg, _fake, account = native_followed
     _record_landing(cfg, _filed(2021, tracks=2), _filed(2023))
-
-    code, refused = drive(["label", "mark", LABEL, "--pass", PASS])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = _exits(ExitCode.DECISION_REQUIRED, drive(["label", "mark", LABEL, "--pass", PASS]))
     shown = refused["cause"]["detail"]["shown"]
     assert shown["pass"].startswith(f"{PASS}, landed on the database native ")
     assert shown["undone by"] == f"crate sync unmark --pass {PASS}"
     code, done = _mark()
-
     assert code == int(ExitCode.OK), done
     assert _took(account) == ["pl-1", "pl-3"]
     reasons = {item["id"]: item.get("reason") for item in done["data"]["items"]}
@@ -151,9 +131,7 @@ def test_every_committed_landing_of_the_pass_counts_and_no_other_does(native_fol
     _record_landing(cfg, _filed(2023), stamp="140000", state=session.SessionState.ABANDONED)
     _record_landing(cfg, _filed(2023), stamp="150000", source=session.SourceState.REFUSED)
     _record_landing(cfg, _filed(2023), stamp="160000", name="ANOTHER_synced")
-
     code, done = _mark()
-
     assert code == int(ExitCode.OK), done
     assert _took(account) == ["pl-1", "pl-2"]
 
@@ -163,18 +141,12 @@ def test_a_year_filed_under_another_label_or_holding_no_track_is_not_marked(nati
     _record_landing(
         cfg, _filed(2021, label="Another Label"), _filed(2022, tracks=0), _filed(2023)
     )
-
     code, done = _mark()
-
     assert code == int(ExitCode.OK), done
     assert _took(account) == ["pl-3"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. Nothing filed, and no proof
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.parametrize(
     "filed",
     [(), (_filed(2021, label="Another Label"),), (_filed(2019),)],
@@ -186,9 +158,7 @@ def test_a_pass_whose_landings_filed_none_of_the_built_years_marks_nothing_and_s
     cfg, _fake, account = native_followed
     _record_landing(cfg, *filed)
     calls = account._writes
-
     code, done = _mark()
-
     assert code == int(ExitCode.OK), done
     assert done["outcome"] == "no_op" and account.renamed == []
     assert account._writes == calls
@@ -198,13 +168,10 @@ def test_a_pass_whose_landings_filed_none_of_the_built_years_marks_nothing_and_s
     assert {item["reason"] for item in done["data"]["items"]} == {label_mark_cli.NOT_IN_BATCH}
 
 
-def test_a_bridge_batch_of_another_label_says_it_filed_nothing_too(followed):
-    cfg, _fake, account = followed
-    assert _build()[0] == int(ExitCode.OK)
+def test_a_bridge_batch_of_another_label_says_it_filed_nothing_too(built):
+    cfg, _fake, account = built
     xml = _landed(cfg, label="Another Label")
-
     code, done = _two_acts(["label", "mark", LABEL, "--xml", str(xml)], MARK)
-
     assert code == int(ExitCode.OK), done
     assert account.renamed == []
     assert [w["code"] for w in done["warnings"]] == ["label-mark-nothing-filed"]
@@ -227,9 +194,7 @@ def test_a_pass_no_closed_committed_native_landing_names_is_refused_by_name(
     if landing is not None:
         _record_landing(cfg, _filed(2021), **landing)
     calls = account._writes
-
     code, refused = drive(["label", "mark", LABEL, "--pass", PASS])
-
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "sync-marks-blocked"
     assert f"no landing of {PASS!r}" in refused["cause"]["message"]
@@ -243,26 +208,20 @@ def test_a_pass_no_closed_committed_native_landing_names_is_refused_by_name(
 def test_a_label_named_by_its_registry_identifier_is_compared_under_its_name(
     native_followed,
 ):
-    """The record holds the label's name, so the identifier given on the command
-    line is resolved before the years are read."""
+    """The identifier is resolved to the name the record holds."""
     cfg, _fake, account = native_followed
     _record_landing(cfg, _filed(2021))
     entry = labels.RegistryStore().load().resolve(LABEL)
     assert entry is not None and entry.label_id != LABEL
-
     code, done = _two_acts(["label", "mark", entry.label_id, "--pass", PASS], MARK)
-
     assert code == int(ExitCode.OK), done
     assert _took(account) == ["pl-1"]
 
 
-def test_pass_on_an_intake_tree_on_the_bridge_is_refused_naming_xml(followed):
-    cfg, _fake, account = followed
-    assert _build()[0] == int(ExitCode.OK)
+def test_pass_on_an_intake_tree_on_the_bridge_is_refused_naming_xml(built):
+    cfg, _fake, account = built
     _record_landing(cfg, _filed(2021))
-
     code, refused = drive(["label", "mark", LABEL, "--pass", PASS])
-
     assert code == int(ExitCode.PRECONDITION), refused
     assert "xml bridge" in refused["cause"]["message"]
     assert any("--xml" in step for step in refused["cause"]["remediation"]["steps"])
@@ -273,14 +232,12 @@ def test_an_unreachable_library_names_label_mark_as_the_verb_to_run_again(
     native_followed, monkeypatch
 ):
     from cratekit.sync import mark_cli as sync_mark_cli
-
     monkeypatch.setattr(
         sync_mark_cli.ingest,
         "intake_medium",
         lambda cfg: sync_mark_cli.ingest.IntakeMedium(declared=None, registry=None),
     )
-    code, refused = drive(["label", "mark", LABEL, "--pass", PASS])
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = _exits(ExitCode.PRECONDITION, drive(["label", "mark", LABEL, "--pass", PASS]))
     steps = refused["cause"]["remediation"]["steps"]
     assert "mount the library volume, then run crate label mark again" in steps
 
@@ -323,33 +280,24 @@ def test_a_record_naming_its_filing_in_a_form_this_build_cannot_read_is_refused(
 ):
     cfg, _fake, account = native_followed
     session_id = _record_landing(cfg, labels=labels)
-
     code, refused = drive(["label", "mark", LABEL, "--pass", PASS])
-
     assert code == int(ExitCode.PRECONDITION), refused
     assert session_id in refused["cause"]["message"]
     assert "cannot read" in refused["cause"]["message"]
     assert account.renamed == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The answer covers the landings it was shown
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_a_landing_of_the_pass_after_the_answer_makes_it_stale(native_followed):
     cfg, _fake, account = native_followed
     _record_landing(cfg, _filed(2021))
-    code, refused = drive(["label", "mark", LABEL, "--pass", PASS])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = _exits(ExitCode.DECISION_REQUIRED, drive(["label", "mark", LABEL, "--pass", PASS]))
     run_id = refused["run_id"]
     code, _ = drive(["run", "decide", run_id, MARK, "apply", "--actor", "a-person"])
     assert code == int(ExitCode.OK)
     # The same year again, so the marks alone would not move the digest.
     _record_landing(cfg, _filed(2021), stamp="130000")
-
     code, stale = drive(["--run", run_id, "label", "mark", LABEL, "--pass", PASS])
-
     assert code == int(ExitCode.DECISION_STALE), stale
     assert account.renamed == []
 
@@ -369,11 +317,8 @@ def test_a_landing_between_the_plan_and_the_first_rename_renames_nothing(
             # The applying run's second read: a landing since its plan.
             _record_landing(cfg, _filed(2021), stamp="130000")
         return real(cfg, name, verb=verb, named=named)
-
     monkeypatch.setattr(label_mark_cli, "native_proof", proving)
-
     code, refused = _mark()
-
     assert code == int(ExitCode.PRECONDITION), refused
     assert "changed since the plan" in refused["cause"]["message"]
     assert seen == ["crate label mark"] * 3
@@ -390,19 +335,13 @@ def test_sync_unmark_takes_a_native_label_mark_off_again(native_followed):
         for pid, title in account.titles.items()
     ]
     account.renamed.clear()
-
     code, done = _two_acts(["sync", "unmark", "--pass", PASS], "sync.unmark.confirm")
-
     assert code == int(ExitCode.OK), done
     assert account.renamed == [], "a release writes nothing on the account (U242)"
     assert mark_record.MarkRecord(cfg).taken_ids() == frozenset()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. The record reader
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 #: The session the reader's own records are read as.
 ONE_LANDING = "20261007T120000-landing"
 
@@ -443,22 +382,17 @@ def test_a_year_is_four_digits_as_the_ledger_spells_it():
     assert label_filing.years_filed(record, LABEL) == frozenset({"0987", "2021"})
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. A real native landing, then the mark
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 @pytest.fixture
 def landed_natively(native_library, monkeypatch):
-    """The native landing suite's machine, ready to land; then ``follow`` switches
-    the labels module on, follows Kompakt, builds its years on a fake account."""
+    """The native landing machine; ``follow`` then follows Kompakt and builds its years."""
     cfg, _root = native_library
 
     def follow() -> outbound_fakes.StrictAccount:
         full = dataclasses.replace(cfg, profile=config.ProfileConfig(name="full"))
         config.save(full)
         config.reset_cache()
-        register(LABEL)
+        labels.RegistryStore().add(LABEL)
         monkeypatch.setattr(catalogue, "resolve", catalogue_factory(_catalogue()))
         account = outbound_fakes.StrictAccount()
         bind_account(monkeypatch, account)
@@ -477,9 +411,7 @@ def test_a_label_batch_landed_natively_with_label_is_marked_by_its_pass(
     code, acted, _ = _land_two_acts(_land("--label", LABEL, "--pass", PASS))
     assert code == int(ExitCode.OK), acted
     account = follow()
-
     code, done = _mark()
-
     assert code == int(ExitCode.OK), done
     assert _took(account) == ["pl-1", "pl-3"]
     reasons = {item["id"]: item.get("reason") for item in done["data"]["items"]}
@@ -499,9 +431,7 @@ def test_a_label_batch_landed_natively_with_a_manifest_is_marked_by_its_pass(
     code, acted, _ = _land_two_acts(_land("--manifest", str(manifest), "--pass", PASS))
     assert code == int(ExitCode.OK), acted
     account = follow()
-
     code, done = _mark()
-
     assert code == int(ExitCode.OK), done
     assert _took(account) == ["pl-2"]
 
@@ -510,10 +440,8 @@ def test_the_gate_digest_names_the_landings(native_followed):
     """What makes a second landing another plan, read off the payload itself."""
     cfg, _fake, _account = native_followed
     _record_landing(cfg, _filed(2021))
-    code, first = drive(["label", "mark", LABEL, "--pass", PASS])
-    assert code == int(ExitCode.DECISION_REQUIRED), first
+    first = _exits(ExitCode.DECISION_REQUIRED, drive(["label", "mark", LABEL, "--pass", PASS]))
     _record_landing(cfg, _filed(2021), stamp="130000")
-    code, second = drive(["label", "mark", LABEL, "--pass", PASS])
-    assert code == int(ExitCode.DECISION_REQUIRED), second
+    second = _exits(ExitCode.DECISION_REQUIRED, drive(["label", "mark", LABEL, "--pass", PASS]))
     assert first["cause"]["detail"]["shown"]["digest"] != second["cause"]["detail"]["shown"]["digest"]
 

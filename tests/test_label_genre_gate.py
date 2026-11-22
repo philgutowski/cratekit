@@ -1,22 +1,10 @@
 """R-798: the label genre gate judges a release by kind, at sweep time.
 
-36 of the 186 tracks downloaded in the label test of 2026-10-01 were not dance
-music, among them Christian music from another label with the same name as a
-followed one. The gate in ``label approved`` had no genre to read and ran only
-after acceptance. These tests drive the gate where a person meets it, through
-the real dispatcher, queue and worker, with a fake provider and a fake general
-catalogue, and through the rule and the stores where the property is theirs.
-
-NOTHING HERE REACHES A NETWORK. The general catalogue is a callable over a
-table in this file, bound where the worker looks its lookup up, and a root
-fixture fails any test that reaches the live one.
-
-NOTHING HERE ACCEPTS A RELEASE ON ITS OWN. A sweep files and holds. A download
-follows only a decision the author makes in review.
-
-Every expected value is a literal from the fixtures. D1 applies: no real label,
-artist or track is named. The genre words are the general catalogue's own
-published vocabulary, which is the thing under test.
+Driven through the real dispatcher, queue and worker with a fake provider and
+a general catalogue that is a table in this file, and through the rule and the
+stores where the property is theirs. Nothing reaches a network and nothing
+accepts a release. Every expected value is a literal (D1); the genre words are
+the general catalogue's own published vocabulary, the thing under test.
 """
 
 from __future__ import annotations
@@ -42,7 +30,8 @@ from cratekit.sync import run
 from cratekit.tagging import published
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedArtist, FakeRelease, catalogue_factory
-from tests.test_config import valid_data
+from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
+from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 from tests.test_label_workers import queued_sweep
 
 LABEL = "Tide Works"
@@ -84,23 +73,7 @@ MEASURED = {
 TAXONOMY = default_taxonomy()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Fixtures and fakes
-# ═══════════════════════════════════════════════════════════════════════════
-
-
-@pytest.fixture
-def installed(tmp_path, monkeypatch):
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    (root / "db").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    data = valid_data(root)
-    data["profile"] = {"name": "full"}
-    resolved = config.from_dict(data)
-    config.save(resolved)
-    config.reset_cache()
-    return resolved
+# ── Fixtures and fakes ───────────────────────────────────────────────────────
 
 
 def isrc(n: int) -> str:
@@ -119,12 +92,7 @@ class Track:
 
 
 class Lookup:
-    """The general catalogue as a table: ISRC to published words, or to an answer.
-
-    A tuple is a match that published those words. A string is the answer
-    itself, ``blocked`` or ``unreachable``. An ISRC absent from the table is a
-    track the catalogue does not know.
-    """
+    """The general catalogue as a table: ISRC to published words, or to an answer."""
 
     def __init__(self, table: dict[str, tuple[str, ...] | str]) -> None:
         self.table = dict(table)
@@ -216,9 +184,7 @@ def check(envelope: dict, key: str) -> dict:
     return found[0]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 1. The rule: what kind a word is, and what that does to a release
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 1. The rule: what kind a word is, and what that does to a release ────────
 
 
 def test_every_measured_word_of_the_general_catalogue_is_a_kind():
@@ -335,69 +301,42 @@ def test_the_shipped_template_declares_the_default_kind_and_its_kinds():
     assert "any" not in gate.kinds
 
 
-def test_a_published_rule_with_no_matcher_is_refused(default_raw):
-    def mutate(data):
-        data["label_gate"]["published"].append({"kind": "polka"})
-
-    assert any(
-        "[[label_gate.published]]" in p and "needs all_of, any_of, or equals" in p
-        for p in problems_from(default_raw, mutate)
-    )
+def _published(rule):
+    return lambda gate: gate["published"].append(rule)
 
 
-def test_a_published_rule_with_no_kind_is_refused(default_raw):
-    def mutate(data):
-        data["label_gate"]["published"].append({"any_of": ["polka"]})
-
-    assert any("needs a kind" in p for p in problems_from(default_raw, mutate))
+def _gate(key, value):
+    return lambda gate: gate.__setitem__(key, value)
 
 
-def test_a_published_rule_naming_the_reserved_kind_is_refused(default_raw):
-    def mutate(data):
-        data["label_gate"]["published"].append({"any_of": ["polka"], "kind": "any"})
-
-    assert any(
-        "cannot be the kind of a word" in p for p in problems_from(default_raw, mutate)
-    )
-
-
-def test_a_matcher_that_is_not_a_list_of_words_is_refused(default_raw):
-    def mutate(data):
-        data["label_gate"]["published"].append({"any_of": "polka", "kind": "polka"})
-
-    assert any(
-        "any_of must be a list of words" in p for p in problems_from(default_raw, mutate)
-    )
-
-
-def test_published_rules_in_one_pair_of_brackets_are_refused(default_raw):
-    def mutate(data):
-        data["label_gate"]["published"] = {"any_of": ["polka"], "kind": "polka"}
-
-    assert any("two pairs of brackets" in p for p in problems_from(default_raw, mutate))
-
-
-def test_a_default_kind_no_rule_names_is_refused(default_raw):
-    def mutate(data):
-        data["label_gate"]["default_kind"] = "polka"
-
-    assert any(
-        "default_kind 'polka' is not a kind" in p for p in problems_from(default_raw, mutate)
-    )
-
-
-def test_a_default_kind_that_is_not_a_word_is_refused(default_raw):
-    def mutate(data):
-        data["label_gate"]["default_kind"] = 7
-
-    assert any("default_kind must be" in p for p in problems_from(default_raw, mutate))
-
-
-def test_the_word_that_clears_a_kind_cannot_be_the_kind_of_a_word(default_raw):
-    def mutate(data):
-        data["label_gate"]["published"].append({"any_of": ["polka"], "kind": "default"})
-
-    assert any("clears a label's kind" in p for p in problems_from(default_raw, mutate))
+@pytest.mark.parametrize(
+    ("mutate", "said"),
+    [
+        (_published({"kind": "polka"}), "needs all_of, any_of, or equals"),
+        (_published({"any_of": ["polka"]}), "needs a kind"),
+        (_published({"any_of": ["polka"], "kind": "any"}), "cannot be the kind of a word"),
+        (_published({"any_of": "polka", "kind": "polka"}), "any_of must be a list of words"),
+        (_gate("published", {"any_of": ["polka"], "kind": "polka"}), "two pairs of brackets"),
+        (_gate("default_kind", "polka"), "default_kind 'polka' is not a kind"),
+        (_gate("default_kind", 7), "default_kind must be"),
+        (_published({"any_of": ["polka"], "kind": "default"}), "clears a label's kind"),
+        (_published({"any_of": ["polka"], "kind": "hip hop"}), "kind 'hip hop' is not one word"),
+        (_gate("default_kind", "hip hop"), "default_kind must be"),
+    ],
+    ids=[
+        "a-published-rule-with-no-matcher", "a-published-rule-with-no-kind",
+        "a-published-rule-naming-the-reserved-kind", "a-matcher-that-is-not-a-list-of-words",
+        "published-rules-in-one-pair-of-brackets", "a-default-kind-no-rule-names",
+        "a-default-kind-that-is-not-a-word", "the-word-that-clears-a-kind-as-a-words-kind",
+        "a-kind-no-label-could-be-marked-with", "a-default-kind-of-two-words",
+    ],
+)
+def test_a_malformed_label_gate_is_refused(default_raw, mutate, said):
+    """The registry stores a kind as one word, so a rule may name no other shape."""
+    problems = problems_from(default_raw, lambda data: mutate(data["label_gate"]))
+    assert any(said in p for p in problems), problems
+    if said.startswith("needs all_of"):
+        assert any("[[label_gate.published]]" in p and said in p for p in problems)
 
 
 def test_a_share_rule_needle_typed_with_a_capital_matches_too(default_raw):
@@ -408,24 +347,6 @@ def test_a_share_rule_needle_typed_with_a_capital_matches_too(default_raw):
     built = build_taxonomy(data)
     assert routing.gate_family(built, "gqom") == "gqom"
     assert routing.gate_family(built, "KWAITO") == "kwaito"
-
-
-def test_a_kind_no_label_could_be_marked_with_is_refused(default_raw):
-    """The registry stores a kind as one word, so a rule may name no other shape."""
-
-    def mutate(data):
-        data["label_gate"]["published"].append({"any_of": ["polka"], "kind": "hip hop"})
-
-    assert any(
-        "kind 'hip hop' is not one word" in p for p in problems_from(default_raw, mutate)
-    )
-
-
-def test_a_default_kind_of_two_words_is_refused(default_raw):
-    def mutate(data):
-        data["label_gate"]["default_kind"] = "hip hop"
-
-    assert any("default_kind must be" in p for p in problems_from(default_raw, mutate))
 
 
 def test_every_shipped_kind_is_one_the_registry_will_store():
@@ -446,9 +367,7 @@ def test_a_needle_typed_with_a_capital_still_matches(default_raw):
     assert routing.published_kind(built, "zydeco") == "folk_country"
 
 
-def test_a_copy_written_before_the_gate_had_published_rules_loads_and_judges_nothing(
-    default_raw,
-):
+def test_a_copy_written_before_the_gate_had_published_rules_loads_and_judges_nothing(default_raw):
     data = copy.deepcopy(default_raw)
     del data["label_gate"]["published"]
     del data["label_gate"]["default_kind"]
@@ -461,9 +380,7 @@ def test_a_copy_written_before_the_gate_had_published_rules_loads_and_judges_not
     assert routing.kind_settled(built, None) is not None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 2. Asking the general catalogue about one release
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 2. Asking the general catalogue about one release ────────────────────────
 
 
 def test_the_first_track_that_answers_with_a_genre_is_the_releases_answer():
@@ -580,8 +497,9 @@ def test_a_catalogue_that_refuses_after_a_would_be_hold_holds_nothing():
 
 
 def test_three_releases_unread_in_a_row_end_the_asking_and_an_answer_resets_it():
-    """An unreachable catalogue is not remembered by the lookup, so without this
-    every release of every label pays a transport timeout."""
+    """An unreachable catalogue is not remembered by the lookup, so without this every release
+    of every label pays a transport timeout.
+    """
     table = {isrc(n): "unreachable" for n in (1, 2, 4, 5, 6)}
     table[isrc(3)] = ("Dance",)
     lookup = Lookup(table)
@@ -671,8 +589,9 @@ def test_three_failed_reads_in_a_row_end_the_asking_and_a_gone_release_resets_it
 
 
 def test_a_read_the_gate_never_saw_still_ends_a_run_of_failures():
-    """The review's case: the ownership question reads a release the gate is
-    never asked about, and its success must break the gate's run too."""
+    """The review's case: the ownership question reads a release the gate is never asked about,
+    and its success must break the gate's run too.
+    """
     fake = Flaky({"a", "b", "d"})
     reader = ReleaseTracks(fake)
     gate = genre_gate.SweepGate(TAXONOMY, tracks=reader.release_tracks, lookup=Lookup({}))
@@ -735,9 +654,7 @@ def test_a_failed_read_is_remembered_and_raised_again_as_it_was():
     assert fake.releases_asked_for == ["r1"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 3. The hold record
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 3. The hold record ───────────────────────────────────────────────────────
 
 
 def hold_one(store, release_id: str, *, run_id: str = "run-1", reason: str = "held", group=SLUG):
@@ -825,9 +742,7 @@ def test_a_label_with_holds_and_no_items_still_has_its_row(installed):
     ]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 4. Through the worker: what a sweep files and what it holds
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 4. Through the worker: what a sweep files and what it holds ──────────────
 
 
 def test_a_release_of_another_kind_is_held_and_counted_for_its_label(installed, monkeypatch):
@@ -1103,9 +1018,7 @@ def test_a_sweep_the_gate_judged_in_full_has_no_sweep_line(installed, monkeypatc
     assert [one["key"] for one in envelope["data"]["checks"]] == ["label.held.held"]
 
 
-def test_a_sweep_that_holds_some_releases_files_no_more_than_the_window(
-    installed, monkeypatch
-):
+def test_a_sweep_that_holds_some_releases_files_no_more_than_the_window(installed, monkeypatch):
     """R-790's window: a held release takes a place, so nothing is read past it."""
     register("--offer", "3")
     fake = bind(
@@ -1241,9 +1154,7 @@ def test_a_dead_verifier_over_a_window_of_standing_holds_refuses(installed, monk
     assert sorted(held_ids(installed)) == ["r-1", "r-2"]
 
 
-def test_an_unreachable_catalogue_is_given_up_on_once_for_the_whole_sweep(
-    installed, monkeypatch
-):
+def test_an_unreachable_catalogue_is_given_up_on_once_for_the_whole_sweep(installed, monkeypatch):
     """One job, two labels. The outage is counted across them, not per label."""
     register()
     register(name="Salt Flats")
@@ -1295,8 +1206,9 @@ def test_a_release_with_no_isrc_does_not_hide_a_sweep_the_catalogue_refused_thro
 def test_a_hold_the_window_no_longer_reaches_is_dropped_when_it_stops_holding(
     installed, monkeypatch
 ):
-    """Newer releases push a held one past the window. It must not stay counted
-    as held under a reason the label's new kind made untrue."""
+    """Newer releases push a held one past the window. It must not stay counted as held under a
+    reason the label's new kind made untrue.
+    """
     register("--offer", "1")
     older = {"r-1": ("2025", isrc(1))}
     bind(monkeypatch, older)
@@ -1493,9 +1405,7 @@ def test_a_held_release_and_a_queued_one_both_take_a_place(installed):
     assert found.beyond == 1
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 5. The registry carries a label's kind
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 5. The registry carries a label's kind ───────────────────────────────────
 
 
 def test_a_kind_is_stored_folded_listed_and_survives_a_rename_and_an_unrelated_edit(installed):
@@ -1583,9 +1493,7 @@ def test_a_registry_written_before_kinds_existed_reads_with_none(installed):
     assert labels.RegistryStore().load().by_id(SLUG).kind is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 6. ``label approved`` judges kind with the same words
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 6. ``label approved`` judges kind with the same words ────────────────────
 
 
 def accept(cfg: config.Config, release_id: str, *, label_id: str = SLUG, **stamp) -> str:
@@ -1770,8 +1678,9 @@ def test_a_release_on_a_label_the_registry_no_longer_holds_is_the_default_kind(
 def test_a_release_held_at_approval_is_returned_by_name_and_listed_the_next_time(
     installed, monkeypatch
 ):
-    """The review's case. A release filed before the gate existed is accepted,
-    held at approval, and was never held by a sweep, so no hold names it."""
+    """The review's case. A release filed before the gate existed is accepted, held at approval,
+    and was never held by a sweep, so no hold names it.
+    """
     register()
     item_id = accept(installed, "r-old")
     provider_of(monkeypatch, {"r-old": isrc(9)})

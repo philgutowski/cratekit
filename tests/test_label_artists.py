@@ -1,16 +1,8 @@
 """R-840: an open label release whose artist reads an address is given the name.
 
-Before R-379 a sweep wrote the provider's artist object into the review item as
-text, so the item reads a memory address where the artist belongs. The producer
-was fixed and the items already filed were not, since a sweep never offers a
-release again while it holds a place in its label's window. ``crate label
-artists`` reads each such release again by its identifier and writes the name.
-
-These tests drive the verb where a person meets it, through the real
-dispatcher and the real review store, with a fake provider catalogue. Every
-release is filed by the sweep's own ``offer_release`` and decided by the
-queue's own ``resolve``. Every expected value is a literal from the fixtures.
-D1 applies: no real label, artist or release is named.
+Driven through the real dispatcher and review store with a fake provider.
+Releases are filed by the sweep's ``offer_release`` and decided by the queue's
+``resolve``; every expected value is a literal from the fixtures (D1).
 """
 
 from __future__ import annotations
@@ -32,15 +24,14 @@ from cratekit.sync import run
 from tests.cli_drive import drive
 from tests.label_fakes import StrictCatalogue, UnreadableCatalogue, catalogue_factory
 from tests.test_config import valid_data
+from tests.test_label_workers import one_parser as one_parser  # noqa: PLC0414 - fixture
 
 #: What a payload written before R-379 carries where the artist belongs.
 ADDRESS = "<provider.artist.Artist object at 0x10b77ec00>"
 QUEUE = str(Queue.LABEL_RELEASE)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
+# ── Fixtures ─────────────────────────────────────────────────────────────────
 
 
 @pytest.fixture
@@ -92,6 +83,22 @@ def stored(cfg: config.Config, item_id: str) -> review.Item:
         return review.get(items, item_id)
 
 
+def rewritten(cfg: config.Config, item_id: str, **fields) -> None:
+    """Another writer's change to an open item's payload, made through the store."""
+    with review.open_store(cfg) as items:
+        current = review.get(items, item_id)
+        review.redescribe(items, item_id, {**current.payload, **fields})
+
+
+def withheld(cfg: config.Config, item_id: str) -> review.Hold | None:
+    """The item moved out of review into a hold, as a judging job moves one."""
+    with review.open_store(cfg) as items:
+        return review.withhold(
+            items, item_id, group="tide-works", name="Tide Works", reason="another kind",
+            detail={}, run_id="judge-1",
+        )
+
+
 def bind(monkeypatch, fake) -> None:
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
 
@@ -100,7 +107,10 @@ def artists() -> tuple[int, dict]:
     return drive(["label", "artists"])
 
 
-def repaired_ok() -> dict:
+def repaired_ok(monkeypatch=None, fake=None) -> dict:
+    """Run the verb, after binding ``fake`` when given, which must succeed."""
+    if fake is not None:
+        bind(monkeypatch, fake)
     code, envelope = artists()
     assert code == int(ExitCode.OK), envelope
     return envelope
@@ -120,9 +130,7 @@ def check(envelope: dict, key: str) -> dict:
     return found[0]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 1. What an address is
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 1. What an address is ────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(
@@ -157,14 +165,10 @@ def test_a_name_is_never_read_as_an_address(value):
     assert not artists_cli.is_address(value)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 2. The brief's five scenarios
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 2. The brief's five scenarios ────────────────────────────────────────────
 
 
-def test_an_open_item_reading_an_address_is_given_the_name_and_nothing_else_moves(
-    cfg, monkeypatch
-):
+def test_an_open_item_reading_an_address_is_given_the_name_and_nothing_else_moves(cfg, monkeypatch):
     stamp = {
         genre_gate.GATE_FIELD: "pass",
         genre_gate.GENRES_FIELD: ["Dance"],
@@ -172,9 +176,7 @@ def test_an_open_item_reading_an_address_is_given_the_name_and_nothing_else_move
     }
     item_id = offered(cfg, "r-1", **stamp)
     before = stored(cfg, item_id)
-    bind(monkeypatch, StrictCatalogue(release_artists={"r-1": "Harbour Act"}))
-
-    envelope = repaired_ok()
+    envelope = repaired_ok(monkeypatch, StrictCatalogue(release_artists={"r-1": "Harbour Act"}))
 
     after = stored(cfg, item_id)
     assert after.payload["artist"] == "Harbour Act"
@@ -214,9 +216,7 @@ def test_a_decided_item_reading_an_address_is_left_as_it_is(cfg, monkeypatch, ve
     decided(cfg, item_id, verdict)
     before = stored(cfg, item_id)
     fake = StrictCatalogue(release_artists={"r-1": "Harbour Act"})
-    bind(monkeypatch, fake)
-
-    envelope = repaired_ok()
+    envelope = repaired_ok(monkeypatch, fake)
 
     assert stored(cfg, item_id) == before
     assert before.payload["artist"] == ADDRESS
@@ -229,9 +229,7 @@ def test_an_item_whose_artist_is_a_name_is_not_asked_about(cfg, monkeypatch):
     item_id = offered(cfg, "r-1", artist="Label Act")
     before = stored(cfg, item_id)
     fake = StrictCatalogue(release_artists={"r-1": "Somebody Else"})
-    bind(monkeypatch, fake)
-
-    envelope = repaired_ok()
+    envelope = repaired_ok(monkeypatch, fake)
 
     assert stored(cfg, item_id) == before
     assert fake.artists_asked_for == []
@@ -244,9 +242,7 @@ def test_a_release_the_provider_does_not_serve_is_counted_and_never_blanked(cfg,
     item_id = offered(cfg, "r-gone")
     before = stored(cfg, item_id)
     fake = StrictCatalogue(release_artists={})
-    bind(monkeypatch, fake)
-
-    envelope = repaired_ok()
+    envelope = repaired_ok(monkeypatch, fake)
 
     assert stored(cfg, item_id) == before
     assert before.payload["artist"] == ADDRESS
@@ -269,9 +265,7 @@ def test_the_provider_is_asked_once_for_each_repaired_item_and_never_for_the_oth
     fake = StrictCatalogue(
         release_artists={"r-1": "Harbour Act", "r-2": "X", "r-3": "Y", "r-4": "Quay Act"}
     )
-    bind(monkeypatch, fake)
-
-    envelope = repaired_ok()
+    envelope = repaired_ok(monkeypatch, fake)
 
     assert fake.artists_asked_for == ["r-1", "r-4"]
     assert fake.releases_asked_for == []
@@ -284,9 +278,7 @@ def test_the_provider_is_asked_once_for_each_repaired_item_and_never_for_the_oth
     assert stored(cfg, settled).payload["artist"] == ADDRESS
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 3. The queue with nothing to repair, and the second run
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 3. The queue with nothing to repair, and the second run ──────────────────
 
 
 def never_opened(cfg: object):
@@ -327,9 +319,7 @@ def test_a_second_run_asks_about_nothing_the_first_repaired(cfg, monkeypatch):
     assert counts(envelope["data"]["summary"]) == zeroes(already_fine=1, not_served=1)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 4. An address is never replaced by nothing
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 4. An address is never replaced by nothing ───────────────────────────────
 
 
 @pytest.mark.parametrize("nothing", ["", "   "])
@@ -338,9 +328,7 @@ def test_a_release_the_provider_names_no_artist_for_is_left_reading_what_it_read
 ):
     item_id = offered(cfg, "r-1")
     before = stored(cfg, item_id)
-    bind(monkeypatch, StrictCatalogue(release_artists={"r-1": nothing}))
-
-    envelope = repaired_ok()
+    envelope = repaired_ok(monkeypatch, StrictCatalogue(release_artists={"r-1": nothing}))
 
     assert stored(cfg, item_id) == before
     assert envelope["outcome"] == "no_op"
@@ -348,8 +336,9 @@ def test_a_release_the_provider_names_no_artist_for_is_left_reading_what_it_read
     assert "names no artist" in check(envelope, "release.r-1")["detail"]
 
 
-def unread_refusal() -> dict:
-    """The refusal a run ends on when the provider failed a read. Its cause."""
+def unread_refusal(monkeypatch, fake) -> dict:
+    """The refusal a run over ``fake`` ends on when the provider failed a read. Its cause."""
+    bind(monkeypatch, fake)
     code, envelope = artists()
     assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), envelope
     assert envelope["cause"]["reason"] == "unavailable-transient"
@@ -357,15 +346,11 @@ def unread_refusal() -> dict:
     return envelope["cause"]
 
 
-def test_a_release_the_provider_could_not_answer_for_is_left_and_the_run_refuses(
-    cfg, monkeypatch
-):
+def test_a_release_the_provider_could_not_answer_for_is_left_and_the_run_refuses(cfg, monkeypatch):
     item_id = offered(cfg, "r-1")
     before = stored(cfg, item_id)
     fake = UnreadableCatalogue()
-    bind(monkeypatch, fake)
-
-    cause = unread_refusal()
+    cause = unread_refusal(monkeypatch, fake)
 
     assert stored(cfg, item_id) == before
     assert fake.artists_asked_for == ["r-1"]
@@ -375,11 +360,7 @@ def test_a_release_the_provider_could_not_answer_for_is_left_and_the_run_refuses
     assert cause["detail"]["left"] == 0
     assert cause["detail"]["artists"]["addresses"] == 1
     [release] = cause["detail"]["artists"]["releases"]
-    assert (release["release_id"], release["outcome"], release["artist"]) == (
-        "r-1",
-        "unread",
-        None,
-    )
+    assert (release["release_id"], release["outcome"], release["artist"]) == ("r-1", "unread", None)
     assert "RuntimeError: the catalogue could not read the release 'r-1'" in release["said"], (
         "a refusal carries no check line, so the row is where the reason has to be"
     )
@@ -393,29 +374,21 @@ class Parsing(StrictCatalogue):
         raise KeyError("artist")
 
 
-def test_a_lookup_error_that_is_not_the_seams_own_is_unread_and_never_not_served(
-    cfg, monkeypatch
-):
+def test_a_lookup_error_that_is_not_the_seams_own_is_unread_and_never_not_served(cfg, monkeypatch):
     offered(cfg, "r-1")
-    bind(monkeypatch, Parsing())
-
-    cause = unread_refusal()
+    cause = unread_refusal(monkeypatch, Parsing())
 
     assert counts(cause["detail"]["artists"]) == zeroes(unread=1)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 5. When the run stops
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 5. When the run stops ────────────────────────────────────────────────────
 
 
 def test_three_reads_failing_in_a_row_stop_the_run_and_say_what_was_left(cfg, monkeypatch):
     for rid in ("r-1", "r-2", "r-3", "r-4", "r-5"):
         offered(cfg, rid)
     fake = UnreadableCatalogue()
-    bind(monkeypatch, fake)
-
-    cause = unread_refusal()
+    cause = unread_refusal(monkeypatch, fake)
 
     assert "3 release reads in a row, so the run stopped reading" in cause["message"]
     assert fake.artists_asked_for == ["r-1", "r-2", "r-3"]
@@ -430,9 +403,7 @@ def test_an_outage_over_the_last_releases_of_a_run_is_the_same_refusal(cfg, monk
     for rid in ("r-1", "r-2", "r-3"):
         offered(cfg, rid)
     fake = UnreadableCatalogue()
-    bind(monkeypatch, fake)
-
-    cause = unread_refusal()
+    cause = unread_refusal(monkeypatch, fake)
 
     assert "3 release reads in a row" in cause["message"]
     assert fake.artists_asked_for == ["r-1", "r-2", "r-3"]
@@ -456,12 +427,8 @@ class Flaky(StrictCatalogue):
 def test_an_answer_between_failures_keeps_the_run_going(cfg, monkeypatch):
     for rid in ("r-1", "r-2", "r-3", "r-4", "r-5"):
         offered(cfg, rid)
-    fake = Flaky(
-        release_artists={"r-3": "Harbour Act"}, failing=("r-1", "r-2", "r-4", "r-5")
-    )
-    bind(monkeypatch, fake)
-
-    cause = unread_refusal()
+    fake = Flaky(release_artists={"r-3": "Harbour Act"}, failing=("r-1", "r-2", "r-4", "r-5"))
+    cause = unread_refusal(monkeypatch, fake)
 
     assert fake.artists_asked_for == ["r-1", "r-2", "r-3", "r-4", "r-5"]
     assert "could not answer about 4 of the 5 release(s)" in cause["message"]
@@ -481,9 +448,7 @@ def test_a_release_that_is_gone_does_not_count_towards_an_outage(cfg, monkeypatc
     for rid in ("r-1", "r-2", "r-gone", "r-4", "r-5"):
         offered(cfg, rid)
     fake = Flaky(release_artists={}, failing=("r-1", "r-2", "r-4", "r-5"))
-    bind(monkeypatch, fake)
-
-    cause = unread_refusal()
+    cause = unread_refusal(monkeypatch, fake)
 
     assert fake.artists_asked_for == ["r-1", "r-2", "r-gone", "r-4", "r-5"]
     assert counts(cause["detail"]["artists"]) == zeroes(not_served=1, unread=4)
@@ -554,9 +519,7 @@ def test_a_catalogue_that_cannot_be_opened_refuses_and_repairs_nothing(cfg, monk
     assert stored(cfg, item_id).payload["artist"] == ADDRESS
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 6. What changes while a release is being read
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 6. What changes while a release is being read ────────────────────────────
 
 
 class Meanwhile(StrictCatalogue):
@@ -590,26 +553,13 @@ def test_a_release_decided_while_it_was_being_read_is_not_rewritten(cfg, monkeyp
     assert envelope["outcome"] == "no_op"
 
 
-def test_a_release_that_left_review_while_it_was_being_read_is_not_filed_again(
-    cfg, monkeypatch
-):
+def test_a_release_that_left_review_while_it_was_being_read_is_not_filed_again(cfg, monkeypatch):
     item_id = offered(cfg, "r-1")
 
-    def withheld(release_id: str) -> None:
-        with review.open_store(cfg) as items:
-            review.withhold(
-                items,
-                item_id,
-                group="tide-works",
-                name="Tide Works",
-                reason="another kind",
-                detail={},
-                run_id="judge-1",
-            )
-
-    bind(monkeypatch, Meanwhile(release_artists={"r-1": "Harbour Act"}, during=withheld))
-
-    envelope = repaired_ok()
+    during = Meanwhile(
+        release_artists={"r-1": "Harbour Act"}, during=lambda rid: withheld(cfg, item_id)
+    )
+    envelope = repaired_ok(monkeypatch, during)
 
     with review.open_store(cfg) as items:
         assert review.find(items, item_id) is None
@@ -621,15 +571,9 @@ def test_what_a_judging_job_stamped_meanwhile_is_kept(cfg, monkeypatch):
     item_id = offered(cfg, "r-1")
 
     def stamped(release_id: str) -> None:
-        with review.open_store(cfg) as items:
-            current = review.get(items, item_id)
-            review.redescribe(
-                items, item_id, {**current.payload, genre_gate.GATE_FIELD: "pass"}
-            )
+        rewritten(cfg, item_id, **{genre_gate.GATE_FIELD: "pass"})
 
-    bind(monkeypatch, Meanwhile(release_artists={"r-1": "Harbour Act"}, during=stamped))
-
-    repaired_ok()
+    repaired_ok(monkeypatch, Meanwhile(release_artists={"r-1": "Harbour Act"}, during=stamped))
 
     after = stored(cfg, item_id)
     assert after.payload["artist"] == "Harbour Act"
@@ -639,14 +583,11 @@ def test_what_a_judging_job_stamped_meanwhile_is_kept(cfg, monkeypatch):
 def test_an_artist_put_right_meanwhile_is_not_overwritten(cfg, monkeypatch):
     item_id = offered(cfg, "r-1")
 
-    def renamed(release_id: str) -> None:
-        with review.open_store(cfg) as items:
-            current = review.get(items, item_id)
-            review.redescribe(items, item_id, {**current.payload, "artist": "Typed By Hand"})
-
-    bind(monkeypatch, Meanwhile(release_artists={"r-1": "Harbour Act"}, during=renamed))
-
-    envelope = repaired_ok()
+    during = Meanwhile(
+        release_artists={"r-1": "Harbour Act"},
+        during=lambda rid: rewritten(cfg, item_id, artist="Typed By Hand"),
+    )
+    envelope = repaired_ok(monkeypatch, during)
 
     assert stored(cfg, item_id).payload["artist"] == "Typed By Hand"
     summary = envelope["data"]["summary"]
@@ -668,9 +609,7 @@ def test_the_counts_always_sum_to_the_addresses_and_the_items_left_alone(cfg, mo
     def renamed(release_id: str) -> None:
         if release_id != "r-4":
             return
-        with review.open_store(cfg) as items:
-            current = review.get(items, renamed_id)
-            review.redescribe(items, renamed_id, {**current.payload, "artist": "Typed By Hand"})
+        rewritten(cfg, renamed_id, artist="Typed By Hand")
 
     bind(
         monkeypatch,
@@ -686,9 +625,7 @@ def test_the_counts_always_sum_to_the_addresses_and_the_items_left_alone(cfg, mo
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 6b. The store: a rewrite made from the payload as it stands
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 6b. The store: a rewrite made from the payload as it stands ──────────────
 
 
 def test_a_rewrite_given_a_function_is_handed_the_payload_and_writes_what_it_returns(cfg):
@@ -762,9 +699,7 @@ def test_a_rewrite_is_handed_the_empty_payload_a_reader_of_the_item_is_shown(cfg
     seen: list[dict] = []
     with review.open_store(cfg) as items:
         with items.immediate() as conn:
-            conn.execute(
-                "UPDATE review_items SET payload = ? WHERE item_id = ?", (raw, item_id)
-            )
+            conn.execute("UPDATE review_items SET payload = ? WHERE item_id = ?", (raw, item_id))
         shown = review.get(items, item_id).payload
         assert shown == {}
 
@@ -786,9 +721,7 @@ def test_a_rewrite_given_a_payload_still_replaces_it_whole(cfg):
         assert after is not None and after.payload == {"artist": "Harbour Act"}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 7. Items the verb cannot read a release for
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 7. Items the verb cannot read a release for ──────────────────────────────
 
 
 def test_an_item_carrying_a_verdict_this_build_cannot_read_is_left_and_not_asked_about(
@@ -798,9 +731,7 @@ def test_an_item_carrying_a_verdict_this_build_cannot_read_is_left_and_not_asked
     with review.open_store(cfg) as items, items.immediate() as conn:
         conn.execute("UPDATE review_items SET verdict = 'deferred' WHERE item_id = ?", (item_id,))
     fake = StrictCatalogue(release_artists={"r-1": "Harbour Act"})
-    bind(monkeypatch, fake)
-
-    envelope = repaired_ok()
+    envelope = repaired_ok(monkeypatch, fake)
 
     assert fake.artists_asked_for == []
     assert stored(cfg, item_id).payload["artist"] == ADDRESS
@@ -824,9 +755,7 @@ def test_an_item_that_names_no_release_is_left_and_nothing_is_read(cfg, monkeypa
     item_id = offered(cfg, "r-1")
     unidentified(cfg, item_id, {"artist": ADDRESS, "title": "Release r-1"})
     fake = StrictCatalogue(release_artists={"r-1": "Harbour Act"})
-    bind(monkeypatch, fake)
-
-    envelope = repaired_ok()
+    envelope = repaired_ok(monkeypatch, fake)
 
     assert fake.artists_asked_for == []
     assert stored(cfg, item_id).payload["artist"] == ADDRESS
@@ -834,15 +763,11 @@ def test_an_item_that_names_no_release_is_left_and_nothing_is_read(cfg, monkeypa
     assert check(envelope, f"item.{item_id}")["status"] == "info"
 
 
-def test_an_item_naming_another_items_release_is_not_given_that_releases_artist(
-    cfg, monkeypatch
-):
+def test_an_item_naming_another_items_release_is_not_given_that_releases_artist(cfg, monkeypatch):
     item_id = offered(cfg, "r-1")
     unidentified(cfg, item_id, {"artist": ADDRESS, "title": "Release r-1", "identity": "r-2"})
     fake = StrictCatalogue(release_artists={"r-1": "Harbour Act", "r-2": "Somebody Else"})
-    bind(monkeypatch, fake)
-
-    envelope = repaired_ok()
+    envelope = repaired_ok(monkeypatch, fake)
 
     assert fake.artists_asked_for == []
     assert stored(cfg, item_id).payload["artist"] == ADDRESS
@@ -854,9 +779,7 @@ def test_an_item_filed_under_an_empty_identifier_is_not_asked_about(cfg, monkeyp
     item_id = offered(cfg, "")
     assert item_id == genre_gate.release_item_id("")
     fake = StrictCatalogue(release_artists={"": "Nobody"})
-    bind(monkeypatch, fake)
-
-    envelope = repaired_ok()
+    envelope = repaired_ok(monkeypatch, fake)
 
     assert fake.artists_asked_for == []
     assert stored(cfg, item_id).payload["artist"] == ADDRESS
@@ -869,9 +792,7 @@ def test_two_items_naming_one_release_are_two_lines_under_two_keys(cfg, monkeypa
     unidentified(cfg, stray, {"artist": ADDRESS, "title": "Stray", "identity": "r-2"})
     own = offered(cfg, "r-2")
     fake = StrictCatalogue(release_artists={"r-2": "Quay Act"})
-    bind(monkeypatch, fake)
-
-    envelope = repaired_ok()
+    envelope = repaired_ok(monkeypatch, fake)
 
     assert fake.artists_asked_for == ["r-2"]
     assert check(envelope, f"item.{stray}")["status"] == "info"
@@ -886,9 +807,7 @@ def test_an_imported_item_is_read_by_the_identifier_its_payload_carries(cfg, mon
     item_id = offered(cfg, "r-1")
     unidentified(cfg, item_id, {"artist": ADDRESS, "title": "Release r-1", "identity": "r-1"})
     fake = StrictCatalogue(release_artists={"r-1": "Harbour Act"})
-    bind(monkeypatch, fake)
-
-    repaired_ok()
+    repaired_ok(monkeypatch, fake)
 
     assert fake.artists_asked_for == ["r-1"]
     assert stored(cfg, item_id).payload["artist"] == "Harbour Act"
@@ -899,9 +818,7 @@ def test_an_item_with_no_artist_at_all_is_not_an_address_and_is_not_said_to_have
 ):
     offered(cfg, "r-1", artist="")
     fake = StrictCatalogue(release_artists={"r-1": "Harbour Act"})
-    bind(monkeypatch, fake)
-
-    envelope = repaired_ok()
+    envelope = repaired_ok(monkeypatch, fake)
 
     assert fake.artists_asked_for == []
     assert counts(envelope["data"]["summary"]) == zeroes(already_fine=1)
@@ -913,21 +830,10 @@ def test_an_item_with_no_artist_at_all_is_not_an_address_and_is_not_said_to_have
 def test_a_release_held_out_of_review_is_not_an_open_item_and_is_not_read(cfg, monkeypatch):
     """The scope the verb states. A hold keeps the address until it is returned."""
     item_id = offered(cfg, "r-1")
-    with review.open_store(cfg) as items:
-        hold = review.withhold(
-            items,
-            item_id,
-            group="tide-works",
-            name="Tide Works",
-            reason="another kind",
-            detail={},
-            run_id="judge-1",
-        )
+    hold = withheld(cfg, item_id)
     assert hold is not None and hold.payload["artist"] == ADDRESS
     fake = StrictCatalogue(release_artists={"r-1": "Harbour Act"})
-    bind(monkeypatch, fake)
-
-    envelope = repaired_ok()
+    envelope = repaired_ok(monkeypatch, fake)
 
     assert fake.artists_asked_for == []
     assert counts(envelope["data"]["summary"]) == zeroes()
@@ -946,18 +852,14 @@ def test_another_queues_item_reading_an_address_is_not_this_verbs(cfg, monkeypat
             payload={"artist": ADDRESS, "identity": "r-1"},
         )
     fake = StrictCatalogue(release_artists={"r-1": "Harbour Act"})
-    bind(monkeypatch, fake)
-
-    envelope = repaired_ok()
+    envelope = repaired_ok(monkeypatch, fake)
 
     assert fake.artists_asked_for == []
     assert stored(cfg, other.item_id).payload["artist"] == ADDRESS
     assert counts(envelope["data"]["summary"]) == zeroes()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 8. What the verb declares, and what a person reads
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 8. What the verb declares, and what a person reads ───────────────────────
 
 
 def test_the_verb_declares_what_it_is():
