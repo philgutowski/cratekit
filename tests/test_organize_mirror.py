@@ -1,8 +1,6 @@
 """U147: the genre tree and the Favorites folder mirrored onto the account.
 
-Driven at :func:`account_mirror.add_steps` over the recording fake account, the
-library handed in as values, so each scenario reads what the account holds. D1
-applies: nothing here names a real account, person or track.
+At :func:`account_mirror.add_steps` over the recording fake account, the library handed in. D1 applies.
 """
 
 from __future__ import annotations
@@ -92,9 +90,7 @@ class World:
         return found
 
     def held(self, title: str) -> list[str]:
-        """What the account playlist of this title holds, by title among the mirror's."""
-        (found,) = [pid for pid, name in self.account.titles.items() if name == title]
-        return list(self.account.playlists[found])
+        return list(self.account.playlists[self.playlist_id(title)])
 
     def playlist_id(self, title: str) -> str:
         (found,) = [pid for pid, name in self.account.titles.items() if name == title]
@@ -489,7 +485,7 @@ def test_rows_a_folder_with_nothing_to_write_matched_are_linked_by_another_folde
     assert set(ledger.mirror_links(installed)) == {"c1", "c2"}
 
 
-def test_a_library_name_two_folders_take_names_its_remedy_in_rekordbox(installed, monkeypatch):
+def test_a_library_name_two_folders_take_names_its_remedy_in_rekordbox():
     cause = account_mirror._twice("Soul", "folders")
     assert cause.reason == mirror.AMBIGUOUS_REASON
     assert any("in rekordbox" in step for step in cause.remediation.steps)

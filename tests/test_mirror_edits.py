@@ -1,9 +1,6 @@
 """U201: an edit made on the account to a mirrored genre playlist, told apart and decided.
 
-The pure rule, :func:`mirror_edits.decide`, over each playlist read three ways;
-the organize steps around it are driven in ``tests/test_organize_mirror_edits.py``.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+The pure rule, :func:`mirror_edits.decide`, over each playlist read three ways. D1 applies.
 """
 
 from __future__ import annotations

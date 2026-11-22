@@ -538,38 +538,14 @@ def test_a_folder_that_is_not_a_genre_folder_is_mirrored_one_way(installed, monk
 
 
 def _dated_adapter(cfg, members, *, hidden=0, declared=True, times=None):
-    from datetime import datetime
-
+    """The real adapter over the prune suite's stand in client, holding playlist ``p``."""
     from cratekit.modules.outbound import tidal_account
     from tests import test_prune
-
     store = test_prune._Store()
-    store.members["p"] = list(members)
-    store.hidden["p"] = hidden
-    stamped = dict(times or {})
-
-    class Track(test_prune._Track):
-        def __init__(self, track_id: str) -> None:
-            super().__init__(track_id)
-            at = stamped.get(track_id)
-            self.user_date_added = datetime.fromisoformat(at) if at else None
-
-    class Playlist(test_prune._Playlist):
-        def __init__(self, store, playlist_id) -> None:
-            super().__init__(store, playlist_id)
-            if not declared:
-                self.num_tracks = None
-
-        def tracks(self, limit=None, offset=0):
-            size = 100 if limit is None else limit
-            return [Track(one) for one in self.store.members[self.id][offset : offset + size]]
-
-    class Client(test_prune._Client):
-        def playlist(self, playlist_id):
-            self.store.opened.append(playlist_id)
-            return Playlist(self.store, playlist_id)
-
-    return tidal_account.TidalAccount(Client(store), sleep=lambda seconds: None, cfg=cfg)
+    store.members["p"], store.hidden["p"], store.added = list(members), hidden, dict(times or {})
+    if not declared:
+        store.undeclared.add("p")
+    return tidal_account.TidalAccount(test_prune._Client(store), sleep=lambda seconds: None, cfg=cfg)
 
 
 def test_the_adapter_lists_each_track_with_its_added_time_and_the_declared_count(installed):

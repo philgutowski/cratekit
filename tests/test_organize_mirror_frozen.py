@@ -1,8 +1,4 @@
-"""R-1031: the mirror remembers what it could not match, and its gate's plan is the apply's.
-
-Driven at :func:`account_mirror.add_steps` over U147's fake account, a run handed
-in as ``crate organize`` hands one. D1 applies.
-"""
+"""R-1031: the mirror remembers what it could not match, and its gate's plan is the apply's. D1 applies."""
 
 from __future__ import annotations
 
@@ -57,13 +53,18 @@ def _decided(run: str = RUN) -> account_mirror.Run:
     return account_mirror.Run(run_id=run, record=True, decided=True)
 
 
+def _ran(installed, monkeypatch, unmatched: tuple[int, ...], *low: int) -> tuple[World, int]:
+    """Techno Low holding ``low`` mirrored once, ``unmatched`` missing; and the matches asked so far."""
+    world = World(installed, monkeypatch, unmatched=unmatched)
+    world.mirror(folder("Techno", Low=low))
+    world.run()
+    return world, len(_asked(world))
+
+
 def test_a_refresh_asks_only_the_rows_new_since_the_last_and_names_the_rest_remembered(installed, monkeypatch):
     """AE1. Three misses remembered, two rows landed: the provider is asked about two."""
-    world = World(installed, monkeypatch, unmatched=(5, 6, 7))
-    world.mirror(folder("Techno", Low=(1, 5, 6, 7)))
-    world.run()
+    world, before = _ran(installed, monkeypatch, (5, 6, 7), 1, 5, 6, 7)
     assert set(ledger.mirror_misses(installed)) == {"c5", "c6", "c7"}
-    before = len(_asked(world))
     world.mirror(folder("Techno", Low=(1, 5, 6, 7, 8, 9)))
     area = world.plan()
     assert _asked(world)[before:] == ["c8", "c9"]
@@ -94,10 +95,7 @@ def test_a_report_records_no_link_no_miss_and_freezes_nothing(installed, monkeyp
 
 
 def test_a_row_whose_database_code_changed_since_its_miss_is_asked_again(installed, monkeypatch):
-    world = World(installed, monkeypatch, unmatched=(3,))
-    world.mirror(folder("Techno", Low=(3,)))
-    world.run()
-    before = len(_asked(world))
+    world, before = _ran(installed, monkeypatch, (3,), 3)
     world.mirror(single("Techno", "Techno Low", row(3, isrc="NEWCODE0003")))
     world.plan()
     assert _asked(world)[before:] == ["c3"]
@@ -105,10 +103,7 @@ def test_a_row_whose_database_code_changed_since_its_miss_is_asked_again(install
 
 @pytest.mark.parametrize("changed", ["title", "artist", "path"])
 def test_a_row_whose_title_artist_or_path_changed_since_its_miss_is_asked_again(installed, monkeypatch, changed):
-    world = World(installed, monkeypatch, unmatched=(3,))
-    world.mirror(folder("Techno", Low=(3,)))
-    world.run()
-    before = len(_asked(world))
+    world, before = _ran(installed, monkeypatch, (3,), 3)
     moved = mirror.Row(**{**{f: getattr(row(3), f) for f in mirror.Row.__slots__}, changed: "else"})
     world.mirror(single("Techno", "Techno Low", moved))
     world.plan()
@@ -138,10 +133,7 @@ def test_a_file_that_gains_a_code_is_asked_again_and_an_unchanged_one_is_not(ins
 
 def test_rematch_asks_every_remembered_miss_again(installed, monkeypatch):
     """AE2. ``--rematch``: every miss is asked, and a linked row is not."""
-    world = World(installed, monkeypatch, unmatched=(5, 6))
-    world.mirror(folder("Techno", Low=(1, 5, 6)))
-    world.run()
-    before = len(_asked(world))
+    world, before = _ran(installed, monkeypatch, (5, 6), 1, 5, 6)
     area = _plan(world, account_mirror.Run(run_id=RUN, rematch=True))
     assert sorted(_asked(world)[before:]) == ["c5", "c6"]
     assert account_mirror.MISSES_FACT not in area.facts
@@ -164,9 +156,7 @@ def test_a_miss_over_a_candidate_that_could_not_be_read_is_never_remembered(inst
 
 
 def test_a_row_matched_later_loses_its_miss(installed, monkeypatch):
-    world = World(installed, monkeypatch, unmatched=(5,))
-    world.mirror(folder("Techno", Low=(5,)))
-    world.run()
+    world, _before = _ran(installed, monkeypatch, (5,), 5)
     assert "c5" in ledger.mirror_misses(installed)
     world.account.catalog["c5"] = "r5"
     _plan(world, account_mirror.Run(run_id=RUN, record=True, rematch=True))
@@ -402,12 +392,9 @@ def test_rematch_on_the_run_that_answers_asks_nothing_and_says_so(installed, mon
 
 def test_a_coded_rows_miss_is_kept_whatever_its_file_does(installed, monkeypatch):
     """The file is read only for a row with no code, so only then does it key the miss."""
-    world = World(installed, monkeypatch, unmatched=(3,))
     signature = {"now": "100:1"}
     monkeypatch.setattr(account_mirror, "file_signature", lambda _cfg: lambda _one: signature["now"])
-    world.mirror(folder("Techno", Low=(3,)))
-    world.run()
-    before = len(_asked(world))
+    world, before = _ran(installed, monkeypatch, (3,), 3)
     signature["now"] = "120:2"
     world.plan()
     assert len(_asked(world)) == before

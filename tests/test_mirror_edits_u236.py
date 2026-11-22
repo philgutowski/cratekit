@@ -1,8 +1,6 @@
 """U236: the month the library placed a favourite in is never read as rekordbox's addition.
 
-Pure, over :func:`mirror_edits.decide`, :func:`mirror_edits.placed_after` and
-the ledger's record of a placement. D1 applies: nothing here names a real
-account, a real person or a real track.
+Pure, over ``decide``, ``placed_after`` and the ledger's record of a placement. D1 applies.
 """
 
 from __future__ import annotations
