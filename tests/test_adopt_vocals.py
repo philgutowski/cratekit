@@ -1,16 +1,11 @@
 """R-788: adoption files a vox tagged track under its bucket's vocal sub.
 
-Only the routing pass filed a vocal sub, per batch, so a track that reached its
-bucket through adoption sat there without the bucket's vocal sub. This module
-holds the pure halves of the fix: which buckets declare the sub, what the plan
-does with a track that carries the tag, what the digest covers, how a tree
-already read becomes the value the plan takes, and how the tag is read off a
-database. The read off a real database and the approved apply are driven in
-``tests/test_adopt_workers.py``.
-
-Every expected identifier is derived from the shipped taxonomy's own
-declarations rather than spelled, for the reason ``test_adopt_placements``
-gives.
+The pure halves: which buckets declare the sub, what the plan does with a
+track that carries the tag, what the digest covers, how a tree already read
+becomes the value the plan takes, and how the tag is read off a database. The
+read off a real database and the approved apply are driven in
+``tests/test_adopt_workers.py``. Expected identifiers are derived from the
+shipped taxonomy's declarations rather than spelled.
 
 D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
 """
@@ -30,34 +25,18 @@ from cratekit.core import convergence, rb_writer, taxonomy
 from cratekit.core.cause import CratekitError
 from cratekit.write import metadata_cli, rebuild, trees
 from cratekit.write.routing_pass import destination
+from tests.test_adopt_move import HIGH, MED
+from tests.test_adopt_move import _pure_energy_bucket as _energy_bucket
+from tests.test_adopt_move import _scanned as _scanned_in
+from tests.test_adopt_workers import _style_bucket
 
 TREE_ID = "shelf_stack"
 DECLARED = taxonomy.default_taxonomy()
 VOX = trees.VOX_SUB_CLASS
-
-
-def _energy_bucket() -> taxonomy.Bucket:
-    return next(
-        bucket
-        for bucket in DECLARED.buckets
-        if bucket.sub_by_source is None and bucket.energy.enabled
-    )
-
-
-def _style_bucket() -> taxonomy.Bucket:
-    return next(
-        bucket
-        for bucket in DECLARED.buckets
-        if not bucket.energy.enabled and len(bucket.subs) > 1
-    )
-
-
-def _band(level: int) -> str:
-    return next(band.id for band in DECLARED.energy.bands if level <= band.max)
-
-
-MED, HIGH = _band(5), _band(9)
 BUCKET = _energy_bucket().id
+NO_ADDITIVE = replace(
+    DECLARED, sub_classes=tuple(e for e in DECLARED.sub_classes if not e.additive)
+)
 
 
 def _with_vocal_class(**changes) -> taxonomy.Taxonomy:
@@ -72,16 +51,7 @@ def _with_vocal_class(**changes) -> taxonomy.Taxonomy:
 
 
 def _scanned(content_id: str, bucket: str = BUCKET, *, energy: int | None = 5):
-    return adopt_scan.ScannedTrack(
-        content_id=content_id,
-        recorded=f"/library/Music/{content_id}.flac",
-        path=f"/library/Music/{content_id}.flac",
-        readability=adopt_scan.Readability.READABLE,
-        disposition=adopt_scan.Disposition.ROUTE,
-        genre=DECLARED.bucket(bucket).display,
-        bucket=bucket,
-        energy=energy,
-    )
+    return _scanned_in(content_id, bucket, energy=energy)
 
 
 def _vocals(*tagged: str, filed=(), unnamed=(), bucket: str = BUCKET) -> adopt_plan.Vocals:
@@ -149,21 +119,15 @@ def test_the_vocal_sub_is_where_the_routing_pass_files_whatever_present_in_says(
     assert adopt_plan.vocal_sub(declared, _style_bucket().id) == VOX
 
 
-def test_a_taxonomy_with_no_additive_class_has_no_vocal_sub():
-    declared = replace(
-        DECLARED, sub_classes=tuple(e for e in DECLARED.sub_classes if not e.additive)
-    )
-    assert adopt_plan.vocal_sub(declared, BUCKET) is None
-
-
-def test_a_class_of_that_identifier_that_is_not_additive_is_not_the_vocal_sub():
-    assert adopt_plan.vocal_sub(_with_vocal_class(additive=False), BUCKET) is None
-
-
-def test_an_additive_class_of_another_identifier_is_not_the_vocal_sub():
+def test_no_additive_class_of_the_vocal_identifier_is_no_vocal_sub():
     """The derivation knows the signal for one additive class. Filing the tag
     under any other would be answering for a dimension nobody defined."""
-    assert adopt_plan.vocal_sub(_with_vocal_class(id="instrumental"), BUCKET) is None
+    for declared in (
+        NO_ADDITIVE,
+        _with_vocal_class(additive=False),
+        _with_vocal_class(id="instrumental"),
+    ):
+        assert adopt_plan.vocal_sub(declared, BUCKET) is None
 
 
 def test_a_bucket_whose_own_sub_carries_the_vocal_name_has_no_vocal_sub():
@@ -233,9 +197,7 @@ def test_a_track_already_in_the_sub_is_counted_present_and_not_added():
 def test_a_bucket_with_no_vocal_sub_plans_nothing_for_its_tagged_tracks():
     declared = _style_named_as_the_vocal_sub()
     style = _style_bucket()
-    track = replace(
-        _scanned("s", style.id), genre=next(iter(style.sub_by_source.map))
-    )
+    track = replace(_scanned("s", style.id), genre=next(iter(style.sub_by_source.map)))
     banded = _scanned("t")
     plan = _plan([track, banded], _vocals("s", "t"), declared=declared)
     states = {entry.content_id: (entry.vocal, entry.vocal_sub) for entry in plan.entries}
@@ -249,10 +211,7 @@ def test_a_bucket_with_no_vocal_sub_plans_nothing_for_its_tagged_tracks():
 
 
 def test_a_taxonomy_with_no_vocal_class_plans_nothing_for_any_tagged_track():
-    declared = replace(
-        DECLARED, sub_classes=tuple(e for e in DECLARED.sub_classes if not e.additive)
-    )
-    plan = _plan([_scanned("t")], _vocals("t"), declared=declared)
+    plan = _plan([_scanned("t")], _vocals("t"), declared=NO_ADDITIVE)
 
     assert _only(plan).vocal == adopt_plan.VOCAL_NO_SUB
     assert plan.vocal_memberships() == ()
@@ -321,9 +280,7 @@ def test_a_library_with_no_calibrated_cut_plans_no_vocal_membership():
 
 
 def test_a_tagged_track_with_no_bucket_is_counted_as_one_and_not_passed_over():
-    needs_genre = replace(
-        _scanned("t"), disposition=adopt_scan.Disposition.NEEDS_GENRE, bucket=""
-    )
+    needs_genre = replace(_scanned("t"), disposition=adopt_scan.Disposition.NEEDS_GENRE, bucket="")
     excluded = replace(
         _scanned("u"),
         disposition=adopt_scan.Disposition.EXCLUDED,
@@ -505,9 +462,7 @@ def test_a_vocal_membership_has_an_identifier_of_its_own():
 
 
 def test_the_document_names_the_count_and_lists_every_membership_it_may_write():
-    plan = _plan(
-        [_scanned("t"), _scanned("u"), _scanned("v")], _vocals("t", "u", filed=("u",))
-    )
+    plan = _plan([_scanned("t"), _scanned("u"), _scanned("v")], _vocals("t", "u", filed=("u",)))
     document = adopt_plan.to_json(plan)
 
     assert document["vocals"] == adopt_plan.VOCALS_READ
@@ -629,32 +584,20 @@ def test_whether_the_library_is_calibrated_is_carried_and_not_assumed():
 
 
 def test_a_taxonomy_with_no_vocal_sub_says_so_whatever_else_is_true():
-    declared = replace(
-        DECLARED, sub_classes=tuple(e for e in DECLARED.sub_classes if not e.additive)
-    )
     assert adopt_placements.has_vocal_sub(DECLARED) is True
-    assert adopt_placements.has_vocal_sub(declared) is False
-
-    found = adopt_placements.vocals_from(declared, [], None, frozenset({"t"}), calibrated=True)
-    assert (found.has_sub, found.filing, found.state) == (False, False, adopt_plan.VOCALS_NO_SUB)
-
-
-def test_one_bucket_without_the_vocal_sub_does_not_make_a_taxonomy_without_one():
+    assert adopt_placements.has_vocal_sub(NO_ADDITIVE) is False
+    # One bucket without the vocal sub does not make a taxonomy without one.
     assert adopt_placements.has_vocal_sub(_style_named_as_the_vocal_sub()) is True
+
+    found = adopt_placements.vocals_from(NO_ADDITIVE, [], None, frozenset({"t"}), calibrated=True)
+    assert (found.has_sub, found.filing, found.state) == (False, False, adopt_plan.VOCALS_NO_SUB)
 
 
 def test_a_vocal_playlist_under_the_declared_names_files_its_tracks():
     nodes = [_node(BUCKET, VOX, "t", "u"), _node(BUCKET, MED, "t", "w")]
-    found = adopt_placements.vocals_from(
-        DECLARED, nodes, None, frozenset({"t"}), calibrated=True
-    )
+    found = adopt_placements.vocals_from(DECLARED, nodes, None, frozenset({"t"}), calibrated=True)
 
-    assert (found.read, found.has_sub, found.calibrated, found.tag_found) == (
-        True,
-        True,
-        True,
-        True,
-    )
+    assert (found.read, found.has_sub, found.calibrated, found.tag_found) == (True,) * 4
     assert found.tagged == {"t"}
     assert found.filed == {BUCKET: {"t", "u"}}
     assert found.unnamed == {}
