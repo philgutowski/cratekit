@@ -22,9 +22,9 @@ from cratekit.intake import landing
 from cratekit.label import approved_cli
 from cratekit.write import trees
 from tests.test_active_taxonomy import shipped_without, write_active
-from tests.test_landing import cfg as cfg  # noqa: PLC0414 - the fixture
-from tests.test_landing import export as export  # noqa: PLC0414 - the fixture
-from tests.test_landing import silence as silence  # noqa: PLC0414 - the fixture
+from tests.test_landing import cfg as cfg
+from tests.test_landing import export as export
+from tests.test_landing import silence as silence
 from tests.test_xml_splice_golden import _check
 from tests.xml_fixtures import _fresh_xml, _no_bare_lf
 
@@ -87,6 +87,24 @@ def _refused(cfg, export, manifest, **given):
     with pytest.raises(CratekitError) as excinfo:
         _land(cfg, export, manifest, **given)
     return excinfo.value.cause
+
+
+def _nothing_moved(cfg: config.Config, staged: Path, cause=None) -> None:
+    """The batch still staged, no batch folder and no intake file; the refusal says so."""
+    assert cause is None or "nothing was moved" in cause.message
+    assert staged.exists()
+    assert not _music(cfg).exists()
+    assert not _destination(cfg).exists()
+
+
+def _kompakt(path: Path, year: int) -> bytes:
+    """A fresh export at ``path`` holding a Kompakt folder of one ``year`` playlist."""
+    path.write_bytes(_fresh_xml())
+    trees.insert_record_labels_tree(
+        path, "Kompakt", {year: [{"track_ids": [900000001]}]}, path,
+        declared=DECLARED, registry=tree_registry.EMPTY,
+    )
+    return path.read_bytes()
 
 
 def _playlist_keys(body: bytes, name: str) -> list[int]:
@@ -205,10 +223,7 @@ def test_an_undeclared_catalog_tree_refuses_before_any_file_moves(
     cause = _refused(cfg, export, manifest)
     assert cause.reason == "catalog-tree-undeclared"
     assert cause.code is ExitCode.LIBRARY_PREREQUISITE
-    assert "nothing was moved" in cause.message
-    assert staged.exists()
-    assert not _music(cfg).exists()
-    assert not _destination(cfg).exists()
+    _nothing_moved(cfg, staged, cause)
 
 
 def test_an_undeclared_catalog_tree_costs_a_landing_with_no_label_row_nothing(
@@ -229,13 +244,7 @@ def test_an_export_holding_a_label_folder_twice_refuses_before_any_file_moves(
 ):
     """R-129's refusal, before the moves, which would leave no importable file."""
     staged = _stage(cfg, silence, "Ada", "North")
-    once = tmp_path / "once.xml"
-    once.write_bytes(_fresh_xml())
-    buckets = {2020: [{"track_ids": [900000001]}]}
-    trees.insert_record_labels_tree(
-        once, "Kompakt", buckets, once, declared=DECLARED, registry=tree_registry.EMPTY
-    )
-    body = once.read_bytes()
+    body = _kompakt(tmp_path / "once.xml", 2020)
     # The folder holds one playlist, so its own close is the second one.
     start = body.index(b'<NODE Name="Kompakt" Type="0"')
     start = body.rindex(b"\r\n", 0, start) + 2
@@ -250,10 +259,7 @@ def test_an_export_holding_a_label_folder_twice_refuses_before_any_file_moves(
     assert cause.reason == "library-export-unusable"
     assert any("export the collection again" in step for step in cause.remediation.steps)
     assert "Kompakt" in cause.message
-    assert "nothing was moved" in cause.message
-    assert staged.exists()
-    assert not _music(cfg).exists()
-    assert not _destination(cfg).exists()
+    _nothing_moved(cfg, staged, cause)
 
 
 def test_a_held_year_playlist_the_writer_cannot_extend_refuses_before_any_move(
@@ -263,16 +269,7 @@ def test_a_held_year_playlist_the_writer_cannot_extend_refuses_before_any_move(
     real write refuses AFTER the moves."""
     staged = _stage(cfg, silence, "Ada", "North")
     held = tmp_path / "held.xml"
-    held.write_bytes(_fresh_xml())
-    trees.insert_record_labels_tree(
-        held,
-        "Kompakt",
-        {2025: [{"track_ids": [900000001]}]},
-        held,
-        declared=DECLARED,
-        registry=tree_registry.EMPTY,
-    )
-    body = held.read_bytes()
+    body = _kompakt(held, 2025)
     opened = b'<NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="1">'
     assert body.count(opened) == 1
     held.write_bytes(body.replace(opened, b'<NODE Name="Kompakt 2025" Type="1" KeyType="0">'))
@@ -280,8 +277,7 @@ def test_a_held_year_playlist_the_writer_cannot_extend_refuses_before_any_move(
     cause = _refused(cfg, held, manifest)
     assert cause.reason == "library-export-unusable"
     assert "Kompakt 2025" in cause.message
-    assert staged.exists()
-    assert not _music(cfg).exists()
+    _nothing_moved(cfg, staged)
 
 
 def test_a_catalog_tree_the_database_owns_refuses_before_any_file_moves(
@@ -309,15 +305,10 @@ def test_a_catalog_tree_the_database_owns_refuses_before_any_file_moves(
     assert cause.inner is not None and cause.reason == cause.inner.reason
     assert cause.reason != "internal-error"
     assert catalog.id in cause.message
-    assert "nothing was moved" in cause.message
-    assert staged.exists()
-    assert not _music(cfg).exists()
-    assert not _destination(cfg).exists()
+    _nothing_moved(cfg, staged, cause)
 
 
-def test_a_label_row_no_landed_file_matches_is_reported_by_name(
-    cfg, silence, export, tmp_path
-):
+def test_a_label_row_no_landed_file_matches_is_reported_by_name(cfg, silence, export, tmp_path):
     _stage(cfg, silence, "Ada", "North")
     _stage(cfg, silence, "Cy", "Unlisted")
     manifest = _manifest(
@@ -341,29 +332,22 @@ def test_a_label_row_no_landed_file_matches_is_reported_by_name(
     assert unlisted not in _playlist_keys(body, "Kompakt 2025")
 
 
-def test_a_landed_file_at_another_version_is_a_question_and_is_not_filed(
+def test_a_file_at_another_version_is_a_question_and_a_row_with_no_year_files_nothing(
     cfg, silence, export, tmp_path
 ):
     """An extended mix for an original row is a question only a person answers."""
     _stage(cfg, silence, "Ada", "North (Extended Mix)")
-    manifest = _manifest(tmp_path, ONE)
+    _stage(cfg, silence, "Bo", "East")
+    manifest = _manifest(
+        tmp_path, [("101", "Ada", "North", "Kompakt", 2025), ("103", "Bo", "East", "Kompakt", None)]
+    )
     landed = _land(cfg, export, manifest)
-    (asked,) = landed.unlabelled
+    asked, undated = sorted(landed.unlabelled, key=lambda entry: entry.ref)
     assert asked.reason == landing.NOT_EXACT
     assert "that file is in the intake playlist" in asked.sentence
-    assert landed.labelled == ()
-    assert b"Record Labels" not in _destination(cfg).read_bytes()
-
-
-def test_a_label_row_with_no_year_is_reported_and_files_nothing(
-    cfg, silence, export, tmp_path
-):
-    _stage(cfg, silence, "Ada", "North")
-    manifest = _manifest(tmp_path, [("101", "Ada", "North", "Kompakt", None)])
-    landed = _land(cfg, export, manifest)
-    (undated,) = landed.unlabelled
     assert undated.reason == landing.NO_LABEL
     assert "year" in undated.sentence
+    assert landed.labelled == ()
     assert b"Record Labels" not in _destination(cfg).read_bytes()
 
 
@@ -477,9 +461,7 @@ def test_a_manifest_that_cannot_be_read_refuses_before_any_file_moves(
     cause = _refused(cfg, export, manifest)
     assert cause.reason == "intake-list-unusable"
     assert said in cause.message
-    assert "nothing was moved" in cause.message
-    assert staged.exists()
-    assert not _music(cfg).exists()
+    _nothing_moved(cfg, staged, cause)
 
 
 def test_a_manifest_rewritten_after_it_was_fingerprinted_is_stale_and_moves_nothing(
@@ -493,8 +475,7 @@ def test_a_manifest_rewritten_after_it_was_fingerprinted_is_stale_and_moves_noth
     manifest.write_bytes(manifest.read_bytes().replace(b"Kompakt", b"Another"))
     cause = _refused(cfg, export, manifest, manifest_digest=shown.digest)
     assert cause.reason == "decision-stale"
-    assert staged.exists()
-    assert not _music(cfg).exists()
+    _nothing_moved(cfg, staged)
 
 
 def test_the_registry_is_read_before_the_first_move_and_never_after(

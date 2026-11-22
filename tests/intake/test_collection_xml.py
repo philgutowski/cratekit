@@ -49,30 +49,18 @@ def test_emitted_location_matches_rekordbox_encoding_for_space_and_bang(tmp_path
     assert "Trevor!" in xml
     assert "%21" not in xml
     assert "%c3" not in xml or "%C3" not in xml
-
-
-def test_an_inherited_location_is_not_reencoded():
-    """A Fresh Export Location is carried through unmodified."""
+    # A Fresh Export Location is carried through unmodified.
     inherited = "file://localhost/library/stale-volume/Already%20Here!.flac"
-    xml = _xml(3, location=inherited)
-    assert f'Location="{inherited}"' in xml
+    assert f'Location="{inherited}"' in _xml(3, location=inherited)
 
 
-def test_average_bpm_is_the_gridless_constant_even_when_bpm_is_present():
-    xml = _xml(1, bpm=174.0, added="2026-08-17")
+def test_average_bpm_is_gridless_inizio_no_tempo_child_and_the_bytes_crlf():
+    """The gridless constant even when a BPM is present; no bare LF."""
+    xml = _xml(1, bpm=174.0, added="2026-08-17", energy=None, inizio=3.25)
     assert f'AverageBpm="{GRIDLESS_AVERAGE_BPM}"' in xml
-    assert "174" not in xml.split("Name=")[0] or 'AverageBpm="174' not in xml
     assert 'AverageBpm="174' not in xml
-
-
-def test_inizio_does_not_become_a_tempo_child():
-    xml = _xml(2, energy=None, inizio=3.25)
     for token in FORBIDDEN_TOKENS:
         assert token not in xml
-
-
-def test_emitted_bytes_use_crlf_and_no_bare_lf():
-    xml = _xml(4)
     assert _no_bare_lf(xml.encode("utf-8"))
 
 

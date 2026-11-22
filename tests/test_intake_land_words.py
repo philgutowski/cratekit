@@ -31,15 +31,13 @@ from tests.test_intake_land_native import (
     _staging,
     _two_acts,
 )
-from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_intake_land_native import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
-from tests.test_intake_land_native import acknowledged as acknowledged  # noqa: PLC0414
-from tests.test_intake_land_native import library as library  # noqa: PLC0414
-from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
-from tests.test_intake_land_native import native_library as native_library  # noqa: PLC0414
-from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
+from tests.test_intake_land_native import _platform_seams as _platform_seams
+from tests.test_intake_land_native import _release_process_locks as _release_process_locks
+from tests.test_intake_land_native import acknowledged as acknowledged
+from tests.test_intake_land_native import library as library
+from tests.test_intake_land_native import machine as machine
+from tests.test_intake_land_native import native_library as native_library
+from tests.test_intake_land_native import silence as silence
 from tests.test_rb_writer_db import _row
 
 
@@ -117,9 +115,7 @@ def test_a_word_the_library_holds_links_its_active_row_and_mints_nothing(native_
     assert [row[1] for row in _names(cfg, rb_writer.GENRE_TABLE)] == ["Deep House"]
 
 
-def test_a_word_the_library_lacks_is_minted_and_linked_in_the_one_commit(
-    native_library, silence
-):
+def test_a_word_the_library_lacks_is_minted_and_linked_in_the_one_commit(native_library, silence):
     cfg, _root = native_library
     _tag(
         _stage(cfg, silence, "One.flac"),
@@ -166,28 +162,30 @@ def test_two_files_with_one_new_artist_mint_it_once(native_library, silence):
     assert len(linked) == 1
 
 
-def test_a_tombstoned_namesake_is_skipped_for_the_active_row_after_it(native_library, silence):
+def _by_name(cfg: config.Config) -> dict[str, str]:
+    return {Path(row[2]).name: str(row[0]) for row in _landed_rows(cfg)}
+
+
+def test_a_tombstoned_namesake_is_skipped_for_the_active_row_after_it_or_else_minted(
+    native_library, silence
+):
+    """The binding's ``add_artist`` refuses a name whose only namesake is a
+    tombstone, which is why the mint is by hand."""
     cfg, _root = native_library
+    gone = {rb_writer.SOFT_DELETE_COLUMN: 1}
     _seed(
         cfg,
         rb_writer.ARTIST_TABLE,
-        {"ID": "501", "Name": "Probe", rb_writer.SOFT_DELETE_COLUMN: 1},
-        {"ID": "502", "Name": "Probe"},
+        {"ID": "501", "Name": "Probe", **gone},
+        {"ID": "502", "Name": "Other", **gone},
+        {"ID": "503", "Name": "Other"},
     )
     _stage(cfg, silence, "One.flac")
+    _tag(_stage(cfg, silence, "Two.flac"), artist="Other")
     _landed_ok()
-    assert str(_words(cfg, _only_id(cfg))[0]) == "502"
-
-
-def test_a_word_whose_only_namesake_is_a_tombstone_is_minted(native_library, silence):
-    """The binding's ``add_artist`` refuses this name, which is why the mint is by hand."""
-    cfg, _root = native_library
-    _seed(
-        cfg, rb_writer.ARTIST_TABLE, {"ID": "501", "Name": "Probe", rb_writer.SOFT_DELETE_COLUMN: 1}
-    )
-    _stage(cfg, silence, "One.flac")
-    _landed_ok()
-    linked = str(_words(cfg, _only_id(cfg))[0])
+    by_name = _by_name(cfg)
+    assert str(_words(cfg, by_name["Two.flac"])[0]) == "503"
+    linked = str(_words(cfg, by_name["One.flac"])[0])
     assert linked != "501"
     assert ("Probe", 0) in [(name, deleted) for row_id, name, deleted in _names(
         cfg, rb_writer.ARTIST_TABLE
@@ -206,7 +204,8 @@ def test_a_file_with_no_artist_leaves_the_column_empty(native_library, silence):
 
 
 def test_an_album_links_the_one_its_album_artist_holds(native_library, silence):
-    """Two albums of one name stay two: the album is found by name and album artist."""
+    """Two albums of one name stay two: the album is found by name and album artist.
+    A new album artist holds no album yet, so a namesake with none is not linked."""
     cfg, _root = native_library
     _seed(
         cfg, rb_writer.ARTIST_TABLE, {"ID": "501", "Name": "Probe"}, {"ID": "502", "Name": "Other"}
@@ -220,11 +219,17 @@ def test_an_album_links_the_one_its_album_artist_holds(native_library, silence):
     )
     _tag(_stage(cfg, silence, "One.flac"), album="Probe Album", albumartist="Probe")
     _tag(_stage(cfg, silence, "Two.flac"), album="Probe Album")
+    _tag(_stage(cfg, silence, "Three.flac"), album="Probe Album", albumartist="Probe Various")
     _landed_ok()
-    by_name = {Path(row[2]).name: str(row[0]) for row in _landed_rows(cfg)}
+    by_name = _by_name(cfg)
     assert str(_words(cfg, by_name["One.flac"])[1]) == "702"
     assert str(_words(cfg, by_name["Two.flac"])[1]) == "703"
-    assert len(_names(cfg, rb_writer.ALBUM_TABLE)) == 3
+    album = str(_words(cfg, by_name["Three.flac"])[1])
+    assert album not in ("701", "702", "703")
+    assert len(_names(cfg, rb_writer.ALBUM_TABLE)) == 4
+    ((album_artist,),) = _query(cfg, "SELECT AlbumArtistID FROM djmdAlbum WHERE ID = ?", album)
+    ((various,),) = _query(cfg, "SELECT ID FROM djmdArtist WHERE Name = 'Probe Various'")
+    assert str(album_artist) == str(various)
 
 
 def test_a_mint_follows_the_librarys_searchstr_convention(native_library, silence):
@@ -335,21 +340,6 @@ def test_a_landed_row_whose_word_reads_back_wrong_is_refused():
     with pytest.raises(CratekitError) as caught:
         native.assert_rows_identified(wrong)
     assert native.ARTIST_COLUMN in caught.value.cause.message
-
-
-def test_an_album_whose_album_artist_is_minted_is_minted_beside_a_namesake_with_none(
-    native_library, silence
-):
-    """A new album artist holds no album yet, so a namesake with none is not linked."""
-    cfg, _root = native_library
-    _seed(cfg, rb_writer.ALBUM_TABLE, {"ID": "701", "Name": "Probe Album"})
-    _tag(_stage(cfg, silence, "One.flac"), album="Probe Album", albumartist="Probe Various")
-    _landed_ok()
-    album = str(_words(cfg, _only_id(cfg))[1])
-    assert album != "701"
-    ((album_artist,),) = _query(cfg, "SELECT AlbumArtistID FROM djmdAlbum WHERE ID = ?", album)
-    ((various,),) = _query(cfg, "SELECT ID FROM djmdArtist WHERE Name = 'Probe Various'")
-    assert str(album_artist) == str(various)
 
 
 def test_a_tied_searchstr_convention_mints_null(native_library, silence):

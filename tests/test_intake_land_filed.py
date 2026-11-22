@@ -19,15 +19,13 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import batch_name, shelve_cli
 from tests.cli_drive import drive
 from tests.test_intake_land_native import _advance_usn, _query, _stage, _two_acts
-from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_intake_land_native import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
-from tests.test_intake_land_native import acknowledged as acknowledged  # noqa: PLC0414
-from tests.test_intake_land_native import library as library  # noqa: PLC0414
-from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
-from tests.test_intake_land_native import native_library as native_library  # noqa: PLC0414
-from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
+from tests.test_intake_land_native import _platform_seams as _platform_seams
+from tests.test_intake_land_native import _release_process_locks as _release_process_locks
+from tests.test_intake_land_native import acknowledged as acknowledged
+from tests.test_intake_land_native import library as library
+from tests.test_intake_land_native import machine as machine
+from tests.test_intake_land_native import native_library as native_library
+from tests.test_intake_land_native import silence as silence
 
 DAY = date(2026, 10, 27)
 SUBJECT = "Tidal playlists and Favorites"
@@ -80,25 +78,28 @@ def test_a_landing_on_the_27th_lands_in_its_year_folder_under_its_subject(native
     # The INBOX playlist keeps the batch's readable name; only the folder changed.
     assert _playlists(cfg, "2026-10-27%") == [NAMED]
     assert acted["data"]["items"][-1]["playlist"] == NAMED
+    # A shelve over the batch landed filed has nothing to do.
+    before = _paths(cfg)
+    code, envelope = drive(["intake", "shelve", NAMED])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op", envelope
+    (item,) = envelope["data"]["items"]
+    assert item["action"] == shelve_cli.ALREADY_FILED
+    assert item["folder"] == str(filed)
+    assert [one["code"] for one in envelope["warnings"]] == [shelve_cli.BATCH_ALREADY_FILED]
+    assert _paths(cfg) == before
+    assert "gate" not in envelope["data"]
 
 
-def test_a_folder_already_on_disk_is_passed_over_for_the_next_suffix(native_library, silence):
+def test_a_folder_on_disk_or_one_the_collection_stores_rows_under_is_passed_over(
+    native_library, silence
+):
+    """A folder moved away by hand leaves rows stored under its name, with nothing on disk."""
     cfg, _root = native_library
     taken = _processed(cfg) / "2026" / f"10_27_26 {SUBJECT}"
     taken.mkdir(parents=True)
     (taken / "Kept.flac").write_bytes(b"filed by hand")
-    _stage(cfg, silence, "One.flac")
-    _landed("--name", NAMED)
-    assert (_processed(cfg) / "2026" / f"10_27_26 {SUBJECT} 2" / "One.flac").is_file()
-    assert sorted(p.name for p in taken.iterdir()) == ["Kept.flac"]
-
-
-def test_a_folder_the_collection_stores_rows_under_is_passed_over_with_nothing_on_disk(
-    native_library, silence
-):
-    """A folder moved away by hand leaves rows stored under its name."""
-    cfg, _root = native_library
-    gone = _processed(cfg) / "2026" / f"10_27_26 {SUBJECT}"
+    gone = _processed(cfg) / "2026" / f"10_27_26 {SUBJECT} 2"
     conn = sqlite3.connect(cfg.library.db_path)
     conn.execute(
         "INSERT INTO djmdContent (ID, Title, FolderPath, rb_local_deleted, created_at, "
@@ -110,8 +111,9 @@ def test_a_folder_the_collection_stores_rows_under_is_passed_over_with_nothing_o
     conn.close()
     _stage(cfg, silence, "One.flac")
     _landed("--name", NAMED)
+    assert sorted(p.name for p in taken.iterdir()) == ["Kept.flac"]
     assert not gone.exists()
-    assert (_processed(cfg) / "2026" / f"10_27_26 {SUBJECT} 2" / "One.flac").is_file()
+    assert (_processed(cfg) / "2026" / f"10_27_26 {SUBJECT} 3" / "One.flac").is_file()
 
 
 def test_a_second_unnamed_landing_that_day_takes_two_for_its_playlist_and_its_folder(
@@ -146,22 +148,6 @@ def test_a_name_landed_into_again_goes_back_to_its_folder_unless_the_folder_is_g
     _landed("--name", "Friday warmup")
     assert not filed.exists()
     assert (filed.parent / "10_27_26 Friday warmup 2" / "Three.flac").is_file()
-
-
-def test_shelve_over_a_batch_landed_filed_reports_nothing_to_do(native_library, silence):
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
-    _landed("--name", NAMED)
-    before = _paths(cfg)
-    code, envelope = drive(["intake", "shelve", NAMED])
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["outcome"] == "no_op", envelope
-    (item,) = envelope["data"]["items"]
-    assert item["action"] == shelve_cli.ALREADY_FILED
-    assert item["folder"] == str(_processed(cfg) / "2026" / f"10_27_26 {SUBJECT}")
-    assert [one["code"] for one in envelope["warnings"]] == [shelve_cli.BATCH_ALREADY_FILED]
-    assert _paths(cfg) == before
-    assert "gate" not in envelope["data"]
 
 
 def test_a_name_that_is_a_date_alone_files_as_downloads(native_library, silence):

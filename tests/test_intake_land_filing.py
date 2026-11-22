@@ -10,26 +10,28 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from cratekit.adopt import apply as apply_engine
 from cratekit.adopt import apply_cli, collection
+from cratekit.adopt import plan as plan_engine
+from cratekit.adopt.scan import Disposition, Readability
 from cratekit.core import config, rb_writer, tags, tree_registry
+from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import filing, native
 from cratekit.write.routing_pass import destination
 from tests.cli_drive import drive
-from tests.test_intake_land_native import DECLARED, _land, _music, _query, _stage, _two_acts
-from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_intake_land_native import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
-from tests.test_intake_land_native import acknowledged as acknowledged  # noqa: PLC0414
-from tests.test_intake_land_native import library as library  # noqa: PLC0414
-from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
-from tests.test_intake_land_native import native_library as native_library  # noqa: PLC0414
-from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
+from tests.test_intake_land_native import DECLARED, GATE, _land, _music, _query, _stage, _two_acts
+from tests.test_intake_land_native import _platform_seams as _platform_seams
+from tests.test_intake_land_native import _release_process_locks as _release_process_locks
+from tests.test_intake_land_native import acknowledged as acknowledged
+from tests.test_intake_land_native import library as library
+from tests.test_intake_land_native import machine as machine
+from tests.test_intake_land_native import native_library as native_library
+from tests.test_intake_land_native import silence as silence
 from tests.test_intake_land_vox_native import _calibrate, _seed_vocals
 
 
@@ -163,17 +165,26 @@ def test_a_plan_after_the_commit_that_differs_files_nothing_and_says_so(
     assert _homes(cfg, _content_id(cfg, "One.flac")) == set()
 
 
-def test_land_only_files_nothing_and_digests_apart_from_a_landing_that_files(
+def test_a_rehearsal_digests_as_the_live_landing_that_files_and_land_only_apart(
     filing_library, silence
 ):
     cfg, _root = filing_library
     _file(cfg, silence, "One.flac", genre="Deep House", energylevel=7)
-    _code, filed = drive(_land())
+    _file(cfg, silence, "Two.flac")
+    code, rehearsed = drive(_land("--rehearse"))
+    assert code == int(ExitCode.OK), rehearsed
+    code, filed = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), filed
+    shown = filed["cause"]["detail"]["shown"]
+    assert shown["digest"] == rehearsed["data"]["digest"]
+    assert "equal to this plan's" in shown["rehearsal"]
+    assert all("files into" in item for item in shown["items"])
+    # Land only files nothing, and digests apart from the landing that files.
     code, acted, refused = _two_acts(_land("--land-only"))
     assert code == int(ExitCode.OK), acted
     shown = refused["cause"]["detail"]["shown"]
     assert shown["files after landing"] == "nothing, asked with --land-only"
-    assert "files into" not in shown["items"][0]
+    assert not any("files into" in item for item in shown["items"])
     assert shown["digest"] != filed["cause"]["detail"]["shown"]["digest"]
     assert "filing" not in acted["data"]["totals"]
     assert _homes(cfg, _content_id(cfg, "One.flac")) == set()
@@ -212,24 +223,8 @@ def test_a_landing_that_adds_no_row_files_nothing():
     assert found.state == filing.NOTHING_TO_FILE
 
 
-def test_a_rehearsal_digests_as_the_live_landing_that_files(filing_library, silence):
-    cfg, _root = filing_library
-    _file(cfg, silence, "One.flac", genre="Deep House", energylevel=7)
-    _file(cfg, silence, "Two.flac")
-    code, rehearsed = drive(_land("--rehearse"))
-    assert code == int(ExitCode.OK), rehearsed
-    code, live = drive(_land())
-    assert code == int(ExitCode.DECISION_REQUIRED), live
-    shown = live["cause"]["detail"]["shown"]
-    assert shown["digest"] == rehearsed["data"]["digest"]
-    assert "equal to this plan's" in shown["rehearsal"]
-    assert all("files into" in item for item in shown["items"])
-
-
 def test_a_collection_read_before_the_commit_does_not_hide_the_landed_rows(filing_library, silence):
     """The filing forgets a collection cache read before the commit."""
-    from tests.test_intake_land_native import GATE
-
     cfg, _root = filing_library
     _file(cfg, silence, "One.flac", genre="Deep House", energylevel=7)
     code, refused = drive(_land())
@@ -247,10 +242,6 @@ def test_a_collection_read_before_the_commit_does_not_hide_the_landed_rows(filin
 
 def test_a_landed_row_the_tree_could_not_place_refuses_before_the_ledger_is_marked():
     """The adopt worker's rule (R-148): a skipped membership stops the filing."""
-    from types import SimpleNamespace
-
-    from cratekit.core.cause import CratekitError
-
     filing._refuse_unplaced(SimpleNamespace(skipped=()))
     skipped = SimpleNamespace(skipped=(SimpleNamespace(requested="Deep House / Mid"),))
     with pytest.raises(CratekitError) as caught:
@@ -261,9 +252,6 @@ def test_a_landed_row_the_tree_could_not_place_refuses_before_the_ledger_is_mark
 
 def test_a_band_the_taxonomy_declares_no_sub_for_predicts_undeclared(monkeypatch):
     """The plan files such a track nowhere, so the prediction must say so too."""
-    from cratekit.adopt import plan as plan_engine
-    from cratekit.adopt.scan import Disposition
-
     monkeypatch.setattr(plan_engine, "_sub_for", lambda *_args: None)
     place = plan_engine.predicted_place(DECLARED, "Deep House", 7, vox=False)
     assert place == plan_engine.Predicted(disposition=Disposition.UNDECLARED)
@@ -271,9 +259,6 @@ def test_a_band_the_taxonomy_declares_no_sub_for_predicts_undeclared(monkeypatch
 
 def test_an_entry_whose_vocal_is_not_added_reads_no_vocal_sub():
     """A vocal sub the plan will not write is not a place the landing predicted."""
-    from cratekit.adopt import plan as plan_engine
-    from cratekit.adopt.scan import Disposition, Readability
-
     entry = plan_engine.PlanEntry(
         entry_id="e",
         content_id="9",
@@ -294,8 +279,6 @@ def test_an_entry_whose_vocal_is_not_added_reads_no_vocal_sub():
 
 def test_the_census_a_landing_files_walks_only_the_rows_it_made(monkeypatch):
     """Scope names the landed ids; every other row stays out of the scan."""
-    from types import SimpleNamespace
-
     rows = (SimpleNamespace(content_id="1"), SimpleNamespace(content_id="2"))
     scanned: list[tuple] = []
     monkeypatch.setattr(apply_cli.collection, "read_collection", lambda _cfg, **_: rows)
