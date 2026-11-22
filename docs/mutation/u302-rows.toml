@@ -1,0 +1,162 @@
+name = "u302"
+pass_kind = "light"
+
+# The card's own table over the guards U302 rewrote while restructuring the
+# write layer: the folded readers, the steps taken out of long functions and
+# the small helpers that replaced copies. The guards that moved unchanged are
+# held by the kill set replay, u302-replay-after-*.
+
+[[rows]]
+id = "W1_intake_replace_bumps_count"
+description = "insert_intake_playlist: a replaced playlist bumps its folder's count as if it were new"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py"]
+old = '''    if existing is None:
+        _bump_count(content, parent, +1)'''
+new = '''    if True:
+        _bump_count(content, parent, +1)'''
+
+[[rows]]
+id = "W2_self_closed_node_deepens"
+description = "_node_tokens: a self closed node counts as an open one"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_registry.py"]
+old = '''            yield (0 if self_closing else 1), opening'''
+new = '''            yield 1, opening'''
+
+[[rows]]
+id = "W3_close_tag_not_counted"
+description = "_node_tokens: a close tag no longer ends a level"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_registry.py"]
+old = '''            yield -1, closing'''
+new = '''            yield 0, closing'''
+
+[[rows]]
+id = "W4_open_tag_never_self_closing"
+description = "_open_tag: every open tag is read as one that has children"
+file = "src/cratekit/write/rbxml.py"
+surface = "user"
+tests = ["tests/test_rbxml.py", "tests/test_xml_splice_golden.py", "tests/test_tree_registry.py"]
+old = '''    return match, dict(_ATTR_PAIR.findall(raw_attrs)), raw_attrs.endswith(b"/")'''
+new = '''    return match, dict(_ATTR_PAIR.findall(raw_attrs)), False'''
+
+[[rows]]
+id = "W5_blocked_sweep_reads_as_filed"
+description = "_route_reason: a sweep that skipped a write answers nothing-to-route"
+file = "src/cratekit/write/routing_export.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    if warnings:
+        return "route-blocked"'''
+new = '''    if False:
+        return "route-blocked"'''
+
+[[rows]]
+id = "W6_written_sweep_gets_a_reason"
+description = "_route_reason: a sweep that wrote its file is still given a reason it wrote none"
+file = "src/cratekit/write/routing_export.py"
+surface = "user"
+tests = ["tests/test_routing_workers.py"]
+old = '''    if destination is not None:
+        return None
+    if warnings:'''
+new = '''    if destination is None:
+        return None
+    if warnings:'''
+
+[[rows]]
+id = "W7_two_candidates_chosen_by_position"
+description = "only_one: of two nodes on one display pair, the first is taken"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_deferred_routing.py", "tests/test_genre_favorites.py"]
+old = '''    return candidates[0] if len(candidates) == 1 else None'''
+new = '''    return candidates[0] if candidates else None'''
+
+[[rows]]
+id = "W8_display_pair_keyed_on_the_folder_twice"
+description = "by_display_pair: the key forgets the playlist name"
+file = "src/cratekit/write/convergence_check.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_deferred_routing.py", "tests/test_genre_favorites.py"]
+old = '''        out.setdefault((node.folder_display, node.playlist_display), []).append(node)'''
+new = '''        out.setdefault((node.folder_display, node.folder_display), []).append(node)'''
+
+[[rows]]
+id = "W9_callers_prefix_map_ignored"
+description = "prefix_rules: the caller's rules are dropped for the configuration's"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_tree_writer.py", "tests/test_naming_apply_cli.py", "tests/test_routing_workers.py", "tests/test_deferred_routing.py"]
+old = '''    if prefix_map is None:
+        return list(locations.prefix_rules(cfg.resolved_prefix_map()))'''
+new = '''    if True:
+        return list(locations.prefix_rules(cfg.resolved_prefix_map()))'''
+
+[[rows]]
+id = "W10_empty_watch_accepted"
+description = "watched_roots: a watch over no roots is accepted, so the session reports itself clean"
+file = "src/cratekit/write/row_defaults.py"
+surface = "user"
+tests = ["tests/test_repair_rows.py", "tests/test_repair_link.py"]
+old = '''    watched = [Path(root) for root in analysis_roots]
+    if not watched:'''
+new = '''    watched = [Path(root) for root in analysis_roots]
+    if False:'''
+
+[[rows]]
+id = "W11_landed_commit_recorded_as_zero"
+description = "_Run.undo_unless_landed: a commit that landed and raised records no additions"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+tests = ["tests/test_tree_writer.py"]
+old = '''        _undo_unless_landed(self.db, witness, self.record, self.tree_id, self.added, self.cfg)'''
+new = '''        _undo_unless_landed(self.db, witness, self.record, self.tree_id, 0, self.cfg)'''
+
+[[rows]]
+id = "W12_resort_writes_favourites_its_gate_never_showed"
+description = "_favorites_to_file: a resort files favourites derived only from the tree it just wrote"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_resort_scope.py", "tests/test_rebuild_growth.py", "tests/test_genre_favorites.py", "tests/test_rebuild.py"]
+old = '''            entry for entry in favorites if (entry.location, entry.bucket, entry.sub) in shown'''
+new = '''            entry for entry in favorites'''
+
+[[rows]]
+id = "W13_unconverged_tree_cleared"
+description = "_clear_on_evidence: the flag is cleared though the after check still differs"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_resort_scope.py", "tests/test_genre_favorites.py"]
+old = '''    if not after.converged:
+        logger.warning('''
+new = '''    if False:
+        logger.warning('''
+
+[[rows]]
+id = "W14_every_root_known"
+description = "_opened: a recorded root the library no longer holds reads as present"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild.py", "tests/test_resort_scope.py", "tests/test_routing_workers.py"]
+old = '''        yield entries, declared, handle, rows, lambda root_id: root_id in known'''
+new = '''        yield entries, declared, handle, rows, lambda root_id: True'''
+
+[[rows]]
+id = "W15_landed_removals_recorded_as_zero"
+description = "_remove_favorites: removals that landed and raised are recorded as none"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+tests = ["tests/test_genre_favorites.py", "tests/test_genre_favorites_adoption.py"]
+old = '''                _record_favorites_commit(record, plan.tree_id, added=0, removed=removed, cfg=cfg)
+                convergence.record_fingerprint(cfg, db)
+            raise
+    return removed'''
+new = '''                _record_favorites_commit(record, plan.tree_id, added=0, removed=0, cfg=cfg)
+                convergence.record_fingerprint(cfg, db)
+            raise
+    return removed'''
