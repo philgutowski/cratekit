@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import functools
+import sys
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -853,8 +854,6 @@ def test_a_session_rejected_mid_run_drops_the_held_account(installed, monkeypatc
 
 
 def test_a_build_whose_client_library_does_not_import_is_not_bound(monkeypatch):
-    import sys
-
     monkeypatch.setitem(sys.modules, "tidalapi", None)
     monkeypatch.delitem(sys.modules, account.ADAPTER_MODULE, raising=False)
     assert account.bound() is False

@@ -399,10 +399,8 @@ def test_a_held_playlist_never_outlives_its_adapter(monkeypatch):
 def test_an_export_of_up_to_a_hundred_tracks_to_a_recorded_playlist_makes_seven_requests(
     installed, count
 ):
-    """``export.apply`` over the real client: every track recorded and added once, in order.
-    U270 sends what the playlist lacks in one ``add_tracks``, so the count no longer grows
-    with the tracks: an open and a tracks read for the membership, then an open, a POST
-    and the client's read after it."""
+    """``export.apply`` over the real client: one ``add_tracks`` (U270), so seven requests
+    whatever the count: the membership's open and tracks read, an open, a POST, a read."""
     provider = Account("pl0")
     remote = _adapter(provider)
     ledger.reserve_playlist(installed, "crate-one", lambda: "pl0")
