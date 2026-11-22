@@ -82,20 +82,12 @@ def _tree_warning() -> dict[str, str]:
 def _applied_warnings(planned: heard.HeardPlan, done: heard.Heard) -> list[dict[str, str]]:
     warnings = [_tree_warning()]
     if done.missing:
-        warnings.append(
-            {
-                "code": "label-heard-tracks-refused",
-                "message": (
-                    f"the provider would not add {len(done.missing)} track(s) of "
-                    f"{planned.name!r} to the year, so "
-                    + (
-                        "the playlist was left on the account with them"
-                        if done.kept
-                        else "they stay on the playlist"
-                    )
-                ),
-            }
+        left = "the playlist was left on the account with them"
+        message = (
+            f"the provider would not add {len(done.missing)} track(s) of {planned.name!r} "
+            f"to the year, so {left if done.kept else 'they stay on the playlist'}"
         )
+        warnings.append({"code": "label-heard-tracks-refused", "message": message})
     return warnings
 
 

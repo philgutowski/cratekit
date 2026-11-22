@@ -327,17 +327,11 @@ def label_mark(ctx) -> Envelope:
             if now.get(identity) != item["built_as"]:
                 changed.append(identity)
                 continue
-            record.take(
-                [
-                    mark_record.Taken(
-                        playlist_id=identity,
-                        name=item["built_as"],
-                        by=pass_name,
-                        how=mark_record.BY_LABEL,
-                        at=timestamp(),
-                    )
-                ]
+            taken = mark_record.Taken(
+                playlist_id=identity, name=item["built_as"], by=pass_name,
+                how=mark_record.BY_LABEL, at=timestamp(),
             )
+            record.take([taken])
             landed.append(identity)
     except Exception as exc:
         raise _failed_part_way(exc, landed, planned) from exc

@@ -292,15 +292,8 @@ def plan(
     newly = tuple(one for one in target if one not in heard)
     unheard = tuple(one for one in releases if one not in heard and one not in target)
     base = HeardPlan(
-        label_id=catalogue.label_id,
-        label=catalogue.name,
-        year=year,
-        day=day,
-        name=name,
-        releases=releases,
-        target=target,
-        newly=newly,
-        unheard=unheard,
+        label_id=catalogue.label_id, label=catalogue.name, year=year, day=day, name=name,
+        releases=releases, target=target, newly=newly, unheard=unheard,
     )
 
     shape = ledger.label_shape(cfg, catalogue.label_id)
@@ -386,15 +379,14 @@ class Heard:
 
 def _failed_part_way(exc: Exception, done: Heard, planned: HeardPlan) -> CratekitError:
     """The failure, with what was already written named in it."""
-    if done.added or done.taken_off or done.removed:
-        wrote = (
-            f"before this failed {done.added} track(s) were added to the year, "
-            f"{done.taken_off} taken off {planned.name!r}"
-            + (f", and {planned.name!r} was removed" if done.removed else "")
-            + "; no release was marked heard"
-        )
-    else:
-        wrote = "nothing was written before this failed"
+    wrote = (
+        f"before this failed {done.added} track(s) were added to the year, "
+        f"{done.taken_off} taken off {planned.name!r}"
+        + (f", and {planned.name!r} was removed" if done.removed else "")
+        + "; no release was marked heard"
+        if done.added or done.taken_off or done.removed
+        else "nothing was written before this failed"
+    )
     again = (
         "run crate label heard again; a track already in the year is not added twice "
         "and a playlist already removed is not asked for again"

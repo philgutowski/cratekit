@@ -176,8 +176,7 @@ class _Store:
         self._since += 1
 
     def _reusing(self, read_at: datetime) -> None:
-        if self.oldest is None or read_at < self.oldest:
-            self.oldest = read_at
+        self.oldest = read_at if self.oldest is None else min(self.oldest, read_at)
 
     @staticmethod
     def _document(

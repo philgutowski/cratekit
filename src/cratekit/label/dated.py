@@ -50,10 +50,6 @@ def dated_name(label: str, year: str, day: str) -> str:
     return f"{folders.year_name(label, year)} new {day}"
 
 
-def _pattern(label: str) -> re.Pattern[str]:
-    return re.compile(rf"^{re.escape(label)} (\d{{4}}) new (\d{{4}}-\d{{2}}-\d{{2}})$")
-
-
 def _text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
@@ -230,7 +226,7 @@ class DatedApplied:
 
 
 def _aged(label: str, inside: Mapping[str, str], today: date, limit: int) -> tuple[Aged, ...]:
-    pattern = _pattern(label)
+    pattern = re.compile(rf"^{re.escape(label)} (\d{{4}}) new (\d{{4}}-\d{{2}}-\d{{2}})$")
     found: list[Aged] = []
     for remote_id, title in sorted(inside.items(), key=lambda kv: kv[1]):
         matched = pattern.match(title or "")
@@ -373,13 +369,12 @@ def refused_part_way(
 
 def _failed_part_way(exc: Exception, done: DatedApplied, planned: DatedPlan) -> CratekitError:
     """The failure, with what was already written named in it."""
-    if done.created or done.added:
-        wrote = (
-            f"before this failed {len(done.created)} dated playlist(s) were created "
-            f"and {sum(done.added.values())} track(s) added"
-        )
-    else:
-        wrote = "nothing was written before this failed"
+    wrote = (
+        f"before this failed {len(done.created)} dated playlist(s) were created "
+        f"and {sum(done.added.values())} track(s) added"
+        if done.created or done.added
+        else "nothing was written before this failed"
+    )
     detail = {"label_id": planned.label_id, **asdict(done)}
     detail["unplaced"] = [[name, done.ids[name]] for name in done.unplaced]
     del detail["refused"]

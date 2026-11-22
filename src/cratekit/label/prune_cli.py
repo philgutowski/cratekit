@@ -92,15 +92,9 @@ def label_prune(ctx) -> Envelope:
     option = ctx.gate.require(ctx.entry.gates[0], plan=payload, context=shown)
     if planned is None:
         return playlists_cli.not_followed(ctx, payload, name)
+    again = "run crate label prune again; what was taken off is recorded and never asked twice"
     return prune.settle(
-        ctx,
-        cfg,
-        remote,
-        payload,
-        planned,
-        option=option,
-        origin=_ORIGIN,
-        again="run crate label prune again; what was taken off is recorded and never asked twice",
+        ctx, cfg, remote, payload, planned, option=option, origin=_ORIGIN, again=again
     )
 
 

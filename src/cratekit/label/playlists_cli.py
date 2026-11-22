@@ -246,7 +246,8 @@ def _group(
     reads: kept_reads.KeptReads | None,
     gone_from_library: tombstoned.Tombstoned,
 ) -> dict[str, Any]:
-    years: dict[str, list[str]] = {}
+    #: Each year's playable track identifiers, in catalogue order and each once.
+    years: dict[str, dict[str, None]] = {}
     by_release: dict[str, tuple[str, tuple[str, ...]]] = {}
     taken_away: dict[str, None] = {}
     #: The years a removed track was left out of, so one emptied by them is not made.
@@ -271,7 +272,7 @@ def _group(
         if not year:
             undated += 1
             continue
-        held = years.setdefault(year, [])
+        held = years.setdefault(year, {})
         for row in rows:
             identifier = _id(row)
             # NOT ONE THE LIBRARY REMOVED (U243), NOR ONE THE PROVIDER WON'T PLAY.
@@ -279,8 +280,7 @@ def _group(
                 emptied_by.add(year)
                 continue
             if identifier and getattr(row, "available", True) is not False:
-                if identifier not in held:
-                    held.append(identifier)
+                held[identifier] = None
     return {
         # A YEAR EMPTIED BY REMOVALS ALONE IS NOT MADE.
         "years": {
@@ -567,11 +567,8 @@ def _line(step: folders.YearStep) -> str:
         folders.ADOPT: "use the one already in the folder",
         folders.REUSE: "use the one already built",
     }[step.action]
-    parts = [doing]
-    if step.move or step.action == folders.CREATE:
-        parts.append("put it in the folder")
-    parts.append(f"add {len(step.add)} of {step.tracks} track(s)")
-    return f"{step.name}: " + ", ".join(parts)
+    placed = ", put it in the folder" if step.move or step.action == folders.CREATE else ""
+    return f"{step.name}: {doing}{placed}, add {len(step.add)} of {step.tracks} track(s)"
 
 
 def _named(one: TakenRelease) -> str:
@@ -730,16 +727,12 @@ def refused_warnings(done: folders.Applied) -> list[dict[str, str]]:
     """What an apply says about tracks the provider would not add."""
     if not done.refused:
         return []
-    return [
-        {
-            "code": "label-playlists-tracks-refused",
-            "message": (
-                f"the provider would not add {sum(done.refused.values())} track(s) "
-                f"to {len(done.refused)} year playlist(s); they are recorded and "
-                f"not asked for again"
-            ),
-        }
-    ]
+    message = (
+        f"the provider would not add {sum(done.refused.values())} track(s) "
+        f"to {len(done.refused)} year playlist(s); they are recorded and "
+        f"not asked for again"
+    )
+    return [{"code": "label-playlists-tracks-refused", "message": message}]
 
 
 def apply_plan(cfg, remote, planned: folders.Plan) -> folders.Applied:

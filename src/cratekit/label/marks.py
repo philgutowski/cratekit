@@ -10,7 +10,7 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Any, Mapping
+from typing import Mapping
 
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
@@ -52,13 +52,10 @@ def _load(cfg: config.Config) -> dict[str, str]:
 
 def _write(cfg: config.Config, records: Mapping[str, str]) -> None:
     path = config.state_path("label_watermarks", cfg)
-    payload: dict[str, Any] = {
-        "version": MARKS_VERSION,
-        "labels": {key: {"last_pulled": year} for key, year in sorted(records.items())},
-    }
+    labels = {key: {"last_pulled": year} for key, year in sorted(records.items())}
+    document = {"version": MARKS_VERSION, "labels": labels}
     config.atomic_write_bytes(
-        (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8"),
-        path,
+        (json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8"), path
     )
 
 
