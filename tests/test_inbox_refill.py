@@ -151,7 +151,7 @@ def offline(monkeypatch):
     monkeypatch.setattr(socket, "create_connection", refused)
 
 
-def test_three_owned_and_two_new_refill_an_empty_playlist_as_five_in_account_order(
+def test_three_owned_and_two_new_refill_an_empty_playlist_in_account_order_and_once(
     native_library, silence, offline
 ):
     cfg, root_id = native_library
@@ -176,12 +176,41 @@ def test_three_owned_and_two_new_refill_an_empty_playlist_as_five_in_account_ord
         "playlists": [{"id": playlist_id, "name": INBOX_NAME, "added": 5}],
     }
 
+    # A SECOND RUN PLANS NOTHING and ends no_op, writing no second record.
+    code, again, _ = _two_acts(_refill())
+    assert code == int(ExitCode.OK), again
+    assert again["outcome"] == "no_op", again
+    assert again["data"]["totals"]["add"] == 0
+    assert [w for w in again["warnings"] if w["code"] == refill_cli.NOTHING]
+    assert _live_members(cfg, playlist_id) == ["Held1", "New1", "Held2", "New2", "Held3"]
+    assert len(_refills(cfg)) == 1
 
-def test_a_track_the_library_lost_is_named_and_left(native_library, silence, offline):
+
+def test_a_recorded_playlist_moved_outside_inbox_is_refused_by_name_then_a_lost_track_is_left(
+    native_library, silence, offline, monkeypatch
+):
     cfg, root_id = native_library
     playlist_id = _five_landed_and_emptied(cfg, silence)
-    # New2's file is gone from disk. Its row stays, as rekordbox keeps a
-    # missing file's row, and the row count stays where the fingerprint saw it.
+    elsewhere = cutover_fixtures.add_folder(cfg, "Kept By Hand")
+    _sql(cfg, "UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", elsewhere, playlist_id)
+
+    def unread(*_args, **_kwargs):
+        raise AssertionError("a report of the pass was read before the refusal")
+
+    reports = missing_cli.job_reports
+    monkeypatch.setattr(missing_cli, "job_reports", unread)
+    code, refused = drive(_refill())
+
+    assert code not in (int(ExitCode.OK), int(ExitCode.DECISION_REQUIRED)), refused
+    assert refused["cause"]["reason"] == refill.OUTSIDE_INBOX, refused
+    assert f"{INBOX_NAME!r} (row {playlist_id})" in refused["cause"]["message"]
+    assert _live_members(cfg, playlist_id) == []
+    assert not _refills(cfg)
+
+    # Moved back, with New2's file gone from disk: its row stays, as rekordbox
+    # keeps a missing file's row, and the track is named and left.
+    monkeypatch.setattr(missing_cli, "job_reports", reports)
+    _sql(cfg, "UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", root_id, playlist_id)
     ((folder,),) = _query(
         cfg,
         "SELECT FolderPath FROM djmdContent WHERE Title = 'New2' AND rb_local_deleted = 0",
@@ -197,124 +226,7 @@ def test_a_track_the_library_lost_is_named_and_left(native_library, silence, off
     assert set_playlist.NOT_RESOLVED in warning["message"]
 
 
-def test_a_second_run_plans_nothing_and_ends_no_op(native_library, silence, offline):
-    cfg, root_id = native_library
-    playlist_id = _five_landed_and_emptied(cfg, silence)
-    code, first, _ = _two_acts(_refill())
-    assert code == int(ExitCode.OK), first
-
-    code, again, refused = _two_acts(_refill())
-
-    assert code == int(ExitCode.OK), again
-    assert again["outcome"] == "no_op", again
-    assert again["data"]["totals"]["add"] == 0
-    assert [w for w in again["warnings"] if w["code"] == refill_cli.NOTHING]
-    assert _live_members(cfg, playlist_id) == ["Held1", "New1", "Held2", "New2", "Held3"]
-    assert len(_refills(cfg)) == 1
-
-
-def test_a_recorded_playlist_moved_outside_inbox_is_refused_by_name_before_any_report_is_read(
-    native_library, silence, monkeypatch
-):
-    cfg, root_id = native_library
-    playlist_id = _five_landed_and_emptied(cfg, silence)
-    elsewhere = cutover_fixtures.add_folder(cfg, "Kept By Hand")
-    _sql(cfg, "UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", elsewhere, playlist_id)
-
-    def unread(*_args, **_kwargs):
-        raise AssertionError("a report of the pass was read before the refusal")
-
-    monkeypatch.setattr(missing_cli, "job_reports", unread)
-    code, refused = drive(_refill())
-
-    assert code not in (int(ExitCode.OK), int(ExitCode.DECISION_REQUIRED)), refused
-    assert refused["cause"]["reason"] == refill.OUTSIDE_INBOX, refused
-    assert f"{INBOX_NAME!r} (row {playlist_id})" in refused["cause"]["message"]
-    assert _live_members(cfg, playlist_id) == []
-    assert not _refills(cfg)
-
-
-def test_a_pre_u128_record_is_matched_by_the_accounts_exact_name_so_the_twin_is_left(
-    native_library, silence, offline
-):
-    """The live records of sitting 38 carry no account and no pass on their entries."""
-    cfg, root_id = native_library
-    playlist_id = _five_landed_and_emptied(cfg, silence)
-    # A twin a second landing of the same pass made, named the way U113 named it.
-    with _handle(cfg) as handle:
-        twin = handle.create_playlist(f"{ACCOUNT} 2", parent=handle.get_playlist(ID=root_id))
-        handle.session.commit()
-        twin_id = str(twin.ID)
-    # The landing record rewritten as a landing before U128 wrote it, and a
-    # second record of the same pass naming the twin.
-    (landing,) = [r for r in session.records(cfg) if native.INBOX_PLAYLISTS_KEY in r.detail]
-    _named_before_u175(cfg, playlist_id)
-    stripped = [{"id": one["id"], "name": ACCOUNT} for one in landing.detail[native.INBOX_PLAYLISTS_KEY]]
-    stripped.append({"id": twin_id, "name": f"{ACCOUNT} 2"})
-    records = [
-        session.SessionRecord.from_json(
-            {**landing.to_json(), "detail": {**landing.detail, native.INBOX_PLAYLISTS_KEY: stripped}}
-        )
-    ]
-
-    entries = refill.recorded_entries(records)
-    found = refill.recorded_ids(entries, pass_name=PASS, account="pl-a", name=ACCOUNT)
-
-    assert found == (playlist_id,)
-    assert refill.recorded_ids(entries, pass_name="another_synced", account="pl-a", name=ACCOUNT) == ()
-
-
-def test_a_playlist_no_record_names_is_found_by_the_accounts_name_under_inbox(
-    native_library, silence, offline
-):
-    cfg, root_id = native_library
-    playlist_id = _five_landed_and_emptied(cfg, silence)
-    # The playlist moved into a folder under INBOX, as the rotation moves a batch.
-    old = cutover_fixtures.add_folder(cfg, "Old")
-    _sql(cfg, "UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", root_id, old)
-    _sql(cfg, "UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", old, playlist_id)
-    # And no record names it: the record's account playlists are cleared, and
-    # the playlist carries the undated name every such landing gave it.
-    _named_before_u175(cfg, playlist_id)
-    _rewrite_entries(cfg, lambda entries: [])
-
-    code, acted, refused = _two_acts(_refill())
-
-    assert code == int(ExitCode.OK), acted
-    assert _live_members(cfg, playlist_id) == ["Held1", "New1", "Held2", "New2", "Held3"]
-    shown = refused["cause"]["detail"]["shown"]["playlists"]
-    assert shown == [f"{ACCOUNT} (row {playlist_id}, {refill.BY_NAME}): 5 track(s) "
-                     f"the library owns, 5 to add, 0 left out"]
-
-
-def test_a_dated_playlist_an_intake_file_recorded_by_name_alone_is_found_by_that_name(
-    native_library, silence, offline
-):
-    """U175: an intake file names its playlist dated and records no id, so its name is asked."""
-    cfg, root_id = native_library
-    playlist_id = _five_landed_and_emptied(cfg, silence)
-    # The record rewritten to the shape an intake file's landing writes: the
-    # dated name, the batch folder, the account and the pass, and no id.
-    batch = "2026-10-03 Tidal playlists"
-    _rewrite_entries(
-        cfg,
-        lambda entries: [
-            {**{k: v for k, v in one.items() if k != "id"}, "batch": batch} for one in entries
-        ],
-    )
-
-    code, acted, refused = _two_acts(_refill())
-
-    assert code == int(ExitCode.OK), acted
-    assert _live_members(cfg, playlist_id) == ["Held1", "New1", "Held2", "New2", "Held3"]
-    shown = refused["cause"]["detail"]["shown"]["playlists"]
-    assert shown == [
-        f"{INBOX_NAME} (row {playlist_id}, {refill.BY_NAME}): 5 track(s) "
-        f"the library owns, 5 to add, 0 left out"
-    ]
-
-
-def test_two_playlists_of_the_accounts_name_under_inbox_are_neither_filled(
+def test_two_playlists_of_the_accounts_name_are_neither_filled_and_one_is_found_by_it(
     native_library, silence, offline
 ):
     cfg, root_id = native_library
@@ -322,8 +234,9 @@ def test_two_playlists_of_the_accounts_name_under_inbox_are_neither_filled(
     _named_before_u175(cfg, playlist_id)
     _rewrite_entries(cfg, lambda entries: [])
     with _handle(cfg) as handle:
-        handle.create_playlist(ACCOUNT, parent=handle.get_playlist(ID=root_id))
+        second = handle.create_playlist(ACCOUNT, parent=handle.get_playlist(ID=root_id))
         handle.session.commit()
+        second_id = str(second.ID)
 
     code, acted, refused = _two_acts(_refill())
 
@@ -332,6 +245,21 @@ def test_two_playlists_of_the_accounts_name_under_inbox_are_neither_filled(
     (warning,) = [w for w in acted["warnings"] if w["code"] == refill_cli.UNFOUND]
     assert refill.TWO_FOUND in warning["message"]
     assert _live_members(cfg, playlist_id) == []
+
+    # The second one gone and the first moved into a folder under INBOX, as the
+    # rotation moves a batch: the one left is found by the account's name.
+    _sql(cfg, "UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", second_id)
+    old = cutover_fixtures.add_folder(cfg, "Old")
+    _sql(cfg, "UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", root_id, old)
+    _sql(cfg, "UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", old, playlist_id)
+
+    code, acted, refused = _two_acts(_refill())
+
+    assert code == int(ExitCode.OK), acted
+    assert _live_members(cfg, playlist_id) == ["Held1", "New1", "Held2", "New2", "Held3"]
+    shown = refused["cause"]["detail"]["shown"]["playlists"]
+    assert shown == [f"{ACCOUNT} (row {playlist_id}, {refill.BY_NAME}): 5 track(s) "
+                     f"the library owns, 5 to add, 0 left out"]
 
 
 def test_a_pass_with_no_account_playlist_job_is_refused_naming_the_pass(native_library):
@@ -375,8 +303,13 @@ def test_a_playlist_changed_after_the_approval_is_refused_and_nothing_is_written
 ):
     cfg, root_id = native_library
     playlist_id = _five_landed_and_emptied(cfg, silence)
+    with jobs.open_store() as store:
+        before = [(job.job_id, job.state) for job in jobs.list_jobs(store)]
     code, refused = drive(_refill())
     assert code == int(ExitCode.DECISION_REQUIRED), refused
+    # THE JOB STORE IS READ, NOT WRITTEN, by a plan.
+    with jobs.open_store() as store:
+        assert [(job.job_id, job.state) for job in jobs.list_jobs(store)] == before
     run_id = refused["run_id"]
     decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
     assert decided == int(ExitCode.OK), envelope
@@ -435,19 +368,6 @@ def test_the_digest_names_every_row_so_another_row_is_another_plan():
         ),
     )
     assert digest_of(refill.identity(plan)) != digest_of(refill.identity(other))
-
-
-def test_the_job_store_is_read_not_written_by_a_plan(native_library, silence, offline):
-    cfg, root_id = native_library
-    _five_landed_and_emptied(cfg, silence)
-    with jobs.open_store() as store:
-        before = [(job.job_id, job.state) for job in jobs.list_jobs(store)]
-
-    code, refused = drive(_refill())
-
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    with jobs.open_store() as store:
-        assert [(job.job_id, job.state) for job in jobs.list_jobs(store)] == before
 
 
 def test_a_same_pass_twin_recorded_since_u128_is_not_taken_for_the_mirror(
@@ -629,12 +549,37 @@ def test_bridge_names_reads_only_this_accounts_entries_of_this_pass_with_no_id()
     assert refill.bridge_names(records, pass_name=PASS, account="pl-c") == ()
 
 
-def test_a_session_log_that_cannot_be_listed_is_named_as_one_by_the_plan(
+def test_a_pre_u128_record_matches_by_name_and_an_unlisted_log_is_named_as_one(
     native_library, silence, offline, monkeypatch
 ):
     """R-1255: the plan carries the listing to its warning, never a count of one record."""
-    cfg, _root = native_library
-    _five_landed_and_emptied(cfg, silence)
+    cfg, root_id = native_library
+    playlist_id = _five_landed_and_emptied(cfg, silence)
+    # FIRST, A PRE U128 RECORD IS MATCHED BY THE ACCOUNT'S EXACT NAME, so the
+    # twin a second landing of the pass made (U113's ``Name 2``) is left.
+    with _handle(cfg) as handle:
+        twin = handle.create_playlist(f"{ACCOUNT} 2", parent=handle.get_playlist(ID=root_id))
+        handle.session.commit()
+        twin_id = str(twin.ID)
+    # The landing record rewritten as a landing before U128 wrote it, and a
+    # second record of the same pass naming the twin.
+    (landing,) = [r for r in session.records(cfg) if native.INBOX_PLAYLISTS_KEY in r.detail]
+    _named_before_u175(cfg, playlist_id)
+    stripped = [{"id": one["id"], "name": ACCOUNT} for one in landing.detail[native.INBOX_PLAYLISTS_KEY]]
+    stripped.append({"id": twin_id, "name": f"{ACCOUNT} 2"})
+    records = [
+        session.SessionRecord.from_json(
+            {**landing.to_json(), "detail": {**landing.detail, native.INBOX_PLAYLISTS_KEY: stripped}}
+        )
+    ]
+
+    entries = refill.recorded_entries(records)
+    found = refill.recorded_ids(entries, pass_name=PASS, account="pl-a", name=ACCOUNT)
+
+    assert found == (playlist_id,)
+    assert refill.recorded_ids(entries, pass_name="another_synced", account="pl-a", name=ACCOUNT) == ()
+
+    # Then the log cannot be listed.
     _refuse_listing(monkeypatch, Path(session.log_dir(cfg)))
 
     plan = refill_cli.planned(cfg, active_taxonomy.load(cfg), PASS)
@@ -647,3 +592,30 @@ def test_a_session_log_that_cannot_be_listed_is_named_as_one_by_the_plan(
         "the session log could not be listed, so no account playlist without a readable "
         "landing record was found by its name"
     )
+
+
+def test_a_dated_playlist_an_intake_file_recorded_by_name_alone_is_found_by_that_name(
+    native_library, silence, offline
+):
+    """U175: an intake file names its playlist dated and records no id, so its name is asked."""
+    cfg, root_id = native_library
+    playlist_id = _five_landed_and_emptied(cfg, silence)
+    # The record rewritten to the shape an intake file's landing writes: the
+    # dated name, the batch folder, the account and the pass, and no id.
+    batch = "2026-10-03 Tidal playlists"
+    _rewrite_entries(
+        cfg,
+        lambda entries: [
+            {**{k: v for k, v in one.items() if k != "id"}, "batch": batch} for one in entries
+        ],
+    )
+
+    code, acted, refused = _two_acts(_refill())
+
+    assert code == int(ExitCode.OK), acted
+    assert _live_members(cfg, playlist_id) == ["Held1", "New1", "Held2", "New2", "Held3"]
+    shown = refused["cause"]["detail"]["shown"]["playlists"]
+    assert shown == [
+        f"{INBOX_NAME} (row {playlist_id}, {refill.BY_NAME}): 5 track(s) "
+        f"the library owns, 5 to add, 0 left out"
+    ]
