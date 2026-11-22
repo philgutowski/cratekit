@@ -2,7 +2,7 @@
 title: "A test that counts index reads across two walks must age its files, or the window answers every line"
 date: 2026-11-12
 category: workflow-issues
-module: "src/cratekit/acquire/match.py _read_from_disk, src/cratekit/core/tags.py read_tags_noting, tests/test_library_reads_remembered.py"
+module: "src/cratekit/acquire/match_library.py _read_from_disk, src/cratekit/core/tags.py read_tags_noting, tests/test_library_reads_remembered.py"
 problem_type: workflow_issue
 component: library_index
 severity: medium
@@ -19,7 +19,7 @@ tags: [library-index, match, memo, mtime, fixtures, flac, padding, u249]
 
 ## What U249 changed
 
-Since U249 the library index reader, `match._read_from_disk`, remembers each
+Since U249 the library index reader, `match_library._read_from_disk`, remembers each
 file's `Owned` for the life of the process, keyed on the path, the name
 template and the file's size, modification time, change time, inode and
 device. A remembered file is answered only when its modification time is at
@@ -33,7 +33,7 @@ volume's step.
   test meant to prove the memory passes against code with no memory at all.
   Set the file's times back, `os.utime(path, ns=(old, old))` with `old` an
   hour ago, as `tests/test_library_reads_remembered.py` does. To pin the
-  window itself, hold `match._now_ns` rather than reading the wall clock twice.
+  window itself, hold `match_library._now_ns` rather than reading the wall clock twice.
 - **An aged fixture IS answered from memory.** A test that ages its files
   (or copies an old fixture with `shutil.copy2`, which keeps the time) and
   then patches `tags.read_tags_noting`, `tags.read_tags` or `mutagen.File`
@@ -48,4 +48,4 @@ volume's step.
   size moved before it relies on it.
 - **Change time moves on every write and every `os.utime`** on APFS and
   Linux, so a test that means to isolate one stamp field wraps
-  `match._stamp_of` and holds the others still.
+  `match_library._stamp_of` and holds the others still.

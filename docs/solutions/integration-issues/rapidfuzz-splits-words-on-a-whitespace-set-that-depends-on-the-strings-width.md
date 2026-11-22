@@ -2,7 +2,7 @@
 title: rapidfuzz splits words on a whitespace set that depends on the string's width, so a sort done once must split the same way
 date: 2026-11-12
 category: integration-issues
-module: src/cratekit/acquire/match.py
+module: src/cratekit/acquire/match_identity.py
 problem_type: integration_issue
 component: tooling
 severity: medium
@@ -39,7 +39,7 @@ point with rapidfuzz 3.14:
   whitespace, those two included.
 
 So no single regex agrees with the scorer; the split has to look at the
-string's widest character first. `match._sorted_words` does that.
+string's widest character first. `match_identity._sorted_words` does that.
 
 ## Why it did not matter in the product, and still had to be exact
 
