@@ -88,10 +88,18 @@ def ingest_file(
         declared=declared,
         registry=registry,
     )
-    return FileIngestResult(placed=tuple(placed), destination=destination, networked=False)
+    return FileIngestResult(
+        placed=tuple(placed),
+        destination=destination,
+        networked=False,
+    )
 
 
-def acquire_lossy_or_refuse(*, policy: LosslessPolicy | str, source_is_lossless: bool) -> bool:
+def acquire_lossy_or_refuse(
+    *,
+    policy: LosslessPolicy | str,
+    source_is_lossless: bool,
+) -> bool:
     """True when a lossy source may proceed and must be marked.
 
     Strict policy raises. Allowed-and-marked returns True. A lossless
@@ -110,7 +118,9 @@ def acquire_lossy_or_refuse(*, policy: LosslessPolicy | str, source_is_lossless:
 
 
 def ingest_tracklist(
-    text: str, *, match_against: Callable[[tuple[Wanted, ...]], MatchResult] | None = None
+    text: str,
+    *,
+    match_against: Callable[[tuple[Wanted, ...]], MatchResult] | None = None,
 ) -> tuple[Wanted, ...]:
     """Normalize pasted (or transcribed) text to Wanted rows, then optionally match."""
     rows = normalize.from_tracklist(text)

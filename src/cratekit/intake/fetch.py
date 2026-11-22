@@ -316,7 +316,11 @@ def _watched(directory: Path, progress: Progress | None) -> Iterator[None]:
 
 @contextmanager
 def fetched(
-    url: str, library_root: Path, found: SetFetcher, *, progress: Progress | None = None
+    url: str,
+    library_root: Path,
+    found: SetFetcher,
+    *,
+    progress: Progress | None = None,
 ) -> Iterator[FetchedMix]:
     """Fetch ``url`` into its scratch folder, lend the file, and remove the folder.
 

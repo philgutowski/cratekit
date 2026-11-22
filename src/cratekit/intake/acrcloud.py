@@ -214,13 +214,20 @@ class FfmpegCarver:
 def sign(*, access_key: str, timestamp: str, signing_key: str) -> str:
     """The service's request signature: HMAC-SHA1 over the line-joined tuple,
     base64 encoded. The tuple's order is the protocol's, not a choice."""
-    to_sign = "\n".join(["POST", ENDPOINT, access_key, _DATA_TYPE, _SIGNATURE_VERSION, timestamp])
+    to_sign = "\n".join(
+        ["POST", ENDPOINT, access_key, _DATA_TYPE, _SIGNATURE_VERSION, timestamp]
+    )
     digest = hmac.new(signing_key.encode(), to_sign.encode(), hashlib.sha1).digest()
     return base64.b64encode(digest).decode()
 
 
 def request_for(
-    sample: bytes, *, access_key: str, signing_key: str, host: str, timestamp: str | None = None
+    sample: bytes,
+    *,
+    access_key: str,
+    signing_key: str,
+    host: str,
+    timestamp: str | None = None,
 ) -> Request:
     """One identify call for ``sample``. The signing key is consumed here and
     appears in no field of the result."""
@@ -240,9 +247,7 @@ def request_for(
     )
 
 
-def planned_calls(
-    duration_s: float, *, chunk_s: int = CHUNK_S, interval_s: int = INTERVAL_S
-) -> int:
+def planned_calls(duration_s: float, *, chunk_s: int = CHUNK_S, interval_s: int = INTERVAL_S) -> int:
     """How many chunks a recording this long costs, WITHOUT building the grid.
 
     Arithmetic so the budget is checked before the grid exists: a broken
@@ -325,7 +330,9 @@ class Ledger:
 
     def __init__(self, path: Path | None = None, lock_path: Path | None = None) -> None:
         self.path = path if path is not None else config.state_path(LEDGER_KEY)
-        self.lock_path = lock_path if lock_path is not None else config.state_path(LEDGER_LOCK_KEY)
+        self.lock_path = (
+            lock_path if lock_path is not None else config.state_path(LEDGER_LOCK_KEY)
+        )
 
     def _read(self) -> dict[str, int]:
         try:
@@ -678,9 +685,7 @@ def keychain_credentials() -> tuple[str, str]:
         ) from exc
 
 
-def _answer(
-    transport: Transport, request: Request
-) -> tuple[Outcome, int, str, Mapping[str, Any] | None]:
+def _answer(transport: Transport, request: Request) -> tuple[Outcome, int, str, Mapping[str, Any] | None]:
     """One call's answer as a family. Everything that is not a readable 200
     is TRANSIENT with a synthetic code, so the loop has one dispatch."""
     try:
@@ -810,17 +815,12 @@ def identify(
     try:
         plan, unkept = ChunkPlan(digest=content_digest(source), offsets=offsets, host=host), ""
     except OSError as exc:
-        plan, unkept = (
-            None,
-            f"the recording could not be read for its digest ({type(exc).__name__})",
-        )
+        plan, unkept = None, f"the recording could not be read for its digest ({type(exc).__name__})"
     kept = kept_in.read(plan) if plan is not None and not refresh else {}
     owed = [offset for offset in offsets if offset not in kept]
     run = _Pass(source, transport, carver, counter, host, month, kept)
     try:
-        result = _identified(
-            run, parts=parts, owed=owed, spend=spend, credentials=credentials, progress=progress
-        )
+        result = _identified(run, parts, owed, spend=spend, credentials=credentials, progress=progress)
     finally:
         # Keeps what a pass that RAISED had already paid for. A failed write
         # must not replace the refusal on its way out; on a pass that returned
@@ -884,9 +884,7 @@ class _Pass:
                 calls=calls,
             ) from exc
         access_key, signing_key = self.keys
-        request = request_for(
-            sample, access_key=access_key, signing_key=signing_key, host=self.host
-        )
+        request = request_for(sample, access_key=access_key, signing_key=signing_key, host=self.host)
         try:
             self.counter.record(1, self.month)
         except (config.ConfigLockUnavailable, OSError) as exc:
@@ -932,13 +930,8 @@ class _Pass:
 
 
 def _identified(
-    run: _Pass,
-    *,
-    parts: tuple[tuple[int, ...], ...],
-    owed: list[int],
-    spend: Budget,
-    credentials: Credentials,
-    progress: Progress | None = None,
+    run: _Pass, parts: tuple[tuple[int, ...], ...], owed: list[int], *,
+    spend: Budget, credentials: Credentials, progress: Progress | None = None,
 ) -> Identified:
     """The pass itself. Every part is asked of the run bound, and the month
     once over ``owed``, the whole set's, BEFORE any part starts, so an

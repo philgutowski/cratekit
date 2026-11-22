@@ -119,7 +119,9 @@ def identify(
             )
         from cratekit.intake import acrcloud  # noqa: PLC0415 - bound only on the paid path
 
-        identifier = acrcloud.bound_identifier(recognition, refresh=refresh, progress=progress)
+        identifier = acrcloud.bound_identifier(
+            recognition, refresh=refresh, progress=progress
+        )
     found = identifier(source)
     if isinstance(found, Identified):
         return found
