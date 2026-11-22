@@ -64,9 +64,8 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
 
 _ORIGIN = ("cli.sync_land",)
 
-#: The steps, in the one order a pass runs them. Each is a check key on the
-#: envelope, ``sync.land.<step>``. The last six are the tail and the landing,
-#: :data:`cratekit.cli.tail.STEPS`, named here from that module.
+#: The steps in order, each a check key ``sync.land.<step>``; the last six are
+#: :data:`cratekit.cli.tail.STEPS`.
 PREFLIGHT = "preflight"
 SYNC = "sync"
 INTAKE = "intake"
@@ -84,8 +83,7 @@ SYNC_VERB = "sync.all"
 DOWNLOAD_VERB = tail.DOWNLOAD_VERB
 BACKUP_VERB = "backup.run"
 
-#: Why the favourites write half queues nothing in a pass this verb runs: no
-#: export is handed to it, so it refuses its own precondition (module docstring).
+#: Why the favourites write half queues nothing here: no export is handed to it.
 OUTBOUND_UNASKED = "outbound-export-required"
 
 #: This verb's own name, which a land run's record carries.
@@ -98,8 +96,7 @@ PASS_ROLE = "pass_run"
 #: How many of the library's recent passes a refused ``--pass-run`` names.
 RECENT_PASSES = 5
 
-#: The seam every step goes through, the shared chain's own, so one stand in
-#: serves both verbs that run it.
+#: The seam every step goes through, shared with the tail's other verb.
 Child = tail.Child
 
 #: The preflight's row for the vocal model, ``sync.land.vocal-model`` (U181).
@@ -183,14 +180,9 @@ def _report(progress: Callable[[str], None] | None) -> tail.Chain:
 def preflight(report: _Pass, cfg: config.Config) -> None:
     """Refuse before any step while rekordbox, or a backup's driver, is up.
 
-    Rekordbox through the guarded writer's own predicate, so this refusal and
-    the landing's are one question asked twice. A backup by its job's driver
-    lock, which is the one liveness test the queue trusts: a backup job open in
-    the queue whose driver died is not running and does not hold the pass.
-
-    SHARED WITH ``crate sync bandcamp`` (U179), which runs it as its own first
-    step, so the two sources of the driver refuse on one predicate. The verb
-    is named from the chain's title.
+    rekordbox through the guarded writer's predicate, a backup by its driver
+    lock, the queue's one liveness test. Shared with ``crate sync bandcamp``
+    (U179); the verb is named from the chain's title.
     """
     verb = f"crate {report.title}"
     report.say(PREFLIGHT, "rekordbox and backups")
@@ -233,9 +225,8 @@ def _continue_command(pass_run: str) -> str:
 def _land_record(run_id: str) -> gates.RunState | None:
     """``run_id``'s record when it is a ``sync land`` run's, else None.
 
-    Only a bare identifier is looked up, so a value with a path in it reads
-    no file outside the run records. A record that cannot be read is no land
-    run, since the refusal that follows names the ids that do work.
+    Only a bare identifier is looked up, so no file outside the run records is
+    read; an unreadable record is no land run.
     """
     if not run_id or run_id != Path(run_id).name or run_id.startswith("."):
         return None
@@ -251,10 +242,8 @@ def _land_record(run_id: str) -> gates.RunState | None:
 def _resolve(report: _Pass, cfg: config.Config, given: str) -> str:
     """The pass ``--pass-run`` names: a pass run as given, a land run as the pass it recorded.
 
-    A PASS RUN IS ONE AN INTAKE JOB OF THIS LIBRARY CARRIES, which is exactly
-    what ``intake missing --run`` asks of it at the fourth step, so an id that
-    passes here is never refused there for the same reason. Anything else is
-    refused now, before a step runs or a provider is called.
+    A pass run is one an intake job of this library carries, the same test
+    ``intake missing --run`` applies; anything else refuses before any step.
     """
     with jobs.open_store() as store:
         if _pass_jobs(store, given, cfg):

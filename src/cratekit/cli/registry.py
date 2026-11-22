@@ -1096,46 +1096,29 @@ ENTRIES: tuple[Entry, ...] = (
     Entry(
         name="label.sync",
         summary="ask, label by label, about the releases new since each label was " "last asked, record each answer, then download what was answered for " "behind one gate",
-        # THE CLI MODULE IN FRONT OF THE VERB'S OWN (U190). Its builder is
-        # ``label.sync_cli``'s and its handler runs that one unchanged, then the
-        # tail and the landing a go names, through the chain ``sync land`` runs,
-        # which only a CLI ranked module may reach.
+        # A CLI module in front of ``label.sync_cli`` (U190), since only a CLI
+        # module may reach the chain ``sync land`` runs.
         module="cratekit.cli.label_sync", builder="build_sync", handler_key="label.sync",
         feature_rows=(21,), module_id="labels",
-        # THE SECOND INTERACTIVE VERB (U107). The brainstorm chose a question
-        # asked in the terminal over an answer file, and every read of
-        # standard input still happens in the one allowlisted module,
-        # ``cli/prompt.py``. ``--next`` and ``--answer`` are the same verb
-        # driven with no terminal, which is what keeps it scriptable.
+        # Interactive (U107), reading only through ``cli/prompt.py``;
+        # ``--next`` and ``--answer`` keep it scriptable.
         interactive=True,
-        # ``diagnostic/1``, for the reason ``label.held`` gives: what a person
-        # needs is each label's question, each answer recorded, and the
-        # command that asks the next, and the default renderer shows checks.
+        # ``diagnostic/1``, for ``label.held``'s reason.
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
-        # IT FILES AND DECIDES. A taken release is filed into the label-release
-        # queue under the sweep's own key and recorded accepted, an open item
-        # a label's answer did not take is superseded, and an open item the
-        # gate would not have filed is withheld as ``label judge`` withholds.
+        # It files, accepts, supersedes and withholds review items.
         adjudicates=True,
-        # THE GO WRITES FILES (U108): a list and its manifest, and the download
-        # job it queues and drives in this process lands tracks in staging. So
-        # the verb is destructive by KTD24's definition, though the asking half
-        # still writes only this product's own review database and record.
+        # The go writes a list and lands downloads in staging, so it is
+        # destructive (U108, KTD24).
         writes=frozenset({"files"}), destructive=True,
         doctor_checks=("library.mounted", "credential.provider"),
         gates=(
             GateSpec(
                 name="label.sync.confirm", options=("apply", "abort"),
                 prompt="Download every release the saved answers took?",
-                #: EXPLICIT, the brief's word and the author's standing rule: a
-                #: label release is downloaded only after it was answered for,
-                #: and the start of a download that runs unattended for hours is
-                #: asserted on its own and recorded with who made it, never
-                #: answered by one more flag on the walk that reached it.
+                #: Explicit: starting an hours long unattended download is its
+                #: own recorded act, never one more flag.
                 explicit=True,
-                #: Over the digest of the summary, so an answer saved after the
-                #: decision is a stale decision rather than a download nobody
-                #: was shown.
+                #: Over the summary, so an answer saved later makes it stale.
                 digest_source="plan",
             ),
         ),
@@ -1145,16 +1128,11 @@ ENTRIES: tuple[Entry, ...] = (
         summary="judge the label releases waiting in review by their label's kind, " "and hold the ones the genre gate would not have filed",
         module="cratekit.label.judge_cli", builder="build_judge", handler_key="label.judge",
         feature_rows=(21,), module_id="labels", argv_builder="label_judge_argv",
-        # ONE ITEM PER PENDING RELEASE, each two provider reads and a few paced
-        # catalogue requests, over a queue that held 2,755 when this landed
-        # (R-815). Queued, so the pass picks up where it stopped.
+        # Queued, so a pass over thousands of paced reads resumes (R-815).
         long_running=True, emits=frozenset({"job_state"}), output_schema="job_state/1",
-        # IT MOVES A RELEASE OUT OF THE LABEL-RELEASE QUEUE and into a hold, and
-        # stamps the ones that stay, under the key the sweep filed them with.
+        # It moves releases into a hold and stamps the rest.
         adjudicates=True,
-        # NO WRITE SURFACE, and not destructive, on ``label.held``'s reasoning:
-        # the review database is this product's own record. A hold is not a
-        # rejection, no tombstone is written, and nothing is downloaded.
+        # No write surface, on ``label.held``'s reasoning.
         doctor_checks=("library.mounted", "credential.provider"),
     ),
     Entry(
@@ -1162,17 +1140,11 @@ ENTRIES: tuple[Entry, ...] = (
         summary="give the open label releases whose artist reads as a provider " "object address the artist's name",
         module="cratekit.label.artists_cli", builder="build_artists", handler_key="label.artists",
         feature_rows=(21,), module_id="labels",
-        # ``diagnostic/1``, for the reason ``label.held`` gives: what a person
-        # needs is each release and what became of it, and the default
-        # renderer shows checks (R-840).
+        # ``diagnostic/1``, for ``label.held``'s reason (R-840).
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
-        # NOT ADJUDICATING. It files nothing and decides nothing: an open item
-        # keeps its place and gains its artist's name, and a decided one is
-        # never rewritten. NO WRITE SURFACE and not destructive, on
-        # ``label.held``'s reasoning: the review database is this product's
-        # own record. NOT QUEUED: one provider read per release that reads an
-        # address, 29 when this landed, and a second run asks only about what
-        # the first left, so there is nothing for a job to resume.
+        # Not adjudicating: it only names an open item's artist. No write
+        # surface, on ``label.held``'s reasoning. Not queued: a rerun asks only
+        # what the last left.
         doctor_checks=("library.mounted", "credential.provider"),
     ),
     Entry(

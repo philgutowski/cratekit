@@ -1,75 +1,16 @@
 """The tail and the landing: one chain, run by every verb that lands a download (U190).
 
-U152 built it inside ``crate sync land``. U190 lifted it out, whole, so that
-``crate label sync --go`` runs the same chain after its own download rather
-than printing five commands to type: the attended Defected label sync of
-2026-10-31 downloaded ten tracks and then asked for ``tag folder``, ``analyze
-run``, ``analyze restamp``, ``name apply`` and ``intake land`` by hand. Two
-verbs, one chain, so every question the tail answers is answered the same way
-by both, by construction rather than by a copy kept in step.
-
-A CHAIN OF THE VERBS A PERSON WOULD TYPE, NOT A SECOND IMPLEMENTATION OF THEM.
-Each step is the existing verb run through the real dispatcher in this process,
-under its own run, with its own gates and its own refusals, so nothing a step
-decides is decided again here. That is why this module is ranked CLI: the
-dispatcher is the CLI layer's, and only a module of that layer may reach it.
-
-EVERY QUEUED JOB IS DRIVEN TO SETTLED, HERE. ``job resume`` spawns a detached
-worker and returns at once, so a chain built on it would read a job while its
-worker was still running. Each job is driven through its own verb's ``--job``
-command line, the one ``job resume`` would spawn, in the foreground, and the
-chain reads the job's state off the queue once that command has returned.
-
-THE ORDER IS LOAD BEARING AND CANNOT BE SKIPPED. ``tag folder``, ``tag
-guess`` over what it left with no genre (U172), ``analyze run`` and the vocals
-rescore after it, ``analyze restamp``, ``name apply``,
-then the landing. The rescore (U181) is ``analyze vocals --unscored`` over the
-same folder, so a file an earlier run finalized with no voxlevel, which every
-later run skips by its head, is scored rather than left unscored for good; it
-asks nothing of a model that cannot score here, or of a profile with the
-vocals module off. A tail step that
-does not succeed ends the chain there, so a landing is never planned over
-staged files the tail has not run on. The tail is run on the ABSOLUTE staging
-path, since a relative root resolves against the working directory and once
-planned nothing (R-1013's sitting, U169).
-
-A STALE TAIL JOB IS REPLACED, NEVER RESUMED. A tail job queued over the staging
-folder earlier and never finished was frozen against that folder as it stood
-then, and against that build: sitting 47 resumed a queued analysis that
-answered ``module-extras-missing`` after the extra was installed. Each tail step
-cancels any such job and queues its own.
-
-A NAME STEP HELD BY A SECOND COPY NAMES THE PASSES THAT DOWNLOADED IT (U212).
-``name apply`` says a file held back by one carrying the same ISRC is a second
-copy of one recording, with the ISRC; the chain reads the download jobs for it
-and adds the step that names each pass whose download it was, earliest first,
-since the naming verb sits below the download verb and may not read its jobs.
-
-A FILE THE CATALOGUES REFUSED IS NAMED, AND A STOP FOR ONE SAYS WHO (U284).
-With a Discogs token recorded, ``tag folder`` settles a file Discogs searched
-and could not tag while every other catalogue refused, and the chain goes on;
-the tag step's report of those files becomes the chain's ``refused`` row and
-summary, so the pass names each file and the refusing catalogues with the date
-each began refusing. A tag step that stopped because every catalogue asked
-refused carries the sweep's words onto the job's refusal: who refused, since
-when, and the token when Discogs went unasked.
-
-``name apply``'s CONFIRM IS ANSWERED INLINE, by one argument list. It is not
-explicit, so answering it on the command line is the act a person running the
-tail makes; the plan it answers is the verb's own.
-
-A VERB MAY REHEARSE BETWEEN THE TAIL AND THE LANDING (U179). ``crate sync
-bandcamp`` runs :func:`through_name`, then :func:`rehearse`, ``intake land
---rehearse`` with the arguments the landing then takes, so the live gate names
-the rehearsal; ``sync land`` and ``label sync --go`` run :func:`run`, which
-does not.
-
-IT STOPS WHERE A PERSON MUST ACT, AND SAYS WHAT THEY DO. The landing is planned
-by ``intake land`` itself, which reads the backup acknowledgment (this chain
-never mints one) and stops at its explicit gate on its own run. The verb that
-ran the chain then ends PENDING, naming that run, the two commands that answer
-and apply it as the session, and the rekordbox visit that follows. Nothing here
-starts a backup, opens rekordbox or writes a beat grid.
+Each step is the existing verb run through the real dispatcher in this
+process, under its own run and gates, so nothing a step decides is decided
+again here, and every queued job is driven to settled through its ``--job``
+command. The order is fixed: ``tag folder``, ``tag guess`` (U172), ``analyze
+run`` and the vocal rescore (U181), ``analyze restamp``, ``name apply``, then
+the landing, over the absolute staging path (U169). A step that does not
+succeed ends the chain, so a landing is never planned over files the tail
+skipped, and a stale tail job is replaced, never resumed. The chain stops
+where a person must act, at the landing's gate or the backup acknowledgment,
+which it never mints. Nothing here starts a backup, opens rekordbox or writes
+a beat grid.
 """
 
 from __future__ import annotations
@@ -99,9 +40,8 @@ NAME = "name"
 LAND = "land"
 STEPS: tuple[str, ...] = (TAG, GUESS, ANALYZE, RESTAMP, NAME, LAND)
 
-#: The rehearsal a verb may run between the tail and the landing (U179), which
-#: ``crate sync bandcamp`` does and the two older verbs do not, and the flag of
-#: ``intake land`` that asks for it.
+#: The rehearsal a verb may run between the tail and the landing (U179), and
+#: the ``intake land`` flag that asks for it.
 REHEARSE = "rehearse"
 REHEARSE_FLAG = "--rehearse"
 
