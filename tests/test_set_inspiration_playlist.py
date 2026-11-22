@@ -28,6 +28,7 @@ from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import batch_name, inspiration_cli, land_cli, native, set_playlist
 from cratekit.intake import cli as intake_cli
 from tests import adopt_fixtures, cutover_fixtures
+from tests import test_intake_land_native as land_native
 from tests.cli_drive import drive
 from tests.test_config import valid_data
 from tests.test_intake_land_native import (
@@ -42,15 +43,13 @@ from tests.test_intake_land_native import (
     _seed_binding_rows,
     _two_acts,
 )
-from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_intake_land_native import (
-    _release_process_locks as _release_process_locks,  # noqa: PLC0414
-)
-from tests.test_intake_land_native import acknowledged as acknowledged  # noqa: PLC0414
-from tests.test_intake_land_native import library as library  # noqa: PLC0414
-from tests.test_intake_land_native import native_library as native_library  # noqa: PLC0414
-from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
 from tests.test_rb_writer_db import RECORDED_APP_VERSION
+
+# The native landing suite's fixtures, bound so pytest finds them here.
+_platform_seams = land_native._platform_seams
+_release_process_locks = land_native._release_process_locks
+acknowledged, library, silence = land_native.acknowledged, land_native.library, land_native.silence
+native_library = land_native.native_library
 
 DAY = date(2026, 10, 9)
 BATCH = "2026-10-09 Set"
