@@ -58,53 +58,40 @@ def _calibrate(cfg: config.Config, threshold: float = CUT) -> None:
     path.write_text(json.dumps({"threshold": threshold}), encoding="utf-8")
 
 
-def _seed_vocals(cfg: config.Config, *tagged: str) -> None:
-    """The Vocals category and its vox value, and these rows carrying the tag."""
+def _my_tag(tag_id: str, name: str, parent: str, uuid: str, *, removed: int = 0, seq: int = 0):
+    """A djmdMyTag row: a category under ``root``, else a value under its category."""
+    return ("DjmdMyTag", dict(ID=tag_id, Name=name, Attribute=1 if parent == "root" else 0,
+                              ParentID=parent, Seq=seq, UUID=uuid, rb_local_deleted=removed))
+
+
+def _add_rows(cfg: config.Config, *rows: tuple[str, dict]) -> None:
+    """Add each (table class name, columns) row to the disposable library, skipping an ID it holds."""
     from pyrekordbox.db6 import tables
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
 
     engine = create_engine(f"sqlite:///{cfg.library.db_path}")
     with Session(engine) as db_session:
-        if db_session.get(tables.DjmdMyTag, CATEGORY_ID) is None:
-            db_session.add(
-                _row(
-                    tables.DjmdMyTag,
-                    ID=CATEGORY_ID,
-                    Name=metadata_cli.CATEGORY,
-                    Attribute=1,
-                    ParentID="root",
-                    Seq=0,
-                    UUID="vocals-category",
-                    rb_local_deleted=0,
-                )
-            )
-            db_session.add(
-                _row(
-                    tables.DjmdMyTag,
-                    ID=VOX_ID,
-                    Name=metadata_cli.VALUE_VOX,
-                    Attribute=0,
-                    ParentID=CATEGORY_ID,
-                    Seq=0,
-                    UUID="vox-value",
-                    rb_local_deleted=0,
-                )
-            )
-        for content_id in tagged:
-            db_session.add(
-                _row(
-                    tables.DjmdSongMyTag,
-                    ID=f"vox-{content_id}",
-                    MyTagID=VOX_ID,
-                    ContentID=content_id,
-                    TrackNo=0,
-                    UUID=f"vox-{content_id}",
-                    rb_local_deleted=0,
-                )
-            )
+        for table, columns in rows:
+            kind = getattr(tables, table)
+            if db_session.get(kind, columns["ID"]) is None:
+                db_session.add(_row(kind, **columns))
         db_session.commit()
     engine.dispose()
+
+
+def _seed_vocals(cfg: config.Config, *tagged: str) -> None:
+    """The Vocals category and its vox value, and these rows carrying the tag."""
+    _add_rows(
+        cfg,
+        _my_tag(CATEGORY_ID, metadata_cli.CATEGORY, "root", "vocals-category"),
+        _my_tag(VOX_ID, metadata_cli.VALUE_VOX, CATEGORY_ID, "vox-value"),
+        *(
+            ("DjmdSongMyTag", dict(ID=f"vox-{content_id}", MyTagID=VOX_ID, ContentID=content_id,
+                                   TrackNo=0, UUID=f"vox-{content_id}", rb_local_deleted=0))
+            for content_id in tagged
+        ),
+    )
 
 
 def _scored(cfg: config.Config, silence: Path, name: str, voxlevel: int | None) -> Path:

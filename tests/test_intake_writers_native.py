@@ -39,7 +39,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import file_cli, ingest, land_cli, landing, native
 from cratekit.modules.outbound import source as outbound_source
 from tests import adopt_fixtures, outbound_fakes
-from tests._containers import synth_container
+from tests import test_intake_land_native as land
 from tests.cli_drive import approve_and_queue, drive
 from tests.test_config import valid_data
 from tests.test_intake_land_native import (
@@ -49,9 +49,15 @@ from tests.test_intake_land_native import (
     MY_DEVICE,
     TODAY,
     _cut_over_intake,
+    _members,
     _query,
     _seed_binding_rows,
 )
+from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
+from tests.test_intake_land_native import (
+    _release_process_locks as _release_process_locks,  # noqa: PLC0414
+)
+from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
 from tests.test_label_workers import LABELS, SLUGS, queued_sweep, readable, register
 from tests.test_label_workers import bind as bind_catalogue
 from tests.test_outbound_workers import _resume as resume_outbound
@@ -76,36 +82,10 @@ BASELINE = ("1", "2")
 
 
 @pytest.fixture(autouse=True)
-def _release_process_locks():
-    yield
-    session._HELD.clear()
-
-
-@pytest.fixture(autouse=True)
 def _forget_libraries():
     outbound_source.forget_libraries()
     yield
     outbound_source.forget_libraries()
-
-
-@pytest.fixture(autouse=True)
-def _platform_seams(monkeypatch):
-    """What a temporary library cannot speak for, as the native landing patches it."""
-    from pyrekordbox.db6 import database as binding
-
-    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
-    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
-    monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(
-        rb_writer,
-        "read_rekordbox_settings",
-        lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 0},
-    )
-    monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
-    real_integrity_ok = rb_writer.integrity_ok
-    monkeypatch.setattr(
-        rb_writer, "integrity_ok", lambda target, **kwargs: real_integrity_ok(target, unlock=False)
-    )
 
 
 def _machine(tmp_path, monkeypatch, *, profile: str | None = None) -> config.Config:
@@ -162,13 +142,6 @@ def either(request, tmp_path, monkeypatch) -> config.Config:
 
 
 @pytest.fixture
-def silence(tmp_path: Path) -> Path:
-    scratch = tmp_path / "scratch"
-    scratch.mkdir()
-    return synth_container(scratch, ".flac")
-
-
-@pytest.fixture
 def export(tmp_path: Path) -> Path:
     path = tmp_path / "fresh.xml"
     path.write_bytes(_fresh_xml())
@@ -207,15 +180,6 @@ def _playlists(cfg: config.Config, name: str) -> list[tuple]:
     return _query(cfg, "SELECT ID, ParentID, Attribute FROM djmdPlaylist WHERE Name = ?", name)
 
 
-def _members(cfg: config.Config, playlist_id: str) -> list[str]:
-    rows = _query(
-        cfg,
-        "SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? ORDER BY TrackNo",
-        playlist_id,
-    )
-    return [str(row[0]) for row in rows]
-
-
 def _xml_anywhere(cfg: config.Config, tmp_path: Path) -> list[str]:
     """Every xml document under the test's own tree except the ones it made."""
     return sorted(
@@ -226,16 +190,17 @@ def _xml_anywhere(cfg: config.Config, tmp_path: Path) -> list[str]:
 
 
 def _two_acts(verb: list[str]) -> tuple[int, dict, dict]:
-    """R34's two acts against the explicit gate, then the acting drive."""
-    code, refused = drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    detail = refused["cause"]["detail"]
-    assert detail["gate"] == GATE and detail["explicit"] is True
+    """R34's two acts against this verb's explicit gate, then the acting drive."""
+    return land._two_acts(verb, GATE)
+
+
+def _answered_then(path: Path, change) -> tuple[int, dict]:
+    """An answer of apply recorded over ``path``, ``change`` made, then the continuation."""
+    _code, refused = drive(_file(path))
     run_id = refused["run_id"]
-    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), envelope
-    code, acted = drive(["--run", run_id, *verb])
-    return code, acted, refused
+    drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    change()
+    return drive(["--run", run_id, *_file(path)])
 
 
 def _assert_nothing_written(cfg: config.Config, tmp_path: Path) -> None:
@@ -277,6 +242,19 @@ def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
     assert folder_path == str(path.resolve())
     assert title == ingest.read_meta(path, cfg=cfg)["name"]
     assert title.startswith("01A - 124 - ")
+    # The library's own device, and no analysis value on the row, column by
+    # column, nor a cue, mixer or file row naming it, as rekordbox will find it.
+    selected = ", ".join(native.LEFT_EMPTY)
+    ((device_id, master, *values),) = _query(
+        cfg, f"SELECT DeviceID, MasterDBID, {selected} FROM djmdContent WHERE ID = ?", content_id
+    )
+    assert (str(device_id), str(master)) == MY_DEVICE
+    assert len(values) == len(native.LEFT_EMPTY) > 0
+    for name, value in zip(native.LEFT_EMPTY, values):
+        assert value in (None, 0, 0.0, "", "0"), f"row {content_id} carries {name}={value!r}"
+    for table in rb_writer.CONTENT_ANALYSIS_TABLES:
+        ((count,),) = _query(cfg, f"SELECT COUNT(*) FROM {table} WHERE ContentID = ?", content_id)
+        assert count == 0, f"{table} holds a row for the new content row {content_id}"
 
     ((playlist_id, parent, attribute),) = _playlists(cfg, path.stem)
     assert str(parent) == root_id, "the batch playlist was not parented to the adopted root"
@@ -323,38 +301,6 @@ def test_one_file_becomes_one_row_and_one_playlist_under_the_adopted_root(
         INTAKE: 2,
         rb_writer.CONTENT_TABLE: 1,
     }
-
-
-def test_the_row_carries_the_librarys_own_device(native_library, silence):
-    cfg, _root = native_library
-    code, acted, _ = _two_acts(_file(_single(cfg, silence)))
-    assert code == int(ExitCode.OK), acted
-    ((device_id, master),) = _query(
-        cfg, "SELECT DeviceID, MasterDBID FROM djmdContent WHERE FolderPath IS NOT NULL"
-    )
-    assert (str(device_id), str(master)) == MY_DEVICE
-
-
-def test_after_the_write_no_analysis_value_is_on_the_new_row_column_by_column(
-    native_library, silence
-):
-    """The standing constraint on the new path, read from SQL on the row as
-    rekordbox will find it: every column an analysis pass fills, and no cue,
-    mixer or file row naming the new row."""
-    cfg, _root = native_library
-    code, acted, _ = _two_acts(_file(_single(cfg, silence)))
-    assert code == int(ExitCode.OK), acted
-
-    selected = ", ".join(native.LEFT_EMPTY)
-    ((content_id, *values),) = _query(
-        cfg, f"SELECT ID, {selected} FROM djmdContent WHERE FolderPath IS NOT NULL"
-    )
-    assert len(values) == len(native.LEFT_EMPTY) > 0
-    for name, value in zip(native.LEFT_EMPTY, values):
-        assert value in (None, 0, 0.0, "", "0"), f"row {content_id} carries {name}={value!r}"
-    for table in rb_writer.CONTENT_ANALYSIS_TABLES:
-        ((count,),) = _query(cfg, f"SELECT COUNT(*) FROM {table} WHERE ContentID = ?", content_id)
-        assert count == 0, f"{table} holds a row for the new content row {content_id}"
 
 
 def test_the_gate_screen_names_the_row_its_columns_the_playlist_and_the_database(
@@ -430,13 +376,9 @@ def test_an_answer_given_for_one_title_is_stale_once_the_file_is_retagged(
     does not write another."""
     cfg, _root = native_library
     path = _single(cfg, silence)
-    code, refused = drive(_file(path))
-    run_id = refused["run_id"]
-    drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    assert tags.write_tags(path, {"title": "02A - 126 - Renamed"})
-
-    code, envelope = drive(["--run", run_id, *_file(path)])
-
+    code, envelope = _answered_then(
+        path, lambda: tags.write_tags(path, {"title": "02A - 126 - Renamed"})
+    )
     assert code != int(ExitCode.OK), envelope
     assert envelope["cause"]["reason"] == "decision-stale", envelope
     _assert_nothing_written(cfg, tmp_path)
@@ -449,15 +391,13 @@ def test_an_answer_is_stale_once_the_file_itself_changed_under_the_same_tags(
     carry moved and nothing the verb's own plan lists did."""
     cfg, _root = native_library
     path = _single(cfg, silence)
-    code, refused = drive(_file(path))
-    run_id = refused["run_id"]
-    drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    with path.open("ab") as handle:
-        handle.write(b"\0" * 64)
-    assert ingest.read_meta(path, cfg=cfg)["name"].startswith("01A - 124 - ")
 
-    code, envelope = drive(["--run", run_id, *_file(path)])
+    def grown():
+        with path.open("ab") as handle:
+            handle.write(b"\0" * 64)
+        assert ingest.read_meta(path, cfg=cfg)["name"].startswith("01A - 124 - ")
 
+    code, envelope = _answered_then(path, grown)
     assert envelope["cause"]["reason"] == "decision-stale", envelope
     _assert_nothing_written(cfg, tmp_path)
 
@@ -470,14 +410,8 @@ def test_an_answer_is_stale_once_the_artist_the_plan_showed_changed(
     cfg, _root = native_library
     path = _single(cfg, silence)
     size = path.stat().st_size
-    code, refused = drive(_file(path))
-    run_id = refused["run_id"]
-    drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    assert tags.write_tags(path, {"artist": "Other"})
+    code, envelope = _answered_then(path, lambda: tags.write_tags(path, {"artist": "Other"}))
     assert path.stat().st_size == size, "the retag moved the size, so this proves nothing"
-
-    code, envelope = drive(["--run", run_id, *_file(path)])
-
     assert envelope["cause"]["reason"] == "decision-stale", envelope
     _assert_nothing_written(cfg, tmp_path)
 
@@ -959,37 +893,42 @@ def test_the_splice_still_takes_a_bridge_tree(bridge_library, silence, export, t
     assert placed.path == path and destination.is_file()
 
 
-def test_every_caller_of_the_intake_emitter_builds_its_tree_through_the_refusal():
-    """The emitter guard says ``report-defect``. A writer that reaches it with
-    a tree the refusal never saw tells a person who chose a cutover to file a
-    bug, which is the finding. The callers are named, so a third one is a line
-    somebody reads in a diff."""
+def test_every_intake_emitter_caller_builds_its_tree_through_the_one_refusing_builder():
+    """The emitter guard says ``report-defect``, so a writer reaching it with a
+    tree the refusal never saw tells a person who chose a cutover to file a
+    bug. The callers are named, so a third is a line somebody reads in a diff.
+    And the write layer names no verb, so the refusal naming the landing lives
+    in the one function that builds a splice's tree: a second builder is a
+    second way past it. One walk of ``src`` reads both."""
     callers: dict[str, tuple[int, list[int]]] = {}
+    builders: list[str] = []
     for module in sorted(SRC.rglob("*.py")):
-        if module.name == "rbxml.py":
-            continue
         tree = ast.parse(module.read_text(encoding="utf-8"))
         for function in ast.walk(tree):
             if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
+            key = f"{module.relative_to(SRC).as_posix()}::{function.name}"
+            calls = [node for node in ast.walk(function) if isinstance(node, ast.Call)]
+            builders += [
+                key
+                for node in calls
+                if isinstance(node.func, ast.Attribute) and node.func.attr == "intake_tree"
+            ]
             emits = [
                 node.lineno
-                for node in ast.walk(function)
-                if isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
+                for node in calls
+                if isinstance(node.func, ast.Attribute)
                 and node.func.attr == "insert_intake_playlist"
             ]
-            if not emits:
+            if not emits or module.name == "rbxml.py":
                 continue
             asked = [
                 node.lineno
-                for node in ast.walk(function)
-                if isinstance(node, ast.Call)
-                and isinstance(node.func, (ast.Attribute, ast.Name))
+                for node in calls
+                if isinstance(node.func, (ast.Attribute, ast.Name))
                 and getattr(node.func, "attr", getattr(node.func, "id", ""))
                 == "bridge_intake_tree"
             ]
-            key = f"{module.relative_to(SRC).as_posix()}::{function.name}"
             callers[key] = (min(emits), asked)
 
     assert set(callers) == {"intake/ingest.py::place_files", "intake/landing.py::_check_export"}
@@ -998,27 +937,7 @@ def test_every_caller_of_the_intake_emitter_builds_its_tree_through_the_refusal(
             f"{key} reaches the intake emitter without building its tree through "
             f"the function that refuses a native one first"
         )
-
-
-def test_the_intake_tree_is_built_in_one_place_and_that_place_refuses_first():
-    """The write layer names no verb, so the refusal that names the landing
-    lives one layer up, in the one function that builds the tree a splice is
-    handed. A second builder is a second way past it."""
-    builders: list[str] = []
-    for module in sorted(SRC.rglob("*.py")):
-        tree = ast.parse(module.read_text(encoding="utf-8"))
-        for function in ast.walk(tree):
-            if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            for node in ast.walk(function):
-                if (
-                    isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Attribute)
-                    and node.func.attr == "intake_tree"
-                ):
-                    builders.append(f"{module.relative_to(SRC).as_posix()}::{function.name}")
     assert builders == ["intake/ingest.py::bridge_intake_tree"]
-
     (function,) = [
         node
         for node in ast.walk(ast.parse(Path(ingest.__file__).read_text(encoding="utf-8")))

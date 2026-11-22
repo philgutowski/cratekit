@@ -1,68 +1,46 @@
 """Land a folder of acquired files in the library and splice them into one file.
 
-``acquire download`` commits each file flat into download staging, and
-``ingest.place_files`` refuses any path under staging, because a Location
-stamped from staging dies the moment staging is cleaned (the 2026-06-29
-flood). This engine is the step between them: N files in a staging folder
-become N files under ``library.root / music_dir / <batch>`` and one intake
-file naming every one of them. On the database native medium there is no
-intake file, and since U164 the files go to the folder the plan chose under
-the processed tree, :func:`cratekit.intake.shelve.landing_target`.
+``ingest.place_files`` refuses any path under download staging, because a
+Location stamped from staging dies when staging is cleaned. This engine moves
+N staged files to ``library.root / music_dir / <batch>`` (on the native medium,
+the folder :func:`cratekit.intake.shelve.landing_target` chose) and then writes
+one intake file naming them. MOVE FIRST, THEN SPLICE: a splice before the
+rename stamps the staging Location.
 
-THE ORDER IS THE WHOLE CONTRACT. Move first, then splice over the moved
-paths. A splice before the rename stamps the staging Location.
+:func:`plan` lists and fingerprints the folder; :func:`apply` lists it again,
+refuses a stale fingerprint, runs every check that can refuse the whole batch,
+and only then moves. A move is ``os.replace`` on one filesystem: another device
+is refused, since a copy is a second file a later clean deletes. An occupied
+target is refused alone and never overwritten. A failure after the first move
+leaves the moved files in the library, named by the refusal, and no failure
+leaves an intake file behind.
 
-Two steps, so a person can see what will move before anything does:
+The caller holds :func:`batch_lock` across :func:`apply` (R-432), because a
+check followed by ``os.replace`` holds only while nothing else writes the batch
+folder.
 
-* :func:`plan` lists the folder and fingerprints what it found.
-* :func:`apply` lists it again, refuses a stale fingerprint, runs every check
-  that can refuse the whole batch, and only then moves.
+A manifest's label rows are tied to landed files by :func:`match.resolve_one`
+over the batch folder only, and filed under ``<Label> / <Label> <year>`` in the
+same intake file, the year from the manifest since a file's year tag was never
+verified. Everything the tree writer can refuse is asked of a copy before the
+first move; a disk refusal after it is a warning over an intake file that stays.
 
-A move is ``os.replace`` on one filesystem and nothing else. A staging folder
-on another device is refused by name rather than copied, since a copy is a
-second file whose first one a later clean deletes. A file whose target already
-exists is refused alone and never overwritten. A failure after the first move
-leaves the moved files where they are, because they are in the library now and
-owned, and the refusal names them. No failure leaves an intake file behind.
-
-ONE LANDING PER BATCH NAME AT A TIME, AND THE CALLER HOLDS THE LOCK (R-432).
-"Refused alone and never overwritten" is a check followed by a rename, and
-``os.replace`` takes an occupied name without a word, so the promise holds only
-while nothing else writes into the batch folder. :func:`batch_lock` is that
-exclusion. It is the caller's to hold across :func:`apply`, because the verb
-owns the run and what a refused run is told, and :func:`apply` does not take it.
-
-A MANIFEST FILES LABEL TRACKS, IN THE SAME FILE. ``acquire download`` stamps no
-provider id on a file, so a landed file is tied to its manifest row by the
-product's own match rule, :func:`match.resolve_one`, over an index of the batch
-folder ONLY. Whether a provider's files carry a usable year tag was never
-verified, which is why the year comes from the manifest and never from the
-file. Every label row that resolves to a file this call landed is written under
-the catalog tree, ``<Label> / <Label> <year>``, into the intake file the splice
-just wrote. A row that resolves to nothing is reported by name, and its file,
-if it has one, is still in the intake playlist. Everything the tree writer can
-refuse is asked of a copy BEFORE the first move, for the reason the export is.
-A label the disk then refuses is a warning over an intake file that stays,
-because by then every landed file has a routing intent that names it.
-
-TWO MEDIA SINCE R-746, CHOSEN BY THE INTAKE TREE'S MODE. On a library whose
-intake tree is on the xml bridge, :func:`apply` moves the files and splices
-them into an export, as above. On a library whose intake tree has cut over,
-:func:`apply_native` moves the same files the same way and then adds them to
-the collection through the guarded database writer, :mod:`cratekit.intake.native`,
-with no intake file and no import to wait on. The verb chooses.
+On a native intake tree (R-746) :func:`apply_native` moves the same way and
+adds the files through :mod:`cratekit.intake.native`. The verb chooses.
 
 Layer: modules.
 """
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
 import unicodedata
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping, Sequence, TypeVar
 
@@ -70,6 +48,7 @@ from cratekit.acquire import listdoc, match, match_cli
 from cratekit.core import (
     active_taxonomy,
     analysis_store,
+    cause,
     config,
     jobs,
     locations,
@@ -77,7 +56,7 @@ from cratekit.core import (
     taxonomy,
     tree_registry,
 )
-from cratekit.core.cause import CratekitError, refuse
+from cratekit.core.cause import CratekitError
 from cratekit.core.naming import AUDIO_EXTS, NameTemplate
 from cratekit.core.preflight import device_of as _device_of
 from cratekit.intake import collection_xml, ingest, native
@@ -87,23 +66,23 @@ from cratekit.write import rbxml, trees
 if TYPE_CHECKING:
     from cratekit.intake.account_playlists import Claimed, Left
 
-#: The per item download directory ``acquire download`` keeps under staging.
-#: Whatever is in it belongs to an attempt that did not finish. Named here
-#: rather than imported, because the acquisition verbs are not this layer's.
+#: The per item download directory ``acquire download`` keeps under staging,
+#: an unfinished attempt. Named here, since the acquisition verbs are not this layer's.
 ACQUIRE_STAGING_DIRNAME = ".cratekit-acquire-staging"
 
-#: The manifest ``source`` whose rows are filed under the catalog tree. Spelled
-#: by ``label approved`` when it writes the manifest, and read here.
+#: The manifest ``source`` whose rows are filed under the catalog tree.
 LABEL_SOURCE = "label"
 
-#: Why a label row was filed under nothing. Warning codes, not refusal reasons:
-#: the landing succeeded and these name what it could not tie together.
+#: Why a label row was filed under nothing. Warning codes, not refusal reasons.
 NO_LABEL = "label-row-incomplete"
 NO_FILE = "label-row-unmatched"
 NOT_EXACT = "label-row-needs-review"
 NOT_WRITTEN = "label-tree-unwritten"
 
 _ORIGIN = ("intake.landing",)
+
+#: Every refusal here carries this engine's origin.
+refuse = partial(cause.refuse, origin=_ORIGIN)
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,12 +124,7 @@ class Labelled:
 
 @dataclass(frozen=True, slots=True)
 class Checked:
-    """What :func:`preflight` read, handed on so the write is asked of the same read.
-
-    The registry, and the library's active taxonomy (R-685): the intake tree,
-    the catalog tree and every file's placement were checked against these two,
-    and a second read after the moves could answer differently.
-    """
+    """The registry and active taxonomy :func:`preflight` read, handed to the write (R-685)."""
 
     registry: tree_registry.Registry
     declared: taxonomy.Taxonomy
@@ -181,20 +155,15 @@ class Landed:
     unlabelled: tuple[Unlabelled, ...] = ()
     #: The account playlists written into the intake file, each with its count.
     split: tuple[tuple[Claimed, int], ...] = ()
-    #: Each account playlist track the intake file does not hold, by playlist
-    #: name (U128): the plan's left rows, an owned track the export holds no
-    #: entry for, and a planned file that did not land.
+    #: Each account playlist track the intake file does not hold, by playlist name.
     left: tuple[tuple[str, Left], ...] = ()
 
 
 def export_rows(content: bytes) -> list[trees.ContentRow]:
     """The export's collection entries as the row matcher reads them (U128).
 
-    An export lists no removed track, so none is a tombstone. An entry with no
-    Location, a streaming pseudo track, resolves under no root and the index
-    drops it; an entry whose Location names another machine has no path here
-    at all, so it is dropped before the index, which would refuse it, since a
-    track on another host is no file of this library.
+    An entry whose Location names another machine is dropped before the index,
+    which would refuse it, since it is no file of this library.
     """
     found: list[trees.ContentRow] = []
     for track in rbxml.collection_tracks(content):
@@ -212,11 +181,8 @@ def owned_in_export(
 ) -> tuple[tuple[Claimed, ...], tuple[tuple[str, Left], ...]]:
     """Each account playlist with its owned tracks found in the export by path (U128).
 
-    THE EXPORT THE BATCH IS SPLICED INTO is the collection as rekordbox last
-    exported it, so an owned track's TrackID there is the row the import joins
-    to the playlist. Asked before the gate, so the screen counts only what the
-    intake file will hold. An export that cannot be read finds nothing here,
-    and the preflight refuses it by its own cause.
+    The export's TrackID is the row the import joins to the playlist. An export
+    that cannot be read finds nothing here, and the preflight refuses it.
     """
     from cratekit.intake import account_playlists
 
@@ -232,9 +198,8 @@ def owned_in_export(
 def _assert_owned_unchanged(cfg: config.Config, split: Sequence[Claimed], export: Path) -> None:
     """Refuse when the export's entries for the owned tracks moved since the plan.
 
-    The TrackIDs were read before the gate. An export rewritten since could
-    give another track the same number, and the playlist would then name the
-    wrong track, so they are read again before the first move.
+    An export rewritten since the gate could give another track the same
+    TrackID, and the playlist would name the wrong track.
     """
     if not any(one.owned for one in split):
         return
@@ -249,7 +214,6 @@ def _assert_owned_unchanged(cfg: config.Config, split: Sequence[Claimed], export
             f"{export} no longer lists the owned tracks of the account playlists as it "
             f"did when this landing was planned, so nothing was moved; run the landing "
             f"again against the export as it is",
-            origin=_ORIGIN,
             detail={"export": str(export)},
         )
 
@@ -257,11 +221,7 @@ def _assert_owned_unchanged(cfg: config.Config, split: Sequence[Claimed], export
 def _inbox_playlists(
     split: Sequence[Claimed], *, target: Path, pass_name: str | None
 ) -> list[ingest.InboxPlaylist]:
-    """Each account playlist as the intake file writes it, in the account playlist's order.
-
-    A new member by the path its file lands at, an owned one by the TrackID
-    :func:`owned_in_export` found for it before the gate.
-    """
+    """Each account playlist as the intake file writes it, new members by landed path."""
     return [
         ingest.InboxPlaylist(
             name=one.name,
@@ -290,20 +250,12 @@ def _list(folder: Path) -> tuple[Path, ...]:
 
 
 def listing(folder: Path) -> tuple[Path, ...]:
-    """What :func:`plan` would take from ``folder``, without refusing on none.
-
-    For the verb, which answers an empty staging folder with a plan of nothing
-    rather than a refusal. ``folder`` must be a directory.
-    """
+    """What :func:`plan` would take from the directory ``folder``, without refusing on none."""
     return _list(folder)
 
 
 def _digest(items: tuple[Path, ...]) -> str:
-    """Name, size and modification time of every item, in listing order.
-
-    Not the names alone: a file replaced under the same name between plan and
-    apply is a different file, and a digest of names would call it the same.
-    """
+    """Name, size and mtime of every item, so a file replaced under its name differs."""
     hasher = hashlib.sha256()
     for item in items:
         stat = item.stat()
@@ -312,12 +264,7 @@ def _digest(items: tuple[Path, ...]) -> str:
 
 
 def plain_name(text: str) -> bool:
-    """Whether ``text`` is one plain name a folder or a file can carry here.
-
-    ONE RULE FOR THE BATCH AND FOR THE PASS (U110). A batch name becomes a
-    folder under the music folder and a pass becomes a file name beside the
-    library, and a slash in either would put it somewhere else.
-    """
+    """Whether ``text`` is one plain folder or file name: the batch and the pass rule (U110)."""
     return bool(
         text
         and text == text.strip()
@@ -332,7 +279,6 @@ def _check_batch(batch: str) -> None:
             "intake-list-unusable",
             f"{batch!r} is not a batch name this engine can land under, because "
             f"it must be one plain folder name under the music folder",
-            origin=_ORIGIN,
             detail={"batch": batch},
         )
 
@@ -342,26 +288,17 @@ LOCK_KEY = "landing_locks"
 
 
 def lock_key(batch: str) -> str:
-    """The name a batch's lock file goes by, one per NAME and not per spelling.
+    """A batch's lock file name, one per NAME and not per spelling.
 
-    ``Deep House`` and ``deep house`` are one folder on the case insensitive
-    volumes a library commonly sits on, and so are the composed and decomposed
-    spellings of an accented name. A lock keyed on the text as typed would hand
-    each spelling its own lock over the same folder. On a volume that does tell
-    them apart this refuses two landings that could have run together, which
-    costs a retry and no file.
-
-    A digest and not the name, because a batch name may hold anything a folder
-    name can and may be as long as one, and the lock file's name gains a suffix.
+    Case and Unicode composition fold, since case insensitive volumes hold one
+    folder for both spellings; a digest, since a batch name may be long or odd.
     """
     folded = unicodedata.normalize("NFC", batch.casefold())
     return hashlib.sha256(folded.encode("utf-8")).hexdigest()
 
 
 def _holder(path: Path) -> str:
-    """Who holds a lock, from what the holder wrote in it. Never the liveness
-    test, which is the kernel's, and a holder caught between taking the lock
-    and writing its name is simply not known."""
+    """Who holds a lock, from what the holder wrote in it, never a liveness test."""
     try:
         holder = json.loads(path.read_text(encoding="utf-8"))
         return f"pid {holder['pid']}, since {holder['acquired']}"
@@ -374,9 +311,8 @@ def _held(key: str, refusal: Callable[[str, Path], CratekitError]) -> Iterator[P
     """Hold one landing lock, or raise ``refusal(who, path)`` without waiting."""
     root = config.state_path(LOCK_KEY)
     lock = jobs.driver_lock(key, root=root)
-    # Entered by hand so only the TAKING is translated. A ``with`` around the
-    # yield would also catch a held job lock raised by whatever the caller runs
-    # under this one, and report it as a second landing.
+    # Entered by hand so only the TAKING is translated: a held job lock raised
+    # by the caller's body is not a second landing.
     try:
         path = lock.__enter__()
     except jobs.DriverHeld:
@@ -390,32 +326,14 @@ def _held(key: str, refusal: Callable[[str, Path], CratekitError]) -> Iterator[P
 
 @contextmanager
 def batch_lock(batch: str) -> Iterator[Path]:
-    """Hold the one landing per batch name lock, or refuse without waiting.
+    """Hold the one landing per batch name lock, or refuse without waiting (R-432).
 
-    The window this closes is R-432: :func:`apply` asks whether a target is
-    free and then renames over it, and it checks the intake file absent long
-    before ``place_files`` overwrites it. Neither can be made atomic on the
-    volume, since exFAT has no hard link and Python exposes no exclusive
-    rename, so two landings into one batch folder are kept apart instead.
-
-    ON THE LOCAL STATE DISK, NOT THE LIBRARY VOLUME, for the reason the state
-    entry gives. The primitive is :func:`jobs.driver_lock` and not a second
-    one: non blocking, released by the kernel when the holder dies, and never
-    unlinked. A held name is ``job-driver-held``, the existing cause for one
-    holder at a time, said in this engine's words and not the job engine's:
-    a landing has no job and no driver, and the key is a digest nobody typed.
-
-    WAITING IS NOT THE WHOLE REMEDY, so the steps say the rest. A first
-    landing that succeeds leaves an intake file under the name, and the second
-    is then refused by :func:`apply` over that file however long it waited.
-
-    WHAT IT DOES NOT HOLD, each recorded against R-432's closure. The key is
-    the NAME and not the folder, so one name in two libraries on one machine
-    waits on itself, which refuses a landing that was safe and never admits one
-    that was not. Two landings of ONE staging folder under two names are not
-    kept apart. A platform with no ``fcntl`` gets no lock at all, because the
-    primitive proceeds unlocked there. And one small file per batch name stays
-    behind for good, since unlinking a lock file races its live holder.
+    :func:`apply` checks a target free and then renames over it, which cannot be
+    atomic on exFAT, so two landings into one batch folder are kept apart. The
+    lock is :func:`jobs.driver_lock` on the local state disk: non blocking,
+    released when the holder dies, never unlinked. Keyed by name, not folder,
+    so one name in two libraries waits on itself; a platform with no ``fcntl``
+    gets no lock.
     """
 
     def refusal(who: str, held: Path) -> CratekitError:
@@ -443,12 +361,8 @@ def batch_lock(batch: str) -> Iterator[Path]:
 def intake_lock(stem: str) -> Iterator[Path]:
     """Hold the one landing per intake file lock, or refuse without waiting.
 
-    R-432's other half, apart since U110. The intake file is named for the pass
-    and the batch for the date, so two landings under two batch names can still
-    write one intake file: the file is checked absent at the preflight and
-    written after the moves, and a second writer in between replaces the first's
-    importable file, or deletes it when its own write fails. The key cannot be a
-    batch name's, because a batch name never holds a NUL.
+    The intake file is named for the pass, so two batch names can still write
+    one intake file. The key holds a NUL, which no batch name can.
     """
 
     def refusal(who: str, held: Path) -> CratekitError:
@@ -463,7 +377,6 @@ def intake_lock(stem: str) -> Iterator[Path]:
                 "this folder under another --pass",
             ),
             retryable=True,
-            origin=_ORIGIN,
             detail={"intake": stem, "lock": str(held), "holder": who},
         )
 
@@ -472,18 +385,12 @@ def intake_lock(stem: str) -> Iterator[Path]:
 
 
 def plan(folder: Path, cfg: config.Config, batch: str) -> Plan:
-    """List ``folder``, one level deep, and fingerprint what would move.
-
-    ``cfg`` is the verb's call shape. The listing itself reads no config, and
-    every check against the library waits for :func:`apply`, which is where
-    the library has to be there.
-    """
+    """List ``folder``, one level deep, and fingerprint it; library checks wait for apply."""
     _check_batch(batch)
     if not folder.is_dir():
         raise refuse(
             "intake-list-unusable",
             f"{folder} is not a folder, so there is nothing to land",
-            origin=_ORIGIN,
             detail={"folder": str(folder)},
         )
     items = _list(folder)
@@ -492,7 +399,6 @@ def plan(folder: Path, cfg: config.Config, batch: str) -> Plan:
             "intake-list-unusable",
             f"{folder} holds no audio file to land; dotfiles, subfolders and "
             f"unfinished downloads are skipped",
-            origin=_ORIGIN,
             detail={"folder": str(folder)},
         )
     return Plan(folder=folder, batch=batch, items=items, digest=_digest(items))
@@ -506,13 +412,11 @@ def target_dir(cfg: config.Config, batch: str) -> Path:
 def _check_library(cfg: config.Config, folder: Path, target: Path) -> None:
     root = Path(cfg.library.root)
     if not root.is_dir():
-        # Before the device probe, because the nearest existing ancestor of an
-        # unmounted volume is the boot disk, and a batch landed there is a
-        # library nobody imports.
+        # Before the device probe: an unmounted volume's nearest ancestor is
+        # the boot disk.
         raise refuse(
             "library-root-unreachable",
             f"the library root {root} is not there, so nothing was moved",
-            origin=_ORIGIN,
             detail={"root": str(root)},
         )
     staging = Path(cfg.paths.download_staging).resolve()
@@ -520,14 +424,12 @@ def _check_library(cfg: config.Config, folder: Path, target: Path) -> None:
     in_staging = source == staging or staging in source.parents
     owned = root.resolve()
     if not in_staging and (source == owned or owned in source.parents):
-        # A folder the library already owns is referenced by the collection,
-        # and moving it strands every one of those rows. Staging configured
-        # inside the library root is still staging, so it is let through.
+        # Moving a folder the library owns strands its collection rows.
+        # Staging configured inside the root is still staging.
         raise refuse(
             "intake-list-unusable",
             f"{folder} is inside the library at {root} and outside download "
             f"staging, so its files are already owned and nothing was moved",
-            origin=_ORIGIN,
             detail={"folder": str(folder), "root": str(root)},
         )
     resolved = target.resolve()
@@ -536,7 +438,6 @@ def _check_library(cfg: config.Config, folder: Path, target: Path) -> None:
             "intake-staging-refused",
             f"{target} is under download staging at {staging}, so landing there "
             f"would move nothing out of it",
-            origin=_ORIGIN,
             detail={"target": str(target), "staging": str(staging)},
         )
     here = _device_of(folder)
@@ -547,36 +448,26 @@ def _check_library(cfg: config.Config, folder: Path, target: Path) -> None:
             f"{folder} is on a different device from the library at {target}, so "
             f"a move would be a copy and nothing was moved; put download staging "
             f"on the library's volume",
-            origin=_ORIGIN,
             detail={"folder": str(folder), "target": str(target)},
         )
 
 
 def _check_export(
-    export: Path,
-    playlist: str,
-    checked: Checked,
-    label_rows: tuple[listdoc.ManifestRow, ...] = (),
+    export: Path, playlist: str, checked: Checked, label_rows: tuple[listdoc.ManifestRow, ...] = ()
 ) -> None:
-    """Every refusal ``place_files`` can make about the export, made on a copy.
+    """Every refusal ``place_files`` and the tree writer can make, made on a copy.
 
-    Here, before any move, because the same refusal after the moves leaves a
-    batch in the library with no intake file. The tree writer's refusals are
-    asked of the same copy, after the intake playlist is in it, which is the
-    document the writer will actually be handed.
+    Before any move, since the same refusal after the moves leaves a batch in
+    the library with no intake file.
     """
-    # BEFORE THE EXPORT IS LOOKED FOR (R-770). A caller that arrives here on a
-    # native intake tree did not read the switch, or read it before a cutover
-    # was recorded, and the splice's own refusal names the landing that takes
-    # that medium, where the emitter guard below would ask for a defect report
-    # over a cutover the person chose.
+    # BEFORE THE EXPORT IS LOOKED FOR (R-770), so a native intake tree is
+    # refused naming the landing that takes it, not as a defect.
     tree = ingest.bridge_intake_tree(checked.declared, checked.registry)
     if not export.is_file():
         raise refuse(
             "library-export-unusable",
             f"no Fresh Export at {export}, so nothing was moved",
             steps=("export the collection again from rekordbox and pass that file",),
-            origin=_ORIGIN,
         )
     trial = bytearray(export.read_bytes())
     collection_xml.splice_tracks(trial, [])
@@ -585,19 +476,14 @@ def _check_export(
     if error:
         raise refuse(
             "library-export-unusable",
-            f"the intake playlist could not be written ({error}), so nothing "
-            f"was moved",
+            f"the intake playlist could not be written ({error}), so nothing was moved",
             steps=(
                 "export the collection again from rekordbox so the intake "
                 "folder is present, then retry",
             ),
-            origin=_ORIGIN,
         )
-    # EVERY label and year the manifest names, not only the ones that will
-    # land, because which rows land is known only once the batch folder can be
-    # indexed, and that is after the moves. So an export holding two folders of
-    # a label this batch does not carry still refuses here. Nothing has moved
-    # and what it says is true of the export. R-455.
+    # EVERY label and year the manifest names, since which rows land is known
+    # only after the moves (R-455).
     catalog: dict[str, set[int]] = {}
     for row in label_rows:
         name, year = _label_of(row), row.provenance.year
@@ -619,15 +505,11 @@ def _check_export(
                 said,
                 remedy=exc.cause.remediation.remedy,
                 steps=exc.cause.remediation.steps,
-                origin=_ORIGIN,
                 detail=detail,
                 inner=exc.cause,
             ) from exc
-        # The writer has one reason for every layout it will not write into,
-        # and it is the one for a defect, because the writer cannot know whose
-        # document it was handed. Here it is known: a Fresh Export the person
-        # took, holding a label folder twice or a node this product will not
-        # write inside, which they mend in rekordbox and export again.
+        # The writer calls every layout it will not write into a defect; here
+        # it is a Fresh Export the person mends in rekordbox.
         raise refuse(
             "library-export-unusable",
             said,
@@ -636,7 +518,6 @@ def _check_export(
                 "the folder or playlist the message names",
                 "export the collection again and pass that file",
             ),
-            origin=_ORIGIN,
             detail=detail,
             inner=exc.cause,
         ) from exc
@@ -651,34 +532,21 @@ def preflight(
     label_rows: tuple[listdoc.ManifestRow, ...] = (),
     names: Sequence[str] = (),
 ) -> Checked:
-    """Every check :func:`apply` makes before its first move, in its order.
+    """Every check :func:`apply` makes before its first move, in its order (R-677).
 
-    ``names`` are the account playlists the landing writes (U113), each refused
-    when the export's intake tree holds it.
-
-    ONE PLACE HOLDS THE ORDER, because a caller asks these before its gate
-    (R-677) and :func:`apply` asks them again before the moves, and two copies
-    of the order would disagree about which refusal a person is told. The
-    library is asked before the export, so an unmounted volume holding both is
-    named as the volume and not as a missing export.
-
-    Reads and refuses, and moves nothing. The registry and the active taxonomy
-    it read are returned for :func:`apply` to hand to the writers, so the check
-    and the write are asked of one read.
+    One place, since a caller asks these before its gate and :func:`apply` again.
+    The library goes before the export, so an unmounted volume is named as such.
+    ``names`` are the account playlists the landing writes (U113). Moves nothing.
     """
     _check_batch(plan.batch)
     _check_library(cfg, plan.folder, target_dir(cfg, plan.batch))
     if destination.exists():
         raise refuse(
             "output-exists",
-            f"{destination} already exists and is never overwritten, so nothing "
-            f"was moved",
-            origin=_ORIGIN,
+            f"{destination} already exists and is never overwritten, so nothing was moved",
             detail={"path": str(destination)},
         )
-    # READ ONCE, BEFORE THE FIRST MOVE, and handed to both the check and the
-    # write. A registry that cannot be read refuses here, with nothing moved,
-    # and cannot refuse after the moves because nothing reads it again.
+    # READ ONCE, BEFORE THE FIRST MOVE, for the check and the write alike.
     checked = Checked(registry=tree_registry.read(cfg), declared=active_taxonomy.load(cfg))
     _check_export(export, plan.batch, checked, label_rows)
     _check_names_free(export, checked, names)
@@ -688,11 +556,8 @@ def preflight(
 def inbox_held(export: Path, checked: Checked) -> tuple[str, ...] | str:
     """Every name an imported playlist could meet, or a sentence naming why it could not be read.
 
-    What a landing's account playlists are named against (U113), read from the
-    Fresh Export because that is rekordbox's tree as the person last exported
-    it: every name under the intake tree, and every name directly at the
-    playlist root, because a playlist imported from an intake file lands at the
-    root before it is dragged into the intake folder.
+    The names under the export's intake tree and at its playlist root, where an
+    imported playlist lands before it is dragged into the intake folder (U113).
     """
     try:
         content = export.read_bytes()
@@ -711,13 +576,7 @@ def inbox_held(export: Path, checked: Checked) -> tuple[str, ...] | str:
 
 
 def _check_names_free(export: Path, checked: Checked, names: Sequence[str]) -> None:
-    """Refuse an account playlist name the export's intake tree holds since it was chosen.
-
-    The names were chosen against this export before the gate. An export
-    rewritten since could hold one, and the intake file would then carry a
-    second playlist of a name INBOX already shows. An export the reader cannot
-    read is left to the splice, which refuses it by its own cause.
-    """
+    """Refuse an account playlist name the export holds since it was chosen (U113)."""
     if not names:
         return
     held = inbox_held(export, checked)
@@ -730,7 +589,6 @@ def _check_names_free(export: Path, checked: Checked, names: Sequence[str]) -> N
             f"{export} holds {', '.join(repr(name) for name in clash)} under the intake "
             f"folder since this landing chose those names, so nothing was moved; run "
             f"the landing again and it takes the next free name",
-            origin=_ORIGIN,
             detail={"export": str(export), "names": clash},
         )
 
@@ -761,12 +619,8 @@ class LabelManifest:
 def read_label_manifest(manifest: Path) -> LabelManifest:
     """The manifest's label rows, or a refusal before anything has moved.
 
-    THE BYTES ARE READ ONCE and both the fingerprint and the rows come from
-    that one read. The verb shows the person a plan made from these rows and
-    hands the fingerprint back to :func:`apply`, which reads the file again
-    and refuses if it is not the same bytes. Fingerprinting one read and
-    parsing another let a manifest rewritten in between file tracks under
-    labels nobody was shown.
+    The fingerprint and the rows come from ONE read, so a manifest rewritten
+    between two reads cannot file tracks under labels nobody was shown.
     """
     steps = (
         "pass the manifest that label approved wrote beside the list, "
@@ -780,7 +634,6 @@ def read_label_manifest(manifest: Path) -> LabelManifest:
             f"the manifest {manifest} could not be read ({exc.strerror or exc}), "
             f"so nothing was moved",
             steps=steps,
-            origin=_ORIGIN,
             detail={"manifest": str(manifest)},
         ) from exc
     try:
@@ -790,7 +643,6 @@ def read_label_manifest(manifest: Path) -> LabelManifest:
             "intake-list-unusable",
             f"{exc}, so nothing was moved",
             steps=steps,
-            origin=_ORIGIN,
             detail={"manifest": str(manifest)},
         ) from exc
     return LabelManifest(
@@ -801,13 +653,7 @@ def read_label_manifest(manifest: Path) -> LabelManifest:
 
 
 def _never_suppressed(_recording: str, _address: object) -> bool:
-    """No tombstone is consulted, and that is the right answer HERE only.
-
-    ``resolve_one`` asks the tombstones last, immediately before calling a row
-    missing. A row this engine cannot tie to a landed file is reported the same
-    way whether somebody once deleted the track or not, so the store would
-    change no answer, and opening it would make a landing depend on it.
-    """
+    """No tombstone is consulted: an unmatched row is reported the same either way."""
     return False
 
 
@@ -820,12 +666,11 @@ def _unlabelled(row: listdoc.ManifestRow, reason: str, because: str) -> Unlabell
     title = str(row.track.get("title", ""))
     version = str(row.track.get("version", ""))
     spelled = f"{artist} - {title}" + (f" ({version})" if version else "")
-    label = _label_of(row)
     return Unlabelled(
         ref=row.ref,
         artist=artist,
         title=title,
-        label=label,
+        label=_label_of(row),
         year=row.provenance.year,
         reason=reason,
         sentence=f"{spelled} was filed under no label playlist by this run, because {because}",
@@ -846,17 +691,9 @@ def _file_labels(
 ) -> tuple[_Filed, list[Unlabelled]]:
     """Each label row tied to the track ids of the files this call landed.
 
-    THE INDEX IS OF THE BATCH FOLDER ONLY. Against the whole library a row
-    would resolve to a copy held for years, which this intake file never gave
-    an id, and a label playlist naming no id is a row that silently vanished.
-    A batch folder landed into twice still holds the first landing's files, so
-    a matched path is looked up among THIS call's placed tracks and a path that
-    is not there is an unmatched row, said by name.
-
-    ``template`` is the library's own, lossy marker included, which is
-    ``match_cli.library_view``'s one builder rule: read with the bare default, a
-    marked lossy file with a missing tag folds to another recording here and to
-    the right one in ``acquire match``.
+    THE INDEX IS OF THE BATCH FOLDER ONLY, and a match is looked up among THIS
+    call's placed tracks, so no row resolves to a copy the library held before.
+    ``template`` is the library's own, lossy marker included, as ``acquire match``.
     """
     ids = {item.path.resolve(): item.track_id for item in placed}
     index = match.index_library(batch_dir, template=template)
@@ -864,18 +701,12 @@ def _file_labels(
 
 
 def match_label_rows(
-    label_rows: Sequence[listdoc.ManifestRow],
-    index: match.LibraryIndex,
-    ids: Mapping[Path, _Key],
+    label_rows: Sequence[listdoc.ManifestRow], index: match.LibraryIndex, ids: Mapping[Path, _Key]
 ) -> tuple[dict[str, dict[int, list[tuple[listdoc.ManifestRow, list[_Key]]]]], list[Unlabelled]]:
     """Each label row tied to the keys of the files it matched, and every row filed nowhere.
 
-    THE ONE RULE BOTH MEDIA FILE A MANIFEST BY (U156). ``index`` holds only the
-    files this landing moves and ``ids`` maps each one, resolved, to the key the
-    caller files it by: the bridge's track id in its intake file, the native
-    landing's target. A row matched to a file ``ids`` does not name is a row no
-    file of this landing answers, said by name, never filed against a copy the
-    library held already.
+    The one rule both media file a manifest by (U156). ``ids`` maps each moved
+    file, resolved, to the caller's key; a match ``ids`` does not name is unfiled.
     """
     filed: dict[str, dict[int, list[tuple[listdoc.ManifestRow, list[_Key]]]]] = {}
     unfiled: list[Unlabelled] = []
@@ -905,14 +736,10 @@ def match_label_rows(
             )
             continue
         found = match.resolve_one(
-            wanted,
-            index,
-            suppresses=_never_suppressed,
-            suppression_id=_no_suppression_id,
+            wanted, index, suppresses=_never_suppressed, suppression_id=_no_suppression_id
         )
         if found.state is match.MatchState.NEEDS_REVIEW:
-            # A different version, or a title that merely resembles. Filing it
-            # would be this engine answering a question only a person may.
+            # Filing a near match would answer a question only a person may.
             unfiled.append(
                 _unlabelled(
                     row,
@@ -928,10 +755,8 @@ def match_label_rows(
             if Path(path).resolve() in ids
         ]
         if not landed:
-            # TRUE OF BOTH ROWS IT IS SAID ABOUT. A row whose download never
-            # arrived and a row an earlier landing already filed look the same
-            # from inside one batch folder, so the sentence claims neither that
-            # a file landed nor that the track is filed nowhere. R-457.
+            # TRUE OF BOTH ROWS IT IS SAID ABOUT: a download that never arrived
+            # and a row an earlier landing filed look the same here (R-457).
             unfiled.append(
                 _unlabelled(
                     row,
@@ -953,19 +778,11 @@ def _label(
     placed: list[PlacedTrack],
     batch_dir: Path,
 ) -> tuple[list[Labelled], list[Unlabelled]]:
-    """Write every label the batch carries into the intake file, and say which.
+    """Write every label the batch carries into the intake file, and say which (R-456).
 
-    A TREE THAT CANNOT BE WRITTEN IS REPORTED, NOT RAISED, and the intake file
-    stays. By now the files are in the library, the intake file names every one
-    of them and ``place_files`` has recorded a routing intent for each. Taking
-    the file back would leave those intents pointing at rows nothing will ever
-    import, to protect a tree the person can live without for one import. The
-    writer makes one atomic replace for every label together, so what is there
-    after a failure is the file as the splice left it, whole and importable.
-    What the writer itself refuses was asked of a copy before the first move,
-    and the registry was read then too, so what arrives here should be a disk
-    that refused. Nothing below reads anything it could have read earlier.
-    R-456.
+    A TREE THAT CANNOT BE WRITTEN IS REPORTED, NOT RAISED: the files have moved
+    and ``place_files`` recorded a routing intent for each, so the intake file
+    stays, whole, since the writer replaces it atomically.
     """
     if not label_rows:
         return [], []
@@ -986,11 +803,8 @@ def _label(
         for label, by_year in filed.items()
     }
     try:
-        # One album per year, because the manifest says which release a row
-        # came from and the playlist does not: the writer dedupes across the
-        # whole year either way. The intake file is read and replaced. It is
-        # this call's own product and nobody has imported it, so the writer's
-        # rule against writing over a Fresh Export is not in play.
+        # One album per year; the writer dedupes across the year. The intake
+        # file is this call's own product, so no Fresh Export is written over.
         trees.insert_record_labels_trees(
             destination,
             {
@@ -1057,10 +871,8 @@ def _occupied(item: Path, final: Path) -> Refused | None:
 
 def _remove_if_empty(folder: Path) -> None:
     """Take back a batch folder this call made and put nothing in."""
-    try:
+    with contextlib.suppress(OSError):
         folder.rmdir()
-    except OSError:
-        pass
 
 
 def _moved_detail(moved: list[Moved], refused: list[Refused]) -> dict:
@@ -1074,16 +886,18 @@ def _moved_sentence(moved: list[Moved]) -> str:
     if not moved:
         return "nothing was moved"
     names = ", ".join(item.target.name for item in moved)
-    return (
-        f"{len(moved)} file(s) were already moved into the library and stay "
-        f"there: {names}"
+    return f"{len(moved)} file(s) were already moved into the library and stay there: {names}"
+
+
+def _none_landed(
+    plan: Plan, nothing_after: str, moved: list[Moved], refused: list[Refused]
+) -> CratekitError:
+    return refuse(
+        "intake-list-unusable",
+        f"no file in {plan.folder} could land, so nothing was moved and "
+        f"{nothing_after}: " + "; ".join(entry.sentence for entry in refused),
+        detail=_moved_detail(moved, refused),
     )
-
-
-def _reason_for(exc: OSError) -> str:
-    if isinstance(exc, PermissionError):
-        return "path-permission-denied"
-    return "intake-list-unusable"
 
 
 def _assert_unchanged(plan: Plan) -> None:
@@ -1093,7 +907,6 @@ def _assert_unchanged(plan: Plan) -> None:
         raise refuse(
             "decision-stale",
             f"{plan.folder} changed after it was planned, so nothing was moved",
-            origin=_ORIGIN,
             detail={"folder": str(plan.folder)},
         )
 
@@ -1108,14 +921,9 @@ def _screen(
 ) -> tuple[list[Path], list[Refused]]:
     """Which planned files may move, and which are refused alone, on both media.
 
-    ONE PASS FOR THE XML LANDING AND THE NATIVE ONE, so a file refused on one
-    medium is refused on the other for the same reasons: its tags resolve to no
-    declared sub, so it is left in staging to be tagged and landed again, or
-    its target is already occupied. ``also_refused`` is what the medium itself
-    refuses per file, a suffix the database has no file type for, keyed by
-    the staged path. A batch where nothing may move refuses before the batch
-    folder is made, so it leaves nothing in the library, not even an empty
-    folder.
+    A file is refused when the medium refuses it (``also_refused``, by staged
+    path), its tags resolve to no declared sub, or its target is occupied. A
+    batch where nothing may move refuses before the batch folder is made.
     """
     named = dict(also_refused or {})
     refused: list[Refused] = []
@@ -1129,33 +937,18 @@ def _screen(
         else:
             movable.append(item)
     if not movable:
-        raise refuse(
-            "intake-list-unusable",
-            f"no file in {plan.folder} could land, so nothing was moved and "
-            f"{nothing_after}: " + "; ".join(entry.sentence for entry in refused),
-            origin=_ORIGIN,
-            detail=_moved_detail([], refused),
-        )
+        raise _none_landed(plan, nothing_after, [], refused)
     return movable, refused
 
 
 def _move(
-    plan: Plan,
-    target: Path,
-    movable: list[Path],
-    refused: list[Refused],
-    *,
-    nothing_after: str,
+    plan: Plan, target: Path, movable: list[Path], refused: list[Refused], *, nothing_after: str
 ) -> list[Moved]:
     """Rename every movable file into ``target``, or refuse with the moves named.
 
-    THE ONE MOVE LOOP FOR BOTH MEDIA. The xml landing and the native landing
-    move the same files the same way and differ only in what they do next, and
-    ``nothing_after`` is the clause that names that: what a refusal here says
-    was not done. A batch folder this call made and put nothing in is taken
-    back. A file whose target is occupied is refused alone, asked again at the
-    move because a file of that name can arrive between the pass above and the
-    rename, and ``os.replace`` would take its place without a word (R-432).
+    The one move loop for both media; ``nothing_after`` names what a refusal
+    here says was not done. A target is asked again at the move, since a file
+    can arrive there and ``os.replace`` would take its place silently (R-432).
     """
     made = not target.exists()
     target.mkdir(parents=True, exist_ok=True)
@@ -1172,10 +965,11 @@ def _move(
             if made and not moved:
                 _remove_if_empty(target)
             raise refuse(
-                _reason_for(exc),
+                "path-permission-denied"
+                if isinstance(exc, PermissionError)
+                else "intake-list-unusable",
                 f"{item.name} could not be moved to {final} ({exc.strerror or exc}); "
                 f"{nothing_after} and {_moved_sentence(moved)}",
-                origin=_ORIGIN,
                 detail=_moved_detail(moved, refused),
             ) from exc
         moved.append(Moved(source=item, target=final))
@@ -1183,13 +977,7 @@ def _move(
     if not moved:
         if made:
             _remove_if_empty(target)
-        raise refuse(
-            "intake-list-unusable",
-            f"no file in {plan.folder} could land, so nothing was moved and "
-            f"{nothing_after}: " + "; ".join(entry.sentence for entry in refused),
-            origin=_ORIGIN,
-            detail=_moved_detail(moved, refused),
-        )
+        raise _none_landed(plan, nothing_after, moved, refused)
     return moved
 
 
@@ -1206,20 +994,11 @@ def apply(
 ) -> Landed:
     """Move the planned files into the library, then write one intake file.
 
-    ``split`` is the playlists the author made on the account, each with its
-    members and the name it lands as (U113). Each is its own playlist in the
-    intake file, holding the owned tracks the export lists beside the files
-    it claimed, in the account playlist's order (U128), and the batch
-    playlist keeps the rest. A file the move refused is in none of them.
-    ``pass_name`` is recorded beside each, so a rerun of the pass finds it.
-
-    ``manifest`` is the provenance sidecar of the list the batch was acquired
-    from. With one, its label rows are filed under the catalog tree in the same
-    intake file. Without one, nothing is, and nothing about a label is asked.
-    ``manifest_digest`` is the fingerprint :func:`read_label_manifest` gave the
-    caller that showed somebody a plan. The file is read again here, and bytes
-    that are not the ones that were shown refuse as stale with nothing moved,
-    which is what the folder's own digest does for the files.
+    ``split`` is the account playlists (U113), each its own playlist in the
+    intake file with its owned tracks the export lists (U128); the batch
+    playlist keeps the rest, and ``pass_name`` is recorded beside each.
+    ``manifest`` files its label rows under the catalog tree; a
+    ``manifest_digest`` that is not the bytes read here refuses as stale.
     """
     _assert_unchanged(plan)
     label_rows: tuple[listdoc.ManifestRow, ...] = ()
@@ -1229,7 +1008,6 @@ def apply(
             raise refuse(
                 "decision-stale",
                 f"{manifest} changed after it was planned, so nothing was moved",
-                origin=_ORIGIN,
                 detail={"manifest": str(manifest)},
             )
         label_rows = read.rows
@@ -1258,32 +1036,26 @@ def apply(
             destination=destination,
             declared=checked.declared,
             registry=checked.registry,
-            # THE BATCH'S OWN NAME (U110), the one its folder carries, and not
-            # the intake file's stem, which names the pass and ends ``_inboxed``.
+            # The batch's own name (U110), not the pass's intake file stem.
             playlist=plan.batch,
-            # Each file under the name it has in the library, where it now is,
-            # and each owned track by the export's own TrackID.
             split=inbox,
         )
     except Exception as exc:
-        # ``place_files`` writes the intake file before it records the routing
-        # intents, so a refusal from the ledger arrives after the write. The
-        # file was checked absent above, so the one there now is this call's.
+        # The intake file may be written before a ledger refusal; it was
+        # checked absent above, so the one there now is this call's.
         destination.unlink(missing_ok=True)
         inner = exc.cause if isinstance(exc, CratekitError) else None
         raise refuse(
             exc.cause.reason if isinstance(exc, CratekitError) else "internal-error",
             f"the intake file could not be written ({exc}); none was left "
             f"behind and {_moved_sentence(moved)}",
-            origin=_ORIGIN,
             detail=_moved_detail(moved, refused),
             inner=inner,
         ) from exc
 
     labelled, unlabelled = _label(cfg, destination, checked, label_rows, placed, target)
-    # EACH PLAYLIST'S COUNT IS WHAT THE INTAKE FILE HOLDS FOR IT, new and owned
-    # (U128), and a planned file that did not land is a row it does not hold.
-    # A playlist holding nothing is not written, so it is not reported.
+    # Each playlist's count is what the intake file holds for it (U128); a
+    # playlist holding nothing is not written, so not reported.
     from cratekit.intake import account_playlists
 
     ids_by_path = {item.path: item.track_id for item in placed}
@@ -1309,11 +1081,6 @@ def apply(
     )
 
 
-# ---------------------------------------------------------------------------
-# The native medium (R-746): the files move, then the collection gains them
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True, slots=True)
 class LandedNative:
     """A batch that reached the library and the collection, with no intake file."""
@@ -1324,53 +1091,45 @@ class LandedNative:
 
 
 def preflight_native(plan: Plan, *, cfg: config.Config, target: Path | None = None) -> None:
-    """Every check the native apply makes before its first move, in its order.
-
-    The library half of :func:`preflight` and none of the export half: there is
-    no export and no intake file on this medium. Asked before the gate by the
-    verb and again by :func:`apply_native` before the moves, from one place, for
-    the reason :func:`preflight` gives. ``target`` is the folder the plan
-    chose (U164); before there is a plan the music folder's batch path stands
-    for it, on the same volume.
-    """
+    """The library half of :func:`preflight`; ``target`` the folder the plan chose (U164)."""
     _check_batch(plan.batch)
     _check_library(cfg, plan.folder, target if target is not None else target_dir(cfg, plan.batch))
 
 
+def refuse_past(
+    exc: Exception, head: str, tail: str, *, origin: tuple[str, ...], detail: Mapping[str, Any]
+) -> CratekitError:
+    """A failure past the moves or the gate, saying what it leaves.
+
+    A cause this product raised keeps its reason, remedy and detail; anything
+    else is reported as the defect it is, with the same sentence.
+    """
+    inner = exc.cause if isinstance(exc, CratekitError) else None
+    return cause.refuse(
+        inner.reason if inner is not None else "internal-error",
+        f"{head} ({inner.message if inner is not None else exc}); {tail}",
+        remedy=inner.remediation.remedy if inner is not None else None,
+        steps=inner.remediation.steps if inner is not None else (),
+        origin=origin,
+        detail={**detail, **(dict(inner.detail) if inner is not None else {})},
+        inner=inner,
+    )
+
+
 def apply_native(
-    plan: Plan,
-    *,
-    cfg: config.Config,
-    db: Any,
-    rows: native.NativePlan,
-    declared: taxonomy.Taxonomy,
+    plan: Plan, *, cfg: config.Config, db: Any, rows: native.NativePlan, declared: taxonomy.Taxonomy
 ) -> LandedNative:
     """Move the planned files into the library, then add them to the collection.
 
-    THE ORDER IS THE SAME CONTRACT AS THE XML LANDING: move first, then write
-    the rows over the moved paths, because a row stamped from staging dies the
-    moment staging is cleaned. ``rows`` is the plan the person approved, made
-    over the targets these moves produce, and the engine refuses a target it
-    was not planned for rather than inventing a row.
-
-    A FAILURE AFTER THE MOVES LEAVES THE FILES WHERE THEY ARE, in the library
-    and owned, and the refusal names them and says no row was added. The
-    database itself is all or nothing: every row and membership is pending on
-    one handle until one guarded commit, so the second of three files failing
-    leaves the collection exactly as it was. Nothing on this medium leaves an
-    intake file behind, because nothing writes one.
-
-    A FILE THE MOVE REFUSED IS NOT ADDED. A file whose tags resolve to no
-    declared sub, a target that was occupied at the move, and a suffix the
-    database has no file type for are each refused alone, as on the bridge,
-    and their planned rows are dropped before the engine runs, so the
-    collection gains rows only for files this call put where the rows say they
-    are. ``declared`` is the library's active taxonomy, read once by the verb
-    with the registry, so the placement check and the medium agree (R-685).
+    Move first, then write rows over the moved paths, as on the bridge. ``rows``
+    is the approved plan and a target it does not name refuses. The database is
+    all or nothing on one handle, so a failure after the moves leaves the files
+    in the library and no row. A file the move refuses (no declared sub, an
+    occupied target, an unsupported suffix) is refused alone and its row dropped.
+    ``declared`` is the taxonomy the verb read with the registry (R-685).
     """
     _assert_unchanged(plan)
-    # INTO THE FOLDER THE PLAN CHOSE (U164), the filed one under the processed
-    # tree, which every planned row's target already names.
+    # INTO THE FOLDER THE PLAN CHOSE (U164), which every planned row names.
     target = rows.folder if rows.folder is not None else target_dir(cfg, plan.batch)
     preflight_native(plan, cfg=cfg, target=target)
     planned = {str(row.target): row for row in rows.rows}
@@ -1380,12 +1139,10 @@ def apply_native(
             "decision-stale",
             f"{len(unplanned)} file(s) in {plan.folder} have no planned row "
             f"({', '.join(unplanned)}), so nothing was moved",
-            origin=_ORIGIN,
             detail={"folder": str(plan.folder), "unplanned": unplanned},
         )
 
-    # BEFORE THE FIRST MOVE, so a name INBOX came to hold since the plan refuses
-    # with the files still in staging and the landing can simply be run again.
+    # BEFORE THE FIRST MOVE, so a name taken since the plan leaves the files staged.
     native.assert_names_still_free(db, rows)
     unsupported = {
         item: Refused(path=item, reason="intake-list-unusable", sentence=row.why)
@@ -1405,21 +1162,12 @@ def apply_native(
             cfg, db, kept, analysis_roots=analysis_store.watch_roots(cfg)
         )
     except Exception as exc:
-        # EVERY FAILURE PAST THE MOVES SAYS WHAT IT LEAVES, a binding error as
-        # much as a refusal: the files are in the library and the database is
-        # as it was, and a person reading the refusal has to be told both. A
-        # cause this product raised keeps its reason and remedy; anything else
-        # is reported as the defect it is, with the same sentence.
-        inner = exc.cause if isinstance(exc, CratekitError) else None
-        raise refuse(
-            inner.reason if inner is not None else "internal-error",
-            f"the collection could not be written ({inner.message if inner else exc}); "
+        raise refuse_past(
+            exc,
+            "the collection could not be written",
             f"no row was added and {_moved_sentence(moved)}",
-            remedy=inner.remediation.remedy if inner is not None else None,
-            steps=inner.remediation.steps if inner is not None else (),
             origin=_ORIGIN,
-            detail={**_moved_detail(moved, refused), **(dict(inner.detail) if inner else {})},
-            inner=inner,
+            detail=_moved_detail(moved, refused),
         ) from exc
     return LandedNative(moved=tuple(moved), refused=tuple(refused), collection=collection)
 
@@ -1427,11 +1175,7 @@ def apply_native(
 def replace_rows(rows: native.NativePlan, kept: tuple[native.RowPlan, ...]) -> native.NativePlan:
     """The plan over only the rows whose files this call moved.
 
-    THE DIGEST IS KEPT, deliberately. It is the digest the person approved, and
-    the rows dropped here are the ones the move refused and reported by name,
-    so the plan the engine writes is the approved plan minus what could not
-    land, not a new plan nobody saw.
+    THE DIGEST IS KEPT: the approved plan minus what could not land and was
+    reported by name, not a new plan nobody saw.
     """
-    from dataclasses import replace as _replace
-
-    return _replace(rows, rows=kept)
+    return replace(rows, rows=kept)

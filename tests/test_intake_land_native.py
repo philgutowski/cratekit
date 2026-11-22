@@ -266,6 +266,30 @@ def _advance_usn(conn: sqlite3.Connection) -> None:
     )
 
 
+def _hold(cfg: config.Config, content_id: str, path: str, link: int | None = None) -> None:
+    """A row rekordbox already holds for ``path``, the update count advanced as rekordbox does,
+    since a row added at a standstill after a landing reads as another database."""
+    conn = sqlite3.connect(cfg.library.db_path)
+    conn.execute(
+        "INSERT INTO djmdContent (ID, Title, FolderPath, ContentLink, rb_local_deleted, "
+        "created_at, updated_at) VALUES (?, 'held', ?, ?, 0, '2026-01-01', '2026-01-01')",
+        (content_id, path, link),
+    )
+    _advance_usn(conn)
+    conn.commit()
+    conn.close()
+
+
+def _answered(verb: list[str]) -> tuple[dict, str]:
+    """The first act and an answer of apply recorded on its run, the continuation left to the test."""
+    code, refused = drive(verb)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    assert decided == int(ExitCode.OK), envelope
+    return refused, run_id
+
+
 def _land_first(cfg: config.Config, silence: Path, name: str = "Zero.flac") -> None:
     """Land one file under BATCH, so its filed folder exists and is recorded (U164).
 
@@ -278,14 +302,14 @@ def _land_first(cfg: config.Config, silence: Path, name: str = "Zero.flac") -> N
     assert code == int(ExitCode.OK), acted
 
 
-def _two_acts(verb: list[str]) -> tuple[int, dict, dict]:
+def _two_acts(verb: list[str], gate: str = GATE) -> tuple[int, dict, dict]:
     """R34's two acts against the explicit gate, then the acting drive."""
     code, refused = drive(verb)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     detail = refused["cause"]["detail"]
-    assert detail["gate"] == GATE and detail["explicit"] is True
+    assert detail["gate"] == gate and detail["explicit"] is True
     run_id = refused["run_id"]
-    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    decided, envelope = drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"])
     assert decided == int(ExitCode.OK), envelope
     code, acted = drive(["--run", run_id, *verb])
     return code, acted, refused
@@ -380,10 +404,12 @@ def test_a_landing_given_a_pass_names_it_on_the_record_sync_mark_reads(
 
 
 def test_a_landing_given_no_pass_names_none(native_library, silence):
+    """And an answer continued over the database it was given over lands (U161)."""
     cfg, _root_id = native_library
     _stage(cfg, silence, "One.flac")
     code, acted, _refused = _two_acts(_land())
     assert code == int(ExitCode.OK), acted
+    assert len(_landed_rows(cfg)) == 1
     (record,) = session.records(cfg)
     assert native.PASS_KEY not in record.detail
 
@@ -444,77 +470,58 @@ def test_a_default_name_taken_after_the_approval_is_refused_and_writes_nothing(
     assert _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name LIKE ?", "2026-10-03%") == []
 
 
-def test_the_rows_carry_the_library_device_and_not_the_bindings_first(native_library, silence):
-    """Sitting 17: the database holds two devices and ``get_device().first()``
-    is order dependent. The row is stamped with the device whose MasterDBID is
-    the property table's DBID, asserted rather than trusted."""
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
-    code, acted, _ = _two_acts(_land())
-    assert code == int(ExitCode.OK), acted
-    ((device_id, master),) = _query(
-        cfg, "SELECT DeviceID, MasterDBID FROM djmdContent WHERE FolderPath LIKE ?", f"%/{FILED_AS}/%"
-    )
-    assert (str(device_id), str(master)) == MY_DEVICE
-
-
-def test_the_rows_carry_every_default_rekordbox_writes_on_a_row_it_makes(native_library, silence):
-    """R-923: a row the binding leaves NULL in these columns will not load to a
-    deck. Read from SQL, every one carries rekordbox's own value, exactly."""
+def test_the_landed_rows_carry_what_rekordbox_loads_and_no_analysis_value(native_library, silence):
+    """Read from SQL on two landed rows, what rekordbox needs to show and load
+    a row: the library's device and not the binding's first (A8), rekordbox's
+    own defaults (R-923), the landed file's inode as the file id (U115) and
+    the library's ContentLink, not the TRACK menu counter (U126). And the
+    standing constraint: no analysis column holds a value, and no cue, mixer
+    or file row names a new row."""
     cfg, _root = native_library
     for name in ("One.flac", "Two.flac"):
         _stage(cfg, silence, name)
     code, acted, _ = _two_acts(_land())
     assert code == int(ExitCode.OK), acted
 
-    columns = list(rb_writer.CONTENT_ROW_DEFAULTS)
+    defaults = list(rb_writer.CONTENT_ROW_DEFAULTS)
     rows = _query(
         cfg,
-        f"SELECT ID, {', '.join(columns)} FROM djmdContent WHERE FolderPath LIKE ?",
+        f"SELECT ID, FolderPath, DeviceID, MasterDBID, {rb_writer.FILE_ID_COLUMN}, "
+        f"{rb_writer.CONTENT_LINK_COLUMN}, {', '.join(defaults)}, {', '.join(native.LEFT_EMPTY)} "
+        "FROM djmdContent WHERE FolderPath LIKE ?",
         f"%/{FILED_AS}/%",
     )
     assert len(rows) == 2
-    # COMPARED AS TEXT. The binding declares ``DJPlayCount`` a string and the
-    # disposable schema is the binding's, where the live table declares an
-    # integer and stores the binding's ``'0'`` as rekordbox's 0 by affinity.
+    # Defaults COMPARED AS TEXT: the binding declares ``DJPlayCount`` a string
+    # where the live table stores an integer by affinity.
     wanted = {column: str(value) for column, value in rb_writer.CONTENT_ROW_DEFAULTS.items()}
-    for content_id, *values in rows:
-        found = {column: str(value) for column, value in zip(columns, values)}
-        assert found == wanted, content_id
-        assert None not in values, content_id
-    assert not set(rb_writer.CONTENT_ROW_DEFAULTS) & rb_writer.CONTENT_ROW_EMPTY_COLUMNS
-
-
-def test_the_rows_carry_the_landed_files_inode_as_their_file_id(native_library, silence):
-    """U115, R-928: a row the binding makes carries a random ``rb_file_id`` and
-    rekordbox will not load it to a deck. rekordbox's own value is the file's
-    inode at import, so every landed row carries ``st_ino`` of its landed
-    file, read from SQL and compared as text, and the envelope says so."""
-    cfg, _root = native_library
-    for name in ("One.flac", "Two.flac"):
-        _stage(cfg, silence, name)
-    code, acted, _ = _two_acts(_land())
-    assert code == int(ExitCode.OK), acted
-
-    rows = _query(
-        cfg,
-        f"SELECT ID, FolderPath, {rb_writer.FILE_ID_COLUMN} FROM djmdContent WHERE FolderPath LIKE ?",
-        f"%/{FILED_AS}/%",
-    )
-    assert len(rows) == 2
     by_id: dict[str, str] = {}
-    for content_id, folder_path, file_id in rows:
+    for content_id, folder_path, device_id, master, file_id, link, *values in rows:
+        assert (str(device_id), str(master)) == MY_DEVICE
         landed = Path(folder_path)
         assert landed.is_file(), folder_path
         assert file_id is not None and str(file_id) == str(landed.stat().st_ino), content_id
-        # Not the binding's random id: that is under 2 to the 28th by construction,
-        # and the inode of a file on this machine is what the row holds instead.
         assert int(file_id) == landed.stat().st_ino
         by_id[str(content_id)] = str(file_id)
+        assert link == LIBRARY_LINK
+        found = values[: len(defaults)]
+        assert {c: str(v) for c, v in zip(defaults, found)} == wanted, content_id
+        assert None not in found, content_id
+        for name, value in zip(native.LEFT_EMPTY, values[len(defaults) :]):
+            assert value in (None, 0, 0.0, "", "0"), f"row {content_id} carries {name}={value!r}"
+        for table in rb_writer.CONTENT_ANALYSIS_TABLES:
+            (count,) = _query(cfg, f"SELECT COUNT(*) FROM {table} WHERE ContentID = ?", content_id)[0]
+            assert count == 0, f"{table} holds a row for the new content row {content_id}"
+    assert not set(rb_writer.CONTENT_ROW_DEFAULTS) & rb_writer.CONTENT_ROW_EMPTY_COLUMNS
+    assert BINDING_LINK != LIBRARY_LINK
+    # The envelope names each value as written, a number and not its text,
+    # and the columns left for rekordbox.
     landed_items = [item for item in acted["data"]["items"] if item["action"] == "landed"]
     assert len(landed_items) == 2
     for item in landed_items:
         assert item["row"][rb_writer.FILE_ID_COLUMN] == by_id[item["content_id"]]
+        assert item["row"][rb_writer.CONTENT_LINK_COLUMN] == LIBRARY_LINK
+        assert item["left_empty"] == sorted(native.LEFT_EMPTY)
 
 
 def test_a_row_whose_file_id_did_not_take_is_refused_after_the_commit_naming_the_session(
@@ -550,14 +557,8 @@ def test_a_row_whose_file_id_did_not_take_is_refused_after_the_commit_naming_the
 def test_assert_rows_identified_is_pure_over_what_was_read_back(tmp_path):
     path = tmp_path / "a.flac"
     path.write_bytes(b"fLaC")
-    right = native.AddedRow(
-        target=path, content_id="1", title="t", folder_path=str(path), empty={},
-        file_id=str(path.stat().st_ino), content_link=LIBRARY_LINK,
-    )
-    wrong = native.AddedRow(
-        target=path, content_id="2", title="t", folder_path=str(path), empty={},
-        file_id="73894078", content_link=LIBRARY_LINK,
-    )
+    right = _added_row(path, "1", str(path.stat().st_ino), LIBRARY_LINK)
+    wrong = _added_row(path, "2", "73894078", LIBRARY_LINK)
     native.assert_rows_identified(_landed(right, content_link=LIBRARY_LINK))
     with pytest.raises(CratekitError) as caught:
         native.assert_rows_identified(_landed(right, wrong, content_link=LIBRARY_LINK))
@@ -568,8 +569,26 @@ def test_assert_rows_identified_is_pure_over_what_was_read_back(tmp_path):
 
 def _landed(*rows: native.AddedRow, content_link: int | None = None) -> native.NativeLanded:
     return native.NativeLanded(
-        tree_id=INTAKE, playlist="p", playlist_id="9", added=tuple(rows), present=(),
-        memberships_added=len(rows), session_id="s-1", content_link=content_link,
+        tree_id=INTAKE,
+        playlist="p",
+        playlist_id="9",
+        added=tuple(rows),
+        present=(),
+        memberships_added=len(rows),
+        session_id="s-1",
+        content_link=content_link,
+    )
+
+
+def _added_row(path: Path, content_id: str, file_id: str, link: int) -> native.AddedRow:
+    return native.AddedRow(
+        target=path,
+        content_id=content_id,
+        title="t",
+        folder_path=str(path),
+        empty={},
+        file_id=file_id,
+        content_link=link,
     )
 
 
@@ -587,32 +606,6 @@ def _set_links(cfg: config.Config, links: dict[str, int | str | None]) -> None:
         conn.commit()
     finally:
         conn.close()
-
-
-def test_the_rows_carry_the_librarys_content_link_and_not_the_bindings(native_library, silence):
-    """R-928, sitting 37: the binding gives a row the TRACK menu item's counter
-    and rekordbox will not load it; given the value rekordbox's own rows
-    carry, it loads. Every landed row carries the library's value, read from
-    SQL, and the answer says so."""
-    cfg, _root = native_library
-    for name in ("One.flac", "Two.flac"):
-        _stage(cfg, silence, name)
-    code, acted, _ = _two_acts(_land())
-    assert code == int(ExitCode.OK), acted
-
-    rows = _query(
-        cfg,
-        f"SELECT ID, {rb_writer.CONTENT_LINK_COLUMN} FROM djmdContent WHERE FolderPath LIKE ?",
-        f"%/{FILED_AS}/%",
-    )
-    assert len(rows) == 2
-    assert {link for _id, link in rows} == {LIBRARY_LINK}
-    assert BINDING_LINK != LIBRARY_LINK
-    landed_items = [item for item in acted["data"]["items"] if item["action"] == "landed"]
-    # A number in the answer as on the screen, never the text of one.
-    assert [item["row"][rb_writer.CONTENT_LINK_COLUMN] for item in landed_items] == [
-        LIBRARY_LINK
-    ] * 2
 
 
 def test_a_library_with_no_majority_content_link_refuses_before_the_gate(native_library, silence):
@@ -635,14 +628,24 @@ def test_a_library_with_no_majority_content_link_refuses_before_the_gate(native_
     assert session.records(cfg) == ()
 
 
-def test_the_content_link_moves_the_digest(native_library, silence):
-    """The value is part of what is approved: the same files planned against a
-    library whose rows carry another value digest differently, so an approval
-    taken at one value is never applied at another."""
+def test_the_content_link_and_its_counts_move_the_digest(native_library, silence):
+    """The value and the count the screen shows are what is approved: one more
+    row carrying the value is another plan, and so is another value."""
     cfg, _root = native_library
     _stage(cfg, silence, "One.flac")
     code, first = drive(_land())
     assert code == int(ExitCode.DECISION_REQUIRED), first
+    conn = sqlite3.connect(cfg.library.db_path)
+    conn.execute(
+        "INSERT INTO djmdContent (ID, ContentLink, rb_local_deleted, created_at, updated_at) "
+        "VALUES ('rb-made', ?, 0, '2026-01-01', '2026-01-01')",
+        (LIBRARY_LINK,),
+    )
+    conn.commit()
+    conn.close()
+    code, counted = drive(_land())
+    assert code == int(ExitCode.DECISION_REQUIRED), counted
+    assert counted["cause"]["detail"]["shown"]["content link"].endswith("3 of the library's 3 live rows")
     _set_links(cfg, {"1": LIBRARY_LINK + 1, "2": LIBRARY_LINK + 1})
     code, second = drive(_land())
     assert code == int(ExitCode.DECISION_REQUIRED), second
@@ -651,7 +654,8 @@ def test_the_content_link_moves_the_digest(native_library, silence):
     (two,) = second["cause"]["detail"]["shown"]["items"]
     assert one["row"][rb_writer.CONTENT_LINK_COLUMN] == LIBRARY_LINK
     assert two["row"][rb_writer.CONTENT_LINK_COLUMN] == LIBRARY_LINK + 1
-    assert first["cause"]["detail"]["shown"]["digest"] != second["cause"]["detail"]["shown"]["digest"]
+    digests = {one["cause"]["detail"]["shown"]["digest"] for one in (first, counted, second)}
+    assert len(digests) == 3
 
 
 def test_an_approval_taken_at_one_content_link_is_not_applied_at_another(native_library, silence):
@@ -660,11 +664,7 @@ def test_an_approval_taken_at_one_content_link_is_not_applied_at_another(native_
     or the new one."""
     cfg, _root = native_library
     _stage(cfg, silence, "One.flac")
-    code, refused = drive(_land())
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    decided, _ = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK)
+    _refused, run_id = _answered(_land())
     _set_links(cfg, {"1": LIBRARY_LINK + 1, "2": LIBRARY_LINK + 1})
 
     code, acted = drive(["--run", run_id, *_land()])
@@ -707,14 +707,8 @@ def test_assert_rows_identified_holds_the_link_to_the_one_planned(tmp_path):
     path = tmp_path / "a.flac"
     path.write_bytes(b"fLaC")
     inode = str(path.stat().st_ino)
-    right = native.AddedRow(
-        target=path, content_id="1", title="t", folder_path=str(path), empty={},
-        file_id=inode, content_link=LIBRARY_LINK,
-    )
-    wrong = native.AddedRow(
-        target=path, content_id="2", title="t", folder_path=str(path), empty={},
-        file_id=inode, content_link=BINDING_LINK,
-    )
+    right = _added_row(path, "1", inode, LIBRARY_LINK)
+    wrong = _added_row(path, "2", inode, BINDING_LINK)
     native.assert_rows_identified(_landed(right, content_link=LIBRARY_LINK))
     with pytest.raises(CratekitError) as caught:
         native.assert_rows_identified(_landed(right, wrong, content_link=LIBRARY_LINK))
@@ -736,18 +730,7 @@ def test_a_landing_that_adds_no_row_needs_no_majority(native_library, silence):
     cfg, _root = native_library
     _land_first(cfg, silence)
     _stage(cfg, silence, "One.flac")
-    held = str(_music(cfg) / "One.flac")
-    conn = sqlite3.connect(cfg.library.db_path)
-    conn.execute(
-        "INSERT INTO djmdContent (ID, Title, FolderPath, ContentLink, rb_local_deleted, "
-        "created_at, updated_at) VALUES ('held-1', 'held', ?, 30, 0, '2026-01-01', '2026-01-01')",
-        (held,),
-    )
-    # rekordbox bumps its update count with every row it adds, and a row
-    # added at a standstill after a landing reads as another database.
-    _advance_usn(conn)
-    conn.commit()
-    conn.close()
+    _hold(cfg, "held-1", str(_music(cfg) / "One.flac"), 30)
     _set_links(cfg, {"2": 31})
 
     code, refused = drive(_land())
@@ -758,27 +741,6 @@ def test_a_landing_that_adds_no_row_needs_no_majority(native_library, silence):
     assert shown["content link"] == "none, since no row is added"
     (item,) = shown["items"]
     assert rb_writer.CONTENT_LINK_COLUMN not in item["row"]
-
-
-def test_the_content_link_counts_move_the_digest(native_library, silence):
-    """The screen shows how many rows carry the value, so the digest covers
-    the count as well: the same value carried by one more row is another plan."""
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
-    code, first = drive(_land())
-    assert code == int(ExitCode.DECISION_REQUIRED), first
-    conn = sqlite3.connect(cfg.library.db_path)
-    conn.execute(
-        "INSERT INTO djmdContent (ID, ContentLink, rb_local_deleted, created_at, updated_at) "
-        "VALUES ('rb-made', ?, 0, '2026-01-01', '2026-01-01')",
-        (LIBRARY_LINK,),
-    )
-    conn.commit()
-    conn.close()
-    code, second = drive(_land())
-    assert code == int(ExitCode.DECISION_REQUIRED), second
-    assert second["cause"]["detail"]["shown"]["content link"].endswith("3 of the library's 3 live rows")
-    assert first["cause"]["detail"]["shown"]["digest"] != second["cause"]["detail"]["shown"]["digest"]
 
 
 class _Handle:
@@ -869,33 +831,6 @@ def test_the_link_is_not_an_analysis_column_and_not_bookkeeping():
     assert rb_writer.CONTENT_LINK_COLUMN not in native.LEFT_EMPTY
 
 
-def test_after_the_write_no_analysis_value_exists_on_the_new_rows_column_by_column(
-    native_library, silence
-):
-    """The standing constraint, asserted from SQL on the rows as rekordbox will
-    find them: the ten columns an analysis pass fills, and no cue, mixer or
-    file row naming the new rows."""
-    cfg, _root = native_library
-    for name in ("One.flac", "Two.flac"):
-        _stage(cfg, silence, name)
-    code, acted, _ = _two_acts(_land())
-    assert code == int(ExitCode.OK), acted
-
-    selected = ", ".join(native.LEFT_EMPTY)
-    rows = _query(cfg, f"SELECT ID, {selected} FROM djmdContent WHERE FolderPath LIKE ?", f"%/{FILED_AS}/%")
-    assert len(rows) == 2
-    for row in rows:
-        content_id, *values = row
-        for name, value in zip(native.LEFT_EMPTY, values):
-            assert value in (None, 0, 0.0, "", "0"), f"row {content_id} carries {name}={value!r}"
-        for table in rb_writer.CONTENT_ANALYSIS_TABLES:
-            (count,) = _query(cfg, f"SELECT COUNT(*) FROM {table} WHERE ContentID = ?", content_id)[0]
-            assert count == 0, f"{table} holds a row for the new content row {content_id}"
-    # And the envelope names the columns left for rekordbox, on every landed item.
-    landed = [item for item in acted["data"]["items"] if item["action"] == "landed"]
-    assert all(item["left_empty"] == sorted(native.LEFT_EMPTY) for item in landed)
-
-
 def test_the_gate_screen_names_every_row_its_columns_the_playlist_and_the_database(
     native_library, silence
 ):
@@ -976,19 +911,8 @@ def test_a_file_already_in_the_collection_is_present_and_not_added_twice(native_
     _land_first(cfg, silence)
     _stage(cfg, silence, "One.flac")
     _stage(cfg, silence, "Two.flac")
-    # A row rekordbox already holds for the path Two.flac will land at.
     held = str(_music(cfg) / "Two.flac")
-    conn = sqlite3.connect(cfg.library.db_path)
-    conn.execute(
-        "INSERT INTO djmdContent (ID, Title, FolderPath, rb_local_deleted, created_at, "
-        "updated_at) VALUES ('held-2', 'held', ?, 0, '2026-01-01', '2026-01-01')",
-        (held,),
-    )
-    # rekordbox bumps its update count with every row it adds, and a row
-    # added at a standstill after a landing reads as another database.
-    _advance_usn(conn)
-    conn.commit()
-    conn.close()
+    _hold(cfg, "held-2", held)
 
     code, refused = drive(_land())
     shown = refused["cause"]["detail"]["shown"]
@@ -1190,12 +1114,26 @@ def test_a_failure_on_the_second_file_leaves_the_database_as_it_was_and_names_th
     assert [record.state for record in records] == [session.SessionState.ABANDONED]
 
 
+@pytest.mark.parametrize(
+    ("sql", "named"),
+    [
+        # A tempo: the guard's read back sees a flushed creation (R-760).
+        ("UPDATE djmdContent SET BPM = 12400 WHERE ID = :id", "BPM"),
+        # The key, held on a content row beyond the playlist tables' columns (R-746).
+        ("UPDATE djmdContent SET KeyID = '283157525' WHERE ID = :id", "KeyID"),
+        # An analysis product row naming the new row, as an analysis pass would write.
+        (
+            "INSERT INTO djmdMixerParam (ID, ContentID, rb_local_deleted, created_at, "
+            "updated_at) VALUES ('mp-1', :id, 0, '2026-01-01', '2026-01-01')",
+            "djmdMixerParam",
+        ),
+    ],
+)
 def test_an_analysis_value_reaching_the_row_is_refused_from_sql_before_the_commit(
-    native_library, silence, monkeypatch
+    native_library, silence, monkeypatch, sql, named
 ):
-    """The guard's read back sees a flushed creation (R-760). The value is put
-    on the row by SQL after the binding flushed it, where the in memory judge
-    cannot see it, and the commit is refused on the row as stored."""
+    """Written by SQL after the binding flushed the row, where the in memory
+    judge cannot see it, so the commit is refused on the row as stored."""
     cfg, _root = native_library
     _stage(cfg, silence, "One.flac")
     from sqlalchemy import text
@@ -1204,11 +1142,7 @@ def test_an_analysis_value_reaching_the_row_is_refused_from_sql_before_the_commi
 
     def restamp_and_taint(content, row, plan):
         real(content, row, plan)
-        # The binding flushed the row, so its id is assigned and an UPDATE by
-        # SQL reaches the stored row without touching the mapped object.
-        content._sa_instance_state.session.execute(
-            text("UPDATE djmdContent SET BPM = 12400 WHERE ID = :id"), {"id": str(content.ID)}
-        )
+        content._sa_instance_state.session.execute(text(sql), {"id": str(content.ID)})
 
     monkeypatch.setattr(native, "_restamp", restamp_and_taint)
 
@@ -1216,72 +1150,9 @@ def test_an_analysis_value_reaching_the_row_is_refused_from_sql_before_the_commi
 
     assert code != int(ExitCode.OK), acted
     assert acted["cause"]["reason"] == "whitelist-violation"
-    assert "BPM" in acted["cause"]["message"]
-    assert _landed_rows(cfg) == [], "a row carrying a tempo was committed"
+    assert named in acted["cause"]["message"]
+    assert _landed_rows(cfg) == [], "a row carrying an analysis value was committed"
     assert _batch_playlist(cfg) == []
-
-
-def test_a_key_reaching_the_row_is_refused_from_sql_before_the_commit(
-    native_library, silence, monkeypatch
-):
-    """The key is one of the five columns a content row is held to beyond the
-    playlist tables' five (R-746): an analysis output here and nowhere else.
-    Tainted by SQL after the flush, as the tempo is above, so the read back is
-    what refuses it, and it refuses because the content policy is the wider
-    list and not the playlist one."""
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
-    from sqlalchemy import text
-
-    real = native._restamp
-
-    def restamp_and_key(content, row, plan):
-        real(content, row, plan)
-        content._sa_instance_state.session.execute(
-            text("UPDATE djmdContent SET KeyID = '283157525' WHERE ID = :id"),
-            {"id": str(content.ID)},
-        )
-
-    monkeypatch.setattr(native, "_restamp", restamp_and_key)
-
-    code, acted, _ = _two_acts(_land())
-
-    assert code != int(ExitCode.OK), acted
-    assert acted["cause"]["reason"] == "whitelist-violation"
-    assert "KeyID" in acted["cause"]["message"]
-    assert _landed_rows(cfg) == []
-
-
-def test_an_analysis_product_row_for_the_new_row_is_refused_from_sql_before_the_commit(
-    native_library, silence, monkeypatch
-):
-    """The other half of the column policy: no cue, mixer or file row may name
-    a row this product creates. Planted by SQL after the flush, the way an
-    analysis pass would write one, and the commit is refused on it."""
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
-    from sqlalchemy import text
-
-    real = native._restamp
-
-    def restamp_and_plant(content, row, plan):
-        real(content, row, plan)
-        content._sa_instance_state.session.execute(
-            text(
-                "INSERT INTO djmdMixerParam (ID, ContentID, rb_local_deleted, created_at, "
-                "updated_at) VALUES ('mp-1', :id, 0, '2026-01-01', '2026-01-01')"
-            ),
-            {"id": str(content.ID)},
-        )
-
-    monkeypatch.setattr(native, "_restamp", restamp_and_plant)
-
-    code, acted, _ = _two_acts(_land())
-
-    assert code != int(ExitCode.OK), acted
-    assert acted["cause"]["reason"] == "whitelist-violation"
-    assert "djmdMixerParam" in acted["cause"]["message"]
-    assert _landed_rows(cfg) == []
     assert _query(cfg, "SELECT COUNT(*) FROM djmdMixerParam")[0] == (0,)
 
 
@@ -1432,6 +1303,9 @@ def _point_at_a_copy(cfg: config.Config) -> Path:
     return copy
 
 
+_REAL_IDENTITY = native.identity
+
+
 def _spy_identity(monkeypatch) -> list[dict]:
     """Every identity the engine digests, in the order it was taken."""
     taken: list[dict] = []
@@ -1489,11 +1363,20 @@ def test_the_same_files_against_a_copy_at_another_path_digest_equal_and_each_scr
 def test_the_engine_identity_names_the_device_and_master_id_and_no_database_path(
     native_library, silence, monkeypatch
 ):
-    """The device and the master id are what identify the library, so they stay
-    in what is digested; the file path is nowhere in it, as a key or a value."""
+    """The device and the master id identify the library, so they are digested;
+    the file path is nowhere in it, as a key or a value. Read off the plan the
+    engine returns, one row's column or the playlist's name moves the digest,
+    and the copy's path leaves it alone."""
+    from dataclasses import replace
+
+    from cratekit.cli.output import digest_of
+
     cfg, _root = native_library
     _stage(cfg, silence, "One.flac")
     taken = _spy_identity(monkeypatch)
+    plans: list[native.NativePlan] = []
+    spying = native.identity
+    monkeypatch.setattr(native, "identity", lambda plan: plans.append(plan) or spying(plan))
     code, refused = drive(_land())
     assert code == int(ExitCode.DECISION_REQUIRED), refused
 
@@ -1505,6 +1388,18 @@ def test_the_engine_identity_names_the_device_and_master_id_and_no_database_path
         database = Path(cfg.library.db_path)
         named = _strings(one)
         assert not [s for s in named if str(database) in s or str(database.parent) == s], named
+
+    real = _REAL_IDENTITY
+    plan = plans[-1]
+    base = digest_of(real(plan))
+    elsewhere = replace(plan, database=Path(cfg.library.root) / "rehearsal" / "master.db")
+    assert digest_of(real(elsewhere)) == base
+    (row,) = plan.rows
+    renamed_row = replace(row, title=f"{row.title} (edit)")
+    assert digest_of(real(replace(plan, rows=(renamed_row,)))) != base
+    assert digest_of(real(replace(plan, playlist=f"{plan.playlist}_other"))) != base
+    assert digest_of(real(replace(plan, device_id=OTHER_DEVICE[0]))) != base
+    assert digest_of(real(replace(plan, master_db_id=OTHER_DEVICE[1]))) != base
 
 
 def test_a_changed_playlist_or_an_added_file_still_moves_the_digest(native_library, silence):
@@ -1526,40 +1421,6 @@ def test_a_changed_playlist_or_an_added_file_still_moves_the_digest(native_libra
     assert len(digests) == 3, digests
 
 
-def test_the_engine_digest_moves_with_one_row_and_one_playlist_and_not_with_the_path(
-    native_library, silence, monkeypatch
-):
-    """The engine's own digest, read off the plan it returns: the copy's path
-    leaves it alone, and one row's column or the playlist's name moves it."""
-    from dataclasses import replace
-
-    from cratekit.cli.output import digest_of
-
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
-    plans: list[native.NativePlan] = []
-    real = native.identity
-
-    def keeping(plan):
-        plans.append(plan)
-        return real(plan)
-
-    monkeypatch.setattr(native, "identity", keeping)
-    code, refused = drive(_land())
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    plan = plans[-1]
-    base = digest_of(real(plan))
-
-    elsewhere = replace(plan, database=Path(cfg.library.root) / "rehearsal" / "master.db")
-    assert digest_of(real(elsewhere)) == base
-    (row,) = plan.rows
-    renamed_row = replace(row, title=f"{row.title} (edit)")
-    assert digest_of(real(replace(plan, rows=(renamed_row,)))) != base
-    assert digest_of(real(replace(plan, playlist=f"{plan.playlist}_other"))) != base
-    assert digest_of(real(replace(plan, device_id=OTHER_DEVICE[0]))) != base
-    assert digest_of(real(replace(plan, master_db_id=OTHER_DEVICE[1]))) != base
-
-
 def test_a_decision_recorded_against_the_path_bearing_digest_is_stale_and_writes_nothing(
     native_library, silence, monkeypatch
 ):
@@ -1572,11 +1433,7 @@ def test_a_decision_recorded_against_the_path_bearing_digest_is_stale_and_writes
     monkeypatch.setattr(
         native, "identity", lambda plan: {**real(plan), "database": str(plan.database)}
     )
-    code, refused = drive(_land())
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
-    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), envelope
+    refused, run_id = _answered(_land())
     monkeypatch.setattr(native, "identity", real)
 
     code, acted = drive(["--run", run_id, *_land()])
@@ -1599,12 +1456,8 @@ def test_an_answer_given_over_one_file_is_stale_when_the_continuation_opens_anot
     cfg, _root = native_library
     _stage(cfg, silence, "One.flac")
     live_path = str(cfg.library.db_path)
-    code, refused = drive(_land())
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused, run_id = _answered(_land())
     assert refused["cause"]["detail"]["shown"]["reads and writes"] == live_path
-    run_id = refused["run_id"]
-    decided, envelope = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), envelope
 
     copy = _point_at_a_copy(cfg)
     code, acted = drive(["--run", run_id, *_land()])
@@ -1623,12 +1476,3 @@ def test_an_answer_given_over_one_file_is_stale_when_the_continuation_opens_anot
         finally:
             conn.close()
         assert landed == [], database
-
-
-def test_an_answer_continued_over_the_file_it_was_given_over_lands(native_library, silence):
-    """The pin's other side: the same file at both acts takes the answer."""
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
-    code, acted, _refused = _two_acts(_land())
-    assert code == int(ExitCode.OK), acted
-    assert len(_landed_rows(cfg)) == 1

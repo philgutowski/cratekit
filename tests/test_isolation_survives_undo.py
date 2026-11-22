@@ -1,22 +1,15 @@
 """The suite's isolation outlives a test body's ``monkeypatch.undo()`` (R-658).
 
 ``monkeypatch`` is one instance shared by the test body and every fixture that
-requests it, and ``undo()`` reverts all of it. While the conftest's isolation
-was recorded on that instance, one ``undo()`` put a test back on the real
-machine, and on 2026-09-20 a test in that state overwrote the live
-configuration. The isolation now holds its own instance, so these tests undo
-the body's patches and then reach for everything the isolation redirects.
+requests it, and ``undo()`` reverts all of it, so isolation recorded on it was
+once undone and a test overwrote the live configuration. The isolation holds
+its own instance; these tests undo the body's patches and then reach for
+everything it redirects.
 
-EVERY CHECK RESOLVES BEFORE IT WRITES. If the isolation is broken, the path a
-write would take is the real one, so each test asserts where the path points
-first and writes only once that has passed. A regression fails here without
-doing the damage it is describing.
-
-The last test is the ban. The conftest is not the only place a guard rides on
-the shared instance: modules keep autouse fixtures of their own, a stubbed
-process list or a refused subprocess, and a body ``undo()`` there still takes
-them away. So a body ``undo()`` on the shared instance is refused everywhere in
-``tests/`` but here, where driving one is the point.
+EVERY CHECK RESOLVES BEFORE IT WRITES, so a regression fails here without
+doing the damage it describes. The last test bans a body ``undo()`` on the
+shared instance everywhere in ``tests/`` but here, since modules keep guards
+of their own on it.
 """
 
 from __future__ import annotations
@@ -47,10 +40,8 @@ def _starting_roots() -> tuple[Path, ...]:
     return tuple(roots)
 
 
-# Read at import, before any fixture has run, so these are what the PROCESS
-# started with, which is exactly what an ``undo()`` used to restore. Resolved
-# rather than read off HOME, so a temp root that happens to sit under the home
-# directory is not mistaken for the real thing.
+# Read at import, before any fixture ran: what the PROCESS started with, which
+# an ``undo()`` used to restore.
 _STARTING_ROOTS = _starting_roots()
 _REAL_SET_PASSWORD = keyring.set_password
 _REAL_CLIENT_FACTORY = provider_session.CLIENT_FACTORY
@@ -74,10 +65,7 @@ def test_a_write_to_the_platformdirs_config_after_an_undo_lands_in_the_temp_root
     _isolate_state_roots, monkeypatch
 ):
     """The exact 2026-09-20 shape: undo, resolve the config location, write.
-
-    The state directory rides along, because it is the one the first recorded
-    instance of this trap read back: the secrets presence index lives there.
-    """
+    The state directory rides along: the secrets presence index lives there."""
     _undo_the_body(monkeypatch)
 
     targets = (
@@ -124,11 +112,8 @@ def test_the_library_root_and_the_refusals_survive_an_undo(
 def test_a_body_patch_of_a_redirected_value_undoes_to_the_redirect(
     _isolate_state_roots, monkeypatch
 ):
-    """The ordering the conftest's docstring calls load bearing.
-
-    The body's instance is set up after the isolation's, so what it records as
-    HOME's original is the redirected HOME, and that is what an undo puts back.
-    """
+    """The body's instance is set up after the isolation's, so the HOME it
+    records as original, and an undo puts back, is the redirected one."""
     redirected = {name: os.environ[name] for name in ("HOME", config.ENV_CONFIG_DIR)}
     for value in redirected.values():
         assert _inside(Path(value), _isolate_state_roots)
@@ -156,17 +141,19 @@ def _body_undoes(tree: ast.AST) -> list[int]:
 def test_no_test_undoes_the_shared_monkeypatch():
     """Reverse one patch with a ``pytest.MonkeyPatch.context()`` around it.
 
-    Exempt by exact path, this file only. A scoped instance's own ``undo()``,
-    ``zone.undo()`` say, reverts what that instance recorded and nothing else,
-    so the ban is on the shared fixture's name.
+    Exempt by exact path, this file only. A scoped instance's own ``undo()``
+    reverts only what it recorded, so the ban is on the shared fixture's name.
+    Only a file whose text holds ``undo`` is parsed, since no call without it
+    is one.
     """
     tests = Path(__file__).parent
     here = Path(__file__).resolve()
+    texts = {path: path.read_text(encoding="utf-8") for path in sorted(tests.rglob("*.py"))}
     found = [
         f"{path.relative_to(tests)}:{line}"
-        for path in sorted(tests.rglob("*.py"))
-        if path.resolve() != here
-        for line in _body_undoes(ast.parse(path.read_text(encoding="utf-8")))
+        for path, text in texts.items()
+        if path.resolve() != here and "undo" in text
+        for line in _body_undoes(ast.parse(text))
     ]
     assert found == [], (
         "monkeypatch.undo() reverts every patch on the shared instance, the "
@@ -175,7 +162,6 @@ def test_no_test_undoes_the_shared_monkeypatch():
 
 
 def test_the_ban_sees_an_undo():
-    """The walk above answers an empty list for a tree it cannot parse into
-    calls as readily as for a clean one, so it is shown one."""
+    """The walk answers an empty list for a clean tree, so it is shown one."""
     assert _body_undoes(ast.parse("def t(monkeypatch):\n    monkeypatch.undo()\n")) == [2]
     assert _body_undoes(ast.parse("zone.undo()\n")) == []
