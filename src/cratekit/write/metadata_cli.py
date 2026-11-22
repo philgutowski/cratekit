@@ -1,20 +1,11 @@
 """Mirror vocal file tags into library My Tags.
 
-My Tags are not content columns. U21's per-field policy in
-``write/metadata.py`` does not govern this surface. The writer is
-:func:`cratekit.core.rb_writer.ensure_my_tag_value` and
-:func:`cratekit.core.rb_writer.add_my_tag`, add-only and idempotent.
-
-THE LIVE DATABASE IS NEVER THE TARGET. The open uses the configured
-database path, which a test points at a disposable copy. Opening with
-an explicit path is also what the R-15 audit holds every binding call
-to.
-
-THE ANALYSIS WATCH NAMES ``watch_roots``, never an empty list and never
-a folder that holds no ANLZ file. A My Tag write does not intend to
-touch a grid, and naming the roots the library actually uses is what
-makes a side effect visible rather than a clean session over a barren
-watch.
+My Tags are not content columns, so U21's per-field policy does not govern
+them; the writers are :func:`cratekit.core.rb_writer.ensure_my_tag_value` and
+:func:`cratekit.core.rb_writer.add_my_tag`, add-only and idempotent. The open
+names the configured database path explicitly (R-15), which a test points at
+a disposable copy. The analysis watch names ``watch_roots``, so a side effect
+on a grid is visible rather than a clean session over a barren watch.
 
 Layer: write.
 """
@@ -31,14 +22,7 @@ from typing import Any
 
 from cratekit.cli import output
 from cratekit.cli.output import Envelope, digest_of, load_config
-from cratekit.core import (
-    analysis_store,
-    config,
-    locations,
-    rb_writer,
-    session,
-    tags,
-)
+from cratekit.core import analysis_store, config, locations, rb_writer, session, tags
 from cratekit.core.cause import Cause, Outcome, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.write import routing_pass, trees
@@ -49,20 +33,14 @@ WORKFLOW = "mytags-vocals"
 
 #: The refusal the plan, the apply and doctor's ``library.paths_resolved`` share
 #: when most of the collection records a path no prefix rule maps (R-372).
-#: Registered in ``core.cause.REASONS``; the spelling here is the one every
-#: surface raises and every consumer branches on.
 PATHS_MAJORITY_UNRESOLVED = "library-paths-majority-unresolved"
 
-#: How many recorded prefixes the refusal names, so a person is shown "these
-#: 8554 rows record this prefix" rather than a wall of paths.
+#: How many recorded prefixes the refusal names, rather than a wall of paths.
 _NAMED_PREFIXES = 3
 
-#: What this verb's write is filed under in a session record's change summary.
-#: The summary's key is a tree identifier everywhere else, and a My Tag category
-#: is no tree, so this names the surface instead. It is only ever rendered, in
-#: ``restore list`` and in the refusal a restore raises before discarding later
-#: work, and nothing looks it up in the tree registry. Stable on purpose and
-#: distinct from ``CATEGORY``, which is a display name a person can rename (R19).
+#: What this verb's write is filed under in a session record's change summary. A
+#: My Tag category is no tree, so this names the surface; it is only rendered.
+#: Stable, unlike ``CATEGORY``, a display name a person can rename (R19).
 CHANGE_KEY = "my-tags.vocals"
 
 CATEGORY = "Vocals"
@@ -70,20 +48,18 @@ VALUE_VOX = "vox"
 VALUE_MALE = "male vox"
 VALUE_FEMALE = "female vox"
 
-#: Matches ``cratekit.analysis.cli.DEFAULT_VOCAL_THRESHOLD``. Duplicated
-#: because this layer may not import the analysis package.
+#: Matches ``cratekit.analysis.cli.DEFAULT_VOCAL_THRESHOLD``; this layer may not
+#: import the analysis package.
 DEFAULT_VOCAL_THRESHOLD = 12.0
 
 STATE_KEY_VOCAL_CALIBRATION = "vocal_calibration"
 
 
-def vocal_tag_values(
-    voxlevel: int | None, voxgender: str | None, cut: float
-) -> list[str]:
-    """The My Tag values a track should carry. Empty below the with-vox cut.
+def vocal_tag_values(voxlevel: int | None, voxgender: str | None, cut: float) -> list[str]:
+    """The My Tag values a track should carry, empty below the with-vox cut.
 
-    Gender is only considered for with-vox tracks, so male vox and female vox
-    are always accompanied by vox.
+    Gender is read only for with-vox tracks, so a gendered value always comes
+    with vox.
     """
     if voxlevel is None or voxlevel < cut:
         return []
@@ -96,21 +72,15 @@ def vocal_tag_values(
 
 
 def vocal_cut(cfg: config.Config) -> float:
-    """The with-vox threshold for tagging: the fitted cut, or the default.
-
-    A MISSING file is the default cut, because a My Tag written from the
-    default is the source system's behaviour. An unreadable one refuses, and
-    that refusal is :func:`load_vocal_threshold`'s, not a second copy.
+    """The with-vox threshold for tagging: the fitted cut, or the default when none
+    was fitted. An unreadable file refuses in :func:`load_vocal_threshold`.
     """
     threshold = load_vocal_threshold(cfg)
     return DEFAULT_VOCAL_THRESHOLD if threshold is None else threshold
 
 
 def load_vocal_threshold(cfg: config.Config) -> float | None:
-    """The library's fitted with-vox cut, or None when it was never calibrated.
-
-    The threshold of :func:`load_vocal_calibration`, which is the one reader.
-    """
+    """The fitted with-vox cut from :func:`load_vocal_calibration`, or None."""
     record = load_vocal_calibration(cfg)
     return None if record is None else record["threshold"]
 
@@ -118,33 +88,19 @@ def load_vocal_threshold(cfg: config.Config) -> float | None:
 def load_vocal_calibration(cfg: config.Config) -> dict[str, Any] | None:
     """The library's vocal calibration record, or None when there is none.
 
-    THE ONE READER OF THE VOCAL CALIBRATION. The tagging verb, the routing
-    passes, the rebuild and resort workers and the convergence report all come
-    through here, so a corrupt file refuses the same way on every surface and
-    no surface can read it more leniently than another. The record comes back
-    whole, with ``threshold`` already checked and made a float, because the
-    calibrate verb reports the ``method`` and ``note`` of the cut it replaces
-    (U90) and a second reader for those would be a second opinion on the file.
-
-    A MISSING file is None rather than the default cut, and the difference is
-    the routing contract (R-276): the default was never fitted to this library,
-    so filing a whole library under "with vox" from it would be the product
-    answering for the person. None leaves the vocal dimension uncompared, and
-    the engine names it. An UNREADABLE file refuses, because a corrupt
-    calibration and an absent one are different states, and folding the first
-    into the second files or tags from a cut nobody fitted. This mirrors
-    ``energy.load_calibration``.
+    The one reader, so a corrupt file refuses alike on every surface. The record
+    comes back whole with ``threshold`` checked and a float, since the calibrate
+    verb reports the ``method`` and ``note`` it replaces (U90). A missing file is
+    None, not the default cut, so routing leaves the vocal dimension uncompared
+    rather than answer from a cut never fitted (R-276). An unreadable file
+    refuses, as ``energy.load_calibration`` does.
     """
     path = config.state_path(STATE_KEY_VOCAL_CALIBRATION, cfg)
     if not path.is_file():
         return None
-    # A list, string or null payload raises TypeError at the subscript, so
-    # AttributeError, which energy's tuple carries for its ``.items()`` call,
-    # has no producer here. json.loads accepts NaN and Infinity, and a NaN cut
-    # makes every ``voxlevel < cut`` false, which would tag every scored track
-    # as vox, so a threshold that is not finite is unreadable too. A JSON
-    # boolean would read as a cut of 1.0 and an integer too large for a float
-    # raises OverflowError, and both are refused for the same reason.
+    # A non-object payload raises TypeError at the subscript. A NaN cut would
+    # tag every scored track as vox, so a threshold that is not finite, a JSON
+    # boolean (a cut of 1.0) and an overflowing integer are unreadable too.
     try:
         record = json.loads(path.read_text(encoding="utf-8"))
         raw = record["threshold"]
@@ -179,22 +135,11 @@ def _prefix_rules(cfg: config.Config) -> list[locations.PrefixRule]:
 class ResolutionTotals:
     """How the collection's active rows resolve on this machine (R-372).
 
-    ``unresolved`` is every row the plan could not read a file for, for any of
-    three reasons: no recorded path at all, which is a streaming row; a path
-    under no rule; or a mapped path whose file is gone. ``unmapped`` is the
-    middle one alone, the rows whose recorded path matched neither the library
-    root nor any ``library.location_prefix_map`` rule, and it is the count the
-    majority rule reads. THE OTHER TWO ARE NOT A PREFIX RULE'S TO FIX: a
-    streaming row has nothing a rule could rewrite, and a missing file is the
-    deletion pass's question. Reading the whole ``unresolved`` total as the
-    prefix map's failure would refuse a library of streaming rows with a step
-    that cannot help, and would refuse every fixture in this suite whose rows
-    carry no path. The sitting that found R-372 measured 9937 unmapped of 9937
-    unresolved, so on the library that paid for this the two readings agree.
-
-    ``prefixes`` groups the unmapped rows by their leading components, which is
-    what ``locations.leading_prefix`` exists for, so the refusal can name the
-    drive rather than the rows.
+    ``unresolved`` is every row with no readable file: no recorded path (a
+    streaming row), a path under no rule, or a mapped path whose file is gone.
+    ``unmapped`` is the middle one alone and is what the majority rule reads,
+    since the other two are not a prefix rule's to fix. ``prefixes`` groups the
+    unmapped rows by leading components so the refusal names the drive.
     """
 
     active: int
@@ -204,20 +149,11 @@ class ResolutionTotals:
 
     @property
     def majority_unmapped(self) -> bool:
-        """More than half of the active rows record a path under no rule.
-
-        Strictly more than half, and never over an empty collection: zero rows
-        is a library with nothing to resolve, not a library that resolves
-        nothing.
-        """
+        """Strictly more than half of the active rows are unmapped; never over none."""
         return self.active > 0 and self.unmapped * 2 > self.active
 
     def as_dict(self) -> dict[str, int]:
-        return {
-            "active": self.active,
-            "unresolved": self.unresolved,
-            "unmapped": self.unmapped,
-        }
+        return {"active": self.active, "unresolved": self.unresolved, "unmapped": self.unmapped}
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,19 +165,15 @@ class _Survey:
 
 
 def _survey(cfg: config.Config, db: Any) -> _Survey:
-    """THE ONE WALK. The plan and doctor both read the collection through here.
+    """The one walk of the collection, for the plan and doctor alike.
 
-    Decoded and resolved by ``trees.located``, the one decode-then-resolve step,
-    rather than by a second pairing of the two calls; and counted once, in one
-    place, so the plan's totals and the doctor check's verdict cannot come from
-    two different readings of what a row is. A path is a file for the plan's
-    purposes only when it exists as one, which is the rule the plan always had.
+    Rows are located by ``trees.located`` and counted in one place, so the plan's
+    totals and the doctor check cannot disagree. A path counts only when it
+    exists as a file.
     """
     root = Path(cfg.library.root)
     prefix_map = _prefix_rules(cfg)
-    active = 0
-    unresolved = 0
-    unmapped = 0
+    active = unresolved = unmapped = 0
     prefixes: Counter[str] = Counter()
     resolved: list[tuple[trees.ContentRow, Path]] = []
     for row in routing_pass.content_rows(db):
@@ -251,11 +183,8 @@ def _survey(cfg: config.Config, db: Any) -> _Survey:
         try:
             _, outcome = trees.located(row.recorded, root=root, prefix_map=prefix_map)
         except locations.LocationDecodeError:
-            # A location naming another host, or one that will not decode, is
-            # a row this machine cannot read a file for and counts as such. It
-            # is not the prefix map's failure, so it is not unmapped, and it is
-            # not a defect in this walk, so it does not take the plan or the
-            # doctor check down with it.
+            # Another host or an undecodable location: unresolved, not unmapped,
+            # and not a defect that ends the walk.
             unresolved += 1
             continue
         if outcome.resolution is locations.Resolution.UNMAPPED:
@@ -278,14 +207,10 @@ def _survey(cfg: config.Config, db: Any) -> _Survey:
 
 
 def _is_a_file(path: Path) -> bool:
-    """Whether a file is there, with a refusal to answer read as no.
+    """Whether a file is there, a refusal to answer read as no.
 
-    ``Path.is_file`` swallows a missing file and raises on the rest: a
-    directory this account cannot enter, a name the filesystem refuses, an
-    input error on the volume, a null byte in the recorded name. Raised out of
-    the one walk, any of them ended the survey for the plan, the apply and the
-    doctor check together. A row whose file cannot be asked about is a row
-    this machine cannot read a file for, which is what unresolved counts.
+    ``Path.is_file`` raises on an unenterable directory, a refused name, an input
+    error or a null byte, and one such row must not end the walk.
     """
     try:
         return path.is_file()
@@ -307,25 +232,16 @@ def majority_unmapped_cause(
 ) -> Cause:
     """The refusal every surface raises when most rows record an unmapped path.
 
-    ``blocked`` is the clause saying what cannot be done until the rule exists.
-    It is the one part of the sentence that belongs to the verb raising it, so
-    a second verb that plans over the collection's files says its own and
-    shares the slug, the counts, the steps and the detail.
-
-    Built through ``refuse`` so the slug is checked against the registry and the
-    remedy is the reserved one. ``RUN_SETUP`` rather than ``RUN_DOCTOR``: doctor
-    now says the same thing, and sending a person from the plan to a check that
-    sends them back is a loop. Setup, run again with the database present, reads
-    rekordbox's own recorded drive names and offers the rule.
+    ``blocked`` is the clause naming what cannot be done, the one part that
+    belongs to the raising verb. ``RUN_SETUP``, not ``RUN_DOCTOR``: doctor says
+    the same thing, and setup reads rekordbox's drive names and offers the rule.
     """
     named = list(totals.prefixes.items())[:_NAMED_PREFIXES]
     listed = ", ".join(f"{count} under {prefix}" for prefix, count in named)
     more = len(totals.prefixes) - len(named)
     if more > 0:
         listed += f", and {more} other prefix{'es' if more > 1 else ''}"
-    current = [
-        {"from": source, "to": target} for source, target in cfg.resolved_prefix_map()
-    ]
+    current = [{"from": source, "to": target} for source, target in cfg.resolved_prefix_map()]
     return refuse(
         PATHS_MAJORITY_UNRESOLVED,
         (
@@ -343,23 +259,15 @@ def majority_unmapped_cause(
             "from equal to to when the folder is exactly where the rows say",
         ),
         origin=_ORIGIN,
-        detail={
-            **totals.as_dict(),
-            "prefixes": dict(totals.prefixes),
-            "prefix_map": current,
-        },
+        detail={**totals.as_dict(), "prefixes": dict(totals.prefixes), "prefix_map": current},
     ).cause
 
 
 def _refused_plan(ctx, plan: dict[str, Any], cause: Cause) -> Envelope:
-    """The plan, whole, under a failed outcome that names why it may not be acted on.
+    """The plan, whole, under a failed outcome naming why it may not be acted on.
 
-    The totals stay in ``data`` because they are the evidence: a person reading
-    the refusal should see the 9937 beside the 0 rather than an empty payload.
-    Built through ``output.build`` because the context's envelope helper takes no
-    cause, and a non success outcome without one is the envelope the validator
-    rejects. No warning is attached: a warning rides a success and this is not
-    one.
+    The totals stay as the evidence. Built through ``output.build`` because the
+    context's envelope helper takes no cause; no warning, since this is no success.
     """
     return output.build(
         verb=ctx.entry.name,
@@ -400,26 +308,12 @@ def _plan_from(cfg: config.Config, survey: _Survey) -> dict[str, Any]:
     items: list[dict[str, Any]] = []
     for row, path in survey.resolved:
         values = vocal_tag_values(
-            tags.read_vox_from_file(path),
-            tags.read_voxgender_from_file(path),
-            cut,
+            tags.read_vox_from_file(path), tags.read_voxgender_from_file(path), cut
         )
         if values:
-            items.append(
-                {
-                    "content_id": row.content_id,
-                    "values": values,
-                    "path": str(path),
-                }
-            )
+            items.append({"content_id": row.content_id, "values": values, "path": str(path)})
     return {
-        "digest": digest_of(
-            {
-                "kind": WORKFLOW,
-                "cut": cut,
-                "items": items,
-            }
-        ),
+        "digest": digest_of({"kind": WORKFLOW, "cut": cut, "items": items}),
         "items": items,
         "totals": {
             "count": len(items),
@@ -453,11 +347,8 @@ def apply_mytags(cfg: config.Config, db: Any, plan: dict[str, Any]) -> dict[str,
 def _record_mytags_commit(record: session.SessionRecord, written: int, cfg: config.Config) -> None:
     """Record this verb's commit on its session record, when it wrote anything.
 
-    A SECOND APPLY WRITES NOTHING AND CLAIMS NO COMMIT, for the reason
-    :func:`cratekit.write.trees._record_membership_commit` gives: a restore reads
-    a committed source as work it would discard. Zero is decidable because a
-    value row this verb creates is only ever created on the way to an
-    association. Keyed on ``CHANGE_KEY``, a stable identifier and never the
+    A second apply writes nothing and claims no commit, since a restore reads a
+    committed source as work it would discard. Keyed on ``CHANGE_KEY``, never the
     category's display name (R19).
     """
     if written <= 0:
@@ -486,17 +377,10 @@ def mytags_vocals(ctx) -> Envelope:
     writing = bool(getattr(ctx.args, "apply", False))
     db = _open(cfg, writing=writing)
     try:
-        # ONE WALK, kept beside the plan rather than read back out of it, so the
-        # refusal names the prefixes the walk grouped. The plan's totals carry
-        # the counts alone, which is all the payload surface declares.
+        # One walk, kept beside the plan so the refusal names its prefixes.
         survey = _survey(cfg, db)
-        # A MAJORITY UNMAPPED REFUSES BEFORE THE APPLY FLAG IS READ (R-372). The
-        # first real plan reported ok over 9937 rows it had skipped, and an apply
-        # on it would have written nothing and reported success. Plan and apply
-        # refuse alike, under one slug, with the totals still in the payload; the
-        # apply flag is still required for a write, and it does not reach one.
-        # The refused plan carries the totals and no items, so a run that is
-        # about to be refused does not read the tags off every resolved file.
+        # A majority unmapped refuses plan and apply alike, before the apply flag
+        # is read (R-372), with the totals and no items, so no tag is read.
         if survey.totals.majority_unmapped:
             empty = _plan_from(cfg, _Survey(survey.totals, ()))
             return _refused_plan(ctx, empty, majority_unmapped_cause(cfg, survey.totals))
@@ -509,11 +393,8 @@ def mytags_vocals(ctx) -> Envelope:
             analysis_roots=analysis_store.watch_roots(cfg),
             keep=session.Keep.RECORD,
         ) as gates, rb_writer.commit_witness(db) as witness:
-            # THE RECORD IS WHAT MAKES THE CAPTURE AN UNDO (R-375). This verb
-            # took a capture and opened no record, so after a real apply the
-            # only trace of the write was a snapshot directory ``restore list``
-            # could not show and the pruning scan did not protect. Attached
-            # before it is judged, for the reason ``trees.attached_capture`` gives.
+            # The record is what makes the capture an undo (R-375), attached
+            # before it is judged as ``trees.attached_capture`` says.
             record, capture = trees.attached_capture(gates, cfg, db)
             counts = {"written": 0, "already": 0}
             try:
@@ -521,13 +402,11 @@ def mytags_vocals(ctx) -> Envelope:
                 rb_writer.commit_guarded(db)
             except BaseException:
                 _rollback_quietly(db)
-                # AN EXCEPTION IS NOT PROOF NOTHING LANDED: the binding commits
-                # and THEN saves rekordbox's playlist file. The witness is the
-                # engine's own answer, for the reason the membership writer gives.
+                # An exception is not proof nothing landed; the witness answers.
                 if witness.landed:
                     _record_mytags_commit(record, counts["written"], cfg)
                 raise
-            # RECORDED THE INSTANT THE COMMIT RETURNS.
+            # Recorded the instant the commit returns.
             _record_mytags_commit(record, counts["written"], cfg)
         plan["totals"]["written"] = counts["written"]
         plan["totals"]["already"] = counts["already"]
