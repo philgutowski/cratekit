@@ -209,6 +209,7 @@ def removal_renumbering(db: Any, content_ids: Iterable[str]) -> dict[str, tuple[
     Asked on a read only copy for the plan's count and again on the write handle by
     :meth:`CollectionRemoval.prepare`. Reads and writes nothing else.
     """
+    rb_writer = _writer()
     from sqlalchemy import bindparam, text
 
     wanted = sorted({str(one) for one in content_ids})
@@ -216,7 +217,7 @@ def removal_renumbering(db: Any, content_ids: Iterable[str]) -> dict[str, tuple[
         return {}
     statement = text(
         f'SELECT "ID", "{PLAYLIST_REFERENCE_COLUMN}", "{CONTENT_REFERENCE_COLUMN}", '
-        f'"{TRACK_NUMBER_COLUMN}", "{_writer().SOFT_DELETE_COLUMN}" FROM "{MEMBERSHIP_TABLE}" '
+        f'"{TRACK_NUMBER_COLUMN}", "{rb_writer.SOFT_DELETE_COLUMN}" FROM "{MEMBERSHIP_TABLE}" '
         f'WHERE "{PLAYLIST_REFERENCE_COLUMN}" IN (SELECT "{PLAYLIST_REFERENCE_COLUMN}" '
         f'FROM "{MEMBERSHIP_TABLE}" WHERE "{CONTENT_REFERENCE_COLUMN}" IN :ids)'
     ).bindparams(bindparam("ids", expanding=True))
@@ -232,7 +233,7 @@ def removal_renumbering(db: Any, content_ids: Iterable[str]) -> dict[str, tuple[
             remedy=Remedy.RUN_DOCTOR,
             scope=Scope.RUN,
             origin=("rb_writer",),
-            detail={"membership_ids": unreadable[:20], "column": _writer().SOFT_DELETE_COLUMN},
+            detail={"membership_ids": unreadable[:20], "column": rb_writer.SOFT_DELETE_COLUMN},
         )
     return renumbered_positions(
         ((row[0], row[1], row[2], None if row[3] is None else int(row[3]), _live(row[4])) for row in rows),
@@ -293,6 +294,7 @@ class DatabaseReading:
 
 def database_reading(db: Any) -> DatabaseReading:
     """Read every table from SQL. Flushes nothing itself, as :func:`node_tables` does not."""
+    rb_writer = _writer()
     import hashlib
 
     from sqlalchemy import text
@@ -322,14 +324,14 @@ def database_reading(db: Any) -> DatabaseReading:
                 names.index(PLAYLIST_REFERENCE_COLUMN),
                 names.index(CONTENT_REFERENCE_COLUMN),
                 names.index(TRACK_NUMBER_COLUMN),
-                names.index(_writer().SOFT_DELETE_COLUMN),
+                names.index(rb_writer.SOFT_DELETE_COLUMN),
             )
             if table == MEMBERSHIP_TABLE
             and {
                 PLAYLIST_REFERENCE_COLUMN,
                 CONTENT_REFERENCE_COLUMN,
                 TRACK_NUMBER_COLUMN,
-                _writer().SOFT_DELETE_COLUMN,
+                rb_writer.SOFT_DELETE_COLUMN,
             }
             <= set(names)
             else None

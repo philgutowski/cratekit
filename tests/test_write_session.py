@@ -816,7 +816,9 @@ def test_the_terminal_check_is_a_terminal_check_and_not_a_standard_input_read():
     """R33: the terminal check reads no input, asserted structurally."""
     import ast
 
-    source = Path(session.__file__).read_text()
+    core = Path(session.__file__).parent
+    # The session and its parts (U300): the terminal check lives in ``session_ack``.
+    source = "\n".join(path.read_text() for path in sorted(core.glob("session*.py")))
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Attribute) and node.attr == "stdin":
             raise AssertionError("the session module names standard input")

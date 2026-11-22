@@ -58,6 +58,7 @@ def guard_violations(
     delete takes is judged from SQL by :func:`assert_collection_removal_confined`.
     PURE, so every branch is tested with literals. Returns EVERY violation.
     """
+    rb_writer = _writer()
     writable = (
         frozenset(content_columns)
         if content_columns is not None
@@ -130,7 +131,7 @@ def guard_violations(
     for table, columns in dirty:
         columns = set(columns)
         # THE MARKER IS JUDGED BEFORE THE BOOKKEEPING FILTER DROPS IT (R-758).
-        if _writer().SOFT_DELETE_COLUMN in columns and table not in admitted:
+        if rb_writer.SOFT_DELETE_COLUMN in columns and table not in admitted:
             violations.append(
                 f"changes the soft delete marker of a row in {table!r}, which "
                 f"removes it; writers are additive-only and this commit admits "

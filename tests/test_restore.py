@@ -941,9 +941,15 @@ def test_only_the_companion_the_inventory_declares_restored_is_written_back(cfg,
     assert database.exists()
 
 
+def _restore_sources() -> str:
+    """``restore.py`` and its parts (U300), so a scan of the module reads all of it."""
+    core = Path(restore.__file__).parent
+    return "\n".join(path.read_text() for path in sorted(core.glob("restore*.py")))
+
+
 def test_the_restore_module_spells_no_companion_suffix_of_its_own(cfg):
     """A literal companion suffix here is the list the schema abolishes."""
-    source = Path(restore.__file__).read_text()
+    source = _restore_sources()
     assert "sidecar_paths" in source
     assert not re.search(r"""["'][^"']*-(?:wal|shm)""", source)
 
@@ -1581,7 +1587,7 @@ def test_a_capture_whose_manifest_names_a_path_outside_the_set_is_refused(cfg, h
 
 def test_the_unconverged_decision_reads_the_captured_registry_not_a_date(cfg):
     """Date arithmetic is off by up to a day, so the captured registry is read."""
-    source = Path(restore.__file__).read_text()
+    source = _restore_sources()
     assert "read_path" in source
     assert "cutover_on" not in source
 
@@ -1636,7 +1642,7 @@ def test_the_restore_module_names_no_verb(cfg):
     """D2. Every verb name that reaches a record arrives from the layer that owns one."""
     from cratekit.cli import registry
 
-    source = Path(restore.__file__).read_text()
+    source = _restore_sources()
     for name in registry.VERB_NAMES:
         assert f'"{name}"' not in source
     assert restore.CAPTURE_RESTORE_WORKFLOW not in registry.VERB_NAMES

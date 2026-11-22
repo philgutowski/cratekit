@@ -128,6 +128,7 @@ def remove_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> li
     ROW FOR THE PAIR IS MARKED; unheld ids are skipped. DOES NOT COMMIT: the
     caller commits through :func:`commit_guarded` naming this table in ``removals``.
     """
+    rb_writer = _writer()
     from datetime import datetime
 
     wanted = {str(content_id) for content_id in content_ids}
@@ -137,7 +138,7 @@ def remove_memberships(db: Any, playlist: Any, content_ids: Iterable[str]) -> li
         key = str(song.ContentID)
         if key not in wanted or _writer().membership_removed(song):
             continue
-        setattr(song, _writer().SOFT_DELETE_COLUMN, 1)
+        setattr(song, rb_writer.SOFT_DELETE_COLUMN, 1)
         song.updated_at = now
         removed.append(key)
     return removed
@@ -199,6 +200,7 @@ def remove_playlist_node(db: Any, playlist: Any) -> list[str]:
     REFUSED: a folder (carries a tree), a smart playlist (no rows), a removed node.
     DOES NOT COMMIT: ``removals`` must name this and the membership table.
     """
+    rb_writer = _writer()
     from datetime import datetime
 
     _plain_playlist(playlist, "asked to remove")
@@ -208,7 +210,7 @@ def remove_playlist_node(db: Any, playlist: Any) -> list[str]:
         if not _writer().membership_removed(song)
     ]
     marked = _writer().remove_memberships(db, playlist, held)
-    setattr(playlist, _writer().SOFT_DELETE_COLUMN, 1)
+    setattr(playlist, rb_writer.SOFT_DELETE_COLUMN, 1)
     playlist.updated_at = datetime.now()
     return marked
 
@@ -281,6 +283,7 @@ def node_change_violations(
     left or joined; added playlist rows exactly ``created``, nothing else added
     or gone.
     """
+    rb_writer = _writer()
     violations: list[str] = []
     gone = {str(key) for key in removed}
     planned_moves = {str(key): str(value) for key, value in moved.items()}
@@ -296,7 +299,7 @@ def node_change_violations(
         )
 
     p_cols = before.playlist_columns
-    marker_at = p_cols.index(_writer().SOFT_DELETE_COLUMN)
+    marker_at = p_cols.index(rb_writer.SOFT_DELETE_COLUMN)
     parent_at = p_cols.index("ParentID")
     for key in sorted(set(before.playlists) - set(after.playlists)):
         violations.append(f"the {PLAYLIST_TABLE} row {key!r} disappeared")
@@ -340,7 +343,7 @@ def node_change_violations(
 
     m_cols = before.membership_columns
     owner_at = m_cols.index("PlaylistID")
-    m_marker = m_cols.index(_writer().SOFT_DELETE_COLUMN)
+    m_marker = m_cols.index(rb_writer.SOFT_DELETE_COLUMN)
     for key in sorted(set(before.memberships) ^ set(after.memberships)):
         violations.append(f"the {MEMBERSHIP_TABLE} row {key!r} was added or disappeared")
     # A REMOVED NODE KEEPS NO LIVE MEMBERSHIP, asked of every row it owns.

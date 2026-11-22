@@ -15,13 +15,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Mapping
+from typing import Any, Callable, Iterable, Iterator, Mapping
 
 from cratekit.core import config
-
-if TYPE_CHECKING:
-    pass
-
 
 #: The writer's own logger, so a record reads as it did before the split.
 logger = logging.getLogger("cratekit.core.rb_writer")
