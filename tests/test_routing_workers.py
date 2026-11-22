@@ -38,7 +38,7 @@ from cratekit.core import (
 )
 from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.write import rebuild, routing_cli, routing_export, routing_pass, trees
+from cratekit.write import rebuild, routing_cli, routing_pass, trees
 from tests._readings import serve_readings
 from tests.test_active_taxonomy import shipped_without, write_active
 from tests.test_config import valid_data
@@ -2081,6 +2081,7 @@ def test_the_export_writer_itself_refuses_a_routing_tree_that_has_cut_over(
 ):
     """The emitter layer alone, reached past the verb's own check, so neither
     layer is a guard only the other one covers."""
+    from cratekit.write import routing_export  # here: a capture on the base src imports this file
     export = _write_export(configured, tmp_path / "exports")
     _content, plan, *_rest = routing_export.plan_export(configured, export)
     _cut_over_routing_tree(configured)
@@ -2717,6 +2718,7 @@ def test_an_edit_to_the_active_copy_is_the_playlist_the_routing_plan_names(
     """An EDIT, not only a removal: the display a person gave the long track
     playlist in their own declaration is the one the plan offers and the file
     holds, and the shipped name appears nowhere (R-685)."""
+    from cratekit.write import routing_export  # here: a capture on the base src imports this file
     shipped = taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME)
     line = f'display = "{LONG_PLAYLIST}"'
     assert shipped.count(line) == 1
