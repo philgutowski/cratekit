@@ -37,15 +37,7 @@ import keyring.errors
 import pytest
 import tomli_w
 
-from cratekit.core import (
-    config,
-    config_base,
-    config_schema,
-    config_validate,
-    profiles,
-    secrets,
-    state_files,
-)
+from cratekit.core import config, profiles, secrets
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode, Remedy
 
@@ -985,6 +977,8 @@ def test_the_backup_destination_check_reads_the_effective_mapping(library, monke
 
     # The seam is named in both modules that pass through it (U299).
     monkeypatch.setattr(config, "_apply_env_overrides", relocating)
+    from cratekit.core import config_validate
+
     monkeypatch.setattr(config_validate, "_apply_env_overrides", relocating)
     assert config.validate(data) == []
     assert config.from_dict(data).backup.dest == "gdrive:MusicBackup"
@@ -1153,15 +1147,22 @@ def test_importing_the_config_module_creates_nothing(tmp_path):
     assert list(home.iterdir()) == []
 
 
-#: config and the parts split from it (U299), every one read by the two guards below.
-CONFIG_PARTS = (config, config_base, config_schema, config_validate, state_files)
+def config_parts() -> tuple:
+    """config and the parts split from it (U299), every one read by the two guards below.
+
+    Imported here rather than at the top, so the behaviour scenarios that borrow
+    this file's fixtures still import against a tree from before the split.
+    """
+    from cratekit.core import config_base, config_schema, config_validate, state_files
+
+    return (config, config_base, config_schema, config_validate, state_files)
 
 
 def test_config_exposes_no_module_level_location_constant():
     """With nothing to snapshot, snapshotting cannot happen, in config or any of its parts."""
     offenders = [
         f"{part.__name__}.{name}"
-        for part in CONFIG_PARTS
+        for part in config_parts()
         for name, value in vars(part).items()
         if not name.startswith("_") and isinstance(value, Path)
     ]
@@ -1919,7 +1920,7 @@ def test_every_directory_the_config_module_creates_goes_through_the_private_help
     source = (SRC_ROOT / "cratekit" / "core" / "config.py").read_text()
     offenders = [
         hit
-        for part in CONFIG_PARTS
+        for part in config_parts()
         for hit in _bare_mkdir_calls(Path(part.__file__).read_text())
     ]
     assert not offenders, (
