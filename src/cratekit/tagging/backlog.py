@@ -67,7 +67,7 @@ from cratekit.adopt import collection
 from cratekit.adopt import genres as genres_report
 from cratekit.adopt import scan as adopt_scan
 from cratekit.cli.output import digest_of
-from cratekit.core import config, locations, taxonomy
+from cratekit.core import config, taxonomy
 from cratekit.core import taxonomy_word as word_edit
 from cratekit.tagging import rows, suggest
 from cratekit.write import metadata, trees
@@ -808,14 +808,7 @@ def needing(
     here were measured dead by U294's mutation table and taken out.
     """
     mapped = {str(row.ID): row for row in db.get_content()}
-    census = adopt_scan.scan_rows(
-        collection.collection_rows(mapped.values()),
-        declared,
-        root=Path(cfg.library.root),
-        prefix_map=locations.prefix_rules(cfg.resolved_prefix_map()),
-        probe=probe,
-        energy_reader=rows._no_energy,
-    )
+    census = rows.scanned(cfg, mapped, declared, probe)
     return frozenset(
         track.content_id
         for track in census
@@ -857,14 +850,7 @@ def plan_backlog(
             genre=collection.genre_of(row).strip(),
             title=str(getattr(row, "Title", "") or "").strip(),
         )
-    census = adopt_scan.scan_rows(
-        collection.collection_rows(mapped.values()),
-        declared,
-        root=Path(cfg.library.root),
-        prefix_map=locations.prefix_rules(cfg.resolved_prefix_map()),
-        probe=probe,
-        energy_reader=rows._no_energy,
-    )
+    census = rows.scanned(cfg, mapped, declared, probe)
     unread: Counter[str] = Counter()
     needing: list[tuple[adopt_scan.ScannedTrack, str, str]] = []
     for track in census:

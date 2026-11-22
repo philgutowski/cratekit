@@ -74,7 +74,7 @@ from typing import Any
 from cratekit.adopt import collection
 from cratekit.adopt import scan as adopt_scan
 from cratekit.cli.output import digest_of
-from cratekit.core import config, locations, tags, taxonomy
+from cratekit.core import config, tags, taxonomy
 from cratekit.core.cause import CratekitError
 from cratekit.tagging import rows, searchers
 from cratekit.tagging.tag import PublishedGenre, Searcher, SearchHit
@@ -909,14 +909,7 @@ def plan_suggestions(
             title=str(getattr(row, "Title", "") or "").strip(),
             mapped=row,
         )
-    census = adopt_scan.scan_rows(
-        collection.collection_rows(mapped.values()),
-        declared,
-        root=Path(cfg.library.root),
-        prefix_map=locations.prefix_rules(cfg.resolved_prefix_map()),
-        probe=probe,
-        energy_reader=rows._no_energy,
-    )
+    census = rows.scanned(cfg, mapped, declared, probe)
     candidates: list[tuple[_Row, str]] = []
     for track in census:
         if track.genre.strip():

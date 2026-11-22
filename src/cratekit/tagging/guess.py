@@ -1,42 +1,21 @@
 """Guess a genre for each staged file no catalogue tagged (U172).
 
-WHY THIS EXISTS. Sitting 47 landed 116 tracks and ``tag folder`` gave a genre
-to 87. Traxsource and Bandcamp refused every search with a bot check, as they
-have since sitting 32, and 27 tracks had no hit on the catalogues that still
-answer. Those landed with no genre, so no tree placed them and they waited in
-INBOX for a hand tag. Most of them sit beside tracks that say what they are:
-the same artist's other tracks, and the playlist on the account they came from,
-which the catalogues mostly did tag.
+Files the catalogues had no hit for landed with no genre, so no tree placed
+them, though most sit beside tracks that say what they are.
 
-TWO SIGNALS, AS PHILLIP ANSWERED ON 2026-11-01, each a weighted vote:
+TWO SIGNALS, AS PHILLIP ANSWERED ON 2026-11-01, each a weighted vote: the
+artist's other tracks, in the library and the folder, :data:`ARTIST_WEIGHT`
+each, ``tag suggest``'s weight; and each account playlist of the pass holding
+the file, ONE voice of :data:`PLAYLIST_WEIGHT` shared out by its other members'
+genres, so a long playlist does not drown the artist's own tracks. A track by
+the same artist votes once, as the artist's. The votes are weighed by
+:func:`cratekit.tagging.suggest.weigh`, so only a declared genre is guessed.
 
-* the artist's other tracks, in the library and among the folder's own files,
-  :data:`ARTIST_WEIGHT` each, the weight ``tag suggest`` gives them;
-* each playlist on the account the pass swept that holds the file. A playlist
-  casts ONE voice of :data:`PLAYLIST_WEIGHT`, shared out by the genres its
-  other members carry, rather than a vote per member, so the 98 tracks of one
-  playlist do not drown the three tracks by the file's own artist. Four is two
-  artist neighbours: a playlist outweighs one stray track by the artist and
-  not three.
-
-A track by the same artist votes once, as the artist's: it is left out of the
-playlist's share. The rules that weigh the votes are ``tag suggest``'s
-(:func:`cratekit.tagging.suggest.weigh`), so only a genre the active taxonomy
-declares is guessed, a word it does not declare still counts toward the total
-and lowers the band, and the bands mean what they mean there.
-
-EVERY GUESS IS WRITTEN, whatever its band, Phillip's answer of 2026-11-01:
-nothing waits on him, and a wrong guess is put right by hand later. A tie at
-the top is written too, to the tied genre the artist's tracks weigh most and
-then the first by name, and the item says ``split`` so a person can find it.
-A file nothing votes for keeps no genre and is named.
-
-FILL IF EMPTY, as ``tag folder``. A file that carries a genre is never changed,
-and a file whose genre could not be read is never treated as blank.
-
-WHAT COULD NOT BE READ IS SAID. A library or a pass that could not be read
-gives no votes, and the plan records which, so a file left with no votes
-because the library was unreadable is not reported as one nothing knows.
+EVERY GUESS IS WRITTEN, whatever its band (2026-11-01); a tie is written as the
+tied genre the artist weighs most, then the first by name, and says ``split``.
+A file nothing votes for keeps no genre and is named. FILL IF EMPTY, and an
+unreadable genre is never blank. A library or pass that could not be read
+gives no votes and the plan records which.
 
 Layer: modules. It opens no database of its own; the verb hands it what it
 read.
@@ -82,18 +61,10 @@ def artist_key(value: str) -> str:
     return " ".join((value or "").casefold().split())
 
 
-# ---------------------------------------------------------------------------
-# What the verb reads, handed in
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True, slots=True)
 class Staged:
-    """One audio file under the folder, as read before the guess.
-
-    ``genre`` is the file's first genre value, or empty. ``readable`` is False
-    when the genre could not be read at all, which is not a blank.
-    """
+    """One audio file under the folder, as read before the guess. ``genre`` is
+    its first genre value; ``readable`` False when it could not be read at all."""
 
     path: Path
     artist: str
@@ -137,11 +108,6 @@ class Signals:
     pass_name: str = ""
     #: Why the pass's playlists could not be read, empty when they were.
     playlists_unread: str = ""
-
-
-# ---------------------------------------------------------------------------
-# The plan
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,13 +214,8 @@ def _share(
     candidate: Staged,
     staged: Mapping[Path, Staged],
 ) -> dict[str, Fraction]:
-    """One playlist's voice for one candidate, shared out by its other members' genres.
-
-    The candidate itself and every track by its artist are left out: the
-    artist's tracks vote as the artist's, once. A member with no genre gives
-    nothing, and a playlist none of whose other members carries a genre has no
-    voice.
-    """
+    """One playlist's voice for one candidate, shared out by its other members'
+    genres, the candidate and its artist's tracks left out."""
     own = artist_key(candidate.artist)
     words: Counter[str] = Counter()
     members = [
@@ -301,13 +262,9 @@ def _broken(tied: Iterable[str], artist: Mapping[str, int]) -> str:
 def band_of(weight: Fraction, total: Fraction) -> str:
     """``tag suggest``'s band for a share, compared exactly. Pure.
 
-    THE SAME TWO CONDITIONS AS :func:`cratekit.tagging.suggest.band_of`, the
-    share against the bound and the total against the vote floor, each read
-    exactly. That function divides two ints and compares the float with a
-    float bound, which is exact for whole votes; a playlist's share makes the
-    votes Fractions, and both a Fraction against a float bound and a float sum
-    of Fractions put an exact eighty percent one band low (review rounds 1
-    and 2). The bound is read as the decimal it is written as.
+    :func:`cratekit.tagging.suggest.band_of`'s two conditions, read exactly: a
+    playlist's share makes the votes Fractions, and a float compare puts an exact
+    eighty percent one band low, so the bound is read as the decimal it is.
     """
     if total <= 0 or weight <= 0:
         return suggest.NONE
@@ -319,12 +276,8 @@ def band_of(weight: Fraction, total: Fraction) -> str:
 
 
 def off_taxonomy(declared: taxonomy.Taxonomy, word: str) -> bool:
-    """Whether a word on a file is one this taxonomy has no place of its own for.
-
-    ``tag folder``'s own test (R-650): the last tier of tagging passes the word
-    through unchanged and flags it. A bucket's own display reaches that tier
-    and is not flagged, since routing files it exactly.
-    """
+    """Whether a word on a file is one this taxonomy has no place of its own for,
+    ``tag folder``'s own test (R-650)."""
     return bool(word) and routing.suggest_tag(declared, word).off_taxonomy
 
 
@@ -392,11 +345,6 @@ def plan(
     )
 
 
-# ---------------------------------------------------------------------------
-# Reading, and the write
-# ---------------------------------------------------------------------------
-
-
 def read_folder(root: Path) -> tuple[Staged, ...]:
     """Every audio file under ``root``, ``tag folder``'s own walk, with its artist and genre."""
     found: list[Staged] = []
@@ -423,12 +371,8 @@ def read_member(path: Path) -> Member | None:
 
 
 def library_by_artist(content: Iterable[Any]) -> dict[str, tuple[str, ...]]:
-    """Each live row's genre by its artist key, from the binding's own rows.
-
-    A soft deleted row is not a neighbour, and a row with no genre or no artist
-    gives nothing. The row's genre, not its file's: a whole library of file
-    reads is not paid for one pass, and ``tag rows`` keeps the two agreeing.
-    """
+    """Each live row's genre by its artist key, from the binding's own rows: the
+    row's, not the file's, so no library of file reads is paid for one pass."""
     from cratekit.adopt import collection
     from cratekit.write import trees
 
@@ -444,12 +388,9 @@ def library_by_artist(content: Iterable[Any]) -> dict[str, tuple[str, ...]]:
 
 
 def write(found: GuessPlan) -> GuessPlan:
-    """Write each guess onto its file through the one genre writer, and read it back.
-
-    A file that will not take its genre, or reads back another, is ``unwritten``
-    with why, never reported guessed. A report writes nothing and returns the
-    plan as it was.
-    """
+    """Write each guess onto its file through the one genre writer, and read it
+    back; a file that does not take it is ``unwritten`` with why. A report writes
+    nothing."""
     if found.report:
         return found
     settled: list[Item] = []

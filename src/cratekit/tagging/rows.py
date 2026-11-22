@@ -229,6 +229,24 @@ def _no_energy(path: Path) -> int | None:
     return None
 
 
+def scanned(
+    cfg: config.Config,
+    mapped: Mapping[str, Any],
+    declared: taxonomy.Taxonomy,
+    probe: Callable[[Path], adopt_scan.Readability],
+) -> Iterable[adopt_scan.ScannedTrack]:
+    """Adoption's census over the mapped rows, the walk ``tag rows``, ``tag
+    suggest`` and ``tag backlog`` share, its probe handed through."""
+    return adopt_scan.scan_rows(
+        collection.collection_rows(mapped.values()),
+        declared,
+        root=Path(cfg.library.root),
+        prefix_map=locations.prefix_rules(cfg.resolved_prefix_map()),
+        probe=probe,
+        energy_reader=_no_energy,
+    )
+
+
 def _file_word(path: Path) -> tuple[str, str]:
     """The file's genre, or why it has none to give. Answers (word, outcome).
 
@@ -298,14 +316,7 @@ def plan_rows(
     differing: dict[str, tuple[Any, str, str, str]] = {}
     items: list[Item] = []
 
-    census = adopt_scan.scan_rows(
-        collection.collection_rows(mapped.values()),
-        declared,
-        root=Path(cfg.library.root),
-        prefix_map=locations.prefix_rules(cfg.resolved_prefix_map()),
-        probe=probe,
-        energy_reader=_no_energy,
-    )
+    census = scanned(cfg, mapped, declared, probe)
     for track in census:
         content_id = track.content_id
         if track.readability is not adopt_scan.Readability.READABLE or track.path is None:
@@ -618,4 +629,5 @@ __all__ = [
     "judge",
     "narrowed",
     "plan_rows",
+    "scanned",
 ]
