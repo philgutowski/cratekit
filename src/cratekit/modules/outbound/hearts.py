@@ -16,23 +16,12 @@ from cratekit.core import config
 from cratekit.modules.outbound import ledger
 from cratekit.modules.outbound.service import RemoteAccount
 
-# Names a caller might use to ask for a remove. Present so the engine can
-# see them and still refuse to act on them. A new alias added here is
-# ignored the same way; a new remove API would have to be written.
+# Names a caller might use to ask for a remove, so the engine can see them and
+# still refuse to act on them. A new remove API would have to be written.
 REMOVE_FLAGS = frozenset(
     {
-        "remove",
-        "unheart",
-        "unlike",
-        "uncolor",
-        "clear",
-        "delete",
-        "mirror",
-        "subtract",
-        "sync_removals",
-        "remove_missing",
-        "drop_unhearted",
-        "no_heartback",
+        "remove", "unheart", "unlike", "uncolor", "clear", "delete", "mirror", "subtract",
+        "sync_removals", "remove_missing", "drop_unhearted", "no_heartback",
     }
 )
 
@@ -51,9 +40,8 @@ class LocalColors(Protocol):
 class HeartCandidate:
     """One library favourite that may be hearted remotely.
 
-    ``release_title`` is the row's title with the library's naming head off, and
-    with ``artist`` it lets the account choose among several releases sharing
-    the row's ISRC (R-356). Neither is ever searched on.
+    ``release_title`` (the title with the naming head off) and ``artist`` let the
+    account choose among releases sharing the row's ISRC (R-356), never searched on.
     """
 
     row_id: str
@@ -61,8 +49,7 @@ class HeartCandidate:
     isrc: str = ""
     release_title: str = ""
     artist: str = ""
-    #: The album tag of the row's own file, which chooses among releases
-    #: spelled alike under one ISRC when none is hearted (R-572).
+    #: The file's album tag, choosing among releases spelled alike (R-572).
     album: str = ""
 
 
@@ -81,19 +68,6 @@ class HeartReport:
     reasons: tuple[tuple[str, str], ...] = ()
 
 
-def _remove_requested(flags: Mapping[str, Any] | None) -> bool:
-    if not flags:
-        return False
-    for key, value in flags.items():
-        folded = str(key).replace("-", "_").casefold()
-        if folded in REMOVE_FLAGS or folded.replace("_", "") in {
-            item.replace("-", "").replace("_", "") for item in REMOVE_FLAGS
-        }:
-            if value:
-                return True
-    return False
-
-
 def heart_back(
     cfg: config.Config,
     account: RemoteAccount,
@@ -104,8 +78,8 @@ def heart_back(
 ) -> HeartReport:
     """Heart each matched favourite. Never removes a heart or a colour.
 
-    ``flags`` is accepted so a caller that still thinks in mirror mode cannot
-    accidentally get a different function. Remove-shaped keys are ignored.
+    ``flags`` is accepted, and ignored, so a caller still thinking in mirror
+    mode cannot get a different function.
     """
     del flags  # add-only: a remove request does not change the write set
     hearted: list[str] = []
@@ -139,14 +113,14 @@ def heart_back(
         known.add(remote)
         hearted.append(remote)
     return HeartReport(
-        hearted=tuple(hearted),
-        already=tuple(already),
-        colored=tuple(colored),
-        unmatched=tuple(unmatched),
-        reasons=tuple(reasons),
+        tuple(hearted), tuple(already), tuple(colored), tuple(unmatched), tuple(reasons)
     )
 
 
 def remove_requested(flags: Mapping[str, Any] | None) -> bool:
-    """Whether the caller asked for a remove. The engine still will not do it."""
-    return _remove_requested(flags)
+    """Whether the caller asked for a remove, in any spelling. The engine still will not do it."""
+    folded = {item.replace("_", "") for item in REMOVE_FLAGS}
+    return any(
+        value and str(key).replace("-", "_").casefold().replace("_", "") in folded
+        for key, value in (flags or {}).items()
+    )
