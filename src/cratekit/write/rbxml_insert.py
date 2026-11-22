@@ -1,11 +1,8 @@
 """Where a structural insert into the XML bridge lands, read but never written.
 
-The byte writers stay in :mod:`cratekit.write.rbxml`, because the emitter guard's
-conformance test derives the set of writers from that module's own source, and a
-writer anywhere else would escape it. What is here only reads: which node a write
-is scoped to, which direct child a name collides with, the blocks a catalog
-emits, and whether a line break stands where a splice needs one. Nothing here
-takes a buffer it may change.
+The byte writers stay in :mod:`cratekit.write.rbxml`, whose source the emitter
+guard's conformance test derives the writers from. What is here only reads, and
+nothing here takes a buffer it may change.
 """
 
 from __future__ import annotations
@@ -28,8 +25,7 @@ def _tree_node(content: bytes, tree: Tree | None) -> NodeSpan | str:
     """The node a tree scoped write happens inside, or a warning naming why not.
 
     With no tree named, it is INFERRED as the playlist root's one folder child,
-    and inference refuses when there is more than one: guessing would put a whole
-    genre folder inside whichever tree came first in the document.
+    and inference refuses when there is more than one rather than guess.
     """
     root = _playlist_root(content)
     if isinstance(root, str):
@@ -73,9 +69,8 @@ def _folder_and_sub(
 ) -> tuple[NodeSpan, NodeSpan | None] | str:
     """A genre folder in the tree's scope and its sub-playlist, or a warning.
 
-    The sub is searched AFTER the folder's own open tag: from the folder itself it
-    would re-find the folder when the two share a name, a tag carrying a count
-    rather than an entry count, and the track would be dropped.
+    The sub is searched AFTER the folder's own open tag, or it would re-find the
+    folder when the two share a name.
     """
     scope = _tree_scope(content, tree)
     if isinstance(scope, str):
@@ -114,14 +109,9 @@ def direct_child(
     """The direct child of ``parent`` named ``name``, of that TYPE, or a warning.
 
     Three answers: the node, None when no child carries the name, and a warning
-    when one does at the other type. A locate, so it takes no tree. PUBLIC so no
-    caller re-filters :func:`child_nodes` itself: a filter testing name and type
-    in one condition reports a collision as "not found", and a sweep then walks
-    nothing and reports success.
-
-    The type half is the defence :func:`find_node` carries. Matched on the name
-    alone, a root level playlist named after a tree replaced the whole tree, and
-    everything under it, with a flat playlist.
+    when one does at the other type, which a combined filter would report as
+    "not found". A locate, so it takes no tree. PUBLIC so no caller re-filters
+    :func:`child_nodes` itself.
     """
     for child in child_nodes(content, parent):
         if child.name != name:
@@ -197,8 +187,7 @@ def _sole_child(
 
     :func:`direct_child`'s answers plus a fourth, R-129: rekordbox merges an
     imported folder by name and appends every child, so two siblings of one name
-    double on each import (nine label years reached 3,072 copies each). Merging
-    into the first would leave the second standing, so two of a name refuse.
+    double on each import; two of a name refuse.
     """
     wanted = _folded(name)
     matches = [child for child in child_nodes(content, parent) if _folded(child.name) == wanted]
@@ -222,9 +211,8 @@ def _merged_pairs(
 ) -> list[tuple[str, list]]:
     """The caller's playlists with one entry per name and each id listed once.
 
-    A caller naming one playlist twice is asking for one (the R-129 payload
-    carried a label's subtree twice), so the two are joined in order under the
-    first spelling rather than emitted as a sibling pair.
+    A caller naming one playlist twice is asking for one (R-129), so the two are
+    joined in order under the first spelling rather than emitted as a sibling pair.
     """
     order: list[str] = []
     joined: dict[str, tuple[str, list]] = {}
@@ -250,10 +238,8 @@ def _first_child_offset(content: bytes, parent: NodeSpan) -> int | None:
     """Where a first child's own line begins, or None when there is no such place.
 
     After the break ending the open tag's line, so a block lands on its own line.
-    None when that break is absent, because writing there means inventing a line
-    ending, which is how a bare LF got into an export. None for a SELF CLOSED
-    node too: its ``body_start`` lies past ``/>``, so the arithmetic would hand
-    back a place OUTSIDE the node and its children would land as siblings.
+    None when that break is absent, rather than invent a line ending, and for a
+    SELF CLOSED node, whose ``body_start`` lies past ``/>`` and outside the node.
     """
     if parent.self_closing:
         return None
@@ -278,9 +264,8 @@ def _break_before(content: bytes, line_at: int) -> int | None:
 def _absorb_lead_break(content: bytes, start: int) -> int:
     """Where a node's removal begins once the break ending the line before is taken.
 
-    Every insert here emits a lead break and then the node, so a delete that left
-    the break would grow the document by a blank line on each replace. ``start``
-    moved back over one CRLF when one sits directly before it, else unchanged.
+    Every insert emits a lead break and then the node, so a delete takes the
+    break too: ``start`` moved back over one directly preceding CRLF, else unchanged.
     """
     if bytes(content[start - len(CRLF) : start]) == CRLF:
         return start - len(CRLF)
