@@ -1,77 +1,27 @@
 """The account mirror step of ``crate organize``: the library side, and the steps (U147).
 
-WHAT IS MIRRORED is what rekordbox holds, read through a read handle as the
-account area reads its INSPIRATION listing (U142), with rekordbox open or not:
+WHAT IS MIRRORED is what rekordbox holds, read with rekordbox open or not: every
+live folder under the routing tree's adopted root (found by the root the
+registry records, never by name) as a root folder of its name holding one
+playlist per plain playlist, ``Deep House Low``; the Favorites folder, where
+``All Favorites`` keeps its title; and INBOX (U150), one playlist per live batch
+directly under it, every other node there named with its reason (U214). A batch
+that leaves INBOX has its mirrored playlist removed, the one removal the product
+makes. Two nodes taking one account name refuse it: a name does not decide which
+is the mirror.
 
-* EVERY LIVE FOLDER UNDER THE ROUTING TREE'S ADOPTED ROOT, found by the root
-  the tree registry records and never by the root's name, as every database
-  tree reader finds it. Each becomes a root folder on the account of the same
-  name, holding one playlist per live plain playlist in it, titled ``<Folder>
-  <Playlist>``, ``Deep House Low``;
-* THE FAVORITES FOLDER, the folder holding the playlist every favourite is in
-  (``favorites.placement``'s home), mirrored as a root folder of its own name.
-  The favourites playlist keeps its own title, ``All Favorites``, and the
-  others take the folder's, ``Favorites 2026-10``, ``Favorites Undated``;
-* INBOX (U150), the intake tree's adopted root, mirrored as a root folder of
-  its own name holding one playlist per LIVE BATCH directly under it,
-  ``INBOX 2026-10-31 Defected``, a batch being what ``inbox rotate`` calls one
-  (:func:`cratekit.intake.rotate.live_batches`). Old, and every playlist that
-  is not a batch, is not mirrored, and each such node directly under INBOX
-  is NAMED on the INBOX step with the classifier's reason and, for a plain
-  playlist, its row count (U214), so a batch skipped by rule reads apart
-  from one missed. A batch that leaves INBOX, into Old or
-  out, has its mirrored playlist REMOVED at the next refresh, the one
-  mirrored playlist the product removes, and only when its title no longer
-  sits directly under INBOX at all. An intake tree that is not database
-  native or not adopted is listed, named and not mirrored.
+ONE STEP PER FOLDER, so a folder the account cannot decide refuses alone; a
+recorded folder the library no longer holds is listed and left. UNREAD IS NOT
+NONE: a library or ledger that cannot be read refuses the whole kind.
 
-EACH ROW'S OWN PROVIDER TRACK IS A LINK (U150). A label landing records the
-provider track its manifest names for every row it landed
-(``label_filing.PROVIDER_KEY``), and the matcher takes it before asking the
-provider anything, so a label batch, which no account playlist holds, fills
-from its own tracks with no match request and no ISRC tie to miss on.
+AN EDIT MADE ON THE ACCOUNT IS HELD (U201, U204): :func:`read` reads every edited
+playlist three ways once per run for both areas (:class:`Shared`), so the
+rekordbox area takes or queues the edit and the mirror never undoes it.
 
-A smart playlist and a folder inside a folder hold no membership a mirror
-could copy, and are not mirrored. Two rekordbox folders that would take one
-account name refuse that name, since which one is the mirror is not something a
-name decides, and so do two playlists of one folder taking one title.
-
-ONE STEP PER FOLDER, each its own gate line and digest, so a folder the
-account cannot decide refuses alone and the rest are planned. A folder the
-ledger records as mirrored that the library no longer holds is LISTED, named
-and left on the account: the product never removes a mirrored folder.
-
-UNREAD IS NOT NONE. A library or ledger that cannot be read refuses the whole
-kind as one step; a folder whose account side cannot be read refuses that
-folder, and no folder is planned over a listing that failed.
-
-AN EDIT MADE ON THE ACCOUNT TO A MIRRORED PLAYLIST IS HELD (U201, U204). Each
-mirrored playlist keeps its snapshot, and every playlist of a genre folder, the
-Favorites folder and INBOX is read three ways by :func:`read`, once per
-organize run for both areas through :class:`Shared`: the rekordbox area's
-``mirror-edits`` step takes each edit into the library, its ``mirror-downloads``
-step queues a track added there that the library lacks, and the mirror here
-neither takes such a track off nor adds it back.
-
-EVERY RUN SAYS ITS REQUEST COUNT AND DURATION: the plan's in the area's facts,
-and each applied folder's in its applied totals.
-
-THE PLAN A GATE SHOWS IS THE PLAN ITS APPLY APPLIES (R-1031). A run that asks
-its gate records every link and miss its plan found in the ledger, a fact about
-a row and a provider track rather than a write to the account, and freezes the
-library it read and its matches on the run (:mod:`mirror_frozen`). The run that
-answers the gate rebuilds the mirror from them, reading the account listing
-alone, so a library write between the two acts no longer moves the digest and
-the provider is asked only about rows the frozen plan does not carry. A report
+THE PLAN A GATE SHOWS IS THE PLAN ITS APPLY APPLIES (R-1031, U222): a run that
+asks its gate records its links and misses and freezes what it read
+(:mod:`mirror_frozen`), and the answering run rebuilds from that. A report
 records and freezes nothing.
-
-THE SNAPSHOT IS READ AS THE GATE READ IT (U222). The run that answers reads each
-recorded playlist's snapshot from the frozen plan too, so an account edit the
-rekordbox area took into the library between the acts is decided as the gate
-decided it, and never planned off the account again. When the answer is stale
-all the same, the area names each step that moved since the gate showed it and
-how the mirror's plan was made, and ``crate organize`` puts both on the
-refusal.
 
 Layer: modules.
 """
@@ -79,17 +29,20 @@ Layer: modules.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections import Counter
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from cratekit.cli.output import digest_of
 from cratekit.core import config
 from cratekit.core.cause import Cause, CratekitError, Scope, refuse
-from cratekit.modules.outbound import ledger, mirror
 from cratekit.organize import mirror_frozen
 from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refused
+
+if TYPE_CHECKING:
+    from cratekit.modules.outbound import ledger, mirror
 
 #: The step kind ``--only`` names the mirror by.
 MIRROR = "mirror"
@@ -104,17 +57,16 @@ MISSES_FACT = "mirror misses remembered"
 FROZEN_FACT = "mirror plan frozen"
 #: The fact naming the rows a landing's recorded provider track answered.
 KNOWN_FACT = "mirror rows answered by their landing"
+#: The fact naming what the edit rule read and decided (U201).
+EDITS_FACT = "mirror edits made on the account"
 
 
 @dataclass(frozen=True, slots=True)
 class Run:
     """The organize run the mirror is planned on (R-1031).
 
-    ``record`` is a run that asks its gate, so its plan records what it
-    learned and freezes itself; a report does neither. ``decided`` is a run
-    whose account gate already holds a recorded answer, so the mirror is
-    rebuilt from the plan frozen on it. ``rematch`` asks every remembered miss
-    again.
+    ``record`` records and freezes the plan; ``decided`` rebuilds from the frozen
+    one; ``rematch`` asks every remembered miss again.
     """
 
     run_id: str
@@ -138,40 +90,58 @@ class Library:
     inbox: str = ""
 
 
+def tree_root(db: Any, declared: Any, registry: Any) -> Any:
+    """The routing tree's adopted root, found by the root the registry records."""
+    from cratekit.core import tree_registry
+
+    return tree_registry.anchored_root(
+        declared.tree.id, registry, root_exists=lambda root: db.get_playlist(ID=root) is not None
+    )
+
+
+def resolve_path(cfg: config.Config, recorded: str, rules: Any = None) -> Path | None:
+    """A row's recorded path on this machine, as ``pair_cli.file_identity`` resolves it."""
+    from cratekit.core import locations
+    from cratekit.modules.outbound import source
+
+    if not recorded:
+        return None
+    rules = source.prefix_rules(cfg) if rules is None else rules
+    resolved = locations.resolve_recorded_path(recorded, root=cfg.library.root, prefix_map=rules)
+    return None if resolved.path is None else Path(resolved.path)
+
+
+def keep_newest(newest: dict[str, str], key: str, said: str) -> None:
+    """Hold ``said`` under ``key`` when it reads as a time newer than the one held."""
+    from cratekit.modules.outbound import mirror_edits
+
+    at = mirror_edits.moment(said)
+    held = mirror_edits.moment(newest.get(key, ""))
+    if at is not None and (held is None or at > held):
+        newest[key] = said
+
+
 def _rows(db: Any, playlist_id: str, *, timed: bool = False) -> tuple[mirror.Row, ...]:
     from cratekit.acquire import match
+    from cratekit.modules.outbound import mirror
     from cratekit.write import playlist_pair
 
-    times = _times(db, playlist_id) if timed else {}
+    times = membership_times(db, playlist_id) if timed else {}
     return tuple(
-        mirror.Row(
-            content_id=row.content_id,
-            title=row.title,
-            artist=row.artist,
-            isrc=match.isrc_token(row.isrc),
-            path=row.path,
-            added=times.get(row.content_id, ""),
-        )
+        mirror.Row(row.content_id, row.title, row.artist, match.isrc_token(row.isrc), row.path,
+                   times.get(row.content_id, ""))
         for row in playlist_pair.members(db, playlist_id)
     )
 
 
 def membership_times(db: Any, playlist_id: str) -> dict[str, str]:
-    """When each live membership of one playlist was made, as the edit rule reads it (U236)."""
-    return _times(db, playlist_id)
+    """When each live membership of one playlist was made, the newest per row (U201, U236).
 
-
-def _times(db: Any, playlist_id: str) -> dict[str, str]:
-    """When each live membership of one playlist was made, by content row (U201).
-
-    The newest membership of a row held twice, since it is the one a person
-    added last. A database whose memberships carry no time, or that refuses the
-    read, gives none, which the edit rule reads as unknown, never as a time.
+    No time, or a refused read, gives none: unknown to the edit rule, never a time.
     """
     from sqlalchemy import exc, text
 
     from cratekit.core import rb_writer
-    from cratekit.modules.outbound import mirror_edits
 
     try:
         found = db.session.execute(
@@ -187,13 +157,7 @@ def _times(db: Any, playlist_id: str) -> dict[str, str]:
         return {}
     newest: dict[str, str] = {}
     for content_id, made in found:
-        said = "" if made is None else str(made)
-        at = mirror_edits.moment(said)
-        if at is None:
-            continue
-        held = mirror_edits.moment(newest.get(str(content_id), ""))
-        if held is None or at > held:
-            newest[str(content_id)] = said
+        keep_newest(newest, str(content_id), "" if made is None else str(made))
     return newest
 
 
@@ -209,45 +173,51 @@ def _plain(row: Any) -> bool:
     return int(getattr(row, "Attribute", -1) or 0) == 0
 
 
+def _by_name(row: Any) -> tuple[str, str]:
+    return str(row.Name), str(row.ID)
+
+
+def _sources(name: str, titled_rows: Iterator[tuple[str, Any]]) -> tuple[mirror.Source, ...] | Cause:
+    """Each ``(title, rows)`` as a source, or the refusal of a title two of them take."""
+    from cratekit.modules.outbound import mirror
+
+    sources = tuple(mirror.Source(name=title, rows=rows) for title, rows in titled_rows)
+    twice = sorted(one for one, count in Counter(one.name for one in sources).items() if count > 1)
+    if twice:
+        return _twice(name, f"its playlists {', '.join(repr(one) for one in twice)}")
+    return sources
+
+
 def _folder(
     db: Any, name: str, parent_id: str, titled: Callable[[str], str], *, edits: str = ""
 ) -> mirror.Folder | Cause:
     """One rekordbox folder as a mirror, or the refusal of a title two playlists take.
 
-    ``edits`` is the edit rule that reads the folder. A genre folder's rows
-    carry their membership times for the later change rule (U201), and the
-    Favorites folder's too (U204); an INBOX batch has no such rule to ask.
+    ``edits`` is the rule that reads it; genre and Favorites rows carry their times.
     """
-    from cratekit.modules.outbound import mirror_edits
+    from cratekit.modules.outbound import mirror, mirror_edits
 
-    playlists = sorted(
-        (row for row in _children(db, parent_id) if _plain(row)),
-        key=lambda row: (str(row.Name), str(row.ID)),
+    timed = edits in (mirror_edits.GENRE, mirror_edits.FAVORITES)
+    playlists = sorted((row for row in _children(db, parent_id) if _plain(row)), key=_by_name)
+    sources = _sources(
+        name, ((titled(str(row.Name)), _rows(db, str(row.ID), timed=timed)) for row in playlists)
     )
-    sources: list[mirror.Source] = []
-    taken: dict[str, int] = {}
-    for row in playlists:
-        name_of = titled(str(row.Name))
-        taken[name_of] = taken.get(name_of, 0) + 1
-        timed = edits in (mirror_edits.GENRE, mirror_edits.FAVORITES)
-        sources.append(mirror.Source(name=name_of, rows=_rows(db, str(row.ID), timed=timed)))
-    twice = sorted(one for one, count in taken.items() if count > 1)
-    if twice:
-        return _twice(name, f"its playlists {', '.join(repr(one) for one in twice)}")
-    return mirror.Folder(name=name, playlists=tuple(sources), edits=edits)
+    if isinstance(sources, Cause):
+        return sources
+    return mirror.Folder(name=name, playlists=sources, edits=edits)
 
 
 def _twice(name: str, what: str) -> Cause:
     """Two library nodes taking one account name: refused, the remedy in rekordbox."""
+    from cratekit.modules.outbound import mirror
+
     return refuse(
         mirror.AMBIGUOUS_REASON,
         f"the library holds two of {what} under the account name {name!r}, so which "
         f"one the mirror copies is not something a name decides, and nothing was "
         f"planned for it",
         steps=("rename one of them in rekordbox so each carries its own name",),
-        scope=Scope.SOURCE,
-        origin=_ORIGIN,
-        detail={"name": name},
+        scope=Scope.SOURCE, origin=_ORIGIN, detail={"name": name},
     ).cause
 
 
@@ -256,15 +226,13 @@ def _inbox(
 ) -> tuple[str, mirror.Folder | Cause | str]:
     """INBOX as a retiring mirror folder, the refusal of a title two batches take, or why not.
 
-    Answers ``(name, folder or refusal)``, or ``("", why)`` when the intake
-    tree cannot be read as database native, which lists INBOX and mirrors
-    nothing of it, so no retirement is planned over a tree nobody read.
-    ``today`` is the day a batch's age is read for, the local day by default.
+    ``("", why)`` when the intake tree cannot be read as database native, so no
+    retirement is planned over a tree nobody read.
     """
     from datetime import date
 
     from cratekit.intake import rotate
-    from cratekit.modules.outbound import mirror_edits
+    from cratekit.modules.outbound import mirror, mirror_edits
 
     try:
         live = rotate.live_batches(
@@ -273,15 +241,11 @@ def _inbox(
     except CratekitError as exc:
         return "", f"INBOX is not mirrored: {exc.cause.message}"
     name = live.root_name
-    sources: list[mirror.Source] = []
-    taken: dict[str, int] = {}
-    for playlist_id, batch in live.batches:
-        titled = mirror.title(name, batch)
-        taken[titled] = taken.get(titled, 0) + 1
-        sources.append(mirror.Source(name=titled, rows=_rows(db, playlist_id)))
-    twice = sorted(one for one, count in taken.items() if count > 1)
-    if twice:
-        return name, _twice(name, f"its playlists {', '.join(repr(one) for one in twice)}")
+    sources = _sources(
+        name, ((mirror.title(name, batch), _rows(db, pid)) for pid, batch in live.batches)
+    )
+    if isinstance(sources, Cause):
+        return name, sources
     return name, mirror.Folder(
         name=name,
         playlists=tuple(sources),
@@ -293,14 +257,10 @@ def _inbox(
 
 
 def read_library(cfg: config.Config, *, one_read: Any = None) -> Library:
-    """Every folder to mirror, read on a read handle that is closed before returning.
-
-    ``one_read`` is ``crate organize --report``'s one read handle (U267), read
-    through and released rather than opened and closed here.
-    """
+    """Every folder to mirror, read on a read handle released before returning."""
     from cratekit.core import active_taxonomy, rb_writer, tree_registry
     from cratekit.favorites import placement
-    from cratekit.modules.outbound import mirror_edits
+    from cratekit.modules.outbound import mirror, mirror_edits
 
     declared = active_taxonomy.load(cfg)
     registry = tree_registry.read(cfg)
@@ -312,60 +272,38 @@ def read_library(cfg: config.Config, *, one_read: Any = None) -> Library:
         )
     )
     try:
-        root_id = tree_registry.anchored_root(
-            declared.tree.id,
-            registry,
-            root_exists=lambda root: db.get_playlist(ID=root) is not None,
+        genres = sorted(
+            (one for one in _children(db, tree_root(db, declared, registry)) if rb_writer.is_folder(one)),
+            key=_by_name,
         )
-        found: list[tuple[str, mirror.Folder | Cause]] = []
-        for row in sorted(
-            (one for one in _children(db, root_id) if rb_writer.is_folder(one)),
-            key=lambda one: (str(one.Name), str(one.ID)),
-        ):
-            name = str(row.Name)
-            found.append(
-                (
-                    name,
-                    _folder(
-                        db,
-                        name,
-                        str(row.ID),
-                        lambda shown, name=name: mirror.title(name, shown),
-                        edits=mirror_edits.GENRE,
-                    ),
-                )
-            )
-        favorites = ""
+        found: list[tuple[str, mirror.Folder | Cause]] = [
+            (name, _folder(db, name, str(row.ID), lambda shown, name=name: mirror.title(name, shown),
+                           edits=mirror_edits.GENRE))
+            for row in genres
+            for name in (str(row.Name),)
+        ]
         try:
             home = placement.resolve_home(db, placement.source_name(declared))
         except CratekitError as exc:
-            favorites = exc.cause.message
+            home, favorites = None, exc.cause.message
         else:
-            if not home.folder_id:
-                favorites = (
-                    f"the playlist {home.source_name!r} sits at the playlist root, so there "
-                    f"is no Favorites folder to mirror"
-                )
-            else:
-                name = home.folder_name
+            favorites = "" if home.folder_id else (
+                f"the playlist {home.source_name!r} sits at the playlist root, so there "
+                f"is no Favorites folder to mirror"
+            )
+        if home is not None and home.folder_id:
+            name = home.folder_name
 
-                def titled(shown: str, name: str = name, source: str = home.source_name) -> str:
-                    return shown if shown == source else mirror.title(name, shown)
+            def titled(shown: str, name: str = name, source: str = home.source_name) -> str:
+                return shown if shown == source else mirror.title(name, shown)
 
-                found.append(
-                    (name, _folder(db, name, home.folder_id, titled, edits=mirror_edits.FAVORITES))
-                )
+            found.append((name, _folder(db, name, home.folder_id, titled, edits=mirror_edits.FAVORITES)))
         inbox_name, inbox = _inbox(cfg, db, declared, registry)
-        inbox_why = ""
-        if isinstance(inbox, str):
-            inbox_why = inbox
-        else:
+        if not isinstance(inbox, str):
             found.append((inbox_name, inbox))
     finally:
         rb_writer.done_reading(db, one_read)
-    counted: dict[str, int] = {}
-    for name, _held in found:
-        counted[name] = counted.get(name, 0) + 1
+    counted = Counter(name for name, _held in found)
     folders: list[mirror.Folder] = []
     refusals: dict[str, Cause] = {}
     for name, held in found:
@@ -375,16 +313,14 @@ def read_library(cfg: config.Config, *, one_read: Any = None) -> Library:
             refusals[name] = held
         else:
             folders.append(held)
-    return Library(folders=tuple(folders), refused=refusals, favorites=favorites, inbox=inbox_why)
+    return Library(tuple(folders), refusals, favorites, inbox if isinstance(inbox, str) else "")
 
 
 def landed_tracks(cfg: config.Config) -> dict[str, str]:
-    """Each content row a landing recorded its provider track for, to that track (U150).
+    """Each content row a native landing recorded its provider track for, to that track (U150).
 
-    Read from every native landing's session record. A row two records name
-    two tracks for is left out, to be matched as any row is, since which
-    track it is is not something either record decides. Records that cannot
-    be read name nothing, which costs a match request, never a wrong track.
+    A row two records disagree on, or an unreadable record, costs a match request,
+    never a wrong track.
     """
     from cratekit.core import session
     from cratekit.intake import label_filing, native
@@ -404,13 +340,9 @@ def landed_tracks(cfg: config.Config) -> dict[str, str]:
 
 
 def identify(cfg: config.Config) -> Callable[[mirror.Row], mirror.Identity]:
-    """What a row is matched by: the database code, else the file's, and the bare title.
-
-    ``sync pair``'s reading of one row (U130), so a row means one thing to
-    both: the file is read only when the database holds no code for the row.
-    """
+    """What a row is matched by, as ``sync pair`` reads it (U130): its code, else its file's, and the bare title."""
     from cratekit.core import naming
-    from cratekit.modules.outbound import source
+    from cratekit.modules.outbound import mirror, source
     from cratekit.sync import pair_cli
 
     template = source.name_template(cfg)
@@ -422,36 +354,24 @@ def identify(cfg: config.Config) -> Callable[[mirror.Row], mirror.Identity]:
             # A CODE READ OFF THE FILE ASKS EVEN ONE TRACK TO AGREE (R-879).
             (isrc, album), agree = pair_cli.file_identity(cfg, row.path), True
         return mirror.Identity(
-            isrc=isrc,
-            album=album,
-            title=naming.strip_heads(row.title, template=template),
-            agree=agree,
+            isrc=isrc, album=album, title=naming.strip_heads(row.title, template=template), agree=agree
         )
 
     return said
 
 
 def file_signature(cfg: config.Config) -> Callable[[mirror.Row], str]:
-    """A row's file as a miss remembers it, its size and mtime, or ``""`` unreadable.
-
-    Resolved as ``pair_cli.file_identity`` resolves the path it reads the code
-    from, so a file that gains a code, which changes its mtime, is asked again.
-    """
-    from cratekit.core import locations
+    """A row's file as a miss remembers it, size and mtime, so a file that gains a code is asked again."""
     from cratekit.modules.outbound import source
 
     rules = source.prefix_rules(cfg)
 
     def signature(row: mirror.Row) -> str:
-        if not row.path:
-            return ""
-        resolved = locations.resolve_recorded_path(
-            row.path, root=cfg.library.root, prefix_map=rules
-        )
-        if resolved.path is None:
+        path = resolve_path(cfg, row.path, rules)
+        if path is None:
             return ""
         try:
-            held = Path(resolved.path).stat()
+            held = path.stat()
         except OSError:
             return ""
         return f"{held.st_size}:{held.st_mtime_ns}"
@@ -459,10 +379,36 @@ def file_signature(cfg: config.Config) -> Callable[[mirror.Row], str]:
     return signature
 
 
-def _detail(planned: mirror.FolderPlan, folder: mirror.Folder | None = None) -> str:
+def _detail(planned: mirror.FolderPlan, folder: mirror.Folder) -> str:
     """The step's line, with every node the folder leaves off named on it (U214)."""
-    said = _counted(planned)
-    if folder is not None and folder.unmirrored:
+    from cratekit.modules.outbound import mirror
+
+    counts = planned.counts()
+    if not planned.writes:
+        said = (
+            f"nothing to write: {len(planned.playlists)} playlist(s) already equal "
+            f"their rekordbox playlists' account tracks"
+            + (f", {counts['unmatched']} row(s) unmatched" if counts["unmatched"] else "")
+            + (f", {counts['left']} left as they are" if counts["left"] else "")
+        )
+    else:
+        action = {
+            mirror.CREATE: "create the root folder",
+            mirror.ADOPT: "adopt the root folder of its name",
+            mirror.REUSE: "in its root folder",
+            mirror.UNMADE: "no root folder made, since nothing goes in it",
+        }[planned.folder_action]
+        said = (
+            f"{action}, create {counts['create playlist']} playlist(s), add "
+            f"{counts['add']} track(s) and remove {counts['remove']}, "
+            f"{counts['unmatched']} row(s) unmatched and named"
+            + (
+                f", remove {counts['remove playlist']} playlist(s) whose batch left it"
+                if counts["remove playlist"]
+                else ""
+            )
+        )
+    if folder.unmirrored:
         said += (
             f"; {len(folder.unmirrored)} node(s) in {folder.name} not mirrored: "
             + "; ".join(label for label, _reason in folder.unmirrored)
@@ -470,36 +416,9 @@ def _detail(planned: mirror.FolderPlan, folder: mirror.Folder | None = None) -> 
     return said
 
 
-def _counted(planned: mirror.FolderPlan) -> str:
-    counts = planned.counts()
-    if not planned.writes:
-        return (
-            f"nothing to write: {len(planned.playlists)} playlist(s) already equal "
-            f"their rekordbox playlists' account tracks"
-            + (f", {counts['unmatched']} row(s) unmatched" if counts["unmatched"] else "")
-            + (f", {counts['left']} left as they are" if counts["left"] else "")
-        )
-    folder = {
-        mirror.CREATE: "create the root folder",
-        mirror.ADOPT: "adopt the root folder of its name",
-        mirror.REUSE: "in its root folder",
-        mirror.UNMADE: "no root folder made, since nothing goes in it",
-    }[planned.folder_action]
-    return (
-        f"{folder}, create {counts['create playlist']} playlist(s), add "
-        f"{counts['add']} track(s) and remove {counts['remove']}, "
-        f"{counts['unmatched']} row(s) unmatched and named"
-        + (
-            f", remove {counts['remove playlist']} playlist(s) whose batch left it"
-            if counts["remove playlist"]
-            else ""
-        )
-    )
+def _apply(cfg, step: Step, planned: mirror.FolderPlan, account: mirror.Counted, matcher: mirror.Matcher):
+    from cratekit.modules.outbound import ledger, mirror
 
-
-def _apply(
-    cfg, step: Step, planned: mirror.FolderPlan, account: mirror.Counted, matcher: mirror.Matcher
-):
     def apply() -> dict[str, Any]:
         account.lap()
         done = mirror.Applied()
@@ -511,10 +430,8 @@ def _apply(
         finally:
             requests, seconds = account.lap()
         step.warnings.extend(
-            {
-                "code": "organize-mirror-kept",
-                "message": f"{name}: a removal was refused, so nothing was taken off: {why}",
-            }
+            {"code": "organize-mirror-kept",
+             "message": f"{name}: a removal was refused, so nothing was taken off: {why}"}
             for name, why in done.kept
         )
         return {**done.totals(), "requests": requests, "seconds": seconds}
@@ -524,12 +441,7 @@ def _apply(
 
 @dataclass
 class Reading:
-    """What the mirror read, once per organize run, for both areas (U201).
-
-    The account area's mirror plans from it, and the rekordbox area's step
-    that takes an edit made on the account into the library decides from the
-    same library, matches and listings, so the two never read two accounts.
-    """
+    """What the mirror read, once per run for both areas, so the two never read two accounts (U201)."""
 
     library: Library
     recorded: dict[str, ledger.MirrorFolder]
@@ -539,29 +451,28 @@ class Reading:
     started: float
     frozen: Any = None
     unfrozen: str = ""
-    #: Every genre playlist's listing read for the edit rule, by remote id.
+    #: Every edited playlist's listing read for the edit rule, by remote id.
     listings: dict[str, Any] = field(default_factory=dict)
-    #: The edit rule's answer over the genre folders.
+    #: The edit rule's answer.
     decided: Any = None
-    #: Each genre playlist's place, by account title.
+    #: Each edited playlist's place, by account title.
     places: dict[str, Any] = field(default_factory=dict)
     #: Why edits made on the account were not read, ``""`` when they were.
     unread: str = ""
 
 
+def _every_row(library: Library) -> Iterator[mirror.Row]:
+    return (row for folder in library.folders for source in folder.playlists for row in source.rows)
+
+
 def read(
-    cfg: config.Config,
-    account_of: Callable[[], Any],
-    run: Run | None = None,
-    *,
-    one_read: Any = None,
+    cfg: config.Config, account_of: Callable[[], Any], run: Run | None = None, *, one_read: Any = None
 ) -> Reading:
     """Read the library, the ledger and the account, match every row, and decide the edits.
 
-    Raises the refusal of the whole kind: a library, ledger or account that
-    cannot be read. ``one_read`` is the report's one read handle (U267), which
-    the library is read through when given.
+    Raises the refusal of the whole kind. ``one_read`` is the report's one handle (U267).
     """
+    from cratekit.modules.outbound import ledger, mirror
     from cratekit.modules.outbound import mirror_edits as edits
 
     started = time.monotonic()
@@ -569,46 +480,29 @@ def read(
     if run is not None and run.decided:
         frozen, unfrozen = mirror_frozen.load(cfg, run.run_id)
     library = frozen.library if frozen is not None else read_library(cfg, one_read=one_read)
-    # A FROZEN PLAN CARRIES EVERY ROW'S ANSWER ALREADY, so its rebuild
-    # reads no landing record and asks the provider about no row.
+    # A FROZEN PLAN CARRIES EVERY ROW'S ANSWER, so it reads no landing record.
     known = landed_tracks(cfg) if frozen is None else {}
     recorded = ledger.mirror_folders(cfg)
     if frozen is not None:
-        # THE GATE'S SNAPSHOTS BESIDE THE GATE'S LIBRARY (U222): a snapshot the
-        # rekordbox area settled between the acts read beside the frozen
-        # library reads the edit it took as rekordbox's own change.
+        # THE GATE'S SNAPSHOTS beside the gate's library (U222): one the
+        # rekordbox area settled between the acts would read its edit as
+        # rekordbox's own change.
         recorded = mirror_frozen.overlay(recorded, frozen)
     links = ledger.mirror_links(cfg)
     misses = ledger.mirror_misses(cfg)
     account = mirror.Counted(account_of())
     root = account.folders()
     matcher = mirror.Matcher(
-        account,
-        links,
-        identify(cfg),
-        misses=misses,
-        signature=file_signature(cfg),
+        account, links, identify(cfg), misses=misses, signature=file_signature(cfg),
         rematch=run is not None and run.rematch,
         seen=frozen.matches if frozen is not None else None,
         known=known,
     )
-    # U207. EVERY CODE THE PLANS WILL ASK, screened in batches before the
-    # first is asked, so a code the catalogue files nothing under costs no
-    # request of its own. A frozen plan's rows are answered already and
-    # screen nothing.
-    matcher.screen(
-        row for folder in library.folders for source in folder.playlists for row in source.rows
-    )
+    # EVERY CODE THE PLANS WILL ASK, screened in batches first (U207), so a code
+    # the catalogue files nothing under costs no request of its own.
+    matcher.screen(_every_row(library))
     reading = Reading(
-        library=library,
-        recorded=recorded,
-        account=account,
-        root=root,
-        matcher=matcher,
-        started=started,
-        frozen=frozen,
-        unfrozen=unfrozen,
-        decided=edits.Decided(),
+        library, recorded, account, root, matcher, started, frozen, unfrozen, decided=edits.Decided()
     )
     _read_edits(cfg, reading, links)
     return reading
@@ -617,10 +511,8 @@ def read(
 def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str, str]]) -> None:
     """Read every edited playlist three ways and decide what a person changed on the account.
 
-    The genre folders, the Favorites folder and INBOX (U201, U204). A taxonomy
-    that cannot be read reads no edit, and says so: the mirror then holds
-    nothing, as before U201. A playlist whose listing cannot be read is read as
-    its snapshot and short, so it carries no edit of its own.
+    A taxonomy that cannot be read reads no edit and says so. A playlist whose
+    listing cannot be read is read as its snapshot and short, carrying no edit.
     """
     from cratekit.core import active_taxonomy
     from cratekit.modules.outbound import mirror_edits as edits
@@ -637,32 +529,25 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
         return
     reading.places = carry.places(declared, edited)
     matcher = reading.matcher
-    # EVERY ROW THE MIRROR READS IS MATCHED HERE, the plan's own requests made
-    # once, so an account track is owned by any row the library mirrors.
-    for folder in reading.library.folders:
-        for source in folder.playlists:
-            for row in source.rows:
-                matcher.match(row)
-    owner: dict[str, set[str]] = {}
+    # EVERY ROW THE MIRROR READS IS MATCHED HERE, so an account track is owned
+    # by any row the library mirrors.
+    for row in _every_row(reading.library):
+        matcher.match(row)
     seen = matcher.seen
-    for content_id, (remote, _isrc, _reason) in seen.items():
+    remote_of = {content_id: held[0] for content_id, held in seen.items()}
+    remote_of.update((cid, held[0]) for cid, held in links.items() if cid not in seen)
+    owner: dict[str, set[str]] = {}
+    for content_id, remote in remote_of.items():
         if remote:
             owner.setdefault(remote, set()).add(content_id)
-    for content_id, (remote, _isrc) in links.items():
-        if content_id not in seen and remote:
-            owner.setdefault(remote, set()).add(content_id)
     # A TRACK A MIRROR DOWNLOAD QUEUED IS OWNED BY THE ROW OF ITS ISRC once it
-    # lands (U204), even where the matcher broke a tie between releases toward
-    # another one, so the addition it was queued for is read and filed, and the
-    # row is answered as that track so the mirror never swaps it for another
-    # release. Two rows of the code are two owners, which holds the edit.
+    # lands (U204), even where the matcher tied it to another release, so the
+    # addition is filed and the mirror never swaps the release. Two rows of the
+    # code are two owners, which holds the edit.
     for remote, rows in mirror_downloads.landed(cfg, seen).items():
         # A ROW THE LEDGER LINKS TO ANOTHER TRACK was the library's before the
-        # download, so it is never relinked: that would swap its release on
-        # every playlist it sits in.
-        if remote in owner or any(
-            links.get(one, ("", ""))[0] not in ("", remote) for one in rows
-        ):
+        # download, and is never relinked.
+        if remote in owner or any(links.get(one, ("", ""))[0] not in ("", remote) for one in rows):
             continue
         if len(rows) == 1:
             (content_id,) = rows
@@ -677,8 +562,7 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
     for folder in edited:
         held = reading.recorded.get(folder.name)
         for source in folder.playlists:
-            # THE LIBRARY'S OWN PLACEMENTS ON IT (U236), by title, recorded
-            # whether the playlist is mirrored yet or not.
+            # THE LIBRARY'S OWN PLACEMENTS ON IT (U236), by title.
             recorded_placed = held.placed.get(source.name, {}) if held is not None else {}
             place = reading.places.get(source.name)
             if place is None or place.folder != folder.name:
@@ -687,18 +571,11 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
             added: dict[str, str] = {}
             for row in source.rows:
                 remote, _reason = matcher.match(row)
-                if not remote:
-                    continue
-                wanted.add(remote)
-                newer = edits.moment(row.added)
-                if newer is not None and (
-                    edits.moment(added.get(remote, "")) is None
-                    or newer > edits.moment(added[remote])
-                ):
-                    added[remote] = row.added
-            # ONLY WHILE REKORDBOX HOLDS IT BY THE MEMBERSHIP THE WRITE MADE,
-            # read by its time, so a month deleted and made again, or a
-            # membership a person took off and put back, is theirs (U236).
+                if remote:
+                    wanted.add(remote)
+                    keep_newest(added, remote, row.added)
+            # ONLY WHILE REKORDBOX HOLDS IT BY THE MEMBERSHIP THE WRITE MADE, read
+            # by its time, so one a person took off and put back is theirs (U236).
             ours = frozenset(
                 remote for remote, at in recorded_placed.items() if at and added.get(remote) == at
             )
@@ -711,37 +588,24 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
             try:
                 listing = reading.account.playlist_listing(mine.remote_id)
             except CratekitError:
-                read.append(
-                    edits.Mirrored(
-                        place=place,
-                        account=mine.agreed or frozenset(),
-                        rekordbox=frozenset(wanted),
-                        agreed=mine.agreed,
-                        short=True,
-                        rekordbox_added=added,
-                        placed=ours,
-                    )
-                )
-                continue
-            reading.listings[mine.remote_id] = listing
-            read.append(
-                edits.Mirrored(
-                    place=place,
-                    account=frozenset(listing.names),
-                    rekordbox=frozenset(wanted),
-                    agreed=mine.agreed,
-                    short=listing.short,
-                    account_added=dict(listing.added),
-                    rekordbox_added=added,
-                    placed=ours,
-                )
-            )
-    # AND WHERE EACH QUEUED TRACK'S LANDING FILED ITS ROW BY ITS TAGS (U227),
-    # so that filing is read as the landing's and the edit it was queued for
-    # is carried, never read as a change a person made in rekordbox.
+                listing = None
+            else:
+                reading.listings[mine.remote_id] = listing
+            read.append(edits.Mirrored(
+                place=place,
+                account=(mine.agreed or frozenset()) if listing is None else frozenset(listing.names),
+                rekordbox=frozenset(wanted),
+                agreed=mine.agreed,
+                short=True if listing is None else listing.short,
+                account_added={} if listing is None else dict(listing.added),
+                rekordbox_added=added,
+                placed=ours,
+            ))
+    # AND WHERE EACH QUEUED TRACK'S LANDING FILED ITS ROW BY ITS TAGS (U227), read
+    # as the landing's filing so the edit it was queued for is carried.
     landings = mirror_downloads.filed(cfg, declared, owner)
-    # AND WHICH PLAYLIST'S JOB QUEUED EACH (U230), whose base is read as it
-    # stood at the queue while the landing's filing stands.
+    # AND WHICH PLAYLIST'S JOB QUEUED EACH (U230), whose base is read as it stood
+    # at the queue while the landing's filing stands.
     queued_on = {
         remote: frozenset(titled[one] for one in sources if one in titled)
         for remote, sources in mirror_downloads.queued_from(cfg).items()
@@ -753,11 +617,7 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
 
 
 def holds_for(reading: Reading, folder: mirror.Folder) -> dict[str, Any] | None:
-    """The holds of one folder's playlists, or ``None`` for a folder no edit rule reads.
-
-    By the place's own folder, so a title two folders share never carries one
-    folder's hold onto the other's playlist (U204).
-    """
+    """The holds of one folder's playlists by the place's own folder (U204), ``None`` when no rule reads it."""
     if not folder.edits:
         return None
     return {
@@ -770,55 +630,45 @@ def holds_for(reading: Reading, folder: mirror.Folder) -> dict[str, Any] | None:
 class Shared:
     """One account and one :class:`Reading` per organize run, for both areas (U201).
 
-    ``resolve`` resolves the provider seam; its refusal, and the reading's, is
-    kept and raised again to every caller, so each area refuses the steps
-    that need it with the same reason. ``one_read`` is ``--report``'s one read
-    handle on the database (U267), which the library is read through.
+    A refusal to resolve or read is kept and raised to every caller, so each area
+    refuses with the same reason.
     """
 
     def __init__(
-        self,
-        cfg: config.Config,
-        resolve: Callable[[], Any],
-        run: Run | None = None,
-        *,
-        one_read: Any = None,
+        self, cfg: config.Config, resolve: Callable[[], Any], run: Run | None = None, *, one_read: Any = None
     ) -> None:
-        self._cfg = cfg
-        self._resolve = resolve
-        self._run = run
-        self._one_read = one_read
-        self._account: Any = None
-        self._account_error: CratekitError | None = None
-        self._account_done = False
-        self._reading: Reading | None = None
-        self._reading_error: CratekitError | None = None
+        self._cfg, self._resolve, self._run, self._one_read = cfg, resolve, run, one_read
+        self._held: dict[str, tuple[Any, CratekitError | None]] = {}
+
+    def _once(self, key: str, make: Callable[[], Any]) -> Any:
+        if key not in self._held:
+            try:
+                self._held[key] = (make(), None)
+            except CratekitError as exc:
+                self._held[key] = (None, exc)
+        value, error = self._held[key]
+        if error is not None:
+            raise error
+        return value
 
     def account(self) -> Any:
-        if not self._account_done:
-            self._account_done = True
-            try:
-                self._account = self._resolve()
-            except CratekitError as exc:
-                self._account_error = exc
-        if self._account_error is not None:
-            raise self._account_error
-        return self._account
+        return self._once("account", self._resolve)
 
     def reading(self) -> Reading:
-        if self._reading is None and self._reading_error is None:
-            try:
-                self._reading = read(self._cfg, self.account, self._run, one_read=self._one_read)
-            except CratekitError as exc:
-                self._reading_error = exc
-        if self._reading_error is not None:
-            raise self._reading_error
-        assert self._reading is not None
-        return self._reading
+        return self._once(
+            "reading", lambda: read(self._cfg, self.account, self._run, one_read=self._one_read)
+        )
 
 
-#: The fact naming what the edit rule read and decided (U201).
-EDITS_FACT = "mirror edits made on the account"
+def reading_or_step(shared: Shared, kind: str, title: str) -> Reading | Step:
+    """The run's one reading for a rekordbox area step, or the step it refuses or lists."""
+    try:
+        reading = shared.reading()
+    except CratekitError as exc:
+        return refused(kind, title, exc.cause)
+    if reading.unread:
+        return Step(key=kind, title=title, state=LISTED, detail=reading.unread)
+    return reading
 
 
 def _edits_fact(reading: Reading) -> str:
@@ -829,9 +679,7 @@ def _edits_fact(reading: Reading) -> str:
     decisions = reading.decided.decisions
     if not decisions:
         return "no mirrored playlist was changed on the account since the mirror last finished it"
-    count = {kind: 0 for kind in (*sorted(edits.CARRIED), edits.HELD, edits.REKORDBOX, edits.AGREED)}
-    for one in decisions:
-        count[one.outcome] = count.get(one.outcome, 0) + 1
+    count = Counter(one.outcome for one in decisions)
     carried = sum(count[kind] for kind in edits.CARRIED)
     return (
         f"{len(decisions)} edit(s) made on the account: {carried} taken into the "
@@ -842,68 +690,59 @@ def _edits_fact(reading: Reading) -> str:
     )
 
 
+def _title(name: str) -> str:
+    return f"mirror {name} onto the account"
+
+
+def _listed(name: str, title: str, detail: str) -> Step:
+    return Step(key=f"{MIRROR}:{name}", title=title, state=LISTED, detail=detail)
+
+
 def add_steps(
-    cfg: config.Config,
-    area: Area,
-    account_of: Callable[[], Any],
-    run: Run | None = None,
+    cfg: config.Config, area: Area, account_of: Callable[[], Any], run: Run | None = None,
     shared: Shared | None = None,
 ) -> None:
     """Plan every mirrored folder into ``area``, one step each.
 
-    ``account_of`` is the area's own lazy account, so a refusal to resolve it
-    is this kind's refusal with its own reason. ``run`` is the organize run,
-    or ``None`` for a plan that neither records, freezes nor rebuilds.
-    ``shared`` is the run's one reading, which the rekordbox area may have
-    read already (U201); without one the mirror reads its own.
+    ``account_of`` is the area's lazy account; ``run`` is ``None`` for a plan that
+    neither records, freezes nor rebuilds; ``shared`` is the run's one reading.
     """
+    from cratekit.modules.outbound import ledger, mirror
+
     try:
         reading = shared.reading() if shared is not None else read(cfg, account_of, run)
     except CratekitError as exc:
         area.steps.append(refused(MIRROR, TITLE, exc.cause))
         return
-    started = reading.started
-    frozen = reading.frozen
-    library, recorded = reading.library, reading.recorded
-    account, root, matcher = reading.account, reading.root, reading.matcher
+    frozen, library, recorded = reading.frozen, reading.library, reading.recorded
+    account, matcher = reading.account, reading.matcher
     settled: list[tuple[str, dict[str, tuple[str, frozenset[str]]]]] = []
     for folder in library.folders:
-        key = f"{MIRROR}:{folder.name}"
-        title = f"mirror {folder.name} onto the account"
+        key, title = f"{MIRROR}:{folder.name}", _title(folder.name)
         try:
             planned = mirror.plan(
-                folder,
-                account,
-                recorded=recorded.get(folder.name),
-                root=root,
-                matcher=matcher,
-                holds=holds_for(reading, folder),
-                listings=reading.listings,
+                folder, account, recorded=recorded.get(folder.name), root=reading.root,
+                matcher=matcher, holds=holds_for(reading, folder), listings=reading.listings,
             )
         except CratekitError as exc:
             area.steps.append(refused(key, title, exc.cause))
             continue
         settled.append((folder.name, mirror.settled(planned)))
         step = Step(
-            key=key,
-            title=title,
-            state=PLANNED if planned.writes else NOTHING,
-            detail=_detail(planned, folder),
-            digest=digest_of(planned.identity()),
-            counts=planned.counts(),
-            items=planned.items(),
+            key=key, title=title, state=PLANNED if planned.writes else NOTHING,
+            detail=_detail(planned, folder), digest=digest_of(planned.identity()),
+            counts=planned.counts(), items=planned.items(),
         )
         if planned.writes:
             step.apply = _apply(cfg, step, planned, account, matcher)
-            # EVERY TRACK TAKEN OFF IS NAMED ON THE GATE, U143's line for a
-            # removal, so the gate never says nothing is removed over one.
+            # EVERY TRACK TAKEN OFF IS NAMED ON THE GATE (U143), and every
+            # playlist removed, the INBOX folder's retired batch (U150).
             area.deletes.extend(
                 f"{len(one.remove)} track(s) off the mirrored playlist {one.name!r}: "
                 + "; ".join(one.removed_names)
                 for one in planned.playlists
                 if one.remove
             )
-            # AND EVERY PLAYLIST REMOVED (U150), the INBOX folder's retired batch.
             area.deletes.extend(
                 f"the mirrored playlist {name!r} ({remote_id}) off the account, since "
                 f"what it mirrors left {folder.name}"
@@ -911,42 +750,22 @@ def add_steps(
             )
         area.steps.append(step)
     for name, cause in sorted(library.refused.items()):
-        area.steps.append(refused(f"{MIRROR}:{name}", f"mirror {name} onto the account", cause))
+        area.steps.append(refused(f"{MIRROR}:{name}", _title(name), cause))
     if library.favorites:
-        area.steps.append(
-            Step(
-                key=f"{MIRROR}:favorites",
-                title="mirror the Favorites folder onto the account",
-                state=LISTED,
-                detail=f"not mirrored: {library.favorites}",
-            )
-        )
+        area.steps.append(_listed(
+            "favorites", "mirror the Favorites folder onto the account", f"not mirrored: {library.favorites}"
+        ))
     if library.inbox:
-        area.steps.append(
-            Step(
-                key=f"{MIRROR}:inbox",
-                title="mirror INBOX onto the account",
-                state=LISTED,
-                detail=library.inbox,
-            )
-        )
+        area.steps.append(_listed("inbox", "mirror INBOX onto the account", library.inbox))
     held = {folder.name for folder in library.folders} | set(library.refused)
     for name in sorted(set(recorded) - held):
-        area.steps.append(
-            Step(
-                key=f"{MIRROR}:{name}",
-                title=f"mirror {name} onto the account",
-                state=LISTED,
-                detail=(
-                    f"the library no longer holds a folder named {name!r}, so its mirror "
-                    f"is left on the account as it is and nothing is removed"
-                ),
-            )
-        )
+        area.steps.append(_listed(
+            name, _title(name), f"the library no longer holds a folder named {name!r}, so its mirror "
+            f"is left on the account as it is and nothing is removed",
+        ))
     if run is not None and run.record:
         # THE SNAPSHOT OF EACH PLAYLIST WITH NOTHING TO WRITE (U201), which no
-        # apply records. A ledger that cannot take it leaves the snapshot as
-        # it was, which reads one more refresh's differences as before.
+        # apply records. A ledger that cannot take it leaves it as it was.
         try:
             for name, agreed in settled:
                 ledger.record_mirror_agreed(cfg, name, agreed)
@@ -958,7 +777,7 @@ def add_steps(
     requests, _seconds = account.lap()
     doing = "read the account and rebuild" if frozen is not None else "read the library and the account and plan"
     area.facts[PLAN_FACT] = (
-        f"{requests} account request(s) in {round(time.monotonic() - started, 2)} s to "
+        f"{requests} account request(s) in {round(time.monotonic() - reading.started, 2)} s to "
         f"{doing} {len(library.folders)} folder(s)"
     )
     if matcher.known:
@@ -985,13 +804,7 @@ def add_steps(
 
 
 def _stale(area: Area, frozen: mirror_frozen.Frozen | None) -> list[str]:
-    """What a stale answer on this area says beside the digests (U222).
-
-    Each step that moved since the gate showed it, when the plan was rebuilt
-    from a frozen one that kept what the gate showed, and how the mirror's plan
-    was made, so a person reading the refusal can tell a rebuild from a fresh
-    plan and see what it cost.
-    """
+    """What a stale answer says beside the digests (U222): each step that moved, and how the plan was made."""
     said: list[str] = []
     if frozen is not None and not frozen.shown:
         said.append(
@@ -1012,14 +825,12 @@ def _stale(area: Area, frozen: mirror_frozen.Frozen | None) -> list[str]:
 def _record(cfg: config.Config, run: Run, reading: Reading, area: Area) -> str:
     """Record what the plan learned and freeze it on the run; what the gate says of it.
 
-    NEITHER FAILURE REFUSES THE PLAN. A ledger that cannot take the links
-    refuses the apply on its own, and a plan that cannot be frozen is planned
-    again by the run that applies, which is what every run did before R-1031.
-
-    THE SNAPSHOTS FROZEN ARE THE ONES THE PLAN READ (U222), ``reading.recorded``,
-    never the ledger after this plan recorded its own, and THE STEPS FROZEN ARE
-    THE AREA'S, every one the gate is shown, since the mirror is planned last.
+    NEITHER FAILURE REFUSES THE PLAN: the apply refuses an unrecorded link itself,
+    and an unfrozen plan is planned again. What is frozen is what the plan read and
+    every step the gate shows (U222).
     """
+    from cratekit.modules.outbound import ledger
+
     said = f"{reading.unfrozen}, so it was planned afresh; " if reading.unfrozen else ""
     matcher = reading.matcher
     try:
@@ -1029,10 +840,7 @@ def _record(cfg: config.Config, run: Run, reading: Reading, area: Area) -> str:
         return f"{said}not frozen: what the plan matched could not be recorded ({exc.cause.message})"
     try:
         return said + mirror_frozen.freeze(
-            cfg,
-            run.run_id,
-            reading.library,
-            matcher.seen,
+            cfg, run.run_id, reading.library, matcher.seen,
             recorded=reading.recorded,
             steps=area.steps,
             # A RUN THAT APPLIES PLANNED THIS AFRESH, so no gate showed it.
@@ -1043,21 +851,7 @@ def _record(cfg: config.Config, run: Run, reading: Reading, area: Area) -> str:
 
 
 __all__ = [
-    "EDITS_FACT",
-    "FROZEN_FACT",
-    "KNOWN_FACT",
-    "MIRROR",
-    "MISSES_FACT",
-    "PLAN_FACT",
-    "Library",
-    "Reading",
-    "Run",
-    "Shared",
-    "add_steps",
-    "file_signature",
-    "holds_for",
-    "identify",
-    "landed_tracks",
-    "read",
-    "read_library",
+    "EDITS_FACT", "FROZEN_FACT", "KNOWN_FACT", "MIRROR", "MISSES_FACT", "PLAN_FACT",
+    "Library", "Reading", "Run", "Shared", "add_steps", "file_signature", "holds_for",
+    "identify", "landed_tracks", "read", "read_library",
 ]

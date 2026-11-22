@@ -1,16 +1,7 @@
 """U222: the mirror's apply after a library write between its acts holds the gate's plan.
 
-Sitting 66 drove ``crate organize --only mirror`` to its account gate, took an
-edit made on the account into the library with a ``mirror-edits`` pass, then
-answered the gate: the run that applied rebuilt the frozen plan, read the
-ledger's snapshot live, found the snapshot settled by the pass, read the edit
-as rekordbox's own change, planned the track off the account and refused
-``decision-stale``. Driven here on U204's disposable library, with each act a
-run of its own as ``crate organize`` makes them: the gate's run records and
-freezes, a run of the rekordbox area's ``mirror-edits`` step writes the
-library between the acts, and the gate's run again, decided, rebuilds.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+Sitting 66 on U204's library: the gate's run freezes, a ``mirror-edits`` run
+writes the library between the acts, and the decided run rebuilds. D1 applies.
 """
 
 from __future__ import annotations
@@ -63,9 +54,7 @@ def _edits_pass(world) -> None:
     world.runs += 1
     run = account_mirror.Run(run_id=f"edits-{world.runs}", record=True)
     shared = account_mirror.Shared(world.cfg, lambda: world.account, run)
-    step = mirror_edits.add_step(
-        world.cfg, active_taxonomy.load(world.cfg), tree_registry.read(world.cfg), shared
-    )
+    step = mirror_edits.add_step(world.cfg, active_taxonomy.load(world.cfg), tree_registry.read(world.cfg), shared)
     assert step.apply is not None, step.detail
     step.applied = step.apply()
 
@@ -80,11 +69,6 @@ def _asked(world) -> int:
     return len(world.account.matches)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 1. An account edit the library took between the acts (sitting 66)
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_an_inbox_join_the_library_took_between_the_acts_applies_the_approved_plan(world):
     """Sitting 66, A41: the apply lands with no stale and the track stays on the account."""
     world.put_in(INBOX_A, "r2")
@@ -93,9 +77,7 @@ def test_an_inbox_join_the_library_took_between_the_acts_applies_the_approved_pl
     _edits_pass(world)
     assert world.members(world.batch_a) == {"1", "2"}
     asked = _asked(world)
-
     applied = _answered(world)
-
     assert applied.digest() == shown.digest()
     assert _asked(world) == asked
     assert applied.facts[account_mirror.FROZEN_FACT] == f"rebuilt from the plan frozen on run {GATE}"
@@ -121,9 +103,7 @@ def test_an_inbox_leave_the_library_took_between_the_acts_applies_the_approved_p
     shown = _gate(world)
     _edits_pass(world)
     assert world.members(world.batch_a) == set()
-
     applied = _answered(world)
-
     assert applied.digest() == shown.digest()
     _apply(applied)
     assert world.held(INBOX_A) == []
@@ -134,17 +114,10 @@ def test_a_genre_edit_the_library_took_between_the_acts_applies_the_approved_pla
     shown = _gate(world)
     _edits_pass(world)
     assert "2" in world.members(world.playlists[("Deep House", "Low")])
-
     applied = _answered(world)
-
     assert applied.digest() == shown.digest()
     _apply(applied)
     assert "r2" in world.held("Deep House Low")
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 2. The brief's other scenarios
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_write_outside_any_mirrored_playlist_between_the_acts_is_not_stale(world):
@@ -157,9 +130,7 @@ def test_a_write_outside_any_mirrored_playlist_between_the_acts_is_not_stale(wor
         handle.session.commit()
     finally:
         rb_writer.close_db(handle)
-
     applied = _answered(world)
-
     assert applied.digest() == shown.digest()
     assert applied.stale[0] == "every step plans as the gate showed it"
 
@@ -168,9 +139,7 @@ def test_with_nothing_between_the_acts_the_apply_rebuilds_the_frozen_plan(world)
     """As at sitting 58: rebuilt, equal, and the stale lines say so and how."""
     shown = _gate(world)
     asked = _asked(world)
-
     applied = _answered(world)
-
     assert applied.digest() == shown.digest()
     assert _asked(world) == asked
     assert applied.stale == [
@@ -187,14 +156,7 @@ def test_the_gate_run_and_a_report_say_nothing_stale(world):
     assert _mirror(world, account_mirror.Run(run_id="report", record=False)).stale == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 3. What a stale answer names
-# ═══════════════════════════════════════════════════════════════════════════
-
-
-def test_an_account_change_between_the_acts_is_stale_and_names_its_folder_and_playlist(
-    installed, monkeypatch
-):
+def test_an_account_change_between_the_acts_is_stale_and_names_its_folder_and_playlist(installed, monkeypatch):
     """The one change the frozen plan does not hold, named, and no row asked to say it."""
     world = Plain(installed, monkeypatch)
     world.mirror(folder("Techno", Low=(1, 2), Med=(3,)), folder("Soul", High=(4,)))
@@ -204,26 +166,20 @@ def test_an_account_change_between_the_acts_is_stale_and_names_its_folder_and_pl
     world.account.playlists[world.playlist_id("Techno Low")].append("r99")
     world.account.names["r99"] = ("Someone", "By Hand")
     asked = len(world.account.matches)
-
     applied = Area(name="account")
     account_mirror.add_steps(
         world.cfg, applied, lambda: world.account, account_mirror.Run(run_id=GATE, record=True, decided=True)
     )
-
     assert applied.digest() != shown.digest()
     assert len(world.account.matches) == asked
-    assert applied.stale[0] == (
-        "moved since the gate showed it: mirror Techno onto the account, in 'Techno Low'"
-    )
+    assert applied.stale[0] == ("moved since the gate showed it: mirror Techno onto the account, in 'Techno Low'")
     assert applied.stale[1].startswith(f"{account_mirror.FROZEN_FACT}: rebuilt from the plan frozen")
 
 
 def test_a_decided_run_with_no_frozen_plan_says_it_planned_afresh(world, monkeypatch):
     _gate(world)
     monkeypatch.setattr(mirror_frozen, "load", lambda _cfg, _run: (None, "none, by the test"))
-
     applied = _answered(world)
-
     assert not any(line.startswith("moved since") for line in applied.stale)
     assert applied.stale[0] == (
         f"{account_mirror.FROZEN_FACT}: none, by the test, so it was planned afresh; "
@@ -237,10 +193,8 @@ def test_a_step_new_since_the_gate_and_one_gone_are_named():
         def __init__(self, key, title, digest="d", items=()):
             self.key, self.title, self.items = key, title, list(items)
             self._digest = digest
-
         def identity(self):
             return [self.key, "planned", self._digest]
-
     then = [One("mirror:A", "mirror A onto the account", items=[{"playlist": "A Low"}])]
     gone = One("sets", "the sets step")
     frozen = mirror_frozen.Frozen(
@@ -248,8 +202,7 @@ def test_a_step_new_since_the_gate_and_one_gone_are_named():
         matches={},
         steps={
             step.key: mirror_frozen.Shown(
-                title=step.title,
-                digest=mirror_frozen._shown_json(step)["digest"],
+                title=step.title, digest=mirror_frozen._shown_json(step)["digest"],
                 lines=mirror_frozen._lines(step),
             )
             for step in (*then, gone)
@@ -259,50 +212,32 @@ def test_a_step_new_since_the_gate_and_one_gone_are_named():
         One("mirror:A", "mirror A onto the account", digest="e", items=[{"playlist": "A Low", "add": 1}]),
         One("mirror:B", "mirror B onto the account"),
     ]
-
     assert mirror_frozen.moved(now, frozen) == [
-        "mirror A onto the account, in 'A Low'",
-        "mirror B onto the account, which the gate did not show",
+        "mirror A onto the account, in 'A Low'", "mirror B onto the account, which the gate did not show",
         "the sets step, which the gate showed and this run did not plan",
     ]
-    assert mirror_frozen.moved(then, frozen) == [
-        "the sets step, which the gate showed and this run did not plan"
-    ]
+    assert mirror_frozen.moved(then, frozen) == ["the sets step, which the gate showed and this run did not plan"]
     # A step refused now shows no lines, so it is named alone, never by every
     # line the gate showed (review round one).
     refused = [One("mirror:A", "mirror A onto the account", digest="refused")]
     assert mirror_frozen.moved(refused, frozen) == [
-        "mirror A onto the account",
-        "the sets step, which the gate showed and this run did not plan",
+        "mirror A onto the account", "the sets step, which the gate showed and this run did not plan",
     ]
 
 
 def test_a_label_step_that_moved_is_named_by_its_folder_line():
     """A label step's gate line carries a folder and no playlist; it is named by it."""
-
     class One:
         def __init__(self, items):
             self.key, self.title, self.items = "label:Ilian Tape", "sync the label Ilian Tape", items
-
         def identity(self):
             return [self.key, "planned", digest_of(self.items)]
-
     then = One([{"label": "Ilian Tape", "folder": "Ilian Tape: Labels", "year playlists": ["2024"]}])
     frozen = mirror_frozen.Frozen(
-        library=None,
-        matches={},
-        steps={then.key: mirror_frozen.Shown(**mirror_frozen._shown_json(then))},
+        library=None, matches={}, steps={then.key: mirror_frozen.Shown(**mirror_frozen._shown_json(then))},
     )
     now = One([{"label": "Ilian Tape", "folder": "Ilian Tape: Labels", "year playlists": ["2025"]}])
-
-    assert mirror_frozen.moved([now], frozen) == [
-        "sync the label Ilian Tape, in 'Ilian Tape: Labels'"
-    ]
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 4. The frozen snapshot itself
-# ═══════════════════════════════════════════════════════════════════════════
+    assert mirror_frozen.moved([now], frozen) == ["sync the label Ilian Tape, in 'Ilian Tape: Labels'"]
 
 
 def test_the_frozen_snapshot_is_the_one_the_gates_plan_read_not_the_one_it_recorded(world):
@@ -311,7 +246,6 @@ def test_the_frozen_snapshot_is_the_one_the_gates_plan_read_not_the_one_it_recor
     world.put_in(INBOX_A, "r2")
     _gate(world)
     frozen, _said = mirror_frozen.load(world.cfg, GATE)
-
     assert frozen.agreed["INBOX"][INBOX_A] == (world.remote(INBOX_A), before)
 
 
@@ -328,8 +262,7 @@ def test_a_playlist_made_again_between_the_acts_reads_its_snapshot_now():
             },
         ),
         "Techno": ledger.MirrorFolder(
-            name="Techno",
-            playlists={"low": ledger.MirrorPlaylist(name="low", remote_id="p5", agreed=None)},
+            name="Techno", playlists={"low": ledger.MirrorPlaylist(name="low", remote_id="p5", agreed=None)},
         ),
     }
     frozen = mirror_frozen.Frozen(
@@ -340,9 +273,7 @@ def test_a_playlist_made_again_between_the_acts_reads_its_snapshot_now():
             "Techno": {"low": ("p5", frozenset({"then"}))},
         },
     )
-
     read = mirror_frozen.overlay(recorded, frozen)
-
     assert read["INBOX"].playlists["kept"].agreed == frozenset({"then"})
     assert read["INBOX"].playlists["made again"].agreed == frozenset({"now"})
     assert read["INBOX"].playlists["new"].agreed is None
@@ -370,7 +301,6 @@ def test_a_never_agreed_snapshot_is_frozen_and_read_back_as_never_agreed(world):
     other = "2026-11-05T20:30:00Z-0001"
     mirror_frozen.freeze(world.cfg, other, gated.library, gated.matches, recorded=recorded)
     frozen, said = mirror_frozen.load(world.cfg, other)
-
     assert frozen is not None, said
     assert frozen.agreed["INBOX"]["new"] == ("p4", None)
     assert frozen.agreed["INBOX"]["emptied"] == ("p5", frozenset())
@@ -382,18 +312,14 @@ def test_an_older_record_or_an_unreadable_snapshot_or_step_is_planned_afresh(wor
     document = json.loads(path.read_text(encoding="utf-8"))
     assert document["version"] == mirror_frozen.VERSION == 7
     for changed in (
-        {"version": 5},
-        {"version": 6},
-        {"placed": {"Favorites": {"Favorites 2026-10": "r1"}}},
+        {"version": 5}, {"version": 6}, {"placed": {"Favorites": {"Favorites 2026-10": "r1"}}},
         {"placed": {"Favorites": {"Favorites 2026-10": ["r1"]}}},
         {"placed": {"Favorites": {"Favorites 2026-10": {"r1": 7}}}},
-        {"agreed": {"INBOX": {INBOX_A: ["p1", "not a list"]}}},
-        {"agreed": {"INBOX": {INBOX_A: [7, None]}}},
+        {"agreed": {"INBOX": {INBOX_A: ["p1", "not a list"]}}}, {"agreed": {"INBOX": {INBOX_A: [7, None]}}},
         {"steps": {"mirror:INBOX": {"title": "t", "digest": 7, "lines": {}}}},
         {"steps": {"mirror:INBOX": {"title": "t", "digest": "d", "lines": {"x": None}}}},
         {"steps": {"mirror:INBOX": {"title": "t", "digest": "d"}}},
-        {"agreed": {"INBOX": {INBOX_A: ["p1", ["r1", 7]]}}},
-        {"shown": "yes"},
+        {"agreed": {"INBOX": {INBOX_A: ["p1", ["r1", 7]]}}}, {"shown": "yes"},
     ):
         path.write_text(json.dumps({**document, **changed}), encoding="utf-8")
         frozen, said = mirror_frozen.load(world.cfg, GATE)
@@ -402,10 +328,7 @@ def test_an_older_record_or_an_unreadable_snapshot_or_step_is_planned_afresh(wor
     path.write_text(json.dumps(document), encoding="utf-8")
     frozen, _said = mirror_frozen.load(world.cfg, GATE)
     assert frozen is not None and set(frozen.steps) == {
-        "mirror:Deep House",
-        "mirror:Tech House",
-        "mirror:Favorites",
-        "mirror:INBOX",
+        "mirror:Deep House", "mirror:Tech House", "mirror:Favorites", "mirror:INBOX",
     }
 
 
@@ -423,10 +346,8 @@ def test_a_plan_made_afresh_by_a_decided_run_is_never_read_as_what_the_gate_show
     document = json.loads(path.read_text(encoding="utf-8"))
     path.write_text(json.dumps({**document, "version": 5}), encoding="utf-8")
     world.land("9", code="ISRC00000009")
-
     first = _answered(world)
     second = _answered(world)
-
     assert first.digest() != shown.digest() and second.digest() != shown.digest()
     assert "so it was planned afresh" in first.stale[0], first.stale
     assert "the plan its gate showed is not the one frozen" in first.stale[0], first.stale

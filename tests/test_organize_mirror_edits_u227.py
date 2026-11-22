@@ -1,20 +1,10 @@
 """U227: a download an account edit queued is filed where the edit put it, once it lands.
 
-Sitting 85, driven again on U204's disposable world: a track the library lacks
-is put in a mirrored genre playlist on the account, the downloads step queues
-it, it lands, and the landing files it by its own tags into another band in a
-commit of its own, recording each place in the adoption ledger. Before U227
-the next organize read that filing as a change made in rekordbox later than
-the account's, kept rekordbox's place, and mirrored the track off the playlist
-the person put it in. What is asserted is what the database and the account
-hold afterwards.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+Sitting 85 on U204's world: the landing files the track by its own tags into
+another band, which is never read as a change made in rekordbox. D1 applies.
 """
 
 from __future__ import annotations
-
-import sqlite3
 
 from cratekit.adopt import apply as adoption
 from cratekit.adopt import apply_cli, collection
@@ -45,28 +35,18 @@ MOVED_AT = "2026-11-06 16:00:00.000 +00:00"
 def _file_by_tags(world, content_id: str, to: tuple[str, str], at: str) -> None:
     """The landing's own filing: one band membership at ``at``, recorded in the adoption ledger."""
     genre, band = to
-    conn = sqlite3.connect(world.db)
-    try:
-        conn.execute(
-            "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, "
-            "rb_local_deleted, created_at, updated_at) VALUES (?, ?, ?, 1, 0, ?, ?)",
-            (f"filed-{content_id}", world.playlists[to], content_id, at, at),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    world.sql(
+        "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, "
+        "rb_local_deleted, created_at, updated_at) VALUES (?, ?, ?, 1, 0, ?, ?)",
+        f"filed-{content_id}", world.playlists[to], content_id, at, at,
+    )
     bucket = DECLARED.bucket_for_display(genre)
     (sub,) = [one.id for one in DECLARED.energy.bands if one.display == band]
     adoption.mark_applied(
         world.cfg,
         adoption.AppliedEntry(
-            entry_id=f"{DECLARED.tree.id}:{content_id}:{bucket}:{sub}",
-            tree=DECLARED.tree.id,
-            content_id=content_id,
-            bucket=bucket,
-            sub=sub,
-            actor="session",
-            digest="landing",
+            entry_id=f"{DECLARED.tree.id}:{content_id}:{bucket}:{sub}", tree=DECLARED.tree.id,
+            content_id=content_id, bucket=bucket, sub=sub, actor="session", digest="landing",
             applied=timestamp(),
         ),
     )
@@ -83,9 +63,7 @@ def _queued_landed_and_filed(world, to=("Deep House", "Low")) -> None:
 
 def test_a_queued_track_filed_elsewhere_by_its_tags_is_filed_where_the_account_put_it(world):
     _queued_landed_and_filed(world)
-
     _area, step, _queue = world.run_all()
-
     (change,) = _items(step)
     assert change["edit"] == edits.MOVE and change["joins"] == ["Tech House / Med"]
     assert "landed for the account's edit" in change["why"]
@@ -104,9 +82,7 @@ def test_a_queued_track_filed_elsewhere_by_its_tags_is_filed_where_the_account_p
 def test_a_move_made_in_rekordbox_after_the_landing_still_stands(world):
     _queued_landed_and_filed(world)
     world.move_in_rekordbox("3", ("Deep House", "Med"), MOVED_AT)
-
     _area, step, _queue = world.run_all()
-
     assert _items(step) == []
     (kept,) = [one for one in step.items if one.get("track") == "r3"]
     assert kept["outcome"] == edits.REKORDBOX
@@ -125,27 +101,21 @@ def test_a_filing_recorded_before_the_download_was_queued_is_not_the_landings(wo
     from cratekit.core import jobs
     from cratekit.intake import cli as intake_cli
     from cratekit.organize import mirror_downloads
-
     with jobs.open_store() as store:
         intake_cli.queue_playlist(
-            store,
-            world.cfg,
-            handler_key=mirror_downloads.HANDLER,
-            reference=world.remote("Tech House Med"),
-            tracks={"r3": {"isrc": "ISRC00000003"}},
+            store, world.cfg, handler_key=mirror_downloads.HANDLER,
+            reference=world.remote("Tech House Med"), tracks={"r3": {"isrc": "ISRC00000003"}},
             source_id=mirror_downloads.SOURCE_ID,
         )
-
     _area, step, _queue = world.run_all()
-
     assert _items(step) == []
     assert world.places("3") == {("Deep House", "Low")}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The real producer of the landing's filing, and a re-filing after it
-# (the review of U227, round one)
-# ═══════════════════════════════════════════════════════════════════════════
+def _retag(world, content_id: str, genre: str, genre_id: str, energy: int) -> None:
+    assert tags.write_tags(world.files[content_id], {"genre": genre, "energylevel": energy})
+    world.sql("UPDATE djmdContent SET GenreID = ? WHERE ID = ?", genre_id, content_id)
+    collection.reset_cache()
 
 
 def _file_through_adoption(world, content_id: str, genre: str, genre_id: str, energy: int) -> None:
@@ -155,14 +125,7 @@ def _file_through_adoption(world, content_id: str, genre: str, genre_id: str, en
     the row is filed by ``apply_cli.file_plan``, which writes the band
     membership and marks the adoption ledger.
     """
-    assert tags.write_tags(world.files[content_id], {"genre": genre, "energylevel": energy})
-    conn = sqlite3.connect(world.db)
-    try:
-        conn.execute("UPDATE djmdContent SET GenreID = ? WHERE ID = ?", (genre_id, content_id))
-        conn.commit()
-    finally:
-        conn.close()
-    collection.reset_cache()
+    _retag(world, content_id, genre, genre_id, energy)
     plan = apply_cli.current_plan(world.cfg, DECLARED, scope=frozenset({content_id}))
     apply_cli.file_plan(world.cfg, plan, DECLARED, actor="session", refuse_unplaced=lambda _m: None)
 
@@ -173,9 +136,7 @@ def test_the_landings_filing_by_the_real_producer_is_read_as_the_landings(world)
     _land_and_file(world, matched_as="r3")
     _file_through_adoption(world, "3", "Deep House", "100", 2)
     assert world.places("3") == {("Deep House", "Low")}
-
     _area, step, _queue = world.run_all()
-
     (change,) = _items(step)
     assert change["edit"] == edits.MOVE and "landed for the account's edit" in change["why"]
     assert world.places("3") == {("Tech House", "Med")}
@@ -191,9 +152,7 @@ def test_a_refiling_through_adoption_after_the_landing_is_not_the_landings(world
     _file_through_adoption(world, "3", "Deep House", "100", 2)
     _file_through_adoption(world, "3", "Tech House", "101", 7)
     assert ("Tech House", "High") in world.places("3")
-
     _area, step, _queue = world.run_all()
-
     assert _items(step) == []
     (kept,) = [one for one in step.items if one.get("track") == "r3"]
     assert kept["outcome"] == edits.REKORDBOX
@@ -209,23 +168,14 @@ def _file_as_person(world, content_id: str, genre: str, genre_id: str, energy: i
     The verb queues an ``adopt.apply`` job freezing the approved plan's digest,
     and its worker, ``apply_cli.handle``, files that plan.
     """
-    assert tags.write_tags(world.files[content_id], {"genre": genre, "energylevel": energy})
-    conn = sqlite3.connect(world.db)
-    try:
-        conn.execute("UPDATE djmdContent SET GenreID = ? WHERE ID = ?", (genre_id, content_id))
-        conn.commit()
-    finally:
-        conn.close()
-    collection.reset_cache()
+    _retag(world, content_id, genre, genre_id, energy)
     plan = apply_cli.current_plan(world.cfg, DECLARED)
     with jobs.open_store() as store:
         job = jobs.enqueue(
             store,
             handler_key="adopt.apply",
             payload={
-                "tree": plan.tree,
-                "digest": plan.digest(),
-                apply_cli.ACTOR_KEY: "session",
+                "tree": plan.tree, "digest": plan.digest(), apply_cli.ACTOR_KEY: "session",
                 jobs.GATE_RUN_KEY: "adopt-run",
             },
             item_ids=(plan.digest(),),
@@ -245,9 +195,7 @@ def test_a_persons_first_filing_after_a_landing_that_filed_nothing_is_not_the_la
     )
     _file_as_person(world, "3", "Tech House", "101", 7)
     assert world.places("3") == {("Tech House", "High")}
-
     _area, step, _queue = world.run_all()
-
     assert _items(step) == []
     (kept,) = [one for one in step.items if one.get("track") == "r3"]
     assert kept["outcome"] == edits.REKORDBOX
