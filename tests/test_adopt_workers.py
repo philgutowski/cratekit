@@ -566,31 +566,30 @@ def test_a_collection_that_moved_after_approval_refuses_rather_than_applying(cut
     assert adopt_apply.read(cut_over).entry_ids() == frozenset()
 
 
-@pytest.mark.parametrize("verb", ["adopt.scan", "adopt.apply"])
-def test_an_interrupted_job_exits_with_its_own_cause_and_not_ok(machine, verb):
-    """R-225 at its WIDER edge: a run stopped by a signal is CANCELLED and carries
-    the cause ``jobs.cancel`` builds, so a predicate narrowed to FAILED would
-    report an interrupted adoption through a normal envelope and exit 0."""
-    if verb == "adopt.scan":
-        drive(["adopt", "scan"])
-        job_id = _scan_job().job_id
-        argv = ["adopt", "scan", "--job", job_id]
-    else:
-        run_id, job_id = approve_and_queue(APPLY, GATE)
-        argv = ["--run", run_id, *APPLY, "--job", job_id]
+def test_an_interrupted_job_exits_with_its_own_cause_and_not_ok(machine):
+    """R-225 at its WIDER edge, for a census and an apply: a run stopped by a signal
+    is CANCELLED and carries the cause ``jobs.cancel`` builds, so a predicate
+    narrowed to FAILED would report an interrupted adoption and exit 0."""
+    drive(["adopt", "scan"])
+    scan_id = _scan_job().job_id
+    run_id, apply_id = approve_and_queue(APPLY, GATE)
 
-    with jobs.open_store() as store:
-        jobs.cancel(store, job_id, stage="interrupted")
-        cancelled = jobs.get(store, job_id)
-    assert cancelled.state is jobs.JobState.CANCELLED
-    assert cancelled.cause is not None, "the fixture built a cause-free cancel"
+    for job_id, argv in (
+        (scan_id, ["adopt", "scan", "--job", scan_id]),
+        (apply_id, ["--run", run_id, *APPLY, "--job", apply_id]),
+    ):
+        with jobs.open_store() as store:
+            jobs.cancel(store, job_id, stage="interrupted")
+            cancelled = jobs.get(store, job_id)
+        assert cancelled.state is jobs.JobState.CANCELLED
+        assert cancelled.cause is not None, "the fixture built a cause-free cancel"
 
-    code, envelope = drive(argv)
-    assert code != int(ExitCode.OK), (
-        "an interrupted adoption reported through a normal envelope, so a person "
-        "whose work did not happen is told it finished"
-    )
-    assert envelope["cause"]["reason"] == cancelled.cause.reason
+        code, envelope = drive(argv)
+        assert code != int(ExitCode.OK), (
+            "an interrupted adoption reported through a normal envelope, so a person "
+            "whose work did not happen is told it finished"
+        )
+        assert envelope["cause"]["reason"] == cancelled.cause.reason
 
 
 def test_a_parked_adoption_leaves_blocked_and_non_zero(machine, monkeypatch):
@@ -636,25 +635,21 @@ def test_an_apply_whose_entries_failed_raises_rather_than_reporting_success(cut_
     )
 
 
-@pytest.mark.parametrize(
-    ("seam", "answer", "reason"),
-    [
-        ("rekordbox_running", lambda: True, "rekordbox-running"),
-        ("read_installed_app_version", lambda **_: "9.9.9.0002", "app-version-pin-drift"),
-    ],
-)
-def test_the_apply_opens_its_own_handle_with_write_intent(
-    cut_over, monkeypatch, seam, answer, reason
-):
+def test_the_apply_opens_its_own_handle_with_write_intent(cut_over, monkeypatch):
     """``require_closed=True`` on the apply's own handle, driven against
     ``_write_memberships`` so the refusal is the OPEN's. The two-process half is
     also asserted by the session, so the APPLICATION PIN is what the flag holds
     alone: nothing else on this path asks it."""
-    monkeypatch.setattr(rb_writer, seam, answer)
     plan = apply_cli.current_plan(cut_over, DECLARED)
-    with pytest.raises(Exception) as excinfo:
-        apply_cli._write_memberships(cut_over, plan, DECLARED)
-    assert excinfo.value.cause.reason == reason
+    for seam, answer, reason in (
+        ("rekordbox_running", lambda: True, "rekordbox-running"),
+        ("read_installed_app_version", lambda **_: "9.9.9.0002", "app-version-pin-drift"),
+    ):
+        with monkeypatch.context() as patched:
+            patched.setattr(rb_writer, seam, answer)
+            with pytest.raises(Exception) as excinfo:
+                apply_cli._write_memberships(cut_over, plan, DECLARED)
+        assert excinfo.value.cause.reason == reason, seam
 
 
 def test_a_track_the_tree_write_could_not_place_is_never_marked_applied(cut_over, monkeypatch):
