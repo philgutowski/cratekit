@@ -1,12 +1,7 @@
 """R-837: a set becomes a private playlist on the account, and is archived.
 
-Every scenario the brief names is here, driven through the real dispatcher with
-the two provider seams faked: the catalogue, whose text search names a typed
-row's track, and the streaming account, which records every call. The set
-written and archived on the author's account is owed to an attended sitting and
-is not claimed here.
-
-D1 applies. Nothing here names a real volume, a real person, or a real track.
+Driven through the real dispatcher with the catalogue and the account faked;
+the set written on a real account is owed to an attended sitting.
 """
 
 from __future__ import annotations
@@ -32,6 +27,7 @@ from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, UnreadableCatalogue, catalogue_factory
 from tests.test_intake_missing_search import Hit
 from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_outbound_workers import bind as bind_account
 
 BUILD = "export.set.confirm"
@@ -574,9 +570,7 @@ def test_the_page_bound_reached_leaves_it_out_and_says_so(account):
 
 
 def test_the_walk_never_asks_past_the_providers_ceiling_of_300():
-    """The client serves at most 300 rows of one search, so a page asked past
-    that comes back empty and would read as the end of the listing. The 300 is
-    the client's documented figure, written here and not read off the code."""
+    """Past the client's documented 300 rows a page comes back empty, read as the end."""
     hits = [Hit("tid-7", *SEVEN), *_filler(399)]
     answer, asked = _walk("Artist Seven - Title Seven", hits)
     assert max(asked) + catalogue.TRACK_SEARCH_PAGE <= 300

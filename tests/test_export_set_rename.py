@@ -21,6 +21,7 @@ from cratekit.intake import set_playlist
 from cratekit.modules.outbound import ledger
 from cratekit.sync import mark_record
 from tests.cli_drive import drive
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_u129_set_account_playlist import BUILD, ROWS, _succeeded_set_job, _tracklist
 from tests.test_u129_set_account_playlist import account as account  # noqa: PLC0414
 from tests.test_u129_set_account_playlist import cfg as cfg  # noqa: PLC0414
@@ -104,8 +105,7 @@ def _frozen(job_id: str) -> str:
 
 @pytest.fixture
 def renamed(account, monkeypatch):
-    """A succeeded set job frozen under OLD, its account playlist recorded under OLD,
-    and its INSPIRATION playlist renamed by a person to NEW."""
+    """A set job and its account playlist under OLD, its INSPIRATION playlist renamed NEW."""
     cfg, _fake, held = account
     job = _succeeded_set_job(cfg, OLD)
     remote_id = _recorded(cfg, held, OLD)
@@ -168,8 +168,7 @@ def test_an_aborted_rename_writes_nothing(renamed):
 def test_a_backfill_after_the_rename_plans_no_twin_and_a_named_export_adds_to_it(
     account, monkeypatch
 ):
-    """The twin R-1004 names: a job with no frozen name, exported under the
-    queued day's form, whose INSPIRATION playlist now carries the posted day's."""
+    """R-1004's twin: no frozen name, exported as queued, INSPIRATION now as posted."""
     cfg, _fake, held = account
     job = _succeeded_set_job(cfg, "", created="2026-10-09T12:00:00+00:00")
     posted, queued = set_cli._names_for_job(job)
@@ -204,8 +203,7 @@ def test_a_backfill_after_the_rename_plans_no_twin_and_a_named_export_adds_to_it
 
 
 def test_a_job_with_no_frozen_name_is_found_by_the_queued_day_and_refrozen(account, monkeypatch):
-    """The Signal set's own shape: queued before the freeze, exported under the
-    queued day's form, its INSPIRATION playlist renamed to the posted day's."""
+    """The Signal set: no frozen name, exported as queued, INSPIRATION renamed as posted."""
     cfg, _fake, held = account
     job = _succeeded_set_job(cfg, "", created="2026-10-09T12:00:00+00:00")
     names = set_cli._names_for_job(job)
@@ -366,8 +364,7 @@ def test_a_twin_under_the_new_name_is_refused_rather_than_adopted(renamed):
 
 
 def test_a_name_with_a_slash_freezes_as_the_library_spells_it(account, monkeypatch):
-    """The account and the ledger spell a slash as a dash; the job keeps the slash,
-    since its frozen name names the INSPIRATION playlist too."""
+    """The account and ledger spell a slash as a dash; the frozen name keeps it."""
     cfg, _fake, held = account
     live = "3_25_26 Live 3/25 at Probe 2-26"
     job = _succeeded_set_job(cfg, OLD)
@@ -399,9 +396,7 @@ LANDED = "10_10_26 Public Service NYC Live at Signal 2-26"
 
 @pytest.fixture
 def landed(account, monkeypatch):
-    """The Signal set's shape: no frozen name, page words that spell neither
-    name, the account playlist recorded under the landing's name, and the
-    INSPIRATION playlist renamed by a person to NEW."""
+    """No frozen name, the account playlist under the landing's name, INSPIRATION as NEW."""
     cfg, _fake, held = account
     job = _succeeded_set_job(cfg, "", created="2026-10-10T14:59:24+00:00")
     assert LANDED not in set_cli._names_for_job(job)
@@ -479,8 +474,7 @@ def test_the_backfill_plans_no_twin_after_a_rename_by_the_landing_record(landed,
 
 
 def test_two_playlists_under_two_older_names_are_a_twin_not_a_choice(landed):
-    """The landing's name and the queued day's each hold a playlist, nothing is
-    under the new name, and renaming either would leave the other unrecorded."""
+    """Renaming either of two older names' playlists would leave the other unrecorded."""
     cfg, held, job_id, remote_id = landed
     _landed(cfg, job_id, LANDED)
     with jobs.open_store() as store:
@@ -496,8 +490,7 @@ def test_two_playlists_under_two_older_names_are_a_twin_not_a_choice(landed):
 
 
 def test_the_frozen_name_ranks_ahead_of_the_landing_record(account, monkeypatch):
-    """An earlier rename froze OLD; a stale record under the landing's name is
-    the twin, never the playlist the rename takes."""
+    """With OLD frozen, a stale record under the landing's name is the twin."""
     cfg, _fake, held = account
     job = _succeeded_set_job(cfg, OLD)
     kept = _recorded(cfg, held, OLD)

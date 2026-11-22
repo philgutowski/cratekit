@@ -21,7 +21,7 @@ from cratekit.modules.outbound import artifacts, export, ledger
 from tests import outbound_fakes
 from tests.cli_drive import approve_and_queue
 from tests.test_outbound_add_requests import Account, _adapter, _ids
-from tests.test_outbound_workers import _no_disk_sync as _no_disk_sync  # noqa: PLC0414
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_outbound_workers import _resume, bind
 from tests.test_outbound_workers import installed as installed  # noqa: PLC0414
 
@@ -151,11 +151,7 @@ def test_a_track_on_the_playlist_or_recorded_is_not_sent(cfg):
 def test_a_stop_between_the_request_and_the_record_adds_nothing_twice_and_records_nothing_unanswered(
     cfg, raising
 ):
-    """The card's third scenario, at the writer: the batch landed and its
-    answer never came back, so nothing is recorded, and the next apply finds
-    every track on the playlist, sends nothing and claims none of them, as one
-    track was left before U270 (R-1543). The review drove why the read is not
-    taken as the answer: it cannot tell our add from a person's."""
+    """A batch landed unanswered records nothing, and the next apply sends and claims nothing."""
     account = _reserved(cfg, LandsThenFails(raising=raising))
     with pytest.raises(type(raising)):
         export.apply(cfg, account, _plan(*_rows("t1", "t2", "t3")))
@@ -170,8 +166,7 @@ def test_a_stop_between_the_request_and_the_record_adds_nothing_twice_and_record
 
 
 def test_a_stop_before_the_request_landed_sends_the_batch_again_and_records_it_once(cfg):
-    """The request never reached the provider: nothing is on the playlist,
-    nothing is recorded, and the next apply sends it."""
+    """A request that never reached the provider is sent again by the next apply."""
     account = _reserved(cfg, outbound_fakes.FakeAccount(fail_on={"t2"}, transient=True))
     with pytest.raises(CratekitError):
         export.apply(cfg, account, _plan(*_rows("t1", "t2")))
@@ -186,9 +181,7 @@ def test_a_stop_before_the_request_landed_sends_the_batch_again_and_records_it_o
 
 
 def test_the_ledger_never_notes_a_row_for_a_track_it_does_not_hold_as_added(cfg):
-    """The ledger's own guard, driven alone (round two's fourth finding): a row
-    named for a track the record does not hold as added, a person's, is not
-    written, whatever the caller passes."""
+    """The ledger's own guard: a row for a track it does not hold as added is not written."""
     _reserved(cfg)
     ledger.record_playlist_tracks(cfg, KEY, landed={"row-t1": "t1"})
     ledger.record_playlist_tracks(cfg, KEY, landed={}, rows={"row-x": "theirs", "row-y": "t1"})
@@ -198,9 +191,7 @@ def test_the_ledger_never_notes_a_row_for_a_track_it_does_not_hold_as_added(cfg)
 
 
 def test_a_re_export_names_the_rows_of_tracks_recorded_before_rows_were_kept(cfg):
-    """Round two's third finding: a record written before R-836 holds its
-    tracks and no rows, and an export that writes nothing new still names
-    each recorded track's row, in one write."""
+    """A record from before R-836 kept rows gets its rows named, in one write."""
     account = _reserved(cfg)
     ledger.record_playlist_track(cfg, KEY, "t1")
     ledger.record_playlist_track(cfg, KEY, "t2")
@@ -212,9 +203,7 @@ def test_a_re_export_names_the_rows_of_tracks_recorded_before_rows_were_kept(cfg
 
 
 def test_a_person_who_took_a_track_off_between_batches_is_not_overwritten(cfg):
-    """The card's fourth scenario on the fake: the first batch's track a person
-    took off stays off when its row is exported again, and their own track
-    stays where they put it, ahead of the second batch."""
+    """A track a person took off stays off, and their own stays where they put it."""
     account = _reserved(cfg)
     export.apply(cfg, account, _plan(*_rows("t1", "t2")))
     account.playlists["pl-1"].remove("t1")
@@ -245,8 +234,7 @@ class FailsTheReadAfterAdding(Account):
 
 
 def test_a_hundred_and_fifty_tracks_through_one_apply_are_two_requests_on_one_open(cfg):
-    """More than the provider takes in one request: ``add_tracks`` chunks,
-    each chunk one POST and the client's read after it, on the one open."""
+    """``add_tracks`` chunks past the provider's request size, on the one open."""
     provider = Account("pl0")
     remote = _adapter(provider)
     _reserved(cfg, remote_id="pl0")
@@ -260,8 +248,7 @@ def test_a_hundred_and_fifty_tracks_through_one_apply_are_two_requests_on_one_op
 
 
 def test_a_batch_answered_in_part_on_the_real_client_is_settled_by_one_read_back(cfg):
-    """The card's second scenario: the provider cannot find one track, so its
-    answer names the rest, and the adapter reads the playlist back once."""
+    """An answer naming part of the batch is settled by one read back."""
     provider = Account("pl0")
     provider.missing.add("101")
     remote = _adapter(provider)
@@ -279,11 +266,7 @@ def test_a_batch_answered_in_part_on_the_real_client_is_settled_by_one_read_back
 
 
 def test_one_refused_read_after_a_landed_add_is_retried_on_a_fresh_open_and_recorded(cfg):
-    """Round one's first finding. The POST landed and the client's read after
-    it was refused once: the retry opens the playlist afresh, its add is
-    skipped as duplicates, and the read back records all three. Before the
-    fix the retry sent the stale tag, was refused 412, and failed the batch
-    with every track on the playlist and none recorded."""
+    """A refused read after a landed POST is retried on a fresh open, not a stale tag."""
     provider = FailsTheReadAfterAdding("pl0", refusals=1)
     _reserved(cfg, remote_id="pl0")
     wanted = ("100", "101", "102")
@@ -296,9 +279,7 @@ def test_one_refused_read_after_a_landed_add_is_retried_on_a_fresh_open_and_reco
 
 
 def test_reads_refused_past_the_retry_fail_the_batch_and_the_resume_adds_nothing_twice(cfg):
-    """The read after the add refused past every retry: the add raises with
-    the batch on the playlist and nothing recorded, and the resume, a fresh
-    adapter as a fresh process has, sends nothing and claims nothing."""
+    """Past every retry the batch fails unrecorded, and the resume claims nothing."""
     provider = FailsTheReadAfterAdding("pl0", refusals=12)
     _reserved(cfg, remote_id="pl0")
     wanted = ("100", "101", "102")
@@ -316,10 +297,7 @@ def test_reads_refused_past_the_retry_fail_the_batch_and_the_resume_adds_nothing
 
 
 def test_a_track_a_person_adds_after_a_refused_add_is_never_claimed(cfg):
-    """Round one's second finding. The add's open is refused, so nothing is
-    sent; a person then adds one of the batch's tracks by hand. The next apply
-    reads it as theirs: it is not recorded as added, so a prune never takes
-    it off, and only the other track is sent."""
+    """A batch track a person adds after a refused add is theirs, never recorded."""
     provider = Account("pl0")
     remote = _adapter(provider)
     _reserved(cfg, remote_id="pl0")
@@ -340,9 +318,7 @@ def test_a_track_a_person_adds_after_a_refused_add_is_never_claimed(cfg):
 
 
 def test_a_person_who_edited_the_playlist_between_two_batches_keeps_their_edit(cfg):
-    """The card's fourth scenario on the real client. Each batch opens the
-    playlist afresh, so the second carries the tag the person's write left and
-    goes at the end, after their track: nothing refused, nothing moved."""
+    """Each batch opens afresh, so it goes after a person's track and moves nothing."""
     provider = Account("pl0")
     remote = _adapter(provider)
     _reserved(cfg, remote_id="pl0")
@@ -374,9 +350,7 @@ def _queue(exported: Path) -> str:
 
 
 def test_a_job_of_two_hundred_and_fifty_tracks_makes_fifteen_requests(cfg, monkeypatch):
-    """The brief's goal, through the shipped resume and the real client: three
-    batches, a hundred, a hundred and fifty, each one add request. U255 left
-    this at 503 requests, over the gate's ceiling of 500 for one command."""
+    """Three batches, one add request each, under the gate's 500 (U255 made 503)."""
     provider = Account("pl0")
     remote = _adapter(provider)
     monkeypatch.setattr(remote, "match_track", lambda **asked: str(1000 + int(asked["identity"])))
@@ -406,10 +380,7 @@ def test_a_job_of_two_hundred_and_fifty_tracks_makes_fifteen_requests(cfg, monke
 def test_a_park_between_the_request_and_the_record_blocks_and_the_resume_adds_nothing_twice(
     cfg, monkeypatch
 ):
-    """The card's third scenario through the driver: a park after the batch
-    landed releases the batch whole and blocks the job, and the resume adds
-    nothing twice and settles every item, reading the tracks as already there
-    and recording none it has no answer for (R-1543)."""
+    """A park after a landed batch blocks the job; the resume adds nothing twice (R-1543)."""
     account = LandsThenFails(catalog=dict(_catalog(3)), raising=jobs.Parked(_transient().cause))
     bind(monkeypatch, account)
     job_id = _queue(_crate(cfg, 3))
@@ -436,9 +407,7 @@ def test_a_park_between_the_request_and_the_record_blocks_and_the_resume_adds_no
 def test_one_refused_read_after_a_landed_add_through_the_driver_finishes_the_job(
     cfg, monkeypatch
 ):
-    """Round one's first finding as it was driven: a hundred tracks, the read
-    after the add refused once, and the job succeeds with every track recorded
-    once and nothing told failed."""
+    """Through the driver, a refused read after the add still finishes the job."""
     provider = FailsTheReadAfterAdding("pl0", refusals=1)
     remote = _adapter(provider)
     monkeypatch.setattr(remote, "match_track", lambda **asked: str(1000 + int(asked["identity"])))
@@ -455,9 +424,7 @@ def test_one_refused_read_after_a_landed_add_through_the_driver_finishes_the_job
 
 
 def test_a_stop_asked_while_a_batch_is_planned_writes_none_of_it(cfg, monkeypatch):
-    """Round one's third finding, the guard no test reached: a signal while a
-    batch is matched ends the planning, nothing is sent, and the worker
-    answers that it stopped, so the driver releases the batch whole."""
+    """A stop while a batch is matched sends nothing, so the batch is released whole."""
     from cratekit.export import cli as export_cli
     account = outbound_fakes.FakeAccount(catalog=dict(_catalog(3)))
     exported = _crate(cfg, 3)
@@ -480,8 +447,7 @@ def test_a_stop_asked_while_a_batch_is_planned_writes_none_of_it(cfg, monkeypatc
 
 
 def test_a_created_playlist_is_said_once_for_the_batch(cfg, monkeypatch):
-    """The create and its filing are the batch's, so the first item's report
-    says them and the rest do not: one filing warning, not one per track."""
+    """The create and its filing are the batch's: said by the first item alone."""
     account = outbound_fakes.FakeAccount(catalog=dict(_catalog(3)))
     bind(monkeypatch, account)
     job_id = _queue(_crate(cfg, 3))
