@@ -229,22 +229,6 @@ old = '_RCLONE_REMOTE_NAME = re.compile(r"^[\w.+@][\w.+@ -]*(?<! )$")'
 new = '_RCLONE_REMOTE_NAME = re.compile(r"^[\w.+@][\w.+@ -]*$")'
 
 [[rows]]
-id = "r926.G1_never_checks"
-source = { table = "r926.json", id = "G1_never_checks" }
-description = "The guard returns at once whether or not pytest is loaded, so nothing is ever refused"
-file = "src/cratekit/core/config.py"
-surface = "maintainer"
-tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
-old = '''
-    if "pytest" not in sys.modules:
-        return
-    root = _TEST_WRITE_ROOT'''
-new = '''
-    if True:
-        return
-    root = _TEST_WRITE_ROOT'''
-
-[[rows]]
 id = "u254.C2_append_one_write"
 source = { table = "u254.json", id = "C2_append_one_write" }
 description = "append_durable_bytes: make one write call and drop what it did not take"
@@ -365,3 +349,19 @@ old = '''
 new = '''
     made = declared.bucket_for_display(spelled)
     if False:'''
+
+[[rows]]
+id = "r926.G1_never_checks"
+source = { table = "r926.json", id = "G1_never_checks" }
+description = "The guard returns at once whether or not pytest is loaded, so nothing is ever refused"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+    if "pytest" not in sys.modules:
+        return
+    root = _TEST_WRITE_ROOT'''
+new = '''
+    if True:
+        return
+    root = _TEST_WRITE_ROOT'''
