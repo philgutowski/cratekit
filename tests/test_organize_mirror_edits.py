@@ -48,6 +48,30 @@ GENRES = {"Deep House": "100", "Tech House": "101"}
 TRACKS = {"1": ("Deep House", "Low", 2), "2": ("Deep House", "Med", 5)}
 
 
+#: Each class's disposable library, built once per process and copied after (U309).
+_BUILT: dict[str, tuple[bytes, dict[str, bytes], str, dict]] = {}
+_SILENCE: list[bytes] = []
+
+
+def silence(scratch: Path) -> Path:
+    """One second of silence, synthesized once per process and copied after."""
+    if not _SILENCE:
+        _SILENCE.append(synth_container(scratch, ".flac").read_bytes())
+    path = scratch / "probe.flac"
+    path.write_bytes(_SILENCE[0])
+    return path
+
+
+def _query(db: Path, sql: str, *args) -> list:
+    conn = sqlite3.connect(db)
+    try:
+        found = conn.execute(sql, args).fetchall()
+        conn.commit()
+    finally:
+        conn.close()
+    return found
+
+
 class Machine:
     """The disposable library and the faked account, and one organize run at a time."""
 
@@ -57,58 +81,77 @@ class Machine:
         self.runs = 0
         write_active(cfg, taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
         self.db = Path(cfg.library.db_path)
+        root, music = str(cfg.library.root), Path(cfg.library.root) / "Music"
+        self.files = {cid: music / f"Track {cid}.flac" for cid in TRACKS}
+        key = f"{type(self).__module__}.{type(self).__qualname__}"
+        if key in _BUILT:
+            data, files, was, names = _BUILT[key]
+            self.db.write_bytes(data)
+            for name, body in files.items():
+                (music / name).write_bytes(body)
+            _query(self.db, "UPDATE djmdContent SET FolderPath = replace(FolderPath, ?, ?)", was, root)
+        else:
+            names = self.build(scratch)
+            if not any(Path(f"{self.db}{end}").exists() for end in ("-wal", "-shm", "-journal")):
+                files = {one.name: one.read_bytes() for one in music.iterdir()}
+                _BUILT[key] = (self.db.read_bytes(), files, root, names)
+        vars(self).update(names)
+        self.register()
+
+    def build(self, scratch: Path) -> dict:
+        """The library on disk; answers the ids the test reads, kept with the copy."""
         _build_disposable_database(self.db)
-        silence = synth_container(scratch, ".flac")
-        conn = sqlite3.connect(self.db)
         for name, genre_id in GENRES.items():
-            conn.execute(
+            _query(
+                self.db,
                 "INSERT INTO djmdGenre (ID, Name, rb_local_deleted, created_at, updated_at) "
                 "VALUES (?, ?, 0, '2026-01-01', '2026-01-01')",
-                (genre_id, name),
+                genre_id,
+                name,
             )
-        self.files: dict[str, Path] = {}
         for content_id, (genre, _band, energy) in TRACKS.items():
-            path = Path(cfg.library.root) / "Music" / f"Track {content_id}.flac"
-            shutil.copyfile(silence, path)
+            path = self.files[content_id]
+            shutil.copyfile(silence(scratch), path)
             assert tags.write_tags(
                 path,
                 {"title": f"Track {content_id}", "artist": "Probe", "genre": genre, "energylevel": energy},
             )
-            self.files[content_id] = path
-            conn.execute(
-                f"UPDATE djmdContent SET FolderPath = ?, GenreID = ?, {rb_writer.ISRC_COLUMN} = ? "
-                f"WHERE ID = ?",
-                (str(path), GENRES[genre], f"ISRC0000000{content_id}", content_id),
+            _query(
+                self.db,
+                f"UPDATE djmdContent SET FolderPath = ?, GenreID = ?, {rb_writer.ISRC_COLUMN} = ? WHERE ID = ?",
+                str(path),
+                GENRES[genre],
+                f"ISRC0000000{content_id}",
+                content_id,
             )
-        conn.commit()
-        conn.close()
-        handle = rb_writer.open_db(self.db, unlock=False, cfg=cfg)
+        handle = rb_writer.open_db(self.db, unlock=False, cfg=self.cfg)
         try:
             root = rb_writer.ensure_folder(handle, ROOT)
-            self.playlists: dict[tuple[str, str], str] = {}
+            playlists: dict[tuple[str, str], str] = {}
             for genre in GENRES:
                 folder = rb_writer.ensure_folder(handle, genre, root)
                 for band in BANDS:
-                    self.playlists[(genre, band)] = str(
-                        rb_writer.ensure_playlist(handle, band, folder).ID
-                    )
+                    playlists[(genre, band)] = str(rb_writer.ensure_playlist(handle, band, folder).ID)
             for content_id, (genre, band, _energy) in TRACKS.items():
                 rb_writer.add_memberships(
-                    handle, handle.get_playlist(ID=self.playlists[(genre, band)]), [content_id]
+                    handle, handle.get_playlist(ID=playlists[(genre, band)]), [content_id]
                 )
             handle.session.commit()
-            root_id = str(root.ID)
+            return {"playlists": playlists, "root_id": str(root.ID)}
         finally:
             rb_writer.close_db(handle)
+
+    def register(self) -> None:
+        """The state a library's trees are read by, written for every test."""
         tree_registry.write(
-            cfg,
+            self.cfg,
             tree_registry.Registry(
                 (
                     tree_registry.TreeRecord(
                         tree_id=taxonomy.default_taxonomy().tree.id,
                         mode=tree_registry.Mode.DATABASE,
                         cutover_on=date(2026, 8, 1),
-                        root_id=root_id,
+                        root_id=self.root_id,
                         source=tree_registry.DerivationSource.TAXONOMY,
                     ),
                 )
@@ -161,44 +204,31 @@ class Machine:
     # ── the library ──────────────────────────────────────────────────────
 
     def places(self, content_id: str) -> set[tuple[str, str]]:
-        conn = sqlite3.connect(self.db)
-        try:
-            found = conn.execute(
-                "SELECT PlaylistID FROM djmdSongPlaylist WHERE ContentID = ? "
-                "AND COALESCE(rb_local_deleted, 0) = 0",
-                (content_id,),
-            ).fetchall()
-        finally:
-            conn.close()
+        found = _query(
+            self.db,
+            "SELECT PlaylistID FROM djmdSongPlaylist WHERE ContentID = ? AND COALESCE(rb_local_deleted, 0) = 0",
+            content_id,
+        )
         by_id = {pid: names for names, pid in self.playlists.items()}
         return {by_id[str(one[0])] for one in found if str(one[0]) in by_id}
 
     def genre_row(self, content_id: str) -> str:
-        conn = sqlite3.connect(self.db)
-        try:
-            (found,) = conn.execute(
-                "SELECT GenreID FROM djmdContent WHERE ID = ?", (content_id,)
-            ).fetchone()
-        finally:
-            conn.close()
+        ((found,),) = _query(self.db, "SELECT GenreID FROM djmdContent WHERE ID = ?", content_id)
         return str(found)
 
     def move_in_rekordbox(self, content_id: str, to: tuple[str, str], at: str) -> None:
         """A person's move in rekordbox: out of every band, into one, at a time."""
-        conn = sqlite3.connect(self.db)
-        try:
-            conn.execute(
-                "UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE ContentID = ?",
-                (content_id,),
-            )
-            conn.execute(
-                "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, "
-                "rb_local_deleted, created_at, updated_at) VALUES (?, ?, ?, 1, 0, ?, ?)",
-                (f"moved-{content_id}", self.playlists[to], content_id, at, at),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+        _query(self.db, "UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE ContentID = ?", content_id)
+        _query(
+            self.db,
+            "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, "
+            "rb_local_deleted, created_at, updated_at) VALUES (?, ?, ?, 1, 0, ?, ?)",
+            f"moved-{content_id}",
+            self.playlists[to],
+            content_id,
+            at,
+            at,
+        )
 
     def forget_snapshots(self) -> None:
         path = config.state_path("outbound_writes", self.cfg)

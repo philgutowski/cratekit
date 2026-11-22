@@ -29,11 +29,10 @@ from cratekit.modules.outbound import ledger
 from cratekit.modules.outbound import mirror_edits as edits
 from cratekit.organize import mirror_downloads, mirror_edits, rekordbox
 from cratekit.organize.steps import LISTED, NOTHING, PLANNED
-from tests._containers import synth_container
 from tests.label_fakes import FakeCatalogue, catalogue_factory
 from tests.test_inbox_rotate import _record_landing
 from tests.test_label_workers import installed as installed  # noqa: PLC0414
-from tests.test_organize_mirror_edits import Machine
+from tests.test_organize_mirror_edits import Machine, silence
 from tests.test_organize_mirror_edits import _field_policies as _field_policies  # noqa: PLC0414
 from tests.test_routing_workers import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_routing_workers import (
@@ -94,48 +93,6 @@ class World(Machine):
         self.codes = {"r1": "ISRC00000001", "r2": "ISRC00000002", "r3": "ISRC00000003"}
         #: Account tracks the catalogue lists with no title (R-1289).
         self.untitled: set[str] = set()
-        handle = rb_writer.open_db(self.db, unlock=False, cfg=cfg)
-        try:
-            from pyrekordbox.db6 import tables
-
-            from tests.test_rb_writer_db import _row
-
-            handle.session.add(
-                _row(tables.DjmdColor, ID=PINK, ColorCode=1, SortKey=1, Commnt="Pink")
-            )
-            favorites = rb_writer.ensure_folder(handle, "Favorites")
-            source = handle.create_playlist(SOURCE, parent=favorites)
-            month = handle.create_playlist(MONTH, parent=favorites)
-            inbox = rb_writer.ensure_folder(handle, DECLARED.intake.display)
-            self.old = str(rb_writer.ensure_folder(handle, DECLARED.intake_old.display, inbox).ID)
-            batch_a = handle.create_playlist(BATCH_A, parent=inbox)
-            batch_b = handle.create_playlist(BATCH_B, parent=inbox)
-            handle.session.flush()
-            rb_writer.add_memberships(handle, source, ["1"])
-            rb_writer.add_memberships(handle, month, ["1"])
-            rb_writer.add_memberships(handle, batch_a, ["1"])
-            rb_writer.add_memberships(handle, batch_b, ["2"])
-            handle.session.commit()
-            self.favorites = str(favorites.ID)
-            self.source, self.month = str(source.ID), str(month.ID)
-            self.inbox = str(inbox.ID)
-            self.batch_a, self.batch_b = str(batch_a.ID), str(batch_b.ID)
-        finally:
-            rb_writer.close_db(handle)
-        tree_registry.write(
-            cfg,
-            tree_registry.read(cfg).with_record(
-                tree_registry.TreeRecord(
-                    tree_id=DECLARED.intake.id,
-                    mode=tree_registry.Mode.DATABASE,
-                    cutover_on=date(2026, 8, 1),
-                    root_id=self.inbox,
-                    source=tree_registry.DerivationSource.TAXONOMY,
-                )
-            ),
-        )
-        _record_landing(cfg, self.batch_a, BATCH_A, date(2026, 10, 20))
-        _record_landing(cfg, self.batch_b, BATCH_B, date(2026, 10, 31))
         self.catalogue = FakeCatalogue(playlists={})
         real = self.catalogue.playlists
 
@@ -153,6 +110,49 @@ class World(Machine):
 
         self.catalogue.playlists = Every()
         monkeypatch.setattr(catalogue, "resolve", catalogue_factory(self.catalogue))
+
+    def build(self, scratch: Path) -> dict:
+        names = super().build(scratch)
+        from pyrekordbox.db6 import tables
+
+        from tests.test_rb_writer_db import _row
+
+        handle = rb_writer.open_db(self.db, unlock=False, cfg=self.cfg)
+        try:
+            handle.session.add(_row(tables.DjmdColor, ID=PINK, ColorCode=1, SortKey=1, Commnt="Pink"))
+            favorites = rb_writer.ensure_folder(handle, "Favorites")
+            source = handle.create_playlist(SOURCE, parent=favorites)
+            month = handle.create_playlist(MONTH, parent=favorites)
+            inbox = rb_writer.ensure_folder(handle, DECLARED.intake.display)
+            old = rb_writer.ensure_folder(handle, DECLARED.intake_old.display, inbox)
+            batch_a = handle.create_playlist(BATCH_A, parent=inbox)
+            batch_b = handle.create_playlist(BATCH_B, parent=inbox)
+            handle.session.flush()
+            for playlist, content_id in ((source, "1"), (month, "1"), (batch_a, "1"), (batch_b, "2")):
+                rb_writer.add_memberships(handle, playlist, [content_id])
+            handle.session.commit()
+            made = dict(favorites=favorites, source=source, month=month, inbox=inbox, old=old)
+            return {**names, **{key: str(one.ID) for key, one in made.items()},
+                    "batch_a": str(batch_a.ID), "batch_b": str(batch_b.ID)}
+        finally:
+            rb_writer.close_db(handle)
+
+    def register(self) -> None:
+        super().register()
+        tree_registry.write(
+            self.cfg,
+            tree_registry.read(self.cfg).with_record(
+                tree_registry.TreeRecord(
+                    tree_id=DECLARED.intake.id,
+                    mode=tree_registry.Mode.DATABASE,
+                    cutover_on=date(2026, 8, 1),
+                    root_id=self.inbox,
+                    source=tree_registry.DerivationSource.TAXONOMY,
+                )
+            ),
+        )
+        _record_landing(self.cfg, self.batch_a, BATCH_A, date(2026, 10, 20))
+        _record_landing(self.cfg, self.batch_b, BATCH_B, date(2026, 10, 31))
 
     # ── one organize run, with the downloads step ─────────────────────────
 
@@ -207,9 +207,8 @@ class World(Machine):
 
     def land(self, content_id: str, *, code: str, batch: str = "2026-11-02 Landed") -> str:
         """A download landed: its file, its row and its batch in INBOX, named by its record."""
-        silence = synth_container(self.scratch, ".flac")
         path = Path(self.cfg.library.root) / "Music" / f"Track {content_id}.flac"
-        shutil.copyfile(silence, path)
+        shutil.copyfile(silence(self.scratch), path)
         assert tags.write_tags(path, {"title": f"Track {content_id}", "artist": "Probe"})
         conn = sqlite3.connect(self.db)
         try:
