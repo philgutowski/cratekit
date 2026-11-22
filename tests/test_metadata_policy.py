@@ -336,11 +336,9 @@ def key_authoring_violations(source: str, module: str) -> list[str]:
 
 def test_no_module_in_the_package_authors_a_key_value():
     """The live half. Green today, and green is the point."""
-    words = (*FORBIDDEN_KEY_SYMBOLS, "KeyID")
     problems: list[str] = []
     for module, source in _package_modules():
-        if any(word in source for word in words):
-            problems += key_authoring_violations(source, module)
+        problems += key_authoring_violations(source, module)
     assert not problems, "key-authoring violations:\n" + "\n".join(problems)
 
 
