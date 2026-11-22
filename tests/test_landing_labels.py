@@ -164,9 +164,7 @@ def test_two_labels_across_two_years_are_four_playlists_in_the_intake_file(
     assert body.find(b"Kompakt 2025") < body.find(b"Kompakt 2024"), "newest year first"
     assert body.find(b'Name="Kompakt"') < body.find(b'Name="Ostgut Ton"'), "a new tree reads A to Z"
     # ONE file carries both: every landed track is in the intake playlist too.
-    assert sorted(_playlist_keys(body, BATCH)) == sorted(
-        item.track_id for item in landed.placed
-    )
+    assert sorted(_playlist_keys(body, BATCH)) == sorted(item.track_id for item in landed.placed)
     assert [(entry.playlist, entry.track_ids) for entry in landed.labelled] == [
         ("Kompakt 2025", (_id_of(landed, "Ada - North"),)),
         ("Kompakt 2024", (_id_of(landed, "Ada - South"),)),
@@ -226,12 +224,13 @@ def test_an_undeclared_catalog_tree_refuses_before_any_file_moves(
     _nothing_moved(cfg, staged, cause)
 
 
+@pytest.mark.parametrize("source", ["favourites", None], ids=["favourites", "no-manifest"])
 def test_an_undeclared_catalog_tree_costs_a_landing_with_no_label_row_nothing(
-    cfg, silence, export, tmp_path, monkeypatch
+    cfg, silence, export, tmp_path, source
 ):
     """The tree is asked about only when something would be written into it."""
     _stage(cfg, silence, "Ada", "North")
-    manifest = _manifest(tmp_path, ONE, source="favourites")
+    manifest = source and _manifest(tmp_path, ONE, source=source)
     write_active(cfg, shipped_without("catalog"))
     landed = _land(cfg, export, manifest)
     assert len(landed.moved) == 1
@@ -368,13 +367,6 @@ def test_a_file_already_in_the_batch_folder_is_not_filed_under_this_landing(
     assert landed.unlabelled[0].reason == landing.NO_FILE
     body = _destination(cfg).read_bytes()
     assert _playlist_keys(body, "Kompakt 2025") == [_id_of(landed, "Bo - East")]
-
-
-def test_landing_without_a_manifest_writes_no_label_tree(cfg, silence, export):
-    _stage(cfg, silence, "Ada", "North")
-    landed = _land(cfg, export, None)
-    assert landed.labelled == () and landed.unlabelled == ()
-    assert b"Record Labels" not in _destination(cfg).read_bytes()
 
 
 def test_a_second_landing_into_the_first_ones_file_merges_and_duplicates_nothing(

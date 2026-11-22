@@ -1,8 +1,7 @@
 """U164: a native landing puts its files straight into Processed_Tracks/<year>/<MM_DD_YY subject>.
 
 The rows carry their final ``FolderPath`` from the first commit, so no shelve
-follows. The real dispatcher against the disposable database
-``tests/test_intake_land_native.py`` builds. Nothing here is real (D1).
+follows. Nothing here is real (D1).
 """
 
 from __future__ import annotations

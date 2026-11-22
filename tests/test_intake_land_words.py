@@ -1,8 +1,6 @@
 """U163: a native landing writes artist, album, genre and year on each row from the file (R-921).
 
-The real dispatcher and engine over real FLAC containers, against the
-disposable database ``tests/test_intake_land_native.py`` builds. Nothing here
-is real (D1).
+On the native suite's disposable database. Nothing here is real (D1).
 """
 
 from __future__ import annotations
@@ -96,26 +94,39 @@ def _only_id(cfg: config.Config) -> str:
     return str(content_id)
 
 
+def _by_name(cfg: config.Config) -> dict[str, str]:
+    return {Path(row[2]).name: str(row[0]) for row in _landed_rows(cfg)}
+
+
 def _shown_row(refused: dict, index: int = 0) -> dict:
     return refused["cause"]["detail"]["shown"]["items"][index]["row"]
 
 
 def test_a_word_the_library_holds_links_its_active_row_and_mints_nothing(native_library, silence):
+    """A file with no artist leaves the column empty."""
     cfg, _root = native_library
     _seed(cfg, rb_writer.ARTIST_TABLE, {"ID": "501", "Name": "Probe"})
     _seed(cfg, rb_writer.GENRE_TABLE, {"ID": "601", "Name": "Deep House"})
     _stage(cfg, silence, "One.flac")
+    _strip(_stage(cfg, silence, "Two.flac"), "artist")
     refused = _landed_ok()
-    shown = _shown_row(refused)
-    assert shown[native.ARTIST_COLUMN] == {"name": "Probe", "row": "501"}
-    assert shown[native.GENRE_COLUMN] == {"name": "Deep House", "row": "601"}
-    artist, album, genre, _key, _year = _words(cfg, _only_id(cfg))
+    items = refused["cause"]["detail"]["shown"]["items"]
+    shown = {Path(item["to"]).name: item["row"] for item in items}
+    assert shown["One.flac"][native.ARTIST_COLUMN] == {"name": "Probe", "row": "501"}
+    assert shown["One.flac"][native.GENRE_COLUMN] == {"name": "Deep House", "row": "601"}
+    assert native.ARTIST_COLUMN not in shown["Two.flac"]
+    by_name = _by_name(cfg)
+    artist, album, genre, _key, _year = _words(cfg, by_name["One.flac"])
     assert (str(artist), album, str(genre)) == ("501", None, "601")
+    artist, album, genre, _key, year = _words(cfg, by_name["Two.flac"])
+    assert (artist, album, year) == (None, None, None)
+    assert genre is not None
     assert [row[1] for row in _names(cfg, rb_writer.ARTIST_TABLE)] == ["Probe"]
     assert [row[1] for row in _names(cfg, rb_writer.GENRE_TABLE)] == ["Deep House"]
 
 
 def test_a_word_the_library_lacks_is_minted_and_linked_in_the_one_commit(native_library, silence):
+    """A second file with the same new artist mints it once."""
     cfg, _root = native_library
     _tag(
         _stage(cfg, silence, "One.flac"),
@@ -123,6 +134,7 @@ def test_a_word_the_library_lacks_is_minted_and_linked_in_the_one_commit(native_
         albumartist="Probe Various",
         date="2021-03-05",
     )
+    _stage(cfg, silence, "Two.flac")
     assert _names(cfg, rb_writer.ARTIST_TABLE) == []
     refused = _landed_ok()
     shown = _shown_row(refused)
@@ -136,9 +148,11 @@ def test_a_word_the_library_lacks_is_minted_and_linked_in_the_one_commit(native_
         "SearchStr": None,
     }
     assert shown[native.YEAR_COLUMN] == 2021
-    artist, album, genre, key, year = _words(cfg, _only_id(cfg))
+    by_name = _by_name(cfg)
+    artist, album, genre, key, year = _words(cfg, by_name["One.flac"])
+    assert str(_words(cfg, by_name["Two.flac"])[0]) == str(artist)
     artists = {name: row_id for row_id, name, _deleted in _names(cfg, rb_writer.ARTIST_TABLE)}
-    assert set(artists) == {"Probe", "Probe Various"}
+    assert sorted(row[1] for row in _names(cfg, rb_writer.ARTIST_TABLE)) == ["Probe", "Probe Various"]
     assert str(artist) == str(artists["Probe"])
     ((album_id, album_name, deleted),) = _names(cfg, rb_writer.ALBUM_TABLE)
     assert (str(album), album_name, deleted) == (str(album_id), "Probe Album", 0)
@@ -149,21 +163,6 @@ def test_a_word_the_library_lacks_is_minted_and_linked_in_the_one_commit(native_
     # NEVER THE KEY, though the title head carries one; and the date's year.
     assert key is None
     assert year == 2021
-
-
-def test_two_files_with_one_new_artist_mint_it_once(native_library, silence):
-    cfg, _root = native_library
-    for name in ("One.flac", "Two.flac"):
-        _stage(cfg, silence, name)
-    _landed_ok()
-    assert [row[1] for row in _names(cfg, rb_writer.ARTIST_TABLE)] == ["Probe"]
-    assert [row[1] for row in _names(cfg, rb_writer.GENRE_TABLE)] == ["Deep House"]
-    linked = {_words(cfg, str(row[0]))[0] for row in _landed_rows(cfg)}
-    assert len(linked) == 1
-
-
-def _by_name(cfg: config.Config) -> dict[str, str]:
-    return {Path(row[2]).name: str(row[0]) for row in _landed_rows(cfg)}
 
 
 def test_a_tombstoned_namesake_is_skipped_for_the_active_row_after_it_or_else_minted(
@@ -190,17 +189,6 @@ def test_a_tombstoned_namesake_is_skipped_for_the_active_row_after_it_or_else_mi
     assert ("Probe", 0) in [(name, deleted) for row_id, name, deleted in _names(
         cfg, rb_writer.ARTIST_TABLE
     ) if str(row_id) == linked]
-
-
-def test_a_file_with_no_artist_leaves_the_column_empty(native_library, silence):
-    cfg, _root = native_library
-    _strip(_stage(cfg, silence, "One.flac"), "artist")
-    refused = _landed_ok()
-    assert native.ARTIST_COLUMN not in _shown_row(refused)
-    artist, album, genre, _key, year = _words(cfg, _only_id(cfg))
-    assert (artist, album, year) == (None, None, None)
-    assert genre is not None
-    assert _names(cfg, rb_writer.ARTIST_TABLE) == []
 
 
 def test_an_album_links_the_one_its_album_artist_holds(native_library, silence):
@@ -326,14 +314,8 @@ def test_a_landed_row_whose_word_reads_back_wrong_is_refused():
         planned={native.ARTIST_COLUMN: "Probe"},
     )
     landed = native.NativeLanded(
-        tree_id="t",
-        playlist="p",
-        playlist_id="1",
-        added=(right,),
-        present=(),
-        memberships_added=0,
-        session_id="s",
-        content_link=1,
+        tree_id="t", playlist="p", playlist_id="1", added=(right,), present=(),
+        memberships_added=0, session_id="s", content_link=1,
     )
     native.assert_rows_identified(landed)
     wrong = replace(landed, added=(replace(right, words={native.ARTIST_COLUMN: ""}),))

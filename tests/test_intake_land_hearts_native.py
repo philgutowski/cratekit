@@ -1,9 +1,7 @@
 """U120 on the native medium: a heart the favourites sync lands joins All Favorites and its month.
 
-AE4's landing half through the real dispatcher on the native suite's
-disposable database: the hearts job queued and run as ``crate sync all`` does,
-the files landed with ``--pass``, Favorites read back from SQL. Then R11 through
-U119's engine. Nothing here is real (D1).
+The hearts job queued and run as ``crate sync all`` does, the files landed with
+``--pass`` on the native suite's disposable database. Nothing here is real (D1).
 """
 
 from __future__ import annotations
@@ -14,9 +12,10 @@ from pathlib import Path
 from cratekit.acquire import match
 from cratekit.cli import jobs as cli_jobs
 from cratekit.core import analysis_store, config, jobs, rb_writer, session, taxonomy, tree_registry
+from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.favorites import placement
-from cratekit.intake import batch_name, land_cli, missing_cli, native
+from cratekit.intake import account_playlists, batch_name, land_cli, missing_cli, native
 from cratekit.intake import cli as intake_cli
 from cratekit.write import genre_favorites
 from tests import cutover_fixtures
@@ -182,14 +181,8 @@ def test_a_hearted_file_lands_in_its_batch_all_favorites_and_a_month_made_for_it
     assert _colour_of(cfg, "Hearted") == PINK_ID
     assert _colour_of(cfg, "One") in ("", "0")
     # In no genre Favorites: the only plain playlists named for the class are none.
-    assert (
-        _query(
-            cfg,
-            "SELECT ID FROM djmdPlaylist WHERE Name = ? AND Attribute = 0 AND rb_local_deleted = 0",
-            CLASS.display,
-        )
-        == []
-    )
+    plain = "SELECT ID FROM djmdPlaylist WHERE Name = ? AND Attribute = 0 AND rb_local_deleted = 0"
+    assert _query(cfg, plain, CLASS.display) == []
 
 
 def test_a_heart_of_the_twentieth_of_october_joins_its_month_and_an_undated_one_undated(
@@ -382,6 +375,7 @@ def test_a_source_at_the_root_takes_its_months_beside_it(native_library, silence
 
 
 def test_the_hearts_are_in_the_digest_so_another_set_is_another_plan(native_library, silence, monkeypatch):
+    """And a home's refusal that is not the missing source refuses the landing."""
     cfg, _root_id = native_library
     _home(cfg)
     _hearted(cfg, silence, {"Hearted": NOV})
@@ -391,13 +385,20 @@ def test_the_hearts_are_in_the_digest_so_another_set_is_another_plan(native_libr
     decided, envelope = drive(["run", "decide", run_id, land_cli.NATIVE_GATE, "apply", "--actor", "a-person"])
     assert decided == int(ExitCode.OK), envelope
     # Between the answer and the write the heart's month reads differently.
-    monkeypatch.setattr(
-        placement.placeholders, "month_label", lambda hearted: "2027-01"
-    )
+    monkeypatch.setattr(placement.placeholders, "month_label", lambda hearted: "2027-01")
 
     code, acted = drive(["--run", run_id, *_land()])
     assert code != int(ExitCode.OK), acted
     assert acted["cause"]["reason"] == "decision-stale", acted
+    assert (Path(cfg.paths.download_staging) / "Hearted.flac").is_file()
+
+    def broken(db, name):
+        raise refuse("decision-stale", "the playlist table could not be read", origin=("t",))
+
+    monkeypatch.setattr(placement, "resolve_home", broken)
+    code, refused = drive(_land())
+    assert code != int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["reason"] == "decision-stale"
     assert (Path(cfg.paths.download_staging) / "Hearted.flac").is_file()
 
 
@@ -405,8 +406,6 @@ def test_the_pass_jobs_hearts_are_read_from_the_job_and_a_playlist_job_claims_no
     native_library, silence
 ):
     """The claim rule alone, without a landing."""
-    from cratekit.intake import account_playlists
-
     cfg, _root_id = native_library
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
     hearts_swept(cfg, {"Hearted": NOV, "Nowhere": SEP})
@@ -448,25 +447,6 @@ def test_a_heart_whose_job_froze_no_date_key_joins_all_favorites_and_no_month(
     assert by_name["Old.flac"]["heart"] == "month left to the backfill"
     assert by_name["New.flac"]["heart"] == "2026-11"
     assert acted["data"]["totals"]["hearts placed"] == 3
-
-
-def test_a_homes_refusal_that_is_not_the_missing_source_refuses_the_landing(
-    native_library, silence, monkeypatch
-):
-    from cratekit.core.cause import refuse
-
-    cfg, _root_id = native_library
-    _home(cfg)
-    _hearted(cfg, silence, {"Hearted": NOV})
-
-    def broken(db, name):
-        raise refuse("decision-stale", "the playlist table could not be read", origin=("t",))
-
-    monkeypatch.setattr(placement, "resolve_home", broken)
-    code, refused = drive(_land())
-    assert code != int(ExitCode.DECISION_REQUIRED), refused
-    assert refused["cause"]["reason"] == "decision-stale"
-    assert (Path(cfg.paths.download_staging) / "Hearted.flac").is_file()
 
 
 def test_with_no_pink_row_the_landing_places_the_heart_and_warns(native_library, silence):

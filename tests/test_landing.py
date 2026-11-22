@@ -480,10 +480,7 @@ def test_a_held_batch_name_refuses_a_second_holder_and_names_the_batch(cfg):
     assert cause.remediation.remedy is None
     assert len(cause.remediation.steps) == 2
     assert "--name" in cause.remediation.steps[1]
-
-
-def test_a_holder_that_has_not_written_its_name_yet_is_unknown(cfg):
-    """The name in the file is for the message, never the liveness test."""
+    # The name in the file is for the message, never the liveness test.
     cause, _held = _second_holder(BATCH, BATCH, unnamed=True)
     assert cause.reason == "job-driver-held"
     assert cause.detail["holder"] == "holder unknown"

@@ -1,8 +1,7 @@
 """U149 at the landing: each account playlist a native landing writes gets its custom playlist twin.
 
 In the landing's one commit, into ``Custom Playlists <landing year>``, with the
-INBOX playlist's rows, marked as a pair. On the native suite's disposable
-database. Nothing here is real (D1).
+INBOX playlist's rows, marked as a pair. Nothing here is real (D1).
 """
 
 from __future__ import annotations
@@ -156,17 +155,8 @@ def test_a_folder_made_after_the_gate_refuses_and_moves_nothing(native_library, 
 
 def test_a_plan_with_no_account_playlist_plans_no_twin_and_digests_as_before():
     plan = native.NativePlan(
-        tree_id="t",
-        root_id="r",
-        root_name="INBOX",
-        playlist="b",
-        database=Path("x"),
-        device_id="d",
-        master_db_id="m",
-        base_drive=None,
-        current_drive=None,
-        rows=(),
-        link=None,
+        tree_id="t", root_id="r", root_name="INBOX", playlist="b", database=Path("x"),
+        device_id="d", master_db_id="m", base_drive=None, current_drive=None, rows=(), link=None,
         digest="",
     )
     assert "twins" not in native.identity(plan)

@@ -1,9 +1,7 @@
 """U110: an INBOX batch is named by its date and source, never a run identifier.
 
-The real dispatcher, with ``tests/test_intake_land.py``'s fixtures. The batch
-folder and playlist take ``<date> <source>``, a second landing that day `` 2``,
-``--name`` wins, and the intake file keeps the identifier the marks read. The
-date seam is pinned so a run across midnight reads one date.
+A second landing that day takes `` 2``, ``--name`` wins, and the intake file keeps
+the identifier the marks read. The date is pinned so one run reads one date.
 """
 
 from __future__ import annotations

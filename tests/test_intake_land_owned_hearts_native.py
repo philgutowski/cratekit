@@ -1,9 +1,8 @@
 """U146 on the native medium: a heart on an owned track joins All Favorites and its month.
 
-R4 and R6's landing half on the native suite's disposable database: a track
-the library holds is hearted, the hearts job reports it owned, and ``crate
-intake land --pass`` places it under the landing's own gate, with or without a
-file to land. Nothing is downloaded or removed, and nothing is real (D1).
+``crate intake land --pass`` places a hearted track the library holds under the
+landing's own gate, with or without a file to land, on the native suite's
+disposable database. Nothing is downloaded or removed, and nothing is real (D1).
 """
 
 from __future__ import annotations
@@ -68,14 +67,8 @@ def _content_count(cfg: config.Config) -> int:
 
 def _live(cfg: config.Config, playlist_id: str) -> list[str]:
     """The members a person sees, the removed rows left out, which ``_favorites`` keeps."""
-    return [
-        str(row[0])
-        for row in _query(
-            cfg,
-            "SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? AND rb_local_deleted = 0",
-            playlist_id,
-        )
-    ]
+    live = "SELECT ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? AND rb_local_deleted = 0"
+    return [str(row[0]) for row in _query(cfg, live, playlist_id)]
 
 
 def _landed_ok() -> tuple[dict, dict]:
@@ -224,23 +217,17 @@ def test_an_owned_heart_all_favorites_holds_is_no_write_beside_a_landing(native_
     assert "2026-09" not in _favorites(cfg, folder_id)
 
 
-def test_an_owned_heart_whose_job_froze_no_date_key_is_left_to_the_backfill(
-    native_library, silence
-):
-    """The landing has no listing to date it from, and Undated is a placement nothing undoes."""
-    cfg, _root_id = native_library
-    folder_id, _source_id = _home(cfg)
-    _owned(cfg, silence, "Old")
-    hearts_swept(cfg, {"Old": UNKNOWN})
-    _no_op()
-    assert _favorites(cfg, folder_id) == {SOURCE: []}
-
-
 def test_an_owned_heart_the_account_dates_nowhere_goes_to_undated(native_library, silence):
+    """Once acknowledged: an owned only pass refuses before the gate without it."""
     cfg, _root_id = native_library
     folder_id, _source_id = _home(cfg)
     _owned(cfg, silence, "Dateless")
     hearts_swept(cfg, {"Dateless": None})
+    session.ack_path(cfg).unlink()
+    code, refused = drive(LAND)
+    assert code == int(ExitCode.ACK_REQUIRED), refused
+    assert _favorites(cfg, folder_id) == {SOURCE: []}
+    session.record_acknowledgment(cfg, terminal=lambda: True)
     acted, _refused = _landed_ok()
     assert _favorites(cfg, folder_id) == {SOURCE: ["Dateless"], "Undated": ["Dateless"]}
 
@@ -255,21 +242,15 @@ def test_with_no_all_favorites_an_owned_only_pass_ends_no_op_and_says_why(native
     assert _query(cfg, "SELECT ID FROM djmdPlaylist WHERE Name = '2026-11'") == []
 
 
-def test_an_owned_only_pass_refuses_before_the_gate_with_no_acknowledgment(native_library, silence):
+def test_owned_hearts_an_empty_landing_cannot_place_alone_are_no_write(native_library, silence):
+    """A job that froze no date key has no listing to date it from, and Undated is
+    a placement nothing undoes. A file two active rows claim answers nothing
+    (U128), never the first duplicate. Only what All Favorites lacks: a month for
+    a held heart is the backfill's to give."""
     cfg, _root_id = native_library
-    folder_id, _source_id = _home(cfg)
-    _owned(cfg, silence, "Owned")
-    hearts_swept(cfg, {"Owned": NOV})
-    session.ack_path(cfg).unlink()
-    code, refused = drive(LAND)
-    assert code == int(ExitCode.ACK_REQUIRED), refused
-    assert _favorites(cfg, folder_id) == {SOURCE: []}
-
-
-def test_an_owned_heart_whose_file_two_rows_claim_is_not_placed_by_a_guess(native_library, silence):
-    """A file two active rows claim answers nothing (U128), never the first duplicate."""
-    cfg, _root_id = native_library
-    folder_id, _source_id = _home(cfg)
+    folder_id, source_id = _home(cfg)
+    _owned(cfg, silence, "Old")
+    _hold(cfg, source_id, _owned(cfg, silence, "Held"))
     _owned(cfg, silence, "Twice Imported")
     path = _owned_path(cfg, "Twice Imported")
     # A second import of the same file: a row made elsewhere and pointed at it.
@@ -284,9 +265,9 @@ def test_an_owned_heart_whose_file_two_rows_claim_is_not_placed_by_a_guess(nativ
         rb_writer.close_db(handle)
     elsewhere.unlink()
     assert len(_query(cfg, "SELECT ID FROM djmdContent WHERE FolderPath = ?", str(path))) == 2
-    hearts_swept(cfg, {"Twice Imported": NOV})
+    hearts_swept(cfg, {"Old": UNKNOWN, "Held": NOV, "Twice Imported": NOV})
     _no_op()
-    assert _favorites(cfg, folder_id) == {SOURCE: []}
+    assert _favorites(cfg, folder_id) == {SOURCE: ["Held"]}
 
 
 def test_landing_an_older_pass_places_no_owned_heart_once_a_later_hearts_job_ran(
@@ -300,19 +281,6 @@ def test_landing_an_older_pass_places_no_owned_heart_once_a_later_hearts_job_ran
     hearts_swept(cfg, {"Other": NOV}, run_id="2026-10-04T101500Z-ef56")
     _no_op()
     assert _favorites(cfg, folder_id) == {SOURCE: []}
-
-
-def test_an_owned_heart_all_favorites_holds_without_a_month_is_no_write_for_an_empty_landing(
-    native_library, silence
-):
-    """Only what All Favorites lacks: a month for a held heart is the backfill's to give."""
-    cfg, _root_id = native_library
-    folder_id, source_id = _home(cfg)
-    row = _owned(cfg, silence, "Held")
-    _hold(cfg, source_id, row)
-    hearts_swept(cfg, {"Held": NOV})
-    _no_op()
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Held"]}
 
 
 def test_an_owned_heart_joins_beside_a_landed_file_that_is_no_heart(native_library, silence):

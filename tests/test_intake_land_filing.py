@@ -1,7 +1,6 @@
 """U165: a native landing files its batch into BY GENRE + ENERGY under the same answer.
 
-The real dispatcher over real FLAC containers, against the disposable database
-``tests/test_intake_land_native.py`` builds with the routing tree cut over.
+On the native suite's disposable database with the routing tree cut over.
 Nothing here names a real volume, person or track (D1).
 """
 
@@ -132,9 +131,7 @@ def test_five_files_land_and_file_under_one_answer(filing_library, silence):
     assert destination(DECLARED, vocal.bucket, vocal.vocal_sub) in five
     # What was filed is what ``adopt apply`` then finds nothing to do for.
     collection.reset_cache()
-    plan = apply_cli.current_plan(
-        cfg, DECLARED, scope=frozenset({_content_id(cfg, "One.flac")})
-    )
+    plan = apply_cli.current_plan(cfg, DECLARED, scope=frozenset({_content_id(cfg, "One.flac")}))
     assert apply_engine.outstanding(plan, apply_engine.read(cfg)) == ()
 
 
@@ -205,12 +202,7 @@ def test_a_routing_tree_on_the_bridge_files_nothing_and_the_screen_names_it(
 
 def test_a_landing_that_adds_no_row_files_nothing():
     landed = native.NativeLanded(
-        tree_id="t",
-        playlist="p",
-        playlist_id="",
-        added=(),
-        present=(),
-        memberships_added=0,
+        tree_id="t", playlist="p", playlist_id="", added=(), present=(), memberships_added=0,
         session_id="s",
     )
     predicted = (
