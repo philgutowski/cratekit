@@ -267,7 +267,6 @@ def test_a_resort_after_a_genre_sub_writes_nothing_under_the_intake_root(both_na
     assert genre[f"{BUCKET_FOLDER} / {GENRE_SUB}"] == {"1", "2"}, genre
 
 
-
 # ── The plan at its gate
 
 
@@ -326,25 +325,39 @@ def test_a_resort_with_no_change_plans_nothing_and_queues_nothing(both_native):
     assert again["data"]["state"] == "nothing-to-add"
 
 
-def test_a_library_that_moved_after_the_gate_refuses_before_writing(both_native, monkeypatch):
-    """The approved adds are what the worker may write, and nothing else."""
-    cfg = config.load()
-    run_id, job_id = approve_and_queue(["route", "resort"], GATE)
+def _split(first: str, second: str):
+    """Readings that tag the first file ``first`` and the second ``second``."""
 
-    def moved(music: Path):
-        # The same two files, retagged to a genre the sub does not take.
+    def readings(music: Path):
         return [
-            rebuild.Truth(location=str(music / name), genre="Minimal", energy=5)
-            for name in (FIRST, SECOND)
+            rebuild.Truth(location=str(music / FIRST), genre=first, energy=5),
+            rebuild.Truth(location=str(music / SECOND), genre=second, energy=5),
         ]
 
-    monkeypatch.setattr(rebuild, "library_truth", moved)
+    return readings
+
+
+@pytest.mark.parametrize(
+    "approved_over, worked_over",
+    [
+        # The same two files, retagged to a genre the sub does not take.
+        pytest.param((GENRE_SUB, GENRE_SUB), ("Minimal", "Minimal"), id="the library moved"),
+        # Same count, same destinations, different files: the check reads the path.
+        pytest.param((GENRE_SUB, "Minimal"), ("Minimal", GENRE_SUB), id="two files swapped"),
+    ],
+)
+def test_a_library_that_moved_after_the_gate_refuses_before_writing(
+    both_native, monkeypatch, approved_over, worked_over
+):
+    """The approved adds are what the worker may write, and nothing else."""
+    cfg = config.load()
+    monkeypatch.setattr(rebuild, "library_truth", _split(*approved_over))
+    run_id, job_id = approve_and_queue(["route", "resort"], GATE)
+    monkeypatch.setattr(rebuild, "library_truth", _split(*worked_over))
     code, refused = _drive(["--run", run_id, "route", "resort", "--job", job_id])
     assert code != int(ExitCode.OK), refused
     assert "resort-plan-stale" in json.dumps(refused), refused
-    assert _below(cfg, both_native["genre"]) == {}, (
-        "the worker wrote a plan nobody approved"
-    )
+    assert _below(cfg, both_native["genre"]) == {}, "the worker wrote a plan nobody approved"
 
 
 def test_an_answer_over_one_database_file_does_not_approve_another(both_native):
@@ -616,31 +629,6 @@ def test_a_rebuild_of_one_named_tree_names_nothing_it_left_alone(both_native):
     code, queued = _drive(["rebuild", "--actor", "a-person", "--tree", "genre_energy"])
     assert code == int(ExitCode.OK), queued
     assert queued["warnings"] == [], queued
-
-
-def test_two_files_that_swap_places_after_the_gate_refuse_by_their_paths(
-    both_native, monkeypatch
-):
-    """Same count, same destinations, different files: the approved check reads the path."""
-    cfg = config.load()
-
-    def split(first: str, second: str):
-        def readings(music: Path):
-            return [
-                rebuild.Truth(location=str(music / FIRST), genre=first, energy=5),
-                rebuild.Truth(location=str(music / SECOND), genre=second, energy=5),
-            ]
-
-        return readings
-
-    monkeypatch.setattr(rebuild, "library_truth", split(GENRE_SUB, "Minimal"))
-    run_id, job_id = approve_and_queue(["route", "resort"], GATE)
-    monkeypatch.setattr(rebuild, "library_truth", split("Minimal", GENRE_SUB))
-    code, refused = _drive(["--run", run_id, "route", "resort", "--job", job_id])
-    assert code != int(ExitCode.OK), refused
-    assert "resort-plan-stale" in json.dumps(refused), refused
-    assert _below(cfg, both_native["genre"]) == {}
-
 
 
 def test_a_second_restore_clears_the_acceptance_of_the_first(restored):
