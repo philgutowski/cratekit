@@ -8,15 +8,9 @@ compilation, a distributor credit or a neighbour imprint.
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Callable, Mapping
-from pathlib import Path
 from typing import Any
-
-from cratekit.core import config
-
-CACHE_NAME = "verify.json"
 
 _NORM = re.compile(r"[^a-z0-9]+")
 
@@ -61,21 +55,6 @@ def labels_match(claimed: str, resolved: str) -> bool:
     return bool(left) and bool(right) and (_words_within(left, right) or _words_within(right, left))
 
 
-def cache_path(label_id: str) -> Path:
-    return config.state_path("label_crawl_cache") / label_id / CACHE_NAME
-
-
-def load_cache(label_id: str) -> dict[str, dict[str, Any]]:
-    path = cache_path(label_id)
-    if not path.exists():
-        return {}
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return raw if isinstance(raw, dict) else {}
-
-
 def _verdict(verdict: str, resolved: str, source: str, notes: str) -> dict[str, Any]:
     return {"verdict": verdict, "resolved_label": resolved, "source": source, "notes": notes}
 
@@ -86,7 +65,7 @@ def verify_release(
     *,
     search: Callable[[str, Any], Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Verify one release. Does not touch the cache. ``search`` is injectable."""
+    """Verify one release. ``search`` is injectable."""
     if search is None:
         return _verdict("unconfirmed", "", "", "no verifier supplied")
     result = dict(search(claimed_label, release))
