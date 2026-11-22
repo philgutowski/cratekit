@@ -1,17 +1,12 @@
 """U156: a native landing files its label tracks under the Record Labels tree.
 
-Driven through the real dispatcher against the native landing suite's
-disposable database: a manifest's rows, or one label named with ``--label``
-and each file's date tag, become ``Record Labels / <Label> / <Label> <year>``
-in the batch's own commit, read back from SQL. The bridge keeps
-``tests/test_landing_labels.py``.
-
-D1 applies. Nothing here names a real volume, a real person or a real track.
+A manifest's rows, or ``--label`` and each file's date tag, become ``Record
+Labels / <Label> / <Label> <year>`` in the batch's own commit, read back from
+SQL. The bridge keeps ``tests/test_landing_labels.py``. D1 applies.
 """
 
 from __future__ import annotations
 
-import sqlite3
 import unicodedata
 from dataclasses import replace
 from pathlib import Path
@@ -24,12 +19,13 @@ from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import label_filing, landing
 from tests import cutover_fixtures
-from tests._containers import synth_container
 from tests.cli_drive import drive
 from tests.test_intake_land_native import (
     GATE,
+    _asked,
     _assert_refused_before_the_gate,
     _batch_playlist,
+    _execute,
     _land,
     _members,
     _music,
@@ -53,16 +49,19 @@ DECLARED = taxonomy.default_taxonomy()
 TREE = DECLARED.catalog.display
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 def _dated(cfg: config.Config, silence: Path, name: str, day: str | None) -> Path:
     """One staged file, its date tag set to ``day`` or left absent."""
     path = _stage(cfg, silence, name)
     if day is not None:
         assert tags.write_tags(path, {"date": day})
+    return path
+
+
+def _labelled(cfg: config.Config, silence: Path, name: str, label: str | None, day: str | None) -> Path:
+    """One staged file carrying ``label`` in its label tag, as a Bandcamp fetch writes it."""
+    path = _dated(cfg, silence, name, day)
+    if label is not None:
+        assert tags.write_tags(path, {"label": label})
     return path
 
 
@@ -135,11 +134,22 @@ def _item_labels(envelope: dict) -> dict[str, str]:
     }
 
 
-# ---------------------------------------------------------------------------
+def _playlist(cfg: config.Config, name: str, folder: str) -> str:
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        row = handle.create_playlist(name, parent=handle.get_playlist(ID=folder))
+        handle.session.commit()
+        return str(row.ID)
+    finally:
+        rb_writer.close_db(handle)
+
+
+def _remove(cfg: config.Config, row_id: str) -> None:
+    """Mark one node removed, as rekordbox does when a person deletes it."""
+    _execute(cfg, "UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", row_id)
+
+
 # A manifest
-# ---------------------------------------------------------------------------
-
-
 def test_a_manifest_files_its_matched_rows_under_label_and_year_and_names_the_unmatched(
     native_library, silence, tmp_path
 ):
@@ -149,10 +159,8 @@ def test_a_manifest_files_its_matched_rows_under_label_and_year_and_names_the_un
     manifest = _manifest(
         tmp_path,
         [
-            ("1", "Probe", "One", "Kompakt", 2025),
-            ("2", "Probe", "Two", "Kompakt", 2025),
-            ("3", "Probe", "Three", "Kompakt", 2024),
-            ("4", "Probe", "Absent", "Kompakt", 2024),
+            ("1", "Probe", "One", "Kompakt", 2025), ("2", "Probe", "Two", "Kompakt", 2025),
+            ("3", "Probe", "Three", "Kompakt", 2024), ("4", "Probe", "Absent", "Kompakt", 2024),
         ],
     )
 
@@ -165,9 +173,7 @@ def test_a_manifest_files_its_matched_rows_under_label_and_year_and_names_the_un
     (unmatched,) = shown["filed under no label"]
     assert "Absent" in unmatched
     assert _item_labels(refused) == {
-        "One.flac": "Kompakt 2025",
-        "Two.flac": "Kompakt 2025",
-        "Three.flac": "Kompakt 2024",
+        "One.flac": "Kompakt 2025", "Two.flac": "Kompakt 2025", "Three.flac": "Kompakt 2024",
     }
     assert _filed(cfg) == {"Kompakt": {"Kompakt 2025": ["One", "Two"], "Kompakt 2024": ["Three"]}}
     # The batch still holds every file, filed or not.
@@ -180,8 +186,7 @@ def test_a_manifest_files_its_matched_rows_under_label_and_year_and_names_the_un
     assert totals["filed under no label"] == 1
     years = [i for i in acted["data"]["items"] if i.get("tree") == DECLARED.catalog.id]
     assert sorted((i["playlist"], i["count"], i["created"]) for i in years) == [
-        ("Kompakt 2024", 1, True),
-        ("Kompakt 2025", 2, True),
+        ("Kompakt 2024", 1, True), ("Kompakt 2025", 2, True),
     ]
     # The record names each year filed, what a later ``label mark`` of a
     # native batch reads in place of an intake file (R-916).
@@ -244,11 +249,7 @@ def test_the_digest_moves_with_the_manifests_bytes(native_library, silence, tmp_
     assert _shown(one)["digest"] != _shown(other)["digest"]
 
 
-# ---------------------------------------------------------------------------
 # --label and the date tag
-# ---------------------------------------------------------------------------
-
-
 def test_label_files_each_file_once_under_the_year_its_date_tag_names(native_library, silence):
     """Sixteen files over eight release years: eight playlists, each file in one."""
     cfg, _root = native_library
@@ -285,16 +286,12 @@ def test_a_file_with_no_date_tag_is_named_on_the_screen_and_filed_nowhere(native
     assert any("Undated.flac" in one for one in named)
     assert any("Worded.flac" in one for one in named)
     assert _item_labels(refused) == {
-        "Dated.flac": "PULS 2021",
-        "Undated.flac": "none",
-        "Worded.flac": "none",
+        "Dated.flac": "PULS 2021", "Undated.flac": "none", "Worded.flac": "none",
     }
     assert _filed(cfg) == {"PULS": {"PULS 2021": ["Dated"]}}
     # Each lands in INBOX all the same.
     assert sorted(p.name for p in _music(cfg).iterdir()) == [
-        "Dated.flac",
-        "Undated.flac",
-        "Worded.flac",
+        "Dated.flac", "Undated.flac", "Worded.flac",
     ]
     warned = [w for w in acted["warnings"] if w["code"] == landing.NO_LABEL]
     assert len(warned) == 2
@@ -321,8 +318,7 @@ def test_an_existing_year_playlist_gains_members_and_loses_none(native_library, 
     assert code == int(ExitCode.OK), acted
     assert _shown(refused)["labels filed under"] == f"{TREE} (row {tree})"
     assert _shown(refused)["label playlists"] == [
-        "PULS 2022 (1 file(s), made)",
-        "PULS 2021 (1 file(s), added to)",
+        "PULS 2022 (1 file(s), made)", "PULS 2021 (1 file(s), added to)",
     ]
     assert _tree_folders(cfg) == [tree], "a second Record Labels folder was made"
     assert [name for _i, name, _a in _children(cfg, tree)] == ["PULS"]
@@ -364,15 +360,16 @@ def test_the_same_files_landed_again_add_no_second_membership(native_library, si
     assert again["data"]["totals"]["label memberships"] == 0
 
 
-def test_the_label_moves_the_digest_and_an_answer_for_one_is_stale_for_another(
+def test_the_label_source_moves_the_digest_and_an_answer_for_one_is_stale_for_another(
     native_library, silence
 ):
     cfg, _root = native_library
-    _dated(cfg, silence, "One.flac", "2021")
-    code, refused = drive(_land("--label", "PULS"))
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    _code, other = drive(_land("--label", "Kompakt"))
-    assert _shown(refused)["digest"] != _shown(other)["digest"]
+    _labelled(cfg, silence, "One.flac", "PULS", "2021")
+    refused = _asked(_land("--label", "PULS"))
+    other = _asked(_land("--label", "Kompakt"))
+    own = _asked(_land("--label-from-tags"))
+    assert _shown(refused)["label playlists"] == _shown(own)["label playlists"]
+    assert len({_shown(one)["digest"] for one in (refused, other, own)}) == 3
     run_id = refused["run_id"]
     decided, _ = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
     assert decided == int(ExitCode.OK)
@@ -384,26 +381,28 @@ def test_the_label_moves_the_digest_and_an_answer_for_one_is_stale_for_another(
     assert _tree_folders(cfg) == []
 
 
-def test_a_file_left_in_staging_is_filed_nowhere(native_library, silence):
+@pytest.mark.parametrize("day", ["2021", None])
+def test_a_file_left_in_staging_is_filed_nowhere_and_not_said_to_be_in_the_intake_playlist(
+    native_library, silence, day
+):
     cfg, _root = native_library
     _dated(cfg, silence, "One.flac", "2021")
-    odd = _dated(cfg, silence, "Two.flac", "2021")
+    odd = _dated(cfg, silence, "Two.flac", day)
     odd.rename(odd.with_suffix(".opus"))
 
     code, acted, refused = _two_acts(_land("--label", "PULS"))
 
     assert code == int(ExitCode.OK), acted
     assert _shown(refused)["label playlists"] == ["PULS 2021 (1 file(s), made)"]
-    assert any("Two.opus" in one for one in _shown(refused)["filed under no label"])
+    (said,) = [one for one in _shown(refused)["filed under no label"] if "Two.opus" in one]
+    assert "stays in staging" in said and "intake playlist" not in said
+    (warned,) = [w["message"] for w in acted["warnings"] if "Two.opus" in w["message"] and "label" in w["message"]]
+    assert "stays in staging" in warned
     assert _staged_names_all(cfg) == ["Two.opus"]
     assert _filed(cfg) == {"PULS": {"PULS 2021": ["One"]}}
 
 
-# ---------------------------------------------------------------------------
 # Refused before the gate
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("flag", [("--label", "PULS"), ("--label-from-tags",)], ids=lambda f: f[0])
 def test_a_label_flag_on_the_bridge_is_refused_before_the_gate_naming_it(
     acknowledged, silence, flag
@@ -415,47 +414,46 @@ def test_a_label_flag_on_the_bridge_is_refused_before_the_gate_naming_it(
     assert flag[0] in envelope["cause"]["message"]
 
 
-def test_label_beside_a_manifest_is_refused_before_the_gate(native_library, silence, tmp_path):
+def test_a_blank_label_or_two_label_sources_are_refused_before_the_gate(
+    native_library, silence, tmp_path
+):
     cfg, _root = native_library
     _stage(cfg, silence, "One.flac")
-    manifest = _manifest(tmp_path, [("1", "Probe", "One", "Kompakt", 2025)])
-    code, envelope = drive(_land("--label", "PULS", "--manifest", str(manifest)))
-    _assert_refused_before_the_gate(cfg, code, envelope, "intake-list-unusable")
-    assert "--label" in envelope["cause"]["message"] and "--manifest" in envelope["cause"]["message"]
+    manifest = str(_manifest(tmp_path, [("1", "Probe", "One", "Kompakt", 2025)]))
+    for verb, said in (
+        (("--label", "  "), ()),
+        (("--label", "PULS", "--manifest", manifest), ("--label", "--manifest")),
+        (("--label-from-tags", "--label", "PULS"), ("--label-from-tags", "--label")),
+        (("--label-from-tags", "--manifest", manifest), ("--label-from-tags", "--manifest")),
+    ):
+        code, envelope = drive(_land(*verb))
+        _assert_refused_before_the_gate(cfg, code, envelope, "intake-list-unusable")
+        assert [one for one in said if one not in envelope["cause"]["message"]] == [], verb
 
 
-def test_a_blank_label_is_refused_before_the_gate(native_library, silence):
+def test_a_tree_the_label_write_cannot_take_is_refused_before_the_gate(native_library, silence):
+    """A playlist where the label folder belongs, a smart playlist where a year
+    playlist belongs (the binding refuses a membership in one at the write,
+    after the moves), and two Record Labels folders side by side."""
     cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
-    code, envelope = drive(_land("--label", "  "))
-    _assert_refused_before_the_gate(cfg, code, envelope, "intake-list-unusable")
-
-
-def test_two_record_labels_folders_are_refused_before_the_gate(native_library, silence):
-    cfg, _root = native_library
-    cutover_fixtures.add_folder(cfg, TREE)
-    cutover_fixtures.add_folder(cfg, TREE)
+    tree = cutover_fixtures.add_folder(cfg, TREE)
+    _playlist(cfg, "PULS", tree)
+    label = cutover_fixtures.add_folder(cfg, "Kompakt", under=tree)
+    _execute(
+        cfg, "UPDATE djmdPlaylist SET Attribute = 4 WHERE ID = ?", _playlist(cfg, "Kompakt 2021", label)
+    )
     _dated(cfg, silence, "One.flac", "2021")
+    for named, said in (
+        ("PULS", "a playlist named 'PULS'"), ("Kompakt", "a smart playlist named 'Kompakt 2021'"),
+    ):
+        code, envelope = drive(_land("--label", named))
+        _assert_refused_before_the_gate(cfg, code, envelope, "intake-list-unusable")
+        assert said in envelope["cause"]["message"]
+
+    cutover_fixtures.add_folder(cfg, TREE)
     code, envelope = drive(_land("--label", "PULS"))
     _assert_refused_before_the_gate(cfg, code, envelope, "intake-list-unusable")
     assert "side by side" in envelope["cause"]["message"]
-
-
-def test_a_playlist_where_the_label_folder_belongs_is_refused_before_the_gate(
-    native_library, silence
-):
-    cfg, _root = native_library
-    tree = cutover_fixtures.add_folder(cfg, TREE)
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
-    try:
-        handle.create_playlist("PULS", parent=handle.get_playlist(ID=tree))
-        handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
-    _dated(cfg, silence, "One.flac", "2021")
-    code, envelope = drive(_land("--label", "PULS"))
-    _assert_refused_before_the_gate(cfg, code, envelope, "intake-list-unusable")
-    assert "a playlist named 'PULS'" in envelope["cause"]["message"]
 
 
 @pytest.fixture
@@ -479,30 +477,68 @@ def test_a_taxonomy_with_no_catalog_tree_is_refused_by_name(native_library, sile
     _assert_refused_before_the_gate(cfg, code, envelope, "catalog-tree-undeclared")
 
 
-# ---------------------------------------------------------------------------
+def test_a_label_on_an_unreachable_library_names_the_volume_and_not_the_bridge(
+    native_library, silence
+):
+    """The medium was not read, so the refusal must not say the tree is on the
+    bridge or tell the person to drop --label, which would land the batch filed
+    under nothing once the volume is back."""
+    cfg, _root = native_library
+    _labelled(cfg, silence, "One.flac", "PULS", "2021")
+    root = Path(cfg.library.root)
+    root.rename(root.with_name("unmounted"))
+
+    for flag, said in ((("--label", "PULS"), "mount the library volume"), (("--label-from-tags",), "--label-from-tags")):
+        code, envelope = drive(_land(*flag))
+        assert code != int(ExitCode.OK)
+        assert envelope["cause"]["reason"] == "library-root-unreachable", envelope
+        message = envelope["cause"]["message"]
+        assert said in message and (flag[0] != "--label" or "bridge" not in message)
+    assert _staged_names(cfg) == ["One.flac"]
+
+
 # The parts, alone
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
-    ("day", "year"),
+    ("day", "year", "why"),
     [
-        ("2021", 2021),
-        ("2021-03-05", 2021),
-        ("  2019-12", 2019),
-        ("", None),
-        ("March 2021", None),
-        ("20210305", None),
-        ("21", None),
+        ("2021", 2021, None), ("2021-03-05", 2021, None), ("  2019-12", 2019, None),
+        ("", None, None), ("March 2021", None, None), ("20210305", None, None), ("21", None, None),
+        (None, None, "carries no date tag"), ("0000", None, "names 0, which is no release year"),
+        ("1899-01-01", None, "names 1899"), ("2999", None, "names 2999"),
+        ("soon", None, "names no year"),
     ],
 )
-def test_the_year_is_the_date_tags_leading_four_digits(tmp_path, day, year):
-    scratch = tmp_path / "scratch"
-    scratch.mkdir()
-    path = synth_container(scratch, ".flac")
+def test_the_year_is_the_date_tags_leading_four_digits_and_no_year_is_named_with_why(
+    silence, day, year, why
+):
     if day:
-        assert tags.write_tags(path, {"date": day})
-    assert label_filing.year_of(path) == year
+        assert tags.write_tags(silence, {"date": day})
+    assert label_filing.year_of(silence) == year
+    if why is not None:
+        read, said = label_filing._read_year(silence)
+        assert read is None and why in said
+
+
+def test_next_year_is_a_release_year_and_a_failed_read_is_said_apart(silence, tmp_path):
+    from datetime import date
+
+    assert tags.write_tags(silence, {"date": str(date.today().year + 1)})
+    assert label_filing.year_of(silence) == date.today().year + 1
+    broken = tmp_path / "broken.flac"
+    broken.write_bytes(b"not a container at all")
+    year, said = label_filing._read_year(broken)
+    assert year is None and "could not be read" in said
+
+
+def test_a_label_tag_that_could_not_be_read_is_said_apart_from_one_that_is_absent(silence, tmp_path):
+    broken = tmp_path / "Broken.flac"
+    broken.write_bytes(b"not a flac stream")
+
+    assert label_filing._read_label(broken)[0] == ""
+    assert "could not be read" in label_filing._read_label(broken)[1]
+    assert label_filing._read_label(silence) == ("", "it carries no label tag")
+    assert tags.write_tags(silence, {"label": "  PULS  "})
+    assert label_filing._read_label(silence) == ("PULS", "")
 
 
 def test_the_plan_refuses_a_library_whose_intake_tree_is_on_the_bridge(acknowledged, tmp_path):
@@ -519,31 +555,7 @@ def test_the_plan_refuses_a_library_whose_intake_tree_is_on_the_bridge(acknowled
     assert "xml bridge" in caught.value.cause.message
 
 
-# ---------------------------------------------------------------------------
 # What the tree already holds, and what changes between the plan and the write
-# ---------------------------------------------------------------------------
-
-
-def _playlist(cfg: config.Config, name: str, folder: str) -> str:
-    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
-    try:
-        row = handle.create_playlist(name, parent=handle.get_playlist(ID=folder))
-        handle.session.commit()
-        return str(row.ID)
-    finally:
-        rb_writer.close_db(handle)
-
-
-def _remove(cfg: config.Config, row_id: str) -> None:
-    """Mark one node removed, as rekordbox does when a person deletes it."""
-    conn = sqlite3.connect(cfg.library.db_path)
-    try:
-        conn.execute("UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", (row_id,))
-        conn.commit()
-    finally:
-        conn.close()
-
-
 def test_a_label_folder_spelled_decomposed_is_the_same_folder(native_library, silence):
     """The bridge's NFC rule: one name drawn two ways is one folder, never a second."""
     cfg, _root = native_library
@@ -582,9 +594,7 @@ def test_a_year_playlist_made_after_the_answer_makes_the_answer_stale(native_lib
     tree = cutover_fixtures.add_folder(cfg, TREE)
     label = cutover_fixtures.add_folder(cfg, "PULS", under=tree)
     _dated(cfg, silence, "One.flac", "2021")
-    code, refused = drive(_land("--label", "PULS"))
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    run_id = refused["run_id"]
+    run_id = _asked(_land("--label", "PULS"))["run_id"]
     decided, _ = drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
     assert decided == int(ExitCode.OK)
     made = _playlist(cfg, "PULS 2021", label)
@@ -596,13 +606,15 @@ def test_a_year_playlist_made_after_the_answer_makes_the_answer_stale(native_lib
     assert _staged_names(cfg) == ["One.flac"]
 
 
-def test_a_file_the_move_refused_is_named_and_its_year_holds_the_rest(native_library, silence):
+@pytest.mark.parametrize("again", ["2021", "2020"])
+def test_a_file_the_move_refused_is_named_and_its_year_holds_the_rest(native_library, silence, again):
+    """One.flac staged again, its target occupied, so the move refuses it and
+    Two.flac lands; a year whose every file the move refused makes no playlist."""
     cfg, _root = native_library
     _dated(cfg, silence, "One.flac", "2021")
     code, acted, _ = _two_acts(_land("--label", "PULS"))
     assert code == int(ExitCode.OK), acted
-    # One.flac again, its target occupied, so the move refuses it; Two.flac lands.
-    _dated(cfg, silence, "One.flac", "2021")
+    _dated(cfg, silence, "One.flac", again)
     _dated(cfg, silence, "Two.flac", "2021")
 
     code, acted, _ = _two_acts(_land("--label", "PULS"))
@@ -613,18 +625,25 @@ def test_a_file_the_move_refused_is_named_and_its_year_holds_the_rest(native_lib
     assert any("One.flac" in one and "did not land" in one for one in left), acted["warnings"]
 
 
-def test_a_year_whose_every_file_the_move_refused_makes_no_playlist(native_library, silence):
+def test_an_undated_file_the_move_refused_is_said_not_to_have_landed(native_library, silence):
     cfg, _root = native_library
+    _dated(cfg, silence, "Undated.flac", None)
     _dated(cfg, silence, "One.flac", "2021")
     code, acted, _ = _two_acts(_land("--label", "PULS"))
     assert code == int(ExitCode.OK), acted
-    _dated(cfg, silence, "One.flac", "2020")
+    # Undated.flac again, its target occupied, so the move refuses it.
+    _dated(cfg, silence, "Undated.flac", None)
     _dated(cfg, silence, "Two.flac", "2021")
 
     code, acted, _ = _two_acts(_land("--label", "PULS"))
 
     assert code == int(ExitCode.OK), acted
-    assert _filed(cfg) == {"PULS": {"PULS 2021": ["One", "Two"]}}
+    (warned,) = [
+        w["message"]
+        for w in acted["warnings"]
+        if "Undated.flac" in w["message"] and "label playlist" in w["message"]
+    ]
+    assert "did not land" in warned and "intake playlist" not in warned
 
 
 def test_the_write_refuses_a_planned_node_removed_since_the_plan(native_library):
@@ -633,14 +652,8 @@ def test_the_write_refuses_a_planned_node_removed_since_the_plan(native_library)
     label = cutover_fixtures.add_folder(cfg, "PULS", under=tree)
     year = _playlist(cfg, "PULS 2021", label)
     plan = label_filing.LabelPlan(
-        tree_id=DECLARED.catalog.id,
-        tree_display=TREE,
-        tree_folder=tree,
-        source=label_filing.LABEL,
-        label="PULS",
-        manifest="",
-        manifest_digest="",
-        folders=(("PULS", label),),
+        tree_id=DECLARED.catalog.id, tree_display=TREE, tree_folder=tree, source=label_filing.LABEL,
+        label="PULS", manifest="", manifest_digest="", folders=(("PULS", label),),
         years=(label_filing.YearPlan(label="PULS", year=2021, playlist_id=year, targets=("t",)),),
         unfiled=(),
     )
@@ -675,96 +688,36 @@ def test_an_answer_the_database_does_not_hold_is_refused():
     assert caught.value.cause.reason == "session-committed-unverified"
     assert caught.value.cause.detail["missing"] == ["2"]
     label_filing.assert_read_back(
-        label_filing.Written(
-            tree_id="record_labels", tree_folder="9", tree_created=False, folders_created=(),
-            years=(replace(written.years[0], read_back=("2", "1", "3")),), left=(),
-        )
+        replace(written, years=(replace(written.years[0], read_back=("2", "1", "3")),))
     )
 
 
-# ---------------------------------------------------------------------------
-# The first review round
-# ---------------------------------------------------------------------------
-
-
-def test_label_on_an_unreachable_library_names_the_volume_and_not_the_bridge(
-    native_library, silence
+# Names spelled two ways, and a screen with nothing to file
+def test_one_label_spelled_two_ways_is_one_folder_and_a_file_two_rows_file_names_both_years(
+    native_library, silence, tmp_path
 ):
-    """The medium was not read, so the refusal must not say the tree is on the
-    bridge or tell the person to drop --label, which would land the batch
-    filed under nothing once the volume is back."""
     cfg, _root = native_library
-    _dated(cfg, silence, "One.flac", "2021")
-    root = Path(cfg.library.root)
-    root.rename(root.with_name("unmounted"))
-
-    code, envelope = drive(_land("--label", "PULS"))
-
-    assert code != int(ExitCode.OK)
-    assert envelope["cause"]["reason"] == "library-root-unreachable", envelope
-    message = envelope["cause"]["message"]
-    assert "mount the library volume" in message and "bridge" not in message
-    assert _staged_names(cfg) == ["One.flac"]
-
-
-def test_a_smart_playlist_where_a_year_playlist_belongs_is_refused_before_the_gate(
-    native_library, silence
-):
-    """The binding refuses a membership in one at the write, after the moves."""
-    cfg, _root = native_library
-    tree = cutover_fixtures.add_folder(cfg, TREE)
-    label = cutover_fixtures.add_folder(cfg, "PULS", under=tree)
-    smart = _playlist(cfg, "PULS 2021", label)
-    conn = sqlite3.connect(cfg.library.db_path)
-    try:
-        conn.execute("UPDATE djmdPlaylist SET Attribute = 4 WHERE ID = ?", (smart,))
-        conn.commit()
-    finally:
-        conn.close()
-    _dated(cfg, silence, "One.flac", "2021")
-
-    code, envelope = drive(_land("--label", "PULS"))
-
-    _assert_refused_before_the_gate(cfg, code, envelope, "intake-list-unusable")
-    assert "a smart playlist named 'PULS 2021'" in envelope["cause"]["message"]
-
-
-def test_one_label_spelled_two_ways_in_a_manifest_is_one_folder(native_library, silence, tmp_path):
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
-    _stage(cfg, silence, "Two.flac")
+    for name in ("One.flac", "Two.flac", "Three.flac"):
+        _stage(cfg, silence, name)
     composed = "Kölsch"
     manifest = _manifest(
         tmp_path,
         [
             ("1", "Probe", "One", composed, 2025),
             ("2", "Probe", "Two", unicodedata.normalize("NFD", composed), 2025),
+            ("3", "Probe", "Three", "PULS", 2020),
+            ("4", "Probe", "Three", "PULS", 2023),
         ],
-    )
-
-    code, acted, _ = _two_acts(_land("--manifest", str(manifest)))
-
-    assert code == int(ExitCode.OK), acted
-    assert _filed(cfg) == {composed: {f"{composed} 2025": ["One", "Two"]}}
-
-
-def test_a_file_two_rows_file_in_two_years_names_both_on_its_item(
-    native_library, silence, tmp_path
-):
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
-    manifest = _manifest(
-        tmp_path,
-        [("1", "Probe", "One", "PULS", 2020), ("2", "Probe", "One", "PULS", 2023)],
     )
 
     code, acted, refused = _two_acts(_land("--manifest", str(manifest)))
 
     assert code == int(ExitCode.OK), acted
-    assert _item_labels(refused) == {"One.flac": "PULS 2023, PULS 2020"}
-    assert _filed(cfg) == {"PULS": {"PULS 2023": ["One"], "PULS 2020": ["One"]}}
-
-
+    assert _item_labels(refused)["Three.flac"] == "PULS 2023, PULS 2020"
+    assert _filed(cfg) == {
+        composed: {f"{composed} 2025": ["One", "Two"]},
+        "PULS": {"PULS 2023": ["Three"], "PULS 2020": ["Three"]},
+    }
 def test_a_screen_with_nothing_to_file_says_so(native_library, silence):
     cfg, _root = native_library
     _dated(cfg, silence, "Undated.flac", None)
@@ -777,93 +730,13 @@ def test_a_screen_with_nothing_to_file_says_so(native_library, silence):
     assert _tree_folders(cfg) == []
 
 
-@pytest.mark.parametrize(
-    ("day", "why"),
-    [
-        (None, "carries no date tag"),
-        ("0000", "names 0, which is no release year"),
-        ("1899-01-01", "names 1899"),
-        ("2999", "names 2999"),
-        ("soon", "names no year"),
-    ],
-)
-def test_a_year_with_no_reason_behind_it_is_named_with_why(tmp_path, day, why):
-    scratch = tmp_path / "scratch"
-    scratch.mkdir()
-    path = synth_container(scratch, ".flac")
-    if day is not None:
-        assert tags.write_tags(path, {"date": day})
-    year, said = label_filing._read_year(path)
-    assert year is None and why in said
-
-
-def test_next_year_is_a_release_year_and_a_failed_read_is_said_apart(tmp_path):
-    from datetime import date
-
-    scratch = tmp_path / "scratch"
-    scratch.mkdir()
-    path = synth_container(scratch, ".flac")
-    assert tags.write_tags(path, {"date": str(date.today().year + 1)})
-    assert label_filing.year_of(path) == date.today().year + 1
-    broken = tmp_path / "broken.flac"
-    broken.write_bytes(b"not a container at all")
-    year, said = label_filing._read_year(broken)
-    assert year is None and "could not be read" in said
-
-
-# ---------------------------------------------------------------------------
-# The second review round
-# ---------------------------------------------------------------------------
-
-
-def test_an_undated_file_left_in_staging_is_not_said_to_be_in_the_intake_playlist(
-    native_library, silence
-):
-    cfg, _root = native_library
-    _dated(cfg, silence, "One.flac", "2021")
-    odd = _dated(cfg, silence, "Two.flac", None)
-    odd.rename(odd.with_suffix(".opus"))
-
-    code, acted, refused = _two_acts(_land("--label", "PULS"))
-
-    assert code == int(ExitCode.OK), acted
-    (said,) = [one for one in _shown(refused)["filed under no label"] if "Two.opus" in one]
-    assert "stays in staging" in said and "intake playlist" not in said
-    (warned,) = [w["message"] for w in acted["warnings"] if "Two.opus" in w["message"] and "label" in w["message"]]
-    assert "stays in staging" in warned
-
-
-def test_an_undated_file_the_move_refused_is_said_not_to_have_landed(native_library, silence):
-    cfg, _root = native_library
-    _dated(cfg, silence, "Undated.flac", None)
-    _dated(cfg, silence, "One.flac", "2021")
-    code, acted, _ = _two_acts(_land("--label", "PULS"))
-    assert code == int(ExitCode.OK), acted
-    # Undated.flac again, its target occupied, so the move refuses it.
-    _dated(cfg, silence, "Undated.flac", None)
-    _dated(cfg, silence, "Two.flac", "2021")
-
-    code, acted, _ = _two_acts(_land("--label", "PULS"))
-
-    assert code == int(ExitCode.OK), acted
-    (warned,) = [
-        w["message"]
-        for w in acted["warnings"]
-        if "Undated.flac" in w["message"] and "label playlist" in w["message"]
-    ]
-    assert "did not land" in warned and "intake playlist" not in warned
-
-
 def test_the_screen_names_each_label_folder_the_write_makes(native_library, silence):
     cfg, _root = native_library
     tree = cutover_fixtures.add_folder(cfg, TREE)
     cutover_fixtures.add_folder(cfg, "Puls", under=tree)
     _dated(cfg, silence, "One.flac", "2021")
 
-    code, refused = drive(_land("--label", "PULS"))
-
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
-    assert _shown(refused)["label folders made"] == ["PULS"]
+    assert _shown(_asked(_land("--label", "PULS")))["label folders made"] == ["PULS"]
     code, again = drive(_land("--label", "Puls"))
     assert "label folders made" not in _shown(again)
 
@@ -885,19 +758,7 @@ def test_a_manifest_with_no_label_row_asks_nothing_of_the_catalogue_tree(
     assert _tree_folders(cfg) == []
 
 
-# ---------------------------------------------------------------------------
 # --label-from-tags (U177): each file under the label its own tag names
-# ---------------------------------------------------------------------------
-
-
-def _labelled(cfg: config.Config, silence: Path, name: str, label: str | None, day: str | None) -> Path:
-    """One staged file carrying ``label`` in its label tag, as a Bandcamp fetch writes it."""
-    path = _dated(cfg, silence, name, day)
-    if label is not None:
-        assert tags.write_tags(path, {"label": label})
-    return path
-
-
 def test_a_puls_batch_of_three_years_lands_as_three_year_playlists_under_its_label(
     native_library, silence
 ):
@@ -913,11 +774,7 @@ def test_a_puls_batch_of_three_years_lands_as_three_year_playlists_under_its_lab
     assert shown["labels filed from"] == "each file's own label tag, its year from its date tag"
     assert "filed under no label" not in shown
     assert _filed(cfg) == {
-        "PULS": {
-            "PULS 2024": ["C1", "C2"],
-            "PULS 2021": ["B1"],
-            "PULS 2019": ["A1", "A2"],
-        }
+        "PULS": {"PULS 2024": ["C1", "C2"], "PULS 2021": ["B1"], "PULS 2019": ["A1", "A2"]}
     }
     (record,) = session.records(cfg)
     assert label_filing.RECORD_KEY in record.detail
@@ -938,9 +795,7 @@ def test_a_batch_of_two_labels_and_an_unregistered_seller_files_each_under_its_o
     assert code == int(ExitCode.OK), acted
     assert _filed(cfg) == {"Kompakt": {"Kompakt 2023": ["Kompakt"]}, "PULS": {"PULS 2024": ["Puls"]}}
     assert _item_labels(refused) == {
-        "Puls.flac": "PULS 2024",
-        "Kompakt.flac": "Kompakt 2023",
-        "Other.flac": "none",
+        "Puls.flac": "PULS 2024", "Kompakt.flac": "Kompakt 2023", "Other.flac": "none",
     }
     (unfiled,) = _shown(refused)["filed under no label"]
     assert "Other.flac" in unfiled and "no label tag" in unfiled
@@ -949,82 +804,21 @@ def test_a_batch_of_two_labels_and_an_unregistered_seller_files_each_under_its_o
     assert "Other.flac" in warned["message"]
 
 
-def test_a_labelled_file_with_no_year_is_named_with_its_label_and_filed_nowhere(
+def test_a_labelled_file_with_no_year_is_named_and_a_decomposed_label_is_the_composed_folder(
     native_library, silence
 ):
     cfg, _root = native_library
     _labelled(cfg, silence, "Dated.flac", "PULS", "2021")
     _labelled(cfg, silence, "Undated.flac", "PULS", None)
+    _labelled(cfg, silence, "One.flac", unicodedata.normalize("NFD", "Sueño"), "2021")
+    _labelled(cfg, silence, "Two.flac", unicodedata.normalize("NFC", "Sueño"), "2021")
 
     code, acted, refused = _two_acts(_land("--label-from-tags"))
 
     assert code == int(ExitCode.OK), acted
     (unfiled,) = _shown(refused)["filed under no label"]
     assert "Undated.flac" in unfiled and "PULS year playlist" in unfiled and "no date tag" in unfiled
-    assert _filed(cfg) == {"PULS": {"PULS 2021": ["Dated"]}}
-
-
-def test_a_label_tag_spelled_decomposed_files_under_the_composed_folder(native_library, silence):
-    cfg, _root = native_library
-    _labelled(cfg, silence, "One.flac", unicodedata.normalize("NFD", "Sueño"), "2021")
-    _labelled(cfg, silence, "Two.flac", unicodedata.normalize("NFC", "Sueño"), "2021")
-
-    code, acted, _ = _two_acts(_land("--label-from-tags"))
-
-    assert code == int(ExitCode.OK), acted
     composed = unicodedata.normalize("NFC", "Sueño")
-    assert _filed(cfg) == {composed: {f"{composed} 2021": ["One", "Two"]}}
-
-
-def test_the_digest_moves_between_one_label_and_each_files_own(native_library, silence):
-    cfg, _root = native_library
-    _labelled(cfg, silence, "One.flac", "PULS", "2021")
-
-    _code, one = drive(_land("--label", "PULS"))
-    _code, own = drive(_land("--label-from-tags"))
-
-    assert _shown(one)["label playlists"] == _shown(own)["label playlists"]
-    assert _shown(one)["digest"] != _shown(own)["digest"]
-
-
-@pytest.mark.parametrize("beside", ["--label", "--manifest"])
-def test_label_from_tags_beside_another_label_source_is_refused_before_the_gate(
-    native_library, silence, tmp_path, beside
-):
-    cfg, _root = native_library
-    _stage(cfg, silence, "One.flac")
-    value = (
-        "PULS"
-        if beside == "--label"
-        else str(_manifest(tmp_path, [("1", "Probe", "One", "Kompakt", 2025)]))
-    )
-    code, envelope = drive(_land("--label-from-tags", beside, value))
-    _assert_refused_before_the_gate(cfg, code, envelope, "intake-list-unusable")
-    message = envelope["cause"]["message"]
-    assert "--label-from-tags" in message and beside in message
-
-
-def test_label_from_tags_on_an_unreachable_library_names_the_volume(native_library, silence):
-    cfg, _root = native_library
-    _labelled(cfg, silence, "One.flac", "PULS", "2021")
-    root = Path(cfg.library.root)
-    root.rename(root.with_name("unmounted"))
-
-    code, envelope = drive(_land("--label-from-tags"))
-
-    assert code != int(ExitCode.OK)
-    assert envelope["cause"]["reason"] == "library-root-unreachable", envelope
-    assert "--label-from-tags" in envelope["cause"]["message"]
-    assert _staged_names(cfg) == ["One.flac"]
-
-
-def test_a_label_tag_that_could_not_be_read_is_said_apart_from_one_that_is_absent(tmp_path):
-    broken = tmp_path / "Broken.flac"
-    broken.write_bytes(b"not a flac stream")
-    plain = synth_container(tmp_path, ".flac")
-
-    assert label_filing._read_label(broken)[0] == ""
-    assert "could not be read" in label_filing._read_label(broken)[1]
-    assert label_filing._read_label(plain) == ("", "it carries no label tag")
-    assert tags.write_tags(plain, {"label": "  PULS  "})
-    assert label_filing._read_label(plain) == ("PULS", "")
+    assert _filed(cfg) == {
+        "PULS": {"PULS 2021": ["Dated"]}, composed: {f"{composed} 2021": ["One", "Two"]}
+    }
