@@ -1591,12 +1591,36 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
     manifest = json.loads((captures[0] / compare.MANIFEST).read_text(encoding="utf-8"))
     assert manifest["scenarios"] == [
         "adopt/scan_and_apply_jobs_queued_driven_and_reported",
+        "backup/a_backup_refuses_while_rekordbox_or_its_agent_runs",
+        "backup/a_rehearsal_copies_nothing",
+        "backup/a_second_capture_and_a_full_check",
         "backup/backup_capture_and_the_restore_plan",
         "cli/a_config_no_verb_can_use",
         "cli/help_of_every_verb",
         "favorites/favorites_put_in_order_behind_the_gate",
         "intake/rehearsal_and_the_gate_it_feeds",
         "label/registry_document_written_read_back_and_refused",
+        "master/a_recording_is_mastered_through_the_queue",
+        "master/mastering_refuses_outside_its_loudness_range_and_without_its_probe",
+        "master/mastering_refuses_over_an_existing_master",
+        "master/mastering_refuses_without_its_encoder",
+        "reports/a_report_refuses_an_export_it_cannot_read",
+        "reports/coverage_lists_what_the_tree_does_not_file",
+        "reports/duplicates_offer_a_pair_into_the_review_queue",
+        "reports/the_aging_report_bands_each_grouping",
+        "reports/the_library_report_names_its_genres_and_gaps",
+        "session/restore_bare_metal_onto_a_replacement",
+        "session/restore_bare_metal_refused_while_the_library_is_mounted",
+        "session/restore_run_puts_the_snapshot_back",
+        "session/restore_run_with_nothing_to_restore",
+        "session/session_ack_through_its_gate",
+        "session/session_release_through_its_gate",
+        "setbuilder/a_set_is_built_around_an_owned_anchor",
+        "setbuilder/a_set_is_built_around_an_unowned_anchor",
+        "setbuilder/the_set_builder_refuses_a_key_or_tempo_beside_an_owned_anchor",
+        "setbuilder/the_set_builder_refuses_an_anchor_it_cannot_place",
+        "skills/the_default_directory_is_under_home",
+        "skills/the_shipped_skills_are_installed_and_refreshed",
         "sync/collection_removal",
         "tagging/tag_write_to_an_audio_file",
         "tagging_rows/row_genres_written_from_their_files",
@@ -1610,7 +1634,7 @@ def test_two_captures_of_one_commit_are_equal(tmp_path, capsys):
 
     assert _compare(*captures) == 0, capsys.readouterr().out[-4000:]
     summary = capsys.readouterr().out
-    assert "12 scenarios" in summary and "no difference" in summary
+    assert f"{len(manifest['scenarios'])} scenarios" in summary and "no difference" in summary
 
     # And the two are equal for a reason: each holds real commands, files and rows.
     helped = json.loads((captures[0] / "cli/help_of_every_verb/commands.json").read_text())
