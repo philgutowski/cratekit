@@ -23,7 +23,7 @@ from cratekit.organize.steps import LISTED, NOTHING, PLANNED
 from tests.label_fakes import FakeCatalogue, catalogue_factory
 from tests.test_inbox_rotate import _record_landing
 from tests.test_label_workers import installed as installed  # noqa: PLC0414
-from tests.test_organize_mirror_edits import Machine, silence
+from tests.test_organize_mirror_edits import Machine, silence, without_fsync
 from tests.test_organize_mirror_edits import _field_policies as _field_policies  # noqa: PLC0414
 from tests.test_routing_workers import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_routing_workers import (
@@ -202,6 +202,7 @@ class World(Machine):
 
 @pytest.fixture
 def world(acknowledged, tmp_path, monkeypatch) -> World:
+    without_fsync(monkeypatch)
     scratch = tmp_path / "scratch"
     scratch.mkdir()
     built = World(acknowledged, scratch, monkeypatch)

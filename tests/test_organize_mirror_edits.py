@@ -8,6 +8,7 @@ database hold. D1 applies.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 from datetime import date
@@ -54,6 +55,11 @@ def silence(scratch: Path) -> Path:
     path = scratch / "probe.flac"
     path.write_bytes(_SILENCE[0])
     return path
+
+
+def without_fsync(monkeypatch) -> None:
+    """Nothing here asks whether a write reached the disk, so no write waits for it to (U309)."""
+    monkeypatch.setattr(os, "fsync", lambda _fd: None)
 
 
 def _query(db: Path, sql: str, *args) -> list:
@@ -184,6 +190,11 @@ class Machine:
         if at:
             self.account.added_at[(self.remote(title), track)] = at
 
+    def move_on_account(self) -> None:
+        """Track 1 moved on the account from Deep House Low into Tech House Med."""
+        self.take_off("Deep House Low", "r1")
+        self.put_in("Tech House Med", "r1")
+
     def sql(self, statement: str, *args) -> list:
         return _query(self.db, statement, *args)
 
@@ -231,7 +242,8 @@ def _field_policies():
 
 
 @pytest.fixture
-def machine(acknowledged, tmp_path) -> Machine:
+def machine(acknowledged, tmp_path, monkeypatch) -> Machine:
+    without_fsync(monkeypatch)
     scratch = tmp_path / "scratch"
     scratch.mkdir()
     built = Machine(acknowledged, scratch)
@@ -261,8 +273,7 @@ def test_a_second_run_with_nothing_changed_plans_nothing_on_either_side(machine)
 
 def test_an_edit_on_a_playlist_never_agreed_is_put_back_and_nothing_in_the_library_changes(machine):
     machine.forget_snapshots()
-    machine.take_off("Deep House Low", "r1")
-    machine.put_in("Tech House Med", "r1")
+    machine.move_on_account()
     area, step = machine.run()
     assert step.state == NOTHING
     assert machine.places("1") == {("Deep House", "Low")}
@@ -272,8 +283,7 @@ def test_an_edit_on_a_playlist_never_agreed_is_put_back_and_nothing_in_the_libra
 
 
 def test_a_track_moved_on_the_account_is_retagged_refiled_and_the_next_run_plans_nothing(machine):
-    machine.take_off("Deep House Low", "r1")
-    machine.put_in("Tech House Med", "r1")
+    machine.move_on_account()
     before = _writes(machine.account)
     area, step = machine.run()
     assert step.state == PLANNED
@@ -299,8 +309,7 @@ def test_a_track_moved_on_the_account_is_retagged_refiled_and_the_next_run_plans
 
 
 def test_a_move_in_rekordbox_after_an_edit_was_taken_is_rekordboxs(machine):
-    machine.take_off("Deep House Low", "r1")
-    machine.put_in("Tech House Med", "r1")
+    machine.move_on_account()
     machine.run()
     machine.move_in_rekordbox("1", ("Deep House", "Low"), "2026-11-05 10:00:00.000 +00:00")
     _area, step = machine.run()
@@ -356,8 +365,7 @@ def test_the_gate_names_every_membership_the_step_takes_away(machine):
 
 
 def test_a_short_listing_changes_nothing_in_the_library_and_undoes_nothing(machine):
-    machine.take_off("Deep House Low", "r1")
-    machine.put_in("Tech House Med", "r1")
+    machine.move_on_account()
     machine.account.hidden[machine.remote("Deep House Low")] = ("r9",)
     machine.account.playlists[machine.remote("Deep House Low")].append("r9")
     area, step = machine.run()
@@ -402,8 +410,7 @@ def test_two_moves_follow_the_later_account_move(machine):
 
 
 def test_two_moves_with_the_account_time_unknown_keep_rekordboxs(machine):
-    machine.take_off("Deep House Low", "r1")
-    machine.put_in("Tech House Med", "r1")
+    machine.move_on_account()
     machine.move_in_rekordbox("1", ("Deep House", "High"), "2026-11-04 10:00:00.000 +00:00")
     _area, step = machine.run()
     assert step.state == NOTHING
@@ -413,8 +420,7 @@ def test_two_moves_with_the_account_time_unknown_keep_rekordboxs(machine):
 
 
 def test_a_library_moved_since_the_plan_writes_nothing(machine):
-    machine.take_off("Deep House Low", "r1")
-    machine.put_in("Tech House Med", "r1")
+    machine.move_on_account()
     _area, step, _shared = machine.plan()
     machine.sql(
         "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, rb_local_deleted, "
@@ -637,8 +643,7 @@ def test_a_tree_the_product_latched_refuses_the_write_before_any_file_is_tagged(
         asked.append(tree_id)
         raise refuse("tree-unconverged", "the tree is latched", origin=("test",))
     monkeypatch.setattr(convergence, "assert_tree_writable", latched)
-    machine.take_off("Deep House Low", "r1")
-    machine.put_in("Tech House Med", "r1")
+    machine.move_on_account()
     _area, step, _shared = machine.plan()
     with pytest.raises(CratekitError) as caught:
         step.apply()
@@ -651,16 +656,14 @@ def test_a_tree_the_product_latched_refuses_the_write_before_any_file_is_tagged(
 def test_a_row_whose_genre_disagrees_with_its_file_takes_the_new_genre(machine):
     """The row is asked whatever its file said before (round one, finding 7)."""
     assert tags.write_tags(machine.files["1"], {"genre": "Tech House"})
-    machine.take_off("Deep House Low", "r1")
-    machine.put_in("Tech House Med", "r1")
+    machine.move_on_account()
     machine.run()
     assert machine.genre_row("1") == GENRES["Tech House"]
 
 
 def test_a_track_whose_file_is_gone_is_named_and_nothing_of_it_is_written(machine):
     machine.files["1"].unlink()
-    machine.take_off("Deep House Low", "r1")
-    machine.put_in("Tech House Med", "r1")
+    machine.move_on_account()
     _area, step = machine.run()
     assert step.state == NOTHING
     (named,) = step.items
@@ -671,8 +674,7 @@ def test_a_track_whose_file_is_gone_is_named_and_nothing_of_it_is_written(machin
 
 def test_a_track_whose_row_left_the_collection_is_named_and_nothing_is_written(machine):
     machine.sql("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = '1'")
-    machine.take_off("Deep House Low", "r1")
-    machine.put_in("Tech House Med", "r1")
+    machine.move_on_account()
     _area, step, _shared = machine.plan()
     assert step.state == NOTHING
     (named,) = step.items
@@ -681,8 +683,7 @@ def test_a_track_whose_row_left_the_collection_is_named_and_nothing_is_written(m
 
 
 def test_a_file_that_does_not_take_its_tags_keeps_its_row_and_tree_as_they_were(machine, monkeypatch):
-    machine.take_off("Deep House Low", "r1")
-    machine.put_in("Tech House Med", "r1")
+    machine.move_on_account()
     _area, step, _shared = machine.plan()
     monkeypatch.setattr(tags, "write_tags", lambda _path, _fields: False)
     done = step.apply()
@@ -720,8 +721,7 @@ def test_a_vocal_calibration_that_cannot_be_read_refuses_the_step_alone(machine,
     def unreadable(_cfg):
         raise refuse("vocal-calibration-unreadable", "not json", origin=("test",))
     monkeypatch.setattr(metadata_cli, "load_vocal_threshold", unreadable)
-    machine.take_off("Deep House Low", "r1")
-    machine.put_in("Tech House Med", "r1")
+    machine.move_on_account()
     _area, step, _shared = machine.plan()
     assert step.state == REFUSED and step.cause.reason == "vocal-calibration-unreadable"
 
@@ -733,8 +733,7 @@ def test_a_mirror_made_before_u201_is_agreed_by_its_first_run_and_an_edit_after_
     assert step.state == NOTHING
     agreed = ledger.mirror_folders(machine.cfg)["Deep House"].playlists["Deep House Low"].agreed
     assert agreed == {"r1"}
-    machine.take_off("Deep House Low", "r1")
-    machine.put_in("Tech House Med", "r1")
+    machine.move_on_account()
     _area, step = machine.run()
     assert step.state == PLANNED
     assert machine.places("1") == {("Tech House", "Med")}
