@@ -8,16 +8,10 @@ THE PLAN IS SHOWN BEFORE ANYTHING MOVES, and an answer recorded against it is
 refused as stale if the folder, the batch, the intake file or the manifest's
 bytes changed since, because the digest covers all of them.
 
-THE IMPORT IS THE PERSON'S AND BLOCKS NOTHING. A landed batch is an intake
-file rekordbox has not seen; :func:`ingest.place_files` persists its
-``rekordbox_import`` pending action on the intake session record (not the
-run, where nothing would clear it), and the envelope carries that same
-action, so the screen and the session log cannot differ.
-
-A label row no landed file matches is a warning naming the track, never a
-failure. On a database native tree a manifest's rows, ``--label`` or
-``--label-from-tags`` file the batch under the Record Labels tree in the
-landing's own commit (U156, U177).
+THE IMPORT IS THE PERSON'S AND BLOCKS NOTHING: its ``rekordbox_import``
+pending action is persisted on the intake session record and carried by the
+envelope, so the screen and the session log cannot differ. A label row no
+landed file matches is a warning naming the track, never a failure.
 """
 
 from __future__ import annotations
@@ -867,15 +861,11 @@ def _active_rows(db) -> int:
 def _rehearse_native(ctx, cfg: config.Config, planned: landing.Plan, **how: Any) -> Envelope:
     """Rehearse the landing on a scratch area of this run's own, then remove it (U162).
 
-    THE LIVE PLAN IS MADE FIRST, against the database copy, so its digest is
-    the one the live landing will show. THEN THE SAME FILES ARE PLANNED AT THE
-    AREA, and applied there only when that plan, mapped back, reads line for
-    line as the live one: what is rehearsed is the plan the live run will ask.
-
-    NOTHING LIVE IS WRITTEN OR MOVED: the live database and folders are
-    witnessed before and after. The account archive is never rehearsed, and
-    the report says so. A FAILURE KEEPS THE AREA AND NAMES IT. ``how`` is what
-    :func:`_rehearse_in` plans and applies with.
+    THE LIVE PLAN IS MADE FIRST, on the database copy, so its digest is the
+    live landing's; the area's plan is applied only when, mapped back, it reads
+    line for line as the live one. NOTHING LIVE IS WRITTEN OR MOVED, witnessed
+    before and after; the account archive is never rehearsed, and the report
+    says so. A FAILURE KEEPS THE AREA AND NAMES IT.
     """
     music = Path(cfg.library.root) / cfg.library.music_dir
     before = rehearsal.witness(cfg, (planned.folder, music, *_filed_watch(cfg, planned)))

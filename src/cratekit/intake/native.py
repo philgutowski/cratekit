@@ -742,13 +742,10 @@ def apply_rows(
 ) -> NativeLanded:
     """Write the plan: the rows, the playlist under the root, the memberships.
 
-    THE SESSION SPINE IS CALLED, NOT REBUILT: the gates with a record kept, a
-    capture, the analysis watch over ``analysis_roots``, the commit witness and
-    the guarded commit, whose ``creations`` admits the content rows (R-760).
-
-    ALL OR NOTHING IN THE DATABASE: every write is pending on one handle until
-    one commit, and a refusal before it rolls the handle back. The files are in
-    the library by then, which the caller reports.
+    THE SESSION SPINE IS CALLED, NOT REBUILT: the gates, a capture, the
+    analysis watch, the commit witness and the guarded commit, whose
+    ``creations`` admits the content rows (R-760). ALL OR NOTHING IN THE
+    DATABASE: every write is pending on one handle until one commit.
     """
     watched = _assert_unchanged(cfg, db, plan, analysis_roots)
     added_ids: list[tuple[RowPlan, str]] = []

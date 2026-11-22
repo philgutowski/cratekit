@@ -152,14 +152,10 @@ def plan_rows(
 ) -> NativePlan:
     """Plan one row per file and one playlist, against the open database.
 
-    ``files`` pairs where each file is now with where the landing puts it: the
-    row is planned for the target, the title read off the source. The caller
-    plans the account playlists (``split``, U113), their ``unplanned_left``
-    (U128), ``set_plan`` (U121), ``labels`` (U156) and ``twins`` (U149) on
-    this handle; each is digested, less what this plan leaves in staging.
-    ``hearts`` and ``owned_hearts`` (U120, U146) are placed under
-    ``favorites_source``; a home that cannot be resolved SKIPS the placement
-    and says why, never refusing the landing.
+    ``files`` pairs each staged file with its target, for which the row is
+    planned. What the caller planned on this handle is digested, less what this
+    plan leaves in staging; a hearts home that cannot be resolved SKIPS the
+    placement and says why, never refusing the landing.
 
     A FILE THE COLLECTION HOLDS IS PRESENT, NOT ADDED TWICE, matched through
     one index resolved on this machine; two active rows on one path count as
@@ -263,12 +259,9 @@ def _vox_plan(
 ) -> tuple[list[RowPlan], float | None, str]:
     """Each row to be added with its file's score and whether it is given the vox My Tag (U127).
 
-    THE TAG OWNS THE VOCAL SUB (R-841), so it is written from the cut and the
-    comparison the vocals verb uses, :mod:`cratekit.write.metadata_cli`'s.
-    Only on a row this landing adds; a held row is the repair's (A37).
-
-    NEVER A GUESS: no calibration or no My Tag category plans no tag and says
-    why; an unreadable score is no tag, named. Answers rows, cut and reason.
+    THE TAG OWNS THE VOCAL SUB (R-841), so it takes the vocals verb's cut and
+    comparison; only on a row this landing adds. NEVER A GUESS: no calibration
+    or no My Tag category plans no tag and says why. Answers rows, cut and reason.
     """
     if not any(row.action == ADD for row in rows):
         return rows, None, ""
