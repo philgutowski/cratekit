@@ -1443,3 +1443,14 @@ def test_the_job_verbs_read_a_playlist_as_the_sweep_records_it(cfg, default_queu
             swept=swept,
         )
         assert jobs_cli.playlist_identity(job, source) == playlists.recorded_as(job), source
+
+
+def test_releasing_one_drivers_claims_leaves_another_drivers_claim(queue, cfg):
+    """U301. A named driver frees only what it claimed."""
+    store, _root = queue
+    job = _job(store, cfg, "a", "b")
+    jobs.claim(store, job.job_id, "first")
+    jobs.claim(store, job.job_id, "second")
+    assert jobs.release_claims(store, job.job_id, driver="first") == 1
+    held = {item.item_id: (item.state, item.claimed_by) for item in jobs.items(store, job.job_id)}
+    assert held == {"a": (jobs.ItemState.PENDING, None), "b": (jobs.ItemState.CLAIMED, "second")}

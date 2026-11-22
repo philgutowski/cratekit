@@ -2181,3 +2181,15 @@ def test_a_name_patched_on_review_reaches_the_module_it_moved_to(store, monkeypa
     monkeypatch.setattr(review, name, lambda *a, **k: calls.append(1) or real(*a, **k))
     act()
     assert calls
+
+
+def test_an_item_a_document_carries_twice_is_applied_once(tmp_path, cfg, store):
+    """U301. Inserted open, then resolved by its second entry: one change, not two."""
+    item = _offer_one(store, key="twice")
+    entry = item.to_json()
+    document = _document(entry, {**entry, "verdict": str(review.Verdict.ACCEPTED),
+                                 "option": "opt-accept", "actor": "other"})
+    with review.open_store(cfg, path=tmp_path / "other" / "queue.db") as receiving:
+        result = review.import_document(receiving, document, actor="importer")
+    assert result.inserted == (item.item_id,) and result.resolved == (item.item_id,)
+    assert result.applied == (item.item_id,)
