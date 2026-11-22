@@ -2,7 +2,7 @@
 title: "pyrekordbox binds its own process probe, so a test that fakes the utils name still reads the host's process table"
 date: 2026-11-07
 category: workflow-issues
-module: "tests/conftest.py, tests/_host_processes.py, src/cratekit/core/rb_writer.py, src/cratekit/core/processes.py"
+module: "tests/conftest.py, tests/_host_processes.py, src/cratekit/core/rb_writer.py, src/cratekit/core/processes.py, src/cratekit/core/rb_probes.py"
 problem_type: workflow_issue
 component: test_isolation
 severity: high

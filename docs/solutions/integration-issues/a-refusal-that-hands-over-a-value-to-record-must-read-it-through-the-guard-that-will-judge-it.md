@@ -2,7 +2,7 @@
 title: A refusal that hands over a value to record must read it through the guard that will judge it
 date: 2026-09-19
 category: integration-issues
-module: "src/cratekit/core/session.py"
+module: "src/cratekit/core/session.py, src/cratekit/core/session_volumes.py"
 problem_type: integration_issue
 component: volume_identity_gate
 root_cause: missing_validation
