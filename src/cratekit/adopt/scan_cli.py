@@ -1,68 +1,31 @@
 """``crate adopt scan``: queue the census over an existing library.
 
-WHY THIS IS A MODULE OF ITS OWN, AND WHY ITS SIBLING IS NOT BESIDE IT. The two
-adoption verbs are not in the same position and never were. ``adopt.apply``
-writes the database, is destructive, and declares two gates; ``adopt.scan``
-declares none, writes nothing, and reads. They shared one ``module=`` string in
-the registry, and the marker test that expires a ``planned_in`` keys on that
-string, so the half that is ready was held back by the half that is not, for no
-reason of its own. Splitting them costs one file.
+A MODULE OF ITS OWN, apart from ``adopt.apply``, which writes, is destructive and
+declares gates, while this verb only reads and declares none.
 
-WHAT IT ACTUALLY DOES, AND WHY THAT IS QUEUEING RATHER THAN SCANNING. A census
-walks a whole collection and stats every file in it. That is long work by any
-definition, and conformance 5 says long work is queued rather than run inline,
-for the reason the source system taught: a sweep that runs inline in the shell
-has no record, no resume, and no way to answer "what is it doing" from anywhere
-except the terminal it was started in. So this verb freezes the configuration
-the run will use (KTD9), queues one job under its own handler key with one item
-per live collection row, and reports the job. The engine that drives it is
-:mod:`cratekit.core.jobs`, which landed in U10, and :func:`handle` below is the
-worker U55 landed behind it.
+IT QUEUES RATHER THAN SCANS (conformance 5): a census stats every file, so the
+verb freezes the configuration (KTD9), queues one job with one item per LIVE
+collection row, and reports it; :func:`handle` classifies one row. Reading the
+rows to derive the items is cheap; probing the files is the job's work.
 
-READING THE ROWS IS NOT SCANNING THEM, which is why this verb touches the
-database before it queues anything. Deriving the items needs the row identifiers
-and nothing else; deciding what is at the end of each recorded location is the
-per-item work the job exists to do. So the shell opens the database, reads the
-collection, and hands the walk to the queue.
+There is no tree argument: the active taxonomy declares exactly one (R19).
 
-THERE IS NO TREE ARGUMENT, AND THAT IS THE R19 ANSWER RATHER THAN A GAP. A
-taxonomy declares exactly one routing tree, by stable identifier, and adoption
-files tracks into the tree the active taxonomy declares. A flag naming a tree
-would be a second opinion about a value the template already holds, and the only
-thing a user could put in it is either that identifier or a mistake.
-
-WHAT IT MUST NOT IMPORT, AND WHY IT IS A LAYERING TRAP RATHER THAN A RULE. A
-command-line shell wants ``registry.Entry`` for its builder signature, and
-importing it from here would be a modules-layer file reaching into the CLI layer,
-which the layering guard refuses (KTD23). The legal shape is the one
-``cratekit.acquire.match_cli`` uses: name :mod:`cratekit.cli.output` alone, which
-is foundation-ranked because the output contract is reserved globally before any
-verb ships (KTD25), and leave the builder's parameters unannotated. The types are
-real at runtime; they are simply not this layer's to name.
-
-Layer: modules.
+Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
+command-line layer (KTD23, KTD25), so the builder's parameters stay unannotated.
 """
 
 from __future__ import annotations
 
-# ``scan`` IS ALIASED because this module already defines a function of that
-# name and that function is the VERB. One symbol meaning two things in one file
-# is the defect ``docs/METHOD.md`` says to hunt, and here it would shadow the
-# handler the parser binds. U51 aliased three modules called ``export`` for the
-# same reason.
-from cratekit.adopt import artifacts, collection, shell
+# ``scan`` IS ALIASED because the verb below is a function of that name.
+from cratekit.adopt import artifacts, collection
 from cratekit.adopt import scan as scan_engine
-from cratekit.cli.output import Envelope, load_config
+from cratekit.cli.output import Envelope, load_config, no_job
 from cratekit.core import active_taxonomy, config, jobs
 from cratekit.core.cause import Outcome, refuse
 
 
 def build(parser, entry) -> None:
-    """Declare the verb's arguments. The parameters are unannotated on purpose.
-
-    ``entry`` is a ``cratekit.cli.registry.Entry`` and naming that type here
-    would be this layer importing the one above it. See the module docstring.
-    """
+    """Declare the verb's arguments, unannotated for the layering reason above."""
     parser.add_argument(
         "--job",
         default=None,
@@ -76,86 +39,44 @@ def build(parser, entry) -> None:
 
 
 def adopt_scan_argv(job) -> list[str]:
-    """The command line that continues one queued census.
-
-    THE CONTRACT EVERY LONG-RUNNING VERB OWES, and the reason it is a function
-    rather than a string in the registry: the payload is frozen at queue time
-    (KTD9), so only the verb that queued it knows how to turn it back into an
-    invocation. ``cratekit.cli.jobs.argv_for`` looks this up by handler key and
-    imports nothing until the key is known to be real.
-
-    It names the JOB rather than re-stating the request, which is what stops a
-    resume from queueing a second record for one piece of work. ``job`` is a
-    ``cratekit.core.jobs.Job`` and is unannotated for the layering reason the
-    module docstring gives.
-    """
+    """The command line that continues one queued census, naming the job (KTD9)."""
     return ["adopt", "scan", "--job", job.job_id]
 
 
 def _summary(cfg: config.Config, job_id: str) -> dict:
     """What this job's committed artifacts say the library looks like.
 
-    DERIVED FROM WHAT RAN, never from what was queued. A scan that classified
-    three rows of five and was continued tomorrow has five reports on disk and
-    the person asking what their library holds means all five, which is why this
-    reads the artifacts back rather than accumulating counts in memory.
-
-    ZEROES INCLUDED, for the reason :func:`cratekit.adopt.scan.categories` gives:
-    a summary listing only the categories it happened to see makes "no online
-    only files in this library" and "this build does not look for them" the same
-    output, and AE12 is precisely about telling those apart.
+    Read back from what ran, so a census continued tomorrow counts every report,
+    zeroes included (AE12).
     """
     categories = {str(member): 0 for member in scan_engine.Readability}
     dispositions = {str(member): 0 for member in scan_engine.Disposition}
     for report in artifacts.committed(cfg, job_id):
-        readability = str(report.get("readability") or "")
-        disposition = str(report.get("disposition") or "")
-        if readability in categories:
-            categories[readability] += 1
-        if disposition in dispositions:
-            dispositions[disposition] += 1
+        for counts, field in ((categories, "readability"), (dispositions, "disposition")):
+            value = str(report.get(field) or "")
+            if value in counts:
+                counts[value] += 1
     return {"categories": categories, "dispositions": dispositions}
 
 
 def _empty(reason: str, detail: str) -> tuple[dict, tuple[dict[str, str], ...]]:
     """The payload and warning for a library with nothing to census.
 
-    THE HONEST ZERO, and it is a different thing from a job with no items. A
-    library that holds nothing is a correct outcome and the state every library
-    is in before its first import; ``core.jobs`` reports a job with no items as
-    SUCCEEDED by design, so a verb that queued one here would report a clean
-    success over a census that never ran. Nothing is queued and the envelope says
-    which zero this is.
-
-    THE PAYLOAD SHAPE IS :func:`cratekit.adopt.shell.no_op`'s rather than this
-    module's, because the three zero paths these two verbs now have would
-    otherwise each be free to reintroduce R-234's null ``job_id`` separately.
+    Nothing is queued: ``core.jobs`` reports a job with no items as SUCCEEDED, a
+    clean success over a census that never ran. The payload is
+    :func:`cratekit.cli.output.no_job`'s, so no zero path can bring back R-234's
+    null ``job_id``.
     """
-    return shell.no_op("no-op"), ({"code": reason, "message": detail},)
+    return no_job("no-op"), ({"code": reason, "message": detail},)
 
 
 def scan(ctx) -> Envelope:
     """Queue one census over the person's own collection, and drive it on a resume.
 
-    The handler key comes off the entry rather than being spelled again here, so
-    the job the queue holds and the verb the registry declares cannot name two
-    different things.
-
-    THE READER LANDED, so this verb now reads. Everything this docstring said
-    about a worker that "is not in this unit and cannot be" was true until U55 and
-    is false now: :func:`cratekit.adopt.collection.read_collection` turns the
-    configured database into :class:`cratekit.adopt.scan.CollectionRow` values,
-    one item is queued per LIVE row, and :func:`handle` classifies one of them.
-
-    THE ITEMS ARE DERIVED FROM THE COLLECTION AND NEVER FROM THE CENSUS. Deriving
-    them from the census would stat every file in the library before the person
-    is told anything, which is the work the job exists to do in the background.
-    Reading the rows is cheap; probing the files is not.
-
-    A LIBRARY OF TOMBSTONES IS NOT AN EMPTY LIBRARY, and only the collection can
-    tell them apart: :func:`cratekit.adopt.scan.scan_rows` skips a deleted row, so
-    both produce an empty census. The two warnings below are why the read happens
-    here rather than one layer down.
+    The handler key comes off the entry. The items are derived from the
+    collection, never the census, which would stat every file before the person
+    is told anything. A library of tombstones is not an empty library, and only
+    the collection can tell them apart, since ``scan_rows`` skips a deleted row.
     """
     cfg = load_config(("adopt.scan_cli",))
     if ctx.args.job:
@@ -172,8 +93,7 @@ def scan(ctx) -> Envelope:
             )
             if rows
             else _empty(
-                "collection-empty",
-                "this library holds no tracks, so there is nothing to census",
+                "collection-empty", "this library holds no tracks, so there is nothing to census"
             )
         )
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP, warnings=warnings)
@@ -183,31 +103,22 @@ def scan(ctx) -> Envelope:
             store,
             handler_key=ctx.entry.handler_key,
             payload={"tree": active_taxonomy.load(cfg).tree.id},
-            # ONE LIVE ROW IS ONE ITEM. Without them the queue holds a job with
-            # nothing to claim and the driver reports an empty success over a
-            # census it never took.
+            # ONE LIVE ROW IS ONE ITEM, or the driver reports an empty success.
             item_ids=live,
             cfg=cfg,
         )
-        return ctx.envelope(data=shell.reported(store, job))
+        return ctx.envelope(data=jobs.reported(store, job))
 
 
 def _resume(ctx, cfg: config.Config) -> Envelope:
     """Continue the census already queued under this identifier, and drive it.
 
-    RECONCILE FIRST. A resume arrives after something stopped, and a claim left
-    behind by a driver that died is state the queue cannot see for itself.
-
-    IT RAISES ON A JOB THAT DID NOT FINISH rather than reporting one. That is
-    R-225: a resume branch that returns a normal envelope for a job that half
-    failed exits OK, so a person whose census did not happen is told it did, and
-    ``master/cli.py`` did exactly that until R-225 closed. The predicate, owned
-    by ``jobs.raise_for_state`` since R-290, is ANY CLOSED JOB CARRYING A CAUSE rather than
-    FAILED alone, because a run stopped with a signal is CANCELLED and carries
-    the cause ``jobs.cancel`` builds; SUCCEEDED carries none, so it is unaffected.
+    :func:`cratekit.core.jobs.advance` reconciles first, and raises on any closed
+    job carrying a cause, CANCELLED included, rather than reporting it (R-225,
+    R-290).
     """
     with jobs.open_store() as store:
-        job, warnings = shell.advance(
+        job, warnings = jobs.advance(
             ctx,
             store,
             jobs.get(store, ctx.args.job),
@@ -215,44 +126,22 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
             nothing_to_run="report a census over a library it never read",
         )
         return ctx.envelope(
-            data=shell.reported(store, job, {"census": _summary(cfg, job.job_id)}),
-            warnings=warnings,
+            data=jobs.reported(store, job, {"census": _summary(cfg, job.job_id)}), warnings=warnings
         )
 
 
 def handle(job, item, cfg) -> jobs.Produced:
     """Classify ONE collection row. The per-item worker behind ``adopt.scan``.
 
-    THE COLLECTION IS RE-READ AT DRIVE TIME AND IS NOT FROZEN.
-    ``jobs.enqueue`` freezes the payload and the configuration, and neither
-    carries the library. So a row removed in rekordbox between the queueing and
-    the drive leaves an item this read cannot classify, and that is refused with
-    its own slug rather than raised out of the worker: an item that reported done
-    having classified nothing is the clean-report-over-unreadable-state cost
-    ``docs/METHOD.md`` names.
-
-    REMOVED MEANS TOMBSTONED, NOT VANISHED, which is what the condition below
-    has to cover and what the first draft of it did not. rekordbox soft deletes:
-    the row stays and gains a marker. The reader carries it, so a check for
-    absence alone passes an item whose row ``scan_rows`` will skip.
-
-    THE CONFIGURATION IS THE FROZEN ONE AND IS NOT LOADED HERE. KTD9 closes the
-    recorded resume bug where a queued run re-resolved its configuration; a
-    handler that loaded one is that defect wearing a new hat.
-
-    ONE ROW RATHER THAN THE WHOLE WALK, which is what makes the engine's resume
-    guarantee worth anything: a census killed at row three thousand resumes at row
-    three thousand and one rather than restarting a walk that stats every file.
+    The collection is re-read at drive time, so a row removed or tombstoned in
+    rekordbox since the queueing is refused with its own slug rather than raised
+    out of the worker as a defect. The configuration is the frozen one (KTD9).
+    One row per item is what lets a killed census resume where it stopped.
     """
     row = collection.indexed(cfg).get(item.item_id)
     if row is None or row.deleted:
-        # A TOMBSTONE COUNTS AS ABSENT HERE, and the two halves of this condition
-        # are not the same fact wearing one name. The reader CARRIES a deleted
-        # row on purpose, so a track removed in rekordbox between the queueing
-        # and the drive is still in the index; ``scan_rows`` then skips it, and
-        # the unpack below would raise ``ValueError`` out of the worker as an
-        # internal error telling a person to report a defect over an ordinary
-        # library edit. Driven on 2026-09-02 before this clause existed.
+        # A TOMBSTONE COUNTS AS ABSENT: the reader carries it, ``scan_rows``
+        # skips it, and the unpack below would raise ``ValueError`` as a defect.
         raise refuse(
             "adopt-item-absent",
             f"the collection no longer holds a live row {item.item_id!r} for this "
@@ -263,10 +152,7 @@ def handle(job, item, cfg) -> jobs.Produced:
         )
     declared = active_taxonomy.load(cfg)
     (classified,) = scan_engine.scan_rows(
-        [row],
-        declared,
-        root=cfg.library.root,
-        prefix_map=collection.prefix_rules(cfg),
+        [row], declared, root=cfg.library.root, prefix_map=collection.prefix_rules(cfg)
     )
     return artifacts.produced(
         cfg,

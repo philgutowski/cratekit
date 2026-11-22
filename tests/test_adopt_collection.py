@@ -1,15 +1,12 @@
 """The collection reader, against a real database and against no database at all.
 
-TWO HALVES, DRIVEN SEPARATELY, because they answer different questions.
-``collection_rows`` is pure over mapped rows, so every branch in the derivation
-runs here with no database and no configuration. ``read_collection`` is the thin
-half that opens a handle, and what is under test there is that the open is a READ
-and that the file is unchanged afterwards.
+``collection_rows`` is pure over mapped rows, so every branch of the derivation
+runs with no database. ``read_collection`` opens a handle, and what is under test
+there is that the open is a READ and the file is unchanged afterwards.
 
-WHICH DATABASE. A disposable one, built from the binding's own schema in a
-temporary directory, or a supplied ``CRATEKIT_TEST_DB`` snapshot copied again
-first. Never anybody's library: the live database is off limits, and a test that
-can reach it is a test that eventually does.
+The database is a disposable one built from the binding's schema in a temporary
+directory, or a supplied ``CRATEKIT_TEST_DB`` snapshot copied first. Never
+anybody's library.
 """
 
 from __future__ import annotations
@@ -27,17 +24,17 @@ from tests import adopt_fixtures
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database, _row
 
-#: A name carrying an accented character, spelled in both composition forms. The
-#: reader must return each one exactly as recorded: normalizing here would put a
-#: second opinion beside ``cratekit.core.locations``, which is the module that
-#: owns composition form and is where the 144 missing files were paid for.
+#: A name with an accented character in both composition forms. The reader must
+#: return each exactly as recorded: composition form is ``core.locations``' job.
 NFC_NAME = "Café"
 NFD_NAME = "Café"
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+def _url(name: str) -> str:
+    return locations.location_url(Path("/Music") / f"{name}.flac")
+
+
+# ── Fixtures ──
 
 
 @pytest.fixture(autouse=True)
@@ -70,20 +67,14 @@ def cfg(library, monkeypatch):
         )
     )
     monkeypatch.setattr(config, "load", lambda *args, **kwargs: resolved)
-    monkeypatch.setattr(
-        rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION
-    )
+    monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
     return resolved
 
 
 @pytest.fixture(autouse=True)
 def _platform_seams(monkeypatch):
-    """What this machine cannot speak for on behalf of a temporary library.
-
-    Neutralising the process probes here weakens nothing under test: that the
-    guards refuse a running application is proved directly, twice, in
-    ``tests/test_rb_writer_db.py``.
-    """
+    """What this machine cannot speak for on behalf of a temporary library; that
+    the guards refuse a running application is proved in ``tests/test_rb_writer_db.py``."""
     from pyrekordbox.db6 import database as binding
 
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
@@ -97,11 +88,8 @@ def _platform_seams(monkeypatch):
 
 
 def seed(db_path: Path) -> None:
-    """Three content rows, a genre, and a dangling genre reference.
-
-    Written through the binding's own mapper rather than raw SQL, so the schema
-    the rows land in is the one the reader will meet.
-    """
+    """Three content rows, a genre, and a dangling genre reference, written through
+    the binding's own mapper so the schema is the one the reader meets."""
     from pyrekordbox.db6 import tables
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
@@ -109,38 +97,23 @@ def seed(db_path: Path) -> None:
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         session.add(_row(tables.DjmdGenre, ID="7", Name="Techno"))
-        session.add(
-            _row(
-                tables.DjmdContent,
-                ID="10",
-                Title=NFC_NAME,
-                GenreID="7",
-                rb_local_deleted=0,
-                FolderPath=locations.location_url(Path("/Music") / f"{NFC_NAME}.flac"),
+        # Row 12 names a genre row that does not exist, as a real library can
+        # after a genre is deleted while a track still points at it.
+        for content_id, title, genre_id, deleted, location in (
+            ("10", NFC_NAME, "7", 0, _url(NFC_NAME)),
+            ("11", NFD_NAME, None, 0, _url(NFD_NAME)),
+            ("12", "gone", "999", 1, locations.location_url(Path("/Music/gone.flac"))),
+        ):
+            session.add(
+                _row(
+                    tables.DjmdContent,
+                    ID=content_id,
+                    Title=title,
+                    GenreID=genre_id,
+                    rb_local_deleted=deleted,
+                    FolderPath=location,
+                )
             )
-        )
-        session.add(
-            _row(
-                tables.DjmdContent,
-                ID="11",
-                Title=NFD_NAME,
-                GenreID=None,
-                rb_local_deleted=0,
-                FolderPath=locations.location_url(Path("/Music") / f"{NFD_NAME}.flac"),
-            )
-        )
-        session.add(
-            _row(
-                tables.DjmdContent,
-                ID="12",
-                Title="gone",
-                # A genre row that does not exist. Reachable in a real library
-                # after a genre is deleted while a track still points at it.
-                GenreID="999",
-                rb_local_deleted=1,
-                FolderPath=locations.location_url(Path("/Music/gone.flac")),
-            )
-        )
         session.commit()
     engine.dispose()
 
@@ -149,13 +122,9 @@ def seed(db_path: Path) -> None:
 def synthetic(cfg):
     """A disposable database carrying exactly the rows :func:`seed` writes.
 
-    NEVER SUBSTITUTED BY A SUPPLIED SNAPSHOT, and the split from :func:`seeded`
-    below is deliberate rather than an oversight. The tests using this fixture
-    assert against rows BY IDENTIFIER, and a real snapshot carries somebody else's
-    rows, so a substitution here would make every one of those assertions false
-    about the file it was handed. Making them conditional on the environment would
-    be a skip wearing an ``if``, which this repository routes through
-    ``tests/_pending.py`` or does not write at all.
+    NEVER SUBSTITUTED BY A SUPPLIED SNAPSHOT: these tests assert rows by
+    identifier, which somebody else's library would make false, and making them
+    conditional would be a skip wearing an ``if``.
     """
     path = Path(cfg.library.db_path)
     _build_disposable_database(path, with_tag_category=False)
@@ -165,15 +134,9 @@ def synthetic(cfg):
 
 @pytest.fixture
 def seeded(cfg, synthetic):
-    """The same database, with a supplied ``CRATEKIT_TEST_DB`` snapshot preferred.
-
-    A supplied snapshot SUBSTITUTES for the synthetic build rather than switching
-    anything on, which is the convention seam decisions Part 4 sets: the battery
-    runs either way and supplying a real database strengthens it. Every test using
-    this fixture asserts a property of the READ rather than a fact about the rows,
-    so both files answer it. The supplied file is copied first, because reading a
-    file somebody handed us is fine and leaving our fingerprints on it is not.
-    """
+    """The same database, with a supplied ``CRATEKIT_TEST_DB`` snapshot preferred
+    and copied first (seam decisions Part 4). Its tests assert properties of the
+    READ, which both files answer."""
     return adopt_fixtures.copy_supplied(cfg) or synthetic
 
 
@@ -187,9 +150,7 @@ class _Row:
         self.rb_local_deleted = deleted
 
 
-# ---------------------------------------------------------------------------
-# The derivation, with no database at all
-# ---------------------------------------------------------------------------
+# ── The derivation, with no database at all ──
 
 
 def test_every_field_comes_off_the_row_it_belongs_to():
@@ -202,6 +163,9 @@ def test_every_field_comes_off_the_row_it_belongs_to():
             deleted=False,
         )
     ]
+    # The identifier is stringified, because the column need not be text.
+    (row,) = collection.collection_rows([_Row(1234, "file://localhost/a.flac", "Techno")])
+    assert row.content_id == "1234"
 
 
 def test_a_null_location_and_a_null_genre_are_empty_strings_not_none():
@@ -212,22 +176,15 @@ def test_a_null_location_and_a_null_genre_are_empty_strings_not_none():
 
 
 def test_a_tombstone_is_carried_rather_than_dropped():
-    """Dropping it here would put one decision in two places.
-
-    ``scan_rows`` already skips a deleted row and says why. A reader that also
-    skipped would leave no caller able to tell an empty library from a library
-    whose rows are all tombstones, which is the difference the scan verb reports.
-    """
+    """``scan_rows`` already skips a deleted row; skipping here too would leave no
+    caller able to tell an empty library from a library of tombstones."""
     (row,) = collection.collection_rows([_Row("1", deleted=1)])
     assert row.deleted is True
 
 
 def test_a_row_that_cannot_report_the_marker_refuses_rather_than_defaulting():
-    """R-186's defect, refused rather than reproduced.
-
-    ``getattr(row, "rb_local_deleted", False)`` answers the permissive default for
-    a row it could not ask, which hands every tombstone to the census as live.
-    """
+    """R-186's defect, refused rather than reproduced: a permissive default for a
+    row it could not ask hands every tombstone to the census as live."""
 
     class _Mute:
         ID = "1"
@@ -239,63 +196,35 @@ def test_a_row_that_cannot_report_the_marker_refuses_rather_than_defaulting():
     assert excinfo.value.cause.reason == "soft-delete-marker-unreadable"
 
 
-def test_the_identifier_is_stringified_because_the_column_need_not_be_text():
-    (row,) = collection.collection_rows([_Row(1234, "file://localhost/a.flac", "Techno")])
-    assert row.content_id == "1234"
-
-
-# ---------------------------------------------------------------------------
-# Against a real database
-# ---------------------------------------------------------------------------
+# ── Against a real database ──
 
 
 def test_the_reader_yields_the_rows_the_database_holds(cfg, synthetic):
+    """The recorded value is the percent-encoded URL rekordbox writes, passed through.
+
+    Both composition forms come back exactly as recorded and distinct, since a
+    reader that normalized would hand the resolver a value nothing holds. A
+    dangling genre reference reads as no genre: measured, the proxy answers None
+    rather than raising. The reader stats nothing, so a row whose file is absent
+    is still a row.
+    """
     rows = {row.content_id: row for row in collection.read_collection(cfg)}
     assert set(rows) == {"1", "2", "10", "11", "12"}
     assert rows["10"].genre == "Techno"
-    # THE RECORDED VALUE IS THE PERCENT-ENCODED URL rekordbox writes, not a path.
-    # Asserting on the decoded form is what makes this a statement about the
-    # reader's passthrough rather than about this test's own spelling.
-    assert rows["10"].recorded == locations.location_url(Path("/Music") / f"{NFC_NAME}.flac")
+    assert rows["10"].recorded == _url(NFC_NAME)
     assert rows["11"].genre == ""
-    assert rows["11"].recorded == locations.location_url(Path("/Music") / f"{NFD_NAME}.flac")
+    assert rows["11"].recorded == _url(NFD_NAME)
     assert rows["12"].deleted is True
-
-
-def test_both_composition_forms_come_back_exactly_as_recorded(cfg, synthetic):
-    """The reader normalizes nothing, which is ``core.locations``' job one layer down.
-
-    Two rows whose names differ only in composition form must stay distinct here.
-    A reader that normalized would collapse them and the resolver below would then
-    be comparing a value nothing in the library actually holds.
-    """
-    recorded = {row.recorded for row in collection.read_collection(cfg)}
-    assert locations.location_url(Path("/Music") / f"{NFC_NAME}.flac") in recorded
-    assert locations.location_url(Path("/Music") / f"{NFD_NAME}.flac") in recorded
-    assert NFC_NAME != NFD_NAME
-
-
-def test_a_dangling_genre_reference_reads_as_no_genre(cfg, synthetic):
-    """Measured, not assumed. The proxy answers None rather than raising."""
-    rows = {row.content_id: row for row in collection.read_collection(cfg)}
     assert rows["12"].genre == ""
-    assert rows["11"].genre == ""
-
-
-def test_a_row_whose_file_is_absent_is_still_a_row(cfg, synthetic):
-    """The reader stats nothing. Deciding whether a file is there is ``scan_rows``."""
-    for row in collection.read_collection(cfg):
+    assert NFC_NAME != NFD_NAME
+    for row in rows.values():
         if row.recorded:
             assert not Path(locations.location_to_path(row.recorded)).exists()
 
 
 def test_the_reader_never_opens_the_database_for_writing(cfg, seeded, monkeypatch):
-    """Asserted mechanically against the recorded call, not by reading the source.
-
-    ``require_closed`` is ``open_db``'s write-intent flag. A reader that asked for
-    one would pass the two-process refusal and the application pin, which is the
-    open a WRITE makes, and nothing else about this module would look different.
-    """
+    """Asserted against the recorded call: ``require_closed`` is ``open_db``'s
+    write-intent flag, and a reader asking for it would make a write's open."""
     calls: list[dict] = []
     real = rb_writer.open_db
 
@@ -308,34 +237,25 @@ def test_the_reader_never_opens_the_database_for_writing(cfg, seeded, monkeypatc
 
     assert len(calls) == 1
     assert calls[0]["require_closed"] is False
-    # The key question is left to the opener, which asks the file (R-239). A
-    # reader that answered it here could answer it wrong for a real library.
+    # The key question is left to the opener, which asks the file (R-239).
     assert "unlock" not in calls[0]
 
 
 def test_the_database_file_is_byte_identical_after_a_full_read(cfg, seeded):
-    """The strongest statement available without watching the file descriptor.
+    """Bytes AND modification time, write ahead log sidecars included, because a
+    read that checkpointed would change the main file and empty the log while
+    every row still came back correct."""
+    suffixes = rb_writer.db_sidecar_suffixes()
+    watched = [seeded, *(seeded.with_name(seeded.name + suffix) for suffix in suffixes)]
 
-    Bytes AND modification time, and the write ahead log sidecars too, because a
-    read that checkpointed would leave the main file changed and the log empty
-    while every row still came back correct.
-    """
-    watched = [seeded, *(
-        seeded.with_name(seeded.name + suffix)
-        for suffix in rb_writer.db_sidecar_suffixes()
-    )]
-    before = {
-        path: (path.read_bytes(), path.stat().st_mtime_ns)
-        for path in watched
-        if path.exists()
-    }
+    def state():
+        return {
+            path: (path.read_bytes(), path.stat().st_mtime_ns) for path in watched if path.exists()
+        }
+
+    before = state()
     collection.read_collection(cfg)
-    after = {
-        path: (path.read_bytes(), path.stat().st_mtime_ns)
-        for path in watched
-        if path.exists()
-    }
-    assert after == before
+    assert state() == before
 
 
 def test_two_reads_in_one_process_open_the_database_once(cfg, seeded, monkeypatch):
@@ -359,57 +279,44 @@ def test_two_reads_in_one_process_open_the_database_once(cfg, seeded, monkeypatc
 
 
 def test_a_configured_library_with_no_database_is_a_named_refusal(cfg):
-    """Named rather than a traceback. This is a new refusal surface on two verbs."""
+    """Named rather than a traceback, on two verbs' new refusal surface."""
     with pytest.raises(CratekitError) as excinfo:
         collection.read_collection(cfg)
     assert excinfo.value.cause.reason == "library-database-missing"
 
 
-# ---------------------------------------------------------------------------
-# The property that is not a behaviour
-# ---------------------------------------------------------------------------
+# ── The property that is not a behaviour ──
 
 
 def test_this_module_holds_no_write_path_at_all():
-    """An AST walk, not a grep and not a review.
-
-    Three shapes would each turn this module into one that can write: an open
-    asking for write intent, a session, or a commit. A grep for ``commit`` would
-    also match the word in a docstring, and a review is what every defect in this
-    repository has already survived.
-    """
-    source = Path(collection.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(source)
+    """An AST walk, not a grep and not a review: an open asking for write intent, a
+    session, or a commit would each make this module able to write, and a grep
+    for ``commit`` would match the word in a docstring."""
+    tree = ast.parse(Path(collection.__file__).read_text(encoding="utf-8"))
+    nodes = list(ast.walk(tree))
 
     imported = {
-        alias.name
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Import)
-        for alias in node.names
+        alias.name for node in nodes if isinstance(node, ast.Import) for alias in node.names
     }
     imported |= {
         f"{node.module}.{alias.name}"
-        for node in ast.walk(tree)
+        for node in nodes
         if isinstance(node, ast.ImportFrom) and node.module
         for alias in node.names
     }
     assert not any("session" in name for name in imported), imported
 
-    attributes = {
-        node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
-    }
+    attributes = {node.attr for node in nodes if isinstance(node, ast.Attribute)}
     assert "commit" not in attributes
     assert "session" not in attributes
 
-    for node in ast.walk(tree):
+    for node in nodes:
         if not isinstance(node, ast.Call):
             continue
         target = node.func
         if isinstance(target, ast.Attribute) and target.attr == "open_db":
             written = {
-                keyword.arg: keyword.value
-                for keyword in node.keywords
-                if keyword.arg is not None
+                keyword.arg: keyword.value for keyword in node.keywords if keyword.arg is not None
             }
             intent = written.get("require_closed")
             assert isinstance(intent, ast.Constant) and intent.value is False
