@@ -110,8 +110,7 @@ def _volume_agrees(cfg, monkeypatch):
 def _unlocked_integrity(monkeypatch):
     """An unencrypted fixture fails the key-reaching integrity check, so it is asked unlocked.
 
-    Compensated here, never by handing the writer a verifier it could be lied to through.
-    """
+    Compensated here, never by handing the writer a verifier it could be lied to through."""
     real_integrity_ok = rb_writer.integrity_ok
     monkeypatch.setattr(rb_writer, "integrity_ok", lambda target, **kwargs: real_integrity_ok(target, unlock=False))
 
@@ -169,9 +168,7 @@ def _filed_under(db, content_id: str):
     return playlist, db.session.query(tables.DjmdPlaylist).filter_by(ID=playlist.ParentID).one()
 
 
-def test_an_intent_is_readable_by_the_next_process_the_moment_it_is_decided(
-    cfg, declared
-):
+def test_an_intent_is_readable_by_the_next_process_the_moment_it_is_decided(cfg, declared):
     """A restarted process must be able to read what it believed."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     reloaded = routing_pass.read(cfg)
@@ -494,9 +491,7 @@ def test_the_track_lands_inside_the_tree_the_cutover_adopted(
     assert str(folder.ParentID) == str(adopted_root.ID)
 
 
-def test_the_pass_run_before_the_import_is_read_only(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_the_pass_run_before_the_import_is_read_only(cfg, gates_pass, db, adopted_root, declared):
     """Asserted against the FILESYSTEM."""
     routing_pass.record_intents(cfg, [_not_yet_there(cfg, declared)])
     # The state tree is everything a pass could write; the database is outside it, since a
@@ -654,9 +649,7 @@ def test_a_run_whose_track_has_not_been_imported_still_refuses_to_close(
         routing_pass.close_run(record, cfg)
 
 
-def test_a_track_deleted_after_import_is_surfaced(
-    cfg, gates_pass, db, adopted_root, declared
-):
+def test_a_track_deleted_after_import_is_surfaced(cfg, gates_pass, db, adopted_root, declared):
     """Surfaced, never auto-skipped."""
     routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
     report = _route(cfg, db, adopted_root, declared, rows=[_row(cfg, PLAIN, "2", deleted=True)])

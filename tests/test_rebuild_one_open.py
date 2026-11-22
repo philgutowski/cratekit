@@ -123,8 +123,7 @@ def test_an_undecodable_field_reads_none_and_its_neighbours_still_read(tmp_path,
     """An MP4 freeform atom whose bytes are not text: that field alone reads None.
 
     The strict single reader and the lenient one open must agree, and the genre
-    beside it must survive.
-    """
+    beside it must survive."""
     from mutagen.mp4 import MP4, MP4FreeForm
 
     path = _tagged(tmp_path / "lib", ".m4a", "broken", {"genre": "House", "voxlevel": 30})

@@ -284,9 +284,7 @@ def test_a_library_with_no_tag_category_refuses_through_the_verb(ready, monkeypa
                 ID="3",
                 Title="voiced.flac",
                 rb_local_deleted=0,
-                FolderPath=locations.location_url(
-                    Path(cfg.library.root) / "Music" / "voiced.flac"
-                ),
+                FolderPath=locations.location_url(Path(cfg.library.root) / "Music" / "voiced.flac"),
             )
         )
         db_session.commit()

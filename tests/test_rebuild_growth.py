@@ -41,8 +41,7 @@ def _drive(base: Path, monkeypatch, tracks: int) -> tuple[int, dict[tuple[str, s
 
     A comparison is a ``DeclaredPlacement.__hash__`` or ``__eq__`` call. Each size
     has its own library, configuration and state, so the second reads nothing
-    the first recorded.
-    """
+    the first recorded."""
     with monkeypatch.context() as patch:
         root = base / f"library-{tracks}"
         (root / "db").mkdir(parents=True)

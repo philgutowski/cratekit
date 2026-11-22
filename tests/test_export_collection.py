@@ -682,9 +682,7 @@ def test_a_file_that_came_and_went_is_still_refused_as_taken(tmp_path, monkeypat
     assert not destination.exists()
 
 
-def test_a_write_that_fails_part_way_leaves_no_file_and_no_folder_it_made(
-    tmp_path, monkeypatch
-):
+def test_a_write_that_fails_part_way_leaves_no_file_and_no_folder_it_made(tmp_path, monkeypatch):
     kept = tmp_path / "kept"
     kept.mkdir()
     destination = kept / "made" / "deeper" / "torn.xml"
@@ -714,9 +712,7 @@ def _copies(monkeypatch) -> list[Path]:
     return taken
 
 
-def test_a_folder_that_is_a_file_is_refused_before_the_database_is_copied(
-    machine, monkeypatch
-):
+def test_a_folder_that_is_a_file_is_refused_before_the_database_is_copied(machine, monkeypatch):
     blocked = Path(machine.library.root) / "not-a-folder"
     blocked.write_bytes(b"a file")
     taken = _copies(monkeypatch)
@@ -788,9 +784,7 @@ def test_an_identifier_that_is_not_digits_is_refused_and_nothing_is_written(mach
     assert not destination.exists()
 
 
-def test_the_configured_database_is_never_opened_and_is_left_byte_for_byte(
-    machine, monkeypatch
-):
+def test_the_configured_database_is_never_opened_and_is_left_byte_for_byte(machine, monkeypatch):
     """The copy is what is opened. The configured path is only ever copied from."""
     database = Path(machine.library.db_path)
     before = database.read_bytes()
@@ -865,9 +859,7 @@ def _stage(cfg: config.Config, silence: Path, name: str) -> Path:
     return path
 
 
-def test_a_landing_splices_into_the_file_and_the_import_is_proved_against_a_second(
-    either, silence
-):
+def test_a_landing_splices_into_the_file_and_the_import_is_proved_against_a_second(either, silence):
     """The import, simulated by its one row per file, is proved off a second export, on a
     moved library too, with no edit between the verbs (R-773)."""
     machine = either
@@ -912,9 +904,7 @@ def test_a_landing_splices_into_the_file_and_the_import_is_proved_against_a_seco
     tree_registry.assert_cutover_ready(machine, export=second)
 
 
-def test_the_import_proof_is_withheld_against_an_export_taken_before_the_import(
-    machine, silence
-):
+def test_the_import_proof_is_withheld_against_an_export_taken_before_the_import(machine, silence):
     """The other direction. A file this verb wrote is not proof by being one."""
     first = _export(machine, "before-landing.xml")
     _stage(machine, silence, "One.flac")

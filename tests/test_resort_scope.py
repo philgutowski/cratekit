@@ -85,9 +85,7 @@ def _platform_seams(monkeypatch):
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(
-        rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION
-    )
+    monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
     monkeypatch.setattr(
         rb_writer,
         "read_rekordbox_settings",
@@ -136,8 +134,7 @@ def tagged(configured, monkeypatch) -> config.Config:
 def both_native(tagged, monkeypatch) -> dict[str, str]:
     """A disposable database where BOTH declared trees have cut over (R-746).
 
-    The genre root is empty; the intake root holds one landed batch of both rows.
-    """
+    The genre root is empty; the intake root holds one landed batch of both rows."""
     monkeypatch.setattr(
         preflight,
         "default_identity_provider",
@@ -200,8 +197,7 @@ def _drive(argv: list[str]) -> tuple[int, dict]:
 def _below(cfg: config.Config, root_id: str) -> dict[str, set[str]]:
     """Every node under a root by its path from the root, and the rows each holds.
 
-    Read with sqlite, since the engine's own walk stops two levels down.
-    """
+    Read with sqlite, since the engine's own walk stops two levels down."""
     conn = sqlite3.connect(Path(cfg.library.db_path))
     try:
         found: dict[str, set[str]] = {}
@@ -363,8 +359,7 @@ def test_a_library_that_moved_after_the_gate_refuses_before_writing(
 def test_an_answer_over_one_database_file_does_not_approve_another(both_native):
     """An apply recorded over a disposable copy refuses over the live file (U161).
 
-    The plans and digests agree, so only the pin on the file read tells them apart.
-    """
+    The plans and digests agree, so only the pin on the file read tells them apart."""
     cfg = config.load()
     live = Path(cfg.library.db_path)
     copy = live.with_name("rehearsal.db")
@@ -560,8 +555,7 @@ def _landing_refuses(cfg: config.Config, tree_id: str = "inbox") -> bool:
     """Whether ``assert_tree_writable``, the latch every intake write meets, refuses.
 
     It runs the restore detection before reading the flag; reading the flag
-    alone passed round one's acceptance while the landing still refused.
-    """
+    alone passed round one's acceptance while the landing still refused."""
     with _handle(cfg) as handle:
         try:
             convergence.assert_tree_writable(cfg, handle, tree_id, tree_registry.read(cfg))

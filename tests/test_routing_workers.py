@@ -96,9 +96,7 @@ def _platform_seams(monkeypatch):
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(
-        rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION
-    )
+    monkeypatch.setattr(rb_writer, "read_installed_app_version", lambda **_: RECORDED_APP_VERSION)
     monkeypatch.setattr(
         rb_writer,
         "read_rekordbox_settings",
@@ -166,8 +164,7 @@ def _adopted_database(path: Path, cfg: config.Config) -> str:
 
     Made through the guarded writer once per process for each base file, then
     copied, as the base itself is (U256). A build that leaves a sidecar beside
-    the file is not copied.
-    """
+    the file is not copied."""
     _build_disposable_database(path)
     base = path.read_bytes()
     if base in _ADOPTED:
@@ -190,8 +187,7 @@ def _adopted_database(path: Path, cfg: config.Config) -> str:
 def native(stocked) -> str:
     """A database with a real adopted root, and a registry that has cut over.
 
-    The root is a REAL row, since every walk goes down from its identifier.
-    """
+    The root is a REAL row, since every walk goes down from its identifier."""
     path = Path(stocked.library.db_path)
     root_id = _adopted_database(path, stocked)
     _record_locations(
@@ -251,9 +247,7 @@ def _drive(argv: list[str]) -> tuple[int, dict]:
 def _approved_adds() -> list[dict[str, str]]:
     """The adds a resort's gate would show for the governed tree, for a hand built job (U219)."""
     cfg = config.load()
-    reports, _ = rebuild.preview_governed_trees(
-        cfg, tree_ids=(TREE_ID,), vocal_threshold=None
-    )
+    reports, _ = rebuild.preview_governed_trees(cfg, tree_ids=(TREE_ID,), vocal_threshold=None)
     return [row for report in reports for row in rebuild.additions(report)]
 
 
@@ -609,9 +603,7 @@ def test_the_placement_of_a_row_answer_is_one_rule(alive, removed, expected):
 
 def test_every_placement_a_skip_can_carry_has_its_own_next_act():
     """A reason with no sentence would reach a person as a bare token."""
-    owed = set(routing_pass.Placement) - routing_pass.WRITABLE - {
-        routing_pass.Placement.UNDECLARED
-    }
+    owed = set(routing_pass.Placement) - routing_pass.WRITABLE - {routing_pass.Placement.UNDECLARED}
     assert set(routing_cli.SKIP_NEXT_ACT) == owed
     sentences = list(routing_cli.SKIP_NEXT_ACT.values())
     assert len(set(sentences)) == len(sentences), "two reasons share one next act"
@@ -634,9 +626,7 @@ def test_the_skip_warning_counts_every_file_and_caps_the_names():
 
 def test_a_file_skipped_twice_in_one_tree_names_that_tree_once():
     """An additive sub-class puts one file in two playlists of a tree, skipped once per playlist."""
-    cfg = SimpleNamespace(
-        library=SimpleNamespace(root="/library"), resolved_prefix_map=lambda: ()
-    )
+    cfg = SimpleNamespace(library=SimpleNamespace(root="/library"), resolved_prefix_map=lambda: ())
     absent = trees.RowMatch("/library/INBOX/a.flac", trees.MatchOutcome.ABSENT)
     (record,) = routing_cli._skipped_files(
         cfg, [], {absent.requested: (absent, ["one", "two", "one"])}
@@ -728,9 +718,7 @@ def test_doctor_does_not_ask_for_rekordbox_closed_for_the_unplaced_report(monkey
     assert not doctor.requires_check("rekordbox.closed", membership)
 
 
-def test_unplaced_reports_with_rekordbox_open_and_writes_nothing(
-    configured, native, monkeypatch
-):
+def test_unplaced_reports_with_rekordbox_open_and_writes_nothing(configured, native, monkeypatch):
     """R-313: a report that is safe with rekordbox open."""
     del native
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
@@ -778,9 +766,7 @@ def test_a_driven_rebuild_without_an_acknowledgment_refuses_through_the_real_gat
     assert _membership(configured, native) == set()
 
 
-def test_a_driven_rebuild_over_an_absent_music_directory_fails_the_item(
-    acknowledged, native
-):
+def test_a_driven_rebuild_over_an_absent_music_directory_fails_the_item(acknowledged, native):
     """The engine refuses rather than deriving nothing, and the worker carries it."""
     for path in (Path(acknowledged.library.root) / "Music").iterdir():
         path.unlink()
@@ -793,9 +779,7 @@ def test_a_driven_rebuild_over_an_absent_music_directory_fails_the_item(
     assert _membership(acknowledged, native) == set()
 
 
-def test_a_driven_rebuild_whose_root_the_database_lacks_fails_the_item(
-    acknowledged, native
-):
+def test_a_driven_rebuild_whose_root_the_database_lacks_fails_the_item(acknowledged, native):
     """A registry pointing at a root this library does not have."""
     del native
     record = tree_registry.read(acknowledged).record(TREE_ID)
@@ -1190,9 +1174,7 @@ def test_one_jobs_leftovers_are_not_counted_under_another(acknowledged, native, 
         assert job_id in warning["message"], "the warning does not say where this job's list is"
 
 
-def test_the_whole_list_is_written_where_the_warning_says_it_is(
-    acknowledged, native, leftover
-):
+def test_the_whole_list_is_written_where_the_warning_says_it_is(acknowledged, native, leftover):
     """The names in a warning are capped, so the place it points at has to be real."""
     del acknowledged, native
     (warning,) = _left_behind(_queue_and_resume(RESORT)[2])
@@ -1754,9 +1736,7 @@ def test_an_export_intake_key_with_no_collection_row_is_a_warning(configured, ta
     assert "track-row-absent" in [warning["code"] for warning in envelope["warnings"]]
 
 
-def test_an_export_with_no_routing_tree_is_blocked_not_already_filed(
-    configured, tagged, tmp_path
-):
+def test_an_export_with_no_routing_tree_is_blocked_not_already_filed(configured, tagged, tmp_path):
     """Every write skipped is not "nothing to route", the answer that proves an import landed."""
     export = _write_export(configured, tmp_path / "exports")
     display = _hide_routing_tree(export)
@@ -1817,9 +1797,7 @@ def test_an_export_location_under_a_retired_volume_name_resolves_through_the_pre
     assert _others(envelope) == []
 
 
-def test_a_native_routing_tree_refuses_before_the_plan_is_offered(
-    configured, tagged, tmp_path
-):
+def test_a_native_routing_tree_refuses_before_the_plan_is_offered(configured, tagged, tmp_path):
     """Refused at the verb, so nobody approves a write the guard would stop; a decline refuses too."""
     export = _write_export(configured, tmp_path / "exports")
     _cut_over_routing_tree(configured)
@@ -1878,9 +1856,7 @@ def test_an_absent_export_refuses(configured, tmp_path):
     assert envelope["cause"]["reason"] == "library-export-unusable"
 
 
-def test_an_export_route_refuses_a_routing_tree_that_has_cut_over(
-    configured, tagged, tmp_path
-):
+def test_an_export_route_refuses_a_routing_tree_that_has_cut_over(configured, tagged, tmp_path):
     """A native tree is the database's; an export carrying its membership would replace it."""
     export = _write_export(configured, tmp_path / "exports")
     _cut_over_routing_tree(configured)
@@ -1903,9 +1879,7 @@ def test_without_export_a_library_with_no_native_tree_names_the_export_remedy(st
     assert _remedies(envelope) == [INBOX_REMEDY], envelope["warnings"]
 
 
-def test_a_taxonomy_with_no_long_track_playlist_gets_the_review_alone_as_its_remedy(
-    configured,
-):
+def test_a_taxonomy_with_no_long_track_playlist_gets_the_review_alone_as_its_remedy(configured):
     """Without a declared long track playlist no import is owed for one, declined or applied (R-695)."""
     write_active(configured, shipped_without("long_tracks"))
     for option in ("abort", "apply"):
@@ -2025,9 +1999,7 @@ def test_a_second_run_still_owing_ratings_is_nothing_to_route(configured, tagged
     assert sorted(path.name for path in first.parent.iterdir()) == before
 
 
-def test_the_offered_plan_names_no_rating_and_says_which_are_owed(
-    configured, tagged, tmp_path
-):
+def test_the_offered_plan_names_no_rating_and_says_which_are_owed(configured, tagged, tmp_path):
     """The owed count is on the gate before the answer, and no item offers a rating."""
     export = _rating_export(configured, tmp_path / "exports")
     shown = _blocked_export(export)["cause"]["detail"]["shown"]
@@ -2150,9 +2122,7 @@ def test_the_long_track_values_the_tests_expect_are_the_shipped_declaration():
     assert (declared.display, declared.over_seconds) == (LONG_PLAYLIST, 1200)
 
 
-def test_a_25_minute_track_is_a_member_and_a_19_minute_one_is_not(
-    configured, tagged, tmp_path
-):
+def test_a_25_minute_track_is_a_member_and_a_19_minute_one_is_not(configured, tagged, tmp_path):
     export = _long_export(configured, tmp_path / "exports")
     code, envelope = _apply_export(export)
     assert code == int(ExitCode.PENDING_HUMAN), envelope
@@ -2233,9 +2203,7 @@ def test_an_export_run_owes_the_import_of_the_root_playlist_it_added_to_alone(
     assert review.startswith("3 membership(s) routed under the routing tree"), review
 
 
-def test_the_check_run_after_the_playlist_import_owes_no_import(
-    configured, tagged, tmp_path
-):
+def test_the_check_run_after_the_playlist_import_owes_no_import(configured, tagged, tmp_path):
     """R-694: the playlist landed and the routing did not, so the routing is a review, not owed."""
     landed = (
         f'      <NODE Name="{LONG_PLAYLIST}" Type="1" KeyType="0" Entries="2">',
@@ -2297,9 +2265,7 @@ def test_a_same_named_playlist_inside_a_folder_is_not_hijacked(configured, tagge
     assert inner[0].get("Entries") == "1"
 
 
-def test_a_root_folder_of_that_name_is_a_warning_and_is_not_replaced(
-    configured, tagged, tmp_path
-):
+def test_a_root_folder_of_that_name_is_a_warning_and_is_not_replaced(configured, tagged, tmp_path):
     """A folder of that name is refused, and a run left with nothing else is blocked, not filed."""
     folder = (
         f'      <NODE Type="0" Name="{LONG_PLAYLIST}" Count="1">',
@@ -2568,9 +2534,7 @@ def test_converge_compares_the_vocal_sub_once_calibrated(acknowledged, native, v
     assert "not compared" not in check["detail"], check
 
 
-def test_a_corrupt_calibration_is_converge_not_comparing_rather_than_a_match(
-    acknowledged, native
-):
+def test_a_corrupt_calibration_is_converge_not_comparing_rather_than_a_match(acknowledged, native):
     _calibrate(acknowledged, '{"method": "otsu"}')
     code, envelope = _drive(["converge"])
     (check,) = [c for c in envelope["data"]["checks"] if c["key"] == f"tree.{TREE_ID}"]
@@ -2650,9 +2614,7 @@ def _gate_export(configured, voiced, tmp_path) -> Path:
     return _long_export(configured, tmp_path / "exports", ratings={"12": "0"})
 
 
-def test_the_export_gate_shows_every_item_the_digest_was_taken_over(
-    configured, voiced, tmp_path
-):
+def test_the_export_gate_shows_every_item_the_digest_was_taken_over(configured, voiced, tmp_path):
     """``shown`` holds the declined run's items (less R-692's names) and their digest."""
     export = _gate_export(configured, voiced, tmp_path)
     shown = _blocked_export(export)["cause"]["detail"]["shown"]
@@ -2672,9 +2634,7 @@ def test_the_export_gate_shows_every_item_the_digest_was_taken_over(
     assert not _routed(export).exists()
 
 
-def test_the_export_gate_names_the_vocal_dimension_it_did_not_read(
-    configured, voiced, tmp_path
-):
+def test_the_export_gate_names_the_vocal_dimension_it_did_not_read(configured, voiced, tmp_path):
     """Uncalibrated, the empty vocal column says it was not read, not that none are vocal."""
     export = _write_export(configured, tmp_path / "exports")
     shown = _blocked_export(export)["cause"]["detail"]["shown"]
@@ -2682,9 +2642,7 @@ def test_the_export_gate_names_the_vocal_dimension_it_did_not_read(
     assert (shown["routed"], shown["vocal"]) == (3, 0)
 
 
-def test_the_export_gate_screen_says_none_for_an_empty_warning_list(
-    configured, voiced, tmp_path
-):
+def test_the_export_gate_screen_says_none_for_an_empty_warning_list(configured, voiced, tmp_path):
     """An empty list says none, not a bare header; these rows carry no rating, so none warn."""
     export = _write_export(configured, tmp_path / "exports")
     assert "  warnings: none" in _gate_screen(["route", "inbox", "--export", str(export)])
@@ -2745,9 +2703,7 @@ def test_the_export_gate_names_each_track_by_artist_and_title(configured, voiced
     ]
     code, declined = _decline_export(export)
     assert code == int(ExitCode.OK), declined
-    assert all(
-        "artist" not in item and "title" not in item for item in declined["data"]["items"]
-    )
+    assert all("artist" not in item and "title" not in item for item in declined["data"]["items"])
     assert _unnamed(shown["items"]) == declined["data"]["items"]
     assert shown["digest"] == declined["data"]["digest"]
 
@@ -3255,9 +3211,7 @@ def test_a_second_sweep_over_its_own_output_places_nothing(configured, tagged, t
     assert sorted(path.name for path in first.parent.iterdir()) == before
 
 
-def test_an_unreadable_track_is_a_warning_and_the_rest_are_placed(
-    configured, tagged, tmp_path
-):
+def test_an_unreadable_track_is_a_warning_and_the_rest_are_placed(configured, tagged, tmp_path):
     export = _unplaced_export(configured, tmp_path / "exports", missing_file="13")
     code, envelope = _sweep(export)
     assert code == int(ExitCode.OK), envelope
@@ -3443,9 +3397,7 @@ def test_a_namesake_genre_folder_outside_the_routing_tree_takes_nothing(
     assert written.count(b'Name="High"') == 1, "a High was created outside the routing tree"
 
 
-def test_an_intake_key_with_no_row_warns_once_and_only_as_row_absent(
-    configured, tagged, tmp_path
-):
+def test_an_intake_key_with_no_row_warns_once_and_only_as_row_absent(configured, tagged, tmp_path):
     """A key with no row is one warning naming the row, not a second about a file (U91 P1)."""
     export = _write_export(configured, tmp_path / "exports", inbox=("11", "99"))
     code, envelope = _apply_export(export)
@@ -3494,9 +3446,7 @@ def test_the_gate_counts_tracks_filed_into_a_genre_sub():
     assert routing_cli._placed_counts(items) == {"routed": 2, "vocal": 1, "genre sub": 1}
 
 
-def test_a_vocal_track_unrated_is_owed_one_rating_not_one_per_place(
-    configured, voiced, tmp_path
-):
+def test_a_vocal_track_unrated_is_owed_one_rating_not_one_per_place(configured, voiced, tmp_path):
     """A vocal track files into two places and its row is still owed one rating (U155)."""
     _calibrated(configured)
     voiced["Low Track.flac"] = 6

@@ -49,8 +49,7 @@ def test_the_baseline_content_allow_list_is_exactly_the_track_colour():
     """What a slim install may write into a track row with nothing enabled.
 
     The allow list is derived from the registry, so the pin sits on its
-    baseline: the one policy, its field and mode, and their union.
-    """
+    baseline: the one policy, its field and mode, and their union."""
     policies = {
         owner: dict(policy.fields)
         for owner, policy in W.registered_field_policies().items()
@@ -62,9 +61,7 @@ def test_the_baseline_content_allow_list_is_exactly_the_track_colour():
 def test_every_metadata_operation_declares_exactly_its_field_and_mode():
     """The mode is part of the ceiling: owned over fill if empty adds no
     column and lets automation overwrite a rating a person set."""
-    declared = {
-        owner: dict(policy.fields) for owner, policy in metadata.OPERATIONS.items()
-    }
+    declared = {owner: dict(policy.fields) for owner, policy in metadata.OPERATIONS.items()}
     assert declared == {
         "pad-camelot": {"Title": OWNED},
         "retag-genre": {"GenreID": OWNED},
@@ -81,8 +78,7 @@ def test_the_bookkeeping_set_is_exactly_these_ten_columns():
     """The quietest widening, so the tightest pin.
 
     Entries are IGNORED when a modification is judged, so an addition stops the
-    guard looking at a write. A count misses a swap that keeps the length at ten.
-    """
+    guard looking at a write. A count misses a swap that keeps the length at ten."""
     assert W.BOOKKEEPING_COLUMNS == frozenset(
         {
             "ID",
@@ -135,8 +131,7 @@ def _audit_database_opens(tree: ast.AST) -> tuple[int, list[tuple[int, str]]]:
     """Count the constructor calls in one module and say what is wrong with each.
 
     A reference that is not a call (an alias, a ``partial``) is itself a
-    problem, since its arguments are supplied where this walk cannot see.
-    """
+    problem, since its arguments are supplied where this walk cannot see."""
     names = {_CONSTRUCTOR}
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
@@ -190,8 +185,7 @@ def test_every_database_open_in_src_names_the_file_it_opens():
     appearing to read a copy. This pins the argument, the cheap half; what the
     connection opened is a separate check, filed rather than made. Every
     module is parsed, since a string of the constructor's name can be joined
-    from pieces no text search finds.
-    """
+    from pieces no text search finds."""
     found = 0
     problems: list[str] = []
     for source in sorted((SRC_ROOT / "cratekit").rglob("*.py")):

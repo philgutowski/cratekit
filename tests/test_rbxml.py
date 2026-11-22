@@ -24,13 +24,10 @@ def _doc(root_children: list[str]) -> bytes:
         collection=['  <COLLECTION Entries="0">', "  </COLLECTION>"], root_children=root_children
     )
 
-# ── escaping ─────────────────────────────────────────────────────────────────
-
 
 def test_escaper_matches_rekordbox_semantics():
     """Match rekordbox, not the XML specification: an escaped apostrophe is valid
-    XML that no marker search finds, so the write silently misses.
-    """
+    XML that no marker search finds, so the write silently misses."""
     assert rbxml.xml_escape_attr('A & B <x> "q"') == "A &amp; B &lt;x&gt; &quot;q&quot;"
     assert rbxml.xml_escape_attr("Jackin' House") == "Jackin' House"
 
@@ -39,9 +36,6 @@ def test_name_marker_uses_the_one_escaper():
     """One escaper, used by the marker builder too, or a marker stops matching."""
     assert rbxml.name_marker("Drum & Bass") == b'Name="Drum &amp; Bass"'
     assert rbxml.name_marker("Jackin' House") == b'Name="Jackin\' House"'
-
-
-# ── emitters ─────────────────────────────────────────────────────────────────
 
 
 def test_emitters_are_crlf_and_indented():
@@ -59,9 +53,6 @@ def test_emitters_are_crlf_and_indented():
     assert rbxml.node_close(6) == "      </NODE>\r\n"
 
 
-# ── deduplication ────────────────────────────────────────────────────────────
-
-
 def test_dedupe_by_exact_tid_and_norm():
     """A re download, another release or a re import gives one recording two ids."""
     by_tid = {"1": "artist song", "2": "artist song", "3": "other tune"}
@@ -73,17 +64,11 @@ def test_dedupe_against_existing_keys_and_their_norms():
     assert rbxml.dedupe_track_ids([5, 6, 7], existing_keys={"5"}, norm_by_tid=by_tid) == [7]
 
 
-# ── splicing into a sub-playlist ─────────────────────────────────────────────
-
-
 def test_splice_digit_growth_into_self_closing_sub():
     """The stale offset corruption: ten tracks grow ``Entries="0"`` a byte, and a
-    close position taken before the patch landed past the end of the document.
-    """
+    close position taken before the patch landed past the end of the document."""
     content = bytearray(_routing_xml())
-    result = rbxml.splice_into_subplaylist(
-        content, "Deep House", "High Energy", list(range(1, 11))
-    )
+    result = rbxml.splice_into_subplaylist(content, "Deep House", "High Energy", list(range(1, 11)))
     out = bytes(content)
     assert result.warning is None and result.inserted == 10 and result.entries_after == 10
     assert b'<NODE Name="High Energy" Type="1" KeyType="0" Entries="10">' in out
@@ -117,8 +102,7 @@ def test_splice_dedups_on_the_run_that_CREATES_the_sub_too():
     """The same batch, into a sub that exists and into one that does not.
 
     The create path once wrote ids straight through and discarded
-    ``norm_by_tid``, so a duplicate survived only when the sub did not exist yet.
-    """
+    ``norm_by_tid``, so a duplicate survived only when the sub did not exist yet."""
     by_tid = {"201": "artist song", "202": "artist song", "203": "other tune"}
     content = bytearray(_routing_xml())
     created = rbxml.splice_into_subplaylist(
@@ -145,8 +129,7 @@ def test_splice_dedups_on_the_run_that_CREATES_the_sub_too():
 
 def test_splice_warnings_and_no_partial_writes():
     """A failed splice writes NOTHING, compared over the whole document: a partial
-    splice is a corrupt file.
-    """
+    splice is a corrupt file."""
     base = _routing_xml()
     for genre, sub, warning in [
         ("Nope", "High Energy", "genre folder not found: Nope"),
@@ -160,8 +143,7 @@ def test_splice_warnings_and_no_partial_writes():
 
 def test_splice_is_playlists_scoped():
     """The mis-anchor: bait tracks named after the folder AND the sub, the shape
-    that made three splicers silently drop the write.
-    """
+    that made three splicers silently drop the write."""
     content = bytearray(
         _xml_doc(
             collection=[
@@ -197,9 +179,6 @@ def test_splice_empty_ids_is_noop():
     assert bytes(content) == before
 
 
-# ── removal ──────────────────────────────────────────────────────────────────
-
-
 def test_remove_tracks_decrements_entries():
     content = bytearray(_routing_xml())
     rbxml.splice_into_subplaylist(content, "Deep House", "High Energy", [1, 2, 3])
@@ -215,21 +194,15 @@ def test_remove_tracks_decrements_entries():
 
 def test_remove_tolerates_bare_lf_lines():
     """Read forgivingly, write strictly: exports still carry bare LF lines an old
-    splicer wrote, and a removal that missed them would keep the corruption.
-    """
+    splicer wrote, and a removal that missed them would keep the corruption."""
     content = bytearray(_routing_xml())
     rbxml.splice_into_subplaylist(content, "Deep House", "High Energy", [1])
     marker = b'<TRACK Key="1"/>'
     index = content.find(marker + b"\r\n")
     del content[index + len(marker) : index + len(marker) + 1]  # drop the CR
-    removed, _ = rbxml.remove_tracks_from_subplaylist(
-        content, "Deep House", "High Energy", [1]
-    )
+    removed, _ = rbxml.remove_tracks_from_subplaylist(content, "Deep House", "High Energy", [1])
     assert removed == 1
     assert marker not in bytes(content)
-
-
-# ── ratings ──────────────────────────────────────────────────────────────────
 
 
 def test_rating_patch_is_exact_id_match():
@@ -254,9 +227,6 @@ def test_rating_patch_is_exact_id_match():
     assert b'TrackID="421" Name="b" Rating="0"' in out
 
 
-# ── root-level playlists ─────────────────────────────────────────────────────
-
-
 def test_insert_root_playlist_and_idempotent_replace():
     """Re-running replaces, never duplicates, so running again stays the recovery."""
     content = bytearray(_routing_xml())
@@ -279,15 +249,11 @@ def test_insert_root_playlist_and_idempotent_replace():
     assert re.search(rb"\r\n    </NODE>\r\n  </PLAYLISTS>", second), "ROOT closed wrong"
 
 
-# ── a folder and a playlist sharing one name ─────────────────────────────────
-
-
 def test_a_writer_refuses_to_replace_a_node_of_the_other_type():
     """The data loss guard, on the three writers that replace or delete by name.
 
     Matched on the name alone, a root level playlist named after a tree replaced
-    the whole tree and everything under it, and returned success.
-    """
+    the whole tree and everything under it, and returned success."""
     shelf = [
         '      <NODE Name="Shelf" Type="0" Count="1">',
         '        <NODE Name="Loud Room" Type="0" Count="1">',
@@ -327,8 +293,7 @@ def test_a_writer_refuses_to_replace_a_node_of_the_other_type():
 
 def test_a_node_kind_is_read_positively_and_has_a_third_answer():
     """Three answers, the third no default: "a playlist, or else a folder" calls
-    every unreadable node a folder, including the empty ``Type`` ``node_at`` reads.
-    """
+    every unreadable node a folder, including the empty ``Type`` ``node_at`` reads."""
     assert rbxml.node_kind(rbxml.FOLDER_TYPE) == rbxml.KIND_FOLDER
     assert rbxml.node_kind(rbxml.PLAYLIST_TYPE) == rbxml.KIND_PLAYLIST
     for unreadable in ("", " ", "2", "01", "1 ", "folder", "-1"):
@@ -337,8 +302,7 @@ def test_a_node_kind_is_read_positively_and_has_a_third_answer():
 
 def test_a_node_whose_kind_is_unreadable_is_never_described_as_a_playlist():
     """The kind in the sentence a person acts on is never guessed, and the writer
-    still refuses and writes nothing over a node of unknown kind.
-    """
+    still refuses and writes nothing over a node of unknown kind."""
     base = _doc([
         '      <NODE Name="Shelf" Type="0" Count="1">',
         '        <NODE Name="Loud Room" Type="7" Count="0">',
@@ -373,9 +337,7 @@ def _bge_doc(genre_folders: list[str], count: int) -> bytes:
 
 def _prog_folder_lines() -> list[str]:
     lines = ['        <NODE Name="Progressive House" Type="0" Count="6">']
-    lines += [
-        f'          <NODE Name="{sub}" Type="1" KeyType="0" Entries="0"/>' for sub in _SUBS
-    ]
+    lines += [f'          <NODE Name="{sub}" Type="1" KeyType="0" Entries="0"/>' for sub in _SUBS]
     lines.append("        </NODE>")
     return lines
 
@@ -397,8 +359,7 @@ def test_insert_genre_folder_is_idempotent():
 
 def test_remove_folder_node_with_track_bearing_subs():
     """Locks the depth walk against a count of close tags: the FIRST ``</NODE>``
-    after the folder's open tag belongs to its multi line sub.
-    """
+    after the folder's open tag belongs to its multi line sub."""
     nested = [
         '        <NODE Name="Progressive / Melodic" Type="0" Count="1">',
         '          <NODE Name="Med" Type="1" KeyType="0" Entries="2">',
@@ -416,8 +377,7 @@ def test_remove_folder_node_with_track_bearing_subs():
 
 def test_splice_into_sub_sharing_folder_name():
     """A folder holding a sub of the SAME name: re-finding the folder patches
-    ``Count`` instead of ``Entries`` and drops the track.
-    """
+    ``Count`` instead of ``Entries`` and drops the track."""
     doc = "\r\n".join(
         [
             "<DJ_PLAYLISTS>",
@@ -451,8 +411,7 @@ def test_splice_into_sub_sharing_folder_name():
 
 def test_remove_folder_node_self_closed_target_does_not_wipe_siblings():
     """A childless folder exports SELF CLOSED; a walk assuming a close tag marches
-    to a SIBLING's and deletes everything between, so siblings flank the target.
-    """
+    to a SIBLING's and deletes everything between, so siblings flank the target."""
     children = (
         _DEEP_HOUSE
         + ['        <NODE Name="Empty Genre" Type="0" Count="0"/>']
@@ -501,8 +460,7 @@ _LABELS = rbxml.Tree(display="Record Labels")
 
 def _labels_doc(children: list[str]) -> bytes:
     """A document whose catalog tree holds ``children``, its count the nodes opening
-    at the label folder's indent.
-    """
+    at the label folder's indent."""
     count = sum(1 for line in children if line.startswith("        <NODE"))
     return _doc([
         f'      <NODE Name="Record Labels" Type="0" Count="{count}">',
@@ -519,8 +477,7 @@ def _catalog(content: bytes, label: str, pairs) -> tuple[bytes, str | None]:
 
 def test_a_catalog_written_twice_is_byte_identical_to_written_once():
     """R-129: a second import doubled every playlist. The first write CREATES the
-    tree and the second reaches the merge, so the property is the merge's.
-    """
+    tree and the second reaches the merge, so the property is the merge's."""
     pairs = [("Kompakt 2025", [1, 2]), ("Kompakt 2024", [3])]
     once, warning = _catalog(_fresh_xml(), "Kompakt", pairs)
     assert warning is None
@@ -534,9 +491,7 @@ def test_a_catalog_written_twice_is_byte_identical_to_written_once():
 
 def test_a_second_write_with_one_new_year_adds_that_playlist_and_nothing_else():
     """One new playlist, in newest first order, and every other byte as it was."""
-    once, _ = _catalog(
-        _fresh_xml(), "Kompakt", [("Kompakt 2025", [1, 2]), ("Kompakt 2023", [5])]
-    )
+    once, _ = _catalog(_fresh_xml(), "Kompakt", [("Kompakt 2025", [1, 2]), ("Kompakt 2023", [5])])
     assert b'<NODE Name="Kompakt" Type="0" Count="2">' in once
 
     twice, warning = _catalog(
@@ -574,8 +529,7 @@ def test_a_new_year_lands_first_or_last_by_the_callers_order():
 
 def test_a_new_year_is_placed_among_held_years_the_caller_did_not_name():
     """Placing by the caller's list alone, holding 2025 and naming 2026 and 2024,
-    wrote 2025, 2026, 2024.
-    """
+    wrote 2025, 2026, 2024."""
     once, _ = _catalog(_fresh_xml(), "Kompakt", [("Kompakt 2025", [1])])
     out, warning = _catalog(once, "Kompakt", [("Kompakt 2026", [9]), ("Kompakt 2024", [4])])
     assert warning is None
@@ -585,8 +539,7 @@ def test_a_new_year_is_placed_among_held_years_the_caller_did_not_name():
 
 def test_track_ids_are_deduplicated_inside_a_playlist():
     """Against the batch, the members held, and across two pairs; a held member, a
-    duplicate included, stays where it was.
-    """
+    duplicate included, stays where it was."""
     once, _ = _catalog(_fresh_xml(), "Kompakt", [("Kompakt 2025", [1, 1, 2])])
     assert b'Name="Kompakt 2025" Type="1" KeyType="0" Entries="2">' in once
     assert once.count(b'<TRACK Key="1"/>') == 1
@@ -634,8 +587,7 @@ def test_a_playlist_that_gains_nothing_is_left_byte_identical():
 
 def test_a_similarly_named_sibling_folder_is_untouched():
     """A longer name, and a name differing only by case, are other labels, and both
-    neighbours keep every byte.
-    """
+    neighbours keep every byte."""
     neighbours = [
         '        <NODE Name="Kompakt Extra" Type="0" Count="1">',
         '          <NODE Name="Kompakt 2025" Type="1" KeyType="0" Entries="1">',
@@ -680,9 +632,7 @@ def test_a_name_drawn_two_ways_in_unicode_is_one_folder():
 
 def test_self_closed_folder_and_playlist_are_merged_into():
     """rekordbox exports a childless node self closed, with no body to write into."""
-    held = _labels_doc(
-        ['        <NODE Name="Kompakt" Type="0" Count="0"/>'],
-    )
+    held = _labels_doc(['        <NODE Name="Kompakt" Type="0" Count="0"/>'])
     out, warning = _catalog(held, "Kompakt", [("Kompakt 2025", [1])])
     assert warning is None
     assert out.count(rbxml.name_marker("Kompakt")) == 1
@@ -714,8 +664,7 @@ def test_self_closed_folder_and_playlist_are_merged_into():
 
 def test_two_siblings_of_one_name_refuse_and_write_nothing():
     """The fourth answer, at each of the three levels the writer reaches: merging
-    into the first of two leaves the second for rekordbox to double again.
-    """
+    into the first of two leaves the second for rekordbox to double again."""
     two_folders = _labels_doc(
         [
             '        <NODE Name="Kompakt" Type="0" Count="0"/>',
@@ -767,8 +716,7 @@ def test_a_failure_after_an_earlier_merge_writes_nothing():
 
 def test_a_caller_naming_one_playlist_twice_gets_one_on_the_creating_write():
     """The R-129 payload carried a subtree twice. Only the CREATING write could emit
-    the pair as two siblings, so that is the path driven.
-    """
+    the pair as two siblings, so that is the path driven."""
     out, warning = _catalog(
         _fresh_xml(), "Kompakt", [("Kompakt 2025", [1]), ("Kompakt 2025", [2, 1])]
     )
@@ -840,8 +788,7 @@ _SHARED_LINES = {
 
 def test_a_merge_point_sharing_its_line_refuses_and_writes_nothing():
     """A merge writes whole lines at a line start, so beside a tag sharing its line
-    it would land inside the other tag; each of the five places is driven.
-    """
+    it would land inside the other tag; each of the five places is driven."""
     for shape, (lines, named) in _SHARED_LINES.items():
         held = _labels_doc(lines)
         out, warning = _catalog(held, "Kompakt", [("Kompakt 2025", [1]), ("Kompakt 2024", [2])])
@@ -850,13 +797,9 @@ def test_a_merge_point_sharing_its_line_refuses_and_writes_nothing():
         assert out == held, f"{shape}: a refusal wrote bytes"
 
 
-# ── location round-trip ──────────────────────────────────────────────────────
-
-
 def test_location_roundtrip():
     """Percent encoding survives a round trip, spaces and ampersands included, or
-    rekordbox cannot find the track.
-    """
+    rekordbox cannot find the track."""
     from pathlib import Path
 
     path = "/library/Music/Processed_Tracks/2026/x/01A - 124 - It's A & B.flac"

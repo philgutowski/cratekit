@@ -217,9 +217,7 @@ def test_a_track_that_leaves_all_favorites_leaves_its_genre_favorites_and_keeps_
     assert _members(db, high.ID) == {"3", "4"}
 
 
-def test_a_favourite_with_no_genre_lands_only_in_the_folder_it_already_sits_in(
-    cfg, gates_pass, db
-):
+def test_a_favourite_with_no_genre_lands_only_in_the_folder_it_already_sits_in(cfg, gates_pass, db):
     """AE3. By the folder, never by re-reading the tag."""
     tree = Tree(cfg, db)
     tree.playlist(OTHER, "Low", "5")
@@ -275,9 +273,7 @@ def test_the_additive_half_adds_and_counts_what_it_leaves_owed(cfg, gates_pass, 
     assert refreshed.disagreements == ()
 
 
-def test_the_digest_covers_the_target_and_stands_still_across_a_partial_apply(
-    cfg, gates_pass, db
-):
+def test_the_digest_covers_the_target_and_stands_still_across_a_partial_apply(cfg, gates_pass, db):
     """The lesson of R-788: a plan whose apply changes what it reads digests what stays put."""
     tree = Tree(cfg, db)
     tree.playlist(DEEP, "Med", "1", "2")
@@ -308,9 +304,7 @@ def test_a_plan_that_moved_between_the_approval_and_the_write_is_refused(cfg, ga
     assert _favorites_of(db, tree, DEEP) is None
 
 
-def test_a_library_with_no_source_playlist_refuses_by_name_and_empties_nothing(
-    cfg, gates_pass, db
-):
+def test_a_library_with_no_source_playlist_refuses_by_name_and_empties_nothing(cfg, gates_pass, db):
     tree = Tree(cfg, db)
     tree.playlist(DEEP, "Med", "1")
     kept = tree.playlist(DEEP, FAVORITES.display, "1")
@@ -366,9 +360,7 @@ def test_a_taxonomy_declaring_no_playlist_class_refuses_by_name(cfg, gates_pass,
     assert genre_favorites.favorites_class(trimmed) is None
 
 
-def test_a_folder_nobody_declares_and_a_name_two_folders_carry_are_left_alone(
-    cfg, gates_pass, db
-):
+def test_a_folder_nobody_declares_and_a_name_two_folders_carry_are_left_alone(cfg, gates_pass, db):
     tree = Tree(cfg, db)
     tree.playlist(DEEP, "Med", "1")
     own = db.create_playlist_folder("My Crate", parent=tree.root)
@@ -460,9 +452,7 @@ def _rebuild_track_one(cfg, db, tree: Tree):
     )
 
 
-def test_the_favourites_become_declared_placements_and_a_missing_source_a_gap(
-    cfg, gates_pass, db
-):
+def test_the_favourites_become_declared_placements_and_a_missing_source_a_gap(cfg, gates_pass, db):
     tree = Tree(cfg, db)
     tree.playlist(DEEP, "Med", "1", "2")
     placed, gaps = genre_favorites.placements(cfg, db, DECLARED, tree.registry, _rows(cfg))
@@ -542,9 +532,7 @@ def _closed(db) -> None:
     rb_writer.close_db(db)
 
 
-def test_the_verb_asks_its_explicit_gate_then_adds_and_removes_and_reads_back(
-    cfg, gates_pass, db
-):
+def test_the_verb_asks_its_explicit_gate_then_adds_and_removes_and_reads_back(cfg, gates_pass, db):
     tree = Tree(cfg, db)
     tree.playlist(DEEP, "Med", "1", "2")
     tree.playlist(DEEP, FAVORITES.display, "2")
