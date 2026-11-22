@@ -136,9 +136,4 @@ def _by_name(placement: Placement) -> tuple[str, str, str]:
     return (placement.entry.artist, placement.entry.name, placement.entry.track_id)
 
 
-__all__ = [
-    "CoverageReport",
-    "Placement",
-    "governed_paths",
-    "survey",
-]
+__all__ = ["CoverageReport", "Placement", "governed_paths", "survey"]
