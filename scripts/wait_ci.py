@@ -1,26 +1,14 @@
 #!/usr/bin/env python3
 """Wait for the pull request run on one head commit, in one call (U196).
 
-A cloud session used to poll CI with a check every few minutes, and every
-wake sent its whole context again to read one line. This blocks instead, as a
-tracked background job, and returns once with the verdict, so the session
-wakes once.
-
     .venv/bin/python scripts/wait_ci.py <sha>                 # the repository's origin
     .venv/bin/python scripts/wait_ci.py <sha> --timeout 3600 --every 60
 
-It reads `actions/runs?event=pull_request&head_sha=<sha>` over REST, because
-the pull request run is the one that judges a pull request's range and its
-card, and a push run on the same head can be green while that one is not. It
-waits until at least one such run exists and every one of them is completed.
-
-Exit 0 when every pull request run on the head ended `success`, `neutral` or
-`skipped`; 1 when any ended otherwise; 2 when the wait ran out with a run
-still pending or none started, which is also what a pull request that
-conflicts with `main` looks like, since GitHub starts no run for it; 3 when
-the runs could not be read three times in a row (a refused token, a
-repository the session cannot reach), with the reason. A single failed read
-is waited past, never read as no run.
+Reads `actions/runs?event=pull_request&head_sha=<sha>` over REST until at
+least one run exists and every one is completed. Exit 0 when every run ended
+`success`, `neutral` or `skipped`; 1 when any ended otherwise; 2 when the wait
+ran out with a run pending or none started (as for a pull request conflicting
+with `main`); 3 when the runs could not be read three times in a row.
 """
 
 from __future__ import annotations
@@ -34,13 +22,10 @@ import time
 
 GREEN = ("success", "neutral", "skipped")
 
-#: The three answers `verdict` gives. Pending covers both a run still going
-#: and no run at all yet, since either one means the session waits. Unread is
-#: `wait`'s alone: the runs could not be read, which is not the same as none.
+#: Pending is a run still going or none yet; unread is `wait`'s alone.
 PENDING, PASSED, FAILED, UNREAD = "pending", "green", "red", "unread"
 
-#: Failed reads in a row before the wait stops and says it could not read.
-READ_FAILURES = 3
+READ_FAILURES = 3  # failed reads in a row before the wait ends as unread
 
 
 class ReadFailed(Exception):
@@ -48,11 +33,7 @@ class ReadFailed(Exception):
 
 
 def verdict(runs: list[dict]) -> tuple[str, str]:
-    """Read the workflow runs on one head as pending, green or red, with a line.
-
-    `runs` is the `workflow_runs` list of the REST answer. No run yet is
-    pending, never green: an absent run is not a passing one.
-    """
+    """Read the `workflow_runs` on one head as pending (none yet included), green or red."""
     if not runs:
         return PENDING, "no pull request run on this head yet"
     unfinished = [run for run in runs if run.get("status") != "completed"]
@@ -79,23 +60,14 @@ def origin_repo() -> str:
     return match.group(1)
 
 
-def _gh_runs(repo: str, sha: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["gh", "api", f"repos/{repo}/actions/runs?event=pull_request&head_sha={sha}"],
-        capture_output=True,
-        text=True,
-    )
-
-
 def pull_request_runs(repo: str, sha: str) -> list[dict]:
-    """The pull request runs on one head; `ReadFailed` when they cannot be read.
-
-    Every way the read can fail is a `ReadFailed` with its reason, `gh` missing
-    from the path included, so no unreadable state leaves `main` as a traceback
-    and an exit 1 a session would read as red.
-    """
+    """The pull request runs on one head; `ReadFailed` with its reason on every failure."""
     try:
-        result = _gh_runs(repo, sha)
+        result = subprocess.run(
+            ["gh", "api", f"repos/{repo}/actions/runs?event=pull_request&head_sha={sha}"],
+            capture_output=True,
+            text=True,
+        )
     except OSError as exc:
         raise ReadFailed(f"gh could not run: {exc}") from None
     if result.returncode != 0:
@@ -111,13 +83,7 @@ def pull_request_runs(repo: str, sha: str) -> list[dict]:
 
 
 def wait(read, *, timeout: float, every: float, sleep=time.sleep, clock=time.monotonic):
-    """Read until the verdict is not pending, the reads keep failing, or time runs out.
-
-    `read` returns the runs or raises `ReadFailed`; `sleep` and `clock` are the
-    test's to replace. A failed read is waited past, and `READ_FAILURES` of them
-    in a row end the wait as unread with the last reason, so a refused token
-    costs minutes rather than the whole timeout and is never told as no run.
-    """
+    """Read until the verdict is not pending, `READ_FAILURES` reads fail in a row, or time is up."""
     deadline = clock() + timeout
     failures = 0
     while True:

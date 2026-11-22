@@ -1,40 +1,12 @@
 #!/usr/bin/env python3
 """The build board, as a tool.
 
-The board at https://github.com/users/<owner>/projects/2 is the work queue for
-this repository. This script is how a session reads that queue and how the board
-is kept true to the repository.
-
-The dependency graph is NOT stored here. It is parsed out of the issue bodies,
-which carry a `**Depends on:** #18 (U18), #31 (U31)` line. That is deliberate:
-a committed copy of the graph is a second representation of one fact, and two
-representations of one fact are how they come to disagree. The cost is that a
-body which loses its line becomes invisible to the graph, so `audit` fails when
-a unit issue does not parse rather than quietly treating it as dependency-free.
-
-Subcommands:
-
-    next            the ready queue, ranked by how much each unit releases
-    show N          one issue's brief
-    start N         branch, mark In Progress, print the closing trailer
-    sync            make the board match the repository, idempotent
-    audit           report drift, exit 1 if the board is lying
-    closing         refuse a `Closes #n` trailer while a register still owes Un,
-                    and a residual file the landing could not read
-    residuals       the residual files waiting for a number; `--land` numbers
-                    them on main; `--search WORDS` finds a finding in the ledger
-    local           the attended cards, the work only Phillip's Mac can do
-    cloud           the cloud lane's queue: every open unit or residual card, by
-                    the state its comments give it, and the one to take
-
-A Claude Code cloud session sits behind a proxy that refuses GraphQL, so the
-reads fall back to REST there (`load_issues_rest`), `start`, `sync` and
-`audit` without `--labels-only` are not for it, and `cloud` is.
-
-`sync` is safe to run at any time and is the one that matters. Everything the
-board says about readiness is derived from issue closure state and the graph, so
-`sync` can always rebuild it from scratch and never needs to be trusted to have
-run before.
+The board at https://github.com/users/<owner>/projects/2 is this repository's
+work queue; `--help` lists the commands. The dependency graph is parsed out of
+each issue body's `**Depends on:** #18 (U18)` line, never stored, and `audit`
+fails on a unit issue that does not parse. Readiness is derived from closure
+state and the graph, so `sync` is safe at any time. A cloud session's proxy
+refuses GraphQL: reads fall back to REST, and `cloud` is its command.
 """
 
 from __future__ import annotations
@@ -46,19 +18,17 @@ import re
 import subprocess
 import sys
 from collections import deque
+from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_NUMBER = "2"
+ROOT = Path(__file__).resolve().parent.parent
 
-# Status option ids on the project's single-select Status field. Looked up once
-# at startup rather than pinned, because an option id changes if the option is
-# recreated and a pinned id fails silently by writing nothing.
+# Status option ids are looked up, never pinned: a recreated option's new id.
 STATUS_ORDER = ["Ready", "In Progress", "In review", "Blocked", "Attended", "Done"]
 
-# Statuses that mean somebody holds the card right now. `start` and a lane's
-# builder set In Progress; the relay runner sets In review, its manifest's
-# `in_review_status`, as its first tracker write. Neither can be derived from
-# the graph, so a recomputation keeps them rather than undoing the holder's write.
+# Somebody holds the card: `start` and a lane's builder set In Progress, the
+# relay runner sets In review. No graph derives either, so a sync keeps them.
 UNDERWAY = ("In Progress", "In review")
 
 DEPENDS_RE = re.compile(r"^\*\*Depends on:\*\*\s*(.+)$", re.MULTILINE)
@@ -75,21 +45,16 @@ class Truncated(Fail):
     """A board read came back cut short, so it cannot be taken as the whole board."""
 
 
-# The most rows one read asks `gh` for. `gh` pages internally up to this, so a
-# read returns everything below it. It used to be 300, and once the project
-# passed 300 items every newer card read as "not on the board" and no sync could
-# repair it (U148). A read that returns exactly this many cannot be told from a
-# truncated one, so it is refused rather than taken as whole. Each read is also
-# checked against the count GitHub gives for it, which trusts no limit at all.
+# The most rows one read asks `gh` for (U148); a read this long is refused as
+# truncated, and each read is also checked against GitHub's own count.
 READ_LIMIT = 5000
 
-# Every issue in the repository, any state, pull requests not included, which is
-# the population `gh issue list --state all` reads. The placeholders are filled
-# by `gh api` from the remote, so nothing here names the repository.
+# Every issue, any state, no pull requests; `gh api` fills the placeholders.
 ISSUE_COUNT_QUERY = (
     "query($owner: String!, $name: String!) "
     "{ repository(owner: $owner, name: $name) { issues { totalCount } } }"
 )
+RAISE_LIMIT = "Raise READ_LIMIT in scripts/board.py."
 
 
 def whole(rows: list, what: str) -> list:
@@ -98,7 +63,7 @@ def whole(rows: list, what: str) -> list:
         raise Truncated(
             f"the {what} read returned {len(rows)} rows, the whole limit of "
             f"{READ_LIMIT}, so it is truncated and the board cannot be read from it. "
-            f"Raise READ_LIMIT in scripts/board.py."
+            f"{RAISE_LIMIT}"
         )
     return rows
 
@@ -111,14 +76,16 @@ def gh(*args: str, parse: bool = False):
     return json.loads(out) if parse and out else out
 
 
+def git(*args: str, cwd=None) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], capture_output=True, text=True, cwd=cwd)
+
+
 def repo_slug() -> tuple[str, str]:
     """Owner and name from the git remote, never hardcoded."""
     try:
         data = gh("repo", "view", "--json", "owner,name", parse=True)
     except Fail:
-        # `gh repo view` is a GraphQL call, which the proxy in front of a Claude
-        # Code cloud session refuses outright. The checkout already names the
-        # remote, so read it from there rather than fail before the first read.
+        # A cloud session's proxy refuses GraphQL; the checkout names the remote.
         return remote_slug()
     return data["owner"]["login"], data["name"]
 
@@ -128,9 +95,7 @@ REMOTE_RE = re.compile(r"github\.com[:/]([^/\s]+)/([^/\s]+?)(?:\.git)?/?$")
 
 def remote_slug() -> tuple[str, str]:
     """Owner and name parsed from the origin remote, for a session with no GraphQL."""
-    url = subprocess.run(
-        ["git", "remote", "get-url", "origin"], capture_output=True, text=True
-    ).stdout.strip()
+    url = git("remote", "get-url", "origin").stdout.strip()
     match = REMOTE_RE.search(url)
     if not match:
         raise Fail(f"the origin remote {url!r} does not name a GitHub repository")
@@ -138,14 +103,9 @@ def remote_slug() -> tuple[str, str]:
 
 
 def rest_pages(path: str, what: str) -> list:
-    """Every row of a REST listing, a page of a hundred at a time, or refused.
+    """Every row of a REST listing, a hundred a page, ending on a short page.
 
-    `gh api --paginate` cannot be used here: the proxy a cloud session sits
-    behind rejects the numeric `repositories/<id>/` paths GitHub writes into
-    its `Link` headers, so the second page fails by name. Page numbers are
-    asked for explicitly instead, and the read ends on the first short page,
-    which is whole by construction: a page shorter than a hundred is the last
-    one. The read is still refused past READ_LIMIT, like every other read here.
+    Not `gh api --paginate`: the cloud proxy rejects its numeric `Link` paths.
     """
     joiner = "&" if "?" in path else "?"
     rows: list = []
@@ -154,14 +114,8 @@ def rest_pages(path: str, what: str) -> list:
         rows.extend(batch)
         if len(batch) < 100:
             return rows
-    raise Truncated(
-        f"the {what} read ran past {READ_LIMIT} rows, so it is truncated. "
-        f"Raise READ_LIMIT in scripts/board.py."
-    )
-
-
-# --------------------------------------------------------------------------
-# reading the board
+    raise Truncated(f"the {what} read ran past {READ_LIMIT} rows, so it is truncated. "
+                    f"{RAISE_LIMIT}")
 
 
 def short_of_count(rows: list, total, what: str) -> None:
@@ -180,8 +134,7 @@ def short_of_count(rows: list, total, what: str) -> None:
 
 
 def load_issues() -> list[dict]:
-    # Counted BEFORE the read, so an issue filed between the two makes the read
-    # longer than the count rather than shorter, and is never refused.
+    # Counted BEFORE the read, so an issue filed between the two is never refused.
     try:
         total = gh(
             "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}",
@@ -189,19 +142,14 @@ def load_issues() -> list[dict]:
             "--jq", ".data.repository.issues.totalCount",
         )
     except Fail:
-        # No GraphQL at all is a cloud session's proxy, not a short read, and
-        # the same issues are there over REST.
+        # No GraphQL at all is a cloud session's proxy, not a short read.
         return load_issues_rest()
     issues = gh(
-        "issue",
-        "list",
-        "--state",
+        "issue", "list", "--state",
         "all",
         "--limit",
         str(READ_LIMIT),
-        "--json",
-        "number,title,state,body,labels",
-        parse=True,
+        "--json", "number,title,state,body,labels", parse=True,
     )
     whole(issues, "issue")
     short_of_count(issues, int(total) if total.isdigit() else total, "issue")
@@ -209,15 +157,7 @@ def load_issues() -> list[dict]:
 
 
 def load_issues_rest() -> list[dict]:
-    """Every issue over REST, in the shape `gh issue list --json` gives.
-
-    This is the read a Claude Code cloud session gets, where the GitHub proxy
-    refuses every GraphQL call and allows the repository's own REST paths. REST
-    lists pull requests among the issues, so those are dropped, and it writes
-    states in lower case, so they are raised to the GraphQL spelling the graph
-    reads. There is no separate count to check the read against; the page
-    loop in `rest_pages` ends on a short page, which is the whole listing.
-    """
+    """Every issue over REST in `gh issue list --json`'s shape, pull requests dropped."""
     owner, name = repo_slug()
     rows = rest_pages(f"repos/{owner}/{name}/issues?state=all", "issue")
     issues = [
@@ -235,12 +175,7 @@ def load_issues_rest() -> list[dict]:
 
 
 def parse_deps(body: str) -> list[int] | None:
-    """Issue numbers this one depends on, or None if the body declares nothing.
-
-    None and [] mean different things. [] is a unit with no dependencies, which
-    U1 genuinely is. None is a body that lost its line, which is a defect the
-    audit has to see rather than treat as "depends on nothing".
-    """
+    """Issue numbers this one depends on, [] for none, None for a body with no line."""
     match = DEPENDS_RE.search(body or "")
     if not match:
         return None
@@ -270,7 +205,6 @@ def build_graph(issues: list[dict]) -> dict:
             "body": issue["body"],
         }
 
-    # reverse edges
     for node in by_number.values():
         node["unblocks"] = []
     for node in by_number.values():
@@ -278,9 +212,7 @@ def build_graph(issues: list[dict]) -> dict:
             if dep in by_number:
                 by_number[dep]["unblocks"].append(node["number"])
 
-    # transitive reach: how much of the remaining build this one releases,
-    # counting only what is still open. Direct count under-ranks a unit whose
-    # single dependent is itself the gateway to a whole phase.
+    # Transitive reach over what is still open, so a gateway unit ranks by its phase.
     for node in by_number.values():
         seen: set[int] = set()
         queue = deque(node["unblocks"])
@@ -300,37 +232,20 @@ def build_graph(issues: list[dict]) -> dict:
 
 
 def derive_status(node: dict, current: str | None) -> str:
-    """What the board should say, from closure state, the graph, and a hold.
-
-    Closure state wins. Otherwise a card somebody holds (UNDERWAY) keeps the
-    status it holds, because no graph can derive who is building what; every
-    other card is derived from the graph alone.
-    """
+    """What the board should say: closure wins, then a hold, then the graph."""
     if node["closed"]:
         return "Done"
     if current in UNDERWAY:
-        # A card on a branch stays on a branch, unit, residual or attended, since
-        # a lane builds residual cards too and an attended unit is still built.
-        # Recomputing it back is how a session loses track of work already
-        # underway, and how a sync pulls a card out from under the runner.
+        # Any held card stays held, so a sync never pulls it from its builder.
         return current
     if node["attended"]:
         return "Attended"
-    # A residual finding waits on whichever unit closes it, and is Ready when
-    # nothing does, because then it is somebody's to pick up directly. A unit
-    # waits on its dependencies the same way.
     return "Blocked" if node["open_deps"] else "Ready"
 
 
 def pending_units() -> dict[int, list[str]]:
-    """Which units the pending register still says owe a module.
-
-    `tests/_pending.py` is the countdown for guards written before the code they
-    govern. An entry there is the repository asserting, in a file the suite
-    enforces, that a unit has not landed. Read by ast rather than imported, so an
-    audit never executes test-tree code.
-    """
-    source = Path(__file__).resolve().parent.parent / "tests" / "_pending.py"
+    """Units `tests/_pending.py` still says owe a module, read by ast, never imported."""
+    source = ROOT / "tests" / "_pending.py"
     if not source.exists():
         return {}
     tree = ast.parse(source.read_text())
@@ -356,20 +271,8 @@ def pending_units() -> dict[int, list[str]]:
 
 
 def planned_units() -> dict[int, list[str]]:
-    """Which units the VERB REGISTRY still says owe a module.
-
-    The second register, and until now nothing read it. `planned_in` on a registry
-    entry is the same promise `tests/_pending.py` makes, written in a different
-    file: this verb's module does not exist and unit U-n will land it. Three
-    closed unit issues carry live markers between them and the board has never
-    said a word, because `contradictions()` read one register and there are two.
-
-    Read by ast rather than imported, for the same reason `pending_units` is: an
-    audit must never execute the code it audits. Keyed on the MODULE rather than
-    the verb, because one module carries several verbs and the obligation is the
-    file.
-    """
-    source = Path(__file__).resolve().parent.parent / "src" / "cratekit" / "cli" / "registry.py"
+    """Units the verb registry's `planned_in` markers still say owe a module, by ast."""
+    source = ROOT / "src" / "cratekit" / "cli" / "registry.py"
     if not source.exists():
         return {}
     constants: dict[str, str] = {}
@@ -381,12 +284,7 @@ def planned_units() -> dict[int, list[str]]:
                     constants[target.id] = node.value.value
 
     def literal(value: ast.AST) -> str | None:
-        """The string this argument evaluates to, through one named constant.
-
-        `ROUTING_CLI_UNIT` is a module-level constant precisely so four entries
-        move together, so a reader that only understood literals would go blind
-        on the entries most likely to be re-pointed.
-        """
+        """The string this argument evaluates to, through one named constant."""
         if isinstance(value, ast.Constant) and isinstance(value.value, str):
             return value.value
         if isinstance(value, ast.Name):
@@ -409,13 +307,7 @@ def planned_units() -> dict[int, list[str]]:
 
 
 def owed_by_unit() -> dict[int, list[str]]:
-    """Every module either register still owes, per unit, merged.
-
-    Two registers exist and each one alone is a hole. `tests/_pending.py` holds
-    guards waiting for their module; the verb registry holds verbs waiting for
-    theirs. A unit can close clean against one while the other still owes it
-    seven verbs, which is the state three closed issues are in right now.
-    """
+    """Every module either register still owes, per unit, merged."""
     merged: dict[int, set[str]] = {}
     for source in (pending_units(), planned_units()):
         for uid, modules in source.items():
@@ -423,50 +315,18 @@ def owed_by_unit() -> dict[int, list[str]]:
     return {uid: sorted(modules) for uid, modules in merged.items()}
 
 
-# --------------------------------------------------------------------------
-# the closing check: a trailer is refused BEFORE it closes anything
+# The closing check: a trailer is refused BEFORE it closes anything.
 
-
-#: Every keyword GitHub closes an issue on, not the one this repository's
-#: contract happens to use.
-#:
-#: The distinction cost a whole check. The first version matched `^Closes #n$`
-#: and nothing else, on the reasoning that the contract says to write that exact
-#: trailer. GitHub does not read the contract, and nine keywords times four
-#: reference forms all close the issue and cascade every unit waiting on it.
+#: Every keyword GitHub closes an issue on, not only the one the contract uses.
 CLOSING_KEYWORDS = ("close", "closes", "closed", "fix", "fixes", "fixed",
                     "resolve", "resolves", "resolved")
 
-#: The reference forms that close an issue IN THIS REPOSITORY. Two of them, and
-#: the two that are missing are missing on purpose.
-#:
-#: GitHub documents four. The two cross-repository forms, `owner/repo#n` and the
-#: full issue URL, close an issue in the NAMED repository and nothing here. A
-#: previous version matched both and read the number out of them, so
-#: `fixes numpy/numpy#36` and a link to an upstream pyrekordbox issue each
-#: refused a commit over a unit they have no relationship to. That is not
-#: hypothetical: this repository VENDORS pyrekordbox, the owed unit numbers run
-#: from 8 to 38, and upstream issue numbers collide with them constantly, so a
-#: vendor bump citing an upstream issue is the realistic trigger.
-#:
-#: Reading them correctly would mean knowing this repository's own slug, and
-#: `repo_slug()` needs `gh`, which would end this function's purity and with it
-#: its place in a hook and in the dependency-free CI job. Dropping them costs
-#: nothing, because a commit closing a unit here writes `#n` or `GH-n`.
-#:
-#: Ordered longest-first: at a given position the alternation tries branches left
-#: to right, so the bare `#n` must come last.
-REFERENCE_FORMS = (
-    r"GH-(\d+)",
-    r"#(\d+)",
-)
+#: The reference forms that close an issue IN THIS REPOSITORY, longest first.
+#: `owner/repo#n` and an issue URL close one elsewhere, so they are left out.
+REFERENCE_FORMS = (r"GH-(\d+)", r"#(\d+)")
 
-#: Keyword, optional colon, then a reference.
-#:
-#: The lookbehind rejects a keyword that is a URL PATH SEGMENT, so
-#: `https://example.com/notes/fixes#36` is a link with a fragment rather than a
-#: closing reference. That was a verified false refusal, and the whole cost of a
-#: false refusal is somebody deleting the check.
+#: Keyword, optional colon, then a reference. The lookbehind rejects a keyword
+#: that is a URL path segment, `https://example.com/notes/fixes#36`.
 CLOSES_RE = re.compile(
     r"(?<![/\w])\b(?:" + "|".join(CLOSING_KEYWORDS) + r")\b\s*:?\s*"
     r"(?:" + "|".join(REFERENCE_FORMS) + r")",
@@ -474,60 +334,26 @@ CLOSES_RE = re.compile(
 )
 
 #: A comma list continuing from a keyword-anchored issue: `Closes #36, #33`.
-#:
-#: `[^\S\n]` IS HORIZONTAL WHITESPACE ONLY, and the distinction is the whole
-#: correctness of this pattern. With `\s*` the continuation crossed newlines, so
-#: a trailer followed by a blank line and a sentence beginning "and #33 stays
-#: open" was read as a two-issue list and BOTH were refused. GitHub closes only
-#: the first. The docstring below promises that explaining in a commit body why a
-#: unit is still open must stay possible, and that is the exact sentence it
-#: refused, so the code contradicted its own stated contract.
+#: `[^\S\n]` is horizontal whitespace only, so a later line opening "and #33
+#: stays open" is never read as part of the list.
 CONTINUED_RE = re.compile(
     r"[^\S\n]*(?:,|and)[^\S\n]*(?:" + "|".join(REFERENCE_FORMS) + r")",
     re.IGNORECASE,
 )
 
-#: Lines git itself strips from a commit message. The commit-msg hook is handed
-#: the RAW file, comments and the verbose diff included, so a template line
-#: reading `# Closes #NN` would otherwise refuse every commit that never touched
-#: it. Applied ONLY to that path; see `message_body`.
+#: Lines git itself strips from a commit message, applied only to the raw file
+#: the commit-msg hook is handed; see `message_body`.
 COMMENT_LINE_RE = re.compile(r"^\s*#")
-#: GIT'S OWN scissors line, not a shape that resembles one. Git emits
-#: `# ------------------------ >8 ------------------------` and cuts everything
-#: below it. The previous pattern allowed leading whitespace and as few as one
-#: dash, so a line a person typed in a body truncated the message and took any
-#: real trailer below it with it. Under the editor default git removes that line
-#: as a comment and KEEPS what follows, so the trailer reached history and closed
-#: the issue while this check reported clean. Eight dashes a side makes an
-#: accidental match essentially impossible and still matches git's twenty-four.
+#: Git's own scissors line, eight dashes a side at least, so a line a person
+#: typed in a body never truncates the message.
 SCISSORS_RE = re.compile(r"^#\s?-{8,}\s?>8\s?-{8,}\s*$")
 
 
 def message_body(text: str, *, raw: bool) -> str:
     """The part of a commit message git will keep, comments and diff removed.
 
-    ``raw`` SAYS WHICH SIDE OF GIT'S CLEANUP THIS TEXT IS ON, and getting that
-    wrong is not symmetric.
-
-    A message file handed to the commit-msg hook is PRE-cleanup: it carries git's
-    instructional comments, and on `commit --verbose` the entire diff below a
-    scissors line. Matching over all of it would let a template line refuse a
-    commit that closes nothing, so those are removed.
-
-    `git log --format=%B` is POST-cleanup. Those messages are final. They contain
-    no git comments and no scissors block, so stripping cannot prevent a single
-    false refusal there and can only DELETE A REAL TRAILER: a body line beginning
-    with `#`, which git keeps under the `whitespace` cleanup that `-m` and `-F`
-    use, was being discarded. That is the CI path, the one this repository calls
-    the load-bearing wiring, so the strip was doing its only possible harm in the
-    place it mattered most.
-
-    RESIDUAL, stated rather than hidden. On the hook path a commit made with
-    `-m` or `-F` also gets `whitespace` cleanup, so a real trailer on a
-    `#`-leading line is dropped here too. Detecting the cleanup mode from inside
-    the hook is not possible without reading the same config git is about to
-    apply, so the hook is best-effort against that one shape and CI is
-    authoritative. Recorded in R-320.
+    ``raw`` is the hook's pre-cleanup file; `git log --format=%B` is already
+    clean, where stripping could only delete a real `#` leading trailer (R-320).
     """
     if raw is False:
         return text
@@ -544,41 +370,8 @@ def message_body(text: str, *, raw: bool) -> str:
 def closing_references(text: str, *, raw: bool = True) -> list[int]:
     """Every issue number this message would close, by any spelling GitHub reads.
 
-    THE SPELLING IS NOT OURS TO CHOOSE. This repository's contract says to write
-    `Closes #n`, and a check that only recognized that was clean on `Fixes #36`,
-    `Resolve #36`, `Closes: #36`, `Closes #36.` and `This closes #36.`, each of
-    which closes the issue and cascades every unit waiting on it. What matters is
-    what GitHub acts on, not what the contract asks for.
-
-    Nine keywords times the two reference forms that close an issue HERE, the
-    bare `#n` and `GH-n`. GitHub documents two more, `owner/repo#n` and the full
-    issue URL, and both are deliberately not matched: they close an issue in the
-    named repository, so matching them refused commits over units they had no
-    relationship to. See :data:`REFERENCE_FORMS`.
-
-    The comma continuation is caught DELIBERATELY OVER-INCLUSIVELY, and confined
-    to ONE LINE. Whether GitHub closes the second issue in `Closes #36, #33` has
-    moved with its parser, but somebody writing that line means to close both,
-    and the costs are not comparable: a false refusal is one reworded line, a
-    miss is a close that has already cascaded. Crossing a newline is a different
-    thing entirely and was a defect: a trailer, a blank line, then a sentence
-    beginning "and #33 stays open" is not a list.
-
-    A bare `#36` with no keyword is left alone. Refusing a reference would make
-    it impossible to explain in a commit body why a unit is still open, which is
-    exactly the sentence this check is asking people to write.
-
-    WHAT STAYS REFUSED ON PURPOSE, because in each case GitHub really would close
-    the issue and this check has no way to be righter than GitHub:
-
-    * A REVERT. `Revert "feat: converge (closes #36)"` closes 36, and the refusal
-      is not merely correct, it is the point: a revert un-lands the module, so
-      the register genuinely re-owes that unit at the moment it fires.
-    * PROSE QUOTING A REAL TRAILER, and a fixture or diff inside a fenced block
-      in a body. Both close the issue when pushed. Nothing distinguishes quoting
-      from asserting, to this check or to GitHub. The remedy is a non-numeric
-      placeholder, which is what this branch's own history rewrite used after
-      this check refused it.
+    A comma list is caught over inclusively on one line; a bare `#36` with no
+    keyword is left alone, so a body can say why a unit is still open.
     """
     found: list[int] = []
     body = message_body(text, raw=raw)
@@ -592,12 +385,7 @@ def closing_references(text: str, *, raw: bool = True) -> list[int]:
 
 
 def _referenced(match: re.Match) -> int:
-    """The issue number out of whichever reference form matched.
-
-    One capturing group per form and exactly one of them is ever set, so the
-    first non-empty group is the answer. Reading `group(1)` would silently be
-    wrong for every form but the last.
-    """
+    """The issue number out of whichever reference form matched."""
     return int(next(value for value in match.groups() if value is not None))
 
 
@@ -610,34 +398,8 @@ def unresolved_closes(
 ) -> list[str]:
     """Every issue this message closes whose unit a register still owes a module.
 
-    PURE, and network-free, which is what lets this run where it is useful. The
-    rest of the audit needs `gh`, so it cannot bite on a machine with no token
-    and cannot be tested without one. This reads two files in the repository and
-    one block of text.
-
-    This is `contradictions()` moved to the other side of the event. That function
-    compares the registers against issues that are ALREADY CLOSED, so it can only
-    report a contradiction after the close has cascaded and moved dependent units
-    to ready. By then `sync` deliberately will not repair it, so the repository is
-    stuck with it. The trailer is the moment the close is decided, and it is the
-    last moment refusing is cheap.
-
-    ``units`` MAPS AN ISSUE NUMBER TO A UNIT NUMBER, and it is optional because
-    of a limit rather than a preference. A trailer names an ISSUE. Both registers
-    name a UNIT. Those coincide for most units here and not for all: U38 is issue
-    #51, and U39 through U61 are issues #57 through #79. The mapping lives in the
-    issue TITLES, which is to say on GitHub, and this function's whole value is
-    that it needs no token, so it cannot go and get it.
-
-    So the caller supplies it when it has it, and `audit` does through
-    `units_by_issue_number`. When it does not, an issue number is read as a unit
-    number, WHICH IS A GUESS, and the two ways it is wrong are not equally
-    priced. Against a mismatched unit it MISSES, and a miss is a close that has
-    already cascaded. Against a number that is some other unit's issue it refuses
-    wrongly, and the refusal says which assumption it made so the reader can see
-    the guess rather than trust the sentence. Recorded as a residual with its
-    measured reach: twenty four units were mismatched on 2026-09-10 and none of
-    them was owed a module, so the miss was real and unreachable that day.
+    Network free, so it runs in a hook. ``units`` maps issue to unit number (U38
+    is issue #51); without it an issue number is read as a unit, a named guess.
     """
     owed = owed_by_unit() if owed is None else owed
     found = []
@@ -663,22 +425,8 @@ def unresolved_closes(
 
 
 def _near_misses(modules: list[str]) -> list[str]:
-    """For each owed module that is absent, what its package DOES contain.
-
-    THE DIAGNOSIS, moved to where the refusal is read. A register key can name a
-    module nobody will ever build, and the loudest symptom is a permanent exit 2
-    with no hint why. `cratekit.write.rebuild` absent while
-    `cratekit.write.tree_rebuild` exists is a one-word spelling difference that
-    is invisible in a message saying only that a module is owed.
-
-    This replaces a rule that would have ASSERTED the mismatch. That rule was
-    rejected on measurement: `cratekit.core.restore` is U32's live key today and
-    a substring heuristic would false-positive on it against a unit that did
-    nothing wrong. Telling the reader what is in the package costs no false
-    positives at all, and the failure was never silent to begin with, because a
-    register entry keeps its unit owed for as long as it sits in the file.
-    """
-    root = Path(__file__).resolve().parent.parent / "src"
+    """For each owed module that is absent, the near names its package does hold."""
+    root = ROOT / "src"
     notes: list[str] = []
     for module in modules:
         if module.startswith("path:"):
@@ -707,26 +455,13 @@ def cmd_closing(args) -> int:
     if args.message_file:
         path = Path(args.message_file)
         if not path.is_file():
-            # A refusal a person can act on, not a traceback. This runs inside a
-            # git hook, where an unhandled exception surfaces as a stack trace in
-            # place of the commit message editor and reads as the tool being
-            # broken rather than the invocation being wrong.
+            # Inside a git hook a traceback reads as the tool being broken.
             print(f"board: no commit message at {args.message_file!r}", file=sys.stderr)
             return 1
         text = path.read_text()
     else:
-        # ONE MESSAGE PER RECORD, NOT ONE CONCATENATED BLOB, and the separator is
-        # what makes that true. `--format=%B` alone runs the messages together
-        # with a blank line between them, and the keyword-to-reference gap in
-        # CLOSES_RE spans newlines, so a commit whose subject ends with the word
-        # "closes" followed by a commit whose body opens with `#36` produced a
-        # closing reference NEITHER commit contains. Measured on 2026-09-10.
-        # A false refusal manufactured by the reader is worse than one a person
-        # wrote, because there is no line to reword: the commits are already
-        # history and the only way past the check is to delete it.
-        #
-        # A NUL is the separator because it is the one byte a commit message
-        # cannot contain. Any printable sentinel is a string somebody can type.
+        # One message per record, split on NUL: run together, two messages can
+        # make a closing reference neither commit contains.
         result = subprocess.run(
             ["git", "log", "--format=%B%x00", f"{args.since}..HEAD"],
             capture_output=True,
@@ -735,30 +470,19 @@ def cmd_closing(args) -> int:
         problems: list[str] = []
         card = pull_request_card(getattr(args, "pull_request_head", None))
         if card is not None:
-            # THE CLOSE A PULL REQUEST WILL MAKE IS IN NO COMMIT YET (U158). The
-            # trailer is written by the merge, after CI has answered, so the
-            # range alone can never refuse it. The card the head branch names is
-            # judged as if its trailer were already here, which is exactly the
-            # message the merge will carry, and judged whether or not the range
-            # below can be read: it needs no history at all.
+            # The trailer its merge will write is in no commit yet (U158).
             problems += unresolved_closes(f"Closes #{card}", raw=False)
         if result.returncode != 0:
-            # No such ref, a shallow clone, or no repository. Nothing to judge
-            # rather than a refusal, because a check that fails on a machine it
-            # cannot read is a check somebody removes from the hook.
             print("board: no commit range to read; no trailer checked")
             return _report(problems)
         for message in result.stdout.split("\0"):
             if message.strip():
-                # POST-cleanup messages. Nothing to strip, and stripping could
-                # only lose a real trailer.
                 problems += unresolved_closes(message, raw=False)
         return _report(problems)
     return _report(unresolved_closes(text, raw=True))
 
 
-#: A cloud worker's branch, `cloud/<card>-<slug>`, the only head a pull request
-#: merged with a closing trailer comes from (U158).
+#: A cloud worker's branch, the only head a closing merge comes from (U158).
 CLOUD_BRANCH_RE = re.compile(r"^cloud/(\d+)-")
 
 
@@ -768,43 +492,35 @@ def pull_request_card(head_ref: str | None) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def _print_all(lines) -> None:
+    for line in lines:
+        print(f"  {line}")
+
+
 def _report(problems: list[str]) -> int:
-    # A RESIDUAL FILE THE LANDING CANNOT READ is refused here, on every path,
-    # because this is the check that runs before a landing: in the commit-msg
-    # hook and in CI over the pushed range. A file with no title or no Found
-    # line would reach main and stop `residuals --land` there, after the
-    # branch that wrote it is gone.
+    # This runs before a landing, so a residual file it cannot read is refused.
     malformed = residual_file_problems()
     if not problems and not malformed:
         return 0
     if problems:
         print("CONTRADICTION: a unit cannot close while a register still owes it work.")
-        for line in problems:
-            print(f"  {line}")
-        print()
-        print("This is the same comparison `audit` makes, run BEFORE the close rather")
+        _print_all(problems)
+        print("\nThis is the same comparison `audit` makes, run BEFORE the close rather")
         print("than after it. Afterwards the close has already cascaded and `sync`")
         print("will not repair it.")
     if malformed:
         if problems:
             print()
         print("A RESIDUAL FILE CANNOT LAND as it stands:")
-        for line in malformed:
-            print(f"  {line}")
-        print()
-        print("docs/residuals/README.md is the form: a title and a Found line in the")
+        _print_all(malformed)
+        print("\ndocs/residuals/README.md is the form: a title and a Found line in the")
         print("frontmatter, then the body.")
     return 2
 
 
-# --------------------------------------------------------------------------
-# writing the board
+# Writing the board.
 
-
-# The project and its fields, asked of the owner by number. One query, one
-# point, where `gh project field-list` and `gh project view` were a listing each
-# (U151). The owner is a user or an organization and GraphQL asks each by its
-# own field, so the user is asked first and the organization second.
+# The project and its fields in one query (U151), asked of a user, then an org.
 CONTEXT_QUERY = (
     "query($login: String!, $number: Int!) { %s(login: $login) { "
     "projectV2(number: $number) { id url fields(first: 100) { totalCount nodes { "
@@ -812,13 +528,7 @@ CONTEXT_QUERY = (
     "... on ProjectV2Field { id name } } } } } }"
 )
 
-# Each issue's own cards, a page of a hundred issues at a time. GitHub meters
-# GraphQL by the node, 5,000 points an hour for the whole account, and this
-# costs one point a page, where `gh project item-list` cost about 101 a page of
-# a hundred cards (measured 2026-10-14). Archived cards are left out, as the
-# item listing left them out: an archived card reads as not on the board and
-# `sync` adds it again, which is what it did before U151, and archiving Done
-# cards is a decision of its own.
+# Each issue's own cards, a hundred issues at one point a page; archived left out.
 MEMBERSHIP_QUERY = (
     "query($owner: String!, $name: String!, $after: String) { "
     "repository(owner: $owner, name: $name) { "
@@ -869,20 +579,11 @@ def project_context(owner: str) -> dict:
 
 
 def project_items(owner: str) -> dict:
-    """Every issue's card on the project, read from the issues, never the project.
-
-    A card is an issue's membership of project `PROJECT_NUMBER` owned by
-    `owner`; a membership of any other project, or of another owner's project
-    with the same number, is not this board's. Refused as `Truncated`, like the
-    issue read, when the pages come back short of the repository's own issue
-    count or an issue's memberships come back short of their count.
-    """
+    """Every issue's card on project `PROJECT_NUMBER` of `owner`, read from the issues."""
     items: dict = {}
     seen: list[int] = []
     total = None
     after = None
-    # A page per hundred issues, so this bound is READ_LIMIT issues, and a
-    # cursor that never ends is refused rather than followed for ever.
     for _ in range(READ_LIMIT // 100 + 1):
         args = [
             "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}",
@@ -922,23 +623,20 @@ def project_items(owner: str) -> dict:
     else:
         raise Truncated(
             f"the project membership read ran past {READ_LIMIT} issues, so it is "
-            f"truncated. Raise READ_LIMIT in scripts/board.py."
+            f"truncated. {RAISE_LIMIT}"
         )
     short_of_count(seen, total, "project membership")
     return items
 
 
-# --------------------------------------------------------------------------
-# commands
+# Commands.
 
 
 def cmd_next(args) -> int:
     owner, _ = repo_slug()
     graph = build_graph(load_issues())
     try:
-        # The context first: a token that cannot see the project still reads the
-        # issues' memberships, as none at all, and an empty read is not a board
-        # with nothing underway.
+        # The context first: a token blind to the project reads no memberships.
         project_context(owner)
         items = project_items(owner)
     except Truncated:
@@ -946,20 +644,13 @@ def cmd_next(args) -> int:
         # queue below would offer a held card the read missed.
         raise
     except Fail:
-        # A repository-scoped token cannot read a user-owned project. The queue
-        # itself comes from the issues and is unaffected; the only thing lost is
-        # knowing what is already on a branch, so say so rather than imply the
-        # list is complete.
+        # A repository scoped token cannot read a user owned project.
         items = {}
         print("(cannot read the project board with this token, so work already")
         print(" in progress is not shown below)")
         print()
 
-    ready = [
-        n
-        for n in graph.values()
-        if n["unit"] and not n["closed"] and not n["open_deps"]
-    ]
+    ready = [n for n in graph.values() if n["unit"] and not n["closed"] and not n["open_deps"]]
     in_progress = [
         n for n in graph.values() if items.get(n["number"], {}).get("status") in UNDERWAY
     ]
@@ -968,9 +659,6 @@ def cmd_next(args) -> int:
     ready.sort(key=lambda n: (-n["reach"], -len(n["unblocks"]), n["number"]))
 
     if in_progress:
-        # In review is the relay runner's hold and In Progress a session's or a
-        # lane's, so name which, rather than tell a reader to finish a card a
-        # background run owns.
         print("Already underway, never start one of these again:")
         for node in in_progress:
             status = items[node["number"]]["status"]
@@ -981,33 +669,32 @@ def cmd_next(args) -> int:
         print("Nothing is ready. Every open unit is waiting on another one.")
         return 0
 
-    print(f"Ready now, ranked by how much of the build each one releases ({len(ready)} units):")
-    print()
+    print(f"Ready now, ranked by how much of the build each one releases ({len(ready)} units):\n")
     for rank, node in enumerate(ready, 1):
         marker = "->" if rank == 1 else "  "
         print(f"{marker} #{node['number']:<3} {node['title']}")
-        print(
-            f"      releases {node['reach']} open unit(s), "
-            f"{len(node['unblocks'])} of them directly"
-        )
-    print()
+        directly = len(node["unblocks"])
+        print(f"      releases {node['reach']} open unit(s), {directly} of them directly")
     top = ready[0]
-    print(f"Take #{top['number']}. Start it with:")
+    print(f"\nTake #{top['number']}. Start it with:")
     print(f"    .venv/bin/python scripts/board.py start {top['number']}")
     return 0
 
 
-def cmd_show(args) -> int:
-    graph = build_graph(load_issues())
-    node = graph.get(args.number)
+def _issue(graph: dict, number: int) -> dict:
+    node = graph.get(number)
     if not node:
-        raise Fail(f"no issue #{args.number}")
+        raise Fail(f"no issue #{number}")
+    return node
+
+
+def cmd_show(args) -> int:
+    node = _issue(build_graph(load_issues()), args.number)
     print(f"#{node['number']} {node['title']}")
     print(f"state: {'closed' if node['closed'] else 'open'}")
     if node["open_deps"]:
         print(f"blocked by: {', '.join('#' + str(d) for d in node['open_deps'])}")
-    print()
-    print(node["body"])
+    print(f"\n{node['body']}")
     return 0
 
 
@@ -1016,12 +703,17 @@ def slugify(title: str) -> str:
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", body)).strip("-")[:40]
 
 
+def _set_field(item: dict, ctx: dict, field: str, *value: str) -> None:
+    gh(
+        "project", "item-edit", "--id", item["id"],
+        "--project-id", ctx["id"], "--field-id", field, *value,
+    )
+
+
 def cmd_start(args) -> int:
     owner, _ = repo_slug()
     graph = build_graph(load_issues())
-    node = graph.get(args.number)
-    if not node:
-        raise Fail(f"no issue #{args.number}")
+    node = _issue(graph, args.number)
     if node["closed"]:
         raise Fail(f"#{args.number} is already closed")
     if node["open_deps"]:
@@ -1032,17 +724,13 @@ def cmd_start(args) -> int:
     prefix = f"u{match.group(1)}" if match else f"issue{node['number']}"
     branch = f"unit/{prefix}-{slugify(node['title'])}"
 
-    current = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True
-    ).stdout.strip()
+    current = git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     if current != "main":
         raise Fail(f"on branch {current}, not main. Land or park that work first.")
-    dirty = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True).stdout
-    if dirty.strip():
+    if git("status", "--porcelain").stdout.strip():
         raise Fail("the working tree is dirty. Commit or stash before starting a unit.")
 
-    # The board is read BEFORE the branch exists, so a read that refuses leaves
-    # the checkout on main with nothing to undo.
+    # Read BEFORE the branch exists, so a refused read leaves main.
     ctx = project_context(owner)
     items = project_items(owner)
     item = items.get(node["number"])
@@ -1050,18 +738,8 @@ def cmd_start(args) -> int:
     subprocess.run(["git", "checkout", "-b", branch], check=True)
 
     if item:
-        gh(
-            "project",
-            "item-edit",
-            "--id",
-            item["id"],
-            "--project-id",
-            ctx["id"],
-            "--field-id",
-            ctx["status_field"],
-            "--single-select-option-id",
-            ctx["options"]["In Progress"],
-        )
+        opt = ctx["options"]["In Progress"]
+        _set_field(item, ctx, ctx["status_field"], "--single-select-option-id", opt)
         print()
         print(f"Branch {branch} is checked out and #{node['number']} is In Progress.")
     else:
@@ -1069,51 +747,89 @@ def cmd_start(args) -> int:
         print(f"Branch {branch} is checked out, but #{node['number']} is NOT on the")
         print("project board, so nothing there shows it is taken and `next` will")
         print("still offer it. Run `board.py sync` to add it, then set it In Progress.")
-    print()
-    print("Read the brief:")
+    print("\nRead the brief:")
     print(f"    .venv/bin/python scripts/board.py show {node['number']}")
-    print()
-    print("The battery, before you merge anything:")
+    print("\nThe battery, before you merge anything:")
     print("    .venv/bin/ruff check src tests scripts")
     print("    .venv/bin/python -m pytest")
     print("    .venv/bin/python scripts/scan_repo.py")
-    print()
-    print("End the merge commit message with this line and nothing will need doing by hand:")
-    print()
-    print(f"    Closes #{node['number']}")
-    print()
+    print("\nEnd the merge commit message with this line and nothing will need doing by hand:\n")
+    print(f"    Closes #{node['number']}\n")
     print("Pushing main then closes the issue, and the board cascade flips every unit")
     print("this one unblocks from Blocked to Ready on its own.")
     return 0
 
 
-#: The ledger, append only, and the folder a residual waits in for its number.
-#: Module level so a test can point both at a fixture.
-LEDGER = Path(__file__).resolve().parent.parent / "docs" / "residual-findings.md"
-RESIDUALS_DIR = Path(__file__).resolve().parent.parent / "docs" / "residuals"
+#: The ledger, append only, its older entries archived by number range in the
+#: sibling `ledger/` folder with no file over the limit (U314), and the folder a
+#: residual waits in for its number.
+LEDGER = ROOT / "docs" / "residual-findings.md"
+RESIDUALS_DIR = ROOT / "docs" / "residuals"
+LEDGER_LIMIT = 5000
+_HEADING = re.compile(r"^## R-(\d+)\.\s*(.+?)\s*$")
+ARCHIVE_NOTE = [
+    "The older findings are archived by number range in `docs/ledger/`, every entry",
+    "byte for byte as filed, and `board.py residuals --search WORDS` searches them",
+    "all. An amendment to an archived entry is made in its archive file.",
+]
 
-#: The frontmatter a residual file carries, which is exactly what a ledger
-#: entry opens with: the heading's title and the Found line. ``issue`` says the
-#: finding meets METHOD's board bar, so whoever numbers it files the issue.
+#: A residual file's frontmatter; ``issue`` says it meets METHOD's board bar.
 RESIDUAL_REQUIRED = ("title", "found")
 RESIDUAL_OPTIONAL = {"issue": ("yes", "no")}
 
 
-def residual_titles(ledger: Path | None = None) -> dict[int, str]:
-    """Every ``## R-N.`` heading in the residual file, by number.
+def _archive_name(first: int, last: int) -> str:
+    return f"R-{first:04d}-R-{last:04d}.md"
 
-    Read as text rather than parsed as a document, because the only structure
-    this needs is the heading line and the file is append only by rule.
-    """
-    source = LEDGER if ledger is None else ledger
-    if not source.exists():
-        return {}
-    found: dict[int, str] = {}
-    for line in source.read_text().splitlines():
-        match = re.match(r"^## R-(\d+)\.\s*(.+?)\s*$", line)
+
+def ledger_files(ledger: Path | None = None) -> list[Path]:
+    """The ledger's archives in number order, then its working file."""
+    ledger = LEDGER if ledger is None else ledger
+
+    def first(path: Path) -> tuple[int, str]:
+        match = re.fullmatch(r"R-(\d+)-R-\d+\.md", path.name)
+        return (int(match[1]) if match else -1, path.name)
+
+    return sorted((ledger.parent / "ledger").glob("*.md"), key=first) + [ledger]
+
+
+def _headings(ledger: Path | None = None) -> list[tuple[int, str, Path]]:
+    return [
+        (int(match[1]), match[2], path)
+        for path in ledger_files(ledger)
+        if path.exists()
+        for match in map(_HEADING.match, path.read_text().splitlines())
+        if match
+    ]
+
+
+def residual_titles(ledger: Path | None = None) -> dict[int, str]:
+    """Every ``## R-N.`` heading in every ledger file, by number, read as text."""
+    return {number: title for number, title, _ in _headings(ledger)}
+
+
+def _entries(lines: list[str]) -> list[tuple[int, int, int]]:
+    """(number, where its separator starts, its heading line) per entry."""
+    found = []
+    for head, line in enumerate(lines):
+        match = _HEADING.match(line)
         if match:
-            found[int(match.group(1))] = match.group(2)
+            start = head
+            while start and lines[start - 1] in ("", "---"):
+                start -= 1
+            found.append((int(match[1]), start, head))
     return found
+
+
+def ledger_entries(text: str) -> list[tuple[int, str]]:
+    """Each entry's text, its heading to the next entry's separator."""
+    lines = text.split("\n")
+    found = _entries(lines)
+    ends = [start for _, start, _ in found[1:]] + [len(lines)]
+    return [
+        (number, "\n".join(lines[head:end]).rstrip("\n"))
+        for (number, _, head), end in zip(found, ends)
+    ]
 
 
 #: How many headings a ledger search prints before it counts the rest.
@@ -1122,50 +838,28 @@ SEARCH_CAP = 25
 
 def search_residuals(
     words: list[str], ledger: Path | None = None, cap: int = SEARCH_CAP
-) -> tuple[list[tuple[int, str]], int]:
-    """The ledger headings that carry every word, newest first, and how many more.
-
-    Filing a card used to print every heading to check a finding was not
-    already there, over a thousand of them by 2026-11-02, about 28k tokens each time
-    (U196). Every word must appear in the heading, case insensitive, so a
-    search narrows as it gains words. A search with no word is refused by the
-    caller rather than read as a match for everything.
-    """
+) -> tuple[list[tuple[int, str, Path]], int]:
+    """The headings in every ledger file carrying every word, newest first (U196)."""
     source = LEDGER if ledger is None else ledger
     if not source.is_file():
         # A missing ledger is not an empty one: "nothing matches" over a file
         # never read is how a duplicate card gets filed.
         raise FileNotFoundError(f"no residual ledger at {source}")
     wanted = [word.casefold() for word in words]
-    hits = [
-        (number, title)
-        for number, title in residual_titles(source).items()
-        if all(word in title.casefold() for word in wanted)
-    ]
-    hits.sort(reverse=True)
+    hits = [hit for hit in _headings(source) if all(w in hit[1].casefold() for w in wanted)]
+    hits.sort(key=lambda hit: hit[0], reverse=True)
     return hits[:cap], max(0, len(hits) - cap)
 
 
 def residual_files(folder: Path | None = None) -> list[Path]:
-    """The residuals waiting for a number, in the order they will take one.
-
-    Name order, so a landing that numbers two files at once numbers them the
-    same way on every machine. The README describes the form and is not one.
-    """
+    """The residuals waiting for a number, in name order, the order they take one."""
     folder = RESIDUALS_DIR if folder is None else folder
     if not folder.is_dir():
         return []
     paths = sorted(p for p in folder.glob("*.md") if p.name != "README.md")
-    # ONLY WHAT GIT KNOWS, staged or committed. An untracked draft is not
-    # filed yet: judging it refused every unrelated commit through the hook,
-    # and landing it numbered a finding nobody had committed. A folder git
-    # cannot read, a fixture outside any repository, is taken whole.
-    listed = subprocess.run(
-        ["git", "ls-files", "-z", "--", "."],
-        cwd=folder,
-        capture_output=True,
-        text=True,
-    )
+    # Only what git knows: an untracked draft is not filed yet. A folder outside
+    # any repository is taken whole.
+    listed = git("ls-files", "-z", "--", ".", cwd=folder)
     if listed.returncode != 0:
         return paths
     known = {name for name in listed.stdout.split("\0") if name}
@@ -1173,12 +867,7 @@ def residual_files(folder: Path | None = None) -> list[Path]:
 
 
 def read_residual_file(path: Path) -> tuple[dict[str, str], str]:
-    """The frontmatter and the body of one residual file.
-
-    Raises ValueError naming what is wrong. Parsed by hand rather than as YAML
-    because this script imports only the standard library, and the form is
-    one ``key: value`` per line between two ``---`` lines.
-    """
+    """The frontmatter and the body of one residual file, or ValueError saying why."""
     text = path.read_text()
     lines = text.split("\n")
     if not lines or lines[0] != "---":
@@ -1204,10 +893,7 @@ def read_residual_file(path: Path) -> tuple[dict[str, str], str]:
     for key, allowed in RESIDUAL_OPTIONAL.items():
         if key in meta and meta[key] not in allowed:
             raise ValueError(f"frontmatter {key} is {meta[key]!r}, not one of {allowed}")
-    # "R-12. A title" is a filer numbering its own finding. "R-204 is
-    # discharged by half" is a title citing another residual, which the
-    # ledger already holds several of, so only the heading's own shape is
-    # refused.
+    # Only the heading's own shape is refused: "R-204 is discharged" cites another.
     if re.match(r"R-\d+\.", meta["title"]):
         raise ValueError("its title carries a number; the number is given at landing")
     body = "\n".join(lines[close + 1 :]).strip("\n")
@@ -1232,15 +918,9 @@ def land_residuals(
 ) -> list[tuple[int, str, bool]]:
     """Number every waiting residual, append it to the ledger, delete its file.
 
-    THE NUMBER IS TAKEN BY WHOEVER LANDS FIRST, never by whoever files first,
-    which is the whole point: two branches cut from one base each file a
-    residual without a number, merge in either order, and the landing gives
-    each the next number past the ledger's highest at that moment. A number
-    once given is the finding's for life, so this only appends.
-
-    Validates every file before writing anything, so a malformed one leaves
-    the ledger and the folder exactly as they were. Returns ``(number, title,
-    meets the board bar)`` per file landed.
+    Whoever lands first takes the next number past the highest in any ledger
+    file; every file is validated first, and the working file is archived if the
+    landing put it over the limit. Returns ``(number, title, meets the board bar)``.
     """
     ledger = LEDGER if ledger is None else ledger
     paths = residual_files(folder)
@@ -1257,10 +937,7 @@ def land_residuals(
         return []
     text = ledger.read_text()
     titles = residual_titles(ledger)
-    # A FILE THAT LANDED ONCE CAN COME BACK. Landing deletes it, and a branch
-    # that edited it afterwards brings it back through a modify and delete
-    # conflict resolved the wrong way. Its heading is then already in the
-    # ledger, and numbering it again would file one finding twice.
+    # A landed file can come back through a conflict; never number it twice.
     held = {title: number for number, title in titles.items()}
     again = [
         f"{path.name} is R-{held[meta['title']]} already"
@@ -1273,30 +950,120 @@ def land_residuals(
     landed = []
     for path, meta, body in parsed:
         number += 1
-        # The separator the ledger's recent entries carry between them.
         text = text.rstrip("\n") + "\n\n---\n\n"
         text += f"## R-{number}. {meta['title']}\n\n**Found:** {meta['found']}\n\n{body}\n"
         landed.append((number, meta["title"], meta.get("issue") == "yes"))
     ledger.write_text(text)
+    archive_ledger(ledger)
     for path, _, _ in parsed:
         path.unlink()
     return landed
 
 
+def archive_ledger(ledger: Path | None = None) -> list[Path]:
+    """While the working file is over the limit, move its oldest entries to new archives."""
+    ledger = LEDGER if ledger is None else ledger
+    lines = ledger.read_text().rstrip("\n").split("\n")
+    entries = _entries(lines)
+    if not entries:
+        return []
+    head = lines[: entries[0][1]]
+    if ARCHIVE_NOTE[0] not in head:
+        head += ["", *ARCHIVE_NOTE]
+    starts = [start for _, start, _ in entries] + [len(lines)]
+
+    def body(first: int, last: int) -> list[str]:
+        part = lines[starts[first] : starts[last]]
+        while part and not part[0]:
+            part = part[1:]
+        return part
+
+    written, first, count = [], 0, len(entries)
+    while first < count - 1 and len(head) + 1 + len(body(first, count)) > LEDGER_LIMIT:
+        last = first + 1
+        while last < count - 1 and 4 + len(body(first, last + 1)) <= LEDGER_LIMIT:
+            last += 1
+        low, high = entries[first][0], entries[last - 1][0]
+        path = ledger.parent / "ledger" / _archive_name(low, high)
+        path.parent.mkdir(exist_ok=True)
+        path.write_text("\n".join([
+            f"# Residual findings, R-{low} to R-{high}", "",
+            "Archived from `docs/residual-findings.md` by `board.py residuals --archive` "
+            "(U314), every entry byte for byte as filed.", "",
+            *body(first, last),
+        ]) + "\n")
+        written.append(path)
+        first = last
+    if written:
+        ledger.write_text("\n".join([*head, "", *body(first, count)]) + "\n")
+    return written
+
+
+def _ledger_at(rev: str, ledger: Path) -> list[str] | None:
+    """Every ledger file's text at a revision, the single file layout included."""
+    listed = git("ls-tree", "--name-only", rev, "--", "ledger/", cwd=ledger.parent)
+    if listed.returncode != 0:
+        return None
+    texts = []
+    for name in [*(n for n in listed.stdout.split() if n.endswith(".md")), ledger.name]:
+        shown = git("show", f"{rev}:./{name}", cwd=ledger.parent)
+        if shown.returncode != 0:
+            return None
+        texts.append(shown.stdout)
+    return texts
+
+
+def ledger_problems(
+    ledger: Path | None = None, against: str | None = None, unchanged: bool = False
+) -> list[str]:
+    """METHOD's merge checks over the archived ledger, and the move's byte comparison."""
+    ledger = LEDGER if ledger is None else ledger
+    problems: list[str] = []
+    now: dict[int, str] = {}
+    where: dict[int, Path] = {}
+    last = 0
+    for path in ledger_files(ledger):
+        name = path.relative_to(ledger.parent.parent)
+        text = path.read_text() if path.exists() else ""
+        if text.count("\n") > LEDGER_LIMIT:
+            problems.append(f"{name} is {text.count(chr(10))} lines, over {LEDGER_LIMIT}")
+        entries = ledger_entries(text)
+        numbers = [number for number, _ in entries]
+        for number, entry in entries:
+            if number in where:
+                problems.append(f"R-{number} is a heading in {where[number]} and in {name}")
+            where.setdefault(number, name)
+            now.setdefault(number, entry)
+        if path != ledger and (not numbers or path.name != _archive_name(numbers[0], numbers[-1])):
+            held = f"R-{numbers[0]} to R-{numbers[-1]}" if numbers else "no heading"
+            problems.append(f"{name} is not named by what it holds, {held}")
+        if numbers and (numbers != sorted(numbers) or numbers[0] <= last):
+            problems.append(f"{name} is out of number order or overlaps the file before it")
+        last = max([last, *numbers])
+    if against is None:
+        return problems
+    texts = _ledger_at(against, ledger)
+    if texts is None:
+        return [*problems, f"cannot read the ledger at {against}"]
+    before: dict[int, str] = {}
+    for text in texts:
+        for number, entry in ledger_entries(text):
+            before.setdefault(number, entry)
+    missing = [f"R-{n}" for n in sorted(set(before) - set(now))]
+    if missing:
+        problems.append(f"headings at {against} are gone now: {', '.join(missing)}")
+    retitled = [f"R-{n}" for n in sorted(before) if n in now
+                and now[n].split("\n", 1)[0] != before[n].split("\n", 1)[0]]
+    if retitled:
+        problems.append(f"headings at {against} are retitled now: {', '.join(retitled)}")
+    changed = [f"R-{n}" for n in sorted(before) if n in now and now[n] != before[n]]
+    if unchanged and changed:
+        problems.append(f"entries that differ from {against}: {', '.join(changed)}")
+    return problems
+
+
 def repointed_residuals(graph: dict) -> list[str]:
-    """Residual issues whose title no longer matches the finding they number.
-
-    A RESIDUAL'S NUMBER LIVES IN ITS ISSUE TITLE, which is a surface the
-    repository cannot see. Residual numbers are append only for exactly this
-    reason, and METHOD records that the sweep certifying the last renumber
-    checked `src`, `tests` and `scripts` and missed this one: a renumber
-    silently repoints every issue title at a different finding, and nothing in
-    the tree can observe it.
-
-    So the check is not that a residual has an issue. Most do not, and should
-    not: the board is the build and the residual file is the ledger. The check
-    is that an issue which DOES exist still names what its number now points at.
-    """
+    """Residual issues whose title no longer matches the finding they number."""
     file_titles = residual_titles()
     found = []
     for node in sorted(graph.values(), key=lambda n: n["number"]):
@@ -1307,11 +1074,11 @@ def repointed_residuals(graph: dict) -> list[str]:
         if number not in file_titles:
             found.append(
                 f"#{node['number']} R-{number}\n"
-                f"      the issue names it, docs/residual-findings.md has no such finding"
+                f"      the issue names it, the residual ledger has no such finding"
             )
         elif file_titles[number] != issue_title:
             found.append(
-                f"#{node['number']} R-{number} names a different finding than the file does\n"
+                f"#{node['number']} R-{number} names a different finding than the ledger does\n"
                 f"      issue: {issue_title[:72]}\n"
                 f"      file : {file_titles[number][:72]}"
             )
@@ -1319,17 +1086,7 @@ def repointed_residuals(graph: dict) -> list[str]:
 
 
 def units_by_issue_number(graph: dict) -> dict[int, int]:
-    """Unit number to issue number, read off the titles, because nothing else has it.
-
-    THE MAPPING LIVES ON GITHUB AND NOWHERE IN THIS REPOSITORY, which is the
-    whole reason it is derived here rather than looked up. `CLAUDE.md` states the
-    fact plainly, "an issue number usually matches its unit number and it is not
-    guaranteed", and the title is where the unit number is written down.
-
-    A title claiming a unit number some other issue already claimed is dropped
-    rather than allowed to overwrite, because a duplicate is a board editing
-    mistake and picking the later one silently answers with the wrong issue.
-    """
+    """Unit number to issue number, off the titles; a unit two issues claim is dropped."""
     seen: dict[int, int] = {}
     duplicated: set[int] = set()
     for number, node in graph.items():
@@ -1346,42 +1103,10 @@ def units_by_issue_number(graph: dict) -> dict[int, int]:
 
 
 def contradictions(graph: dict, owed: dict[int, list[str]] | None = None) -> list[str]:
-    """What the repository and the board disagree about, that a sync cannot fix.
+    """Closed unit issues a register still owes a module, and repointed residuals.
 
-    Every value the board derives comes from issue closure state, so closure
-    state is the one INPUT and nothing checks it. TWO registers assert, each in a
-    file the suite enforces, that a named unit has not finished: `tests/_pending.py`
-    for guards awaiting their module, and `planned_in` on a verb registry entry
-    for a verb awaiting its own. A closed issue for such a unit is the board
-    claiming work landed that the repository says did not, and it cascades: one
-    wrong close moved four units to Ready.
-
-    Reading only the first register is how three closed units kept live markers
-    for seven verbs between them with nothing ever saying so.
-
-    This is kept apart from drift on purpose. Drift is a derived value that fell
-    out of date and `sync` repairs it. A contradiction is two sources of truth
-    disagreeing, and repairing it automatically would mean picking one to
-    overwrite, which is how the wrong one wins silently.
-
-    A UNIT NUMBER IS NOT AN ISSUE NUMBER, and this used to index the graph with
-    one as though it were the other. The registers name UNITS, `U25`, and the
-    graph is keyed by ISSUE. They coincide for most units here and not for all:
-    U38 is issue #51, and U39 through U61 are issues #57 through #79. So a
-    register owing U51 looked up issue #51, which is U38's, and answered about
-    the wrong unit in both directions, silently reporting a contradiction over a
-    unit nothing owed and missing the one that was owed. Measured 2026-09-10:
-    twenty four units are mismatched, and none of them was owed a module that
-    day, which is why nothing had ever surfaced it. Resolved through the title,
-    which is the only place the mapping exists, and the graph already carries it.
-
-    ``owed`` IS SUPPLIED BY A CALLER THAT HAS ONE, exactly as `unresolved_closes`
-    takes it, and defaults to the live registers. R-322 is the finding that
-    nothing drove this function at all, and the register is half of why: keyed to
-    whatever `main` happens to owe today, a test passes for a reason that has
-    nothing to do with the code and goes red the day somebody discharges a
-    marker. The graph is the other half, and that one is answered at the caller,
-    since `build_graph` is what a test drives instead of `gh`.
+    Not drift: a sync would have to pick a source to overwrite. ``owed`` defaults
+    to the live registers (R-322).
     """
     found = []
     owed = owed_by_unit() if owed is None else owed
@@ -1398,25 +1123,12 @@ def contradictions(graph: dict, owed: dict[int, list[str]] | None = None) -> lis
 
 
 def reconcile(owner: str, apply: bool, labels_only: bool = False) -> list[str]:
-    """Compare the board against the repository. Returns the drift found.
-
-    `labels_only` drops every project-board call. A repository-scoped token
-    cannot reach a user-owned project, so CI running as GITHUB_TOKEN can still
-    keep the ready/blocked labels true even though it cannot move a card. The
-    labels are the half that has to be right, because they are what the queue
-    is derived from; the card is the view of it.
-    """
+    """The drift between board and repository; `labels_only` skips the project."""
     graph = build_graph(load_issues())
     ctx = None if labels_only else project_context(owner)
     items = {} if labels_only else project_items(owner)
     name = repo_slug()[1]
     drift: list[str] = []
-
-    # The one thing the board cannot derive from itself. Every other value here
-    # is computed from closure state, so closure state is the input and nothing
-    # checks it. A closed issue whose unit still owes a module in the pending
-    # register is the board claiming work landed that the repository says did
-    # not, and it cascades: four units went Ready off one such close.
 
     for number, node in sorted(graph.items()):
         item = items.get(number)
@@ -1437,11 +1149,8 @@ def reconcile(owner: str, apply: bool, labels_only: bool = False) -> list[str]:
         if item and item["status"] != want:
             drift.append(f"#{number} status is {item['status']}, should be {want}")
             if apply:
-                gh(
-                    "project", "item-edit", "--id", item["id"],
-                    "--project-id", ctx["id"], "--field-id", ctx["status_field"],
-                    "--single-select-option-id", ctx["options"][want],
-                )
+                opt = ctx["options"][want]
+                _set_field(item, ctx, ctx["status_field"], "--single-select-option-id", opt)
 
         if node["unit"]:
             if node["deps"] is None:
@@ -1463,16 +1172,10 @@ def reconcile(owner: str, apply: bool, labels_only: bool = False) -> list[str]:
                     for label in want_labels - has:
                         gh("issue", "edit", str(number), "--add-label", label)
 
-        # Written only when the stored number differs, so a sync over a board
-        # with no drift writes nothing. It used to rewrite every card on every
-        # sync, about 300 mutations a run (U151).
+        # Written only when it differs, so a sync with no drift writes nothing.
         unblocks = len(node["unblocks"])
         if item and ctx and ctx["unblocks_field"] and apply and item.get("unblocks") != unblocks:
-            gh(
-                "project", "item-edit", "--id", item["id"],
-                "--project-id", ctx["id"], "--field-id", ctx["unblocks_field"],
-                "--number", str(unblocks),
-            )
+            _set_field(item, ctx, ctx["unblocks_field"], "--number", str(unblocks))
     return drift
 
 
@@ -1483,8 +1186,7 @@ def cmd_sync(args) -> int:
         print("The board already matched the repository. Nothing changed.")
         return 0
     print(f"Corrected {len(drift)} item(s):")
-    for line in drift:
-        print(f"  {line}")
+    _print_all(drift)
     return 0
 
 
@@ -1499,20 +1201,14 @@ def cmd_audit(args) -> int:
     clashes = contradictions(graph)
 
     if drift:
-        print()
-        print(f"DRIFT, {len(drift)} item(s). Derived values that fell out of date:")
-        for line in drift:
-            print(f"  {line}")
-        print()
-        print("Fix it with: .venv/bin/python scripts/board.py sync")
+        print(f"\nDRIFT, {len(drift)} item(s). Derived values that fell out of date:")
+        _print_all(drift)
+        print("\nFix it with: .venv/bin/python scripts/board.py sync")
 
     if clashes:
-        print()
-        print(f"CONTRADICTION, {len(clashes)} item(s). A sync cannot fix these:")
-        for line in clashes:
-            print(f"  {line}")
-        print()
-        print("Each one is a decision, not a repair. Either reopen the issue because")
+        print(f"\nCONTRADICTION, {len(clashes)} item(s). A sync cannot fix these:")
+        _print_all(clashes)
+        print("\nEach one is a decision, not a repair. Either reopen the issue because")
         print("the unit is not finished, or clear the register entry because it is.")
         print("TWO REGISTERS CAN OWE, so read the module named above to know which")
         print("file to open: a dotted module in tests/_pending.py PENDING, or a")
@@ -1522,16 +1218,13 @@ def cmd_audit(args) -> int:
 
     malformed = residual_file_problems()
     if malformed:
-        print()
-        print(f"RESIDUAL FILES THAT CANNOT LAND, {len(malformed)}. A sync cannot fix these:")
-        for line in malformed:
-            print(f"  {line}")
+        print(f"\nRESIDUAL FILES THAT CANNOT LAND, {len(malformed)}. A sync cannot fix these:")
+        _print_all(malformed)
         clashes = clashes + malformed
 
     waiting = residual_files()
     if waiting:
-        print()
-        print(f"{len(waiting)} residual file(s) in docs/residuals wait for a number.")
+        print(f"\n{len(waiting)} residual file(s) in docs/residuals wait for a number.")
         print("On main, after the merge that carried them:")
         print("    .venv/bin/python scripts/board.py residuals --land")
 
@@ -1541,20 +1234,36 @@ def cmd_audit(args) -> int:
     return 2 if clashes else 1
 
 
+def _refuse(message: str, code: int) -> int:
+    print(f"board: {message}", file=sys.stderr)
+    return code
+
+
 def cmd_residuals(args) -> int:
     """List the residuals waiting for a number, number them on main, or search."""
+    if getattr(args, "archive", False):
+        written = archive_ledger()
+        for path in written:
+            print(f"wrote {path.relative_to(LEDGER.parent.parent)}")
+        print(f"The working file is within {LEDGER_LIMIT} lines; {len(written)} archive(s) written.")
+        return 0
+    if getattr(args, "check", False):
+        if args.unchanged and not args.against:
+            return _refuse("--unchanged compares with a revision, so it needs --against", 2)
+        problems = ledger_problems(against=args.against, unchanged=args.unchanged)
+        print("The ledger " + ("FAILS its checks:" if problems else "passes its checks."))
+        _print_all(problems)
+        return 1 if problems else 0
     words = getattr(args, "search", None)
     if words is not None:
         if args.land or not words:
-            print("board: --search takes one word or more, and not with --land", file=sys.stderr)
-            return 2
+            return _refuse("--search takes one word or more, and not with --land", 2)
         try:
             hits, more = search_residuals(words)
         except FileNotFoundError as exc:
-            print(f"board: cannot search, {exc}", file=sys.stderr)
-            return 2
-        for number, title in hits:
-            print(f"R-{number}. {title}")
+            return _refuse(f"cannot search, {exc}", 2)
+        for number, title, path in hits:
+            print(f"R-{number}. {title}  ({path.relative_to(LEDGER.parent.parent)})")
         if more:
             print(f"... and {more} more; add a word to narrow it")
         if not hits:
@@ -1563,8 +1272,7 @@ def cmd_residuals(args) -> int:
     malformed = residual_file_problems()
     if malformed:
         print("A RESIDUAL FILE CANNOT LAND as it stands:")
-        for line in malformed:
-            print(f"  {line}")
+        _print_all(malformed)
         return 2
     waiting = residual_files()
     if not args.land:
@@ -1573,15 +1281,8 @@ def cmd_residuals(args) -> int:
         for path in waiting:
             print(f"  docs/residuals/{path.name}")
         return 0
-    # ON MAIN AND NOWHERE ELSE. A number given on a branch is a number given
-    # by whoever FILED, which is the race this folder exists to remove: two
-    # branches would each take the ledger's highest plus one.
-    branch = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        capture_output=True,
-        text=True,
-        cwd=LEDGER.parent,
-    ).stdout.strip()
+    # On main only: a number given on a branch races every other branch.
+    branch = git("rev-parse", "--abbrev-ref", "HEAD", cwd=LEDGER.parent).stdout.strip()
     if branch != "main":
         print(
             f"board: residuals are numbered on main, after the merge that carried "
@@ -1589,27 +1290,18 @@ def cmd_residuals(args) -> int:
             file=sys.stderr,
         )
         return 1
-    # BEHIND THE REMOTE, the ledger's highest is stale, and a number given
-    # here may already be taken there. Read against the last fetch, since a
-    # check that needs the network is a check that fails offline.
-    behind = subprocess.run(
-        ["git", "rev-list", "--count", "main..origin/main"],
-        capture_output=True,
-        text=True,
-        cwd=LEDGER.parent,
-    )
+    # Behind the remote as last fetched, a number given here may be taken there.
+    behind = git("rev-list", "--count", "main..origin/main", cwd=LEDGER.parent)
     if behind.returncode == 0 and behind.stdout.strip() not in ("", "0"):
-        print(
-            f"board: main is {behind.stdout.strip()} commit(s) behind origin/main as "
+        return _refuse(
+            f"main is {behind.stdout.strip()} commit(s) behind origin/main as "
             f"last fetched; pull first, or a number given here may be taken there",
-            file=sys.stderr,
+            1,
         )
-        return 1
     try:
         landed = land_residuals()
     except ValueError as exc:
-        print(f"board: nothing numbered, {exc}", file=sys.stderr)
-        return 2
+        return _refuse(f"nothing numbered, {exc}", 2)
     if not landed:
         print("No residual file waits for a number.")
         return 0
@@ -1617,28 +1309,22 @@ def cmd_residuals(args) -> int:
         print(f"R-{number}. {title}")
         if board_bar:
             print(f"    meets the board bar: file the issue titled R-{number}: {title}")
-    print()
-    print("Commit the ledger and the deleted files together:")
-    print("    git add docs/residual-findings.md docs/residuals")
+    print("\nCommit the ledger and the deleted files together:")
+    print("    git add docs/residual-findings.md docs/ledger docs/residuals")
     print('    git commit -m "docs(residuals): number what landed"')
     return 0
 
 
-# --------------------------------------------------------------------------
-# the cloud lane
+# The cloud lane.
 
-# The label a residual's card carries. Held in a constant so the word is never
-# followed by a quoted string, which the citation rule in test_reserved_causes
-# reads as a residual title.
+# The label a residual's card carries, held in a constant so the word is never
+# followed by a quoted string, which test_reserved_causes reads as a title.
 FINDING_LABEL = "residual"
 
-# A comment the cloud session wrote carries this footer, which the person's
-# own comments never do. It is how an answer is told from a question when every
-# comment on the card is posted by the same login.
+# A cloud session's footer, which tells its comments from the person's.
 SESSION_MARK = "Generated by [Claude Code]"
 
-# The headings a cloud session writes, as this reader reads them. The spelling
-# is fixed because the reader reads headings and nothing else.
+# The headings a cloud session writes; the reader reads headings and nothing else.
 HEAD_STARTED = "started"
 HEAD_RESUMED = "resumed"
 HEAD_PLAN = "plan"
@@ -1648,46 +1334,30 @@ HEAD_QUESTION = "question for phillip"
 HEAD_MACHINE = "needs the machine"
 HEAD_LANDED = "landed"
 HEAD_WITHDRAWN = "withdrawn"
-# Phillip answers on the decisions page, and the project's relay thread carries
-# the answer to the card hourly in a comment of its own, which the harness
-# footer marks as a session's. Under this heading it is read as his reply,
-# whoever posts it, never as a hold.
+# The relay thread posts Phillip's answer under this heading: a reply, not a hold.
 HEAD_ANSWER = "answer from phillip"
 
-# A hold older than this with nothing landed after it is read as a session
-# that died, and the next session resumes the card from whatever it pushed.
+# A hold older than this is a session that died, and the card is resumed.
 STALE_HOURS = 8
 
-# What the cloud takes, in the order it takes them. A card that is held, or
-# waiting on a person, or set aside for the machine, is never offered.
+# What the cloud takes, in the order it takes them; the rest is never offered.
 CLOUD_TAKE = ("answered", "resume", "ready")
 CLOUD_SKIP = ("underway", "waiting-on-phillip", "set-aside", "landed-open", "blocked", "attended")
 
 
-# A first line that opens with an emphasised span, `**Brainstorm.** One
-# question waits`, is headed by the span: the closing marker must repeat the
-# opening one and be followed by the line's end, whitespace or punctuation, so
-# `**Brainstorm**s` is no span and stays a word the reader does not know.
+# An opening emphasised span heads the line, `**Brainstorm.** One question
+# waits`; its closer must repeat the opener and be followed by the line's end,
+# whitespace or punctuation, so `**Brainstorm**s` is no span.
 _OPENING_EMPHASIS = re.compile(r"([*_]+)(.+?)\1(?=$|[\s.,:;?!\u2026])")
-# Where a heading ends, inside a span or on a line without one: a colon, a
-# comma, or a sentence end followed by whitespace, so `**Started: cloud/1-a**`
-# reads `started` and `v0.6.0` is never cut at its dots.
+# A heading ends at a colon, a comma, or a sentence end followed by whitespace,
+# so `**Started: cloud/1-a**` reads `started` and `v0.6.0` is never cut.
 _HEADING_END = re.compile(r"[:,]|[.?!;\u2026](?=\s)")
-# What may trail a heading and is never part of its words, stripped together
-# with emphasis until neither is left, in whatever order they were typed.
+# What may trail a heading, stripped with emphasis until neither is left.
 _TRAILING = ".?!;\u2026# \t"
 
 
 def comment_heading(body: str) -> str:
-    """The first line of a comment, as a heading, lower case.
-
-    Markdown and emphasis are stripped, an opening emphasised span is taken
-    alone, the text is then cut at a colon, a comma or a sentence end, inside
-    the span as well as on a line without one, and trailing punctuation goes, so `**Brainstorm.**`, `## Brainstorm?` and
-    `**Brainstorm.** One question waits` all read `brainstorm` (U203, after
-    #489 read as a hold while its question waited). Only punctuation is
-    widened: a heading whose words differ is still one the reader does not know.
-    """
+    """The first line of a comment as a lower case heading, punctuation dropped (U203)."""
     for line in (body or "").splitlines():
         text = line.strip().lstrip("#").strip()
         if not text.strip("*_").strip():
@@ -1712,13 +1382,8 @@ def _when(comment: dict) -> str:
 
 
 def cloud_state(node: dict, comments: list[dict]) -> tuple[str, str]:
-    """What the cloud lane owes a card, read from the card's comments alone.
-
-    The cloud session never writes a label or a status, so its hold on a card
-    is its own last comment, by heading, and the person's reply is any comment
-    without the session footer written after it. Returns a state and a line
-    saying why.
-    """
+    """A card's cloud state and why, from its comments: the session's last heading
+    is its hold, and a later comment without the footer is the person's reply."""
     if node["attended"]:
         return "attended", "needs Phillip at the machine"
     if node["open_deps"]:
@@ -1728,15 +1393,13 @@ def cloud_state(node: dict, comments: list[dict]) -> tuple[str, str]:
     mine = [c for c in ordered if SESSION_MARK in (c.get("body") or "") and not _relayed_answer(c)]
     if not mine:
         return "ready", "no cloud session has taken it"
-    # The state is the session's last comment that is not a progress note,
-    # and every comment it writes, progress included, refreshes the hold, so
-    # a build that reports as it goes is never read as a session that died.
-    stated = [c for c in mine if comment_heading(c.get("body") or "") not in (HEAD_PLAN, HEAD_PROGRESS)]
+    # Progress notes do not set the state, but they do refresh the hold.
+    notes = (HEAD_PLAN, HEAD_PROGRESS)
+    stated = [c for c in mine if comment_heading(c.get("body") or "") not in notes]
     last = stated[-1] if stated else mine[-1]
-    last_mine = (comment_heading(last.get("body") or ""), _when(last))
+    heading, since = comment_heading(last.get("body") or ""), _when(last)
     freshest = _when(mine[-1])
 
-    heading, since = last_mine
     after = [
         c for c in ordered
         if _when(c) > since and (SESSION_MARK not in (c.get("body") or "") or _relayed_answer(c))
@@ -1746,9 +1409,7 @@ def cloud_state(node: dict, comments: list[dict]) -> tuple[str, str]:
     if heading == HEAD_MACHINE:
         return "set-aside", f"needs the machine, set aside {since[:10]}"
     if heading == HEAD_LANDED or heading.startswith(HEAD_LANDED + " "):
-        # Read by its first word, so "Landed on main as abc" is a landing too;
-        # a drifted heading would otherwise be a hold, then a resume of a
-        # merged branch.
+        # By its first word, so "Landed on main as abc" is a landing too.
         return "landed-open", f"landed {since[:16]} and the card is still open; close it by hand"
     if heading in (HEAD_BRAINSTORM, HEAD_QUESTION):
         if after:
@@ -1762,8 +1423,6 @@ def cloud_state(node: dict, comments: list[dict]) -> tuple[str, str]:
 
 
 def _hours_since(stamp: str) -> float | None:
-    from datetime import datetime, timezone
-
     try:
         then = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
     except ValueError:
@@ -1780,14 +1439,15 @@ def cloud_branch(node: dict) -> str:
     return f"cloud/{node['number']}-{slugify(node['title'])[:32].rstrip('-')}"
 
 
-# How many cards the cloud builds at once, decided by Phillip's backlog on
-# 2026-10-28. Each worker merges the latest main and runs the battery again
-# before it merges, and the repository lands parallel units in either order
-# (restart fragments, residuals numbered at landing, per module pins), so
-# lanes are a throughput setting rather than a correctness one. Raised to
-# five by Phillip on 2026-10-31, in the project chat, by U188, and to ten,
-# his cap of 2026-11-21, by U291.
+# How many cards the cloud builds at once, Phillip's cap of 2026-11-21 (U291).
 CLOUD_LANES = 10
+
+
+def _card_lines(cards: list, states: dict, width: int) -> None:
+    for node in cards:
+        state, why = states[node["number"]]
+        print(f"  #{node['number']:<4} {state:<{width}} {why}")
+        print(f"        {node['title'][:72]}")
 
 
 def cmd_cloud(args) -> int:
@@ -1804,27 +1464,18 @@ def cmd_cloud(args) -> int:
     states = {n["number"]: cloud_state(n, load_comments(n["number"])) for n in cards}
     held = [n for n in cards if states[n["number"]][0] == "underway"]
     take = [n for n in cards if states[n["number"]][0] in CLOUD_TAKE]
-    take.sort(
-        key=lambda n: (
-            CLOUD_TAKE.index(states[n["number"]][0]),
-            -n["reach"],
-            -len(n["unblocks"]),
-            n["number"],
-        )
-    )
+    take.sort(key=lambda n: (
+        CLOUD_TAKE.index(states[n["number"]][0]), -n["reach"], -len(n["unblocks"]), n["number"]
+    ))
     skipped = [n for n in cards if states[n["number"]][0] in CLOUD_SKIP]
     if skipped:
         print("Not the cloud's to take right now:")
-        for node in sorted(skipped, key=lambda n: n["number"]):
-            state, why = states[node["number"]]
-            print(f"  #{node['number']:<4} {state:<19} {why}")
-            print(f"        {node['title'][:72]}")
+        _card_lines(sorted(skipped, key=lambda n: n["number"]), states, 19)
         print()
     # Times come from the states' own lines, which end in the hold's timestamp.
     held.sort(key=lambda n: states[n["number"]][1].rsplit(" ", 1)[-1])
     if len(held) > lanes:
-        # More sessions read a lane free in the same minute than there are
-        # lanes. The earliest holds keep theirs; every later one withdraws.
+        # The earliest holds keep their lanes and every later one withdraws.
         keep = held[:lanes]
         print(f"MORE CARDS ARE HELD THAN THERE ARE LANES ({len(held)} for {lanes}): "
               + ", ".join(f"#{n['number']}" for n in held))
@@ -1835,18 +1486,17 @@ def cmd_cloud(args) -> int:
         print("posts Withdrawn on its own card and stops. Nothing is offered.")
         return 1
     if held:
-        print(f"Held, {len(held)} of {lanes} lane(s): " + ", ".join(f"#{n['number']}" for n in held))
+        print(f"Held, {len(held)} of {lanes} lane(s): "
+              + ", ".join(f"#{n['number']}" for n in held))
     if len(held) >= lanes:
         print("Every lane is held. Nothing to take until one of them lands.")
         return 0
     if not take:
-        print("Nothing for the cloud to take. Every open card is waiting, set aside, blocked or attended.")
+        print("Nothing for the cloud to take. Every open card is waiting, set aside, "
+              "blocked or attended.")
         return 0
     print(f"The cloud may take ({len(take)}):")
-    for node in take:
-        state, why = states[node["number"]]
-        print(f"  #{node['number']:<4} {state:<12} {why}")
-        print(f"        {node['title'][:72]}")
+    _card_lines(take, states, 12)
     print()
     top = take[0]
     state, _ = states[top["number"]]
@@ -1883,69 +1533,72 @@ def cmd_local(args) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("next", help="the ready queue, ranked by leverage").set_defaults(func=cmd_next)
-    show = sub.add_parser("show", help="print one issue's brief")
-    show.add_argument("number", type=int)
-    show.set_defaults(func=cmd_show)
-    start = sub.add_parser("start", help="branch and mark In Progress")
-    start.add_argument("number", type=int)
-    start.set_defaults(func=cmd_start)
-    sync = sub.add_parser("sync", help="make the board match the repository")
-    sync.add_argument(
-        "--labels-only",
-        action="store_true",
+
+    def command(name: str, help: str, func, number: bool = False):
+        parser = sub.add_parser(name, help=help)
+        if number:
+            parser.add_argument("number", type=int)
+        parser.set_defaults(func=func)
+        return parser.add_argument
+
+    command("next", "the ready queue, ranked by leverage", cmd_next)
+    command("show", "print one issue's brief", cmd_show, number=True)
+    command("start", "branch and mark In Progress", cmd_start, number=True)
+    command("sync", "make the board match the repository", cmd_sync)(
+        "--labels-only", action="store_true",
         help="skip the project board, for a token that cannot reach it",
     )
-    sync.set_defaults(func=cmd_sync)
-    audit = sub.add_parser("audit", help="report drift, exit 1 if the board is lying")
-    audit.add_argument("--labels-only", action="store_true", help="skip the project board")
-    audit.set_defaults(func=cmd_audit)
-    closing = sub.add_parser(
-        "closing", help="refuse a Closes trailer while a register still owes that unit"
+    command("audit", "report drift, exit 1 if the board is lying", cmd_audit)(
+        "--labels-only", action="store_true", help="skip the project board"
     )
-    closing.add_argument(
+    closing = command(
+        "closing", "refuse a Closes trailer while a register still owes that unit", cmd_closing
+    )
+    closing(
         "--message-file",
         help="a single commit message to judge; this is what the commit-msg hook passes",
     )
-    closing.add_argument(
-        "--since",
-        default="main",
+    closing(
+        "--since", default="main",
         help="judge every commit after this ref instead of one message file",
     )
-    closing.add_argument(
+    closing(
         "--pull-request-head",
         help=(
             "a pull request's head branch; a `cloud/N-slug` head is judged as "
             "closing card N, the trailer its merge will write"
         ),
     )
-    closing.set_defaults(func=cmd_closing)
-    residuals = sub.add_parser(
+    residuals = command(
         "residuals",
-        help="list the residual files waiting for a number, or number them",
+        "list the residual files waiting for a number, or number them",
+        cmd_residuals,
     )
-    residuals.add_argument(
-        "--land",
-        action="store_true",
+    residuals(
+        "--land", action="store_true",
         help="on main, give each file the next R number and append it to the ledger",
     )
-    residuals.add_argument(
-        "--search",
-        nargs="+",
-        metavar="WORD",
+    residuals(
+        "--search", nargs="+", metavar="WORD",
         help="print the ledger headings carrying every word, case insensitive, newest first",
     )
-    residuals.set_defaults(func=cmd_residuals)
-    cloud = sub.add_parser(
-        "cloud", help="the cloud lane's queue, read from the cards' comments over REST"
+    residuals(
+        "--archive", action="store_true",
+        help=f"move the working file's oldest entries to docs/ledger while over {LEDGER_LIMIT} lines",
     )
-    cloud.add_argument(
+    residuals(
+        "--check", action="store_true",
+        help="refuse a duplicated heading, a misnamed or overlapping archive, or a file over the limit",
+    )
+    residuals("--against", metavar="REV", help="with --check, refuse a heading REV has and now lacks")
+    residuals("--unchanged", action="store_true", help="with --against, refuse a changed entry")
+    command(
+        "cloud", "the cloud lane's queue, read from the cards' comments over REST", cmd_cloud
+    )(
         "--lanes", type=int, default=None,
         help=f"how many cards the cloud builds at once (default {CLOUD_LANES})",
     )
-    cloud.set_defaults(func=cmd_cloud)
-    local = sub.add_parser("local", help="the attended cards only Phillip's Mac can do")
-    local.set_defaults(func=cmd_local)
+    command("local", "the attended cards only Phillip's Mac can do", cmd_local)
     args = parser.parse_args()
     try:
         return args.func(args)
