@@ -196,3 +196,44 @@ surface = "user"
 tests = ["tests/test_genre_favorites.py", "tests/test_genre_favorites_adoption.py"]
 old = '''    if len(live) == 1 and live_members(db, str(live[0].ID)):'''
 new = '''    if len(live) == 1:'''
+
+# The composites of the three user facing zeros, each a mutation of the thing
+# its zero row guards (METHOD). W9 is unreachable from the suite because every
+# caller that passes a map passes the configuration's own; its composite drops
+# the configuration's rules, which every write resolves recorded paths through.
+# W14 is held by a second layer, `trees._root_row`, which refuses the same
+# absent root when the membership write reads it back; its composite removes
+# that layer. W18 is unreachable because the plan drops a soft deleted node
+# from the tree it reads on the same handle; its composite keeps them.
+
+[[rows]]
+id = "W9c_configuration_rules_dropped"
+description = "what W9 holds: prefix_rules with no caller map returns no rules, so a recorded path is never resolved through the configuration"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+pairs_with = "W9_callers_prefix_map_ignored"
+tests = ["tests/test_tree_writer.py", "tests/test_naming_apply_cli.py", "tests/test_routing_workers.py", "tests/test_deferred_routing.py"]
+old = '''        return list(locations.prefix_rules(cfg.resolved_prefix_map()))'''
+new = '''        return []'''
+
+[[rows]]
+id = "W14c_root_read_back_unchecked"
+description = "what W14 holds: _root_row hands an absent adopted root on as None instead of refusing it, the layer that refuses a root W14 reads as present"
+file = "src/cratekit/write/trees.py"
+surface = "user"
+pairs_with = "W14_every_root_known"
+tests = ["tests/test_rebuild.py", "tests/test_resort_scope.py", "tests/test_routing_workers.py", "tests/test_tree_writer.py"]
+old = '''    row = db.get_playlist(ID=str(root_id))
+    if row is None:'''
+new = '''    row = db.get_playlist(ID=str(root_id))
+    if False:'''
+
+[[rows]]
+id = "W18c_removed_nodes_planned"
+description = "what W18 holds: plan_refresh keeps soft deleted nodes in the tree it plans, the drop that keeps a removed folder from reaching the write"
+file = "src/cratekit/write/genre_favorites.py"
+surface = "user"
+pairs_with = "W18_removed_folder_read_as_live"
+tests = ["tests/test_genre_favorites.py", "tests/test_genre_favorites_adoption.py"]
+old = '''    nodes = tuple(node for node in tree_read.read_tree(db, root_id) if not node.removed)'''
+new = '''    nodes = tuple(tree_read.read_tree(db, root_id))'''
