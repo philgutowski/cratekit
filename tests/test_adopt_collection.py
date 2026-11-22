@@ -24,8 +24,7 @@ from tests import adopt_fixtures
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database, _row
 
-#: A name with an accented character in both composition forms. The reader must
-#: return each exactly as recorded: composition form is ``core.locations``' job.
+#: An accented name in both composition forms; the reader returns each as recorded.
 NFC_NAME = "Café"
 NFD_NAME = "Café"
 
@@ -97,8 +96,7 @@ def seed(db_path: Path) -> None:
     engine = create_engine(f"sqlite:///{db_path}")
     with Session(engine) as session:
         session.add(_row(tables.DjmdGenre, ID="7", Name="Techno"))
-        # Row 12 names a genre row that does not exist, as a real library can
-        # after a genre is deleted while a track still points at it.
+        # Row 12 names a genre row that does not exist, as after a genre is deleted.
         for content_id, title, genre_id, deleted, location in (
             ("10", NFC_NAME, "7", 0, _url(NFC_NAME)),
             ("11", NFD_NAME, None, 0, _url(NFD_NAME)),
@@ -122,9 +120,7 @@ def seed(db_path: Path) -> None:
 def synthetic(cfg):
     """A disposable database carrying exactly the rows :func:`seed` writes.
 
-    NEVER SUBSTITUTED BY A SUPPLIED SNAPSHOT: these tests assert rows by
-    identifier, which somebody else's library would make false, and making them
-    conditional would be a skip wearing an ``if``.
+    Never a supplied snapshot: these tests assert rows by identifier.
     """
     path = Path(cfg.library.db_path)
     _build_disposable_database(path, with_tag_category=False)
@@ -202,11 +198,8 @@ def test_a_row_that_cannot_report_the_marker_refuses_rather_than_defaulting():
 def test_the_reader_yields_the_rows_the_database_holds(cfg, synthetic):
     """The recorded value is the percent-encoded URL rekordbox writes, passed through.
 
-    Both composition forms come back exactly as recorded and distinct, since a
-    reader that normalized would hand the resolver a value nothing holds. A
-    dangling genre reference reads as no genre: measured, the proxy answers None
-    rather than raising. The reader stats nothing, so a row whose file is absent
-    is still a row.
+    Both composition forms come back as recorded and distinct, a dangling genre
+    reads as no genre, and a row whose file is absent is still a row.
     """
     rows = {row.content_id: row for row in collection.read_collection(cfg)}
     assert set(rows) == {"1", "2", "10", "11", "12"}
@@ -242,9 +235,7 @@ def test_the_reader_never_opens_the_database_for_writing(cfg, seeded, monkeypatc
 
 
 def test_the_database_file_is_byte_identical_after_a_full_read(cfg, seeded):
-    """Bytes AND modification time, write ahead log sidecars included, because a
-    read that checkpointed would change the main file and empty the log while
-    every row still came back correct."""
+    """Bytes and modification time, sidecars included, since a checkpoint changes both."""
     suffixes = rb_writer.db_sidecar_suffixes()
     watched = [seeded, *(seeded.with_name(seeded.name + suffix) for suffix in suffixes)]
 
@@ -289,9 +280,7 @@ def test_a_configured_library_with_no_database_is_a_named_refusal(cfg):
 
 
 def test_this_module_holds_no_write_path_at_all():
-    """An AST walk, not a grep and not a review: an open asking for write intent, a
-    session, or a commit would each make this module able to write, and a grep
-    for ``commit`` would match the word in a docstring."""
+    """An AST walk: no open with write intent, no session and no commit."""
     tree = ast.parse(Path(collection.__file__).read_text(encoding="utf-8"))
     nodes = list(ast.walk(tree))
 

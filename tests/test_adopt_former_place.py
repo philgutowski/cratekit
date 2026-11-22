@@ -125,8 +125,7 @@ def test_the_promoted_bucket_splits_by_energy_and_declares_the_place_it_left():
 
 
 def test_the_promoted_bucket_writes_no_rating_as_the_folder_it_left_wrote_none():
-    """Found by the review. The author decided bands and not ratings, and a
-    bucket that omits the flag gets a star rating derived from energy."""
+    """Bands, not ratings: a bucket omitting the flag would get a rating from energy."""
     assert routing.rates(DECLARED, HOLDER.id) is False
     assert routing.rates(DECLARED, PROMOTED.id) is False
 
@@ -135,8 +134,7 @@ def test_a_former_place_competes_where_it_is_declared_and_where_it_sits_and_nowh
     kind, subs = routing.competing_subs(DECLARED, PROMOTED.id)
     assert kind is routing.Competing.BAND
     assert subs == {band.id for band in DECLARED.energy.bands} | {SINK, FORMER.id}
-    # IN THE FOLDER THAT HOLDS IT TOO, as it did before the promotion, and the
-    # kind there is still that folder's own.
+    # In the folder that holds it too, with that folder's own kind.
     kind, subs = routing.competing_subs(DECLARED, HOLDER.id)
     assert kind is routing.Competing.STYLE
     assert FORMER.id in HELD_FORMERLY
@@ -146,8 +144,7 @@ def test_a_former_place_competes_where_it_is_declared_and_where_it_sits_and_nowh
             assert FORMER.id not in routing.competing_subs(DECLARED, bucket.id)[1], bucket.id
             assert (PROMOTED.id, FORMER) not in routing.former_places(DECLARED, bucket.id)
             if not bucket.formerly:
-                # A BUCKET NO FORMER PLACE INVOLVES HAS NONE, strictly, so an
-                # index that leaks one into an unrelated bucket fails here.
+                # A bucket no former place involves has none, strictly.
                 assert routing.former_places(DECLARED, bucket.id) == (), bucket.id
     for bucket_id in (PROMOTED.id, HOLDER.id):
         assert routing.former_place(DECLARED, bucket_id, FORMER.id) is FORMER
@@ -244,12 +241,9 @@ def test_adoption_places_a_track_the_old_playlist_does_not_hold():
         (8, (), HIGH, HIGH, (FORMER.id,)),
         (8, (HIGH,), HIGH, "", (FORMER.id,)),
         (8, (LOW,), HIGH, HIGH, tuple(sorted((FORMER.id, LOW)))),
-        # Nothing has to be read to know a playlist the taxonomy stopped
-        # declaring is not the track's place, and the no reading sub says
-        # nothing false about it.
+        # A playlist the taxonomy stopped declaring is not the track's place, unread.
         (None, (), SINK, SINK, (FORMER.id,)),
-        # Filed in the no reading sub by an additive writer while it sat in the
-        # old playlist: listing it as left for want of a reading kept it in both.
+        # Filed in the no reading sub while in the old playlist: listing it kept it in both.
         (None, (SINK,), SINK, "", (FORMER.id,)),
     ],
     ids=["its-band", "already-in-it", "and-a-stale-band", "no-reading", "no-reading-in-the-sink"],
@@ -334,10 +328,8 @@ def test_a_track_in_the_old_playlist_with_nothing_to_move_on_is_listed_under_its
 
 
 def test_a_track_in_the_old_playlist_whose_genre_names_another_style_moves_to_that_style():
-    """Found by the review. The old playlist competed in its folder until the
-    promotion, and a track there with another style's genre was moved to that
-    style. Competing in the promoted bucket alone, adoption added the style
-    and nothing ever took the track out of the old playlist."""
+    """The old playlist still competes in its folder, so a track there with another
+    style's genre leaves it for that style."""
     tracks = [_scanned("t", energy=8, genre=STAYING_GENRE)]
     (entry,) = _adoption(tracks, _in_old("t")).entries
     assert entry.held_elsewhere and not entry.applicable
@@ -358,10 +350,8 @@ def test_a_track_in_the_old_playlist_whose_genre_names_another_style_moves_to_th
 
 @pytest.mark.parametrize("band", [HIGH, LOW], ids=["its-reading", "another-band"])
 def test_a_place_the_holding_bucket_settles_is_not_asked_about_in_the_declaring_one(band):
-    """Found by the second review. The track's genre names a style of the old
-    folder and it sits in the old playlist and in a band of the promoted
-    bucket. Both buckets planned leaving the one membership, or one moved the
-    track while the other listed it as left beside that move."""
+    """A track in the old playlist and a promoted band, its genre naming an old
+    folder style, is settled by the holding bucket alone."""
     held = {PROMOTED.id: {"t": (FORMER.id, band)}, HOLDER.id: {"t": (FORMER.id,)}}
     plan = _moves([_scanned("t", energy=8, genre=STAYING_GENRE)], held)
     (move,) = plan.moves
@@ -499,9 +489,7 @@ def test_a_genre_that_left_the_promoted_bucket_since_the_approval_is_a_stale_dec
     assert raised.value.cause.reason == "decision-stale"
 
 
-# ---------------------------------------------------------------------------
 # The verb, against a disposable library filed under the old shape
-# ---------------------------------------------------------------------------
 
 #: Content identifier, genre, energy tag, and the places seeded: ``old`` is the
 #: playlist the promotion left, anything else a band of the promoted bucket.
@@ -529,16 +517,11 @@ _BAND = {
 
 
 def old_shape_text() -> str:
-    """The shipped template with the promotion undone, as a library's own copy.
+    """The shipped template with the promotion undone, as a library set up before
+    R-797 holds it; checked below to be the shape it claims.
 
-    A library set up before R-797 holds this shape until a person edits it.
-    Rebuilt from the shipped text so that everything else in it stays the
-    shipped template, and checked below to be the shape it claims.
-
-    THE BUCKET SPLIT OUT OF THE PROMOTED ONE GOES TOO (U118). Its words were
-    the old sub's, and its split places name a bucket this shape has not got.
-    Hip-Hop's promotion stays, which is a shape no library held, and is kept
-    because only R&B's is being undone here.
+    The bucket split out of the promoted one goes too (U118), since its split
+    places name a bucket this shape has not got. Hip-Hop's promotion stays.
     """
     text = taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME)
     start = text.index("# R&B AT THE TOP LEVEL")
@@ -603,8 +586,7 @@ def test_the_gate_shows_every_track_leaving_the_old_playlist_and_every_one_left(
         assert row["target"] == band, content_id
     assert rows["r-already-in-band"]["add"] == ""
     assert rows["r-reads-high"]["add"] == HIGH
-    # The track a person filed there under another style's genre goes to that
-    # style, in the folder that holds the old playlist.
+    # A track filed there under another style's genre goes to that style.
     by_hand = rows["r-by-hand"]
     assert (by_hand["bucket"], by_hand["add"], by_hand["remove"]) == (
         HOLDER.id,
@@ -634,8 +616,7 @@ def test_an_approved_move_files_each_track_in_its_band_and_a_second_plans_nothin
         assert removed[content_id] == {OLD_PLACE}, content_id
     assert after["r-by-hand"] == {destination(DECLARED, HOLDER.id, STAYING_SUB)}
     assert removed["r-by-hand"] == {OLD_PLACE}
-    # NO TRACK IS IN BOTH, which is R8, asked of every track in the library:
-    # whatever still sits in the old playlist sits nowhere else.
+    # No track is in both (R8): what sits in the old playlist sits nowhere else.
     for content_id, places in after.items():
         assert not (OLD_PLACE in places and len(places) > 1), content_id
     # Left where they were, and nothing of theirs removed.
@@ -664,12 +645,8 @@ def test_an_approved_move_files_each_track_in_its_band_and_a_second_plans_nothin
 
 
 def test_a_library_whose_own_taxonomy_still_has_the_sub_moves_no_track_of_that_sub(promoted):
-    """Until a person edits the library's copy, the old shape holds and nothing
-    is filed twice: the tracks are where that taxonomy says they belong.
-
-    THE ONE MOVE IT DOES PLAN IS THE OLD SHAPE'S OWN. The track a person filed
-    there by hand carries another style's genre, and under the old taxonomy
-    the playlist is a live style sub, so R-758's rule moves it to its style.
+    """Under the library's old shape nothing is filed twice. The one move planned is
+    the old shape's own: R-758 moves a hand filed track to its genre's style.
     """
     target = config.state_path("taxonomy_active", promoted)
     target.parent.mkdir(parents=True, exist_ok=True)

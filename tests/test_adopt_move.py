@@ -63,9 +63,7 @@ MANUAL = next(e.id for e in DECLARED.sub_classes if e.policy is taxonomy.SubPoli
 DERIVED = next(e.id for e in DECLARED.sub_classes if e.policy is taxonomy.SubPolicy.DERIVED)
 
 
-# ---------------------------------------------------------------------------
 # The plan, with no database
-# ---------------------------------------------------------------------------
 
 
 def _pure_energy_bucket() -> taxonomy.Bucket:
@@ -175,8 +173,7 @@ def _refused(call, reason: str = "decision-stale"):
         (8, (MED,), HIGH, (MED,)),
         (8, (LOW, MED, HIGH), "", tuple(sorted((LOW, MED)))),
         (5, (SINK,), MED, (SINK,)),
-        # R-758's rule in the entry's own bucket, untouched by R-780: a reading
-        # naming a third band adds it, as adoption itself would file it there.
+        # R-758 in the entry's own bucket: a reading naming a third band adds it.
         (1, (MED, HIGH), LOW, tuple(sorted((MED, HIGH)))),
     ],
     ids=["leaves-med", "three-bands", "leaves-the-sink", "a-third-band"],
@@ -243,8 +240,7 @@ _LEFT_ALONE = {
         _scanned("t", HERE, energy=8), {HERE: {"t": (MED,)}}, {HERE: {"t": (MED,)}}, {},
         {"reason": adopt_move.LEFT_UNNAMED, "holds_unnamed": (MED,)},
     ),
-    # R-780: nothing is ADDED in a bucket the genre does not name, so a
-    # reading that picks none of the subs held there leaves the track listed.
+    # R-780: nothing is added in a bucket the genre does not name.
     "names-neither-elsewhere": (
         _scanned("t", THERE, energy=1), {HERE: {"t": (MED, HIGH)}}, {}, {},
         {"bucket": HERE, "reason": adopt_move.LEFT_NAMES_NEITHER, "target": LOW,
@@ -449,9 +445,7 @@ def test_a_frozen_row_short_of_a_field_raises_rather_than_defaulting():
             adopt_move.from_rows([short])
 
 
-# ---------------------------------------------------------------------------
 # R-780: the tree as it stands, in buckets adoption's entry does not claim
-# ---------------------------------------------------------------------------
 
 
 def test_a_double_in_a_bucket_the_genre_does_not_name_moves_on_the_reading():
@@ -673,9 +667,7 @@ def test_a_tree_path_move_is_checked_by_the_worker_in_the_bucket_it_names():
         assert said in cause.detail["moved_under"]["t"], said
 
 
-# ---------------------------------------------------------------------------
 # The worker's check of each approved row, with no database
-# ---------------------------------------------------------------------------
 
 
 def test_a_sub_class_in_an_approved_row_is_refused_by_what_competes_now():
@@ -758,9 +750,7 @@ def test_what_is_left_of_a_move_is_narrowed_and_a_finished_one_is_dropped():
     _refused(lambda: move_cli.remaining(approved, unread, DECLARED))
 
 
-# ---------------------------------------------------------------------------
 # A placed library with real tags
-# ---------------------------------------------------------------------------
 
 #: Every library :func:`seed_library` built, by what it was built from: the
 #: directory holding its database and files, and the tree's root identifier.
@@ -772,15 +762,12 @@ def seed_library(cfg, silence: Path, tracks, places, *, on: date, outside=()) ->
 
     ``tracks`` is (content id, genre, energy tag or None) per track and
     ``places`` (folder, playlist, content id) per membership, the folder under
-    the tree's root unless it is named in ``outside``. REAL CONTAINERS WITH
-    REAL TAGS, since a move is a disagreement between a file's tag and its
-    sub, and the tree is seeded through the writer's own find or create under
-    the declared names, which is what a cutover adopts.
+    the tree's root unless it is named in ``outside``. Real containers and tags,
+    since a move is a disagreement between a file's tag and its sub; the tree is
+    seeded through the writer's own find or create under the declared names.
 
-    BUILT ONCE PER MODULE AND COPIED, since the build is most of a test's
-    setup: the database and the files are copied into this machine's library
-    and each recorded location is rewritten to it, which is all a build leaves
-    that depends on where the library is. The cutover is recorded each time.
+    Built once per module and copied into this machine's library, each recorded
+    location rewritten to it; the cutover is recorded each time.
     """
     from cratekit.core import tags
 
@@ -830,11 +817,7 @@ def seed_library(cfg, silence: Path, tracks, places, *, on: date, outside=()) ->
 
 
 def _sql(cfg, statement: str, *params, many: list | None = None) -> list[tuple]:
-    """One statement on the database file in plain SQL, committed: its rows.
-
-    Plain SQL, so what is asserted is what the file holds, the removal marker
-    included, whatever a reader in the product does with it.
-    """
+    """One statement in plain SQL, committed: its rows, as the file holds them."""
     conn = sqlite3.connect(Path(cfg.library.db_path))
     try:
         if many is not None:
@@ -885,8 +868,7 @@ _MOVED = {
     "m-two-buckets",
 }
 _LEFT = {"m-no-reading", "m-genre-elsewhere-reads-low", _TWICE}
-#: The moves the plan holds: one per track, and two for the track that doubles
-#: in both buckets.
+#: The moves the plan holds: one per track, two for the track in both buckets.
 _MOVE_ROWS = len(_MOVED) + 1
 #: Of the moves, the ones adoption's own plan withholds over a held place.
 _WITHHELD_BY_ADOPTION = {"m-med-reads-high", "m-vox-and-med", "m-sink-now-reads", "m-style"}
@@ -925,8 +907,7 @@ def moved(machine, silence):  # noqa: F811
     tracks.append((_TWICE, energy.display, "5"))
     places.append((*_place(MED), _TWICE))
     seed_library(machine, silence, tracks, places, on=date(2026, 9, 29))
-    # THE SECOND ROW OF ONE PAIR, as rekordbox made them (R-781). The additive
-    # writer will not write a pair twice, so it is inserted as a row.
+    # The second row of one pair (R-781), inserted since the writer will not write it.
     _sql(
         machine,
         "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, "
@@ -1161,8 +1142,7 @@ def test_an_approved_move_adds_the_new_sub_and_removes_the_old(moved, monkeypatc
     # R-780: the ones the tree path moves were never on adoption's list.
     assert {"m-genre-elsewhere-reads-high", "m-no-genre", "m-two-buckets"}.isdisjoint(withheld)
 
-    # A move asks nothing about vocals (R-788), so neither read may stop one,
-    # and it takes one capture.
+    # A move asks nothing about vocals (R-788), so neither read may stop one.
     def never(*_args, **_kwargs):
         raise AssertionError("the move verb read the vocals")
 
@@ -1188,8 +1168,7 @@ def test_an_approved_move_adds_the_new_sub_and_removes_the_old(moved, monkeypatc
     assert after["m-vox-and-med"] == {_place(DERIVED), _place(HIGH)}
     assert after["m-sink-now-reads"] == {_place(MED)}
     assert after["m-style"] == {_place(style.subs[1].id, style)}
-    # R-780: the stale band goes in the bucket the genre does not name, and
-    # the place the genre does name is not touched.
+    # R-780: the stale band goes; the place the genre names is not touched.
     assert after["m-genre-elsewhere-reads-high"] == {_place(HIGH), _place(HIGH, _other_bucket())}
     assert after["m-no-genre"] == {_place(LOW)}
     # Two moves on one track, one in each bucket.
@@ -1273,8 +1252,7 @@ def test_an_approved_move_adds_the_new_sub_and_removes_the_old(moved, monkeypatc
         assert len(jobs.list_jobs(store)) == 1
     assert _rows(moved) == rows
 
-    # A moved track can be moved back: a removed membership is not counted as
-    # present, so it gets a live row.
+    # A removed membership is not present, so moving back gets a live row.
     music = Path(moved.library.root) / "Music"
     assert tags.write_tags(music / "m-med-reads-high.flac", {"energylevel": "5"}) is True
     collection.reset_cache()
@@ -1411,8 +1389,7 @@ def test_an_addition_never_lands_in_a_playlist_rekordbox_removed(moved):
         "m-both-reads-high",
         "m-vox-and-med",
     )
-    # Three additions in the live playlist. The one row in the removed playlist
-    # is the row the fixture seeded there, which nothing here touches.
+    # Three additions live; the removed playlist keeps only the seeded row.
     assert found == [(0, 3), (1, 1)]
 
 
@@ -1446,8 +1423,7 @@ def test_a_refusal_at_the_second_commit_keeps_its_own_cause_and_the_job_says_in_
         raise rb_writer._running("rekordbox was opened while this ran")
 
     with monkeypatch.context() as patched:
-        # The guarded commit asks whether rekordbox is closed. The additions'
-        # commit is let through and the removals' is refused.
+        # The additions' commit is let through and the removals' is refused.
         patched.setattr(rb_writer, "assert_rekordbox_closed", _after_first(opened))
         code, failed = drive(_resume(job_id))
 
@@ -1455,8 +1431,7 @@ def test_a_refusal_at_the_second_commit_keeps_its_own_cause_and_the_job_says_in_
     with jobs.open_store() as store:
         job = jobs.get(store, job_id)
         (item,) = jobs.items(store, job_id)
-    # THE ITEM FAILED ON THE REFUSAL ITSELF, with its own slug and remedy, and
-    # not on this verb's account of an unfinished move.
+    # The item failed on the refusal itself, with its own slug and remedy.
     assert item.cause.reason == "rekordbox-running", item.cause
     assert "adopt-entries-failed" not in str(job.cause.to_json())
     assert "rekordbox-running" in str(job.cause.to_json())
@@ -1678,8 +1653,7 @@ def test_the_worker_refuses_rows_that_are_not_approved_and_a_job_naming_nobody(m
     run_id, job_id = approve_and_queue(VERB, GATE)
     with jobs.open_store() as store:
         payload = jobs.get(store, job_id).payload
-    # The approving actor travels in the payload, and the resume carries the
-    # run that holds the approval.
+    # The actor travels in the payload; the resume carries the approving run.
     assert payload[move_cli.ACTOR_KEY] == "a-person"
     assert payload["digest"] == payload[move_cli.PLAN_KEY]["digest"]
     assert _resume(job_id) == ["--run", run_id, "adopt", "move", "--job", job_id]
@@ -1693,9 +1667,7 @@ def test_the_worker_refuses_rows_that_are_not_approved_and_a_job_naming_nobody(m
     _worker_refuses(moved, job_id, **{move_cli.ACTOR_KEY: "a-person", move_cli.PLAN_KEY: document})
 
 
-# ---------------------------------------------------------------------------
 # The writer's own guards
-# ---------------------------------------------------------------------------
 
 
 def _write(cfg, moves):
@@ -1967,7 +1939,6 @@ def test_the_verb_is_its_own_and_resort_is_still_additive():
     assert (approve.name, approve.explicit, approve.options) == (GATE, True, ("approve", "abort"))
     resort = registry.entry("route.resort")
     assert "additive" in resort.summary
-    # U219 gave the resort a plan gate of its own, over the tracks it adds,
-    # and it is still not this verb's: it approves adds, never a move.
+    # The resort's own plan gate (U219) approves adds, never a move.
     (plan,) = [spec for spec in resort.gates if spec.digest_source == "plan"]
     assert (plan.name, plan.options) == ("route.resort.apply", ("apply", "abort"))

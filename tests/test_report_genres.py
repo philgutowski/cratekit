@@ -37,8 +37,7 @@ from tests.test_adopt_workers import (  # noqa: F401
 DECLARED = taxonomy.default_taxonomy()
 VERB = ["report", "genres"]
 
-#: The folder that routes by source genre, and one of its style subs with the
-#: source strings its map files there.
+#: The folder that routes by source genre, and a style sub with its map's strings.
 STYLE = next(bucket for bucket in DECLARED.buckets if bucket.sub_by_source is not None)
 DEFAULT_SUB = next(sub for sub in STYLE.subs if sub.id == STYLE.sub_by_source.default)
 #: A style sub two source strings file under, so one genre has two spellings.

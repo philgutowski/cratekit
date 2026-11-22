@@ -466,9 +466,7 @@ def test_a_track_retagged_out_of_soul_since_the_approval_is_a_stale_decision(gen
     assert raised.value.cause.reason == "decision-stale"
 
 
-# ---------------------------------------------------------------------------
 # The verb, against a disposable library filed under the shape before U118
-# ---------------------------------------------------------------------------
 
 #: Content identifier, genre, energy tag, and the places seeded: ``old`` is the
 #: Hip-Hop playlist of the non electronic folder, ``vox`` R&B's vocal sub, and
@@ -485,8 +483,7 @@ _SEEDED = (
     ("s-old", "Soul", "5", ("soul-rnb",)),
     ("r-old", "R&B", "2", ("soul-rnb",)),
 )
-#: Where each moved track ends among the competing places: Soul's or
-#: Hip-Hop's band, or the no reading sub.
+#: Where each moved track ends: Soul's or Hip-Hop's band, or the no reading sub.
 _ENDS = {
     "s-med": (SOUL, MED),
     "s-combined": (SOUL, HIGH),
@@ -553,8 +550,7 @@ def test_an_approved_move_files_soul_and_hip_hop_in_their_folders_and_keeps_r_an
         kept = {_seeded_place(place) for place in seeded if place == "vox"}
         assert after[content_id] == {destination(DECLARED, bucket.id, sub), *kept}, content_id
         assert removed[content_id] == left, content_id
-    # THE VOCAL SUB IS KEPT: a Soul track leaves R&B / Med and stays in R&B's
-    # "with vox", which is a sub class and never a place a move removes.
+    # The vocal sub is kept: a sub class is never a place a move removes.
     assert RNB_VOX in after["s-med"]
     # R&B and MPB tracks are where they were, and nothing of theirs removed.
     for content_id in _STAYING:
