@@ -1,32 +1,19 @@
 """The ``repair.rows`` verb: give a content row rekordbox's own defaults where it
 lacks them, and its file's inode where the binding numbered it at random.
 
-WHY THIS IS A VERB (R-923, U115). A row the native landing created before the
-landing set these columns, or before it set the file id, will not load to a
-deck, and the only other way back is to remove it from the collection and
-import the file again in rekordbox, which drops every membership adoption gave
-it. This fills the columns and renumbers the row in place.
+A verb (R-923, U115) because the only other way back for such a row is to
+remove it in rekordbox and import again, dropping every membership.
 
-THE ORDER IS ``tag rows``'S, and the plan is made on a read handle:
+The order is ``tag rows``'s: the backup acknowledgment is read before the plan
+and the gate (R-733); the plan is made on a read handle closed before the
+gate; the gate is asked over the digested plan, and an empty plan still asks,
+since every declared gate fires; only ``apply`` over a plan that writes opens
+the database to write, where a running rekordbox refuses. The second
+invocation rebuilds the plan, so a row filled in between moves the digest and
+refuses ``decision-stale``. The gate takes no inline answer (R34).
 
-* the backup acknowledgment is read before the plan is built and before the
-  gate (R-733);
-* the plan is made on a handle opened to read and closed before the gate;
-* the gate is asked over the digested plan, AND AN EMPTY PLAN STILL ASKS: every
-  declared gate has to fire, and a plan that writes nothing is then a no op;
-* only ``apply`` over a plan that writes opens the database with write intent,
-  so that is where a running rekordbox or its agent refuses, and the engine
-  checks each row is still as the plan read it before the session is entered.
-
-THE SECOND INVOCATION REBUILDS THE PLAN from the database and the gate compares
-its digest with the one the answer was recorded against, so a row rekordbox
-filled in between moves the digest and the run refuses ``decision-stale``.
-
-THE GATE TAKES NO INLINE ANSWER. It is answered by a separate recorded act with
-an actor, the way every write to a live library's rows is (R34).
-
-Layer: write, as ``metadata_cli`` is. It names :mod:`cratekit.cli.output` and
-nothing else from the command-line layer.
+Layer: write. It names :mod:`cratekit.cli.output` and nothing else from the
+command-line layer.
 """
 
 from __future__ import annotations
@@ -171,8 +158,8 @@ def _written(written: row_defaults.Written) -> dict[str, str]:
 def _plan(cfg: config.Config) -> row_defaults.DefaultsPlan:
     """The plan over the library as it stands, through a handle opened to read.
 
-    THE BOUND IS MEASURED FIRST, on the volume, before the database is opened,
-    so the file it creates and removes is never inside a handle's lifetime.
+    The bound is measured first, so the file it creates and removes is never
+    inside a handle's lifetime.
     """
     bound = row_defaults.inode_bound(cfg)
     db = rb_writer.open_db(

@@ -2,34 +2,19 @@
 chosen live content rows, the experiment that asks which column keeps a binding
 row off a deck (A32, R-928).
 
-WHY THIS IS A VERB. A write to the live database outside a gated verb is
-forbidden, and the question is worth a handful of rows. After the defaults
-(R-923) and the file id (U115) were ruled out at sitting 36, a comparison of
-all 78 content columns left three candidates, two of which the probe may write.
-The verb takes any number of ``--set ROW:COLUMN=VALUE`` triples, so each subset
-of candidates can sit on its own row and one reading of rekordbox's context
-menus answers them all. What rekordbox shows on each row is the answer, read
-at an attended sitting.
+A verb because a write to the live database outside a gated verb is
+forbidden. It takes any number of ``--set ROW:COLUMN=VALUE`` triples, so one
+reading of rekordbox's context menus at an attended sitting answers them all.
 
-THE ORDER IS ``repair rows``'S:
+The order is ``repair rows``'s: the backup acknowledgment before the plan and
+the gate (R-733); the triples parsed and the plan made on a read handle closed
+before the gate, refusing a malformed triple, a column the probe may not
+write, an unknown row, an unheld value and a minority value by name; the gate
+asked over the digested plan even when nothing would be written; only
+``apply`` opens the database to write. The gate takes no inline answer (R34).
 
-* the backup acknowledgment is read before the plan is built and before the
-  gate (R-733);
-* the triples are parsed and the plan is made on a handle opened to read and
-  closed before the gate, refusing by name a malformed triple, a column the
-  probe may not write, an unknown row, a value no other live row carries, and
-  a value fewer rows carry than carry the row's own;
-* the gate is asked over the digested plan, AND A PLAN THAT WRITES NOTHING
-  STILL ASKS: every declared gate has to fire, and the apply is then a no op;
-* only ``apply`` opens the database with write intent, so that is where a
-  running rekordbox or its agent refuses, and the engine checks each row is
-  still as the plan read it before the session is entered.
-
-THE GATE TAKES NO INLINE ANSWER. It is answered by a separate recorded act with
-an actor, the way every write to a live library's rows is (R34).
-
-Layer: write, as ``row_defaults_cli`` is. It names :mod:`cratekit.cli.output`
-and nothing else from the command-line layer.
+Layer: write. It names :mod:`cratekit.cli.output` and nothing else from the
+command-line layer.
 """
 
 from __future__ import annotations
@@ -141,10 +126,8 @@ def _written(written: row_link.Written) -> dict[str, str]:
 
 
 def _plan(cfg: config.Config, args) -> row_link.ProbePlan:
-    """The plan over the library as it stands, through a handle opened to read.
-
-    THE TRIPLES ARE PARSED FIRST, so a malformed one refuses before the
-    database is opened at all.
+    """The plan through a handle opened to read, the triples parsed first so a
+    malformed one refuses before the database is opened.
     """
     triples = [row_link.parse_triple(spec) for spec in args.probes]
     db = rb_writer.open_db(
