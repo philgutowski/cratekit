@@ -1,18 +1,15 @@
 """The staged intake pipeline. One internal shape, then match, then place.
 
 Every input door lands here as ``Wanted`` rows (R13). Identification-only
-stops after recognition and writes a tracklist. A file already on disk
-never touches the network. Recognition spend is gated before any paid
-call. Lossy policy is U15's: this pipeline applies the marker through
-naming, it does not invent a third policy.
-
-Watermarks are not an input. Scope is the list in hand plus owned-dedup
-at match time (KTD11).
+stops after recognition and writes a tracklist. A file already on disk never
+touches the network. Recognition spend is gated before any paid call. Lossy
+policy is U15's, applied through naming. Watermarks are not an input: scope
+is the list in hand plus owned-dedup at match time (KTD11).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Callable
 
@@ -27,23 +24,13 @@ from cratekit.intake.recognize import Identifier
 
 
 @dataclass(frozen=True, slots=True)
-class IdentifyResult:
-    """Identification-only output: a tracklist, the Wanted rows behind it, and
-    what finding them cost. The counts are the identifier's own, carried
-    through so a verb can say whether the coverage was complete, how much of
-    it was answered from the recognition cache, and whether what this pass
-    paid for could be kept."""
+class IdentifyResult(recognize.Identified):
+    """Identification-only output: the identifier's rows and counts, carried
+    through so a verb can say whether coverage was complete, how much the
+    recognition cache answered and whether what was paid for could be kept,
+    plus the tracklist those rows make."""
 
-    rows: tuple[Wanted, ...]
-    tracklist: str
-    calls: int = 0
-    chunks: int = 0
-    misses: int = 0
-    unreached: int = 0
-    cached: int = 0
-    cache_unwritten: str = ""
-    digest: str = ""
-    parts: int = 1
+    tracklist: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,18 +58,8 @@ def identify_only(
         recognition=recognition,
         progress=progress,
     )
-    return IdentifyResult(
-        rows=found.rows,
-        tracklist=recognize.tracklist_text(found.rows),
-        calls=found.calls,
-        chunks=found.chunks,
-        misses=found.misses,
-        unreached=found.unreached,
-        cached=found.cached,
-        cache_unwritten=found.cache_unwritten,
-        digest=found.digest,
-        parts=found.parts,
-    )
+    copied = {one.name: getattr(found, one.name) for one in fields(recognize.Identified)}
+    return IdentifyResult(**copied, tracklist=recognize.tracklist_text(found.rows))
 
 
 def ingest_file(
@@ -111,29 +88,16 @@ def ingest_file(
         declared=declared,
         registry=registry,
     )
-    return FileIngestResult(
-        placed=tuple(placed),
-        destination=destination,
-        networked=False,
-    )
+    return FileIngestResult(placed=tuple(placed), destination=destination, networked=False)
 
 
-def acquire_lossy_or_refuse(
-    *,
-    policy: LosslessPolicy | str,
-    source_is_lossless: bool,
-) -> bool:
+def acquire_lossy_or_refuse(*, policy: LosslessPolicy | str, source_is_lossless: bool) -> bool:
     """True when a lossy source may proceed and must be marked.
 
     Strict policy raises. Allowed-and-marked returns True. A lossless
     source returns False (no marker).
     """
-    resolved = (
-        policy
-        if isinstance(policy, LosslessPolicy)
-        else LosslessPolicy(policy)
-    )
-    decision = decide_lossless(resolved, source_is_lossless=source_is_lossless)
+    decision = decide_lossless(LosslessPolicy(policy), source_is_lossless=source_is_lossless)
     if not decision.permitted:
         raise refuse(
             "lossy-refused",
@@ -146,9 +110,7 @@ def acquire_lossy_or_refuse(
 
 
 def ingest_tracklist(
-    text: str,
-    *,
-    match_against: Callable[[tuple[Wanted, ...]], MatchResult] | None = None,
+    text: str, *, match_against: Callable[[tuple[Wanted, ...]], MatchResult] | None = None
 ) -> tuple[Wanted, ...]:
     """Normalize pasted (or transcribed) text to Wanted rows, then optionally match."""
     rows = normalize.from_tracklist(text)

@@ -1,23 +1,16 @@
 """Set identification, gated before any paid call.
 
-Recognition here is ACRCloud, reached through the operator's own key. This
-module does not use a watermark, does not take a date floor, and does not
-ask sync how far a previous run got (KTD11). Scope of a set is the audio
-the caller handed over, plus owned-dedup later in matching.
+Recognition is ACRCloud, reached through the operator's own key. No
+watermark, no date floor, no asking sync how far a previous run got (KTD11):
+scope is the audio the caller handed over, plus owned-dedup in matching.
 
-The spend gate is presence, not retrieval. Doctor's recognition check
-records that both keys exist. Retrieving them here would prompt the
-keychain on macOS, which is how an unattended run hangs. The first paid
-call is the first retrieval, and it happens only after this gate has
-passed.
+The spend gate is presence, not retrieval. Retrieving the keys here would
+prompt the keychain on macOS, which is how an unattended run hangs, so the
+first paid call is the first retrieval. A missing ffmpeg (carves the chunks)
+or ffprobe (measures the recording, so the spend is known first) is refused
+here too, before any spend rather than after the first failed carve.
 
-A missing helper binary (ffmpeg, used to carve the 12 second chunks, and
-ffprobe, which measures the recording so the spend is known before the
-first call) is the same class of refusal: report it before any spend, not
-after the first failed carve.
-
-The implementation behind the seam is :mod:`cratekit.intake.acrcloud`. It
-landed in U57; until then ``identify`` refused on every real call.
+The implementation behind the seam is :mod:`cratekit.intake.acrcloud`.
 """
 
 from __future__ import annotations
@@ -37,25 +30,15 @@ from cratekit.core.exit_codes import Remedy
 class Identified:
     """What one identification found, and what it cost to find it.
 
-    ``rows`` is the tracklist. The four counts are what a bare tuple of rows
-    cannot say: how many paid calls were made, how many chunks the grid asked
-    for, how many the service answered with nothing, and how many got NO
-    answer at all. The last one is the one a report has to carry, because a
-    set where most chunks were never answered is not a set nobody recognised,
-    and the two look identical as a tuple of rows.
-
-    ``calls`` is what THIS pass paid for. ``cached`` is how many of the chunks
-    were answered from the recognition cache instead, so a second pass over an
-    unchanged recording reads ``calls`` of zero and ``cached`` equal to
-    ``chunks``. ``cache_unwritten`` is empty unless the answers this pass paid
-    for could not be kept, and then it says why: the pass still succeeded, and
-    the next one over the same recording will pay again, which a person is
-    owed the chance to know before it happens. ``digest`` is the sha256 of the
-    recording's bytes when they could be read, which is the one name two
-    recordings that share a file name do not share. ``parts`` is how many
-    runs the recording was identified in, one for any set that fits the per
-    run bound and more for a set longer than it (R-706); the rows are still
-    one set's, folded once across the parts.
+    ``rows`` is the tracklist. ``unreached`` counts chunks that got NO answer,
+    apart from ``misses``, because a set where most chunks were never answered
+    is not a set nobody recognised, and the two look identical as rows.
+    ``calls`` is what THIS pass paid for and ``cached`` what the recognition
+    cache answered instead. ``cache_unwritten`` says why paid answers could
+    not be kept, so a person knows the next pass pays again. ``digest`` is the
+    sha256 of the recording's bytes, the one name two recordings sharing a
+    file name do not share. ``parts`` is how many runs the set took (R-706);
+    the rows are still one set's, folded once across the parts.
     """
 
     rows: tuple[Wanted, ...]
@@ -69,31 +52,23 @@ class Identified:
     parts: int = 1
 
 
-#: An identifier answers with an :class:`Identified`, or with the bare rows
-#: when it has nothing to say about cost, which is what a fake in the suite
-#: does. ``identify`` normalises the two.
+#: An identifier answers with an :class:`Identified`, or with bare rows (a
+#: fake in the suite); ``identify`` normalises the two.
 Identifier = Callable[[Path], "Identified | tuple[Wanted, ...]"]
 
-#: What a progress line is handed (R-924). None says nothing, which is what
-#: JSON output, a queued job and an injected identifier all get.
+#: What a progress line is handed (R-924). None says nothing.
 Progress = Callable[[str], None]
 
 #: The binaries recognition needs, in the order a person would install them.
-#: Both are checked by presence here and resolved again by the carver at call
-#: time, so an override that points at nothing refuses there by name.
+#: Checked by presence here and resolved again by the carver at call time.
 BINARIES = ("ffmpeg", "ffprobe")
 
 
 def recognition_ready() -> tuple[str, ...]:
     """Names of the things that are missing, empty when spend may start."""
-    missing: list[str] = []
-    if not secrets.exists(str(secrets.Credential.IDENTIFY_KEY)):
-        missing.append(str(secrets.Credential.IDENTIFY_KEY))
-    if not secrets.exists(str(secrets.Credential.IDENTIFY_SIGNING_KEY)):
-        missing.append(str(secrets.Credential.IDENTIFY_SIGNING_KEY))
-    for name in BINARIES:
-        if binaries.find(name) is None:
-            missing.append(name)
+    keys = (secrets.Credential.IDENTIFY_KEY, secrets.Credential.IDENTIFY_SIGNING_KEY)
+    missing = [str(key) for key in keys if not secrets.exists(str(key))]
+    missing += [name for name in BINARIES if binaries.find(name) is None]
     return tuple(missing)
 
 
@@ -124,27 +99,16 @@ def identify(
 ) -> Identified:
     """Identify the tracks in ``source``: the Wanted rows, and what it cost.
 
-    Downloads nothing. Writes nothing. The caller decides whether to persist
-    a tracklist. ``identifier`` is injected so the suite can prove the gate
-    and the shape without spending; left unset, the bound ACRCloud
-    identifier runs, and that is the paid path.
+    Downloads nothing, writes nothing. ``identifier`` is injected so the suite
+    proves the gate without spending; unset, the bound ACRCloud identifier
+    runs, which is the paid path.
 
-    THE GATE RUNS BEFORE THE IDENTIFIER IS BUILT. Building the bound one
-    touches nothing, but the order is the contract rather than a nicety: a
-    missing key refuses here, by name, and the keychain is never asked.
-
-    ``refresh`` asks the bound identifier to read nothing from the recognition
-    cache and pay for every chunk again. An injected identifier is handed the
-    recording and nothing else, so what it keeps is its own business.
-
-    ``recognition`` is the configuration's section, and THE PAID PATH WILL NOT
-    RUN WITHOUT IT (R-301). The host and the month's bound come from nowhere
-    else, so a caller that forgot to hand them over is a defect to be told
-    about rather than a run against a region and a month nobody chose.
-
-    ``progress`` reaches the bound identifier only, which says the plan and
-    the count as it pays (R-924). An injected identifier spends nothing, so
-    it has nothing to count.
+    THE GATE RUNS BEFORE THE IDENTIFIER IS BUILT, so a missing key refuses by
+    name and the keychain is never asked. ``refresh`` and ``progress`` reach
+    the bound identifier only. THE PAID PATH WILL NOT RUN WITHOUT
+    ``recognition`` (R-301): the host and the month's bound come from nowhere
+    else, so a forgotten section is a defect, not a run against a region and
+    a month nobody chose.
     """
     assert_recognition_ready()
     if identifier is None:
@@ -155,9 +119,7 @@ def identify(
             )
         from cratekit.intake import acrcloud  # noqa: PLC0415 - bound only on the paid path
 
-        identifier = acrcloud.bound_identifier(
-            recognition, refresh=refresh, progress=progress
-        )
+        identifier = acrcloud.bound_identifier(recognition, refresh=refresh, progress=progress)
     found = identifier(source)
     if isinstance(found, Identified):
         return found
