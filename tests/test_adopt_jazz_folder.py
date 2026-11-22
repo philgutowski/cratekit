@@ -1,49 +1,46 @@
 """U133: Jazz is a genre folder of its own, and its tracks move in.
 
-Jazz was a style sub of the non electronic folder with no energy split, and
-is promoted the way Hip-Hop was (U118), through a former place: a folder under
-the tree with the dance bands, Unsorted, "with vox" and Favorites, declaring
-the old NonElectronic / Jazz playlist as the place its tracks leave. Unlike
-R&B and Hip-Hop, its keyword rule moved with it, by the author's naming.
-
-Held here: where the words route and tag, what the shipped template declares,
-what competes, what adoption withholds, what the move plans, and then the
-verb through the real dispatcher against a disposable library with real tags.
-
-Every expected identifier is derived from the shipped taxonomy's declarations,
-except the genre words and the folder names, which are the author's decision
-and are named.
+Jazz was a style sub of the non electronic folder and is promoted the way
+Hip-Hop was (U118), through a former place, its keyword rule moving with it by
+the author's naming. Held here: where the words route and tag, the declaration,
+what competes, adoption, the move plan, and the verb against a disposable
+library with real tags. Identifiers are derived from the shipped declarations,
+except the genre words and folder names, which are the author's.
 
 D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
 """
 
 from __future__ import annotations
 
-import shutil
 from datetime import date
-from pathlib import Path
 
 import pytest
 
 from cratekit.adopt import apply_cli, artifacts, collection
-from cratekit.adopt import move as adopt_move
 from cratekit.adopt import placements as adopt_placements
-from cratekit.adopt import plan as adopt_plan
 from cratekit.adopt import scan as adopt_scan
-from cratekit.core import rb_writer, routing, taxonomy, tree_registry
+from cratekit.core import routing
 from cratekit.core.exit_codes import ExitCode
 from cratekit.write import rebuild
 from cratekit.write.routing_pass import destination
-from tests import adopt_fixtures
 from tests import legacy_taxonomy as legacy
 from tests.test_adopt_move import (  # noqa: F401
+    DECLARED,
+    HIGH,
+    LOW,
+    MED,
+    SINK,
     VERB,
+    _adoption,
     _approve_and_run,
     _live,
+    _moves,
     _removed,
     _rows,
     _shown,
+    seed_library,
 )
+from tests.test_adopt_move import classified as _scanned
 from tests.test_adopt_workers import (  # noqa: F401
     _platform_seams,
     _reader_cache,
@@ -52,9 +49,6 @@ from tests.test_adopt_workers import (  # noqa: F401
     machine,
     silence,
 )
-
-DECLARED = taxonomy.default_taxonomy()
-TREE_ID = DECLARED.tree.id
 
 (JAZZ,) = [bucket for bucket in DECLARED.buckets if bucket.display == "Jazz"]
 (HIPHOP,) = [bucket for bucket in DECLARED.buckets if bucket.display == "Hip-Hop"]
@@ -65,40 +59,9 @@ OLD_JAZZ = (NONELEC.display, FORMER.display)
 VOX = next(entry for entry in DECLARED.sub_classes if entry.id == "with_vox")
 
 
-def _band(level: int) -> str:
-    return next(band.id for band in DECLARED.energy.bands if level <= band.max)
-
-
-LOW, MED, HIGH = _band(1), _band(5), _band(9)
-SINK = DECLARED.energy.no_energy_sub.id
-
-
-def _scanned(content_id: str, *, energy: int | None, genre: str) -> adopt_scan.ScannedTrack:
-    verdict, bucket, _match = adopt_scan.classify_genre(DECLARED, genre)
-    return adopt_scan.ScannedTrack(
-        content_id=content_id,
-        recorded=f"/library/Music/{content_id}.flac",
-        path=f"/library/Music/{content_id}.flac",
-        readability=adopt_scan.Readability.READABLE,
-        disposition=verdict,
-        genre=genre,
-        bucket=bucket,
-        energy=energy,
-    )
-
-
 def _in_old(content_id: str) -> dict:
     """What the placement reader answers for a track in the old Jazz playlist."""
     return {JAZZ.id: {content_id: (FORMER.id,)}, NONELEC.id: {content_id: (FORMER.id,)}}
-
-
-def _adoption(tracks, held: dict) -> adopt_plan.AdoptionPlan:
-    placements = adopt_plan.Placements(read=True, held=held, unnamed={})
-    return adopt_plan.build_adoption_plan(tracks, DECLARED, tree=TREE_ID, placements=placements)
-
-
-def _moves(tracks, held: dict) -> adopt_move.MovePlan:
-    return adopt_move.build_move_plan(_adoption(tracks, held), DECLARED)
 
 
 # ── where the words go, as the author decided ──────────────────────────────
@@ -132,8 +95,9 @@ def test_a_partial_jazz_match_routes_to_jazz_by_the_keyword_rule_the_author_move
 def test_blues_still_routes_as_the_old_code_routed_it(genre):
     """No rule of the routing table names blues, before U133 or after it."""
     assert routing.resolve_bucket(DECLARED, genre).bucket_id != JAZZ.id
-    assert DECLARED.bucket(routing.resolve_bucket(DECLARED, genre).bucket_id).display == (
-        legacy.resolve_genre(genre)[0]
+    assert (
+        DECLARED.bucket(routing.resolve_bucket(DECLARED, genre).bucket_id).display
+        == (legacy.resolve_genre(genre)[0])
     )
 
 
@@ -230,7 +194,8 @@ def test_the_old_playlist_is_found_under_the_identifier_it_was_recorded_by():
     assert FORMER.sub == OLD_SUB_ID
     assert adopt_placements.recorded_under(DECLARED, JAZZ.id, FORMER.id) == (NONELEC.id, OLD_SUB_ID)
     assert adopt_placements.recorded_under(DECLARED, NONELEC.id, FORMER.id) == (
-        NONELEC.id, OLD_SUB_ID
+        NONELEC.id,
+        OLD_SUB_ID,
     )
     assert adopt_placements.named_place(DECLARED, JAZZ.id, FORMER.id) == OLD_JAZZ
 
@@ -249,9 +214,7 @@ def test_adoption_withholds_a_jazz_track_still_in_the_old_playlist():
 def test_a_jazz_track_in_the_old_playlist_moves_into_its_band_and_leaves_it(level, band):
     plan = _moves([_scanned("t", energy=level, genre="Jazz")], _in_old("t"))
     (move,) = plan.moves
-    assert (move.bucket, move.target, move.add, move.remove) == (
-        JAZZ.id, band, band, (FORMER.id,)
-    )
+    assert (move.bucket, move.target, move.add, move.remove) == (JAZZ.id, band, band, (FORMER.id,))
     assert plan.left == ()
 
 
@@ -316,49 +279,13 @@ def _seeded_place(place: str) -> tuple[str, str]:
 @pytest.fixture
 def before_u133(machine, silence):  # noqa: F811
     """A library whose Jazz tracks sit in NonElectronic's Jazz playlist, as on 2026-10-12."""
-    from cratekit.core import tags
-
-    adopt_fixtures.build(
-        machine,
-        tuple(
-            adopt_fixtures.Track(content_id, f"{content_id}.flac", genre)
-            for content_id, genre, _tag, _held in _SEEDED
-        ),
-    )
-    collection.reset_cache()
-
-    music = Path(machine.library.root) / "Music"
-    for content_id, _genre, tag, _held in _SEEDED:
-        path = music / f"{content_id}.flac"
-        shutil.copyfile(silence, path)
-        if tag is not None:
-            assert tags.write_tags(path, {"energylevel": tag}) is True
-
-    handle = rb_writer.open_db(rb_writer.live_db_path(machine), unlock=False, cfg=machine)
-    try:
-        root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
-        sets = rb_writer.ensure_folder(handle, A_SET[0])
-        for content_id, _genre, _tag, held in _SEEDED:
-            for place in held:
-                folder_display, sub_display = _seeded_place(place)
-                folder = (
-                    sets
-                    if place == "set"
-                    else rb_writer.ensure_folder(handle, folder_display, parent=root)
-                )
-                playlist = rb_writer.ensure_playlist(handle, sub_display, folder)
-                rb_writer.add_memberships(handle, playlist, [content_id])
-        handle.session.commit()
-        root_id = str(root.ID)
-    finally:
-        rb_writer.close_db(handle)
-    tree_registry.record_cutover(
-        machine,
-        TREE_ID,
-        root_id=root_id,
-        on=date(2026, 10, 1),
-        source=tree_registry.DerivationSource.TAXONOMY,
-    )
+    tracks = [(content_id, genre, tag) for content_id, genre, tag, _held in _SEEDED]
+    places = [
+        (*_seeded_place(place), content_id)
+        for content_id, _genre, _tag, held in _SEEDED
+        for place in held
+    ]
+    seed_library(machine, silence, tracks, places, on=date(2026, 10, 1), outside=(A_SET[0],))
     return machine
 
 
@@ -403,10 +330,7 @@ def test_an_approved_move_files_jazz_in_its_bands_and_keeps_every_other_membersh
     assert (report["added"], report["removed"]) == (len(_ENDS), len(_ENDS))
     assert sorted(report["moved"]) == sorted(_ENDS)
 
-
-def test_adoption_after_the_move_files_none_of_them_a_second_time(before_u133):
-    _job_id, code, resumed = _approve_and_run()
-    assert code == int(ExitCode.OK), resumed
+    # Adoption after the move files none of them a second time.
     collection.reset_cache()
     rows = _rows(before_u133)
 

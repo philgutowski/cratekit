@@ -1,25 +1,19 @@
 """R-797: a bucket promoted to its own folder leaves the playlist its tracks sat in.
 
-R&B was a style sub of the non electronic folder and became a top level folder
-split by energy. Its tracks still sit in the old playlist, which the taxonomy
-now declares as the new bucket's FORMER PLACE. Held here: what competes, what
-the placement reader finds, what adoption withholds, what the move plans and
-lists, the writer's refusal to file into a former place, and then the verb
-through the real dispatcher against a disposable library with real tags.
-
-Every expected identifier is derived from the shipped taxonomy's declarations
-rather than spelled, except the old shape, which is rebuilt from the shipped
-text by undoing the promotion and is checked to be the shape it claims.
+R&B became a top level folder split by energy, and its old playlist in the non
+electronic folder is its FORMER PLACE. Held here: what competes, what the reader
+finds, what adoption withholds, what the move plans and lists, the writer's
+refusal to file into a former place, and the verb against a disposable library
+with real tags. Identifiers are derived from the shipped declarations, the old
+shape rebuilt from the shipped text and checked to be the shape it claims.
 
 D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
 """
 
 from __future__ import annotations
 
-import shutil
 from dataclasses import replace
 from datetime import date
-from pathlib import Path
 
 import pytest
 
@@ -28,20 +22,30 @@ from cratekit.adopt import move as adopt_move
 from cratekit.adopt import placements as adopt_placements
 from cratekit.adopt import plan as adopt_plan
 from cratekit.adopt import scan as adopt_scan
-from cratekit.core import config, convergence, jobs, rb_writer, routing, taxonomy, tree_registry
+from cratekit.core import config, convergence, jobs, routing, taxonomy
 from cratekit.core.exit_codes import ExitCode
 from cratekit.write import rebuild
 from cratekit.write.routing_pass import destination
-from tests import adopt_fixtures
-from tests.cli_drive import drive
 from tests.test_adopt_move import (  # noqa: F401
-    GATE,
+    DECLARED,
+    HIGH,
+    LOW,
+    MED,
+    SINK,
+    TREE_ID,
     VERB,
+    _adoption,
     _approve_and_run,
+    _decided,
+    _left_counts,
     _live,
+    _moves,
+    _refused_over,
     _removed,
     _rows,
     _shown,
+    classified,
+    seed_library,
 )
 from tests.test_adopt_workers import (  # noqa: F401
     _platform_seams,
@@ -51,9 +55,6 @@ from tests.test_adopt_workers import (  # noqa: F401
     machine,
     silence,
 )
-
-DECLARED = taxonomy.default_taxonomy()
-TREE_ID = DECLARED.tree.id
 
 #: The bucket the shipped template promoted, found by what makes it one. The
 #: first of them in declared order: since U118 Hip-Hop declares one too, held
@@ -93,35 +94,8 @@ ELSEWHERE = next(
 )
 
 
-def _band(level: int) -> str:
-    return next(band.id for band in DECLARED.energy.bands if level <= band.max)
-
-
-LOW, MED, HIGH = _band(1), _band(5), _band(9)
-SINK = DECLARED.energy.no_energy_sub.id
-
-
-def _scanned(
-    content_id: str,
-    *,
-    energy: int | None,
-    genre: str = PROMOTED_GENRE,
-    disposition: adopt_scan.Disposition = adopt_scan.Disposition.ROUTE,
-) -> adopt_scan.ScannedTrack:
-    verdict, bucket, _match = adopt_scan.classify_genre(DECLARED, genre)
-    routed = disposition is adopt_scan.Disposition.ROUTE
-    return adopt_scan.ScannedTrack(
-        content_id=content_id,
-        recorded=f"/library/Music/{content_id}.flac",
-        path=f"/library/Music/{content_id}.flac" if routed else None,
-        readability=(
-            adopt_scan.Readability.READABLE if routed else adopt_scan.Readability.MISSING
-        ),
-        disposition=verdict if routed else disposition,
-        genre=genre,
-        bucket=bucket if routed else "",
-        energy=energy,
-    )
+def _scanned(content_id: str, *, energy: int | None, genre: str = PROMOTED_GENRE, **excluded):
+    return classified(content_id, energy=energy, genre=genre, **excluded)
 
 
 def _in_old(content_id: str, *also: str) -> dict:
@@ -137,15 +111,6 @@ def _in_old(content_id: str, *also: str) -> dict:
         HOLDER.id: {content_id: (FORMER.id,)},
         SPLIT.id: {content_id: (OLD_SPLIT.id,)},
     }
-
-
-def _adoption(tracks, held: dict, *, unnamed: dict | None = None) -> adopt_plan.AdoptionPlan:
-    placements = adopt_plan.Placements(read=True, held=held, unnamed=unnamed or {})
-    return adopt_plan.build_adoption_plan(tracks, DECLARED, tree=TREE_ID, placements=placements)
-
-
-def _moves(tracks, held: dict, *, unnamed: dict | None = None) -> adopt_move.MovePlan:
-    return adopt_move.build_move_plan(_adoption(tracks, held, unnamed=unnamed), DECLARED)
 
 
 # ── the shipped declaration ────────────────────────────────────────────────
@@ -195,9 +160,7 @@ def test_a_former_place_competes_where_it_is_declared_and_where_it_sits_and_nowh
 def test_no_resolver_answers_with_a_former_place_and_no_writer_can_name_one():
     for level in (None, *range(1, 11)):
         assert routing.energy_sub(DECLARED, PROMOTED.id, level).id != FORMER.id
-    assert FORMER.id not in set(HOLDER.sub_by_source.map.values()) | {
-        HOLDER.sub_by_source.default
-    }
+    assert FORMER.id not in set(HOLDER.sub_by_source.map.values()) | {HOLDER.sub_by_source.default}
     for bucket_id in (PROMOTED.id, HOLDER.id):
         with pytest.raises(KeyError):
             destination(DECLARED, bucket_id, FORMER.id)
@@ -207,13 +170,15 @@ def test_a_former_place_is_found_in_the_folder_of_the_bucket_that_held_it():
     assert adopt_placements.named_place(DECLARED, PROMOTED.id, FORMER.id) == OLD_PLACE
     assert adopt_placements.named_place(DECLARED, HOLDER.id, FORMER.id) == OLD_PLACE
     assert adopt_placements.recorded_under(DECLARED, HOLDER.id, FORMER.id) == (
-        HOLDER.id, FORMER.sub
+        HOLDER.id,
+        FORMER.sub,
     )
     assert adopt_placements.named_place(DECLARED, PROMOTED.id, MED) == destination(
         DECLARED, PROMOTED.id, MED
     )
     assert adopt_placements.recorded_under(DECLARED, PROMOTED.id, FORMER.id) == (
-        HOLDER.id, FORMER.sub
+        HOLDER.id,
+        FORMER.sub,
     )
     assert adopt_placements.recorded_under(DECLARED, PROMOTED.id, MED) == (PROMOTED.id, MED)
 
@@ -259,9 +224,7 @@ def test_a_renamed_old_playlist_is_found_through_the_node_recorded_under_the_old
 
 
 def test_adoption_withholds_a_track_still_in_the_old_playlist():
-    (entry,) = _adoption(
-        [_scanned("t", energy=8)], _in_old("t")
-    ).entries
+    (entry,) = _adoption([_scanned("t", energy=8)], _in_old("t")).entries
     assert entry.disposition is adopt_scan.Disposition.WITHHELD
     assert (entry.bucket, entry.sub, entry.holds) == (PROMOTED.id, HIGH, (FORMER.id,))
     assert entry.held_elsewhere and not entry.applicable
@@ -275,87 +238,99 @@ def test_adoption_places_a_track_the_old_playlist_does_not_hold():
 # ── the move plan ──────────────────────────────────────────────────────────
 
 
-def test_a_track_in_the_old_playlist_is_added_to_its_band_and_leaves_the_playlist():
-    plan = _moves([_scanned("t", energy=8)], _in_old("t"))
-    (move,) = plan.moves
-    assert (move.bucket, move.target, move.add, move.remove) == (
-        PROMOTED.id, HIGH, HIGH, (FORMER.id,)
-    )
-    assert (move.kind, move.decided_by) == ("band", adopt_move.DECIDED_BY_ENERGY)
-    assert plan.left == ()
-    assert plan.counts()["memberships_added"] == plan.counts()["memberships_removed"] == 1
-
-
-def test_a_track_already_in_its_band_only_leaves_the_old_playlist():
-    plan = _moves([_scanned("t", energy=8)], _in_old("t", HIGH))
-    (move,) = plan.moves
-    assert (move.target, move.add, move.remove) == (HIGH, "", (FORMER.id,))
-
-
-def test_a_track_in_the_old_playlist_and_a_stale_band_leaves_both():
-    plan = _moves([_scanned("t", energy=8)], _in_old("t", LOW))
-    (move,) = plan.moves
-    assert (move.add, set(move.remove)) == (HIGH, {FORMER.id, LOW})
-
-
-def test_a_track_with_no_reading_leaves_the_old_playlist_for_the_no_reading_sub():
-    """Nothing has to be read off a file to know a playlist the taxonomy
-    stopped declaring is not its place, and the no reading sub says nothing
-    false about the track."""
-    plan = _moves([_scanned("t", energy=None)], _in_old("t"))
+@pytest.mark.parametrize(
+    ("energy", "also", "target", "add", "remove"),
+    [
+        (8, (), HIGH, HIGH, (FORMER.id,)),
+        (8, (HIGH,), HIGH, "", (FORMER.id,)),
+        (8, (LOW,), HIGH, HIGH, tuple(sorted((FORMER.id, LOW)))),
+        # Nothing has to be read to know a playlist the taxonomy stopped
+        # declaring is not the track's place, and the no reading sub says
+        # nothing false about it.
+        (None, (), SINK, SINK, (FORMER.id,)),
+        # Filed in the no reading sub by an additive writer while it sat in the
+        # old playlist: listing it as left for want of a reading kept it in both.
+        (None, (SINK,), SINK, "", (FORMER.id,)),
+    ],
+    ids=["its-band", "already-in-it", "and-a-stale-band", "no-reading", "no-reading-in-the-sink"],
+)
+def test_a_track_in_the_old_playlist_leaves_it_for_the_band_its_reading_names(
+    energy, also, target, add, remove
+):
+    plan = _moves([_scanned("t", energy=energy)], _in_old("t", *also))
     (move,) = plan.moves
     assert (move.bucket, move.target, move.add, move.remove, move.energy) == (
-        PROMOTED.id, SINK, SINK, (FORMER.id,), None
+        PROMOTED.id,
+        target,
+        add,
+        remove,
+        energy,
     )
-    # Its genre sent it here, and no reading was taken to decide anything.
-    assert (move.kind, move.decided_by) == ("band", adopt_move.DECIDED_BY_GENRE)
+    # With no reading, its genre sent it here and energy decided nothing.
+    decided = adopt_move.DECIDED_BY_ENERGY if energy else adopt_move.DECIDED_BY_GENRE
+    assert (move.kind, move.decided_by) == ("band", decided)
     assert plan.left == ()
+    assert plan.counts()["memberships_added"] == (1 if add else 0)
+    assert plan.counts()["memberships_removed"] == len(remove)
 
 
-def test_a_track_with_no_reading_already_in_the_no_reading_sub_only_leaves_the_old_playlist():
-    """Found by the second review. An additive writer filed it in the no
-    reading sub while it sat in the old playlist, and the move listed it as
-    left for want of a reading, so it stayed in both for good."""
-    plan = _moves([_scanned("t", energy=None)], _in_old("t", SINK))
-    (move,) = plan.moves
-    assert (move.target, move.add, move.remove) == (SINK, "", (FORMER.id,))
-    assert plan.left == ()
+def _unread(genre: str = PROMOTED_GENRE) -> adopt_scan.ScannedTrack:
+    return _scanned("t", energy=8, genre=genre, disposition=adopt_scan.Disposition.EXCLUDED)
 
 
-def test_a_track_with_no_reading_in_a_band_as_well_is_left_since_a_band_needs_a_reading():
-    plan = _moves([_scanned("t", energy=None)], _in_old("t", LOW))
+#: Tracks in the old playlist left and listed, with nothing moved: the track,
+#: what it holds, what it holds under another name, and the one row left.
+_LEFT_IN_OLD = {
+    # A band needs a reading, so a stale band beside the old playlist stays.
+    "no-reading-and-a-band": (
+        _scanned("t", energy=None), _in_old("t", LOW), {},
+        {"bucket": PROMOTED.id, "reason": adopt_move.LEFT_NO_READING,
+         "holds": tuple(sorted((FORMER.id, LOW)))},
+    ),
+    # R-758's rule, unchanged where no former place is held.
+    "no-reading-no-former-place": (
+        _scanned("t", energy=None), {PROMOTED.id: {"t": (LOW,)}}, {},
+        {"reason": adopt_move.LEFT_NO_READING},
+    ),
+    "renamed-old-playlist": (
+        _scanned("t", energy=8), _in_old("t"), _in_old("t"),
+        {"reason": adopt_move.LEFT_UNNAMED, "holds_unnamed": (FORMER.id,)},
+    ),
+    # Claimed by neither bucket: listed once, under the one that took it over.
+    "another-folder": (
+        _scanned("t", energy=8, genre=ELSEWHERE.display), _in_old("t"), {},
+        {"bucket": PROMOTED.id, "reason": adopt_move.LEFT_FORMER, "target": "",
+         "holds": (FORMER.id,)},
+    ),
+    "no-genre": (
+        _scanned("t", energy=8, genre=""), _in_old("t"), {},
+        {"bucket": PROMOTED.id, "reason": adopt_move.LEFT_FORMER, "target": "",
+         "holds": (FORMER.id,)},
+    ),
+    # A word with no row of its own has no style to move to.
+    "defaulted-genre": (
+        _scanned("t", energy=8, genre=DEFAULTED_GENRE), _in_old("t"), {},
+        {"bucket": HOLDER.id, "reason": adopt_move.LEFT_NO_STYLE},
+    ),
+    "unread-genre-names-the-old-folder": (
+        _unread(STAYING_GENRE), _in_old("t"), {},
+        {"bucket": PROMOTED.id, "reason": adopt_move.LEFT_NO_READING},
+    ),
+    "unread": (
+        _unread(), _in_old("t"), {},
+        {"reason": adopt_move.LEFT_NO_READING, "holds": (FORMER.id,)},
+    ),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("case", sorted(_LEFT_IN_OLD))
+def test_a_track_in_the_old_playlist_with_nothing_to_move_on_is_listed_under_its_reason(case):
+    track, held, unnamed, expected = _LEFT_IN_OLD[case]
+    plan = _moves([track], held, unnamed=unnamed)
     assert plan.moves == ()
     (left,) = plan.left
-    assert (left.bucket, left.reason, set(left.holds)) == (
-        PROMOTED.id, adopt_move.LEFT_NO_READING, {FORMER.id, LOW}
-    )
-
-
-def test_a_stale_band_with_no_reading_is_still_left_where_no_former_place_is_held():
-    """R-758's rule, unchanged by the exception above."""
-    plan = _moves([_scanned("t", energy=None)], {PROMOTED.id: {"t": (LOW,)}})
-    assert plan.moves == ()
-    (left,) = plan.left
-    assert left.reason == adopt_move.LEFT_NO_READING
-
-
-def test_a_track_held_in_a_renamed_old_playlist_is_left_since_the_writer_cannot_see_it():
-    held = _in_old("t")
-    plan = _moves([_scanned("t", energy=8)], held, unnamed=held)
-    assert plan.moves == ()
-    (left,) = plan.left
-    assert (left.reason, left.holds_unnamed) == (adopt_move.LEFT_UNNAMED, (FORMER.id,))
-
-
-@pytest.mark.parametrize("genre", [ELSEWHERE.display, ""], ids=["another-folder", "no-genre"])
-def test_a_track_in_the_old_playlist_that_neither_bucket_claims_is_listed_once(genre):
-    plan = _moves([_scanned("t", energy=8, genre=genre)], _in_old("t"))
-    assert plan.moves == ()
-    (left,) = plan.left
-    assert (left.bucket, left.reason, left.target, left.holds) == (
-        PROMOTED.id, adopt_move.LEFT_FORMER, "", (FORMER.id,)
-    )
-    assert plan.counts()["left"][adopt_move.LEFT_FORMER] == 1
+    assert {name: getattr(left, name) for name in expected} == expected
+    assert plan.counts()["left"] == _left_counts(**{expected["reason"]: 1})
 
 
 def test_a_track_in_the_old_playlist_whose_genre_names_another_style_moves_to_that_style():
@@ -371,7 +346,10 @@ def test_a_track_in_the_old_playlist_whose_genre_names_another_style_moves_to_th
     plan = _moves(tracks, _in_old("t"))
     (move,) = plan.moves
     assert (move.bucket, move.target, move.add, move.remove) == (
-        HOLDER.id, STAYING_SUB, STAYING_SUB, (FORMER.id,)
+        HOLDER.id,
+        STAYING_SUB,
+        STAYING_SUB,
+        (FORMER.id,),
     )
     assert (move.kind, move.decided_by) == ("style", "genre")
     # ONCE. It is not listed as left under the bucket that declares the place.
@@ -404,20 +382,9 @@ def test_a_former_place_held_twice_is_not_listed_beside_the_move_that_leaves_it(
     assert plan.left == ()
 
 
-def test_a_verdict_on_the_holding_bucket_is_the_reason_a_track_there_is_left():
-    current = _adoption([_scanned("t", energy=8, genre=STAYING_GENRE)], {})
-    refused = replace(
-        current,
-        entries=tuple(
-            replace(
-                entry,
-                disposition=adopt_scan.Disposition.WITHHELD,
-                withheld_by=adopt_plan.WITHHELD_BY_VERDICT,
-            )
-            for entry in current.entries
-        ),
-        placements=adopt_plan.Placements(read=True, held=_in_old("t")),
-    )
+@pytest.mark.parametrize("genre", [STAYING_GENRE, PROMOTED_GENRE], ids=["holder", "promoted"])
+def test_a_verdict_on_the_bucket_the_genre_names_is_the_reason_a_track_there_is_left(genre):
+    refused = _refused_over([_scanned("t", energy=8, genre=genre)], _in_old("t"))
     plan = adopt_move.build_move_plan(refused, DECLARED)
     assert plan.moves == ()
     (left,) = plan.left
@@ -455,63 +422,16 @@ def test_a_genre_only_the_fallback_tier_lands_is_not_read_as_naming_the_bucket()
     assert left.reason == adopt_move.LEFT_FORMER
 
 
-def test_a_track_whose_genre_lands_in_the_old_folders_default_is_withheld_and_left():
-    """A word with no row of its own has no style to move to. The track is not
-    added to the default sub beside the old playlist, and it is listed."""
-    tracks = [_scanned("t", energy=8, genre=DEFAULTED_GENRE)]
+def test_a_track_whose_genre_lands_in_the_old_folders_default_is_withheld():
+    """Not added to the default sub beside the old playlist; listed above."""
     assert DEFAULTED_GENRE not in HOLDER.sub_by_source.map
-    (entry,) = _adoption(tracks, _in_old("t")).entries
+    (entry,) = _adoption([_scanned("t", energy=8, genre=DEFAULTED_GENRE)], _in_old("t")).entries
     assert entry.held_elsewhere and not entry.applicable
-
-    plan = _moves(tracks, _in_old("t"))
-    assert plan.moves == ()
-    (left,) = plan.left
-    assert (left.bucket, left.reason) == (HOLDER.id, adopt_move.LEFT_NO_STYLE)
-
-
-def test_an_unreadable_file_whose_genre_names_the_old_folder_is_listed_under_no_reading():
-    excluded = _scanned(
-        "t", energy=8, genre=STAYING_GENRE, disposition=adopt_scan.Disposition.EXCLUDED
-    )
-    plan = _moves([excluded], _in_old("t"))
-    assert plan.moves == ()
-    (left,) = plan.left
-    assert (left.bucket, left.reason) == (PROMOTED.id, adopt_move.LEFT_NO_READING)
-
-
-def test_a_file_the_census_could_not_read_is_listed_under_no_reading():
-    excluded = _scanned("t", energy=8, disposition=adopt_scan.Disposition.EXCLUDED)
-    plan = _moves([excluded], _in_old("t"))
-    assert plan.moves == ()
-    (left,) = plan.left
-    assert (left.reason, left.holds) == (adopt_move.LEFT_NO_READING, (FORMER.id,))
-
-
-def test_a_track_a_verdict_withheld_is_listed_under_the_verdict():
-    current = _adoption([_scanned("t", energy=8)], {PROMOTED.id: {}})
-    refused = replace(
-        current,
-        entries=tuple(
-            replace(
-                entry,
-                disposition=adopt_scan.Disposition.WITHHELD,
-                withheld_by=adopt_plan.WITHHELD_BY_VERDICT,
-            )
-            for entry in current.entries
-        ),
-        placements=adopt_plan.Placements(read=True, held=_in_old("t")),
-    )
-    plan = adopt_move.build_move_plan(refused, DECLARED)
-    assert plan.moves == ()
-    (left,) = plan.left
-    assert left.reason == adopt_move.LEFT_VERDICT
 
 
 def test_a_track_in_one_live_sub_of_a_bucket_its_genre_does_not_name_is_still_not_asked():
     """The former place is the one exception to R-780's rule, and only it."""
-    plan = _moves(
-        [_scanned("t", energy=8, genre=STAYING_GENRE)], {PROMOTED.id: {"t": (HIGH,)}}
-    )
+    plan = _moves([_scanned("t", energy=8, genre=STAYING_GENRE)], {PROMOTED.id: {"t": (HIGH,)}})
     assert plan.moves == () and plan.left == ()
 
 
@@ -654,56 +574,23 @@ def test_the_old_shape_is_the_shape_before_the_promotion():
     assert destination(old, HOLDER.id, FORMER.sub) == OLD_PLACE
 
 
+def _band_place(sub_id: str) -> tuple[str, str]:
+    return destination(DECLARED, PROMOTED.id, sub_id)
+
+
 @pytest.fixture
 def promoted(machine, silence):  # noqa: F811
     """A cut over library whose R&B tracks still sit in the old playlist."""
-    from cratekit.core import tags
-
-    tracks = [
-        adopt_fixtures.Track(content_id, f"{content_id}.flac", genre)
-        for content_id, genre, _tag, _held in _SEEDED
-    ]
-    tracks.append(adopt_fixtures.Track("r-staying", "r-staying.flac", STAYING_GENRE))
-    adopt_fixtures.build(machine, tuple(tracks))
-    collection.reset_cache()
-
-    music = Path(machine.library.root) / "Music"
-    for content_id, _genre, tag, _held in _SEEDED:
-        path = music / f"{content_id}.flac"
-        shutil.copyfile(silence, path)
-        if tag is not None:
-            assert tags.write_tags(path, {"energylevel": tag}) is True
-    shutil.copyfile(silence, music / "r-staying.flac")
-
-    seeded = [
-        (OLD_PLACE if place == "old" else destination(DECLARED, PROMOTED.id, place), content_id)
+    tracks = [(content_id, genre, tag) for content_id, genre, tag, _held in _SEEDED]
+    places = [
+        (*(OLD_PLACE if place == "old" else _band_place(place)), content_id)
         for content_id, _genre, _tag, held in _SEEDED
         for place in held
     ]
-    seeded.append((destination(DECLARED, HOLDER.id, STAYING_SUB), "r-staying"))
-    handle = rb_writer.open_db(rb_writer.live_db_path(machine), unlock=False, cfg=machine)
-    try:
-        root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
-        for (folder_display, sub_display), content_id in seeded:
-            folder = rb_writer.ensure_folder(handle, folder_display, parent=root)
-            playlist = rb_writer.ensure_playlist(handle, sub_display, folder)
-            rb_writer.add_memberships(handle, playlist, [content_id])
-        handle.session.commit()
-        root_id = str(root.ID)
-    finally:
-        rb_writer.close_db(handle)
-    tree_registry.record_cutover(
-        machine,
-        TREE_ID,
-        root_id=root_id,
-        on=date(2026, 10, 1),
-        source=tree_registry.DerivationSource.TAXONOMY,
-    )
+    tracks.append(("r-staying", STAYING_GENRE, None))
+    places.append((*destination(DECLARED, HOLDER.id, STAYING_SUB), "r-staying"))
+    seed_library(machine, silence, tracks, places, on=date(2026, 10, 1))
     return machine
-
-
-def _band_place(sub_id: str) -> tuple[str, str]:
-    return destination(DECLARED, PROMOTED.id, sub_id)
 
 
 def test_the_gate_shows_every_track_leaving_the_old_playlist_and_every_one_left(promoted):
@@ -720,14 +607,15 @@ def test_the_gate_shows_every_track_leaving_the_old_playlist_and_every_one_left(
     # style, in the folder that holds the old playlist.
     by_hand = rows["r-by-hand"]
     assert (by_hand["bucket"], by_hand["add"], by_hand["remove"]) == (
-        HOLDER.id, STAYING_SUB, [FORMER.id]
+        HOLDER.id,
+        STAYING_SUB,
+        [FORMER.id],
     )
     assert (rows["r-no-reading"]["add"], rows["r-no-reading"]["energy"]) == (SINK, None)
     left = [(row["content_id"], row["reason"]) for row in shown["left"]]
     assert left == [("r-no-genre", adopt_move.LEFT_FORMER)]
 
-
-def test_adoption_over_the_same_library_files_none_of_them_a_second_time(promoted):
+    # Adoption over the same library files none of them a second time.
     plan = apply_cli.current_plan(promoted, DECLARED)
     entries = {entry.content_id: entry for entry in plan.entries}
     for content_id in ("r-reads-high", "r-reads-low", "r-reads-med", "r-no-reading", "r-by-hand"):
@@ -735,7 +623,7 @@ def test_adoption_over_the_same_library_files_none_of_them_a_second_time(promote
         assert not entries[content_id].applicable, content_id
 
 
-def test_an_approved_move_files_each_track_in_its_band_and_none_is_left_in_both(promoted):
+def test_an_approved_move_files_each_track_in_its_band_and_a_second_plans_nothing(promoted):
     before = _live(promoted)
     job_id, code, resumed = _approve_and_run()
     assert code == int(ExitCode.OK), resumed
@@ -761,22 +649,13 @@ def test_an_approved_move_files_each_track_in_its_band_and_none_is_left_in_both(
     assert sorted(report["moved"]) == sorted(_MOVED)
     assert report["in_both"] == report["untouched"] == report["neither"] == []
 
-
-def test_a_second_run_after_the_move_plans_nothing_and_writes_nothing(promoted):
-    _job_id, code, resumed = _approve_and_run()
-    assert code == int(ExitCode.OK), resumed
+    # A second run after the move plans nothing and writes nothing.
     rows = _rows(promoted)
     collection.reset_cache()
-
     shown = _shown(VERB)
     assert shown["items"] == [] and shown["counts"]["moves"] == 0
     assert {row["content_id"] for row in shown["left"]} == _LEFT
-
-    code, refused = drive(VERB)
-    run_id = refused["run_id"]
-    decided, _ = drive(["run", "decide", run_id, GATE, "approve", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK)
-    code, envelope = drive(["--run", run_id, *VERB])
+    code, envelope = _decided("approve")
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["state"] == "no-op"
     with jobs.open_store() as store:
@@ -810,7 +689,7 @@ def test_a_library_whose_own_taxonomy_still_has_the_sub_moves_no_track_of_that_s
     plan = apply_cli.current_plan(promoted, old)
     entries = {entry.content_id: entry for entry in plan.entries}
     for content_id in ("r-reads-high", "r-reads-low", "r-reads-med", "r-already-in-band"):
-        assert (entries[content_id].bucket, entries[content_id].sub) == (
-            HOLDER.id, FORMER.sub
-        ), content_id
+        assert (entries[content_id].bucket, entries[content_id].sub) == (HOLDER.id, FORMER.sub), (
+            content_id
+        )
     assert _rows(promoted) == rows
