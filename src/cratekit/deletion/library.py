@@ -216,20 +216,25 @@ def _version_of(row: Any) -> tuple[str, str, str]:
 
 
 def _size_of(row: Any) -> int | None:
+    value = getattr(row, "FileSize", None)
     try:
-        size = int(getattr(row, "FileSize", None))
+        size = int(value)
     except (TypeError, ValueError):
         return None
     return size if size > 0 else None
 
 
-def _removed_row(row: Any, sequence: int) -> RemovedRow:
-    """A removed row read through the same readers, marked or recorded."""
+def _removed_row(row: Any, sequence: int | None = None) -> RemovedRow:
+    """A removed row read through the same readers: marked (its own sequence) or recorded.
+
+    The columns are read in one order for both, version first, so a row broken
+    twice reports the same fault whichever way it arrived.
+    """
     version, kind, unbelieved = _version_of(row)
     return RemovedRow(
         content_id=_identifier(row, "ID"),
         recorded=_text(row, "FolderPath"),
-        sequence=sequence,
+        sequence=_sequence_of(row) if sequence is None else sequence,
         size=_size_of(row),
         artist=_text(row, "ArtistName"),
         title=_text(row, "Title"),
@@ -261,7 +266,7 @@ def read_collection(rows: Iterable[Any]) -> CollectionRead:
                 )
             )
             continue
-        removed.append(_removed_row(row, _sequence_of(row)))
+        removed.append(_removed_row(row))
     return CollectionRead(
         active=tuple(active), removed=tuple(removed), uuids=MappingProxyType(uuids)
     )

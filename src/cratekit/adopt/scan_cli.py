@@ -1,7 +1,9 @@
 """``crate adopt scan``: queue the census over an existing library.
 
 A MODULE OF ITS OWN, apart from ``adopt.apply``, which writes, is destructive and
-declares gates, while this verb only reads and declares none.
+declares gates, while this verb only reads and declares none. The marker test that
+expires a ``planned_in`` keys on the registry's ``module=`` string, so one module
+shared by both held the ready half back (U23).
 
 IT QUEUES RATHER THAN SCANS (conformance 5): a census stats every file, so the
 verb freezes the configuration (KTD9), queues one job with one item per LIVE

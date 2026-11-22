@@ -44,19 +44,19 @@ of those two acts. The engine will not infer a confirmation from a CLI gate. It
 reads persisted verdicts. The shell that forgets to write those verdicts can
 still exit OK.
 
-`run.apply` (`src/cratekit/deletion/run.py:701`) states its job as trash every
+`run.apply` (`src/cratekit/deletion/run.py:522`) states its job as trash every
 confirmed file. Confirmation is not a flag on the call. It is a review item
 whose verdict is already `Verdict.ACCEPTED`. `_verdicts` at
-`src/cratekit/deletion/run.py:375` walks the deletion queue with
+`src/cratekit/deletion/run.py:332` walks the deletion queue with
 `include_resolved=True` and keeps only items where `item.resolved` is true.
 `Item.resolved` at `src/cratekit/core/review.py:474` is `self.verdict is not
 None`. An offered item with no verdict is absent from that map.
 
-The apply loop at `src/cratekit/deletion/run.py:820` then does this, in order:
+The apply loop's `decide` at `src/cratekit/deletion/run.py:586` then does this, in order:
 
 1. `decided.get(_item_id(item))` is `None`: the row is unanswered. The loop
    continues. Nothing is moved.
-2. `verdict.verdict is review.Verdict.REJECTED` (`run.py:833`): the row is a
+2. `verdict.verdict is review.Verdict.REJECTED` (`run.py:600`): the row is a
    recorded decline. The file stays. The watermark does not pass over it.
 3. Everything that remains has verdict ACCEPTED. Later checks can still
    refuse a move: the candidate is no longer deletable, the re-check fails,
@@ -67,17 +67,17 @@ The apply loop at `src/cratekit/deletion/run.py:820` then does this, in order:
 is the whole of "apply only moves candidates whose review item already has
 `Verdict.ACCEPTED`."
 
-`run.present` (`src/cratekit/deletion/run.py:329`) puts every deletable
+`run.present` (`src/cratekit/deletion/run.py:296`) puts every deletable
 candidate in the queue. It does not resolve anything. Re-offering returns the
 item that is already there, including a verdict somebody already recorded
-(`run.py:338`). A first offer arrives with `verdict is None`.
+(`run.py:306`). A first offer arrives with `verdict is None`.
 
 The engine tests already knew this contract. `_confirm` at
 `tests/test_deletion.py:984` is three lines that open the store and call
 `review.resolve`. Every engine test that moves a file goes through it first.
 `test_a_confirmed_file_is_trashed_and_leaves_a_tombstone` at
-`tests/test_deletion.py:1001` is the pattern: plan, present, `_confirm` at
-`:1007`, then `apply` at `:1009`.
+`tests/test_deletion.py:819` is the pattern: `_confirmed_one` (`:791`)
+plans, presents and calls `_confirm`, then `apply` runs at `:821`.
 
 The leftover U24 shell did not do that. It required the explicit confirm gate
 and then called `apply`. The offered items were still open. `apply` skipped
@@ -87,18 +87,18 @@ A person answered trash. The run reported success. Nothing moved.
 
 The battery did not catch it. Conformance and the first-run CLI tests stay
 green because a first-run baseline has no deletable files, so `apply` is never
-reached. `review_removals` at `src/cratekit/deletion/cli.py:152` returns OK as
+reached. `review_removals` at `src/cratekit/deletion/cli.py:124` returns OK as
 soon as `found.baselined or not found.deletable`.
 `test_delete_review_exits_ok_after_the_recorded_decision` at
-`tests/test_deletion.py:5948` drives the two-act path against that first run
-and asserts `items == []` and `unresolved == 0` (`:5961` and `:5962`). The
+`tests/test_deletion.py:3945` drives the two-act path against that first run
+and asserts `items == []` and `unresolved == 0` (`:3958` and `:3959`). The
 gate fired. The resume exited OK. The trash path was never entered.
 
 The verified fix is on `main` at the U24 leftover merge `ce7f55d`. After the
 gate returns trash, the shell resolves still-open offered items as `ACCEPTED`,
 leaves recorded rejects alone, and only then calls `apply`.
 `test_delete_review_trashes_a_confirmed_file` at
-`tests/test_deletion.py:5977` drives a real file through the dispatcher into
+`tests/test_deletion.py:3974` drives a real file through the dispatcher into
 Trash. That test is the pin. The engine suite was never going to grow it,
 because the engine suite already wrote the verdict itself.
 
@@ -126,7 +126,7 @@ After the gate returns the affirmative option, and only then:
    than overwriting it, so the filter `if item.verdict is None` is required,
    not polite.
 3. Leave a recorded `REJECTED` alone. `present` is idempotent and returns that
-   verdict (`run.py:338`). Honouring it is how a decline survives a later
+   verdict (`run.py:306`). Honouring it is how a decline survives a later
    trash confirmation of the rest of the set.
 4. Call `apply` only after those verdicts are in the store.
 
@@ -134,7 +134,7 @@ Do not invent a second confirmation inside `apply`. The engine is correct. The
 hole is the shell that forgot the engine's input.
 
 Do not treat a first-run OK, or a conformance OK, as evidence that trash
-works. Those paths return at `cli.py:152` before `apply` is named. A test that
+works. Those paths return at `cli.py:124` before `apply` is named. A test that
 never plants a deletable file after a baseline cannot see this defect. The
 test that can is the one that:
 
@@ -168,7 +168,7 @@ That is worse than a refusal. A refusal names a remedy. An OK that moved
 nothing names nothing. The person has no reason to look.
 
 The suite that should have caught it cannot see it, and for a structural
-reason rather than a missed assertion. `cli.py:138` says apply runs only when
+reason rather than a missed assertion. `cli.py:109` says apply runs only when
 there is something deletable. A first-run baseline writes the watermark
 inside `plan` and must not open a destructive session to move zero files.
 That early return is right. It is also a wall in front of the only function
@@ -194,7 +194,7 @@ the person just confirmed they wanted cleaned.
 - A new shell over `run.apply`, or over any other apply that reads
   `_verdicts` or `item.resolved` before it mutates.
 - A change to `review_removals` that looks like it can drop the resolve loop
-  because "the gate is the confirmation." The comment at `cli.py:154` exists
+  because "the gate is the confirmation." The comment at `cli.py:126` exists
   because that sentence is how the no-op shipped.
 - A CLI test for such a verb that only drives a first run or an empty
   deletable set. That test is necessary for the gate. It is not a drive of
@@ -212,7 +212,7 @@ Do not apply this as a reason to reopen U25.
 ## Examples
 
 The silent shell, reconstructed from the contract `apply` still enforces and
-from the comment the fix left at `src/cratekit/deletion/cli.py:154`. The tree
+from the comment the fix left at `src/cratekit/deletion/cli.py:126`. The tree
 no longer holds this sequence. This is the shape that shipped the no-op:
 
 ```python
@@ -229,27 +229,26 @@ return ctx.envelope(data=_payload(cfg, offered), outcome=Outcome.OK)
 
 `present` has offered items with `verdict is None`. The gate has recorded
 trash. `apply` loads `_verdicts`, finds none of those items resolved
-(`run.py:375` and `run.py:822`), continues, and returns a report whose
+(`run.py:332` and `run.py:591`), continues, and returns a report whose
 `trashed` tuple is empty. The envelope is still OK.
 
-What `apply` does with that unanswered item, on the current tree at
-`src/cratekit/deletion/run.py:820`:
+What `apply` does with that unanswered item, on the current tree in
+`decide` at `src/cratekit/deletion/run.py:591`:
 
 ```python
 verdict = decided.get(_item_id(item))
 if verdict is None:
-    held = _the_anchor_proved_nothing(item, found.references)
+    held = _the_anchor_proved_nothing(item, references)
     _warn_that_an_unanswered_removal_is_being_retired(
         item, recorded=recorded_now, held=held
     )
-    handled.append((item.row.sequence, item.handled and not held))
-    continue
+    return item.handled and not held
 ```
 
 No move. The candidate is treated as unanswered, because it is.
 
 The engine tests never saw this because they do not take that path. They
-write the verdict first, at `tests/test_deletion.py:984`:
+write the verdict first, at `tests/test_deletion.py:765`:
 
 ```python
 def _confirm(cfg, item_id, verdict=review.Verdict.ACCEPTED):
@@ -257,27 +256,23 @@ def _confirm(cfg, item_id, verdict=review.Verdict.ACCEPTED):
         review.resolve(store, item_id, verdict, actor="cli")
 ```
 
-and only then call `apply` (`tests/test_deletion.py:1009`).
+and only then call `apply` (`tests/test_deletion.py:821`).
 
 The first-run CLI test also never saw this. After the two-act resume it
-asserts an empty review set (`tests/test_deletion.py:5961`), which is
-correct for a baseline and which returns at `cli.py:152` before apply.
+asserts an empty review set (`tests/test_deletion.py:3958`), which is
+correct for a baseline and which returns at `cli.py:124` before apply.
 
 The fix on `main` at the U24 leftover merge `ce7f55d`, current text at
-`src/cratekit/deletion/cli.py:154`:
+`src/cratekit/deletion/cli.py:126`:
 
 ```python
-# THE GATE IS THE CONFIRMATION OF THE OFFERED SET. apply only moves
-# items that already have a verdict, so an unanswered offer would
-# make "trash" a no-op. Honour a recorded reject; accept the rest.
+# The gate confirms the offered set: apply moves only items with a
+# verdict, so accept every unanswered one and honour a recorded reject.
 with review.open_store(cfg) as store:
     for item in offered:
         if item.verdict is None:
             review.resolve(
-                store,
-                item.item_id,
-                review.Verdict.ACCEPTED,
-                actor=ctx.args.actor,
+                store, item.item_id, review.Verdict.ACCEPTED, actor=ctx.args.actor
             )
 run.apply(cfg, handle, actor=ctx.args.actor)
 ```
@@ -288,7 +283,7 @@ because `resolve` is not called for it and would refuse if it were
 and moves only the accepted files.
 
 The pin that a first-run test cannot be, at
-`tests/test_deletion.py:5977`. It baselines the watermark at sequence 40,
+`tests/test_deletion.py:3974`. It baselines the watermark at sequence 40,
 plants a removed row at sequence 50, drives the real dispatcher, records
 trash through `run decide`, resumes, and asserts the file is gone:
 
@@ -309,9 +304,13 @@ def test_delete_review_trashes_a_confirmed_file(review_cli, tmp_path, monkeypatc
     assert any(home.joinpath(".Trash").iterdir()), "the confirmed file never reached the Trash"
 ```
 
-`_drive` at `tests/test_deletion.py:5878` is `cratekit.cli.run`. The test
-does not call `_confirm`. If the resolve loop at `cli.py:157` disappeared,
-this test would fail, and the engine suite would still be green.
+`_drive` at `tests/test_deletion.py:1205` is `cratekit.cli.run`. The test
+does not call `_confirm`. If the resolve loop at `cli.py:129` disappeared,
+this test would fail, and the engine suite would still be green. Its companion,
+`test_delete_review_honours_a_reject_recorded_before_the_gate` at
+`tests/test_deletion.py:4018`, records a reject before the gate and asserts
+that file stays, so a loop that resolved every item, rejected or not, fails
+it too (U310).
 
 ## Related
 
@@ -328,8 +327,8 @@ this test would fail, and the engine suite would still be green.
   form and already says deletion's sequence watermark is not that bug.
   The empty success here is a missing `Verdict.ACCEPTED` after the
   confirm gate, not a watermark used as a floor.
-- `tests/test_deletion.py:984` (`_confirm`) and
-  `tests/test_deletion.py:1001`
+- `tests/test_deletion.py:765` (`_confirm`) and
+  `tests/test_deletion.py:819`
   (`test_a_confirmed_file_is_trashed_and_leaves_a_tombstone`): the
   engine's correct use of the verdict contract. Companion, not
   substitute. They prove `apply`. They do not prove the shell.

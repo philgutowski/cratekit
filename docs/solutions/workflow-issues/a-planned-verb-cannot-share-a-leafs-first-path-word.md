@@ -178,7 +178,7 @@ U23 sits in the same landing area and is also not this defect.
 could not expire for the ready half. The countdown keys on the module
 path, not on the verb name. They split into `scan_cli` and `apply_cli`.
 The comment that records that decision is in
-`src/cratekit/adopt/scan_cli.py:3-9`. Same table, same expiry test,
+`src/cratekit/adopt/scan_cli.py:3-6`. Same table, same expiry test,
 different cause.
 
 ## When to Apply
@@ -234,17 +234,14 @@ user types `crate repair paths`. The check verb stays `crate doctor`.
 U23 is the neighbour in the same landing area, not the same defect. The
 two adoption verbs shared one `module=` string. The marker test that
 expires a `planned_in` keys on that string, so the half that was ready
-was held back by the half that was not. They split. `src/cratekit/adopt/scan_cli.py:3-9`
+was held back by the half that was not. They split. `src/cratekit/adopt/scan_cli.py:3-6`
 says so in the module that exists because of that split:
 
-```3:9:src/cratekit/adopt/scan_cli.py
-WHY THIS IS A MODULE OF ITS OWN, AND WHY ITS SIBLING IS NOT BESIDE IT. The two
-adoption verbs are not in the same position and never were. ``adopt.apply``
-writes the database, is destructive, and declares two gates; ``adopt.scan``
-declares none, writes nothing, and reads. They shared one ``module=`` string in
-the registry, and the marker test that expires a ``planned_in`` keys on that
-string, so the half that is ready was held back by the half that is not, for no
-reason of its own. Splitting them costs one file.
+```3:6:src/cratekit/adopt/scan_cli.py
+A MODULE OF ITS OWN, apart from ``adopt.apply``, which writes, is destructive and
+declares gates, while this verb only reads and declares none. The marker test that
+expires a ``planned_in`` keys on the registry's ``module=`` string, so one module
+shared by both held the ready half back (U23).
 ```
 
 That is a countdown keyed on a module path. This is argparse refusing a
@@ -257,7 +254,7 @@ fixed in different places.
   countdown discharge that drops a file from collection. Same landing
   moment, a module appears and a marker must expire. Different mechanism,
   `@requires` and `PENDING` keys, not verb paths.
-- `src/cratekit/adopt/scan_cli.py:3-9`: U23 split of `adopt.scan` from
+- `src/cratekit/adopt/scan_cli.py:3-6`: U23 split of `adopt.scan` from
   `adopt.apply`. Countdown keyed on the module path, not on the verb
   name. Same landing area, different cause.
 - `tests/test_cli_contract.py:1138-1155`: the `planned_in` expiry test.
