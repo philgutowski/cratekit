@@ -1,49 +1,26 @@
 """Read rekordbox's own result for the landed rows, and say whether the visit is done right (U167).
 
-After the rekordbox visit, one question: is every landed row analysed, is each
-grid the shape it should be, is the Key column filled, and how far does
-rekordbox's key agree with the key the title's head carries. Sitting 47 had to
-answer that with a throwaway script over the analysis files, which found every
-one of 116 rows on a variable grid because the dialog was left on Dynamic. This
-module is that script made a product, and it answers with a verdict a skill can
-wait on: done, waiting, or suspect.
+Is every landed row analysed, is each grid the right shape, is the Key column
+filled, and how far does rekordbox's key agree with the title head's: a verdict
+a skill can wait on (sitting 47's throwaway script made a product).
 
-READ ONLY, IN BOTH PLACES IT LOOKS. The database is read through
-``rb_writer.read_only_copy``, a disposable copy that refuses while rekordbox or
-its agent runs, because a copy taken under the live application is torn. The
-analysis files are read as bytes. A beat grid is READ here and never written:
-the grid tag is parsed with pyrekordbox's own structure for it over bytes this
-module read itself, and nothing here holds the serialiser the R17 name scan
-forbids, so there is no object in hand that could save a file back.
+READ ONLY: the database through ``rb_writer.read_only_copy``, which refuses
+while rekordbox or its agent runs, and the analysis files as bytes. A grid is
+parsed with pyrekordbox's structure and nothing here holds the serialiser R17
+forbids. WHAT ANALYSED MEANS is :func:`cratekit.intake.analyzed.judge`'s, the
+clear's own, so the two never disagree. The collection is read in a handful
+of statements (U259), each row once.
 
-WHAT ANALYSED MEANS is :func:`cratekit.intake.analyzed.member`'s, the one the
-clear of INBOX / Analyze uses, so this check and the clear never disagree about
-which rows rekordbox has finished with. The check calls its judgment,
-:func:`cratekit.intake.analyzed.judge`, over rows it already holds.
+THE VERDICT:
 
-THE COLLECTION IS READ IN A HANDFUL OF STATEMENTS (U259), never one or three
-a row: the scope of every row rekordbox has not analysed is judged off the one
-read of the collection, a scope of playlist members is read a chunk of IDs to
-a statement, and each row in scope is read once, its judgment, key, title head
-and analysis path all off that one read.
+* **waiting** when any row in scope is not analysed.
+* **suspect** when a variable grid sits on a row not marked ``dyn`` (U157), an
+  analysed row's grid could not be read, or the title keys agree far less
+  often than recorded. SUSPECT OUTRANKS WAITING: a wrong grid says the
+  dialog's settings were wrong for the rows still to come as well.
+* **done** otherwise. An empty scope says so rather than calling nothing done.
 
-THE VERDICT, and why each part is there:
-
-* **waiting** when any row in scope is not analysed. The visit is not over.
-* **suspect** when every row is analysed and at least one of: a variable grid
-  on a row not marked ``dyn`` (the mark U157 writes on a track whose tempo
-  really moves); an analysed row whose grid could not be read, since a grid
-  nobody read is not a grid anybody can vouch for; or the title keys agreeing
-  with rekordbox's far less often than the recorded agreement says they should.
-  SUSPECT OUTRANKS WAITING: a grid that came out wrong says the dialog's
-  settings were wrong, and they are wrong for the rows still to come as well.
-* **done** otherwise.
-
-An empty scope has no verdict of the three. It says so rather than calling
-nothing done.
-
-Layer: modules. It opens the database copy itself, through the one reader every
-diagnostic uses.
+Layer: modules.
 """
 
 from __future__ import annotations
@@ -62,10 +39,6 @@ from cratekit.intake import analyzed, native, refill
 
 _ORIGIN = ("analysis.rekordbox_check",)
 
-# ---------------------------------------------------------------------------
-# The vocabulary
-# ---------------------------------------------------------------------------
-
 #: The three verdicts, and the answer for a scope that holds no row.
 DONE = "done"
 WAITING = "waiting"
@@ -83,9 +56,7 @@ ANALYSED = "analysed"
 NOT_ANALYSED = "not_analysed"
 GONE = "gone"
 
-#: What a row's grid reads as. Kept five ways apart, because "no grid tag in
-#: the file", "no file" and "a file that would not parse" have three different
-#: fixes and none of them is a constant grid.
+#: What a row's grid reads as, five ways apart: each failure has its own fix.
 CONSTANT = "constant"
 VARIABLE = "variable"
 ABSENT = "absent"
@@ -100,16 +71,12 @@ KEY_ONE_STEP = "one_step"
 KEY_FAR = "far"
 KEY_UNKEYED = "unkeyed"
 
-#: The My Tag value U157 writes on a row whose tempo really moves, so that row
-#: is analysed Dynamic and a variable grid on it is the right answer. The
-#: landing's own constant, imported, so the two cannot disagree; read under any
-#: category, since a person may file the value under one of their own.
+#: The My Tag value U157 writes on a row whose tempo really moves, where a
+#: variable grid is right. The landing's own constant, read under any category.
 DYN_VALUE = native.DYN_VALUE
 
 #: How many standard errors below the recorded key agreement a sample's rate
-#: must fall before it reads as suspect. Three, so a library whose keys agree
-#: at the recorded rate is called suspect about once in seven hundred checks,
-#: and a sample too small to say anything (a handful of rows) never is.
+#: must fall to read as suspect: about once in seven hundred checks by chance.
 KEY_AGREEMENT_SIGMAS = 3.0
 
 #: The ANLZ header and every tag header: four ASCII bytes, then two big endian
@@ -117,11 +84,6 @@ KEY_AGREEMENT_SIGMAS = 3.0
 _HEADER = struct.Struct(">4sII")
 _FILE_KIND = b"PMAI"
 _GRID_KIND = b"PQTZ"
-
-
-# ---------------------------------------------------------------------------
-# The grid, read from the bytes
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,11 +120,9 @@ class Grid:
 def grid_ticks(data: bytes) -> list[Any] | None:
     """The beat grid tag's entries from one analysis file's bytes, or None when it has none.
 
-    Walks the tags by their own headers and parses only the grid tag, with
-    pyrekordbox's structure for it. Raises ``ValueError`` for bytes that are not
-    an analysis file, a file whose stated length is not its size (a file cut off
-    mid write), or a tag that runs past the end, so a damaged file is never
-    read as a file with no grid.
+    Raises ``ValueError`` for bytes that are not an analysis file, a stated
+    length that is not the size, or a tag past the end, so a damaged file is
+    never read as one with no grid.
     """
     from construct import ConstructError
     from pyrekordbox.anlz import structs
@@ -218,17 +178,11 @@ def read_grid(path: Path | None) -> Grid:
     )
 
 
-# ---------------------------------------------------------------------------
-# The key
-# ---------------------------------------------------------------------------
-
-
 def key_relation(head: str | None, reference: str | None) -> str:
     """The title key against rekordbox's, on the Camelot wheel.
 
-    One step is a neighbour: the number one either side with the same letter,
-    or the same number with the other letter (the relative major or minor).
-    Either side missing is unkeyed, which is not a disagreement.
+    One step is a neighbour number with the same letter, or the relative major
+    or minor. Either side missing is unkeyed, not a disagreement.
     """
     one = parse_camelot(head) if head else None
     other = parse_camelot(reference) if reference else None
@@ -256,9 +210,8 @@ def head_key(row: Any, *, template: NameTemplate) -> str | None:
 def key_floor(compared: int) -> float | None:
     """The lowest equal rate a sample of ``compared`` keys may show and not read as suspect.
 
-    The recorded agreement (``detect.head_agreement``) less
-    :data:`KEY_AGREEMENT_SIGMAS` standard errors of a sample this size. None for
-    no sample, which is never suspect.
+    The recorded agreement less :data:`KEY_AGREEMENT_SIGMAS` standard errors;
+    None for no sample.
     """
     if compared <= 0:
         return None
@@ -266,11 +219,6 @@ def key_floor(compared: int) -> float | None:
     total = measured["equal"] + measured["differs"]
     rate = measured["equal"] / total
     return rate - KEY_AGREEMENT_SIGMAS * math.sqrt(rate * (1.0 - rate) / compared)
-
-
-# ---------------------------------------------------------------------------
-# The scope
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,14 +232,9 @@ class Scope:
     #: Each step that was looked at and passed over on the way, with why.
     passed_over: tuple[str, ...] = ()
     #: The session records the log could not read, which a named landing might be among.
-    #: An unlisted log never reaches a Scope: it reads no record, so a named
-    #: landing refuses, naming the listing (R-1255).
     unreadable_records: int = 0
-    #: The collection rows the scope already read, by content ID, so the rows
-    #: are not read a second time (U259). The unanalysed scope holds every row
-    #: it names; a scope of playlist members holds none and its rows are read
-    #: in :func:`check_rows`. Not part of what a scope IS, so it is left out of
-    #: equality and of its repr.
+    #: The collection rows the scope already read, by content ID, so none is
+    #: read twice (U259). Not part of what a scope IS: out of equality and repr.
     read: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
 
 
@@ -313,14 +256,12 @@ def _landed(
     """The closed native landings a pass or a session names, the unread count, and whether
     the log could not be listed at all (R-1255).
 
-    A pass is :func:`cratekit.intake.native.landings_of_pass`'s proof, so a
-    landing refused after its moves, which names no pass, is never read as one.
-    A session is the same proof for one landing named by its id.
+    A pass is :func:`cratekit.intake.native.landings_of_pass`'s proof; a
+    session the same proof for one landing named by its id.
     """
     records, unreadable = session.scan_log(cfg)
     if session.log_unlisted(unreadable, cfg):
-        # NO LANDING CAN BE READ, so the caller refuses naming the listing
-        # rather than the pass lookup refusing in words of its own.
+        # NO LANDING CAN BE READ, so the caller refuses naming the listing.
         return (), len(unreadable), True
     if pass_name is not None:
         wanted = set(native.landings_of_pass(cfg, pass_name))
@@ -370,19 +311,9 @@ def _unanalysed(db: Any) -> dict[str, Any]:
     """Every live collection row rekordbox has not analysed, by the clear's own reading,
     each with the row the one read of the collection holds, in the collection's order.
 
-    ONE STATEMENT, NOT ONE A ROW (U259). Each row is judged by
-    :func:`cratekit.intake.analyzed.judge` as the read hands it over, which is
-    the judgment the clear reads by ID, so no row is asked for again; the check
-    reads a private copy, so nothing changes a row between the read and the
-    judgment.
-
-    A ROW WHOSE ID IS STORED AS BYTES IS LEFT OUT, as the read by ID always
-    left it (review round one): the text of such an ID, ``str`` of the bytes,
-    never finds it, so it was never in this scope, and judging it in hand
-    would add it. ONLY BYTES (review round two): an ID stored as an integer,
-    in a column of integer affinity, IS found by its text, so it stays in.
-    Whether a bytes ID belongs in the scope is a question of its own, not one
-    this saving answers.
+    ONE STATEMENT, NOT ONE A ROW (U259), each row judged as the read hands it
+    over. A ROW WHOSE ID IS STORED AS BYTES IS LEFT OUT, as the read by ID never
+    found it; an integer ID is found by its text, so it stays in.
     """
     waiting: dict[str, Any] = {}
     for content in db.get_content():
@@ -400,11 +331,7 @@ _CHUNK = 500
 
 
 def _content_rows(db: Any, content_ids: Sequence[str]) -> dict[str, Any]:
-    """The collection rows named, by content ID, read a chunk of IDs to a statement (U259).
-
-    A row the collection lacks is absent from the answer, which the caller
-    reads as ``None``: what a read by ID answers for it.
-    """
+    """The collection rows named, by content ID, read a chunk of IDs to a statement (U259)."""
     from pyrekordbox.db6 import tables
 
     found: dict[str, Any] = {}
@@ -427,10 +354,8 @@ def resolve_scope(
 ) -> Scope:
     """The rows to read: a named landing, else INBOX / Analyze, else every unanalysed row.
 
-    A NAME THE PERSON GAVE WINS, so a pass or a session given on the command
-    line is read even when the playlist holds rows. A NAME NOTHING RECORDED
-    REFUSES, rather than reading as an empty scope and an answer of nothing to
-    check, which a mistyped pass would otherwise get.
+    A NAME THE PERSON GAVE WINS, and a name nothing recorded REFUSES rather
+    than reading as nothing to check.
     """
     if pass_name is not None or session_id is not None:
         kind = SCOPE_PASS if pass_name is not None else SCOPE_SESSION
@@ -461,10 +386,8 @@ def resolve_scope(
             )
         playlists = [one for record in records for one in _recorded_playlists(record)]
         members = _live_members(db, playlists)
-        # A LANDING WHOSE PLAYLISTS HOLD NO LIVE ROW REFUSES TOO (review round
-        # one): its rows were landed, so a scope that finds none of them is a
-        # playlist removed or emptied since, and answering "nothing to check"
-        # would exit 0, done's status, over rows nobody read.
+        # A LANDING WHOSE PLAYLISTS HOLD NO LIVE ROW REFUSES TOO: "nothing to
+        # check" would exit 0, done's status, over rows nobody read.
         if not members:
             raise refuse(
                 "analysis-check-landing-unknown",
@@ -491,11 +414,6 @@ def resolve_scope(
         passed_over=(why,),
         read=waiting,
     )
-
-
-# ---------------------------------------------------------------------------
-# The rows and the verdict
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -538,8 +456,7 @@ class Row:
         }
 
 
-#: The one reader of the mark, the landing's own, so the check reads as marked
-#: exactly what the landing reports it wrote (U157).
+#: The landing's own reader of the mark (U157).
 dyn_marked = native.dyn_marked
 
 #: What :func:`read_row` is handed when its caller holds no row, told apart
@@ -559,10 +476,9 @@ def read_row(
 ) -> Row:
     """Read one row: analysed or not, then its grid, its key and its mark.
 
-    ONE READ OF THE ROW (U259): the clear's judgment, the key, the title head
-    and the analysis path all come off ``content``, the row the caller already
-    holds (``None`` for a row the collection lacks), and only a call that
-    hands none reads it, once, by ID.
+    ONE READ OF THE ROW (U259): everything comes off ``content``, the row the
+    caller holds (``None`` for one the collection lacks); a call that hands
+    none reads it once by ID.
     """
     if content is _UNREAD:
         content = db.get_content(ID=content_id)
@@ -667,18 +583,9 @@ def check_rows(
 ) -> Check:
     """Read every row the scope names, once, off the handle given.
 
-    IN A HANDFUL OF STATEMENTS, NOT ONE A ROW (U259): the rows the scope
-    already read are used as read, the rest are read a chunk of IDs to a
-    statement, and each row is then judged in the scope's order, so the first
-    row that cannot say whether it was removed refuses as it did when each
-    row was read by itself.
-
-    A BATCH THE BINDING CANNOT LOAD IS READ A ROW AT A TIME (review round
-    one). A batch loads every row before any is judged, so a later row the
-    binding cannot load, a date it cannot parse, would fail the read ahead of
-    an earlier row's refusal. The rows are then read one by one by ID, as
-    they were before U259, and the first failure in the scope's order is the
-    answer: the same refusal, or the same error, nothing swallowed.
+    IN A HANDFUL OF STATEMENTS (U259), each row then judged in the scope's
+    order. A BATCH THE BINDING CANNOT LOAD IS READ A ROW AT A TIME, so the
+    first failure in the scope's order is the answer, nothing swallowed.
     """
     keys = {str(key.ID): key.ScaleName for key in db.get_key()}
     dyn = dyn_marked(db)
@@ -703,9 +610,7 @@ def check_rows(
         )
         for content_id in scope.content_ids
     )
-    # THE ROWS THE SCOPE CARRIED STAY WITH THE HANDLE: they belong to the
-    # copy's session, which closes when the check returns, so the answer
-    # holds the scope without them.
+    # THE ROWS THE SCOPE CARRIED STAY WITH THE HANDLE, whose session closes.
     return Check(scope=replace(scope, read={}), rows=rows)
 
 
@@ -726,10 +631,7 @@ def check(
             cfg, db, declared=declared, registry=registry, pass_name=pass_name, session_id=session_id
         )
         found = check_rows(cfg, db, scope, template=template)
-    # A NAMED LANDING WHOSE EVERY ROW HAS LEFT THE COLLECTION REFUSES TOO (review
-    # round two), for the reason a landing whose playlists hold no live row
-    # does: its rows were landed, none of them could be read, and nothing,
-    # exit 0, would read as done over a landing nobody checked.
+    # A NAMED LANDING WHOSE EVERY ROW HAS LEFT THE COLLECTION REFUSES TOO.
     if found.verdict == NOTHING and scope.kind in (SCOPE_PASS, SCOPE_SESSION):
         raise refuse(
             "analysis-check-landing-unknown",

@@ -1,21 +1,10 @@
-"""U58: the analysis workers, the wav plumbing, and the energy that was never computed.
+"""U58: the analysis workers, the vocal pass's decode, and the energy level.
 
-Three claims, each driven rather than read:
-
-1. ``analyze.run`` and ``analyze.restamp`` execute their queued items, pending
-   to done, through the real dispatcher and the real resume argv, with the
-   files read back off disk afterwards.
-2. The vocal pass scores a partial that carries nothing but a path. The first
-   version waited on a ``wav`` key nothing set and reported every track as
-   ``voxlevel=0``; the pin below fails if any line of the module reads that
-   key again.
-3. Energy is either a level from a calibration or an honest absence with a
-   status, and the routing reader is driven on both.
-
-EVERY WORKER CASE GOES THROUGH THE VERB rather than through the handler, so a
-key still sitting in ``HANDLERS_NOT_YET_BOUND`` fails here rather than passing
-against a worker called by hand. The seams are bound on the modules with
-``monkeypatch`` so each test starts from an unbound process.
+The queued verbs run pending to done through the real dispatcher and resume
+argv; the vocal pass scores a partial carrying only a path; energy is a level
+or an honest absence. EVERY WORKER CASE GOES THROUGH THE VERB, so an unbound
+handler key fails here. Seams are bound with ``monkeypatch`` on an unbound
+process.
 """
 
 from __future__ import annotations
@@ -29,7 +18,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from cratekit.analysis import artifacts, detect, energy, light, vocals
+from cratekit.analysis import artifacts, calibrate, detect, energy, light, vocals
 from cratekit.analysis import cli as analysis_cli
 from cratekit.cli import handlers, registry
 from cratekit.core import config, jobs, routing, tags, taxonomy
@@ -44,11 +33,6 @@ from tests.test_config import valid_data
 
 SRC_ROOT = Path(__file__).resolve().parent.parent / "src"
 VOCALS_SOURCE = SRC_ROOT / "cratekit" / "analysis" / "vocals.py"
-
-
-# ---------------------------------------------------------------------------
-# Fixtures and seams
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -174,11 +158,6 @@ def calibration_over(count: int = 12) -> energy.Calibration:
     return energy.calibrate([features(i) for i in range(count)])
 
 
-# ---------------------------------------------------------------------------
-# The binding
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("key", ["analyze.run", "analyze.restamp"])
 def test_the_analysis_keys_resolve_to_workers(key):
     """The R-203 half this unit closes, asserted against the table itself."""
@@ -190,11 +169,6 @@ def test_the_analysis_keys_resolve_to_workers(key):
 
 def test_the_two_workers_are_different_functions():
     assert handlers.resolve("analyze.run") is not handlers.resolve("analyze.restamp")
-
-
-# ---------------------------------------------------------------------------
-# analyze.run, pending to done through the real resume
-# ---------------------------------------------------------------------------
 
 
 def test_an_analyze_job_runs_pending_to_done_and_the_files_carry_the_result(
@@ -302,12 +276,7 @@ def test_a_file_removed_between_queueing_and_drive_is_refused_by_name(
 def test_the_missing_extra_refuses_the_item_rather_than_skipping_it_as_keyless(
     cfg, folder, silence, monkeypatch
 ):
-    """Nothing bound and no librosa is the state of a real slim worker process.
-
-    The detector answers a missing extra and a keyless track with the same
-    None. A job that skipped every file as keyless on a machine that had no
-    librosa would be a clean report over work nothing could do.
-    """
+    """Nothing bound and no librosa, a real slim worker: refused, never keyless."""
     place(folder, silence, "track")
     monkeypatch.setattr(detect, "heavy_available", lambda: False)
     drive(["analyze", "run", "--queue-only", str(folder)])
@@ -411,9 +380,8 @@ class _Killed(BaseException):
 def kill_after_the_rename(monkeypatch):
     """Arrange for the first finalized report to die before it is staged.
 
-    ``jobs.drive`` converts ``Exception`` at the item boundary, and a kill is
-    not one, so the row stays pending under its old name while the file is
-    already under its head. The second attempt goes through untouched.
+    A kill is not an ``Exception``, so the row stays pending under its old name
+    while the file is already under its head.
     """
     real = artifacts.produced
     calls: list[str] = []
@@ -433,10 +401,8 @@ def test_an_item_renamed_before_its_row_moved_resumes_as_finished(
 ):
     """The kill window between the rename and the row flipping to done.
 
-    THE STEM IS ONE THE TEMPLATE REWRITES, a trailing segment repeating the
-    lead, so the finished file's name is not the head plus the item. The
-    first version guessed the twin from the folder by stripping heads and
-    comparing stems, and refused exactly this file as missing.
+    THE STEM IS ONE THE TEMPLATE REWRITES, so a twin guessed from the folder by
+    stripping heads would miss it.
     """
     place(folder, silence, "Daft Punk - Around the World - Daft Punk")
     bind_scoring(monkeypatch)
@@ -498,19 +464,8 @@ def test_a_rename_intent_for_another_item_or_a_gone_target_is_not_a_twin(cfg, fo
     assert analysis_cli._finalized_twin(cfg, Job, Item) is None, "another item's intent"
 
 
-# ---------------------------------------------------------------------------
-# U223: an interrupt between the staged report and the commit
-# ---------------------------------------------------------------------------
-
-
 def interrupt_once_staged(monkeypatch, *, status: str = "analyzed", times: int = 1):
-    """A real SIGINT the moment an item's report is staged, before its commit.
-
-    The window A60's live run hit (#423, sitting 72): the handler has renamed
-    the file and returned its staged report, and the engine's own checkpoint
-    finds the signal outstanding, releases the item uncommitted and cancels
-    the job. Nothing here edits a store or a staging file by hand.
-    """
+    """A real SIGINT the moment an item's report is staged, before its commit (#423)."""
     import os
     import signal
 
@@ -541,12 +496,8 @@ def _interrupted(stopped: dict) -> list[str]:
 def test_an_interrupt_after_a_renamed_items_report_is_staged_resumes_by_the_printed_command(
     cfg, folder, silence, monkeypatch
 ):
-    """U223's bug, through the verb a person runs and the command it prints.
-
-    The shipped ``staged_path`` cleared the item's whole staging directory,
-    rename intent and all, in the same attempt that renamed the file, so the
-    resume found the source gone, no intent, and failed the item for ever as
-    ``source-missing`` over a file analysed and renamed on disk.
+    """U223, through the verb a person runs and the command it prints: the resume
+    must not find the source gone and no intent.
     """
     place(folder, silence, "a parade")
     place(folder, silence, "b untouched")
@@ -611,11 +562,9 @@ def test_a_resume_interrupted_in_the_same_window_is_resumed_again(
 def test_a_job_the_shipped_code_left_with_no_intent_resumes_from_its_staged_report(
     cfg, folder, silence, monkeypatch
 ):
-    """A job the shipped code interrupted in this window and nobody resumed
-    yet: the file renamed, the staged report naming it, and no intent. The
-    report is this item's own record of the rename, so it is the proof when
-    the intent is gone. (A job already resumed under the shipped code failed
-    its item for good, as A60's did, and is queued again instead.)"""
+    """The file renamed, the staged report naming it, and no intent: the report
+    is the item's own proof of the rename.
+    """
     place(folder, silence, "a")
     bind_scoring(monkeypatch)
     interrupt_once_staged(monkeypatch)
@@ -976,11 +925,6 @@ def test_a_test_bound_detector_is_left_alone_by_the_default_binding(cfg, monkeyp
     assert light._DETECT is fake
 
 
-# ---------------------------------------------------------------------------
-# The wav plumbing
-# ---------------------------------------------------------------------------
-
-
 def test_a_partial_carrying_only_a_path_scores_nonzero_through_the_fixed_path(monkeypatch):
     """The R-133 agent half: a loaded model now produces a real score."""
     bind_scoring(monkeypatch)
@@ -1032,18 +976,8 @@ def test_a_decode_that_fails_is_reported_as_inactive_and_never_as_zero(monkeypat
     assert scored["voxgender"] is None
 
 
-# ---------------------------------------------------------------------------
-# U92: a file too large to decode is refused before the model is asked for
-# ---------------------------------------------------------------------------
-
-
 def sparse(path: Path, size: int) -> Path:
-    """A file that IS ``size`` bytes long and occupies almost none of them.
-
-    ``truncate`` sets the length without writing, so the real shipped cap can
-    be driven at its real value and the suite never writes a quarter of a
-    gigabyte to anybody's disk.
-    """
+    """A file that IS ``size`` bytes long and occupies almost none of them."""
     with path.open("wb") as handle:
         handle.truncate(size)
     assert path.stat().st_size == size, "the filesystem did not take the sparse length"
@@ -1051,12 +985,8 @@ def sparse(path: Path, size: int) -> Path:
 
 
 def test_the_shipped_oversize_cap_is_two_hundred_and_fifty_mebibytes():
-    """The number itself, not only the comparison over a monkeypatched one.
-
-    A suite that lowers the cap in every test proves the guard fires and says
-    nothing about where it fires, so a cap edited to a megabyte or to a
-    terabyte would pass all of them. This is the source system's number,
-    ``DJ_analysis/vocal_detect.py``.
+    """The number itself: every other test lowers the cap, which proves only that
+    the guard fires.
     """
     assert vocals.VOCAL_MAX_BYTES == 250 * 1024 * 1024
 
@@ -1094,12 +1024,8 @@ def test_a_file_over_the_cap_never_reaches_the_decoder(tmp_path, monkeypatch):
 
 
 def test_an_oversize_file_is_refused_without_loading_the_model(tmp_path, monkeypatch):
-    """The guard sits ahead of the load, not merely ahead of the decode.
-
-    Oversize is a property of the file and true on every machine.
-    ``vocal-model-unavailable`` is a property of this box and carries a warning
-    telling the person that installing the extra will score these tracks, which
-    is false about a file nothing would ever decode.
+    """The guard sits ahead of the load: the missing model's install warning is
+    false about a file nothing would decode.
     """
     loaded: list[int] = []
 
@@ -1135,11 +1061,7 @@ def test_a_file_exactly_at_the_cap_is_still_decoded(tmp_path, monkeypatch):
 def test_a_size_that_cannot_be_read_is_not_oversize_and_the_decode_path_reports(
     tmp_path, monkeypatch
 ):
-    """A stat failure is the decode path's to report, not this guard's.
-
-    Two reporters of one failure is how a missing file comes back as a size
-    refusal, which names the wrong remedy.
-    """
+    """A stat failure is the decode path's to report, not this guard's."""
     gone = tmp_path / "gone.flac"
     assert vocals.is_oversize(gone) is False
     assert vocals.is_oversize(None) is False, "an absent path is not a size"
@@ -1149,15 +1071,10 @@ def test_a_size_that_cannot_be_read_is_not_oversize_and_the_decode_path_reports(
 
 
 def test_an_oversize_track_is_never_warned_about_as_a_missing_model(monkeypatch):
-    """``unscored_warning`` counts one reason of the five, and this is not it.
+    """``unscored_warning`` counts only the reason an install would mend.
 
-    It tells the person to install the vocals extra. No install makes a live
-    set decodable, so a summary holding only size refusals warns about nothing,
-    and a mixed summary warns about the one track the install would help.
-
-    ``missing_requirement`` is stubbed for the mixed half only because the real
-    one imports ``panns_inference``, which is twelve seconds on this machine and
-    is not what this test is about. The count is the assertion.
+    ``missing_requirement`` is stubbed for the mixed half to keep
+    ``panns_inference`` unimported.
     """
     summary = {"by_vocal_reason": {vocals.REASON_AUDIO_TOO_LARGE: 4}}
     assert vocals.unscored_warning(summary, verb="analysed") is None
@@ -1175,17 +1092,10 @@ def test_an_oversize_track_is_never_warned_about_as_a_missing_model(monkeypatch)
 def test_a_run_over_an_oversize_track_reports_it_and_writes_no_vox_tag(
     cfg, folder, silence, monkeypatch
 ):
-    """End to end through the verb, with the cap lowered to meet the fixture.
+    """End to end through the verb, with the cap lowered to a byte.
 
-    The shipped value is pinned by its own test above. Here the cap comes down
-    to a byte so a real container, which the finalize step must be able to
-    tag, stands in for a live set.
-
-    IT DOES NOT SHOW THE LIGHT PASS IS GUARDED, and nothing does, because the
-    light pass is faked here as it is in every test in this file. On a real
-    ``analyze run`` the light decode reads the whole file first and is capped
-    by nothing, R-583. What this proves is the vocal half: the reason reaches
-    the item report and the summary, and no vox tag is written over the file.
+    The light pass is faked, so this proves the vocal half only (R-583): the
+    reason reaches the report and the summary, and no vox tag is written.
     """
     place(folder, silence, "a", voxlevel=42, voxgender="F")
     bind_scoring(monkeypatch)
@@ -1255,11 +1165,6 @@ def test_run_batch_threads_the_decoder_through_to_the_vocal_pass(tmp_path, monke
     assert results[0].voxlevel > 0
     assert results[0].energy == 6
     assert results[0].energy_status == energy.STATUS_CALIBRATED
-
-
-# ---------------------------------------------------------------------------
-# Energy: a level or an honest absence, and the reader driven on both
-# ---------------------------------------------------------------------------
 
 
 def _energy_bucket() -> tuple[taxonomy.Taxonomy, taxonomy.Bucket]:
@@ -1443,11 +1348,6 @@ def test_the_feature_extractor_is_absent_without_the_extra(tmp_path):
         assert energy.features_from_path(tmp_path / "none.flac") is None
 
 
-# ---------------------------------------------------------------------------
-# analyze.restamp
-# ---------------------------------------------------------------------------
-
-
 def bind_measuring(monkeypatch, table: dict[str, int]):
     """An extractor answering by filename stem with a feature vector of that seed."""
     monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: features(table[Path(path).stem]))
@@ -1579,11 +1479,6 @@ def test_a_restamp_worker_without_the_extra_refuses_rather_than_skipping(
     assert resumed["cause"]["inner"]["reason"] == "module-extras-missing"
 
 
-# ---------------------------------------------------------------------------
-# Calibrate and validate say something true
-# ---------------------------------------------------------------------------
-
-
 def test_calibrate_fits_the_energy_reference_over_a_folder_and_writes_it(
     cfg, folder, silence, monkeypatch
 ):
@@ -1623,15 +1518,15 @@ def test_calibrate_cuts_the_vocal_threshold_between_the_two_clusters(
     assert code == int(ExitCode.OK), envelope
     checks = {check["key"]: check for check in envelope["data"]["checks"]}
     assert checks["calibrate.vocals"]["status"] == "ok"
-    written = json.loads(analysis_cli.vocal_calibration_path(cfg).read_text())
+    written = json.loads(calibrate.vocal_calibration_path(cfg).read_text())
     assert 2 < written["threshold"] <= 40
     assert written["n_tracks"] == 12 and written["method"] == "otsu"
 
 
 def test_otsu_separates_a_bimodal_distribution():
-    cut = analysis_cli.otsu_threshold([0.0, 1.0, 2.0, 3.0] * 10 + [35.0, 40.0, 45.0] * 4)
+    cut = calibrate.otsu_threshold([0.0, 1.0, 2.0, 3.0] * 10 + [35.0, 40.0, 45.0] * 4)
     assert 3.0 < cut <= 35.0
-    assert analysis_cli.otsu_threshold([]) == analysis_cli.DEFAULT_VOCAL_THRESHOLD
+    assert calibrate.otsu_threshold([]) == analysis_cli.DEFAULT_VOCAL_THRESHOLD
 
 
 def test_a_single_cluster_is_not_cut_down_the_middle(cfg, folder, silence, monkeypatch):
@@ -1646,24 +1541,20 @@ def test_a_single_cluster_is_not_cut_down_the_middle(cfg, folder, silence, monke
     checks = {check["key"]: check for check in envelope["data"]["checks"]}
     assert checks["calibrate.vocals"]["status"] == "skipped"
     assert "do not split into two clusters" in checks["calibrate.vocals"]["detail"]
-    assert not analysis_cli.vocal_calibration_path(cfg).exists()
+    assert not calibrate.vocal_calibration_path(cfg).exists()
 
 
 def test_cluster_separation_is_none_with_nothing_on_one_side():
-    assert analysis_cli.cluster_separation([1.0, 2.0], 50.0) is None
-    assert analysis_cli.cluster_separation([1.0, 41.0], 20.0) == 40.0
+    assert calibrate.cluster_separation([1.0, 2.0], 50.0) is None
+    assert calibrate.cluster_separation([1.0, 41.0], 20.0) == 40.0
 
-
-# ---------------------------------------------------------------------------
-# U90: ``--vocal-cut`` sets the with vox cut by hand
-# ---------------------------------------------------------------------------
 
 HAND_DAY = "2026-09-17"
 
 
 @pytest.fixture
 def hand_day(monkeypatch):
-    monkeypatch.setattr(analysis_cli, "_today", lambda: HAND_DAY)
+    monkeypatch.setattr(calibrate, "_today", lambda: HAND_DAY)
 
 
 def test_a_hand_cut_is_written_and_the_one_loader_reads_it_back(cfg, hand_day):
@@ -1711,12 +1602,12 @@ def test_a_cut_outside_the_score_range_refuses_and_writes_nothing(cfg, cut):
     code, envelope = drive(["analyze", "calibrate", f"--vocal-cut={cut}"])
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "vocal-cut-out-of-range"
-    assert not analysis_cli.vocal_calibration_path(cfg).exists()
+    assert not calibrate.vocal_calibration_path(cfg).exists()
 
 
 def test_a_refused_cut_leaves_the_cut_on_record_byte_for_byte(cfg, hand_day):
     drive(["analyze", "calibrate", "--vocal-cut", "5"])
-    path = analysis_cli.vocal_calibration_path(cfg)
+    path = calibrate.vocal_calibration_path(cfg)
     before = path.read_bytes()
     code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "101"])
     assert code == int(ExitCode.PRECONDITION), envelope
@@ -1726,11 +1617,11 @@ def test_a_refused_cut_leaves_the_cut_on_record_byte_for_byte(cfg, hand_day):
 def test_a_folder_and_a_hand_cut_together_are_refused_by_the_parser(cfg, folder):
     code, _ = drive(["analyze", "calibrate", str(folder), "--vocal-cut", "5"])
     assert code == int(ExitCode.USAGE)
-    assert not analysis_cli.vocal_calibration_path(cfg).exists()
+    assert not calibrate.vocal_calibration_path(cfg).exists()
 
 
 def test_a_hand_cut_replaces_an_unreadable_calibration_and_says_it_could_not_be_read(cfg):
-    path = analysis_cli.vocal_calibration_path(cfg)
+    path = calibrate.vocal_calibration_path(cfg)
     config.mkdir_private(path.parent)
     path.write_text("{not json", encoding="utf-8")
     code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "5"])
@@ -1743,7 +1634,7 @@ def test_a_threshold_written_as_text_comes_back_from_the_one_reader_as_a_float(c
     """A hand edited file can carry "5.0". The reader checks and converts it, and
     the record it returns carries the converted number, not the text, so the
     calibrate report and every tagging comparison meet a float."""
-    path = analysis_cli.vocal_calibration_path(cfg)
+    path = calibrate.vocal_calibration_path(cfg)
     config.mkdir_private(path.parent)
     path.write_text('{"threshold": "5.0", "method": "hand"}', encoding="utf-8")
     assert metadata_cli.load_vocal_calibration(cfg)["threshold"] == 5.0
@@ -1756,7 +1647,7 @@ def test_a_threshold_written_as_text_comes_back_from_the_one_reader_as_a_float(c
 
 def test_a_calibration_the_account_cannot_read_refuses_and_is_not_replaced(cfg):
     """Not the unreadable slug the hand cut writes over: a permission refusal."""
-    path = analysis_cli.vocal_calibration_path(cfg)
+    path = calibrate.vocal_calibration_path(cfg)
     config.mkdir_private(path.parent)
     path.write_text('{"threshold": 9.0, "method": "otsu"}', encoding="utf-8")
     path.chmod(0)
@@ -1778,7 +1669,7 @@ def test_a_fit_over_a_cut_it_cannot_open_reports_the_energy_it_wrote(
     for index, name in enumerate(names):
         place(folder, silence, name, voxlevel=2 if index < 8 else 40)
     bind_measuring(monkeypatch, {name: index for index, name in enumerate(names)})
-    path = analysis_cli.vocal_calibration_path(cfg)
+    path = calibrate.vocal_calibration_path(cfg)
     config.mkdir_private(path.parent)
     path.write_text('{"threshold": 9.0, "method": "hand"}', encoding="utf-8")
     path.chmod(0)
@@ -1801,7 +1692,7 @@ def test_a_hand_cut_refuses_with_the_library_away(cfg):
     code, envelope = drive(["analyze", "calibrate", "--vocal-cut", "5"])
     assert code == int(ExitCode.LIBRARY_UNAVAILABLE), envelope
     assert envelope["cause"]["reason"] == "library-volume-unmounted"
-    assert not analysis_cli.vocal_calibration_path(cfg).exists()
+    assert not calibrate.vocal_calibration_path(cfg).exists()
 
 
 def test_a_fit_after_a_hand_cut_replaces_it_and_says_so(
@@ -1904,17 +1795,8 @@ def test_validate_says_plainly_that_nothing_was_scored(cfg):
     assert "report-defect" not in json.dumps(envelope)
 
 
-# ---------------------------------------------------------------------------
-# The slim install stays slim
-# ---------------------------------------------------------------------------
-
-
 def test_the_analysis_package_imports_with_the_heavy_stack_blocked():
-    """Nothing this unit added reaches for librosa, torch or the model at import.
-
-    A fresh interpreter rather than a reload, because reloading a module in
-    the running suite replaces function objects other tests hold.
-    """
+    """Nothing reaches for librosa, torch or the model at import, in a fresh interpreter."""
     import subprocess
 
     script = (
@@ -1931,11 +1813,6 @@ def test_the_analysis_package_imports_with_the_heavy_stack_blocked():
     proc = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.strip() == "slim"
-
-
-# ---------------------------------------------------------------------------
-# The second fix round, from the review over the whole branch
-# ---------------------------------------------------------------------------
 
 
 def test_a_dotfile_sidecar_beside_a_track_is_not_an_item(cfg, folder, silence):
@@ -2155,11 +2032,6 @@ def test_the_verb_module_never_imports_the_model_module_at_module_scope():
             assert "vocal" not in {alias.name for alias in node.names}
 
 
-# ---------------------------------------------------------------------------
-# U93: a recursive restamp queues a whole tree as one resumable job
-# ---------------------------------------------------------------------------
-
-
 def nest(folder: Path, silence: Path, relative: str, **fields) -> Path:
     """``place``, one level down or more. The item id becomes this relative path."""
     path = folder / relative
@@ -2239,11 +2111,7 @@ def test_a_recursive_restamp_runs_every_nested_item_to_done_and_writes_the_right
 def test_two_nested_folders_holding_the_same_filename_are_two_items(
     cfg, folder, silence, monkeypatch
 ):
-    """``job_items`` is keyed ``(job_id, item_id)``, so bare names would collide.
-
-    Every real library holds one track name in more than one genre folder. Under
-    bare names the second insert raises and no recursive queue exists at all.
-    """
+    """``job_items`` is keyed ``(job_id, item_id)``, so bare names would collide."""
     energy.save_calibration(cfg, calibration_over(count=20))
     nest(folder, silence, "house/track.flac", energylevel=7)
     nest(folder, silence, "techno/track.flac", energylevel=7)
@@ -2450,11 +2318,7 @@ def test_a_one_level_restamp_resume_says_nothing_about_a_walk_it_never_did(
 def test_the_restamp_resume_names_an_unreadable_folder_and_not_only_a_link(
     cfg, folder, silence, monkeypatch
 ):
-    """Both halves of the walk's omission are frozen, so both are read back.
-
-    Added after the U93 mutation table: D19 killed zero because every resume
-    case in the suite froze declined links and never an unreadable folder.
-    """
+    """Both halves of the walk's omission are frozen, so both are read back (U93 D19)."""
     energy.save_calibration(cfg, calibration_over(count=20))
     nest(folder, silence, "house/track.flac", energylevel=7)
     shut = folder / "locked"
@@ -2477,17 +2341,9 @@ def test_the_restamp_resume_names_an_unreadable_folder_and_not_only_a_link(
     assert "locked" in unreadable[0]["message"]
 
 
-# ---------------------------------------------------------------------------
-# U94: calibrate fits over a library wide sample and refuses a partial one
-# ---------------------------------------------------------------------------
-
-
 def genre_tree(cfg, silence, monkeypatch, per_folder: int = 8, **fields) -> tuple[Path, list[Path]]:
-    """A library root holding two genre folders, measured by a recording fake.
-
-    Returns the root and the list the extractor appends every path it is asked
-    about to, in order, which is what "nothing was measured" and "the same
-    sample twice" are asserted against.
+    """A library root of two genre folders, and the list the recording extractor
+    appends every path it measures to.
     """
     root = Path(cfg.library.root)
     seen: list[Path] = []
@@ -2532,7 +2388,7 @@ def test_a_single_genre_folder_without_the_flag_writes_nothing_and_says_why(
     assert envelope["data"]["summary"]["calibrated"] is False
     assert seen == [], "a refused sample is refused BEFORE anything is measured"
     assert energy.load_calibration(cfg) is None
-    assert not analysis_cli.vocal_calibration_path(cfg).exists()
+    assert not calibrate.vocal_calibration_path(cfg).exists()
 
 
 def test_a_recursive_run_at_the_root_writes_a_calibration_with_the_sample_note(
@@ -2554,7 +2410,7 @@ def test_a_recursive_run_at_the_root_writes_a_calibration_with_the_sample_note(
         "folder": str(root), "calibrated": True, "tracks": 16,
         "recursive": True, "sampled": 16,
     }
-    assert analysis_cli.PARTIAL_SAMPLE not in codes_of(envelope)
+    assert calibrate.PARTIAL_SAMPLE not in codes_of(envelope)
 
 
 def test_the_same_tree_gives_the_same_sample_twice(cfg, silence, monkeypatch):
@@ -2590,7 +2446,7 @@ def test_accept_partial_writes_and_warns(cfg, silence, monkeypatch):
     )
     assert "--accept-partial was given" in checks["calibrate.sample"]["detail"]
     assert checks["calibrate.energy"]["status"] == "ok"
-    (warning,) = [w for w in envelope["warnings"] if w["code"] == analysis_cli.PARTIAL_SAMPLE]
+    (warning,) = [w for w in envelope["warnings"] if w["code"] == calibrate.PARTIAL_SAMPLE]
     assert str(house) in warning["message"]
     loaded = energy.load_calibration(cfg)
     assert loaded is not None and loaded.note == f"fitted over 12 of 12 under {house}"
@@ -2626,7 +2482,7 @@ def test_the_music_folder_walked_recursively_is_the_library_too(cfg, silence, mo
     code, envelope = drive(["analyze", "calibrate", str(music), "--recursive"])
     assert code == int(ExitCode.OK), envelope
     assert checks_of(envelope)["calibrate.sample"]["status"] == "ok"
-    assert analysis_cli.PARTIAL_SAMPLE not in codes_of(envelope)
+    assert calibrate.PARTIAL_SAMPLE not in codes_of(envelope)
     loaded = energy.load_calibration(cfg)
     assert loaded is not None and loaded.note == f"fitted over 16 of 16 under {music}"
 
@@ -2689,7 +2545,7 @@ def test_a_sample_below_the_fit_floor_is_refused_before_measuring(
 ):
     """The floor is a different question from partiality, so the flag does not waive it."""
     root, seen = genre_tree(cfg, silence, monkeypatch)
-    below = str(analysis_cli.MIN_CALIBRATION_TRACKS - 1)
+    below = str(calibrate.MIN_CALIBRATION_TRACKS - 1)
     code, envelope = drive(
         ["analyze", "calibrate", str(root), "--recursive", "--sample", below, *extra]
     )
@@ -2703,11 +2559,11 @@ def test_a_sample_below_the_fit_floor_is_refused_before_measuring(
 
 def test_a_sample_at_the_fit_floor_is_accepted(cfg, silence, monkeypatch):
     root, seen = genre_tree(cfg, silence, monkeypatch)
-    at = str(analysis_cli.MIN_CALIBRATION_TRACKS)
+    at = str(calibrate.MIN_CALIBRATION_TRACKS)
     code, envelope = drive(["analyze", "calibrate", str(root), "--recursive", "--sample", at])
     assert code == int(ExitCode.OK), envelope
     assert checks_of(envelope)["calibrate.energy"]["status"] == "ok"
-    assert len(seen) == analysis_cli.MIN_CALIBRATION_TRACKS
+    assert len(seen) == calibrate.MIN_CALIBRATION_TRACKS
 
 
 def test_the_vocal_cut_reads_every_tagged_file_while_energy_reads_the_sample(
@@ -2765,7 +2621,7 @@ def test_a_walk_that_left_a_folder_out_is_not_the_library(cfg, silence, monkeypa
     code, fitted = drive(["analyze", "calibrate", str(root), "--recursive", "--accept-partial"])
     assert code == int(ExitCode.OK), fitted
     assert checks_of(fitted)["calibrate.sample"]["status"] == "skipped"
-    assert {"linked-folder-skipped", analysis_cli.PARTIAL_SAMPLE} <= set(codes_of(fitted))
+    assert {"linked-folder-skipped", calibrate.PARTIAL_SAMPLE} <= set(codes_of(fitted))
     loaded = energy.load_calibration(cfg)
     assert loaded is not None
     assert loaded.note == f"fitted over 16 of 16 under {root}, with 1 folder not walked", (
@@ -2808,7 +2664,7 @@ def test_a_run_where_only_the_vocal_half_wrote_does_not_answer_no_op(
     assert checks["calibrate.vocals"]["status"] == "ok"
     assert envelope["outcome"] == "ok", "a file was replaced, so something changed"
     assert envelope["data"]["summary"]["calibrated"] is False
-    assert analysis_cli.vocal_calibration_path(cfg).exists()
+    assert calibrate.vocal_calibration_path(cfg).exists()
 
 
 def test_a_partial_fit_that_wrote_nothing_does_not_warn_about_a_calibration(
@@ -2820,12 +2676,12 @@ def test_a_partial_fit_that_wrote_nothing_does_not_warn_about_a_calibration(
     code, envelope = drive(["analyze", "calibrate", str(folder), "--accept-partial"])
     assert code == int(ExitCode.OK), envelope
     assert checks_of(envelope)["calibrate.energy"]["status"] == "failed"
-    assert analysis_cli.PARTIAL_SAMPLE not in codes_of(envelope)
+    assert calibrate.PARTIAL_SAMPLE not in codes_of(envelope)
 
 
 def test_the_stride_sample_is_even_ordered_and_reaches_the_tail():
     items = [f"{index:04d}" for index in range(1003)]
-    taken = analysis_cli.stride_sample(items, 100)
+    taken = calibrate.stride_sample(items, 100)
     assert len(taken) == 100 == len(set(taken))
     assert taken == sorted(taken) and taken[0] == items[0]
     assert items.index(taken[-1]) >= len(items) - 11, (
@@ -2834,14 +2690,14 @@ def test_the_stride_sample_is_even_ordered_and_reaches_the_tail():
     )
     gaps = {items.index(b) - items.index(a) for a, b in zip(taken, taken[1:])}
     assert gaps <= {10, 11}
-    assert analysis_cli.stride_sample(items, 100) == taken
+    assert calibrate.stride_sample(items, 100) == taken
 
 
 def test_the_stride_sample_takes_everything_when_there_is_less_than_asked():
-    assert analysis_cli.stride_sample(["a", "b", "c"], 500) == ["a", "b", "c"]
-    assert analysis_cli.stride_sample(["a", "b", "c"], 3) == ["a", "b", "c"]
-    assert analysis_cli.stride_sample(["a", "b", "c"], 0) == []
-    assert analysis_cli.stride_sample([], 10) == []
+    assert calibrate.stride_sample(["a", "b", "c"], 500) == ["a", "b", "c"]
+    assert calibrate.stride_sample(["a", "b", "c"], 3) == ["a", "b", "c"]
+    assert calibrate.stride_sample(["a", "b", "c"], 0) == []
+    assert calibrate.stride_sample([], 10) == []
 
 
 def test_the_restamp_refusal_names_the_library_wide_calibrate(cfg, folder, silence):
@@ -2969,12 +2825,9 @@ def test_queue_only_beside_job_is_refused_before_anything_is_queued(cfg, folder,
 def test_an_interrupted_restamp_names_its_job_command_and_that_command_finishes_it(
     cfg, folder, silence, monkeypatch
 ):
-    """A real SIGINT through the engine's checkpoint, in the call that queued the job.
-
-    The engine records the stop as cancelled, which is closed, and a closed job's
-    ``--job`` command reports rather than drives. So the job must come back
-    queued, the refusal must name that command, and the command must finish the
-    work without measuring a settled file again.
+    """A real SIGINT in the call that queued the job: the job comes back queued,
+    the refusal names its command, and the command finishes without measuring a
+    settled file again.
     """
     import os
     import shlex

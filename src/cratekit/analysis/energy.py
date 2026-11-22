@@ -1,38 +1,20 @@
 """Energy: a calibrated index over interpretable signals, mapped to a level.
 
-THE METHOD, stated here because U58 was asked to state it. A track becomes one
-fixed vector of acoustic measurements that drive perceived energy: loudness
-and dynamics, spectral brightness, onset and percussive density, spectral
-balance, and tempo. Each measurement is z-scored against the LIBRARY'S OWN
-mean and standard deviation, the z-scores are combined by signed weights into
-one index, and the index is mapped to a level from 1 to 10 by counting how
-many of nine cut points it clears. The cut points are the deciles of the
-library's own index distribution, so the levels spread evenly across this
-library rather than piling into the middle the way the source system's
-inherited values did. A beatless guard caps a track whose onset density sits
-below the calibrated floor at the top of the low band, because a sustained
-tone is not high energy however loud it is.
+THE METHOD (U58): a track becomes one fixed vector of acoustic measurements,
+each z-scored against the LIBRARY'S OWN mean and deviation, combined by signed
+weights into one index, and mapped to a level 1 to 10 by how many of nine cut
+points it clears. The cuts are the deciles of the library's own index, so
+levels spread evenly. A beatless guard caps a track below the calibrated
+onset floor at the top of the low band: a sustained tone is not high energy.
+The calibration is a property of one library, so ``core.config`` declares it
+library scoped and never restored.
 
-The calibration is therefore a property of one library, which is why
-``core.config`` declares ``energy_calibration`` library scoped and never
-restored: losing it changes where an unchanged track routes.
+WITHOUT A CALIBRATION THERE IS NO LEVEL, AND THE ABSENCE SAYS SO:
+``STATUS_UNCALIBRATED``, for which the worker writes no tag.
 
-WITHOUT A CALIBRATION THERE IS NO LEVEL, AND THE ABSENCE SAYS SO. A level is
-"where this track sits among its own library", and with no library
-distribution to sit in the honest answer is none. ``STATUS_UNCALIBRATED`` is
-that answer; the worker writes no tag for it, and the routing pass reads the
-missing tag as the taxonomy's no-energy sink. The first version of
-``detect.analyse_file`` returned ``"energy": None`` as a literal for every
-track with no status beside it, which looked like this absence and was
-actually "never computed".
-
-THE STATE FILES ARE WRITTEN ATOMICALLY AND THE UNDO LOG UNDER A LOCK. The
-undo log is declared by ``core.config`` as the only surviving copy of each
-file's pre-restamp value, so a truncating write interrupted by a kill would
-destroy every entry at once, and two restamp jobs driven concurrently over
-overlapping folders would each discard the other's entries in a read, modify,
-write race. ``config.atomic_write_bytes`` closes the first and the sibling
-lock closes the second, the way the label watermark does.
+THE STATE FILES ARE WRITTEN ATOMICALLY AND THE UNDO LOG UNDER A LOCK: the log
+is the only copy of each file's pre-restamp value, so a torn write or two
+concurrent restamps would destroy entries.
 
 librosa and numpy are imported inside the functions that need them, so a slim
 install can import this module and read a calibration file.
@@ -49,11 +31,8 @@ from typing import Any, Mapping, Sequence
 from cratekit.core import config
 from cratekit.core.cause import refuse
 
-#: Fixed column order, so a feature vector is deterministic across runs. Every
-#: column is measured and only the weighted ones score; the unweighted ones cost
-#: little once the spectrum exists, and they are what a later re-weighting
-#: would need. Nothing persists the vector yet, so re-weighting today still
-#: means re-measuring, which is recorded as a residual rather than promised.
+#: Fixed column order, so a feature vector is deterministic. Only the weighted
+#: columns score; the rest are cheap and what a later re-weighting would need.
 FEATURE_ORDER: tuple[str, ...] = (
     "rms_mean", "rms_std", "rms_dr", "rms_crest", "loudness_db",
     "centroid_mean", "centroid_std", "rolloff_mean", "rolloff_std",
@@ -153,11 +132,6 @@ class Calibration:
         )
 
 
-# ---------------------------------------------------------------------------
-# Measuring
-# ---------------------------------------------------------------------------
-
-
 def _central(samples: Any, rate: int) -> Any:
     width = int(SEGMENT_SECONDS * rate)
     if samples.shape[-1] <= width:
@@ -169,16 +143,9 @@ def _central(samples: Any, rate: int) -> Any:
 def features_from_samples(samples: Any, rate: int) -> dict[str, float] | None:
     """The ordered feature vector for decoded mono samples, or None.
 
-    Takes samples rather than a path so the head pass, which has already
-    decoded the track for key and tempo, does not decode it a second time.
-    Measured over the central :data:`SEGMENT_SECONDS`.
-
-    THE TEMPO FEATURE IS MEASURED HERE, FROM THE SLICE, ON EVERY PATH. The
-    first version took the head's whole track integer tempo when it had one
-    and measured its own only on the restamp path, so the same file scored
-    through ``analyze run`` and through ``analyze restamp`` carried two tempo
-    readings against one calibration, and a level could move on a restamp
-    with nothing changed. One method, so the two paths agree by construction.
+    Samples, so the head pass does not decode twice; measured over the central
+    :data:`SEGMENT_SECONDS`. THE TEMPO FEATURE IS MEASURED HERE, FROM THE
+    SLICE, ON EVERY PATH, so ``analyze run`` and ``analyze restamp`` agree.
     """
     try:
         import librosa
@@ -263,13 +230,9 @@ def features_from_samples(samples: Any, rate: int) -> dict[str, float] | None:
 def features_from_path(path: Path) -> dict[str, float] | None:
     """Decode the central slice of ``path`` and measure it.
 
-    The restamp and calibrate path, which has no head pass to share samples
-    with. ONLY THE SLICE IS DECODED for a file librosa reads: the duration is
-    read off the header and the decode is asked for the central
-    :data:`SEGMENT_SECONDS`, so a ten minute file costs a fifth of itself
-    rather than all of it and then a cut. A file decoded through ffmpeg, an
-    M4A on librosa 1.0, has no such seek: it is decoded whole for its
-    duration and whole again for the slice (U263).
+    The restamp and calibrate path. ONLY THE SLICE IS DECODED for a file
+    librosa reads, off the header's duration; one decoded through ffmpeg has
+    no such seek (U263).
     """
     try:
         import librosa  # noqa: F401 - asked for so its absence is the extra's absence
@@ -277,8 +240,7 @@ def features_from_path(path: Path) -> dict[str, float] | None:
         return None
     from cratekit.analysis import decode
 
-    # THROUGH THE ONE DECODER (U263), which is librosa's own two calls for
-    # every file librosa reads and ffmpeg for one libsndfile cannot open.
+    # THROUGH THE ONE DECODER (U263).
     try:
         offset = 0.0
         try:
@@ -299,11 +261,7 @@ _EXTRACTOR: Any = None
 
 
 def bind_extractor(extractor: Any) -> None:
-    """Bind what measures a path for the restamp and calibrate verbs.
-
-    None restores the shipped extractor. A test binds a function returning a
-    feature vector so the whole seam runs without the extra installed.
-    """
+    """Bind what measures a path for the restamp and calibrate verbs; None restores the shipped one."""
     global _EXTRACTOR
     _EXTRACTOR = extractor
 
@@ -318,11 +276,6 @@ def measure(path: Path) -> dict[str, float] | None:
     if extractor is None:
         extractor = features_from_path
     return extractor(path)
-
-
-# ---------------------------------------------------------------------------
-# Scoring, pure
-# ---------------------------------------------------------------------------
 
 
 def _weighted_index(
@@ -367,10 +320,8 @@ def calibrate(
 ) -> Calibration:
     """Fit one library's reference from its tracks' feature vectors.
 
-    Per feature mean and standard deviation ignoring NaN, then the nine decile
-    cut points of the resulting index, so the levels spread evenly across the
-    tracks that were measured. A standard deviation of zero becomes one, so a
-    feature every track shares contributes nothing rather than infinity.
+    Per feature mean and deviation ignoring NaN, then the nine decile cuts of
+    the index. A deviation of zero becomes one, so a shared feature adds nothing.
     """
     import numpy as np
 
@@ -415,11 +366,6 @@ def distribution(levels: Sequence[int]) -> dict[str, int]:
     return counts
 
 
-# ---------------------------------------------------------------------------
-# The library's state files
-# ---------------------------------------------------------------------------
-
-
 def write_json(path: Path, payload: Any) -> Path:
     """One state file, written whole or not at all, owner only."""
     config.atomic_write_bytes(
@@ -439,18 +385,13 @@ def undo_log_path(cfg: config.Config) -> Path:
 def load_calibration(cfg: config.Config) -> Calibration | None:
     """The active calibration, or None when this library has none yet.
 
-    An unreadable file REFUSES rather than reading as none, because a corrupt
-    calibration and an absent one are different states, and folding the first
-    into the second would restamp a whole library as though it had never been
-    calibrated. The refusal names the remedy, which is to calibrate again, so
-    a caller that let it through does not turn it into a defect report.
+    An unreadable file REFUSES rather than reading as none, naming the remedy:
+    folding corrupt into absent would restamp a library as never calibrated.
     """
     path = calibration_path(cfg)
     if not path.is_file():
         return None
-    # AttributeError is in the tuple because ``from_json`` asks ``.items()`` of
-    # three entries, and a file carrying a list where a mapping belongs raised
-    # through the promise this docstring makes.
+    # AttributeError: a list where ``from_json`` asks a mapping's ``.items()``.
     try:
         return Calibration.from_json(json.loads(path.read_text(encoding="utf-8")))
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
@@ -474,18 +415,13 @@ def save_calibration(cfg: config.Config, calibration: Calibration) -> Path:
 def read_undo_log(cfg: config.Config) -> dict[str, str | None]:
     """Every file's pre-restamp tag TEXT, keyed by absolute path.
 
-    Text rather than an integer, because the value being protected is whatever
-    the file carried, and a tag another tool wrote as ``7/10`` would be
-    recorded as null by an integer read and then be unrecoverable.
+    Text, because a tag another tool wrote as ``7/10`` would read as null.
     """
     path = undo_log_path(cfg)
     if not path.is_file():
         return {}
-    # AN UNREADABLE LOG REFUSES BY NAME. It is the only copy of every value a
-    # restamp overwrote, so a truncated one must reach the person as a file to
-    # repair, not as a defect report on every item of the next restamp, and a
-    # record appended to a log that could not be read back would discard
-    # whatever the unreadable text still held.
+    # AN UNREADABLE LOG REFUSES BY NAME, as a file to repair: appending to it
+    # would discard whatever the unreadable text still held.
     try:
         loaded = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(loaded, dict):
@@ -509,13 +445,8 @@ def read_undo_log(cfg: config.Config) -> dict[str, str | None]:
 def record_previous(cfg: config.Config, path: Path, previous: str | None) -> bool:
     """Record a file's pre-restamp tag text, ONCE. Returns True when recorded.
 
-    Never overwrites: the log holds the value the file carried before the FIRST
-    restamp touched it, which is the only copy of that value anywhere, and a
-    second restamp recording the first restamp's output would erase it.
-
-    UNDER THE SIBLING LOCK. The driver lock is per job, so two restamp jobs
-    over overlapping folders may run at once, and an unlocked read, modify,
-    write would let each discard the other's entries.
+    Never overwrites: the value before the FIRST restamp is the only copy.
+    UNDER THE SIBLING LOCK, since two restamp jobs may overlap.
     """
     target = undo_log_path(cfg)
     lock = config.exclusive_lock(target.with_name(target.name + ".lock"))

@@ -1,11 +1,9 @@
 """Where one analysed file's report is staged, and where it lands.
 
-The base is :class:`cratekit.core.jobs.Artifacts`, which says why an item has a
-report at all, why it sits under the queue and why the configuration is passed
-in. The report is also the only record of what was deliberately NOT written,
-which is where an honest energy absence and an unscored vocal pass have to
-land. What is analysis's own is the two directory names, a staging directory
-that keeps an interrupted rename's evidence, and the record of a run's pool.
+The base is :class:`cratekit.core.jobs.Artifacts`. The report is also the only
+record of what was deliberately NOT written, an honest energy absence or an
+unscored vocal pass. Analysis's own: the two directory names, a staging
+directory that keeps an interrupted rename's evidence, and a run's pool record.
 
 Layer: modules.
 """
@@ -24,9 +22,8 @@ ARTIFACTS_DIRNAME = "analysis-artifacts"
 #: ``os.replace`` and that is atomic only within one filesystem.
 STAGING_DIRNAME = "analysis-staging"
 
-#: The final path, the serializer and the reader of committed reports are the
-#: base's, ``core.jobs`` (U298). Staging is this module's own: it keeps an
-#: interrupted rename's evidence, which the base's cleared directory would not.
+#: Staging is this module's own (U298): it keeps an interrupted rename's
+#: evidence, which the base's cleared directory would not.
 _REPORTS = jobs.Artifacts(final=ARTIFACTS_DIRNAME, staging=STAGING_DIRNAME)
 final_path, committed, write = _REPORTS.final_path, _REPORTS.committed, _REPORTS.write
 
@@ -45,15 +42,10 @@ def _report_name(ordinal: int) -> str:
 def staged_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
     """A cleared staging directory for one attempt at one item.
 
-    CLEARED OF EVERYTHING BUT THE RENAME INTENT (U223). A stale report from an
-    earlier attempt never leaks into this one, but the intent is the resume's
-    evidence and this call comes AFTER the rename, in the very attempt that
-    renamed the file. The first version removed the whole directory here, so
-    an interrupt landing between the staged report and the commit left a
-    resume with the source gone and no intent, and the item failed for ever
-    as ``source-missing`` over a file analysed and renamed on disk (A60's live
-    run, #423). The intent is dropped where it is known false instead:
-    :func:`discard_rename_evidence`.
+    CLEARED OF EVERYTHING BUT THE RENAME INTENT (U223): this call comes after
+    the rename in the attempt that renamed, so removing the intent would leave
+    an interrupted resume with the source gone and no evidence. The intent is
+    dropped where it is known false, :func:`discard_rename_evidence`.
     """
     directory = _staging_dir(cfg, job_id, ordinal)
     if directory.is_dir() and not directory.is_symlink():
@@ -69,7 +61,6 @@ def staged_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
             else:
                 entry.unlink()
     elif directory.is_symlink() or directory.exists():
-        # WHAT THE FIRST VERSION DID WITH ANYTHING ELSE AT THIS PATH, kept:
         # ``rmtree`` refuses a link and a plain file, loudly, rather than this
         # call deciding to remove or follow one.
         shutil.rmtree(directory)
@@ -80,21 +71,10 @@ def staged_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
 def intent_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
     """Where one item's rename intent lives: in its staging directory.
 
-    THE INTENT IS WRITTEN BEFORE THE RENAME AND OUTLIVES A KILL. The item is
-    the pre rename name and the rename lands inside the handler, before the
-    engine flips the row to done, so a kill in that window leaves a finished
-    file under its head and a pending row under its old name. The intent is
-    what lets the resume find the file the item BECAME rather than guessing
-    from the folder, because a guess matched any headed file whose stripped
-    stem equalled the item, which is an unrelated file when the source was
-    deleted, and matched nothing when the template deduped or truncated the
-    stem.
-
-    IT OUTLIVES THE ATTEMPT THAT WROTE IT (U223). ``staged_path`` keeps it
-    when it clears the directory for a report, so the attempt that renamed
-    the file, and a resume interrupted in the same window, both leave it for
-    the next. It is removed only where it is known false: a rename that did
-    not land, and an attempt whose source is still a file.
+    Written before the rename, so a kill between the rename and the row
+    flipping to done leaves the resume the file the item BECAME, never a guess
+    from the folder. It outlives the attempt (U223) and is removed only where
+    known false: a rename that did not land, or a source still a file.
     """
     return _staging_dir(cfg, job_id, ordinal) / RENAME_INTENT_FILENAME
 
@@ -105,64 +85,8 @@ def record_rename_intent(cfg: config.Config, job, item, target: Path) -> Path:
     return write(path, {"item": item.item_id, "target": str(target)})
 
 
-def rename_intent(cfg: config.Config, job, item) -> Path | None:
-    """The target this item's last attempt meant to rename it to, if recorded.
-
-    A link is no record: this module writes the intent as a plain file, and
-    a link would name whatever its far end says as this item's twin.
-    """
-    path = intent_path(cfg, job.job_id, item.ordinal)
-    if path.is_symlink() or not path.is_file():
-        return None
-    try:
-        loaded = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:
-        return None
-    target = loaded.get("target")
-    return Path(str(target)) if target else None
-
-
-def discard_rename_evidence(cfg: config.Config, job, item) -> None:
-    """Drop this item's intent AND its staged report, once neither can be true.
-
-    Called where the rename they would prove is known not to stand: a rename
-    that did not land, and an attempt whose source is still a file. Left
-    behind, either names whatever later sits at that target, an unrelated
-    file a person put there, as this item's twin once the source is gone. The
-    report goes with the intent because :func:`staged_report` is read as the
-    same proof when the intent is missing, and the next ``staged_path`` that
-    would clear it comes only after the work, which a kill can forestall.
-    """
-    directory = _staging_dir(cfg, job.job_id, item.ordinal)
-    if directory.is_symlink() or not directory.is_dir():
-        # NOT THROUGH A LINK, the rule ``staged_path`` keeps: whatever sits at
-        # the link's far end is not this item's staging, and ``staged_path``
-        # refuses the link loudly when the attempt reaches it.
-        return
-    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):
-        entry = directory / name
-        # A DIRECTORY AT EITHER NAME IS LEFT for ``staged_path``, which
-        # removes its tree; an ``unlink`` would fail the item for good on a
-        # shape the clear before U223 healed.
-        if entry.is_symlink() or not entry.is_dir():
-            entry.unlink(missing_ok=True)
-
-
-def staged_report(cfg: config.Config, job, item) -> dict[str, Any] | None:
-    """This item's report, staged by an attempt whose row never moved, if any.
-
-    Read in place and never cleared here. A report that says it renamed is
-    staged only after the rename, so it is the item's own record of the
-    rename when the intent is gone, which is the state the shipped
-    ``staged_path`` left every job interrupted in that window (U223); which
-    reports say so is the caller's check. A report for another item, one
-    that does not parse to a mapping, or a link, is no report.
-    """
-    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)
-    if path.is_symlink() or not path.is_file():
-        return None
+def _item_record(path: Path, item) -> dict[str, Any] | None:
+    """The mapping ``path`` holds for this item, or None when it holds none."""
     try:
         loaded = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -172,6 +96,51 @@ def staged_report(cfg: config.Config, job, item) -> dict[str, Any] | None:
     return loaded
 
 
+def rename_intent(cfg: config.Config, job, item) -> Path | None:
+    """The target this item's last attempt meant to rename it to, if recorded.
+
+    A link is no record: it would name whatever its far end says as the twin.
+    """
+    path = intent_path(cfg, job.job_id, item.ordinal)
+    if path.is_symlink() or not path.is_file():
+        return None
+    target = (_item_record(path, item) or {}).get("target")
+    return Path(str(target)) if target else None
+
+
+def discard_rename_evidence(cfg: config.Config, job, item) -> None:
+    """Drop this item's intent AND its staged report, once neither can be true.
+
+    Called where the rename is known not to stand. Left behind, either would
+    name whatever later sits at that target as this item's twin. The report
+    goes too because :func:`staged_report` is read as the same proof.
+    """
+    directory = _staging_dir(cfg, job.job_id, item.ordinal)
+    if directory.is_symlink() or not directory.is_dir():
+        # NOT THROUGH A LINK: its far end is not this item's staging, and
+        # ``staged_path`` refuses the link loudly when the attempt reaches it.
+        return
+    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):
+        entry = directory / name
+        # A DIRECTORY AT EITHER NAME IS LEFT for ``staged_path`` to remove; an
+        # ``unlink`` would fail the item for good.
+        if entry.is_symlink() or not entry.is_dir():
+            entry.unlink(missing_ok=True)
+
+
+def staged_report(cfg: config.Config, job, item) -> dict[str, Any] | None:
+    """This item's report, staged by an attempt whose row never moved, if any.
+
+    Read in place, never cleared. A report that says it renamed is staged only
+    after the rename, so it is the item's record when the intent is gone
+    (U223). Another item's report, a non mapping, or a link is no report.
+    """
+    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)
+    if path.is_symlink() or not path.is_file():
+        return None
+    return _item_record(path, item)
+
+
 def produced(cfg: config.Config, job, item, report: dict[str, Any]) -> jobs.Produced:
     return jobs.Produced(
         staged=write(staged_path(cfg, job.job_id, item.ordinal), report),
@@ -179,18 +148,16 @@ def produced(cfg: config.Config, job, item, report: dict[str, Any]) -> jobs.Prod
     )
 
 
-#: The run's pool, recorded beside the item reports (U241). Not an ordinal, so
+#: The run's pool, beside the item reports (U241). Not an ordinal, so
 #: :func:`committed` never reads it as a report.
 POOL_FILENAME = "pool.json"
 
 
 def record_pool(cfg: config.Config, job_id: str, record: dict[str, Any]) -> Path:
-    """Write what pool the job's last drive ran with, replacing the drive before it.
+    """Write what pool the job's last drive ran with, replacing the one before.
 
-    A file because a worker's facts reach the verb's envelope only through
-    one, and because a resume that finds the job already finished must still
-    be able to say what it ran with. Written whole to a sibling and moved into
-    place, so a reader never meets half of it.
+    A file, so a resume of a finished job can still say it. Written to a
+    sibling and moved into place, so a reader never meets half of it.
     """
     directory = _REPORTS.final_dir(cfg, job_id)
     config.mkdir_private(directory)
@@ -204,8 +171,8 @@ def record_pool(cfg: config.Config, job_id: str, record: dict[str, Any]) -> Path
 def pool_record(cfg: config.Config, job_id: str) -> dict[str, Any] | None:
     """The pool the job's last drive ran with, or None when none was recorded.
 
-    A link is no record, and neither is a file that does not parse to a
-    mapping: an absent line on the answer, never an invented one.
+    A link or a file that is not a mapping is no record: an absent line on
+    the answer, never an invented one.
     """
     path = _REPORTS.final_dir(cfg, job_id) / POOL_FILENAME
     if path.is_symlink() or not path.is_file():
