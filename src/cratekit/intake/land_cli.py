@@ -1,44 +1,25 @@
 """``intake.land``: a staged batch moves into the library behind one gate.
 
-R-413's verb half. ``acquire download`` commits files to download staging,
-``tag folder`` and ``name apply`` work on them there, and nothing moved them
-out, so no downloaded track ever reached an importable file. The engine is
-:mod:`cratekit.intake.landing`, and this shell owns the plan, the gate and
-what a person is told afterwards.
+The engine is :mod:`cratekit.intake.landing`; this shell owns the plan, the
+gate and what a person is told afterwards. The native medium's steps are in
+:mod:`land_native`, its gate screens and notes in :mod:`land_report`, and the
+rehearsal in :mod:`land_rehearse`; every name a caller reads here is
+re-exported here.
 
-THE PLAN IS SHOWN BEFORE ANYTHING MOVES. The first run lists the folder, puts
-the list, the batch folder and the intake file in front of the person on the
-gate screen, and stops. An answer recorded against that plan is refused as
-stale if the folder, the batch or the intake file changed since, because the
-digest covers all of them and not only the files.
+THE PLAN IS SHOWN BEFORE ANYTHING MOVES, and an answer recorded against it is
+refused as stale if the folder, the batch, the intake file or the manifest's
+bytes changed since, because the digest covers all of them.
 
-THE IMPORT IS THE PERSON'S, AND THE RUN SAYS SO. A landed batch is one intake
-file rekordbox has not seen. :func:`cratekit.intake.ingest.place_files` leaves
-its intake session ``awaiting-import`` with a ``rekordbox_import`` pending
-action PERSISTED ON THAT RECORD, and the envelope carries that same action, not
-a second one built here, so what the screen said and what the session log holds
-cannot differ. Its steps run end to end: import the file, import the batch
-playlist on its own and drag it from the playlist root into the intake folder
-(R-687), take a Fresh Export, run ``intake imported``, which proves the import,
-retires the file and settles the run (R-501). It BLOCKS NOTHING. A blocking
-action makes every verb it names refuse, and no consequence of an unimported
-landing was driven that would justify that.
+THE IMPORT IS THE PERSON'S AND BLOCKS NOTHING. A landed batch is an intake
+file rekordbox has not seen; :func:`ingest.place_files` persists its
+``rekordbox_import`` pending action on the intake session record (not the
+run, where nothing would clear it), and the envelope carries that same
+action, so the screen and the session log cannot differ.
 
-THE SESSION RECORD IS WHERE IT IS REMEMBERED, NOT THE RUN RECORD. The action is
-not put on this run's own state, because nothing would ever clear it there and
-doctor would report the run as waiting for ever. Doctor's session check names
-every run still ``awaiting-import``.
-
-``--manifest`` FILES LABEL TRACKS IN THE SAME FILE. The manifest is the
-provenance ``label approved`` wrote beside its list. Its bytes are part of what
-the gate compares, so an answer given against one manifest is stale for
-another. A label row that no landed file matches is a warning that names the
-track, never a failure: the file, if there is one, is in the intake playlist.
-On a database native intake tree the same rows, or one label named with
-``--label`` and each file's date tag, are filed under the Record Labels tree in
-the landing's own commit (U156, :mod:`cratekit.intake.label_filing`), and so,
-with ``--label-from-tags``, is each file under the label its own label tag
-names, which is how a Bandcamp batch of several sellers lands (U177).
+A label row no landed file matches is a warning naming the track, never a
+failure. On a database native tree a manifest's rows, ``--label`` or
+``--label-from-tags`` file the batch under the Record Labels tree in the
+landing's own commit (U156, U177).
 """
 
 from __future__ import annotations
@@ -47,7 +28,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from cratekit.cli.output import Envelope, approving_actor, digest_of
+from cratekit.cli.output import Envelope, approving_actor
 from cratekit.core import config, rehearsal
 from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
@@ -107,6 +88,7 @@ from cratekit.intake.land_report import (  # noqa: F401 - re-exported, callers n
     _native_reported,
     _native_shown,
     _payload,
+    _plan,
     _reported,
     _shown,
     _with_filing,
@@ -134,42 +116,29 @@ NATIVE_GATE = "intake.land.native"
 
 _ORIGIN = ("intake.land_cli",)
 
-#: The verb that proves an intake file imported. One spelling, beside the
-#: session it is persisted on, and named here for the callers that read it.
+#: The verb that proves an intake file imported, spelled once in ``ingest``.
 VERIFY_VERB = ingest.VERIFY_VERB
 
 INTAKE_SUFFIX = "_inboxed.xml"
 
 #: What an intake file's name gains once its import is proven (R-501). It ends
-#: the name, so the cutover precheck's scan, which walks ``*.xml``, stops seeing
-#: the file. A second file retired under a name already taken gains ``-2``.
+#: the name so the cutover precheck's ``*.xml`` scan stops seeing the file; a
+#: second file retired under a taken name gains ``-2``.
 RETIRED_SUFFIX = ".imported"
 
 _RETIRED_TAIL = re.compile(re.escape(RETIRED_SUFFIX) + r"(-[0-9]+)?$")
 
 
 def unretired_name(name: str) -> str:
-    """An intake file's name as it was written, retired or not.
-
-    ONE PLACE KNOWS BOTH SPELLINGS. A verb that finds its pass from an intake
-    file's name is handed the retired name by anybody who proved the import
-    first, and it must read the same pass off it.
-    """
+    """An intake file's name as it was written, retired or not, so a verb
+    handed the retired name reads the same pass off it."""
     return _RETIRED_TAIL.sub("", name)
 
 
 def default_name(run_id: str) -> str:
-    """A run's identifier as a file name: what an intake file is named for.
-
-    The run's own identifier WITHOUT ITS COLONS. A run id spells the time as
-    ``19:34:38``, and a colon cannot be in a file name on the exFAT volumes a
-    library commonly sits on, and reads as a slash in Finder on the others.
-
-    NOT THE BATCH'S NAME SINCE U110. The batch folder and its playlist are named
-    for the date and the source (:mod:`cratekit.intake.batch_name`); this names
-    the intake file of a landing given neither ``--pass`` nor ``--name``, and
-    the pass ``intake missing --run`` and ``label sync --go`` tell a person to
-    land under.
+    """A run's identifier WITHOUT ITS COLONS, as a file name for an intake file
+    or a pass. A colon cannot be in a file name on exFAT and reads as a slash
+    in Finder. Not the batch's name, which :mod:`batch_name` makes (U110).
     """
     return run_id.replace(":", "")
 
@@ -177,11 +146,9 @@ def default_name(run_id: str) -> str:
 def intake_stem(*, pass_name: str | None, name: str | None, run_id: str) -> str:
     """What a landing's intake file is named for, before ``_inboxed.xml``.
 
-    THE PASS FIRST, because the file's name is how ``sync mark`` finds the pass
-    and how ``label mark``, ``export archive`` and ``sync unmark`` key what they
-    record. Then ``--name``, which is what the file was named for before
-    ``--pass`` existed, so a landing typed the old way still writes the file a
-    later mark reads. Then the landing's own run.
+    THE PASS FIRST, because the marks find and key the pass by the file's
+    name; then ``--name``, so a landing typed before ``--pass`` existed still
+    writes the file a later mark reads; then the landing's own run.
     """
     if pass_name is not None:
         return pass_name
@@ -207,14 +174,9 @@ def _check_pass(pass_name: str | None) -> None:
 
 
 def intake_file(cfg: config.Config, stem: str) -> Path:
-    """Where a landing's intake file is written, beside the library, not in staging.
-
-    ``stem`` is what :func:`intake_stem` names it for, which is the batch's
-    own name only when ``--name`` was given and ``--pass`` was not.
-
-    Staging is the folder a person cleans, and the file has to outlive that
-    until rekordbox has imported it. The suffix is one the pending intake scan
-    already walks, so an unimported landing is visible to the cutover check.
+    """Where a landing's intake file is written: beside the library, not in
+    staging, which a person cleans before rekordbox may have imported it. The
+    suffix is one the pending intake scan walks, so the cutover check sees it.
     """
     return Path(cfg.library.root) / f"{stem}{INTAKE_SUFFIX}"
 
@@ -222,21 +184,12 @@ def intake_file(cfg: config.Config, stem: str) -> Path:
 def pass_landed(cfg: config.Config, name: str) -> bool:
     """Whether a landing of the pass ``name`` is proven, on either medium (R-1467).
 
-    THE TWO PROOFS ``label mark`` AND ``sync mark`` ALREADY TAKE. On the bridge
-    a landing writes its intake file at the library root, named for its pass
-    (:func:`intake_file`), and keeps it there, pending or retired once its
-    import is proven (:func:`unretired_name`). On a database native intake tree
-    a closed landing that committed records the pass
-    (:func:`cratekit.intake.native.landings_of_pass`). Either is read whatever
-    the intake tree's medium is now, so a pass landed before a cutover still
-    reads as landed after it.
+    The intake file at the library root, pending or retired, or a committed
+    native landing's record of the pass, read whatever the medium is now, so a
+    pass landed before a cutover still reads as landed after it.
 
-    A ROOT THAT CANNOT BE READ REFUSES, NEVER READS AS NOT LANDED OR LANDED.
-    Both proofs live under the library root, so an unmounted volume would
-    answer "no proof" for every pass, and a caller naming which batch is
-    still waiting in staging must be told it could not read rather than
-    guess. A session log that cannot be listed refuses through
-    :func:`cratekit.core.session.records`, as every reader of it does.
+    A ROOT THAT CANNOT BE READ REFUSES, never reads either way: an unmounted
+    volume would answer "no proof" for every pass.
     """
     root = Path(cfg.library.root)
     wanted = f"{name}{INTAKE_SUFFIX}"
@@ -262,10 +215,9 @@ def pass_landed(cfg: config.Config, name: str) -> bool:
 def _still_free(cfg: config.Config, batch: str) -> None:
     """Refuse a default name another landing took since this one chose it.
 
-    UNDER THE BATCH LOCK, because the name was chosen before the gate and two
-    landings that both found it free would otherwise land into one folder and,
-    on the native medium, one playlist. Only a name this run chose: one a person
-    gave with ``--name`` is theirs to land into again.
+    UNDER THE BATCH LOCK, since the name was chosen before the gate and two
+    landings that found it free would share a folder. Only a name this run
+    chose: one given with ``--name`` is the person's to land into again.
     """
     if batch_name.taken(cfg, batch):
         raise refuse(
@@ -282,13 +234,11 @@ def build_land(parser, entry) -> None:
     parser.add_argument(
         "folder",
         nargs="?",
-        default=None,
         metavar="FOLDER",
         help="the folder of acquired files to land (default: download staging)",
     )
     parser.add_argument(
         "--export",
-        default=None,
         metavar="XML",
         help=(
             "a Fresh Export of the collection to splice the landed files into; "
@@ -299,7 +249,6 @@ def build_land(parser, entry) -> None:
     )
     parser.add_argument(
         "--name",
-        default=None,
         metavar="NAME",
         help=(
             "the batch folder under the music folder and the batch playlist under "
@@ -310,7 +259,6 @@ def build_land(parser, entry) -> None:
     parser.add_argument(
         "--pass",
         dest="pass_name",
-        default=None,
         metavar="PASS",
         help=(
             "the pass these files were acquired under, as crate intake missing --run "
@@ -320,7 +268,6 @@ def build_land(parser, entry) -> None:
     )
     parser.add_argument(
         "--manifest",
-        default=None,
         metavar="JSON",
         help=(
             "the manifest written beside the list these files were acquired "
@@ -329,7 +276,6 @@ def build_land(parser, entry) -> None:
     )
     parser.add_argument(
         "--label",
-        default=None,
         metavar="NAME",
         help=(
             "file every landed file under this label in the record labels tree, in "
@@ -352,7 +298,6 @@ def build_land(parser, entry) -> None:
     parser.add_argument(
         "--set",
         dest="set_job",
-        default=None,
         metavar="JOB",
         help=(
             "the intake set job these files were downloaded for; the landing then "
@@ -397,18 +342,11 @@ def _label_flag(
 ) -> str | None:
     """The label ``--label`` names, or a refusal before the gate with nothing moved (U156).
 
-    NATIVE ONLY: the bridge files labels into its intake file from a manifest
-    alone, and a flag it would ignore is a label batch landed filed under
-    nothing. NOT BESIDE A MANIFEST, whose rows name their own labels, since
-    two answers to one question is a guess at which one wins. NOT BLANK, since
-    a playlist named for nothing sits in the tree for good. AND NOT ON A
-    LIBRARY WHOSE ROOT IS NOT THERE, said as that: the medium was not read, so
-    telling the person their tree is on the bridge, and to drop the flag, would
-    land the batch filed under nothing once the volume is back.
-
-    ``--label-from-tags`` (U177) is held to every one of those but the blank,
-    and is refused beside ``--label`` too, since one label for every file and
-    each file's own are two answers to one question. It returns None, and the
+    NATIVE ONLY, since the bridge would ignore the flag and file the batch under
+    nothing. NOT BESIDE A MANIFEST or, for ``--label-from-tags`` (U177), beside
+    ``--label``: two answers to one question. NOT BLANK, since a playlist named
+    for nothing stays in the tree. NOT ON AN UNREACHABLE ROOT, said as that,
+    since the medium was not read. ``--label-from-tags`` returns None and the
     caller reads the flag itself.
     """
     if from_tags and given is not None:
@@ -467,12 +405,10 @@ def _label_flag(
 def _planned(folder: Path, cfg: config.Config, batch: str) -> landing.Plan:
     """The engine's plan, or a plan of nothing for a folder with nothing in it.
 
-    AN EMPTY FOLDER IS A PLAN, NOT A REFUSAL, on the precedent ``name apply``
-    and ``route inbox`` set: download staging is empty on a fresh install and
-    after every landing, and a person running the step then is told there is
-    nothing to move, not that something failed. The empty plan is never handed
-    to :func:`landing.apply`, so no folder and no intake file is made for it.
-    Anything that is not a folder still goes to the engine, which refuses it.
+    AN EMPTY FOLDER IS A PLAN, NOT A REFUSAL: staging is empty after every
+    landing, and a person is told there is nothing to move. The empty plan
+    never reaches :func:`landing.apply`. A path that is not a folder still goes
+    to the engine, which refuses it.
     """
     if folder.is_dir() and not landing.listing(folder):
         return landing.Plan(folder=folder, batch=batch, items=(), digest="")
@@ -488,12 +424,10 @@ def _xml_split(
     declared,
     registry,
 ) -> tuple[account_playlists.Claimed, ...]:
-    """Each account playlist named against the export it is spliced into, and the pending files.
+    """Each account playlist named against the export's INBOX and the pending intake files.
 
-    The export's intake tree and playlist root (:func:`landing.inbox_held`), and
-    every account playlist an intake file still waiting on its import names,
-    which no export holds yet. An export that cannot be read names against the
-    pending files only: the preflight refuses it before anything moves.
+    An export that cannot be read names against the pending files only: the
+    preflight refuses it before anything moves.
     """
     if not claims:
         return ()
@@ -505,13 +439,8 @@ def _xml_split(
 
 
 def gate_named(entry, name: str):
-    """One of a verb's gates by name, never by position.
-
-    Two gates on the landing since R-746, one per medium, and the shared cloud
-    sync one is raised by the guarded writer rather than asked by a verb, so
-    indexing would bind a medium to the order the gates happen to be written
-    in. ``intake file`` looks its native gate up the same way (R-770).
-    """
+    """One of a verb's gates by name, never by position, since the order the
+    gates are declared in is no promise (R-746, R-770)."""
     for spec in entry.gates:
         if spec.name == name:
             return spec
@@ -530,45 +459,32 @@ def intake_land(ctx) -> Envelope:
     folder = Path(ctx.args.folder) if ctx.args.folder else Path(cfg.paths.download_staging)
     pass_name = ctx.args.pass_name
     _check_pass(pass_name)
-    # READ BEFORE THE GATE, so a file that is not a manifest refuses before
-    # anybody spends an answer on it, and the screen can say what it names.
+    # READ BEFORE THE GATE, so a bad manifest refuses before anybody answers.
     manifest = landing.read_label_manifest(Path(ctx.args.manifest)) if ctx.args.manifest else None
-    # TWO NAMES SINCE U110. The batch, its folder and its playlist, is what a
-    # person reads in INBOX: the date and the source unless ``--name`` says
-    # otherwise. The intake file keeps the identifier the marks read.
+    # TWO NAMES (U110): the batch a person reads in INBOX, by date and source
+    # unless ``--name`` says otherwise, and the intake file the marks read.
     batch = (
         ctx.args.name
         if ctx.args.name is not None
         else batch_name.readable(
-            cfg,
-            label_rows=manifest.rows if manifest is not None else (),
-            pass_name=pass_name,
+            cfg, label_rows=manifest.rows if manifest is not None else (), pass_name=pass_name
         )
     )
     stem = intake_stem(pass_name=pass_name, name=ctx.args.name, run_id=ctx.run.run_id)
     planned = _planned(folder, cfg, batch)
     target = landing.target_dir(cfg, batch)
-    # WHICH PLAYLIST ON THE ACCOUNT ASKED FOR EACH FILE (U113), read from the
-    # pass's own jobs before the gate, so the screen can say where every file
-    # goes. Named per medium below, against what that medium's INBOX holds.
+    # WHICH ACCOUNT PLAYLIST ASKED FOR EACH FILE (U113), before the gate, so
+    # the screen says where every file goes.
     claims = account_playlists.split(cfg, pass_name, planned.items)
-    # THE MEDIUM IS THE INTAKE TREE'S MODE, the way the routing verbs choose
-    # theirs (R-746). A tree the database owns takes the files into the
-    # collection through the guarded writer and no export is involved; a tree
-    # on the bridge is spliced into the export it always was. The registry
-    # lives under the library root, so an unreachable root decides nothing
-    # here: the xml path is taken as it was before the medium existed, and
-    # its preflight names the library, before the gate, under the R-677
-    # contract that a recorded abort is still honoured over it. THE SWITCH IS
-    # ``ingest.intake_medium`` AND NO COPY OF IT (R-770): ``intake file`` reads
-    # the same one, so the two verbs cannot choose by two rules.
+    # THE MEDIUM IS THE INTAKE TREE'S MODE (R-746), read through
+    # ``ingest.intake_medium`` and no copy of it, so ``intake file`` cannot
+    # choose by another rule (R-770). An unreachable root takes the xml path,
+    # whose preflight names the library before the gate.
     medium = ingest.intake_medium(cfg)
     declared, registry = medium.declared, medium.registry
-    # THE SET PLAYLIST IS A DATABASE WRITE (U121), one more node in the native
-    # landing's commit, and the bridge landing splices an export and opens no
-    # database. Refused by name before the gate rather than landing the batch
-    # and quietly writing no playlist. AND A WORD WITHOUT THE SET IS REFUSED
-    # TOO, since nothing would read it and the person would find no playlist.
+    # THE SET PLAYLIST IS A DATABASE WRITE (U121), refused on the bridge before
+    # the gate rather than quietly written nowhere, and so is a word without
+    # the set, since nothing would read it.
     words_given = [
         flag
         for flag, value in (
@@ -608,13 +524,9 @@ def intake_land(ctx) -> Envelope:
             detail={"tree_id": declared.intake.id if declared is not None else None},
         )
     if medium.native:
-        # AND WHICH FILES ARE HEARTS (U120), read from the same jobs the same
-        # way, each with the month the account dated it into. The native
-        # medium alone, since the bridge writes an export and places none, so
-        # the match over the planned files is not made for nothing there.
+        # WHICH FILES ARE HEARTS (U120), and which hearts the library already
+        # held (U146), on the native medium alone, since the bridge places none.
         hearted = account_playlists.hearted(cfg, pass_name, planned.items)
-        # AND WHICH HEARTS THE LIBRARY ALREADY HELD (U146), with the files the
-        # job's reports named, so the landing places them too, files or none.
         owned = account_playlists.owned_hearts(cfg, pass_name)
         return _land_native(
             ctx,
@@ -644,8 +556,7 @@ def intake_land(ctx) -> Envelope:
             origin=_ORIGIN,
             detail={"tree_id": declared.intake.id},
         )
-    # With no export named and no library to read, the engine's preflight
-    # below refuses on the library first, so the name here is never opened.
+    # With no export and no library, the preflight refuses on the library first.
     export = (
         Path(ctx.args.export)
         if ctx.args.export is not None
@@ -653,14 +564,12 @@ def intake_land(ctx) -> Envelope:
     )
     destination = intake_file(cfg, stem)
     split = _xml_split(cfg, claims, export, batch=batch, declared=declared, registry=registry)
-    # EACH OWNED TRACK FOUND IN THE EXPORT BEFORE THE GATE (U128), so the screen
-    # counts and the digest covers what the intake file will hold.
+    # EACH OWNED TRACK FOUND IN THE EXPORT BEFORE THE GATE (U128), so the digest
+    # covers what the intake file will hold.
     split, emptied = landing.owned_in_export(cfg, split, export)
-    # THE ENGINE'S PRE-MOVE CHECKS ARE ASKED BEFORE THE GATE TOO (R-677), for
-    # the manifest's reason. A plan over an export that is not there, or not a
-    # collection, or a library that is not mounted, could never run, and the
-    # engine says so without moving anything. Only when something would move,
-    # since a plan of nothing splices nothing.
+    # THE ENGINE'S PRE-MOVE CHECKS BEFORE THE GATE TOO (R-677): a plan that
+    # could never run is said before anybody answers it. Only when something
+    # would move, since a plan of nothing splices nothing.
     unusable: CratekitError | None = None
     if planned.items:
         try:
@@ -674,55 +583,29 @@ def intake_land(ctx) -> Envelope:
             )
         except CratekitError as exc:
             unusable = exc
-    payload = _payload(
-        planned,
-        target=target,
-        destination=destination,
-        export=export,
-        manifest=manifest,
-        split=split,
-        emptied=emptied,
-    )
+    facts = {"target": target, "destination": destination, "manifest": manifest, "split": split}
+    payload = _payload(planned, export=export, emptied=emptied, **facts)
     spec = gate_named(ctx.entry, XML_GATE)
     try:
         option = ctx.gate.require(
             spec,
             digest=payload["digest"],
-            context=_shown(
-                planned,
-                cfg=cfg,
-                target=target,
-                destination=destination,
-                manifest=manifest,
-                split=split,
-                emptied=len(emptied),
-            ),
+            context=_shown(planned, cfg=cfg, emptied=len(emptied), **facts),
         )
     except CratekitError as exc:
-        # THE REFUSAL TAKES THE PLACE OF AN UNANSWERED GATE ONLY, the refusal
-        # whose remedy is to answer it. An answer already given is honored
-        # exactly as it was before the check existed, so an abort still ends in
-        # nothing done, and an apply reaches the engine, which asks the same
-        # checks again before its first move. Read off the remedy because this
-        # layer cannot import the gate's own class.
+        # THE REFUSAL TAKES THE PLACE OF AN UNANSWERED GATE ONLY: an answer
+        # already given is honoured, an abort ends in nothing done and an apply
+        # reaches the engine, which checks again. Read off the remedy because
+        # this layer cannot import the gate's own class.
         if unusable is not None and exc.cause.remediation.remedy is Remedy.ANSWER_DECISION:
             raise unusable from None
         raise
     if option != "apply" or not planned.items:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
-    # The engine lists the folder again and refuses a fingerprint that moved,
-    # so the gap between this plan and the moves is its to close, not this
-    # shell's. What the gate compared is what the person was shown.
-    #
-    # ONE LANDING PER BATCH NAME, HELD ACROSS THE WHOLE APPLY (R-432). The
-    # engine checks a target free and then renames over it, and checks the
-    # intake file absent long before it is written, so a second landing into
-    # the same batch folder is refused at the door rather than waited for. Only
-    # here, after the answer: a plan and a gate screen move nothing and a held
-    # name does not stop anybody reading one.
-    # AND ONE LANDING PER INTAKE FILE (U110), since the file is named for the
-    # pass and the batch for the date, and either can be shared by a landing
-    # the other lock does not see.
+    # The engine lists the folder again and refuses a fingerprint that moved.
+    # ONE LANDING PER BATCH NAME AND PER INTAKE FILE, held across the apply
+    # (R-432, U110): the engine checks a target free and then renames over it,
+    # and the file is named for the pass while the batch is named for the date.
     with landing.batch_lock(batch), landing.intake_lock(stem):
         if ctx.args.name is None:
             _still_free(cfg, batch)
@@ -768,26 +651,12 @@ def _land_native(
 ) -> Envelope:
     """Plan the rows against the database, ask, then move, write and file.
 
-    THE ORDER IS :func:`ask_then_write`'s, which ``intake file`` shares: the
-    database opened with write intent before the plan, the acknowledgment read
-    before the gate (R-733), the write only on ``apply``. A PLAN OF NOTHING IS
-    NOT ASKED: download staging is empty after every landing, and an explicit
-    gate, which takes a separate recorded act, is the price of a new kind of
-    write and not of learning there is nothing to move. Nothing is written
-    for it, so the envelope says so and stops.
-
-    THE GATE TAKES NO INLINE ANSWER. This is a new kind of write, content rows
-    in the collection, and it is answered by a separate recorded act with an
-    actor, the way the adoption is (R34).
-
-    AN EMPTY STAGING FOLDER STILL PLACES THE PASS'S OWNED HEARTS (U146): a
-    heart on a track the library holds joins All Favorites whether or not a
-    file was downloaded, under this same gate, through :func:`_place_owned`.
-
-    A MANIFEST OR A ``--label`` FILES THE BATCH UNDER ITS LABEL (U156), planned
-    on the same handle by :mod:`cratekit.intake.label_filing` and written in the
-    same commit, so the batch and its label playlists land together or not at
-    all.
+    THE ORDER IS :func:`ask_then_write`'s. THE GATE TAKES NO INLINE ANSWER:
+    content rows in the collection are answered by a separate recorded act
+    (R34), which is not spent on learning there is nothing to move, so a plan
+    of nothing is not asked. An empty staging folder still places the pass's
+    owned hearts (U146) under this gate, through :func:`_place_owned`.
+    ``asked`` is what :func:`land_native.native_planner` plans from.
     """
     declared = medium.declared
     tree_id = declared.intake.id
@@ -805,7 +674,7 @@ def _land_native(
     spec = gate_named(ctx.entry, NATIVE_GATE)
     if not planned.items:
         identity = {"kind": "land-native", "folder": str(planned.folder), "batch": planned.batch}
-        empty = {"digest": digest_of(identity), "items": [], "totals": {"count": 0}, "chunk": None}
+        empty = _plan(identity, [], 0)
         if rehearse:
             # NOTHING TO REHEARSE, and never the owned hearts' write instead: a
             # rehearsal asks no gate, so it must not reach one (U162).
@@ -825,19 +694,14 @@ def _land_native(
         return ctx.envelope(data=empty, outcome=Outcome.NO_OP)
 
     # THE LIBRARY CHECKS BEFORE THE DATABASE IS OPENED, so an unmounted volume
-    # is named as the volume and a staging folder on another device refuses
-    # without a snapshot copy of anything. Once here, and again by the engine
-    # before its first move, as the xml landing's preflight is.
+    # is named as the volume; the engine asks again before its first move.
     landing.preflight_native(planned, cfg=cfg)
     set_job, words, reports = land_native.read_set(ctx)
     set_planned: list[set_playlist.SetPlaylistPlan] = []
-    # U129. The account playlist's archive rides on this landing's gate when the
-    # set already has one recorded under the frozen INSPIRATION name.
+    # The account playlist's archive rides on this gate when the set has one
+    # recorded under the frozen INSPIRATION name (U129).
     archive_planned = _plan_set_archive(
-        cfg,
-        set_job=set_job,
-        words=words,
-        pass_name=ctx.args.pass_name or planned.batch,
+        cfg, set_job=set_job, words=words, pass_name=ctx.args.pass_name or planned.batch
     )
     planner = land_native.native_planner(
         ctx,
@@ -855,18 +719,15 @@ def _land_native(
 
     def write(db, rows: native.NativePlan) -> landing.LandedNative:
         applied.append(rows)
-        # ONE LANDING PER BATCH NAME, HELD ACROSS THE WHOLE APPLY (R-432), as on
-        # the bridge: the engine checks a target free and then renames over it.
+        # ONE LANDING PER BATCH NAME, HELD ACROSS THE WHOLE APPLY (R-432).
         with landing.batch_lock(planned.batch):
             if ctx.args.name is None:
                 _still_free(cfg, planned.batch)
             landed_native = landing.apply_native(
                 planned, cfg=cfg, db=db, rows=rows, declared=declared
             )
-        # THE LANDING IS THE PROOF. Archive after the batch is in the library.
-        # A failure here must not fail a landing that already wrote: it becomes
-        # a warning on the landed envelope, and so does apply_archive's own
-        # "not renamed" return (U129).
+        # Archive after the batch is in the library; a failure is a warning,
+        # never a failure of a landing that already wrote (U129).
         archive_notes.extend(_apply_landing_archive(cfg, archive_planned))
         return landed_native
 
@@ -879,8 +740,7 @@ def _land_native(
         shown["files after landing"] = filing.fact(rows.filing, why=unfiled, tree=declared.tree.id)
         if archive_planned is not None:
             shown["account archive"] = archive_planned.shown
-        # THE REHEARSAL THIS PLAN IS COMPARED AGAINST (U162), named, and equal
-        # or not; a plan that differs prints the lines that differ.
+        # THE REHEARSAL THIS PLAN IS COMPARED AGAINST (U162).
         shown.update(
             rehearsal_facts(
                 planned,
@@ -904,13 +764,7 @@ def _land_native(
         )
 
     payload, landed = ask_then_write(
-        ctx,
-        cfg,
-        spec,
-        plan=plan,
-        payload=payload_of,
-        shown=shown_of,
-        write=write,
+        ctx, cfg, spec, plan=plan, payload=payload_of, shown=shown_of, write=write
     )
     if landed is None:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
@@ -925,11 +779,7 @@ def _land_native(
         # THE FILING, AFTER EVERY READ BACK OF THE LANDING (U165), under the
         # actor who answered its gate. It never fails the landing it follows.
         sorted_in = filing.file_landed(
-            cfg,
-            declared,
-            predicted,
-            landed.collection,
-            actor=approving_actor(ctx, spec),
+            cfg, declared, predicted, landed.collection, actor=approving_actor(ctx, spec)
         )
         warnings.extend(filing.warnings(sorted_in))
         reported = _with_filing(reported, sorted_in)
@@ -939,11 +789,9 @@ def _land_native(
 def rehearsal_facts(planned: landing.Plan, *, digest: str, plan: list[str]) -> dict[str, Any]:
     """The gate screen's lines naming the rehearsal a live plan is compared against, or none.
 
-    THE NEWEST REHEARSAL OF THE SAME FOLDER AND BATCH, named by its run and
-    time, and whether its digest equals this plan's. When it does not, the
-    lines only the rehearsal had and the lines only this plan has, so the
-    session reading the screen sees what moved and not merely that it moved.
-    No line at all when no rehearsal was kept: the screen is as it was.
+    The newest rehearsal of the same folder and batch, and whether its digest
+    equals this plan's; when not, the lines that differ, so the session sees
+    what moved. No line when no rehearsal was kept.
     """
     found = rehearsal.latest(verb=REHEARSAL_VERB, key=rehearsal_key(planned))
     if found is None:

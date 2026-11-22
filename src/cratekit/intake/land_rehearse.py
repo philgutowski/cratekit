@@ -1,8 +1,7 @@
 """``intake land --rehearse``: the native landing applied on a scratch area of its own (U162).
 
-Split out of :mod:`cratekit.intake.land_cli`, which re-exports the names its
-callers read there and keeps :func:`land_cli.rehearsal_facts`, the live gate
-screen's lines naming the rehearsal a plan is compared against.
+:mod:`land_cli` re-exports the names callers read there and keeps
+:func:`land_cli.rehearsal_facts`, the live screen's lines naming the rehearsal.
 """
 
 from __future__ import annotations
@@ -47,13 +46,10 @@ def plan_identity(
 ) -> dict[str, Any]:
     """What :func:`plan_lines` prints, as values, so a rehearsal maps them before they are text.
 
-    MAPPED AS VALUES, NEVER AS LINES (U188). Each line is a JSON value, which
-    escapes every character outside ASCII and every quote, so a path with an
-    accent in it is spelled in a line as no pair of real paths is, and a
-    rehearsal of a batch named with one refused on every path it held.
+    MAPPED AS VALUES, NEVER AS LINES (U188): a line is JSON, which escapes an
+    accented path into a spelling no pair of real paths maps.
     """
-    # NOT THE ENGINE'S OWN DIGEST, which is a hash of the plan lines below and
-    # so names every path in a form no mapping back can reach.
+    # NOT THE ENGINE'S OWN DIGEST, a hash no mapping back can reach.
     gate = {
         key: value
         for key, value in _native_identity(planned, rows, target=target).items()
@@ -67,9 +63,8 @@ def plan_identity(
 def _filed_watch(cfg: config.Config, planned: landing.Plan) -> tuple[Path, ...]:
     """The live folders a native landing could file its batch in, which a rehearsal watches.
 
-    The year folder the batch name or today names, where a new folder would
-    appear, and for a batch landed into again by its name the folder recorded
-    for it and that folder's own year folder, which may be another year's.
+    The year folder the batch name or today names, and for a batch landed into
+    again the folder recorded for it and that folder's own year folder.
     """
     when, _said = shelve.filed_parts(planned.batch, on=batch_name.today())
     watched = [shelve.processed_root(cfg) / f"{when.year}"]
@@ -101,22 +96,14 @@ def _rehearse_native(
 ) -> Envelope:
     """Rehearse the landing on a scratch area of this run's own, then remove it (U162).
 
-    THE LIVE PLAN IS MADE FIRST, over the live staging folder and music folder
-    and against the database copy, so its digest is the one the live landing
-    will show; it is what the rehearsal reports and records. THEN THE SAME
-    FILES ARE PLANNED AGAIN AT THE AREA, over their clones and the area's music
-    folder, and applied there. The area's plan with every scratch path mapped
-    back to its live one must read line for line as the live plan, or nothing
-    is applied and the lines that differ are named: what the rehearsal applied
-    is the plan the live run will be asked, not a plan like it.
+    THE LIVE PLAN IS MADE FIRST, against the database copy, so its digest is
+    the one the live landing will show. THEN THE SAME FILES ARE PLANNED AT THE
+    AREA, and applied there only when that plan, mapped back, reads line for
+    line as the live one: what is rehearsed is the plan the live run will ask.
 
-    NOTHING LIVE IS WRITTEN OR MOVED. The live database file set is hashed and
-    the live staging and music folders listed before and after, and a change
-    is refused as the defect it would be. The account archive of a set
-    landing is account side and is never rehearsed; the report says so.
-
-    A FAILURE KEEPS THE AREA AND NAMES IT, so whoever reads the refusal can
-    look at what the rehearsal saw. A rehearsal that ends removes it.
+    NOTHING LIVE IS WRITTEN OR MOVED: the live database and folders are
+    witnessed before and after. The account archive is never rehearsed, and
+    the report says so. A FAILURE KEEPS THE AREA AND NAMES IT.
     """
     before = rehearsal.witness(
         cfg,
@@ -210,9 +197,8 @@ def _rehearse_in(
         target = _folder(rows)
         payload = payload_of(rows)
         lines = plan_lines(planned, rows, target=target, archived=archived)
-        # THE AREA'S PLAN IS MADE OUTSIDE THE REDIRECTION, reading the same
-        # installation state the live plan read (a pass's jobs, a set's job),
-        # so the only difference between the two plans is where the files are.
+        # OUTSIDE THE REDIRECTION, reading the installation state the live
+        # plan read, so the two plans differ only in where the files are.
         staged = landing.plan(area.staging, area.cfg, planned.batch)
         scratch_rows = planner(area.cfg, staged)(db)
         scratch_target = _folder(scratch_rows)
@@ -243,10 +229,8 @@ def _rehearse_in(
                 origin=_ORIGIN,
                 detail={"differs": differ, "mapped": [list(pair) for pair in pairs]},
             )
-        # A NAME THE LIVE BATCH FOLDER ALREADY HOLDS IS HELD AT THE AREA TOO,
-        # by an empty file of that name, so the area's move refuses the same
-        # files the live move will and the facts say so. Occupancy is asked at
-        # the move and not in the plan, so the plans alone cannot see it.
+        # A NAME THE LIVE BATCH FOLDER HOLDS IS HELD AT THE AREA TOO, so the
+        # area's move refuses what the live move will; plans cannot see it.
         for item in staged.items:
             if (target / item.name).exists() or (target / item.name).is_symlink():
                 scratch_target.mkdir(parents=True, exist_ok=True)
@@ -263,9 +247,8 @@ def _rehearse_in(
             rows_after = _active_rows(db)
     finally:
         rb_writer.close_db(db)
-    # The check reads a throwaway copy on the temporary volume, so that room is
-    # measured first and a copy that still finds none is named as that, never
-    # as a database that failed its check (R-1677).
+    # The check copies to the temporary volume, so its room is measured first
+    # and no room is never named a failed check (R-1677).
     snapshot.assert_room_for_check(area.database)
     try:
         sound = rb_writer.integrity_ok(area.database, raise_copy_failure=True)
@@ -308,17 +291,11 @@ def _mapped_back(
 ) -> tuple[tuple[str, str], ...]:
     """Each scratch spelling in the area's plan and the live spelling it stands for.
 
-    The area's staging and its batch folder in the MOUNTED spelling, the one
-    every ``from`` and ``to`` is written in, and the batch folder again in the
-    STORED spelling rekordbox keeps ``FolderPath`` under (U188). On a library
-    whose base drive is not its mount, the live one, a row's path is stored
-    under the base drive, so neither mounted pair occurs in it and every row
-    differed by the area's prefix alone. The stored pair is spelled by the
-    writer's own :func:`native.stored_folder_path`, with the drives each plan
-    read off its database, so the comparison can never use a spelling rule
-    the rows were not written by. A library whose drive never moved stores the
-    mounted spelling, and the stored pair is the mounted one, dropped as a
-    repeat.
+    The staging and batch folder in the MOUNTED spelling of ``from`` and
+    ``to``, and the batch folder in the STORED spelling of ``FolderPath``
+    (U188), which on a library whose base drive is not its mount differs.
+    Spelled by the writer's own :func:`native.stored_folder_path`; a repeat
+    pair is dropped.
     """
     stored = (
         native.stored_folder_path(
@@ -344,9 +321,8 @@ def _mapped_back(
 def _fields_of(differ: list[str]) -> list[str]:
     """The fields the differing lines are in, each once, ``rows.columns.FolderPath`` for a row's path.
 
-    The line's path with every index taken out and its first part, ``gate``
-    or ``plan``, left off, so a field is named as the identity spells it and
-    a leaf that is one entry of a list is named by the list it is in.
+    The line's path without indices or its ``gate`` or ``plan`` part, so a
+    leaf in a list is named by the list.
     """
     names = []
     for line in differ:

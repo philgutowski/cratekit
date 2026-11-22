@@ -1,7 +1,7 @@
-"""The native landing's steps (R-746): its planner, its write order, its archive and its notes.
+"""The native landing's steps (R-746): planner, write order, archive, owned hearts and notes.
 
-Split out of :mod:`cratekit.intake.land_cli`, whose ``_land_native`` runs these
-in order and which re-exports every name a caller reads there.
+``land_cli._land_native`` runs these in order; :mod:`land_cli` re-exports
+every name a caller reads there.
 """
 
 from __future__ import annotations
@@ -35,9 +35,8 @@ from cratekit.intake.land_report import (
     vox_warnings,
 )
 
-#: The fact a native write's answer is pinned to outside its digest (U161):
-#: the database file the handle opened, as the screen's reads and writes line
-#: names it.
+#: What a native write's answer is pinned to outside its digest (U161): the
+#: database file the handle opened.
 DATABASE_PIN = "database"
 
 
@@ -96,16 +95,14 @@ def native_planner(
 ) -> Callable[[config.Config, landing.Plan], Callable[[Any], native.NativePlan]]:
     """The landing's planner: given a library and its staged files, a plan made on a handle.
 
-    ONE PLANNER, TWO PLACES (U162): the live landing plans its own staging
-    folder and music folder, and a rehearsal plans the same files again at its
-    scratch area, through this same code, to apply them there. Each set plan
-    made is appended to ``set_planned``.
+    ONE PLANNER, TWO PLACES (U162): the live landing and its rehearsal's
+    scratch area plan through this same code. Each set plan made is appended
+    to ``set_planned``.
     """
     declared, registry = medium.declared, medium.registry
     tree_id = declared.intake.id
 
     def planner(cfg: config.Config, planned: landing.Plan) -> Callable[[Any], native.NativePlan]:
-
         def set_plan(db, files) -> set_playlist.SetPlaylistPlan | None:
             if set_job is None or words is None:
                 return None
@@ -123,8 +120,7 @@ def native_planner(
             return made
 
         def label_plan(db, files) -> label_filing.LabelPlan | None:
-            # A MANIFEST WITH NO LABEL ROW FILES NOTHING, and asks nothing of the
-            # catalogue tree, as the bridge's own check returns early on it.
+            # A MANIFEST WITH NO LABEL ROW FILES NOTHING, as on the bridge.
             if manifest is not None and manifest.rows:
                 return label_filing.plan_for_manifest(
                     cfg, db, medium, manifest=manifest, files=files
@@ -136,15 +132,13 @@ def native_planner(
             return None
 
         def plan(db) -> native.NativePlan:
-            # THE FILED FOLDER, CHOSEN ON THIS HANDLE (U164): the batch lands
-            # where a shelve would have filed it, so every row carries its
-            # final FolderPath from the first commit and no shelve follows.
+            # THE FILED FOLDER, CHOSEN ON THIS HANDLE (U164), so every row
+            # carries its final FolderPath from the first commit.
             target = shelve.landing_target(cfg, db, planned.batch, on=batch_name.today())
             files = [(item, target / item.name) for item in planned.items]
-            # THE INBOX PLAYLIST FOR A SET (U135): named for the set, and an earlier
-            # landing of the same job's playlist is added to under its first name.
-            # The batch folder stays the dated (or --name) landing name so two
-            # landings never share a folder; only the playlist joins.
+            # THE INBOX PLAYLIST FOR A SET (U135): named for the set, and an
+            # earlier landing's playlist of the job is added to; the batch
+            # folder keeps the landing's own name, so only the playlist joins.
             inbox_name = planned.batch
             batch_playlist_id = ""
             set_job_id = ""
@@ -165,16 +159,9 @@ def native_planner(
                     cfg, db, set_job_id, root_id, inbox_name, keep_id=batch_playlist_id
                 )
             split, emptied = _native_split(
-                db,
-                cfg,
-                claims,
-                tree_id=tree_id,
-                registry=registry,
-                batch=inbox_name,
-                target=target,
+                db, cfg, claims, tree_id=tree_id, registry=registry, batch=inbox_name, target=target
             )
-            # EACH ACCOUNT PLAYLIST'S TWIN (U149), planned on this handle for
-            # the ones not paired yet, into the landing year's twin folder.
+            # EACH UNPAIRED ACCOUNT PLAYLIST'S TWIN (U149), on this handle.
             from cratekit.favorites import backfill, placement  # noqa: PLC0415 - toggleable
             from cratekit.modules.outbound import pairs
             from cratekit.sync import twins
@@ -215,8 +202,8 @@ def native_planner(
                 twins=landing_twins,
             )
             made = replace(made, folder=target, batch=planned.batch)
-            # WHERE EACH NEW ROW WILL BE FILED, BEFORE IT EXISTS (U165), shown
-            # and digested, so the one answer covers the filing after the commit.
+            # WHERE EACH NEW ROW WILL BE FILED (U165), digested, so the one
+            # answer covers the filing after the commit.
             if unfiled:
                 return made
             return native.with_filing(made, filing.predict(declared, made.to_add()))
@@ -253,8 +240,7 @@ def landed_warnings(
         warnings.extend(set_playlist.written_note(kept))
         warnings.extend(set_playlist.left_warning(kept.left))
     elif kept is not None and set_planned:
-        # NOTHING WRITTEN, and the left rows are the write's own answer: the
-        # members whose files did not land as well as the plan's left rows.
+        # NOTHING WRITTEN; the left rows are the write's own answer.
         warnings.extend(set_playlist.nothing_note(set_planned[0], left=len(kept.left)))
         warnings.extend(set_playlist.left_warning(kept.left))
     filed = landed.collection.labels
@@ -274,14 +260,11 @@ def _native_split(
     batch: str,
     target: Path,
 ) -> tuple[tuple[native.PlaylistPlan, ...], tuple[tuple[str, account_playlists.Left], ...]]:
-    """Each account playlist named against what the database's INBOX holds, on the write handle.
+    """Each account playlist named against the database's INBOX, on the write handle.
 
-    AND EACH OWNED TRACK'S ROW FOUND BY PATH ON THE SAME HANDLE (U128), at plan
-    time, so the screen and the digest name the rows the apply adds and the
-    apply finds nothing again. Asked of the candidate rows whose stored path
-    ends in the file's name, the native landing's own lookup, rather than of
-    the whole collection. Answers the playlists and the left rows of the ones
-    left holding nothing.
+    AND EACH OWNED TRACK'S ROW FOUND BY PATH ON THE SAME HANDLE (U128), so the
+    digest names the rows the apply adds. Answers the playlists and the left
+    rows of the ones left holding nothing.
     """
     if not claims:
         return (), ()
@@ -316,12 +299,8 @@ LAND_ARCHIVE_FAILED = "intake-land-archive-failed"
 
 
 def _apply_landing_archive(cfg, archived) -> list[dict[str, str]]:
-    """Apply the account archive after the landing wrote. Failures are warnings.
-
-    The landing's rows are already in the library. An account call that raises,
-    or an apply that leaves the playlist unrenamed, must not turn the landing
-    into a failure: both ride the warnings channel on the landed envelope.
-    """
+    """Apply the account archive after the landing wrote. Failures are warnings,
+    since the rows are already in the library."""
     if archived is None or not archived.writes:
         return []
     from cratekit.export import set_cli
@@ -377,12 +356,7 @@ def _with_archive(payload: dict, archived) -> dict:
         items.append({**item, "area": "account-archive"})
     totals = dict(payload.get("totals") or {})
     totals["archive_writes"] = bool(archived.writes)
-    return {
-        **payload,
-        "digest": digest_of(identity),
-        "items": items,
-        "totals": totals,
-    }
+    return {**payload, "digest": digest_of(identity), "items": items, "totals": totals}
 
 
 #: What a native write plans: a landing's rows, or the owned hearts alone (U146).
@@ -401,27 +375,18 @@ def ask_then_write(
 ) -> tuple[dict, Any | None]:
     """The order every native intake write keeps, held once. Answers (payload, written).
 
-    SHARED BY THE LANDING AND ``intake file`` (R-770), and by the landing's
-    owned hearts when no file came (U146), because the order is the contract
-    and two hand kept copies of it would come to differ:
+    Shared by the landing, its owned hearts (U146) and ``intake file`` (R-770),
+    because the order is the contract:
 
     * THE DATABASE IS OPENED WITH WRITE INTENT BEFORE THE PLAN, so a running
-      rekordbox or its agent refuses before anything is shown, and the plan is
-      made against the database the write will be made to;
-    * THE ACKNOWLEDGMENT IS READ BEFORE THE GATE (R-733): an approval is the
-      one way door on a live library, and a person who reads the whole plan
-      and answers should not then be refused by something the verb could have
-      read first;
-    * the gate is asked over the digested plan, and only ``apply`` writes;
-    * the handle is closed whatever happened.
+      rekordbox refuses before anything is shown;
+    * THE ACKNOWLEDGMENT IS READ BEFORE THE GATE (R-733), so an approval is
+      never refused by what could have been read first;
+    * only ``apply`` writes, and the handle is closed whatever happened;
+    * THE ANSWER IS PINNED TO THE FILE THE HANDLE OPENED (U161), since the
+      digest names the library, not the file.
 
-    * THE ANSWER IS PINNED TO THE FILE THE HANDLE OPENED (U161). The digest
-      names the library and not the file, so a copy rehearsal digests as the
-      live plan; the file is pinned on the run beside it, and a continuation
-      that opens another file is refused stale rather than writing there.
-
-    ``written`` is None when the answer was not ``apply``, and the payload is
-    then the plan as it was shown.
+    ``written`` is None when the answer was not ``apply``.
     """
     db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
     try:
@@ -450,18 +415,10 @@ def _place_owned(
 ) -> Envelope:
     """The pass's owned hearts All Favorites lacks, placed when no file was downloaded (U146).
 
-    THE LANDING'S GATE AND THE BACKFILL'S WRITER. Asked first of a handle
-    opened to read, so a pass whose owned hearts are all placed, which is
-    nearly every pass, opens nothing to write and asks nothing, and ends
-    NO_OP exactly as an empty landing did. When some heart is missing, the
-    order is :func:`ask_then_write`'s: the database opened with write intent,
-    the plan taken again on it, the acknowledgment, the gate, and the guarded
-    session of :func:`backfill.apply`, which takes the plan once more and
-    refuses a digest that moved, then reads every membership back.
-
-    A LIBRARY WITH NO ALL FAVORITES, OR TWO, IS NOT A REFUSAL, as a landing
-    with files skips its placement: there is nothing else to land, so the
-    pass ends NO_OP and says why.
+    THE LANDING'S GATE AND THE BACKFILL'S WRITER. Asked first of a read handle,
+    so a pass whose hearts are all placed opens nothing to write and ends
+    NO_OP; otherwise in :func:`ask_then_write`'s order. A library with no All
+    Favorites, or two, is not a refusal: the pass ends NO_OP and says why.
     """
     from cratekit.favorites import backfill, placement  # noqa: PLC0415 - favorites is toggleable
 

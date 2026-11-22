@@ -1,9 +1,7 @@
-"""What ``intake land`` shows and reports: gate screens, payloads, the landed report and its notes.
+"""What ``intake land`` shows and reports: gate screens, payloads, the landed report and notes.
 
-Split out of :mod:`cratekit.intake.land_cli`, which re-exports every name a
-caller reads there. ONE WORDING FOR EVERY VERB THAT ADDS A ROW (R-770):
-``intake file`` reads the facts and the warnings here, so the two verbs
-cannot say the same thing two ways.
+:mod:`land_cli` re-exports the names callers read there. ONE WORDING FOR EVERY
+VERB THAT ADDS A ROW (R-770): ``intake file`` reads the facts and warnings here.
 """
 
 from __future__ import annotations
@@ -87,25 +85,25 @@ def _payload(
         "files": planned.digest,
     }
     if manifest is not None:
-        # Only when one is given, so a landing without a manifest is compared
-        # exactly as it was before the manifest existed.
-        # The bytes and not only the path: a manifest rewritten under the same
-        # name files other tracks under other labels, and a digest of the name
-        # would call that the plan the person saw.
+        # Only when given, so a landing without one digests as before. The
+        # bytes too: a manifest rewritten under one name is another plan.
         identity["manifest"] = str(manifest.path)
         identity["manifest_bytes"] = manifest.digest
     if split:
-        # Only when there is one, for the manifest's reason: a landing that
-        # splits nothing is compared exactly as it was before U113. Another
-        # split, or another name for one playlist, is another plan.
+        # Only when there is one, for the manifest's reason (U113).
         identity["playlists"] = [claimed.identity() for claimed in split]
     if emptied:
         # The left rows of an account playlist that holds nothing (U128).
         identity["unplanned_left"] = [[name, row.identity()] for name, row in emptied]
+    return _plan(identity, items, len(items))
+
+
+def _plan(identity: dict[str, Any], items: list, count: int) -> dict[str, Any]:
+    """A plan payload, closed at the four keys of ``plan/1``."""
     return {
         "digest": digest_of(identity),
         "items": items,
-        "totals": {"count": len(items)},
+        "totals": {"count": count},
         "chunk": None,
     }
 
@@ -128,9 +126,7 @@ def _shown(
         "intake file": str(destination),
         "count": len(planned.items),
         "files": [item.name for item in planned.items],
-        # U127: the xml bridge carries no My Tag, so the vox tag a native
-        # landing writes is a step this one leaves owed, said before the
-        # approval rather than discovered in a with vox playlist missing it.
+        # U127: the bridge carries no My Tag, so the step owed is said first.
         "vox My Tag": bridge_vox_fact(cfg),
     }
     if split:
@@ -142,8 +138,7 @@ def _shown(
             )
         )
     if manifest is not None:
-        # What the manifest ASKS for, since which rows have a file in this
-        # batch is known only once the batch folder can be indexed.
+        # What the manifest ASKS for: which rows have a file is known later.
         shown["labels filed from"] = str(manifest.path)
         shown["label playlists named"] = [
             f"{name} ({count} listed)" for name, count in sorted(manifest.playlists().items())
@@ -154,11 +149,9 @@ def _shown(
 def bridge_vox_fact(cfg: config.Config) -> str:
     """What the bridge's gate screen says of the vox My Tag (U127), by the calibration.
 
-    THE STEP OWED IS ONLY NAMED WHERE IT WOULD TAG FROM A FITTED CUT. The vocals
-    verb tags from the default cut on a library with none, which the native
-    landing refuses to do (R-276), so an uncalibrated library is told to
-    calibrate first, and an unreadable calibration is named, never refused:
-    the bridge writes no tag either way.
+    THE STEP OWED IS ONLY NAMED WHERE IT WOULD TAG FROM A FITTED CUT (R-276);
+    an unreadable calibration is named, never refused, since the bridge writes
+    no tag either way.
     """
     try:
         cut = metadata_cli.load_vocal_threshold(cfg)
@@ -174,11 +167,9 @@ def split_facts(
 ) -> dict[str, Any]:
     """The account playlists on a gate screen, each by the name it lands as (U113).
 
-    ``entries`` are each playlist's name, the account's own name for it, how
-    many tracks it holds and how many of those the library already owned
-    (U128); ``rest`` is how many files the batch playlist keeps and ``left``
-    how many rows of the account playlists no INBOX playlist holds. ONE
-    WORDING FOR BOTH MEDIA, so the same split reads the same on either screen.
+    ``entries`` are (name, account name, tracks, already owned); ``rest`` is
+    what the batch playlist keeps and ``left`` the rows no INBOX playlist
+    holds. ONE WORDING FOR BOTH MEDIA.
     """
     facts: dict[str, Any] = {
         "account playlists": [
@@ -204,13 +195,8 @@ def split_facts(
 def _split_items(split: tuple[tuple[account_playlists.Claimed, int], ...]) -> list[dict[str, Any]]:
     """One item per account playlist an intake file was given, with what it holds."""
     return [
-        {
-            "action": PLAYLIST,
-            "playlist": claimed.name,
-            "account": claimed.playlist_id,
-            "count": count,
-        }
-        for claimed, count in split
+        {"action": PLAYLIST, "playlist": claimed.name, "account": claimed.playlist_id, "count": n}
+        for claimed, n in split
     ]
 
 
@@ -231,10 +217,7 @@ def _reported(payload: dict, landed: landing.Landed) -> dict:
     }
     items.extend(_split_items(landed.split))
     if landed.labelled or landed.unlabelled:
-        # IN ``items`` AND ``totals``, because the plan surface is closed at
-        # four fields and a fifth is a schema break for every consumer. A label
-        # playlist written and a label row left out are both things this run
-        # did to the plan it was shown, which is what an item is.
+        # IN ``items`` AND ``totals``, since ``plan/1`` is closed at four keys.
         items.extend(
             {
                 "action": FILED,
@@ -290,15 +273,11 @@ def _native_identity(
 
 
 def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: Path) -> dict:
-    """The plan as the approval gate shows it: one item per file, with its row.
+    """The plan as the approval gate shows it: one item per file, with every column of its row.
 
-    EVERY COLUMN THE ROW WOULD CARRY IS ON THE ITEM, and the digest is taken
-    over the files, the folder, the batch and the collection plan together, so
-    an answer given for one folder, one batch name, one library or one set of
-    rows is stale for another. The engine's own digest already covers the rows,
-    the root and the library's device and master id, and not the database's
-    path, which the screen shows (U161); the files' fingerprint covers what is
-    on disk.
+    The digest covers the files, folder, batch and collection plan together,
+    so an answer for one is stale for another. The database's path is not in
+    it but on the screen and pinned (U161).
     """
     by_target = {str(row.target): row for row in rows.rows}
     hearts = (
@@ -325,17 +304,15 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
         if str(row.target) in hearts:
             entry["heart"] = hearts[str(row.target)] or "month left to the backfill"
         if rows.labels is not None:
-            # U156: the label playlist each file is filed in, or none, which
-            # the screen's facts say why for.
+            # U156: the label playlist each file is filed in, or none.
             entry["label"] = filed.get(str(row.target), "none")
         if row.action == native.ADD and rows.vox_cut is not None and not rows.vox_blocked:
             # U127: the score each added row was read at and whether it is tagged.
             entry["voxlevel"] = row.voxlevel
             entry["vox"] = row.vox
         if row.action == native.ADD and row.drift_verdict not in ("", drift.UNSCORED):
-            # U157: the drift each added row was read at, its verdict and
-            # whether it is tagged dyn. A file with no reading is the fact
-            # line's to count, so a batch from before U157 shows as it did.
+            # U157: the drift each added row was read at, its verdict and dyn
+            # tag; a file with no reading is the fact line's to count.
             entry["drift"] = row.drift
             entry["drift_verdict"] = row.drift_verdict
             entry["dyn"] = row.dyn
@@ -344,21 +321,12 @@ def _native_payload(planned: landing.Plan, rows: native.NativePlan, *, target: P
         items.append(entry)
     identity = _native_identity(planned, rows, target=target)
     if rows.favorites is not None and rows.favorites.skipped:
-        # THE SKIP IS AN ITEM OF THE PLAN, since the payload's keys are closed
-        # (``plan/1``) and the apply reports it back unchanged.
+        # THE SKIP IS AN ITEM OF THE PLAN, since ``plan/1``'s keys are closed.
+        hearts = rows.favorites
         items.append(
-            {
-                "action": FAVORITES,
-                "playlist": rows.favorites.source_name,
-                "skipped": rows.favorites.skipped,
-            }
+            {"action": FAVORITES, "playlist": hearts.source_name, "skipped": hearts.skipped}
         )
-    return {
-        "digest": digest_of(identity),
-        "items": items,
-        "totals": {"count": len(planned.items)},
-        "chunk": None,
-    }
+    return _plan(identity, items, len(planned.items))
 
 
 def favorites_facts(plan: native.FavoritesPlan) -> dict[str, Any]:
@@ -392,8 +360,7 @@ def favorites_facts(plan: native.FavoritesPlan) -> dict[str, Any]:
             f"{plan.unknown} file(s) whose job froze no date, which join "
             f"{plan.source_name!r} here and take their month from crate favorites backfill"
         )
-    # THE COLOUR (U153): every landed heart's row and each uncoloured owned
-    # heart takes Pink, a row a person coloured is held, no Pink row is said.
+    # THE COLOUR (U153): landed hearts and uncoloured owned ones take Pink.
     if plan.colour_skipped:
         facts["rows to colour Pink"] = f"none, {plan.colour_skipped}"
     else:
@@ -404,13 +371,7 @@ def favorites_facts(plan: native.FavoritesPlan) -> dict[str, Any]:
 
 
 def collection_facts(rows: native.NativePlan) -> dict[str, Any]:
-    """What a native plan writes, one line per fact, for any verb's gate screen.
-
-    SHARED WITH ``intake file`` (R-770), which asks the same kind of question
-    over the same engine's plan: where the playlist hangs, which database is
-    written, which device the rows are stamped with, how the path is stored,
-    and what is left for rekordbox.
-    """
+    """What a native plan writes, one line per fact, shared with ``intake file`` (R-770)."""
     stored = (
         f"under the base drive {rows.base_drive}, which rekordbox maps to {rows.current_drive}"
         if rows.base_drive and rows.current_drive and rows.base_drive != rows.current_drive
@@ -421,8 +382,7 @@ def collection_facts(rows: native.NativePlan) -> dict[str, Any]:
         "reads and writes": str(rows.database),
         "device": f"{rows.device_id} (master {rows.master_db_id})",
         "paths stored": stored,
-        # U126: the value every added row is given, and the count that makes
-        # it the library's, so the person approves the number and its source.
+        # U126: the value every added row is given, and the count behind it.
         "content link": (
             f"{rows.link.value}, carried by {rows.link.carriers} of the library's "
             f"{rows.link.rows} live rows"
@@ -484,11 +444,9 @@ def vox_fact(rows: native.NativePlan) -> str:
 def vox_plan_warnings(rows: native.NativePlan, *, folder: Path) -> list[dict[str, str]]:
     """The gate screen's warning when most added rows carry no score, else none (U181).
 
-    One file in nineteen with no score is a file the model could not hear and
-    is said on the vox line. Most of a batch with no score is a batch analysed
-    with no model loaded, so it is a warning with its own code that a verb
-    running the landing lifts onto its own envelope, rather than a clause a
-    person has to notice at the end of a line.
+    Most of a batch unscored is a batch analysed with no vocal model loaded,
+    so it is a warning with its own code a caller can lift, not a clause at
+    the end of the vox line.
     """
     adding = rows.to_add()
     unscored = rows.vox_unscored()
@@ -608,8 +566,7 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
     items: list[dict[str, Any]] = []
     for item in payload["items"]:
         if item.get("action") == FAVORITES or item.get("area") == "account-archive":
-            # Favourites (U120) and the account archive folded into this landing
-            # (U129) are not file moves: they have no "from", so carry them through.
+            # Favourites (U120) and the archive (U129) are not file moves.
             items.append(item)
             continue
         entry = refused.get(item["from"])
@@ -653,12 +610,10 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
         "already present": len(landed.collection.present),
         "memberships": landed.collection.memberships_added,
     }
-    # WHAT ADOPTION READS BACK, not what the writer counted (U127): a tag
-    # written under a category rekordbox removed is no tag a person sees.
+    # WHAT ADOPTION READS BACK, not what the writer counted (U127, U157).
     voxed = sum(1 for row in landed.collection.added if row.vox)
     if voxed:
         totals["vox tagged"] = voxed
-    # AND WHAT THE CHECK READS BACK (U157), on the same reading.
     dyned = sum(1 for row in landed.collection.added if row.dyn)
     if dyned:
         totals["dyn tagged"] = dyned
@@ -760,18 +715,15 @@ def _with_filing(reported: dict, filed: filing.Filed) -> dict:
             "filing memberships": filed.memberships,
             "placed nowhere": len(filed.nowhere),
         }
-    # EACH ITEM ALREADY SAYS WHERE IT FILES, or why nowhere, in its
-    # ``files into``; the payload's keys are closed (``plan/1``).
+    # Each item already says where it files in its ``files into``.
     return {**reported, "totals": totals}
 
 
 def favorites_notes(payload: dict, collection: native.NativeLanded) -> list[dict[str, str]]:
     """What a person reads about the hearts a landing placed, or did not (U120).
 
-    ON THE WARNINGS CHANNEL, for R-424's reason: the default renderer prints
-    a verb's outcome, its warnings and its run id, so a fact only the json
-    block states is a fact a person never reads. A skipped placement is said
-    with the home's own words; a placement is said with its counts.
+    ON THE WARNINGS CHANNEL, since the default renderer prints no json block
+    (R-424).
     """
     skipped = next(
         (
@@ -798,9 +750,8 @@ def favorites_notes(payload: dict, collection: native.NativeLanded) -> list[dict
 
 
 def _colour_notes(placed) -> list[dict[str, str]]:
-    """The colour's notes (U153), from what the write knew, so the apply reports
-    the held rows and the missing Pink row the gate screen showed. The same two
-    whether the hearts came with files or the owned hearts were placed alone."""
+    """The colour's notes (U153): the held rows and the missing Pink row the
+    gate screen showed, with files or owned hearts alone."""
     from cratekit.favorites import colour as colour_mod  # noqa: PLC0415 - favorites is toggleable
 
     notes = []
@@ -828,15 +779,11 @@ def _colour_notes(placed) -> list[dict[str, str]]:
     return notes
 
 
-#: The visit's short path (U319), which A33's probe at sitting 101 measured:
-#: with Auto Analysis on, a launch brought to the front raises one dialog whose
-#: OK analyses every row waiting, with no selection, on the fields and the mode
-#: the preference holds, so a dyn row still takes Dynamic. Said after the
-#: Analyze Tracks selections it stands in for, so "as above" names them, and
-#: ONE WORDING for every sentence that offers it: ``cli.tail`` spells the same
-#: for the step ``crate sync land`` prints, held to this by a test, since a
-#: lower package imports no feature module. Nothing here or in the visit turns
-#: Auto Analysis on: it is the person's.
+#: The visit's short path (U319): with Auto Analysis on, a launch in front
+#: raises one dialog whose OK analyses every waiting row on the preference's
+#: own mode, so a dyn row still takes Dynamic. Said after the selections it
+#: stands in for, so "as above" names them. ``cli.tail`` spells the same, held
+#: to this by a test, since a lower package imports no feature module.
 AUTO_ANALYSIS_STEP = (
     "or, with Auto Analysis on, open rekordbox with its window in front and press OK "
     "on its Auto Analysis dialog only when it shows every one of those Normal "
@@ -849,19 +796,12 @@ AUTO_ANALYSIS_STEP = (
 def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
     """The warning a native write carries when rows joined the collection, else none.
 
-    ONE SENTENCE FOR EVERY VERB THAT ADDS A ROW (R-770). ``intake file`` adds
-    one through the same engine and owes the person the same next step, and a
-    second wording of it is how one of the two goes stale.
+    ONE PLAYLIST, ANALYZE (U166), holding every waiting row; TWO SELECTIONS in
+    it, Normal and Dynamic by the dyn My Tag (U157); and the Auto Analysis
+    path beside them (U319).
     """
     if not collection.added:
         return []
-    # ONE PLAYLIST, ANALYZE (U166), which holds every row still waiting and
-    # only those, so the visit is one selection rather than one per batch.
-    # TWO SELECTIONS IN IT (U157), each with its count and its settings: the
-    # rows without the dyn My Tag take Normal and the rows with it Dynamic.
-    # TWO PATHS TO THEM (U319): the selections with Auto Analysis off, and
-    # with it on the one dialog a launch in front raises, said in the one
-    # wording above, which leaves the dyn rows to their own Dynamic run.
     dyned = sum(1 for row in collection.added if row.dyn)
     normal = len(collection.added) - dyned
     selections = (
@@ -887,12 +827,8 @@ def awaiting_analysis(collection: native.NativeLanded) -> list[dict[str, str]]:
 def dyn_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
     """What a person reads when a variable row did not get the dyn My Tag (U157), else none.
 
-    SHARED WITH ``intake file`` for :func:`awaiting_analysis`' reason. A row
-    whose drift read as variable and carries no mark would be analysed with
-    Normal by a person who selects by the mark, so each is named, with why,
-    and the step owed is to run it with Dynamic by hand. A file with no drift
-    reading is the screen's to count and not a warning: every batch analysed
-    before U157 is one, and Normal is what each of its rows always took.
+    Such a row would take Normal from a person selecting by the mark, so each
+    is named with why. A file with no drift reading is the screen's to count.
     """
     if not collection.added:
         return []
@@ -926,17 +862,14 @@ def dyn_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
 def vox_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
     """What a person reads about the vox My Tag a native write gave its rows, or did not (U127).
 
-    SHARED WITH ``intake file`` for :func:`awaiting_analysis`' reason. A file
-    with no score is named, never tagged on a guess; a landing that could tag
-    nothing says why and names the step owed. A row tagged is the report's.
+    A file with no score is named, never tagged on a guess; a landing that
+    could tag nothing says why and names the step owed.
     """
     if not collection.added:
         return []
     warnings: list[dict[str, str]] = []
     if collection.vox_missing:
-        # PLANNED, WRITTEN, AND NOT WHAT ADOPTION READS: said, never reported
-        # as tagged, so a person is not told a row reaches with vox when the
-        # next adoption will not file it there.
+        # PLANNED, WRITTEN, AND NOT WHAT ADOPTION READS: said, never reported.
         why = (
             f"the tag could not be read back as adoption reads it: {collection.vox_unread}"
             if collection.vox_unread
