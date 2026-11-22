@@ -17,6 +17,7 @@ from __future__ import annotations
 import ast
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -50,20 +51,10 @@ class ObjectNotFound(Exception):
     """Named as the client names its not found, which is how the adapter reads it."""
 
 
-class Response:
-    def __init__(self, status_code: int) -> None:
-        self.status_code = status_code
-
-
 class HTTPFailure(Exception):
     def __init__(self, status_code: int) -> None:
         super().__init__(f"HTTP {status_code}")
-        self.response = Response(status_code)
-
-
-class Artist:
-    def __init__(self, name: str) -> None:
-        self.name = name
+        self.response = SimpleNamespace(status_code=status_code)
 
 
 class Track:
@@ -75,7 +66,7 @@ class Track:
         self.id = int(track_id)
         self.name = name
         self.version = version
-        self.artists = [Artist(one) for one in artists]
+        self.artists = [SimpleNamespace(name=one) for one in artists]
         self.artist = self.artists[0] if self.artists else None
         #: The client's own name for "the provider will play this".
         self.available = True
@@ -1001,9 +992,12 @@ def test_a_hearts_sweep_runs_to_done_and_the_ledger_records_every_heart(installe
 
 
 def test_a_playlist_export_runs_to_done_and_the_ledger_records_every_add(installed, monkeypatch):
+    """And a second export finds the playlist recorded, so it neither creates nor sets the
+    visibility: the private step is part of the create behind the ledger's check."""
+    exported = write_export(installed)
     client = FakeClient(isrcs=numbered(700))
     give_rows_an_isrc(monkeypatch)
-    code, resumed, job_id = run_job(monkeypatch, client, write_export(installed), sweep=False)
+    code, resumed, job_id = run_job(monkeypatch, client, exported, sweep=False)
     assert code == int(ExitCode.OK), resumed
     assert client.user.created == [outbound_fakes.CRATE]
     (playlist,) = client.playlists.values()
@@ -1019,17 +1013,6 @@ def test_a_playlist_export_runs_to_done_and_the_ledger_records_every_add(install
     )
     reports = artifacts.committed(installed, job_id)
     assert [report["remote_id"] for report in reports] == [playlist.id] * 3
-
-
-def test_a_second_export_finds_its_playlist_and_neither_creates_nor_sets_visibility(
-    installed, monkeypatch
-):
-    """The private step is part of the create behind the ledger's check before write."""
-    exported = write_export(installed)
-    client = FakeClient(isrcs=numbered(700))
-    give_rows_an_isrc(monkeypatch)
-    assert run_job(monkeypatch, client, exported, sweep=False)[0] == int(ExitCode.OK)
-    (playlist,) = client.playlists.values()
     # Somebody made it public at the provider since; that is theirs to keep.
     playlist.public = True
     account.forget()
@@ -1324,14 +1307,9 @@ def test_the_adapter_satisfies_the_protocol_it_is_handed_out_as():
 # ── R-572: the file's album tag tells releases spelled alike apart ──
 
 
-class Album:
-    def __init__(self, name: str) -> None:
-        self.name = name
-
-
 def on_album(track: Track, name: str) -> Track:
     """The track as the client hands it out, sitting on the release ``name``."""
-    track.album = Album(name)
+    track.album = SimpleNamespace(name=name)
     return track
 
 
