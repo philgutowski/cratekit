@@ -271,8 +271,9 @@ def test_once_a_band_holds_the_heart_the_additive_refresh_puts_it_in_that_folder
 def test_two_hearts_of_two_months_and_an_existing_month_is_added_to_not_made(
     native_library, silence
 ):
+    """With no Pink row the landing still places the hearts, and warns."""
     cfg, _root_id = native_library
-    folder_id, _source_id = _home(cfg)
+    folder_id, _source_id = _home(cfg, pink=False)
     handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
     try:
         handle.create_playlist("2026-09", parent=handle.get_playlist(ID=folder_id))
@@ -289,6 +290,16 @@ def test_two_hearts_of_two_months_and_an_existing_month_is_added_to_not_made(
         "2026-11 (1 file(s)), made",
     ]
     assert acted["data"]["totals"]["hearts placed"] == 4
+    assert {_colour_of(cfg, "Older"), _colour_of(cfg, "Newer")} <= {"", "0"}
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["rows to colour Pink"].startswith("none, the library's colour table has no live row named Pink")
+    (note,) = [w for w in acted["warnings"] if w["code"] == "favorites-pink-colour-missing"]
+    assert (
+        "crate favorites backfill colours them once the library carries Pink again"
+        in note["message"]
+    )
+    (placed,) = [w for w in acted["warnings"] if w["code"] == land_cli.FAVORITES_PLACED]
+    assert placed["message"].endswith("; 0 row(s) coloured Pink")
 
 
 def test_a_heart_a_playlist_also_asked_for_is_in_that_playlist_and_in_all_favorites(
@@ -447,21 +458,3 @@ def test_a_heart_whose_job_froze_no_date_key_joins_all_favorites_and_no_month(
     assert by_name["Old.flac"]["heart"] == "month left to the backfill"
     assert by_name["New.flac"]["heart"] == "2026-11"
     assert acted["data"]["totals"]["hearts placed"] == 3
-
-
-def test_with_no_pink_row_the_landing_places_the_heart_and_warns(native_library, silence):
-    cfg, _root_id = native_library
-    folder_id, _source_id = _home(cfg, pink=False)
-    _hearted(cfg, silence, {"Hearted": NOV})
-    acted, refused = _landed()
-    assert _favorites(cfg, folder_id) == {SOURCE: ["Hearted"], "2026-11": ["Hearted"]}
-    assert _colour_of(cfg, "Hearted") in ("", "0")
-    shown = refused["cause"]["detail"]["shown"]
-    assert shown["rows to colour Pink"].startswith("none, the library's colour table has no live row named Pink")
-    (note,) = [w for w in acted["warnings"] if w["code"] == "favorites-pink-colour-missing"]
-    assert (
-        "crate favorites backfill colours them once the library carries Pink again"
-        in note["message"]
-    )
-    (placed,) = [w for w in acted["warnings"] if w["code"] == land_cli.FAVORITES_PLACED]
-    assert placed["message"].endswith("; 0 row(s) coloured Pink")
