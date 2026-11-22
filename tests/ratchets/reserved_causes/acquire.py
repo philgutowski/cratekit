@@ -87,7 +87,8 @@ KEBAB_LITERALS = {
     # 2026-11-05, U206: the ISRC cache joined, reading and writing its file as text.
     'acquire/isrc_cache.py': ['utf-8'],
     'acquire/listdoc.py': ['utf-8'],
-    'acquire/match.py': [
+    # 2026-11-22, U305: match.py split; these literals stand here now.
+    'acquire/match_identity.py': [
         'candidate-gone',
         'credited-exact',
         'isrc-exact',
@@ -154,25 +155,21 @@ NAMED_WITH_OWN = {
         'unavailable-transient',
     ],
     'acquire/download.py': ['rate-limited'],
-    'acquire/match.py': [
-        'candidate-gone',
+    # 2026-11-22, U305: match.py split; the whys it declares stand here now.
+    'acquire/match_identity.py': [
         'credited-exact',
         'isrc-exact',
         'key-differs',
         'key-relative',
-        'not-in-library',
         'reading-ambiguous',
         'title-approximate',
-        'verdict-accepted',
-        'verdict-rejected',
-        'verdict-unspecific',
         'version-differs',
     ],
 }
 
 NAMED_WITH_INTEGER = frozenset({
     'acquire/catalogue_api.py',  # 2026-11-05, U207: the ISRC batch's floor and ceiling.
-    'acquire/match.py',
+    'acquire/match_identity.py',  # 2026-11-22, U305: match.py split.
 })
 
 LITERAL_HOLDERS = {
@@ -219,12 +216,12 @@ LITERAL_HOLDERS = {
         'unavailable-permanent',
         'unavailable-transient',
     ],
-    'acquire/match.py': ['review-selection-invalid'],
+    'acquire/match_identity.py': ['review-selection-invalid'],  # 2026-11-22, U305: match.py split.
     # 2026-11-21, U298: the literal left with the helper it named, which has one home now.
     'acquire/match_cli.py': ['intake-list-unusable'],
 }
 
 LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'acquire/catalogue_api.py',  # 2026-11-05, U207: the ISRC batch's floor and ceiling.
-    'acquire/match.py',
+    'acquire/match_identity.py',  # 2026-11-22, U305: match.py split.
 })

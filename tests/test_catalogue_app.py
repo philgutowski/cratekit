@@ -1,28 +1,13 @@
-"""U205: catalogue lookups go under Cratekit's own app credentials.
+"""U205: catalogue lookups go under Cratekit's own app credentials, not the account session.
 
-The first two way sync asked the provider thousands of catalogue questions
-under the person's own account session. These claims are the brief's test
-scenarios, each driven through the real pacing gate on a temporary state file,
-so "counted per identity" is read off the file the gate wrote and never off a
-counter the test kept:
-
-1. **With the app's two values recorded, an ISRC lookup makes no account
-   call** and its token request and read are counted under ``app``.
-2. **Without them every lookup goes to the account exactly as before**, and
-   one value of the two is the same as none.
-3. **A not found is the one absence.** A server error and a rejected app token
-   climb the ladder and refuse, the rejection naming the app's credentials and
-   never the account session, and a transport failure whose text carries the
-   digits of a not found is not read as one.
-4. **A rate limit on the app trips the one gate**, and the account is refused
-   inside the same cooldown.
-5. **The label crawl stays on the account and is counted there, and no write
-   reaches the app client**, which has no write to reach.
-6. **A state file today's version wrote still loads**, its calls the account's.
-7. **Doctor names the credentials and both counts**, and says when it could
-   not read them.
-8. **The app client is built at one site**, beside the account opener.
-"""
+Each claim is driven through the real pacing gate on a temporary state file, so "counted per
+identity" is read off the file the gate wrote. With both app values recorded, an ISRC lookup
+makes no account call; with one or none, every lookup goes to the account as before. A not
+found is the one absence, while a server error, a rejected token and a transport failure
+whose text carries the digits of a not found are not. A rate limit on the app trips the one
+gate. The label crawl stays on the account, no write reaches the app client, an older state
+file still loads, doctor names the credentials and both counts, and the app client is built
+at one site."""
 
 from __future__ import annotations
 
@@ -53,9 +38,7 @@ APP_ID = "FAKE-app-identifier"
 APP_KEY = "FAKE-app-value"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Doubles
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class Clock:
@@ -117,9 +100,8 @@ def answer_with(*tracks: dict, included=INCLUDED) -> Answer:
 
 
 class AppTransport:
-    """The app client's ``requests.Session``: the token service answers from
-    ``tokens``, every read from ``reads``, the last answer of each repeating,
-    and every request is recorded with what was sent."""
+    """The app client's ``requests.Session``: token requests answer from ``tokens``, reads from
+    ``reads`` (the last answer repeating), and every request is recorded."""
 
     def __init__(self, reads: list[Any] | None = None, tokens: list[Any] | None = None) -> None:
         self.reads = list(reads or [answer_with()])
@@ -166,8 +148,7 @@ class Track:
 
 
 class AccountClient:
-    """The account's logged in client. Every method sends one request through
-    its own transport, as the provider library's do, so the gate counts it."""
+    """The account's logged in client; each method sends one request through its own transport."""
 
     def __init__(self, *, country_code: Any = "GB", isrcs: dict[str, list[str]] | None = None) -> None:
         self.request_session = AccountTransport()
@@ -227,8 +208,7 @@ def no_ladder_sleep(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def no_lost_app_value_left_over():
-    """A lost value noted outside a command scope stays for the process, which
-    is one run in the product and many tests here, so each test starts clear."""
+    """A lost value noted outside a command scope lasts for the process; each test starts clear."""
     provider_gate._APP_LOST.clear()
     yield
     provider_gate._APP_LOST.clear()
@@ -246,8 +226,7 @@ def use_transport(monkeypatch, transport: AppTransport) -> AppTransport:
 
 def opened(monkeypatch, gate: Gate, transport: AppTransport | None = None,
            account: AccountClient | None = None) -> tuple[AccountClient, Any, AppTransport]:
-    """An account client attached to ``gate``, and the app client the opener
-    builds beside it, as ``open_account`` builds both."""
+    """An account client attached to ``gate`` and the app client the opener builds beside it."""
     account = account or AccountClient()
     transport = use_transport(monkeypatch, transport or AppTransport())
     assert gate.attach(account) is True
@@ -262,9 +241,7 @@ def no_sleep(seconds: float) -> None:
     del seconds
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. With the app recorded, the lookup leaves the account
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_isrc_match_with_the_app_recorded_makes_no_account_call(monkeypatch, gate):
@@ -378,9 +355,7 @@ def test_the_answer_is_read_into_the_shape_the_choosing_logic_reads(monkeypatch,
 
 
 def test_several_releases_from_the_app_are_chosen_among_by_the_unchanged_rules(monkeypatch, gate):
-    """The single and the compilation cut agree with the row; the file's album
-    names the compilation, so the third rule chooses it, off names the app
-    answer carried in ``included``."""
+    """The file's album names the compilation, so the third rule chooses it."""
     record_app()
     account, app, transport = opened(
         monkeypatch,
@@ -395,7 +370,6 @@ def test_several_releases_from_the_app_are_chosen_among_by_the_unchanged_rules(m
     )
 
     assert chosen == "102"
-    # The hearts the second rule asks are the account's own, and went there.
     assert account.request_session.sent == [("GET", "https://api.invalid/hearts")]
 
 
@@ -439,9 +413,7 @@ def test_a_track_identifier_that_is_not_a_number_is_never_put_in_a_path(monkeypa
     assert transport.sent == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. Without the app, the account exactly as before
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("recorded", [(), ("catalogue-app-id",), ("catalogue-app-key",)])
@@ -452,16 +424,15 @@ def test_without_both_values_the_opener_builds_no_app_client(monkeypatch, gate, 
 
     assert provider_session.catalogue_client(AccountClient(), gate=gate) is None
     assert transport.sent == []
-    # One value of two was never set up, which is not a value the keychain
-    # lost, so the run's spend line names nothing (the mutation table's O1).
+    # One value of two was never set up, which is not a lost value, so the spend line
+    # names nothing.
     assert provider_gate.app_lost() == ()
 
 
 def test_without_the_app_an_isrc_lookup_goes_to_the_account_and_is_counted_there(gate):
     account = AccountClient(isrcs={ISRC: ["101"]})
     gate.attach(account)
-    # The ISRC cache off (U206), so each seam's own route is what is counted
-    # rather than the second answered from the first.
+    # The ISRC cache is off (U206), so each seam's own route is counted.
     off = isrc_cache.Cache(days=0)
     adapter_ = tidal_account.TidalAccount(account, sleep=no_sleep, catalogue=None, cache=off)
     catalogue = tidal_catalogue.TidalCatalogue(account, catalogue=None, cache=off)
@@ -475,8 +446,7 @@ def test_without_the_app_an_isrc_lookup_goes_to_the_account_and_is_counted_there
 
 
 def test_open_account_and_open_catalogue_hand_the_app_client_on(monkeypatch, tmp_path):
-    """Both openers, with the account's login faked, hold the app client
-    built over the same gate."""
+    """Both openers, with the login faked, hold the app client built over the same gate."""
     account = AccountClient()
     account.load_oauth_session = lambda *args, **kwargs: True
     monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: account)
@@ -509,9 +479,7 @@ def test_an_account_that_names_no_country_gets_no_app_client(monkeypatch, gate):
 def test_a_value_the_index_records_and_the_keychain_lost_is_absent_and_asks_the_account(
     monkeypatch, gate
 ):
-    """U205's review, round one: a value deleted through the operating
-    system's own keychain is not there, and refusing over it would lock every
-    verb that opens the account with no way back short of registering again."""
+    """A value lost from the keychain is absent; refusing would lock every account verb (U205)."""
     record_app()
     transport = use_transport(monkeypatch, AppTransport())
     account = AccountClient(isrcs={ISRC: ["101"]})
@@ -555,7 +523,7 @@ def test_a_keychain_that_could_not_be_read_for_the_app_is_refused_not_read_as_ab
 
 
 def test_a_lost_app_value_is_named_in_the_runs_spend_line(monkeypatch):
-    """Round two: the fallback to the account over a recorded value says so."""
+    """The fallback to the account over a recorded value is named in the spend line."""
     spends = iter([Spend(), Spend(calls=3)])
     monkeypatch.setattr(cli_package, "_provider_spend", lambda: next(spends))
     envelope = Envelope(
@@ -580,9 +548,7 @@ def test_a_lost_app_value_is_named_in_the_runs_spend_line(monkeypatch):
         assert provider_gate.app_lost() == ()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. A not found is the one absence
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_404_on_a_track_read_is_no_track_and_is_asked_once(monkeypatch, gate):
@@ -595,9 +561,7 @@ def test_a_404_on_a_track_read_is_no_track_and_is_asked_once(monkeypatch, gate):
 
 
 def test_a_404_on_the_isrc_collection_is_an_outage_and_never_no_track(monkeypatch, gate):
-    """The collection answers a code matching nothing with an empty list, so a
-    404 there says the address moved; read as no track, ``sync pair`` would
-    remember a miss for every row (U205's review, round one)."""
+    """An unmatched code answers an empty list, so a 404 means the address moved (U205)."""
     record_app()
     account, app, transport = opened(monkeypatch, gate, AppTransport([Answer(404, {})]))
     adapter_ = tidal_account.TidalAccount(account, sleep=no_sleep, catalogue=app)
@@ -660,8 +624,7 @@ def test_a_rejected_app_token_climbs_the_ladder_then_refuses_naming_the_app(
     assert cause.scope is Scope.RUN
     assert cause.detail["credential"] == "catalogue-app-id"
     assert "app credentials" in cause.message
-    # Each attempt asked for a fresh token, since an expired one is the
-    # ordinary reason for the refusal.
+    # Each attempt asked for a fresh token; an expired one is the ordinary reason to refuse.
     tokens = [one for one in transport.sent if one["url"] == catalogue_api.TOKEN_URL]
     assert len(tokens) == len(transport.reads_sent()) == 1 + tidal_account.WRITE_RETRIES
 
@@ -709,8 +672,7 @@ def test_a_token_service_that_did_not_answer_is_an_outage_never_an_absence(monke
 
 
 def test_a_transport_failure_whose_text_holds_404_is_not_read_as_no_track(monkeypatch, gate):
-    """The ISRC GBAAA2404040 holds the digits of a not found, and the
-    transport's own message quotes the URL that carries it."""
+    """The transport's message quotes the URL carrying the ISRC, whose digits hold a not found."""
     code = "GBAAA2404040"
     record_app()
     failure = requests.ConnectionError(
@@ -743,9 +705,7 @@ def test_no_failure_message_carries_the_isrc_or_a_not_found(monkeypatch, gate):
         assert caught.value.status == status
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. A rate limit on the app trips the one gate
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_rate_limit_on_the_app_trips_the_shared_gate_and_refuses_the_account_too(
@@ -779,9 +739,7 @@ def test_the_gates_park_raised_inside_the_app_transport_passes_through_as_itself
     assert transport.sent == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. The crawl stays on the account; no write reaches the app
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_label_read_stays_on_the_account_and_is_counted_there(monkeypatch, gate):
@@ -809,9 +767,7 @@ def test_a_write_goes_to_the_account_and_never_to_the_app(monkeypatch, gate):
 
 
 def test_the_app_client_has_no_write_and_sends_only_reads_and_its_token_request():
-    """Its public surface is the reads, three since U207's batch screen, and the
-    only methods it ever sends are a GET under the API root and a POST to the
-    token service."""
+    """It sends only a GET under the API root or a POST to the token service."""
     public = sorted(
         name for name in vars(catalogue_api.AppCatalogue) if not name.startswith("_")
     )
@@ -829,9 +785,7 @@ def test_the_app_client_has_no_write_and_sends_only_reads_and_its_token_request(
     assert sent == ["GET", "POST"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. The state file today's version wrote
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_state_file_written_before_the_identities_loads_with_every_call_the_accounts(
@@ -911,9 +865,7 @@ def test_process_spend_carries_the_apps_share(monkeypatch, gate):
     assert (spent.calls, spent.app_calls, spent.account_calls) == (3, 2, 1)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 7. Doctor
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _catalogue_finding(recorded: set[str], spent: Spend | None) -> doctor.Finding:
@@ -968,9 +920,7 @@ def test_the_app_credentials_are_recordable_by_the_login_verb():
     assert {"catalogue-app-id", "catalogue-app-key"} <= set(login.CREDENTIAL_NAMES)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 8. One construction site
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_app_client_is_built_beside_the_account_opener_and_nowhere_else():
@@ -1000,9 +950,7 @@ def test_the_live_catalogue_transport_is_refused_in_every_test(monkeypatch, gate
         provider_session.catalogue_client(AccountClient(), gate=gate)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The guards round one found killing nothing
-# ═══════════════════════════════════════════════════════════════════════════
+# Guards
 
 
 @pytest.mark.parametrize("lifetime", [60, 30])
@@ -1049,8 +997,7 @@ def test_a_resource_in_the_answer_that_is_not_a_track_is_not_a_candidate(monkeyp
 
 
 def test_an_included_resource_is_matched_by_its_kind_and_identifier_both(monkeypatch, gate):
-    """An album sharing an artist's identifier is not that artist, and an
-    included entry with no kind names nothing."""
+    """An album sharing an artist's identifier is not that artist; no kind names nothing."""
     record_app()
     included = [
         {"id": "a1", "type": "albums", "attributes": {"name": "Wrong Kind", "title": "Wrong Kind"}},

@@ -1,21 +1,11 @@
 """U54: the acquisition worker, driven through the queue against a fake adapter.
 
-``acquire.download`` queued and nothing ran it (R-203), and the adapter behind
-it had never been constructed by anything in the product (R-204). This file is
-the proof that both are over: the shell reads the list and queues its tracks as
-items, the worker constructs the adapter through the registry's ``build`` and
-drives ``download.acquire_paced``, and every answer that function can give lands
-on the item's row under its own slug.
-
-EVERY NETWORK TOUCH GOES THROUGH ``tests.acquire_fakes``. The fake is registered
-under a name and the frozen configuration names it, so ``load`` and ``build``
-run for real. The vendored tool is never exercised here; what remains unproven
-without a live provider is stated in the unit's record.
-
-THE SLEEP IS RECORDED, NEVER TAKEN. The paced pool waits before EVERY request,
-including the first, through the delay the frozen configuration holds. An
-autouse fixture puts a recorder in front of it so the suite does not spend six
-jittered seconds per item, and the KTD9 test reads the recorder.
+The shell reads the list and queues its tracks as items, the worker constructs the adapter
+through the registry's ``build`` and drives ``download.acquire_paced``, and every answer
+lands on the item's row under its own slug (R-203, R-204). Every network touch goes through
+``tests.acquire_fakes``; the vendored tool is never exercised here. The sleep is recorded,
+never taken: an autouse fixture sits in front of the paced pool's delay, and the KTD9 test
+reads the recorder.
 """
 
 from __future__ import annotations
@@ -56,10 +46,6 @@ from tests.acquire_fakes import (
 from tests.cli_drive import drive, drive_human
 from tests.test_config import valid_data
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
-
 
 def _configure(library: Path, **acquisition) -> config.Config:
     settings = {"adapter": FAKE_ADAPTER, "pacing_delay_s": 0.0}
@@ -83,8 +69,7 @@ def library(tmp_path, monkeypatch) -> Path:
 
 @pytest.fixture
 def cfg(library) -> config.Config:
-    """A configured machine naming the fake adapter, pacing off. This is the
-    configuration a job freezes."""
+    """A configured machine naming the fake adapter, pacing off: what a job freezes."""
     return _configure(library)
 
 
@@ -144,10 +129,6 @@ def landings(*keys: str, **fields) -> dict[str, Landing]:
     return {key: Landing(**fields) for key in keys}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The binding
-# ═══════════════════════════════════════════════════════════════════════════
-
 
 def test_the_download_key_resolves_to_this_worker():
     assert handlers.resolve("acquire.download") is acquire_cli.handle
@@ -166,10 +147,6 @@ def test_the_worker_constructs_the_adapter_through_the_registry(cfg, script, lib
     assert isinstance(built, AdapterSettings)
     assert built.lossless_policy is LosslessPolicy.STRICT
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Items: the tracks of the frozen list, and the zero item rule
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_queueing_a_list_gives_the_driver_one_item_per_track(cfg, library):
@@ -223,8 +200,8 @@ def test_a_provider_row_without_an_identifier_is_refused_by_position(cfg, librar
 
 
 def test_a_repeated_identifier_is_one_item(cfg, library):
-    """A playlist holding one track twice asks for one file, and the queue
-    keys items by identifier, so the repeat is folded rather than inserted."""
+    """A playlist holding one track twice asks for one file; the queue keys items by
+    identifier, so the repeat is folded."""
     job_id = queued(listed(library, [("7", "A", "T"), ("8", "B", "U"), ("7", "A", "T")]))
     assert [item.item_id for item in items_of(job_id)] == ["7", "8"]
 
@@ -237,8 +214,8 @@ def test_the_list_path_is_frozen_absolute(cfg, library, monkeypatch):
 
 
 def test_what_the_list_said_is_frozen_with_the_job(cfg, script, library):
-    """KTD9 for the list: a list edited after queueing does not change what a
-    queued item means. The worker builds its request from the payload."""
+    """KTD9 for the list: a list edited after queueing does not change a queued item,
+    since the worker builds its request from the payload."""
     script.landings = landings("1")
     path = listed(library, [("1", "Frozen Artist", "Frozen Title")])
     job_id = queued(path)
@@ -248,10 +225,6 @@ def test_what_the_list_said_is_frozen_with_the_job(cfg, script, library):
 
     assert [(r.artist, r.title) for r in script.fetched] == [("Frozen Artist", "Frozen Title")]
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# The happy path, through the real resume argv
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_download_job_runs_pending_to_done_through_the_resume_path(cfg, script, library):
@@ -291,14 +264,11 @@ def test_the_landing_is_staged_per_item_and_committed_rather_than_written_in_pla
 def test_a_partial_file_left_in_staging_does_not_poison_the_next_attempt(
     cfg, script, library
 ):
-    """THE TOOL SKIPS RATHER THAN OVERWRITES, which is what makes the clear a
-    guard rather than a tidy up.
+    """THE TOOL SKIPS RATHER THAN OVERWRITES, which makes the clear a guard, not a tidy up.
 
-    Measured 2026-09-09: with a fake that always writes its landing, reverting
-    the clear killed nothing in a suite of 6991, because the fresh write
-    replaced the stale bytes on its own. The wrapped tool reports a skip as a
-    successful call carrying the path already there, so the half download is
-    what gets handed on as the track. The fake skips here for the same reason.
+    The wrapped tool reports a skip as a successful call carrying the path already there,
+    so a half download would be handed on as the track. The fake skips here for the same
+    reason.
     """
     script.landings = landings("1", skips_when_present=True)
     job_id = queued(listed(library, [("1", "A", "T")]))
@@ -313,9 +283,7 @@ def test_a_partial_file_left_in_staging_does_not_poison_the_next_attempt(
     assert (Path(cfg.paths.download_staging) / "1.wav").read_bytes() != b"half a download"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The staging sweep, R-291
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def staging_tree(cfg: config.Config) -> Path:
@@ -325,13 +293,8 @@ def staging_tree(cfg: config.Config) -> Path:
 def test_the_emptied_staging_of_a_finished_job_is_reclaimed_by_the_next_run(
     cfg, script, library
 ):
-    """R-291's cost. One directory per item of every job ever run, kept for good.
-
-    The sweep is at the HEAD of the verb, so the tree the first job left is
-    still there when that job returns and goes on the second invocation. That
-    ordering is asserted on purpose rather than worked around: it is what lets
-    a person look at the staging of the run that just finished.
-    """
+    """R-291's cost: one directory per item of every job, kept for good. The sweep is at
+    the HEAD of the verb, so the first job's tree is still there when that job returns."""
     script.landings = landings("1", "2")
     first = queued(listed(library, [("1", "A", "T"), ("2", "B", "U")]))
     drive(resume_argv(first))
@@ -346,11 +309,8 @@ def test_the_emptied_staging_of_a_finished_job_is_reclaimed_by_the_next_run(
 
 
 def test_an_open_jobs_staging_survives_the_sweep(cfg, script, library):
-    """Nothing moves out of a terminal job. Everything may still move out of this one.
-
-    The item is still PENDING, so a resume is entitled to redo it and a driver
-    working it right now is writing into exactly this directory.
-    """
+    """Nothing moves out of a terminal job; everything may still move out of this one,
+    whose item is PENDING and may be being worked right now."""
     script.landings = landings("1")
     open_job = queued(listed(library, [("1", "A", "T")]))
     held = staging_tree(cfg) / open_job / "0"
@@ -363,14 +323,9 @@ def test_an_open_jobs_staging_survives_the_sweep(cfg, script, library):
 
 
 def test_the_refused_landing_left_as_evidence_survives_the_sweep(cfg, script, library):
-    """The deliberate half of R-291, and the reason the sweep removes only empties.
-
-    A landing ``checked_landing`` refused stays where it fell because it is the
-    evidence for diagnosing the next demotion. The job ends, SUCCEEDED since
-    U169 declines a policy refusal, which is terminal, so a sweep keyed on the
-    job state alone would delete it. Keyed on the
-    filesystem refusing to remove a directory with something in it, it cannot.
-    """
+    """A landing ``checked_landing`` refused stays as evidence for diagnosing the next
+    demotion, so the sweep removes only empties: keyed on the filesystem refusing a
+    non empty directory, not on the terminal job state (U169)."""
     script.landings = landings("1", kind="lossy", offer_lossless=True)
     failed = queued(listed(library, [("1", "A", "T")]))
     drive(resume_argv(failed))
@@ -387,13 +342,8 @@ def test_the_refused_landing_left_as_evidence_survives_the_sweep(cfg, script, li
 def test_a_directory_naming_a_job_this_queue_does_not_hold_is_left_alone(
     cfg, script, library
 ):
-    """No code path deletes a job row, so an unresolvable name is another store's.
-
-    Removing it on the reading "the job is gone, so the work is over" is the one
-    mistake in this sweep that would cost somebody a file, and an unresolvable
-    identifier does not distinguish that reading from "this tree and this queue
-    are not from the same installation".
-    """
+    """No code path deletes a job row, so an unresolvable name is another store's: removing
+    it as "the job is gone" is the one mistake here that would cost somebody a file."""
     stranger = staging_tree(cfg) / "job-from-somewhere-else" / "0"
     stranger.mkdir(parents=True)
 
@@ -403,11 +353,8 @@ def test_a_directory_naming_a_job_this_queue_does_not_hold_is_left_alone(
 
 
 def test_the_sweep_reports_what_it_removed_deepest_first(cfg, script, library):
-    """The return value, which no caller reads today, asserted where it is made.
-
-    A sweep that removed the job directory before its items would leave the
-    items behind on every run, and the order is the only place that shows.
-    """
+    """The return value is asserted where it is made: removing the job directory before
+    its items would leave the items behind on every run."""
     script.landings = landings("1")
     done = queued(listed(library, [("1", "A", "T")]))
     drive(resume_argv(done))
@@ -425,19 +372,11 @@ def test_a_staging_root_that_was_never_created_sweeps_to_nothing(cfg):
 
 
 def test_a_job_directory_that_cannot_be_LISTED_does_not_fail_the_verb(cfg, script, library):
-    """``_children`` swallows ``OSError`` and nothing drove the swallow.
+    """``_children`` swallows ``OSError``: an unreadable directory under the staging tree
+    must not turn ``acquire download`` into an unhandled ``PermissionError``.
 
-    Found by mutation: deleting the ``try``/``except`` and letting the error
-    escape killed NOTHING across the whole suite, while the sweep runs at the
-    head of a verb that has not started its real work yet. An unreadable
-    directory under the staging tree must not turn ``acquire download`` into an
-    unhandled ``PermissionError`` over housekeeping nobody asked for.
-
-    Mode ``0o111`` is the shape that reaches it: the account may traverse the
-    directory and may not list it, so ``is_dir`` still answers and ``iterdir``
-    raises. The directory is left where it is, which is the honest outcome,
-    because a sweep that could not see inside has not established that it is
-    empty.
+    Mode ``0o111`` reaches it (``is_dir`` answers, ``iterdir`` raises). The directory is
+    left where it is, as a sweep that could not see inside has not shown it empty.
     """
     script.landings = landings("1")
     done = queued(listed(library, [("1", "A", "T")]))
@@ -458,14 +397,8 @@ def test_a_job_directory_that_cannot_be_LISTED_does_not_fail_the_verb(cfg, scrip
 
 
 def test_the_sweep_does_not_report_a_directory_it_could_not_remove(cfg, script, library):
-    """The return value is a record of removals, so a failure must not enter it.
-
-    Found by mutation: turning ``_reclaim``'s ``return`` into ``pass``, so every
-    directory it touched was appended whether or not it went, killed nothing.
-    The refused landing case is the reachable one: that directory holds evidence
-    on purpose and will never be removed, and a caller reading this tuple as
-    what is gone would be reading the opposite of the truth.
-    """
+    """The return value records removals, so a failure must not enter it; the refused
+    landing holds evidence on purpose and is never removed."""
     script.landings = landings("1", kind="lossy", offer_lossless=True)
     failed = queued(listed(library, [("1", "A", "T")]))
     drive(resume_argv(failed))
@@ -479,20 +412,12 @@ def test_the_sweep_does_not_report_a_directory_it_could_not_remove(cfg, script, 
     assert kept.is_dir()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Failure paths of the engine this unit is the first to call
-# ═══════════════════════════════════════════════════════════════════════════
-
 
 def test_a_mid_batch_defect_fails_that_item_and_the_resume_the_job_refuses_fetches_nothing(
     cfg, script, library
 ):
-    """The brief's scenario. The item's cause is asserted, not the exit code.
-
-    Named for a resumable job until R-390: a defect is permanent (R-348) and a
-    permanent failure is no longer re-armed, so the second half now measures
-    what the refusal leaves alone.
-    """
+    """The item's cause is asserted, not the exit code. A defect is permanent (R-348) and
+    no longer re-armed (R-390), so the second half measures what the refusal leaves alone."""
     script.landings = landings("1", "2", "3")
     script.landings["2"].fetch_raises = AdapterBroken(
         "the tool crashed mid transfer", remedy=acquire.Remedy.SWITCH_ADAPTER
@@ -501,10 +426,8 @@ def test_a_mid_batch_defect_fails_that_item_and_the_resume_the_job_refuses_fetch
 
     code, envelope = drive(resume_argv(job_id))
 
-    # A partial failure is REFUSED, not reported (R-225). The successes are
-    # durable, the job is recorded failed, and the verb leaves through the job's
-    # own cause with a non zero exit. Until R-225 closed here this asserted a
-    # normal envelope whose ``data.state`` said failed beside an exit of 0.
+    # A partial failure is REFUSED, not reported (R-225): the successes are durable, the
+    # job is recorded failed, and the verb leaves through the job's cause, non zero.
     assert code != int(ExitCode.OK), envelope
     assert envelope["outcome"] == "failed", envelope
     assert states(job_id) == {
@@ -519,12 +442,9 @@ def test_a_mid_batch_defect_fails_that_item_and_the_resume_the_job_refuses_fetch
     assert failed.cause.remediation.remedy == Remedy.SWITCH_ADAPTER
     assert job_of(job_id).state is jobs.JobState.FAILED
 
-    # THE RESUME IS REFUSED (R-390). ``adapter-broken`` is a defect in the
-    # acquisition code and is recorded as permanent on purpose, R-348: a job
-    # retrying it would have retried it for ever. ``jobs.retry`` reads that flag
-    # before it re-arms anything, so the two landed tracks stay done, the broken
-    # one stays failed, and a second ask fetches nothing. The person's path
-    # after switching adapters is a fresh job, which the refusal's steps say.
+    # THE RESUME IS REFUSED (R-390). ``adapter-broken`` is permanent on purpose (R-348), so
+    # ``jobs.retry`` re-arms nothing, the landed tracks stay done and a second ask fetches
+    # nothing. After switching adapters the person's path is a fresh job.
     script.landings["2"].fetch_raises = None
     fetched_before = len(script.fetched)
     with jobs.open_store() as store:
@@ -548,21 +468,16 @@ def test_a_mid_batch_defect_fails_that_item_and_the_resume_the_job_refuses_fetch
 def test_an_authentication_failure_parks_the_run_and_names_the_replacement_path(
     cfg, script, library
 ):
-    """AE9 through the queue: the session is dead, and the row says where to go.
-
-    PARKED RATHER THAN FAILED PER ITEM. The worker builds an adapter and
-    authenticates inside every item, so failing the item lets the driver claim
-    the next one and log in again. The job stops on the first refusal with the
-    cause the adapter gave, and every remaining track stays pending.
-    """
+    """AE9 through the queue: the session is dead, and the row says where to go. The job
+    is PARKED, not failed per item, since failing the item lets the driver claim the next
+    one and log in again; the remaining tracks stay pending."""
     script.landings = landings("1", "2", "3")
     script.authenticate_raises = AdapterAuthFailed("the provider rejected the stored session")
     job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U"), ("3", "C", "V")]))
 
     code, envelope = drive(resume_argv(job_id))
 
-    # BLOCKED, and not an OK exit (R-290). This asserted ``ExitCode.OK`` with the
-    # block legible only inside ``data.cause``, which is the entry's measured cost.
+    # BLOCKED, not an OK exit (R-290): the block is not legible only inside ``data.cause``.
     assert code != int(ExitCode.OK), envelope
     assert envelope["outcome"] == "blocked", envelope
     assert job_of(job_id).state is jobs.JobState.BLOCKED
@@ -579,8 +494,7 @@ def test_an_authentication_failure_parks_the_run_and_names_the_replacement_path(
 
 
 def test_a_dead_session_logs_in_once_and_not_once_per_track(cfg, script, library):
-    """The measured cost of failing the item instead: one login per remaining
-    track, into the account the lockout applies to."""
+    """The measured cost of failing the item instead: a login per remaining track."""
     script.landings = landings("1", "2", "3", "4", "5")
     script.authenticate_raises = AdapterAuthFailed("the provider rejected the stored session")
     job_id = queued(
@@ -596,10 +510,7 @@ def test_a_dead_session_logs_in_once_and_not_once_per_track(cfg, script, library
 
 
 def test_a_broken_adapter_fails_the_item_and_does_not_park_the_run(cfg, script, library):
-    """The asymmetry, asserted so it cannot be flattened by accident. A dead
-    CREDENTIAL stops the run; a broken TOOL fails the track it broke on, because
-    the crash may be about that track and a fifty track sync should not end on
-    one bad file."""
+    """A dead CREDENTIAL stops the run; a broken TOOL fails only the track it broke on."""
     script.landings = landings("1", "2")
     script.authenticate_raises = AdapterBroken("the vendored tool is not installed")
     job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U")]))
@@ -614,9 +525,8 @@ def test_a_broken_adapter_fails_the_item_and_does_not_park_the_run(cfg, script, 
 def test_a_provider_block_parks_the_job_and_makes_no_further_request(
     cfg, script, library
 ):
-    """A forbidden response is about the CLIENT. The pacing layer stops the run
-    and returns the cause; the worker hands it to the engine, which parks the
-    job with the item released. The third track is never asked for."""
+    """A forbidden response is about the CLIENT: the pool stops, the engine parks the job
+    with the item released, and the third track is never asked for."""
     script.landings = landings("1", "2", "3")
     script.landings["2"].fetch_raises = RuntimeError("403 Forbidden: access denied")
     job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U"), ("3", "C", "V")]))
@@ -638,8 +548,7 @@ def test_a_provider_block_parks_the_job_and_makes_no_further_request(
 
 
 def test_a_rate_limit_is_retried_under_backoff_and_then_lands(cfg, script, library):
-    """A throttle is "slower", not "stop": the pool backs off and asks again,
-    and the frozen pacing is what shapes the wait."""
+    """A throttle is "slower", not "stop": the pool backs off, shaped by the frozen pacing."""
     script.landings = landings("1")
     script.landings["1"].fetch_raises = RuntimeError("429 too many requests")
     script.landings["1"].fetch_raises_times = 2
@@ -683,9 +592,8 @@ def test_a_track_the_provider_does_not_have_is_permanent_and_carries_no_remedy(
     assert item.cause is not None
     assert item.cause.reason == "unavailable-permanent"
     assert item.cause.retryable is False
-    # THE POINT OF THE NAME. There is nothing to do about a track the provider no
-    # longer has, and the remedy this refusal must never carry is the one that
-    # tells somebody to weaken the lossless policy over it.
+    # A track the provider no longer has is not the person's to fix, so the refusal must
+    # never tell them to weaken the lossless policy.
     assert item.cause.remediation.remedy != Remedy.RELAX_LOSSLESS_POLICY
     assert item.cause.remediation.remedy is Remedy.CHANGE_POLICY_OR_INPUT
     assert script.fetched == []
@@ -694,8 +602,8 @@ def test_a_track_the_provider_does_not_have_is_permanent_and_carries_no_remedy(
 def test_a_run_reporting_nothing_for_the_key_is_refused_rather_than_read_as_success(
     cfg, script, monkeypatch, tmp_path
 ):
-    """Absence is not evidence. Driven at the handler with a run shaped by hand,
-    because the pool fills every slot it does not stop on."""
+    """Absence is not evidence. Driven at the handler with a run shaped by hand, since the
+    pool fills every slot it does not stop on."""
     script.landings = landings("1")
     monkeypatch.setattr(
         download,
@@ -718,23 +626,18 @@ def test_a_run_reporting_nothing_for_the_key_is_refused_rather_than_read_as_succ
     assert "without reporting" in caught.value.cause.message
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The lossless policy, at the file
-# ═══════════════════════════════════════════════════════════════════════════
-
 
 def test_a_lossy_landing_under_strict_policy_is_refused_at_the_item_with_the_codec_named(
     cfg, script, library
 ):
-    """The offer says lossless and the file is not. The check is at the FILE,
-    so the lie is caught, and the refused file is left where it landed."""
+    """The offer says lossless and the file is not: the check is at the FILE, and the
+    refused file is left where it landed."""
     script.landings = landings("1", kind="lossy", offer_lossless=True)
     job_id = queued(listed(library, [("1", "A", "T")]))
 
     code, envelope = drive(resume_argv(job_id))
 
-    # U169: refused for good by the policy is SETTLED, not failed. The item is
-    # skipped with the cause it was refused under, and the verb names it.
+    # U169: refused for good by the policy is SETTLED, skipped with the cause it was refused under.
     assert code == int(ExitCode.OK), envelope
     item = items_of(job_id)[0]
     assert item.state is jobs.ItemState.SKIPPED
@@ -748,9 +651,7 @@ def test_a_lossy_landing_under_strict_policy_is_refused_at_the_item_with_the_cod
     assert evidence.is_file(), "the refused file was not left as evidence"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U169: a list whose only failures are policy refusals ends ok
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 FOUR = [("1", "Aurora Bloom", "Sun Path"), ("2", "B", "U"), ("3", "C", "V"), ("4", "D", "W")]
@@ -759,8 +660,7 @@ FOUR = [("1", "Aurora Bloom", "Sun Path"), ("2", "B", "U"), ("3", "C", "V"), ("4
 def test_three_landed_and_one_refused_by_policy_ends_ok_with_a_warning_naming_it(
     cfg, script, library
 ):
-    """Sitting 47: 116 of 117 landed, the last was lossy only, and the verb
-    said ``failed (REFUSED_BY_POLICY)``."""
+    """Sitting 47: 116 of 117 landed, the last was lossy only, and the verb said failed."""
     script.landings = landings("2", "3", "4")
     script.landings["1"] = Landing(kind="lossy", offer_lossless=False)
     job_id = queued(listed(library, FOUR))
@@ -842,8 +742,8 @@ def test_a_refusal_beside_a_network_failure_fails_and_keeps_the_refusal_skipped(
 
 
 def test_a_track_the_provider_no_longer_has_is_declined_as_well(cfg, script, library):
-    """``unavailable-permanent`` is filed in the same exit code class as a
-    policy refusal, and no resume can bring a delisted track back."""
+    """``unavailable-permanent`` is filed in the policy refusal's exit class; no resume
+    brings a delisted track back."""
     script.landings = landings("1", "2")
     script.landings["1"].offer_raises = LookupError("404 not found")
     job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U")]))
@@ -858,9 +758,8 @@ def test_a_track_the_provider_no_longer_has_is_declined_as_well(cfg, script, lib
 def test_the_declined_warnings_name_skipped_tracks_and_never_a_failed_one(
     cfg, script, library
 ):
-    """Read at the function, because a job holding a failed item refuses
-    before the verb returns its warnings, so no envelope can show the
-    difference; the composers that read a job's warnings themselves can."""
+    """Read at the function, because a job holding a failed item refuses before the verb
+    returns its warnings, so no envelope can show the difference."""
     script.landings = landings("2", "3", "4")
     script.landings["1"] = Landing(kind="lossy", offer_lossless=False)
     script.landings["2"].fetch_raises = RuntimeError("connection reset by peer")
@@ -919,14 +818,9 @@ def test_a_lossy_landing_under_the_permissive_policy_is_committed_marked(
 def test_a_lying_offer_under_the_permissive_policy_is_still_committed_marked(
     library, script
 ):
-    """R21's forbidden state, reached through the offer rather than the file.
-
-    The provider says lossless and lands lossy. ``requires_lossy_marker`` is
-    derived from the OFFER, and the codec check inside the landing is strict
-    policy's only, so trusting the claim commits an unmarked lossy file, which
-    is the single state the audit verb exists to find. The marker is decided by
-    the file instead.
-    """
+    """R21's forbidden state, reached through the offer: ``requires_lossy_marker`` is
+    derived from the OFFER and the landing's codec check is strict policy's only, so the
+    marker is decided by the file instead."""
     cfg = _configure(library, lossless_policy="allow_lossy_marked")
     script.landings = landings("1", kind="lossy", offer_lossless=True)
     job_id = queued(listed(library, [("1", "A", "T")]))
@@ -967,8 +861,8 @@ def test_a_lossy_landing_with_no_marker_text_is_refused_rather_than_committed_un
 def test_an_unreadable_landing_is_transient_and_not_a_policy_refusal(
     cfg, script, library
 ):
-    """A file nothing could parse is a truncated download, and telling the
-    person to relax the policy would make the product accept it."""
+    """A file nothing could parse is a truncated download; advising a relaxed policy
+    would make the product accept it."""
     script.landings = landings("1", kind="unreadable")
     job_id = queued(listed(library, [("1", "A", "T")]))
 
@@ -982,8 +876,7 @@ def test_an_unreadable_landing_is_transient_and_not_a_policy_refusal(
 
 
 def test_the_permissive_policy_skips_the_codec_probe(tmp_path):
-    """Under the permissive policy the file is what it is; the marker is the
-    rule, and the probe is strict policy's."""
+    """Under the permissive policy the marker is the rule, and the probe is strict's."""
     junk = tmp_path / "1.flac"
     junk.write_bytes(b"junk")
     assert (
@@ -991,17 +884,12 @@ def test_the_permissive_policy_skips_the_codec_probe(tmp_path):
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The frozen configuration, and where the pacing comes from
-# ═══════════════════════════════════════════════════════════════════════════
-
 
 def test_the_pacing_delay_comes_from_the_frozen_configuration_not_a_fresh_load(
     library, script, slept
 ):
-    """KTD9 through the pool: the delay edited after queueing is not the delay
-    this run waits. Every request waits once, jittered around the frozen
-    nominal, and the configuration that moved reaches the person as drift."""
+    """KTD9 through the pool: a delay edited after queueing is not the delay waited. Every
+    request waits once, jittered around the frozen nominal, and the drift reaches the person."""
     _configure(library, pacing_delay_s=2.0)
     script.landings = landings("1", "2")
     job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U")]))
@@ -1041,10 +929,6 @@ def test_the_frozen_policy_reaches_the_worker_not_the_live_one(library, script):
     assert causes(job_id) == {"1": "lossy-refused"}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The destination
-# ═══════════════════════════════════════════════════════════════════════════
-
 
 def test_an_existing_file_at_the_destination_refuses_rather_than_replacing_it(
     cfg, script, library
@@ -1062,28 +946,20 @@ def test_an_existing_file_at_the_destination_refuses_rather_than_replacing_it(
     assert kept.read_bytes() == b"a file somebody kept"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The real default adapter, constructed for the first time, offline
-# ═══════════════════════════════════════════════════════════════════════════
-
 
 def test_the_shipped_adapter_is_constructed_through_build_and_refuses_with_a_named_remedy(
     library, script
 ):
-    """The vendored adapter, built by the worker from a frozen configuration
-    naming it, with no provider session in the keychain. No network is reached:
-    the session scope refuses before there is a source, and the item's row says
-    to re-authorise and where else to go. The fake is registered only so the
-    registry is in its per test shape; the configuration names the real one."""
+    """The vendored adapter, built by the worker with no provider session in the keychain:
+    the session scope refuses before there is a source, and the item's row says to
+    re-authorise. The fake is registered only so the registry has its per test shape."""
     _configure(library, adapter="vendored")
     job_id = queued(listed(library, [("1", "A", "T")]))
 
     drive(resume_argv(job_id))
 
-    # THE CAUSE LANDS WHERE THE REFUSAL BELONGS, and this test asserts the pair
-    # rather than picking one: a dead credential parks the JOB with the track
-    # released, and a broken tool fails the ITEM. Which of the two an offline
-    # machine produces depends on what is in its keychain, so both are read.
+    # Asserts the pair: a dead credential parks the JOB with the track released, a broken
+    # tool fails the ITEM, and an offline machine produces either by its keychain.
     job = job_of(job_id)
     item = items_of(job_id)[0]
     parked = job.state is jobs.JobState.BLOCKED
@@ -1101,8 +977,8 @@ def test_the_shipped_adapter_is_constructed_through_build_and_refuses_with_a_nam
 
 
 def test_a_configuration_naming_an_unknown_adapter_fails_the_item_by_name(library, script):
-    """``load`` refuses an unknown name rather than falling back to the
-    default; through the queue that refusal is the item's, not a traceback."""
+    """``load`` refuses an unknown name rather than defaulting; through the queue the
+    refusal is the item's, not a traceback."""
     _configure(library, adapter="no-such-adapter")
     job_id = queued(listed(library, [("1", "A", "T")]))
 
@@ -1115,13 +991,8 @@ def test_a_configuration_naming_an_unknown_adapter_fails_the_item_by_name(librar
 
 
 def test_a_pasted_web_address_gets_the_readers_own_refusal(cfg, library):
-    """The most likely wrong input, and the sentence that tells them what to do.
-
-    ``read_list`` refuses a URL by matching a scheme at the front of the string.
-    Absolutising the path before the read turns ``https://host/x`` into a
-    relative path under the working directory, which that guard cannot match,
-    and the person gets a file-not-found over a mangled path instead.
-    """
+    """``read_list`` refuses a URL by its leading scheme; absolutising the path first would
+    mangle ``https://host/x`` into a relative path and give a file-not-found."""
     code, envelope = drive(["--output", "json", "acquire", "download", "https://tidal.com/p/1"])
 
     assert code != int(ExitCode.OK)
@@ -1131,13 +1002,9 @@ def test_a_pasted_web_address_gets_the_readers_own_refusal(cfg, library):
 
 
 def test_an_open_job_with_no_items_refuses_rather_than_reporting_success(cfg, library):
-    """A job queued before this unit carries a frozen list path and no items.
-
-    Driving it settles nothing and the engine's success transition then reports
-    every track acquired over a list nothing read, which is R-198's empty queue
-    wearing a full one's clothes. ``adopt`` and ``tagging`` both guard this;
-    ``master`` does not need to, because it always queues exactly one item.
-    """
+    """A job queued before this unit has a frozen list path and no items; driving it would
+    report every track acquired over a list nothing read (R-198). ``master`` needs no
+    guard, as it always queues one item."""
     path = listed(library, [("1", "A", "T")])
     with jobs.open_store() as store:
         job = jobs.enqueue(
@@ -1164,8 +1031,8 @@ def test_the_registry_entry_still_declares_the_argv_builder_the_resume_uses(cfg,
 
 
 def test_a_track_result_that_is_acquired_is_the_only_one_committed():
-    """The mapping the worker reads is total over the outcome vocabulary, so a
-    fifth outcome added upstream fails here rather than as a KeyError on a row."""
+    """The mapping is total over the outcome vocabulary, so a new outcome fails here, not
+    as a KeyError on a row."""
     for outcome in TrackOutcome:
         if outcome is TrackOutcome.ACQUIRED:
             continue
@@ -1179,9 +1046,7 @@ def test_a_track_result_that_is_acquired_is_the_only_one_committed():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-678: the queueing half names the job it queued
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_queueing_a_download_names_the_job_and_the_command_that_drives_it(cfg, library):
@@ -1200,16 +1065,12 @@ def test_queueing_a_download_names_the_job_and_the_command_that_drives_it(cfg, l
     assert "  items: 0 of 2 settled" in lines, text
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-668: the resume needs the job and not the list
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_job_alone_drives_the_queued_acquisition(cfg, script, library):
-    """Sitting 7: ``--job`` alone was a usage error demanding the list again.
-
-    Typed out rather than taken from ``resume_argv``, so this holds even if the
-    argv builder goes back to carrying the list."""
+    """Sitting 7: ``--job`` alone was a usage error demanding the list. Typed out, not taken
+    from ``resume_argv``, so it holds if the builder carries the list again."""
     script.landings = landings("1", "2")
     job_id = queued(listed(library, [("1", "A", "T"), ("2", "B", "U")]))
 
@@ -1221,8 +1082,7 @@ def test_the_job_alone_drives_the_queued_acquisition(cfg, script, library):
 
 
 def test_neither_a_list_nor_a_job_is_refused_by_the_verb_and_queues_nothing(cfg, library):
-    """Argparse said this before the list went optional; the verb says it now,
-    naming both forms, and not as a usage error the verb cannot produce."""
+    """The verb now says this, naming both forms, not as a usage error it cannot produce."""
     code, envelope = drive(["acquire", "download"])
 
     assert code == int(ExitCode.PRECONDITION), envelope
@@ -1282,8 +1142,8 @@ def test_a_different_list_named_beside_the_job_is_refused_and_nothing_is_fetched
 
 
 def test_the_frozen_list_spelled_through_a_symlink_still_drives(cfg, script, library, tmp_path):
-    """Review round: two spellings of one file are one list, as the filesystem
-    answers it. A string comparison refused ``/tmp`` against ``/private/tmp``."""
+    """Two spellings of one file are one list, as the filesystem answers (``/tmp`` against
+    ``/private/tmp``)."""
     script.landings = landings("1")
     path = listed(library, [("1", "A", "T")])
     job_id = queued(path)
@@ -1357,9 +1217,8 @@ def test_another_verbs_job_is_not_read_as_a_frozen_download_list(tmp_path):
 def test_a_deleted_frozen_list_named_relative_from_where_it_was_queued_still_drives(
     cfg, script, library, monkeypatch
 ):
-    """The job froze every track, so a list deleted since still resumes, and the
-    filesystem cannot answer for a file that is gone: the freeze's own
-    absolutising is what makes the two spellings agree."""
+    """The job froze every track, so a list deleted since still resumes; the freeze's own
+    absolutising makes the two spellings agree."""
     monkeypatch.chdir(library)
     script.landings = landings("1")
     path = listed(library, [("1", "A", "T")])
@@ -1373,8 +1232,7 @@ def test_a_deleted_frozen_list_named_relative_from_where_it_was_queued_still_dri
 
 
 def test_a_list_under_a_home_that_cannot_be_expanded_is_refused_by_name(cfg, library):
-    """``expanduser`` raises for an unknown user; the resume still answers with
-    the list refusal rather than an internal error."""
+    """``expanduser`` raises for an unknown user; the resume answers with the list refusal."""
     job_id = queued(listed(library, [("1", "A", "T")]))
 
     code, envelope = drive(

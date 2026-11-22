@@ -1,20 +1,9 @@
 """U14: one pagination wrapper per listing shape, and no call site paging by hand.
 
-THE DEFECT UNDER TEST is quiet by construction. The provider's client returns one
-server page when asked for a listing without pagination arguments, and it returns
-it without complaint, so a truncated answer and a short answer are the same
-object. In the source system three independently written call sites each had to
-rediscover this, and one of them never did.
-
-So there are two kinds of test here, and both are needed:
-
-* **Behavioural**, proving the wrappers page, retry, and deduplicate correctly
-  against fakes.
-* **Structural**, proving no module in the product calls a provider listing
-  method directly. A behavioural test can only cover the call sites that exist;
-  the structural one covers the ones somebody writes next month, which is where
-  this defect came from all three previous times.
-"""
+The provider's client returns one server page when asked for a listing without pagination
+arguments, so a truncated answer and a complete one look the same. Behavioural tests prove
+the wrappers page, retry and deduplicate against fakes; the structural tests prove no module
+calls a provider listing method directly, which covers call sites not yet written."""
 
 from __future__ import annotations
 
@@ -34,15 +23,9 @@ VENDOR_ROOT = SRC_ROOT / "cratekit" / "_vendor"
 class Paged:
     """A provider listing that serves a fixed corpus in server pages.
 
-    Called with no arguments it returns only the first page, exactly as the real
-    client does. That is what lets a test assert the truncation is real rather
-    than hypothetical.
-
-    It publishes NO count, no ``num_tracks`` and no ``get_tracks_count``, so
-    every wrapper driven against it exercises the degraded walk: a shape that
-    declares the total rule and cannot get one falls back to ending on an empty
-    page. ``Omitting`` is the fake that publishes a count.
-    """
+    With no arguments it returns only the first page, as the real client does, so truncation is
+    real. It publishes no count, so every wrapper driven against it takes the degraded walk
+    (ending on an empty page); ``Omitting`` is the fake that publishes a count."""
 
     def __init__(self, items: list, page_size: int) -> None:
         self._items = items
@@ -68,9 +51,7 @@ def corpus(count: int, prefix: str = "t") -> list[Item]:
     return [Item(f"{prefix}{n}") for n in range(count)]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Scenario: a listing longer than one page returns fully
-# ═══════════════════════════════════════════════════════════════════════════
+# A listing longer than one page returns fully
 
 
 def test_a_listing_longer_than_one_page_returns_fully():
@@ -81,36 +62,23 @@ def test_a_listing_longer_than_one_page_returns_fully():
 
 
 def test_the_same_fixture_truncates_under_an_unpaginated_re_fetch():
-    """The plan's scenario, asserted as the failure it protects against.
-
-    Without this assertion the test above proves the wrapper works but not that
-    it was needed, and a reviewer removing the wrapper would see a green suite.
-    """
+    """The failure the wrapper protects against, so removing the wrapper turns the suite red."""
     playlist = Paged(corpus(250), listing.PAGE_SIZES["playlist_tracks"])
     assert len(playlist.tracks()) == 100
     assert len(playlist.tracks()) != len(listing.playlist_tracks(playlist))
 
 
 def test_a_listing_with_no_declared_total_walks_to_an_empty_page():
-    """U65. The short page stop is what R-383 measured wrong, and this is its cost.
-
-    This fixture publishes no count, so the walk takes the weaker rule. Reading
-    150 items costs a third request that returns nothing. That request is the
-    whole price of the fallback, and it is asserted here rather than described so
-    that a later author reverting to the short page rule to save it has to delete
-    a test that says what the saving buys.
-    """
+    """U65. With no count the walk takes the weaker rule, and reading 150 items costs a third,
+    empty request. Asserted so reverting to the short page rule has to delete a test saying what
+    the saving buys."""
     playlist = Paged(corpus(150), 100)
     listing.playlist_tracks(playlist)
     assert playlist.calls == [(100, 0), (100, 100), (100, 200)]
 
 
 def test_an_exact_multiple_of_the_page_size_needs_the_empty_page():
-    """The case the short page rule could never have handled either.
-
-    Undeclared again, so this is the fallback walk. A shape ending on a declared
-    total pays no terminating request here at all.
-    """
+    """Undeclared again, so the fallback walk; a declared total pays no terminating request."""
     playlist = Paged(corpus(200), 100)
     got = listing.playlist_tracks(playlist)
     assert len(got) == 200
@@ -122,16 +90,7 @@ def test_an_empty_listing_reads_as_empty_and_not_as_an_error():
 
 
 def test_a_runaway_offset_raises_rather_than_returning_what_it_collected():
-    """U65. A provider that ignores the offset otherwise turns a read into a hang.
-
-    This is not hypothetical tidiness: a full page every time is exactly what a
-    broken or renamed offset parameter produces, and no stop condition arrives.
-
-    What changed in U65 is the ENDING. The budget used to break the loop and
-    return, which traded a hang for a capped length answer indistinguishable from
-    a complete one, the exact thing ``ListingNotPaginated`` already refuses to do
-    one function over. Spending the budget now raises.
-    """
+    """U65. A provider ignoring the offset serves full pages for ever, so the budget raises."""
 
     def ignores_the_offset(limit: int, offset: int) -> list:
         return corpus(limit)
@@ -167,11 +126,7 @@ def test_the_budget_is_spent_on_requests_and_the_walk_is_not_restarted():
 
 
 def test_the_short_page_rule_still_stops_short_when_a_caller_declares_it():
-    """The rule no shape uses today is still the rule this module offers.
-
-    Kept tested rather than deleted: an untested branch in a policy enum is how
-    the next author discovers it does not work, at the moment they need it.
-    """
+    """The rule no shape uses is still offered, and an untested policy branch does not work."""
     playlist = Paged(corpus(150), 100)
     got = listing.paginate(
         lambda limit, offset: playlist.tracks(limit=limit, offset=offset),
@@ -183,35 +138,22 @@ def test_the_short_page_rule_still_stops_short_when_a_caller_declares_it():
     assert playlist.calls == [(100, 0), (100, 100)]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Scenario: the provider omits items from the window it serves (R-383)
-# ═══════════════════════════════════════════════════════════════════════════
+# The provider omits items from the window it serves (R-383)
 
 
 class Omitting:
-    """A provider listing that OMITS items from the window it serves.
+    """A provider listing that omits items from the window it serves (R-383).
 
-    R-383's mechanism as a fixture. The provider holds ``held`` rows and will not
-    serve some of them, but it still COUNTS them when it slices the window, so a
-    request for ``page_size`` at ``offset`` returns the servable subset of
-    ``held[offset : offset + page_size]``. That subset is shorter than the page
-    size while items remain past it, which is what makes a short page a lie here.
-
-    Measured against tidalapi 0.8.11, the omission is the provider's and not the
-    client's: ``user.Favorites.tracks`` hands the response straight to
-    ``request.map_json``, which maps every item in ``items`` with no filtering.
-    ``Favorites.get_tracks_count`` documents the other half, that the total the
-    API reports "also includes track that may not be available for playback".
-    """
+    It holds ``held`` rows and counts them when slicing the window, so a request returns the
+    servable subset of ``held[offset : offset + page_size]``, shorter than the page while items
+    remain. The omission is the provider's, not the client's (tidalapi 0.8.11)."""
 
     def __init__(self, held: list[Item], omitted: set[str], *, declares: bool = True) -> None:
         self._held = held
         self._omitted = omitted
         self.calls: list[tuple[int, int]] = []
         self.counted = 0
-        # The count the provider publishes is the count of what it HOLDS, not of
-        # what it serves. That is the whole reason it can end the walk: it is cut
-        # from the same sequence the windows are cut from.
+        # The count is of what the provider HOLDS, cut from the same sequence as the windows.
         self.num_tracks = len(held) if declares else -1
         self._declares = declares
 
@@ -238,16 +180,9 @@ def omitting_corpus(held: int, omit: range, prefix: str = "t") -> Omitting:
 
 
 def test_the_favourites_listing_reads_the_whole_account_and_not_its_newest_fraction():
-    """R-383, reproduced at the numbers it was measured at on 2026-09-17.
-
-    204 rows counted, 7 of them unservable, page size 100. The shipped short page
-    rule sees 93 on the first window, reads 93 as the end, and returns 93 out of
-    the 197 the account actually serves. That is the live measurement exactly.
-
-    The walk ends on the declared total of 204, so it spends three requests and
-    one count, not four requests: the count replaces the page that would have
-    ended it.
-    """
+    """R-383 at its measured numbers (2026-09-17): 204 rows counted, 7 unservable, page size 100.
+    The short page rule read 93 as the end of 197; the declared total ends the walk in three
+    requests and one count."""
     favorites = omitting_corpus(204, range(7))
     session = Session(User(favorites=favorites))
 
@@ -261,15 +196,7 @@ def test_the_favourites_listing_reads_the_whole_account_and_not_its_newest_fract
 
 
 def test_a_whole_window_of_unservable_items_does_not_end_the_favourites_walk():
-    """The defect the empty page rule left behind, which the total closes.
-
-    300 counted rows with rows 100 to 199 unservable. That middle window comes
-    back EMPTY in the middle of the collection, so any rule reading the end off a
-    page's shape stops there and returns 100 of the 200 servable rows, silently.
-    Reachable here specifically: this listing is ordered by date added and a
-    label catalogue is hearted in one batch, so a withdrawn label leaves exactly
-    this, a contiguous run of unservable hearts one page long.
-    """
+    """An empty window mid collection (a withdrawn label) must not read as the end."""
     favorites = omitting_corpus(300, range(100, 200))
     session = Session(User(favorites=favorites))
 
@@ -282,11 +209,7 @@ def test_a_whole_window_of_unservable_items_does_not_end_the_favourites_walk():
 
 
 def test_a_favourites_total_that_under_reports_does_not_truncate_the_walk():
-    """The one way a declared total could stop early, and what settles it.
-
-    A full window at the declared end means the count is behind the collection,
-    so the walk carries on rather than trusting the number over what it can see.
-    """
+    """A full window at the declared end means the count is behind, so the walk carries on."""
 
     class UnderReporting(Omitting):
         def get_tracks_count(self) -> int:
@@ -299,11 +222,7 @@ def test_a_favourites_total_that_under_reports_does_not_truncate_the_walk():
 
 
 def test_a_playlist_whose_provider_omits_a_track_reads_to_the_end():
-    """The placeholder acquire walks this read, and nothing downstream sees a gap.
-
-    The count is already on the playlist object, so this shape pays no request
-    for its rule: three windows, no count call, no terminating page.
-    """
+    """The count is already on the playlist, so this shape pays no request for its rule."""
     playlist = omitting_corpus(204, range(7))
     got = listing.playlist_tracks(playlist)
     assert len(got) == 197
@@ -335,9 +254,7 @@ def test_an_artist_release_listing_reads_to_the_end_across_both_methods():
     assert len(got) == 197
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Scenario: a listing that cannot page refuses rather than truncating
-# ═══════════════════════════════════════════════════════════════════════════
+# A listing that cannot page refuses rather than truncating
 
 
 def test_a_listing_that_rejects_pagination_arguments_refuses():
@@ -352,22 +269,9 @@ def test_a_listing_that_rejects_pagination_arguments_refuses():
 
 
 def test_the_refusal_is_immediate_and_is_not_slept_on():
-    """U65. Waiting cannot change a client's signature.
+    """U65. Waiting cannot change a client's signature, so the refusal is not retried.
 
-    This refusal is raised by this module from the client's own shape, so it is
-    permanent by construction, and the retry ladder used to catch it anyway: five
-    attempts sleeping 1, 2, 4, 8 and 16 seconds, 31 in all, before re-raising the
-    answer it had at the first attempt. It cost this very test file 31 of its 32
-    seconds, which is how it was found.
-
-    The cost is per listing. ``artist_releases`` reads one per release method per
-    artist, so a label crawl over 200 artists would have slept for over three
-    hours before reporting a fault it knew about immediately.
-
-    The sleep is captured rather than timed. A wall clock assertion on a test that
-    is fast when it passes measures the machine, and would go green on a slow
-    machine for the wrong reason.
-    """
+    The sleep is captured, not timed, since a wall clock assertion measures the machine."""
     slept: list[float] = []
 
     class Old:
@@ -380,12 +284,7 @@ def test_the_refusal_is_immediate_and_is_not_slept_on():
 
 
 def test_a_transient_failure_is_still_slept_on_the_full_ladder():
-    """The exclusion above is one exception, not a narrowing of the policy.
-
-    Paired with the test above deliberately: an exclusion written one line wide is
-    one line away from swallowing the retry that this module's first full read of
-    a large library depends on.
-    """
+    """The exclusion above is one exception, not a narrowing of the retry policy."""
     slept: list[float] = []
     attempts = {"n": 0}
 
@@ -400,16 +299,7 @@ def test_a_transient_failure_is_still_slept_on_the_full_ladder():
 
 
 def test_a_refusal_that_says_waiting_cannot_help_is_not_slept_on():
-    """A non retryable refusal passes through on the first attempt.
-
-    An adapter that finds the stored session expired mid page refuses
-    ``credential-missing``, and that refusal declares ``retryable=False``: the
-    person has to log in, and no amount of waiting does that for them. Before
-    this test the ladder slept 31 seconds on it and then re-raised the answer it
-    already had, per listing, which is the ``ListingNotPaginated`` cost over
-    again one exception type along. It was found as the slowest test in the
-    suite rather than by reading the ladder.
-    """
+    """A refusal with ``retryable=False`` passes through on the first attempt."""
     from cratekit.core.cause import CratekitError, refuse
 
     slept: list[float] = []
@@ -427,12 +317,7 @@ def test_a_refusal_that_says_waiting_cannot_help_is_not_slept_on():
 
 
 def test_a_refusal_that_declares_itself_retryable_still_climbs_the_ladder():
-    """The exclusion reads the refusal's own flag, never its type.
-
-    Paired with the test above for the same reason the two before it are paired:
-    excluding every ``CratekitError`` would swallow a rate limit an adapter chose
-    to spell as a retryable refusal.
-    """
+    """The exclusion reads the refusal's own flag, never its type."""
     from cratekit.core.cause import CratekitError, refuse
 
     slept: list[float] = []
@@ -455,9 +340,7 @@ def test_a_listing_method_that_does_not_exist_refuses_by_name():
         listing.playlist_tracks(Renamed())
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Retry: a dropped page in a paginated read is a gap, not an error
-# ═══════════════════════════════════════════════════════════════════════════
+# Retry: a dropped page is a gap, not an error
 
 
 def test_a_transient_failure_retries_with_capped_exponential_backoff():
@@ -510,9 +393,7 @@ def test_a_permanent_failure_surfaces_after_the_retry_ceiling():
     assert len(calls) == 3
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Deduplication: only where the provider can genuinely repeat an item
-# ═══════════════════════════════════════════════════════════════════════════
+# Deduplication, only where the provider can repeat an item
 
 
 class Favorites:
@@ -540,10 +421,8 @@ class _ItemParser:
 class AccountRequest:
     """The account playlist endpoint behind the user's request object (R-1016).
 
-    Serves whatever ``serve(limit, offset)`` returns, wrapped the way the
-    endpoint wraps it, each playlist under ``playlist`` beside the ``created``
-    the walk moves onto it.
-    """
+    Serves whatever ``serve(limit, offset)`` returns, each playlist under ``playlist`` beside the
+    ``created`` the walk moves onto it."""
 
     def __init__(self, serve) -> None:
         self._serve = serve
@@ -610,9 +489,7 @@ def test_account_playlists_are_returned_unfiltered():
     assert [p.id for p in listing.account_playlists(session)] == ["mine", "followed"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Artist releases: two listings, one answer
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class Artist:
@@ -639,9 +516,7 @@ def test_a_missing_release_listing_is_skipped_rather_than_fatal():
     """Losing one listing beats refusing to crawl a label at all."""
 
     class OnlyAlbums:
-        # Honours the offset. Under U65's empty page rule a fake that ignores it
-        # is a runaway, which is a different test's subject and would mask this
-        # one's: the assertion here is about a MISSING method being skipped.
+        # Honours the offset: a fake that ignores it is a runaway, which would mask this test.
         def get_albums(self, limit: int | None = None, offset: int = 0) -> list:
             return corpus(2, prefix="a")[offset : offset + (limit or 2)]
 
@@ -669,21 +544,14 @@ def test_an_artist_listing_longer_than_a_page_is_read_fully():
     assert len(listing.artist_releases(artist)) == 180
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The structural guard: nothing outside this module pages by hand
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def direct_listing_calls(source: str, module: str) -> list[str]:
     """Return every direct call to a provider listing method in ``source``.
 
-    ``tracks`` is only a violation when called WITH a pagination argument.
-    "tracks" is an ordinary accessor name that this codebase uses for its own
-    collections, and a guard that fires on correct code gets routed around rather
-    than obeyed, which is the same failure it was written to prevent (P7). What
-    unmistakably identifies a raw provider listing call is the caller doing the
-    paging itself, and that is exactly what a ``limit`` or ``offset`` keyword is.
-    """
+    ``tracks`` is a violation only when called with a pagination argument: it is an ordinary
+    accessor name, and a guard with false positives is routed around (P7)."""
     problems: list[str] = []
     for node in ast.walk(ast.parse(source)):
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
@@ -717,12 +585,8 @@ PLANTED_PAGINATION_METHODS = frozenset(
 def test_the_planted_pagination_loop_cases_cover_the_guarded_set():
     """P4: the planted names and the production set describe the same thing.
 
-    The names live in this file because the mutation driver edits ``src`` and
-    never the suite. Parametrising over the live ``GUARDED_METHODS`` would drop
-    the case for a name the set just lost, and removing a member would stay
-    green. Adding a name without a planted case fails here, and a planted case
-    for a name not in the set fails here too.
-    """
+    The names live here because the mutation driver edits ``src``, never the suite; both a
+    missing planted case and a stale one fail."""
     assert PLANTED_PAGINATION_METHODS == listing.GUARDED_METHODS
 
 
@@ -762,12 +626,7 @@ def test_the_guard_leaves_ordinary_accessors_alone(source):
 
 
 def test_no_product_module_calls_a_provider_listing_directly():
-    """The real tree, which is where the previous three violations lived.
-
-    The vendored tree is excluded. It IS the provider client wrapper, so it calls
-    those methods by definition, and it is third-party source that Cratekit does
-    not restyle. The rule is about Cratekit's own call sites.
-    """
+    """The real tree, less the vendored client wrapper, which is third-party source."""
     problems: list[str] = []
     for path in sorted(SRC_ROOT.rglob("*.py")):
         if path == LISTING_MODULE or VENDOR_ROOT in path.parents:
@@ -778,13 +637,7 @@ def test_no_product_module_calls_a_provider_listing_directly():
 
 
 def test_every_declared_listing_shape_has_a_wrapper():
-    """P4: the guarded set and the wrapper set describe the same thing.
-
-    A page size declared with no wrapper is a shape somebody will page by hand,
-    and a wrapper with no page size is a wrapper guessing. U65 adds two more
-    tables to the set, and a shape missing from either one is a shape whose stop
-    rule or whose budget somebody picked at the call site.
-    """
+    """P4: a shape missing a wrapper, stop rule or budget is paged by hand at the call site."""
     assert set(listing.WRAPPERS) == set(listing.PAGE_SIZES)
     assert set(listing.WRAPPERS) == set(listing.STOP_RULES)
     assert set(listing.WRAPPERS) == set(listing.PAGE_CAPS)
@@ -792,21 +645,11 @@ def test_every_declared_listing_shape_has_a_wrapper():
         assert callable(wrapper), name
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # U65: the stop rule is declared per listing, and the declaration is guarded
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_every_shape_declares_the_rule_its_provider_can_actually_support():
-    """Asserted from the table, not from behaviour.
-
-    A behavioural test proves a shape reads to the end against the fixture it was
-    handed. This one proves which rule it SAYS it uses. The split is not a
-    preference: the two shapes on the declared total are the two whose provider
-    publishes a count of the collection it serves, and the other two take the
-    weaker rule because it publishes none, which R-385 records. A shape moved
-    onto a rule its provider cannot support fails here by name.
-    """
+    """The declared total is for shapes whose provider publishes a count (R-385)."""
     assert listing.STOP_RULES == {
         "playlist_tracks": listing.StopRule.DECLARED_TOTAL,
         "favorite_tracks": listing.StopRule.DECLARED_TOTAL,
@@ -821,14 +664,7 @@ def test_every_shape_declares_the_rule_its_provider_can_actually_support():
 
 
 def test_each_wrapper_docstring_names_the_rule_its_table_declares():
-    """The prose and the table cannot drift apart unnoticed.
-
-    Phillip's requirement for this unit was that each listing says which rule it
-    uses AND why. The why is prose and cannot be machine checked. That the prose
-    is talking about the rule actually in force can be, and this is the half that
-    goes stale first: a rule changes in a dict and the paragraph under it keeps
-    arguing for the old one.
-    """
+    """A wrapper's prose and its table cannot drift apart unnoticed; the prose goes stale first."""
     for name, wrapper in listing.WRAPPERS.items():
         phrase = listing.STOP_RULES[name].value
         doc = (wrapper.__doc__ or "").lower()
@@ -837,13 +673,7 @@ def test_each_wrapper_docstring_names_the_rule_its_table_declares():
 
 @pytest.mark.parametrize("missing", ["stop", "max_pages"])
 def test_paginate_refuses_to_be_called_without_a_declared_rule_or_budget(missing):
-    """The guard that makes the declaration real rather than conventional.
-
-    R-383's shape was one rule written once into this function, silently
-    governing four listings nobody had checked against it. A default on either
-    argument rebuilds that, so both are required and a wrapper that forgets to
-    choose fails to call.
-    """
+    """A default would rebuild R-383's one silent rule, so both arguments are required."""
     arguments = {
         "page_size": 100,
         "stop": listing.StopRule.EMPTY_PAGE,
@@ -856,20 +686,13 @@ def test_paginate_refuses_to_be_called_without_a_declared_rule_or_budget(missing
 
 
 def test_every_budget_clears_the_largest_collection_this_project_has_measured():
-    """A budget that can fire on real data turns a correctness fix into an outage.
-
-    The numbers on the right are the live reads of 2026-09-17. The margin is the
-    assertion: each budget is checked against a collection an order of magnitude
-    past anything measured, so a future edit that tightens a budget toward real
-    data fails here rather than in a sweep.
-    """
+    """A budget firing on real data is an outage, so each is checked far past measured sizes."""
     measured = {
         "playlist_tracks": 197,
         "account_playlists": 599,
         "favorite_tracks": 197,
         "artist_releases": 197,
-        # R-835. Not reads: one folder per followed label, 47 at sitting 11,
-        # and one year playlist per release year, under forty on any label.
+        # R-835. Not reads: one folder per followed label and one year playlist per release year.
         "account_folders": 47,
         "folder_playlists": 40,
         "folder_folders": 10,
@@ -878,22 +701,14 @@ def test_every_budget_clears_the_largest_collection_this_project_has_measured():
     for name, largest in measured.items():
         reachable = listing.PAGE_CAPS[name] * listing.PAGE_SIZES[name]
         if listing.STOP_RULES[name] is not listing.StopRule.DECLARED_TOTAL:
-            # A walk that does not end on a total spends its last request on the
-            # page that ends it, so one page of the budget buys no items. Leaving
-            # this out overstates every ceiling by a page, and a collection of
-            # exactly the product would raise while blaming a working offset.
+            # A walk not ending on a total spends its last request on the page that ends it, so one
+            # page of the budget buys no items.
             reachable -= listing.PAGE_SIZES[name]
         assert reachable >= largest * 10, f"{name} budget reaches only {reachable}"
 
 
 def test_the_declared_count_is_retried_on_the_same_ladder_every_page_is():
-    """U65's own P6 row: the count is a request the walk did not used to make.
-
-    Against the same API and the same session, so the rate limit that makes page
-    one retry five times would otherwise make the count fail outright and take the
-    whole listing with it. A correctness fix that introduces a new failure path is
-    a bad trade for a saved line.
-    """
+    """U65's P6 row: the new count request needs the ladder, or a rate limit fails the listing."""
     slept: list[float] = []
     attempts = {"n": 0}
 
@@ -923,9 +738,7 @@ def test_a_permanent_count_failure_still_surfaces_at_the_ceiling():
         listing.favorite_tracks(Session(User(favorites=favorites)), sleep=lambda _: None)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-878: the folder endpoint ignores offset and pages by cursor
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class _Answer:
@@ -977,16 +790,10 @@ def _raw_playlist(index: int) -> dict:
 class CursorEndpoint:
     """The provider's collection folder endpoint as R-878 measured it.
 
-    ``offset`` is IGNORED: a request without a cursor is served the first window
-    whatever offset it names, which is what the author's account did at every
-    offset from 0 to 1,000. Each response carries ``items``, the declared
-    ``totalNumberOfItems`` and, while more remain, a ``cursor`` that sent back
-    serves the next window. ``page`` is the window the provider serves, which can
-    be narrower than the limit asked for, as the live 26 at a limit of 50 was.
-
-    ``stuck`` hands back the same cursor for ever, and sending it serves the same
-    second window, so the walk never ends unless its budget does.
-    """
+    ``offset`` is ignored: without a cursor it serves the first window. Each response carries
+    ``items``, ``totalNumberOfItems`` and, while more remain, a ``cursor``. ``page`` is the
+    window served, possibly narrower than the limit. ``stuck`` hands back the same cursor for
+    ever, so only the budget ends the walk."""
 
     def __init__(self, held: list[dict], *, page: int, total: int | None = -1,
                  cursors: bool = True, stuck: bool = False) -> None:
@@ -1019,13 +826,7 @@ class CursorEndpoint:
 
 
 def _client_over(endpoint: CursorEndpoint):
-    """A real ``tidalapi`` session whose request object is the fake endpoint.
-
-    Real rather than a stand in, so the walk is proven against the client's own
-    ``parse_folder``, its folder object and its playlist parser, the parts R-878
-    has the walk reach past the client's listing methods for. Building one makes
-    no request.
-    """
+    """A real ``tidalapi`` session over the fake endpoint, so the client's own parsers run."""
     tidalapi = pytest.importorskip("tidalapi")
     session = tidalapi.Session()
     session.request = endpoint
@@ -1087,11 +888,7 @@ def test_a_folders_playlists_are_walked_by_cursor_through_the_folders_own_parser
 
 
 def test_the_root_count_covers_playlists_too_so_folders_are_kept_after_counting():
-    """R-887. The live root declared 55 and held 26 folders beside 29 playlists.
-
-    The endpoint is asked for everything, every item is counted against the
-    declared total, and only the folders come back.
-    """
+    """R-887. The live root declared 55 and held 26 folders beside 29 playlists."""
     held = [_raw_folder(n) for n in range(26)] + [_raw_playlist(n) for n in range(29)]
     endpoint = CursorEndpoint(held, page=10)
     found = listing.account_folders(_client_over(endpoint), sleep=lambda _: None)
@@ -1240,12 +1037,7 @@ def test_paginate_cursor_refuses_a_shape_that_walks_by_offset():
 
 
 def test_a_parse_that_fails_transiently_is_retried_alone_without_refetching_the_page():
-    """R-878 review: the playlist parser can be a request of its own.
-
-    ``Playlist.parse_factory`` fetches a playlist the account created, so a rate
-    limit can land on it. It sat inside the page fetch before the cursor walk,
-    and was retried there; it must still be retried, and only itself.
-    """
+    """R-878 review: ``Playlist.parse_factory`` can be a request of its own, retried alone."""
     pages = iter([{"items": [_raw_folder(n) for n in range(3)], "totalNumberOfItems": 3}])
     fetched: list[str | None] = []
     parsed: list[str] = []
@@ -1276,11 +1068,7 @@ def test_a_parse_that_fails_transiently_is_retried_alone_without_refetching_the_
     ids=["no-items-no-count", "items-null", "a-list", "nothing"],
 )
 def test_a_response_that_is_not_a_page_is_refused_not_read_as_an_empty_listing(answer):
-    """R-878 review: an empty folder listing is what makes a caller create a folder.
-
-    Read as an empty last page, any of these returned no folders at all, and the
-    label playlists verb would have planned a second folder for every label.
-    """
+    """R-878 review: an empty read would plan a second folder for every label."""
     calls: list[str | None] = []
     slept: list[float] = []
 
@@ -1320,16 +1108,9 @@ def test_a_client_whose_request_rejects_the_arguments_refuses_by_name_unslept():
         listing.account_folders(session, sleep=lambda _: pytest.fail("slept"))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-1016: a playlist listing costs its pages and nothing more
-# ═══════════════════════════════════════════════════════════════════════════
-#
-# Measured on the author's account on 2026-10-14: 624 playlists cost 637
-# requests, 13 pages and 624 single fetches, because the client's playlist
-# parser ends in ``Playlist.factory``, which rebuilds every playlist the account
-# created as a ``UserPlaylist``, and that constructor fetches it again. The
-# tests below drive the REAL client over a transport that counts every request
-# by path, since a method level fake cannot make the fetch the defect is.
+# 624 playlists cost 637 requests because the client refetches each created one (2026-10-14).
+# The tests drive the real client over a counting transport, which a method fake cannot.
 
 OWNER = 42
 
@@ -1377,11 +1158,9 @@ def _owned_playlist(index: int, owner: int = OWNER) -> dict:
 class CountingTransport:
     """The HTTP session under a real client, counting every request by path.
 
-    Serves the account playlist endpoint by offset, the folder endpoint by
-    cursor, one playlist by identifier, and a playlist's tracks, empty. The
-    single playlist read is served rather than refused so the client's own
-    listing method can be watched making it (the paired test below).
-    """
+    Serves the account playlist endpoint by offset, the folder endpoint by cursor, one playlist
+    by identifier, and a playlist's tracks, empty; the single read is served so the client's own
+    listing method can be watched making it."""
 
     def __init__(self, playlists: list[dict], *, page: int = 50) -> None:
         self.playlists = playlists
@@ -1450,19 +1229,13 @@ def test_an_account_listing_of_owned_playlists_costs_its_pages_and_no_single_fet
 
 
 def test_the_clients_own_account_listing_fetches_every_owned_playlist_again():
-    """The pair to the test above: the mechanism R-1016 measured, on this client.
-
-    If a later client stops making the fetch this goes red, which says the
-    listing could return to the client's own method, rather than the walk
-    carrying a workaround for a cost that no longer exists unnoticed.
-    """
+    """R-1016: if the client stops making the fetch this goes red, and the workaround can go."""
     held = [_owned_playlist(n) for n in range(5)] + [_owned_playlist(5, owner=7)]
     transport = CountingTransport(held)
     _logged_in_over(transport).user.playlist_and_favorite_playlists(limit=50, offset=0)
 
     assert transport.single_fetches() == 5
-    # And the walk sends the request the client's method sends: one path, the
-    # same one, so a client that moved its endpoint turns this red too.
+    # And the walk sends the same request the client does, so a moved endpoint turns this red.
     page_paths = {path for path in transport.paths if not path.startswith("/v1/playlists/")}
     assert page_paths == {"/v1/" + listing.ACCOUNT_PLAYLISTS_ENDPOINT % OWNER}
 
@@ -1522,12 +1295,7 @@ def test_the_catalogue_and_the_folder_reads_hand_the_plans_what_the_pages_said()
 
 
 def test_a_listing_of_624_playlists_is_paced_in_seconds_not_minutes(tmp_path):
-    """The brief's verification, on the transport: the author's 624 at the default pace.
-
-    The real gate, at the configuration's default interval, over a clock that
-    moves only when the gate sleeps. Fourteen requests, thirteen pages and the
-    empty one, against the 637 the live read made.
-    """
+    """The 624 at the default pace, on a clock moved by the gate: fourteen requests, not 637."""
     from cratekit.core.provider_gate import Gate, GateSettings
 
     class Clock:
@@ -1554,8 +1322,7 @@ def test_a_listing_of_624_playlists_is_paced_in_seconds_not_minutes(tmp_path):
     assert len(found) == 624
     assert transport.single_fetches() == 0
     assert gate.calls == 14
-    # Paced, so the gate really is under the walk, and at most one interval a
-    # call, which at the default of one second is fourteen against 640 live.
+    # Paced, so the gate is under the walk: fourteen calls against 640 live.
     elapsed = clock.now - start
     assert 0 < elapsed <= gate.calls * GateSettings().min_interval_s
     assert elapsed < 60

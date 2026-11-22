@@ -1,9 +1,8 @@
 """U68: the shared emitter's list document, read back by the product's own reader.
 
-Every expected value here is a LITERAL taken from the fixture rows, never a value
-``listdoc.document`` produced. A round trip checked against the emitter's own
-output is X equals X: it passes whatever the emitter writes, as long as the
-reader reads it.
+Every expected value is a literal taken from the fixture rows, never a value
+``listdoc.document`` produced, since a round trip against the emitter's own output
+passes whatever the emitter writes.
 """
 
 from __future__ import annotations
@@ -160,7 +159,6 @@ def test_a_row_the_reader_would_refuse_is_refused_by_the_emitter(tmp_path, broke
 
 
 def test_the_reader_does_refuse_the_whole_list_over_that_row(tmp_path):
-    # What the emitter guard is FOR, measured on the reader rather than asserted.
     path = tmp_path / "hand.list.json"
     path.write_text(
         json.dumps(
@@ -222,9 +220,7 @@ def test_the_manifest_keeps_every_reference_an_id_came_from(tmp_path):
 
 
 def test_one_reference_writes_the_bytes_a_manifest_had_before_the_field(tmp_path):
-    """A list written before ``source_refs`` existed is rewritten identically,
-    so the second write is a repeat and not a refusal. The key set is spelled
-    out rather than read off the module."""
+    """A list written before ``source_refs`` existed is rewritten identically, not refused."""
     one = Provenance(source="playlist", source_ref="pl-1", source_refs=("pl-1",))
     written = _write(tmp_path, provenance=one)
     doc = json.loads(written.manifest_path.read_text(encoding="utf-8"))
@@ -244,11 +240,6 @@ def test_a_listed_id_with_no_provenance_refuses_and_writes_nothing(tmp_path):
 def test_a_provenance_naming_no_source_refuses(tmp_path):
     with pytest.raises(listdoc.ListDocRefused, match="no source"):
         _write(tmp_path, provenance=Provenance(source=" "))
-
-
-# ---------------------------------------------------------------------------
-# rows_of
-# ---------------------------------------------------------------------------
 
 
 def _tidal(**row) -> match.Wanted:
@@ -280,10 +271,7 @@ def test_a_read_track_keeps_its_featured_credit_through_the_round_trip(tmp_path)
     ["Sun Path (Extended)", "Sun Path (feat. Mira) (Extended)"],
 )
 def test_a_declared_version_beside_an_embedded_one_round_trips_whole(tmp_path, raw):
-    # Spelled together, this re-reads as "extended dub", so the source's own
-    # spelling is not written. The split title is not written either, because it
-    # has lost "(Extended)" and the credit: the raw title and the declared
-    # version are, which re-read to the same addressed title.
+    # The raw title and the declared version are written, so they re-read to the same title.
     wanted = _tidal(id="606", title=raw, version="Dub", artist="Aurora Bloom")
     (row,) = listdoc.rows_of([wanted])
     assert (row.title, row.version) == (raw, "Dub")
@@ -299,7 +287,7 @@ def test_a_hand_built_track_with_no_spelling_writes_its_title_and_version(tmp_pa
 
 
 def test_a_frozen_mapping_carries_no_version_so_none_is_written(tmp_path):
-    # Recorded, not endorsed: the freeze dropped it. See rows_of's docstring.
+    # Recorded, not endorsed: the freeze dropped the version (see ``rows_of``).
     (row,) = listdoc.rows_of({"808": {"artist": "Aurora Bloom", "title": "Sun Path", "isrc": None}})
     (again,) = read_list(_write(tmp_path, rows=(row,)).list_path)
     assert again.version == ""
@@ -315,11 +303,6 @@ def test_a_track_from_another_service_is_unlisted_not_written_as_a_provider_id(t
     assert written.listed == ("101",)
     assert [row.ref for row in written.unlisted] == [""]
     assert written.unlisted[0].artist == "Aurora Bloom"
-
-
-# ---------------------------------------------------------------------------
-# U77: the manifest read back
-# ---------------------------------------------------------------------------
 
 
 def _written_manifest(tmp_path: Path) -> Path:
@@ -350,8 +333,7 @@ def test_a_written_manifest_reads_back_as_what_was_written(tmp_path):
 
 
 def test_a_manifest_row_reads_as_the_wanted_track_its_list_row_reads_as(tmp_path):
-    """The identity a landing matches on is the one the list itself gave, which
-    is the whole reason the row is handed to the reader and not recomposed."""
+    """The identity a landing matches on is the one the list gave, not a recomposed one."""
     path = _written_manifest(tmp_path)
     listed = read_list(path.with_name("round-trip.list.json"))
     first, _ = listdoc.read_manifest(path)
@@ -415,10 +397,6 @@ def test_source_refs_that_are_not_text_refuse(tmp_path):
 
     assert "source_refs" in str(excinfo.value)
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# U78: the rows handed on, as a text list beside the provider document
-# ═══════════════════════════════════════════════════════════════════════════
 
 HANDED = (
     listdoc.HandedOn(Row(ref="", artist="Kite Shore", title="Unlisted"), "no ISRC"),

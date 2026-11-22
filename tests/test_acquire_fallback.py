@@ -1,17 +1,11 @@
 """U80: a fallback search offers second source candidates, and never a pick.
 
-``crate acquire fallback PATH`` reads a text list, resolves every row against
-the library, and searches SoundCloud and then YouTube for each row still
-missing. What comes back is ranked and offered into the ``fallback-source``
-review queue. Nothing downloads.
+``crate acquire fallback PATH`` searches SoundCloud and then YouTube for each
+list row still missing from the library, and offers the ranked hits into the
+``fallback-source`` review queue. Nothing downloads.
 
-EVERYTHING BUT THE SEARCHER IS REAL. The list is read by ``match_cli.read_list``,
-the library is a folder the real index walks, the review store is the real
-store, and answers go through ``crate review resolve`` on the real dispatcher.
-The searcher is a fake, substituted where the verb looks it up, and the shipped
-``yt-dlp`` searcher is driven through a fake runner. NO TEST RUNS ``yt-dlp``.
-
-D1 applies. Nothing here names a real volume, a real person, or a real track.
+Everything but the searcher is real. The searcher is a fake, and the shipped
+``yt-dlp`` searcher is driven through a fake runner, so no test runs ``yt-dlp``.
 """
 
 from __future__ import annotations
@@ -35,10 +29,6 @@ SC, YT = fallback.SOUNDCLOUD, fallback.YOUTUBE
 
 #: The verb's own seam, kept before any test rebinds it.
 SHIPPED_SEARCHER = fallback_cli.searcher
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
@@ -144,11 +134,6 @@ def boot_answers():
             hit(YT, 4, "mirror", "Aurora Bloom - Sun Path (Night Bootleg)"),
         ],
     }
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Ranked candidates are offered, idempotently
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_ranked_candidates_are_offered_on_one_item(cfg, library, tmp_path, monkeypatch):
@@ -274,11 +259,6 @@ def test_a_rejected_row_is_not_searched_again_and_says_so(cfg, library, tmp_path
     assert "crate review clear" in " ".join(envelope["cause"]["remediation"]["steps"])
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# No candidates is reported, not silent
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_no_candidate_anywhere_refuses_and_names_the_row(cfg, library, tmp_path, monkeypatch):
     path = tracklist(tmp_path, TIDE)
     fake = bind(monkeypatch, FakeSearcher({}))
@@ -315,11 +295,6 @@ def test_unreadable_lines_are_counted_on_a_row_with_none(cfg, library, tmp_path,
 
     assert said.state == fallback.NO_CANDIDATES
     assert "2 line(s) of their answers could not be read" in said.reason
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# A missing binary refuses with the install hint
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def unfindable(monkeypatch) -> None:
@@ -372,11 +347,6 @@ def test_no_binary_is_needed_when_nothing_is_searched(cfg, library, tmp_path, mo
     assert envelope["data"]["summary"]["owned"] == 1
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# A searcher outage names what was already offered
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_an_outage_names_every_row_already_offered(cfg, library, tmp_path, monkeypatch):
     path = tracklist(tmp_path, BOOT, TIDE, GLASS)
     answers = boot_answers()
@@ -425,11 +395,6 @@ def test_any_searcher_failure_is_an_outage_not_a_crash(cfg, library, tmp_path, m
 
     assert envelope["cause"]["reason"] == "unavailable-transient", (code, envelope)
     assert "socket closed" in envelope["cause"]["message"]
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# The library and the provider are asked first
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_owned_row_is_never_searched(cfg, library, tmp_path, monkeypatch):
@@ -521,11 +486,6 @@ def test_only_provider_routed_rows_is_a_no_op_not_a_refusal(cfg, library, tmp_pa
     assert fake.calls == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Ranking
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_a_long_mix_is_demoted_below_the_track_it_names():
     wanted = match.read_text_lines("Aurora Bloom - Sun Path")[0]
     short = hit(SC, 1, "Aurora Bloom", "Sun Path", duration=fallback.LIKELY_MIX_SECONDS)
@@ -543,10 +503,7 @@ def test_the_score_is_half_similarity_half_word_coverage():
 
     said = fallback.score(wanted, half)
 
-    # Worked by hand, not by the code under test: "aurora bloom sun path"
-    # against "aurora bloom" matches 12 characters of 21 plus 12, a ratio of
-    # 24 / 33, and carries two of the four words. 50 * 24 / 33 + 50 * 2 / 4 is
-    # 36.36 plus 25, which rounds to 61.4.
+    # Worked by hand: 50 * 24 / 33 (12 of 21 plus 12 characters) + 50 * 2 / 4 (two of four words).
     assert said == 61.4, said
     assert fallback.score(wanted, hit(SC, 2, "", "")) == 0.0
 
@@ -560,11 +517,6 @@ def test_ranking_breaks_a_tie_by_platform_then_order_and_dedupes_urls():
     ranked = fallback.ranked(wanted, fallback.Answer(hits=(yt, sc, twin)))
 
     assert [one.hit.url for one in ranked] == [sc.url, yt.url]
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# The shipped searcher, through a fake runner. yt-dlp is never executed.
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class Done:
@@ -663,14 +615,8 @@ def test_the_shipped_searcher_resolves_the_binary(monkeypatch, tmp_path):
     assert fallback_cli.searcher().binary == str(program)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# The review's two findings
-# ═══════════════════════════════════════════════════════════════════════════
-
-
 def test_a_row_the_provider_names_by_id_is_not_searched(cfg, library, tmp_path, monkeypatch):
-    """A list document a provider list was written as carries the provider's
-    own id on every row, and a row with that id downloads losslessly."""
+    """A list document written from a provider list carries the provider's id on every row."""
     from cratekit.acquire import listdoc
 
     named = dataclasses.replace(
@@ -709,8 +655,7 @@ def test_one_track_with_and_without_a_key_is_searched_once(cfg, library, tmp_pat
 
 
 def test_a_list_whose_rows_are_all_settled_needs_no_binary(cfg, library, tmp_path, monkeypatch):
-    """The searcher is built only when a row needs a search, so a second run
-    over rows already in review spends no lookup of yt-dlp at all."""
+    """The searcher is built only when a row needs a search, so a rerun looks up no yt-dlp."""
     path = tracklist(tmp_path, BOOT)
     bind(monkeypatch, FakeSearcher(boot_answers()))
     first, _ = run(path)
@@ -727,8 +672,7 @@ def test_a_list_whose_rows_are_all_settled_needs_no_binary(cfg, library, tmp_pat
 def test_a_provider_route_beside_an_unfound_row_is_reported_not_refused(
     cfg, library, tmp_path, monkeypatch
 ):
-    """A row with a route is something to do, so the run does not read as a
-    list nothing can be done about. The unfound row is a failing check."""
+    """A row with a route is something to do, and the unfound row is a failing check."""
     _provider_question(cfg, TIDE, None)
     path = tracklist(tmp_path, TIDE, GLASS)
     bind(monkeypatch, FakeSearcher({}))
@@ -743,9 +687,7 @@ def test_a_provider_route_beside_an_unfound_row_is_reported_not_refused(
 
 
 def test_an_upload_question_about_one_emoji_title_is_not_another_ones():
-    """Two titles of emoji alone by one artist fold to one title, so an
-    accepted upload for ``💧`` answered a later ``🌊`` row. The title is read
-    by its identity, the fold for every title that folds to something."""
+    """Two emoji-only titles by one artist fold alike, so the question is keyed by identity."""
     drop = match.Wanted(artist="Aurora Bloom", title="\U0001f4a7")
     wave = match.Wanted(artist="Aurora Bloom", title="\U0001f30a")
     assert fallback.item_id(drop) != fallback.item_id(wave)
