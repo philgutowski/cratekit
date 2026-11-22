@@ -1,61 +1,32 @@
 """Suggest a genre for a row with none, from the library and the catalogue (U114).
 
-WHY THIS EXISTS. 621 active rows of one library carried no genre on the row or
-the file, so adoption left every one of them in INBOX. Setting them by hand in
-rekordbox measured about 25 seconds a track before any listening, four and a
-half hours for the lot. Most of them sit beside tracks that already say what
-they are: the same artist's other tracks, the same folder's.
+Rows with no genre on the row or the file sit in INBOX, though most sit beside
+tracks that say what they are: the same artist's, the same folder's.
 
 THE CANDIDATES ARE ROWS WITH NO GENRE ON THE ROW AND NONE ON THE FILE. A row
-whose file carries a genre is counted ``file-has-genre`` and left to ``tag
-rows``, which makes a row agree with its file. A row that already carries a
-genre is counted and never offered: changing a genre a row carries is not this
-module's job. A file whose genre could not be learned is counted under the
-census's own names and never offered, because nothing says it is blank.
+whose file carries one is ``file-has-genre``, left to ``tag rows``; a row
+carrying one is counted and never offered; an unreadable file is counted under
+the census's names and never offered.
 
-THREE SIGNALS, IN ORDER OF STRENGTH, each a weighted vote for a genre:
+THREE SIGNALS, strongest first, each a weighted vote: the catalogue lookup
+``tag folder`` makes, record shops then the general catalogue by ISRC, asked
+past a refusing Beatport once Discogs answered (U322) and again once on a miss,
+opt in since it is paced network work, :data:`CATALOGUE_WEIGHT`; the artist's
+other tracks, :data:`ARTIST_WEIGHT` each; the folder's, :data:`FOLDER_WEIGHT`
+each. A neighbour votes once, at its higher weight.
 
-* the catalogue lookup ``tag folder`` makes, the record shops and then the
-  general catalogue by ISRC, which the suggest verbs also ask past a refusing
-  Beatport once Discogs answered (U322), asked again once on a miss, since a third of a
-  label download misses the first time. Opt in, because it is paced network
-  work over every candidate. Weight :data:`CATALOGUE_WEIGHT`;
-* the artist's other tracks in the library, weight :data:`ARTIST_WEIGHT` each;
-* the folder's other tracks, weight :data:`FOLDER_WEIGHT` each. A label folder
-  spans genres, so the folder is the weakest vote.
+ONLY A GENRE THE TAXONOMY DECLARES IS SUGGESTED, :func:`suggestable`; another
+neighbour word still counts toward the total, and an off taxonomy catalogue
+answer is evidence and no vote. A BAND says how far the votes agree,
+:func:`band_of`; a tie at the top is ``split``, written only when a person picks.
 
-A neighbour votes once, at the higher of its weights, so a track by the same
-artist in the same folder is not counted twice.
-
-ONLY A GENRE THE ACTIVE TAXONOMY DECLARES IS SUGGESTED, which here means a word
-adoption routes and the taxonomy names by an exact declaration, see
-:func:`suggestable`. A neighbour's word that is not one still counts toward the
-total, so it lowers the agreement, and is never itself suggested. A catalogue
-answer outside the taxonomy is recorded as evidence and is no vote at all.
-
-A CONFIDENCE BAND says how far the votes agree, see :func:`band_of`. A tie at
-the top between declared genres is ``split``: every tied genre is offered and
-none is the default, so the row is written only when a person picks one.
-
-THE CATALOGUE'S ANSWERS ARE KEPT, in the library's state directory, for
-:data:`CATALOGUE_DAYS` days. The gate is answered between two invocations and
-each rebuilds the plan, so without them the run that applies would ask every
-catalogue again, and an answer that moved would refuse the plan as stale. A
-lookup that could not be read is kept for the day only and asked again on a
-later one. Three rows in a row whose catalogues could not be read stop the
-walk asking them at all.
-
-A ROW ONE CATALOGUE READ IS NOT A ROW NOBODY COULD READ (U322). At sitting 102
-Discogs read no genre for seven of ten rows while Beatport answered every
-lookup with Cloudflare's challenge, and each of those rows counted toward the
-stop, so the walk stopped at the tenth row and 665 were never sent to Discogs
-or Deezer. Each answer now carries every catalogue's word for the row, and a
-row counts toward the stop only when no catalogue it was sent to answered. A
-row some catalogue answered beside one that refused is still unread, kept for
-the day and asked again on a later one, since a miss beside a refusal is not an
-absence; it ends a run of refusals rather than adding to one. The refusing
-catalogue is passed over by the searcher's own count after three refusals in a
-row (U281), which is the only stop a single catalogue is under.
+THE CATALOGUE'S ANSWERS ARE KEPT for :data:`CATALOGUE_DAYS` days, so the
+applying run reads the answers the gate showed; an unread lookup is kept for
+the day only. A ROW ONE CATALOGUE READ IS NOT ONE NOBODY COULD READ (U322):
+each answer carries every catalogue's word, and the walk stops asking after
+:data:`STOP_AFTER_UNREAD` rows in a row no catalogue answered; a row some
+catalogue answered beside a refusal stays unread but ends a run of refusals.
+One refusing catalogue is passed over by the searcher's own count (U281).
 
 Layer: modules. It opens no database of its own and names no verb.
 """
@@ -88,10 +59,8 @@ CATALOGUE_WEIGHT = 6
 ARTIST_WEIGHT = 2
 FOLDER_WEIGHT = 1
 
-#: The bands, strongest first, and the bounds that give them. A band is the
-#: share of the weighted votes the suggested genre holds, over at least so
-#: many votes. Measured on a copy of one library, 2026-10-07: neighbours alone
-#: gave at least 80 percent over six or more votes for 60 of 621 rows.
+#: The bands, strongest first, and their bounds: the suggested genre's share of
+#: the weighted votes, over at least so many votes (measured 2026-10-07).
 HIGH = "high"
 MEDIUM = "medium"
 LOW = "low"
@@ -102,8 +71,7 @@ _BOUNDS: tuple[tuple[str, float, int], ...] = ((HIGH, 0.8, 6), (MEDIUM, 0.6, 3))
 SPLIT = "split"
 NONE = "none"
 
-#: The outcomes, in the order a summary lists them. Every live row lands in
-#: exactly one, and the counts are zero filled.
+#: The outcomes, in the order a summary lists them, zero filled.
 WRITE = "write"
 HELD_OUT = "held-out"
 BELOW_BAND = "below-band"
@@ -125,8 +93,7 @@ OUTCOMES: tuple[str, ...] = (
     *rows.UNREAD,
 )
 
-#: The outcomes of a candidate that is offered and not written. Each is listed
-#: in the plan as an item with the outcome as its reason.
+#: The outcomes of a candidate offered and not written, each an item.
 LEFT: tuple[str, ...] = (HELD_OUT, BELOW_BAND, TIED, NO_VOTES, GENRE_UNKNOWN)
 
 #: What an item whose row is not written says it does.
@@ -137,22 +104,15 @@ MATCHED = "matched"
 DECLINED = "declined"
 UNREAD = "unread"
 
-#: The word :attr:`Asked.answers` carries for a catalogue the walk did not send
-#: the row to because it had already refused this client in the run, U281's
-#: answer whose note opens :data:`cratekit.tagging.searchers.NOT_SENT`. It is a
-#: refusal remembered, not one sent, so a summary counts the row as one that
-#: catalogue was not asked about (U322).
+#: The word :attr:`Asked.answers` carries for a catalogue not sent the row since
+#: it had refused this client in the run (U281), counted as not asked (U322).
 NOT_SENT = "not-sent"
 
-#: The note's words on a row Discogs was passed over on because it refused the
-#: recorded token (U322's review), so the verbs say it apart from no token
-#: being recorded. The same words on every such row, since the note is in a
-#: plan's digest and the refusal's own sentence differs between the row that
-#: was sent and the rows after it.
+#: The note on a row Discogs was passed over on for refusing the recorded token,
+#: said apart from no token; the same words on every row, since it is digested.
 TOKEN_UNUSABLE = "the recorded Discogs token could not be used"
 
-#: A catalogue's words that say it answered about the row, a match or a miss,
-#: whatever the taxonomy made of the match (U322).
+#: A catalogue's words that say it answered about the row, a match or a miss (U322).
 _ANSWERED: tuple[str, ...] = (searchers.Answer.MATCHED.value, searchers.Answer.MISS.value)
 
 #: How long a catalogue answer is reused, in days.
@@ -161,13 +121,11 @@ CATALOGUE_DAYS = 7
 #: The state entry the catalogue's answers are kept in, under the library's state.
 CATALOGUE_STATE = "tag_suggest_catalogue"
 
-#: How many lookups are kept between saves, so a run stopped part way loses
-#: at most this many paced lookups.
+#: How many lookups are kept between saves.
 _SAVE_EVERY = 20
 
 #: How many rows in a row the catalogues could not be read for before the walk
-#: stops asking them. A catalogue refusing this client is not asked another
-#: few hundred times, which is how an account gets rate limited for good.
+#: stops asking them, so a refusing catalogue does not rate limit the account.
 STOP_AFTER_UNREAD = 3
 
 #: The note on a row the walk did not ask about because it had stopped.
@@ -175,8 +133,7 @@ STOPPED_NOTE = (
     f"not asked: the catalogues could not be read for {STOP_AFTER_UNREAD} rows in a row"
 )
 
-#: What :func:`catalogue_counts` counts for each catalogue, in the order a
-#: person reads it (U322).
+#: What :func:`catalogue_counts` counts for each catalogue, in reading order (U322).
 COUNTED: tuple[str, ...] = ("asked", "matched", "missed", "unread", "not_asked", "not_sent")
 
 _ORIGIN = ("tagging", "suggest")
@@ -190,19 +147,12 @@ Lookup = Callable[[str, str, str], "Asked"]
 class Asked:
     """What the catalogue said about one row.
 
-    ``said`` is :data:`MATCHED`, :data:`DECLINED` or :data:`UNREAD`. ``genre`` is
-    the taxonomy's tag for a match and empty otherwise. ``off_taxonomy`` says
-    the genre is the catalogue's own word passed through, which is never a vote.
-
-    ``passed_over`` names the catalogues left unread because they were not asked
-    at all, Discogs with no token recorded (U244). Such a row is UNREAD, since
-    whether that catalogue knows it is unknown, and it is not a refusal of this
-    client, so it never counts toward :data:`STOP_AFTER_UNREAD`.
-
-    ``answers`` is each catalogue's word for the row, in the walk's order (U322):
-    one of :class:`cratekit.tagging.searchers.Answer`'s values, ``not-asked``,
-    ``no-isrc``, or :data:`NOT_SENT`. Empty for a row the walk stopped before,
-    and for an answer kept before the words were.
+    ``said`` is :data:`MATCHED`, :data:`DECLINED` or :data:`UNREAD`; ``genre`` the
+    taxonomy's tag for a match; ``off_taxonomy`` a catalogue word passed
+    through, never a vote. ``passed_over`` names catalogues not asked at all,
+    Discogs with no token (U244): such a row is UNREAD but never counts toward
+    :data:`STOP_AFTER_UNREAD`. ``answers`` is each catalogue's word in walk order
+    (U322), empty for a row the walk stopped before.
     """
 
     said: str
@@ -216,13 +166,8 @@ class Asked:
 
     @property
     def partly_read(self) -> bool:
-        """Whether a catalogue refused the row beside one that answered about it (U322).
-
-        Such a row says the catalogues that answered are not refusing, so it
-        ends a run of refusals rather than adding to one. A row unread only by
-        a catalogue nobody asked is :attr:`passed_over` instead, and is not
-        this, whatever the others answered (U244).
-        """
+        """Whether a catalogue refused the row beside one that answered (U322),
+        which ends a run of refusals. A row only :attr:`passed_over` is not this."""
         if self.said != UNREAD or self.passed_over:
             return False
         return any(word in _ANSWERED for _source, word in self.answers)
@@ -238,25 +183,15 @@ class Asked:
 
     @property
     def unread_beside_an_answer(self) -> tuple[str, ...]:
-        """The catalogues that could not be read for a row another one answered (U322).
-
-        Whatever the row was then said to be: a genre the general catalogue
-        gave while Beatport refused is written without Beatport's word, and
-        the verbs say so, as they say a row nobody could read.
-        """
+        """The catalogues that could not be read for a row another one answered,
+        whatever the row was then said to be (U322)."""
         if not any(word in _ANSWERED for _source, word in self.answers):
             return ()
         return self.unread_by
 
     def digested(self) -> dict[str, Any]:
-        """What a plan's digest covers of the answer: everything but the words.
-
-        THE WORDS ARE THE RECORD OF WHO ANSWERED, NOT WHAT IS WRITTEN (U322's
-        review). Which of a refusing catalogue's rows were sent and which were
-        passed over moves with the rows a run asks, and a gate shown one day
-        and answered the next asks again the rows nobody could read, so the
-        words would refuse a plan as stale that writes the same.
-        """
+        """What a plan's digest covers of the answer: everything but the words,
+        which record who answered and move between two runs that write the same."""
         found = self.to_json()
         del found["answers"]
         return found
@@ -278,12 +213,9 @@ class Asked:
 class Item:
     """One candidate row, what the evidence suggests, and what the plan does.
 
-    ``genre`` is what a write puts on the file and the row, empty on a row left
-    for want of a default. ``options`` is every tied genre on a split, and the
-    suggested genre alone otherwise. ``votes`` is the weight each word got, the
-    undeclared ones included, largest first. ``chosen`` says the genre shown is
-    the one a person named with ``--set`` rather than the suggestion; the row
-    can still be left, for a genre the library has no lookup row for.
+    ``options`` is every tied genre on a split, else the suggestion alone;
+    ``votes`` every word's weight, largest first; ``chosen`` says the genre is a
+    person's ``--set`` pick.
     """
 
     content_id: str
@@ -316,8 +248,7 @@ class Item:
         }
 
     def to_json(self) -> dict[str, Any]:
-        """The item as the gate shows it, with the file, the track's name and the
-        catalogues' words (U322)."""
+        """The item as the gate shows it, with the file, name and words (U322)."""
         return {
             **self.digested(),
             "catalogue": self.catalogue.to_json() if self.catalogue else None,
@@ -343,11 +274,8 @@ class SuggestPlan(rows.Tallied):
 
     @property
     def digest(self) -> str:
-        """The fingerprint an approval is bound to.
-
-        OVER THE ITEMS, THE COUNTS AND THE CHOICES, AND NOTHING THAT NAMES A
-        COPY, for the reason :attr:`cratekit.tagging.rows.RowsPlan.digest` gives.
-        """
+        """The fingerprint an approval is bound to: the items, counts and choices,
+        nothing that names a copy, as :attr:`cratekit.tagging.rows.RowsPlan.digest`."""
         return digest_of(
             {
                 "kind": WORKFLOW,
@@ -360,11 +288,8 @@ class SuggestPlan(rows.Tallied):
         )
 
     def groups(self) -> list[dict[str, Any]]:
-        """The candidates grouped by suggested genre and band, largest first.
-
-        A split row is grouped under every tied genre joined, since it has no
-        one genre to be grouped under.
-        """
+        """The candidates grouped by suggested genre and band, largest first, a
+        split row under its tied genres joined."""
         seen = Counter(
             (item.genre or " or ".join(item.options), item.band, item.action)
             for item in self.items
@@ -376,19 +301,9 @@ class SuggestPlan(rows.Tallied):
         ]
 
 
-# ---------------------------------------------------------------------------
-# The rules, pure
-# ---------------------------------------------------------------------------
-
-
 def suggestable(declared: taxonomy.Taxonomy, genre: str) -> bool:
-    """Whether a genre is one this module may suggest.
-
-    ONE ADOPTION ROUTES AND THE TAXONOMY NAMES EXACTLY. Routing alone would
-    accept a word a keyword tier or a catch all places, which is a word the
-    library does not declare, and the goal is a genre adoption files under its
-    genre folder rather than one that only happens to land somewhere.
-    """
+    """Whether a genre is one this module may suggest: one adoption routes AND
+    the taxonomy names exactly, not one a keyword tier or catch all places."""
     word = (genre or "").strip()
     if not word:
         return False
@@ -410,12 +325,8 @@ def band_of(weight: int, total: int) -> str:
 def weigh(
     declared: taxonomy.Taxonomy, votes: Mapping[str, int]
 ) -> tuple[str, str, tuple[str, ...]]:
-    """The suggested genre, its band, and the genres offered. Pure.
-
-    The total is every vote, the undeclared words included. The suggestion is
-    the declared genre with the most weight, and a tie there is a split with no
-    default.
-    """
+    """The suggested genre, its band, and the genres offered. Pure. The total
+    counts undeclared words too; a tie at the top is a split with no default."""
     total = sum(votes.values())
     declared_votes = {word: weight for word, weight in votes.items() if suggestable(declared, word)}
     if not declared_votes:
@@ -434,11 +345,6 @@ def _at_or_above(band: str, least: str) -> bool:
     return BANDS.index(band) <= BANDS.index(least)
 
 
-# ---------------------------------------------------------------------------
-# The catalogue
-# ---------------------------------------------------------------------------
-
-
 def _word(answer: str, note: str) -> str:
     """One catalogue's word for a row, a refusal never sent told from one sent."""
     if answer == searchers.Answer.BLOCKED.value and note.startswith(searchers.NOT_SENT):
@@ -451,13 +357,8 @@ def _words_of(hit: SearchHit) -> tuple[tuple[str, str], ...]:
 
 
 def _words_of_refusal(exc: CratekitError) -> tuple[tuple[str, str], ...]:
-    """Each catalogue's word off a refusal the searcher raised, when it names them.
-
-    A refusal by every catalogue asked, and one where none could be read, carry
-    the sources, their answers and their notes (U281, U284); Discogs passed over
-    for want of a token is named apart. A refusal carrying none of that carries
-    no words, which reads as no catalogue having answered.
-    """
+    """Each catalogue's word off a refusal the searcher raised, when it names
+    them (U281, U284), Discogs passed over for want of a token named apart."""
     detail = exc.cause.detail if isinstance(exc.cause.detail, Mapping) else {}
     sources, answers = detail.get("sources"), detail.get("answers")
     if not isinstance(sources, list) or not isinstance(answers, list):
@@ -490,9 +391,8 @@ def _asked_from(hit: SearchHit | None) -> Asked:
             answers=words,
         )
     if hit.unread and not hit.source_genre:
-        # A CATALOGUE THE WALK NEVER ASKED IS NOT ONE THAT REFUSED (U244). It is
-        # named with the reason its record gives, so the row says how to have
-        # it asked, and it is kept apart so the walk does not stop over it.
+        # A CATALOGUE THE WALK NEVER ASKED IS NOT ONE THAT REFUSED (U244), and is
+        # kept apart so the walk does not stop over it.
         unasked = {
             said.source: said.note
             for said in hit.answers
@@ -500,10 +400,8 @@ def _asked_from(hit: SearchHit | None) -> Asked:
         }
         refused = [source for source in hit.unread if source not in unasked]
         if refused:
-            # A REFUSAL BESIDE A CATALOGUE THAT ANSWERED IS STILL UNREAD (U322):
-            # a miss beside a refusal is not an absence, so the row stays
-            # askable. Its words say who answered, which is what keeps it out
-            # of the walk's stop, see :attr:`Asked.partly_read`.
+            # A REFUSAL BESIDE A CATALOGUE THAT ANSWERED IS STILL UNREAD (U322);
+            # its words keep it out of the stop, see :attr:`Asked.partly_read`.
             return Asked(UNREAD, note=f"unread: {', '.join(refused)}", answers=words)
         return Asked(
             UNREAD,
@@ -517,14 +415,9 @@ def _asked_from(hit: SearchHit | None) -> Asked:
 def catalogue_lookup(searcher: Searcher, published: PublishedGenre | None = None) -> Lookup:
     """The catalogue lookup ``tag folder`` makes, asked again once on a plain miss.
 
-    ``published`` is the general catalogue's seam; the two suggest verbs hand
-    in :func:`cratekit.tagging.published.for_suggestions`, which asks past a
-    refusing Beatport once Discogs answered (U322).
-
-    The record shops first, then the general catalogue by ISRC when they gave no
-    genre, which is :func:`cratekit.tagging.tag.tag_one`'s order. A refusal to
-    read a catalogue is not raised: it is this row's answer, :data:`UNREAD`, and
-    the walk goes on to the next row.
+    The record shops, then ``published``, the general catalogue's seam, in
+    :func:`cratekit.tagging.tag.tag_one`'s order. A refusal is not raised: it is
+    the row's answer, :data:`UNREAD`, and the walk goes on.
     """
 
     def once(artist: str, title: str, isrc: str) -> Asked:
@@ -535,10 +428,7 @@ def catalogue_lookup(searcher: Searcher, published: PublishedGenre | None = None
         except CratekitError as exc:
             if exc.cause.reason == searchers.CREDENTIAL_REASON:
                 # A TOKEN DISCOGS COULD NOT USE IS DISCOGS PASSED OVER, as no token
-                # is (U244), told by the refusal's declared reason (U322's review).
-                # The searcher raises it whatever Beatport answered, so the row
-                # neither counts toward the stop nor resets it, and a refusing
-                # Beatport is still passed over by its own count (U281).
+                # is (U244): the row neither counts toward the stop nor resets it.
                 return Asked(
                     UNREAD,
                     note=f"unread: {searchers.DISCOGS}, {TOKEN_UNUSABLE}",
@@ -554,9 +444,8 @@ def catalogue_lookup(searcher: Searcher, published: PublishedGenre | None = None
 
     def lookup(artist: str, title: str, isrc: str) -> Asked:
         first = once(artist, title, isrc)
-        # ONLY A PLAIN MISS IS ASKED AGAIN. A word the taxonomy declined will
-        # be declined again, and a catalogue that could not be read is one that
-        # is refusing this client: asking it twice per row deepens the block.
+        # ONLY A PLAIN MISS IS ASKED AGAIN; asking a refusing catalogue twice
+        # deepens the block.
         if first.said != DECLINED or first.source_genre:
             return first
         return once(artist, title, isrc)
@@ -569,11 +458,8 @@ def catalogue_path(cfg: config.Config) -> Path:
 
 
 def _read_kept(path: Path) -> dict[str, Any]:
-    """The kept answers, or none when there is no file or it cannot be read.
-
-    AN UNREADABLE FILE READS AS EMPTY, and that is safe in this direction only:
-    what it costs is asking again, never an answer nobody gave.
-    """
+    """The kept answers, or none: an unreadable file costs asking again, never
+    an answer nobody gave."""
     try:
         found = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -593,9 +479,7 @@ def _kept_answer(entry: Any, asked_for: dict[str, str], today: date) -> Asked | 
     try:
         age = (today - date.fromisoformat(str(entry.get("on")))).days
         said = dict(entry["answer"])
-        # AN ANSWER KEPT BEFORE THE WORDS WERE IS ASKED AGAIN (U322's review), once,
-        # so what each catalogue said is counted from what it said rather than
-        # read as nobody having been asked.
+        # AN ANSWER KEPT BEFORE THE WORDS WERE IS ASKED AGAIN, once (U322).
         if "answers" not in said:
             return None
         answer = Asked(
@@ -612,20 +496,15 @@ def _kept_answer(entry: Any, asked_for: dict[str, str], today: date) -> Asked | 
         return None
     if not 0 <= age < CATALOGUE_DAYS:
         return None
-    # AN ANSWER NOBODY COULD READ IS KEPT FOR THE DAY AND NO LONGER, so the run
-    # that applies a plan made today reads the same answer the gate showed,
-    # and a later day asks again.
+    # AN ANSWER NOBODY COULD READ IS KEPT FOR THE DAY AND NO LONGER.
     if answer.said == UNREAD and age != 0:
         return None
     return answer
 
 
 class KeptCatalogue:
-    """The catalogue lookup with its answers kept across invocations.
-
-    A context manager so the answers asked since the last save are saved
-    however the walk ends.
-    """
+    """The catalogue lookup with its answers kept across invocations, a context
+    manager so what was asked is saved however the walk ends."""
 
     def __init__(
         self,
@@ -635,11 +514,9 @@ class KeptCatalogue:
         today: date | None = None,
         unasked: frozenset[str] | None = None,
     ):
-        """``unasked`` is the catalogues this run cannot ask, Discogs with no
-        token, or None when the caller does not know. A kept answer that passed
-        over a catalogue this run CAN ask is asked again, whatever its day
-        (U244's review, round two): a person who recorded a token after the
-        morning's run is not told for the rest of the day that none is."""
+        """``unasked`` is the catalogues this run cannot ask, or None when not
+        known. A kept answer that passed over one this run CAN ask is asked again
+        whatever its day (U244)."""
         self._path = catalogue_path(cfg)
         self._lookup = lookup
         self._unasked = unasked
@@ -658,13 +535,8 @@ class KeptCatalogue:
         self.save()
 
     def _askable_now(self, kept: Asked) -> bool:
-        """Whether a kept answer passed over a catalogue this run can ask.
-
-        A ROW PASSED OVER FOR A TOKEN DISCOGS REFUSED IS KEPT FOR THE DAY, as any
-        unread row is (U322's review, round two). The recorded token is the
-        same one, so asking again would only take the same refusal, and the
-        run that applies a gate would ask what the gate was shown.
-        """
+        """Whether a kept answer passed over a catalogue this run can ask. One
+        passed over for a refused token is kept for the day: the token is the same."""
         if self._unasked is None or not kept.passed_over or kept.note.endswith(TOKEN_UNUSABLE):
             return False
         return not set(kept.passed_over) <= self._unasked
@@ -684,13 +556,9 @@ class KeptCatalogue:
         else:
             answer = self._lookup(artist, title, isrc)
             self.asked += 1
-            # A ROW LEFT UNREAD ONLY BY A CATALOGUE NOBODY ASKED neither counts
-            # toward the stop nor ends a run of refusals: it says nothing about
-            # whether the catalogues that were asked are refusing (U244). A ROW
-            # SOME CATALOGUE ANSWERED ends the run, whatever another refused:
-            # the walk stops only when every catalogue it sends rows to has
-            # refused them (U322), and one refusing catalogue is passed over by
-            # the searcher's own count (U281).
+            # A ROW UNREAD ONLY BY A CATALOGUE NOBODY ASKED neither counts toward
+            # the stop nor ends a run (U244); A ROW SOME CATALOGUE ANSWERED ends
+            # the run, so the walk stops only when every catalogue refused (U322).
             if answer.said != UNREAD or answer.partly_read:
                 self._unread_running = 0
             elif not answer.passed_over:
@@ -709,13 +577,11 @@ class KeptCatalogue:
 
 @dataclass(frozen=True, slots=True)
 class Unread:
-    """The rows a walk could not read whole, sorted by why, as the two verbs warn (U322).
+    """The rows a walk could not read whole, by why, as the two verbs warn (U322).
 
-    ``refused`` no catalogue sent the row could be read; ``partly`` another
-    catalogue answered beside the ones ``partly_by`` names, whatever the row
-    was then said to be; ``no_token`` Discogs was passed over for want of a
-    token, and ``token_unusable`` because the recorded one could not be used.
-    Each is the rows' content identifiers, in the walk's order.
+    ``refused`` no catalogue read; ``partly`` read beside the ones ``partly_by``
+    names; ``no_token`` and ``token_unusable`` Discogs passed over. Content
+    identifiers, in walk order.
     """
 
     refused: tuple[str, ...] = ()
@@ -757,14 +623,10 @@ def sort_unread(answers: Iterable[tuple[str, Asked]]) -> Unread:
 def catalogue_counts(answers: Iterable[Asked]) -> dict[str, Any]:
     """What each catalogue said across a walk's rows, as the backlog reports it (U322). Pure.
 
-    ``rows`` is every answer counted and ``stopped`` the rows the walk did not
-    ask about once it had stopped. Each catalogue named in any row's words is
-    counted on every row: ``asked`` the rows it was sent, of them ``matched``
-    (it carried the track, whatever the taxonomy made of its word), ``missed``
-    and ``unread`` (it refused or could not be read); ``not_asked`` the rest,
-    of them ``not_sent`` the rows it was passed over on once it had refused
-    this client in the run. A row with no words, one the walk stopped before or
-    a refusal that named no catalogue, counts as not asked by every catalogue.
+    Each catalogue in any row's words is counted on every row: ``asked``, of
+    them ``matched``, ``missed`` and ``unread``; ``not_asked``, of them
+    ``not_sent`` once it had refused this client. ``stopped`` counts rows the
+    walk did not ask once it stopped.
     """
     listed = list(answers)
     sources: list[str] = []
@@ -791,11 +653,6 @@ def catalogue_counts(answers: Iterable[Asked]) -> dict[str, Any]:
         "stopped": sum(asked.note == STOPPED_NOTE for asked in listed),
         "catalogues": counted,
     }
-
-
-# ---------------------------------------------------------------------------
-# The plan
-# ---------------------------------------------------------------------------
 
 
 @dataclass(slots=True)
@@ -881,17 +738,10 @@ def plan_suggestions(
     """Walk the collection once and sort every live row into one outcome.
 
     THE WALK IS ADOPTION'S CENSUS, as :func:`cratekit.tagging.rows.plan_rows`
-    walks it, so a row's file is found and probed the way adoption finds it and
-    a tombstone is skipped and not counted.
-
-    A CANDIDATE IS WRITTEN WHEN its suggestion is at or above ``band``, it is
-    not held out by ``leave``, and the library has a lookup row for its genre.
-    ``chosen`` names a genre a person picked for a candidate, which is written
-    whatever the band, a split's included. The caller has checked each chosen
-    genre is :func:`suggestable`.
-
-    NOTHING IS PENDING ON THE HANDLE WHEN THIS RETURNS, for the reason
-    :func:`cratekit.tagging.rows.plan_rows` gives.
+    walks it. A CANDIDATE IS WRITTEN WHEN its suggestion is at or above
+    ``band``, it is not held by ``leave``, and its genre has a lookup row;
+    ``chosen`` genres, checked :func:`suggestable` by the caller, are written
+    whatever the band. Nothing is pending on the handle when this returns.
     """
     held_out = frozenset(str(content_id) for content_id in leave)
     picks = {str(key): value for key, value in (chosen or {}).items()}
@@ -935,8 +785,7 @@ def plan_suggestions(
     to_write: dict[str, str] = {}
     for ordinal, (row, path) in enumerate(sorted(candidates, key=lambda c: c[0].content_id), 1):
         asked = None
-        # A ROW HELD OUT OR PICKED IS NOT LOOKED UP: no answer changes it, and
-        # every lookup is a paced request.
+        # A ROW HELD OUT OR PICKED IS NOT LOOKED UP: no answer changes it.
         settled_by_person = row.content_id in held_out or row.content_id in picks
         if catalogue is not None and not settled_by_person:
             isrc = tags.read_tag(Path(path), "isrc") or ""
@@ -1002,19 +851,11 @@ def plan_suggestions(
     )
 
 
-# ---------------------------------------------------------------------------
-# The file write
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True, slots=True)
 class FilesWritten:
-    """What the file half of an apply did, per content identifier.
-
-    ``read_back`` holds the rows whose file now carries the genre. ``moved``
-    carried a genre by the time the write reached them, ``failed`` the writer
-    could not write, ``wrong`` were written and read back otherwise.
-    """
+    """What the file half of an apply did, per content identifier: ``read_back``
+    carry the genre now, ``moved`` carried one by then, ``failed`` were not
+    written, ``wrong`` read back otherwise."""
 
     read_back: tuple[str, ...] = ()
     moved: tuple[str, ...] = ()
@@ -1027,13 +868,9 @@ class FilesWritten:
 
 
 def write_files(plan: SuggestPlan) -> FilesWritten:
-    """Write each planned genre onto its file and read it back.
-
-    EACH FILE IS READ AGAIN FIRST, and one that carries a genre by now is named
-    and left: it was blank when the plan was approved, and what is on it since
-    is somebody else's. Nothing here raises for one file, so one that cannot be
-    written does not stop the rest.
-    """
+    """Write each planned genre onto its file and read it back. EACH FILE IS READ
+    AGAIN FIRST, and one carrying a genre by now is named and left. Nothing
+    raises for one file."""
     read_back: list[str] = []
     moved: list[str] = []
     failed: list[str] = []
@@ -1057,14 +894,9 @@ def write_files(plan: SuggestPlan) -> FilesWritten:
 def narrowed(plan: SuggestPlan, keep: Mapping[str, str]) -> SuggestPlan:
     """The plan with every write held out but those ``keep`` names with the same genre.
 
-    FOR A COMPOSER THAT MAY WRITE ONLY WHAT IT SHOWED (U294). ``tag campaign``
-    plans this verb again once the steps before it have written, and a
-    proposal may have appeared or moved since the backlog showed it: a row's
-    neighbours read new genres. A write is kept only where its row was shown
-    with exactly this genre, so the campaign writes nothing a person was not
-    shown and never a genre the floor would not give now, since only this
-    plan's own writes, each at or above its band, can be kept. A held write
-    becomes the item ``--leave`` makes and its change leaves the write. Pure.
+    For ``tag campaign`` (U294), which replans after earlier steps wrote: only a
+    write shown with exactly this genre is kept, so nothing unseen is written.
+    A held write becomes the item ``--leave`` makes. Pure.
     """
     held = {
         item.content_id
@@ -1097,11 +929,8 @@ def narrowed(plan: SuggestPlan, keep: Mapping[str, str]) -> SuggestPlan:
 
 
 def rows_plan(plan: SuggestPlan, content_ids: Iterable[str]) -> rows.RowsPlan:
-    """The row half of an apply, as the row verb's engine takes it.
-
-    Only the rows named, which are the ones whose file read back, so a row is
-    never written with a genre its file does not carry.
-    """
+    """The row half of an apply, as the row verb's engine takes it, for the
+    rows named, whose file read back."""
     wanted = frozenset(content_ids)
     items = tuple(
         rows.Item(

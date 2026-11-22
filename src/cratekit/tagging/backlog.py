@@ -1,55 +1,29 @@
 """The needs genre backlog, sorted by cause, in one plan that writes nothing (U292).
 
-WHY THIS EXISTS. Adoption's census at sitting 94 read 1,345 of 10,737 readable
-rows as ``needs-genre``: a row with no genre, one too coarse to be a genre, or
-a word no folder takes. Each population has a verb that settles it, ``tag
-rows``, ``tag suggest``, ``taxonomy alias`` and ``taxonomy folder``, and no
-sitting had swept the backlog with them, because nothing said which row was
-whose. This is that census: every ``needs-genre`` row in exactly one cause, the
-verb that settles it, and what that verb would do to it today.
+Every ``needs-genre`` row of adoption's census in exactly one cause, the verb
+that settles it, and what that verb would do to it today.
 
-EACH VERB'S OWN PLAN, NEVER A SECOND OPINION. A row lagging its file is
-counted from :func:`cratekit.tagging.rows.plan_rows` over the same handle, and
-a row with no genre from :func:`cratekit.tagging.suggest.plan_suggestions` at
-the floor, so those counts are what each verb would write if run next. A
-word's answers are planned by the two verbs' own edits,
+EACH VERB'S OWN PLAN, NEVER A SECOND OPINION: a row lagging its file is counted
+from :func:`cratekit.tagging.rows.plan_rows` and a row with no genre from
+:func:`cratekit.tagging.suggest.plan_suggestions` at the floor, over the same
+handle, and a word's answers are planned by
 :func:`cratekit.core.taxonomy_word.alias` and
-:func:`cratekit.core.taxonomy_word.folder`, on the library's active copy, so
-an answer offered here is one those verbs take, and one they refuse is never
-offered (round one of the review found a genre the alias verb refuses
-recommended, and a word it takes called unanswerable).
+:func:`cratekit.core.taxonomy_word.folder` on the active copy, so an answer
+offered is one those verbs take. WHAT AN ANSWER MOVES IS COUNTED BY THE ROW,
+since adoption files by the row: a folder files a row carrying that spelling,
+now or once ``tag rows`` writes it, and an alias's rows follow only where the
+library has a genre entry for its genre.
 
-WHAT AN ANSWER MOVES IS COUNTED BY THE ROW, since adoption files by the row.
-A folder of the word's name files a row whose row carries that spelling
-exactly, or whose file does and ``tag rows`` would write it onto the row. An
-alias retags each file whose one genre is the word, and the row follows only
-where the library has a genre entry for the alias's genre, which ``tag rows``
-links and never creates.
+THE CAUSES, in the order a row is tested, :data:`CAUSES`: ``file-unread``;
+``row-lags-file``, which ``tag rows`` writes; ``no-genre``, which ``tag
+suggest`` weighs; ``too-coarse``, which ``tag retag`` replaces; and
+``off-taxonomy``, grouped by word so a person answers once per word. A row
+whose file is not here is in no cause and is counted by why.
 
-THE CAUSES, in the order a row is tested against them, :data:`CAUSES`:
-
-* ``file-unread``: the file's genre could not be read, so nothing is known;
-* ``row-lags-file``: the file carries a genre adoption files by and the row
-  does not, which ``tag rows`` writes onto the row;
-* ``no-genre``: no genre on the row or the file, which ``tag suggest`` weighs;
-* ``too-coarse``: the only word is one the taxonomy calls too coarse to be a
-  genre, which ``tag retag`` replaces from the catalogues, per folder;
-* ``off-taxonomy``: a word no folder takes, grouped by word, so a person
-  answers once per word and not once per track.
-
-A ROW WHOSE FILE IS NOT HERE IS COUNTED, NOT DROPPED. Adoption reads it as
-excluded rather than needs genre, so it is in no cause, and whether it needs a
-genre is unknown: it is counted by why (round one).
-
-THE FLOOR IS ``tag suggest``'S HIGH BAND, :data:`FLOOR`: at least 80 percent
-of the weighted votes over at least six, so a lone catalogue match proposes
-and two artist neighbours do not. Nothing below it is proposed; such a row is
-the remainder, with its band.
-
-NOTHING HERE WRITES. The plan is read on a handle the caller opened to read,
-and the copy's edits are planned on its text and never saved. The one thing a
-run keeps is ``tag suggest``'s catalogue answers, in its own state entry, so
-the run that applies reads the answers this one read.
+THE FLOOR IS ``tag suggest``'S HIGH BAND, :data:`FLOOR`; nothing below it is
+proposed. NOTHING HERE WRITES: the plan is read on the caller's read handle and
+the copy's edits are never saved; only ``tag suggest``'s catalogue answers are
+kept, in its own state entry.
 
 Layer: modules. It opens no database of its own and names no verb.
 """
@@ -78,8 +52,7 @@ WORKFLOW = "tag-backlog"
 #: The weakest band proposed. Not a flag: the first live run uses it.
 FLOOR = suggest.HIGH
 
-#: The causes, in the order a row is tested against them. Every
-#: ``needs-genre`` row lands in exactly one.
+#: The causes, in the order a row is tested; every row lands in exactly one.
 FILE_UNREAD = "file-unread"
 ROW_LAGS_FILE = "row-lags-file"
 NO_GENRE = "no-genre"
@@ -110,18 +83,14 @@ ALIAS = "alias"
 FOLDER = "folder"
 LEAVE = "leave"
 
-#: Why a row is left, beside the reasons ``tag rows`` and ``tag suggest`` give.
-#: A word neither ``taxonomy alias`` nor ``taxonomy folder`` takes keeps the
-#: refusal's own kind, prefixed, so a reader sees which.
+#: Why a row is left when neither ``taxonomy alias`` nor ``taxonomy folder``
+#: takes its word, prefixed to the refusal's own kind.
 UNANSWERABLE = "word-unanswerable"
 
-#: Why a row of a word with one answer is left: that answer does not move it,
-#: since its file does not hold the word alone or the library has no genre
-#: entry for the answer's genre.
+#: Why a row of a word with one answer is left: that answer does not move it.
 NOT_REACHED = "answer-does-not-reach"
 
-#: The refusal's kind when the library has no active taxonomy copy, which the
-#: two verbs refuse too, so no word can be answered in it.
+#: The refusal's kind when the library has no usable active taxonomy copy.
 NO_COPY = "no-copy"
 
 #: The bands a word's neighbours must reach for their genre to be offered.
@@ -134,10 +103,8 @@ _ORIGIN = ("tagging", "backlog")
 class Proposal:
     """A genre ``tag suggest`` would write on a row with none, and its evidence.
 
-    ``source`` is the catalogue whose match voted for the genre, or
-    :data:`NEIGHBOURS` when only the library voted. ``share`` is the genre's
-    weight over every vote, the words no folder takes included, rounded to two
-    places; with ``band`` it is the confidence.
+    ``source`` is the catalogue whose match voted, or :data:`NEIGHBOURS`;
+    ``share`` the genre's weight over every vote, rounded to two places.
     """
 
     genre: str
@@ -166,11 +133,8 @@ NEIGHBOURS = "neighbours"
 class Row:
     """One ``needs-genre`` row, its cause, and what the campaign does about it.
 
-    ``row_word`` and ``file_word`` are the two genres as read. ``word`` is the
-    one the cause is about: the file's on ``row-lags-file``, the off taxonomy or
-    too coarse word, and empty otherwise. ``verb`` settles the row, ``reason``
-    says why a row is left. ``asked`` is what the catalogue said about a row
-    with no genre, when the run asked it.
+    ``word`` is the one the cause is about, empty for ``no-genre`` and
+    ``file-unread``; ``asked`` what the catalogue said, when the run asked it.
     """
 
     content_id: str
@@ -237,19 +201,15 @@ class Option:
 class Word:
     """One off taxonomy word, folded on case, and what answers it.
 
-    ``rows`` carry it. ``files_carry`` have a file whose one genre is the word
-    in some case, which an alias retags; ``several`` have a file holding it
-    beside another genre, which an alias leaves; ``elsewhere`` carry it on the
-    row with a file that does not, which no alias reaches. ``on_row`` would
-    carry the commonest spelling exactly on the row once ``tag rows`` has run,
-    which a folder of that name files.
+    ``files_carry`` rows have a file whose one genre is the word, which an alias
+    retags; ``several`` hold it beside another genre; ``elsewhere`` carry it on
+    the row only; ``on_row`` would carry the commonest spelling on the row once
+    ``tag rows`` ran, which a folder files.
 
-    Exactly one of three holds. ``options`` is the question, the
-    recommendation first. ``settled`` is the one answer the word has, a
-    command that plans no change to the copy and retags its files (another
-    case of a folder's name, or an alias already saved), with ``settled_genre``
-    the genre folder it names and ``reached`` the rows it moves. ``unanswerable`` is the two verbs' refusal, its kind,
-    sentence and next step.
+    Exactly one of three holds: ``options``, the question, recommendation first;
+    ``settled``, the one answer, a command changing nothing in the copy, with
+    ``settled_genre`` and the rows ``reached``; or ``unanswerable``, the verbs'
+    refusal as kind, sentence and next step.
     """
 
     word: str
@@ -310,10 +270,8 @@ class Word:
 class Backlog:
     """Every ``needs-genre`` row in one cause, the words, and the campaign.
 
-    ``unread`` counts the live rows adoption excludes because their file is not
-    here or cannot be read, by why. ``joining`` names the rows not in the
-    backlog that ``tag rows`` would give a genre adoption files nowhere, which
-    the campaign's first step moves INTO needs genre.
+    ``unread`` counts by why the live rows excluded for their file; ``joining``
+    names rows ``tag rows`` would move INTO needs genre.
     """
 
     rows: tuple[Row, ...]
@@ -366,14 +324,9 @@ class Backlog:
         }
 
     def campaign(self) -> list[dict[str, Any]]:
-        """The existing gated verbs in the order the campaign runs them.
-
-        Only a step with rows to move is listed, an answered word's counted at
-        its alias's rows. ``route resort`` comes last, listed when any step
-        moves a row or any word waits on its answer, since it files every
-        track the steps give a genre, and then with the rows the steps before
-        it move.
-        """
+        """The existing gated verbs in the order the campaign runs them, each
+        with rows to move; ``route resort`` last, when any step moves a row or a
+        word waits on its answer."""
         statuses = self.statuses
         steps: list[dict[str, Any]] = []
         if statuses[SERVED]:
@@ -426,12 +379,8 @@ class Backlog:
 
     @property
     def digest(self) -> str:
-        """The fingerprint a campaign's approval binds to.
-
-        OVER THE ROWS AND THE WORDS, AND NOTHING THAT NAMES A COPY, for the
-        reason :attr:`cratekit.tagging.rows.RowsPlan.digest` gives, so a
-        rehearsal on a disposable copy digests equal to the live plan.
-        """
+        """The fingerprint a campaign's approval binds to: the rows and words and
+        nothing that names a copy, as :attr:`cratekit.tagging.rows.RowsPlan.digest`."""
         return digest_of(
             {
                 "kind": WORKFLOW,
@@ -485,18 +434,11 @@ def settle(cause: str, reason: str) -> str:
     return "tag by hand"
 
 
-# ---------------------------------------------------------------------------
-# The rules, pure
-# ---------------------------------------------------------------------------
-
-
 def cause_of(declared: taxonomy.Taxonomy, row_word: str, file_word: str) -> tuple[str, str]:
     """The cause of one ``needs-genre`` row whose file was read, and its word. Pure.
 
-    A FILE WORD THAT ROUTES IS THE ROW LAGGING ITS FILE, tested first, since
-    ``tag rows`` settles it with no question. Otherwise the word is the first of
-    the file's and the row's that is not blank and not too coarse, so a specific
-    word on either is never hidden behind a catch all on the other.
+    A FILE WORD THAT ROUTES IS THE ROW LAGGING ITS FILE, tested first. Otherwise
+    a specific word on either side is never hidden behind a catch all.
     """
     row_word, file_word = row_word.strip(), file_word.strip()
     if file_word:
@@ -533,15 +475,6 @@ def proposal_of(item: suggest.Item) -> Proposal:
     )
 
 
-def _artist_key(value: str) -> str:
-    return " ".join(value.casefold().split())
-
-
-def _folder_of(recorded: str) -> str:
-    text = recorded.strip()
-    return text.rsplit("/", 1)[0] if "/" in text else ""
-
-
 @dataclass(frozen=True, slots=True)
 class _Live:
     content_id: str
@@ -558,11 +491,8 @@ def neighbour_votes(
 ) -> dict[str, int]:
     """What the artist and folder neighbours of a word's rows say, once each. Pure.
 
-    ``tag suggest``'s weights. A neighbour votes once for the whole word, at the
-    higher of its weights, so an artist with twenty tracks carrying the word does
-    not count each neighbour twenty times. Only a genre adoption files by votes:
-    a neighbour carrying another off taxonomy word, or none, says nothing about
-    which folder this word belongs in.
+    ``tag suggest``'s weights; a neighbour votes once for the whole word at its
+    higher weight, and only for a genre adoption files by.
     """
     ids = set(members)
     by_artist: dict[str, list[str]] = {}
@@ -571,7 +501,7 @@ def neighbour_votes(
         if other.content_id in ids or not suggest.suggestable(declared, other.genre):
             continue
         if other.artist:
-            by_artist.setdefault(_artist_key(other.artist), []).append(other.content_id)
+            by_artist.setdefault(suggest._artist_key(other.artist), []).append(other.content_id)
         if other.folder:
             by_folder.setdefault(other.folder, []).append(other.content_id)
     weights: dict[str, int] = {}
@@ -581,16 +511,12 @@ def neighbour_votes(
             continue
         for other in by_folder.get(row.folder, ()) if row.folder else ():
             weights[other] = max(weights.get(other, 0), suggest.FOLDER_WEIGHT)
-        for other in by_artist.get(_artist_key(row.artist), ()) if row.artist else ():
+        for other in by_artist.get(suggest._artist_key(row.artist), ()) if row.artist else ():
             weights[other] = max(weights.get(other, 0), suggest.ARTIST_WEIGHT)
     votes: Counter[str] = Counter()
     for other, weight in weights.items():
         votes[live[other].genre] += weight
     return dict(votes)
-
-
-def _ordered(votes: Mapping[str, int]) -> tuple[tuple[str, int], ...]:
-    return tuple(sorted(votes.items(), key=lambda entry: (-entry[1], entry[0])))
 
 
 def _edit(plan: Callable[[], word_edit.Edit]) -> word_edit.Edit | word_edit.Refused:
@@ -607,9 +533,8 @@ def _edit(plan: Callable[[], word_edit.Edit]) -> word_edit.Edit | word_edit.Refu
             f"before a word can be answered in it",
         )
     except ValueError as exc:
-        # A WORD THE COPY CANNOT HOLD, a control character the TOML parser
-        # refuses in the edited text (round two), is an answer the verb cannot
-        # write, never a failure of the whole report.
+        # A WORD THE COPY CANNOT HOLD, a control character TOML refuses, is an
+        # answer the verb cannot write, never a failure of the report.
         return word_edit.Refused(
             word_edit.WOULD_NOT_LOAD,
             f"the copy would not load with the word written into it: {exc}",
@@ -640,18 +565,14 @@ def word_of(
 ) -> Word:
     """One word's counts and what answers it, the recommendation first. Pure.
 
-    ``text`` is the active copy, which each answer is planned on by the verb's
-    own edit; None when the library holds none. ``several`` names the rows whose
-    file holds the word beside another genre, ``rows_write`` the file word ``tag
-    rows`` would write onto each row it would write, and ``known`` whether the
+    ``text`` is the active copy, None when there is none; ``rows_write`` the file
+    word ``tag rows`` would write onto each row, and ``known`` whether the
     library has a genre entry for a genre.
 
-    THE RECOMMENDATION. A folder that would file
-    :data:`cratekit.adopt.genres.FOLDER_WORTH` rows or more, the threshold
-    ``report genres`` names a genre at, is recommended; otherwise the alias the
-    neighbours agree on at medium or better; otherwise leaving it for hand
-    tagging, the conservative answer, since a wrong alias retags every file
-    carrying the word.
+    THE RECOMMENDATION: a folder filing
+    :data:`cratekit.adopt.genres.FOLDER_WORTH` rows or more, else the alias the
+    neighbours agree on at medium or better, else leaving it by hand, since a
+    wrong alias retags every file carrying the word.
     """
     writes = rows_write or {}
     spellings = Counter(row.word for row in members)
@@ -673,7 +594,7 @@ def word_of(
         "several": len(carrying) - len(alone),
         "elsewhere": len(members) - len(carrying),
         "on_row": len(on_row),
-        "neighbours": _ordered(votes),
+        "neighbours": suggest._ordered(votes),
     }
     if text is None:
         return Word(
@@ -701,11 +622,9 @@ def word_of(
                 reached=reached(edit.display),
             )
 
-    # THE HEAVIEST GENRE ALONE, since at medium or better it holds 60 percent
-    # of the votes and no second genre can agree as far. One the alias verb
-    # refuses, a style sub or a folder filing by sub, offers no alias at all.
+    # THE HEAVIEST GENRE ALONE: at medium or better no second can agree as far.
     alias = None
-    top = _ordered(votes)[:1]
+    top = suggest._ordered(votes)[:1]
     band = suggest.band_of(top[0][1], sum(votes.values())) if top else suggest.NONE
     edit = (
         _edit(lambda: word_edit.alias(text, spelling, top[0][0]))
@@ -714,8 +633,7 @@ def word_of(
     )
     if isinstance(edit, word_edit.Edit):
         moved = reached(edit.display)
-        # THE FILES AND THE ROWS ARE TWO COUNTS (round two): the alias retags
-        # every file holding the word alone, and a row follows only where the
+        # THE FILES AND THE ROWS ARE TWO COUNTS: a row follows only where the
         # library has a genre entry for the alias's genre.
         detail = (
             f"the neighbours agree at {band}; {len(alone)} file(s) holding the word "
@@ -770,9 +688,7 @@ def word_of(
         rows=0,
     )
     offered = [option for option in (folder, alias) if option is not None]
-    # AN ALIAS THAT MOVES NO ROW IS NEVER RECOMMENDED (round two): following it
-    # retags the files, files nothing, and leaves the word one the folder verb
-    # then refuses.
+    # AN ALIAS THAT MOVES NO ROW IS NEVER RECOMMENDED: it retags and files nothing.
     if folder is not None and folder.rows >= genres_report.FOLDER_WORTH:
         first = folder
     elif alias is not None and alias.rows:
@@ -783,11 +699,6 @@ def word_of(
     return Word(**base, options=(first, *rest))
 
 
-# ---------------------------------------------------------------------------
-# The walk
-# ---------------------------------------------------------------------------
-
-
 def needing(
     cfg: config.Config,
     db: Any,
@@ -795,17 +706,11 @@ def needing(
     *,
     probe: Callable[[Path], adopt_scan.Readability] = adopt_scan.probe_readability,
 ) -> frozenset[str]:
-    """The rows :func:`plan_backlog` would count as the backlog, and nothing else read.
+    """The rows :func:`plan_backlog` would count as the backlog, reading no tag.
 
-    THE SAME CENSUS AND THE SAME FILTER: adoption's ``needs-genre`` rows, live,
-    with a readable file. ``tag campaign`` reads it after each step it applies
-    (U294), so needs genre after a step is measured, not projected (R-1737),
-    and is the count this report would give if run again. Reads no tag.
-
-    THE CENSUS ITSELF HOLDS LIVE AND READABLE: ``scan_rows`` skips a tombstone
-    and files every row whose file it could not read as excluded, never as
-    ``needs-genre``, so the disposition is the whole filter. Checks of their own
-    here were measured dead by U294's mutation table and taken out.
+    ``tag campaign`` reads it after each step (U294), so needs genre after a
+    step is measured, not projected (R-1737). The census already skips a
+    tombstone and an unread file, so the disposition is the whole filter.
     """
     mapped = {str(row.ID): row for row in db.get_content()}
     census = rows.scanned(cfg, mapped, declared, probe)
@@ -828,15 +733,9 @@ def plan_backlog(
 ) -> Backlog:
     """Sort every ``needs-genre`` row into one cause and read each verb's plan.
 
-    THE POPULATION IS ADOPTION'S, its census over the same rows, so the count
-    here is the count ``adopt scan`` reads as needs genre. A tombstone is not
-    a row, and a row whose file is not here is counted in ``unread``.
-
-    ``text`` is the active taxonomy copy the words' answers are planned on.
-
-    NOTHING IS PENDING ON THE HANDLE WHEN THIS RETURNS, for the reason
-    :func:`cratekit.tagging.rows.plan_rows` gives: each plan it reads leaves
-    none either, and a genre entry is only looked up.
+    THE POPULATION IS ADOPTION'S census, so the count is ``adopt scan``'s.
+    ``text`` is the active copy the words' answers are planned on. Nothing is
+    pending on the handle when this returns.
     """
     mapped = {str(row.ID): row for row in db.get_content()}
     live: dict[str, _Live] = {}
@@ -846,7 +745,7 @@ def plan_backlog(
         live[content_id] = _Live(
             content_id=content_id,
             artist=str(getattr(row, "ArtistName", "") or "").strip(),
-            folder=_folder_of(str(getattr(row, "FolderPath", "") or "")),
+            folder=suggest._folder_of(str(getattr(row, "FolderPath", "") or "")),
             genre=collection.genre_of(row).strip(),
             title=str(getattr(row, "Title", "") or "").strip(),
         )
@@ -857,8 +756,7 @@ def plan_backlog(
         if track.content_id not in live:
             continue
         if track.readability is adopt_scan.Readability.NOT_A_PATH:
-            # NO FILE AT ALL, a streaming row or another host's: no folder is
-            # ever filled from it, so it is no file nobody read.
+            # NO FILE AT ALL, a streaming row or another host's.
             continue
         if track.readability is not adopt_scan.Readability.READABLE or track.path is None:
             unread[rows._PROBED.get(track.readability, rows.FILE_UNREADABLE)] += 1
@@ -868,8 +766,7 @@ def plan_backlog(
         word, outcome = rows._file_word(Path(track.path))
         needing.append((track, word, outcome))
         if word and not track.genre.strip():
-            # IT VOTES WITH ITS FILE'S WORD, as ``tag suggest`` votes it: the
-            # row lags its file, and the file is the newer of the two (round one).
+            # IT VOTES WITH ITS FILE'S WORD, as ``tag suggest`` votes it.
             live[track.content_id] = replace(live[track.content_id], genre=word)
     if progress is not None:
         progress(f"census: {len(needing)} of {len(live)} row(s) need a genre")
@@ -881,9 +778,8 @@ def plan_backlog(
     )
     by_suggest = {item.content_id: item for item in suggested.items}
     needing_ids = {track.content_id for track, _word, _outcome in needing}
-    # A ROW TAG ROWS WOULD MOVE INTO NEEDS GENRE: a row adoption files today
-    # whose file carries a word it files nowhere (round one). The campaign's
-    # first step is that verb, so the projection adds them back.
+    # A ROW TAG ROWS WOULD MOVE INTO NEEDS GENRE, whose file carries a word
+    # filed nowhere; the projection adds them back.
     joining = tuple(
         sorted(
             item.content_id
@@ -968,8 +864,7 @@ def plan_backlog(
     words: list[Word] = []
     changes: dict[str, tuple[str, str, str]] = {}
     for folded, members in groups.items():
-        # ASKED ONLY OF A FILE CARRYING THE WORD, since the second open is
-        # paid per row and only a file an alias would retag can hold it twice.
+        # ASKED ONLY OF A FILE CARRYING THE WORD, since the second open is paid per row.
         several = frozenset(
             row.content_id
             for row in members
