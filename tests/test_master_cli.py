@@ -427,9 +427,7 @@ def _items(job_id: str) -> tuple[jobs.Item, ...]:
 
 
 def test_queueing_a_recording_gives_the_driver_one_item_to_claim(configured):
-    """Without this the queue holds a job with nothing in it, and drive succeeds over work it never
-    did.
-    """
+    """Without this the queue holds a job with nothing in it."""
     source = configured.library.root / "REC001.wav"
     job_id = _queued(source)
 
