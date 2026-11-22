@@ -99,16 +99,14 @@ def _said(envelope: dict) -> tuple[dict, list]:
 
 
 def test_the_report_opens_the_database_once_and_closes_it_once(world, monkeypatch):
-    opens = Opens(monkeypatch)
-    _report()
-    assert len(opens.opened) == 1, [caller for caller, _w, _db in opens.opened]
-    ((caller, write, db),) = opens.opened
-    assert caller == "handle" and write is False
-    assert opens.closed == [db]
-
-
-def test_the_report_says_exactly_what_it_said_with_an_open_per_step(world, monkeypatch):
-    shared = _report()
+    """And says exactly what it said with an open per step."""
+    with monkeypatch.context() as patched:
+        opens = Opens(patched)
+        shared = _report()
+        assert len(opens.opened) == 1, [caller for caller, _w, _db in opens.opened]
+        ((caller, write, db),) = opens.opened
+        assert caller == "handle" and write is False
+        assert opens.closed == [db]
     with monkeypatch.context() as patched:
         opens = Opens(patched)
         _without_sharing(patched)
@@ -248,6 +246,12 @@ def test_a_selection_that_reads_no_database_opens_none(world, monkeypatch):
 # The shared read alone
 
 
+@pytest.fixture
+def cfg(machine):
+    """A configured disposable database and nothing in it of the world's."""
+    return machine
+
+
 def _first_playlist(db) -> Any:
     return sorted(db.get_playlist(), key=lambda row: str(row.ID))[0]
 
@@ -265,8 +269,7 @@ def _probe(cfg) -> bool:
         conn.close()
 
 
-def test_a_shared_read_opens_at_its_first_read_and_once(world, monkeypatch):
-    cfg = world[0]
+def test_a_shared_read_opens_at_its_first_read_and_once(cfg, monkeypatch):
     opens = Opens(monkeypatch)
     shared = rb_writer.SharedRead(cfg)
     assert opens.opened == []
@@ -281,8 +284,7 @@ def test_a_shared_read_opens_at_its_first_read_and_once(world, monkeypatch):
     assert opens.closed == [first]
 
 
-def test_a_shared_read_asks_again_after_an_open_that_refused(world, monkeypatch):
-    cfg = world[0]
+def test_a_shared_read_asks_again_after_an_open_that_refused(cfg, monkeypatch):
     real = rb_writer.open_db
     attempts: list[int] = []
 
@@ -344,8 +346,7 @@ def test_a_released_handle_holds_no_lock_while_the_report_waits(world):
         shared.close()
 
 
-def test_a_shared_read_refuses_a_handle_not_its_own_and_a_read_after_close(world):
-    cfg = world[0]
+def test_a_shared_read_refuses_a_handle_not_its_own_and_a_read_after_close(cfg):
     shared = rb_writer.SharedRead(cfg)
     other = rb_writer.open_db(cfg.library.db_path, cfg=cfg)
     try:
@@ -361,17 +362,15 @@ def test_a_shared_read_refuses_a_handle_not_its_own_and_a_read_after_close(world
     assert after.value.cause.reason == "internal-error"
 
 
-def test_a_reader_with_no_shared_read_closes_its_own_handle(world, monkeypatch):
-    cfg = world[0]
+def test_a_reader_with_no_shared_read_closes_its_own_handle(cfg, monkeypatch):
     opens = Opens(monkeypatch)
     db = rb_writer.open_db(cfg.library.db_path, cfg=cfg)
     rb_writer.done_reading(db, None)
     assert opens.closed == [db]
 
 
-def test_the_inspiration_opener_refuses_to_write_through_a_shared_read(world):
+def test_the_inspiration_opener_refuses_to_write_through_a_shared_read(cfg):
     from cratekit.export import set_cli
-    cfg = world[0]
     shared = rb_writer.SharedRead(cfg)
     try:
         with pytest.raises(CratekitError) as refused:

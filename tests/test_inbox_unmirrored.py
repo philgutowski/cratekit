@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -55,34 +55,42 @@ KINDS = {
 }
 
 
-def _smart(cfg, name: str, *, under: str) -> str:
-    handle = _open(cfg)
-    try:
-        made = handle.create_playlist(name, parent=handle.get_playlist(ID=under))
-        made.Attribute = 4
-        handle.session.commit()
-        return str(made.ID)
-    finally:
-        rb_writer.close_db(handle)
-
-
 @pytest.fixture
 def brief(native_library):
-    """The brief's INBOX: a dated batch, Old, Analyze, a folder, a label playlist, a smart one."""
+    """The brief's INBOX: a dated batch, Old, Analyze, a folder, a label playlist, a smart one.
+
+    Made in one open of the database, each node as ``_node`` makes it.
+    """
     cfg, root_id = native_library
-    old_id = _node(cfg, OLD, under=root_id, folder=True)
-    ids = {
-        "batch": _node(cfg, BATCH, under=root_id, age=10, tracks=("t1", "t2"), batch_folder=True),
-        "old batch": _node(
-            cfg, "2026-05-01 Tidal playlists", under=old_id, age=150, tracks=("t6",),
-            batch_folder=True,
-        ),
-        "analyze": _node(cfg, native.ANALYZE, under=root_id, tracks=("t3",)),
-        "folder": _node(cfg, FOLDER, under=root_id, folder=True),
+    ids: dict[str, str] = {}
+    handle = _open(cfg)
+    try:
+        def make(key, name, under, age=None, tracks=(), *, folder=False, smart=False):
+            parent = handle.get_playlist(ID=under)
+            made = (handle.create_playlist_folder if folder else handle.create_playlist)(
+                name, parent=parent
+            )
+            if age is not None:
+                made.created_at = datetime.combine(TODAY - timedelta(days=age), datetime.min.time())
+            for content_id in tracks:
+                handle.add_to_playlist(made, content_id)
+            if smart:
+                made.Attribute = 4
+            handle.session.commit()
+            ids[key] = str(made.ID)
+
+        make("old", OLD, root_id, folder=True)
+        make("batch", BATCH, root_id, 10, ("t1", "t2"))
+        make("old batch", "2026-05-01 Tidal playlists", ids.pop("old"), 150, ("t6",))
+        make("analyze", native.ANALYZE, root_id, tracks=("t3",))
+        make("folder", FOLDER, root_id, folder=True)
         # Dated, three rows, and no batch folder or record: no rule recognises it.
-        "labels": _node(cfg, LABELS, under=root_id, age=5, tracks=("t3", "t4", "t5")),
-        "smart": _smart(cfg, SMART, under=root_id),
-    }
+        make("labels", LABELS, root_id, 5, ("t3", "t4", "t5"))
+        make("smart", SMART, root_id, smart=True)
+    finally:
+        rb_writer.close_db(handle)
+    for batch in (BATCH, "2026-05-01 Tidal playlists"):
+        (Path(cfg.library.root) / cfg.library.music_dir / batch).mkdir(parents=True)
     return cfg, root_id, ids
 
 
@@ -123,9 +131,7 @@ def _inbox(cfg) -> mirror.Folder:
     return read
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The classifier names every node it does not take as a batch
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_live_batches_name_every_other_node_under_inbox_with_its_kind(brief):
@@ -294,9 +300,7 @@ def test_a_folder_named_old_inside_old_is_a_folder_and_listed_as_yours(brief):
     assert [one["kind"] for one in area.yours if one["name"] == OLD] == [rotate.LEFT_FOLDER]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The mirror's INBOX folder and the rotation's plan name the same nodes
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_inbox_folder_mirrors_the_batch_and_names_the_other_nodes(brief):
@@ -377,9 +381,7 @@ def test_the_organize_rotation_step_does_not_list_old_as_yours(brief):
     assert {FOLDER, LABELS, SMART, native.ANALYZE} <= yours
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The organize step names them on its plan and its line
-# ═══════════════════════════════════════════════════════════════════════════
 
 UNMIRRORED = (
     (f"{LABELS} (36 row(s)), not recognised as a batch", "no landing record names it"),
@@ -462,9 +464,7 @@ def test_a_genre_folder_names_no_unmirrored_node(installed, monkeypatch):
     assert "not mirrored" not in step.detail and _named(step) == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. The frozen plan carries them to the run that applies
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_frozen_plan_carries_the_unmirrored_nodes(installed):
