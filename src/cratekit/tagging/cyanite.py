@@ -43,7 +43,9 @@ row and the run goes on.
 THE TABLE IS WRITTEN ROW BY ROW, a file known by the SHA-256 of its audio, so
 a run cut short keeps what it paid for and a resumed run uploads only what it
 has no answer for. A made track's row is written ahead of the wait, so a
-resumed run asks about it again without a second upload.
+resumed run asks about it again without a second upload. What is not kept is
+a run killed between Cyanite making the track and its answer reaching here (a
+residual).
 
 Layer: modules.
 """

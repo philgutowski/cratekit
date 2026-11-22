@@ -14,6 +14,7 @@ the injected fetch seam.
 
 from __future__ import annotations
 
+import functools
 import random
 from pathlib import Path
 
@@ -1542,31 +1543,25 @@ def _rendered(chance) -> tuple[str, str, str, str]:
     return artist, searched, title, album
 
 
-def test_every_name_the_naming_verb_renders_finds_its_own_row_and_no_other():
+def test_every_name_the_naming_verb_renders_finds_its_own_row_and_no_other(monkeypatch):
     """The card's property: names rendered from the naming verb's own grammar,
     with random heads, markers, credits, titles, versions, albums and track
     numbers, each match their own title's row however a catalogue writes its
     version, and no other title's, nor the artist's self titled row, nor the
-    album, nor a version alone."""
+    album, nor a version alone. Through the shipped matcher, with its two pure
+    readers remembered so each side is read once (U306)."""
+    monkeypatch.setattr(titles, "read_file", functools.lru_cache(maxsize=None)(titles.read_file))
+    monkeypatch.setattr(titles, "read_row", functools.lru_cache(maxsize=None)(titles.read_row))
     chance = random.Random(791)
-    rows: dict[str, titles.Row] = {}
-
-    def matched(file: titles.FileName, row: str) -> bool:
-        # ``searchers._title_matches`` with each side read once: both reads are pure.
-        if row not in rows:
-            rows[row] = titles.read_row(row)
-        return titles.matches(file, rows[row])
-
     for _ in range(3000):
         artist, searched, title, album = _rendered(chance)
-        file = titles.read_file(searched, artist)
         for version in ROW_VERSIONS:
-            assert matched(file, title + version), (searched, title + version)
+            assert searchers._title_matches(searched, title + version, artist=artist), (searched, title + version)
         others = [other for other in GENERATED_TITLES if other != title]
         wrong = [*(other + chance.choice(ROW_VERSIONS) for other in others), album, "Original Mix", "Extended Mix"]
         wrong += [name for name in ("Bernard Badie", "Tide", "Black Madonna", "Ame") if name not in title]
         for row in wrong:
-            assert not matched(file, row), (searched, row)
+            assert not searchers._title_matches(searched, row, artist=artist), (searched, row)
 
 
 #: (artist tag, file title, a row): a whole name is read as written, never shed

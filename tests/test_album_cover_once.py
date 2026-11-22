@@ -356,7 +356,9 @@ def test_an_empty_answer_handed_straight_in_is_not_remembered():
 
 
 def test_two_pictures_of_one_length_are_encoded_apart(encodes):
-    """The digest is what tells two pictures apart, never their length alone."""
+    """The digest is what tells two pictures apart, never their length alone.
+    A JPEG decodes with bytes after its end marker, so the shorter of two
+    covers is padded to the longer one's length."""
     one, two = cover(), other_cover()
     longer = max(len(one), len(two))
     one, two = (picture + b"\0" * (longer - len(picture)) for picture in (one, two))
