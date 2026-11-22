@@ -131,3 +131,16 @@ tests = ["tests/test_organize_mirror.py"]
 old = '''from cratekit.sync.pair_model import _scope_account as _scope_account  # noqa: PLC0414
 '''
 new = ""
+
+[[rows]]
+id = "S14_playlists_still_answers_account_playlist"
+description = "sync.playlists.__getattr__: AccountPlaylist, which organize's suite reads there, is no longer answered (round one's finding)"
+file = "src/cratekit/sync/playlists.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_inbox.py"]
+old = '''    if name == "AccountPlaylist":
+        from cratekit.label.catalogue import AccountPlaylist
+
+        return AccountPlaylist
+    raise'''
+new = '''    raise'''
