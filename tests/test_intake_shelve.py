@@ -99,6 +99,24 @@ def _records(cfg: config.Config, workflow: str) -> list[session.SessionRecord]:
     return [record for record in session.records(cfg) if record.workflow == workflow]
 
 
+def _plant_ghost_row(cfg: config.Config, path: Path) -> None:
+    """Point one row rekordbox made at ``path``, a folder nothing on disk holds."""
+    conn = sqlite3.connect(cfg.library.db_path)
+    try:
+        conn.execute(
+            "UPDATE djmdContent SET FolderPath = ? WHERE ID = (SELECT MIN(ID) FROM djmdContent "
+            "WHERE Title NOT LIKE '01A - 124 - %')",
+            (str(path),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _open(cfg: config.Config):
+    return rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
+
+
 def test_a_path_write_is_refused_by_the_whitelist_unless_the_shelve_policy_is_registered():
     dirty = [(rb_writer.CONTENT_TABLE, [rb_writer.FOLDER_PATH_COLUMN])]
     refused = rb_writer.guard_violations([], dirty, [])
@@ -148,14 +166,22 @@ def test_filed_name_is_the_hand_convention_zero_padded():
     assert shelve.filed_name(date(2025, 12, 19), "labels") == "12_19_25 labels"
 
 
-def test_the_report_names_the_target_every_row_and_a_digest_and_moves_nothing(
-    native_library, silence
+def test_every_refusal_and_failure_leaves_the_batch_and_its_rows_as_they_were(
+    native_library, silence, monkeypatch
 ):
+    from cratekit.core import analysis_store
+    from cratekit.core.cause import CratekitError
+    from cratekit.intake import landing
+
     cfg, _root = native_library
     before = _land_three(cfg, silence)
 
-    code, envelope = drive(_shelve("--report", BATCH))
+    def untouched() -> None:
+        assert sorted(p.name for p in (_music(cfg) / BATCH).iterdir()) == list(FILES)
+        assert _rows(cfg) == before
 
+    # THE REPORT names the target, every row and a digest, and moves nothing.
+    code, envelope = drive(_shelve("--report", BATCH))
     assert code == int(ExitCode.OK), envelope
     (item,) = envelope["data"]["items"]
     assert item["action"] == shelve_cli.SHELVE
@@ -167,40 +193,16 @@ def test_the_report_names_the_target_every_row_and_a_digest_and_moves_nothing(
         assert row["to"] == str(_processed(cfg) / "2026" / FILED / row["file"])
     assert envelope["data"]["totals"] == {"count": 1, "batches": 1, "rows": 3, "skipped": 0}
     assert len(envelope["data"]["digest"]) == 16
-    # Nothing moved, nothing written.
-    assert sorted(p.name for p in (_music(cfg) / BATCH).iterdir()) == list(FILES)
+    untouched()
     assert not _processed(cfg).exists()
-    assert _rows(cfg) == before
     assert _records(cfg, shelve.WORKFLOW) == []
 
-
-def test_a_batch_whose_file_has_no_row_is_refused_whole_and_nothing_moves(native_library, silence):
-    cfg, _root = native_library
-    before = _land_three(cfg, silence)
-    shutil.copyfile(silence, _music(cfg) / BATCH / "Unimported.flac")
-
-    code, envelope = drive(_shelve(BATCH))
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert "Unimported.flac" in envelope["cause"]["message"]
-    assert "not been imported" in envelope["cause"]["message"]
-    assert (_music(cfg) / BATCH / "Unimported.flac").exists()
-    assert _rows(cfg) == before
-    assert not _processed(cfg).exists()
-
-
-def test_a_folder_with_a_subfolder_and_a_name_of_neither_shape_are_skipped_under_all(
-    native_library, silence
-):
-    cfg, _root = native_library
-    _land_three(cfg, silence)
+    # UNDER --all, A FOLDER WITH A SUBFOLDER AND A NAME OF NEITHER SHAPE ARE SKIPPED.
     (_music(cfg) / "rekordbox_djoid").mkdir()
     (_music(cfg) / "rekordbox_djoid" / "export.xml").write_text("<x/>")
     (_music(cfg) / "2026-09-28 Nested").mkdir()
     (_music(cfg) / "2026-09-28 Nested" / "inner").mkdir()
-
     code, envelope = drive(_shelve("--report", "--all"))
-
     assert code == int(ExitCode.OK), envelope
     by_batch = {item["batch"]: item for item in envelope["data"]["items"]}
     assert by_batch[BATCH]["action"] == shelve_cli.SHELVE
@@ -210,6 +212,95 @@ def test_a_folder_with_a_subfolder_and_a_name_of_neither_shape_are_skipped_under
     assert "subfolder" in by_batch["2026-09-28 Nested"]["why"]
     assert envelope["data"]["totals"]["skipped"] == 2
     assert {w["code"] for w in envelope["warnings"]} == {shelve_cli.BATCH_SKIPPED}
+    untouched()
+
+    # THE GATE TAKES NO INLINE ANSWER.
+    code, envelope = drive(["-d", f"{GATE}=apply", *_shelve(BATCH)])
+    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    untouched()
+
+    # AN ABORT moves nothing and writes nothing.
+    code, envelope, _ = _gated(_shelve(BATCH), gate=GATE, answer="abort")
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    untouched()
+    assert _records(cfg, shelve.WORKFLOW) == []
+
+    # A SUBJECT WITH A PATH PART is refused.
+    code, envelope = drive(_shelve("--as", "Tidal/Favorites", BATCH))
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["remediation"]["remedy"] == "fix-command-line"
+    untouched()
+
+    # A RUNNING REKORDBOX refuses before the plan is shown.
+    running = rb_writer.rekordbox_running
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
+    code, envelope = drive(_shelve(BATCH))
+    assert code != int(ExitCode.OK) and code != int(ExitCode.DECISION_REQUIRED), envelope
+    untouched()
+    monkeypatch.setattr(rb_writer, "rekordbox_running", running)
+
+    # A PROCESSED TREE ON ANOTHER DEVICE refuses before any plan.
+    device_of, music = landing._device_of, _music(cfg)
+    monkeypatch.setattr(landing, "_device_of", lambda path: 1 if Path(path) == music else 2)
+    code, envelope = drive(_shelve("--report", BATCH))
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert "different device" in envelope["cause"]["message"]
+    assert envelope["cause"]["remediation"]["remedy"] == "fix-config-values"
+    assert _rows(cfg) == before
+    monkeypatch.setattr(landing, "_device_of", device_of)
+
+    # A FILE WITH NO ROW refuses the batch whole.
+    unimported = _music(cfg) / BATCH / "Unimported.flac"
+    shutil.copyfile(silence, unimported)
+    code, envelope = drive(_shelve(BATCH))
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert "Unimported.flac" in envelope["cause"]["message"]
+    assert "not been imported" in envelope["cause"]["message"]
+    assert unimported.exists() and _rows(cfg) == before
+    assert not _processed(cfg).exists()
+    unimported.unlink()
+
+    # A TARGET MADE AFTER THE APPROVAL is stale through the verb.
+    code, refused = drive(_shelve(BATCH))
+    run_id = refused["run_id"]
+    drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
+    target = _processed(cfg) / "2026" / FILED
+    target.mkdir(parents=True)
+    code, envelope = drive(["--run", run_id, *_shelve(BATCH)])
+    assert code == int(ExitCode.DECISION_STALE), envelope
+    untouched()
+    assert _records(cfg, shelve.WORKFLOW) == []
+    target.rmdir()
+
+    # And THE ENGINE refuses one made between its plan and its apply, in its own words.
+    db = _open(cfg)
+    try:
+        planned = shelve.plan(cfg, db, [BATCH])
+        target.mkdir()
+        with pytest.raises(CratekitError) as caught:
+            shelve.apply(cfg, db, planned, analysis_roots=analysis_store.watch_roots(cfg))
+    finally:
+        rb_writer.close_db(db)
+    assert caught.value.cause.reason == "decision-stale"
+    assert "could not be written" not in caught.value.cause.message
+    assert "exists now" in caught.value.cause.message
+    untouched()
+    target.rmdir()
+
+    # A COMMIT THAT FAILS AFTER THE RENAME puts the folder back.
+    def refuse_commit(db, **kwargs):
+        raise RuntimeError("the disk went away")
+
+    monkeypatch.setattr(rb_writer, "commit_guarded", refuse_commit)
+    code, acted, _refused = _two_acts_of(_shelve(BATCH), GATE)
+    assert code == int(ExitCode.INTERNAL), acted
+    cause = acted["cause"]
+    assert "renamed back" in cause["message"]
+    assert cause["detail"]["renamed_back"] == [str(_music(cfg) / BATCH)]
+    assert cause["detail"]["not_renamed_back"] == []
+    untouched()
+    assert not target.exists()
 
 
 def test_a_plan_of_nothing_refuses_before_a_gate_is_asked(native_library):
@@ -261,16 +352,27 @@ def test_the_command_line_refusals_name_the_flag(native_library):
         assert envelope["cause"]["remediation"]["remedy"] == "fix-command-line", (args, envelope)
 
 
-def test_apply_moves_the_folder_rewrites_the_paths_and_keeps_every_other_column(
+def test_apply_moves_the_folder_rewrites_the_paths_keeps_the_rest_and_the_name_stays_taken(
     native_library, silence
 ):
     cfg, _root = native_library
     before = _land_three(cfg, silence)
     assert all(Path(row[1]).parent == _music(cfg) / BATCH for row in before)
+    assert batch_name.taken(cfg, BATCH)
+    # NOTHING UNDER THE PROCESSED TREE IS TOUCHED, and a row under a folder
+    # differing only in case is not this plan's business.
+    kept = _processed(cfg) / "2025" / "10_10_25"
+    kept.mkdir(parents=True)
+    (kept / "old.flac").write_bytes(b"")
+    stamp = os.stat(kept).st_mtime_ns
+    _plant_ghost_row(cfg, _processed(cfg) / "2026" / FILED.upper() / "ghost.flac")
 
-    code, acted, refused = _two_acts_of(_shelve(BATCH), GATE)
+    # A BATCH NAMED TWICE is planned once.
+    code, acted, refused = _two_acts_of(_shelve(BATCH, BATCH), GATE)
 
     assert code == int(ExitCode.OK), acted
+    assert acted["data"]["totals"]["batches"] == 1
+    assert not (_processed(cfg) / "2026" / f"{FILED} 2").exists()
     assert refused["cause"]["detail"]["shown"]["digest"] == acted["data"]["digest"]
     target = _processed(cfg) / "2026" / FILED
     assert sorted(p.name for p in target.iterdir()) == list(FILES)
@@ -285,6 +387,7 @@ def test_apply_moves_the_folder_rewrites_the_paths_and_keeps_every_other_column(
 
     (item,) = acted["data"]["items"]
     assert item["action"] == shelve_cli.SHELVED
+    assert item["to"] == str(target)
     assert [row["to"] for row in item["rows"]] == [str(target / f) for f in FILES]
     assert acted["data"]["totals"]["shelved"] == 1 and acted["data"]["totals"]["rows"] == 3
 
@@ -295,94 +398,21 @@ def test_apply_moves_the_folder_rewrites_the_paths_and_keeps_every_other_column(
         rb_writer.CONTENT_TABLE: 3
     }
     assert record.snapshot_path, "the capture the commit happened behind is not attached"
+    assert (kept / "old.flac").exists() and os.stat(kept).st_mtime_ns == stamp
+    assert sorted(p.name for p in _processed(cfg).iterdir()) == ["2025", "2026"]
+    # THE GRID SUITES STILL SEE NO TEMPO on the moved rows.
+    rows = _query(cfg, "SELECT BPM FROM djmdContent WHERE Title LIKE '01A - 124 - %'")
+    assert rows and all(bpm in (None, 0) for (bpm,) in rows)
 
-
-def test_a_shelved_batch_name_stays_taken_so_a_landing_that_day_takes_the_next(
-    native_library, silence
-):
-    cfg, _root = native_library
-    _land_three(cfg, silence)
-    assert batch_name.taken(cfg, BATCH)
-    code, acted, _ = _two_acts_of(_shelve(BATCH), GATE)
-    assert code == int(ExitCode.OK), acted
-    assert not (_music(cfg) / BATCH).exists()
-
+    # A SHELVED BATCH NAME STAYS TAKEN, so a landing that day takes the next.
     assert batch_name.taken(cfg, BATCH), "the folder is gone and the name reads free"
     assert batch_name.free(cfg, BATCH) == f"{BATCH} 2"
     assert not batch_name.taken(cfg, "2026-09-30 Favorites")
-
-
-def test_an_abort_moves_nothing_and_writes_nothing(native_library, silence):
-    cfg, _root = native_library
-    before = _land_three(cfg, silence)
-    code, refused = drive(_shelve(BATCH))
-    run_id = refused["run_id"]
-    drive(["run", "decide", run_id, GATE, "abort", "--actor", "a-person"])
-    code, envelope = drive(["--run", run_id, *_shelve(BATCH)])
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["outcome"] == "no_op"
-    assert (_music(cfg) / BATCH).is_dir() and _rows(cfg) == before
-    assert _records(cfg, shelve.WORKFLOW) == []
-
-
-def test_the_gate_takes_no_inline_answer(native_library, silence):
-    cfg, _root = native_library
-    before = _land_three(cfg, silence)
-    code, envelope = drive(["-d", f"{GATE}=apply", *_shelve(BATCH)])
-    assert code == int(ExitCode.DECISION_REQUIRED), envelope
-    assert (_music(cfg) / BATCH).is_dir() and _rows(cfg) == before
-
-
-def test_a_target_made_after_the_plan_is_stale_and_the_folder_stays(native_library, silence):
-    cfg, _root = native_library
-    before = _land_three(cfg, silence)
-    code, refused = drive(_shelve(BATCH))
-    run_id = refused["run_id"]
-    drive(["run", "decide", run_id, GATE, "apply", "--actor", "a-person"])
-    (_processed(cfg) / "2026" / FILED).mkdir(parents=True)
-
-    code, envelope = drive(["--run", run_id, *_shelve(BATCH)])
-
-    assert code == int(ExitCode.DECISION_STALE), envelope
-    assert (_music(cfg) / BATCH).is_dir()
-    assert sorted(p.name for p in (_music(cfg) / BATCH).iterdir()) == list(FILES)
-    assert _rows(cfg) == before
-    assert _records(cfg, shelve.WORKFLOW) == []
-
-
-def test_a_commit_that_fails_after_the_rename_puts_the_folder_back(
-    native_library, silence, monkeypatch
-):
-    cfg, _root = native_library
-    before = _land_three(cfg, silence)
-
-    def refuse_commit(db, **kwargs):
-        raise RuntimeError("the disk went away")
-
-    monkeypatch.setattr(rb_writer, "commit_guarded", refuse_commit)
-
-    code, acted, _refused = _two_acts_of(_shelve(BATCH), GATE)
-
-    assert code == int(ExitCode.INTERNAL), acted
-    cause = acted["cause"]
-    assert "renamed back" in cause["message"]
-    assert cause["detail"]["renamed_back"] == [str(_music(cfg) / BATCH)]
-    assert cause["detail"]["not_renamed_back"] == []
-    assert (_music(cfg) / BATCH).is_dir()
-    assert sorted(p.name for p in (_music(cfg) / BATCH).iterdir()) == list(FILES)
-    assert not (_processed(cfg) / "2026" / FILED).exists()
-    assert _rows(cfg) == before
-
-
-def test_a_running_rekordbox_refuses_before_the_plan_is_shown(native_library, silence, monkeypatch):
-    cfg, _root = native_library
-    before = _land_three(cfg, silence)
-    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
-
-    code, envelope = drive(_shelve(BATCH))
-
-    assert code != int(ExitCode.OK) and code != int(ExitCode.DECISION_REQUIRED), envelope
-    assert (_music(cfg) / BATCH).is_dir() and _rows(cfg) == before
+    # AN UNREADABLE SESSION RECORD makes the name rule refuse rather than read a name free.
+    (session.log_dir(cfg) / "2026-10-26T00-00-00Z-dead.json").write_text("{not json")
+    with pytest.raises(Exception) as caught:
+        batch_name.free(cfg, BATCH)
+    assert "cannot read" in str(caught.value)
 
 
 @pytest.mark.parametrize(
@@ -410,36 +440,6 @@ def test_a_run_identifier_named_batch_files_as_downloads_or_as_the_subject_given
     assert item["to"] == str(_processed(cfg) / "2026" / "09_23_26 Bandcamp")
 
 
-def test_nothing_under_the_processed_tree_is_touched_by_a_shelve(native_library, silence):
-    cfg, _root = native_library
-    _land_three(cfg, silence)
-    kept = _processed(cfg) / "2025" / "10_10_25"
-    kept.mkdir(parents=True)
-    (kept / "old.flac").write_bytes(b"")
-    stamp = os.stat(kept).st_mtime_ns
-
-    code, acted, _ = _two_acts_of(_shelve(BATCH), GATE)
-
-    assert code == int(ExitCode.OK), acted
-    assert (kept / "old.flac").exists() and os.stat(kept).st_mtime_ns == stamp
-    assert sorted(p.name for p in _processed(cfg).iterdir()) == ["2025", "2026"]
-
-
-def test_the_grid_suites_still_see_no_tempo_on_the_moved_rows(native_library, silence):
-    cfg, _root = native_library
-    _land_three(cfg, silence)
-    code, acted, _ = _two_acts_of(_shelve(BATCH), GATE)
-    assert code == int(ExitCode.OK), acted
-    conn = sqlite3.connect(cfg.library.db_path)
-    try:
-        rows = conn.execute(
-            "SELECT BPM FROM djmdContent WHERE Title LIKE '01A - 124 - %'"
-        ).fetchall()
-    finally:
-        conn.close()
-    assert rows and all(bpm in (None, 0) for (bpm,) in rows)
-
-
 def test_a_library_whose_drive_was_renamed_stores_and_confines_under_the_base_drive(
     native_library, silence, monkeypatch
 ):
@@ -462,107 +462,17 @@ def test_a_library_whose_drive_was_renamed_stores_and_confines_under_the_base_dr
         assert now[2:] == was[2:]
 
 
-def test_a_target_free_on_disk_but_holding_rows_in_the_collection_is_passed_over(
-    native_library, silence
+def test_a_row_under_the_target_refuses_the_commit_and_the_free_target_rule_passes_it_over(
+    native_library, silence, monkeypatch
 ):
-    """A folder filed by hand and moved since leaves rows stored under its name
-    with nothing on disk; a target chosen by disk alone would put this batch's
-    rows beside them and the confinement check would refuse its own commit."""
+    """A folder filed by hand and moved since leaves rows under its name with
+    nothing on disk; the confinement check refuses a commit beside them, and
+    the free target rule is what keeps a plan from choosing it."""
     cfg, _root = native_library
-    _land_three(cfg, silence)
+    before = _land_three(cfg, silence)
     ghost = _processed(cfg) / "2026" / FILED
-    conn = sqlite3.connect(cfg.library.db_path)
-    try:
-        conn.execute(
-            "UPDATE djmdContent SET FolderPath = ? WHERE ID = (SELECT MIN(ID) FROM djmdContent "
-            "WHERE Title NOT LIKE '01A - 124 - %')",
-            (str(ghost / "ghost.flac"),),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    _plant_ghost_row(cfg, ghost / "ghost.flac")
     assert not ghost.exists()
-
-    code, acted, _ = _two_acts_of(_shelve(BATCH), GATE)
-
-    assert code == int(ExitCode.OK), acted
-    (item,) = acted["data"]["items"]
-    assert item["to"] == str(_processed(cfg) / "2026" / f"{FILED} 2")
-    assert (_processed(cfg) / "2026" / f"{FILED} 2").is_dir()
-
-
-def test_a_subject_with_a_path_part_is_refused(native_library, silence):
-    cfg, _root = native_library
-    before = _land_three(cfg, silence)
-    code, envelope = drive(_shelve("--as", "Tidal/Favorites", BATCH))
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["remediation"]["remedy"] == "fix-command-line"
-    assert (_music(cfg) / BATCH).is_dir() and _rows(cfg) == before
-
-
-def test_a_batch_named_twice_is_planned_once(native_library, silence):
-    cfg, _root = native_library
-    _land_three(cfg, silence)
-    code, acted, _ = _two_acts_of(_shelve(BATCH, BATCH), GATE)
-    assert code == int(ExitCode.OK), acted
-    assert acted["data"]["totals"]["batches"] == 1
-    assert (_processed(cfg) / "2026" / FILED).is_dir()
-    assert not (_processed(cfg) / "2026" / f"{FILED} 2").exists()
-
-
-def test_a_processed_tree_on_another_device_refuses_before_any_plan(
-    native_library, silence, monkeypatch
-):
-    from cratekit.intake import landing
-
-    cfg, _root = native_library
-    before = _land_three(cfg, silence)
-    music = _music(cfg)
-    monkeypatch.setattr(landing, "_device_of", lambda path: 1 if Path(path) == music else 2)
-    code, envelope = drive(_shelve("--report", BATCH))
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert "different device" in envelope["cause"]["message"]
-    assert envelope["cause"]["remediation"]["remedy"] == "fix-config-values"
-    assert _rows(cfg) == before
-
-
-def test_an_unreadable_session_record_makes_the_name_rule_refuse_rather_than_read_a_name_free(
-    native_library, silence
-):
-    cfg, _root = native_library
-    _land_three(cfg, silence)
-    code, acted, _ = _two_acts_of(_shelve(BATCH), GATE)
-    assert code == int(ExitCode.OK), acted
-    assert batch_name.taken(cfg, BATCH)
-    (session.log_dir(cfg) / "2026-10-26T00-00-00Z-dead.json").write_text("{not json")
-
-    with pytest.raises(Exception) as caught:
-        batch_name.free(cfg, BATCH)
-    assert "cannot read" in str(caught.value)
-
-
-def _plant_ghost_row(cfg: config.Config, path: Path) -> None:
-    """Point one row rekordbox made at ``path``, a folder nothing on disk holds."""
-    conn = sqlite3.connect(cfg.library.db_path)
-    try:
-        conn.execute(
-            "UPDATE djmdContent SET FolderPath = ? WHERE ID = (SELECT MIN(ID) FROM djmdContent "
-            "WHERE Title NOT LIKE '01A - 124 - %')",
-            (str(path),),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def test_a_row_under_the_target_that_the_plan_did_not_put_there_refuses_the_commit(
-    native_library, silence, monkeypatch
-):
-    """The confinement check on its own, with the free target rule held back so
-    the plan chooses a folder the collection already stores a row under."""
-    cfg, _root = native_library
-    before = _land_three(cfg, silence)
-    _plant_ghost_row(cfg, _processed(cfg) / "2026" / FILED / "ghost.flac")
     real = shelve._free_target
     monkeypatch.setattr(
         shelve,
@@ -578,46 +488,15 @@ def test_a_row_under_the_target_that_the_plan_did_not_put_there_refuses_the_comm
     assert "did not plan" in acted["cause"]["message"]
     assert acted["cause"]["detail"]["renamed_back"] == [str(_music(cfg) / BATCH)]
     assert (_music(cfg) / BATCH).is_dir() and _rows(cfg) == before
-    assert not (_processed(cfg) / "2026" / FILED).exists()
+    assert not ghost.exists()
 
-
-def test_a_row_under_a_folder_differing_only_in_case_is_not_this_plans_business(
-    native_library, silence
-):
-    cfg, _root = native_library
-    _land_three(cfg, silence)
-    _plant_ghost_row(cfg, _processed(cfg) / "2026" / FILED.upper() / "ghost.flac")
-
+    monkeypatch.setattr(shelve, "_free_target", real)
     code, acted, _ = _two_acts_of(_shelve(BATCH), GATE)
 
     assert code == int(ExitCode.OK), acted
-    assert acted["data"]["items"][0]["to"] == str(_processed(cfg) / "2026" / FILED)
-
-
-def _open(cfg: config.Config):
-    return rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
-
-
-def test_the_engine_refuses_a_target_made_between_its_plan_and_its_apply_in_its_own_words(
-    native_library, silence
-):
-    from cratekit.core import analysis_store
-    from cratekit.core.cause import CratekitError
-
-    cfg, _root = native_library
-    before = _land_three(cfg, silence)
-    db = _open(cfg)
-    try:
-        planned = shelve.plan(cfg, db, [BATCH])
-        (_processed(cfg) / "2026" / FILED).mkdir(parents=True)
-        with pytest.raises(CratekitError) as caught:
-            shelve.apply(cfg, db, planned, analysis_roots=analysis_store.watch_roots(cfg))
-    finally:
-        rb_writer.close_db(db)
-    assert caught.value.cause.reason == "decision-stale"
-    assert "could not be written" not in caught.value.cause.message
-    assert "exists now" in caught.value.cause.message
-    assert (_music(cfg) / BATCH).is_dir() and _rows(cfg) == before
+    (item,) = acted["data"]["items"]
+    assert item["to"] == str(_processed(cfg) / "2026" / f"{FILED} 2")
+    assert (_processed(cfg) / "2026" / f"{FILED} 2").is_dir()
 
 
 @pytest.mark.parametrize(
