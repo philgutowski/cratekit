@@ -380,7 +380,16 @@ KEBAB_LITERALS = {
     # 2026-11-02, U193: the call ceiling's stop joined.
     # 2026-11-21, U293: the night pass's line joined.
     'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held', 'provider-night-budget', 'utf-8'],  # 2026-11-12, U278
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/rb_copies.py': ['canary-read-failed', 'library-database-not-rekordbox'],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/rb_nodes.py': ['mytag-category-template-missing', 'utf-8', 'whitelist-violation'],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/rb_removal.py': ['soft-delete-marker-unreadable', 'utf-8', 'whitelist-violation'],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/rb_tables.py': ['row-defaults', 'row-file-id', 'row-probe', 'track-color'],
     # 2026-11-12, U267: the shared read's refusal of a use it was not made for.
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/rb_writer.py': [
         'app-version-pin-drift',
         'app-version-pin-unrecorded',
@@ -391,17 +400,11 @@ KEBAB_LITERALS = {
         'db-schema-pin-drift',
         'internal-error',
         'library-database-missing',
-        'library-database-not-rekordbox',
         'library-directory-missing',
         'mytag-category-template-missing',
         'pyrekordbox-pin-drift',
         'rekordbox-running',
-        'row-defaults',
-        'row-file-id',
-        'row-probe',
         'soft-delete-marker-unreadable',
-        'track-color',
-        'utf-8',
         'whitelist-violation',
         'write-lock-held',
     ],
@@ -414,6 +417,7 @@ KEBAB_LITERALS = {
     ],
     # 2026-10-31, U162: the rehearsal area helper joined.
     'core/rehearsal.py': ['internal-error', 'output-exists'],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/restore.py': [
         'bare-metal-recovery',
         'capture-restore',
@@ -422,7 +426,6 @@ KEBAB_LITERALS = {
         'library-session',
         'mark-trees-unconverged',
         'record-reconciliation',
-        'recovery-target-refused',
         'rekordbox-running',
         'release-restore-latch',
         'remove-absent',
@@ -430,11 +433,20 @@ KEBAB_LITERALS = {
         'replace-file',
         'resolve-session',
         'restore-discards-committed-work',
-        'restore-predates-cutover',
-        'restore-staging-occupied',
         'restore-step-failed',
         'snapshot-integrity-failed',
     ],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/restore_perform.py': [
+        'internal-error',
+        'restore-predates-cutover',
+        'restore-staging-occupied',
+        'restore-step-failed',
+    ],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/restore_recovery.py': ['recovery-target-refused'],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/restore_retention.py': ['internal-error'],
     'core/review.py': [
         'awaiting-human-action',
         'fallback-source',
@@ -471,23 +483,34 @@ KEBAB_LITERALS = {
         'utf-8',
     ],
     # 2026-10-12, U138: the session's age rule refusal and its rule name joined.
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/session.py': [
-        'anlz-modified',
         'awaiting-import',
+        'committed-unverified',
+        'internal-error',
+        'session-committed-unverified',
+        'utf-8',
+    ],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/session_ack.py': [
         'backup-acknowledgment-backup-too-old',
         'backup-acknowledgment-missing',
         'backup-acknowledgment-no-terminal',
         'backup-facts-unreadable',
-        'committed-unverified',
         'internal-error',
+        'session-ages',
+        'utf-8',
+    ],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/session_analysis.py': ['anlz-modified'],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/session_holders.py': ['internal-error', 'session-lock-held'],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/session_volumes.py': [
         'library-volume-mismatch',
         'library-volume-unmounted',
         'mapped-volume-mismatch',
         'mapped-volume-unmounted',
-        'session-ages',
-        'session-committed-unverified',
-        'session-lock-held',
-        'utf-8',
     ],
     # 2026-11-13, R-1677: the check's throwaway copy with no room joined.
     'core/snapshot.py': [
@@ -651,9 +674,7 @@ NAMED_WITH_INTEGER = frozenset({
     'core/exit_codes.py',
     'core/preflight.py',
     'core/reconcile.py',
-    'core/restore.py',
     'core/review.py',
-    'core/session.py',
 })
 
 LITERAL_HOLDERS = {
@@ -694,7 +715,14 @@ LITERAL_HOLDERS = {
     # 2026-11-02, U193: the call ceiling's stop joined.
     # 2026-11-21, U293: the night pass's line joined.
     'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held', 'provider-night-budget'],  # 2026-11-12, U278
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/rb_copies.py': ['canary-read-failed', 'library-database-not-rekordbox'],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/rb_nodes.py': ['mytag-category-template-missing', 'whitelist-violation'],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/rb_removal.py': ['soft-delete-marker-unreadable', 'whitelist-violation'],
     # 2026-11-12, U267: the shared read's refusal of a use it was not made for.
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/rb_writer.py': [
         'app-version-pin-drift',
         'app-version-pin-unrecorded',
@@ -705,7 +733,6 @@ LITERAL_HOLDERS = {
         'db-schema-pin-drift',
         'internal-error',
         'library-database-missing',
-        'library-database-not-rekordbox',
         'library-directory-missing',
         'mytag-category-template-missing',
         'pyrekordbox-pin-drift',
@@ -717,15 +744,24 @@ LITERAL_HOLDERS = {
     'core/reconcile.py': ['restore-reconciliation-outstanding', 'restore-record-unusable'],
     # 2026-10-31, U162: the rehearsal area helper joined.
     'core/rehearsal.py': ['internal-error', 'output-exists'],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/restore.py': [
         'internal-error',
-        'recovery-target-refused',
         'rekordbox-running',
         'restore-discards-committed-work',
-        'restore-staging-occupied',
         'restore-step-failed',
         'snapshot-integrity-failed',
     ],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/restore_perform.py': [
+        'internal-error',
+        'restore-staging-occupied',
+        'restore-step-failed',
+    ],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/restore_recovery.py': ['recovery-target-refused'],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/restore_retention.py': ['internal-error'],
     'core/review.py': [
         'awaiting-human-action',
         'review-already-resolved',
@@ -737,21 +773,26 @@ LITERAL_HOLDERS = {
         'review-selection-invalid',
     ],
     'core/secrets.py': ['credential-index-unreadable'],
-    'core/session.py': [
-        'anlz-modified',
-        'awaiting-import',
-        # 2026-10-12, U138: the session's age rule refusal joined.
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/session.py': ['awaiting-import', 'internal-error', 'session-committed-unverified'],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/session_ack.py': [
         'backup-acknowledgment-backup-too-old',
         'backup-acknowledgment-missing',
         'backup-acknowledgment-no-terminal',
         'backup-facts-unreadable',
         'internal-error',
+    ],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/session_analysis.py': ['anlz-modified'],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/session_holders.py': ['internal-error', 'session-lock-held'],
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/session_volumes.py': [
         'library-volume-mismatch',
         'library-volume-unmounted',
         'mapped-volume-mismatch',
         'mapped-volume-unmounted',
-        'session-committed-unverified',
-        'session-lock-held',
     ],
     # 2026-11-13, R-1677: the check's throwaway copy with no room joined.
     'core/snapshot.py': [
@@ -784,11 +825,20 @@ LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'core/config.py',
     'core/convergence.py',
     'core/exit_codes.py',
-    'core/rb_writer.py',
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/rb_nodes.py',
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/rb_removal.py',
     'core/reconcile.py',
     'core/rehearsal.py',  # 2026-10-31, U162: the rehearsal area helper joined.
-    'core/restore.py',
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/restore_recovery.py',
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/restore_retention.py',
     'core/review.py',
-    'core/session.py',
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/session_ack.py',
+    # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
+    'core/session_holders.py',
     'core/snapshot.py',
 })
