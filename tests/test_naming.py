@@ -52,6 +52,7 @@ from cratekit.core.naming import (
     strip_heads,
     strip_trailing_head,
 )
+from tests.test_config import parsed
 
 # The marker text is CONFIGURATION (seam decision S3). It is supplied here as
 # data, exactly as the config layer will supply it, and it appears nowhere in
@@ -844,7 +845,7 @@ def _camelot_regex_literals(source: str) -> list[str]:
     that file clean.
     """
     found: list[str] = []
-    for node in ast.walk(ast.parse(source)):
+    for node in ast.walk(parsed(source)):
         if not isinstance(node, ast.Constant):
             continue
         if isinstance(node.value, str):

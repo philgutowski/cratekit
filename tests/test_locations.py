@@ -49,6 +49,7 @@ from cratekit.core.locations import (
     norm_for_compare,
     resolve_recorded_path,
 )
+from tests.test_config import parsed
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -525,7 +526,7 @@ def _location_codec_offenders(root: Path) -> list[str]:
         if vendor_root in path.parents:
             continue
         relative = path.relative_to(root).as_posix()
-        tree = ast.parse(path.read_text())
+        tree = parsed(path.read_text())
         for node in ast.walk(tree):
             called = None
             if isinstance(node, ast.Call):

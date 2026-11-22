@@ -35,6 +35,7 @@ from cratekit.cli.verbs import profile as profile_verb
 from cratekit.core import config, profiles
 from cratekit.core.exit_codes import ExitCode
 from tests import doctor_machines
+from tests.test_config import parsed
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "cratekit"
 
@@ -682,7 +683,7 @@ def test_nothing_under_src_writes_the_whole_document_after_reading_it():
         relative = path.relative_to(SRC).as_posix()
         if relative == "core/config.py" or relative.startswith("_vendor/"):
             continue
-        found = _calls_config_save(ast.parse(path.read_text(encoding="utf-8")))
+        found = _calls_config_save(parsed(path.read_text(encoding="utf-8")))
         if found:
             offenders[relative] = found
     assert not offenders, (

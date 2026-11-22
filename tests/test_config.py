@@ -25,6 +25,7 @@ matters most when the package is small, which it still is.
 from __future__ import annotations
 
 import ast
+import functools
 import json
 import os
 import re
@@ -46,6 +47,12 @@ from cratekit.core.exit_codes import ExitCode, Remedy
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
+
+
+@functools.cache
+def parsed(source: str) -> ast.Module:
+    """``ast.parse``, once per text in a process: six guards here walk the whole package."""
+    return ast.parse(source)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -431,7 +438,7 @@ def _paths_composed_from_a_state_root(source: str) -> list[str]:
     ``STATE_FILES`` will find it, back it up, or clear it.
     """
     found: list[str] = []
-    for node in ast.walk(ast.parse(source)):
+    for node in ast.walk(parsed(source)):
         if not isinstance(node, ast.BinOp) or not isinstance(node.op, ast.Div):
             continue
         left = node.left
@@ -1618,7 +1625,7 @@ def module_level_config_snapshots(source: str, module: str) -> list[str]:
     ``STATE = installation_state_dir()`` freeze the same value.
     """
     problems: list[str] = []
-    tree = ast.parse(source)
+    tree = parsed(source)
     deferred = _deferred_nodes(tree)
 
     for node in ast.walk(tree):
@@ -2575,7 +2582,7 @@ def _bare_mkdir_calls(source: str) -> list[str]:
     what mode was asked for. So the rule is that every creation in this module
     goes through one function, and this is what keeps that true.
     """
-    tree = ast.parse(source)
+    tree = parsed(source)
     inside_helper: set[int] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == "mkdir_private":

@@ -17,7 +17,7 @@ from cratekit.core import active_taxonomy, config, taxonomy
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import Remedy
 from tests._taxonomy_parses import counted, renamed_in_place, rewrite_keeping_time, unique
-from tests.test_config import valid_data
+from tests.test_config import parsed, valid_data
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "cratekit"
 LOADER = SRC / "core" / "active_taxonomy.py"
@@ -102,7 +102,7 @@ READERS = {
 
 def _reader_calls(path: Path) -> list[tuple[str, int]]:
     """Every call in ``path`` to a name in READERS, aliased imports resolved."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    tree = parsed(path.read_text(encoding="utf-8"))
     bound = {name: name for name in READERS}
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
