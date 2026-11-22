@@ -1458,31 +1458,13 @@ ENTRIES: tuple[Entry, ...] = (
         summary="move a folder of acquired files into the library and write one intake file",
         module="cratekit.intake.land_cli", builder="build_land", handler_key="intake.land",
         feature_rows=(3, 35), emits=frozenset({"plan"}), output_schema="plan/1",
-        #: Files and one XML. The engine renames each file out of staging with
-        #: ``os.replace`` and refuses a target that exists, and it refuses an
-        #: intake file that exists before the first move. ``place_files`` itself
-        #: writes with a plain overwrite, so that check is the only protection
-        #: inside the engine. The window after each check is closed by the
-        #: verb, which holds one lock per batch name across the apply and
-        #: refuses a second landing under a held name (R-432). No
-        #: database open. With ``--manifest`` the same XML also gains the label
-        #: tree (U77): it is the intake file this run just made that is read
-        #: and replaced, never the export, so the write surface is unchanged.
-        #: AND THE COLLECTION, SINCE R-746. On a library whose intake tree is
-        #: database native the same files, once moved, become content rows and
-        #: one batch playlist under the adopted intake root through the guarded
-        #: writer, behind the explicit gate below. The intake tree's mode
-        #: chooses, the way the routing verbs choose.
-        # U129. A set landing may also archive the account playlist, a remote
-        # write, so the surface and the provider check join the landing's own.
-        # U153. A landed heart's row is coloured Pink in the same commit, a
-        # content column, so the metadata surface joins the tree's.
+        #: Files and one intake XML, never replacing a target, one lock per batch
+        #: name (R-432). On a database native intake tree, content rows and a
+        #: batch playlist behind the explicit gate (R-746). A set landing may
+        #: archive the account playlist (U129); a landed heart is coloured (U153).
         writes=frozenset({"xml", "files", "db_tree", "db_metadata", "remote"}), destructive=True,
-        #: The database checks hold for the native medium only, and declaring
-        #: them here changes nothing doctor reports: it requires a check when
-        #: ANY enabled verb declares it, and adoption, which every profile
-        #: carries, already declares these three. ``credential.provider`` is
-        #: for the account archive a set landing may perform (U129).
+        #: The database checks hold for the native medium only;
+        #: ``credential.provider`` is for the account archive (U129).
         doctor_checks=(
             "library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved",
             "credential.provider",
@@ -1493,9 +1475,7 @@ ENTRIES: tuple[Entry, ...] = (
                 prompt="Move these files into the library and write the intake file?",
                 digest_source="plan",
             ),
-            # R-746. Content rows in the collection are a new kind of write,
-            # answered by a separate recorded act and never inline (R34), and
-            # the plan it binds to names every row with every column it sets.
+            # Content rows, answered by a separate recorded act (R34, R-746).
             GateSpec(
                 name="intake.land.native", options=("apply", "abort"),
                 prompt="Move these files into the library and add them to the collection?",
@@ -1511,21 +1491,14 @@ ENTRIES: tuple[Entry, ...] = (
         module="cratekit.sync.mark_cli", builder="build_mark", handler_key="sync.mark",
         feature_rows=(3, 25), source_scripts=("dj-sync",), emits=frozenset({"plan"}),
         output_schema="plan/1",
-        #: NO WRITE SURFACE since U242, and not destructive. The account is
-        #: read, to plan and to recheck, and nothing on it changes: each
-        #: finished playlist is held as taken in the mark record, this
-        #: product's own state, which ``sync unmark`` lets go. The cursor is
-        #: READ and never written here, no file on the library is written and
-        #: no database is opened. Before U242 the mark was a retitle with the
-        #: ``DOWNLOADED `` prefix.
+        #: No write surface (U242): the account is only read, and each playlist
+        #: is held as taken in the mark record, this product's own state.
         writes=frozenset(), doctor_checks=("credential.provider",),
         gates=(
             GateSpec(
                 name="sync.mark.confirm", options=("apply", "abort"),
                 prompt="Record these playlists as taken?",
-                # EXPLICIT, kept from when the mark was a retitle (R34): a
-                # playlist held as taken is never offered by a sync again, so
-                # the answer is a separate recorded act.
+                # Explicit (R34): a taken playlist is never offered again.
                 explicit=True, digest_source="plan",
             ),
         ),
@@ -1536,20 +1509,15 @@ ENTRIES: tuple[Entry, ...] = (
         summary="let go what a sync pass took, and put back any title its mark wrote",
         module="cratekit.sync.unmark_cli", builder="build_unmark", handler_key="sync.unmark",
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: One surface, the account, and the one write is ``rename_playlist``,
-        #: a retitle back to the title the mark record says the playlist had:
-        #: a legacy prefix a pass wrote, or a title ``sync strip`` changed.
-        #: A taken entry the pass holds is let go in the record, this
-        #: product's own state, with no write to the account (U242). No file
-        #: on the library is written and no database is opened.
-        #: ``destructive`` because the retitle lands on a playlist the product
-        #: did not make.
+        #: The account only: ``rename_playlist`` back to the recorded title;
+        #: a taken entry is let go in the record (U242). Destructive: the
+        #: retitle lands on a playlist the product did not make.
         writes=frozenset({"remote"}), destructive=True, doctor_checks=("credential.provider",),
         gates=(
             GateSpec(
                 name="sync.unmark.confirm", options=("apply", "abort"),
                 prompt="Put these playlist titles back on the streaming account?",
-                # EXPLICIT, as sync.mark's is, for the same reason (R34).
+                # Explicit, as ``sync.mark``'s is (R34).
                 explicit=True, digest_source="plan",
             ),
         ),
