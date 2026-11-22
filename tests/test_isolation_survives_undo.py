@@ -90,12 +90,16 @@ def test_a_write_to_the_platformdirs_config_after_an_undo_lands_in_the_temp_root
 def test_the_keychain_is_still_the_stub_after_an_undo(_isolate_keychain, monkeypatch):
     _undo_the_body(monkeypatch)
 
-    assert keyring.set_password is not _REAL_SET_PASSWORD, "the real keychain is back after an undo"
+    assert keyring.set_password is not _REAL_SET_PASSWORD, (
+        "the real keychain is back after an undo"
+    )
     keyring.set_password("cratekit-r658", "probe", "not a real secret")
     assert _isolate_keychain[("cratekit-r658", "probe")] == "not a real secret"
 
 
-def test_the_library_root_and_the_refusals_survive_an_undo(_block_real_library_paths, monkeypatch):
+def test_the_library_root_and_the_refusals_survive_an_undo(
+    _block_real_library_paths, monkeypatch
+):
     _undo_the_body(monkeypatch)
 
     assert os.environ[config.ENV_LIBRARY_ROOT] == str(_block_real_library_paths)

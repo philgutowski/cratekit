@@ -73,7 +73,8 @@ def _payload(
     emptied: tuple[tuple[str, account_playlists.Left], ...] = (),
 ) -> dict:
     items = [
-        {"action": LAND, "from": str(item), "to": str(target / item.name)} for item in planned.items
+        {"action": LAND, "from": str(item), "to": str(target / item.name)}
+        for item in planned.items
     ]
     identity = {
         "kind": "land",
@@ -209,7 +210,9 @@ def _reported(payload: dict, landed: landing.Landed) -> dict:
         if entry is None:
             items.append({**item, "action": LANDED})
         else:
-            items.append({**item, "action": REFUSED, "reason": entry.reason, "why": entry.sentence})
+            items.append(
+                {**item, "action": REFUSED, "reason": entry.reason, "why": entry.sentence}
+            )
     totals = {
         "count": payload["totals"]["count"],
         "landed": len(landed.moved),
@@ -333,11 +336,7 @@ def favorites_facts(plan: native.FavoritesPlan) -> dict[str, Any]:
     """The hearts on a gate screen, one line per fact (U120)."""
     if plan.skipped:
         return {"hearts": f"none placed, {plan.skipped}"}
-    where = (
-        f"{plan.source_name!r} under {plan.folder_name!r}"
-        if plan.folder_name
-        else repr(plan.source_name)
-    )
+    where = f"{plan.source_name!r} under {plan.folder_name!r}" if plan.folder_name else repr(plan.source_name)
 
     def counted(month: str) -> str:
         files = sum(1 for item in plan.items if item.month == month)
@@ -420,8 +419,9 @@ def collection_facts(rows: native.NativePlan) -> dict[str, Any]:
         else:
             facts["inbox"] = "made"
     if rows.inbox_leftovers:
-        facts["inbox leftovers"] = "not joined automatically: " + ", ".join(
-            repr(name) for name in rows.inbox_leftovers
+        facts["inbox leftovers"] = (
+            "not joined automatically: "
+            + ", ".join(repr(name) for name in rows.inbox_leftovers)
         )
     return facts
 
@@ -571,7 +571,9 @@ def _native_reported(payload: dict, landed: landing.LandedNative) -> dict:
             continue
         entry = refused.get(item["from"])
         if entry is not None:
-            items.append({**item, "action": REFUSED, "reason": entry.reason, "why": entry.sentence})
+            items.append(
+                {**item, "action": REFUSED, "reason": entry.reason, "why": entry.sentence}
+            )
             continue
         row = added.get(item["to"])
         if row is not None:
@@ -897,7 +899,7 @@ def vox_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
                     f"no row joined with the vox My Tag, so none reaches a with vox "
                     f"playlist: {collection.vox_blocked}"
                 ),
-            },
+            }
         ]
     if not collection.vox_unscored:
         return warnings
@@ -911,5 +913,5 @@ def vox_warnings(collection: native.NativeLanded) -> list[dict[str, str]]:
                 f"their rows got no vox My Tag: {names}; run crate analyze vocals on "
                 f"them and then crate metadata mytags-vocals --apply"
             ),
-        },
+        }
     ]

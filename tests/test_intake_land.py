@@ -166,7 +166,9 @@ def test_on_a_calibrated_library_the_bridge_screen_names_the_vocals_verb_as_owed
     assert "crate metadata mytags-vocals --apply" in shown["vox My Tag"]
 
 
-def test_the_gate_screen_a_person_reads_names_the_files_and_the_intake_file(cfg, silence, export):
+def test_the_gate_screen_a_person_reads_names_the_files_and_the_intake_file(
+    cfg, silence, export
+):
     """The plan payload never reaches a person reading the default output."""
     _stage(cfg, silence, "One.flac")
     code, _out, screen = _human(_land(export, "--name", BATCH))
@@ -177,7 +179,9 @@ def test_the_gate_screen_a_person_reads_names_the_files_and_the_intake_file(cfg,
     assert "crate run decide" in screen and GATE in screen
 
 
-def test_an_answered_run_lands_the_batch_and_names_the_xml_in_human_output(cfg, silence, export):
+def test_an_answered_run_lands_the_batch_and_names_the_xml_in_human_output(
+    cfg, silence, export
+):
     """R34's two acts, then the landing, read the way a person reads it."""
     for name in ("One.flac", "Two.flac"):
         _stage(cfg, silence, name)
@@ -462,7 +466,9 @@ def test_the_engine_is_handed_the_fingerprint_of_the_bytes_the_gate_compared(
     assert handed == [hashlib.sha256(manifest.read_bytes()).hexdigest()]
 
 
-def test_a_manifest_whose_only_row_matched_nothing_still_reports_it(cfg, silence, export, tmp_path):
+def test_a_manifest_whose_only_row_matched_nothing_still_reports_it(
+    cfg, silence, export, tmp_path
+):
     """Nothing filed is when the report matters most."""
     _stage(cfg, silence, "One.flac")
     manifest = _manifest(tmp_path, [("2", "Probe", "Never Arrived", "Kompakt", 2024)])
@@ -618,7 +624,9 @@ def test_the_plan_read_hands_the_engine_the_manifest_rows_the_gate_will_show(
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     assert len(asked) == 1
     rows = asked[0]["label_rows"]
-    assert [(row.provenance.label_name, row.provenance.year) for row in rows] == [("Kompakt", 2025)]
+    assert [(row.provenance.label_name, row.provenance.year) for row in rows] == [
+        ("Kompakt", 2025)
+    ]
 
 
 @pytest.mark.parametrize("gone", ["export", "library"])
@@ -640,9 +648,7 @@ def test_a_recorded_abort_is_honored_over_what_went_missing(cfg, silence, export
     assert _staged_names(cfg) == ["One.flac"]
 
 
-def test_a_stale_answer_stays_stale_over_an_export_that_is_not_there(
-    cfg, silence, export, tmp_path
-):
+def test_a_stale_answer_stays_stale_over_an_export_that_is_not_there(cfg, silence, export, tmp_path):
     """Only the refusal that asks for an answer gives way to the preflight: the
     person is told the plan moved, not only that the new export is missing."""
     _stage(cfg, silence, "One.flac")
@@ -694,7 +700,9 @@ def _assert_free(batch: str) -> None:
         pass
 
 
-def test_a_second_landing_under_a_held_batch_name_refuses_and_moves_nothing(cfg, silence, export):
+def test_a_second_landing_under_a_held_batch_name_refuses_and_moves_nothing(
+    cfg, silence, export
+):
     for name in ("One.flac", "Two.flac"):
         _stage(cfg, silence, name)
 

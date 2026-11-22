@@ -460,14 +460,18 @@ def intake_land(ctx) -> Envelope:
     pass_name = ctx.args.pass_name
     _check_pass(pass_name)
     # READ BEFORE THE GATE, so a bad manifest refuses before anybody answers.
-    manifest = landing.read_label_manifest(Path(ctx.args.manifest)) if ctx.args.manifest else None
+    manifest = (
+        landing.read_label_manifest(Path(ctx.args.manifest)) if ctx.args.manifest else None
+    )
     # TWO NAMES (U110): the batch a person reads in INBOX, by date and source
     # unless ``--name`` says otherwise, and the intake file the marks read.
     batch = (
         ctx.args.name
         if ctx.args.name is not None
         else batch_name.readable(
-            cfg, label_rows=manifest.rows if manifest is not None else (), pass_name=pass_name
+            cfg,
+            label_rows=manifest.rows if manifest is not None else (),
+            pass_name=pass_name,
         )
     )
     stem = intake_stem(pass_name=pass_name, name=ctx.args.name, run_id=ctx.run.run_id)
@@ -701,7 +705,10 @@ def _land_native(
     # The account playlist's archive rides on this gate when the set has one
     # recorded under the frozen INSPIRATION name (U129).
     archive_planned = _plan_set_archive(
-        cfg, set_job=set_job, words=words, pass_name=ctx.args.pass_name or planned.batch
+        cfg,
+        set_job=set_job,
+        words=words,
+        pass_name=ctx.args.pass_name or planned.batch,
     )
     planner = land_native.native_planner(
         ctx,
@@ -764,7 +771,13 @@ def _land_native(
         )
 
     payload, landed = ask_then_write(
-        ctx, cfg, spec, plan=plan, payload=payload_of, shown=shown_of, write=write
+        ctx,
+        cfg,
+        spec,
+        plan=plan,
+        payload=payload_of,
+        shown=shown_of,
+        write=write,
     )
     if landed is None:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
@@ -779,7 +792,11 @@ def _land_native(
         # THE FILING, AFTER EVERY READ BACK OF THE LANDING (U165), under the
         # actor who answered its gate. It never fails the landing it follows.
         sorted_in = filing.file_landed(
-            cfg, declared, predicted, landed.collection, actor=approving_actor(ctx, spec)
+            cfg,
+            declared,
+            predicted,
+            landed.collection,
+            actor=approving_actor(ctx, spec),
         )
         warnings.extend(filing.warnings(sorted_in))
         reported = _with_filing(reported, sorted_in)

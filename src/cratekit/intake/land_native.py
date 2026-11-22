@@ -159,7 +159,13 @@ def native_planner(
                     cfg, db, set_job_id, root_id, inbox_name, keep_id=batch_playlist_id
                 )
             split, emptied = _native_split(
-                db, cfg, claims, tree_id=tree_id, registry=registry, batch=inbox_name, target=target
+                db,
+                cfg,
+                claims,
+                tree_id=tree_id,
+                registry=registry,
+                batch=inbox_name,
+                target=target,
             )
             # EACH UNPAIRED ACCOUNT PLAYLIST'S TWIN (U149), on this handle.
             from cratekit.favorites import backfill, placement  # noqa: PLC0415 - toggleable
@@ -356,7 +362,12 @@ def _with_archive(payload: dict, archived) -> dict:
         items.append({**item, "area": "account-archive"})
     totals = dict(payload.get("totals") or {})
     totals["archive_writes"] = bool(archived.writes)
-    return {**payload, "digest": digest_of(identity), "items": items, "totals": totals}
+    return {
+        **payload,
+        "digest": digest_of(identity),
+        "items": items,
+        "totals": totals,
+    }
 
 
 #: What a native write plans: a landing's rows, or the owned hearts alone (U146).
