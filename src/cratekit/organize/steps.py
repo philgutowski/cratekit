@@ -1,20 +1,14 @@
 """One area of ``crate organize`` and the steps it is made of (U112).
 
 A STEP is one plan a composed verb made, of one KIND, the word ``--only``
-selects it by (U137). It is in exactly one state:
-
-==============  ===============================================================
-``planned``     the step's own plan writes, and runs once its area is approved
-``nothing``     the step's own plan writes nothing; a second run's every step
-``refused``     the step's own precondition refused; the refusal is shown and
-                no other step is hidden by it
-``listed``      something no verb owns is named and nothing is planned for it
-==============  ===============================================================
+selects it by (U137). It is ``planned`` (its plan writes, once its area is
+approved), ``nothing`` (its plan writes nothing), ``refused`` (its own
+precondition refused, hiding no other step) or ``listed`` (named, and nothing
+planned for it).
 
 THE AREA'S DIGEST IS TAKEN OVER EVERY STEP'S KEY, STATE AND OWN DIGEST, a
-refused step's reason standing in for a digest, so a step that refused when
-the question was asked and plans by the time it is answered makes the answer
-stale rather than honoured over a write nobody saw.
+refused step's reason standing in, so an answer binds to the plans the screen
+showed and is stale once a step moves.
 
 Layer: modules.
 """

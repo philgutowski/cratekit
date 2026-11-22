@@ -1,32 +1,18 @@
 """The account area of ``crate organize`` (U112): add only, every step its own verb's.
 
-THE STEPS, each the owning verb's plan and apply:
+The steps: a folder per followed label (``label playlists``), every landed sync
+pass marked (``sync mark``), every downloaded set archived (``export
+archive``), the root filed (U116, :mod:`cratekit.organize.filing`) and kept
+(U143, :mod:`cratekit.organize.root`), and the routing tree, Favorites and
+INBOX mirrored (U147, U150, :mod:`cratekit.organize.account_mirror`).
 
-* A FOLDER PER FOLLOWED LABEL, ``label playlists``'s plan, composed whole. A
-  catalogue read in part refuses that label alone;
-* EVERY LANDED SYNC PASS MARKED, ``sync mark``'s plan for every pass with an
-  intake file at the library root, pending or retired, or a native landing;
-* EVERY DOWNLOADED SET ARCHIVED, ``export archive``'s plan for a recorded set
-  whose download this area can PROVE: an intake file named for the set
-  (``intake land --pass <set>``), or (U142) a playlist of its name under the
-  declared INSPIRATION folder, read through a read handle. A set the mark
-  record already names is archived; any other set is listed as waiting with
-  the command that archives it. A database that cannot be read refuses that
-  set's step, since unread is not none;
-* EVERY MARKED CUSTOM PLAYLIST FILED (U116, U131), :mod:`cratekit.organize.filing`;
-* THE ROOT KEPT (U143), :mod:`cratekit.organize.root`, on the filing's plan,
-  which is planned once and read by both;
-* EVERY GENRE FOLDER, THE FAVORITES FOLDER AND INBOX MIRRORED (U147, U150),
-  :mod:`cratekit.organize.account_mirror`.
+A SET IS ARCHIVED ONLY WHEN ITS DOWNLOAD IS PROVEN, by an intake file named for
+it or (U142) an INSPIRATION playlist of its name; any other set is listed as
+waiting, with the command that archives it.
 
-A STEP THAT NEEDS THE ACCOUNT AND CANNOT HAVE IT is refused with that refusal's
-own reason, and every other step is still planned. ``--only KIND`` plans only
-the kinds it names, :data:`STEPS` (U137).
-
-WHAT THE AUTHOR MADE is every playlist at the account root the product did not
-make, that is no debris and that the filing does not move, listed with a home
-where :mod:`cratekit.organize.own` finds one. A listing that refuses is a
-refused step, never an empty list.
+A STEP THAT CANNOT HAVE WHAT IT NEEDS is refused with that refusal's reason and
+hides no other; unread is not none. What the author made at the account root
+is listed, with a home where :mod:`cratekit.organize.own` finds one.
 
 Layer: modules.
 """

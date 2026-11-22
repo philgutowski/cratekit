@@ -1,38 +1,25 @@
 """INSPIRATION brought level with the account's downloaded sets (U144).
 
 Most sets in the account's ``Downloaded Sets <year>`` folders were downloaded
-before a set landing wrote a playlist under INSPIRATION (U121), so their
-tracks are in the library with nothing naming the set. This step of ``crate
-organize``'s rekordbox area backfills them by MATCHING, chosen by the author
-over running each set through the intake again: nothing is downloaded, and
-every track left out is named under its set.
+before a set landing wrote an INSPIRATION playlist (U121). This step backfills
+them by MATCHING, chosen by the author over running each set through the
+intake again: nothing is downloaded, and every track left out is named.
 
-THE PLAN. Every taken playlist (the record or the old prefix, U242) in a root
-folder named ``Downloaded Sets <year>``, or recorded by the archive as that
-year's folder, is one set, named for INSPIRATION as its account name with any
-prefix off, spelled by the set playlist rule. A playlist there not taken, and
-a folder that could not be listed, are named and read no further. A set an
-INSPIRATION playlist already carries, by the archive's proof rule (U142), is
-skipped, so a second run plans nothing. Every other set's tracks are asked of
-the library by a set backfill's own rule,
-:func:`cratekit.intake.set_playlist.library_rows`.
+THE PLAN. Every taken playlist (U242) in a sets folder is one set, named as its
+account title less any prefix. A set INSPIRATION already holds, by the
+archive's proof rule (U142), is skipped, so a second run plans nothing. Every
+other set's tracks are asked of the library by a set backfill's own rule; only
+the engine's MATCHED is written, and every other answer is a miss with its
+reason. A set with no match, a refused listing, and two sets of one name are
+shown and not written.
 
-THE BAR A MATCH CLEARS TO BE WRITTEN UNREAD is the engine's MATCHED; any other
-answer is a miss named under its set with its reason. A set with no match, a
-set whose listing was refused, and two account sets of one name are each shown
-and nothing is written for them.
+A SET IS READ ROW BY ROW (R-1295): a track with no title or no artist is never
+asked of the library, since the half left matches any file agreeing on it, and
+is a miss at its place; with no provider id either, its set is unread.
 
-A SET IS READ ROW BY ROW (R-1295). A track listed with no title or no artist is
-never asked of the library, since the half left matches any file agreeing on
-it: it is a miss at its place in the set, and a set no track of which reads is
-shown unread. Such a row with no provider id leaves its set unread, since
-nothing would name it.
-
-THE WRITE is one session for every set: a capture, each playlist found or made
-under INSPIRATION by the set playlist rule, the guarded commit recorded under
-the INSPIRATION folder's id, and every playlist read back from SQL. The plan is
-taken again on the write handle first, and a membership the approved plan did
-not name is refused by name, as is any other change, with nothing written.
+THE WRITE is one session for every set, taken again on the write handle first:
+a membership the approved plan did not name is refused by name, any other
+change as stale, with nothing written; every playlist is read back from SQL.
 
 Layer: modules.
 """

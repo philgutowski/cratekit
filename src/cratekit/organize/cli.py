@@ -1,33 +1,19 @@
 """``crate organize``: plan both areas, ask each its own question, then write (U112).
 
-THE ORDER IS PLAN, ASK, WRITE, ``sync all``'s order and for its reason. Both
-areas are planned first, where every step's own precondition refuses; then the
-database area's gate is asked, then the account area's, and only once both are
-answered does anything write. A refusal at either gate has written nothing.
+THE ORDER IS PLAN, ASK, WRITE, ``sync all``'s order: both areas are planned,
+then the database area's gate is asked, then the account area's, and nothing
+writes until both are answered. ONE EXPLICIT GATE PER AREA, bound to its
+digest, so approving one and aborting the other writes only the approved one.
+The database area is not asked when the backup acknowledgment is missing.
 
-ONE GATE PER AREA, EACH EXPLICIT AND BOUND TO ITS AREA'S DIGEST. Approving one
-and aborting the other writes only the approved area. An area with nothing to
-do still asks. The database area is not asked when the backup acknowledgment
-is missing, since it was refused before it was planned.
+AN APPLIED STEP THAT FAILS DOES NOT STOP THE STEPS AFTER IT; the failure is
+raised once every approved step has run, naming the steps that did write.
 
-AN APPLIED STEP THAT FAILS DOES NOT STOP THE STEPS AFTER IT, each being its
-own verb's write. Once every approved step has run, the failure is raised with
-the steps that did write named, so nobody is told of a clean organize over a
-write that failed.
-
-``--report`` plans both areas, asks nothing and writes nothing, and OPENS THE
-DATABASE ONCE (U267): one read handle for every step that reads the library,
-closed on every way out. The run that answers a gate does not share it.
-
-``--only KIND``, repeatable, NARROWS BOTH AREAS TO THE STEP KINDS IT NAMES
-(U137). An area none of whose kinds is named is not planned, asked or written;
-a planned one keeps its own preconditions, and its gate and digest name the
-selection.
-
-THE MIRROR'S PLAN IS FROZEN ON THE RUN THAT SHOWS ITS GATE (R-1031), and the
-run that answers rebuilds it from that record, so its digest is the one the
-person approved. ``--rematch`` asks the provider again about every row the
-mirror remembers as unmatched.
+``--report`` asks and writes nothing and OPENS THE DATABASE ONCE (U267).
+``--only KIND`` narrows both areas to the kinds it names (U137): an area with
+none named is not planned, asked or written. THE MIRROR'S PLAN IS FROZEN ON
+THE RUN THAT SHOWS ITS GATE (R-1031) and rebuilt from that record on the run
+that answers. ``--rematch`` asks the provider again about every unmatched row.
 
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23).

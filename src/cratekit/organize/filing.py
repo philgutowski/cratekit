@@ -1,36 +1,17 @@
-"""Marked custom playlists filed into their year folders on the account (U116).
+"""Every playlist at the account root placed or left with its reason (U116).
 
-This step lists every playlist at the account root and names what becomes of
-each one:
+A playlist a sync marked moves into the root folder of its mark's year, one an
+export made into ``Exports`` (U131), and one no ledger claims that no year can
+file into ``Mine`` (U131). Label and set playlists are their own steps', label
+debris and empty playlists the root step's (U143), and a working custom
+playlist stays at the root whatever its age (U143, Phillip's rule of
+2026-10-13). One in a ``Mine`` this product made is still read for its mark;
+nothing is moved out of a folder a person made.
 
-* A PLAYLIST A SYNC MARKED, by ``sync mark``'s record and a mark still standing,
-  is moved into the root folder named for the year of its mark;
-* a label playlist is the label step's, and a set playlist is the archive's;
-* the product's own working playlists stay where they are;
-* A PLAYLIST AN EXPORT MADE, by the ledger's record, is moved into the root
-  ``Exports`` folder (U131);
-* THE SOURCE SYSTEM'S LABEL DEBRIS, and an unclaimed playlist holding no
-  track, are left for the root step (U143), :mod:`cratekit.organize.root`;
-* A WORKING CUSTOM PLAYLIST, one no ledger claims and no sync marked, is left
-  at the root whatever its age (U143), by Phillip's rule of 2026-10-13;
-* ONE NO LEDGER CLAIMS THAT A SYNC CANNOT FILE BY A YEAR, its name prefixed
-  with no mark recorded or its mark carrying no year, is moved into the root
-  ``Mine`` folder (U131);
-* what is left is reported and left with its reason.
-
-A PLAYLIST IN A ``Mine`` THIS PRODUCT MADE IS STILL READ FOR ITS MARK (U131),
-so a later sync's mark moves it on into its year folder. A playlist is never
-moved out of a folder a person made.
-
-THE YEAR FOLDER IS THE PLAIN ``<year>``, NEVER THE SETS' ``Downloaded Sets
-<year>`` (U142), decided on the archive's rule: a recorded folder still listed
-is reused, one root folder named as the year is adopted, none is created once.
-Two or more root folders named as the year leave that year's playlists where
-they are, since a playlist the plan cannot place is never moved.
-
-ADD ONLY. Nothing is renamed or removed here; the root's removals are the root
-step's. Each move is named on the applied totals, so the run says what to put
-back.
+THE YEAR FOLDER IS THE PLAIN ``<year>``, never the sets' ``Downloaded Sets
+<year>`` (U142), decided on the archive's rule. Two root folders named as the
+year leave its playlists where they are, since one the plan cannot place is
+never moved. ADD ONLY, and each move is named on the applied totals.
 
 Layer: modules.
 """

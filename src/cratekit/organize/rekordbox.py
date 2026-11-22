@@ -1,30 +1,19 @@
 """The database area of ``crate organize`` (U112): every step through its own verb.
 
-THE BACKUP ACKNOWLEDGMENT IS READ BEFORE THE AREA IS PLANNED (R-733), as ``inbox
-rotate`` reads it. With none the area is refused whole and its gate not asked;
-``--report`` writes nothing, so it plans the area anyway and says it is missing.
+THE BACKUP ACKNOWLEDGMENT IS READ BEFORE THE AREA IS PLANNED (R-733): with none
+the area is refused whole and its gate not asked, but ``--report`` plans it
+anyway and says it is missing.
 
-THE STEPS, each the owning verb's plan:
+The steps: adoption (``adopt apply``'s plan and worker, refused over a tree
+still on the xml bridge), rotation (``inbox rotate``), the Record Labels tree
+listed, INSPIRATION brought level with the account (U144), and an account
+edit to a mirrored playlist taken (U201, U204) with any track it adds queued
+for download, the last two off the run's one account mirror reading. A batch
+named for its run is a rename suggested, never made.
 
-* ADOPTION, ``adopt apply``'s plan and screen. On approval its job is queued
-  under that verb's handler key, with the person who answered this area's gate
-  as its actor, and driven through the worker ``adopt apply`` runs. A plan over
-  a routing tree still on the xml bridge is refused, naming ``tree cutover``;
-* ROTATION, ``inbox rotate``'s plan and write, read back after;
-* THE RECORD LABELS TREE is LISTED, since only a label batch's landing writes it;
-* A BATCH NAMED FOR ITS RUN, ``..._inboxed``, is a rename SUGGESTED, never made;
-* INSPIRATION BROUGHT LEVEL WITH THE ACCOUNT (U144),
-  :mod:`cratekit.organize.inspiration`, listed when the export module is off;
-* AN EDIT MADE ON THE ACCOUNT TO A MIRRORED PLAYLIST (U201, U204),
-  :mod:`cratekit.organize.mirror_edits`, decided from the run's one account
-  mirror reading, every membership it takes away named among the deletions;
-* A TRACK ADDED THERE THAT THE LIBRARY LACKS QUEUED FOR DOWNLOAD (U204),
-  :mod:`cratekit.organize.mirror_downloads`, off the same reading.
-
-WHAT THE AUTHOR MADE is every top level node outside the declared trees, and
-every node the rotation leaves alone under INBOX, listed with a home where
-:mod:`cratekit.organize.own` finds one. ANOTHER APP'S FOLDER AT THE TOP (U185)
-is named once as a fact and never listed.
+WHAT THE AUTHOR MADE, every top level node outside the declared trees and
+every node the rotation leaves under INBOX, is listed with a home where one
+is obvious. Another app's folder at the top (U185) is named once as a fact.
 
 Layer: modules.
 """

@@ -1,28 +1,17 @@
 """The account root kept to working custom playlists and the product's folders (U143).
 
 PHILLIP'S RULE OF 2026-10-13: only a working custom playlist belongs at the
-account root. This step removes three kinds and no other, each named on the
-account area's gate:
-
-* THE SOURCE SYSTEM'S LABEL DEBRIS, a root playlist named with the label
-  batch's ` LIBRARY` suffix (R-361), when every one of its tracks is already in
-  a downloaded (taken) playlist of its label's folder. One with a track the
-  folder lacks, tracks that could not all be read, or a label folder a name
-  cannot decide, is left with that reason. Unread is not none;
-* AN EMPTY ROOT PLAYLIST no ledger claims;
-* A LEGACY YEAR FOLDER, ``<year> Custom Playlists``, whose playlists are moved
-  into the ``<year>`` folder on the filing step's year rule, and which is
-  removed by a LATER run that reads it empty, never by the apply that emptied
-  it. One holding a folder is left: organize never moves a folder.
+account root. Three kinds are removed and no other, each named on the gate:
+LABEL DEBRIS (R-361) whose every track is in a downloaded playlist of its
+label's folder, AN EMPTY ROOT PLAYLIST no ledger claims, and A LEGACY YEAR
+FOLDER, ``<year> Custom Playlists``, once a later run reads it empty, its
+playlists having been moved into ``<year>``. Unread is not none, and organize
+never moves a folder.
 
 THE CANDIDATES ARE THE FILING PLAN'S ``DEBRIS`` AND ``EMPTY`` ROWS, so a
-playlist is never both filed and removed. A label folder is read, never
-written; any other folder a person made is never read.
-
-BEFORE EACH PLAYLIST REMOVAL THE APPLY READS AGAIN where it sits and, for
-debris, what it holds; a row no longer what the gate showed, or one the account
-member refuses before sending anything, is KEPT and named on the totals and in
-a warning. Any other refusal stops the apply with what was done named.
+playlist is never both filed and removed. BEFORE EACH PLAYLIST REMOVAL THE
+APPLY READS AGAIN where it sits and what it holds; a row no longer what the
+gate showed is KEPT and named, and any other refusal stops the apply.
 
 Layer: modules.
 """
