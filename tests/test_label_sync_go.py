@@ -72,8 +72,7 @@ def installed(tmp_path, monkeypatch) -> config.Config:
 
 @pytest.fixture(autouse=True)
 def tail(monkeypatch) -> Tail:
-    """The tail and landing standing in at the chain's one seam (U190): each step drives a
-    real job, and the landing stops at its gate, so a go that downloaded ends pending."""
+    """The tail and landing standing in at the chain's seam; the landing stops at its gate."""
     stand_in = Tail()
     monkeypatch.setattr(tail_chain, "dispatch", stand_in)
     return stand_in
@@ -81,8 +80,7 @@ def tail(monkeypatch) -> Tail:
 
 @pytest.fixture(autouse=True)
 def no_vocal_model(monkeypatch) -> None:
-    """The vocal model unable to score, pinned so no loader an earlier test bound
-    queues a rescore into the tail's exact verb lists (R-1115)."""
+    """The vocal model pinned unable to score, so no rescore joins the tail (R-1115)."""
     monkeypatch.setattr(vocals, "_VOCAL_LOADER", None)
     monkeypatch.setattr(vocals, "missing_requirement", lambda: "the vocal model is not installed here")
 
@@ -928,8 +926,7 @@ def one_release_answered(monkeypatch, script, tracks: int = 2) -> None:
 
 
 def already_staged(monkeypatch, cfg: config.Config, *track_ids: str) -> None:
-    """A file at each track's staging name while the go downloads, refused
-    ``output-exists``, and moved out once the drive returns (R-1467)."""
+    """A file at each track's staging name while the go downloads, moved out after (R-1467)."""
     folder = Path(staged(cfg))
     real = go._drive
     def kept(ctx, store, job_id):
@@ -1005,8 +1002,7 @@ def test_a_go_whose_every_track_was_refused_runs_no_tail_and_says_so(
 def test_a_download_failed_only_by_a_track_refused_for_good_runs_the_tail_on_the_rest(
     installed, monkeypatch, script, tail
 ):
-    """``output-exists`` is not the policy's class, so the item fails, not declined,
-    and the job ends FAILED with one track done: the half ``sync land`` reads."""
+    """``output-exists`` fails the item, so the job ends FAILED with one track done."""
     one_release_answered(monkeypatch, script)
     already_staged(monkeypatch, installed, "t-r1-2")
     envelope = pending_go()
@@ -1089,8 +1085,7 @@ def read_with(monkeypatch, job: jobs.Job, held: list[jobs.Item]):
 def test_a_download_settles_only_when_nothing_it_did_not_land_could_land_on_a_retry(
     installed, monkeypatch, state, items, settled
 ):
-    """R-1115: a FAILED job settles only when every track it did not land carries a
-    cause no retry can clear."""
+    """R-1115: a job settles only when no track it did not land could land on a retry."""
     causes = {
         "permanent": refuse(*PERMANENT).cause,
         "transient": refuse("unavailable-transient", "later", retryable=True).cause,
@@ -1253,8 +1248,7 @@ def test_a_go_whose_job_was_cancelled_still_refuses_and_lands_nothing(
 
 
 def alpha_stopped_beta_one(monkeypatch, script) -> tuple[str, jobs.Job]:
-    """Alpha's three tracks answered and stopped at the ceiling, Beta's one track not yet
-    answered. Returns Alpha's run and job."""
+    """Alpha's three tracks stopped at the ceiling, Beta's one not yet answered."""
     two_labels(monkeypatch, script, beta=1)
     return ceiling_job(monkeypatch, script, label="alpha-works")
 
@@ -1341,8 +1335,7 @@ def test_a_go_parked_by_a_rate_limit_names_its_own_go_for_after_the_park(
 
 
 def two_labels(monkeypatch, script, tracks: int = 3, beta: int | None = None) -> None:
-    """Alpha and Beta, ``tracks`` tracks each unless ``beta`` gives Beta's, only Alpha
-    answered so far."""
+    """Alpha and Beta, ``tracks`` each unless ``beta`` gives Beta's, only Alpha answered."""
     beta = tracks if beta is None else beta
     alpha_beta(monkeypatch, {
         "alpha-works": [("a1", "2026", tracks)], "beta-works": [("b1", "2026", beta)],
@@ -1365,8 +1358,7 @@ def other_than(job: jobs.Job) -> jobs.Job:
 def test_a_landing_recorded_for_one_download_never_answers_for_the_runs_next_one(
     installed, monkeypatch, script, tail
 ):
-    """A run that resumed another go's download to its landing, then queued and
-    stopped its own, is not told its own landed."""
+    """A run that landed another go's download is not told its own one landed."""
     two_labels(monkeypatch, script)
     _run, first = ceiling_job(monkeypatch, script, label="alpha-works")
     resuming, _envelope = resumed_by_another()
@@ -1558,8 +1550,7 @@ def moved_out(cfg: config.Config) -> None:
 
 
 def proven(cfg: config.Config, run_id: str, *, medium: str = "bridge") -> None:
-    """The landing proof of a go's pass: ``bridge`` writes the intake file at the
-    library root, ``native`` records the closed landing of the pass."""
+    """A pass's landing proof: the intake file (``bridge``) or a closed landing (``native``)."""
     name = default_name(run_id)
     if medium == "bridge":
         (Path(cfg.library.root) / f"{name}{land_cli.INTAKE_SUFFIX}").write_text("<xml/>")
@@ -1709,8 +1700,7 @@ def test_an_earlier_gos_download_once_landed_lets_the_fresh_go_ask_and_download(
 def test_a_track_no_download_names_refuses_the_fresh_go_and_only_an_unproven_go_is_named(
     installed, monkeypatch, script, tail, medium
 ):
-    """A file no download names is beside the go whoever put it there; the landing
-    proof says only which go's tail may have renamed it."""
+    """A file no download names refuses the go; a proof only clears the go named for it."""
     run_id = landed_first(monkeypatch, script)
     moved_out(installed)
     kept = stray(installed)
@@ -1750,8 +1740,7 @@ def test_a_landing_proof_of_another_pass_proves_nothing(installed, monkeypatch, 
 def test_a_proven_pass_whose_tracks_are_still_at_their_download_names_is_still_waiting(
     installed, monkeypatch, script, tail
 ):
-    """A pass landed part way then finished: its proof is there, and so are its later
-    tracks at their download names."""
+    """A pass landed part way: its proof is there, and so are tracks at download names."""
     run_id = landed_first(monkeypatch, script)
     proven(installed, run_id)
     _envelope, cause = refused_go()
@@ -1889,8 +1878,7 @@ def export_unusable() -> tuple[int, dict]:
 
 
 def landing_refused(tail, cfg: config.Config | None = None) -> None:
-    """The landing refuses, as a bridge tree the export cannot be read for does;
-    with ``cfg``, the folder's tracks are renamed first, as the real tail does."""
+    """The landing refuses; with ``cfg`` the folder's tracks are renamed first, as the tail does."""
     def refused(_argv):
         if cfg is not None:
             renamed_by_its_tail(cfg)
@@ -2029,8 +2017,7 @@ def test_a_tail_refused_beside_a_download_still_names_the_tracks_refused_for_goo
 def test_a_go_whose_tracks_left_reads_no_file_put_there_since_as_its_own(
     installed, monkeypatch, script, tail, tmp_path
 ):
-    """Once its tracks left the folder, a go whose tail had started reads no foreign
-    file as its own."""
+    """Once its tracks left, a go whose tail started reads no foreign file as its own."""
     run_id, _job = stopped_short_of_its_landing(monkeypatch, script, tail, installed)
     moved_out(installed)
     downloaded_by_hand(script, tmp_path, "x1")
@@ -2120,8 +2107,7 @@ def test_a_runs_own_tail_refused_beside_a_download_names_its_tracks_refused_for_
 def test_a_go_with_tracks_in_the_folder_is_named_once_beside_files_no_download_names(
     installed, monkeypatch, script, tail
 ):
-    """Mutation row M13: a go named by its tracks is not named again for the files no
-    download names."""
+    """Mutation row M13: a go named by its tracks is not named again for unnamed files."""
     run_id = landed_first(monkeypatch, script)
     stray(installed)
     _envelope, cause = refused_go()

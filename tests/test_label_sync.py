@@ -452,8 +452,7 @@ def test_a_newly_followed_label_is_offered_at_most_its_offer_per_sweep_newest(
 
 
 def mixed_roster() -> list[FakeRelease]:
-    """The label's act on even years 2026 to 2008 crediting it, another act on odd years
-    2025 to 2007 crediting another label, then 2006 and 2005 with no line (U238)."""
+    """The label's act on even years crediting it, another act on odd years, two bare (U238)."""
     own = [
         FakeRelease(f"own{year}", year=str(year), copyright=f"(P) {year} {LABEL}")
         for year in range(2026, 2007, -2)
