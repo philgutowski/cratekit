@@ -1,33 +1,20 @@
 #!/usr/bin/env python3
 """Cut a Cratekit release on request: a semantic version tag with notes (U159).
 
-Phillip and the DJs the tool is shared with install tagged releases, never raw
-`main`. A release is cut when Phillip asks, in any session, and the session
-judges the bump from what landed since the last tag.
-
     .venv/bin/python scripts/release.py plan
     .venv/bin/python scripts/release.py cut --bump minor
 
-`plan` lists what reached `main` since the last `vX.Y.Z` tag (or since the root
-commit when there is none), the pull requests first and then the units merged
-before U158 put every landing through one, and proposes a bump with a reason
-for each. It reads every commit in the range, not only the first parent
-line, so a landing behind a local merge of `main` is counted (U215). With
-`--since` and `--tip` it reruns a past range, and `--notes` prints only that
-range's release body. It writes nothing.
+`plan` lists what reached `main` since the last `vX.Y.Z` tag (or the root
+commit), reading every commit in the range rather than the first parent line
+(U215), and proposes a bump with a reason for each landing. `--since` and
+`--tip` rerun a past range, and `--notes` prints only its release body. It
+writes nothing.
 
-`cut` refuses unless the checkout is on `main`, clean, and equal to
-`origin/main` as last fetched, and unless the battery is clean on that commit:
-`cloud_battery.py compare` records its verdict for the commit it measured, and
-on a Mac `--mac-battery` runs the full battery here instead. Then it writes the
-version into `pyproject.toml` and `src/cratekit/__init__.py` together, reads
-both back, commits `release: vX.Y.Z`, makes an annotated tag, pushes `main`
-and the tag, and publishes a GitHub release whose notes list what landed and
-carry the upgrade command.
-
-Everything goes through git and REST (`gh api repos/...`), since GraphQL is
-refused on a cloud container. Nothing here imports the package, so a release
-is cut from a checkout whatever its extras.
+`cut` refuses unless the checkout is on `main`, clean, equal to `origin/main`,
+and the battery is clean on that commit (the `cloud_battery.py compare`
+verdict, or `--mac-battery` here). It then writes the version into both files,
+commits `release: vX.Y.Z`, tags, pushes both atomically, and publishes a
+GitHub release over REST, since GraphQL is refused on a cloud container.
 """
 
 from __future__ import annotations
@@ -55,22 +42,16 @@ TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 PYPROJECT_VERSION_RE = re.compile(r'^version = "([^"]*)"$', re.MULTILINE)
 INIT_VERSION_RE = re.compile(r'^__version__ = "([^"]*)"$', re.MULTILINE)
 
-# What a title says about the kind of change. A breaking change is marked the
-# conventional way, `!` before the colon or the word BREAKING; a residual card
-# (`R-12: ...`) or a fix is a repair; a unit card (`U158: ...`) is new
-# behaviour. Anything else is read as a repair, the smallest claim.
+# A title's kind of change: `!` before the colon or BREAKING breaks, a residual or
+# fix repairs, a unit is new behaviour, anything else the smallest claim.
 BREAKING_RE = re.compile(r"\bBREAKING\b|^[A-Za-z0-9-]+(?:\([^)]*\))?!:")
 UNIT_RE = re.compile(r"^(?:U\d+\b|merge\(u\d+[a-z0-9-]*\):)", re.IGNORECASE)
 REPAIR_RE = re.compile(r"^(?:R-\d+\b|merge\(r-?\d+[a-z0-9-]*\):|fix\b|fix\()", re.IGNORECASE)
 
-# A merge commit that is a landing whatever line of history it sits on: the
-# subject every unit and residual merge carries, `merge(u57): ...`,
-# `merge(u99-b): ...`, `merge(r-12): ...`. A branch catching up with `main`
-# is merged under any other subject, `merge: main into the U207 branch`.
+# A unit or residual landing merge subject, a landing on whatever line it sits.
 LANDING_RE = re.compile(r"^merge\((?:u\d+|r-?\d+)[a-z0-9-]*\):", re.IGNORECASE)
 
-# A merge of `main` into a local `main`, the one `git pull` makes before a
-# push: it carries other landings and is never one itself.
+# A merge of `main` into a local `main`, which carries landings and is never one.
 MAIN_SYNC_RE = re.compile(
     r"^Merge (?:(?:remote-tracking )?branch '(?:[\w.-]+/)?main'(?: of \S+)?"
     r"|(?:[\w.-]+/)?main)(?: into main)?$"
@@ -95,22 +76,15 @@ class ReleaseError(Exception):
     """A refusal a person can act on, printed as a sentence and exit 1."""
 
 
-# --------------------------------------------------------------------------
-# versions
-
-
 def parse_tag(name: str) -> tuple[int, int, int] | None:
     """A `vX.Y.Z` tag as a tuple, or None for any tag that is not one."""
     match = TAG_RE.match(name.strip())
-    if not match:
-        return None
-    return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    return tuple(int(part) for part in match.groups()) if match else None
 
 
 def latest_tag(names: Iterable[str]) -> str | None:
     """The highest `vX.Y.Z` among ``names``; tags that are not versions are ignored."""
-    versions = [(parse_tag(n), n) for n in names]
-    versions = [(v, n) for v, n in versions if v is not None]
+    versions = [(v, n) for n in names if (v := parse_tag(n)) is not None]
     return max(versions)[1] if versions else None
 
 
@@ -134,10 +108,6 @@ def parse_dotted(text: str) -> tuple[int, int, int]:
     if found is None:
         raise ReleaseError(f"the current version {text!r} is not X.Y.Z")
     return found
-
-
-# --------------------------------------------------------------------------
-# what landed
 
 
 @dataclass(frozen=True)
@@ -185,17 +155,13 @@ def range_commits(
 ) -> list[tuple[str, str, list[str]]]:
     """Each commit after ``since`` up to ``tip``, newest first: sha, subject, parents.
 
-    The whole range by default, every commit reachable from ``tip`` and not
-    from ``since``; only the first parent line with ``first_parent``. Date
-    order keeps every commit after its parents, so the first parent line reads
-    the same in either walk.
+    The whole range, or only the first parent line with ``first_parent``.
     """
     span = f"{since}..{tip}" if since else tip
     argv = ["log", "--date-order", "--format=%H%x1f%P%x1f%s", span]
     if first_parent:
         argv.insert(1, "--first-parent")
-    # The subject last: the root commit's parents are empty, and the unit
-    # separator is whitespace to `str.strip`, so a trailing empty field is lost.
+    # The subject last, since `str.strip` would lose the root's empty parents field.
     out = git(runner, *argv)
     commits = []
     for line in out.splitlines():
@@ -211,25 +177,13 @@ def landings_since(
 ) -> tuple[list[Landing], list[Landing]]:
     """The pull requests merged in the range, and the merges made without one.
 
-    The whole range is read, not only its first parent line (U215). A local
-    session commits on `main` and then pulls, so every landing pushed to
-    `origin/main` meanwhile sits on the second parent side of that local
-    merge, and a first parent walk never met eleven of v0.7.0's twelve units.
-
-    A pull request belongs to the range when its merge commit is anywhere in
-    it. Failing that, when its head is in it: it landed at the merge that took
-    the head as a later parent, a landing before a branch sync, which is how a
-    pull request merged by a local merge and push lands, or at the head itself
-    on a fast forward. Every landing merge that took the head is claimed with
-    it, so a unit reachable both ways is listed once. A head outside the range
-    shipped before it, so a sibling's sync of it inside the range claims
-    nothing.
-
-    A merge no pull request claimed is a landing made without one, which is
-    how every unit before U158 reached `main`, when it is on the first parent
-    line, or off it when its subject is a unit or residual landing. A merge of
-    `main` into a local `main` is never one, and neither is a branch merging
-    `main` or another branch into itself.
+    The whole range is read, since a local pull puts landings on the second
+    parent side (U215). A pull request lands at its merge commit if in range,
+    else at the merge that took its head (landings first), else at its head (a
+    fast forward); every landing merge that took the head is claimed with it. A
+    head outside the range shipped before it. An unclaimed merge is a landing
+    on the first parent line, or off it with a landing subject; a merge of
+    `main` into `main` never is.
     """
     commits = range_commits(runner, since, tip)
     first_line = {sha for sha, _s, _p in range_commits(runner, since, tip, first_parent=True)}
@@ -254,9 +208,6 @@ def landings_since(
             continue
         merge_sha = pull.get("merge_commit_sha") or ""
         head_sha = (pull.get("head") or {}).get("sha") or ""
-        # Only a head inside the range can have landed in it: a head an
-        # earlier tag holds was taken there too, by its own merge, and a
-        # sibling branch's sync of it is no landing of it here.
         taking = (
             sorted(
                 taken_by.get(head_sha, ()),
@@ -275,14 +226,8 @@ def landings_since(
             continue
         claimed.add(landed_at)
         claimed.update(sha for sha in taking if lands(sha))
-        prs.append(
-            Landing(
-                title=pull.get("title", ""),
-                sha=landed_at,
-                number=pull.get("number"),
-                url=pull.get("html_url"),
-            )
-        )
+        title, number, url = pull.get("title", ""), pull.get("number"), pull.get("html_url")
+        prs.append(Landing(title, landed_at, number, url))
     prs.sort(key=lambda landing: order[landing.sha])
     direct = [
         Landing(title=subject, sha=sha)
@@ -293,20 +238,12 @@ def landings_since(
 
 
 def merged_pulls(runner: Runner, repo: str) -> list[dict]:
-    """Every closed pull request against `main`, a numbered page at a time.
-
-    `gh api --paginate` needs GraphQL on a cloud container, so the pages are
-    asked for one by one until one comes back short.
-    """
+    """Every closed pull request against `main`, page by page (`--paginate` needs GraphQL)."""
     pulls: list[dict] = []
     page = 1
     while True:
         done = runner(
-            [
-                "gh",
-                "api",
-                f"repos/{repo}/pulls?state=closed&base=main&per_page=100&page={page}",
-            ]
+            ["gh", "api", f"repos/{repo}/pulls?state=closed&base=main&per_page=100&page={page}"]
         )
         if done.returncode != 0:
             raise ReleaseError(f"could not read the pull requests: {done.stderr.strip()}")
@@ -317,39 +254,25 @@ def merged_pulls(runner: Runner, repo: str) -> list[dict]:
         page += 1
 
 
-# --------------------------------------------------------------------------
-# notes
-
-
 def upgrade_command(repo: str, tag: str) -> str:
     return f'pipx install --force "cratekit @ git+https://github.com/{repo}@{tag}"'
 
 
 def notes(tag: str, repo: str, prs: Sequence[Landing], direct: Sequence[Landing]) -> str:
     """The release body: what landed, then how to upgrade."""
-    lines = [f"Cratekit {tag}.", ""]
-    lines.append("## Pull requests")
-    lines.append("")
+    lines = [f"Cratekit {tag}.", "", "## Pull requests", ""]
     lines += [landing.line() for landing in prs] or ["None in this release."]
     if direct:
         lines += ["", "## Merged without a pull request", ""]
         lines += [landing.line() for landing in direct]
+    lines += ["", "## Upgrade", "", "    " + upgrade_command(repo, tag), ""]
     lines += [
-        "",
-        "## Upgrade",
-        "",
-        "    " + upgrade_command(repo, tag),
-        "",
         "If you installed extras, name them in brackets after `cratekit`, for",
         '`"cratekit[analysis] @ git+..."`. `crate doctor` prints the command',
         "with the extras this copy carries.",
         "",
     ]
     return "\n".join(lines)
-
-
-# --------------------------------------------------------------------------
-# the version, written in two places at once
 
 
 def read_versions(root: Path) -> tuple[str, str]:
@@ -378,10 +301,6 @@ def write_version(root: Path, version: str) -> None:
         raise ReleaseError(f"the version read back as {written}, not {version} in both")
 
 
-# --------------------------------------------------------------------------
-# the refusals
-
-
 def refusals(runner: Runner, root: Path, *, mac_battery: bool) -> list[str]:
     """Every reason this checkout may not be released, empty when it may."""
     problems = []
@@ -396,10 +315,7 @@ def refusals(runner: Runner, root: Path, *, mac_battery: bool) -> list[str]:
         problems.append("there is no origin/main to compare against; fetch it")
     elif remote.stdout.strip() != head:
         problems.append("HEAD is not origin/main as last fetched; fetch and pull or push first")
-    if mac_battery:
-        problem = mac_battery_problem(runner)
-    else:
-        problem = verdict_problem(root, head)
+    problem = mac_battery_problem(runner) if mac_battery else verdict_problem(root, head)
     if problem:
         problems.append(problem)
     return problems
@@ -432,10 +348,6 @@ def mac_battery_problem(runner: Runner) -> str | None:
     return None
 
 
-# --------------------------------------------------------------------------
-# commands
-
-
 def repo_slug(runner: Runner) -> str:
     """owner/name from the origin URL, whatever proxy or scheme it goes through."""
     done = runner(["git", "remote", "get-url", "origin"])
@@ -446,14 +358,7 @@ def repo_slug(runner: Runner) -> str:
 
 
 def sync_history(runner: Runner) -> None:
-    """Refuse a shallow clone, and fetch origin's tags, before anything is read.
-
-    A cloud container clones fifty commits deep with no tags, so the range
-    since the last tag read there is whatever the window holds, and a plan
-    from it said "from the root commit" over a fraction of the history. The
-    tags are fetched so a tag cut from another clone is the one the range
-    starts at. This updates refs only, never the tree.
-    """
+    """Refuse a shallow clone, and fetch origin's tags (refs only), before anything is read."""
     if git(runner, "rev-parse", "--is-shallow-repository") == "true":
         raise ReleaseError(
             "this clone is shallow, so the history since the last tag is incomplete; "
@@ -463,21 +368,14 @@ def sync_history(runner: Runner) -> None:
 
 
 def gather(runner: Runner, repo: str, *, since: str | None = None, tip: str = "HEAD"):
-    """The range's start, its pull requests and its merges made without one.
-
-    ``since`` defaults to the last `vX.Y.Z` tag, or the root commit when there
-    is none; a ref given here is checked to name a commit before it is read.
-    """
-    for ref in (since, tip):
-        if ref is None:
-            continue
+    """The range's start (the last `vX.Y.Z` tag by default), its pull requests and direct merges."""
+    for ref in (ref for ref in (since, tip) if ref is not None):
         found = runner(["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"])
         if found.returncode != 0:
             raise ReleaseError(f"{ref!r} names no commit here; fetch it, or name another")
     if since is None:
         since = latest_tag(git(runner, "tag", "--list", "v*").splitlines())
-    prs, direct = landings_since(runner, since, tip, merged_pulls(runner, repo))
-    return since, prs, direct
+    return since, *landings_since(runner, since, tip, merged_pulls(runner, repo))
 
 
 def version_at(runner: Runner, ref: str) -> str:
@@ -493,8 +391,7 @@ def version_at(runner: Runner, ref: str) -> str:
 def refuse_a_crossed_tag(runner: Runner, since: str, tip: str) -> str | None:
     """Refuse a reversed range or one holding a version tag other than at its tip.
 
-    Returns the highest version tag at the tip, which titles the range's notes
-    however the tip was spelled, or None when no version tag is there.
+    Returns the highest version tag at the tip, which titles the notes, or None.
     """
     if runner(["git", "merge-base", "--is-ancestor", since, tip]).returncode != 0:
         raise ReleaseError(f"{since!r} is not behind {tip!r}, so the range holds nothing of it")
@@ -516,11 +413,7 @@ def refuse_a_crossed_tag(runner: Runner, since: str, tip: str) -> str | None:
 def cmd_plan(args, runner: Runner = run) -> int:
     """List what landed and propose a bump; with ``--notes``, print the release body only.
 
-    ``--since`` and ``--tip`` rerun a past range, `plan --since v0.6.0 --tip
-    v0.7.0`, and the bump is then read from the version written at
-    ``--since``. A range that crosses a version tag is refused, since its
-    proposal would name a version that exists and its notes would credit one
-    release with another's units.
+    A past range's bump is read from the version written at ``--since``.
     """
     asked_since = getattr(args, "since", None)
     tip = getattr(args, "tip", None)
@@ -537,13 +430,10 @@ def cmd_plan(args, runner: Runner = run) -> int:
     else:
         current = read_versions(ROOT)[0]
     bump, reasons = propose([*prs, *direct])
-    if bump == "major" and parse_dotted(current)[0] == 0:
-        # Below 1.0.0 a break is a minor bump with the break said first in the
-        # notes; 1.0.0 is Phillip's to choose, never a proposal's.
-        capped = True
+    # Below 1.0.0 a break is minor; 1.0.0 is Phillip's to choose.
+    capped = bump == "major" and parse_dotted(current)[0] == 0
+    if capped:
         bump = "minor"
-    else:
-        capped = False
     nxt = dotted(bumped(parse_dotted(current), bump)) if bump else None
     if getattr(args, "notes", False):
         if bump is None:
@@ -590,8 +480,7 @@ def cmd_cut(args, runner: Runner = run, root: Path = ROOT) -> int:
     git(runner, "add", str(PYPROJECT), str(INIT))
     git(runner, "commit", "-m", f"release: {tag}")
     git(runner, "tag", "-a", tag, "-m", f"Cratekit {tag}")
-    # ONE ATOMIC PUSH, so `main` never carries a release commit no tag names:
-    # either both refs land or neither does.
+    # One atomic push, so `main` never carries a release commit no tag names.
     git(runner, "push", "--atomic", "origin", "main", tag)
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as handle:
         handle.write(body)
@@ -603,8 +492,7 @@ def cmd_cut(args, runner: Runner = run, root: Path = ROOT) -> int:
         ]
     )
     if done.returncode != 0:
-        # The tag is out, so a second `cut` finds nothing landed. The notes are
-        # kept and the one command that publishes them is printed instead.
+        # The tag is out, so the notes are kept and their publish command printed.
         print(f"release: {tag} is tagged and pushed, but the GitHub release was refused:")
         print(f"  {done.stderr.strip()}")
         print("publish it with:")
@@ -625,17 +513,12 @@ def main(argv: Sequence[str]) -> int:
     parser.add_argument("--repo", help="owner/name; read from the origin URL by default")
     sub = parser.add_subparsers(dest="cmd", required=True)
     plan = sub.add_parser("plan", help="list what landed since the last tag and propose a bump")
-    plan.add_argument(
-        "--since", help="the tag or commit the range starts after; the last tag by default"
-    )
-    plan.add_argument(
-        "--tip", help="the tag or commit the range ends at, with --since; HEAD by default"
-    )
-    plan.add_argument(
-        "--notes",
-        action="store_true",
-        help="print only the release body for the range, titled by --tip when it is a version",
-    )
+    since_help = "the tag or commit the range starts after; the last tag by default"
+    plan.add_argument("--since", help=since_help)
+    tip_help = "the tag or commit the range ends at, with --since; HEAD by default"
+    plan.add_argument("--tip", help=tip_help)
+    notes_help = "print only the release body for the range, titled by --tip when it is a version"
+    plan.add_argument("--notes", action="store_true", help=notes_help)
     cut = sub.add_parser("cut", help="write the version, tag, push and publish the release")
     cut.add_argument("--bump", choices=BUMPS, required=True)
     cut.add_argument(

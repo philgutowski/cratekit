@@ -61,8 +61,6 @@ def main(argv: list[str]) -> int:
         print(__doc__, file=sys.stderr)
         return 2
 
-    # The marker text is configuration. It is named on the command line rather
-    # than baked in, but a default is offered so the common case is one argument.
     template = NameTemplate(markers=(MarkerRule(field="lossy", literal="[MP3]"),))
 
     classes: collections.Counter[str] = collections.Counter()
@@ -104,9 +102,7 @@ def main(argv: list[str]) -> int:
     for label, count in char_classes.most_common():
         print(f"  {count:>7}  {label}")
 
-    # The only genuinely bad outcomes. A name with no head is normal: it has not
-    # been analyzed. A name that parses but strips to nothing, or whose head
-    # survives its own strip, is a name the engine would corrupt.
+    # A name with no head is normal; one that parses but cannot round trip is corrupted.
     bad = sum(count for label, count in classes.items() if "PARSED but" in label)
     if bad:
         print(f"\n{bad} names the engine cannot round-trip", file=sys.stderr)
