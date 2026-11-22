@@ -1,51 +1,26 @@
 """How far the deletion pass has read THIS library's removals, and what binds it.
 
-R24 says no routine operation processes the whole library in one pass, and R35
-says a first run on an existing library BASELINES prior removals rather than
-presenting them. Both of those are this file. rekordbox stamps every row it
-changes with an update sequence, so "the removals since the last run" is a
-comparison against one number, and the number is what this document holds.
+R24 (no routine pass over the whole library) and R35 (a first run BASELINES prior
+removals) are this file: rekordbox stamps every changed row with an update
+sequence, so "removals since the last run" is a comparison against one number.
 
-Three properties, and each one exists because its absence has a specific cost.
+**IT IS BOUND TO A DATABASE IDENTITY.** A rebuilt library's counter restarts near
+zero, so a carried over watermark would report nothing to do forever; the
+identity turns that into a re-baseline.
 
-**IT IS BOUND TO A DATABASE IDENTITY.** A watermark is a position in one
-database's sequence space, and it means nothing in another's. Somebody who
-rebuilds their library from an export gets a database whose counter starts near
-zero, so a watermark carried over from the old one sits above every sequence the
-new database will issue for a long time, and the pass reports nothing to do
-forever while removals pile up invisibly. Recording the identity the number was
-taken against turns that from a silent nothing into a re-baseline.
+**IT ADVANCES ONLY OVER WHAT IS FULLY HANDLED, AND ONLY CONTIGUOUSLY.** It stops
+BEFORE the first sequence holding anything unhandled (R35, AE16): two rows can
+share a sequence, and passing it would skip the unhandled one for good.
 
-**IT ADVANCES ONLY OVER WHAT IS FULLY HANDLED, AND ONLY CONTIGUOUSLY.** The pass
-answers each removal with a category, and only some of those categories are
-finished business. An unresolved row is not finished: R35 and AE16 both say so by
-name, and advancing past it would hide a file the user still owns behind a number
-nobody looks at. So the advance stops at the first sequence holding anything
-unhandled, and it stops BEFORE it, not after: two rows can share one sequence,
-and advancing to a sequence that still has an unhandled row on it skips that row
-on the next run, permanently.
+**IT NUMBERS A REMOVAL THAT CARRIES NO NUMBER OF ITS OWN (R-1037).** A row deleted
+outright has no sequence, so the update count at the FIRST run that sees it
+absent is kept here, read back by later runs, and forgotten when the row is held
+again. A landing rolled back is told apart first (``library.landed_absences``).
 
-**IT NUMBERS A REMOVAL THAT CARRIES NO NUMBER OF ITS OWN (R-1037).** rekordbox
-7.2 deletes a removed row outright (A178, A185), and a row a Cratekit landing
-made and the database no longer holds is read as a removal, but a row that is
-not there carries no sequence. The update count at the FIRST run that sees it
-absent is its sequence, kept here, beside the position it is compared against,
-so a later run reads the same number and neither offers it twice nor skips it.
-A row seen live again is forgotten, so a second removal after a restore is
-numbered afresh. A landing rolled back is told from a removal before a row is
-numbered, by one of its rows held under its recorded UUID or every playlist it
-made (``library.landed_absences``, R-1844).
-
-**THE READ AND THE WRITE ARE ONE LOCKED CYCLE.** ``atomic_write_bytes`` makes the
-rename atomic and does nothing for the cycle around it. Two passes finishing at
-once both read the same watermark, both advance from what they read, and the
-second rename discards the first one's advance while the call that lost returns a
-record reporting success. That is the same defect the decision stores shipped and
-lost 122 of 200 decisions to, one package away, and it is worse here because the
-losing advance re-offers files a person has already answered for. The lock is a
-NEVER_RESTORED entry of its own rather than a file beside the document, because
-the document is COUPLED: a restore replaces the directory holding it, and a lock
-inside that directory has its inode swapped under every process holding it.
+**THE READ AND THE WRITE ARE ONE LOCKED CYCLE.** An atomic rename does nothing for
+two passes advancing from one read (the decision stores lost 122 of 200 records
+so). The lock is a NEVER_RESTORED entry of its own, because the document is
+COUPLED and a restore would swap a lock beside it under its holders.
 
 Layer note: MODULES. It reads configuration and touches the disk, and it names no
 verb.
@@ -62,19 +37,12 @@ from cratekit.cli.output import timestamp
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
 
-#: The version of the document this module writes, and READS BACK. A version
-#: stamped and never read proves nothing, which is exactly what the decision
-#: store next door had wrong: it wrote one into every document and its reader
-#: never looked, so a document from a newer build read as an empty store and the
-#: next write destroyed it. Version 2 added the sightings (R-1037), and a
-#: version 1 document is read as one with none, which is what it records.
+#: The version this module writes, and READS BACK (a stamp nobody reads proves
+#: nothing). Version 2 added the sightings (R-1037); version 1 reads as none.
 WATERMARK_VERSION = 2
 READABLE_VERSIONS = frozenset({1, WATERMARK_VERSION})
 
-#: The sequence a library that has never been baselined is at. Named rather than
-#: written as a bare zero at three call sites, because the number and the meaning
-#: are not the same thing: this is "no baseline", and a real library whose
-#: counter genuinely sits at zero is still a library that has been baselined.
+#: "No baseline", distinct from a real counter sitting at zero.
 UNBASELINED = -1
 
 
@@ -83,27 +51,21 @@ class Watermark:
     """One recorded position, and the database it is a position in.
 
     ``sequence`` is the highest update sequence every removal at or below which
-    has been fully handled. A removal is offered when its own sequence is
-    strictly greater, so a sequence that is merely present in the document is not
-    a claim that anything at it was deleted; it is a claim that nothing at it is
-    still outstanding.
+    is fully handled; a removal is offered when its own is strictly greater.
     """
 
     database_identity: str
     sequence: int
     recorded: str
     actor: str
-    #: The sequence each absent landed row was given at its first sighting,
-    #: by content id (R-1037). Bound to ``database_identity`` with the
-    #: position, so a rebuilt library starts with none.
+    #: The sequence each absent landed row was given at its first sighting, by
+    #: content id (R-1037), bound to ``database_identity`` with the position.
     absent: Mapping[str, int] = field(default_factory=dict)
 
     def applies_to(self, database_identity: str) -> bool:
         """Whether this position means anything for the database in front of us.
 
-        The comparison is exact. A near miss is not a near answer: two libraries
-        with different identities have unrelated sequence spaces, so a watermark
-        from one is not an approximation of the other's, it is noise.
+        Exact: another identity's sequence space is noise, not an approximation.
         """
         return self.database_identity == str(database_identity)
 
@@ -118,26 +80,13 @@ class Watermark:
 
 
 def contiguous_sequence(
-    handled: Mapping[int, bool] | Sequence[tuple[int, bool]],
-    *,
-    floor: int,
+    handled: Mapping[int, bool] | Sequence[tuple[int, bool]], *, floor: int
 ) -> int:
     """The highest sequence at or below which EVERYTHING is handled.
 
-    Takes (sequence, handled) pairs rather than candidates, so the rule is
-    testable without a library and so the one thing it decides stays visible: it
-    decides nothing about what handled MEANS, which is the categoriser's job.
-
-    A mapping is accepted as well as pairs because a caller that already has one
-    entry per sequence should not have to flatten it, and a mapping of one
-    sequence to one verdict cannot express the case this function exists for.
-    Pairs can, so pairs are what the pass passes: several rows may share one
-    sequence, and if any of them is outstanding the sequence is not clear.
-
-    ``floor`` is where it starts, which is the watermark already recorded. The
-    result never goes below it, because a watermark that moved backwards would
-    re-present removals a person has already answered for, and the answer they
-    already gave is not in the queue any more.
+    Pairs, because several rows may share a sequence and one outstanding row
+    holds it; a mapping is accepted too. Never below ``floor``, the recorded
+    watermark: moving back would re-present answered removals.
     """
     pairs = list(handled.items()) if isinstance(handled, Mapping) else list(handled)
     outstanding = sorted({sequence for sequence, done in pairs if not done})
@@ -156,23 +105,15 @@ class WatermarkStore:
         self.path: Path = config.state_path("deletion_watermark", cfg)
         self.lock_path: Path = config.state_path("deletion_watermark_lock", cfg)
 
-    # The refusals.
-
     def _unusable(self, what: str) -> CratekitError:
-        """One refusal for every way this document is not this document.
-
-        The sentence is the same in each case deliberately, as its sibling in the
-        decision stores argues: what a person does about it does not depend on
-        WHICH way the file is wrong, and the specific shape rides on the detail
-        where a bug report can read it.
-        """
+        """One refusal for every way this document is not this document; the shape
+        rides on the detail."""
         return refuse(
             "deletion-watermark-unusable",
-            f"the deletion watermark at {self.path.name} could not be read "
-            f"({what}), so how much of this library's removal history has "
-            f"already been dealt with is unknown; treating it as unset would "
-            f"present every removal this library has ever had as if it had just "
-            f"happened",
+            f"the deletion watermark at {self.path.name} could not be read ({what}), so how much "
+            "of this library's removal history has already been dealt with is unknown; treating "
+            "it as unset would present every removal this library has ever had as if it had just "
+            "happened",
             steps=("repair or restore the deletion watermark before running deletion",),
             scope=Scope.RUN,
             origin=("deletion.watermark",),
@@ -180,15 +121,9 @@ class WatermarkStore:
         )
 
     def _locked(self):
-        """Hold the exclusive lock across one read then write cycle.
+        """Hold the exclusive lock across one read then write cycle (``core.config.held``).
 
-        The lock class is the one ``core.config`` already ships for precisely
-        this, rather than a fourth copy of the same twenty lines: it opens the
-        file at an explicit mode inside a private directory, it never unlinks the
-        name on release, and it REFUSES rather than proceeding unlocked on a
-        platform with no advisory locking. Only the acquisition is translated
-        into this module's own refusal; a failure raised by the body keeps its
-        own identity.
+        Only the acquisition is translated into this module's refusal.
         """
         return config.held(
             self.lock_path,
@@ -204,17 +139,12 @@ class WatermarkStore:
             ),
         )
 
-    # Reading.
-
     def read(self) -> Watermark | None:
-        """The recorded position, or None when this library has never been baselined.
+        """The recorded position, or None when no document exists.
 
-        REFUSAL IS THE ONLY ALTERNATIVE TO A CORRECT READ. None means one thing
-        here, "no document exists", and a document that exists and cannot be
-        recognized is never folded into it. The two have opposite consequences: a
-        library with no document gets baselined and offered nothing, while a
-        library whose document is corrupt would be baselined at TODAY's sequence
-        and would silently lose every removal a person had not yet answered for.
+        A document that exists and cannot be recognised REFUSES, never None: a
+        corrupt one read as absent would re-baseline at today's sequence and lose
+        every unanswered removal.
         """
         found, raw = config.read_json_as_text(self.path, self._unusable)
         if not found:
@@ -234,8 +164,7 @@ class WatermarkStore:
         if not isinstance(identity, str) or not identity:
             raise self._unusable("it names no database identity")
         sequence = raw.get("sequence")
-        # bool BEFORE int, because a bool IS an int in Python and ``True`` would
-        # otherwise be accepted as the sequence 1.
+        # bool before int: ``True`` is an int and would read as sequence 1.
         if isinstance(sequence, bool) or not isinstance(sequence, int):
             raise self._unusable(
                 f"its sequence is a {type(sequence).__name__} rather than a whole number"
@@ -265,29 +194,15 @@ class WatermarkStore:
             (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8"), self.path
         )
 
-    # Writing.
-
     def baseline(
         self, *, database_identity: str, sequence: int, actor: str, now: str | None = None
     ) -> tuple[Watermark, bool]:
         """Record a starting position if this library needs one. Returns (mark, baselined).
 
-        ``baselined`` is True when this call WROTE one, which is what the pass
-        reports to the user: a first run presents nothing, and saying so is the
-        difference between "there is nothing to delete" and "the history before
-        now has been accepted as history" (R35).
-
-        THE WHOLE DECISION IS UNDER THE LOCK, not just the write. The read is what
-        decides whether to write at all, so a lock around the write alone would
-        let two first runs both decide to baseline, and the second would overwrite
-        a position the first had already advanced.
-
-        A document belonging to a DIFFERENT database is replaced rather than
-        refused. That is the re-baseline R35's first-run rule already describes,
-        arriving by a different route: the sequence space it named is gone, and
-        the only honest thing to do with a number measured in it is to stop using
-        it. The old identity rides on the returned record's actor trail through
-        the caller's report, so a person is told it happened.
+        ``baselined`` is what the pass reports: history accepted, not nothing to
+        delete (R35). The whole decision is under the lock, or two first runs
+        could both baseline. A document of a DIFFERENT database is replaced, the
+        re-baseline R35 describes.
         """
         with self._locked():
             existing = self.read()
@@ -307,16 +222,9 @@ class WatermarkStore:
     ) -> Watermark:
         """Move the position forward, never backward, under the lock.
 
-        THE STORED POSITION IS RE-READ INSIDE THE LOCK and the result is the
-        greater of the two. The caller computed its number from a document it read
-        before it did its work, and another pass may have advanced past it
-        meanwhile; writing the caller's number unconditionally would then undo
-        that advance and re-offer everything between.
-
-        A document naming a DIFFERENT database refuses. Between the plan and the
-        advance somebody rebuilt the library, so the sequence about to be written
-        was measured in a space that no longer exists, and the removals it claims
-        are handled are not the removals the new database will issue.
+        Re-read inside the lock and the greater kept, since another pass may have
+        advanced meanwhile. A document of a DIFFERENT database refuses: the
+        library was rebuilt between the plan and here.
         """
         with self._locked():
             existing = self.read()
@@ -337,26 +245,15 @@ class WatermarkStore:
             return mark
 
     def sight(
-        self,
-        *,
-        database_identity: str,
-        absent: Iterable[str],
-        present: Iterable[str],
-        counter: int,
+        self, *, database_identity: str, absent: Iterable[str], present: Iterable[str], counter: int
     ) -> Watermark:
         """Number every absent landed row not yet numbered, and forget every one held again.
 
-        ``absent`` names each landed row the database does not hold. A row
-        first seen here is numbered at ``counter``, the count now, which a
-        removal advanced past every earlier run's. On the run that baselines
-        (R35) the count is at or under the new position, so every row already
-        gone is history without a rule of its own. A row already numbered keeps its number, so a removal is
-        neither offered twice nor hidden. ``present`` names the rows the
-        database holds, live or marked, and their sightings are dropped: a row
-        a restore put back is no removal, and its next removal is new.
-
-        Under the lock, with the position re-read, as :meth:`advance` is; a
-        document of another database refuses for the reason that one gives.
+        A row first seen is numbered at ``counter``, past every earlier run's; on
+        the baselining run that is at or under the new position, so it is
+        history (R35). A numbered row keeps its number. A row in ``present`` (held
+        live or marked) is dropped, so its next removal is new. Under the lock,
+        refusing another database's document as :meth:`advance` does.
         """
         with self._locked():
             existing = self.read()

@@ -1,24 +1,13 @@
 """``crate delete review``: offer removals, then trash the confirmed files.
 
-R35 presents removals with resolved path and size. R34 makes the confirm
-gate a separate recorded act. This module is the shell that puts those two
-sentences on a command a person can type. The engine in ``run`` already did
-the work; nothing here invents a second proof.
+R35 presents removals with resolved path and size; R34 makes the confirm gate a
+separate recorded act. This is the shell over ``run``; nothing here is a second
+proof. The conformance fixture supplies a disposable database
+(``CRATEKIT_TEST_DB``), and ``open_db`` tells an encrypted live database from a
+plain synthetic one by its header (R-239), so one handler opens both.
 
-WHY THIS CAN LAND NOW. The explicit-gate wall is down: conformance 3 answers
-an explicit gate with R34's two acts. What remained was the database. This
-verb reads the collection, so it cannot exit OK on a machine with no
-rekordbox database. The conformance fixture now substitutes a disposable
-database (the ``CRATEKIT_TEST_DB`` convention: a supplied snapshot wins,
-otherwise a synthetic file is built), so the battery runs either way.
-
-UNLOCK. A live rekordbox database is encrypted and needs the key. The
-synthetic fixture is plain SQLite and the canary cannot read it with the key
-on. ``open_db`` reads the header and tells the two apart, so the same handler
-opens both; this module kept its own copy of that probe until R-239.
-
-Layer note: MODULES. Same shape as ``tombstone_cli``: it imports
-``cratekit.cli.output`` and nothing else from the command-line layer.
+Layer note: MODULES. It imports ``cratekit.cli.output`` and nothing else from the
+command-line layer, as ``tombstone_cli`` does.
 """
 
 from __future__ import annotations
@@ -38,9 +27,8 @@ def _open(cfg: config.Config) -> Any:
 def _plan_digest(found: run.Plan) -> str:
     """Digest the files being confirmed, not the watermark state.
 
-    A first run baselines inside ``plan`` before the gate returns. If the
-    digest carried ``baselined``, the recorded decision would be stale on
-    resume of every first run, which is the one run that must succeed.
+    A first run baselines inside ``plan`` before the gate, so a digest carrying
+    ``baselined`` would be stale on the resume of every first run.
     """
     return digest_of(
         {
@@ -93,30 +81,23 @@ def build_review(parser, entry) -> None:
 def _shown(found: run.Plan) -> dict[str, Any]:
     """What the refusal puts in front of the person, beside the question (R-134).
 
-    A first run baselines inside ``plan``, before the gate can refuse, so by the
-    time anybody is asked "move these files to the Trash?" the prior removals are
-    already accepted as history. Aborting does not undo that, and R35 wants the
-    baseline, so what this fixes is that it was SILENT: the refusal now says so.
-
-    A display value and never an input: ``_plan_digest`` does not read it, so a
-    first run's recorded decision is not stale on the resume that no longer
-    baselines.
+    A first run has already accepted prior removals as history before anybody is
+    asked, and aborting does not undo that, so the screen says so. Display only:
+    ``_plan_digest`` never reads it.
     """
     shown: dict[str, Any] = {
         "baselined": found.baselined,
         "accepted_as_history": found.baselined_over,
         "offered": len(found.deletable),
     }
-    # THE ROWS THE PROOF EXCUSED ARE SAID WHEN THERE ARE ANY (U243): streaming
-    # rows and other locations that name no local file. "None of these could
-    # reference a file" is a claim, and the person approving sees its size.
+    # The rows the proof excused as naming no local file (U243), so the person
+    # approving sees the size of that claim.
     ignored = found.references.ignored if found.references is not None else 0
     if ignored:
         shown["ignored, not local files"] = ignored
-    # AND THE LANDINGS READ AS ROLLED BACK (R-1844) holding a removal no run
-    # offered or took as history, whose files are kept: a landing whose playlist was deleted
-    # by hand and whose every row was then removed reads the same as one a
-    # restore took away, and the person approving sees how many there are.
+    # And the landings read as rolled back (R-1844), whose files are kept: one
+    # whose playlist and rows were all removed by hand reads the same as one a
+    # restore took away.
     if found.rolled_back:
         shown["landings read as rolled back"] = found.rolled_back
     return shown
@@ -125,20 +106,11 @@ def _shown(found: run.Plan) -> dict[str, Any]:
 def review_removals(ctx) -> Envelope:
     """Read the collection, offer what is deletable, then honour the confirm gate.
 
-    THE PLAN IS BUILT BEFORE THE GATE, because the gate's digest is the plan.
-    An empty or first-run baseline still asks the gate: conformance 3 holds
-    every declared gate to firing, and "nothing to trash" is a plan a person
-    can still abort.
-
-    APPLY RUNS ONLY WHEN THERE IS SOMETHING DELETABLE. A baseline writes the
-    watermark inside ``plan`` and must not open a destructive session to move
-    zero files. Confirmed files go through ``run.apply``, which rebuilds the
-    plan under the session gates and re-checks every precondition.
-
-    INLINE, AND THAT IS THE DESIGN RATHER THAN A MISSING WORKER (U60). Nothing
-    here enqueues and the registry entry no longer claims otherwise. The person
-    who confirmed the set watches it go; a detached child would rebuild a plan
-    that nobody digested, which is what the explicit gate exists to prevent.
+    The plan is built before the gate, whose digest it is; an empty or first
+    run plan still asks (conformance 3). Apply runs only when something is
+    deletable, through ``run.apply``, which rebuilds the plan under the session
+    gates. Inline by design (U60): a detached child would rebuild a plan nobody
+    digested.
     """
     cfg = load_config(("deletion.cli",))
     spec = ctx.entry.gates[0]
@@ -151,17 +123,13 @@ def review_removals(ctx) -> Envelope:
             return ctx.envelope(data=_payload(cfg, offered), outcome=Outcome.NO_OP)
         if found.baselined or not found.deletable:
             return ctx.envelope(data=_payload(cfg, offered), outcome=Outcome.OK)
-        # THE GATE IS THE CONFIRMATION OF THE OFFERED SET. apply only moves
-        # items that already have a verdict, so an unanswered offer would
-        # make "trash" a no-op. Honour a recorded reject; accept the rest.
+        # The gate confirms the offered set: apply moves only items with a
+        # verdict, so accept every unanswered one and honour a recorded reject.
         with review.open_store(cfg) as store:
             for item in offered:
                 if item.verdict is None:
                     review.resolve(
-                        store,
-                        item.item_id,
-                        review.Verdict.ACCEPTED,
-                        actor=ctx.args.actor,
+                        store, item.item_id, review.Verdict.ACCEPTED, actor=ctx.args.actor
                     )
         run.apply(cfg, handle, actor=ctx.args.actor)
         return ctx.envelope(data=_payload(cfg, offered), outcome=Outcome.OK)
