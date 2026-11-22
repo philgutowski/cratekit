@@ -2,7 +2,7 @@
 title: "The restore mirror and the backup mirror kept separate exclude sets, and the fake remote ignored both"
 date: 2026-09-21
 category: integration-issues
-module: cratekit.modules.tools.backup
+module: cratekit.modules.tools.backup, cratekit.modules.tools.backup_snapshot
 problem_type: integration_issue
 component: restore
 severity: medium
@@ -11,7 +11,7 @@ resolution_type: code_fix
 tags: [restore, bare-metal, rclone, exclude, fake-remote, r-592]
 applies_when:
   - "A guard's safety argument rests on what the restore mirror does or does not land"
-  - "Changing the exclude patterns on any rclone command in backup.py"
+  - "Changing the exclude patterns on any rclone command in backup.py or backup_snapshot.py"
   - "Writing a test against the bare metal verb's fake remote"
 ---
 
@@ -47,5 +47,6 @@ reverts the excludes and is killed.
 
 The share snapshot command beside it still passes `VOLUME_EXCLUDES` on purpose,
 because the share is not the library root. A sed that rewrites every
-`_exclude_args(VOLUME_EXCLUDES)` in `backup.py` catches it too, which happened
+`_exclude_args(VOLUME_EXCLUDES)` in `backup.py` and `backup_snapshot.py`
+catches it too, which happened
 once while measuring this.
