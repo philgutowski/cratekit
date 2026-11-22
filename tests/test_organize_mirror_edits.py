@@ -469,6 +469,30 @@ def test_an_account_that_cannot_be_read_refuses_the_step_alone(machine):
     assert step.state == REFUSED and step.cause.reason == "credential-missing"
 
 
+def test_a_reading_whose_edits_went_unread_lists_the_step_and_says_why(machine, monkeypatch):
+    """U309. A reading that could not read the account's edits lists the step, never plans it."""
+    from cratekit.core.cause import refuse
+    declared, registry = active_taxonomy.load(machine.cfg), tree_registry.read(machine.cfg)
+    loads = []
+    def unreadable_for_the_edits(cfg):
+        # The library's read loads it first; the edits' read is the second load.
+        loads.append(cfg)
+        if len(loads) > 1:
+            raise refuse("config-unusable", "not json", origin=("test",))
+        return declared
+    monkeypatch.setattr(active_taxonomy, "load", unreadable_for_the_edits)
+    step = mirror_edits.add_step(machine.cfg, declared, registry, machine.shared())
+    assert step.state == LISTED and "edits made on the account were not read" in step.detail
+
+
+def test_of_two_membership_times_for_one_track_the_newest_is_kept():
+    """U309. Of two times one track was put in a playlist, the newer is the one held."""
+    newest: dict[str, str] = {}
+    for said in ("2026-11-01T10:00:00+00:00", "2026-11-04T10:00:00+00:00"):
+        account_mirror.keep_newest(newest, "r1", said)
+    assert newest == {"r1": "2026-11-04T10:00:00+00:00"}
+
+
 @pytest.mark.parametrize(
     "folder, playlist, genre, energy, expected",
     [

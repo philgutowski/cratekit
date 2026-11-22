@@ -987,6 +987,32 @@ def test_a_folder_made_before_a_failed_ledger_write_is_named(seams, monkeypatch)
     assert MARKED_ID not in held.placed
 
 
+def _two_into_the_year() -> filing.FilePlan:
+    rows = tuple(filing.Placement(one, one, filing.MOVE, year=MARKED_YEAR) for one in ("a", "b"))
+    year = filing.YearFolder(year=MARKED_YEAR, action=sets.CREATE)
+    return filing.FilePlan(rows=rows, years={MARKED_YEAR: year})
+
+
+def test_a_refusal_part_way_ends_its_steps_with_running_the_verb_again(seams):
+    """U309. An apply refused part way ends its steps on the step to run the verb again."""
+    cfg, _fake, held = seams
+    held.fail_on, held.provider_error = frozenset({"b"}), True
+    with pytest.raises(CratekitError) as raised:
+        filing.apply(cfg, held, _two_into_the_year())
+    assert raised.value.cause.remediation.steps[-1:] == (
+        "run crate organize again; a year folder made is reused, never made twice",
+    )
+
+
+def test_two_moves_into_one_year_reserve_its_folder_once(seams, monkeypatch):
+    """U309. One apply reserves a year's folder once, however many playlists move into it."""
+    cfg, _fake, held = seams
+    calls, real = [], filing.reserve_year
+    monkeypatch.setattr(filing, "reserve_year", lambda *args: calls.append(1) or real(*args))
+    filing.apply(cfg, held, _two_into_the_year())
+    assert len(calls) == 1 and held.placed["a"] == held.placed["b"]
+
+
 # U137: one kind of step runs alone, ``--only``
 
 ONLY_FILE = [*VERB, "--only", account_area.FILE]
