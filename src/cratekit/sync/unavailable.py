@@ -1,39 +1,25 @@
 """Which synced playlists the account answered not found for, and which are retired (U320).
 
-``crate sync removed`` asks every synced playlist whether it still holds a
-track taken off another, and a playlist it cannot read whole stops every
-offer (R37). A playlist deleted on the account is never read whole again, so
-before U320 one deleted playlist stopped every offer for good (R-1714). This
-record is how such a playlist stops stopping them, without ever reading a
-playlist that is only unreadable as gone.
+A playlist ``crate sync removed`` cannot read whole stops every offer (R37),
+so a playlist deleted on the account would stop them for good (R-1714). This
+record lets it stop stopping them, without reading a merely unreadable
+playlist as gone.
 
-A SIGHTING is one run in which the playlist was absent from the account's own
-list AND its id answered the provider's not found, a 404 or the client's not
-found class read along the failure's chain (:func:`answered_unavailable`).
-Both, because the list alone stops on an empty page and publishes no total
-(R-385), and because a failed open is otherwise any provider failure (R-1713):
-an outage, a refused session or a rate limit records nothing, so a playlist
-that is only unreadable is never retired.
+A SIGHTING is a run where the playlist was absent from the account's list AND
+its id answered not found (:func:`answered_unavailable`). Both, since the list
+has no total (R-385) and a failed open may be any failure (R-1713), so an
+outage never retires a playlist.
 
-A PLAYLIST IS RETIRED when a sighting comes at least a day after the first of
-its run of sightings, or when a person retires it behind the explicit gate
-``sync.removed.retire`` after a sighting this run. A retired playlist holds
-nothing and stops nothing. ANY OTHER ANSWER ENDS THE RUN OF SIGHTINGS: a
-playlist the account lists again, or whose id opens again, is dropped from the
-record, its retirement with it, and is read as any other. A failure that is
-not a not found leaves the entry as it stands.
+A PLAYLIST IS RETIRED by a sighting at least a day after the first of its run,
+or by a person at the gate ``sync.removed.retire``; it then holds and stops
+nothing. Being listed or opening again drops the entry, retirement and all;
+any other failure leaves it.
 
 ONE LOCKED DOCUMENT, ``sync_unavailable.json``, library scoped and never
-restored, declared on its state entry. It records what the account answered,
-which a database restore does not undo. It writes nothing on the account and
-nothing in the database. An entry is a playlist, its last known name, the
-first and the latest sighting, and when and by whom it was retired.
+restored, since a database restore does not undo what the account answered.
 
-AN UNREAD RECORD REFUSES, never reading as empty, since empty would read a
-retired playlist as unretired, which only keeps rows, and would also forget a
-first sighting, which only delays a retirement: both safe, but a record that
-cannot be read cannot be written either, and a run would then report a
-retirement it never kept.
+AN UNREAD RECORD REFUSES, never reading as empty: it could not be written
+either, so a run would report a retirement it never kept.
 """
 
 from __future__ import annotations
@@ -55,8 +41,7 @@ _ORIGIN = ("sync.unavailable",)
 #: How long after its first sighting a not found retires a playlist.
 APART = timedelta(hours=24)
 
-#: The provider client's own not found class, ``tidalapi.exceptions.ObjectNotFound``,
-#: by its exact name, so this module imports no client.
+#: ``tidalapi.exceptions.ObjectNotFound`` by exact name, so no client is imported.
 CLIENT_NOT_FOUND = "ObjectNotFound"
 
 #: Who retired a playlist: a second sighting a day after the first, or a person at the gate.
@@ -85,19 +70,10 @@ def day(text: str) -> str:
 def answered_unavailable(exc: BaseException) -> bool:
     """Whether the provider answered not found for this failure, and nothing else did.
 
-    BY CLASS NAME ON THE DECLARED CHAIN, OR BY THE NEAREST STATUS, NEVER BY
-    THE TEXT, the rule ``label.tidal_catalogue._gone`` keeps for a release:
-    the message carries the playlist's id, and an id can hold the digits 404.
-    The NEAREST link that says anything decides, walked as
-    ``core.cause.nearest_status`` walks (R-1313): a link carrying a status
-    answers by it, so a server error met while handling a not found is the
-    server error, and a link of the client's not found class answers yes, read
-    only off links the failure declares as its causes, since a not found met
-    while handling something else is not this answer. THE CLIENT'S CLASS BY
-    ITS EXACT NAME, never a name that merely holds "not found" (round one):
-    Python's own ``FileNotFoundError`` is raised by the provider gate's lock
-    before any request is sent, and read as the provider's answer it recorded
-    a sighting of a playlist nobody asked about.
+    NEVER BY THE TEXT, since an id can hold the digits 404. The NEAREST link
+    that says anything decides (R-1313): a status answers by itself, and the
+    client's class counts only on a declared cause. THE CLASS BY ITS EXACT
+    NAME, since ``FileNotFoundError`` from the gate's lock is no provider answer.
     """
     for link, declared in failure_links(exc):
         if getattr(getattr(link, "response", None), "status_code", None) is not None:
@@ -145,9 +121,8 @@ class Sighting:
 def sighted(prior: Sighting | None, playlist_id: str, name: str, moment: datetime) -> Sighting:
     """The entry after one more not found at ``moment``. Pure.
 
-    The first sighting starts a run; one at least :data:`APART` after the
-    first retires it, stamped by the sightings. A retired entry is kept as it
-    stands, so the dates a person was shown when it retired do not move.
+    One at least :data:`APART` after the first retires it. A retired entry is
+    kept as it stands, so the dates a person was shown do not move.
     """
     when = stamp(moment)
     if prior is None:

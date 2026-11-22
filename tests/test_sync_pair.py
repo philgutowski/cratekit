@@ -1,9 +1,7 @@
 """U130, ``crate sync pair``, driven through the dispatcher on a disposable database.
 
-One account playlist and one rekordbox playlist, the account a fake that both
-the catalogue (which lists) and the account seam (which writes) read, so a write
-on one is what the next listing serves. Every scenario the brief names is driven
-here end to end, two explicit gates and their recorded answers included.
+The catalogue (which lists) and the account seam (which writes) read one fake
+account, so a write is what the next listing serves.
 """
 
 from __future__ import annotations
@@ -93,10 +91,8 @@ class World:
     """The account, its catalogue and the rekordbox playlist, wired together."""
 
     def __init__(self, cfg, monkeypatch, *, account=(), rekordbox=()) -> None:
-        # U231. THE PLAYLIST SITS AT THE REKORDBOX ROOT, outside GIG READY, and
-        # these suites drive the account's order, so every pair keeps it, as
-        # ``outbound.pair_order_every_pair`` says. The scope itself is held by
-        # ``tests/test_sync_pair_settle.py``.
+        # U231. THE PLAYLIST SITS AT THE REKORDBOX ROOT, so every pair keeps its
+        # account order here; ``tests/test_sync_pair_settle.py`` holds the scope.
         cfg = replace(cfg, outbound=replace(cfg.outbound, pair_order_every_pair=True))
         monkeypatch.setattr(config, "load", lambda *args, **kwargs: cfg)
         self.cfg = cfg
@@ -106,8 +102,7 @@ class World:
         self.account.playlists[ACCOUNT] = [remote(one) for one in account]
         self.codes = {remote(one): isrc(one) for one in ROWS}
         self.declared: int | None = None
-        #: Tracks the account holds and the provider serves to nobody: counted,
-        #: never listed, and never read back.
+        #: Tracks the account holds and the provider serves to nobody, counted but never listed.
         self.withheld: set[str] = set()
         self.catalogue = FakeCatalogue(
             playlists={ACCOUNT: LivePlaylist(self)},
@@ -254,7 +249,7 @@ def _pair(cfg) -> pairs.Pair:
     return held
 
 
-# The brief's scenarios
+# Both ways, one pair
 
 
 def test_the_first_sync_marks_the_pair_and_adds_only(world, cfg):
@@ -495,9 +490,8 @@ def test_a_short_listing_removes_nothing_from_the_account(world):
     assert code == int(ExitCode.OK), envelope
     assert w.account.taken == []
     assert w.on_account() == ["t1", "t2"]
-    # U246: and a track the base held that the short listing still served stays
-    # in the base, so it is not read back into rekordbox as an addition and
-    # the removal there stands.
+    # U246: a base track the short listing still served stays in the base, so
+    # the removal in rekordbox stands.
     assert w.held() == ["1"]
 
 
@@ -702,8 +696,7 @@ def _acquired(envelope) -> list[str]:
     return sorted(found)
 
 
-# U229. A track the library holds because a landing through ANOTHER account
-# playlist brought it in is that row, never a track to download again.
+# U229. A track a landing through ANOTHER account playlist brought in is that row.
 
 
 def test_a_track_another_account_playlist_landed_is_added_and_never_queued(world, cfg, tmp_path):
@@ -734,8 +727,7 @@ def test_a_track_another_account_playlist_landed_with_its_isrc_in_the_row_is_add
 def test_a_track_no_landing_brought_in_is_still_queued(world, cfg, tmp_path):
     w = world(account=("1",), rekordbox=("1",))
     assert sync(w.args())[0] == int(ExitCode.OK)
-    # Another account playlist's landing holds row eight, whose file carries
-    # its own code, and the account lists a track nobody landed.
+    # Another landing holds row eight, and the account lists a track nobody landed.
     _untagged_row(cfg, "8", tmp_path, file_isrc=isrc("8"))
     _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
     w.codes["t40"] = "USZZZ2600040"
@@ -768,8 +760,7 @@ def test_this_account_playlists_own_landing_wins_over_anothers(world, cfg, tmp_p
     _untagged_row(cfg, "9", tmp_path, file_isrc=isrc("8"))
     _landed_for(w, cfg, ACCOUNT, ("8",), session_id="s-own", name=NAME)
     _landed_for(w, cfg, "acc-other", ("9",), session_id="s-other", name="Another")
-    # A track nobody landed keeps the widened step asked, which must answer
-    # only what the earlier steps left lacking, never t8 again.
+    # The widened step answers only what earlier steps left lacking, never t8 again.
     w.codes["t40"] = "USZZZ2600040"
     w.account.playlists[ACCOUNT].extend(["t8", "t40"])
     code, envelope = sync([*VERB, ACCOUNT])
@@ -784,8 +775,7 @@ def test_a_track_another_pairs_intake_job_found_owned_is_added(world, cfg, tmp_p
 
     w = world(account=("1",), rekordbox=("1",))
     assert sync(w.args())[0] == int(ExitCode.OK)
-    # Row eight carries no code anywhere the plan reads by ISRC: only the
-    # other pair's intake job, which found it owned by its path, names it.
+    # Row eight has no code the plan reads; only the other pair's job names it.
     _untagged_row(cfg, "8", tmp_path, file_isrc="USZZZ2600099")
     _other_pairs_job(cfg, state=str(jobs.JobState.SUCCEEDED))
     owned = str(Path(cfg.library.root) / "Music" / "8.flac")
@@ -847,9 +837,8 @@ def test_another_pairs_job_that_no_longer_reads_stops_no_plan(world, cfg):
     assert _acquired(envelope) == ["t40"]
 
 
-# R-1385. A TRACK NO LANDING BROUGHT IN IS QUEUED ONCE FOR THE LIBRARY: once
-# for every pair of one plan listing it, and never again beside another
-# pair's job still holding it.
+# R-1385. A TRACK NO LANDING BROUGHT IN IS QUEUED ONCE FOR THE LIBRARY, for
+# every pair listing it and never beside another pair's job still holding it.
 
 SECOND = "acc-second"
 SECOND_NAME = "Second Set"
@@ -958,7 +947,7 @@ def test_a_track_only_a_failed_or_cancelled_job_held_is_queued(world, cfg, state
 
 
 def test_skipping_the_first_pairs_rekordbox_side_says_nothing_was_queued(world, cfg):
-    """From the review. The awaiting row never claims a job the skip left unqueued."""
+    """The awaiting row never claims a job the skip left unqueued."""
     w = world(account=("1",), rekordbox=("1",))
     assert sync(w.args())[0] == int(ExitCode.OK)
     _second_pair(w, cfg, ("2",))
@@ -1081,15 +1070,12 @@ def test_each_landed_file_is_read_once_per_plan(world, cfg, tmp_path, monkeypatc
     ]
 
 
-# R-1383. A landing record the session log cannot read is never read as no
-# landing: a track only it may have brought in is held, named, and never queued.
+# R-1383. An unreadable landing record is never no landing: its track is held, named, never queued.
 
 
 def _damaged_landing(w, cfg, tmp_path, how: str) -> tuple[Path, bytes]:
-    """Land row eight through another account playlist, then damage its record as asked.
-
-    Answers the record's path and the bytes it held while it read.
-    """
+    """Land row eight through another account playlist, then damage its record.
+    Answers the record's path and its readable bytes."""
     _untagged_row(cfg, "8", tmp_path, file_isrc=isrc("8"))
     _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
     path = session.log_path("s-other", cfg)
@@ -1200,7 +1186,7 @@ def test_a_track_no_landing_brought_in_is_held_while_a_record_is_unread(world, c
 def test_a_track_an_earlier_sync_queued_is_awaiting_beside_an_unreadable_record(
     world, cfg, tmp_path
 ):
-    """Round one's finding 4: a track already queued is awaiting, never held as landing unread."""
+    """A track already queued is awaiting, never held as landing unread."""
     w = world(account=("1",), rekordbox=("1",))
     w.codes["t40"] = "USZZZ2600040"
     w.account.playlists[ACCOUNT].append("t40")
@@ -1231,7 +1217,7 @@ def test_a_plan_with_every_landing_record_readable_warns_nothing_of_them(world, 
     assert envelope["data"]["totals"]["landing_unread"] == 0
 
 def test_the_pairs_digest_moves_with_the_landing_hold_and_only_when_any():
-    """R-1383, the mutation table's two digest zeros: the held tracks bind the gate, and none leaves it as it was."""
+    """R-1383: the held tracks bind the gate, and none leaves it as it was."""
     from cratekit.sync import pair_merge
     from cratekit.write import playlist_pair
 
@@ -1308,7 +1294,7 @@ def test_the_sync_pass_hands_the_pairs_to_the_sweep(world, cfg, monkeypatch):
     assert excluded[ACCOUNT]["reason"] == str(playlists.Excluded.PAIRED)
 
 
-# The review's findings, each driven
+# Skipped sides, links, short listings and the writer's own check
 
 
 def test_a_first_sync_with_a_side_skipped_records_no_snapshot_and_stays_first(world, cfg):
@@ -1493,9 +1479,8 @@ class _IsrcClient:
 
 
 def _through_the_shipped_lookup(w: World, client: _IsrcClient) -> None:
-    """The fake account's match goes through the shipped adapter's, ISRC cache
-    and all, built afresh for every row as a new process would build it, over
-    the configuration the run itself loaded."""
+    """The fake's match goes through the shipped adapter and its ISRC cache,
+    built afresh for every row over the run's loaded configuration."""
     from cratekit.modules.outbound import tidal_account
 
     def match_track(**kwargs):
@@ -1514,9 +1499,7 @@ def _loading(monkeypatch, loaded) -> None:
 def test_a_live_plan_after_its_rehearsal_asks_the_provider_no_isrc_again(
     world, cfg, monkeypatch, days
 ):
-    """The sitting's rule for a copy run: the library's state directory copied to
-    a scratch name and ``state_dirname`` naming it. The rehearsal's own state is
-    thrown away with it, and the ISRC answers are not."""
+    """A copy run's state is thrown away after the rehearsal; its ISRC answers are not."""
     import dataclasses
     import shutil
 
