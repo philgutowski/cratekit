@@ -122,6 +122,7 @@ def payload(plan: removed.RemovedPlan) -> dict[str, Any]:
             ),
             "playlists gone": sum(1 for one in plan.listings if one.state == removed.GONE),
             "playlists retired": sum(1 for one in plan.listings if one.state == removed.RETIRED),
+            "memberships renumbered": plan.renumbered,
             "partial": plan.partial,
         },
         "chunk": None,
@@ -228,11 +229,14 @@ def facts(plan: removed.RemovedPlan) -> dict[str, Any]:
             for one in plan.offered
         ],
         "kept or left": len(plan.answers) - len(plan.offered),
+        "memberships renumbered": plan.renumbered,
         "writes": (
             "each offered row out of the rekordbox collection, with every membership, "
             "cue, history entry, analysis file row and mixer row naming it, as "
-            "rekordbox's Remove from Collection does; no other row, no playlist row and "
-            "no file. crate delete review then offers each file to the Trash"
+            "rekordbox's Remove from Collection does, and the tracks after it in each "
+            "playlist it left numbered down by one, as rekordbox numbers them; no other "
+            "row, no playlist row and no file. crate delete review then offers each file "
+            "to the Trash"
         ),
     }
 
@@ -479,7 +483,8 @@ def sync_removed(ctx) -> Envelope:
                 "code": APPLIED,
                 "message": (
                     f"{len(done.rows)} track(s) taken out of the rekordbox collection, "
-                    f"{sum(done.deleted.values())} row(s) in all, each read back from the "
+                    f"{sum(done.deleted.values())} row(s) in all and {done.renumbered} "
+                    f"playlist membership(s) after them renumbered, each read back from the "
                     f"database: "
                     + "; ".join(f"{one.artist} - {one.title}" for one in done.rows)
                     + f". No file was touched: crate delete review offers each file to "

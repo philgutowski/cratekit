@@ -1063,6 +1063,111 @@ def test_the_read_back_after_the_commit_admits_only_the_counter_moving_forward()
     assert W.collection_removal_violations(before, other, removed=["1"], committed=True)
 
 
+# ── the renumbering behind a removal, R-1830 ─────────────────────────────────
+
+
+def _three(playlist="p", *, removed_at=2, first=1):
+    """A playlist of three at ``first``, ``first`` + 1, ``first`` + 2, ``x`` the removed track."""
+    names = ["a", "b", "c"]
+    names[removed_at - 1] = "x"
+    return [(f"{playlist}{n}", playlist, name, first + n) for n, name in enumerate(names)]
+
+
+def test_the_middle_of_three_removed_leaves_one_and_two_as_rekordbox_left_them():
+    # A197 at sitting 102: 1, 2, 3, the middle one removed, the third at 2.
+    assert W.renumbered_positions(_three(), ["x"]) == {"p2": ("p", 3, 2)}
+
+
+def test_two_removed_members_of_one_playlist_lower_each_row_by_those_below_it():
+    rows = [("r1", "p", "a", 1), ("r2", "p", "x", 2), ("r3", "p", "b", 3), ("r4", "p", "y", 4), ("r5", "p", "c", 5)]
+    assert W.renumbered_positions(rows, ["x", "y"]) == {"r3": ("p", 3, 2), "r5": ("p", 5, 3)}
+    # A track the playlist holds twice is two rows out of it.
+    twice = [("r1", "p", "x", 1), ("r2", "p", "a", 2), ("r3", "p", "x", 3), ("r4", "p", "b", 4)]
+    assert W.renumbered_positions(twice, ["x"]) == {"r2": ("p", 2, 1), "r4": ("p", 4, 2)}
+
+
+def test_a_member_on_two_playlists_renumbers_each_by_its_own_place_and_no_other():
+    rows = [*_three("p"), *_three("q", removed_at=1), ("s1", "s", "a", 1), ("s2", "s", "b", 2)]
+    assert W.renumbered_positions(rows, ["x"]) == {
+        "p2": ("p", 3, 2),
+        "q1": ("q", 2, 1),
+        "q2": ("q", 3, 2),
+    }
+
+
+def test_the_last_member_removed_and_a_numberless_row_renumber_nothing():
+    assert W.renumbered_positions(_three(removed_at=3), ["x"]) == {}
+    assert W.renumbered_positions([("r1", "p", "x", None), ("r2", "p", "a", 2)], ["x"]) == {}
+    assert W.renumbered_positions([("r1", "p", "x", 1), ("r2", "p", "a", None)], ["x"]) == {}
+    assert W.renumbered_positions(_three(), []) == {}
+
+
+def test_a_gap_already_there_stays_and_every_number_stays_distinct():
+    # 1, 2, 3, 5 with 2 removed: the rows above it move down by one, the gap
+    # an earlier removal left is not closed (rekordbox's handling unmeasured).
+    rows = [("r1", "p", "a", 1), ("r2", "p", "x", 2), ("r3", "p", "b", 3), ("r5", "p", "c", 5)]
+    assert W.renumbered_positions(rows, ["x"]) == {"r3": ("p", 3, 2), "r5": ("p", 5, 4)}
+
+
+def _positions(rows):
+    return {key: (playlist, content, number, f"rest-{key}") for key, playlist, content, number in rows}
+
+
+def _membership_reading(rows, *, moved=None, rest=None, gone=("x",)):
+    """A reading of one membership table, the ``gone`` tracks' rows removed and ``moved`` applied."""
+    positions = _positions(rows)
+    if gone is not None:
+        positions = {key: value for key, value in positions.items() if value[1] not in gone}
+    for key, number in (moved or {}).items():
+        playlist, content, _was, digest = positions[key]
+        positions[key] = (playlist, content, number, digest)
+    for key, digest in (rest or {}).items():
+        playlist, content, number, _digest = positions[key]
+        positions[key] = (playlist, content, number, digest)
+    members = {key: f"{value[2]}-{value[3]}" for key, value in positions.items()}
+    named = {key: value[1] for key, value in positions.items()}
+    return W.DatabaseReading(
+        rows={W.MEMBERSHIP_TABLE: members, W.CONTENT_TABLE: {"x": "x", "a": "a", "b": "b", "c": "c"} if gone is None else {"a": "a", "b": "b", "c": "c"}},
+        named={W.MEMBERSHIP_TABLE: named, W.CONTENT_TABLE: {"x": "x", "a": "a", "b": "b", "c": "c"} if gone is None else {"a": "a", "b": "b", "c": "c"}},
+        counter=5,
+        positions=positions,
+    )
+
+
+def test_the_confinement_admits_the_planned_renumbering_and_nothing_beside_it():
+    rows = [*_three("p"), ("s1", "s", "a", 1), ("s2", "s", "b", 2)]
+    before = _membership_reading(rows, gone=None)
+    assert W.collection_removal_violations(before, _membership_reading(rows, moved={"p2": 2}), removed=["x"]) == []
+    # Not renumbered at all: the gap rekordbox closes is refused.
+    left = W.collection_removal_violations(before, _membership_reading(rows), removed=["x"])
+    assert any("to be renumbered from 3 to 2 and holds 3" in line for line in left), left
+    # Renumbered to the wrong place.
+    wrong = W.collection_removal_violations(before, _membership_reading(rows, moved={"p2": 1}), removed=["x"])
+    assert any("holds 1" in line for line in wrong), wrong
+    # Renumbered, and another column of the row moved with it.
+    stamped = _membership_reading(rows, moved={"p2": 2}, rest={"p2": "stamped"})
+    assert any(
+        "other than TrackNo" in line
+        for line in W.collection_removal_violations(before, stamped, removed=["x"])
+    )
+    # A playlist the removal left nothing of renumbered too: refused.
+    stray = _membership_reading(rows, moved={"p2": 2, "s2": 1})
+    assert any(
+        "'s2' changed" in line for line in W.collection_removal_violations(before, stray, removed=["x"])
+    )
+    # And a row before the removed one moved.
+    early = _membership_reading(rows, moved={"p2": 2, "p0": 0})
+    assert any(
+        "'p0' changed" in line for line in W.collection_removal_violations(before, early, removed=["x"])
+    )
+
+
+def test_a_reading_with_no_positions_admits_no_membership_change():
+    before = _reading({W.MEMBERSHIP_TABLE: {"m": "1"}, W.CONTENT_TABLE: {"1": "a"}}, {W.CONTENT_TABLE: {"1": "1"}})
+    after = _reading({W.MEMBERSHIP_TABLE: {"m": "2"}, W.CONTENT_TABLE: {}}, {W.CONTENT_TABLE: {}})
+    assert W.collection_removal_violations(before, after, removed=["1"])
+
+
 def test_an_admitted_removal_still_judges_the_other_columns_of_the_row():
     violations = W.guard_violations(
         [],

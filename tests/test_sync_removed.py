@@ -1662,3 +1662,241 @@ def test_a_position_the_pass_holds_is_kept_and_the_collection_not_walked(
     assert code == int(ExitCode.OK), acted
     assert watermark.WatermarkStore(cfg).read().sequence == 3
     assert not walked
+
+
+# ---------------------------------------------------------------------------
+# The renumbering behind a removal (R-1830)
+# ---------------------------------------------------------------------------
+
+
+def _numbers(cfg: config.Config, playlist: str) -> list[tuple[str, int]]:
+    """A playlist's members as (title, TrackNo), in TrackNo order."""
+    return [
+        (str(title), int(number))
+        for title, number in _query(
+            cfg,
+            "SELECT c.Title, sp.TrackNo FROM djmdSongPlaylist sp JOIN djmdContent c ON c.ID = sp.ContentID "
+            "WHERE sp.PlaylistID = ? ORDER BY sp.TrackNo",
+            playlist,
+        )
+    ]
+
+
+def _titles(pairs: list[tuple[str, int]]) -> list[tuple[str, int]]:
+    """``pairs`` with each title cut to its last word, the name the fixture gave it."""
+    return [(title.split()[-1].split("-")[-1], number) for title, number in pairs]
+
+
+def _remove(cfg: config.Config, *titles: str) -> rb_writer.CollectionRemoval:
+    """The writer's own removal of ``titles``' rows, prepared, committed and read back clean."""
+    handle = _handle(cfg)
+    try:
+        removal = rb_writer.CollectionRemoval.prepare(handle, [_row(cfg, title) for title in titles])
+        removal.commit()
+        assert removal.read_back() == []
+        return removal
+    finally:
+        rb_writer.close_db(handle)
+
+
+def test_a_removed_member_in_the_middle_of_three_leaves_one_and_two_and_nothing_else_moved(
+    native_library, silence, monkeypatch, offline
+):
+    """A197's shape on a disposable library, compared byte for byte table by table."""
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
+    offered = _row(cfg, "New1")
+    before = _every_table(cfg)
+    (third,) = _query(
+        cfg,
+        "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? AND TrackNo = 3",
+        mine,
+    )
+
+    removal = _remove(cfg, "New1")
+
+    assert _titles(_numbers(cfg, mine)) == [("Held1", 1), ("Held2", 2)]
+    # The renumbered row is the same row, every column as it was but TrackNo:
+    # no updated_at, no rb_local_usn, as rekordbox left it.
+    columns = _columns_of(cfg, "djmdSongPlaylist")
+    (now,) = _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE ID = ?", third[0])
+    at = columns.index("TrackNo")
+    assert now[at] == 2
+    assert now[:at] + now[at + 1 :] == third[:at] + third[at + 1 :]
+    after = _every_table(cfg)
+    expected = _closed_up(_without(before, cfg, {offered}), cfg, before, {offered})
+    registry_at = _columns_of(cfg, "agentRegistry").index("registry_id")
+    for name in sorted(set(expected) | set(after)):
+        if name == "agentRegistry":
+            moved = [row for row in after[name] if row[registry_at] == "localUpdateCount"]
+            assert [row for row in after[name] if row not in expected[name]] == moved, name
+            continue
+        assert after[name] == expected[name], name
+    assert removal.renumbered[str(third[0])] == (mine, 3, 2)
+    detail: dict = {}
+    removal.write_into(detail, sequence=1, about={})
+    renumbered = detail[rb_writer.RECORDED_REMOVALS_KEY]["renumbered"]
+    assert {"membership_id": str(third[0]), "playlist_id": mine, "from": 3, "to": 2} in renumbered
+    assert len(renumbered) == len(removal.renumbered) == 8
+
+
+def test_two_removed_members_of_one_playlist_and_a_member_on_two_playlists(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2", "New2", "Held3")
+    other = _hand_made(cfg, "Other", "New1", "Held3", "Held1")
+    untouched = _hand_made(cfg, "Untouched", "Held2", "Held3")
+    kept = _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? ORDER BY ID", untouched)
+
+    _remove(cfg, "New1", "New2")
+
+    assert _titles(_numbers(cfg, mine)) == [("Held1", 1), ("Held2", 2), ("Held3", 3)]
+    assert _titles(_numbers(cfg, other)) == [("Held3", 1), ("Held1", 2)]
+    assert _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? ORDER BY ID", untouched) == kept
+
+
+def test_the_last_member_removed_renumbers_nothing_in_its_playlist(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    last = _hand_made(cfg, "Last", "Held1", "Held2", "New1")
+    kept = _query(
+        cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? AND TrackNo < 3 ORDER BY ID", last
+    )
+
+    removal = _remove(cfg, "New1")
+
+    assert _query(cfg, "SELECT * FROM djmdSongPlaylist WHERE PlaylistID = ? ORDER BY ID", last) == kept
+    assert all(playlist != last for playlist, _was, _now in removal.renumbered.values())
+
+
+def test_an_append_after_a_renumbering_takes_the_next_position(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
+    _remove(cfg, "New1")
+    handle = _handle(cfg)
+    try:
+        playlist = handle.get_playlist(ID=mine)
+        assert rb_writer.add_memberships(handle, playlist, [_row(cfg, "Held3"), _row(cfg, "New2")])
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    assert _titles(_numbers(cfg, mine)) == [("Held1", 1), ("Held2", 2), ("Held3", 3), ("New2", 4)]
+
+
+def test_a_history_list_holding_others_keeps_its_numbers(
+    native_library, silence, monkeypatch, offline
+):
+    """Unmeasured, so left as it is: only the removed track's own history row goes."""
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    offered, held = _row(cfg, "New1"), _row(cfg, "Held1")
+    for key, content_id, number in (("h-1", held, 1), ("h-2", offered, 2), ("h-3", held, 3)):
+        _sql(
+            cfg,
+            "INSERT INTO djmdSongHistory (ID, HistoryID, ContentID, TrackNo) VALUES (?, 'h', ?, ?)",
+            key,
+            content_id,
+            number,
+        )
+
+    _remove(cfg, "New1")
+
+    assert _query(cfg, "SELECT ID, TrackNo FROM djmdSongHistory WHERE HistoryID = 'h' ORDER BY ID") == [
+        ("h-1", 1),
+        ("h-3", 3),
+    ]
+
+
+def test_a_renumbering_that_moves_any_other_membership_is_refused_with_nothing_written(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
+    untouched = _hand_made(cfg, "Untouched", "Held2", "Held3")
+    before = _every_table(cfg)
+    real = rb_writer.renumber_memberships
+
+    def and_another(db, moved):
+        real(db, moved)
+        from sqlalchemy import text
+
+        db.session.execute(
+            text("UPDATE djmdSongPlaylist SET TrackNo = 7 WHERE PlaylistID = :p AND TrackNo = 2"),
+            {"p": untouched},
+        )
+
+    monkeypatch.setattr(rb_writer, "renumber_memberships", and_another)
+    handle = _handle(cfg)
+    try:
+        removal = rb_writer.CollectionRemoval.prepare(handle, [_row(cfg, "New1")])
+        with pytest.raises(rb_writer.RekordboxUnavailable, match="did not plan"):
+            removal.commit()
+    finally:
+        rb_writer.close_db(handle)
+    assert _every_table(cfg) == before
+
+
+def test_a_member_that_moved_after_the_prepare_refuses_its_renumbering_with_nothing_written(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    mine = _hand_made(cfg, "Mine", "Held1", "New1", "Held2")
+    handle = _handle(cfg)
+    try:
+        removal = rb_writer.CollectionRemoval.prepare(handle, [_row(cfg, "New1")])
+        from sqlalchemy import text
+
+        handle.session.execute(
+            text("UPDATE djmdSongPlaylist SET TrackNo = 9 WHERE PlaylistID = :p AND TrackNo = 3"),
+            {"p": mine},
+        )
+        handle.session.commit()
+        before = _every_table(cfg)
+        with pytest.raises(rb_writer.RekordboxUnavailable, match="no longer holds the place 3"):
+            removal.commit()
+    finally:
+        rb_writer.close_db(handle)
+    assert _every_table(cfg) == before
+
+
+def test_a_renumbering_that_moved_between_the_gate_and_the_write_refuses_as_stale(
+    native_library, silence, monkeypatch, offline
+):
+    """The count is in the digest: one more member after the offered row moves the plan."""
+    cfg, _root = native_library
+    _one_offered(cfg, silence, monkeypatch)
+    real = removed_cli.written
+    seen: dict = {}
+
+    def one_more_after(cfg_, plan, **kwargs):
+        seen["approved"] = plan.renumbered
+        (analyze,) = _query(cfg_, "SELECT ID FROM djmdPlaylist WHERE Name = 'Analyze'")
+        _sql(
+            cfg_,
+            "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, rb_local_deleted) "
+            "VALUES ('late-1', ?, ?, 6, 0)",
+            analyze[0],
+            _row(cfg_, "Held1"),
+        )
+        seen["tables"] = _every_table(cfg_)
+        return real(cfg_, plan, **kwargs)
+
+    monkeypatch.setattr(removed_cli, "written", one_more_after)
+
+    code, acted, refused = _apply()
+
+    assert seen["approved"] == 7
+    assert refused["cause"]["detail"]["shown"]["memberships renumbered"] == 7
+    assert code != int(ExitCode.OK)
+    assert acted["cause"]["reason"] == "decision-stale", acted
+    assert _every_table(cfg) == seen["tables"]
