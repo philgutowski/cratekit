@@ -671,7 +671,11 @@ def _scope_rekordbox(
 
 
 def _now() -> datetime:
-    """Now, in UTC, which a pending order's readings are aged against (U231)."""
+    """Now, in UTC, which a pending order's readings are aged against (U231).
+
+    Callers write ``pair_model._now()``, never a copy of the name, so a suite
+    that replaces the clock here reaches every caller (U304).
+    """
     return datetime.now(UTC)
 
 

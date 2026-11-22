@@ -25,9 +25,9 @@ new = '''or ""'''
 
 [[rows]]
 id = "S3_agreement_clock_through_its_module"
-description = "pair_plan._moved_since_stop: the agreement window read off the wall clock, not pair_model._now"
+description = "pair_plan._moved_since_stop: the agreement window read off the wall clock, not pair_model._now; maintainer facing, since the two clocks agree outside a test, and round one's review measured that no test moves the clock on this path"
 file = "src/cratekit/sync/pair_plan.py"
-surface = "user"
+surface = "maintainer"
 tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_stopped.py"]
 old = '''        elif first is not None and pair_model._now() - first >= AGREE_AFTER:'''
 new = '''        elif first is not None and __import__("datetime").datetime.now(__import__("datetime").UTC) - first >= AGREE_AFTER:'''

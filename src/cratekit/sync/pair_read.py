@@ -271,6 +271,8 @@ def file_identity(cfg: config.Config, recorded: str) -> tuple[str, str]:
 
     Every failure to read answers empty, leaving the row unmatched and named,
     as ``outbound.source.file_identity`` does for a collection export's row.
+    Callers in sync write ``pair_read.file_identity``, so a suite that replaces
+    it here reaches them; organize reads it through ``pair_cli`` (U304).
     """
     from cratekit.modules.outbound import source
 

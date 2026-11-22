@@ -60,6 +60,19 @@ from cratekit.sync.watermarks import WatermarkStore
 if TYPE_CHECKING:
     from cratekit.label.catalogue import AccountPlaylist, Catalogue
 
+
+def __getattr__(name: str) -> Any:
+    """``AccountPlaylist`` stays readable here, where callers outside sync read it.
+
+    Imported on first use, so this module imports the labels package only when
+    something asks for it (U304).
+    """
+    if name == "AccountPlaylist":
+        from cratekit.label.catalogue import AccountPlaylist
+
+        return AccountPlaylist
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 #: This source's identifier, as ``sync.sources`` declares it and its jobs carry it.
 SOURCE_ID = "playlists"
 
