@@ -1,117 +1,108 @@
 """Three ``intake.*`` verbs: set, identify, playlist. And their worker.
 
-Builders take unannotated parameters on purpose. ``entry`` is a registry
-Entry, and naming that type here would be this layer importing the one
-above it.
+Builders take unannotated parameters on purpose: naming the registry's Entry
+would import the layer above. ``intake file`` is :mod:`cratekit.intake.file_cli`.
 
-Long work is queued. Identification-only runs inline because it is the
-spend gate plus a tracklist, not a download. ``intake file``, the fourth verb
-here until it gained a second medium, is :mod:`cratekit.intake.file_cli`.
-
-**THE ITEMS ARE THE TRACKS, AND THEY ARE KNOWN AT THE QUEUE.** Until U57 both
-queued verbs froze a source string and queued a job with no items, which is
-R-198's empty queue wearing a full one's clothes, and nothing ran them
-(R-203). Now a set is IDENTIFIED at the queue, which is the paid step, and a
-playlist is LISTED at the queue through the catalogue seam, and each verb
-queues one item per track with what was learned about it frozen in the
-payload (KTD9). The worker reads nothing off the network and nothing off the
-source: a recording moved or a playlist edited between queueing and driving
-cannot change what a queued item means.
-
-**WHAT THE WORKER DOES WITH ONE TRACK, AND WHAT IT DOES NOT.** It resolves the
-track against the FROZEN library the way ``match.run`` resolves a list, and
-it offers a track the library may already hold to the review queue, which is
-the durable record of that question. It does not acquire. A recognised track
-carries no provider identifier and the adapter contract has no search, so
-there is nothing to ask a provider for; a playlist row carries one, and
-acquiring it is ``crate acquire download``'s job over a list document, not a
-second copy of that worker here. The per item report therefore says OWNED,
-OFFERED or MISSING and never says acquired, and no intake file is written
-from an offer. R-140 is the entry that records what it costs to get that
-wrong one layer up, and this worker is written so it cannot reproduce it one
-layer down.
-
-**A SET NOBODY RECOGNISED IS A REPORT, NOT A SILENT SUCCESS, AND A SET NOBODY
-ANSWERED IS NOT A SET NOBODY RECOGNISED.** Zero identified tracks queues
-nothing, and the envelope says so with the calls it took to find out, because
-the money was spent either way. Zero tracks where chunks got NO answer is a
-failure, not a zero, and a set that queued over incomplete coverage carries a
-warning saying how much of it was never answered.
+THE ITEMS ARE THE TRACKS, KNOWN AT THE QUEUE (U57, KTD9): a set is identified
+and a playlist listed when queued, one item per track with what was learned
+frozen (:mod:`cratekit.intake.cli_listing`), so the worker reads nothing off
+the network or the source. The worker resolves and offers to the review queue;
+it never acquires (R-140), so a report says OWNED, OFFERED or MISSING. A set
+nobody recognised is a report; a set nobody answered is a failure.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, Sequence
-from contextlib import contextmanager
-from dataclasses import dataclass, field, replace
-from pathlib import Path
-from typing import Any
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
-from cratekit.acquire import listing, match, match_cli
+from cratekit.acquire import match, match_cli
 from cratekit.acquire.match import Wanted
-from cratekit.cli.output import Envelope, digest_of, load_config, no_job
-from cratekit.core import binaries, binary_refusal, config, jobs, review
-from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
-from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.favorites import placeholders
-from cratekit.intake import fetch, normalize, pipeline, recognize
-from cratekit.label import catalogue
-from cratekit.label import cli as label_cli
+from cratekit.cli.output import Envelope, digest_of, no_job
+from cratekit.core import config, jobs, review
+from cratekit.core.cause import CratekitError, Outcome, refuse
+from cratekit.core.exit_codes import Remedy
+from cratekit.intake import cli_identify as _identify
+from cratekit.intake import cli_listing as _listing
+from cratekit.intake import fetch, pipeline, recognize
+from cratekit.intake.cli_identify import (
+    TRACKLIST,
+    _cache_notes,
+    _coverage_or_refuse,
+    _fetch_notes,
+    _local_or_none,
+    _parts_notes,
+    _recording,
+    _set_tracklist,
+    _tracklist_dir,
+    intake_identify,
+)
+from cratekit.intake.cli_listing import (
+    FAVORITES,
+    frozen_rows,
+    list_favorites,
+    list_playlist_declared,
+    thawed,
+)
+
+if TYPE_CHECKING:
+    from cratekit.label import catalogue
+
+#: Re-exported, so callers and suites keep reading these names here.
+CACHE_SERVED = _identify.CACHE_SERVED
+CACHE_UNWRITTEN = _identify.CACHE_UNWRITTEN
+IN_PARTS = _identify.IN_PARTS
+MIX_SCRATCH_LEFT = _identify.MIX_SCRATCH_LEFT
+TRACKLIST_SUFFIX = _identify.TRACKLIST_SUFFIX
+TRACKLIST_UNWRITTEN = _identify.TRACKLIST_UNWRITTEN
+TRACKLIST_WRITTEN = _identify.TRACKLIST_WRITTEN
+TRACKLISTS_DIR = _identify.TRACKLISTS_DIR
+SetRecording = _identify.SetRecording
+tracklist_name = _identify.tracklist_name
+HEARTED = _listing.HEARTED
+Readable = _listing.Readable
+Unreadable = _listing.Unreadable
+frozen = _listing.frozen
+hearted_on = _listing.hearted_on
+item_key = _listing.item_key
+list_playlist = _listing.list_playlist
+list_playlist_readable = _listing.list_playlist_readable
+set_aside = _listing.set_aside
+_load = _listing._load
 
 #: Payload keys. ``SOURCE`` is what the resume argv is rebuilt from. ``TRACKS``
-#: is what was learned about each item at the queue, keyed by the item
-#: identifier, so the worker reads nothing but the job. ``CALLS`` is what
-#: identifying the set cost and ``UNREACHED`` how many of its chunks never got
-#: an answer; both are recorded on the job because the money is spent whether
-#: or not anything ran, and both are reported back on every resume. ``PARTS``
-#: is how many runs the set was identified in (R-706), frozen for the same
-#: reason: a resume reports the split the queue turn reported.
+#: is what was learned about each item at the queue, keyed by item identifier.
+#: ``CALLS`` is what identifying the set cost and ``UNREACHED`` how many chunks
+#: never got an answer, recorded because the money is spent either way, and
+#: ``PARTS`` how many runs it took (R-706), so a resume reports what the queue did.
 SOURCE = "source"
 TRACKS = "tracks"
 CALLS = "calls"
 UNREACHED = "unreached"
 PARTS = "parts"
-#: What the page a fetched mix came from said, under :data:`fetch.PAGE_KEYS`,
-#: frozen on the job so a set's playlist can be named from it later (U121).
-#: Empty for a local recording and for a fetch that left no info document.
+#: What a fetched mix's page said, under :data:`fetch.PAGE_KEYS`, so a set's
+#: playlist can be named from it later (U121). Empty for a local recording.
 PAGE = "page"
-#: The name the account gave the playlist, as the sweep that queued the job
-#: listed it (U113). Recorded at the queue because nothing else keeps it, and
-#: ``sync mark`` later prefixes the account's copy, so a listing taken after the
-#: mark would not say what the author called it. A landing names the playlist's
-#: own INBOX playlist from this.
+#: The account's name for the playlist as the sweep listed it (U113), recorded
+#: at the queue because ``sync mark`` later prefixes the account's copy.
 PLAYLIST_NAME = "playlist_name"
-#: When the account says a heart was made, on a hearts job's frozen row, as ISO
-#: 8601 in UTC (U120). Recorded at the queue for U113's reason: a landing reads
-#: which month a heart goes to from the job and never from the account again.
-#: ON EVERY ROW A HEARTS JOB FREEZES, ``None`` when the account dates the heart
-#: nowhere, so the KEY's absence means one thing only: a job a build before
-#: this one froze, whose month nobody knows yet. ``thawed`` reads past it.
-HEARTED = "hearted"
 
 #: The two handler keys one worker serves. A resume is refused for any other,
-#: because the driver resolves the worker from the job row and not from the
-#: verb, and driving a foreign job here would skip that verb's own checks.
+#: because the driver resolves the worker from the job row and not the verb.
 INTAKE_KEYS = frozenset({"intake.set", "intake.playlist"})
 
 #: Where one item's report is staged and where it lands, under the queue root.
 ARTIFACTS = jobs.Artifacts(final="intake-artifacts", staging="intake-staging")
 
-#: What a match state is called on the item's report and in the summary. The
-#: words are the verb's, not the engine's, because a person reading a report
-#: is asking whether they own the record, whether they were asked about it,
-#: or whether it is missing, and ``needs_review`` answers none of those.
+#: A match state in the verb's words: does a person own it, were they asked
+#: about it, or is it missing; ``needs_review`` answers none of those.
 _STATE_WORDS: Mapping[match.MatchState, str] = {
     match.MatchState.MATCHED: "owned",
     match.MatchState.NEEDS_REVIEW: "offered",
     match.MatchState.MISSING: "missing",
     match.MatchState.SUPPRESSED: "suppressed",
 }
-
-
-def _load() -> config.Config:
-    """Read config, turning a configuration failure into a typed cause."""
-    return load_config(("intake.cli",))
 
 
 def _plan(items: list[dict[str, str]], *, kind: str) -> dict:
@@ -123,79 +114,56 @@ def _plan(items: list[dict[str, str]], *, kind: str) -> dict:
     }
 
 
-def _unusable(message: str, *steps: str, **detail: Any) -> CratekitError:
-    return refuse(
-        "intake-list-unusable",
-        message,
-        steps=steps,
-        origin=("intake.cli",),
-        detail=detail,
-    )
-
-
 # ---------------------------------------------------------------------------
 # The surface
 # ---------------------------------------------------------------------------
 
-#: The help text both recognition verbs show. A recording on this machine OR a
-#: mix URL, because U104 fetches one. SEAM P6 runs both ways: a verb that
-#: refuses an address cannot advertise one, and a verb that takes one has to
-#: say so on the one screen a person reads first.
+#: A verb that takes an address has to say so on the screen read first (SEAM P6).
 _SOURCE_HELP = (
     "set recording on this machine, or a mix URL, which is fetched with yt-dlp, "
     "identified and then removed"
 )
-
-
-#: The help text both identifying verbs give ``--out``. One string, because
-#: ``intake set`` writes the same tracklist ``intake identify`` writes (R-925).
+#: One ``--out`` help, because ``intake set`` writes the tracklist ``intake identify`` does.
 _OUT_HELP = (
-    "folder the tracklist is written into; defaults to a tracklists "
-    "folder under download staging"
+    "folder the tracklist is written into; defaults to a tracklists folder under download staging"
 )
+
+
+def _identify_arguments(parser) -> None:
+    parser.add_argument("source", help=_SOURCE_HELP)
+    parser.add_argument("--out", default=None, metavar="DIR", help=_OUT_HELP)
+
+
+def _refresh_argument(parser) -> None:
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help=(
+            "ask the recognition service about every chunk again instead of "
+            "reading the answers already kept for this recording; this spends"
+        ),
+    )
 
 
 def build_set(parser, entry) -> None:
     from cratekit.intake import set_playlist
 
-    parser.add_argument("source", help=_SOURCE_HELP)
-    parser.add_argument("--out", default=None, metavar="DIR", help=_OUT_HELP)
+    _identify_arguments(parser)
     parser.add_argument(
         "--job",
         default=None,
         metavar="JOB_ID",
         help="continue the intake job already queued under this identifier",
     )
-    parser.add_argument(
-        "--refresh",
-        action="store_true",
-        help=(
-            "ask the recognition service about every chunk again instead of "
-            "reading the answers already kept for this recording; this spends"
-        ),
-    )
-    # U129. The account playlist is named as INSPIRATION is, so the same three
-    # words land on both. A resume (--job) never remakes the playlist.
+    _refresh_argument(parser)
+    # U129. The account playlist is named as INSPIRATION is, by the same words.
     set_playlist.add_word_arguments(parser)
     parser.set_defaults(_handler=intake_set)
 
 
 def build_identify(parser, entry) -> None:
-    parser.add_argument("source", help=_SOURCE_HELP)
-    parser.add_argument(
-        "--out",
-        default=None,
-        metavar="DIR",
-        help=_OUT_HELP,
-    )
-    parser.add_argument(
-        "--refresh",
-        action="store_true",
-        help=(
-            "ask the recognition service about every chunk again instead of "
-            "reading the answers already kept for this recording; this spends"
-        ),
-    )
+    _identify_arguments(parser)
+    _refresh_argument(parser)
     parser.set_defaults(_handler=intake_identify)
 
 
@@ -215,16 +183,10 @@ def build_playlist(parser, entry) -> None:
 def set_argv(job) -> list[str]:
     """The command line that continues one queued set.
 
-    IT CARRIES ``--run`` WHEN THE ACCOUNT GATE WAS ASKED. The account confirm
-    gate is ``explicit``, so R34 makes it answerable only by a separate act
-    recorded against a run. The child :mod:`cratekit.core.jobs` spawns is a
-    fresh process, and ``cli.run`` mints a NEW run whenever ``--run`` is absent,
-    so a resume naming only the job meets the gate with nothing recorded and
-    exits DECISION_REQUIRED on every respawn. The flag goes BEFORE the verb
-    path because ``--run`` belongs to the root parser.
-
-    A job frozen by a build older than the gate, or one whose account step soft
-    skipped, carries no gate run and resumes without the flag.
+    It carries ``--run`` when the account gate was asked: that gate is
+    explicit, so R34 answers it only by an act recorded against a run, and a
+    respawned child with no ``--run`` mints a new run and stops at the gate
+    every time. The flag goes before the verb path, since the root parser owns it.
     """
     payload = job.payload or {}
     source = str(payload.get(SOURCE) or "")
@@ -239,133 +201,6 @@ def playlist_argv(job) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# What an item is
-# ---------------------------------------------------------------------------
-
-
-def item_key(row: Wanted) -> str:
-    """The stable identifier one track is queued under, never a display name.
-
-    A provider row is keyed by the provider's own identifier, which is the one
-    thing a later acquisition can be asked for and the key the acquisition
-    verb uses for the same row. A recognised track carries none, so it is
-    keyed by the match module's own digest over the recording's identity
-    (``match.recording_identity``, the token for every title that folds to
-    something), the version token and the ISRC, which is the identity that
-    module already gives the same record from any list. Two different recordings cannot
-    share it and the same recording from two chunks folds to it.
-    """
-    if row.ref:
-        return row.ref
-    return "rc_" + match.digest(row.distinct, row.version_key, row.isrc or "")
-
-
-def _frozen(row: Wanted) -> dict[str, Any]:
-    """One track as the payload carries it. :func:`thawed` is the mirror."""
-    return {
-        "artist": row.artist,
-        "title": row.title,
-        "version": row.version,
-        "key": row.key,
-        "isrc": row.isrc,
-        "origin": row.origin,
-        "ref": row.ref,
-        "spelled": row.spelled,
-        # THE OTHER READING TRAVELS TOO. ``resolve_one`` asks the library about
-        # a title's second reading once nothing the list said has matched, and
-        # a freeze that dropped it would make the worker resolve a narrower
-        # question than the reader built, silently, on exactly the ambiguous
-        # titles the field exists for.
-        "other_reading": list(row.other_reading) if row.other_reading else None,
-        # AND WHETHER THE ROW BILLED A GUEST, for the same reason. The worker
-        # decides SUPPRESSED from this object, and a freeze that dropped the
-        # field would let a row crediting somebody in its artists list ask for
-        # the companion of a deletion that credited somebody else.
-        "several_artists": row.several_artists,
-    }
-
-
-def frozen(row: Wanted) -> dict[str, Any]:
-    """The public face of the freeze, for a module that stores a track elsewhere.
-
-    ``intake.candidates`` keeps a provider candidate on a review option and
-    reads it back through :func:`thawed`, so one freeze serves both and a field
-    added to it reaches both.
-    """
-    return _frozen(row)
-
-
-def _refuse_unidentified(missing: list[int]) -> None:
-    """Refuse a listing whose rows at ``missing`` carry no provider identifier."""
-    if missing:
-        raise _unusable(
-            f"{len(missing)} track(s) in this playlist carry no provider identifier "
-            f"(positions {', '.join(str(p) for p in missing[:5])}"
-            f"{', ...' if len(missing) > 5 else ''}), so nothing could ever be asked "
-            f"about them",
-            "fetch the playlist again so every row carries its id",
-            positions=missing,
-        )
-
-
-def frozen_rows(rows: tuple[Wanted, ...]) -> dict[str, dict[str, Any]]:
-    """The items, as the listing identifies them, in order and folded once.
-
-    A PROVIDER ROW WITHOUT AN IDENTIFIER IS REFUSED BY POSITION, and the whole
-    listing with it: a queue that quietly dropped a row would report every
-    item done over a playlist it did not finish. Any row that is not plain
-    text is a provider row here, so a row from a second provider does not
-    slip past a check written for the first. THE SAME IDENTIFIER TWICE FOLDS
-    TO ONE ITEM, first occurrence wins, because the queue keys items by
-    identifier and a repeat is an insert that cannot land.
-
-    Everything the worker will need is frozen HERE, in the shape ``thawed``
-    reads back, so the worker's view of a track is the queue's and not the
-    disk's.
-    """
-    _refuse_unidentified(
-        [
-            position
-            for position, row in enumerate(rows, start=1)
-            if row.origin != match.TEXT and not row.ref
-        ]
-    )
-    frozen: dict[str, dict[str, Any]] = {}
-    for row in rows:
-        key = item_key(row)
-        if key in frozen:
-            continue
-        frozen[key] = _frozen(row)
-    return frozen
-
-
-def thawed(said: Mapping[str, Any]) -> Wanted:
-    """The frozen track as the ``Wanted`` the match engine reads."""
-    other = said.get("other_reading")
-    reading = (
-        (str(other[0]), str(other[1]))
-        if isinstance(other, (list, tuple)) and len(other) == 2
-        else None
-    )
-    return Wanted(
-        artist=str(said.get("artist") or ""),
-        title=str(said.get("title") or ""),
-        version=str(said.get("version") or ""),
-        key=str(said["key"]) if said.get("key") else None,
-        isrc=str(said["isrc"]) if said.get("isrc") else None,
-        origin=str(said.get("origin") or match.TEXT),
-        ref=str(said.get("ref") or ""),
-        spelled=str(said.get("spelled") or ""),
-        other_reading=reading,
-        # A PAYLOAD FROZEN BEFORE THE FIELD EXISTED DID NOT LOOK, so its absence
-        # reads as "may have billed several" and the companion is not asked.
-        # That costs a job queued by an older build one missed suppression, and
-        # the other default would let it withhold a track nobody deleted.
-        several_artists=bool(said.get("several_artists", True)),
-    )
-
-
-# ---------------------------------------------------------------------------
 # The resume tail
 # ---------------------------------------------------------------------------
 
@@ -373,22 +208,11 @@ def thawed(said: Mapping[str, Any]) -> Wanted:
 def _summary(cfg: config.Config, job) -> dict[str, Any]:
     """What the committed reports say, counted by the verb's own words.
 
-    READ BACK from the artifacts rather than accumulated, so a resume reports
-    every item and not the ones this process happened to run. ``acquired`` is
-    spelled out as zero rather than left absent, because a reader of an intake
-    report reaches for that number first and an absent field reads as "not
-    yet counted" rather than as "this verb does not do that". What the set
-    cost to identify rides along, from the payload that froze it.
-
-    ``by_reason`` IS KEYED BY STATE FIRST, then by the ``match.Why`` slug the
-    report carries, decided by R-682. A flat count by reason could not say
-    which state it explains, because one reason lands rows in more than one
-    state: ``title-approximate`` is offered or missing depending on what the
-    library holds. Every state word is a key, as every count is; a reason is
-    a key only when some row carries it, since sixteen zeros per state bury
-    the two that happened. A report with no ``why``, or one that is not a
-    string, is counted in its state and under no reason, so the reasons fall
-    short of the count rather than inventing one.
+    Read back from the artifacts, so a resume reports every item. ``acquired``
+    is spelled out as zero, since an absent field reads as "not yet counted".
+    ``by_reason`` is keyed by state first (R-682), because one reason lands
+    rows in more than one state; a reason is a key only when some row carries
+    it, and a report with no string ``why`` is counted under no reason.
     """
     counts = {word: 0 for word in _STATE_WORDS.values()}
     by_reason: dict[str, dict[str, int]] = {word: {} for word in counts}
@@ -415,28 +239,13 @@ def _summary(cfg: config.Config, job) -> dict[str, Any]:
 def _resume(ctx, store, job_id: str) -> Envelope:
     """Reconcile, refuse a foreign or empty job, drive it, and report how it ended.
 
-    RECONCILE FIRST. A resume arrives after something stopped, and a claim
-    left behind by a driver that died is state the queue cannot see for
-    itself.
-
-    THE JOB HAS TO BE AN INTAKE JOB. ``handlers.run_job`` resolves the worker
-    from the job row and not from this verb, so without this line ``intake
-    set x --job`` would drive any queued job of any verb in process, under
-    this verb's envelope and without that verb's own resume time checks.
-    Either intake key is accepted, because one worker serves the two.
-
-    THE ZERO ITEM RULE ON THE RESUME SIDE. A job queued by a build before this
-    unit carries a source string and no items at all, and driving it would
-    report SUCCEEDED over a set nothing ever resolved. The steps name the way
-    out, because the slug does not: the job stays open after this refusal.
-
-    A JOB THAT ENDED BADLY IS NOT AN OK EXIT. ``jobs.drive`` raises only when
-    EVERY attempted item failed, so a set where two tracks resolved and one
-    did not returns normally with the job recorded failed, and without the
-    re-raise the verb exits 0 over two thirds of a set. It sits OUTSIDE the
-    ``is_open`` branch so a job already failed on entry is caught too, and it
-    catches ANY closed job carrying a cause, so a run stopped by a signal is
-    not an OK exit either. Every sibling tail in the package does the same.
+    Reconciled first, since a dead driver's claim is state the queue cannot
+    see. Only an intake job, since ``handlers.run_job`` resolves the worker
+    from the job row and would drive any verb's job without its own checks.
+    A job with no items was queued by an older build and would report
+    SUCCEEDED over nothing. A job that ended badly, failed on entry or stopped
+    by a signal, is not an OK exit, since ``jobs.drive`` raises only when
+    every item failed.
     """
     job = jobs.reconcile(store, job_id)
     if job.handler_key not in INTAKE_KEYS:
@@ -472,257 +281,10 @@ def _resume(ctx, store, job_id: str) -> Envelope:
 
 
 # ---------------------------------------------------------------------------
-# intake.set and intake.identify
+# intake.set: the account playlist (U129)
 # ---------------------------------------------------------------------------
 
-
-def _recording_or_refuse(source: str) -> Path:
-    """The recording as a file on this machine, absolute, or why not.
-
-    A LOCAL PATH ONLY. A mix URL never reaches this function: ``_local_or_none``
-    sends it to the fetch seam instead (U104, R-303).
-
-    EXPANDED BEFORE IT IS CHECKED, because a tilde a shell did not expand is
-    the one input the expansion exists for, and checking the literal string
-    first refused a file that was there. ABSOLUTE, for the reason ``master``
-    freezes its recording absolute: the child a resume spawns inherits the
-    resuming process's directory.
-    """
-    path = Path(source).expanduser()
-    if not path.is_file():
-        raise _unusable(
-            f"{source} is not a file on this machine",
-            source=source,
-        )
-    return path.absolute()
-
-
-def _local_or_none(source: str) -> Path | None:
-    """The recording when ``source`` is a path, and None when it is a mix URL.
-
-    SPLIT FROM THE FETCH ON PURPOSE. A path that names nothing is refused here,
-    before the gate, exactly as it always was. An address costs a download, so
-    it waits until every refusal that is still free has had its turn.
-    """
-    if normalize.is_url(source):
-        return None
-    return _recording_or_refuse(source)
-
-
-@dataclass(slots=True)
-class SetRecording:
-    """The file a pass identifies, and what the pass calls it.
-
-    ``ref`` is what is frozen, reported and shown: the absolute path of a local
-    recording, or the ADDRESS of a fetched one, because the fetched file is
-    gone by the time anybody reads the job. ``stem`` names a tracklist and
-    ``shown`` is the short name a sentence uses. ``leftover`` is a scratch
-    folder that could not be removed, read after the ``with`` block that lent
-    the file.
-
-    ONE OBJECT RATHER THAN A PATH AND SOME OPTIONAL OVERRIDES, because a helper
-    that takes the path and an optional address falls back to the scratch
-    file's name whenever a caller forgets the address, and says so to nobody.
-    """
-
-    path: Path
-    ref: str
-    stem: str
-    shown: str
-    leftover: str | None = None
-    #: What the page said, for a fetched mix (U121). Empty for a local file.
-    page: Mapping[str, str] = field(default_factory=dict)
-
-    @classmethod
-    def local(cls, path: Path) -> SetRecording:
-        return cls(path=path, ref=str(path), stem=path.stem, shown=path.name)
-
-
-MIX_SCRATCH_LEFT = "mix-scratch-left"
-
-
-def _fetch_notes(held: SetRecording) -> tuple[dict[str, str], ...]:
-    """A scratch folder that outlived its pass, said where a person reads it."""
-    if held.leftover is None:
-        return ()
-    return (
-        {
-            "code": MIX_SCRATCH_LEFT,
-            "message": (
-                f"the fetched mix could not be removed from {held.leftover}; it is "
-                f"outside the library and is cleared the next time this address is "
-                f"fetched, or delete the folder by hand"
-            ),
-        },
-    )
-
-
-@contextmanager
-def _recording(
-    cfg: config.Config,
-    source: str,
-    local: Path | None,
-    progress: fetch.Progress | None = None,
-) -> Iterator[SetRecording]:
-    """Lend the recording for one pass, fetching it first when it is a mix URL.
-
-    A LOCAL RECORDING IS LENT AS IT IS and nothing about it changes.
-
-    A MIX URL IS FETCHED THROUGH THE SEAM, into a scratch folder under the
-    installation state root, and the folder is removed when the block ends,
-    however it ends. The three ways the fetch cannot happen are this verb's
-    refusals, each in a vocabulary that already exists: a missing ``yt-dlp`` is
-    U80's ``yt-dlp-missing`` with the install hint, a download that failed is
-    ``unavailable-transient`` and retryable, and a scratch root that resolves
-    under the library is refused before anything is fetched, because a mix must
-    never land beside the music.
-
-    ``progress`` is the verb's, and a fetch says on it that it started, how
-    far it has got and what landed (R-924). A local recording fetches nothing
-    and says nothing.
-    """
-    if local is not None:
-        yield SetRecording.local(local)
-        return
-    address = source.strip()
-    try:
-        found = fetch.fetcher()
-    except binaries.BinaryNotFound as exc:
-        raise binary_refusal.yt_dlp_missing(
-            exc,
-            {"source": address},
-            said="Fetching a mix runs it, so nothing was fetched and nothing was sent.",
-            origin=("intake.cli",),
-        ) from exc
-    try:
-        with fetch.fetched(
-            address, Path(cfg.library.root), found, progress=progress
-        ) as got:
-            held = SetRecording(
-                path=got.path,
-                ref=address,
-                stem=fetch.stem_of(address),
-                shown=address,
-                page=dict(got.page),
-            )
-            try:
-                yield held
-            except CratekitError as exc:
-                raise _named_for_the_address(exc, held) from exc.__cause__
-        held.leftover = got.leftover
-    except fetch.ScratchUnderLibrary as exc:
-        raise _unusable(
-            f"the scratch folder a fetched mix lands in, {exc.scratch}, is inside "
-            f"this library at {exc.library}, and a mix is never written under the "
-            f"library; nothing was fetched",
-            f"point {config.ENV_STATE_DIR} outside the library, or unset it",
-            source=address,
-            scratch=str(exc.scratch),
-        ) from exc
-    except fetch.ScratchUnusable as exc:
-        raise _unusable(
-            f"{exc}, so the mix at {address} was not fetched; nothing was sent",
-            f"make that folder writable, or point {config.ENV_STATE_DIR} somewhere that is",
-            source=address,
-        ) from exc
-    except fetch.SetFetchTimedOut as exc:
-        # THE ONE FETCH FAILURE KNOWN TO BE WORTH A RETRY. Everything else a
-        # download can end on is below, and is not called retryable, because
-        # nobody watches a session and a driver that trusts the flag would
-        # re-run a dead address for ever.
-        raise refuse(
-            "unavailable-transient",
-            f"the mix at {address} could not be fetched ({exc}); nothing was sent "
-            f"and nothing was kept",
-            remedy=Remedy.RETRY_LATER,
-            retryable=True,
-            steps=(
-                "run it again later",
-                "or download the mix to a file yourself and run it on that file",
-            ),
-            origin=("intake.cli",),
-            detail={"source": address},
-        ) from exc
-    except fetch.SeveralRecordings as exc:
-        raise _unusable(
-            f"{address} was not fetched: {exc}; nothing was sent and nothing was kept",
-            "give the address of one recording on that page",
-            source=address,
-        ) from exc
-    except fetch.SetFetchFailed as exc:
-        raise _unusable(
-            f"the mix at {address} could not be fetched ({exc}); nothing was sent "
-            f"and nothing was kept. Whether the address or the network is at fault "
-            f"is not known from a failed download",
-            "open the address in a browser to check it still plays, then run it again",
-            "a streaming playlist goes through intake playlist instead",
-            "or download the mix to a file yourself and run it on that file",
-            source=address,
-        ) from exc
-
-
-def _named_for_the_address(exc: CratekitError, held: SetRecording) -> CratekitError:
-    """A refusal raised over a fetched mix, said about the ADDRESS.
-
-    The identifier names what it was handed, in its message and in its detail,
-    and for a fetched mix that is a scratch file removed before anybody reads
-    the refusal. Some of these arrive after calls were paid for, so the one
-    thing a person can act on, the address, has to be in them. The reason, the
-    remedy and everything else are the identifier's and are kept.
-    """
-    cause = exc.declared_cause
-    message = cause.message.replace(str(held.path), held.ref).replace(held.path.name, held.ref)
-    detail = {
-        key: held.ref if value == str(held.path) else value
-        for key, value in dict(cause.detail).items()
-    }
-    detail.setdefault("source", held.ref)
-    return rebuilt(exc, replace(cause, message=message, detail=detail))
-
-
-def _coverage_or_refuse(
-    result: pipeline.IdentifyResult, held: SetRecording
-) -> tuple[dict[str, str], ...]:
-    """The warnings a partially answered identification carries, or a refusal.
-
-    ABSENCE IS NOT EVIDENCE OF ABSENCE. A run where some chunks got no answer
-    and the rest named nothing is not a set nobody recognised, and reporting
-    it as one is the honest zero telling a lie. It is refused as a failure.
-    A run where some chunks got no answer and others named tracks is a
-    tracklist with holes in it, and it goes on with a warning that says how
-    many, because a tracklist missing forty minutes of a set with nothing
-    saying so is the same lie with a smaller hole.
-    """
-    if not result.unreached:
-        return ()
-    if not result.rows:
-        raise refuse(
-            "intake-recognition-failed",
-            f"{result.unreached} of {result.chunks} chunk(s) of {held.shown} got no "
-            f"answer and the rest named nothing, so this is not a set nobody "
-            f"recognised; {result.calls} call(s) were made and counted",
-            remedy=Remedy.RETRY_LATER,
-            retryable=True,
-            origin=("intake.cli",),
-            detail={
-                "source": held.ref,
-                "calls": result.calls,
-                "unreached": result.unreached,
-            },
-        )
-    return (
-        {
-            "code": "recognition-incomplete",
-            "message": (
-                f"{result.unreached} of {result.chunks} chunk(s) got no answer, so "
-                f"this tracklist has gaps; identify the recording again to fill them"
-            ),
-        },
-    )
-
-
-
-#: Why the account playlist step was skipped, one code each (U129).
+#: Why the account playlist step was skipped, one code each, and its gate.
 ACCOUNT_UNNAMED = "set-account-unnamed"
 ACCOUNT_UNREACHABLE = "set-account-unreachable"
 ACCOUNT_GATE = "intake.set.account.confirm"
@@ -747,31 +309,22 @@ def _set_playlist_name(
 ) -> _PlaylistName:
     """The INSPIRATION form of the name, or a warning when naming was expected.
 
-    A local recording with no page and no name flags never asked for an account
-    playlist, so the skip is silent. A mix URL whose fetch left no page is the
-    same shape as a page that left a word out: the person gave an address, so
-    the account step was expected and the warning says so. A command that
-    passed some of ``--dj`` / ``--set-name`` / ``--set-date`` and still cannot
-    name the set is the other case the warning is for.
-
-    The first word is the posted day (U136): ``--posted``, else the page's
-    upload_date, else the landing day with a warning on the screen.
+    A local recording with no page and no name flags never asked for an
+    account playlist, so its skip is silent; a mix URL, a page, or any name
+    flag did ask, so failing to name the set warns. The first word is the
+    posted day (U136): ``--posted``, the page's upload_date, else the landing day.
     """
     from cratekit.export import set_cli
     from cratekit.intake import set_playlist
 
     try:
-        words = set_playlist.words_from_page(
-            page, dj=dj, set_name=set_name, set_date=set_date
-        )
+        words = set_playlist.words_from_page(page, dj=dj, set_name=set_name, set_date=set_date)
     except CratekitError as exc:
         if exc.cause.reason != set_playlist.UNNAMED:
             raise
         page = page if isinstance(page, Mapping) else {}
         asked = (
-            bool(page)
-            or from_url
-            or any(v is not None for v in (dj, set_name, set_date, posted))
+            bool(page) or from_url or any(v is not None for v in (dj, set_name, set_date, posted))
         )
         if not asked:
             return _PlaylistName()
@@ -797,79 +350,45 @@ def _set_playlist_name(
     )
 
 
-def _account_gate_payload(name: str) -> dict[str, Any]:
-    """What the account gate digests: the playlist name alone, not its tracks.
-
-    The name is known from the URL page or the name flags before recognition
-    runs, so the gate can fire without paying ACRCloud or depending on which
-    tracks the identifier returns. Tracks are matched after recognition, when
-    the write is applied.
-    """
-    return {
-        "digest": digest_of({"kind": "intake-set-account", "name": name}),
-        "items": [
-            {
-                "id": name,
-                "kind": "playlist",
-                "name": name,
-                "action": "save",
-            }
-        ],
-        "totals": {"count": 1, "writes": True},
-        "chunk": None,
-    }
-
-
-def _account_gate_shown(name: str) -> dict[str, Any]:
-    """What the screen says when the account gate asks before recognition."""
-    return {
-        "playlist": (
-            f"{name}: save it as a private account playlist under this name"
-        ),
-        "tracks": (
-            "the tracks are named after recognition, then matched on the account"
-        ),
-        "removes": "nothing, ever: no track or playlist is taken away",
-    }
+def _skipped(message: str) -> tuple[tuple[dict[str, str], ...], None]:
+    """The account step soft skipped: its one warning, and no gate answer or plan."""
+    return ({"code": ACCOUNT_UNREACHABLE, "message": message},), None
 
 
 def _ask_account_gate(ctx, *, name: str) -> tuple[tuple, str | None]:
-    """Ask the account gate over the playlist name, before recognition.
+    """Ask the account gate over the playlist name alone, before recognition.
 
-    Soft when this verb somehow declares no gate: that becomes a warning and
-    the set still queues. The gate is asked before ``jobs.enqueue`` so an
-    explicit first refusal does not leave a job that a resume would queue
-    again (U129), and before recognition so the first run does not pay for
-    ACRCloud only to stop for the decision.
+    Asked before ``jobs.enqueue``, so a first refusal leaves no job a resume
+    would queue again, and before recognition, so the first run does not pay
+    ACRCloud only to stop. A verb declaring no gate soft skips with a warning.
     """
     if not name:
         return (), None
     spec = next((one for one in ctx.entry.gates if one.name == ACCOUNT_GATE), None)
     if spec is None:
-        return (
-            (
-                {
-                    "code": ACCOUNT_UNREACHABLE,
-                    "message": (
-                        f"the account playlist {name!r} was named but this verb "
-                        f"declares no account gate, so nothing was written"
-                    ),
-                },
-            ),
-            None,
+        return _skipped(
+            f"the account playlist {name!r} was named but this verb "
+            f"declares no account gate, so nothing was written"
         )
-    option = ctx.gate.require(
-        spec, plan=_account_gate_payload(name), context=_account_gate_shown(name)
-    )
-    return (), option
+    plan = {
+        "digest": digest_of({"kind": "intake-set-account", "name": name}),
+        "items": [{"id": name, "kind": "playlist", "name": name, "action": "save"}],
+        "totals": {"count": 1, "writes": True},
+        "chunk": None,
+    }
+    shown = {
+        "playlist": f"{name}: save it as a private account playlist under this name",
+        "tracks": "the tracks are named after recognition, then matched on the account",
+        "removes": "nothing, ever: no track or playlist is taken away",
+    }
+    return (), ctx.gate.require(spec, plan=plan, context=shown)
 
 
 def _plan_account_playlist(cfg, *, name: str, rows):
     """Match the set's rows to the account playlist after recognition.
 
-    Soft on a missing credential or a matching failure: those become a warning
-    and a later ``crate export set`` or the backfill covers them. The gate was
-    already asked over the name alone, so a plan failure here does not re-ask.
+    A missing credential or a matching failure soft skips with a warning; a
+    later ``crate export set`` or the backfill covers it.
     """
     if not name or not rows:
         return (), None
@@ -878,22 +397,13 @@ def _plan_account_playlist(cfg, *, name: str, rows):
     try:
         built = set_cli.plan_from_wanted(cfg, name, rows)
     except CratekitError as exc:
-        return (
-            (
-                {
-                    "code": ACCOUNT_UNREACHABLE,
-                    "message": (
-                        f"the account playlist {name!r} was not planned "
-                        f"({exc.cause.reason}: {exc.cause.message}); the set will "
-                        f"still be queued, run crate export set over its "
-                        f"tracklist once the account is reachable"
-                    ),
-                },
-            ),
-            None,
+        return _skipped(
+            f"the account playlist {name!r} was not planned "
+            f"({exc.cause.reason}: {exc.cause.message}); the set will "
+            f"still be queued, run crate export set over its "
+            f"tracklist once the account is reachable"
         )
-    notes = tuple(set_cli.unmatched_warnings(built.planned))
-    return notes, built
+    return tuple(set_cli.unmatched_warnings(built.planned)), built
 
 
 def _apply_account_playlist(cfg, built, option: str | None):
@@ -905,47 +415,31 @@ def _apply_account_playlist(cfg, built, option: str | None):
     notes = ()
     if option != "apply" or not built.writes:
         return notes, built.payload
+
     data, more, _wrote = set_cli.apply_planned(cfg, built)
     return tuple(more), data
 
+
+# ---------------------------------------------------------------------------
+# intake.set
+# ---------------------------------------------------------------------------
 
 
 def intake_set(ctx) -> Envelope:
     """Identify the recording, freeze what was heard, and queue one item per track.
 
     THE ACCOUNT GATE, THEN THE RECOGNITION GATE, THEN THE SPEND, THEN THE
-    QUEUE. The account playlist's name is known from the name flags or from
-    the mix page, so ``intake.set.account.confirm`` is asked before ACRCloud
-    runs (U129): the first run stops for the decision without paying for
-    recognition, and a resume reuses the recognition cache for chunks already
-    answered. The recognition gate then refuses by name before anything is
-    carved; the identifier is the paid step and it is bounded inside
-    :mod:`cratekit.intake.acrcloud`; only a set that named at least one track
-    becomes a job. The counts the identifier reports are the counts the job
-    freezes, so the honest zero says what it cost and a partial run says how
-    partial.
+    QUEUE. The account gate asks over the playlist name alone, so it fires
+    before ACRCloud runs. When ``--posted`` and the three name flags name the
+    set it fires before a mix is fetched; otherwise the page names it, so the
+    fetch comes first (U136). Only a set that named a track becomes a job,
+    freezing the ADDRESS of a mix as its source, and the counts the identifier
+    reports are the counts the job freezes.
 
-    A MIX URL IS FETCHED AFTER THE ACCOUNT GATE WHEN ``--posted`` AND THE
-    NAME FLAGS ALREADY NAME THE SET, AND BEFORE RECOGNITION (U104, U136).
-    When the name or the posted day must come from the page, the fetch runs
-    first so the page can name the set, then the account gate, then
-    recognition. The job freezes the ADDRESS as its source,
-    not the scratch file, which is removed when the ``with`` block ends: the
-    worker reads nothing but the job, and a resume returns above this branch.
-    A mix download is not cached across runs the way recognition answers are.
-
-    THE TRACKLIST IS WRITTEN AS ``intake identify`` WRITES IT (R-925), by the
-    same writer into the same folder, ``--out`` or the default. A set is the
-    list a person reads before anything is acquired from it, and it used to
-    be readable only by opening the queue by hand. The folder is checked with
-    the free refusals. The file is written AFTER the job is queued, so a
-    queue that refuses leaves no list of a job that does not exist, and a
-    file that cannot be written is a warning rather than a refusal: the job
-    is the thing the spend bought, and ``job show`` lists the same tracks
-    from it, so withholding it over a convenience file would make a person
-    pay a refetch to get it back. The path rides on the envelope twice: the
-    note a person reads, and ``tracklist`` under ``progress`` for a consumer,
-    None when nothing was written.
+    The tracklist is written as ``intake identify`` writes it (R-925), after
+    the job is queued, so a refused queue leaves no list; a failed write is a
+    warning, since the job is what the spend bought. Its path rides the
+    envelope as a note and as ``tracklist``, None when nothing was written.
     """
     cfg = _load()
     with jobs.open_store() as store:
@@ -953,48 +447,27 @@ def intake_set(ctx) -> Envelope:
             return _resume(ctx, store, ctx.args.job)
         source = str(ctx.args.source)
         local = _local_or_none(source)
-        dj = getattr(ctx.args, "dj", None)
-        set_name = getattr(ctx.args, "set_name", None)
-        set_date = getattr(ctx.args, "set_date", None)
-        posted = getattr(ctx.args, "posted", None)
-        # Name from the flags alone when every word is given AND the day is
-        # locked (--posted), so the account gate can fire before recognition
-        # and before any mix download. When --posted is absent the page's
-        # upload_date must be read before the name is frozen (U136), so the
-        # gate waits until after the fetch even when the three word flags
-        # already name the set.
-        early = _set_playlist_name(
-            {}, dj=dj, set_name=set_name, set_date=set_date, posted=posted
-        )
+        words = {k: getattr(ctx.args, k, None) for k in ("dj", "set_name", "set_date", "posted")}
+        posted = words["posted"]
+        # Named from the flags alone only when the day is locked by --posted,
+        # since otherwise the page's upload_date names it (U136).
+        early = _set_playlist_name({}, **words)
+        locked = bool(early.name) and posted is not None
         account_notes: tuple = ()
         option: str | None = None
-        gate_asked = False
-        if early.name and posted is not None:
+        if locked:
             account_notes, option = _ask_account_gate(ctx, name=early.name)
-            gate_asked = True
         recognize.assert_recognition_ready()
         out = _tracklist_dir(cfg, ctx.args.out, local if local is not None else source.strip())
         job = None
         built = None
         with _recording(cfg, source, local, ctx.progress) as held:
             playlist = (
-                early
-                if early.name and posted is not None
-                else _set_playlist_name(
-                    held.page,
-                    dj=dj,
-                    set_name=set_name,
-                    set_date=set_date,
-                    posted=posted,
-                    from_url=local is None,
-                )
+                early if locked else _set_playlist_name(held.page, **words, from_url=local is None)
             )
-            # THE ACCOUNT GATE BEFORE RECOGNITION (U129). When the name came
-            # from the page, ask here, still before the paid identifier runs.
-            if playlist.name and not gate_asked:
+            if playlist.name and not locked:
                 more, option = _ask_account_gate(ctx, name=playlist.name)
                 account_notes = (*account_notes, *more)
-                gate_asked = True
             result = pipeline.identify_only(
                 held.path,
                 refresh=bool(ctx.args.refresh),
@@ -1005,15 +478,11 @@ def intake_set(ctx) -> Envelope:
                 _coverage_or_refuse(result, held)
                 + _cache_notes(result)
                 + _parts_notes(result, queued=True)
+                + ((playlist.warning,) if playlist.warning else ())
             )
-            if playlist.warning:
-                warnings = list(warnings) + [playlist.warning]
             tracks = frozen_rows(result.rows)
-            # Match tracks after recognition; the gate already decided on the name.
             plan_notes, built = _plan_account_playlist(
-                cfg,
-                name=playlist.name if playlist.name else "",
-                rows=result.rows if tracks else (),
+                cfg, name=playlist.name, rows=result.rows if tracks else ()
             )
             account_notes = (*account_notes, *plan_notes)
             if tracks:
@@ -1025,13 +494,11 @@ def intake_set(ctx) -> Envelope:
                     PARTS: result.parts,
                     PAGE: dict(held.page),
                 }
-                # U129. Freeze the INSPIRATION name so the account playlist and
-                # the landing's playlist agree, even when they run on different days.
+                # The name is frozen so the account and the landing agree on
+                # any day (U129), and the gate run so a resume keeps the answer.
                 if playlist.name:
                     payload[PLAYLIST_NAME] = playlist.name
-                # Freeze the gate run only when the account gate was asked, so a
-                # resume can restore the decision. Soft skips leave it out.
-                if gate_asked and option is not None:
+                if option is not None:
                     payload[jobs.GATE_RUN_KEY] = ctx.run.run_id
                 job = jobs.enqueue(
                     store,
@@ -1068,578 +535,21 @@ def intake_set(ctx) -> Envelope:
         )
 
 
-#: The folder under download staging a tracklist lands in when ``--out`` is
-#: not given, and what a tracklist's file name ends in. A text file of
-#: 'Artist - Title' lines, which is the door ``acquire match`` and ``intake
-#: missing --list`` both read.
-TRACKLISTS_DIR = "tracklists"
-TRACKLIST_SUFFIX = ".tracklist.txt"
-
-#: How much of the recording's digest a tracklist's name carries. Twelve hex
-#: characters is forty eight bits, which no two sets a person owns will share.
-TRACKLIST_DIGEST_CHARS = 12
-
-#: The two notes identification adds on the envelope's warnings channel. The
-#: ``match`` surface is closed at three arrays, so the file this verb wrote has
-#: no field to ride in, and the channel is the one a person is shown.
-TRACKLIST_WRITTEN = "tracklist-written"
-#: The ``progress`` field ``intake set`` names its tracklist under (R-925).
-TRACKLIST = "tracklist"
-#: The note ``intake set`` carries when its job is queued and its tracklist
-#: could not be written (R-925).
-TRACKLIST_UNWRITTEN = "tracklist-unwritten"
-CACHE_UNWRITTEN = "recognition-cache-unwritten"
-CACHE_SERVED = "recognition-cached"
-
-#: The note a set longer than one run's bound carries (R-706). It was
-#: identified in even parts and is still one set: one tracklist, one job, one
-#: batch, so a person is told the split happened and that nothing of theirs
-#: is split by it.
-IN_PARTS = "recognition-in-parts"
-
-
-def _parts_notes(
-    result: pipeline.IdentifyResult, *, queued: bool
-) -> tuple[dict[str, str], ...]:
-    """Said when the recording was identified in more than one run.
-
-    The bound is not quoted, because the identifier's budget is the one place
-    that knows it and a number copied here would be a second one. What the
-    split means for the person depends on the verb: ``intake set`` queues the
-    tracks and they land as one batch, ``intake identify`` writes one list.
-    """
-    if result.parts <= 1:
-        return ()
-    still = (
-        "its tracks queue as one job and land as one batch"
-        if queued
-        else "its tracklist is one list"
-    )
-    return (
-        {
-            "code": IN_PARTS,
-            "message": (
-                f"this recording is longer than one recognition run's bound, so it "
-                f"was identified in {result.parts} even parts, {result.chunks} "
-                f"chunk(s) in all; it is still one set, and {still}"
-            ),
-        },
-    )
-
-
-def _cache_notes(result: pipeline.IdentifyResult) -> tuple[dict[str, str], ...]:
-    """What the recognition cache did to this pass, said where a person reads it.
-
-    SERVED. A kept miss is served until somebody asks again, and the service's
-    catalogue grows, so a pass that read kept answers says how many and names
-    the flag that pays for a fresh reading. Without it a tracklist with holes
-    in it looks like the service's answer today, when it is last season's.
-
-    UNWRITTEN. The pass succeeded and its rows are good. What is lost is the
-    promise that the next pass over the same recording is free, and a person
-    who is about to run ``intake set`` on it is owed that before the second
-    bill.
-    """
-    notes: list[dict[str, str]] = []
-    if result.cached:
-        notes.append(
-            {
-                "code": CACHE_SERVED,
-                "message": (
-                    f"{result.cached} of {result.chunks} chunk(s) were answered from "
-                    f"what the service said about this recording before and cost "
-                    f"nothing; pass --refresh to ask it again, which spends"
-                ),
-            }
-        )
-    if result.cache_unwritten:
-        notes.append(
-            {
-                "code": CACHE_UNWRITTEN,
-                "message": (
-                    f"the {result.calls} recognition answer(s) this pass paid for "
-                    f"could not be kept ({result.cache_unwritten}), so another pass "
-                    f"over this recording pays for them again"
-                ),
-            }
-        )
-    return tuple(notes)
-
-
-def _library_or_refuse(cfg: config.Config, source: Path | str) -> None:
-    """Refuse, BEFORE THE SPEND, a library that is not there to be asked.
-
-    AN ABSENT LIBRARY IS NOT AN EMPTY ONE. The index of a music folder that is
-    not there holds nothing, so every identified track would resolve missing
-    with a clean exit, which is the false report this verb was written to
-    stop, reached by unplugging a drive. ``intake missing --list`` refuses the
-    same state for the same reason. It is asked before the identifier runs
-    because the answer is free now and follows a paid step otherwise.
-    """
-    music = Path(cfg.library.root) / cfg.library.music_dir
-    if music.is_dir():
-        return
-    raise refuse(
-        "library-volume-unmounted",
-        f"this library's music folder {str(music)!r} is not there, so no identified "
-        f"track could be told from one the library already holds; nothing was sent",
-        remedy=Remedy.MOUNT_LIBRARY_VOLUME,
-        origin=("intake.cli",),
-        detail={"music": str(music), "source": str(source)},
-    )
-
-
-def tracklist_name(held: SetRecording, digest: str) -> str:
-    """The tracklist's file name: the recording's stem and a piece of its digest.
-
-    THE STEM ALONE IS NOT A NAME. A recorder that calls every set REC001 gives
-    two different nights one stem, and a tracklist named by it would be
-    replaced by the next night's with nothing said. The digest is of the
-    recording's bytes, so the same recording names the same file from
-    anywhere and a different one cannot. A recording whose bytes could not be
-    read is named by its absolute path instead, which still separates two
-    folders.
-
-    A FETCHED MIX IS NAMED BY ITS ADDRESS, because the file it was fetched
-    into is named for nothing: the stem is the address's last segment and the
-    fallback token is a digest of the address.
-    """
-    token = digest or digest_of({"path": held.ref})
-    return f"{held.stem}-{token[:TRACKLIST_DIGEST_CHARS]}{TRACKLIST_SUFFIX}"
-
-
-def _tracklist_dir(cfg: config.Config, given: str | None, source: Path | str) -> Path:
-    """Where the tracklist goes, checked BEFORE the spend.
-
-    A path that exists and is not a folder is refused here, while the refusal
-    is still free. Whether the folder can be written is only known by writing.
-    """
-    if given:
-        out = Path(str(given)).expanduser().absolute()
-    else:
-        out = cfg.paths.download_staging / TRACKLISTS_DIR
-    if out.exists() and not out.is_dir():
-        raise _unusable(
-            f"{out} exists and is not a folder, so no tracklist can be written into "
-            f"it; nothing was sent",
-            "name a folder with --out",
-            out=str(out),
-            source=str(source),
-        )
-    return out
-
-
-def _tracklist_written(
-    out: Path, held: SetRecording, result: pipeline.IdentifyResult
-) -> dict[str, str]:
-    """Write the tracklist and return the note that names it.
-
-    REPLACED, NOT REFUSED, when the file already holds something else. The
-    name carries the recording's digest, so what is replaced is an earlier
-    reading of THIS recording, and a second identification that filled a gap
-    is the better one.
-
-    A FOLDER THAT CANNOT BE WRITTEN IS THIS VERB'S REFUSAL, and it arrives
-    after the spend, so it says what running again will cost, and says it
-    truthfully: nothing when every answer was kept, the unanswered chunks when
-    some got none, and all of it when nothing could be kept.
-    """
-    try:
-        path = _write_tracklist(out, held, result)
-    except OSError as exc:
-        path = _tracklist_path(out, held, result)
-        if result.cache_unwritten:
-            kept = "the recognition answers could not be kept either, so running again pays again"
-        elif result.unreached:
-            kept = (
-                f"the recognition answers were kept, so running again pays only for the "
-                f"{result.unreached} chunk(s) that got no answer"
-            )
-        else:
-            kept = "the recognition answers were kept, so running again spends nothing"
-        raise _unusable(
-            f"the tracklist could not be written to {path} ({type(exc).__name__}: "
-            f"{exc.strerror or exc}); {kept}",
-            "name another folder with --out, or make this one writable",
-            path=str(path),
-            source=held.ref,
-        ) from exc
-    return _written_note(path, result)
-
-
-def _write_tracklist(out: Path, held: SetRecording, result: pipeline.IdentifyResult) -> Path:
-    """The one writer both identifying verbs use, and the path it wrote.
-
-    Raises the ``OSError`` a write ends on, because what that costs is each
-    verb's own to say: ``intake identify`` refuses, ``intake set`` warns.
-    """
-    path = _tracklist_path(out, held, result)
-    config.atomic_write_bytes(result.tracklist.encode("utf-8"), path)
-    return path
-
-
-def _tracklist_path(out: Path, held: SetRecording, result: pipeline.IdentifyResult) -> Path:
-    """Where the writer puts this recording's tracklist, one spelling for all."""
-    return out / tracklist_name(held, result.digest)
-
-
-def _written_note(path: Path, result: pipeline.IdentifyResult) -> dict[str, str]:
-    return {
-        "code": TRACKLIST_WRITTEN,
-        "message": f"{len(result.rows)} identified track(s) written in order to {path}",
-    }
-
-
-def _set_tracklist(
-    out: Path, held: SetRecording, result: pipeline.IdentifyResult, job_id: str
-) -> tuple[Path | None, dict[str, str]]:
-    """``intake set``'s tracklist: the path and the note, or None and why not.
-
-    A WRITE THAT FAILS IS SAID, NOT RAISED. The job is already queued and is
-    the thing the spend bought; the note names the folder that failed and the
-    verb that lists the same tracks from the job, so a person can still read
-    the set before acquiring anything from it.
-    """
-    try:
-        path = _write_tracklist(out, held, result)
-    except OSError as exc:
-        failed = _tracklist_path(out, held, result)
-        return None, {
-            "code": TRACKLIST_UNWRITTEN,
-            "message": (
-                f"the tracklist could not be written to {failed} ({type(exc).__name__}: "
-                f"{exc.strerror or exc}); the job is queued, and its tracks are listed "
-                f"by: crate job show {job_id}"
-            ),
-        }
-    return path, _written_note(path, result)
-
-
-def intake_identify(ctx) -> Envelope:
-    """Identify the recording, write its tracklist, and ask the library about it.
-
-    IDENTIFICATION ALONE USED TO REPORT EVERY TRACK MISSING (R-422). It had the
-    rows and never asked the library, so an owned record and an unowned one
-    read the same. The rows now go through ``match_cli.resolve_list``, the one
-    spelling of that question, under this verb's own key: owned is
-    ``matched``, a version the library may already hold is OFFERED to the
-    review queue and reported under ``needs_review``, and the rest is
-    ``missing``. An open version question is a pending action, exactly as it
-    is for ``acquire match`` over a typed list.
-
-    THE ORDER IS THE SPEND ORDER. The configuration, the recording, the gate,
-    the tracklist folder and whether the library is there to be asked are all
-    settled while a refusal is free. Then the
-    identifier runs, which is the paid step and which pays nothing for a chunk
-    the recognition cache already holds, so ``intake set`` after this verb
-    costs no calls. The tracklist is written before the library is walked, so
-    a library that cannot be read does not take the tracklist with it.
-
-    NOTHING IDENTIFIED WRITES NO TRACKLIST and walks no library, because there
-    is nothing to write and nothing to ask.
-
-    A MIX URL IS FETCHED LAST OF THE FREE STEPS (U104), after the gate, the
-    tracklist folder and the library have each had the chance to refuse, and
-    the fetched file is removed before the library is walked, because the
-    walk needs the rows and not the recording.
-    """
-    cfg = _load()
-    source = str(ctx.args.source)
-    local = _local_or_none(source)
-    recognize.assert_recognition_ready()
-    shown = local if local is not None else source.strip()
-    out = _tracklist_dir(cfg, ctx.args.out, shown)
-    _library_or_refuse(cfg, shown)
-    written = None
-    with _recording(cfg, source, local, ctx.progress) as held:
-        result = pipeline.identify_only(
-            held.path,
-            refresh=bool(ctx.args.refresh),
-            recognition=cfg.recognition,
-            progress=ctx.progress,
-        )
-        warnings = (
-            _coverage_or_refuse(result, held)
-            + _cache_notes(result)
-            + _parts_notes(result, queued=False)
-        )
-        if result.rows:
-            written = _tracklist_written(out, held, result)
-    warnings += _fetch_notes(held)
-    if written is None:
-        return ctx.envelope(
-            data=match.MatchResult(matches=()).payload(), warnings=warnings
-        )
-    resolved = match_cli.resolve_list(
-        cfg, result.rows, handler_key=ctx.entry.handler_key, run_id=ctx.run.run_id
-    )
-    pending = resolved.pending
-    return ctx.envelope(
-        data=resolved.result.payload(),
-        outcome=Outcome.PENDING if pending is not None else Outcome.OK,
-        code=ExitCode.PENDING_HUMAN if pending is not None else ExitCode.OK,
-        pending=pending,
-        warnings=(written, *warnings, *resolved.warnings),
-    )
-
-
 # ---------------------------------------------------------------------------
 # intake.playlist
 # ---------------------------------------------------------------------------
 
-
-#: The reserved reference that lists the account's hearts instead of a
-#: playlist. It cannot collide with a real playlist, because
-#: ``tidal_catalogue.playlist_id`` accepts only an identifier or a URL, and a
-#: playlist TITLED favorites is still referenced by its identifier.
-FAVORITES = "favorites"
-
-#: The ``source_id`` a hearts job carries, so a later reader can tell the job
-#: that listed the account's hearts from one that listed a playlist.
+#: The ``source_id`` a hearts job carries, telling it from a playlist's job.
 FAVORITES_SOURCE_ID = "favorites"
+
+#: The warning codes a hearts or a playlist listing carries when it came back short.
+HEARTS_WITHHELD = "intake-hearts-withheld"
+PLAYLIST_WITHHELD = "intake-playlist-withheld"
 
 
 def is_favorites(reference: str) -> bool:
     """Whether ``reference`` is the reserved hearts reference, as a person types it."""
     return str(reference or "").strip().casefold() == FAVORITES
-
-
-def _read_rows(rows: list, reference: str) -> tuple[Wanted, ...]:
-    """Provider rows as ``Wanted`` rows, refusing a list this verb cannot use."""
-    try:
-        return match.read_tidal_tracks(rows)
-    except match.UnreadableList as exc:
-        raise _unusable(str(exc), source=reference) from exc
-
-
-def list_playlist(found: catalogue.Catalogue, reference: str) -> dict[str, dict[str, Any]]:
-    """One playlist's tracks, frozen and keyed by item, as a playlist job queues them.
-
-    The listing and its failure boundary are the label verb's own, called
-    rather than copied, so ``label-playlist-unreadable`` means one thing and
-    carries one shape wherever a bound provider was asked about a playlist
-    and could not answer. What is this verb's is the reading of the rows.
-
-    PUBLIC for a caller that reads one playlist whole. ``crate sync all`` read
-    each playlist it sweeps here until R-1289, and now reads them through
-    :func:`list_playlist_readable`, so one unreadable row no longer leaves the
-    whole playlist out of the sweep. An empty mapping is a playlist the provider listed with nothing in it.
-
-    A PLAYLIST ONLY. The reserved reference is :func:`list_favorites`, which
-    carries a count this shape has nowhere to put.
-    """
-    return frozen_rows(_read_rows(label_cli.playlist_tracks_or_refuse(found, reference), reference))
-
-
-def list_playlist_declared(
-    found: catalogue.Catalogue, reference: str
-) -> tuple[dict[str, dict[str, Any]], catalogue.ListingShortfall | None]:
-    """:func:`list_playlist`, and the shortfall when it listed short (R-515).
-
-    The shortfall rides beside the rows as R-504's does for hearts: what came
-    back is listed, and the caller reports the count withheld.
-    """
-    rows, short = label_cli.playlist_listing_or_refuse(found, reference)
-    return frozen_rows(_read_rows(rows, reference)), short
-
-
-@dataclass(frozen=True, slots=True)
-class Unreadable:
-    """One track of a listing the reader would not read, named by its id (U213)."""
-
-    ref: str
-    artist: str
-    #: The title as the row spells it, unsplit, which may be empty.
-    title: str
-    isrc: str
-    #: What the reader found wanting, in the words a gate screen shows.
-    why: str
-
-    def said(self) -> dict[str, str]:
-        """The track in the keys a frozen row names it by, for naming it beside them."""
-        return {"artist": self.artist, "title": self.title, "isrc": self.isrc}
-
-
-@dataclass(frozen=True, slots=True)
-class Readable:
-    """One playlist read row by row, the tracks the reader refused set aside (U213).
-
-    ``tracks`` is exactly what :func:`list_playlist_declared` freezes, less the
-    refused rows, so it can be queued as it stands. ``unread`` holds each
-    track no row of which the reader read, by id, and ``order`` every id the
-    listing holds, each once at its first position, refused ones included.
-    """
-
-    tracks: dict[str, dict[str, Any]]
-    short: catalogue.ListingShortfall | None
-    unread: dict[str, Unreadable]
-    order: tuple[str, ...]
-    #: R-1264. When the account says each read track was added (U202), ISO
-    #: 8601 UTC text by id, the first mention's, off the same rows.
-    dates: dict[str, str] = field(default_factory=dict)
-    #: U226. How the window read stood beside the unpaged read, one of
-    #: ``listing``'s ``WINDOW_`` answers, when the caller asked for both;
-    #: ``WINDOW_AGREES`` when it did not.
-    window: str = listing.WINDOW_AGREES
-
-
-def _absent(title: str) -> str:
-    """The half a refused row names nothing for, read as the reader reads it."""
-    return "artist" if match.split_title(title)[0] else "title"
-
-
-def set_aside(row: object) -> Unreadable:
-    """One provider row the reader refused, named by its id as the account lists it (U213).
-
-    THE READER'S OWN RULE for which half it names, so every caller that sets
-    a row aside says the same word: :func:`list_playlist_readable`, and
-    ``crate organize``'s INSPIRATION step, which names such a track of a
-    downloaded set beside the set's misses (R-1295). The id is empty for a row
-    that carries none, which the caller refuses as it refuses that row today.
-    """
-    ref, artist, title = match.listed_names(row)
-    code = match.row_isrc(row)
-    return Unreadable(
-        ref=ref,
-        artist=artist,
-        title=title,
-        isrc=str(code).strip() if code else "",
-        why=f"the account lists it with no {_absent(title)}",
-    )
-
-
-def list_playlist_readable(
-    found: catalogue.Catalogue, reference: str, *, current: bool = False
-) -> Readable:
-    """:func:`list_playlist_declared`, with a row the reader refuses set aside, not fatal (U213).
-
-    FOR A CALLER THAT PLANS MANY PLAYLISTS IN ONE RUN and needs only a
-    track's identity to place it, which is ``crate sync twins``: one track the
-    account lists with no title stopped the whole backfill, so no twin
-    anywhere could be made. Here that track is named where it stood and every
-    other track reads as it always did. ``crate sync pair`` reads each pair's
-    account side here too (R-1264), so a twin made over such a playlist syncs
-    the tracks it can read, and so do ``crate sync all``'s sweep and ``crate
-    organize``'s mirror downloads (R-1289), which queue the tracks it can read
-    and name the others. ``crate organize``'s INSPIRATION step reads a
-    downloaded set row by row too (R-1295), through :func:`set_aside`, since it
-    matches each track by its position in the set rather than queueing it by
-    id. A single playlist verb keeps
-    :func:`list_playlist_declared`, whose refusal is the answer when that
-    playlist is all it was asked.
-
-    ``current`` reads the client's unpaged read beside the window (U226,
-    :func:`label_cli.playlist_listing_judged`) for a caller that plans a write
-    from the order it reads, and says how the two stood in ``window``.
-
-    THE LISTING AS A WHOLE STILL REFUSES where the declared reader does: the
-    provider unable to list it, or a row carrying no provider identifier,
-    since a track with no id cannot be named, set aside or asked about.
-    """
-    window = listing.WINDOW_AGREES
-    if current:
-        rows, short, window = label_cli.playlist_listing_judged(found, reference)
-    else:
-        rows, short = label_cli.playlist_listing_or_refuse(found, reference)
-    read: list[Wanted] = []
-    refused: dict[str, Unreadable] = {}
-    order: dict[str, None] = {}
-    nameless: list[int] = []
-    for position, row in enumerate(rows, start=1):
-        ref = match.listed_names(row)[0]
-        if not ref:
-            nameless.append(position)
-            continue
-        order.setdefault(ref, None)
-        try:
-            read.append(match.read_row(row, origin=match.TIDAL, position=position))
-        except match.UnreadableList:
-            if ref not in refused:
-                refused[ref] = set_aside(row)
-    _refuse_unidentified(nameless)
-    tracks = frozen_rows(tuple(read))
-    unread = {ref: one for ref, one in refused.items() if ref not in tracks}
-    return Readable(
-        tracks=tracks,
-        short=short,
-        unread=unread,
-        order=tuple(order),
-        dates=_added_dates(rows, tracks),
-        window=window,
-    )
-
-
-def _added_dates(rows: Sequence[object], frozen: Mapping[str, Any]) -> dict[str, str]:
-    """When the account says each frozen track was added, by id (U202).
-
-    The dates come off the listing's own rows, so no request is added: the
-    provider's client copies a playlist item's ``dateAdded`` onto the track it
-    serves, which :func:`hearted_on` reads for a heart. ISO 8601 UTC text, the
-    first mention's for a track listed twice; a track the account dates
-    nowhere is missing, never guessed.
-    """
-    dates: dict[str, str] = {}
-    for row in rows:
-        key = str(getattr(row, "id", "") if not isinstance(row, Mapping) else row.get("id", ""))
-        if key in frozen and key not in dates:
-            moment = hearted_on(row)
-            if moment:
-                dates[key] = moment
-    return dates
-
-
-def list_favorites(
-    found: catalogue.Catalogue,
-) -> tuple[dict[str, dict[str, Any]], catalogue.HeartsShortfall | None]:
-    """The account's hearts, frozen as a playlist job queues them, and any shortfall.
-
-    The hearts are read through the catalogue's own favourites listing and
-    then read, frozen and resolved exactly as a playlist's rows are, so owned,
-    offered and missing mean what they mean for any playlist. Ownership is the
-    match engine's one rule, not the source system's ISRC first rule, and a
-    heart the library lacks is not parked in a provider playlist: it is a
-    missing item, queued with its provider identifier.
-
-    THE SHORTFALL RIDES BESIDE THE ROWS (R-504). The provider counts hearts it
-    will not serve, so the listing can hold fewer rows than the account
-    declares. What came back is listed, and the shortfall is returned for the
-    caller to report by count, because the job alone would resolve the short
-    listing as if it were the account.
-
-    PUBLIC because ``crate sync all`` lists the hearts through exactly this
-    path, so its inbound check and this verb report the same numbers.
-    """
-    rows, short = label_cli.favourite_tracks_or_refuse(found, FAVORITES)
-    frozen = frozen_rows(_read_rows(rows, FAVORITES))
-    # THE DATE RIDES ON THE ROW (U120), by the identifier the row is keyed by,
-    # so a heart folded to one item carries the date of its first mention, and
-    # the key is written on EVERY row, None for a heart the account dates
-    # nowhere, so a row with no key is one an older build froze.
-    for row in rows:
-        key = str(getattr(row, "id", "") if not isinstance(row, Mapping) else row.get("id", ""))
-        if key in frozen and HEARTED not in frozen[key]:
-            frozen[key][HEARTED] = hearted_on(row)
-    return frozen, short
-
-
-def hearted_on(row: object) -> str | None:
-    """When the account says ``row`` was hearted, as ISO 8601 UTC text, or None.
-
-    The provider's client copies the favourite's own timestamp onto the track
-    as ``user_date_added`` and, in older versions, ``date_added``, which is what
-    the source system bucketed quarters by. Read from either, an object or a
-    mapping, and anything that is not a moment is no date.
-    """
-    for name in ("user_date_added", "date_added"):
-        value = row.get(name) if isinstance(row, Mapping) else getattr(row, name, None)
-        moment = placeholders.parse_hearted(value)
-        if moment is not None:
-            return moment.isoformat()
-    return None
-
-
-#: The warning code a hearts listing carries when it came back short.
-HEARTS_WITHHELD = "intake-hearts-withheld"
 
 
 def withheld_warning(short: catalogue.HeartsShortfall) -> dict[str, str]:
@@ -1654,14 +564,8 @@ def withheld_warning(short: catalogue.HeartsShortfall) -> dict[str, str]:
     }
 
 
-#: The warning code a playlist listing carries when it came back short (R-515).
-PLAYLIST_WITHHELD = "intake-playlist-withheld"
-
-
-def playlist_withheld_warning(
-    short: catalogue.ListingShortfall, reference: str
-) -> dict[str, str]:
-    """The words a person reads for a short playlist listing, one spelling of them."""
+def playlist_withheld_warning(short: catalogue.ListingShortfall, reference: str) -> dict[str, str]:
+    """The words a person reads for a short playlist listing (R-515), one spelling of them."""
     return {
         "code": PLAYLIST_WITHHELD,
         "message": (
@@ -1685,16 +589,10 @@ def queue_playlist(
 ) -> jobs.Job:
     """Queue one playlist job, one item per frozen track. The one spelling of it.
 
-    ``run_id`` and ``source_id`` are what ``crate sync all`` adds: the intake run
-    its sources share (R29) and the source that queued the job, which is how the
-    mark verb later finds the jobs of one pass. A playlist queued by this verb
-    alone carries neither, and the playlists cursor records it all the same once
-    its job succeeds (R-382), because it reconciles over every playlist intake
-    job for the library rather than only the ones a pass queued. Until then, an
-    open job queued here holds the playlist back from a pass as in flight.
-
-    ``name`` is the account's name for the playlist, which only a sweep has in
-    hand (U113). A job queued without one lands in its batch's playlist.
+    ``run_id`` and ``source_id`` are what ``crate sync all`` adds, the run its
+    sources share (R29) and the source that queued it, so ``sync mark`` finds
+    one pass's jobs. ``name`` is the account's name for the playlist, which
+    only a sweep has (U113); without it the job lands in its batch's playlist.
     """
     payload: dict[str, Any] = {SOURCE: reference, TRACKS: dict(tracks)}
     if run_id is not None:
@@ -1704,28 +602,20 @@ def queue_playlist(
     if name:
         payload[PLAYLIST_NAME] = name
     return jobs.enqueue(
-        store,
-        handler_key=handler_key,
-        payload=payload,
-        cfg=cfg,
-        item_ids=tuple(tracks),
+        store, handler_key=handler_key, payload=payload, cfg=cfg, item_ids=tuple(tracks)
     )
 
 
 def intake_playlist(ctx) -> Envelope:
     """List the playlist through the catalogue seam and queue one item per track.
 
-    THE CATALOGUE IS LOOKED UP ON THE MODULE AT CALL TIME, on the contract
-    ``label/catalogue.py`` states, which is what lets a test substitute the
-    seam. In a shipped build ``resolve`` refuses with ``credential-missing`` or
-    ``label-catalogue-unbound`` before the playlist is touched, and both of
-    those are honest: nothing was contacted, and the refusal says so.
-
-    ``favorites`` queues the account's hearts as one job under the same key and
-    the same worker, recorded under the canonical spelling so the resume argv
-    names the reserved reference however it was typed. A re-run needs no
-    cursor: a heart acquired since the last run resolves owned.
+    The catalogue is looked up on its module at call time, the contract
+    ``label/catalogue.py`` states, so a test can substitute the seam.
+    ``favorites`` queues the account's hearts under the same key, recorded
+    under the canonical spelling so the resume argv names it however it was typed.
     """
+    from cratekit.label import catalogue  # noqa: PLC0415 - labels is toggleable
+
     cfg = _load()
     with jobs.open_store() as store:
         if ctx.args.job:
@@ -1735,7 +625,6 @@ def intake_playlist(ctx) -> Envelope:
         if hearts:
             reference = FAVORITES
         found = catalogue.resolve(cfg)
-        short = None
         if hearts:
             tracks, short = list_favorites(found)
             warned = withheld_warning
@@ -1745,8 +634,7 @@ def intake_playlist(ctx) -> Envelope:
             def warned(short):
                 return playlist_withheld_warning(short, reference)
 
-        # A SHORT LISTING IS SAID, whatever else the run does, and an empty one
-        # that the provider says is not empty most of all (R-504, R-515).
+        # A short listing is said whatever else the run does (R-504, R-515).
         extra = {"shortfall": short.block()} if short is not None else {}
         warnings = (warned(short),) if short is not None else ()
         if not tracks:
@@ -1780,30 +668,17 @@ class _Resolved:
     suppression_id: Any
 
 
-#: ONE INDEX PER DRIVE, not one per item. ``match.index_library`` walks the
-#: whole music tree, and the engine claims one item at a time, so without this
-#: a fifty track set walks the library fifty times. The key is the job and the
-#: attempt the engine stamped on it, so a resume walks again and sees what the
-#: previous drive's offers changed. Single entry: a driver runs one job. This
-#: is a module global that predates the job engine's per drive seam (U274,
-#: ``cli.handlers.PER_DRIVE_ATTRIBUTE``), which is recorded rather than hidden;
-#: ``reset_cache`` is what a suite calls between libraries, the same hook
-#: adoption exposes.
-#:
-#: EACH DRIVE STILL WALKS, but since U249 a walk opens only a file it cannot
-#: answer from memory: the index reader remembers each file's tags for the
-#: life of the process (the note above ``match._REMEMBERED``), so the several
-#: intake jobs of one sync pass and its ``intake missing`` read an unchanged
-#: library file once between them, and every walk still sees what a job
-#: landed, renamed or removed. A changed file, a new one, one written under
-#: two seconds before it was read and one whose read failed are read again.
+#: ONE INDEX PER DRIVE, not one per item, keyed by the job and its attempt so a
+#: resume walks again and sees what the previous drive's offers changed. A
+#: module global older than the job engine's per drive seam (U274), so
+#: ``reset_cache`` is what a suite calls between libraries. Since U249 a walk
+#: opens only a file the index reader cannot answer from memory.
 _RESOLVED: dict[tuple[str, int], _Resolved] = {}
 
 
 def reset_cache() -> None:
     """Forget the cached library view, and every file the index reader
-    remembers. A module level cache no test can clear is a cache that leaks one
-    test's library into the next."""
+    remembers, so one test's library cannot leak into the next."""
     _RESOLVED.clear()
     match.reset_cache()
 
@@ -1813,8 +688,8 @@ def _resolved_for(job: jobs.Job, cfg: config.Config) -> _Resolved:
     held = _RESOLVED.get(key)
     if held is not None:
         return held
-    index, suppresses, identify = match_cli.library_view(cfg)
-    built = _Resolved(index=index, suppresses=suppresses, suppression_id=identify)
+    index, suppresses, identify_one = match_cli.library_view(cfg)
+    built = _Resolved(index=index, suppresses=suppresses, suppression_id=identify_one)
     _RESOLVED.clear()
     _RESOLVED[key] = built
     return built
@@ -1823,15 +698,10 @@ def _resolved_for(job: jobs.Job, cfg: config.Config) -> _Resolved:
 def resolve_track(wanted: Wanted, job: jobs.Job, cfg: config.Config) -> match.TrackMatch:
     """One track against the frozen library, with its question offered.
 
-    The same three steps ``match.run`` takes over a whole list, over one row:
-    resolve against the index and the tombstone snapshot, then let the review
-    queue turn a needs review state into an item and read back any answer a
-    person already gave. The offer is idempotent, so a resume that redoes the
-    item asks nothing twice. THE REVIEW STORE IS OPENED ONLY WHEN THE ROW
-    TOUCHES IT: a question, or a row a rule owns, whose earlier question is
-    retired there. A missing or a tombstoned track passes straight through and
-    opens nothing. This used to open only for a question, and an owned row
-    then reached the retirement from no intake job at all.
+    ``match.run``'s three steps over one row: resolve, let the review queue
+    turn a question into an item, and read back any answer already given; the
+    offer is idempotent. The review store opens only for a row that touches
+    it, a question or a row a rule owns whose earlier question is retired.
     """
     view = _resolved_for(job, cfg)
     found = match.resolve_one(
@@ -1853,20 +723,10 @@ def resolve_track(wanted: Wanted, job: jobs.Job, cfg: config.Config) -> match.Tr
 def handle(job, item, cfg) -> jobs.Produced:
     """Resolve ONE queued track. The per item worker behind both intake keys.
 
-    THE ITEM NAMES THE TRACK, never the payload alone: the payload is read at
-    the item's own key, and a key the payload does not carry is refused rather
-    than resolved as an empty row, because that is a job queued by a build
-    that did not record what its items were.
-
-    ``cfg`` is the configuration the job was FROZEN against (KTD9). The library
-    root, the naming template and the review store are all read off it, so a
-    library root edited while the job waited is not the library this run
-    resolves against.
-
-    The report is the item's artifact. It says which of the verb's four words
-    the track resolved to, the paths the library holds for it, the review item
-    a person may be asked about, and the acquisition options a missing track
-    carries. It never says acquired.
+    The payload is read at the item's own key, and a key it does not carry is
+    refused rather than resolved as an empty row. ``cfg`` is the configuration
+    the job was frozen against (KTD9). The report says which of the verb's
+    four words the track resolved to, and never says acquired.
     """
     said = job.payload.get(TRACKS, {}).get(item.item_id)
     if not isinstance(said, Mapping):
@@ -1880,8 +740,7 @@ def handle(job, item, cfg) -> jobs.Produced:
             origin=("intake.cli",),
             detail={"job_id": job.job_id, "item_id": item.item_id},
         )
-    wanted = thawed(said)
-    settled = resolve_track(wanted, job, cfg)
+    settled = resolve_track(thawed(said), job, cfg)
     report = {
         "item_id": item.item_id,
         "track": dict(said),
@@ -1893,60 +752,3 @@ def handle(job, item, cfg) -> jobs.Produced:
         "acquired": False,
     }
     return ARTIFACTS.produced(cfg, job, item, report)
-
-
-__all__ = [
-    "ARTIFACTS",
-    "CACHE_SERVED",
-    "CACHE_UNWRITTEN",
-    "CALLS",
-    "IN_PARTS",
-    "PARTS",
-    "FAVORITES",
-    "FAVORITES_SOURCE_ID",
-    "HEARTED",
-    "HEARTS_WITHHELD",
-    "INTAKE_KEYS",
-    "MIX_SCRATCH_LEFT",
-    "PAGE",
-    "PLAYLIST_NAME",
-    "SOURCE",
-    "ACCOUNT_GATE",
-    "TRACKLIST",
-    "TRACKLISTS_DIR",
-    "TRACKLIST_SUFFIX",
-    "TRACKLIST_UNWRITTEN",
-    "TRACKLIST_WRITTEN",
-    "TRACKS",
-    "UNREACHED",
-    "Readable",
-    "SetRecording",
-    "Unreadable",
-    "build_identify",
-    "build_playlist",
-    "build_set",
-    "frozen",
-    "frozen_rows",
-    "hearted_on",
-    "handle",
-    "intake_identify",
-    "intake_playlist",
-    "intake_set",
-    "is_favorites",
-    "item_key",
-    "list_favorites",
-    "list_playlist",
-    "list_playlist_declared",
-    "list_playlist_readable",
-    "playlist_withheld_warning",
-    "PLAYLIST_WITHHELD",
-    "playlist_argv",
-    "queue_playlist",
-    "reset_cache",
-    "resolve_track",
-    "set_argv",
-    "set_aside",
-    "thawed",
-    "tracklist_name",
-    "withheld_warning",
-]
