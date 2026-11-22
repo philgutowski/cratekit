@@ -801,8 +801,7 @@ ENTRIES: tuple[Entry, ...] = (
         module="cratekit.write.routing_cli", builder="build_inbox", handler_key="route.inbox",
         feature_rows=(14,), source_scripts=("dj-sort-inbox",), emits=frozenset({"plan"}),
         output_schema="plan/1",
-        # U86. ``--export`` writes a new file beside a fresh export, for a tree
-        # that has not cut over, so the verb writes the bridge as well.
+        # ``--export`` writes a new file beside an export for a bridge tree (U86).
         writes=frozenset({"db_tree", "xml"}), destructive=True,
         taxonomy_terms=("inbox", "genre_energy"),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins", "library.paths_resolved"),
@@ -820,18 +819,9 @@ ENTRIES: tuple[Entry, ...] = (
         module="cratekit.write.routing_cli", builder="build_unplaced",
         handler_key="route.unplaced", feature_rows=(14,), source_scripts=("dj-sort-unplaced",),
         emits=frozenset({"plan"}), output_schema="plan/1",
-        # THE DATABASE IS ONLY READ (R-313). Without ``--export`` the handler
-        # opens it without write intent, takes no session and writes nothing,
-        # so no database surface is declared, the verb is not destructive and
-        # it names no cloud-sync decision. Declaring otherwise told a person to
-        # close rekordbox before a read. U91 gave the source's
-        # ``dj-sort-unplaced`` act back on the export medium: ``--export``
-        # writes a NEW file beside the export, never the export and never the
-        # database, so ``xml`` is the one surface. The volume stays: the tree
-        # registry the report walks from is a state file on the library root,
-        # and the sweep reads the files the export names. The pins stay too,
-        # because the writer checks the binding pin on every open, a read
-        # included, so a drifted binding refuses the report as well.
+        # The database is only read (R-313), so no database surface, not
+        # destructive, no cloud sync decision. ``--export`` writes a new file
+        # beside the export (U91), so ``xml``. The pins stay: a read checks them.
         writes=frozenset({"xml"}), taxonomy_terms=("genre_energy",),
         doctor_checks=("library.mounted", "rekordbox.pins", "library.paths_resolved"),
     ),
@@ -848,11 +838,8 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="route.resort.apply", options=("apply", "abort"),
                 prompt="Add these tracks to the routing tree?",
-                #: U219. EXPLICIT, for ``tag.retag.confirm``'s reason: the verb
-                #: queues, so the confirmed work runs in a detached child that
-                #: names the run the answer was recorded against. The plan is
-                #: every add, so the rehearsal rule has a digest to hold the
-                #: live run to, which sitting 61 found it did not have.
+                #: Explicit, for ``tag.retag.confirm``'s reason (U219); the plan
+                #: digest lets a rehearsal hold the live run to it.
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
@@ -901,10 +888,8 @@ ENTRIES: tuple[Entry, ...] = (
         feature_rows=(9, 10), source_scripts=("dj-energy-calibrate", "dj-vocal-calibrate"),
         module_id="analysis", extras="analysis", extras_modules=("librosa", "numpy", "scipy"),
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
-        # It writes two library scoped state files, so the library has to be
-        # there. Not in ``writes``, whose vocabulary is the library's own
-        # material, files, database and XML, and a calibration is none of those.
-        # ffmpeg decodes what libsndfile cannot open, an M4A (U263).
+        # Library scoped state files need the library, but are not ``writes``,
+        # which names library material. ffmpeg decodes an M4A (U263).
         doctor_checks=("library.mounted", "binary.ffmpeg"),
     ),
     Entry(
@@ -947,15 +932,11 @@ ENTRIES: tuple[Entry, ...] = (
             "library.mounted",
             "rekordbox.closed",
             "rekordbox.pins",
-            # R-372: a plan over a collection most of whose rows record a path
-            # no prefix rule maps would tag nothing and report ok. The check
-            # reads the same ratio the verb refuses on.
+            # The ratio the verb refuses on, unmapped rows tag nothing (R-372).
             "library.paths_resolved",
         ),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
-        #: This verb writes My Tags rather than content columns, so U21's per-field
-        #: policy does not govern it at all. It is the vocal module's own surface
-        #: and belongs with U25, beside the entry above it.
+        #: My Tags, not content columns, so U21's per field policy does not apply.
     ),
     # ── Sync ────────────────────────────────────────────────────────────────
     Entry(
@@ -963,17 +944,11 @@ ENTRIES: tuple[Entry, ...] = (
         summary="queue each enabled source's own increment under one intake run; " "label releases are left to crate label sync",
         module="cratekit.sync.cli", builder="build_all", handler_key="sync.all",
         feature_rows=(25,), source_scripts=("dj-sync",),
-        # NOT long_running, AND NO argv_builder, since U61. This verb queues
-        # nothing under its own key: it composes each source's own queueing
-        # path under that source's own handler key, so a job under ``sync.all``
-        # cannot exist and there is nothing for a builder to resume (R-203).
+        # Not long running: each source queues under its own key (U61, R-203).
         emits=frozenset({"diagnostic"}), output_schema="diagnostic/1",
         gates=(
-            # THE SAME QUESTION ``sync.favorites.confirm`` ASKS, over the same
-            # digest, asked once for the whole pass. A separate name because a
-            # decision is recorded against the run's own verb, and this run is
-            # ``sync.all``'s. ``Gates.hand_off`` carries the recorded answer to a
-            # run the favourites job's resume can load.
+            # ``sync.favorites.confirm``'s question, named for this run's verb;
+            # ``Gates.hand_off`` carries the answer to the favourites job.
             GateSpec(
                 name="sync.all.favorites.confirm", options=("sync", "abort"),
                 prompt="Heart matching tracks on the streaming service? This never removes a heart.",

@@ -1318,16 +1318,9 @@ def _link_discogs(
 def _discogs_vocabulary(wizard: _Wizard, cfg: config.Config) -> None:
     """Note a linked Discogs whose styles this library's copy has nowhere to file.
 
-    Discogs' styles reach a folder through the taxonomy's
-    ``[vocabulary.discogs]`` table. The shipped template has it and a copy
-    setup makes today carries it; a copy made before U244 does not, and
-    ``crate taxonomy upgrade`` adds it. Read through the upgrade's own planner,
-    so this says what the upgrade would add and nothing else.
-
-    SILENT WHEN IT COULD NOT LOOK, and only because doctor looks in the same
-    run: its ``taxonomy.active`` and ``taxonomy.schema`` lines report a copy
-    that is absent, unreadable or not comparable, in the report this note
-    joins. No copy at all routes by the shipped template, which has the table.
+    A copy made before U244 lacks ``[vocabulary.discogs]``; read through the
+    upgrade's own planner. Silent when it could not look, since doctor's
+    taxonomy lines in the same report say why.
     """
     try:
         _, found = taxonomy_upgrade.planned(cfg)
@@ -1354,23 +1347,15 @@ def _discogs_vocabulary(wizard: _Wizard, cfg: config.Config) -> None:
 
 def setup(ctx: "Context") -> Envelope:
     document, provenance = existing_document()
-    # The document AS IT WAS READ, kept apart from the one the answers go into.
-    # The difference between the two is what this run actually answered, and that
-    # difference is all the write below is entitled to put on disk (R-116).
+    # The document as read; only the difference from it is written (R-116).
     as_read = copy.deepcopy(document)
     wizard = _Wizard(document, prompt.Prompter())
     args = ctx.args
-    # ONE description of this machine for the whole run. The wizard reads the
-    # volume identity through it, refuses to write library state through it, and
-    # hands it to doctor at the end, so the disk setup recorded, the disk it
-    # wrote to, and the disk doctor reports on are one disk observed once. Two
-    # probes over one run is how a report and the act it describes come apart.
+    # One description of this machine for the whole run, so the disk recorded,
+    # written to and reported on by doctor is one disk observed once.
     machine = doctor.Probes()
 
-    # Only when there is none. A document that arrived with a version has already
-    # been through the migration ladder above, and stamping the current number
-    # over it a second time would be the one write that could claim a migration
-    # nobody ran.
+    # Only when absent, since a versioned document was already migrated.
     if _get(document, "schema_version") is None:
         _put(document, "schema_version", config.CURRENT_SCHEMA_VERSION)
 
@@ -1405,10 +1390,8 @@ def setup(ctx: "Context") -> Envelope:
             default=str(Path(root) / STAGING_DIRNAME),
         ),
     )
-    # A NAME UNDER THE MUSIC FOLDER, NOT A PATH (U154). The key composes with
-    # ``library.root`` and ``library.music_dir`` wherever it is read, so a
-    # library that moves keeps its processed tree, which a recorded absolute
-    # path would not. The default is the tree the author kept by hand.
+    # A name under the music folder, not a path, so a moved library keeps its
+    # processed tree (U154).
     _put(
         document,
         "library.processed_dir",
@@ -1458,26 +1441,15 @@ def setup(ctx: "Context") -> Envelope:
         )
 
     cfg = config.from_dict(document)
-    # Before anything is proposed or saved, so a path that is not a library is
-    # refused with nothing recorded against it (R-663).
+    # Before anything is proposed or saved (R-663).
     _refuse_a_database_that_is_not_one(cfg)
-    # The pin is proposed against the configuration the answers describe and is
-    # written back through the same document, so the file is saved once. Saving
-    # twice would leave a window in which a config exists with the pin missing
-    # and a reader could act on it.
+    # The pin and the drive rule go into the same document so the file is saved
+    # once, leaving no window with them missing (R-372).
     _propose_pin(wizard, document, cfg)
-    # The drive rule is offered through the same document for the same reason,
-    # so the file is still saved once (R-372).
     _propose_prefix_map(wizard, document, cfg)
-    # READ, ASK, WRITE, AND THE WRITE RE-DECIDES UNDER THE LOCK. Everything above
-    # ran unlocked, because a lock held across a question blocks every other
-    # command on somebody typing. So another command may have written since the
-    # read at the top, and writing ``document`` whole would erase its answers
-    # while this run reported success. ``merge_changes`` lays only what this run
-    # changed over what is on disk now, and refuses, writing nothing, when both
-    # changed one value. ``cfg`` is rebound to what was WRITTEN, because the
-    # taxonomy, the credentials and doctor below must describe the file that
-    # exists rather than the one this run had in mind.
+    # The questions ran unlocked, so the write re-decides under the lock:
+    # ``merge_changes`` lays only this run's changes over the file as it is now
+    # and refuses when both changed one value. ``cfg`` is what was written.
     cfg, written = config.update(
         lambda current: config.merge_changes(as_read, document, current)
     )
@@ -1515,9 +1487,7 @@ def setup(ctx: "Context") -> Envelope:
         schema=ctx.entry.output_schema or output.current_schema("diagnostic"),
         started=ctx.started,
         outcome=Outcome.FAILED,
-        # From the cause, for the reason doctor's own envelope reads it there: a
-        # check that refused under a declared reason has reserved a code, and
-        # PRECONDITION written in here would overwrite it.
+        # From the cause, so a declared reason keeps its reserved code.
         code=cause.code,
         data=payload,
         cause=cause,

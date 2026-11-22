@@ -534,34 +534,11 @@ class Gates:
             self.state.pins[spec.name] = pins
 
         if inline is not None and spec.explicit:
-            # R34. An explicit gate is answered by a deliberate, separate act
-            # that is recorded with its actor, never inline in the same
-            # invocation that discovered the gate. Accepting it here would make
-            # "each requires its own explicit assertion" satisfiable by typing
-            # one more flag on the command that was already running.
-            #
-            # UNCONDITIONALLY, and it used to carry ``and recorded is None``.
-            # That qualifier meant the refusal held only until SOME decision
-            # existed, after which the ordinary precedence below preferred the
-            # inline value over the recorded one, so a flag could overturn an
-            # answer a person had deliberately recorded. It was invisible while
-            # no landed verb reached an explicit gate that minted anything: U49
-            # landed ``session.ack``, drove the ordering, and found that
-            # ``--run R -d session.ack.backup=acknowledged`` recorded the backup
-            # acknowledgment over a recorded ``abort``. That is the gate
-            # standing in front of every destructive write in the product being
-            # answered by the thing it gates, which is the one outcome R34
-            # exists to prevent. A supplied flag is now refused whatever the run
-            # already holds, so the recorded answer is the only answer.
-            #
-            # The open gate is still recorded before refusing, WHEN THE GATE IS
-            # GENUINELY OPEN. A refusal that does not leave the run resumable is
-            # a refusal the user answers by starting over, which is how people
-            # learn to reach for the blanket flag this rule exists to deny them.
-            # But a gate that already holds a recorded answer is not open, and
-            # marking it so would make ``crate run show`` list one gate as both
-            # answered and awaiting an answer, which is the run record
-            # contradicting itself about the only thing it is for.
+            # R34: an explicit gate is answered only by a separate recorded act,
+            # never inline, and an inline flag is refused whatever the run holds,
+            # so it can never overturn a recorded answer (U49). The gate is
+            # marked open only when it holds no answer, so the run stays
+            # resumable without reading as both answered and waiting.
             if recorded is None:
                 self.state.open_gate = spec.name
             raise DecisionRequired(spec, self.state.run_id, context)
@@ -576,9 +553,8 @@ class Gates:
         if spec.digest_source is not None and digest is not None:
             against = recorded.digest if recorded is not None else None
             if against is not None and against != digest:
-                # THE MOVED PLAN IS ON THE REFUSAL (R-1334). The offer above is
-                # already the moved digest, and the next ``run decide`` binds
-                # it, so the screen is the plan that answer applies.
+                # The moved plan is on the refusal (R-1334), since the next
+                # answer binds the offer just recorded.
                 raise DecisionStale(
                     spec, self.state.run_id, against, digest, offered=True, context=context
                 )
@@ -615,31 +591,15 @@ class Gates:
     ) -> str:
         """Carry the answer recorded on ``spec`` to a new run owned by ``verb``.
 
-        WHY THIS EXISTS. A verb that queues another verb's job has to freeze a
-        gate run the job's resume can load, and the dispatcher refuses a
-        ``--run`` whose record belongs to a different verb. So ``crate sync all``
-        cannot hand the favourites job its own run: the child ``sync favorites``
-        would be refused on every respawn. This mints the run that child can
-        load, holding the decision already given.
+        A queued job of another verb needs a run that verb owns, since the
+        dispatcher refuses a ``--run`` of a different verb. This copies an
+        answer and never supplies one: ``spec`` must hold a recorded decision
+        with a digest, the copy keeps its actor, time and digest, and the target
+        gate must offer the option and compare a digest.
 
-        IT COPIES AN ANSWER, IT NEVER SUPPLIES ONE. It refuses unless ``spec``
-        holds a RECORDED decision with a digest, which after ``require`` returned
-        is the decision a person gave, with its actor, against the artifact they
-        were offered. The copy keeps that actor, that time and that digest, so
-        the resumed child meets ``DecisionStale`` if what it rebuilds from the
-        payload is not what the person saw. The target gate must be declared by
-        ``verb``, must offer the chosen option, and must compare a digest, or the
-        copy would answer a question the person was never asked.
-
-        ``part`` IS FOR A COMPOSER WHOSE ONE ANSWER COVERS SEVERAL PLANS (U112).
-        ``crate organize`` asks one question over an area whose digest is taken
-        over every step's own digest, and a step it hands to ``adopt apply``'s
-        job must carry that step's digest, not the area's, or the job's resume
-        meets ``DecisionStale``. ``part`` is the document the recorded digest
-        was taken over and the step's digest inside it. The copy refuses unless
-        the document digests to exactly what the person answered and the
-        step's digest is one of its values, so the digest handed on is one the
-        recorded answer was given over and never one a caller made up.
+        ``part`` is for one answer over several plans (U112): the document the
+        recorded digest covers and one step's digest inside it, which is handed
+        on only when the document digests to the answer's digest.
 
         Returns the new run's identifier, saved before returning.
         """

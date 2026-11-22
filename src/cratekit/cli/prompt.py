@@ -1,47 +1,13 @@
-"""The ONE module in the package allowed to read standard input.
+"""The one module in the package allowed to read standard input.
 
-``tests/test_cli_contract.py`` carries the allowlist and it holds exactly this
-path. Everything else in the tree, including the wizard that uses this module,
-is asserted never to touch standard input at all. Confining the read to one file
-rather than to a directory is what stops the exemption spreading: adding a second
-interactive module means editing a frozenset in a test, in a diff somebody reads.
-
-THREE PROPERTIES, AND EACH ONE ANSWERS A REAL FAILURE.
-
-**Questions go to standard error, answers come from standard input.** R32 says a
-machine consumer reading standard output gets exactly one JSON envelope and
-nothing else. A prompt printed to standard output would sit in front of that
-object and make it unparseable, and the failure would look like a schema problem
-rather than like a prompt.
-
-**A question that cannot be answered is a typed refusal, never an exception from
-somewhere else.** The reader is an external boundary: a terminal, a pipe, a
-closed descriptor, a test harness that has replaced the stream. Its failure modes
-are not a closed set this module gets to enumerate, which is the same argument
-``core/secrets.py`` makes about the keychain. So every read is wrapped and
-anything it raises becomes :class:`PromptUnavailable`, which the wizard can then
-treat differently for a REQUIRED answer than for an optional one. Without that,
-a wizard driven from a detached job dies with a traceback naming an assertion in
-a test fixture instead of refusing with a remedy.
-
-**A secret is read without echoing it, WHERE THE PLATFORM CAN MANAGE THAT.**
-``getpass`` is imported here and nowhere else, for the same reason the whole
-module is allowlisted. A credential typed at a visible prompt is a credential in
-a screen recording, and a credential passed on a command line is one in the
-process listing, which is why the login verb takes a file or an opted-in
-environment variable and never a value argument.
-
-The honest limit, inherited from ``getpass.getpass`` and not fixable here: on a
-host with no controlling terminal it falls back to reading standard input with
-ECHO ON, having warned on standard error. So the no-echo property is the
-terminal's, not this module's, and the guarantee this module actually makes is
-narrower and still worth making: the value never reaches a command line, a shell
-history, a log record, or any structured output. A caller that needs a secret on
-a host with no terminal should supply it through the file or the environment
-fallback rather than through a prompt that may echo.
-
-Layer note: CLI. It renders text a person reads, which is the one layer allowed
-to (D2).
+The allowlist in ``tests/test_cli_contract.py`` holds exactly this path, so a
+second interactive module needs a test edit somebody reads. Questions go to
+standard error, so standard output stays one JSON envelope (R32). Every read
+is wrapped and anything it raises becomes :class:`PromptUnavailable`, since
+the reader's failures are not a closed set and a detached job must refuse
+with a remedy rather than a traceback. A secret is read through ``getpass``,
+never from a command line; with no controlling terminal ``getpass`` echoes,
+so such a caller should use the file or environment fallback instead.
 """
 
 from __future__ import annotations
@@ -51,29 +17,24 @@ import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
-#: How many times an unusable answer is re-asked before the question is
-#: abandoned. Bounded rather than a ``while True`` because a pipe that answers
-#: every question with the same empty line would otherwise spin forever, and a
-#: wizard that hangs is worse than one that refuses.
+#: How many times an unusable answer is re-asked, bounded so a pipe of empty
+#: lines refuses rather than spins forever.
 MAX_ATTEMPTS = 3
 
 
 class PromptUnavailable(Exception):
     """Nothing answered, and nothing is going to.
 
-    Raised for end of input, for a closed stream, and for anything else the
-    reader throws. The caller decides what that means: a required answer refuses
-    the run, an optional one is skipped and reported as outstanding.
+    Raised for end of input, a closed stream, or anything else the reader
+    throws. A required answer then refuses the run, an optional one is skipped.
     """
 
 
 class NothingEntered(PromptUnavailable):
     """The question was read and answered with nothing.
 
-    A subclass rather than a sibling, so every caller that treats an unanswered
-    question as unavailable keeps doing so. The one caller that needs the
-    difference is the wizard's credential offer, where an empty answer is a
-    person with nothing to type and not a stream that failed (R-347).
+    A subclass, so callers treating it as unavailable still do; the wizard's
+    credential offer tells it apart from a failed stream (R-347).
     """
 
 
@@ -83,7 +44,7 @@ Writer = Callable[[str], None]
 
 
 def _read_line() -> str:
-    """One line from standard input. The only such read in the package."""
+    """One line from standard input, the only such read in the package."""
     line = sys.stdin.readline()
     if line == "":
         raise EOFError("standard input is at end of file")
@@ -91,20 +52,14 @@ def _read_line() -> str:
 
 
 def _write(text: str) -> None:
-    # FLUSHED, because a question has no newline and standard error is line
-    # buffered. Without it the prompt sat in the buffer while the read below
-    # blocked, and a real terminal showed nothing to answer (R-346).
+    # Flushed, since a question has no newline and would sit unseen in the
+    # buffer while the read blocks (R-346).
     print(text, file=sys.stderr, end="", flush=True)
 
 
 @dataclass(frozen=True, slots=True)
 class Prompter:
-    """Asks questions. Every seam injected, so a test drives the real logic.
-
-    The default reader is the real standard input, so shipped behaviour needs no
-    wiring. A test supplies a scripted reader and exercises the same ``ask``,
-    ``choose`` and ``confirm`` a user reaches, rather than a copy of them.
-    """
+    """Asks questions, with every seam injected so a test drives the real logic."""
 
     read_line: Reader = field(default=_read_line)
     read_secret: SecretReader = field(default=getpass.getpass)
@@ -118,12 +73,7 @@ class Prompter:
             raise PromptUnavailable(str(exc) or type(exc).__name__) from exc
 
     def ask(self, question: str, *, default: str | None = None) -> str:
-        """A free-text answer. An empty line takes the default, if there is one.
-
-        With no default an empty line is re-asked rather than accepted, because
-        an empty required value is exactly what configuration validation will
-        reject one step later, and refusing here says which question it was.
-        """
+        """A free-text answer. An empty line takes the default, or is re-asked without one."""
         shown = f"{question} [{default}]: " if default else f"{question}: "
         for _ in range(MAX_ATTEMPTS):
             answer = self._ask_once(shown)
@@ -134,13 +84,7 @@ class Prompter:
         raise PromptUnavailable(f"no usable answer for {question!r}")
 
     def choose(self, question: str, options: Sequence[str], *, default: str) -> str:
-        """One of a closed set. An answer outside the set is re-asked.
-
-        The options are shown from the set the caller passes rather than from
-        prose, so a value added to the set appears here on the day it is added
-        and cannot be forgotten in the wording. That is the same argument
-        ``render.render_gate`` makes about a gate's declared options.
-        """
+        """One of a closed set, shown from the set itself. An answer outside it is re-asked."""
         if default not in options:
             raise ValueError(f"{default!r} is not one of {list(options)}")
         shown = f"{question} ({', '.join(options)}) [{default}]: "

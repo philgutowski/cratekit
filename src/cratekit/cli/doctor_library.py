@@ -65,13 +65,8 @@ def _check_interpreter(inputs: _Inputs) -> Finding:
             f"vendored downloader has never run on it, and the failure that "
             f"follows names a dependency rather than the interpreter"
         ),
-        # UNSUPPORTED_PLATFORM is reused rather than joined by a near synonym.
-        # The exit-code vocabulary's own docstring records three re-authentication
-        # tokens it will not collapse because each is already a persisted slug,
-        # and the lesson runs the other way too: a new token whose meaning is
-        # inside an existing one is a second name for one idea. The running
-        # interpreter is part of the platform this install is on, and the token
-        # already means "this environment cannot run the operation".
+        # Reused rather than adding a near synonym: the interpreter is part of
+        # the platform, and the token means "this environment cannot run it".
         remedy=Remedy.UNSUPPORTED_PLATFORM,
     )
 
@@ -94,16 +89,10 @@ def _check_config(inputs: _Inputs) -> Finding:
             detail="no configuration was supplied and none could be loaded",
             remedy=Remedy.RUN_SETUP,
         )
-    # ``ConfigError.remedy`` is a declared class attribute on every member of the
-    # hierarchy, so it is read directly. A ``getattr`` with a default here would
-    # hand back a permissive answer for a field whose whole purpose is that the
-    # five failures do NOT share one remediation.
-    #
-    # AND THEN THE CLASSIFICATION OVERRULES IT WHEN THE OPERATING SYSTEM IS WHAT
-    # REFUSED. A config file with mode 0o000 is byte for byte intact, and this
-    # check reported "repair or recreate it" over it, which is a report telling
-    # its reader to rewrite a file that is perfectly good. The declared remedy
-    # stands for every other way a config can be unusable.
+    # ``ConfigError.remedy`` is declared on every subclass, so it is read
+    # directly, since the failures do not share one remedy. An OS refusal
+    # overrules it, because an unreadable config is intact and needs access, not
+    # a rewrite.
     note = render.access_note(error)
     return Finding(
         key=key,
@@ -114,10 +103,8 @@ def _check_config(inputs: _Inputs) -> Finding:
     )
 
 
-#: One sentence per mount outcome, and the whole reason there are six of them.
-#: "Not mounted" and "mounted somewhere else" have different fixes, and a report
-#: that says only "the volume is wrong" sends the user to unplug a drive that was
-#: never the problem.
+#: One sentence per mount outcome, since "not mounted" and "mounted somewhere
+#: else" have different fixes.
 _MOUNT_DETAIL: Mapping[preflight.MountState, str] = MappingProxyType(
     {
         preflight.MountState.OK: "the recorded volume is mounted at the configured root",
@@ -165,9 +152,7 @@ def _check_library_mounted(inputs: _Inputs) -> Finding:
         preflight.MountState.IDENTITY_UNAVAILABLE,
         preflight.MountState.IDENTITY_NOT_RECORDED,
     ):
-        # Both are the IDENTITY question and are answered by the next check.
-        # Repeating them here as a failure would report one problem twice and
-        # attach the wrong fix to one of the copies.
+        # The identity check answers these, so one problem is reported once.
         return Finding(
             key=key,
             title=title,
@@ -183,23 +168,14 @@ def _check_library_mounted(inputs: _Inputs) -> Finding:
     )
 
 
-#: What the IDENTITY question answers for each mount outcome, as a TOTAL mapping
-#: over the enum rather than as a chain of branches with a fall-through at the end.
-#:
-#: The fall-through is what makes the branch shape wrong here, and it was wrong
-#: for two states before this table existed. ``resolve_mount_state`` populates
-#: ``observed_identity`` for NOT_MOUNTED and MOUNTED_ELSEWHERE alike, because it
-#: observed SOMETHING at the configured path in both cases, so a final "and
-#: otherwise the identity matched" reported a green identity beside a red mount
-#: for a volume that is somewhere else entirely, and for one that is not attached
-#: at all. Only two states mean the observed identity equalled the recorded one,
-#: and they are named here rather than inferred.
+#: What the identity question answers for each mount outcome, as a total
+#: mapping with no fall-through, so only the two states meaning "observed equals
+#: recorded" can read green.
 _IDENTITY_VERDICT: Mapping[preflight.MountState, tuple[Status, Remedy | None]] = (
     MappingProxyType(
         {
             preflight.MountState.OK: (Status.OK, None),
-            # The volume matched; what is missing is a directory ON it, which is
-            # the mount check's answer rather than this one's.
+            # The volume matched; the missing directory is the mount check's.
             preflight.MountState.LIBRARY_PATH_MISSING: (Status.OK, None),
             preflight.MountState.IDENTITY_NOT_RECORDED: (Status.FAIL, Remedy.RUN_SETUP),
             preflight.MountState.IDENTITY_UNAVAILABLE: (
@@ -207,9 +183,7 @@ _IDENTITY_VERDICT: Mapping[preflight.MountState, tuple[Status, Remedy | None]] =
                 Remedy.UNSUPPORTED_PLATFORM,
             ),
             preflight.MountState.FOREIGN_VOLUME: (Status.FAIL, Remedy.MOUNT_LIBRARY_VOLUME),
-            # Both of these are the MOUNT question. The recorded identity is
-            # intact and reporting it as a second failure would attach a fix to a
-            # problem that is not this one.
+            # The mount check's question; the recorded identity is intact.
             preflight.MountState.NOT_MOUNTED: (Status.INFO, None),
             preflight.MountState.MOUNTED_ELSEWHERE: (Status.INFO, None),
         }
@@ -231,12 +205,8 @@ def _check_library_identity(inputs: _Inputs) -> Finding:
             f"{status.observed_identity}: {_MOUNT_DETAIL[status.state]}"
         )
     elif verdict is Status.INFO:
-        # The OBSERVED identity is named even here, where it is not the answer.
-        # ``--volume-id`` is the only way to replace a recorded identity, by
-        # design, and a user whose configuration carries the wrong one has no
-        # other way to learn what the right one is: nothing else in the product
-        # prints a volume's identity. A refusal that cannot be acted on is a
-        # refusal people work around.
+        # The observed identity is named anyway, since nothing else prints it
+        # and ``--volume-id`` needs it to replace a wrong recorded one.
         detail = (
             f"nothing at the configured root to compare: {_MOUNT_DETAIL[status.state]}. "
             f"The recorded identity {status.recorded_identity} is intact; the "
@@ -249,15 +219,10 @@ def _check_library_identity(inputs: _Inputs) -> Finding:
 
 
 def _check_db_containment(inputs: _Inputs) -> Finding:
-    """An accepted database outside the library root is reported on EVERY run.
+    """An accepted database outside the library root is reported on every run.
 
-    ``tests/_pending.py`` held this against U27 rather than leaving it in a
-    docstring, and the reason is in ``core/config``: refusing at load makes the
-    consequence visible at setup, when the user can still move the database, and
-    does nothing at all about the install where somebody accepted it eighteen
-    months ago and has since forgotten that their snapshots are copies across two
-    filesystems rather than one atomic commit. This is the run that keeps saying
-    so.
+    So a person who accepted it long ago is still told their snapshots are
+    copies across two filesystems rather than one atomic commit (U27).
     """
     key, title = "library.db_containment", "database and library on one filesystem"
     if inputs.cfg is None:
@@ -291,24 +256,10 @@ def _check_db_containment(inputs: _Inputs) -> Finding:
 def _check_trash(inputs: _Inputs) -> Finding:
     """Whether the library volume has a Trash this account can move a file into.
 
-    R35 sends a confirmed deletion to the system Trash and never to an unlink, so
-    a volume with no usable Trash is a volume on which the deletion pass refuses.
-    Without this check a person meets that refusal in the middle of a deletion,
-    after the review, after the confirm gate, with a plan already digested. This
-    is the run that says so beforehand.
-
-    IT DOES NOT DEFER TO THE MOUNT CHECKS, unlike the two library-scoped state
-    readers below, and the difference is real rather than an oversight. Those two
-    read a file this product WROTE under the library root, so an absent volume
-    means there is nothing to read and the volume is one problem reported once.
-    This asks whether a specific directory on that volume will accept a move, and
-    the two questions come apart in the direction that matters: a mounted volume
-    with the recorded identity and a read-only mount answers both mount checks
-    green and has no usable Trash at all. A foreign volume failing both is not one
-    answer twice, it is two preconditions of one destructive act.
-
-    ASKED WITH ``create=False``, through the seam that binds it, so the check
-    cannot pass by having run.
+    A confirmed deletion goes to the Trash, never an unlink (R35), so this says
+    beforehand what would otherwise refuse mid deletion. It does not defer to
+    the mount checks, since a read only volume passes both and still has no
+    usable Trash. Asked with ``create=False`` so it cannot pass by having run.
     """
     key, title = "library.trash", "system Trash on the library volume"
     if inputs.cfg is None:
@@ -317,10 +268,8 @@ def _check_trash(inputs: _Inputs) -> Finding:
     try:
         status = inputs.probes.trash_probe(root)
     except OSError as exc:
-        # GATED ON ``required`` LIKE EVERY NEIGHBOURING CHECK. An unanswerable
-        # question is still not a pass, but on a profile where nothing trashes a
-        # file it is not a red either, and a report that paints red for a
-        # capability nothing uses is how people learn to ignore red.
+        # Gated on ``required``: unanswered is not a pass, but nor is it red on a
+        # profile where nothing trashes a file.
         needed = inputs.required(key)
         return Finding(
             key=key,
@@ -343,16 +292,9 @@ def _check_trash(inputs: _Inputs) -> Finding:
             detail=f"{where} exists on the same filesystem as {root} and accepts a move",
         )
     if status.absent:
-        # NOT A FAILURE, and getting this wrong made the check worse than absent.
-        # ``trash.probe`` creates the per-volume Trash on first use because the
-        # desktop does, and the deletion pass takes that default. Doctor asks with
-        # ``create=False`` so its answer cannot be produced by its own asking,
-        # which means a volume nobody has trashed anything on answers "not a
-        # directory" here and works perfectly when a deletion actually runs.
-        # Driven: probe(create=False) says unusable and probe(create=True) says
-        # usable on the same fresh volume. Reporting that as red tells a person
-        # deletion will refuse when it will not, which is the one thing a
-        # precondition must never do.
+        # Not a failure: the deletion pass creates the Trash on first use, so a
+        # fresh volume works, and red here would predict a refusal that never
+        # comes.
         return Finding(
             key=key,
             title=title,
@@ -383,14 +325,8 @@ def _check_trash(inputs: _Inputs) -> Finding:
             f"on a verb that would refuse partway through a deletion rather than "
             f"before one"
         ),
-        # NOT ``RUN_DOCTOR``, which is what ``trash.assert_usable`` refuses with:
-        # that token sends a person here, and here answering with it again is a
-        # loop. The three shapes this probe reports are a directory that is not
-        # there, one this account cannot write, and one on another filesystem,
-        # and the first two are a path to grant access to. The third is named in
-        # the sentence, because no token in the vocabulary means "your Trash is
-        # on the wrong disk" and inventing one for a case a person meets once
-        # would be a token nobody ever reads.
+        # Not ``RUN_DOCTOR``, which would loop back here. Missing and unwritable
+        # are a path to grant; another filesystem is named in the sentence.
         remedy=Remedy.GRANT_PATH_ACCESS,
     )
 
@@ -398,22 +334,10 @@ def _check_trash(inputs: _Inputs) -> Finding:
 def _library_state_unreadable(inputs: _Inputs, what: str) -> str | None:
     """Why library-scoped state may not be read here, or None when it may.
 
-    Both callers below report on a file that sits under the library root by
-    construction, and for both of them "the file is not there" and "the disk the
-    file lives on is not there" produce the same bytes: none. The rule for
-    telling those apart is ``core/preflight``'s, because that is the module that
-    owns what a mount outcome means.
-
-    The wizard asks a NEIGHBOURING question before it writes one of these files,
-    and the two are deliberately separate functions over separate tables: a
-    matching identity with an absent root is nothing to read here and exactly the
-    right moment to write there.
-
-    The caller reports it as INFO, for the reason the mount check gives when it
-    defers to the identity check: the volume is one problem and it is reported
-    once, by the checks that own it. Reporting a missing template here would also
-    attach the wrong remedy, since running setup against an absent volume is the
-    write this unit had to be stopped from making.
+    A missing file and a missing volume look the same, so ``core/preflight``'s
+    rule tells them apart. Callers report it as INFO, since the volume is one
+    problem reported once by its own checks, and a run setup remedy against an
+    absent volume would be wrong.
     """
     status = inputs.mount()
     if status is None or preflight.library_state_is_readable(status):
@@ -427,21 +351,10 @@ def _library_state_unreadable(inputs: _Inputs, what: str) -> str | None:
 
 
 def _volume_clause(inputs: _Inputs) -> str:
-    """What an OK detail may CLAIM about the disk it just read from.
+    """What an OK detail may claim about the disk it just read from.
 
-    Derived from ``_IDENTITY_VERDICT``, the same total mapping the identity check
-    itself answers with, so the two can never disagree about whether a comparison
-    happened. Only the two outcomes that mean "observed equals recorded" earn the
-    strong sentence.
-
-    It exists because the OK details asserted the strong one unconditionally. A
-    machine with no identity adapter reaches these checks through the leg of the
-    reachability rule whose entire meaning is that the identity could not be
-    ASKED, and it then read "on the recorded library volume" on the same report
-    as ``library.identity`` failing with "the filesystem at the configured root
-    reports no volume identity". That is a positive claim about a disk nobody
-    looked at, which is the class of defect this whole pass exists to remove, so
-    it may not be reintroduced by the pass itself.
+    Derived from ``_IDENTITY_VERDICT``, so it never claims the recorded volume
+    when the identity check could not compare one.
     """
     status = inputs.mount()
     if status is not None and _IDENTITY_VERDICT[status.state][0] is Status.OK:
@@ -462,13 +375,8 @@ def _check_taxonomy(inputs: _Inputs) -> Finding:
     shipped, unlistable = taxonomy.shipped_templates()
     named = inputs.cfg.taxonomy.template
     if unlistable is not None:
-        # "NOT PRESENT" AND "COULD NOT LOOK" ARE DIFFERENT ANSWERS, and the empty
-        # tuple was serving as both. The walk swallows an unreadable packaged
-        # directory so that building the command tree cannot die on a partial
-        # install, which is right; what was wrong is reading the resulting
-        # emptiness as a fact about the shipped set. A user with a damaged
-        # install was told their configuration named a template nothing ships and
-        # sent to re-run setup, which cannot repair packaged data.
+        # "Could not look" is not "not present": a damaged install is a defect,
+        # and setup cannot repair packaged data.
         return Finding(
             key=key,
             title=title,
@@ -483,11 +391,7 @@ def _check_taxonomy(inputs: _Inputs) -> Finding:
             remedy=Remedy.REPORT_DEFECT,
         )
     if named not in shipped:
-        # ASSERTED rather than assumed, and it was assumed. The OK branch below
-        # claimed the configured template "is active" while comparing nothing to
-        # that name, so a configuration naming a template that does not ship read
-        # green: nothing rejected the name, and the file beside the database is
-        # whatever was copied there once, under whatever name.
+        # Asserted, so a configured name that does not ship cannot read green.
         return Finding(
             key=key,
             title=title,
@@ -515,22 +419,8 @@ def _check_taxonomy(inputs: _Inputs) -> Finding:
             remedy=Remedy.RUN_SETUP,
         )
     except (OSError, UnicodeDecodeError) as exc:
-        # UnicodeDecodeError is a ValueError, not an OSError, so a template that
-        # is present and is not text would otherwise escape this check as an
-        # internal defect rather than as the unusable template it is.
-        #
-        # AND IT IS A SEPARATE ANSWER FROM "IT IS NOT THERE". One handler over
-        # both said "no active taxonomy template at X" for a file that is at X
-        # and cannot be read by this account, and then attached run-setup, which
-        # takes the branch below that leaves an existing file alone. The user
-        # re-runs setup forever.
-        #
-        # AND IT DOES NOT CLAIM THE FILE EXISTS. It said "exists and could not be
-        # read", and the exception that lands here does not establish existence:
-        # a permission error raised by an untraversable PARENT arrives on this
-        # branch, and nothing under such a parent has been observed at all.
-        # Asserting a file is at a path nobody could look at is the same defect,
-        # one line further on, as the one this handler was split out to fix.
+        # Separate from "not there", since setup leaves an existing file alone,
+        # and it claims no existence, since an untraversable parent lands here.
         return Finding(
             key=key,
             title=title,
@@ -544,10 +434,7 @@ def _check_taxonomy(inputs: _Inputs) -> Finding:
                 f"permission or a corruption to repair rather than an answer to "
                 f"give again"
             ),
-            # The sentence already names a permission as one of the two shapes,
-            # and the remedy has to name the same two. A corruption is a defect
-            # to report and a permission is one to grant, so the token follows
-            # the classification rather than assuming the worse of the user.
+            # A corruption is a defect to report, a permission one to grant.
             remedy=access_remedy(exc, otherwise=Remedy.REPORT_DEFECT),
         )
     try:
@@ -576,20 +463,9 @@ def _check_taxonomy(inputs: _Inputs) -> Finding:
 def _check_taxonomy_schema(inputs: _Inputs) -> Finding:
     """The active copy's schema version against the shipped one, and each entry it lacks (U132).
 
-    THE CHECK THE LIVE LIBRARY NEEDED. Its copy stated ``schema_version = 2``
-    with no genre Favorites class long after one shipped, and every Favorites
-    step refused or skipped over it while doctor read the copy as parsing and
-    said nothing more. This names both versions, every shipped class and bucket
-    the copy lacks, what ``crate taxonomy upgrade`` would add, and the hand edit
-    each entry it holds needs.
-
-    INFO, NEVER FAIL. A copy without a bucket the shipped template has may be a
-    person's decision, and a red line over it trains people to ignore red. A
-    copy that does not load or cannot be read is ``taxonomy.active``'s failure
-    and is not reported a second time here.
-
-    THE SHIPPED TEXT STAYS OUT OF THIS MODULE. The planner reads it and answers
-    in names and sentences, so doctor still holds no parsed shipped taxonomy.
+    INFO, never FAIL, since a missing bucket may be a person's decision; a copy
+    that cannot be read is ``taxonomy.active``'s failure. The planner reads the
+    shipped text, so doctor holds no parsed shipped taxonomy.
     """
     key, title = "taxonomy.schema", "active taxonomy against the shipped schema"
     if inputs.cfg is None:
@@ -600,8 +476,7 @@ def _check_taxonomy_schema(inputs: _Inputs) -> Finding:
     try:
         _, found = taxonomy_upgrade.planned(inputs.cfg)
     except taxonomy_upgrade.NoCopy:
-        # No copy is not a copy behind: every verb then routes by the shipped
-        # template, which is the shipped schema by definition.
+        # No copy is not a copy behind: every verb routes by the shipped template.
         return Finding(
             key=key,
             title=title,
@@ -623,9 +498,7 @@ def _check_taxonomy_schema(inputs: _Inputs) -> Finding:
         )
     except CratekitError as exc:
         if exc.cause.reason == "internal-error":
-            # The shipped text could not be compared, which is packaged data
-            # this repository wrote, so it is a defect to report and not the
-            # person's copy.
+            # Packaged data failed to compare, a defect rather than the person's copy.
             return Finding(
                 key=key,
                 title=title,
@@ -664,21 +537,11 @@ def _check_taxonomy_schema(inputs: _Inputs) -> Finding:
 def _origin_verdict(cfg: config.Config, active_text: str, named: str) -> tuple[Status, str]:
     """Whether the active copy fell behind the shipped template, or was edited (R-689).
 
-    Three digests answer it: the one setup RECORDED beside the copy, the copy as
-    it is now, and the shipped text as it ships now. A copy that still matches
-    the record is the copy setup made, so if the shipped text has moved on the
-    library is missing what it gained, and that is the INFO this exists for. A
-    copy that differs from the record is the person's, and what the shipped text
-    did since is not this check's to raise. With no record, which is every
-    library set up before the record existed, the two cannot be told apart and
-    the detail says so rather than guessing either way. A record naming a
-    template other than the configured one is the other INFO, since the copy
-    and the configuration then disagree about which tree this library means.
-
-    IT REPORTS AND NEVER WRITES. The copy is the person's declaration, and a
-    section the shipped template gained is theirs to take or leave. It reads
-    the shipped template only as a fingerprint the definer computes, never as
-    text, so it cannot come to route by it.
+    Compares three digests: setup's record, the copy now, and the shipped text
+    now. An unedited copy behind a changed template is INFO; an edited copy is
+    the person's; with no record the two cannot be told apart and the detail
+    says so. A record naming another template is also INFO. It never writes,
+    and reads the shipped template only as a fingerprint.
     """
     origin_path = config.state_path("taxonomy_origin", cfg)
     record: taxonomy.Origin | None
@@ -703,11 +566,7 @@ def _origin_verdict(cfg: config.Config, active_text: str, named: str) -> tuple[S
                 f"edited"
             )
     if record is not None and record.template != named:
-        # The record carries the one fact that shows the configured name and
-        # the copy disagree, and the check above only asserted the name ships.
-        # Every verb reads the copy, so the library declares the recorded
-        # template's tree whatever the configuration says, and a re-run of
-        # setup leaves the copy alone rather than replacing it.
+        # The configured name and the copy disagree, and every verb reads the copy.
         return Status.INFO, (
             f"the copy was made from the shipped {record.template!r} and "
             f"taxonomy.template now names {named!r}; every verb reads the copy, "
@@ -715,9 +574,7 @@ def _origin_verdict(cfg: config.Config, active_text: str, named: str) -> tuple[S
             f"re-run of setup leaves an existing copy alone"
         )
     active = taxonomy.template_fingerprint(active_text)
-    # ``named`` is in the shipped set, the check above refused otherwise, so the
-    # only way not to read it is packaged data that lists and does not open,
-    # which is the damaged install setup reports the same way.
+    # ``named`` ships, so failing to read it means a damaged install.
     try:
         current = taxonomy.shipped_template_fingerprint(named)
     except (OSError, UnicodeDecodeError) as exc:
@@ -775,11 +632,8 @@ def _check_rekordbox_closed(inputs: _Inputs) -> Finding:
     try:
         running = processes.rekordbox_processes_running(lister=inputs.probes.process_lister)
     except processes.AbsenceUnconfirmed as exc:
-        # A NOTE NAMING THE PROCESS, NEVER A PASS (U211). The scan met a live
-        # process it could not read, so the absence is unknown and is said as
-        # unknown; it is a note rather than a failure because it clears as the
-        # process finishes exiting, and every write refuses on its own until it
-        # does. A zombie the scan met was skipped and never reaches here.
+        # A note, never a pass (U211): absence is unknown, and it clears once the
+        # process exits, while every write refuses on its own until then.
         return Finding(
             key=key,
             title=title,
@@ -824,9 +678,8 @@ def _check_rekordbox_pins(inputs: _Inputs) -> Finding:
     pinned = cfg.rekordbox.pinned_app_version
     installed = inputs.probes.installed_app_version(cfg)
     if not pinned:
-        # S2. An unset pin refuses every database write, and it is never adopted
-        # from whatever happens to be installed: a pin the software copies from
-        # its own machine refuses nothing, forever.
+        # An unset pin is never adopted from the installed version, since such a
+        # pin would refuse nothing (S2).
         return Finding(
             key=key,
             title=title,
@@ -884,40 +737,15 @@ def _check_rekordbox_pins(inputs: _Inputs) -> Finding:
 def _check_paths_resolved(inputs: _Inputs) -> Finding:
     """Whether the collection's recorded paths can be read from this machine.
 
-    THE CHECK R-372 ASKED FOR, AND THE FIRST ONE TO READ THE PREFIX MAP. The
-    first real My Tags plan reported ok with count 0 over 9937 active rows it
-    had skipped, because rekordbox records nearly every row under the drive's
-    old name and setup had written no rule, and this report was green beside
-    it. Doctor now reads the same ratio the plan refuses on, off a disposable
-    copy of the database, so a person is told before the plan rather than by
-    reading a zero.
+    Reads the ratio the My Tags plan refuses on, off a disposable copy, so a
+    person learns before the plan (R-372). Rekordbox is asked about first, since
+    a copy taken under it is torn, then the volume, so a stale mount point is not
+    surveyed. Not gated on ``required``: core verbs on every profile resolve
+    paths.
 
-    THE ORDER OF THE QUESTIONS IS WHAT KEEPS THE COPY HONEST. Whether rekordbox
-    is running is asked FIRST, through the same seam ``rekordbox.closed``
-    answers with, because a copy taken under the live application is torn the
-    way a backup taken under it is: it opens, and is missing whatever was mid
-    write, and a torn copy's open failure would then be forwarded as a refusal
-    naming a snapshot restore against a library that is fine. Whether the
-    volume is there is asked SECOND, before anything at the configured path is
-    read, for the reason
-    the taxonomy check asks it: a leftover mount point holding a stale database
-    is the first of the three states ``core/preflight`` exists to tell apart,
-    and a survey over it is a report on a disk nobody is using. It is not gated
-    on ``required`` the way the trash check is, and the gate was written and
-    removed: the routing passes, the rebuild and the convergence report resolve
-    recorded paths and are core verbs on every profile, so the question is
-    required everywhere and a branch for "nobody asks it" was a branch nothing
-    could reach.
-
-    THEN THE ANSWERS, AND "COULD NOT LOOK" IS NOT ONE OF THE GOOD ONES. No file
-    at the configured path is INFO, because a fresh library has nothing to
-    resolve yet. A copy that would not open is FAIL carrying the open's own
-    cause and remedy, since an unanswered question is not a pass. A majority of
-    rows under no rule is FAIL under the same slug the plan refuses with, so
-    doctor exits under that code and the two surfaces cannot disagree. A
-    minority is INFO with the count, which is the state the sitting was left in
-    after the rule was typed by hand, 167 of 9937, and a person should see the
-    number rather than an unqualified green.
+    No database file is INFO; a copy that will not open is FAIL with the open's
+    own cause; a majority of rows under no rule is FAIL under the plan's own
+    slug, so the two cannot disagree; a minority is INFO with the count.
     """
     key, title = "library.paths_resolved", "recorded paths resolve on this machine"
     if inputs.cfg is None:
@@ -926,8 +754,7 @@ def _check_paths_resolved(inputs: _Inputs) -> Finding:
     try:
         running = processes.rekordbox_processes_running(lister=inputs.probes.process_lister)
     except processes.AbsenceUnconfirmed as exc:
-        # NO COPY OVER AN ABSENCE NOBODY CONFIRMED (U211), said as unknown and
-        # as a note, as rekordbox.closed says the same condition.
+        # No copy over an unconfirmed absence (U211), a note as in rekordbox.closed.
         return Finding(
             key=key,
             title=title,
@@ -939,10 +766,8 @@ def _check_paths_resolved(inputs: _Inputs) -> Finding:
             ),
         )
     if running:
-        # FAIL and not INFO, with the act that unblocks it. The condition is
-        # reported by rekordbox.closed as well, and this is not that report
-        # repeated: it says this question is unanswered until that one is
-        # fixed, which is a different sentence from "the application is open".
+        # FAIL with the act that unblocks it: this question stays unanswered
+        # until rekordbox quits.
         return Finding(
             key=key,
             title=title,
