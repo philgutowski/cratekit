@@ -4748,6 +4748,16 @@ class CollectionRemoval:
         """
         return content_references(db, content_ids)
 
+    @staticmethod
+    def renumbering(db: Any, content_ids: Iterable[str]) -> dict[str, tuple[str, int, int]]:
+        """The membership rows removing ``content_ids`` would renumber (R-1830).
+
+        The plan asks this for the count its screen shows and its digest
+        binds, so the count is the one :meth:`prepare` will write. See
+        :func:`removal_renumbering`.
+        """
+        return removal_renumbering(db, content_ids)
+
     def commit(self, *, force_cloud_canary: bool = False) -> None:
         """Delete every planned row, renumber what follows it, prove both confined, and commit through the guard."""
         for content_id in self.content_ids:

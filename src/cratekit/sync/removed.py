@@ -891,7 +891,7 @@ def plan_removed(
         answers=tuple(answers),
         partial=partial,
         unreadable=unreadable,
-        renumbered=len(rb_writer.removal_renumbering(db, offered)) if offered else 0,
+        renumbered=len(rb_writer.CollectionRemoval.renumbering(db, offered)) if offered else 0,
     )
     return replace(plan, digest=digest_of(identity(plan)))
 

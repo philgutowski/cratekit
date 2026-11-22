@@ -161,7 +161,7 @@ description = "plan_removed: count no renumbering, so the screen shows none"
 file = "src/cratekit/sync/removed.py"
 surface = "user"
 tests = ["tests/test_sync_removed.py"]
-old = '''        renumbered=len(rb_writer.removal_renumbering(db, offered)) if offered else 0,'''
+old = '''        renumbered=len(rb_writer.CollectionRemoval.renumbering(db, offered)) if offered else 0,'''
 new = '''        renumbered=0,'''
 
 [[rows]]
