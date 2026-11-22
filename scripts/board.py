@@ -1407,7 +1407,9 @@ def main() -> int:
         ),
     )
     residuals = command(
-        "residuals", "list the residual files waiting for a number, or number them", cmd_residuals
+        "residuals",
+        "list the residual files waiting for a number, or number them",
+        cmd_residuals,
     )
     residuals(
         "--land", action="store_true",
