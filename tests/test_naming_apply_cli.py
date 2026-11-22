@@ -27,10 +27,10 @@ from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database, _row
 
 
-def _ok(result: tuple[int, dict]) -> dict:
-    """The envelope of a drive that exited OK."""
+def _exited(result: tuple[int, dict], expected: ExitCode = ExitCode.OK) -> dict:
+    """The envelope of a drive that exited ``expected``, OK unless told otherwise."""
     code, envelope = result
-    assert code == int(ExitCode.OK), envelope
+    assert code == int(expected), envelope
     return envelope
 
 
@@ -103,7 +103,7 @@ def _answer(folder: Path, option: str = "apply") -> tuple[int, dict]:
 
 
 def _drive(folder: Path, option: str) -> dict:
-    envelope = _ok(_answer(folder, option))
+    envelope = _exited(_answer(folder, option))
     return envelope["data"]
 
 
@@ -118,8 +118,7 @@ def _apply(folder: Path) -> dict:
 
 def _refused(folder: Path, *untouched: Path) -> dict:
     """The envelope of an apply refused before any rename, every file in ``untouched`` in place."""
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     assert all(path.is_file() for path in untouched), envelope
     return envelope
 
@@ -400,8 +399,7 @@ def test_an_unmapped_row_refuses_the_plan_too(collected):
     folder = _folder(collected)
     _pair(folder)
     _record(collected, "/mnt/volume/Music/1A - 124 - Held.flac", identifier="10")
-    code, envelope = _answer(folder, "abort")
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder, "abort"), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "collection-row-unmapped"
 
 
@@ -660,8 +658,7 @@ def test_a_missing_database_refuses_and_renames_nothing(collected):
     folder = _folder(collected)
     held, free = _pair(folder)
     Path(collected.library.db_path).unlink()
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.LIBRARY_UNREADABLE), envelope
+    envelope = _exited(_answer(folder), ExitCode.LIBRARY_UNREADABLE)
     assert envelope["cause"]["reason"] == "collection-unreadable"
     assert envelope["cause"]["remediation"]["remedy"] != "restore-from-snapshot"
     assert held.is_file() and free.is_file()
@@ -671,8 +668,7 @@ def test_an_unopenable_database_refuses_and_renames_nothing(collected):
     folder = _folder(collected)
     held, free = _pair(folder)
     Path(collected.library.db_path).write_bytes(b"not a database at all")
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.LIBRARY_UNREADABLE), envelope
+    envelope = _exited(_answer(folder), ExitCode.LIBRARY_UNREADABLE)
     assert envelope["cause"]["reason"] == "collection-unreadable"
     assert held.is_file() and free.is_file()
 
@@ -690,8 +686,7 @@ def test_a_row_that_appears_after_the_gate_still_protects_its_file(collected, mo
     held, free = _pair(folder)
     reads = iter([(), (str(held),)])
     monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: next(reads))
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     incomplete = envelope["cause"]["detail"]["incomplete"]
     assert [item["from"] for item in incomplete] == [held.name]
     assert "began referencing it" in incomplete[0]["why"]
@@ -704,8 +699,7 @@ def test_a_library_with_cloud_sync_on_refuses_and_names_the_real_cause(collected
     folder = _folder(collected)
     held, free = _pair(folder)
     monkeypatch.setattr(rb_writer, "read_rekordbox_settings", lambda *args, **kwargs: {rb_writer.LIBRARY_SYNC_SETTING: 1})
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.LIBRARY_UNREADABLE), envelope
+    envelope = _exited(_answer(folder), ExitCode.LIBRARY_UNREADABLE)
     cause = envelope["cause"]
     assert cause["reason"] == "collection-unreadable"
     assert cause["remediation"]["remedy"] == "disable-cloud-sync"
@@ -737,8 +731,7 @@ def test_a_read_that_fails_after_the_open_refuses_and_renames_nothing(collected,
 
     monkeypatch.setattr(rb_writer, "open_db", lambda *args, **kwargs: _Broken())
     monkeypatch.setattr(rb_writer, "close_db", lambda handle: None)
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.LIBRARY_UNREADABLE), envelope
+    envelope = _exited(_answer(folder), ExitCode.LIBRARY_UNREADABLE)
     assert envelope["cause"]["reason"] == "collection-unreadable"
     assert envelope["cause"]["remediation"]["remedy"] == "report-defect"
     assert held.is_file() and free.is_file()
@@ -751,8 +744,7 @@ def test_a_rename_onto_a_name_another_file_holds_overwrites_nothing(configured):
     other = _track(folder, "1A - 124 - Cola.flac", title="1A - 124 - Cola", key="1A")
     tags.write_tags(kept, {"artist": "the one already in place"})
     assert _actions(_plan(folder)) == {other.name: "collides"}
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "rename-incomplete"
     assert other.name in envelope["cause"]["message"]
     assert other.is_file()
@@ -780,8 +772,7 @@ def test_a_collision_answers_with_the_files_that_stayed_put(configured):
     """The apply over that plan renames nothing and says so."""
     folder = _folder(configured)
     first, second = _colliding_pair(folder)
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     cause = envelope["cause"]
     assert cause["reason"] == "rename-incomplete"
     assert sorted(cause["detail"]["incomplete"], key=lambda item: item["from"]) == [
@@ -811,8 +802,7 @@ def test_a_target_a_collider_holds_is_held_back_too(configured):
     plan = _plan(folder)
     assert _actions(plan) == {first.name: "collides", second.name: "collides", third.name: "collides"}
     assert plan["totals"] == {"count": 0, "referenced": 0, "collides": 3, "unnamed": 0}
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     assert envelope["data"]["totals"]["renamed"] == 0
     assert first.is_file() and second.is_file() and third.is_file()
 
@@ -823,8 +813,7 @@ def test_two_targets_differing_only_in_case_are_one_name(configured):
     upper = _track(folder, "5A - 120 - Song - Artist - Song.flac", title="5A - 120 - Song", key="5A")
     lower = _track(folder, "5A - 120 - song - artist.flac", title="5A - 120 - song", key="5A")
     assert _actions(_plan(folder)) == {upper.name: "collides", lower.name: "collides"}
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     assert envelope["data"]["totals"]["renamed"] == 0
     assert upper.is_file() and lower.is_file()
 
@@ -837,7 +826,7 @@ def test_a_referenced_file_does_not_hold_a_name_it_will_never_take(collected):
     _record(collected, str(held), identifier="10")
     plan = _plan(folder)
     assert _actions(plan) == {held.name: "referenced", free.name: "rename"}
-    _ok(_answer(folder))
+    _exited(_answer(folder))
     assert held.is_file()
     assert (folder / "05A - 120 - Song - Artist.flac").is_file()
 
@@ -866,7 +855,7 @@ def test_a_sweep_that_carried_out_every_rename_still_answers_ok(configured):
     folder = _folder(configured)
     _track(folder, "1A - 124 - Alpha.flac", title="1A - 124 - Alpha", key="1A")
     _track(folder, "2A - 124 - Beta.flac", title="2A - 124 - Beta", key="2A")
-    envelope = _ok(_answer(folder))
+    envelope = _exited(_answer(folder))
     assert envelope["outcome"] == "ok"
     assert envelope["cause"] is None
     assert envelope["data"]["totals"] == {
@@ -898,8 +887,7 @@ def test_a_target_another_mover_still_holds_is_promised_and_then_reported(config
         key="01A",
     )
     assert _actions(_plan(folder)) == {lead.name: "rename", marked.name: "rename"}
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     incomplete = envelope["cause"]["detail"]["incomplete"]
     assert [item["from"] for item in incomplete] == [lead.name]
     assert "already taken" in incomplete[0]["why"]
@@ -921,8 +909,7 @@ def test_a_file_gone_after_the_plan_is_named_rather_than_skipped(configured, mon
         return plan
 
     monkeypatch.setattr(naming_cli, "_plan_for", _plan_then_delete)
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     incomplete = envelope["cause"]["detail"]["incomplete"]
     assert [item["from"] for item in incomplete] == [vanishing.name]
     assert "no longer there" in incomplete[0]["why"]
@@ -941,8 +928,7 @@ def test_a_rename_the_filesystem_refuses_is_named_and_leaves_no_claim(configured
         return original(self, target)
 
     monkeypatch.setattr(Path, "rename", _refuse_rename)
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     incomplete = envelope["cause"]["detail"]["incomplete"]
     assert [item["from"] for item in incomplete] == [track.name]
     assert "no space left on device" in incomplete[0]["why"]
@@ -956,8 +942,7 @@ def test_a_title_tag_that_could_not_be_written_is_named(configured, monkeypatch)
     _track(folder, "1A - 124 - Alpha.flac", title="1A - 124 - Alpha", key="1A")
     renamed = folder / "01A - 124 - Alpha.flac"
     monkeypatch.setattr(naming_cli.tags, "write_tags", lambda path, fields: False)
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     incomplete = envelope["cause"]["detail"]["incomplete"]
     why = "it was renamed and its title tag could not be written"
     assert incomplete == [{"from": renamed.name, "path": str(renamed), "why": why}]
@@ -1100,8 +1085,7 @@ def test_a_folder_of_both_kinds_is_renamed_through_the_dispatcher(configured):
     _acquired(folder, "92654769.flac", artist="Tirzah", title="Affection", initialkey="7A")
     _acquired(folder, "4A - 126 - Burning (Extended Mix).flac", artist="Someone", title="Burning")
     _acquired(folder, "12345.flac", title="Nameless")
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     totals = {"count": 2, "referenced": 0, "collides": 0, "unnamed": 1, "renamed": 2, "incomplete": 1}
     assert envelope["data"]["totals"] == totals
     assert sorted(p.name for p in folder.glob("*.flac")) == [
@@ -1130,8 +1114,7 @@ def test_an_artist_tag_removed_while_the_gate_waits_holds_the_file(configured, m
         return plan
 
     monkeypatch.setattr(naming_cli, "_plan_for", plan_then_strip)
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     assert path.is_file()
     assert not (folder / "Tirzah - Affection.flac").exists()
     assert "no artist tag" in envelope["cause"]["detail"]["incomplete"][0]["why"]
@@ -1189,7 +1172,7 @@ def test_a_referenced_identifier_file_is_held_as_referenced_and_never_owed(colle
     plan = _plan(folder)
     assert _actions(plan) == {"12345.flac": "referenced"}
     assert plan["totals"] == {"count": 0, "referenced": 1, "collides": 0, "unnamed": 0}
-    envelope = _ok(_answer(folder))
+    envelope = _exited(_answer(folder))
     assert envelope["outcome"] == "ok"
     assert path.is_file()
 
@@ -1217,8 +1200,7 @@ def test_a_tag_edited_while_the_gate_waits_is_not_renamed_to_a_name_nobody_saw(c
         return plan
 
     monkeypatch.setattr(naming_cli, "_plan_for", plan_then_edit)
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     assert sorted(p.name for p in folder.glob("*.flac")) == ["12345.flac"]
     why = envelope["cause"]["detail"]["incomplete"][0]["why"]
     assert "Tirza - Affection.flac" in why and "Tirzah - Affection.flac" in why
@@ -1228,8 +1210,7 @@ def test_the_report_over_a_held_identifier_says_to_tag_it(configured):
     """Running it again cannot fix an unnamed file, so the cause carries the step that can."""
     folder = _folder(configured)
     _acquired(folder, "12345.flac", title="Nameless")
-    code, envelope = _answer(folder)
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(_answer(folder), ExitCode.PRECONDITION)
     steps = envelope["cause"]["remediation"]["steps"]
     assert any("artist tag and a title tag" in step for step in steps), steps
 

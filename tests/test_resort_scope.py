@@ -50,10 +50,10 @@ FIRST = "Puls One.flac"
 SECOND = "Puls Two.flac"
 
 
-def _ok(result: tuple[int, dict]) -> dict:
-    """The envelope of a drive that exited OK."""
+def _exited(result: tuple[int, dict], expected: ExitCode = ExitCode.OK) -> dict:
+    """The envelope of a drive that exited ``expected``, OK unless told otherwise."""
     code, envelope = result
-    assert code == int(ExitCode.OK), envelope
+    assert code == int(expected), envelope
     return envelope
 
 
@@ -239,14 +239,13 @@ def _resort() -> tuple[int, dict]:
 
 def _offered() -> dict:
     """The refusal the first ask ends in, which carries the plan it showed."""
-    code, refused = _drive(["route", "resort"])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = _exited(_drive(["route", "resort"]), ExitCode.DECISION_REQUIRED)
     assert refused["cause"]["detail"]["gate"] == GATE
     return refused
 
 
 def _decide(run_id: str, option: str) -> None:
-    _ok(_drive(["run", "decide", run_id, GATE, option, "--actor", "a-person"]))
+    _exited(_drive(["run", "decide", run_id, GATE, option, "--actor", "a-person"]))
 
 
 def test_a_resort_after_a_genre_sub_writes_nothing_under_the_intake_root(both_native):
@@ -255,7 +254,7 @@ def test_a_resort_after_a_genre_sub_writes_nothing_under_the_intake_root(both_na
     before = _below(cfg, both_native["intake"])
     assert before == {BATCH: {"1", "2"}}, before
 
-    _ok(_resort())
+    _exited(_resort())
 
     assert _below(cfg, both_native["intake"]) == before, (
         "the resort wrote under INBOX, which is the folder sitting 61 found: "
@@ -298,7 +297,7 @@ def test_an_abort_queues_nothing_and_writes_nothing(both_native):
     cfg = config.load()
     run_id = _offered()["run_id"]
     _decide(run_id, "abort")
-    declined = _ok(_drive(["--run", run_id, "route", "resort"]))
+    declined = _exited(_drive(["--run", run_id, "route", "resort"]))
     assert declined["data"]["job_id"] == ""
     assert declined["data"]["state"] == "declined"
     assert _below(cfg, both_native["genre"]) == {}
@@ -306,13 +305,13 @@ def test_an_abort_queues_nothing_and_writes_nothing(both_native):
 
 def test_a_resort_with_no_change_plans_nothing_and_queues_nothing(both_native):
     """The second resort over a library the first one filed asks over nothing."""
-    _ok(_resort())
+    _exited(_resort())
     shown = _offered()["cause"]["detail"]["shown"]
     assert shown["items"] == [] and shown["adds"] == 0, shown
     refused = _offered()
     run_id = refused["run_id"]
     _decide(run_id, "apply")
-    again = _ok(_drive(["--run", run_id, "route", "resort"]))
+    again = _exited(_drive(["--run", run_id, "route", "resort"]))
     assert again["data"]["job_id"] == "", "a resort with nothing to add queued a job"
     assert again["data"]["state"] == "nothing-to-add"
 
@@ -385,8 +384,7 @@ def test_the_resume_argv_names_the_gate_run():
 
 
 def test_a_rebuild_naming_the_intake_tree_refuses_and_queues_nothing(both_native):
-    code, refused = _drive(["rebuild", "--actor", "a-person", "--tree", "inbox"])
-    assert code == int(ExitCode.PRECONDITION), refused
+    refused = _exited(_drive(["rebuild", "--actor", "a-person", "--tree", "inbox"]), ExitCode.PRECONDITION)
     assert refused["cause"]["reason"] == "rebuild-tree-not-derivable"
     assert "INBOX" in refused["cause"]["message"]
 
@@ -396,7 +394,7 @@ def test_a_rebuild_of_every_tree_leaves_the_intake_tree_alone(both_native):
     code, queued = _drive(["rebuild", "--actor", "a-person"])
     assert code == int(ExitCode.OK), queued
     assert [w["code"] for w in queued["warnings"]] == ["tree-not-derived"], queued
-    _ok(_drive(["rebuild", "--actor", "a-person", "--job", queued["data"]["job_id"]]))
+    _exited(_drive(["rebuild", "--actor", "a-person", "--job", queued["data"]["job_id"]]))
     assert _below(cfg, both_native["intake"]) == {BATCH: {"1", "2"}}
     assert _below(cfg, both_native["genre"])[f"{BUCKET_FOLDER} / {GENRE_SUB}"] == {"1", "2"}
 
@@ -427,7 +425,7 @@ def test_route_inbox_files_into_the_routing_tree_only(both_native, monkeypatch):
         "read_truth",
         lambda path: rebuild.Truth(location=str(path), genre=GENRE_SUB, energy=5),
     )
-    _ok(_drive(["-d", "route.inbox.apply=apply", "route", "inbox"]))
+    _exited(_drive(["-d", "route.inbox.apply=apply", "route", "inbox"]))
     assert _below(cfg, both_native["intake"]) == {BATCH: {"1", "2"}}, (
         "route inbox wrote the routing tree's folders under INBOX"
     )
@@ -494,7 +492,7 @@ def test_a_resort_writes_no_favourite_its_gate_did_not_show(with_favourite):
     """Every membership the resort writes was a row on the screen it was approved over."""
     cfg = config.load()
     shown = _shown(_offered()["cause"]["detail"]["shown"]["items"])
-    _ok(_resort())
+    _exited(_resort())
     written = _landed(_below(cfg, with_favourite["genre"]))
     assert written == shown, (
         f"the resort wrote {sorted(written - shown)}, which its gate never showed"
@@ -503,10 +501,10 @@ def test_a_resort_writes_no_favourite_its_gate_did_not_show(with_favourite):
 
 def test_the_favourite_a_resort_left_is_shown_and_filed_by_the_next(with_favourite):
     cfg = config.load()
-    _ok(_resort())
+    _exited(_resort())
     following = _shown(_offered()["cause"]["detail"]["shown"]["items"])
     assert following == {(f"{BUCKET_FOLDER} / Favorites", "1")}, following
-    _ok(_resort())
+    _exited(_resort())
     assert (f"{BUCKET_FOLDER} / Favorites", "1") in _landed(_below(cfg, with_favourite["genre"]))
     assert _offered()["cause"]["detail"]["shown"]["items"] == []
 
@@ -550,12 +548,11 @@ def _landing_refuses(cfg: config.Config, tree_id: str = "inbox") -> bool:
 
 def _accept(actor: str = "the-dj") -> dict:
     verb = ["rebuild", "--actor", "a-person", "--tree", "inbox"]
-    code, refused = _drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = _exited(_drive(verb), ExitCode.DECISION_REQUIRED)
     assert refused["cause"]["detail"]["gate"] == "rebuild.accept"
     run_id = refused["run_id"]
-    _ok(_drive(["run", "decide", run_id, "rebuild.accept", "accept", "--actor", actor]))
-    accepted = _ok(_drive(["--run", run_id, *verb]))
+    _exited(_drive(["run", "decide", run_id, "rebuild.accept", "accept", "--actor", actor]))
+    accepted = _exited(_drive(["--run", run_id, *verb]))
     return accepted
 
 
@@ -584,7 +581,7 @@ def test_an_aborted_acceptance_leaves_the_inbox_refusing(restored):
     verb = ["rebuild", "--actor", "a-person", "--tree", "inbox"]
     run_id = _drive(verb)[1]["run_id"]
     _drive(["run", "decide", run_id, "rebuild.accept", "abort", "--actor", "the-dj"])
-    declined = _ok(_drive(["--run", run_id, *verb]))
+    declined = _exited(_drive(["--run", run_id, *verb]))
     assert declined["data"]["state"] == "declined"
     assert _landing_refuses(cfg)
 
@@ -600,7 +597,7 @@ def test_the_engine_never_accepts_a_tree_a_rebuild_can_repair(restored):
 
 
 def test_a_rebuild_of_one_named_tree_names_nothing_it_left_alone(both_native):
-    queued = _ok(_drive(["rebuild", "--actor", "a-person", "--tree", "genre_energy"]))
+    queued = _exited(_drive(["rebuild", "--actor", "a-person", "--tree", "genre_energy"]))
     assert queued["warnings"] == [], queued
 
 

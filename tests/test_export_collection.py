@@ -120,10 +120,10 @@ UNDER_THE_ROOT = "recorded-under-the-root"
 UNDER_A_BASE_DRIVE = "recorded-under-a-base-drive"
 
 
-def _ok(result: tuple[int, dict]) -> dict:
-    """The envelope of a drive that exited OK."""
+def _exited(result: tuple[int, dict], expected: ExitCode = ExitCode.OK) -> dict:
+    """The envelope of a drive that exited ``expected``, OK unless told otherwise."""
     code, envelope = result
-    assert code == int(ExitCode.OK), envelope
+    assert code == int(expected), envelope
     return envelope
 
 
@@ -359,7 +359,7 @@ def _seed_from_nothing(cfg: config.Config, *, moved: bool) -> None:
 
 def _drive_collection(cfg: config.Config, name: str) -> tuple[Path, dict]:
     destination = Path(cfg.library.root) / "exports" / name
-    envelope = _ok(drive(["export", "collection", str(destination)]))
+    envelope = _exited(drive(["export", "collection", str(destination)]))
     return destination, envelope
 
 
@@ -398,8 +398,7 @@ def _tracks(document: bytes) -> dict[str, ET.Element]:
 
 def _approved(verb: list[str], gate: str, answer: str) -> tuple[int, dict]:
     """Drive a gated verb to its gate, answer it as a person, and drive it again."""
-    code, refused = drive(verb)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = _exited(drive(verb), ExitCode.DECISION_REQUIRED)
     assert refused["cause"]["detail"]["gate"] == gate
     decided, envelope = drive(["run", "decide", refused["run_id"], gate, answer, "--actor", "a-person"])
     assert decided == int(ExitCode.OK), envelope
@@ -723,9 +722,7 @@ def test_a_folder_that_is_a_file_is_refused_before_the_database_is_copied(machin
     blocked.write_bytes(b"a file")
     taken = _copies(monkeypatch)
 
-    code, envelope = drive(["export", "collection", str(blocked / "deep" / "out.xml")])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(drive(["export", "collection", str(blocked / "deep" / "out.xml")]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "path-permission-denied"
     assert envelope["cause"]["detail"]["blocked"] == str(blocked.resolve())
     # The true reason; "cannot be written into" would send a person to its permissions.
@@ -740,9 +737,7 @@ def test_an_existing_file_is_refused_before_the_database_is_copied(machine, monk
     destination.write_bytes(b"somebody kept this")
     taken = _copies(monkeypatch)
 
-    code, envelope = drive(["export", "collection", str(destination)])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(drive(["export", "collection", str(destination)]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "output-exists"
     assert destination.read_bytes() == b"somebody kept this"
     assert taken == []
@@ -770,9 +765,7 @@ def test_a_folder_nobody_may_write_to_is_refused_before_the_database_is_copied(
 def test_a_name_the_pending_scan_reads_as_an_intake_file_is_refused(machine, suffix):
     destination = Path(machine.library.root) / f"2026-09-29{suffix}"
 
-    code, envelope = drive(["export", "collection", str(destination)])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(drive(["export", "collection", str(destination)]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "library-export-unusable"
     assert not destination.exists()
     assert tree_registry.pending_intake_xml(machine) == ()
@@ -782,9 +775,7 @@ def test_an_identifier_that_is_not_digits_is_refused_and_nothing_is_written(mach
     _content(machine, [("r-one", "R.flac", "R", 0, False, _music(machine) / "R.flac")])
     destination = Path(machine.library.root) / "exports" / "refused.xml"
 
-    code, envelope = drive(["export", "collection", str(destination)])
-
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(drive(["export", "collection", str(destination)]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "library-export-unusable"
     assert envelope["cause"]["detail"]["identifier"] == "r-one"
     assert not destination.exists()
@@ -899,7 +890,7 @@ def test_a_landing_splices_into_the_file_and_the_import_is_proved_against_a_seco
     second = _export(machine, "after-import.xml")
     before = second.read_bytes()
 
-    proved = _ok(drive(["intake", "imported", "--export", str(second)]))
+    proved = _exited(drive(["intake", "imported", "--export", str(second)]))
     (item,) = proved["data"]["items"]
     assert item["action"] == "imported"
     assert item["count"] == 2
@@ -915,9 +906,7 @@ def test_the_import_proof_is_withheld_against_an_export_taken_before_the_import(
     landed = _land(first, "2026-09-29_unproved")
     stale = _export(machine, "still-before-import.xml")
 
-    code, withheld = drive(["intake", "imported", "--export", str(stale)])
-
-    assert code == int(ExitCode.PENDING_HUMAN), withheld
+    _exited(drive(["intake", "imported", "--export", str(stale)]), ExitCode.PENDING_HUMAN)
     assert Path(landed["pending_human_action"]["artifact"]).exists()
 
 
@@ -928,9 +917,7 @@ def test_a_single_file_intake_splices_into_the_file(either, silence):
     shutil.copyfile(silence, path)
     assert tags.write_tags(path, {"title": "Single", "artist": "Probe", "genre": "Deep House", "energylevel": 7})
 
-    code, envelope = drive(["intake", "file", str(path), "--export", str(exported)])
-
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = _exited(drive(["intake", "file", str(path), "--export", str(exported)]), ExitCode.PENDING_HUMAN)
     spliced = ET.fromstring(Path(envelope["pending_human_action"]["artifact"]).read_bytes())
     collection = spliced.find("COLLECTION")
     assert int(collection.get("Entries")) == len(collection.findall("TRACK")) == len(LIVE) + 1
@@ -978,7 +965,7 @@ def test_the_inbox_routing_reads_the_file_and_routes_its_intake(either, tagged):
     machine = either
     exported = _export(machine)
 
-    envelope = _ok(drive(["-d", "route.inbox.apply=apply", "route", "inbox", "--export", str(exported)]))
+    envelope = _exited(drive(["-d", "route.inbox.apply=apply", "route", "inbox", "--export", str(exported)]))
     assert envelope["data"]["totals"]["inserted"] == 3
     written = Path(envelope["data"]["totals"]["output"]).read_bytes()
     assert _sub_keys(written, "Deep House", "Low") == ("11",)
@@ -991,7 +978,7 @@ def test_the_unplaced_sweep_reads_the_file_and_places_what_no_sub_holds(either, 
     machine = either
     exported = _export(machine)
 
-    envelope = _ok(drive(["route", "unplaced", "--export", str(exported)]))
+    envelope = _exited(drive(["route", "unplaced", "--export", str(exported)]))
     placed = {item["track_id"]: item["destination"] for item in envelope["data"]["items"]}
     assert placed["11"] == "Deep House/Low"
     assert placed["12"] == "Deep House/Med"
@@ -1050,7 +1037,7 @@ def test_the_composed_sync_reads_the_file_and_queues_the_favourites(either, monk
     exported = _export(machine)
     _bind(monkeypatch, outbound_fakes.FakeAccount(catalog={}))
 
-    _ok(_approved(["sync", "all", "--export", str(exported)], sync_cli.CONFIRM, "sync"))
+    _exited(_approved(["sync", "all", "--export", str(exported)], sync_cli.CONFIRM, "sync"))
     with jobs.open_store() as store:
         favourites = [job for job in jobs.list_jobs(store) if job.handler_key == "sync.favorites"]
         (job,) = favourites
@@ -1446,9 +1433,7 @@ def test_the_import_proof_is_withheld_on_a_moved_library_with_no_rule(unruled, s
     second, envelope = _drive_collection(machine, "after-import.xml")
     assert envelope["data"]["summary"]["tracks_under_no_rule"] == 5
 
-    code, withheld = drive(["intake", "imported", "--export", str(second)])
-
-    assert code == int(ExitCode.PENDING_HUMAN), withheld
+    _exited(drive(["intake", "imported", "--export", str(second)]), ExitCode.PENDING_HUMAN)
     assert Path(landed["pending_human_action"]["artifact"]).exists()
 
 

@@ -17,10 +17,10 @@ from tests.test_config import valid_data
 from tests.test_rb_writer_db import RECORDED_APP_VERSION, _build_disposable_database, _row
 
 
-def _ok(result: tuple[int, dict]) -> dict:
-    """The envelope of a drive that exited OK."""
+def _exited(result: tuple[int, dict], expected: ExitCode = ExitCode.OK) -> dict:
+    """The envelope of a drive that exited ``expected``, OK unless told otherwise."""
     code, envelope = result
-    assert code == int(ExitCode.OK), envelope
+    assert code == int(expected), envelope
     return envelope
 
 
@@ -191,8 +191,7 @@ def test_a_corrupt_vocal_calibration_refuses_through_the_verb_and_writes_nothing
     cfg, audio, db_path = ready
     del audio
     _vocal_calibration(cfg, '{"threshold": 37.')
-    code, envelope = drive(["metadata", "mytags-vocals", "--apply"])
-    assert code == int(ExitCode.PRECONDITION), envelope
+    envelope = _exited(drive(["metadata", "mytags-vocals", "--apply"]), ExitCode.PRECONDITION)
     assert envelope["cause"]["reason"] == "vocal-calibration-unreadable"
 
     db = rb_writer.open_db(db_path, unlock=False, cfg=cfg)
@@ -205,7 +204,7 @@ def test_a_corrupt_vocal_calibration_refuses_through_the_verb_and_writes_nothing
 def test_the_plan_names_existing_rows_and_writes_nothing(ready):
     cfg, audio, db_path = ready
     del audio
-    envelope = _ok(drive(["metadata", "mytags-vocals"]))
+    envelope = _exited(drive(["metadata", "mytags-vocals"]))
     items = envelope["data"]["items"]
     assert [row["content_id"] for row in items] == ["3"]
     assert items[0]["values"] == [metadata_cli.VALUE_VOX, metadata_cli.VALUE_MALE]
@@ -235,7 +234,7 @@ def test_apply_writes_my_tags_and_does_not_write_a_content_column(ready):
     finally:
         rb_writer.close_db(before)
 
-    envelope = _ok(drive(["metadata", "mytags-vocals", "--apply"]))
+    envelope = _exited(drive(["metadata", "mytags-vocals", "--apply"]))
     assert envelope["data"]["totals"]["written"] >= 1
     assert envelope["data"]["totals"]["written"] == 2, envelope["data"]["totals"]
 
@@ -261,7 +260,7 @@ def test_a_second_apply_is_idempotent(ready):
     cfg, audio, db_path = ready
     del cfg, audio
     drive(["metadata", "mytags-vocals", "--apply"])
-    envelope = _ok(drive(["metadata", "mytags-vocals", "--apply"]))
+    envelope = _exited(drive(["metadata", "mytags-vocals", "--apply"]))
     assert envelope["data"]["totals"]["written"] == 0
     assert envelope["data"]["totals"]["already"] == 2
     del db_path
@@ -300,9 +299,9 @@ def test_an_apply_is_listed_by_restore_list_as_a_restorable_session(ready):
     """The cost R-375 names, reproduced through both verbs a person would type."""
     cfg, audio, db_path = ready
     del audio, db_path
-    _ok(drive(["metadata", "mytags-vocals", "--apply"]))
+    _exited(drive(["metadata", "mytags-vocals", "--apply"]))
 
-    listing = _ok(drive(["restore", "list"]))
+    listing = _exited(drive(["restore", "list"]))
     rows = listing["data"]["items"]
     assert len(rows) == 1, rows
     only = rows[0]
@@ -323,7 +322,7 @@ def test_the_change_key_is_not_the_display_name_a_person_can_rename():
 def test_a_plan_only_run_leaves_no_record(ready):
     cfg, audio, db_path = ready
     del audio, db_path
-    _ok(drive(["metadata", "mytags-vocals"]))
+    _exited(drive(["metadata", "mytags-vocals"]))
     assert session.records(cfg) == ()
 
 
@@ -356,7 +355,7 @@ def test_the_capture_is_protected_while_the_apply_is_in_flight(ready, monkeypatc
         return real_commit(handle, *args, **kwargs)
 
     monkeypatch.setattr(metadata_cli.rb_writer, "commit_guarded", commit_and_look)
-    _ok(drive(["metadata", "mytags-vocals", "--apply"]))
+    _exited(drive(["metadata", "mytags-vocals", "--apply"]))
 
     (record,) = session.records(cfg)
     assert seen["protected"] == {Path(record.snapshot_path).resolve()}
@@ -367,7 +366,7 @@ def test_a_second_apply_writes_nothing_and_claims_no_commit(ready):
     cfg, audio, db_path = ready
     del audio, db_path
     drive(["metadata", "mytags-vocals", "--apply"])
-    envelope = _ok(drive(["metadata", "mytags-vocals", "--apply"]))
+    envelope = _exited(drive(["metadata", "mytags-vocals", "--apply"]))
     assert envelope["data"]["totals"]["written"] == 0
 
     first, noop = sorted(session.records(cfg), key=lambda entry: entry.started)

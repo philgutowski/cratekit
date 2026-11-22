@@ -60,10 +60,17 @@ SHELVED = "First Track.flac"
 ARRIVED = "Second Track.flac"
 
 
-def _ok(result: tuple[int, dict]) -> dict:
-    """The envelope of a drive that exited OK."""
+def _exited(result: tuple[int, dict], expected: ExitCode = ExitCode.OK) -> dict:
+    """The envelope of a drive that exited ``expected``, OK unless told otherwise."""
     code, envelope = result
-    assert code == int(ExitCode.OK), envelope
+    assert code == int(expected), envelope
+    return envelope
+
+
+def _fails(result: tuple[int, dict]) -> dict:
+    """The envelope of a drive that did not exit OK."""
+    code, envelope = result
+    assert code != int(ExitCode.OK), envelope
     return envelope
 
 
@@ -331,12 +338,12 @@ def test_a_queued_job_runs_its_item_and_the_tree_holds_the_track(
 ):
     """Pending to done, and then the DATABASE is asked what happened (R-239: encrypted too)."""
     native = request.getfixturevalue(medium)
-    queued = _ok(_drive(argv))
+    queued = _exited(_drive(argv))
     job_id = queued["data"]["job_id"]
     assert [item.item_id for item in _items(job_id)] == [TREE_ID]
     assert all(item.state == jobs.ItemState.PENDING for item in _items(job_id))
 
-    _ok(_drive([*argv, "--job", job_id]))
+    _exited(_drive([*argv, "--job", job_id]))
     assert [item.state for item in _items(job_id)] == [jobs.ItemState.DONE]
     assert _membership(acknowledged, native) == {"1"}
 
@@ -411,7 +418,7 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
 def test_neither_queued_verb_files_a_job_with_no_items(acknowledged, native, argv):
     """A job with nothing to claim is walked once and reported as succeeded."""
     del acknowledged, native
-    _ok(_drive(argv))
+    _exited(_drive(argv))
     filed = _queued_jobs()
     assert filed, "the verb reported OK and filed nothing at all"
     for job in filed:
@@ -422,7 +429,7 @@ def test_neither_queued_verb_files_a_job_with_no_items(acknowledged, native, arg
 def test_neither_queued_verb_files_a_job_at_all_with_no_native_tree(configured, argv):
     """With no native tree there is nothing to queue, and it is not a refusal."""
     del configured
-    envelope = _ok(_drive(argv))
+    envelope = _exited(_drive(argv))
     assert envelope["outcome"] == str(Outcome.NO_OP), envelope
     assert envelope["data"]["job_id"] == ""
     assert envelope["data"]["state"] == "no-native-tree"
@@ -433,12 +440,12 @@ def test_neither_queued_verb_files_a_job_at_all_with_no_native_tree(configured, 
 def test_the_confirmed_inbox_applies_and_the_declined_one_does_not(acknowledged, medium, request):
     """The defect in one test: the two answers used to produce the same result."""
     native = request.getfixturevalue(medium)
-    declined = _ok(_decline_inbox())
+    declined = _exited(_decline_inbox())
     assert declined["outcome"] == str(Outcome.NO_OP)
     assert declined["data"]["totals"]["applied"] is False
     assert _membership(acknowledged, native) == set(), "the declined branch wrote membership"
 
-    applied = _ok(_apply_inbox())
+    applied = _exited(_apply_inbox())
     assert applied["outcome"] == str(Outcome.OK)
     assert applied["data"]["totals"]["applied"] is True
     assert applied["data"]["totals"]["added"] == 1
@@ -453,7 +460,7 @@ def test_a_confirmed_inbox_over_an_empty_folder_opens_nothing(acknowledged, nati
         path.unlink()
     before = len(session.records(acknowledged))
 
-    envelope = _ok(_apply_inbox())
+    envelope = _exited(_apply_inbox())
     assert envelope["outcome"] == str(Outcome.NO_OP)
     assert envelope["data"]["totals"]["reason"] == "inbox-empty"
     assert len(session.records(acknowledged)) == before
@@ -463,7 +470,7 @@ def test_a_confirmed_inbox_over_an_empty_folder_opens_nothing(acknowledged, nati
 def test_a_confirmed_inbox_on_a_library_with_no_native_tree_says_so(stocked):
     """Membership written for a bridge tree is overwritten at the next import, so
     the apply says there is nowhere to put it rather than an empty success."""
-    envelope = _ok(_apply_inbox())
+    envelope = _exited(_apply_inbox())
     assert envelope["outcome"] == str(Outcome.NO_OP)
     assert envelope["data"]["totals"]["reason"] == "no-native-tree"
     assert envelope["data"]["totals"]["applied"] is False
@@ -498,7 +505,7 @@ def test_a_confirmed_inbox_names_the_file_it_could_not_file_and_why(acknowledged
     """R-318: twenty unimported files once read as ``skipped: 20`` and no name."""
     (_intake_dir(acknowledged) / UNIMPORTED).write_bytes(b"")
 
-    applied = _ok(_apply_inbox())
+    applied = _exited(_apply_inbox())
     assert _membership(acknowledged, native) == {"2"}
     totals = applied["data"]["totals"]
     assert totals["skipped"] == 1
@@ -532,7 +539,7 @@ def test_a_row_rekordbox_removed_is_reported_withdrawn_not_unimported(acknowledg
     """``WITHDRAWN`` against ``NOT_IMPORTED`` is the pair the vocabulary exists for."""
     _set_row(acknowledged, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", "2")
 
-    applied = _ok(_apply_inbox())
+    applied = _exited(_apply_inbox())
     (entry,) = applied["data"]["totals"]["skipped_files"]
     assert entry["reason"] == str(routing_pass.Placement.WITHDRAWN)
     assert entry["content_ids"] == ["2"]
@@ -550,7 +557,7 @@ def test_a_file_two_rows_claim_is_reported_ambiguous_with_both_rows(acknowledged
         "1",
     )
 
-    applied = _ok(_apply_inbox())
+    applied = _exited(_apply_inbox())
     (entry,) = applied["data"]["totals"]["skipped_files"]
     assert entry["reason"] == str(routing_pass.Placement.AMBIGUOUS)
     assert sorted(entry["content_ids"]) == ["1", "2"]
@@ -560,7 +567,7 @@ def test_a_file_two_rows_claim_is_reported_ambiguous_with_both_rows(acknowledged
 
 def test_a_clean_apply_names_no_skipped_file(acknowledged, native):
     """So a warning emitted on every run cannot pass the tests above."""
-    applied = _ok(_apply_inbox())
+    applied = _exited(_apply_inbox())
     assert applied["data"]["totals"]["skipped"] == 0
     assert applied["data"]["totals"]["skipped_files"] == []
     assert _skipped_warnings(applied) == []
@@ -642,7 +649,7 @@ def test_the_skip_warnings_are_one_per_reason_in_a_stable_order():
 def test_unplaced_reports_the_rows_no_governed_tree_holds(acknowledged, medium, request):
     """Two rows, neither filed, and the report has to name both."""
     request.getfixturevalue(medium)
-    envelope = _ok(_drive(["route", "unplaced"]))
+    envelope = _exited(_drive(["route", "unplaced"]))
     assert envelope["data"]["totals"]["compared"] is True
     assert {item["content_id"] for item in envelope["data"]["items"]} == {"1", "2"}
     assert envelope["data"]["totals"]["count"] == 2
@@ -658,7 +665,7 @@ def test_unplaced_over_a_fully_placed_library_reports_none(acknowledged, native)
     _apply_inbox()
     assert _membership(config.load(), native) == {"1", "2"}
 
-    envelope = _ok(_drive(["route", "unplaced"]))
+    envelope = _exited(_drive(["route", "unplaced"]))
     assert envelope["data"]["totals"]["compared"] is True
     assert envelope["data"]["items"] == []
     assert envelope["data"]["totals"]["collection"] == 2
@@ -667,7 +674,7 @@ def test_unplaced_over_a_fully_placed_library_reports_none(acknowledged, native)
 def test_unplaced_says_when_it_could_not_compare(configured):
     """An empty answer over a library nothing read is kept apart from an empty library."""
     del configured
-    envelope = _ok(_drive(["route", "unplaced"]))
+    envelope = _exited(_drive(["route", "unplaced"]))
     assert envelope["outcome"] == str(Outcome.NO_OP)
     assert envelope["data"]["items"] == []
     assert envelope["data"]["totals"]["compared"] is False
@@ -679,7 +686,7 @@ def test_unplaced_does_not_report_a_row_rekordbox_removed(acknowledged, native):
     del native
     _set_row(acknowledged, "UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", "2")
 
-    envelope = _ok(_drive(["route", "unplaced"]))
+    envelope = _exited(_drive(["route", "unplaced"]))
     assert {item["content_id"] for item in envelope["data"]["items"]} == {"1"}
     assert envelope["data"]["totals"]["collection"] == 1
 
@@ -714,7 +721,7 @@ def test_unplaced_reports_with_rekordbox_open_and_writes_nothing(configured, nat
     database = Path(configured.library.db_path)
     before = database.read_bytes()
 
-    envelope = _ok(_drive(["route", "unplaced"]))
+    envelope = _exited(_drive(["route", "unplaced"]))
     assert envelope["data"]["totals"]["compared"] is True
     assert {item["content_id"] for item in envelope["data"]["items"]} == {"1", "2"}
     assert database.read_bytes() == before, "a report changed the database it read"
@@ -729,8 +736,7 @@ def test_unplaced_still_refuses_on_a_drifted_binding_so_doctor_keeps_the_pins(
     import pyrekordbox
 
     monkeypatch.setattr(pyrekordbox, "__version__", "0.0.0-drifted")
-    code, envelope = _drive(["route", "unplaced"])
-    assert code == int(ExitCode.VERSION_PIN), envelope
+    envelope = _exited(_drive(["route", "unplaced"]), ExitCode.VERSION_PIN)
     assert envelope["cause"]["reason"] == "pyrekordbox-pin-drift", envelope
     assert "rekordbox.pins" in registry.entry("route.unplaced").doctor_checks
 
@@ -811,7 +817,7 @@ def test_each_write_watches_the_grids_where_they_actually_live(
     """R17's fifth surface, runtime half, measured at each call site rather than asserted."""
     del native, acknowledged
     seen = _watched_roots(monkeypatch)
-    _ok(drive())
+    _exited(drive())
     assert seen, "the write opened no session at all, so there is nothing to measure"
     for roots in seen:
         assert planted_grid in session.analysis_files_under(roots), (
@@ -828,8 +834,7 @@ def test_neither_resume_drives_another_verbs_job(acknowledged, native, argv):
             store, handler_key="master", payload={}, cfg=config.load(), item_ids=("one",)
         )
 
-    code, envelope = _drive([*argv, "--job", foreign.job_id])
-    assert code != int(ExitCode.OK), envelope
+    envelope = _fails(_drive([*argv, "--job", foreign.job_id]))
     assert envelope["cause"]["reason"] == "job-unknown", envelope
     assert [item.state for item in _items(foreign.job_id)] == [jobs.ItemState.PENDING]
 
@@ -851,8 +856,7 @@ def test_neither_resume_drives_a_job_an_older_build_queued_with_no_items(
     with jobs.open_store() as store:
         stale = jobs.enqueue(store, handler_key=key, payload={}, cfg=config.load())
 
-    code, envelope = _drive([*argv, "--job", stale.job_id])
-    assert code != int(ExitCode.OK), envelope
+    _fails(_drive([*argv, "--job", stale.job_id]))
     with jobs.open_store() as store:
         assert jobs.get(store, stale.job_id).state != jobs.JobState.SUCCEEDED
 
@@ -875,8 +879,7 @@ def test_a_resume_whose_items_did_not_all_succeed_is_not_an_ok_exit(
 
     _fail_other_trees(monkeypatch)
 
-    code, envelope = _drive([*argv, "--job", job.job_id])
-    assert code != int(ExitCode.OK), envelope
+    _fails(_drive([*argv, "--job", job.job_id]))
     states = {item.item_id: item.state for item in _items(job.job_id)}
     assert states[TREE_ID] == jobs.ItemState.DONE
     assert states["second_tree"] == jobs.ItemState.FAILED
@@ -889,8 +892,7 @@ def test_a_resume_reads_no_registry_of_its_own(acknowledged, native):
     job_id = _drive(["rebuild", "--actor", "a-person"])[1]["data"]["job_id"]
     tree_registry.path_for(acknowledged).write_text("{ this is not a registry")
 
-    code, envelope = _drive(["rebuild", "--actor", "a-person", "--job", job_id])
-    assert code != int(ExitCode.OK), envelope
+    _fails(_drive(["rebuild", "--actor", "a-person", "--job", job_id]))
     assert _items(job_id)[0].state == jobs.ItemState.FAILED, (
         "the unreadable registry blocked a job whose items were already frozen"
     )
@@ -929,7 +931,7 @@ def test_a_confirmed_inbox_over_the_shipped_taxonomy_says_the_vocal_dimension_wa
 def test_a_declined_inbox_carries_no_vocal_warning(acknowledged, native):
     """Nothing was derived on the declined branch, so nothing went uncompared."""
     del acknowledged, native
-    declined = _ok(_decline_inbox())
+    declined = _exited(_decline_inbox())
     assert _vocal_warnings(declined) == []
 
 
@@ -938,7 +940,7 @@ def test_a_driven_resume_says_the_vocal_dimension_was_not_compared_beside_drift(
     acknowledged, native, argv
 ):
     """The rebuild's envelope carries the gap alongside the drift warning."""
-    queued = _ok(_drive(argv))
+    queued = _exited(_drive(argv))
     assert _vocal_warnings(queued) == [], "the queue-only answer claimed a comparison"
     job_id = queued["data"]["job_id"]
 
@@ -986,7 +988,7 @@ def test_a_driven_resume_over_no_favorites_class_names_the_skipped_step(
     acknowledged, native, no_favorites_class, argv
 ):
     del acknowledged, native, no_favorites_class
-    queued = _ok(_drive(argv))
+    queued = _exited(_drive(argv))
     assert _favorites_warnings(queued) == [], "the queue-only answer skipped nothing yet"
     job_id = queued["data"]["job_id"]
     code, done = _drive([*argv, "--job", job_id])
@@ -996,7 +998,7 @@ def test_a_driven_resume_over_no_favorites_class_names_the_skipped_step(
     assert "genre Favorites step was skipped" in warned["message"]
     assert "schema_version 5" in warned["message"]
     assert "crate taxonomy upgrade" in warned["message"]
-    again = _ok(_drive([*argv, "--job", job_id]))
+    again = _exited(_drive([*argv, "--job", job_id]))
     assert _favorites_warnings(again) == [], "a job finished on entry skipped nothing in this run"
 
 
@@ -1045,7 +1047,7 @@ def test_a_resume_that_drove_nothing_carries_no_vocal_warning(acknowledged, nati
     job_id, code, first = _queue_and_resume(argv)
     assert code == int(ExitCode.OK), first
     assert len(_vocal_warnings(first)) == 1, first["warnings"]
-    again = _ok(_drive([*argv, "--job", job_id]))
+    again = _exited(_drive([*argv, "--job", job_id]))
     assert _vocal_warnings(again) == []
 
 
@@ -1102,7 +1104,7 @@ def _left_behind(envelope: dict) -> list[dict]:
 @pytest.fixture
 def leftover(acknowledged, native) -> str:
     """A governed playlist holding a track the declaration does not place there."""
-    _ok(_apply_inbox())
+    _exited(_apply_inbox())
     assert _membership(acknowledged, native) == {"2"}
     return "2"
 
@@ -1135,7 +1137,7 @@ def test_a_resort_resume_that_drove_nothing_names_no_leftover(acknowledged, nati
     assert _left_behind(queued) == []
     job_id = queued["data"]["job_id"]
     assert len(_left_behind(_drive(["route", "resort", "--job", job_id])[1])) == 1
-    again = _ok(_drive(["route", "resort", "--job", job_id]))
+    again = _exited(_drive(["route", "resort", "--job", job_id]))
     assert _left_behind(again) == []
 
 
@@ -1172,8 +1174,7 @@ def test_a_resort_that_failed_part_way_names_only_what_the_finished_tree_left(
         request.getfixturevalue("leftover")
     job = _enqueue_resort(TREE_ID, "second_tree")
     _fail_other_trees(monkeypatch)
-    code, refused = _drive([*RESORT, "--job", job.job_id])
-    assert code != int(ExitCode.OK), refused
+    refused = _fails(_drive([*RESORT, "--job", job.job_id]))
     with jobs.open_store() as store:
         stored = jobs.get(store, job.job_id).cause
     steps = list(refused["cause"]["remediation"]["steps"])
@@ -1220,7 +1221,7 @@ def test_a_second_process_names_what_the_first_ones_tree_left(
     assert _drive(["route", "resort", "--job", job.job_id])[0] != int(ExitCode.OK)
     with jobs.open_store() as store:
         jobs.retry(store, job.job_id)
-    done = _ok(_drive(["route", "resort", "--job", job.job_id]))
+    done = _exited(_drive(["route", "resort", "--job", job.job_id]))
     assert calls == [TREE_ID, "second_tree", "second_tree"], calls
     (warning,) = _left_behind(done)
     assert ARRIVED in warning["message"], warning
@@ -1243,8 +1244,7 @@ def test_a_refusal_raised_before_the_drive_carries_no_leftover_step(
         raise refuse("config-unusable", "the calibration cannot be read")
 
     monkeypatch.setattr(metadata_cli, "load_vocal_threshold", corrupt)
-    code, refused = _drive(["route", "resort", "--job", job.job_id])
-    assert code != int(ExitCode.OK), refused
+    refused = _fails(_drive(["route", "resort", "--job", job.job_id]))
     assert refused["cause"]["reason"] == "config-unusable", refused
     assert ARRIVED not in " ".join(refused["cause"]["remediation"]["steps"]), refused
 
@@ -1339,7 +1339,7 @@ def mixed(native, acknowledged) -> str:
 def test_neither_queued_verb_takes_an_item_for_a_tree_still_on_the_bridge(mixed, argv):
     """A rebuild of a bridge tree writes membership the next import overwrites."""
     del mixed
-    _ok(_drive(argv))
+    _exited(_drive(argv))
     filed = _queued_jobs()
     assert len(filed) == 1, filed
     assert [item.item_id for item in _items(filed[0].job_id)] == [TREE_ID], (
@@ -1360,10 +1360,10 @@ def test_a_rebuild_of_one_named_tree_queues_that_tree_alone(acknowledged, native
     )
     tree_registry.write(acknowledged, tree_registry.Registry((*entries.trees, second)))
 
-    envelope = _ok(_drive(["rebuild", "--actor", "a-person", "--tree", TREE_ID]))
+    envelope = _exited(_drive(["rebuild", "--actor", "a-person", "--tree", TREE_ID]))
     assert [item.item_id for item in _items(envelope["data"]["job_id"])] == [TREE_ID]
 
-    both = _ok(_drive(["rebuild", "--actor", "a-person"]))
+    both = _exited(_drive(["rebuild", "--actor", "a-person"]))
     assert [item.item_id for item in _items(both["data"]["job_id"])] == [
         "second_shelf",
         TREE_ID,
@@ -1376,7 +1376,7 @@ def test_a_gate_answer_this_verb_does_not_recognise_writes_nothing(
     """The branch direction, which no drive through the shipped gate can reach."""
     del acknowledged
     monkeypatch.setattr(routing_cli, "_apply_gate", lambda ctx, plan, shown: "later")
-    envelope = _ok(_drive(["route", "inbox"]))
+    envelope = _exited(_drive(["route", "inbox"]))
     assert envelope["outcome"] == str(Outcome.NO_OP), envelope
     assert envelope["data"]["totals"]["applied"] is False
     assert _membership(config.load(), native) == set(), "the gate admitted by omission"
@@ -1394,7 +1394,7 @@ def encrypted(acknowledged, native) -> str:
 def test_converge_compares_a_native_tree_on_an_encrypted_library(acknowledged, encrypted):
     """"Not compared" on a real library reads as "nothing to see", not "could not look"."""
     del acknowledged, encrypted
-    envelope = _ok(_drive(["converge"]))
+    envelope = _exited(_drive(["converge"]))
     statuses = {check["key"]: check["status"] for check in envelope["data"]["checks"]}
     assert statuses[f"tree.{TREE_ID}"] != converge.NOT_COMPARED, envelope
 
@@ -1589,7 +1589,7 @@ def _others(envelope: dict) -> list[dict]:
 def test_an_export_inbox_lands_each_track_in_its_declared_sub(configured, tagged, tmp_path):
     """Three tracks, three subs, and the file that comes out parses."""
     export = _write_export(configured, tmp_path / "exports")
-    envelope = _ok(_apply_export(export))
+    envelope = _exited(_apply_export(export))
     assert envelope["outcome"] == str(Outcome.OK)
     totals = envelope["data"]["totals"]
     assert totals["applied"] is True
@@ -1623,7 +1623,7 @@ def test_an_export_sub_that_does_not_exist_is_a_warning_and_nothing_is_created(
 ):
     """The non creating writer: a curated tree gains no playlist it never had."""
     export = _write_export(configured, tmp_path / "exports", subs=("Low", "Med"))
-    envelope = _ok(_apply_export(export))
+    envelope = _exited(_apply_export(export))
     totals = envelope["data"]["totals"]
     assert totals["created"] == []
     assert totals["inserted"] == 2
@@ -1640,7 +1640,7 @@ def test_a_second_export_run_over_its_own_output_inserts_nothing(configured, tag
     first = _routed(export)
     before = sorted(path.name for path in first.parent.iterdir())
 
-    envelope = _ok(_apply_export(first))
+    envelope = _exited(_apply_export(first))
     assert envelope["outcome"] == str(Outcome.NO_OP)
     assert envelope["data"]["totals"]["inserted"] == 0
     assert envelope["data"]["totals"]["reason"] == "nothing-to-route"
@@ -1722,7 +1722,7 @@ def test_an_export_whose_every_file_is_unreadable_is_blocked_not_already_filed(
 ):
     """Every track left behind at the read is the same shape one step earlier."""
     export = _write_export(configured, tmp_path / "exports", inbox=("11",), missing_file="11")
-    envelope = _ok(_apply_export(export))
+    envelope = _exited(_apply_export(export))
     assert envelope["data"]["totals"]["inserted"] == 0
     assert envelope["data"]["totals"]["reason"] == "route-blocked"
     assert not _routed(export).exists()
@@ -1731,8 +1731,7 @@ def test_an_export_whose_every_file_is_unreadable_is_blocked_not_already_filed(
 def test_an_export_route_on_an_unmounted_library_refuses(configured, tagged, tmp_path):
     export = _write_export(configured, tmp_path / "exports")
     shutil.rmtree(configured.library.root)
-    code, envelope = _apply_export(export)
-    assert code != int(ExitCode.OK), envelope
+    envelope = _fails(_apply_export(export))
     assert envelope["cause"]["reason"] == "library-volume-unmounted"
     assert not _routed(export).exists()
 
@@ -1757,7 +1756,7 @@ def test_an_export_location_under_a_retired_volume_name_resolves_through_the_pre
     export.write_bytes(export.read_bytes().replace(live, old))
     assert live not in export.read_bytes()
 
-    envelope = _ok(_apply_export(export))
+    envelope = _exited(_apply_export(export))
     assert envelope["data"]["totals"]["inserted"] == 3
     assert _others(envelope) == []
 
@@ -1766,8 +1765,7 @@ def test_a_native_routing_tree_refuses_before_the_plan_is_offered(configured, ta
     """Refused at the verb, so nobody approves a write the guard would stop; a decline refuses too."""
     export = _write_export(configured, tmp_path / "exports")
     _cut_over_routing_tree(configured)
-    code, envelope = _decline_export(export)
-    assert code != int(ExitCode.OK), envelope
+    envelope = _fails(_decline_export(export))
     assert envelope["cause"]["reason"] == "tree-unconverged"
 
 
@@ -1797,7 +1795,7 @@ def _cut_over_routing_tree(cfg: config.Config) -> None:
 
 def test_a_declined_export_route_writes_nothing(configured, tagged, tmp_path):
     export = _write_export(configured, tmp_path / "exports")
-    envelope = _ok(_decline_export(export))
+    envelope = _exited(_decline_export(export))
     assert envelope["outcome"] == str(Outcome.NO_OP)
     assert envelope["data"]["totals"]["applied"] is False
     assert not _routed(export).exists()
@@ -1808,15 +1806,13 @@ def test_an_export_without_an_intake_folder_refuses(configured, tagged, tmp_path
     export = _write_export(configured, tmp_path / "exports")
     display = taxonomy.default_taxonomy().intake.display
     export.write_bytes(export.read_bytes().replace(f'Name="{display}"'.encode(), b'Name="Elsewhere"'))
-    code, envelope = _apply_export(export)
-    assert code != int(ExitCode.OK), envelope
+    envelope = _fails(_apply_export(export))
     assert envelope["cause"]["reason"] == "intake-flow-absent"
     assert not _routed(export).exists()
 
 
 def test_an_absent_export_refuses(configured, tmp_path):
-    code, envelope = _apply_export(tmp_path / "no-such.xml")
-    assert code != int(ExitCode.OK), envelope
+    envelope = _fails(_apply_export(tmp_path / "no-such.xml"))
     assert envelope["cause"]["reason"] == "library-export-unusable"
 
 
@@ -1824,8 +1820,7 @@ def test_an_export_route_refuses_a_routing_tree_that_has_cut_over(configured, ta
     """A native tree is the database's; an export carrying its membership would replace it."""
     export = _write_export(configured, tmp_path / "exports")
     _cut_over_routing_tree(configured)
-    code, envelope = _apply_export(export)
-    assert code != int(ExitCode.OK), envelope
+    envelope = _fails(_apply_export(export))
     assert envelope["cause"]["reason"] == "tree-unconverged"
     assert not _routed(export).exists()
 
@@ -1837,7 +1832,7 @@ def _remedies(envelope: dict) -> list[str]:
 def test_without_export_a_library_with_no_native_tree_names_the_export_remedy(stocked):
     """The remedy names what the export medium delivers and no more (R-695): a
     review of the routing (R-687) and the long track root playlist an import lands."""
-    envelope = _ok(_apply_inbox())
+    envelope = _exited(_apply_inbox())
     assert envelope["data"]["totals"]["reason"] == "no-native-tree"
     assert _remedies(envelope) == [INBOX_REMEDY], envelope["warnings"]
 
@@ -1846,7 +1841,7 @@ def test_a_taxonomy_with_no_long_track_playlist_gets_the_review_alone_as_its_rem
     """Without a declared long track playlist no import is owed for one, declined or applied (R-695)."""
     write_active(configured, shipped_without("long_tracks"))
     for option in ("abort", "apply"):
-        envelope = _ok(_drive(["-d", f"route.inbox.apply={option}", "route", "inbox"]))
+        envelope = _exited(_drive(["-d", f"route.inbox.apply={option}", "route", "inbox"]))
         assert _remedies(envelope) == [INBOX_REMEDY_REVIEW], (option, envelope["warnings"])
 
 
@@ -1856,7 +1851,7 @@ def test_the_remedy_names_the_long_track_playlist_the_active_copy_declares(confi
     line = f'display = "{LONG_PLAYLIST}"'
     assert shipped.count(line) == 1
     write_active(configured, shipped.replace(line, 'display = "Long Sets By Hand"'))
-    envelope = _ok(_apply_inbox())
+    envelope = _exited(_apply_inbox())
     assert _remedies(envelope) == [
         f"{INBOX_REMEDY_REVIEW}. It also adds long tracks to the root playlist "
         "'Long Sets By Hand', which one import can land"
@@ -1895,7 +1890,7 @@ def test_the_star_values_the_rating_tests_expect_are_the_shipped_curve():
 def test_an_owed_star_rating_is_not_written_into_the_export(configured, tagged, tmp_path):
     """R-688: every row keeps its rating and the owed ones are only counted; no import is owed (R-694)."""
     export = _rating_export(configured, tmp_path / "exports")
-    envelope = _ok(_apply_export(export))
+    envelope = _exited(_apply_export(export))
     written = _ratings_of(_routed(export).read_bytes())
     assert written == {"21": "0", "22": "", "23": "102", "24": "0", "25": "0"}
     (message,) = _owed(envelope)
@@ -1915,7 +1910,7 @@ def _alone(cfg: config.Config, folder: Path, tid: str, rating: str) -> Path:
 def test_a_lone_unrated_track_with_energy_is_owed_one_rating(configured, tagged, tmp_path):
     """The positive for the rules below on the same row shape, so their empty answer is the rule's."""
     export = _alone(configured, tmp_path / "exports", "21", "0")
-    envelope = _ok(_apply_export(export))
+    envelope = _exited(_apply_export(export))
     (message,) = _owed(envelope)
     assert message.startswith("1 intake row(s) are owed a star rating"), message
 
@@ -1972,7 +1967,7 @@ def test_the_offered_plan_names_no_rating_and_says_which_are_owed(configured, ta
 def test_a_declined_run_still_says_which_ratings_are_owed(configured, tagged, tmp_path):
     """The abort answer is how a person reads a plan, so it carries the owed count too."""
     export = _rating_export(configured, tmp_path / "exports")
-    envelope = _ok(_decline_export(export))
+    envelope = _exited(_decline_export(export))
     (message,) = _owed(envelope)
     assert message.startswith("2 intake row(s) are owed a star rating"), message
     assert not _routed(export).exists()
@@ -1981,7 +1976,7 @@ def test_a_declined_run_still_says_which_ratings_are_owed(configured, tagged, tm
 def test_a_row_with_no_rating_attribute_is_not_counted_as_owed(configured, tagged, tmp_path):
     """No ``Rating`` attribute is not "nobody rated this", so no warning."""
     export = _write_export(configured, tmp_path / "exports")
-    envelope = _ok(_apply_export(export))
+    envelope = _exited(_apply_export(export))
     assert _owed(envelope) == []
 
 
@@ -2081,8 +2076,7 @@ def test_the_long_track_values_the_tests_expect_are_the_shipped_declaration():
 
 def test_a_25_minute_track_is_a_member_and_a_19_minute_one_is_not(configured, tagged, tmp_path):
     export = _long_export(configured, tmp_path / "exports")
-    code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = _exited(_apply_export(export), ExitCode.PENDING_HUMAN)
     totals = envelope["data"]["totals"]
     assert (totals["inserted"], totals["long_added"]) == (3, 2)
     assert _long_members(_routed(export).read_bytes()) == ("11", "31")
@@ -2106,7 +2100,7 @@ def test_a_second_run_over_its_own_output_adds_nothing(configured, tagged, tmp_p
     before = first.read_bytes()
     listing = sorted(path.name for path in first.parent.iterdir())
 
-    envelope = _ok(_apply_export(first))
+    envelope = _exited(_apply_export(first))
     totals = envelope["data"]["totals"]
     assert (totals["inserted"], totals["long_added"]) == (0, 0)
     assert totals["reason"] == "nothing-to-route"
@@ -2119,8 +2113,7 @@ def test_a_second_run_over_its_own_output_adds_nothing(configured, tagged, tmp_p
 def test_a_long_track_alone_is_a_change_and_writes_a_file(configured, tagged, tmp_path):
     """One set the playlist lacks is a file to import, even with an empty intake."""
     export = _long_export(configured, tmp_path / "exports", inbox=())
-    code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = _exited(_apply_export(export), ExitCode.PENDING_HUMAN)
     totals = envelope["data"]["totals"]
     assert (totals["inserted"], totals["long_added"]) == (0, 2)
     assert _long_members(_routed(export).read_bytes()) == ("11", "31")
@@ -2133,8 +2126,7 @@ def test_an_export_run_owes_the_import_of_the_root_playlist_it_added_to_alone(
 ):
     """R-694: the long track playlist is the one thing the bridge lands, so it is the whole import owed."""
     export = _long_export(configured, tmp_path / "exports")
-    code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = _exited(_apply_export(export), ExitCode.PENDING_HUMAN)
     assert envelope["outcome"] == str(Outcome.PENDING)
     pending = envelope["pending_human_action"]
     assert pending["kind"] == "rekordbox_import"
@@ -2168,7 +2160,7 @@ def test_the_check_run_after_the_playlist_import_owes_no_import(configured, tagg
         "      </NODE>",
     )
     export = _long_export(configured, tmp_path / "exports", root_extra=landed)
-    envelope = _ok(_apply_export(export))
+    envelope = _exited(_apply_export(export))
     assert envelope["outcome"] == str(Outcome.OK)
     assert envelope["pending_human_action"] is None
     totals = envelope["data"]["totals"]
@@ -2180,7 +2172,7 @@ def test_the_check_run_after_the_playlist_import_owes_no_import(configured, tagg
 
 def test_no_long_track_builds_no_empty_playlist(configured, tagged, tmp_path):
     export = _long_export(configured, tmp_path / "exports", lengths={"31": "300"})
-    envelope = _ok(_apply_export(export))
+    envelope = _exited(_apply_export(export))
     assert envelope["data"]["totals"]["long_added"] == 0
     assert _long_members(_routed(export).read_bytes()) is None
 
@@ -2194,8 +2186,7 @@ def test_a_track_is_never_removed_from_the_playlist(configured, tagged, tmp_path
         "      </NODE>",
     )
     export = _long_export(configured, tmp_path / "exports", root_extra=existing)
-    code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = _exited(_apply_export(export), ExitCode.PENDING_HUMAN)
     assert envelope["data"]["totals"]["long_added"] == 2
     assert _long_members(_routed(export).read_bytes()) == ("77", "12", "11", "31")
 
@@ -2240,7 +2231,7 @@ def test_a_root_folder_of_that_name_is_a_warning_and_is_not_replaced(configured,
     assert node.get("Type") == "0"
     assert [t.get("Key") for t in node.find("NODE").findall("TRACK")] == ["99"]
 
-    again = _ok(_apply_export(_routed(export)))
+    again = _exited(_apply_export(_routed(export)))
     assert again["data"]["totals"]["reason"] == "route-blocked"
 
 
@@ -2250,8 +2241,7 @@ def test_a_missing_duration_is_counted_not_guessed(configured, tagged, tmp_path)
     export = _long_export(
         configured, tmp_path / "exports", lengths=lengths, extra_rows=("31", "32", "33")
     )
-    code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = _exited(_apply_export(export), ExitCode.PENDING_HUMAN)
     totals = envelope["data"]["totals"]
     assert totals["duration_unreadable"] == 5
     assert totals["long_added"] == 1
@@ -2262,7 +2252,7 @@ def test_the_offered_plan_names_each_long_track_before_anything_is_written(
     configured, tagged, tmp_path
 ):
     export = _long_export(configured, tmp_path / "exports")
-    envelope = _ok(_decline_export(export))
+    envelope = _exited(_decline_export(export))
     offered = {item["track_id"]: item["long_track"] for item in envelope["data"]["items"]}
     assert offered == {"11": LONG_PLAYLIST, "12": "", "13": "", "31": LONG_PLAYLIST}
     assert not _routed(export).exists()
@@ -2273,7 +2263,7 @@ def test_a_template_declaring_no_long_track_playlist_builds_none(configured, tag
     assert taxonomy.default_taxonomy().long_tracks is not None
     write_active(configured, shipped_without("long_tracks"))
     export = _long_export(configured, tmp_path / "exports")
-    envelope = _ok(_apply_export(export))
+    envelope = _exited(_apply_export(export))
     assert envelope["data"]["totals"]["long_added"] == 0
     assert _long_members(_routed(export).read_bytes()) is None
     assert all(item["long_track"] == "" for item in envelope["data"]["items"])
@@ -2295,8 +2285,7 @@ def test_an_edit_to_the_active_copy_is_the_playlist_the_routing_plan_names(
     assert long_plan.keys
     assert {item["long_track"] for item in items} - {""} == {"Long Sets By Hand"}
 
-    code, envelope = _apply_export(export)
-    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    envelope = _exited(_apply_export(export), ExitCode.PENDING_HUMAN)
     offered = {item["long_track"] for item in envelope["data"]["items"]} - {""}
     assert offered == {"Long Sets By Hand"}
     written = _routed(export).read_bytes()
@@ -2383,7 +2372,7 @@ def test_a_calibrated_inbox_files_a_track_over_the_cut_under_with_vox(
 ):
     _calibrated(acknowledged)
     vox_levels[ARRIVED] = level
-    applied = _ok(_apply_inbox())
+    applied = _exited(_apply_inbox())
     assert _membership(acknowledged, native) == {"2"}
     assert _vox_members(acknowledged, native) == ({"2"} if filed else set())
     assert _vocal_warnings(applied) == [], "a compared dimension was warned as not compared"
@@ -2393,7 +2382,7 @@ def test_an_uncalibrated_inbox_warns_and_files_nothing_under_with_vox(
     acknowledged, native, vox_levels
 ):
     vox_levels[ARRIVED] = 60
-    applied = _ok(_apply_inbox())
+    applied = _exited(_apply_inbox())
     assert _membership(acknowledged, native) == {"2"}
     assert _vox_members(acknowledged, native) == set()
     assert len(_vocal_warnings(applied)) == 1, applied["warnings"]
@@ -2404,8 +2393,7 @@ def test_a_corrupt_calibration_refuses_the_inbox_and_writes_nothing(
 ):
     _calibrate(acknowledged, '{"threshold": 5.')
     vox_levels[ARRIVED] = 6
-    code, refused = _apply_inbox()
-    assert code != int(ExitCode.OK), refused
+    refused = _fails(_apply_inbox())
     assert refused["cause"]["reason"] == "vocal-calibration-unreadable", refused
     assert _membership(acknowledged, native) == set()
 
@@ -2414,7 +2402,7 @@ def test_a_second_calibrated_inbox_creates_no_second_vocal_sub(acknowledged, nat
     _calibrated(acknowledged)
     vox_levels[ARRIVED] = 6
     for _ in range(2):
-        _ok(_apply_inbox())
+        _exited(_apply_inbox())
     nodes = _vox_nodes(acknowledged, native)
     assert len(nodes) == 1, [(node.folder_display, node.playlist_id) for node in nodes]
     assert nodes[0].content_ids == frozenset({"2"})
@@ -2432,7 +2420,7 @@ def test_a_calibrated_resume_files_under_with_vox_and_does_not_warn(
     job_id = _drive(argv)[1]["data"]["job_id"]
     _calibrated(acknowledged)
     vox_levels[SHELVED] = level
-    done = _ok(_drive([*argv, "--job", job_id]))
+    done = _exited(_drive([*argv, "--job", job_id]))
     assert [item.state for item in _items(job_id)] == [jobs.ItemState.DONE]
     assert _vox_members(acknowledged, native) == ({"1"} if filed else set())
     assert _vocal_warnings(done) == [], "a compared dimension was warned as not compared"
@@ -2445,8 +2433,7 @@ def test_a_corrupt_calibration_refuses_the_resume_before_any_item_runs(
     job_id = _drive(argv)[1]["data"]["job_id"]
     _calibrate(acknowledged, "")
     vox_levels[SHELVED] = 6
-    code, refused = _drive([*argv, "--job", job_id])
-    assert code != int(ExitCode.OK), refused
+    refused = _fails(_drive([*argv, "--job", job_id]))
     assert refused["cause"]["reason"] == "vocal-calibration-unreadable", refused
     assert [item.state for item in _items(job_id)] == [jobs.ItemState.PENDING]
     assert _membership(acknowledged, native) == set()
@@ -2467,13 +2454,13 @@ def test_a_worker_driven_without_the_resume_refuses_a_corrupt_calibration(
 
 def test_converge_compares_the_vocal_sub_once_calibrated(acknowledged, native, vox_levels):
     vox_levels[SHELVED] = 6
-    _ok(_drive(["converge"]))
+    _exited(_drive(["converge"]))
     job_id = _drive(["rebuild", "--actor", "a-person"])[1]["data"]["job_id"]
     _calibrated(acknowledged)
     _drive(["rebuild", "--actor", "a-person", "--job", job_id])
     assert _vox_members(acknowledged, native) == {"1"}
 
-    after = _ok(_drive(["converge"]))
+    after = _exited(_drive(["converge"]))
     (check,) = [c for c in after["data"]["checks"] if c["key"] == f"tree.{TREE_ID}"]
     assert check["status"] == converge.MATCHING, check
     assert "not compared" not in check["detail"], check
@@ -2516,7 +2503,7 @@ def test_a_calibrated_export_files_over_the_cut_and_not_under_it(configured, voi
     voiced["Low Track.flac"] = 6
     voiced["Mid Track.flac"] = 4
     export = _write_export(configured, tmp_path / "exports")
-    envelope = _ok(_apply_export(export))
+    envelope = _exited(_apply_export(export))
     totals = envelope["data"]["totals"]
     assert totals["not_derived"] == []
     assert totals["vox_created"] == [f"Deep House/{_vox_display()}", f"Tech House/{_vox_display()}"]
@@ -2538,8 +2525,7 @@ def test_a_calibrated_export_files_over_the_cut_and_not_under_it(configured, voi
 
 def _blocked_export(export: Path) -> dict:
     """The envelope of an export run stopped at its apply gate (R-686)."""
-    code, envelope = _drive(["route", "inbox", "--export", str(export)])
-    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    envelope = _exited(_drive(["route", "inbox", "--export", str(export)]), ExitCode.DECISION_REQUIRED)
     return envelope
 
 
@@ -2562,7 +2548,7 @@ def test_the_export_gate_shows_every_item_the_digest_was_taken_over(configured, 
     """``shown`` holds the declined run's items (less R-692's names) and their digest."""
     export = _gate_export(configured, voiced, tmp_path)
     shown = _blocked_export(export)["cause"]["detail"]["shown"]
-    declined = _ok(_decline_export(export))
+    declined = _exited(_decline_export(export))
     assert _unnamed(shown["items"]) == declined["data"]["items"]
     assert shown["digest"] == declined["data"]["digest"]
     assert shown["count"] == 6
@@ -2644,7 +2630,7 @@ def test_the_export_gate_names_each_track_by_artist_and_title(configured, voiced
         ("", "", ""),
         ("", "", ""),
     ]
-    declined = _ok(_decline_export(export))
+    declined = _exited(_decline_export(export))
     assert all("artist" not in item and "title" not in item for item in declined["data"]["items"])
     assert _unnamed(shown["items"]) == declined["data"]["items"]
     assert shown["digest"] == declined["data"]["digest"]
@@ -2660,10 +2646,9 @@ def test_the_export_gate_leaves_an_unread_track_unnamed(configured, voiced, tmp_
 
 def test_the_database_inbox_gate_shows_its_items(acknowledged, native, vox_levels):
     """The same gate on the database path was as blind, and one carry serves it."""
-    code, blocked = _drive(["route", "inbox"])
-    assert code == int(ExitCode.DECISION_REQUIRED), blocked
+    blocked = _exited(_drive(["route", "inbox"]), ExitCode.DECISION_REQUIRED)
     shown = blocked["cause"]["detail"]["shown"]
-    declined = _ok(_decline_inbox())
+    declined = _exited(_decline_inbox())
     assert shown["items"] == declined["data"]["items"] != []
     assert shown["digest"] == declined["data"]["digest"]
     assert shown["count"] == len(declined["data"]["items"])
@@ -2674,8 +2659,7 @@ FALLBACK_DESTINATION = "Electronica / Other/Unsorted"
 
 
 def _blocked_inbox() -> dict:
-    code, blocked = _drive(["route", "inbox"])
-    assert code == int(ExitCode.DECISION_REQUIRED), blocked
+    blocked = _exited(_drive(["route", "inbox"]), ExitCode.DECISION_REQUIRED)
     return blocked["cause"]["detail"]["shown"]
 
 
@@ -2705,7 +2689,7 @@ def test_the_database_inbox_gate_shows_each_files_destination(acknowledged, nati
             "genre": "",
         }
     ]
-    declined = _ok(_decline_inbox())
+    declined = _exited(_decline_inbox())
     assert shown["items"] == declined["data"]["items"]
     assert shown["digest"] == declined["data"]["digest"]
     assert shown["intake"] == str(intake)
@@ -2727,7 +2711,7 @@ def test_the_database_apply_files_the_track_where_the_gate_said(acknowledged, na
     assert (shown["routed"], shown["vocal"]) == (1, 1)
     assert shown["not derived"] == []
 
-    applied = _ok(_apply_inbox())
+    applied = _exited(_apply_inbox())
     assert applied["data"]["digest"] == shown["digest"]
     assert _filed_under(acknowledged, native, "2") == {item["destination"], item["vocal"]}
 
@@ -2775,7 +2759,7 @@ def test_the_database_gate_on_a_library_with_no_native_tree_says_so_before_the_a
     assert shown["warnings"] == [INBOX_REMEDY]
     assert not Path(stocked.library.db_path).exists(), "the plan opened a database"
 
-    declined = _ok(_decline_inbox())
+    declined = _exited(_decline_inbox())
     assert declined["data"]["totals"]["applied"] is False
     assert [w["message"] for w in declined["warnings"]] == [INBOX_REMEDY]
 
@@ -2786,7 +2770,7 @@ def test_an_empty_inbox_with_no_native_tree_answers_inbox_empty_with_the_remedy(
         path.unlink()
     shown = _blocked_inbox()
     assert shown["items"] == [] and shown["warnings"] == [INBOX_REMEDY]
-    applied = _ok(_apply_inbox())
+    applied = _exited(_apply_inbox())
     assert applied["data"]["totals"]["reason"] == "inbox-empty"
     assert [w["message"] for w in applied["warnings"]] == [INBOX_REMEDY]
 
@@ -2815,7 +2799,7 @@ def test_an_uncalibrated_export_creates_no_vocal_sub_and_names_the_gap(
 ):
     voiced["Low Track.flac"] = 60
     export = _write_export(configured, tmp_path / "exports")
-    envelope = _ok(_apply_export(export))
+    envelope = _exited(_apply_export(export))
     totals = envelope["data"]["totals"]
     assert totals["not_derived"] == [rebuild.VOCAL_DIMENSION]
     assert totals["vox_created"] == []
@@ -2827,8 +2811,7 @@ def test_an_uncalibrated_export_creates_no_vocal_sub_and_names_the_gap(
 def test_a_corrupt_calibration_refuses_the_export_before_the_plan(configured, voiced, tmp_path):
     _calibrate(configured, '{"threshold": true}')
     export = _write_export(configured, tmp_path / "exports")
-    code, envelope = _apply_export(export)
-    assert code != int(ExitCode.OK), envelope
+    envelope = _fails(_apply_export(export))
     assert envelope["cause"]["reason"] == "vocal-calibration-unreadable", envelope
     assert not _routed(export).exists()
 
@@ -2843,7 +2826,7 @@ def test_the_export_vocal_subs_are_created_once(configured, voiced, tmp_path):
     written = first.read_bytes()
     assert written.count(f'Name="{_vox_display()}"'.encode()) == 2
 
-    again = _ok(_apply_export(first))
+    again = _exited(_apply_export(first))
     totals = again["data"]["totals"]
     assert totals["vox_created"] == []
     assert totals["inserted"] == 0
@@ -2861,7 +2844,7 @@ def test_vocal_subs_alone_are_a_change_and_write_a_file(configured, voiced, tmp_
     bare = tmp_path / "again" / "library_FRESH.xml"
     bare.parent.mkdir()
     bare.write_bytes(without)
-    envelope = _ok(_apply_export(bare))
+    envelope = _exited(_apply_export(bare))
     assert envelope["data"]["totals"]["inserted"] == 0
     assert len(envelope["data"]["totals"]["vox_created"]) == 2
     assert _routed(bare).is_file()
@@ -2895,7 +2878,7 @@ def test_a_calibrated_export_over_a_taxonomy_with_no_vocal_sub_creates_none(
     _calibrated(configured)
     voiced["Low Track.flac"] = 6
     export = _write_export(configured, tmp_path / "exports")
-    envelope = _ok(_apply_export(export))
+    envelope = _exited(_apply_export(export))
     assert envelope["data"]["totals"]["vox_created"] == []
     assert envelope["data"]["totals"]["not_derived"] == []
     # Spelled, because the narrowed taxonomy no longer declares the name.
@@ -2996,7 +2979,7 @@ def test_an_unplaced_track_lands_in_its_sub_and_an_absent_sub_is_created(
 ):
     """The creating writer: Tech House has no High, so the sweep makes one."""
     export = _unplaced_export(configured, tmp_path / "exports")
-    envelope = _ok(_sweep(export))
+    envelope = _exited(_sweep(export))
     assert envelope["outcome"] == str(Outcome.OK)
     totals = envelope["data"]["totals"]
     assert totals["applied"] is True
@@ -3030,10 +3013,10 @@ def test_the_unplaced_check_run_owes_no_import_before_the_tracks_are_filed(
     configured, tagged, tmp_path
 ):
     """R-694: after one of three tracks is filed by hand the other two are planned again, as a review."""
-    first = _ok(_sweep(_unplaced_export(configured, tmp_path / "before")))
+    first = _exited(_sweep(_unplaced_export(configured, tmp_path / "before")))
     assert first["pending_human_action"] is None
     later = _unplaced_export(configured, tmp_path / "after", held={("Deep House", "Low"): ("11",)})
-    again = _ok(_sweep(later))
+    again = _exited(_sweep(later))
     assert again["outcome"] == str(Outcome.OK)
     assert again["pending_human_action"] is None
     assert [item["track_id"] for item in again["data"]["items"]] == ["12", "13"]
@@ -3047,7 +3030,7 @@ def test_a_placed_track_is_untouched_even_where_the_declaration_would_not_put_it
 ):
     """Placed means held anywhere under the tree, not held where the rule says."""
     export = _unplaced_export(configured, tmp_path / "exports", held={("Deep House", "Med"): ("11",)})
-    envelope = _ok(_sweep(export))
+    envelope = _exited(_sweep(export))
     assert envelope["data"]["totals"]["inserted"] == 2
     assert [item["track_id"] for item in envelope["data"]["items"]] == ["12", "13"]
     written = _placed(export).read_bytes()
@@ -3064,7 +3047,7 @@ def test_a_track_held_only_in_a_vocal_sub_is_placed(configured, tagged, tmp_path
         folders=(("Deep House", ("Low", "Med")), ("Tech House", ("Low", vox))),
         held={("Tech House", vox): ("13",)},
     )
-    envelope = _ok(_sweep(export))
+    envelope = _exited(_sweep(export))
     assert "13" not in {item["track_id"] for item in envelope["data"]["items"]}
     assert envelope["data"]["totals"]["created"] == []
     assert b'Name="High"' not in _placed(export).read_bytes()
@@ -3083,7 +3066,7 @@ def test_a_track_held_only_outside_the_tree_is_unplaced(configured, tagged, tmp_
         ),
         held={("Tech House", "Low"): ("13",)},
     )
-    envelope = _ok(_sweep(export))
+    envelope = _exited(_sweep(export))
     assert [item["track_id"] for item in envelope["data"]["items"]] == ["11", "12"]
     written = _placed(export).read_bytes()
     assert _sub_keys(written, "Deep House", "Low") == ("11",)
@@ -3114,7 +3097,7 @@ def test_without_the_flag_nothing_is_written_and_the_answer_names_the_flag(
 def test_no_tempo_or_bpm_attribute_differs_after_the_sweep(configured, tagged, tmp_path):
     """Never write a beat grid: every grid token the export held comes back as it was."""
     export = _unplaced_export(configured, tmp_path / "exports")
-    _ok(_sweep(export))
+    _exited(_sweep(export))
     grid = re.compile(rb'<TEMPO[^>]*>|\b(?:AverageBpm|Bpm|Inizio|Metro|Battito)="[^"]*"')
     before = grid.findall(export.read_bytes())
     assert before, "the fixture carries no grid, so this compares nothing"
@@ -3127,7 +3110,7 @@ def test_a_second_sweep_over_its_own_output_places_nothing(configured, tagged, t
     _sweep(export)
     first = _placed(export)
     before = sorted(path.name for path in first.parent.iterdir())
-    envelope = _ok(_sweep(first))
+    envelope = _exited(_sweep(first))
     assert envelope["outcome"] == str(Outcome.NO_OP)
     totals = envelope["data"]["totals"]
     assert totals["inserted"] == 0
@@ -3153,7 +3136,7 @@ def test_a_sweep_that_could_place_nothing_is_blocked_not_done(configured, tagged
         held={("Deep House", "Low"): ("11",), ("Deep House", "Med"): ("12",)},
         missing_file="13",
     )
-    envelope = _ok(_sweep(export))
+    envelope = _exited(_sweep(export))
     assert envelope["outcome"] == str(Outcome.NO_OP)
     assert envelope["data"]["totals"]["reason"] == "route-blocked"
     assert not _placed(export).exists()
@@ -3175,8 +3158,7 @@ def test_a_missing_genre_folder_is_a_skipped_write_and_no_folder_is_invented(
 def test_a_cut_over_tree_refuses_the_sweep_and_writes_nothing(configured, tagged, tmp_path):
     _cut_over_routing_tree(configured)
     export = _unplaced_export(configured, tmp_path / "exports")
-    code, envelope = _sweep(export)
-    assert code != int(ExitCode.OK), envelope
+    envelope = _fails(_sweep(export))
     assert envelope["cause"]["reason"] == "tree-unconverged"
     assert "route unplaced without --export" in " ".join(envelope["cause"]["remediation"]["steps"])
     assert not _placed(export).exists()
@@ -3197,8 +3179,7 @@ def test_an_export_with_no_routing_tree_refuses(configured, tagged, tmp_path, re
             replacement.replace(b"{tree}", display.encode()),
         )
     )
-    code, envelope = _sweep(export)
-    assert code != int(ExitCode.OK), envelope
+    envelope = _fails(_sweep(export))
     assert envelope["cause"]["reason"] == "governed-tree-absent"
     assert not _placed(export).exists()
 
@@ -3208,8 +3189,7 @@ def test_an_unmounted_library_refuses_the_sweep(configured, tagged, tmp_path, mo
     real = Path.is_dir
     root = Path(configured.library.root)
     monkeypatch.setattr(Path, "is_dir", lambda self: False if self == root else real(self))
-    code, envelope = _sweep(export)
-    assert code != int(ExitCode.OK), envelope
+    envelope = _fails(_sweep(export))
     assert envelope["cause"]["reason"] == "library-volume-unmounted"
     assert not _placed(export).exists()
 
@@ -3226,7 +3206,7 @@ def test_the_sweep_runs_with_rekordbox_open_and_opens_no_database(
 
     monkeypatch.setattr(rb_writer, "open_db", no_open)
     export = _unplaced_export(configured, tmp_path / "exports")
-    _ok(_sweep(export))
+    _exited(_sweep(export))
     assert not session.lock_path(configured).exists()
 
 
@@ -3242,7 +3222,7 @@ def test_a_calibrated_vocal_track_lands_in_a_vocal_sub_the_sweep_creates(
         tmp_path / "exports",
         folders=(("Deep House", ("Low", "Med")), ("Tech House", ("Low", "Med", "High"))),
     )
-    envelope = _ok(_sweep(export))
+    envelope = _exited(_sweep(export))
     assert envelope["data"]["totals"]["created"] == [f"Tech House/{vox}"]
     written = _placed(export).read_bytes()
     assert _sub_keys(written, "Tech House", "High") == ("13",)
@@ -3311,7 +3291,7 @@ def test_a_namesake_genre_folder_outside_the_routing_tree_takes_nothing(
     assert document.count(opening) == 1, "the fixture no longer has the shape this bends"
     export.write_bytes(document.replace(opening, opening + namesake))
 
-    envelope = _ok(_sweep(export))
+    envelope = _exited(_sweep(export))
     assert envelope["data"]["totals"]["created"] == ["Tech House/High"]
     written = _placed(export).read_bytes()
     assert _sub_keys(written, "Tech House", "High") == ("13",)
@@ -3349,7 +3329,7 @@ def test_the_database_inbox_gate_shows_a_genre_sub_beside_the_band_and_files_bot
     assert item["genre"] == "Minimal / Deep Tech/Rominimal"
     assert item["vocal"] == ""
     assert (shown["routed"], shown["vocal"], shown["genre sub"]) == (1, 0, 1)
-    applied = _ok(_apply_inbox())
+    applied = _exited(_apply_inbox())
     assert applied["data"]["items"] == shown["items"]
     assert _filed_under(acknowledged, native, "2") == {
         "Minimal / Deep Tech/Low Energy",
@@ -3371,7 +3351,7 @@ def test_a_vocal_track_unrated_is_owed_one_rating_not_one_per_place(configured, 
     _calibrated(configured)
     voiced["Low Track.flac"] = 6
     export = _write_export(configured, tmp_path / "exports", ratings={"11": "0"})
-    envelope = _ok(_apply_export(export))
+    envelope = _exited(_apply_export(export))
     (message,) = _owed(envelope)
     assert message.startswith("1 intake row(s) are owed a star rating"), message
 
@@ -3407,7 +3387,7 @@ def test_the_export_gate_shows_a_genre_sub_beside_the_band_and_files_both(
     assert offered["11"]["genre"] == "Minimal / Deep Tech/Rominimal"
     assert offered["12"]["genre"] == "" and offered["13"]["genre"] == ""
     assert (shown["routed"], shown["genre sub"]) == (3, 1)
-    _ok(_apply_export(export))
+    _exited(_apply_export(export))
     written = _routed(export).read_bytes()
     assert _sub_keys(written, "Minimal / Deep Tech", "Low Energy") == ("11",)
     assert _sub_keys(written, "Minimal / Deep Tech", "Rominimal") == ("11",)
@@ -3419,7 +3399,7 @@ def test_the_unplaced_export_names_a_genre_sub_beside_the_band_and_files_both(
     del rominimal_export
     folders = (("Deep House", ("Low", "Med")), ("Tech House", ("Low", "Med")), ROMINIMAL_FOLDER)
     export = _unplaced_export(configured, tmp_path / "exports", folders=folders)
-    envelope = _ok(_sweep(export))
+    envelope = _exited(_sweep(export))
     offered = {item["track_id"]: item for item in envelope["data"]["items"]}
     assert offered["11"]["destination"] == "Minimal / Deep Tech/Low Energy"
     assert offered["11"]["genre"] == "Minimal / Deep Tech/Rominimal"
