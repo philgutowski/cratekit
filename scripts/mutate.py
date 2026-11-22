@@ -1,228 +1,20 @@
 #!/usr/bin/env python3
 """Mutation table driver. Rows go in as data, a measured table comes out.
 
-Every review agent on this project has hand rolled this loop, and three of the
-project's recorded incidents were hand rolled driver mistakes: a `git checkout`
-restore that ate a fix round's uncommitted edits, a second `-q` that became
-`-qq` and hid the summary line, and a batch measured against a red baseline that
-read every row as a death. The judgement in a mutation table is choosing which
-guards to revert. Everything after that choice is obedience, and obedience is
-what a script is for.
+Each row is applied as an exact string replacement, its test subset run, its
+deaths counted off pytest report objects, and the file restored and verified
+against `git show HEAD`. Run as `scripts/mutate.py rows.toml [--name N] [--resume]
+[--known-failures FILE]`; it writes `docs/mutation/<name>.md` and `.json`.
 
-So: the agent supplies the rows. This supplies apply, run, count, restore and
-verify, identically every time.
-
-
-WHAT A MUTATION TABLE IS, IF YOU HAVE NOT MET ONE
--------------------------------------------------
-A green test suite tells you the tests pass. It does not tell you the tests
-would NOTICE if the code broke. Mutation testing answers the second question by
-breaking the code on purpose: revert one guard, run the suite, count how many
-tests fail. That count is the guard's "death count". A guard whose removal kills
-zero tests is not tested, whatever the coverage report says, because coverage
-measures which lines RAN and a mutation table measures which lines MATTER.
-
-
-HOW TO RUN IT
--------------
-    ./.venv/bin/python scripts/mutate.py rows.toml
-
-    ./.venv/bin/python scripts/mutate.py rows.toml --name u34-round-2
-    ./.venv/bin/python scripts/mutate.py rows.toml --resume
-    ./.venv/bin/python scripts/mutate.py rows.toml --allow-dirty
-
-It writes `docs/mutation/<name>.md`, the table a human and a later verifier
-read, and `docs/mutation/<name>.json`, the same numbers as data so a later agent
-can read counts without re-reading prose.
-
-
-THE ROW FORMAT
---------------
-TOML or JSON, chosen by the file suffix. TOML is easier to author because its
-triple quoted literal strings hold code exactly, with no escaping. A worked
-example, complete:
-
-    name = "u34-round-2"
-    pass_kind = "light"          # "light" caps at 25 rows, "full" at 45;
-                                 # "replay" is below
-
-    [[rows]]
-    id = "G1_empty_name"
-    description = "Drop the empty-name guard in tree_registry.register"
-    file = "src/cratekit/core/tree_registry.py"
-    surface = "user"             # "user" or "maintainer"; default "maintainer"
-    old = '''
-        if not name.strip():
-            raise ValueError("a tree needs a name")
-    '''
-    new = ""
-
-    [[rows]]
-    id = "G1_composite"
-    description = "What G1 does hold: register an empty name and read it back"
-    file = "src/cratekit/core/tree_registry.py"
-    pairs_with = "G1_empty_name"     # this row is G1_empty_name's composite
-    old = '''    return sorted(entries)'''
-    new = '''    return list(entries)'''
-
-    [[rows]]
-    id = "R4_message"
-    description = "Reword the refusal message, do not append to it"
-    file = "src/cratekit/core/restore.py"
-    tests = ["tests/test_restore.py"]     # optional; derived when omitted
-    old = '''"nothing staged to restore"'''
-    new = '''"no staged restore was found"'''
-
-    [[dropped]]
-    id = "G7_lock_timeout"
-    description = "Halve the lock timeout coefficient"
-    reason = "ranked below the cap: same guard family as G3, which is measured"
-
-Row fields. `id`, `description`, `file`, `old` and `new` are required; `new`
-may be the empty string, which is how you delete a guard. `tests` is an optional
-explicit subset. `surface` is `user` or `maintainer` and decides whether a zero
-row owes a composite. `pairs_with` names the row this one is the composite for.
-
-`dropped` entries are rows you CONSIDERED and did not run. METHOD caps a light
-pass at 25 rows and a full pass at 45, and a truncation nobody logged reads as
-coverage. Logging it is what makes the gap visible.
-
-
-THE REPLAY PASS
----------------
-    pass_kind = "replay"
-
-    [[rows]]
-    id = "u114.G3_blank_name"
-    source = { table = "u114.json", id = "G3_blank_name" }
-    ...
-
-A third pass kind, for measuring again what a table under `docs/mutation/`
-already recorded (U297). It has no row cap, because it chooses no rows: every
-row must name the table and the id it came from in `source`, a row that names
-none is refused, and so are two rows naming the same one. The name is checked
-before anything runs: the table must be a file under `docs/mutation/` that
-holds a row of that id which recorded a death, so a new row cannot be carried
-past the caps by naming a table that never held it. `scripts/killset.py rows`
-writes such a file. Everything else is the pass every table gets: one full
-baseline, one null control, a subset baseline per distinct subset, a zero
-promoted to the full suite, and every restore verified. `--resume` reuses a
-replay's rows only from a sidecar measured at this commit with no tracked
-file changed since, because a replay is read as what the tests of this commit
-kill; a light or a full pass resumes as it always did. A row whose file or
-text is not what its source recorded must say why in `moved`.
-
-A replay row may say `moved = "why"` when its text is no longer the text its
-source recorded, and the file may carry `[[mapped]]` entries, each naming a
-`source` this batch has no row for, the row `to` that now covers it and the
-`reason`. Both are carried into the table for `scripts/killset.py check`,
-which reads two replay tables and fails on a kill the second one lost. The
-caps on a light and a full pass are unchanged.
-
-
-WHAT HAPPENS PER ROW, AND WHY EACH STEP IS THERE
-------------------------------------------------
-1.  Snapshot the target file's bytes in memory. Not a scratch copy, not a git
-    stash, not a branch. The driver never uses git to WRITE, because
-    `git checkout` silently discards the uncommitted edits a fix round is
-    holding, and that has already cost a round of work here.
-
-2.  Apply the mutation as an exact string replacement, and REFUSE the row if the
-    old text is absent or appears more than once. An ambiguous match does not
-    fail; it silently mutates the wrong site and hands you a confident number
-    about an experiment you did not run. The refusal happens before anything is
-    written, so a refused row never touches the disk.
-
-3.  Run the test subset. When the row does not name one it is derived: the
-    target's dotted module path is computed, every file under `tests/` is
-    parsed, and the ones whose imports name that module are the subset. Derived
-    rather than caller-supplied because a caller-supplied subset is a place for
-    a typo to look like a result.
-
-4.  Count deaths from pytest REPORT OBJECTS, not from stdout. A tiny plugin is
-    written to a temp directory and loaded with `-p`; its hooks read
-    `report.nodeid` straight off the report and write JSON. The alternative
-    everyone reaches for, splitting a `FAILED` line on `" - "`, is wrong on this
-    repository specifically, because that separator appears INSIDE parametrized
-    test ids and the split truncates them.
-
-5.  Record the COLLECTED count on every row and flag any drift from the
-    baseline's. This is the step most hand rolled drivers skip and it is the one
-    that matters most: a mutation that breaks a module's import takes that whole
-    test file out of collection, so the tests that would have died never run,
-    and the row reports a clean, calm, entirely false zero.
-
-6.  Restore by rewriting the snapshotted bytes, then VERIFY against
-    `git show HEAD:<path>`. Reading git is fine. The rule is that the driver
-    never uses git to write. Verifying against a scratch copy instead is
-    circular: a contaminated copy certifies itself.
-
-7.  Promote a zero to a full suite run before reporting it as a zero. A death on
-    a subset is a real death, so a killing row stops there and stays cheap. A
-    zero on a subset is only a zero within that subset. Promoted zeros are
-    marked as promoted in the output.
-
-
-WHAT HAPPENS ONCE PER BATCH
----------------------------
-*   A full suite BASELINE, and the batch refuses to start if it is not green,
-    naming the failures. Given a known failures file it may be READ instead
-    of run, from the cloud battery's record of its last run (U271): only when
-    that record is for this commit, on a clean tree, on this machine,
-    checkout and interpreter, with the same known failures file, and that run
-    ran every test it collected with no `PYTEST_ADDOPTS` editing it.
-    Any difference and it is measured. A read baseline is held to the same
-    green or refuse rule, and the table says which it was. A red baseline makes every row look like a death,
-    including rows that cannot possibly kill anything. That exact trap cost a
-    verifier a full batch on 2026-08-10, when a scratch copy carrying no `.git`
-    failed a repository cleanliness test.
-
-*   A subset baseline per distinct subset, for the same reason at row scale, and
-    to give the collected count each row is compared against.
-
-*   A NULL CONTROL row, generated automatically, which appends a comment line to
-    a Python target. It changes nothing semantically, so it MUST kill zero. If
-    it kills anything, the measuring apparatus is broken rather than the code,
-    the batch is declared invalid and the run stops. This is the check that
-    would have caught the 2026-08-10 trap in the first minute instead of the
-    last.
-
-*   `PYTHONDONTWRITEBYTECODE=1` on every run without exception. Two mutations of
-    identical byte length written a second apart leave the source mtime and size
-    unchanged, so CPython reuses the cached bytecode from the PREVIOUS mutation
-    and the driver measures a result that never existed.
-
-*   `addopts` is read out of `pyproject.toml`, stripped of `-q`, and passed back
-    with `-o`. The ini file already sets `-q`; a second one becomes `-qq`, which
-    suppresses the summary line entirely. Stripping rather than clearing means a
-    future addition to `addopts` is not silently dropped.
-
-*   Rows run synchronously, in the foreground, one at a time. A backgrounded
-    driver outlived its parent twice on this project and contaminated later
-    rows, which is a failure that presents as an inexplicable number rather than
-    as an error.
-
-
-THE SHAPE OF THE CODE
----------------------
-Four layers, each testable without the one above it:
-
-    load_rows / derive_subset        pure functions over text and paths
-    apply_mutation / mutated         the file surgery, with try/finally
-    run_pytest                       one subprocess, one RunResult
-    measure_row / measure_batch      the loop, the baselines, the control
-
-`mutated` is the load bearing piece and it is nine lines: snapshot, write,
-`yield`, and a `finally` that rewrites the snapshot and verifies it. A `finally`
-runs on a normal exit, on an exception, and on the KeyboardInterrupt an
-impatient operator sends, which is why a crash mid row cannot leave a mutated
-file behind. All three paths are driven by tests, because the one path nobody
-tests is the one that leaves a mutation committed to somebody's branch.
-
-The tests run against a throwaway fixture package with its own tiny suite and
-its own git repository, never against Cratekit's suite. A driver tested only
-against the suite it was written for is a driver whose measurements have never
-been checked against a known answer.
+A row file, TOML or JSON, holds `name`, `pass_kind` and `[[rows]]` (`id`,
+`description`, `file`, `old`, `new`, optional `tests`, `surface`, `pairs_with`),
+and `[[dropped]]` with a `reason`. `light` caps at 25 rows and `full` at 45;
+`replay` (U297) has none, since each row names the recorded table and id in
+`source`, says `moved` when its text differs, and may carry `[[mapped]]` entries.
+Each batch takes a green baseline (U271 may read it from the cloud battery), a
+null control that must kill zero, and promotes a zero to the full suite. The
+rules, and why, are METHOD's Driver rules and The mutation table in
+`docs/METHOD.md`. What runs no test is in `scripts/mutate_table.py`.
 
 Exit codes
 ----------
@@ -237,7 +29,6 @@ Exit codes
 from __future__ import annotations
 
 import argparse
-import ast
 import hashlib
 import importlib.util
 import json
@@ -248,8 +39,7 @@ import subprocess
 import sys
 import tempfile
 import tomllib
-from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -258,47 +48,40 @@ import platformdirs
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
-def _load_battery():
-    """``scripts/cloud_battery.py``, whose places for temporary files this driver uses.
-
-    Loaded by path from beside this file, and registered, since it declares
-    dataclasses. One definition of what memory and disk are, and of when a
-    machine can give either, serves the battery that measures the known
-    failures and the driver that subtracts them (U273).
-    """
-    path = Path(__file__).resolve().with_name("cloud_battery.py")
-    spec = importlib.util.spec_from_file_location("cratekit_cloud_battery_places", path)
+def _load(filename: str, name: str):
+    """A script beside this one, loaded by path and registered, since it declares dataclasses."""
+    path = Path(__file__).resolve().with_name(filename)
+    spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
 
-BATTERY = _load_battery()
+#: The battery's places for temporary files, one definition for the battery and the driver.
+BATTERY = _load("cloud_battery.py", "cratekit_cloud_battery_places")
+_table = _load("mutate_table.py", "cratekit_mutate_table")
 
-#: Appended by the null control row. A Python comment is invisible to the
-#: interpreter and to an AST walk, which is what makes the control a control.
+ROW_CAPS, REPLAY, PASS_KINDS = _table.ROW_CAPS, _table.REPLAY, _table.PASS_KINDS
+DriverRefusal, RestoreVerificationError = _table.DriverRefusal, _table.RestoreVerificationError
+MeasurementFailure, StateLeak = _table.MeasurementFailure, _table.StateLeak
+Row, Dropped, Mapped = _table.Row, _table.Dropped, _table.Mapped
+read_source, read_spec = _table.read_source, _table.read_spec
+refuse_unrecorded_sources = _table.refuse_unrecorded_sources
+_git, git_head_bytes, verify_restore = _table._git, _table.git_head_bytes, _table.verify_restore
+dirty_targets, head_sha, branch_name = _table.dirty_targets, _table.head_sha, _table.branch_name
+apply_mutation, mutated = _table.apply_mutation, _table.mutated
+dotted_module, derive_subset = _table.dotted_module, _table.derive_subset
+RunResult, RowResult, Batch = _table.RunResult, _table.RowResult, _table.Batch
+composite_note = _table.composite_note
+
+#: Appended by the null control row: invisible to the interpreter and to an AST walk.
 NULL_CONTROL_COMMENT = "\n# mutation driver null control, restored automatically\n"
-
-#: METHOD's hard row caps. A cap with no enforcement was tried and did not hold:
-#: light passes ran 50 and 89 rows on 2026-08-10.
-ROW_CAPS = {"light": 25, "full": 45}
-
-#: The pass that measures recorded rows again (U297). It has no cap because it
-#: chooses nothing: every row names the table and id it came from.
-REPLAY = "replay"
-PASS_KINDS = (*ROW_CAPS, REPLAY)
 
 PLUGIN_MODULE = "mutate_report_plugin"
 
-#: Environment variables the driver REMOVES from the child, and why. The child
-#: otherwise inherits ``os.environ`` whole. That is not a convenience: a review
-#: agent ran its rows under ``PATH=/usr/bin:/bin`` on 2026-08-10, which dropped
-#: ffmpeg off the path, reddened 28 audio tests on every full run including the
-#: baseline, and cost seven rows. The subset rows were unaffected, so the damage
-#: looked selective rather than systemic. Anything scrubbed is named here and
-#: printed in the table, because a silent scrub is the same defect one variable
-#: smaller.
+#: Environment variables REMOVED from the child, which otherwise inherits
+#: ``os.environ`` whole, and why. Named in the table: a silent scrub is a defect.
 SCRUBBED_ENV = {
     "PYTEST_ADDOPTS": "an inherited value would edit the command after the driver built it",
     "PYTEST_XDIST_WORKER": (
@@ -311,23 +94,8 @@ SCRUBBED_ENV = {
     "PYTEST_XDIST_TESTRUNUID": "the same inherited worker identity, scrubbed with it",
 }
 
-#: The installation-scoped directories every child is pointed AWAY from, into a
-#: throwaway sandbox inside the run's own workspace. R-343 is why.
-#:
-#: On 2026-09-20 a child of this driver overwrote the real configuration with a
-#: test fixture one, destroying what four attended sittings had established. The
-#: conftest redirects all of these, and at the time it did so on the shared
-#: ``monkeypatch``, so ``monkeypatch.undo()`` inside a test rolled the autouse
-#: isolation back with everything else it undid. What ``undo()`` restores is the
-#: value the PROCESS started with, so the fix is to make the process start in a
-#: sandbox: after that, an undo lands in the sandbox rather than on the real
-#: machine. R-658 has since moved the conftest's isolation onto instances of its
-#: own that no body can undo, and banned the body ``undo()``. The sandbox stays,
-#: because a mutated tree is exactly where a guard in ``tests/`` can be defeated.
-#:
-#: The app name is duplicated from ``cratekit.core.config`` on purpose. Importing
-#: that module here would make the guard depend on a mutation target, and a guard
-#: that imports what it guards can be mutated out from under itself.
+#: What every child is pointed AWAY from, into a sandbox in its workspace (R-343), so a
+#: test undoing the suite's isolation lands there. The app name is not imported from a target.
 APP_NAME = "cratekit"
 SANDBOXED_ENV = {
     "HOME": "home",
@@ -338,8 +106,7 @@ SANDBOXED_ENV = {
     "XDG_CACHE_HOME": "cache",
     "CRATEKIT_CONFIG_DIR": f"config/{APP_NAME}",
     "CRATEKIT_STATE_DIR": f"state/{APP_NAME}",
-    # U278: the provider gate never follows CRATEKIT_STATE_DIR, so a child is
-    # pointed away from the real one by its own variable.
+    # U278: the provider gate never follows CRATEKIT_STATE_DIR, so it has its own.
     "CRATEKIT_PROVIDER_GATE_DIR": f"state/{APP_NAME}",
 }
 
@@ -355,18 +122,10 @@ ADDED_ENV = (
     + " (all pointed inside the run's workspace, R-343)",
 )
 
-#: The in-subprocess plugin. It exists so death counts come off report OBJECTS.
-#: It rewrites its JSON file on every event rather than at the end, so a run that
-#: dies partway still leaves readable evidence of how far it got.
-#:
-#: **Under pytest-xdist only the controller writes.** ``-p`` loads this module in
-#: every worker as well, and each worker holds its own ``_STATE``, so eight
-#: processes rewriting one file would leave whichever partial count flushed last.
-#: The controller is the one process that sees everything: xdist forwards each
-#: worker's test reports and failed collect reports to the ordinary hooks there.
-#: It collects nothing itself, so its ``session.items`` is empty and the count
-#: comes off the hook xdist fires when a worker finishes collecting. Every worker
-#: collects the same ids or xdist aborts the run, so any one of them is the count.
+#: The in-subprocess plugin, so death counts come off report OBJECTS. It rewrites
+#: its file on every event, so a run that dies partway leaves evidence. Under
+#: pytest-xdist only the controller writes: it sees every worker's reports, and
+#: its count comes off the hook xdist fires when a worker finishes collecting.
 PLUGIN_SOURCE = '''
 import json
 import os
@@ -377,31 +136,26 @@ _OUT = os.environ["MUTATE_REPORT_PATH"]
 _IS_WORKER = bool(os.environ.get("PYTEST_XDIST_WORKER"))
 _STATE = {"collected": 0, "failed": [], "errored": [], "collect_errors": []}
 
-
 def _flush():
     if _IS_WORKER:
         return
     with open(_OUT, "w", encoding="utf-8") as handle:
         json.dump(_STATE, handle)
 
-
 def pytest_collection_finish(session):
     if session.items:
         _STATE["collected"] = len(session.items)
     _flush()
-
 
 @pytest.hookimpl(optionalhook=True)
 def pytest_xdist_node_collection_finished(node, ids):
     _STATE["collected"] = len(ids)
     _flush()
 
-
 def pytest_collectreport(report):
     if report.failed:
         _STATE["collect_errors"].append(report.nodeid)
         _flush()
-
 
 def pytest_runtest_logreport(report):
     if not report.failed:
@@ -413,138 +167,13 @@ def pytest_runtest_logreport(report):
 '''
 
 
-class DriverRefusal(RuntimeError):
-    """The driver will not proceed. Loud on purpose, never a warning."""
-
-
-class RestoreVerificationError(RuntimeError):
-    """A restored file does not match ``git show HEAD``. Nothing continues."""
-
-
-class MeasurementFailure(RuntimeError):
-    """pytest could not be measured at all, which is not the same as a zero.
-
-    Deliberately NOT a ``DriverRefusal``. A refusal means the row was rejected
-    before it ran and the tree is untouched. This means the run happened and
-    produced nothing readable, which has to be recorded as an error rather than
-    quietly filed beside the rows that were legitimately refused.
-    """
-
-
-class StateLeak(RuntimeError):
-    """A child wrote to the REAL installation state. The batch stops here.
-
-    Deliberately NOT a ``DriverRefusal`` and not a ``MeasurementFailure``.
-    ``measure_row`` catches ``DriverRefusal`` and turns it into a refused row, so
-    a leak filed under that class would be recorded as one unremarkable row and
-    the driver would carry on running more children against a machine it had
-    just damaged. This class is caught nowhere but the row loop, which names the
-    row, and ``main``, which stops.
-
-    It aborts the whole batch rather than failing one row because the damage is
-    already done by the time it is observed. The question after a leak is not
-    which of the remaining rows still measures, it is what was overwritten.
-    """
-
-
-# ---------------------------------------------------------------------------
-# Rows
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class Row:
-    """One exact textual substitution in one file."""
-
-    id: str
-    description: str
-    file: str
-    old: str
-    new: str
-    tests: tuple[str, ...] | None = None
-    surface: str = "maintainer"
-    pairs_with: str | None = None
-    kind: str = "mutation"
-    #: The table and row id a replay row came from, and why its text differs
-    #: from what that table recorded, when it does (U297).
-    source: tuple[str, str] | None = None
-    moved: str = ""
-
-    def fingerprint(self) -> str:
-        """A stable digest of everything that changes the measurement.
-
-        ``--resume`` reuses a stored result only when this matches, so editing a
-        row's text invalidates its old number instead of inheriting it.
-        """
-        payload = "\0".join([self.id, self.file, self.old, self.new, self.kind])
-        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
-
-
-@dataclass(frozen=True)
-class Dropped:
-    """A row that was considered and not run, with the reason it was not."""
-
-    id: str
-    description: str
-    reason: str
-
-
-@dataclass(frozen=True)
-class Mapped:
-    """A recorded row a replay batch has no row for, and the row that covers it."""
-
-    source: tuple[str, str]
-    to: str
-    reason: str
-
-    def to_dict(self) -> dict:
-        return {
-            "source": {"table": self.source[0], "id": self.source[1]},
-            "to": self.to,
-            "reason": self.reason,
-        }
-
-
-def read_source(entry: dict, what: str) -> tuple[str, str] | None:
-    """The ``source`` of a row or a mapped entry, or None when it carries none.
-
-    A source that is present and is not a table name and a row id, both text
-    and neither empty, is refused: a half named source reads as a named one.
-    """
-    if "source" not in entry:
-        return None
-    source = entry["source"]
-    table = source.get("table") if isinstance(source, dict) else None
-    row_id = source.get("id") if isinstance(source, dict) else None
-    if not (isinstance(table, str) and table and isinstance(row_id, str) and row_id):
-        raise DriverRefusal(
-            f"{what}: source must name the table and the row it came from, "
-            f'source = {{ table = "u114.json", id = "G3" }}'
-        )
-    return (table, row_id)
-
-
-def read_spec(spec_path: Path) -> dict:
-    """A row file's contents, TOML or JSON by its suffix."""
-    text = spec_path.read_text(encoding="utf-8")
-    if spec_path.suffix == ".toml":
-        return tomllib.loads(text)
-    if spec_path.suffix == ".json":
-        return json.loads(text)
-    raise DriverRefusal(
-        f"{spec_path.name}: row files are .toml or .json, not {spec_path.suffix!r}"
-    )
-
-
 def load_spec(spec_path: Path) -> tuple[str, str, list[Row], list[Dropped]]:
     """Read a row file and return ``(name, pass_kind, rows, dropped)``."""
     data = read_spec(spec_path)
-
     name = str(data.get("name") or spec_path.stem)
     pass_kind = str(data.get("pass_kind", "full"))
     if pass_kind not in PASS_KINDS:
         raise DriverRefusal(f"pass_kind must be one of {sorted(PASS_KINDS)}, got {pass_kind!r}")
-
     rows: list[Row] = []
     seen: set[str] = set()
     sources: set[tuple[str, str]] = set()
@@ -576,21 +205,13 @@ def load_spec(spec_path: Path) -> tuple[str, str, list[Row], list[Dropped]]:
                     f"another row in this batch, and one recorded row is replayed once"
                 )
             sources.add(source)
-        rows.append(
-            Row(
-                id=row_id,
-                description=str(entry["description"]),
-                file=str(entry["file"]),
-                old=str(entry["old"]),
-                new=str(entry["new"]),
-                tests=tuple(str(one) for one in tests) if tests else None,
-                surface=surface,
-                pairs_with=str(entry["pairs_with"]) if entry.get("pairs_with") else None,
-                source=source,
-                moved=str(entry.get("moved") or ""),
-            )
-        )
-
+        rows.append(Row(
+            id=row_id, description=str(entry["description"]), file=str(entry["file"]),
+            old=str(entry["old"]), new=str(entry["new"]),
+            tests=tuple(str(one) for one in tests) if tests else None, surface=surface,
+            pairs_with=str(entry["pairs_with"]) if entry.get("pairs_with") else None,
+            source=source, moved=str(entry.get("moved") or ""),
+        ))
     if not rows:
         raise DriverRefusal(f"{spec_path.name} declares no rows")
     cap = ROW_CAPS.get(pass_kind, len(rows))
@@ -600,35 +221,23 @@ def load_spec(spec_path: Path) -> tuple[str, str, list[Row], list[Dropped]]:
             f"Cut to the cap and log what you dropped in [[dropped]], so the "
             f"truncation is visible rather than read as coverage."
         )
-
     unknown = {row.pairs_with for row in rows if row.pairs_with} - seen
     if unknown:
         raise DriverRefusal(f"pairs_with names no row in this batch: {sorted(unknown)}")
-
     dropped = [
-        Dropped(
-            id=str(entry.get("id", f"dropped-{index}")),
-            description=str(entry.get("description", "")),
-            reason=str(entry.get("reason", "")),
-        )
+        Dropped(str(entry.get("id", f"dropped-{index}")), str(entry.get("description", "")),
+                str(entry.get("reason", "")))
         for index, entry in enumerate(data.get("dropped", []))
     ]
     return name, pass_kind, rows, dropped
 
 
 def load_mapped(spec_path: Path, pass_kind: str, rows: list[Row]) -> list[Mapped]:
-    """The ``[[mapped]]`` entries of a replay row file, each checked against its rows.
-
-    An entry says a recorded row has no row of its own in this batch and names
-    the row that covers it. So its source may not be a row's source here, its
-    target must be a row here, and it must say why, or `killset.py check` would
-    be handed a mapping nothing stands behind. Only a replay pass maps.
-    """
+    """A replay's ``[[mapped]]`` entries: each a source no row replays, a target that is a
+    row here and a reason, or `killset.py check` would read a mapping nothing backs."""
     entries = read_spec(spec_path).get("mapped", [])
     if entries and pass_kind != REPLAY:
-        raise DriverRefusal(
-            f"[[mapped]] belongs to a replay pass, and this is a {pass_kind} pass"
-        )
+        raise DriverRefusal(f"[[mapped]] belongs to a replay pass, and this is a {pass_kind} pass")
     ids = {row.id for row in rows}
     replayed = {row.source for row in rows}
     mapped: list[Mapped] = []
@@ -659,79 +268,9 @@ def load_mapped(spec_path: Path, pass_kind: str, rows: list[Row]) -> list[Mapped
     return mapped
 
 
-#: Where the recorded tables live, relative to the repository root. A replay
-#: row's source names a file here.
-RECORDED_TABLES = Path("docs") / "mutation"
-
-
-def refuse_unrecorded_sources(repo_root: Path, rows: list[Row], mapped: list[Mapped]) -> None:
-    """Refuse a replay whose rows or mappings name a source no table recorded.
-
-    A replay pass has no row cap because it measures recorded rows again, and
-    a source taken on trust would let any number of new rows through under a
-    table's name. So each source is read: the table is a file under
-    ``docs/mutation/``, it holds a row of that id, and that row recorded at
-    least one death. And a row's own text is read against it: a row whose
-    file or text is not what its source recorded is a guard anchored again by
-    hand, which says so in ``moved``, or it is a new row under a borrowed
-    name. Read before anything runs, so a forged batch never reaches a
-    baseline.
-    """
-    tables: dict[str, dict[str, dict] | None] = {}
-
-    def recorded(table: str) -> dict[str, dict] | None:
-        if table not in tables:
-            path = repo_root / RECORDED_TABLES / table
-            try:
-                data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
-            except (OSError, UnicodeDecodeError, ValueError):
-                data = None
-            held = data.get("rows") if isinstance(data, dict) else None
-            tables[table] = (
-                {str(one.get("id")): one for one in held if isinstance(one, dict)}
-                if isinstance(held, list) and Path(table).name == table
-                else None
-            )
-        return tables[table]
-
-    named = [(f"row {row.id}", row.source, row) for row in rows if row.source]
-    named += [(f"the mapping to {one.to}", one.source, None) for one in mapped]
-    for what, (table, row_id), replayed in named:
-        held = recorded(table)
-        shown = (RECORDED_TABLES / table).as_posix()
-        if held is None:
-            raise DriverRefusal(f"{what}: its source {shown} is not a recorded table")
-        row = held.get(row_id)
-        if row is None:
-            raise DriverRefusal(f"{what}: {shown} holds no row {row_id!r}")
-        deaths = row.get("deaths")
-        if not (isinstance(deaths, int) and not isinstance(deaths, bool) and deaths > 0):
-            raise DriverRefusal(
-                f"{what}: {shown} row {row_id!r} recorded no death, so there is no kill "
-                f"of it to replay"
-            )
-        if replayed is None or replayed.moved.strip():
-            continue
-        written = (replayed.file, replayed.old, replayed.new)
-        if written != (row.get("file"), row.get("old"), row.get("new")):
-            raise DriverRefusal(
-                f"{what}: its file or text is not what {shown} recorded for {row_id!r}, "
-                f"and it gives no moved reason. A guard anchored again by hand says so "
-                f"in moved; a new row belongs in a light or a full pass."
-            )
-
-
 def replay_resume_refusal(repo_root: Path, prior: dict | None) -> str:
-    """Why a replay reuses nothing of a prior sidecar, or "" when it may.
-
-    A replay is read as what the tests of THIS commit kill. A row measured
-    before the test that killed it was deleted would otherwise say killed
-    where nothing kills it, and `killset.py check` would pass a lost kill on
-    it (U297). So the sidecar must have been measured at this commit, and no
-    tracked file may differ from it now: a test deleted and not yet committed
-    leaves the commit's name unchanged. A status git cannot read is not a
-    clean one.
-    """
+    """Why a replay reuses nothing of a prior sidecar, or "" when it may: it reads what
+    THIS commit's tests kill, so only a sidecar of this commit with no tracked file changed."""
     if prior is None:
         return ""
     here = head_sha(repo_root)
@@ -746,300 +285,37 @@ def replay_resume_refusal(repo_root: Path, prior: dict | None) -> str:
 
 
 def null_control_row(rows: list[Row]) -> Row:
-    """Build the control row: a change that cannot possibly kill a test.
-
-    It targets a Python file among the batch's own targets, so the control runs
-    through the same apply, restore and verify path the real rows do. A control
-    measured somewhere else is not a control of this batch.
-    """
+    """The control row: a comment appended to one of the batch's own Python targets."""
     target = next((row.file for row in rows if row.file.endswith(".py")), None)
     if target is None:
         raise DriverRefusal(
             "the null control needs a Python target and no row names one; "
             "the control is what proves the apparatus, so the batch cannot run without it"
         )
-    return Row(
-        id="NULL_CONTROL",
-        description=(
-            "Automatic control: append a comment line to "
-            f"{target}. Semantically empty, so it must kill zero. Any death here "
-            "means the measuring apparatus is broken, not the code."
-        ),
-        file=target,
-        old="",
-        new=NULL_CONTROL_COMMENT,
-        kind="null-control",
+    description = (
+        "Automatic control: append a comment line to "
+        f"{target}. Semantically empty, so it must kill zero. Any death here "
+        "means the measuring apparatus is broken, not the code."
     )
-
-
-# ---------------------------------------------------------------------------
-# Git, read only, always
-# ---------------------------------------------------------------------------
-
-
-def _git(repo_root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(
-        ["git", *args], cwd=repo_root, capture_output=True, check=False
-    )
-
-
-def git_head_bytes(repo_root: Path, rel: str) -> bytes:
-    """The committed bytes of one tracked path, from HEAD."""
-    done = _git(repo_root, "show", f"HEAD:{rel}")
-    if done.returncode != 0:
-        raise DriverRefusal(
-            f"cannot read HEAD:{rel} ({done.stderr.decode('utf-8', 'replace').strip()}); "
-            f"a mutation target must be tracked and committed, because an "
-            f"uncommitted edit is exactly what the restore check cannot see"
-        )
-    return done.stdout
-
-
-def verify_restore(repo_root: Path, rel: str) -> None:
-    """Raise unless the file on disk matches HEAD byte for byte."""
-    on_disk = (repo_root / rel).read_bytes()
-    committed = git_head_bytes(repo_root, rel)
-    if on_disk != committed:
-        raise RestoreVerificationError(
-            f"{rel} does not match git show HEAD after restore: "
-            f"{len(on_disk)} bytes on disk against {len(committed)} committed. "
-            f"Stop and inspect the file. Every later row in this batch would be "
-            f"measured against a contaminated tree."
-        )
-
-
-def dirty_targets(repo_root: Path, rels: list[str]) -> list[str]:
-    """Which of ``rels`` have uncommitted changes."""
-    if not rels:
-        return []
-    done = _git(repo_root, "status", "--porcelain", "--", *rels)
-    if done.returncode != 0:
-        raise DriverRefusal(f"git status failed: {done.stderr.decode('utf-8', 'replace').strip()}")
-    found: list[str] = []
-    for line in done.stdout.decode("utf-8", "replace").splitlines():
-        entry = line[3:].strip()
-        if entry:
-            found.append(entry.split(" -> ")[-1])
-    return found
-
-
-def head_sha(repo_root: Path) -> str:
-    done = _git(repo_root, "rev-parse", "--short", "HEAD")
-    return done.stdout.decode("utf-8", "replace").strip() or "unknown"
-
-
-def branch_name(repo_root: Path) -> str:
-    done = _git(repo_root, "rev-parse", "--abbrev-ref", "HEAD")
-    return done.stdout.decode("utf-8", "replace").strip() or "unknown"
-
-
-# ---------------------------------------------------------------------------
-# The file surgery
-# ---------------------------------------------------------------------------
-
-
-def apply_mutation(text: str, old: str, new: str, *, allow_append: bool = False) -> str:
-    """Return ``text`` with ``old`` replaced by ``new``, or refuse.
-
-    Absent text and ambiguous text are both refusals rather than best efforts. A
-    replacement that hit the wrong one of two identical sites still produces a
-    number, and the number is about an experiment nobody chose to run.
-    """
-    if old == "":
-        if not allow_append:
-            raise DriverRefusal("empty old text is reserved for the null control row")
-        return text + new
-    count = text.count(old)
-    if count == 0:
-        raise DriverRefusal(
-            "old text is not present in the target; the row cannot be applied. "
-            "Copy the text out of the file rather than retyping it."
-        )
-    if count > 1:
-        raise DriverRefusal(
-            f"old text appears {count} times in the target, so the site is ambiguous. "
-            f"Widen the old text with surrounding lines until it is unique."
-        )
-    return text.replace(old, new, 1)
-
-
-@contextmanager
-def mutated(
-    repo_root: Path,
-    rel: str,
-    old: str,
-    new: str,
-    *,
-    allow_append: bool = False,
-    head_verify: bool = True,
-):
-    """Apply a mutation for the duration of the block, then always restore.
-
-    The ``finally`` is the point. It runs on a normal exit, on any exception,
-    and on KeyboardInterrupt, so no path through this block leaves a mutated
-    file on disk. The restore is verified against HEAD inside the same
-    ``finally``, because a restore nobody checked is a hope.
-
-    ``head_verify=False`` is the ONLY concession, and it is reserved for a
-    target the caller explicitly declared dirty. It falls back to comparing
-    against the in-memory snapshot, which is a weaker check for the reason
-    METHOD names: a copy certifying itself. The output says so per row rather
-    than letting the weaker guarantee pass as the stronger one.
-    """
-    path = repo_root / rel
-    snapshot = path.read_bytes()
-    # Applied before any write, so a refused row never touches the file.
-    mutant = apply_mutation(snapshot.decode("utf-8"), old, new, allow_append=allow_append)
-    path.write_bytes(mutant.encode("utf-8"))
-    try:
-        yield path
-    finally:
-        path.write_bytes(snapshot)
-        if head_verify:
-            verify_restore(repo_root, rel)
-        elif path.read_bytes() != snapshot:
-            raise RestoreVerificationError(f"{rel} does not match its own snapshot after restore")
-
-
-# ---------------------------------------------------------------------------
-# Subset derivation
-# ---------------------------------------------------------------------------
-
-
-def dotted_module(rel: str, src_root: str = "src") -> str | None:
-    """The dotted import path for a source file, or None if it is not one."""
-    prefix = f"{src_root}/"
-    if not rel.startswith(prefix) or not rel.endswith(".py"):
-        return None
-    parts = rel[len(prefix) : -len(".py")].split("/")
-    if parts[-1] == "__init__":
-        parts.pop()
-    return ".".join(parts) if parts else None
-
-
-def imported_modules(source: str) -> set[str]:
-    """Every module path a source file imports, lazy imports included.
-
-    ``from pkg.mod import name`` contributes both ``pkg.mod`` and
-    ``pkg.mod.name``, because from the outside there is no telling whether the
-    imported name is a submodule or a symbol, and the caller only ever asks
-    whether a known module is in the set.
-    """
-    found: set[str] = set()
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.Import):
-            found.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
-            found.add(node.module)
-            found.update(f"{node.module}.{alias.name}" for alias in node.names)
-    return found
-
-
-def derive_subset(
-    repo_root: Path, rel: str, *, src_root: str = "src", tests_root: str = "tests"
-) -> tuple[list[str] | None, str]:
-    """Return ``(test paths, why)``, where None means the whole suite.
-
-    Three cases, in order. A test file is its own subset. A source module's
-    subset is the test files importing it. Anything else, a script or a
-    document, falls back to the test files mentioning its name.
-    """
-    if rel.startswith(f"{tests_root}/"):
-        return [rel], "the mutated test file itself"
-
-    candidates = sorted((repo_root / tests_root).rglob("test_*.py"))
-    dotted = dotted_module(rel, src_root=src_root)
-    picked: list[str] = []
-
-    if dotted:
-        for path in candidates:
-            try:
-                names = imported_modules(path.read_text(encoding="utf-8"))
-            except (SyntaxError, UnicodeDecodeError):
-                continue
-            if dotted in names or any(name.startswith(f"{dotted}.") for name in names):
-                picked.append(path.relative_to(repo_root).as_posix())
-        why = f"test files importing {dotted}"
-    else:
-        needle = Path(rel).name
-        for path in candidates:
-            if needle in path.read_text(encoding="utf-8", errors="replace"):
-                picked.append(path.relative_to(repo_root).as_posix())
-        why = f"test files naming {needle}"
-
-    if not picked:
-        return None, f"full suite ({why}: none found)"
-    return picked, why
-
-
-# ---------------------------------------------------------------------------
-# Running pytest
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class RunResult:
-    collected: int
-    failed: tuple[str, ...]
-    errored: tuple[str, ...]
-    collect_errors: tuple[str, ...]
-    exit_code: int
-
-    @property
-    def deaths(self) -> int:
-        return len(set(self.failed) | set(self.errored))
-
-    @property
-    def is_green(self) -> bool:
-        return not (self.failed or self.errored or self.collect_errors)
-
-    def failure_ids(self) -> list[str]:
-        return sorted(set(self.failed) | set(self.errored))
+    return Row("NULL_CONTROL", description, target, "", NULL_CONTROL_COMMENT, kind="null-control")
 
 
 def pytest_addopts(repo_root: Path) -> str:
-    """``addopts`` from pyproject with every quiet flag removed.
-
-    Stripping rather than clearing: clearing would silently drop a future
-    addition to ``addopts``, and stripping removes only the flag that is
-    actively harmful here. A second ``-q`` becomes ``-qq`` and suppresses the
-    summary line, which is how a hand rolled driver comes to report zero.
-    """
+    """``addopts`` from pyproject with every quiet flag removed, and nothing else: a second
+    ``-q`` becomes ``-qq`` and suppresses the summary line."""
     pyproject = repo_root / "pyproject.toml"
     if not pyproject.is_file():
         return ""
     with pyproject.open("rb") as handle:
         data = tomllib.load(handle)
     raw = data.get("tool", {}).get("pytest", {}).get("ini_options", {}).get("addopts", "")
-    if isinstance(raw, list):
-        tokens = [str(one) for one in raw]
-    else:
-        tokens = shlex.split(str(raw))
+    tokens = [str(one) for one in raw] if isinstance(raw, list) else shlex.split(str(raw))
     return " ".join(token for token in tokens if token not in {"-q", "-qq", "--quiet"})
 
 
 def installation_state_roots() -> tuple[Path, ...]:
-    """The REAL installation-scoped directories, resolved as the product resolves them.
-
-    Read from THIS process's environment, which no mutation touches, and resolved
-    once before any child runs.
-
-    The two Cratekit overrides win over platformdirs, exactly as the product's
-    config module reads them, and that is what makes this guard safe to exercise
-    from the test suite: under pytest the conftest has already pointed both at
-    that test's own temporary roots, so the driver guards a temp directory and
-    never the machine's own. Run for real, this process carries neither variable
-    and the true platformdirs path is resolved.
-
-    macOS answers both platformdirs calls with one directory, so the result is
-    deduplicated and is not always two entries long.
-
-    These two are what the guard WATCHES. The sandbox in ``SANDBOXED_ENV`` points
-    a child away from more than these, HOME and the data root among them, and a
-    child reaching one of those, the real trash directory say, is not seen here.
-    The table says so in as many words rather than claiming the whole home was
-    guarded.
-    """
+    """The REAL installation directories the guard watches, resolved as the product does:
+    the overrides first (under pytest, the conftest's temporary roots), deduplicated."""
     config_override = os.environ.get("CRATEKIT_CONFIG_DIR")
     state_override = os.environ.get("CRATEKIT_STATE_DIR")
     roots = (
@@ -1053,31 +329,13 @@ def installation_state_roots() -> tuple[Path, ...]:
     return tuple(dict.fromkeys(roots))
 
 
-#: Files at or under this size are hashed by content as well as by stat. A
-#: configuration is a few hundred bytes and is the file whose overwrite this
-#: guard exists to catch, and a stat alone misses a same-size rewrite inside one
-#: timestamp tick on a filesystem with coarse timestamps. A job queue is
-#: megabytes and is left to its stat, because hashing it once per child to learn
-#: a fact ``st_mtime_ns`` already answers on this machine is time spent for
-#: nothing.
+#: Files this small are hashed too, so a same size rewrite in one timestamp tick is seen.
 SMALL_FILE_BYTES = 64 * 1024
 
 
 def state_fingerprint(root: Path) -> tuple[str, int]:
-    """Digest everything under ``root``. Returns (digest, entry count).
-
-    Every directory and file is an entry, by relative path. A file carries its
-    size, inode, mtime and ctime, and a small one carries a content hash too,
-    see ``SMALL_FILE_BYTES``. A directory is an entry in its own right, so a
-    child that creates an empty one inside the real root has reached the real
-    path and is seen, even on the pass where it writes no file into it.
-
-    ``lstat``, not ``stat``: a symlink is fingerprinted as itself, so repointing
-    one at a different target is a change rather than an invisible one.
-
-    Whether the root itself EXISTS is part of the digest, for the same reason a
-    directory inside it is.
-    """
+    """(digest, entry count) of every directory and file under ``root``, by ``lstat``, and
+    of whether the root exists."""
     entries: list[str] = [f"exists={root.is_dir()}"]
     for current, dirnames, filenames in os.walk(root, followlinks=False):
         dirnames.sort()
@@ -1090,8 +348,6 @@ def state_fingerprint(root: Path) -> tuple[str, int]:
             try:
                 info = path.lstat()
             except OSError:
-                # Unreadable is still a fact about the tree, and swallowing it
-                # would let a file that cannot be stat'd hide a change.
                 entries.append(f"{relative}\tunreadable")
                 continue
             line = (
@@ -1121,47 +377,26 @@ def portable(path: Path) -> str:
 @dataclass(frozen=True)
 class StateGuard:
     """The real installation state as it stood before any child of this batch ran."""
-
     roots: tuple[Path, ...]
     digests: tuple[str, ...]
     counts: tuple[int, ...]
 
     def describe(self) -> str:
-        """The roots with the home directory folded to ``~``.
-
-        This string is written into the table and the sidecar under
-        ``docs/mutation/``, and the repository scan refuses an absolute home
-        directory path there, by account name. Written raw, every promoted
-        row's full suite run failed the cleanliness test on this driver's own
-        sidecar and reported a death that was not one.
-        """
-        return "; ".join(
-            f"{portable(root)} ({count} entries)"
-            for root, count in zip(self.roots, self.counts, strict=True)
-        )
+        """The roots with home folded to ``~``: the scan refuses a home path under docs/."""
+        pairs = zip(self.roots, self.counts, strict=True)
+        return "; ".join(f"{portable(root)} ({count} entries)" for root, count in pairs)
 
 
 def take_state_guard(roots: tuple[Path, ...] | None = None) -> StateGuard:
     """Fingerprint the real installation state before the batch touches anything."""
     resolved = installation_state_roots() if roots is None else tuple(roots)
     taken = [state_fingerprint(root) for root in resolved]
-    return StateGuard(
-        roots=resolved,
-        digests=tuple(digest for digest, _ in taken),
-        counts=tuple(count for _, count in taken),
-    )
+    return StateGuard(resolved, tuple(one for one, _ in taken), tuple(one for _, one in taken))
 
 
 def check_state_guard(guard: StateGuard, *, label: str) -> None:
-    """Raise ``StateLeak`` if the real installation state moved under a child.
-
-    The comparison is against the batch's starting fingerprint, and the driver
-    cannot tell a child's write from a concurrent one: a ``crate`` run in another
-    terminal writes a run record into the same directory and trips this exactly
-    as a leak would. The batch still stops, because either way the machine is
-    no longer the one the batch started on, but the message says which of the
-    two it could not tell rather than accusing the row outright.
-    """
+    """Raise ``StateLeak`` if the real installation state moved under a child, or under a
+    concurrent writer, which the driver cannot tell apart."""
     for root, before, counted in zip(guard.roots, guard.digests, guard.counts, strict=True):
         now, count_now = state_fingerprint(root)
         if now == before:
@@ -1179,32 +414,15 @@ def check_state_guard(guard: StateGuard, *, label: str) -> None:
 
 
 def run_pytest(
-    repo_root: Path,
-    paths: list[str] | None,
-    *,
-    timeout: int = 3600,
-    guard: StateGuard | None = None,
-    label: str = "a child run",
+    repo_root: Path, paths: list[str] | None, *, timeout: int = 3600,
+    guard: StateGuard | None = None, label: str = "a child run",
     known: frozenset[str] = frozenset(),
 ) -> RunResult:
     """Run pytest once, synchronously, and read the result off report objects.
 
-    ``known`` is the set of node ids whose failure is the machine's and not the
-    tree's: on a Linux container about 170 of this suite's tests fail for want
-    of a Mac (root reads every directory, no hdiutil, a timing calibration
-    pinned to one machine). They are subtracted from every run, the baselines
-    and the rows alike, so a baseline red only by them reads green and a row
-    that kills one of them kills nothing it could be credited for. The set is
-    measured on the base commit by ``scripts/cloud_battery.py baseline``; a
-    hand written one would be the list this driver exists to refuse.
-
-    When ``known`` names the place its failures were measured in (U273), the
-    run keeps its temporary files there, in a fresh directory given as
-    ``TMPDIR``, as the battery's own run did. After a run in memory, the tests
-    the baseline ran on disk and this run collected run again on disk, and
-    their outcome there replaces their outcome in memory. Without a place, a
-    driver run with no known failures, the temporary directory is inherited
-    as it always was.
+    ``known``, the machine's failures from ``cloud_battery.py baseline``, is
+    subtracted. Given a place (U273) the run keeps its ``TMPDIR`` there, and after
+    a run in memory the baseline's disk tests it collected run again on disk.
     """
     place = getattr(known, "place", "")
     root = None
@@ -1219,21 +437,13 @@ def run_pytest(
         workspace = Path(tmp)
         (workspace / f"{PLUGIN_MODULE}.py").write_text(PLUGIN_SOURCE, encoding="utf-8")
         report_path = workspace / "report.json"
-
-        # INHERIT, then add. Never a fresh dict: a hand-built environment is how
-        # ffmpeg fell off PATH and reddened 28 audio tests under a driver whose
-        # subset rows all looked fine.
+        # INHERIT, then add: a hand built environment once dropped ffmpeg off PATH.
         env = os.environ.copy()
-        # Non-negotiable: identical byte lengths a second apart otherwise make
-        # CPython serve the previous mutation's cached bytecode.
+        # Identical byte lengths a second apart otherwise serve stale bytecode.
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         env["MUTATE_REPORT_PATH"] = str(report_path)
-        env["PYTHONPATH"] = os.pathsep.join(
-            [str(workspace), env.get("PYTHONPATH", "")]
-        ).rstrip(os.pathsep)
-        # The child starts life in a throwaway installation state, so that a test
-        # which undoes the conftest's isolation lands here rather than on the real
-        # machine. R-343, and see SANDBOXED_ENV.
+        env["PYTHONPATH"] = os.pathsep.join([str(workspace), env.get("PYTHONPATH", "")])
+        env["PYTHONPATH"] = env["PYTHONPATH"].rstrip(os.pathsep)
         sandbox = workspace / "installation-state"
         for name, relative in SANDBOXED_ENV.items():
             path = sandbox / relative
@@ -1245,40 +455,17 @@ def run_pytest(
             temp = workspace / "tmp"
             temp.mkdir()
             env["TMPDIR"] = str(temp)
-
-        command = [
-            sys.executable,
-            "-m",
-            "pytest",
-            "-p",
-            PLUGIN_MODULE,
-            "-p",
-            "no:cacheprovider",
-            "--tb=no",
-            "-o",
-            f"addopts={pytest_addopts(repo_root)}",
-        ]
-        command += paths or []
-
+        command = [sys.executable, "-m", "pytest", "-p", PLUGIN_MODULE, "-p", "no:cacheprovider"]
+        command += ["--tb=no", "-o", f"addopts={pytest_addopts(repo_root)}", *(paths or [])]
         try:
             done = subprocess.run(
-                command,
-                cwd=repo_root,
-                env=env,
-                capture_output=True,
-                text=True,
-                check=False,
+                command, cwd=repo_root, env=env, capture_output=True, text=True, check=False,
                 timeout=timeout,
             )
         finally:
             # In a finally, so a child that leaks and then hangs past the
-            # timeout is still checked: TimeoutExpired would otherwise leave
-            # here first, the row loop would file it as an ordinary error row,
-            # and the NEXT row's child would be the one blamed. A leak raised
-            # from here outranks the timeout it interrupts, on purpose. It also
-            # outranks a missing report: the report says what was measured, and
-            # this says whether the machine it was measured on is still the one
-            # the batch started on.
+            # timeout is still checked, and its leak is not blamed on the next
+            # row. A leak outranks the timeout and a missing report alike.
             if guard is not None:
                 check_state_guard(guard, label=label)
         if not report_path.is_file():
@@ -1287,20 +474,14 @@ def run_pytest(
                 f"exit {done.returncode}\n{done.stdout[-2000:]}\n{done.stderr[-2000:]}"
             )
         state = json.loads(report_path.read_text(encoding="utf-8"))
-
-    # 3 internal error, 4 usage error, 5 nothing collected. Each of these comes
-    # back with an EMPTY report: zero collected, zero failures, nothing flagged.
-    # Read as a RunResult it is indistinguishable from a green run, so a subset
-    # path with a typo in it would report a serene zero for every row that named
-    # it. Exit 2 is deliberately NOT here: that is how a collection error
-    # arrives, and a collection error is a measurement this driver wants.
+    # 3 internal, 4 usage, 5 nothing collected: each leaves an EMPTY report that
+    # would read as green. Exit 2 is how a collection error arrives, a measurement.
     if done.returncode in {3, 4, 5}:
         raise MeasurementFailure(
             f"pytest exited {done.returncode} and nothing was measured. That is a "
             f"usage, internal or empty-collection failure, not a zero row.\n"
             f"{done.stdout[-1500:]}\n{done.stderr[-1500:]}"
         )
-
     failed = tuple(i for i in state["failed"] if i not in known)
     errored = tuple(i for i in state["errored"] if i not in known)
     collect_errors = tuple(state["collect_errors"])
@@ -1308,11 +489,7 @@ def run_pytest(
     rerun = [one for one in on_disk if runs_node(one, paths)] if place == BATTERY.MEMORY else []
     if rerun:
         again = run_pytest(
-            repo_root,
-            rerun,
-            timeout=timeout,
-            guard=guard,
-            label=f"{label}, its tests on disk",
+            repo_root, rerun, timeout=timeout, guard=guard, label=f"{label}, its tests on disk",
             known=KnownFailures(known, place=BATTERY.DISK),
         )
         if again.collected != len(rerun) and not again.collect_errors:
@@ -1323,14 +500,7 @@ def run_pytest(
         failed = tuple(i for i in failed if i not in rerun) + again.failed
         errored = tuple(i for i in errored if i not in rerun) + again.errored
         collect_errors = collect_errors + again.collect_errors
-
-    return RunResult(
-        collected=int(state["collected"]),
-        failed=failed,
-        errored=errored,
-        collect_errors=collect_errors,
-        exit_code=done.returncode,
-    )
+    return RunResult(int(state["collected"]), failed, errored, collect_errors, done.returncode)
 
 
 def runs_node(nodeid: str, paths: list[str] | None) -> bool:
@@ -1339,29 +509,15 @@ def runs_node(nodeid: str, paths: list[str] | None) -> bool:
         return True
     for path in paths:
         path = path.rstrip("/")
-        if (
-            nodeid == path
-            or nodeid.startswith(f"{path}::")
-            or nodeid.startswith(f"{path}[")
-            or nodeid.startswith(f"{path}/")
-        ):
+        if nodeid == path or nodeid.startswith((f"{path}::", f"{path}[", f"{path}/")):
             return True
     return False
 
 
-# ---------------------------------------------------------------------------
-# The full baseline read from the battery's verdict, U271
-# ---------------------------------------------------------------------------
-
-#: Where ``scripts/cloud_battery.py`` leaves the record of its last run, relative
-#: to the repository root, and the record format this driver reads. Repeated
-#: from that script rather than read off ``BATTERY``, the copy of it this driver
-#: loads for its places (U273), so the record's keys stay named here, and held
-#: to it by a test.
+#: The battery's run record and format, held equal to ``cloud_battery.py``'s by a test.
 BATTERY_VERDICT = Path(".cloud-battery") / "verdict.json"
 BATTERY_VERDICT_FORMAT = 1
-#: The same boot id the battery records. Every cloud container is called `vm`,
-#: so the host name alone names no machine.
+#: The boot id the battery records: every cloud container's host name is `vm`.
 BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
 
 
@@ -1379,13 +535,8 @@ def boot_id() -> str:
 
 
 def tree_state(repo_root: Path) -> tuple[str, bool | None]:
-    """HEAD's full sha and whether the checkout is clean, untracked files included.
-
-    Read only. An empty sha when git could not name HEAD, and None for the
-    cleanliness when git could not read the status, because no answer is not
-    an empty status. Untracked files are listed whatever the checkout's git
-    config says, as the battery lists them.
-    """
+    """HEAD's full sha and whether the checkout is clean, untracked files included, None
+    when git could not read the status: no answer is not an empty status."""
     sha = _git(repo_root, "rev-parse", "HEAD")
     commit = sha.stdout.decode("utf-8", "replace").strip() if sha.returncode == 0 else ""
     status = _git(repo_root, "status", "--porcelain", "--untracked-files=all")
@@ -1403,29 +554,13 @@ def _whole_number(value: object) -> bool:
 
 
 def read_battery_verdict(
-    repo_root: Path,
-    path: Path,
-    *,
-    known: frozenset[str],
-    known_digest: str,
+    repo_root: Path, path: Path, *, known: frozenset[str], known_digest: str
 ) -> tuple[RunResult | None, str]:
     """The battery's last run as this batch's full baseline, or None and the reason it is not.
 
-    Phillip's answer of 2026-11-13: the battery's verdict stands for the full
-    baseline only when it is for the same commit, on a clean tree, on this
-    machine, with the same known failures file. Each key is read here and any
-    difference, or a record that does not say, returns None and the driver
-    measures its own baseline as it always has. The machine is the host name,
-    the kernel's boot id, the checkout and the interpreter, since a cloud
-    container's host name is `vm` on every one. The run must have run every
-    test it collected, exited 0 or 1, and inherited no `PYTEST_ADDOPTS`, and
-    its verdict must agree with the ids it lists.
-
-    A record that passes is returned as the ``RunResult`` the driver would have
-    measured, net of the known failures, and goes through the same "green
-    baseline or refuse" check: a red verdict refuses the batch. Nothing here
-    reads a host name or a path into the note, because the note is written into
-    a table this repository publishes.
+    Phillip's answer of 2026-11-13: only for this commit on a clean tree, this
+    machine, checkout and interpreter, the same known failures file, and a whole
+    run. The note names no host or path, since the table is published.
     """
     prefix = "the battery's verdict was not read: "
     if not known_digest:
@@ -1452,7 +587,6 @@ def read_battery_verdict(
         and record.get("verdict") in {"clean", "red"}
     ):
         return None, unreadable
-
     commit, clean_now = tree_state(repo_root)
     recorded = record["commit"]
     checks = (
@@ -1495,7 +629,6 @@ def read_battery_verdict(
     for ok, why in checks:
         if not ok:
             return None, prefix + why
-
     beyond = sorted(set(failing) - known)
     green = not beyond and not collect_errors
     if green != (record["verdict"] == "clean"):
@@ -1510,56 +643,11 @@ def read_battery_verdict(
         "machine, checkout and interpreter, and the same known failures file"
     )
     result = RunResult(
-        collected=record["collected"],
+        record["collected"],
         failed=tuple(beyond),
-        errored=(),
-        collect_errors=tuple(sorted(collect_errors)),
-        exit_code=record["exit_code"],
+        errored=(), collect_errors=tuple(sorted(collect_errors)), exit_code=record["exit_code"],
     )
     return result, note
-
-
-# ---------------------------------------------------------------------------
-# Measuring
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class RowResult:
-    id: str
-    description: str
-    file: str
-    kind: str
-    surface: str
-    pairs_with: str | None
-    fingerprint: str
-    subset: list[str] | None
-    subset_reason: str
-    status: str
-    deaths: int
-    collected: int
-    baseline_collected: int
-    collect_drift: bool
-    collect_errors: list[str] = field(default_factory=list)
-    killed: list[str] = field(default_factory=list)
-    promoted: bool = False
-    subset_deaths: int | None = None
-    note: str = ""
-    runs: int = 0
-    head_verified: bool = True
-    old: str = ""
-    new: str = ""
-    source: dict | None = None
-    moved: str = ""
-
-    def to_dict(self) -> dict:
-        """The sidecar's row. ``source`` and ``moved`` are written only when set,
-        so a light or a full pass's sidecar is what it was before replay (U297)."""
-        data = dict(self.__dict__)
-        for key in ("source", "moved"):
-            if not data[key]:
-                del data[key]
-        return data
 
 
 def replay_fields(row: Row) -> dict:
@@ -1568,79 +656,49 @@ def replay_fields(row: Row) -> dict:
     return {"source": source, "moved": row.moved}
 
 
+def _described(row: Row, subset: list[str] | None, why: str) -> dict:
+    return dict(
+        id=row.id, description=row.description, file=row.file, kind=row.kind,
+        surface=row.surface, pairs_with=row.pairs_with, fingerprint=row.fingerprint(),
+        subset=list(subset) if subset else None, subset_reason=why, old=row.old, new=row.new,
+    )
+
+
 def measure_row(
-    repo_root: Path,
-    row: Row,
-    subset: list[str] | None,
-    subset_reason: str,
-    subset_baseline: RunResult,
-    full_baseline: RunResult,
-    *,
-    timeout: int = 3600,
-    head_verify: bool = True,
-    guard: StateGuard | None = None,
+    repo_root: Path, row: Row, subset: list[str] | None, subset_reason: str,
+    subset_baseline: RunResult, full_baseline: RunResult, *, timeout: int = 3600,
+    head_verify: bool = True, guard: StateGuard | None = None,
     known: frozenset[str] = frozenset(),
 ) -> RowResult:
     """Apply one row, measure it, restore it, and describe what happened."""
     common = dict(
-        id=row.id,
-        description=row.description,
-        file=row.file,
-        kind=row.kind,
-        surface=row.surface,
-        pairs_with=row.pairs_with,
-        fingerprint=row.fingerprint(),
-        subset=list(subset) if subset else None,
-        subset_reason=subset_reason,
-        old=row.old,
-        new=row.new,
+        _described(row, subset, subset_reason),
         head_verified=head_verify,
         **replay_fields(row),
     )
-
     try:
-        with mutated(
-            repo_root,
-            row.file,
-            row.old,
-            row.new,
-            allow_append=row.kind == "null-control",
-            head_verify=head_verify,
-        ):
+        appended = row.kind == "null-control"
+        with mutated(repo_root, row.file, row.old, row.new, allow_append=appended,
+                     head_verify=head_verify):
             result = run_pytest(
                 repo_root, subset, timeout=timeout, guard=guard, label=f"row {row.id}",
                 known=known,
             )
             promoted = False
             final = result
-            if (
-                subset is not None
-                and result.deaths == 0
-                and not result.collect_errors
-                and result.collected == subset_baseline.collected
-            ):
+            unbroken = result.collected == subset_baseline.collected
+            if subset is not None and result.deaths == 0 and not result.collect_errors and unbroken:
                 # A zero on a subset is not yet a zero.
                 final = run_pytest(
-                    repo_root,
-                    None,
-                    timeout=timeout,
-                    guard=guard,
-                    label=f"row {row.id}, promoted to the full suite",
-                    known=known,
+                    repo_root, None, timeout=timeout, guard=guard,
+                    label=f"row {row.id}, promoted to the full suite", known=known,
                 )
                 promoted = True
     except DriverRefusal as refusal:
         return RowResult(
-            status="refused",
-            deaths=0,
-            collected=0,
-            baseline_collected=subset_baseline.collected,
-            collect_drift=False,
-            note=str(refusal),
-            runs=0,
-            **common,
+            status="refused", deaths=0, collected=0, baseline_collected=subset_baseline.collected,
+            collect_drift=False, note=str(refusal), runs=0, **common,
         )
-
     reference = full_baseline if promoted else subset_baseline
     drift = final.collected != reference.collected
     if final.collect_errors or drift:
@@ -1656,137 +714,43 @@ def measure_row(
     else:
         status = "zero"
         note = "confirmed on the full suite" if promoted else "measured on the full suite"
-
     return RowResult(
-        status=status,
-        deaths=final.deaths,
-        collected=final.collected,
-        baseline_collected=reference.collected,
-        collect_drift=drift,
-        collect_errors=list(final.collect_errors),
-        killed=final.failure_ids(),
-        promoted=promoted,
-        subset_deaths=result.deaths if promoted else None,
-        note=note,
-        runs=2 if promoted else 1,
+        status=status, deaths=final.deaths, collected=final.collected,
+        baseline_collected=reference.collected, collect_drift=drift,
+        collect_errors=list(final.collect_errors), killed=final.failure_ids(), promoted=promoted,
+        subset_deaths=result.deaths if promoted else None, note=note, runs=2 if promoted else 1,
         **common,
     )
 
 
-@dataclass
-class Batch:
-    name: str
-    pass_kind: str
-    branch: str
-    head: str
-    when: str
-    valid: bool
-    invalid_reason: str
-    baseline_collected: int
-    baseline_exit: int
-    control: RowResult | None
-    results: list[RowResult]
-    dropped: list[Dropped]
-    pytest_runs: int
-    state_guarded: str = ""
-    reused_rows: int = 0
-    known_failures: int = 0
-    known_source: str = ""
-    temp_place: str = ""
-    temp_on_disk: int = 0
-    baseline_source: str = "measured"
-    baseline_note: str = ""
-    subset_baselines: int = 0
-    mapped: list[Mapped] = field(default_factory=list)
-
-    def to_dict(self) -> dict:
-        """The sidecar. ``mapped`` is a replay pass's key and no other pass writes it."""
-        data = {
-            "name": self.name,
-            "pass_kind": self.pass_kind,
-            "branch": self.branch,
-            "head": self.head,
-            "when": self.when,
-            "valid": self.valid,
-            "invalid_reason": self.invalid_reason,
-            "baseline_collected": self.baseline_collected,
-            "baseline_exit": self.baseline_exit,
-            "pytest_runs": self.pytest_runs,
-            "state_guarded": self.state_guarded,
-            "reused_rows": self.reused_rows,
-            "known_failures": self.known_failures,
-            "known_source": self.known_source,
-            "temp_place": self.temp_place,
-            "temp_on_disk": self.temp_on_disk,
-            "baseline_source": self.baseline_source,
-            "baseline_note": self.baseline_note,
-            "subset_baselines": self.subset_baselines,
-            "control": self.control.to_dict() if self.control else None,
-            "rows": [one.to_dict() for one in self.results],
-            "dropped": [one.__dict__ for one in self.dropped],
-        }
-        if self.pass_kind == REPLAY:
-            data["mapped"] = [one.to_dict() for one in self.mapped]
-        return data
-
-
 def measure_batch(
-    repo_root: Path,
-    name: str,
-    rows: list[Row],
-    dropped: list[Dropped] | None = None,
-    *,
-    pass_kind: str = "full",
-    allow_dirty: bool = False,
-    timeout: int = 3600,
-    prior: dict | None = None,
-    progress_path: Path | None = None,
-    guard: StateGuard | None = None,
-    known: frozenset[str] = frozenset(),
-    known_source: str = "",
-    known_digest: str = "",
-    battery_verdict: Path | None = None,
-    baseline_note: str = "",
+    repo_root: Path, name: str, rows: list[Row], dropped: list[Dropped] | None = None, *,
+    pass_kind: str = "full", allow_dirty: bool = False, timeout: int = 3600,
+    prior: dict | None = None, progress_path: Path | None = None, guard: StateGuard | None = None,
+    known: frozenset[str] = frozenset(), known_source: str = "", known_digest: str = "",
+    battery_verdict: Path | None = None, baseline_note: str = "",
     mapped: list[Mapped] | None = None,
 ) -> Batch:
     """Run a whole batch: preflight, baselines, the control, then the rows.
 
-    ``battery_verdict`` names the cloud battery's run record, which stands for
-    the full baseline when ``read_battery_verdict`` finds every key this
-    batch's own (U271); otherwise, or when it is None, the full baseline is
-    measured. ``baseline_note`` says why none was offered, for the table.
-    Every subset baseline is measured either way, and the null control runs
-    the full suite here either way.
-
-    ``progress_path`` is rewritten after EVERY row, not at the end. A batch on
-    this suite is minutes long, and a sidecar written only on success means an
-    interrupted batch resumes from nothing, which is the same as not being
-    resumable.
+    ``battery_verdict``, when ``read_battery_verdict`` accepts it, stands for the
+    full baseline. ``progress_path`` is rewritten after EVERY row, so it resumes.
     """
     dropped = list(dropped or [])
     runs = 0
     when = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     header = dict(
-        name=name,
-        pass_kind=pass_kind,
-        branch=branch_name(repo_root),
-        head=head_sha(repo_root),
-        when=when,
-        dropped=dropped,
-        known_failures=len(known),
-        known_source=known_source,
-        temp_place=getattr(known, "place", ""),
-        temp_on_disk=len(getattr(known, "on_disk", ())),
+        name=name, pass_kind=pass_kind, branch=branch_name(repo_root), head=head_sha(repo_root),
+        when=when, dropped=dropped, known_failures=len(known), known_source=known_source,
+        temp_place=getattr(known, "place", ""), temp_on_disk=len(getattr(known, "on_disk", ())),
         mapped=list(mapped or []),
     )
-
     control = null_control_row(rows)
     targets = sorted({row.file for row in [*rows, control]})
     for rel in targets:
         if not (repo_root / rel).is_file():
             raise DriverRefusal(f"row target does not exist: {rel}")
         git_head_bytes(repo_root, rel)  # refuses an untracked or uncommitted target
-
     dirty = dirty_targets(repo_root, targets)
     if dirty and not allow_dirty:
         raise DriverRefusal(
@@ -1796,14 +760,11 @@ def measure_batch(
             f"or certify the wrong bytes. Commit them, or pass --allow-dirty and "
             f"accept that the restore check is measuring against HEAD."
         )
-
-    # Taken AFTER preflight and before the first child, so the fingerprint
-    # describes the machine as the batch found it. R-343.
+    # After preflight and before the first child, so it describes the machine
+    # as the batch found it. R-343.
     if guard is None:
         guard = take_state_guard()
     header["state_guarded"] = guard.describe()
-
-    # ---- baselines ------------------------------------------------------
     read: RunResult | None = None
     if battery_verdict is not None:
         read, baseline_note = read_battery_verdict(
@@ -1846,54 +807,41 @@ def measure_batch(
             f"{hint}"
         )
 
-    plans: list[tuple[Row, list[str] | None, str]] = []
-    for row in rows:
-        if row.tests:
-            plans.append((row, list(row.tests), "explicit subset from the row"))
-        else:
-            subset, why = derive_subset(repo_root, row.file)
-            plans.append((row, subset, why))
-
+    def batch(**fields) -> Batch:
+        return Batch(
+            baseline_collected=full_baseline.collected, baseline_exit=full_baseline.exit_code,
+            pytest_runs=runs, **header, **fields,
+        )
+    plans = [
+        (row, list(row.tests), "explicit subset from the row")
+        if row.tests
+        else (row, *derive_subset(repo_root, row.file))
+        for row in rows
+    ]
     subset_baselines: dict[tuple[str, ...], RunResult] = {}
     for _, subset, _ in plans:
-        if subset is None:
+        if subset is None or tuple(subset) in subset_baselines:
             continue
-        key = tuple(subset)
-        if key not in subset_baselines:
-            measured = run_pytest(
-                repo_root,
-                list(subset),
-                timeout=timeout,
-                guard=guard,
-                label=f"the subset baseline for {', '.join(subset)}",
-                known=known,
+        measured = run_pytest(
+            repo_root, list(subset), timeout=timeout, guard=guard,
+            label=f"the subset baseline for {', '.join(subset)}", known=known,
+        )
+        runs += 1
+        if not measured.is_green:
+            raise DriverRefusal(
+                f"the subset baseline for {', '.join(subset)} is not green: "
+                f"{', '.join(measured.failure_ids()[:10]) or 'collection error'}. "
+                f"Every row measured against it would read as a death."
             )
-            runs += 1
-            if not measured.is_green:
-                raise DriverRefusal(
-                    f"the subset baseline for {', '.join(subset)} is not green: "
-                    f"{', '.join(measured.failure_ids()[:10]) or 'collection error'}. "
-                    f"Every row measured against it would read as a death."
-                )
-            subset_baselines[key] = measured
+        subset_baselines[tuple(subset)] = measured
     header["subset_baselines"] = len(subset_baselines)
-
-    # ---- the control ----------------------------------------------------
     control_result = measure_row(
-        repo_root,
-        control,
-        None,
-        "full suite",
-        full_baseline,
-        full_baseline,
-        timeout=timeout,
-        head_verify=control.file not in set(dirty),
-        guard=guard,
-        known=known,
+        repo_root, control, None, "full suite", full_baseline, full_baseline, timeout=timeout,
+        head_verify=control.file not in set(dirty), guard=guard, known=known,
     )
     runs += control_result.runs
     if control_result.deaths or control_result.status != "zero":
-        return Batch(
+        return batch(
             valid=False,
             invalid_reason=(
                 f"the null control killed {control_result.deaths} and collected "
@@ -1903,15 +851,9 @@ def measure_batch(
                 f"code. Every row in this batch would be wrong in the same "
                 f"direction. Stop and find the environmental cause."
             ),
-            baseline_collected=full_baseline.collected,
-            baseline_exit=full_baseline.exit_code,
             control=control_result,
             results=[],
-            pytest_runs=runs,
-            **header,
         )
-
-    # ---- the rows -------------------------------------------------------
     stale = pass_kind == REPLAY and bool(replay_resume_refusal(repo_root, prior))
     reused = {
         entry["fingerprint"]: entry
@@ -1922,341 +864,41 @@ def measure_batch(
     for row, subset, why in plans:
         cached = reused.get(row.fingerprint())
         if cached is not None and cached.get("id") == row.id:
-            # Where a row came from and why it moved are the row file's to
-            # say, not the measurement's, so a reused row takes them as they
-            # stand now.
+            # Where a row came from and why it moved are the row file's to say now.
             results.append(RowResult(**{**cached, **replay_fields(row)}))
             header["reused_rows"] = header.get("reused_rows", 0) + 1
             continue
         baseline = subset_baselines[tuple(subset)] if subset is not None else full_baseline
         try:
-            results.append(
-                measure_row(
-                    repo_root,
-                    row,
-                    subset,
-                    why,
-                    baseline,
-                    full_baseline,
-                    timeout=timeout,
-                    head_verify=row.file not in set(dirty),
-                    guard=guard,
-                    known=known,
-                )
-            )
-        except RestoreVerificationError:
-            raise
-        except StateLeak:
-            # Must outrank the blanket handler below. Recorded as an error row,
-            # a leak would read as one unremarkable row and the loop would keep
+            results.append(measure_row(
+                repo_root, row, subset, why, baseline, full_baseline, timeout=timeout,
+                head_verify=row.file not in set(dirty), guard=guard, known=known,
+            ))
+        except (RestoreVerificationError, StateLeak, KeyboardInterrupt):
+            # A leak must outrank the blanket handler below, or the loop would keep
             # spending children against a machine it had just damaged.
             raise
-        except KeyboardInterrupt:
-            raise
         except Exception as failure:  # noqa: BLE001 - recorded, never swallowed silently
-            results.append(
-                RowResult(
-                    id=row.id,
-                    description=row.description,
-                    file=row.file,
-                    kind=row.kind,
-                    surface=row.surface,
-                    pairs_with=row.pairs_with,
-                    fingerprint=row.fingerprint(),
-                    subset=list(subset) if subset else None,
-                    subset_reason=why,
-                    status="error",
-                    deaths=0,
-                    collected=0,
-                    baseline_collected=baseline.collected,
-                    collect_drift=False,
-                    note=f"{type(failure).__name__}: {failure}",
-                    runs=1,
-                    old=row.old,
-                    new=row.new,
-                    **replay_fields(row),
-                )
-            )
+            results.append(RowResult(
+                status="error", deaths=0, collected=0, baseline_collected=baseline.collected,
+                collect_drift=False, note=f"{type(failure).__name__}: {failure}", runs=1,
+                **_described(row, subset, why), **replay_fields(row),
+            ))
         runs += results[-1].runs
         if progress_path is not None:
-            partial = Batch(
-                valid=True,
-                invalid_reason="in progress",
-                baseline_collected=full_baseline.collected,
-                baseline_exit=full_baseline.exit_code,
-                control=control_result,
-                results=results,
-                pytest_runs=runs,
-                **header,
-            )
+            partial = batch(valid=True, invalid_reason="in progress", control=control_result,
+                            results=results)
             progress_path.parent.mkdir(parents=True, exist_ok=True)
-            progress_path.write_text(
-                json.dumps(partial.to_dict(), indent=2) + "\n", encoding="utf-8"
-            )
-
-    return Batch(
-        valid=True,
-        invalid_reason="",
-        baseline_collected=full_baseline.collected,
-        baseline_exit=full_baseline.exit_code,
-        control=control_result,
-        results=results,
-        pytest_runs=runs,
-        **header,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Output
-# ---------------------------------------------------------------------------
-
-
-def composite_note(batch: Batch, result: RowResult) -> str:
-    """What a zero row owes, per METHOD's severity floor.
-
-    A zero on a USER FACING guard is acceptable only when a composite shows what
-    the guard does hold. A zero on a maintainer facing guard gets one line,
-    because the floor says such a row can never block a merge and a composite
-    there buys documentation rather than a decision.
-    """
-    if result.status != "zero":
-        return ""
-    if result.surface != "user":
-        return "maintainer facing, composite not required"
-    pair = next((one for one in batch.results if one.pairs_with == result.id), None)
-    if pair is None:
-        return "USER FACING ZERO WITH NO COMPOSITE: pair it or reclassify it"
-    return f"paired with `{pair.id}`, which killed {pair.deaths}"
-
-
-def _block(text: str, limit: int = 1200) -> str:
-    body = text if len(text) <= limit else text[:limit] + "\n... truncated ..."
-    return "```\n" + (body if body.strip() else "(empty)") + "\n```"
+            progress_path.write_text(json.dumps(partial.to_dict(), indent=2) + "\n", "utf-8")
+    return batch(valid=True, invalid_reason="", control=control_result, results=results)
 
 
 def render_markdown(batch: Batch) -> str:
-    lines: list[str] = []
-    add = lines.append
-
-    add(f"# Mutation table: {batch.name}")
-    add("")
-    add(
-        f"Measured by `scripts/mutate.py` on {batch.when}, branch `{batch.branch}` "
-        f"at `{batch.head}`. Pass kind: {batch.pass_kind}."
-    )
-    add("")
-    if batch.pass_kind == REPLAY:
-        add(
-            "A replay pass measures again rows a table under `docs/mutation/` already "
-            "recorded, so it has no row cap and chooses no rows: every row below names "
-            "the table and the id it came from. One full baseline and one null control "
-            "serve the batch, and each row ran on its own subset (U297)."
-        )
-        add("")
-    add(
-        f"Baseline: green, {batch.baseline_collected} collected. "
-        f"pytest invocations for this batch: {batch.pytest_runs}."
-    )
-    add("")
-    if batch.baseline_source == "read":
-        add(
-            f"Full baseline: READ, not measured by this driver; {batch.baseline_note}. "
-            "The null control below ran the full suite in this driver's own "
-            "environment and was held to that collected count (U271)."
-        )
-    else:
-        why = f" ({batch.baseline_note})" if batch.baseline_note else ""
-        add(f"Full baseline: measured by this driver{why}.")
-    add("")
-    add(f"Subset baselines: {batch.subset_baselines}, each measured by this driver.")
-    if batch.known_failures:
-        add("")
-        add(
-            f"Known failures: {batch.known_failures} node ids whose failure is this "
-            f"machine's and not the tree's, read from `{batch.known_source}` and "
-            "subtracted from every run, the baselines and the rows alike. The "
-            "baseline is green net of them, and a death among them is not counted. "
-            "This is a Linux measure of a macOS suite; the full battery is owed on "
-            "a Mac."
-        )
-    if batch.temp_place:
-        again = (
-            f", and after each run that collected them the {batch.temp_on_disk} test(s) "
-            "the baseline ran on disk ran again on disk, their outcome there standing, "
-            "in runs the invocation count above does not include"
-            if batch.temp_on_disk
-            else ""
-        )
-        add("")
-        add(
-            f"Temporary files: {'in memory' if batch.temp_place == 'memory' else 'on disk'}, "
-            "the place the known failures were "
-            f"measured in, each run given a fresh directory there as `TMPDIR`{again} (U273)."
-        )
-    add("")
-    add(
-        "Environment: inherited from the calling shell, then added to. Added: "
-        + "; ".join(ADDED_ENV)
-        + ". Removed: "
-        + "; ".join(f"{name} ({why})" for name, why in SCRUBBED_ENV.items())
-        + ". Nothing else was scrubbed, because a hand built environment is how a "
-        "missing binary reddens a baseline and every row after it."
-    )
-    add("")
-    if batch.state_guarded:
-        reused = (
-            f" {batch.reused_rows} row(s) were reused from a prior sidecar and were "
-            "measured by an earlier process, whose children this run did not watch."
-            if batch.reused_rows
-            else ""
-        )
-        add(
-            "Installation state: the watched roots are unchanged. Fingerprinted "
-            "before the first child this run started and after every one of "
-            f"them: {batch.state_guarded}. A change would have stopped the batch "
-            "at the child that was running. Every child ran with its own throwaway "
-            "installation state, so a test that undoes the suite's isolation "
-            "lands there rather than on this machine (R-343). Only those roots "
-            "are watched; the sandbox also redirects HOME and the data root, and "
-            f"a child reaching one of those is not seen by this guard.{reused}"
-        )
-        add("")
-
-    if not batch.valid:
-        add("## THIS BATCH IS INVALID")
-        add("")
-        add(batch.invalid_reason)
-        add("")
-        return "\n".join(lines) + "\n"
-
-    control = batch.control
-    if control is not None:
-        add(
-            f"Null control `{control.id}`: killed {control.deaths}, collected "
-            f"{control.collected} against {control.baseline_collected}. The control "
-            f"is a semantically empty change, so a zero here is what makes every "
-            f"other number in this table believable."
-        )
-        add("")
-
-    add("## Summary")
-    add("")
-    add("| id | file | surface | subset | collected | kills | status |")
-    add("| --- | --- | --- | --- | --- | --- | --- |")
-    for one in batch.results:
-        subset = "full suite" if one.subset is None else f"{len(one.subset)} file(s)"
-        kills = "collection error" if one.status == "collect-error" else str(one.deaths)
-        if one.promoted:
-            kills += " (promoted)"
-        add(
-            f"| `{one.id}` | `{one.file}` | {one.surface} | {subset} | "
-            f"{one.collected} | {kills} | {one.status} |"
-        )
-    add("")
-
-    zeros = [one for one in batch.results if one.status == "zero"]
-    if zeros:
-        add("## Zero rows and what they owe")
-        add("")
-        for one in zeros:
-            add(f"- `{one.id}` ({one.surface} facing): {composite_note(batch, one)}")
-        add("")
-
-    if batch.mapped:
-        add("## Mapped")
-        add("")
-        add(
-            "Recorded rows this batch has no row for, each with the row that covers it. "
-            "`scripts/killset.py check` holds each mapping to a row that is killed."
-        )
-        add("")
-        for one in batch.mapped:
-            add(f"- `{one.source[0]}` row `{one.source[1]}` is covered by `{one.to}`: {one.reason}")
-        add("")
-
-    if batch.dropped:
-        add("## Considered and dropped")
-        add("")
-        if batch.pass_kind == REPLAY:
-            add(
-                "Recorded rows this replay left out and did NOT measure. They are not "
-                "coverage, and `scripts/killset.py check` fails on one that was killed "
-                "before and is neither a row nor mapped here."
-            )
-        else:
-            add(
-                f"METHOD caps a {batch.pass_kind} pass at {ROW_CAPS[batch.pass_kind]} rows. "
-                f"These were ranked below the cap and NOT measured. They are not coverage."
-            )
-        add("")
-        for one in batch.dropped:
-            add(f"- `{one.id}`: {one.description} Dropped because: {one.reason}")
-        add("")
-
-    add("## Row definitions")
-    add("")
-    for one in batch.results:
-        add(f"### `{one.id}`")
-        add("")
-        add(one.description)
-        add("")
-        add(f"- File: `{one.file}`")
-        if one.source:
-            add(f"- Source: `{one.source['table']}`, row `{one.source['id']}`")
-        if one.moved:
-            add(f"- Moved: {one.moved}")
-        add(f"- Surface: {one.surface}")
-        add(f"- Subset: {one.subset_reason}")
-        if one.subset:
-            add(f"- Ran: {', '.join(f'`{path}`' for path in one.subset)}")
-        add(f"- Collected: {one.collected} against a baseline of {one.baseline_collected}")
-        add(f"- Kills: {one.deaths} ({one.status})")
-        if one.promoted:
-            add(f"- Promoted: subset killed {one.subset_deaths}, full suite killed {one.deaths}")
-        if one.note:
-            add(f"- Note: {one.note}")
-        if not one.head_verified:
-            add(
-                "- WEAKER RESTORE CHECK: this target was dirty and --allow-dirty was "
-                "passed, so the restore was verified against the in-memory snapshot "
-                "rather than against git show HEAD."
-            )
-        if one.pairs_with:
-            add(f"- Composite for: `{one.pairs_with}`")
-        if one.killed:
-            shown = one.killed[:15]
-            add("- Killed:")
-            for node in shown:
-                add(f"  - `{node}`")
-            if len(one.killed) > len(shown):
-                add(f"  - ... and {len(one.killed) - len(shown)} more, see the JSON sidecar")
-        if one.collect_errors:
-            add(f"- Collection errors: {', '.join(f'`{e}`' for e in one.collect_errors)}")
-        add("")
-        add("Old text:")
-        add("")
-        add(_block(one.old))
-        add("")
-        add("New text:")
-        add("")
-        add(_block(one.new))
-        add("")
-
-    return "\n".join(lines) + "\n"
+    return _table.render_markdown(batch, ADDED_ENV, SCRUBBED_ENV)
 
 
 def write_outputs(batch: Batch, out_dir: Path) -> tuple[Path, Path]:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    markdown = out_dir / f"{batch.name}.md"
-    sidecar = out_dir / f"{batch.name}.json"
-    markdown.write_text(render_markdown(batch), encoding="utf-8")
-    sidecar.write_text(json.dumps(batch.to_dict(), indent=2) + "\n", encoding="utf-8")
-    return markdown, sidecar
-
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
+    return _table.write_outputs(batch, out_dir, render_markdown(batch))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -2265,42 +907,27 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--name", default=None, help="output name; defaults to the spec's")
     parser.add_argument("--out-dir", type=Path, default=REPO_ROOT / "docs" / "mutation")
     parser.add_argument("--repo-root", type=Path, default=REPO_ROOT)
-    parser.add_argument(
-        "--allow-dirty",
-        action="store_true",
-        help="measure with uncommitted changes to a target; the restore check still uses HEAD",
-    )
-    parser.add_argument(
-        "--resume",
-        action="store_true",
-        help=(
-            "reuse rows already in the JSON sidecar whose text has not changed; a replay "
-            "reuses them only from a sidecar measured at this commit with no tracked "
-            "file changed since"
-        ),
-    )
+    parser.add_argument("--allow-dirty", action="store_true", help=(
+        "measure with uncommitted changes to a target; the restore check still uses HEAD"
+    ))
+    parser.add_argument("--resume", action="store_true", help=(
+        "reuse rows already in the JSON sidecar whose text has not changed; a replay "
+        "reuses them only from a sidecar measured at this commit with no tracked "
+        "file changed since"
+    ))
     parser.add_argument("--timeout", type=int, default=3600, help="seconds per pytest run")
-    parser.add_argument(
-        "--known-failures",
-        type=Path,
-        default=None,
-        help=(
-            "a file of whole node ids that fail on this machine and not for the tree, one "
-            "a line, # comments allowed, as scripts/cloud_battery.py baseline writes "
-            "it with full history and whole ids; subtracted from every run, and refused "
-            "on a shallow clone. It also names where its temporary files were, memory or "
-            "disk: every child keeps its own there, the tests it ran on disk run again on "
-            "disk after a run in memory, and a file naming no place is refused"
-        ),
-    )
-    parser.add_argument(
-        "--measure-baseline",
-        action="store_true",
-        help=(
-            "measure the full baseline here even when the cloud battery's verdict for "
-            "this commit could stand for it (U271)"
-        ),
-    )
+    parser.add_argument("--known-failures", type=Path, default=None, help=(
+        "a file of whole node ids that fail on this machine and not for the tree, one "
+        "a line, # comments allowed, as scripts/cloud_battery.py baseline writes "
+        "it with full history and whole ids; subtracted from every run, and refused "
+        "on a shallow clone. It also names where its temporary files were, memory or "
+        "disk: every child keeps its own there, the tests it ran on disk run again on "
+        "disk after a run in memory, and a file naming no place is refused"
+    ))
+    parser.add_argument("--measure-baseline", action="store_true", help=(
+        "measure the full baseline here even when the cloud battery's verdict for "
+        "this commit could stand for it (U271)"
+    ))
     return parser
 
 
@@ -2311,34 +938,17 @@ KNOWN_FAILURES_WHOLE_IDS = "ids whole"
 
 
 class KnownFailures(frozenset):
-    """The ids a baseline measured failing, and where it kept its temporary files.
-
-    The place travels with the ids because they are true only of that place
-    (U273): a run subtracting them keeps its own files there, and after a run
-    in memory reruns ``on_disk``, the tests the baseline ran on disk, on disk.
-    """
+    """A baseline's failing ids, the place of its temporary files and its tests on disk."""
 
     def __new__(cls, ids=(), *, place: str = "", on_disk=()):
         made = super().__new__(cls, ids)
-        made.place = place
-        made.on_disk = tuple(on_disk)
+        made.place, made.on_disk = place, tuple(on_disk)
         return made
 
 
 def read_known_failures(path: Path) -> KnownFailures:
-    """The node ids of a baseline, refused unless it was measured with full history,
-    its ids are whole and it names the place of its temporary files.
-
-    A shallow clone fails every test that reads old history, and a failure
-    subtracted by id hides each later failure of that test (R-1191), so a file
-    whose first line does not end with the fields `cloud_battery.py baseline`
-    writes, an older baseline or one written by hand, is refused. A baseline
-    measured before U268 holds each id only up to its first space, and a cut id
-    equals no node id this driver reads off a report, so it is refused too, with
-    the command that measures it again. A baseline measured before U273 names no
-    place for its temporary files, so which machine its failures belong to is
-    unknown, and it is refused the same way.
-    """
+    """A baseline's node ids, refused unless measured with full history (R-1191), with
+    whole ids (U268) and naming the place of its temporary files (U273)."""
     text = path.read_text(encoding="utf-8").splitlines()
     first = text[0].strip() if text else ""
     measured = first.startswith("# commit ")
@@ -2402,6 +1012,15 @@ def refuse_a_place_this_machine_cannot_give(known: KnownFailures) -> None:
             )
 
 
+#: How main reports each way a batch stops, and its exit code.
+STOPS = {
+    DriverRefusal: ("refused", 2),
+    RestoreVerificationError: ("RESTORE FAILED", 3),
+    StateLeak: ("STATE LEAK", 6),
+    MeasurementFailure: ("NOTHING MEASURED", 5),
+}
+
+
 def main(argv: list[str]) -> int:
     args = build_parser().parse_args(argv[1:])
     try:
@@ -2413,7 +1032,6 @@ def main(argv: list[str]) -> int:
         print(f"refused: {refusal}", file=sys.stderr)
         return 2
     name = args.name or name
-
     known: frozenset[str] = frozenset()
     known_digest = ""
     if args.known_failures is not None:
@@ -2428,7 +1046,6 @@ def main(argv: list[str]) -> int:
         except DriverRefusal as refusal:
             print(f"refused: {refusal}", file=sys.stderr)
             return 2
-
     # The battery's verdict is read net of the machine's known failures, so it
     # is offered only to a run that subtracts them (U271).
     battery_verdict = None
@@ -2437,7 +1054,6 @@ def main(argv: list[str]) -> int:
         baseline_note = "--measure-baseline was passed"
     elif args.known_failures is not None:
         battery_verdict = args.repo_root / BATTERY_VERDICT
-
     prior = None
     sidecar = args.out_dir / f"{name}.json"
     if args.resume and sidecar.is_file():
@@ -2449,38 +1065,19 @@ def main(argv: list[str]) -> int:
                 f"rows only from this commit as committed, so every row is measured again",
                 file=sys.stderr,
             )
-
     try:
         batch = measure_batch(
-            args.repo_root,
-            name,
-            rows,
-            dropped,
-            pass_kind=pass_kind,
-            allow_dirty=args.allow_dirty,
-            timeout=args.timeout,
-            prior=prior,
-            progress_path=sidecar,
-            known=known,
+            args.repo_root, name, rows, dropped, pass_kind=pass_kind,
+            allow_dirty=args.allow_dirty, timeout=args.timeout, prior=prior,
+            progress_path=sidecar, known=known,
             known_source=str(args.known_failures) if args.known_failures else "",
-            known_digest=known_digest,
-            battery_verdict=battery_verdict,
-            baseline_note=baseline_note,
-            mapped=mapped,
+            known_digest=known_digest, battery_verdict=battery_verdict,
+            baseline_note=baseline_note, mapped=mapped,
         )
-    except DriverRefusal as refusal:
-        print(f"refused: {refusal}", file=sys.stderr)
-        return 2
-    except RestoreVerificationError as broken:
-        print(f"RESTORE FAILED: {broken}", file=sys.stderr)
-        return 3
-    except StateLeak as leak:
-        print(f"STATE LEAK: {leak}", file=sys.stderr)
-        return 6
-    except MeasurementFailure as broken:
-        print(f"NOTHING MEASURED: {broken}", file=sys.stderr)
-        return 5
-
+    except (DriverRefusal, RestoreVerificationError, StateLeak, MeasurementFailure) as stop:
+        heading, code = STOPS[type(stop)]
+        print(f"{heading}: {stop}", file=sys.stderr)
+        return code
     markdown, written = write_outputs(batch, args.out_dir)
     print(
         f"full baseline: {batch.baseline_source}"
