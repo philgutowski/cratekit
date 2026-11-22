@@ -1,15 +1,11 @@
 """R-797: a bucket promoted to its own folder leaves the playlist its tracks sat in.
 
-R&B was a style sub of the non electronic folder and became a top level folder
-split by energy. Its tracks still sit in the old playlist, which the taxonomy
-now declares as the new bucket's FORMER PLACE. Held here: what competes, what
-the placement reader finds, what adoption withholds, what the move plans and
-lists, the writer's refusal to file into a former place, and then the verb
-through the real dispatcher against a disposable library with real tags.
-
-Every expected identifier is derived from the shipped taxonomy's declarations
-rather than spelled, except the old shape, which is rebuilt from the shipped
-text by undoing the promotion and is checked to be the shape it claims.
+R&B became a top level folder split by energy, and its old playlist in the non
+electronic folder is its FORMER PLACE. Held here: what competes, what the reader
+finds, what adoption withholds, what the move plans and lists, the writer's
+refusal to file into a former place, and the verb against a disposable library
+with real tags. Identifiers are derived from the shipped declarations, the old
+shape rebuilt from the shipped text and checked to be the shape it claims.
 
 D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
 """

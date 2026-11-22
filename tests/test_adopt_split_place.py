@@ -1,18 +1,12 @@
 """U118: Soul and Hip-Hop are folders of their own, and their tracks move in.
 
-Soul was filed in R&B's energy bands as one folder, and those bands stay
-R&B's, so Soul declares them as SPLIT PLACES: a track whose genre names Soul
-leaves the R&B band for the Soul band its reading names, and a track whose
-genre names R&B is never touched. Hip-Hop was a style sub of the non
-electronic folder and is promoted the way R&B was, through a former place.
-
-Held here: where the words route and tag, what the shipped template declares,
-what competes, what the placement reader finds, what adoption withholds, what
-the move plans and lists, what the worker checks, and then the verb through
-the real dispatcher against a disposable library with real tags.
-
-Every expected identifier is derived from the shipped taxonomy's declarations,
-except the genre words, which are the author's decision and are named.
+R&B's bands stay R&B's, so Soul declares them as SPLIT PLACES: a track whose
+genre names Soul leaves the R&B band for the Soul band its reading names, and
+an R&B track is never touched. Hip-Hop is promoted the way R&B was, through a
+former place. Held here: where the words route and tag, the declaration, what
+competes and is read, adoption, the move plan, the worker's check, and the verb
+against a disposable library with real tags. Identifiers are derived from the
+shipped declarations, except the genre words, which are the author's.
 
 D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
 """

@@ -1,18 +1,11 @@
 """U133: Jazz is a genre folder of its own, and its tracks move in.
 
-Jazz was a style sub of the non electronic folder with no energy split, and
-is promoted the way Hip-Hop was (U118), through a former place: a folder under
-the tree with the dance bands, Unsorted, "with vox" and Favorites, declaring
-the old NonElectronic / Jazz playlist as the place its tracks leave. Unlike
-R&B and Hip-Hop, its keyword rule moved with it, by the author's naming.
-
-Held here: where the words route and tag, what the shipped template declares,
-what competes, what adoption withholds, what the move plans, and then the
-verb through the real dispatcher against a disposable library with real tags.
-
-Every expected identifier is derived from the shipped taxonomy's declarations,
-except the genre words and the folder names, which are the author's decision
-and are named.
+Jazz was a style sub of the non electronic folder and is promoted the way
+Hip-Hop was (U118), through a former place, its keyword rule moving with it by
+the author's naming. Held here: where the words route and tag, the declaration,
+what competes, adoption, the move plan, and the verb against a disposable
+library with real tags. Identifiers are derived from the shipped declarations,
+except the genre words and folder names, which are the author's.
 
 D1 APPLIES. Nothing here names a real volume, a real person, or a real track.
 """
