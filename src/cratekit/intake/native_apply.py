@@ -335,7 +335,7 @@ def _landed_rows(
                     "columns": {name: _plain(getattr(content, name, None)) for name in LANDED_COLUMNS},
                     LANDED_UUID_KEY: str(getattr(content, "UUID", None) or ""),
                 }
-            )  # fmt: skip
+            )
         sequence = int(db.get_local_usn())
     except Exception as exc:  # noqa: BLE001 - any read failure records nothing
         logger.warning(

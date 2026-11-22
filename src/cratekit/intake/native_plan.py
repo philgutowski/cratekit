@@ -242,9 +242,11 @@ def plan_rows(
     # ONLY WHEN A ROW IS ADDED (U126): a landing of memberships alone needs no value.
     link = (
         row_link.library_link(db) if any(row.action == ADD for row in rows) else None
-    )  # fmt: skip
+    )
     if link is not None:
-        rows = [replace(row, content_link=link.value) if row.action == ADD else row for row in rows]
+        rows = [
+            replace(row, content_link=link.value) if row.action == ADD else row for row in rows
+        ]
     rows, vox_cut, vox_blocked = _vox_plan(cfg, db, rows)
     rows, drift_cut, dyn_blocked = _dyn_plan(cfg, db, rows)
     rows = _words_plan(db, rows)
@@ -270,7 +272,9 @@ def plan_rows(
         playlists=kept,
         unplanned_left=(*unplanned_left, *dropped),
         pass_name=pass_name,
-        favorites=_favorites_plan(db, hearts, rows, source=favorites_source, owned=owned_hearts),
+        favorites=_favorites_plan(
+            db, hearts, rows, source=favorites_source, owned=owned_hearts
+        ),
         set_playlist=set_plan,
         labels=labels,
         batch_playlist_id=batch_playlist_id,

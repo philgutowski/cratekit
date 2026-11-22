@@ -245,11 +245,7 @@ class RowPlan:
 
     def linked(self) -> tuple[tuple[str, Word | None], ...]:
         """Each column linked to a lookup row, and the word it takes (U163)."""
-        return (
-            (ARTIST_COLUMN, self.artist),
-            (ALBUM_COLUMN, self.album),
-            (GENRE_COLUMN, self.genre),
-        )
+        return ((ARTIST_COLUMN, self.artist), (ALBUM_COLUMN, self.album), (GENRE_COLUMN, self.genre))
 
     def words(self) -> dict[str, Any]:
         """The words the row is planned to read back with, by column (U163)."""
@@ -603,7 +599,9 @@ def identity(plan: NativePlan) -> dict[str, Any]:
     and rows and a rehearsal on one must digest as the other.
     """
     split = (
-        {"playlists": [_playlist_identity(one) for one in plan.playlists]} if plan.playlists else {}
+        {"playlists": [_playlist_identity(one) for one in plan.playlists]}
+        if plan.playlists
+        else {}
     )
     unplanned = (
         {"unplanned_left": [[name, row.identity()] for name, row in plan.unplanned_left]}
@@ -649,7 +647,7 @@ def identity(plan: NativePlan) -> dict[str, Any]:
     analyze = {"analyze": plan.analyze_playlist_id} if plan.to_add() else {}
     filing = (
         {"filing": [one.identity() for one in plan.filing]} if plan.filing is not None else {}
-    )  # fmt: skip
+    )
     twins = {"twins": [one.identity() for one in plan.twins]} if plan.twins else {}
     return {
         **split,
@@ -990,7 +988,7 @@ def apply_rows(
             # THE LOOKUP TABLES ONLY WHEN A WORD WAS MINTED (U163).
             rb_writer.commit_guarded(
                 db, creations=(rb_writer.CONTENT_TABLE, *mints.tables())
-            )  # fmt: skip
+            )
         except BaseException as exc:
             trees.rollback_quietly(db)
             if not witness.landed:
@@ -1004,10 +1002,7 @@ def apply_rows(
             memberships + analyze_added,
             cfg,
             landed=steps._landed_rows(
-                db,
-                plan,
-                added_ids,
-                (playlist_id, *(one.playlist_id for one in written)),
+                db, plan, added_ids, (playlist_id, *(one.playlist_id for one in written)),
                 before=playlists_before,
             ),
             playlist_id=playlist_id,
@@ -1072,7 +1067,9 @@ def apply_rows(
         content_link=plan.link.value if plan.link is not None else None,
         left=tuple(left),
         vox_written=vox_written,
-        vox_unscored=tuple(row.target for row, _content_id in added_ids if row.target in unscored),
+        vox_unscored=tuple(
+            row.target for row, _content_id in added_ids if row.target in unscored
+        ),
         vox_blocked=plan.vox_blocked if added_ids else "",
         vox_missing=tuple(
             row.target for row, content_id in added_ids if row.vox and content_id not in voxed
