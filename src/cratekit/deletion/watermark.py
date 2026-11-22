@@ -273,13 +273,3 @@ class WatermarkStore:
             mark = replace(existing, absent=kept)
             self._write(mark)
             return mark
-
-
-__all__ = [
-    "READABLE_VERSIONS",
-    "UNBASELINED",
-    "WATERMARK_VERSION",
-    "Watermark",
-    "WatermarkStore",
-    "contiguous_sequence",
-]

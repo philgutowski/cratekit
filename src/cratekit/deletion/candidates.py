@@ -673,17 +673,3 @@ def recheck(
         stat=stat,
     )
     return answered[0]
-
-
-__all__ = [
-    "HANDLED",
-    "Candidate",
-    "Category",
-    "FileIdentity",
-    "ReferenceSet",
-    "Stat",
-    "assert_complete",
-    "categorize",
-    "recheck",
-    "reference_set",
-]

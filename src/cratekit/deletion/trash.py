@@ -325,22 +325,3 @@ def recover(target: Path | str, original: Path | str) -> Path:
         )
     os.replace(Path(target), destination)
     return destination
-
-
-#: The probe signature doctor consumes (U27 owns the check).
-Probe = Callable[..., TrashStatus]
-
-
-__all__ = [
-    "MAX_NAME_ATTEMPTS",
-    "Probe",
-    "Stat",
-    "TrashLayout",
-    "TrashStatus",
-    "assert_usable",
-    "layout_for",
-    "move_to_trash",
-    "probe",
-    "recover",
-    "volume_root",
-]

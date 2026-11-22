@@ -135,6 +135,3 @@ def review_removals(ctx) -> Envelope:
         return ctx.envelope(data=_payload(cfg, offered), outcome=Outcome.OK)
     finally:
         rb_writer.close_db(handle)
-
-
-__all__ = ["build_review", "review_removals"]

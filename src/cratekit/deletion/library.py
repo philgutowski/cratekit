@@ -563,24 +563,3 @@ def recorded_removals(
             if seen is None or seen.sequence < row.sequence:
                 found[row.content_id] = row
     return tuple(found[key] for key in sorted(found))
-
-
-__all__ = [
-    "VERSION_IS_AN_ARTIST",
-    "VERSION_IS_A_DESIGNATION",
-    "CollectionRead",
-    "LANDED_ROWS_KEY",
-    "LANDED_UUID_KEY",
-    "LandedAbsence",
-    "LandedRead",
-    "RECORDED_COLUMNS",
-    "RECORDED_REMOVALS_KEY",
-    "RemovedRow",
-    "current_sequence",
-    "database_identity",
-    "landed_absences",
-    "playlist_ids",
-    "playlist_referenced",
-    "read_collection",
-    "recorded_removals",
-]

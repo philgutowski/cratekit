@@ -838,17 +838,3 @@ def revoke(cfg: config.Config, suppression_id: str, *, actor: str) -> review.Sup
                 return stores.revoke_tombstone(cfg, suppression_id, actor=actor)
     # Neither store holds it: the store refuses, in one sentence however reached.
     return stores.revoke_tombstone(cfg, suppression_id, actor=actor)
-
-
-__all__ = [
-    "DELETION_WORKFLOW",
-    "REVIEW_KIND",
-    "TRASH_OPTION",
-    "Plan",
-    "Report",
-    "Trashed",
-    "apply",
-    "plan",
-    "present",
-    "revoke",
-]
