@@ -65,9 +65,7 @@ def _tracks() -> tuple[adopt_fixtures.Track, ...]:
     )
 
 
-# ---------------------------------------------------------------------------
 # Fixtures
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(autouse=True)
@@ -80,7 +78,6 @@ def _release_process_locks():
 def _platform_seams(monkeypatch):
     """What a temporary library cannot speak for, as the rotation suite patches it."""
     from pyrekordbox.db6 import database as binding
-
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
     monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
@@ -145,35 +142,43 @@ def _query(cfg: config.Config, sql: str, *params) -> list[tuple]:
         conn.close()
 
 
-def _node(cfg, name: str, *, under: str | None, age: int | None = None, tracks=()) -> str:
+def _nodes(cfg, *specs: tuple) -> list[str]:
+    """Each ``(name, under, age, tracks)`` playlist made in one open of the database."""
     handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    made: list[str] = []
     try:
-        parent = handle.get_playlist(ID=under) if under is not None else None
-        row = handle.create_playlist(name, parent=parent)
-        if age is not None:
-            row.created_at = datetime.combine(TODAY - timedelta(days=age), datetime.min.time())
-        for content_id in tracks:
-            handle.add_to_playlist(row, content_id)
-        handle.session.commit()
-        return str(row.ID)
+        for name, under, age, tracks in specs:
+            parent = handle.get_playlist(ID=under) if under is not None else None
+            row = handle.create_playlist(name, parent=parent)
+            if age is not None:
+                row.created_at = datetime.combine(TODAY - timedelta(days=age), datetime.min.time())
+            for content_id in tracks:
+                handle.add_to_playlist(row, content_id)
+            handle.session.commit()
+            made.append(str(row.ID))
+        return made
     finally:
         rb_writer.close_db(handle)
 
 
+def _node(cfg, name: str, *, under: str | None, age: int | None = None, tracks=()) -> str:
+    return _nodes(cfg, (name, under, age, tracks))[0]
+
+
 def _cut_over(cfg: config.Config) -> str:
-    """Both trees database native. Answers the intake root's identifier."""
+    """Both trees database native, made in one open. Answers the intake root's identifier."""
     handle = rb_writer.open_db(rb_writer.live_db_path(cfg), unlock=False, cfg=cfg)
     try:
-        root = rb_writer.ensure_folder(handle, DECLARED.tree.display)
+        tree_root = str(rb_writer.ensure_folder(handle, DECLARED.tree.display).ID)
         handle.session.commit()
-        tree_root = str(root.ID)
+        inbox = str(handle.create_playlist_folder(DECLARED.intake.display).ID)
+        handle.session.commit()
     finally:
         rb_writer.close_db(handle)
     tree_registry.record_cutover(
         cfg, DECLARED.tree.id, root_id=tree_root, on=TODAY,
         source=tree_registry.DerivationSource.TAXONOMY,
     )
-    inbox = cutover_fixtures.add_folder(cfg, DECLARED.intake.display)
     tree_registry.write(
         cfg,
         tree_registry.read(cfg).with_record(
@@ -219,13 +224,15 @@ def world(seams):
     cfg, fake, held = seams
     session.record_acknowledgment(cfg, terminal=lambda: True)
     inbox = _cut_over(cfg)
-    ids = {
-        "batch": _node(cfg, RUN_NAMED, under=inbox, age=40, tracks=("r-one",)),
+    made = _nodes(
+        cfg,
+        (RUN_NAMED, inbox, 40, ("r-one",)),
         # A U110 batch, young and readably named: kept, and no rename suggested.
-        "dated": _node(cfg, DATED, under=inbox, age=5, tracks=("r-two",)),
-        "listen later": _node(cfg, "listen later", under=inbox, age=5),
-        "mine": _node(cfg, MINE_IN_REKORDBOX, under=None),
-    }
+        (DATED, inbox, 5, ("r-two",)),
+        ("listen later", inbox, 5, ()),
+        (MINE_IN_REKORDBOX, None, None, ()),
+    )
+    ids = dict(zip(("batch", "dated", "listen later", "mine"), made, strict=True))
     (Path(cfg.library.root) / cfg.library.music_dir / DATED).mkdir(parents=True)
     register(LABEL)
     tracklist = Path(cfg.library.root).parent / "lists" / f"{SET_NAME}.txt"
@@ -237,7 +244,6 @@ def world(seams):
     # THE ACCOUNT LISTS WHAT THE PRODUCT MADE TOO, at its root, so an
     # assertion that the set is not the author's has something to exclude.
     from cratekit.modules.outbound import ledger
-
     fake.account.append(
         AccountPlaylist(ledger.set_playlist(cfg, SET_NAME).remote_id, SET_NAME, len(ROWS))
     )
@@ -292,9 +298,7 @@ def _filed(cfg: config.Config) -> list[str]:
     return sorted(str(content) for content, name in rows if name not in (RUN_NAMED, DATED))
 
 
-# ---------------------------------------------------------------------------
 # The declaration
-# ---------------------------------------------------------------------------
 
 
 def test_the_verb_declares_one_explicit_gate_per_area_and_every_surface_its_steps_write():
@@ -312,14 +316,11 @@ def test_the_adoption_step_queues_under_the_handler_key_adopt_apply_owns():
     assert rekordbox.ADOPT_HANDLER == registry.entry("adopt.apply").handler_key
 
 
-# ---------------------------------------------------------------------------
 # The brief's scenarios
-# ---------------------------------------------------------------------------
 
 
 def test_one_step_of_each_kind_is_planned_in_its_own_area(world):
     envelope = _report()
-
     database = _steps(envelope, rekordbox.AREA)
     remote = _steps(envelope, account_area.AREA)
     assert database[rekordbox.ADOPT]["state"] == "planned"
@@ -338,7 +339,6 @@ def test_what_the_author_made_is_listed_with_a_home_and_never_a_write(world):
     cfg, _fake, held, inbox, ids = world
     envelope = _report()
     areas = envelope["data"]["summary"]["areas"]
-
     mine_db = {one["name"]: one for one in areas[rekordbox.AREA]["yours"]}
     # The trees the taxonomy declares are the product's, never the author's.
     assert not {DECLARED.tree.display, DECLARED.intake.display} & set(mine_db)
@@ -358,7 +358,6 @@ def test_what_the_author_made_is_listed_with_a_home_and_never_a_write(world):
     assert [row["id"] for row in filed["plan"] if row.get("kind_folder") == "Mine"] == []
     # The run named batch is a suggestion, never a step.
     assert [one["name"] for one in areas[rekordbox.AREA]["suggested"]] == [RUN_NAMED]
-
     code, done, _first = _answered()
     assert code == int(ExitCode.OK), done
     assert ("mine-1", MINE_ON_ACCOUNT) not in held.renamed
@@ -390,7 +389,6 @@ def test_deadca7s_folder_is_named_once_as_foreign_and_a_full_apply_leaves_it_as_
     cfg, _fake, _held, _inbox, _ids = world
     pushed = deadca7_fixtures.push(cfg.library.db_path, ("r-one", "r-two"))
     before = deadca7_fixtures.written(cfg.library.db_path, pushed)
-
     envelope = _report()
     area = envelope["data"]["summary"]["areas"][rekordbox.AREA]
     assert deadca7_fixtures.FOLDER not in {one["name"] for one in area["yours"]}
@@ -398,7 +396,6 @@ def test_deadca7s_folder_is_named_once_as_foreign_and_a_full_apply_leaves_it_as_
     # NAMED ONCE, as the folder: the playlists in it are never listed.
     for name in deadca7_fixtures.PLAYLISTS.values():
         assert name not in str(envelope)
-
     code, done, _first = _answered()
     assert code == int(ExitCode.OK), done
     assert deadca7_fixtures.written(cfg.library.db_path, pushed) == before
@@ -476,7 +473,6 @@ def test_a_push_stamped_with_the_zero_date_reads_as_no_push_at_all_west_of_utc(e
     )
     assert len(stamps) == 3 + 2 * len(pushed.content_ids)
     assert set(stamps) == {(deadca7_fixtures.ZERO_STAMP, deadca7_fixtures.ZERO_STAMP)}
-
     after_push = _readings()
     assert after_push == before_push
     # The readings read the database: converge compared a governed tree, which
@@ -489,7 +485,6 @@ def test_a_push_stamped_with_the_zero_date_reads_as_no_push_at_all_west_of_utc(e
     assert area["facts"][rekordbox.FOREIGN_FACT].startswith(f"{deadca7_fixtures.FOLDER} at")
     for name in deadca7_fixtures.PLAYLISTS.values():
         assert name not in str(area)
-
     code, done, _first = _answered()
     assert code == int(ExitCode.OK), done
     assert deadca7_fixtures.written(cfg.library.db_path, pushed) == written
@@ -501,9 +496,7 @@ def test_a_push_stamped_with_the_zero_date_reads_as_no_push_at_all_west_of_utc(e
 def test_approving_rekordbox_and_aborting_the_account_writes_only_rekordbox(world):
     cfg, _fake, held, inbox, ids = world
     assert _filed(cfg) == []
-
     code, done, _first = _answered("approve", "abort")
-
     assert code == int(ExitCode.OK), done
     assert _filed(cfg) == ["r-one", "r-two"]
     assert _parent(cfg, ids["batch"]) != inbox
@@ -514,16 +507,13 @@ def test_approving_rekordbox_and_aborting_the_account_writes_only_rekordbox(worl
 
 def test_aborting_rekordbox_and_applying_the_account_writes_only_the_account(world):
     cfg, _fake, held, inbox, ids = world
-
     code, done, _first = _answered("abort", "apply")
-
     assert code == int(ExitCode.OK), done
     assert _filed(cfg) == []
     assert _parent(cfg, ids["batch"]) == inbox
     assert LABEL in held.folders_created
     # U242: what the account area marked is held as taken, no prefix written.
     from cratekit.sync import mark_record
-
     assert mark_record.MarkRecord(cfg).taken_ids()
     assert not any(name.startswith("DOWNLOADED ") for _pid, name in held.renamed)
 
@@ -533,9 +523,7 @@ def test_report_writes_nothing_and_asks_nothing(world):
     before = _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID")
     members = _query(cfg, "SELECT * FROM djmdSongPlaylist ORDER BY ID")
     created = list(held.created)
-
     envelope = _report()
-
     assert envelope["outcome"] == "no_op"
     assert envelope["data"]["summary"]["answers"] == {}
     assert _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID") == before
@@ -545,9 +533,7 @@ def test_report_writes_nothing_and_asks_nothing(world):
 
 def test_one_steps_refusal_leaves_every_other_plan_on_screen(world):
     register("Ostgut Ton")  # followed, and the catalogue has no artist for it
-
     envelope = _report()
-
     remote = _steps(envelope, account_area.AREA)
     refused = [key for key, step in remote.items() if step["state"] == "refused"]
     assert refused == ["label:ostgut-ton"], remote
@@ -561,7 +547,6 @@ def test_one_steps_refusal_leaves_every_other_plan_on_screen(world):
 def test_a_second_run_after_a_full_apply_plans_nothing(world):
     code, done, _first = _answered()
     assert code == int(ExitCode.OK), done
-
     # U147. THE MIRROR READS THE TREE BEFORE THE DATABASE AREA WRITES IT, plan
     # then ask then write, so a playlist the adoption made in a run is mirrored
     # by the next one, and the mirror is all the second run plans.
@@ -574,9 +559,7 @@ def test_a_second_run_after_a_full_apply_plans_nothing(world):
     assert lagging and all(key.startswith("mirror:") for key in lagging), lagging
     code, done, _first = _answered()
     assert code == int(ExitCode.OK), done
-
     envelope = _report()
-
     for area in envelope["data"]["summary"]["areas"].values():
         planned = [step["step"] for step in area["steps"] if step["state"] == "planned"]
         assert planned == [], area
@@ -587,9 +570,7 @@ def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(seams):
     """The database area is refused before it is planned; the account area still asks."""
     cfg, _fake, held = seams
     register(LABEL)
-
     code, first = drive(VERB)
-
     assert code == int(ExitCode.DECISION_REQUIRED), first
     assert first["cause"]["detail"]["gate"] == ACCOUNT_GATE
     code, done = _two_acts(VERB, ACCOUNT_GATE, "apply")
@@ -604,9 +585,7 @@ def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(seams):
 def test_a_set_with_no_intake_file_named_for_it_waits_and_is_not_planned(world):
     cfg, _fake, _held, _inbox, _ids = world
     (Path(cfg.library.root) / f"{SET_NAME}_inboxed.xml").unlink()
-
     step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
-
     assert step["state"] == "listed"
     assert "crate export archive" in step["detail"]
     # U142: the reason names both proofs, so neither reads as the only one.
@@ -617,9 +596,7 @@ def test_a_set_with_no_intake_file_named_for_it_waits_and_is_not_planned(world):
 def test_an_area_with_nothing_to_do_still_asks(seams):
     cfg, _fake, _held = seams
     session.record_acknowledgment(cfg, terminal=lambda: True)
-
     code, first = drive(VERB)
-
     assert code == int(ExitCode.DECISION_REQUIRED), first
     assert first["cause"]["detail"]["gate"] == DB_GATE
     shown = first["cause"]["detail"]["shown"]
@@ -630,9 +607,7 @@ def test_an_area_with_nothing_to_do_still_asks(seams):
     assert states[rekordbox.ADOPT] == "refused" and states[rekordbox.ROTATE] == "refused"
 
 
-# ---------------------------------------------------------------------------
 # The homes
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -662,18 +637,14 @@ def test_a_rekordbox_home_needs_a_declared_label_tree():
     )
 
 
-# ---------------------------------------------------------------------------
 # What the review found
-# ---------------------------------------------------------------------------
 
 
 def test_the_adoption_job_carries_a_run_its_own_resume_can_answer(world):
     from cratekit.cli import gates
     from cratekit.core import jobs
-
     code, done, _first = _answered("approve", "abort")
     assert code == int(ExitCode.OK), done
-
     step = _steps(done, rekordbox.AREA)[rekordbox.ADOPT]
     with jobs.open_store() as store:
         (job,) = [one for one in jobs.list_jobs(store) if one.handler_key == rekordbox.ADOPT_HANDLER]
@@ -682,14 +653,12 @@ def test_the_adoption_job_carries_a_run_its_own_resume_can_answer(world):
     decision = handed.decisions[rekordbox.ADOPT_GATE]
     assert (decision.option, decision.actor, decision.digest) == ("approve", "a-person", step["digest"])
     from cratekit.adopt import apply_cli
-
     assert job.payload[apply_cli.ACTOR_KEY] == "a-person"
     assert rekordbox.ADOPT_GATE in {spec.name for spec in registry.entry("adopt.apply").gates}
 
 
 def _held_gates(digest: str):
     from cratekit.cli import gates
-
     state = gates.RunState(run_id="run-1", verb="organize", created="2026-10-03T00:00:00Z")
     state.decisions[DB_GATE] = gates.Decision(
         option="approve", actor="a-person", recorded="2026-10-03T00:00:00Z", digest=digest
@@ -700,7 +669,6 @@ def _held_gates(digest: str):
 def test_a_part_hand_off_refuses_a_digest_the_answer_was_not_given_over(tmp_path, monkeypatch):
     from cratekit.cli import output
     from cratekit.core.cause import CratekitError
-
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(tmp_path))
     document = {"kind": "organize", "steps": [["adopt", "planned", "aaaa"]]}
     spec = next(one for one in registry.entry("organize").gates if one.name == DB_GATE)
@@ -718,7 +686,6 @@ def test_a_part_hand_off_refuses_a_digest_the_answer_was_not_given_over(tmp_path
 
 def test_report_says_the_backup_acknowledgment_is_missing(seams):
     envelope = _report()
-
     facts = envelope["data"]["summary"]["areas"][rekordbox.AREA]["facts"]
     assert facts["backup acknowledgment"].startswith("missing")
     rows = {row["key"]: row for row in envelope["data"]["checks"]}
@@ -728,16 +695,13 @@ def test_report_says_the_backup_acknowledgment_is_missing(seams):
 def test_a_set_whose_mark_was_put_back_waits_rather_than_reads_archived(world):
     from cratekit.modules.outbound import ledger
     from cratekit.sync import mark_record
-
     cfg, _fake, _held, _inbox, _ids = world
     (Path(cfg.library.root) / f"{SET_NAME}_inboxed.xml").unlink()
     recorded = ledger.set_playlist(cfg, SET_NAME)
     record = mark_record.MarkRecord(cfg)
     record.record_marked(SET_NAME, {recorded.remote_id: (SET_NAME, f"DOWNLOADED {SET_NAME}")})
     assert _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]["state"] == "nothing"
-
     record.record_unmarked(SET_NAME, recorded.remote_id)
-
     assert _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]["state"] == "listed"
 
 
@@ -748,20 +712,15 @@ def test_the_latest_retired_landing_wins_by_number_and_a_bracket_is_no_pattern(m
         (root / f"{name}_inboxed.xml{tail}").write_text("x", encoding="utf-8")
     (root / "other_inboxed.xml.imported-2").write_text("x", encoding="utf-8")
     (root / "other_inboxed.xml").write_text("x", encoding="utf-8")
-
     found = account_area.intake_by_pass(machine)
-
     assert found[name].name == f"{name}_inboxed.xml.imported-10"
     assert found["other"].name == "other_inboxed.xml"
 
 
 def test_an_unreadable_label_registry_refuses_the_label_step_alone(world):
     from cratekit.label import registry as labels
-
     labels.RegistryStore().path.write_text("{ not json", encoding="utf-8")
-
     envelope = _report()
-
     remote = _steps(envelope, account_area.AREA)
     assert remote[account_area.LABELS]["state"] == "refused"
     assert remote[account_area.LABELS]["reason"] == "label-intent-unusable"
@@ -771,16 +730,13 @@ def test_an_unreadable_label_registry_refuses_the_label_step_alone(world):
 
 def test_a_step_that_fails_unexpectedly_lets_the_rest_run_and_is_raised_after(world, monkeypatch):
     from cratekit.intake import rotate_cli
-
     cfg, _fake, held, inbox, ids = world
 
     def broken(*args, **kwargs):
         raise RuntimeError("the disk went away")
 
     monkeypatch.setattr(rotate_cli, "written", broken)
-
     code, done, _first = _answered()
-
     assert code != int(ExitCode.OK)
     assert done["cause"]["reason"] == "internal-error"
     assert "These were written and stay written" in done["cause"]["message"]
@@ -798,10 +754,8 @@ def test_a_plan_that_moves_after_the_answer_is_stale_rather_than_applied(world):
     assert drive(["run", "decide", run_id, DB_GATE, "approve", "--actor", "a-person"])[0] == 0
     # Another batch old enough to move, landed after the answer was given.
     _node(cfg, "2026-07-01T101010Z-2_inboxed", under=inbox, age=60)
-
     collection.reset_cache()
     code, again = drive(["--run", run_id, *VERB])
-
     assert code == int(ExitCode.DECISION_STALE), again
     assert again["cause"]["reason"] == "decision-stale"
     # U222: an area with nothing to say beside the digests leaves the refusal as the gate gave it.
@@ -816,15 +770,12 @@ def test_a_playlist_of_yours_already_in_a_folder_of_yours_is_not_listed(world):
     _cfg, _fake, held, _inbox, _ids = world
     folder = held.create_folder("My sets")
     held.placed["mine-1"] = folder
-
     mine = {one["name"] for one in _report()["data"]["summary"]["areas"][account_area.AREA]["yours"]}
-
     assert MINE_ON_ACCOUNT not in mine
 
 
 def test_a_run_that_writes_nothing_ends_as_a_no_op(world):
     code, done, _first = _answered("abort", "abort")
-
     assert code == int(ExitCode.OK), done
     assert done["outcome"] == "no_op"
     assert done["data"]["summary"]["answers"] == {
@@ -835,13 +786,10 @@ def test_a_run_that_writes_nothing_ends_as_a_no_op(world):
 
 def test_an_exported_playlist_the_product_made_is_not_listed_as_yours(world):
     from cratekit.modules.outbound import ledger
-
     cfg, fake, _held, _inbox, _ids = world
     ledger.reserve_playlist(cfg, "crate-export", lambda: "exported-1")
     fake.account.append(AccountPlaylist("exported-1", "Exported 2025", 3))
-
     mine = {one["name"] for one in _report()["data"]["summary"]["areas"][account_area.AREA]["yours"]}
-
     assert "Exported 2025" not in mine
     # The author's working custom playlist stays at the root and is listed (U143).
     assert mine == {MINE_ON_ACCOUNT}
@@ -852,9 +800,7 @@ def test_an_exported_playlist_the_product_made_is_not_listed_as_yours(world):
     ]
 
 
-# ---------------------------------------------------------------------------
 # U116: a marked custom playlist is filed into its year folder
-# ---------------------------------------------------------------------------
 
 #: A custom playlist a sync swept and marked, and its mark's year.
 MARKED_ID = "custom-1"
@@ -864,7 +810,6 @@ MARKED_YEAR = "2026"
 
 def _marked(cfg, fake, held, playlist_id=MARKED_ID, name=MARKED_NAME, *, when="2026-10-08T21:00:00+00:00"):
     from cratekit.sync import mark_record
-
     fake.account.append(AccountPlaylist(playlist_id, name, 3))
     held.titles[playlist_id] = name
     mark_record.MarkRecord(cfg).record_marked(
@@ -880,15 +825,12 @@ def _file_rows(envelope: dict) -> dict[str, dict]:
 def test_a_marked_playlist_at_the_root_moves_into_its_year_folder(world):
     cfg, fake, held, _inbox, _ids = world
     _marked(cfg, fake, held)
-
     step = _steps(_report(), account_area.AREA)[account_area.FILE]
     assert step["state"] == "planned"
     assert _file_rows({"data": {"summary": {"areas": {account_area.AREA: {"steps": [step]}}}}})[
         MARKED_ID
     ]["action"] == filing.MOVE
-
     code, done, _first = _answered()
-
     assert code == int(ExitCode.OK), done
     folder = held.placed[MARKED_ID]
     assert held.folder_names[folder] == MARKED_YEAR
@@ -905,9 +847,7 @@ def test_a_missing_year_folder_is_created_once_and_reused(world):
     cfg, fake, held, _inbox, _ids = world
     _marked(cfg, fake, held)
     _marked(cfg, fake, held, "custom-2", "DOWNLOADED Phil 10_9_26")
-
     code, done, _first = _answered()
-
     assert code == int(ExitCode.OK), done
     assert held.folders_created.count(MARKED_YEAR) == 1
     assert held.placed[MARKED_ID] == held.placed["custom-2"]
@@ -922,9 +862,7 @@ def test_an_existing_year_folder_on_the_account_is_adopted_not_made_again(world)
     existing = held.create_folder(MARKED_YEAR)
     held.folders_created.clear()
     _marked(cfg, fake, held)
-
     code, done, _first = _answered()
-
     assert code == int(ExitCode.OK), done
     assert held.placed[MARKED_ID] == existing
     assert MARKED_YEAR not in held.folders_created
@@ -934,9 +872,7 @@ def test_an_unmarked_playlist_of_the_authors_stays_at_the_root_as_a_working_cust
     """U143 REVERSES U131's MOVE INTO MINE for an unmarked, unclaimed playlist:
     by Phillip's rule of 2026-10-13 it is the one playlist the root is for."""
     _cfg, _fake, held, _inbox, _ids = world
-
     row = _file_rows(_report())["mine-1"]
-
     assert row["action"] == filing.LEFT and row["why"] == filing.WORKING_CUSTOM
     code, done, _first = _answered()
     assert code == int(ExitCode.OK), done
@@ -947,9 +883,7 @@ def test_a_prefixed_playlist_no_sync_recorded_is_still_filed_in_mine(world):
     cfg, fake, held, _inbox, _ids = world
     fake.account.append(AccountPlaylist("own-2", "DOWNLOADED by hand", 2))
     held.titles["own-2"] = "DOWNLOADED by hand"
-
     row = _file_rows(_report())["own-2"]
-
     assert row["action"] == filing.MOVE and row["why"] == filing.PREFIXED_UNMARKED
     assert row["kind_folder"] == "Mine" and row["folder"] == "create"
     code, done, _first = _answered()
@@ -959,11 +893,9 @@ def test_a_prefixed_playlist_no_sync_recorded_is_still_filed_in_mine(world):
 
 def test_a_mark_put_back_is_no_mark_and_the_playlist_stays(world):
     from cratekit.sync import mark_record
-
     cfg, fake, held, _inbox, _ids = world
     _marked(cfg, fake, held)
     mark_record.MarkRecord(cfg).record_unmarked("Phil 10_8_26", MARKED_ID)
-
     # The name still carries the prefix; only the mark record was put back.
     assert _file_rows(_report())[MARKED_ID]["why"] == filing.PREFIXED_UNMARKED
 
@@ -973,7 +905,6 @@ def test_a_marked_playlist_already_in_a_folder_is_left_where_it_is(world):
     _marked(cfg, fake, held)
     elsewhere = held.create_folder("Old faves")
     held.placed[MARKED_ID] = elsewhere
-
     assert MARKED_ID not in _file_rows(_report())
     code, done, _first = _answered()
     assert code == int(ExitCode.OK), done
@@ -982,13 +913,10 @@ def test_a_marked_playlist_already_in_a_folder_is_left_where_it_is(world):
 
 def test_a_label_playlist_is_the_label_steps_and_a_set_the_archives(world):
     from cratekit.modules.outbound import ledger
-
     cfg, fake, held, _inbox, _ids = world
     # Marked as well, so only the label rule can be what leaves it.
     _marked(cfg, fake, held, "label-1", f"{LABEL} 2026")
-
     rows = _file_rows(_report())
-
     assert rows["label-1"]["action"] == filing.LEFT
     assert rows["label-1"]["why"] == filing.LABEL_STEP
     set_id = ledger.set_playlist(cfg, SET_NAME).remote_id
@@ -998,9 +926,7 @@ def test_a_label_playlist_is_the_label_steps_and_a_set_the_archives(world):
 def test_the_plan_is_empty_and_still_asks_when_the_root_is_clean(seams):
     _cfg, fake, _held = seams
     fake.account.clear()
-
     code, first = drive(VERB)
-
     # No acknowledgment, so the database area is refused and the account asks first.
     assert code == int(ExitCode.DECISION_REQUIRED), first
     assert first["cause"]["detail"]["gate"] == ACCOUNT_GATE
@@ -1014,9 +940,7 @@ def test_two_root_folders_named_as_the_year_leave_its_playlists_reported(world):
     held.create_folder(MARKED_YEAR)
     held.create_folder(MARKED_YEAR)
     _marked(cfg, fake, held)
-
     row = _file_rows(_report())[MARKED_ID]
-
     assert row["action"] == filing.LEFT and "2 root folders" in row["why"]
 
 
@@ -1025,9 +949,7 @@ def test_a_provider_refusal_mid_pass_stops_and_names_what_moved(world):
     _marked(cfg, fake, held, "custom-a", "DOWNLOADED A pass")
     _marked(cfg, fake, held, "custom-b", "DOWNLOADED B pass")
     held.fail_on = frozenset({"custom-b"})
-
     code, done, _first = _answered()
-
     assert code != int(ExitCode.OK)
     assert "custom-a" in held.placed and "custom-b" not in held.placed
     assert "1 playlist(s) were moved" in done["cause"]["message"]
@@ -1048,9 +970,7 @@ def test_a_year_folder_already_on_the_account_is_adopted_with_no_set_to_make_it(
     existing = held.create_folder(MARKED_YEAR)
     held.folders_created.clear()
     _marked(cfg, fake, held)
-
     code, done = _two_acts(VERB, ACCOUNT_GATE, "apply")
-
     assert code == int(ExitCode.OK), done
     assert held.placed[MARKED_ID] == existing
     # No folder is made: the year's is adopted, and the author's working custom
@@ -1060,15 +980,12 @@ def test_a_year_folder_already_on_the_account_is_adopted_with_no_set_to_make_it(
 
 def test_a_playlist_marked_twice_is_filed_by_its_latest_mark(seams):
     from cratekit.sync import mark_record
-
     cfg, fake, held = seams
     _marked(cfg, fake, held, when="2025-12-30T10:00:00+00:00")
     mark_record.MarkRecord(cfg).record_marked(
         "a later pass", {MARKED_ID: ("Phil 10_8_26", MARKED_NAME)}, now="2026-01-02T10:00:00+00:00"
     )
-
     code, done = _two_acts(VERB, ACCOUNT_GATE, "apply")
-
     assert code == int(ExitCode.OK), done
     assert held.folder_names[held.placed[MARKED_ID]] == "2026"
 
@@ -1078,7 +995,6 @@ def test_a_playlist_two_folders_down_is_left_where_it_is(world):
     archive = held.create_folder("Archive")
     nested = held.nest_folder("2025", archive)
     held.placed[MARKED_ID] = nested
-
     assert MARKED_ID not in _file_rows(_report())
     code, done, _first = _answered()
     assert code == int(ExitCode.OK), done
@@ -1092,9 +1008,7 @@ def test_a_provider_cratekit_refusal_mid_pass_carries_the_moved_list(world):
     _marked(cfg, fake, held, "custom-b", "DOWNLOADED B pass")
     held.fail_on = frozenset({"custom-b"})
     held.provider_error = True
-
     code, done, _first = _answered()
-
     assert code != int(ExitCode.OK)
     assert "custom-a" in held.placed and "custom-b" not in held.placed
     detail = done["cause"]["detail"]
@@ -1104,7 +1018,6 @@ def test_a_provider_cratekit_refusal_mid_pass_carries_the_moved_list(world):
 
 def test_a_folder_made_before_a_failed_ledger_write_is_named(seams, monkeypatch):
     from cratekit.modules.outbound import ledger, sets
-
     cfg, fake, held = seams
     _marked(cfg, fake, held)
     planned = filing.FilePlan(
@@ -1116,10 +1029,8 @@ def test_a_folder_made_before_a_failed_ledger_write_is_named(seams, monkeypatch)
         raise OSError("ledger write failed")
 
     monkeypatch.setattr(ledger, "_write", boom)
-
     with pytest.raises(RuntimeError) as raised:
         filing.apply(cfg, held, planned)
-
     assert MARKED_YEAR in held.folders_created
     assert "1 year folder(s) were created" in str(raised.value)
     assert MARKED_ID not in held.placed
@@ -1129,9 +1040,7 @@ def test_a_prefixed_but_unmarked_playlist_has_its_own_reason(world):
     _cfg, fake, held, _inbox, _ids = world
     fake.account.append(AccountPlaylist("hand-1", "DOWNLOADED Hand marked", 2))
     held.titles["hand-1"] = "DOWNLOADED Hand marked"
-
     row = _file_rows(_report())["hand-1"]
-
     # No mark says when, so no year: it is the author's own and goes to Mine.
     assert row["action"] == filing.MOVE and row["why"] == filing.PREFIXED_UNMARKED
     code, done, _first = _answered()
@@ -1139,9 +1048,7 @@ def test_a_prefixed_but_unmarked_playlist_has_its_own_reason(world):
     assert held.folder_names[held.placed["hand-1"]] == "Mine"
 
 
-# ---------------------------------------------------------------------------
 # U137: one kind of step runs alone, ``--only``
-# ---------------------------------------------------------------------------
 
 ONLY_FILE = [*VERB, "--only", account_area.FILE]
 
@@ -1163,7 +1070,6 @@ def test_only_file_plans_the_filing_alone_and_the_database_is_not_asked(world, m
     # author's unmarked one at the root).
     _marked(cfg, fake, held)
     folders, renamed, added = list(held.folders_created), list(held.renamed), list(held.added)
-
     collection.reset_cache()
     code, envelope = drive([*ONLY_FILE, "--report"])
     assert code == int(ExitCode.OK), envelope
@@ -1171,10 +1077,8 @@ def test_only_file_plans_the_filing_alone_and_the_database_is_not_asked(world, m
     assert list(areas) == [account_area.AREA]
     assert [step["step"] for step in areas[account_area.AREA]["steps"]] == [account_area.FILE]
     assert areas[account_area.AREA]["facts"]["only these steps"] == account_area.FILE
-
     # The acknowledgment is in force, and still the account is the first gate.
     code, done = _filed_alone()
-
     assert code == int(ExitCode.OK), done
     assert list(done["data"]["summary"]["answers"]) == [account_area.AREA]
     assert held.folder_names[held.placed[MARKED_ID]] == MARKED_YEAR
@@ -1194,17 +1098,14 @@ def test_only_mirror_plans_and_writes_the_mirror_alone_and_a_rerun_plans_nothing
     folders = list(held.folders_created)
     only = [*VERB, "--only", account_area.MIRROR]
     renamed = list(held.renamed)
-
     collection.reset_cache()
     code, envelope = drive([*only, "--report"])
     assert code == int(ExitCode.OK), envelope
     steps = envelope["data"]["summary"]["areas"][account_area.AREA]["steps"]
     assert steps and all(step["step"].startswith("mirror:") for step in steps), steps
     assert any(step["state"] == "planned" for step in steps), steps
-
     collection.reset_cache()
     code, done = _two_acts(only, ACCOUNT_GATE, "apply")
-
     assert code == int(ExitCode.OK), done
     applied = [
         step["applied"]
@@ -1223,7 +1124,6 @@ def test_only_mirror_plans_and_writes_the_mirror_alone_and_a_rerun_plans_nothing
 def _mirrored_folder(cfg: config.Config) -> str:
     """One genre folder the mirror copies, by its database identifier."""
     from cratekit.organize import account_mirror
-
     names = [folder.name for folder in account_mirror.read_library(cfg).folders]
     assert names, "the tree holds no folder for the mirror to copy"
     ((found,),) = _query(
@@ -1258,9 +1158,7 @@ def test_a_library_write_between_the_mirrors_two_acts_applies_the_approved_plan(
     """R-1031, AE3. The apply rebuilds the frozen plan: no stale decision, no match asked."""
     cfg, _fake, held, _inbox, _ids = world
     assert _answered()[0] == int(ExitCode.OK)
-
     code, done, asked = _mirror_between_acts(cfg, held, monkeypatch)
-
     assert code == int(ExitCode.OK), done
     area = done["data"]["summary"]["areas"][account_area.AREA]
     assert area["facts"]["mirror plan frozen"].startswith("rebuilt from the plan frozen on run ")
@@ -1293,7 +1191,6 @@ def test_the_gate_freezes_every_step_of_the_full_account_area(world):
     and named on every stale answer as one the gate did not show.
     """
     from cratekit.organize import mirror_frozen
-
     cfg, _fake, _held, _inbox, _ids = world
     collection.reset_cache()
     code, refused = drive(VERB)
@@ -1311,13 +1208,10 @@ def test_the_gate_freezes_every_step_of_the_full_account_area(world):
 def test_without_the_frozen_plan_the_same_two_acts_are_refused_stale(world, monkeypatch):
     """The contrast to the drive above: what the frozen plan holds, shown by its absence."""
     from cratekit.organize import mirror_frozen
-
     cfg, _fake, held, _inbox, _ids = world
     assert _answered()[0] == int(ExitCode.OK)
     monkeypatch.setattr(mirror_frozen, "load", lambda _cfg, run_id: (None, "none, by the test"))
-
     code, done, _asked = _mirror_between_acts(cfg, held, monkeypatch)
-
     assert code == int(ExitCode.DECISION_STALE), done
     assert done["cause"]["reason"] == "decision-stale"
     # U222: and it says the plan was made afresh, not rebuilt, and what it cost.
@@ -1339,10 +1233,8 @@ def test_a_run_resumed_with_no_account_answer_plans_the_mirror_afresh(world, mon
     code, refused = drive(only)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     _node(cfg, "Made After The Gate", under=_mirrored_folder(cfg), tracks=("r-one",))
-
     collection.reset_cache()
     code, again = drive(["--run", refused["run_id"], *only])
-
     assert code == int(ExitCode.DECISION_REQUIRED), again
     shown = again["cause"]["detail"]["shown"]
     assert not shown["mirror plan frozen"].startswith("rebuilt"), shown["mirror plan frozen"]
@@ -1353,9 +1245,7 @@ def test_a_run_resumed_with_no_account_answer_plans_the_mirror_afresh(world, mon
 def test_only_file_moves_a_marked_playlist_as_the_full_verb_does_and_then_plans_nothing(world):
     cfg, fake, held, _inbox, _ids = world
     _marked(cfg, fake, held)
-
     code, done = _filed_alone()
-
     assert code == int(ExitCode.OK), done
     folder = held.placed[MARKED_ID]
     assert held.folder_names[folder] == MARKED_YEAR
@@ -1377,14 +1267,11 @@ def test_only_files_digest_is_not_the_full_areas_and_an_answer_over_one_is_stale
     code, narrowed = drive([*ONLY_FILE, "--report"])
     assert code == int(ExitCode.OK), narrowed
     assert narrowed["data"]["summary"]["areas"][account_area.AREA]["digest"] != full
-
     code, first = drive(VERB)
     assert first["cause"]["detail"]["gate"] == ACCOUNT_GATE, first
     run_id = first["run_id"]
     assert drive(["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person"])[0] == 0
-
     code, again = drive(["--run", run_id, *ONLY_FILE])
-
     assert code == int(ExitCode.DECISION_STALE), again
     assert held.folders_created == [] and held.moves == []
 
@@ -1406,12 +1293,9 @@ def test_the_selection_alone_moves_the_digest_when_it_names_every_step(world):
 def test_an_unknown_kind_is_refused_by_name_before_anything_is_read(machine, monkeypatch, capsys):
     from cratekit import cli
     from cratekit.modules.outbound import shell
-
     monkeypatch.setattr(shell, "load_config", _not_planned)
-
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(["--output", "json", *VERB, "--only", "filing"], stdout=out, stderr=err)
-
     assert code == 2
     said = capsys.readouterr().err + err.getvalue()
     assert "'filing'" in said and account_area.FILE in said
@@ -1424,10 +1308,8 @@ def test_report_with_only_file_makes_no_provider_write(world):
         list(held.created), list(held.folders_created), list(held.moves),
         list(held.renamed), list(held.added), dict(held.placed),
     )
-
     collection.reset_cache()
     code, envelope = drive([*ONLY_FILE, "--report"])
-
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
     assert _steps(envelope, account_area.AREA)[account_area.FILE]["state"] == "planned"
@@ -1439,13 +1321,10 @@ def test_report_with_only_file_makes_no_provider_write(world):
 
 def test_an_unread_label_registry_refuses_the_filing_rather_than_plan_it_over_no_label(world):
     from cratekit.label import registry as labels
-
     _cfg, _fake, held, _inbox, _ids = world
     labels.RegistryStore().path.write_text("{ not json", encoding="utf-8")
-
     collection.reset_cache()
     code, envelope = drive([*ONLY_FILE, "--report"])
-
     assert code == int(ExitCode.OK), envelope
     step = _steps(envelope, account_area.AREA)[account_area.FILE]
     assert step["state"] == "refused" and step["reason"] == "label-intent-unusable"
@@ -1459,10 +1338,8 @@ def test_only_a_database_kind_asks_the_database_alone(world, monkeypatch):
     cfg, _fake, held, _inbox, _ids = world
     monkeypatch.setattr(account_area, "plan_area", _not_planned)
     argv = [*VERB, "--only", rekordbox.ADOPT]
-
     collection.reset_cache()
     code, done = _two_acts(argv, DB_GATE, "approve")
-
     assert code == int(ExitCode.OK), done
     assert [step["step"] for step in _steps(done, rekordbox.AREA).values()] == [rekordbox.ADOPT]
     assert _filed(cfg) == ["r-one", "r-two"]
@@ -1477,10 +1354,8 @@ def test_only_yours_lists_on_each_side_exactly_what_the_full_verb_lists(world):
     fake.account.append(AccountPlaylist("kept-1", "Kept in place", 2))
     held.placed["kept-1"] = held.create_folder("My sets")
     full = _report()["data"]["summary"]["areas"]
-
     collection.reset_cache()
     code, envelope = drive([*VERB, "--report", "--only", "yours"])
-
     assert code == int(ExitCode.OK), envelope
     areas = envelope["data"]["summary"]["areas"]
     assert areas[rekordbox.AREA]["yours"] == full[rekordbox.AREA]["yours"]
@@ -1497,7 +1372,6 @@ def test_a_mixed_selection_plans_the_named_kinds_on_each_side_and_no_other(world
     code, envelope = drive(
         [*VERB, "--report", "--only", account_area.FILE, "--only", rekordbox.ROTATE]
     )
-
     assert code == int(ExitCode.OK), envelope
     areas = envelope["data"]["summary"]["areas"]
     assert [step["step"] for step in areas[rekordbox.AREA]["steps"]] == [rekordbox.ROTATE]
@@ -1508,10 +1382,8 @@ def test_a_mixed_selection_plans_the_named_kinds_on_each_side_and_no_other(world
 
 def test_a_registry_the_profile_does_not_use_does_not_refuse_the_filing(world, monkeypatch):
     from cratekit.label import registry as labels
-
     cfg, fake, held, _inbox, _ids = world
     _marked(cfg, fake, held)
-
     labels.RegistryStore().path.write_text("{ not json", encoding="utf-8")
     real = organize_cli.profiles.resolve
 
@@ -1519,10 +1391,8 @@ def test_a_registry_the_profile_does_not_use_does_not_refuse_the_filing(world, m
         return real(profile, {**dict(explicit or {}), account_area.LABELS_MODULE: False})
 
     monkeypatch.setattr(organize_cli.profiles, "resolve", without_labels)
-
     collection.reset_cache()
     code, envelope = drive([*ONLY_FILE, "--report"])
-
     assert code == int(ExitCode.OK), envelope
     assert _steps(envelope, account_area.AREA)[account_area.FILE]["state"] == "planned"
 
@@ -1531,10 +1401,8 @@ def test_only_yours_shows_a_refused_rotation_since_it_is_why_the_listing_is_shor
     """No tree has cut over here, so the rotation refuses, and says so under yours."""
     cfg, _fake, _held = seams
     session.record_acknowledgment(cfg, terminal=lambda: True)
-
     collection.reset_cache()
     code, envelope = drive([*VERB, "--report", "--only", "yours"])
-
     assert code == int(ExitCode.OK), envelope
     steps = _steps(envelope, rekordbox.AREA)
     assert list(steps) == [rekordbox.ROTATE, rekordbox.YOURS]
@@ -1569,24 +1437,20 @@ def test_each_account_kind_runs_its_own_builder_and_no_other(seams, monkeypatch,
         monkeypatch.setattr(account_area, name, recorder(name))
     if kind not in rekordbox.STEPS:
         monkeypatch.setattr(rekordbox, "plan_area", _not_planned)
-
     collection.reset_cache()
     code, envelope = drive([*VERB, "--report", "--only", kind])
-
     assert code == int(ExitCode.OK), envelope
     assert ran == called
 
 
-# ---------------------------------------------------------------------------
 # U142: a set is archived into Downloaded Sets <year>, and INSPIRATION proves it
-# ---------------------------------------------------------------------------
 
 
 def _inspiration(cfg: config.Config, *names: str) -> str:
     """The declared INSPIRATION folder at the database root, a playlist in it per name."""
     folder = cutover_fixtures.add_folder(cfg, DECLARED.inspiration.display)
-    for name in names:
-        _node(cfg, name, under=folder)
+    if names:
+        _nodes(cfg, *((name, folder, None, ()) for name in names))
     return folder
 
 
@@ -1597,17 +1461,13 @@ def _no_intake_file(cfg: config.Config) -> None:
 def test_a_set_with_no_intake_file_and_an_inspiration_playlist_of_its_name_is_archived(world):
     from cratekit.modules.outbound import ledger
     from cratekit.sync import mark_record
-
     cfg, _fake, held, _inbox, _ids = world
     _no_intake_file(cfg)
     _inspiration(cfg, SET_NAME)
-
     step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
     assert step["state"] == "planned", step
     assert f"proven by the INSPIRATION playlist {SET_NAME}" in step["detail"]
-
     code, done, _first = _answered("abort", "apply")
-
     assert code == int(ExitCode.OK), done
     recorded = ledger.set_playlist(cfg, SET_NAME)
     assert held.folder_names[held.placed[recorded.remote_id]] == f"Downloaded Sets {recorded.year}"
@@ -1631,9 +1491,7 @@ def test_a_playlist_of_the_sets_name_outside_inspiration_or_removed_proves_nothi
         conn.commit()
     finally:
         conn.close()
-
     step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
-
     assert step["state"] == "listed", step
     assert "no INSPIRATION playlist of its name" in step["detail"]
     assert held.moves == [] and held.renamed[-1:] != [(SET_NAME, f"DOWNLOADED {SET_NAME}")]
@@ -1642,7 +1500,6 @@ def test_a_playlist_of_the_sets_name_outside_inspiration_or_removed_proves_nothi
 def test_a_set_already_prefixed_in_its_downloaded_sets_folder_plans_nothing(world):
     """Moved and prefixed by hand, no mark recorded: the INSPIRATION proof finds it done."""
     from cratekit.modules.outbound import ledger
-
     cfg, _fake, held, _inbox, _ids = world
     _no_intake_file(cfg)
     _inspiration(cfg, SET_NAME)
@@ -1652,17 +1509,13 @@ def test_a_set_already_prefixed_in_its_downloaded_sets_folder_plans_nothing(worl
     folder = held.create_folder(f"Downloaded Sets {recorded.year}")
     held.placed[recorded.remote_id] = folder
     held.titles[recorded.remote_id] = f"DOWNLOADED {SET_NAME}"
-
     step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
     assert step["state"] == "nothing", step
-
     code, done, _first = _answered("abort", "apply")
-
     assert code == int(ExitCode.OK), done
     assert recorded.remote_id not in [pid for pid, _folder in held.moves]
     assert recorded.remote_id not in [pid for pid, _title in held.renamed]
     assert ledger.set_folder(cfg, f"Downloaded Sets {recorded.year}") == ""
-
     # A title a person set is left, and the step says so rather than "marked".
     held.titles[recorded.remote_id] = "My Own Title"
     step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
@@ -1673,7 +1526,6 @@ def test_a_set_already_prefixed_in_its_downloaded_sets_folder_plans_nothing(worl
 def test_a_downloaded_sets_folder_made_by_hand_is_adopted_and_the_filing_keeps_its_year(world):
     """The ledger records the plain year folder, and the set never goes there."""
     from cratekit.modules.outbound import ledger
-
     cfg, fake, held, _inbox, _ids = world
     recorded = ledger.set_playlist(cfg, SET_NAME)
     year = recorded.year
@@ -1682,9 +1534,7 @@ def test_a_downloaded_sets_folder_made_by_hand_is_adopted_and_the_filing_keeps_i
     made_by_hand = len(held.folders_created)
     assert ledger.reserve_set_folder(cfg, year, lambda: plain) == (plain, True)
     _marked(cfg, fake, held, when=f"{year}-06-15T12:00:00+00:00")
-
     code, done, _first = _answered("abort", "apply")
-
     assert code == int(ExitCode.OK), done
     assert held.placed[recorded.remote_id] == by_hand
     assert held.placed[MARKED_ID] == plain
@@ -1698,7 +1548,6 @@ def test_a_downloaded_sets_folder_made_by_hand_is_adopted_and_the_filing_keeps_i
 def test_a_year_record_whose_folder_now_carries_the_sets_name_is_not_the_filings(world):
     """Recorded under the plain year before U142, renamed by a person to the sets' name."""
     from cratekit.modules.outbound import ledger
-
     cfg, fake, held, _inbox, _ids = world
     recorded = ledger.set_playlist(cfg, SET_NAME)
     year = recorded.year
@@ -1706,9 +1555,7 @@ def test_a_year_record_whose_folder_now_carries_the_sets_name_is_not_the_filings
     made_by_hand = len(held.folders_created)
     assert ledger.reserve_set_folder(cfg, year, lambda: renamed) == (renamed, True)
     _marked(cfg, fake, held, when=f"{year}-06-15T12:00:00+00:00")
-
     code, done, _first = _answered("abort", "apply")
-
     assert code == int(ExitCode.OK), done
     assert held.placed[recorded.remote_id] == renamed
     custom = held.placed[MARKED_ID]
@@ -1735,9 +1582,7 @@ def test_a_set_archived_by_its_inspiration_proof_stays_archived_once_that_playli
         connection.commit()
     finally:
         connection.close()
-
     step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
-
     assert (step["state"], step["detail"]) == ("nothing", "already archived and marked"), step
 
 
@@ -1746,23 +1591,19 @@ def test_a_set_found_prefixed_by_the_migration_is_still_filed_by_the_archive(wor
     prefixed, never that the archive filed it, so the step still plans it."""
     from cratekit.modules.outbound import ledger
     from cratekit.sync import taken_cli
-
     cfg, _fake, held, _inbox, _ids = world
     _no_intake_file(cfg)
     _inspiration(cfg, SET_NAME)
     recorded = ledger.set_playlist(cfg, SET_NAME)
     held.titles[recorded.remote_id] = f"DOWNLOADED {SET_NAME}"
     taken_cli.migrate(cfg, {recorded.remote_id: f"DOWNLOADED {SET_NAME}"})
-
     step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
-
     assert step["state"] == "planned", step
     assert step["detail"].startswith("file it in Downloaded Sets"), step
 
 
 def test_a_set_in_its_folder_with_its_built_title_is_taken_and_not_moved(world):
     from cratekit.modules.outbound import ledger
-
     cfg, _fake, held, _inbox, _ids = world
     _no_intake_file(cfg)
     _inspiration(cfg, SET_NAME)
@@ -1770,32 +1611,24 @@ def test_a_set_in_its_folder_with_its_built_title_is_taken_and_not_moved(world):
     folder = held.create_folder(f"Downloaded Sets {recorded.year}")
     held.placed[recorded.remote_id] = folder
     held.titles[recorded.remote_id] = SET_NAME
-
     step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
-
     assert step["state"] == "planned", step
     assert step["detail"].startswith("record it as taken where it is"), step
     assert "file it in" not in step["detail"]
-
     code, done, _first = _answered("abort", "apply")
-
     assert code == int(ExitCode.OK), done
     assert recorded.remote_id not in [pid for pid, _folder in held.moves]
     assert held.titles[recorded.remote_id] == SET_NAME
     from cratekit.sync import mark_record
-
     assert recorded.remote_id in mark_record.MarkRecord(cfg).taken_ids()
 
 
 def test_no_downloaded_sets_folder_is_made_once_and_the_year_folder_beside_it(world):
     from cratekit.modules.outbound import ledger
-
     cfg, fake, held, _inbox, _ids = world
     year = ledger.set_playlist(cfg, SET_NAME).year
     _marked(cfg, fake, held, when=f"{year}-06-15T12:00:00+00:00")
-
     code, done, _first = _answered("abort", "apply")
-
     assert code == int(ExitCode.OK), done
     made = [name for name in held.folders_created if year in name]
     assert sorted(made) == sorted([f"Downloaded Sets {year}", year])
@@ -1810,9 +1643,7 @@ def test_two_inspiration_folders_refuse_the_unproven_set_alone(world):
     _no_intake_file(cfg)
     _inspiration(cfg, SET_NAME)
     _inspiration(cfg)
-
     envelope = _report()
-
     remote = _steps(envelope, account_area.AREA)
     assert remote[f"archive:{SET_NAME}"]["state"] == "refused", remote
     assert remote[f"label:{LABEL_ID}"]["state"] == "planned"
@@ -1823,7 +1654,6 @@ def test_a_taxonomy_with_no_inspiration_folder_waits_and_says_why(world, monkeyp
     import dataclasses
 
     from cratekit.core import active_taxonomy
-
     cfg, _fake, _held, _inbox, _ids = world
     _no_intake_file(cfg)
     _inspiration(cfg, SET_NAME)
@@ -1831,9 +1661,7 @@ def test_a_taxonomy_with_no_inspiration_folder_waits_and_says_why(world, monkeyp
     monkeypatch.setattr(
         active_taxonomy, "load", lambda *a, **k: dataclasses.replace(real(*a, **k), inspiration=None)
     )
-
     step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
-
     assert step["state"] == "listed", step
     assert "no INSPIRATION folder declared" in step["detail"]
 
@@ -1845,9 +1673,7 @@ def test_a_set_proven_by_its_intake_file_never_opens_the_database_for_inspiratio
         raise AssertionError("the INSPIRATION folder was read for a set its file proves")
 
     monkeypatch.setattr(set_cli, "_inspiration_playlists", tripwire)
-
     step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
-
     assert step["state"] == "planned"
     assert f"proven by {SET_NAME}_inboxed.xml" in step["detail"]
 
@@ -1858,15 +1684,11 @@ def test_the_inspiration_proof_is_read_while_rekordbox_runs(world, monkeypatch):
     _no_intake_file(cfg)
     _inspiration(cfg, SET_NAME)
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: True)
-
     step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
-
     assert step["state"] == "planned", step
 
 
-# ---------------------------------------------------------------------------
 # U143: the account root kept to working custom playlists
-# ---------------------------------------------------------------------------
 
 ONLY_ROOT = [*VERB, "--only", account_area.ROOT]
 DEBRIS_NAME = f"{LABEL} LIBRARY"
@@ -1912,9 +1734,7 @@ def _listing_without_removed(fake, held) -> None:
 def test_only_root_removes_debris_and_empties_on_the_gate_and_files_the_legacy_folder(world):
     _cfg, fake, held = _root_world(world)
     collection.reset_cache()
-
     code, first = drive(ONLY_ROOT)
-
     assert code == int(ExitCode.DECISION_REQUIRED), first
     assert first["cause"]["detail"]["gate"] == ACCOUNT_GATE
     shown = first["cause"]["detail"]["shown"]
@@ -1928,12 +1748,10 @@ def test_only_root_removes_debris_and_empties_on_the_gate_and_files_the_legacy_f
     (item,) = [one for one in shown["items"] if one["step"] == account_area.ROOT]
     rows = {row["id"]: row for row in item["plan"]}
     assert rows["old-1"]["action"] == "move" and "custom-1" not in rows
-
     run_id = first["run_id"]
     assert drive(["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person"])[0] == 0
     collection.reset_cache()
     code, done = drive(["--run", run_id, *ONLY_ROOT])
-
     assert code == int(ExitCode.OK), done
     assert held.root_removed == [("debris-1", "debris"), ("debris-2", "debris"), ("empty-1", "empty")]
     applied = _steps(done, account_area.AREA)[account_area.ROOT]["applied"]
@@ -1949,14 +1767,11 @@ def test_only_root_removes_debris_and_empties_on_the_gate_and_files_the_legacy_f
     assert "hand-legacy" in held.folder_names and held.folders_removed == []
     assert held.placed["year-1"] == "hand-label" and held.playlists["year-1"] == ["t1", "t2", "t3"]
     assert held.placed["spotify-1"] == "hand-spotify" and "custom-1" not in held.placed
-
     _listing_without_removed(fake, held)
     collection.reset_cache()
     code, second = _two_acts(ONLY_ROOT, ACCOUNT_GATE, "apply")
-
     assert code == int(ExitCode.OK), second
     assert held.folders_removed == ["hand-legacy"]
-
     collection.reset_cache()
     code, again = drive([*ONLY_ROOT, "--report"])
     assert code == int(ExitCode.OK), again
@@ -1966,9 +1781,7 @@ def test_only_root_removes_debris_and_empties_on_the_gate_and_files_the_legacy_f
 
 def test_the_full_verb_lists_the_working_custom_and_never_the_root_steps_removals(world):
     _root_world(world)
-
     envelope = _report()
-
     area = envelope["data"]["summary"]["areas"][account_area.AREA]
     yours = {one["name"] for one in area["yours"]}
     assert "tech_house_hits - Phil" in yours
@@ -1982,12 +1795,9 @@ def test_the_full_verb_lists_the_working_custom_and_never_the_root_steps_removal
 
 def test_an_unread_label_registry_refuses_the_root_step_as_it_refuses_the_filing(world):
     from cratekit.label import registry as labels
-
     _root_world(world)
     labels.RegistryStore().path.write_text("{ not json", encoding="utf-8")
-
     step = _steps(_report(), account_area.AREA)[account_area.ROOT]
-
     assert step["state"] == "refused"
 
 
@@ -2012,10 +1822,8 @@ def test_an_account_change_between_the_mirrors_acts_is_stale_and_says_what_moved
     title = held.titles[gone]
     del held.playlists[gone], held.titles[gone], held.placed[gone]
     asked, created = len(held.matches), list(held.created)
-
     collection.reset_cache()
     code, done = drive(["--run", run_id, *only])
-
     assert code == int(ExitCode.DECISION_STALE), done
     cause = done["cause"]
     assert cause["reason"] == "decision-stale"
@@ -2032,9 +1840,7 @@ def test_an_account_change_between_the_mirrors_acts_is_stale_and_says_what_moved
     assert len(held.matches) == asked and held.created == created
 
 
-# ---------------------------------------------------------------------------
 # R-1334: the answer recorded after a stale refusal is the plan it showed
-# ---------------------------------------------------------------------------
 
 
 def _playlists(items: list[dict]) -> list[str]:
@@ -2053,13 +1859,10 @@ def test_a_stale_mirror_refusal_shows_the_moved_plan_and_the_decide_after_it_app
     """
     from cratekit.cli import gates
     from cratekit.organize import mirror_frozen
-
     cfg, _fake, held, _inbox, _ids = world
     assert _answered()[0] == int(ExitCode.OK)
     monkeypatch.setattr(mirror_frozen, "load", lambda _cfg, run_id: (None, "none, by the test"))
-
     code, stale, _asked = _mirror_between_acts(cfg, held, monkeypatch)
-
     assert code == int(ExitCode.DECISION_STALE), stale
     detail = stale["cause"]["detail"]
     assert detail["gate"] == ACCOUNT_GATE
@@ -2068,14 +1871,12 @@ def test_a_stale_mirror_refusal_shows_the_moved_plan_and_the_decide_after_it_app
     (spec,) = [g for g in registry.entry("organize").gates if g.name == ACCOUNT_GATE]
     assert detail["options"] == list(spec.options)
     assert not any("Made After The Gate" in title for title in held.titles.values())
-
     run_id = stale["run_id"]
     code, decided = drive(["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person"])
     assert code == int(ExitCode.OK), decided
     assert gates.load(run_id).decisions[ACCOUNT_GATE].digest == detail["shown"]["digest"]
     collection.reset_cache()
     code, done = drive(["--run", run_id, *VERB, "--only", account_area.MIRROR])
-
     assert code == int(ExitCode.OK), done
     assert any("Made After The Gate" in title for title in held.titles.values())
 
@@ -2084,7 +1885,6 @@ def test_a_mirror_plan_that_moves_again_after_the_second_answer_is_stale_and_wri
     world, monkeypatch
 ):
     from cratekit.organize import mirror_frozen
-
     cfg, _fake, held, _inbox, _ids = world
     assert _answered()[0] == int(ExitCode.OK)
     monkeypatch.setattr(mirror_frozen, "load", lambda _cfg, run_id: (None, "none, by the test"))
@@ -2094,10 +1894,8 @@ def test_a_mirror_plan_that_moves_again_after_the_second_answer_is_stale_and_wri
     assert drive(["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person"])[0] == 0
     _node(cfg, "Made After The Answer", under=_mirrored_folder(cfg), tracks=("r-one",))
     created = list(held.created)
-
     collection.reset_cache()
     code, again = drive(["--run", run_id, *VERB, "--only", account_area.MIRROR])
-
     assert code == int(ExitCode.DECISION_STALE), again
     detail = again["cause"]["detail"]
     assert detail["expected"] == stale["cause"]["detail"]["actual"]
@@ -2109,7 +1907,6 @@ def test_a_mirror_plan_that_moves_again_after_the_second_answer_is_stale_and_wri
 def test_a_stale_rekordbox_refusal_shows_the_moved_plan_and_the_decide_after_it_files_it(world):
     """R-1334 for the database gate: the batch landed between the acts is on the screen first."""
     from cratekit.cli import gates
-
     cfg, _fake, _held, inbox, _ids = world
     collection.reset_cache()
     code, first = drive(VERB)
@@ -2126,7 +1923,6 @@ def test_a_stale_rekordbox_refusal_shows_the_moved_plan_and_the_decide_after_it_
     assert detail["shown"]["digest"] == detail["actual"]
     assert late in _playlists(detail["shown"]["items"])
     assert _parent(cfg, landed) == inbox
-
     assert drive(["run", "decide", run_id, DB_GATE, "approve", "--actor", "a-person"])[0] == 0
     assert gates.load(run_id).decisions[DB_GATE].digest == detail["shown"]["digest"]
     collection.reset_cache()
@@ -2137,14 +1933,11 @@ def test_a_stale_rekordbox_refusal_shows_the_moved_plan_and_the_decide_after_it_
     assert drive(["run", "decide", run_id, ACCOUNT_GATE, "abort", "--actor", "a-person"])[0] == 0
     collection.reset_cache()
     code, done = drive(["--run", run_id, *VERB])
-
     assert code == int(ExitCode.OK), done
     assert _parent(cfg, landed) != inbox
 
 
-# ---------------------------------------------------------------------------
 # R-1349: a gate is answered once its run has shown it
-# ---------------------------------------------------------------------------
 
 
 def _account_side(held) -> tuple[list, list, list]:
@@ -2161,7 +1954,6 @@ def test_an_account_answer_before_its_gate_is_shown_is_refused_and_records_nothi
     after the rekordbox answer stops at the account gate with nothing written.
     """
     from cratekit.cli import gates
-
     _cfg, _fake, held, _inbox, _ids = world
     before = _account_side(held)
     collection.reset_cache()
@@ -2170,9 +1962,7 @@ def test_an_account_answer_before_its_gate_is_shown_is_refused_and_records_nothi
     assert first["cause"]["detail"]["gate"] == DB_GATE
     run_id = first["run_id"]
     record = gates.load(run_id).to_json()
-
     code, early = drive(["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person"])
-
     assert code == int(ExitCode.PRECONDITION), early
     cause = early["cause"]
     assert cause["reason"] == "gate-not-reached"
@@ -2185,11 +1975,9 @@ def test_an_account_answer_before_its_gate_is_shown_is_refused_and_records_nothi
     assert f"crate --run {run_id} organize --as-of {TODAY.isoformat()}" in steps[1]
     # Nothing recorded: the run reads exactly as it did.
     assert gates.load(run_id).to_json() == record
-
     assert drive(["run", "decide", run_id, DB_GATE, "approve", "--actor", "a-person"])[0] == 0
     collection.reset_cache()
     code, second = drive(["--run", run_id, *VERB])
-
     assert code == int(ExitCode.DECISION_REQUIRED), second
     assert second["cause"]["detail"]["gate"] == ACCOUNT_GATE
     assert _account_side(held) == before
@@ -2204,13 +1992,11 @@ def test_an_account_answer_ahead_continued_is_refused_before_the_verb_runs(world
     run_id = first["run_id"]
     assert drive(["run", "decide", run_id, DB_GATE, "approve", "--actor", "a-person"])[0] == 0
     reached = _parent(_cfg, _ids["batch"])
-
     # The run waits at nothing now (the database answer is recorded, the
     # account gate not reached), so the refusal names the run to continue.
     code, early = drive(
         ["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person", "--continue"]
     )
-
     assert code == int(ExitCode.PRECONDITION), early
     assert early["cause"]["reason"] == "gate-not-reached"
     assert early["cause"]["detail"]["open_gate"] is None
@@ -2223,7 +2009,6 @@ def test_an_account_answer_ahead_continued_is_refused_before_the_verb_runs(world
 
 def test_an_account_answer_after_its_gate_is_shown_binds_the_digest_it_showed(world):
     from cratekit.cli import gates
-
     collection.reset_cache()
     code, first = drive(VERB)
     run_id = first["run_id"]
@@ -2232,9 +2017,7 @@ def test_an_account_answer_after_its_gate_is_shown_binds_the_digest_it_showed(wo
     code, second = drive(["--run", run_id, *VERB])
     assert code == int(ExitCode.DECISION_REQUIRED), second
     shown = second["cause"]["detail"]["shown"]["digest"]
-
     code, decided = drive(["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person"])
-
     assert code == int(ExitCode.OK), decided
     assert gates.load(run_id).decisions[ACCOUNT_GATE].digest == shown
 
@@ -2242,15 +2025,12 @@ def test_an_account_answer_after_its_gate_is_shown_binds_the_digest_it_showed(wo
 def test_a_gate_with_no_digest_source_still_takes_an_answer_before_it_is_reached(world):
     """The cloud sync gate binds no plan, so an answer ahead of it is what it always was."""
     from cratekit.cli import gates
-
     (cloud,) = [g for g in registry.entry("organize").gates if g.name == "write.cloudsync.unreadable"]
     assert cloud.digest_source is None
     collection.reset_cache()
     code, first = drive(VERB)
     run_id = first["run_id"]
-
     code, decided = drive(["run", "decide", run_id, cloud.name, "abort", "--actor", "a-person"])
-
     assert code == int(ExitCode.OK), decided
     state = gates.load(run_id)
     assert state.decisions[cloud.name].option == "abort"
@@ -2273,9 +2053,7 @@ def test_an_answer_ahead_of_a_gate_the_continue_may_not_reach_promises_no_stop_t
     assert code == int(ExitCode.DECISION_REQUIRED), first
     assert first["cause"]["detail"]["gate"] == ACCOUNT_GATE
     run_id = first["run_id"]
-
     code, early = drive(["run", "decide", run_id, DB_GATE, "approve", "--actor", "a-person"])
-
     assert code == int(ExitCode.PRECONDITION), early
     steps = early["cause"]["remediation"]["steps"]
     assert not any(f"stops at {DB_GATE}" in step for step in steps)

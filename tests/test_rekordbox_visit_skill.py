@@ -220,16 +220,13 @@ def test_the_acknowledgment_it_mints_is_the_sessions_one_command(flat):
     """U184: minted as the session in one command, a flag the verb takes."""
     from cratekit.cli import build_parser
     from cratekit.core import session as core_session
-
     named = re.search(r"`crate session ack --as ([a-z]+)`", flat)
     assert named and named.group(1) == core_session.SESSION_ACTOR
     args = build_parser().parse_args(["session", "ack", "--as", named.group(1)])
     assert args.as_actor == core_session.SESSION_ACTOR
 
 
-# ---------------------------------------------------------------------------
 # U319: the Auto Analysis path, first, and the Analyze Tracks path behind it
-# ---------------------------------------------------------------------------
 
 #: The preference sitting 101 read back (A33), the fields beyond the table
 #: the launch dialog may show and what each must read.

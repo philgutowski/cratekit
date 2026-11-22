@@ -58,7 +58,6 @@ def _cfg(tmp_path: Path) -> config.Config:
 def test_a_relative_root_is_read_against_the_library_root(tmp_path, standing_elsewhere):
     cfg = _cfg(tmp_path)
     root = Path(cfg.library.root)
-
     assert naming_cli.root_path("Downloads", cfg, verb="v") == root / "Downloads"
     assert naming_cli.root_path("Music/wave", cfg, verb="v") == root / "Music" / "wave"
 
@@ -66,7 +65,6 @@ def test_a_relative_root_is_read_against_the_library_root(tmp_path, standing_els
 def test_an_absolute_root_is_taken_as_it_is(tmp_path):
     cfg = _cfg(tmp_path)
     elsewhere = tmp_path / "other"
-
     assert naming_cli.root_path(str(elsewhere), cfg, verb="v") == elsewhere
 
 
@@ -75,20 +73,17 @@ def test_a_home_relative_root_is_expanded_not_joined_to_the_library(tmp_path, mo
     home = tmp_path / "home"
     (home / "Downloads").mkdir(parents=True)
     monkeypatch.setenv("HOME", str(home))
-
     assert naming_cli.root_folder("~/Downloads", cfg, verb="v") == home / "Downloads"
 
 
 def test_an_omitted_root_is_the_library_root(tmp_path):
     cfg = _cfg(tmp_path)
-
     assert naming_cli.root_folder(None, cfg, verb="v") == Path(cfg.library.root)
 
 
 @pytest.mark.parametrize("given", ["", "   "])
 def test_an_empty_root_is_refused_rather_than_read_as_the_working_directory(tmp_path, given):
     cfg = _cfg(tmp_path)
-
     with pytest.raises(CratekitError) as caught:
         naming_cli.root_path(given, cfg, verb="name apply")
     assert caught.value.cause.reason == naming_cli.ROOT_MISSING
@@ -98,10 +93,8 @@ def test_an_empty_root_is_refused_rather_than_read_as_the_working_directory(tmp_
 def test_a_missing_relative_root_refuses_naming_the_path_it_tried(tmp_path, standing_elsewhere):
     cfg = _cfg(tmp_path)
     tried = Path(cfg.library.root) / "Downloads"
-
     with pytest.raises(CratekitError) as caught:
         naming_cli.root_folder("Downloads", cfg, verb="name apply")
-
     cause = caught.value.cause
     assert cause.reason == "root-folder-missing"
     assert cause.code is ExitCode.PRECONDITION
@@ -113,7 +106,6 @@ def test_a_missing_relative_root_refuses_naming_the_path_it_tried(tmp_path, stan
 def test_a_missing_absolute_root_refuses_naming_it(tmp_path):
     cfg = _cfg(tmp_path)
     gone = tmp_path / "gone"
-
     with pytest.raises(CratekitError) as caught:
         naming_cli.root_folder(str(gone), cfg, verb="repair paths")
     assert caught.value.cause.message.startswith(f"--root {gone} is not a folder on this machine")
@@ -122,7 +114,6 @@ def test_a_missing_absolute_root_refuses_naming_it(tmp_path):
 def test_a_file_where_the_folder_should_be_is_refused(tmp_path):
     cfg = _cfg(tmp_path)
     (Path(cfg.library.root) / "notes.txt").write_text("x")
-
     with pytest.raises(CratekitError) as caught:
         naming_cli.root_folder("notes.txt", cfg, verb="name apply")
     assert caught.value.cause.reason == "root-folder-missing"
@@ -133,7 +124,6 @@ def test_a_missing_library_root_is_refused_when_no_root_was_given(tmp_path, monk
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(unmounted))
     cfg = config.from_dict(valid_data(unmounted))
     assert Path(cfg.library.root) == unmounted and not unmounted.exists()
-
     with pytest.raises(CratekitError) as caught:
         naming_cli.root_folder(None, cfg, verb="name apply")
     assert caught.value.cause.message.startswith("the library root ")
@@ -157,9 +147,7 @@ def test_name_apply_reads_a_relative_root_inside_the_library(
     folder = Path(name_configured.library.root) / "Music" / "wave"
     folder.mkdir(parents=True)
     _track(folder, "Song - Artist - Song.flac", title="Song", key="4A")
-
     code, envelope = _plan("--root", "Music/wave")
-
     assert code == int(ExitCode.OK), envelope
     paths = [item["path"] for item in envelope["data"]["items"]]
     assert paths and all(path.startswith(str(folder)) for path in paths), paths
@@ -169,7 +157,6 @@ def test_name_apply_refuses_a_relative_root_with_no_folder_in_the_library(
     name_configured, standing_elsewhere  # noqa: F811
 ):
     code, envelope = _plan("--root", "Downloads")
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "root-folder-missing"
     tried = str(Path(name_configured.library.root) / "Downloads")
@@ -187,9 +174,7 @@ def test_repair_paths_scans_a_relative_root_inside_the_library(
     folder = Path(repair_configured.library.root) / "Music" / "wave"
     folder.mkdir(parents=True)
     (folder / LONG).write_bytes(b"fLaC")
-
     code, out, _ = repair_drive(["--output", "json", "repair", "paths", "--root", "Music/wave"])
-
     assert code == int(ExitCode.OK), out
     paths = [item["path"] for item in json.loads(out)["data"]["items"]]
     assert paths == [str(folder / LONG)], paths
@@ -197,7 +182,6 @@ def test_repair_paths_scans_a_relative_root_inside_the_library(
 
 def test_repair_paths_refuses_a_root_with_no_folder(repair_configured, standing_elsewhere):  # noqa: F811
     code, out, err = repair_drive(["--output", "json", "repair", "paths", "--root", "Downloads"])
-
     assert code == int(ExitCode.PRECONDITION), out or err
     assert json.loads(out or err)["cause"]["reason"] == "root-folder-missing"
 
@@ -211,9 +195,7 @@ def test_repair_apply_reads_a_relative_root_against_the_library_root(
     path.write_bytes(b"fLaC")
     repair_drive(["--output", "json", "repair", "paths", "--root", str(folder)])
     _accept(repair_configured, path)
-
     code, envelope = _answer("apply", "--root", "Music/wave")
-
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["outside_root"] == 0
     assert _names(folder) == {SHORT}

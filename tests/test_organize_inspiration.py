@@ -223,9 +223,7 @@ TITLES = (
 )
 
 
-# ---------------------------------------------------------------------------
 # The declaration
-# ---------------------------------------------------------------------------
 
 
 def test_the_step_is_a_kind_of_the_rekordbox_area_that_only_may_name():
@@ -256,9 +254,7 @@ def test_only_a_year_of_downloaded_sets_is_a_sets_folder(name, is_sets):
     assert inspiration.sets_folder(sets.folder_name("2026"))
 
 
-# ---------------------------------------------------------------------------
 # The brief's scenarios
-# ---------------------------------------------------------------------------
 
 
 def test_eighteen_tracks_fifteen_in_the_library_plan_fifteen_and_name_three(
@@ -266,9 +262,7 @@ def test_eighteen_tracks_fifteen_in_the_library_plan_fifteen_and_name_three(
 ):
     rows = {title: _owned(machine, silence, title) for title in TITLES[:15]}
     account.add_set(f"DOWNLOADED {FEMME}", TITLES[3:] + TITLES[:3])
-
     step = _step(_report())
-
     assert step["state"] == "planned"
     planned = _by_set(step)[FEMME]
     assert planned["action"] == inspiration.CREATE and planned["tracks"] == 15
@@ -277,9 +271,7 @@ def test_eighteen_tracks_fifteen_in_the_library_plan_fifteen_and_name_three(
         for position, title in zip((13, 14, 15), TITLES[15:], strict=True)
     ]
     assert step["counts"]["tracks matched"] == 15 and step["counts"]["tracks missed"] == 3
-
     code, done, refused = _approved()
-
     assert code == int(ExitCode.OK), done
     assert refused["cause"]["detail"]["shown"]["deletes"].startswith("nothing")
     under = _playlists_under(machine, _inspiration_id(machine))
@@ -306,9 +298,7 @@ def test_a_near_match_is_a_question_named_as_a_miss_and_never_written(
     _owned(machine, silence, "Cut 15")
     _owned(machine, silence, "Cut 01")
     account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01", "Cut 16"))
-
     planned = _by_set(_step(_report()))[FEMME]
-
     assert planned["tracks"] == 1
     assert planned["misses"] == [f"2. Probe - Cut 16: {set_playlist.UNANSWERED}"]
 
@@ -325,9 +315,7 @@ def test_a_set_already_under_inspiration_is_skipped_and_its_tracks_never_read(
     finally:
         rb_writer.close_db(handle)
     done_id = account.add_set(f"DOWNLOADED {GOATS}", ("Cut 01",))
-
     step = _step(_report())
-
     assert step["state"] == "nothing"
     assert _by_set(step)[GOATS]["action"] == inspiration.SKIP
     assert done_id not in account.found.playlists_asked_for
@@ -339,14 +327,11 @@ def test_a_set_with_no_match_is_reported_and_no_empty_playlist_is_written(
     _owned(machine, silence, "Cut 01")
     account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01",))
     account.add_set(f"DOWNLOADED {GOATS}", ("Cut 07", "Cut 08"))
-
     step = _step(_report())
     empty = _by_set(step)[GOATS]
     assert empty["action"] == inspiration.EMPTY and empty["tracks"] == 0
     assert len(empty["misses"]) == 2 and "nothing is written" in empty["reason"]
-
     code, done, _refused = _approved()
-
     assert code == int(ExitCode.OK), done
     assert set(_playlists_under(machine, _inspiration_id(machine))) == {FEMME}
 
@@ -355,9 +340,7 @@ def test_a_step_whose_every_set_has_no_match_plans_nothing_and_writes_nothing(
     machine, account
 ):
     account.add_set(f"DOWNLOADED {GOATS}", ("Cut 07",))
-
     step = _step(_report())
-
     assert step["state"] == "nothing" and step["counts"]["no match"] == 1
     assert _query(machine, "SELECT ID FROM djmdPlaylist WHERE Name = ?", GOATS) == []
 
@@ -365,9 +348,7 @@ def test_a_step_whose_every_set_has_no_match_plans_nothing_and_writes_nothing(
 def test_the_name_written_is_the_account_name_without_its_prefix(machine, account, silence):
     _owned(machine, silence, "Cut 01")
     account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01",))
-
     code, done, _refused = _approved()
-
     assert code == int(ExitCode.OK), done
     assert set(_playlists_under(machine, _inspiration_id(machine))) == {FEMME}
     assert _query(machine, "SELECT ID FROM djmdPlaylist WHERE Name = ?", f"DOWNLOADED {FEMME}") == []
@@ -379,9 +360,7 @@ def test_a_second_run_plans_nothing(machine, account, silence):
     code, done, _refused = _approved()
     assert code == int(ExitCode.OK), done
     read = list(account.found.playlists_asked_for)
-
     step = _step(_report())
-
     assert step["state"] == "nothing"
     assert {item["action"] for item in step["plan"]} == {inspiration.SKIP}
     assert "digest" in step and step["counts"]["to create"] == 0
@@ -397,10 +376,8 @@ def test_the_writer_refuses_a_membership_the_plan_did_not_name(machine, account,
     assert [len(row.members) for row in approved.creates] == [1]
     # A track the plan named as a miss now matches a row nobody was shown.
     unshown = _owned(machine, silence, "Cut 02")
-
     with pytest.raises(CratekitError) as refused:
         inspiration.apply(machine, declared, approved)
-
     assert refused.value.cause.reason == "decision-stale"
     assert refused.value.cause.detail["unnamed"] == [unshown]
     assert _query(machine, "SELECT ID FROM djmdPlaylist WHERE Name = ?", FEMME) == []
@@ -422,10 +399,8 @@ def test_a_set_given_its_inspiration_playlist_since_the_plan_is_stale(machine, a
         handle.session.commit()
     finally:
         rb_writer.close_db(handle)
-
     with pytest.raises(CratekitError) as refused:
         inspiration.apply(machine, declared, approved)
-
     assert refused.value.cause.reason == "decision-stale"
     assert _members(machine, _playlists_under(machine, folder_id)[FEMME]) == []
 
@@ -463,7 +438,6 @@ def test_a_convergence_latch_refuses_the_write_before_anything_is_written(
     machine, account, silence, monkeypatch
 ):
     from cratekit.core import convergence
-
     _owned(machine, silence, "Cut 01")
     account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01",))
     declared = active_taxonomy.load(machine)
@@ -472,15 +446,12 @@ def test_a_convergence_latch_refuses_the_write_before_anything_is_written(
 
     def latched(_cfg, _db, tree_id, _registry, **_kwargs):
         from cratekit.core.cause import refuse
-
         asked.append(tree_id)
         raise refuse("tree-unconverged", "the tree is marked unconverged")
 
     monkeypatch.setattr(convergence, "assert_tree_writable", latched)
-
     with pytest.raises(CratekitError) as refused:
         inspiration.apply(machine, declared, approved)
-
     assert refused.value.cause.reason == "tree-unconverged"
     assert asked == [DECLARED.inspiration.id]
     assert _query(machine, "SELECT ID FROM djmdPlaylist WHERE Name = ?", FEMME) == []
@@ -490,18 +461,14 @@ def test_a_convergence_latch_refuses_the_write_before_anything_is_written(
 def test_a_slash_in_the_account_name_is_written_as_a_dash(machine, account, silence):
     _owned(machine, silence, "Cut 01")
     account.add_set("DOWNLOADED 5_28_26 A b2b B / Night 10-18", ("Cut 01",))
-
     code, done, _refused = _approved()
-
     assert code == int(ExitCode.OK), done
     assert set(_playlists_under(machine, _inspiration_id(machine))) == {
         "5_28_26 A b2b B - Night 10-18"
     }
 
 
-# ---------------------------------------------------------------------------
 # What is not a set, and what cannot be read
-# ---------------------------------------------------------------------------
 
 
 def test_only_prefixed_playlists_in_a_downloaded_sets_folder_are_sets(machine, account, silence):
@@ -511,9 +478,7 @@ def test_only_prefixed_playlists_in_a_downloaded_sets_folder_are_sets(machine, a
     retitled = account.add_set(GOATS, ("Cut 01",))
     later = account.add_folder("Downloaded Sets 2025")
     account.add_set("DOWNLOADED 1_02_25 Old DJ Old Mix 12-24", ("Cut 01",), folder=later)
-
     step = _step(_report())
-
     shown = _by_set(step)
     assert set(shown) == {"1_02_25 Old DJ Old Mix 12-24", GOATS}
     assert shown["1_02_25 Old DJ Old Mix 12-24"]["account folder"] == "Downloaded Sets 2025"
@@ -528,16 +493,13 @@ def test_a_sets_folder_the_archive_recorded_is_read_whatever_it_is_called_now(
     machine, account, silence
 ):
     from cratekit.modules.outbound import ledger
-
     _owned(machine, silence, "Cut 01")
     renamed = account.add_folder("Sets of 2024")
     account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01",), folder=renamed)
     unrecorded = account.add_folder("Other sets")
     account.add_set(f"DOWNLOADED {GOATS}", ("Cut 01",), folder=unrecorded)
     ledger.reserve_set_folder(machine, "Downloaded Sets 2024", lambda: renamed)
-
     step = _step(_report())
-
     assert set(_by_set(step)) == {FEMME}
     assert _by_set(step)[FEMME]["account folder"] == "Sets of 2024"
 
@@ -546,7 +508,6 @@ def test_a_sets_folder_that_cannot_be_listed_is_named_and_the_rest_still_plan(
     machine, account, silence, monkeypatch
 ):
     from cratekit.core.cause import refuse
-
     _owned(machine, silence, "Cut 01")
     account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01",))
     broken = account.add_folder("Downloaded Sets 2025")
@@ -558,10 +519,8 @@ def test_a_sets_folder_that_cannot_be_listed_is_named_and_the_rest_still_plan(
         return real(folder_id)
 
     monkeypatch.setattr(account.held, "folder_playlists", listing)
-
     envelope = _report()
     step = _step(envelope)
-
     assert step["state"] == "planned" and step["counts"]["folders unread"] == 1
     (unread,) = [item for item in step["plan"] if item["action"] == inspiration.FOLDER_UNREAD]
     assert unread["account folder"] == "Downloaded Sets 2025"
@@ -573,9 +532,7 @@ def test_two_account_sets_of_one_name_are_both_left(machine, account, silence):
     later = account.add_folder("Downloaded Sets 2025")
     account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01",))
     account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01",), folder=later)
-
     step = _step(_report())
-
     assert step["state"] == "nothing"
     assert [item["action"] for item in step["plan"]] == [inspiration.TWICE] * 2
     assert account.found.playlists_asked_for == []
@@ -588,10 +545,8 @@ def test_a_set_the_provider_cannot_list_is_shown_unread_and_the_rest_still_plan(
     account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01",))
     unlisted = account.add_set(f"DOWNLOADED {GOATS}", ("Cut 01",))
     del account.found.playlists[unlisted]
-
     envelope = _report()
     step = _step(envelope)
-
     assert step["state"] == "planned"
     assert _by_set(step)[GOATS]["action"] == inspiration.UNREAD
     assert _by_set(step)[GOATS]["reason"]
@@ -604,9 +559,7 @@ def test_a_set_the_provider_cannot_list_is_shown_unread_and_the_rest_still_plan(
 def test_a_short_listing_counts_what_the_provider_withheld(machine, account, silence):
     _owned(machine, silence, "Cut 01")
     account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01",), declared=3)
-
     step = _step(_report())
-
     assert "2 track(s)" in _by_set(step)[FEMME]["withheld"]
     assert step["counts"]["tracks missed"] == 2
 
@@ -616,14 +569,11 @@ def test_an_account_that_cannot_be_reached_refuses_the_step_alone(machine, monke
 
     def refused(_cfg):
         from cratekit.core.cause import refuse
-
         raise refuse("credential-missing", "no provider session is stored")
 
     monkeypatch.setattr(account_module, "resolve", refused)
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(FakeCatalogue()))
-
     step = _step(_report())
-
     assert step["state"] == "refused" and step["reason"] == "credential-missing"
 
 
@@ -644,9 +594,7 @@ def test_an_intake_tree_on_the_bridge_refuses_the_step(library, monkeypatch):
     monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
     session.record_acknowledgment(resolved, terminal=lambda: True)
     Account(monkeypatch)
-
     step = _step(_report())
-
     assert step["state"] == "refused" and step["reason"] == "tree-unconverged"
 
 
@@ -654,7 +602,6 @@ def test_a_profile_without_the_export_module_lists_the_step(machine, account, mo
     import dataclasses
 
     from cratekit.core import profiles
-
     real = profiles.resolve
 
     def without_export(*args, **kwargs):
@@ -664,18 +611,14 @@ def test_a_profile_without_the_export_module_lists_the_step(machine, account, mo
         )
 
     monkeypatch.setattr(profiles, "resolve", without_export)
-
     step = _step(_report())
-
     assert step["state"] == "listed" and "export module is off" in step["detail"]
     assert account.found.playlists_asked_for == []
 
 
-# ---------------------------------------------------------------------------
 # R-1295: a set is read row by row, so one track the account lists with no
 # title or no artist is named and the set's other tracks still reach
 # INSPIRATION
-# ---------------------------------------------------------------------------
 
 
 def _unread_line(position: int, artist: str, title: str, half: str, track: str) -> str:
@@ -690,10 +633,8 @@ def test_a_track_with_no_title_is_named_and_the_sets_other_tracks_are_written(
 ):
     rows = {title: _owned(machine, silence, title) for title in ("Cut 01", "Cut 02")}
     playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01", "Cut 02", ""))
-
     envelope = _report()
     step = _step(envelope)
-
     assert step["state"] == "planned"
     planned = _by_set(step)[FEMME]
     assert planned["action"] == inspiration.CREATE and planned["tracks"] == 2
@@ -702,9 +643,7 @@ def test_a_track_with_no_title_is_named_and_the_sets_other_tracks_are_written(
     ]
     assert step["counts"]["tracks matched"] == 2 and step["counts"]["tracks missed"] == 1
     assert not [w for w in envelope["warnings"] if w["code"] == "organize-inspiration-unread"]
-
     code, done, _refused = _approved()
-
     assert code == int(ExitCode.OK), done
     under = _playlists_under(machine, _inspiration_id(machine))
     assert _members(machine, under[FEMME]) == [rows["Cut 01"], rows["Cut 02"]]
@@ -717,17 +656,13 @@ def test_a_track_with_no_artist_is_named_and_the_sets_other_tracks_are_written(
     rows = {title: _owned(machine, silence, title) for title in ("Cut 01", "Cut 02")}
     playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01", "Cut 03", "Cut 02"))
     account.found.playlists[playlist_id]._tracks[1].artist = {"name": ""}
-
     step = _step(_report())
-
     planned = _by_set(step)[FEMME]
     assert planned["action"] == inspiration.CREATE and planned["tracks"] == 2
     assert planned["misses"] == [
         _unread_line(2, "no artist", "Cut 03", "artist", f"{playlist_id}-2")
     ]
-
     code, done, _refused = _approved()
-
     assert code == int(ExitCode.OK), done
     under = _playlists_under(machine, _inspiration_id(machine))
     assert _members(machine, under[FEMME]) == [rows["Cut 01"], rows["Cut 02"]]
@@ -738,9 +673,7 @@ def test_an_unread_track_keeps_the_sets_positions_for_every_other_miss(
 ):
     _owned(machine, silence, "Cut 01")
     playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("", "Cut 01", "Absent Harbor"))
-
     planned = _by_set(_step(_report()))[FEMME]
-
     # IN THE SET'S ORDER, each at the place the account lists it.
     assert planned["misses"] == [
         _unread_line(1, "Probe", "no title", "title", f"{playlist_id}-1"),
@@ -754,10 +687,8 @@ def test_a_set_whose_unread_track_carries_no_provider_id_is_still_filed_unread(
     _owned(machine, silence, "Cut 01")
     playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01", ""))
     account.found.playlists[playlist_id]._tracks[1].id = ""
-
     envelope = _report()
     step = _step(envelope)
-
     unread = _by_set(step)[FEMME]
     assert unread["action"] == inspiration.UNREAD
     assert unread["reason"].startswith("track 2 names no title")
@@ -775,9 +706,7 @@ def test_a_readable_track_with_no_provider_id_is_matched_as_before(
     rows = {title: _owned(machine, silence, title) for title in ("Cut 01", "Cut 02")}
     playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01", "Cut 02"))
     account.found.playlists[playlist_id]._tracks[1].id = ""
-
     planned = _by_set(_step(_report()))[FEMME]
-
     assert planned["action"] == inspiration.CREATE and planned["tracks"] == 2
     assert planned["misses"] == []
     code, done, _refused = _approved()
@@ -789,10 +718,8 @@ def test_a_readable_track_with_no_provider_id_is_matched_as_before(
 def test_a_set_no_track_of_which_reads_is_filed_unread_naming_each(machine, account, silence):
     _owned(machine, silence, "Cut 01")
     playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("", ""))
-
     envelope = _report()
     step = _step(envelope)
-
     unread = _by_set(step)[FEMME]
     assert unread["action"] == inspiration.UNREAD
     assert unread["reason"] == (
@@ -812,9 +739,7 @@ def test_a_miss_the_library_lacks_ahead_of_an_unread_track_keeps_set_order(
 ):
     _owned(machine, silence, "Cut 01")
     playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("Absent Harbor", "", "Cut 01"))
-
     planned = _by_set(_step(_report()))[FEMME]
-
     assert planned["tracks"] == 1
     assert planned["misses"] == [
         f"1. Probe - Absent Harbor: {set_playlist.NOT_HELD}",
@@ -826,9 +751,7 @@ def test_a_set_no_track_of_which_reads_names_five_counts_the_rest_and_the_withhe
     machine, account, silence
 ):
     playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("",) * 7, declared=10)
-
     unread = _by_set(_step(_report()))[FEMME]
-
     assert inspiration.NAMED_UNREAD == 5
     assert unread["action"] == inspiration.UNREAD
     assert unread["reason"] == (
@@ -852,7 +775,6 @@ def test_a_report_reads_inspiration_twice_through_one_handle_and_locks_nothing_m
     where a reader's lock would keep that connection out.
     """
     import sys
-
     conn = sqlite3.connect(machine.library.db_path)
     assert conn.execute("PRAGMA journal_mode=DELETE").fetchone()[0] == "delete"
     conn.close()
@@ -889,9 +811,7 @@ def test_a_report_reads_inspiration_twice_through_one_handle_and_locks_nothing_m
     monkeypatch.setattr(inspiration, "_read", probing)
     monkeypatch.setattr(rb_writer, "open_db", counting)
     monkeypatch.setattr(rb_writer.SharedRead, "release", releasing)
-
     step = _step(_report())
-
     assert step["state"] == "planned" and _by_set(step)[FEMME]["tracks"] == 3
     assert opened == ["handle"] and len(released) == 2
     assert taken == [True]
