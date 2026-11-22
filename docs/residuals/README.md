@@ -5,9 +5,10 @@ number is given when it lands on `main`, by
 
     .venv/bin/python scripts/board.py residuals --land
 
-which reads the highest `## R-N.` heading in `docs/residual-findings.md`, gives
-each file here the next number in name order, appends it to the ledger and
-deletes the file. So two units built in parallel each file their residuals,
+which reads the highest `## R-N.` heading in the ledger, `docs/residual-findings.md`
+and its archives in `docs/ledger/`, gives each file here the next number in name
+order, appends it to `docs/residual-findings.md`, archives that file's oldest
+entries if it is now over 5000 lines, and deletes the file. So two units built in parallel each file their residuals,
 merge in either order, and the number is taken by whoever lands first, never
 by whoever filed first. The ledger's numbered entries never move.
 
