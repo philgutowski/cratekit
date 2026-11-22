@@ -46,9 +46,7 @@ KEY = "cy-fixture-key-0123456789abcdef"
 SHIPPED_SEND = cyanite._requests_send
 UPLOAD_HOST = "https://uploads.example.test/"
 
-# ---------------------------------------------------------------------------
 # A recorded Cyanite, answering the documented flow
-# ---------------------------------------------------------------------------
 
 #: What Cyanite says about each title: the words, and fields this trial must
 #: never read, a tempo and a key among them.
@@ -68,11 +66,7 @@ NEVER_READ = {"bpm": 124.0, "bpmPrediction": {"value": 124.0}, "key": "aMinor",
 
 
 class Recorded:
-    """A recorded Cyanite: answers each request from the documented flow.
-
-    ``events`` is shared with the run's ``say`` so the order of what was said
-    and what was sent is one list.
-    """
+    """A recorded Cyanite: answers each request from the documented flow."""
 
     def __init__(self, events=None, *, said=None, processing=1, preflight=None,
                  create_errors=None, upload_status=200, never_start=False,
@@ -162,9 +156,7 @@ def refused_send(request):
     raise AssertionError(f"the trial sent {request.method} {request.url}")
 
 
-# ---------------------------------------------------------------------------
 # Fixtures: real MP3s with a genre each, filed by hand
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="module")
@@ -232,9 +224,7 @@ def _rows(path: Path) -> dict[str, dict[str, str]]:
     return {Path(row["file"]).name: row for row in cyanite.read_table(path).values()}
 
 
-# ---------------------------------------------------------------------------
 # Nothing is sent without the opt in, the cap, the price and the key
-# ---------------------------------------------------------------------------
 
 
 def test_without_the_opt_in_the_run_is_a_plan_and_sends_nothing(chosen, tmp_path, declared, keyed):
@@ -371,9 +361,7 @@ def test_a_block_or_an_outage_at_the_preflight_stops_before_any_upload(chosen, t
     assert fake.uploaded() == []
 
 
-# ---------------------------------------------------------------------------
 # The key goes in one place
-# ---------------------------------------------------------------------------
 
 
 def test_the_key_goes_only_in_the_authorization_header_of_the_api_requests(chosen, tmp_path, declared, keyed):
@@ -453,9 +441,7 @@ def test_a_transport_failure_is_said_by_its_type_never_its_text(monkeypatch):
 
 
 
-# ---------------------------------------------------------------------------
 # Nothing tempo shaped
-# ---------------------------------------------------------------------------
 
 
 def test_no_query_asks_for_a_tempo_or_a_key():
@@ -492,9 +478,7 @@ def test_the_table_carries_no_tempo_or_key_a_reply_held(chosen, tmp_path, declar
     assert "124" not in text and "aMinor" not in text and "4/4" not in text
 
 
-# ---------------------------------------------------------------------------
 # The trial writes its own table and nothing else
-# ---------------------------------------------------------------------------
 
 
 def _tree(root: Path) -> dict[str, bytes]:
@@ -515,9 +499,7 @@ def test_the_trial_writes_its_table_and_summary_and_nothing_else(chosen, tmp_pat
     assert {name: after[name] for name in before} == before
 
 
-# ---------------------------------------------------------------------------
 # The table, the folders and the agreement
-# ---------------------------------------------------------------------------
 
 
 def test_a_run_writes_each_files_folder_beside_cyanites_and_the_agreement(chosen, tmp_path, declared, keyed):
@@ -631,9 +613,7 @@ def test_an_identifier_is_read_as_the_words_it_spells(identifier, words):
     assert cyanite.spelled(identifier) == words
 
 
-# ---------------------------------------------------------------------------
 # What stops a run and what is one file's
-# ---------------------------------------------------------------------------
 
 
 def test_a_full_library_stops_the_run_and_keeps_the_rows_written(chosen, tmp_path, declared, keyed):
@@ -676,9 +656,7 @@ def test_an_analysis_that_does_not_finish_in_the_window_is_kept_for_a_resume(cho
     assert all("--resume asks again without uploading" in row["note"] for row in rows.values())
 
 
-# ---------------------------------------------------------------------------
 # The output is never overwritten, and a resume pays only for what is missing
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("which", ["table", "summary"])
@@ -734,9 +712,7 @@ def test_resume_asks_again_about_an_unfinished_analysis_without_uploading(chosen
     assert _rows(out)["deep.mp3"]["agreement"] == cyanite.SAME_FOLDER
 
 
-# ---------------------------------------------------------------------------
 # The script
-# ---------------------------------------------------------------------------
 
 
 def _script():
@@ -800,9 +776,7 @@ def test_a_run_with_nothing_to_send_leaves_an_empty_table_and_asks_nothing(tmp_p
     assert _summary(out)[-1]["tracks"] == "0"
 
 
-# ---------------------------------------------------------------------------
 # Review round one: what a resume must never pay for twice, and the rest
-# ---------------------------------------------------------------------------
 
 
 def test_a_folder_moved_between_two_runs_is_not_paid_for_again(chosen, tmp_path, declared, keyed):
@@ -935,9 +909,7 @@ def test_the_script_takes_the_opt_in_by_its_whole_name_only(chosen, tmp_path, te
     assert not (tmp_path / "t.tsv").exists()
 
 
-# ---------------------------------------------------------------------------
 # Review round two
-# ---------------------------------------------------------------------------
 
 
 def test_the_made_track_is_written_before_the_wait_so_a_signal_cannot_lose_it(chosen, tmp_path, declared, keyed):

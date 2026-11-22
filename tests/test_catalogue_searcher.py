@@ -67,12 +67,7 @@ REFUSED = sorted(
 
 
 def _source_genre_for(*, sub: bool) -> str:
-    """A vendor genre string the taxonomy resolves, to a sub or to a bucket.
-
-    A catalogue emits display shaped names, so the display itself is a realistic
-    source string, and asking the resolver which way it lands keeps the fixture
-    honest when the template moves a genre between the two levels.
-    """
+    """A vendor genre string the taxonomy resolves, to a sub or to a bucket."""
     for bucket in TAXONOMY.buckets:
         entries = bucket.subs if sub else (bucket,)
         for entry in entries:
@@ -85,13 +80,7 @@ def _source_genre_for(*, sub: bool) -> str:
 
 
 def _source_genre_aliasing_to_the_fallback() -> str:
-    """A vendor string the template aliases onto the fallback bucket's display.
-
-    Read out of the alias table because the alias table is the only place that
-    fact lives. Typing the string instead is how a fixture outlives the template
-    that justified it, and this one guards AE5, the case where writing the
-    resolver's own answer would launder a catch-all onto a file.
-    """
+    """A vendor string the template aliases onto the fallback bucket's display."""
     fallback = TAXONOMY.fallback.bucket
     for key, (bucket_id, _sub_id) in TAXONOMY._tagging_alias.items():  # noqa: SLF001
         if bucket_id != fallback:
@@ -110,11 +99,9 @@ ARTIST = "Bernard Badie"
 TITLE = "Sunrise Mood"
 
 
-# ---------------------------------------------------------------------------
 # Synthetic pages. Every one of these is the shape the module's parser reads,
 # built here rather than captured, because a live capture is an attended act and
 # U6 records the unverified page shapes as a residual instead.
-# ---------------------------------------------------------------------------
 
 
 def _beatport_track(artist: str, title: str, genre: str, *, mix: str = "") -> dict:
@@ -225,12 +212,7 @@ def _all_three(
 
 
 def _no_hit(hit) -> bool:
-    """True for the decline every source asked earned, by answering MISS.
-
-    A DECLINE IS A HIT WITH NO GENRE AND NOT None since R-791, because None
-    cannot carry the three answers the item's record owes. A decline beside an
-    unread source names it in ``unread`` and is not this.
-    """
+    """True for the decline every source asked earned, by answering MISS."""
     return (
         hit is not None
         and hit.genre is None
@@ -241,13 +223,7 @@ def _no_hit(hit) -> bool:
 
 
 def _searcher(fetch, *, naps: list[float] | None = None, pacing=None):
-    """The searcher over the walk before U244, which this suite was written for.
-
-    THE TWO SCRAPED PARSERS STAY DRIVEN HERE. They are off the default walk
-    since U244 and still in the tree, so a record of what they answered reads
-    and a walk naming them still works; the default walk, Beatport then
-    Discogs, is ``tests/test_discogs_searcher.py``'s.
-    """
+    """The searcher over the walk before U244, which this suite was written for."""
     return searchers.catalogue_searcher(
         TAXONOMY,
         fetch=fetch,
@@ -257,19 +233,11 @@ def _searcher(fetch, *, naps: list[float] | None = None, pacing=None):
     )
 
 
-# ---------------------------------------------------------------------------
 # A. The walk, and the order it takes
-# ---------------------------------------------------------------------------
 
 
 def test_a_beatport_match_carries_the_tag_the_source_name_and_the_raw_genre():
-    """The hit has to name where it came from and what the catalogue actually said.
-
-    Without the raw string a decline downstream can only report that something
-    was unmapped, which tells a person nothing about which alias their taxonomy
-    is missing. R24 spends that string in the report, so it has to survive the
-    resolution rather than being consumed by it.
-    """
+    """The hit has to name where it came from and what the catalogue actually said."""
     fetch = _all_three(
         beatport=_beatport_page([_beatport_track(ARTIST, TITLE, BUCKET_GENRE)]),
         traxsource="",
@@ -284,12 +252,7 @@ def test_a_beatport_match_carries_the_tag_the_source_name_and_the_raw_genre():
 
 
 def test_a_beatport_miss_falls_through_to_traxsource_and_the_hit_names_traxsource():
-    """The fallback order is behaviour, not an implementation detail.
-
-    A source that answered and had nothing is the one outcome that permits the
-    walk to continue, and the hit has to name the source that actually answered
-    so a later disagreement between catalogues is traceable to one of them.
-    """
+    """The fallback order is behaviour, not an implementation detail."""
     fetch = _all_three(
         beatport=_beatport_page([]),
         traxsource=_traxsource_page([(ARTIST, TITLE, BUCKET_GENRE)]),
@@ -302,11 +265,7 @@ def test_a_beatport_miss_falls_through_to_traxsource_and_the_hit_names_traxsourc
 
 
 def test_an_unreachable_first_source_does_not_stop_the_walk():
-    """A silence from one catalogue must not decide the answer for the other two.
-
-    This is the difference between "we could not ask" and "we asked and it did
-    not know", held at the one place where collapsing them would be cheapest.
-    """
+    """A silence from one catalogue must not decide the answer for the other two."""
     fetch = _all_three(
         beatport=UNREACHABLE,
         traxsource=_traxsource_page([(ARTIST, TITLE, BUCKET_GENRE)]),
@@ -318,12 +277,7 @@ def test_an_unreachable_first_source_does_not_stop_the_walk():
 
 
 def test_a_bandcamp_match_takes_the_genre_off_the_listing_when_it_carries_one():
-    """The third source answers too, and the cheap path costs one fetch.
-
-    A track page fetch that the listing already answered is a second pace wait
-    per file for nothing, which over a folder is the difference between a sweep
-    that finishes and one somebody kills.
-    """
+    """The third source answers too, and the cheap path costs one fetch."""
     seen: list[str] = []
     fetch = _all_three(
         beatport=_beatport_page([]),
@@ -341,12 +295,7 @@ def test_a_bandcamp_match_takes_the_genre_off_the_listing_when_it_carries_one():
 
 
 def test_a_bandcamp_listing_with_no_genre_spends_a_second_fetch_on_the_track_page():
-    """Bandcamp's genre often lives on the track page rather than in the listing.
-
-    Two touches is the honest cost of that source, and each one is paced, so the
-    schedule has to grow by one wait rather than the second fetch slipping past
-    the pacer.
-    """
+    """Bandcamp's genre often lives on the track page rather than in the listing."""
     naps: list[float] = []
     seen: list[str] = []
     fetch = _all_three(
@@ -363,9 +312,7 @@ def test_a_bandcamp_listing_with_no_genre_spends_a_second_fetch_on_the_track_pag
     assert len(naps) == len(seen)
 
 
-# ---------------------------------------------------------------------------
 # B. The two refusals, and the decline that is not one
-# ---------------------------------------------------------------------------
 
 
 def test_three_sources_that_all_answered_with_no_match_decline():
@@ -401,12 +348,7 @@ def test_a_source_that_never_answered_raises_rather_than_declining():
 def test_one_source_that_answered_holds_back_the_refusal():
     """Two silences and one absence holds back the refusal, because a catalogue
     did answer. Raising here would turn an ordinary bootleg into a failed job
-    every time one of three sites was down.
-
-    IT IS NOT A NO-HIT, corrected by R-791. The two silences may carry the
-    track, so the decline names them and the file is not reported as one no
-    catalogue carries.
-    """
+    every time one of three sites was down."""
     fetch = _all_three(
         beatport=UNREACHABLE,
         traxsource=UNREACHABLE,
@@ -467,9 +409,7 @@ def test_a_traxsource_page_with_no_rows_at_all_is_a_miss_rather_than_a_parse_bre
     assert [said.answer for said in hit.answers] == ["unreachable", "miss", "unreachable"]
 
 
-# ---------------------------------------------------------------------------
 # C. Resolution through the shipped resolver
-# ---------------------------------------------------------------------------
 
 
 def test_a_source_genre_that_aliases_to_a_sub_resolves_to_the_subs_display():
@@ -529,13 +469,7 @@ def test_a_source_genre_that_aliases_to_the_fallback_bucket_declines():
 
 
 def test_a_source_genre_nothing_in_the_table_knows_is_written_and_flagged():
-    """R-650. The last tier's word reaches the file AND says it was that word.
-
-    The tier exists so a genuinely new genre survives long enough for somebody to
-    notice it, and for a year nothing carried the fact that made noticing
-    possible. This is the carry: the hit is a normal write, and ``off_taxonomy``
-    is what separates it from a tag the declared table produced.
-    """
+    """R-650. The last tier's word reaches the file AND says it was that word."""
     unknown = "gqom"
     assert routing.suggest_tag(TAXONOMY, unknown).off_taxonomy is True, (
         "the template now declares this string, so this test is asserting about "
@@ -553,13 +487,7 @@ def test_a_source_genre_nothing_in_the_table_knows_is_written_and_flagged():
 
 
 def test_a_declared_tag_with_no_bucket_reaches_the_file_without_the_flag():
-    """The pair the flag exists for, driven through the real pages.
-
-    ``bucket_id is None`` is true of this answer and of the one above, and only
-    one of them is worth telling anybody about. The template declares this tag
-    and says in a comment why it has no folder, so reporting it would put the
-    template author's own deliberate gap in front of them on every sweep.
-    """
+    """The pair the flag exists for, driven through the real pages."""
     declared = routing.suggest_tag(TAXONOMY, "melodic techno")
     assert declared.bucket_id is None and declared.tag and not declared.declined
     fetch = _all_three(
@@ -574,15 +502,7 @@ def test_a_declared_tag_with_no_bucket_reaches_the_file_without_the_flag():
 
 
 def test_an_unknown_source_genre_a_taxonomy_calls_too_coarse_is_a_plain_decline():
-    """One file gets ONE disposition, and a decline outranks the flag.
-
-    No string in the shipped template reaches the last tier and is also declared
-    too coarse, so the producer here is a DIFFERENT taxonomy, which is a thing
-    this product supports rather than a hypothetical: the template is a file a
-    person edits. Declaring a coarse string without a matching refusal is the
-    ordinary way to reach this, and the hit must be the decline it already was,
-    carrying no flag about a word it is not going to write.
-    """
+    """One file gets ONE disposition, and a decline outranks the flag."""
     template = (
         Path(__file__).parent / "taxonomies" / "second.toml"
     ).read_text(encoding="utf-8")
@@ -644,9 +564,7 @@ def test_a_source_genre_with_surrounding_whitespace_resolves_the_same_as_the_tri
     assert hit.genre == BUCKET_GENRE
 
 
-# ---------------------------------------------------------------------------
 # D. Pacing and the rate limit
-# ---------------------------------------------------------------------------
 
 
 def test_the_pacer_sleeps_before_every_fetch_including_the_first():
@@ -770,9 +688,7 @@ def test_the_default_fetch_passes_its_timeout_to_the_http_getter():
     assert seen["headers"] is searchers.HEADERS
 
 
-# ---------------------------------------------------------------------------
 # E. The seam, the binder, and the rule the module has to keep
-# ---------------------------------------------------------------------------
 
 
 def test_an_artist_and_title_that_need_escaping_reach_the_seam_as_a_quoted_url():
@@ -839,9 +755,7 @@ def test_the_module_names_no_declared_genre_display(module):
     assert not literals & DISPLAYS
 
 
-# ---------------------------------------------------------------------------
 # F. U85: the picture rides the genre's row, and is fetched on the same terms
-# ---------------------------------------------------------------------------
 
 BEATPORT_ART = "https://geo-media.beatport.com/image_size/250x250/cover-one.jpg"
 OTHER_ART = "https://geo-media.beatport.com/image_size/250x250/cover-two.jpg"
@@ -865,13 +779,7 @@ def test_a_beatport_hit_carries_its_release_picture_resized_to_the_source_edge()
 
 
 def test_the_picture_comes_off_the_same_row_as_the_genre_and_never_another():
-    """The hazard the brief names: a cover from a different row is the wrong cover.
-
-    Three rows. The first is an exact title with a picture and NO genre, so it is
-    not a candidate at all and must not lend its picture. The second wins, and
-    both fields are its own. The third shares the artist, loses on title, and is
-    the LAST row scanned, so a picture read off the loop's final row shows here.
-    """
+    """The hazard the brief names: a cover from a different row is the wrong cover."""
     genreless = _with_art(_beatport_track(ARTIST, TITLE, ""), OTHER_ART)
     winner = _with_art(_beatport_track(ARTIST, TITLE, BUCKET_GENRE), BEATPORT_ART)
     loser = _with_art(_beatport_track(ARTIST, f"{TITLE} Reprise Dub", SUB_GENRE), OTHER_ART)
@@ -1012,9 +920,7 @@ def test_the_image_binder_hands_back_a_fetch_without_touching_the_network(monkey
     assert callable(searchers.for_images())
 
 
-# ---------------------------------------------------------------------------
 # R-791. A bot challenge is its own answer, and no-hit needs every source's MISS
-# ---------------------------------------------------------------------------
 #
 # THE PAGES BELOW ARE THE TWO MEASURED ON 2026-10-01 from the author's machine
 # with this module's own headers, reduced to the part the check reads: Traxsource
@@ -1363,13 +1269,7 @@ def test_a_match_after_an_unreachable_source_names_it_in_unread_too():
 
 
 class _Response:
-    """The attributes this module reads off an HTTP response, and no more.
-
-    Defined as the last thing in the file on purpose: it is a fixture for the
-    default fetch's tests rather than a description of anything the module owns,
-    and the module's own contract with a getter is exactly these fields:
-    ``text`` for a page and ``content`` for a picture.
-    """
+    """The attributes this module reads off an HTTP response, and no more."""
 
     def __init__(self, status_code: int, text: str = "", *, content: bytes = b"") -> None:
         self.status_code = status_code

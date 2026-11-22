@@ -64,12 +64,7 @@ def _typed(value: str) -> str:
 
 
 def typed_fetch(seen: list[str] | None = None, *, beatport: str | None = None):
-    """A fetch answering Discogs as a catalogue a person types into.
-
-    The search answers a release only when its ``artist`` and ``track`` are
-    one of :data:`CATALOGUE`'s, as typed, and nothing otherwise. Beatport, if
-    asked, answers an empty page unless ``beatport`` is given.
-    """
+    """A fetch answering Discogs as a catalogue a person types into."""
     by_question = {(_typed(artist), _typed(title)): number for artist, title, number, _ in CATALOGUE}
     pages = {
         f"{searchers.DISCOGS_RELEASE}{number}": release(
@@ -139,9 +134,7 @@ def tagged(tmp_path: Path, silence: Path, name: str, **fields: str) -> Path:
     return target
 
 
-# ---------------------------------------------------------------------------
 # A. The card's scenarios, through tag_one and the shipped searcher
-# ---------------------------------------------------------------------------
 
 
 def test_a_headed_title_tag_asks_discogs_past_its_head_and_takes_its_match(tmp_path, silence):
@@ -276,9 +269,7 @@ def test_the_record_shops_free_text_query_carries_no_head():
         assert "Lane+8+Aba" in url
 
 
-# ---------------------------------------------------------------------------
 # B. A title with no head is asked exactly as before
-# ---------------------------------------------------------------------------
 
 
 #: Titles a freshly downloaded file carries, and what each was asked as
@@ -329,9 +320,7 @@ def test_an_untagged_name_with_no_head_is_asked_as_before(tmp_path, silence):
     assert (result.asked_artist, result.asked_read) == ("", titles.Read.AS_WRITTEN.value)
 
 
-# ---------------------------------------------------------------------------
 # C. Every earlier matcher case: the question changes, the verdict does not
-# ---------------------------------------------------------------------------
 
 
 #: The shared matcher's own corpus of file titles and rows, both ways round
@@ -386,9 +375,7 @@ def test_the_headed_cases_are_asked_past_their_head():
     assert asked["01 Sunrise Mood"] == "01 Sunrise Mood"
 
 
-# ---------------------------------------------------------------------------
 # D. The reader's two halves
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -434,9 +421,7 @@ def test_a_name_splits_only_when_it_reads_to_exactly_one_artist_and_title(stem, 
         assert split.title.startswith("On My Way")
 
 
-# ---------------------------------------------------------------------------
 # E. The sweep's record says what was asked
-# ---------------------------------------------------------------------------
 
 
 def test_the_sweeps_record_names_the_question_each_file_was_asked(cfg, tmp_path, silence, monkeypatch):  # noqa: F811
@@ -470,9 +455,7 @@ def test_the_sweeps_record_names_the_question_each_file_was_asked(cfg, tmp_path,
     assert reports["8A - 122 - Kerri Chandler - On My Way.flac"]["genre_written"] == genre_of("House")
 
 
-# ---------------------------------------------------------------------------
 # F. The guards round one found unpinned
-# ---------------------------------------------------------------------------
 
 
 def test_a_title_tag_with_no_artist_tag_is_never_split_by_its_name(tmp_path, silence):

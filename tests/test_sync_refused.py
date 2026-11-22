@@ -85,9 +85,7 @@ def _searcher(fetch, *, token: str | None = SENT, run: searchers.Refusals | None
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The record of when each catalogue began refusing
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_first_refusal_sets_since_and_a_later_one_keeps_it(clock):
@@ -180,9 +178,7 @@ def test_a_lock_another_process_holds_skips_the_write_rather_than_waiting(tmp_pa
     assert sum(naps) >= refused.LOCK_WAIT_S - refused.LOCK_POLL_S
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The run count of a sweep writes it, and nothing else does
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_sweeps_run_count_records_a_refusal_sent_and_not_one_unsent(clock):
@@ -216,9 +212,7 @@ def test_a_searcher_built_with_no_run_count_keeps_no_record(clock):
     assert not _record_path().exists()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The searcher's refusal when every catalogue asked refused
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _raised(searcher, title: str = "a") -> CratekitError:
@@ -312,9 +306,7 @@ def test_with_a_token_a_discogs_miss_beside_a_refusing_beatport_is_askable_and_n
     ]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. The sweep names the files the catalogues refused
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
@@ -345,11 +337,7 @@ def staging(tmp_path) -> Path:
 
 
 def bind(monkeypatch, *, token: str | None, beatport=CHALLENGE, search=None, by_title=None):
-    """Bind the worker's searcher to the shipped one over recorded answers.
-
-    A searcher per call carrying the run count the worker hands in, as the
-    shipped binder builds one. ``by_title`` answers Beatport per title.
-    """
+    """Bind the worker's searcher to the shipped one over recorded answers."""
 
     def fetch(url: str) -> searchers.Fetched:
         if url.startswith(searchers.BEATPORT_SEARCH):
@@ -498,19 +486,11 @@ def test_a_sweep_stopped_by_an_outage_carries_no_refusal_stop(
     assert resumed["cause"]["detail"]["tagging"]["refusal_stop"] is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. The chain every landing verb runs: on to the landing, or a plain stop
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class Rest(Tail):
-    """The tail with its tag step REAL and every later step standing in.
-
-    ``tag folder`` runs through the real dispatcher, its worker and the shipped
-    searcher over recorded answers. The guess answers as its verb would, and
-    the analysis, naming and landing stand in as :class:`tests.test_sync_land.Tail`
-    has them: real jobs in the real queue, and the landing's gate.
-    """
+    """The tail with its tag step REAL and every later step standing in."""
 
     def __call__(self, argv: list[str]):
         if argv[:2] == ["tag", "folder"]:
@@ -638,9 +618,7 @@ def test_every_landing_verb_runs_the_one_chain_whose_tag_step_this_is():
         assert "tail.through_name(" in inspect.getsource(module)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. Round one's review: the guards nothing pinned
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_file_discogs_tagged_while_beatport_refused_its_picture_is_not_named():

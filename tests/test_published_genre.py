@@ -71,12 +71,7 @@ UNDECLARED = "a genre word nothing declares"
 
 
 def _tag_with_no_bucket() -> str:
-    """A source string a declared rule answers with a TAG and no bucket.
-
-    Read off the rules, because the rule is the only place that shape lives. It
-    is the one answer that is neither declined nor off taxonomy and still maps
-    to no folder.
-    """
+    """A source string a declared rule answers with a TAG and no bucket."""
     for rule in TAXONOMY.suggest:
         if rule.tag and not rule.bucket and rule.all_of:
             word = " ".join(rule.all_of)
@@ -90,13 +85,7 @@ TAG_ONLY = _tag_with_no_bucket()
 
 
 def _with_no_vocabulary() -> Taxonomy:
-    """The shipped template as a copy written before R-799 holds it.
-
-    No table of the general catalogue's own, so its words are resolved by the
-    buckets' aliases, the way every library's active copy does until it takes
-    the edit. Section B drives the chooser's own tests on that path, since a
-    declared table answers before any of them is reached.
-    """
+    """The shipped template as a copy written before R-799 holds it."""
     source = resources.files("cratekit") / "templates" / "taxonomy.default.toml"
     raw = tomllib.loads(source.read_text(encoding="utf-8"))
     del raw["vocabulary"]
@@ -115,9 +104,7 @@ def test_the_fixture_words_are_what_the_tests_below_take_them_for():
     assert routing.suggest_tag(TAXONOMY, REFUSED[0]).declined
 
 
-# ---------------------------------------------------------------------------
 # Synthetic answers, in the shape measured on 2026-10-01
-# ---------------------------------------------------------------------------
 
 
 def deezer_track(isrc: str | None = ISRC, *, album_id: object = ALBUM_ID) -> str:
@@ -154,11 +141,7 @@ RATE_LIMITED = Fetched(note="rate limited, 3 attempts spent without an answer", 
 
 
 def deezer_fetch(track, album=None, seen: list[str] | None = None):
-    """A fetch seam answering the two URLs the lookup asks, and nothing else.
-
-    A request for anything else, or for an album no test supplied, fails the
-    test, so "the album was never asked" is asserted by construction.
-    """
+    """A fetch seam answering the two URLs the lookup asks, and nothing else."""
 
     def fetch(url: str) -> Fetched:
         if seen is not None:
@@ -187,9 +170,7 @@ def never_asked(isrc: object) -> published.Published:
     raise AssertionError(f"the general catalogue was asked about {isrc!r}")
 
 
-# ---------------------------------------------------------------------------
 # A. The lookup: six answers, and what each is claimed on
-# ---------------------------------------------------------------------------
 
 
 def test_a_known_isrc_answers_the_albums_genres_in_the_catalogues_order():
@@ -606,9 +587,7 @@ def test_the_answer_set_is_the_searchers_and_the_two_words_of_its_own():
     assert set(published.UNREAD) == {"blocked", "unreachable", "parse-break"}
 
 
-# ---------------------------------------------------------------------------
 # B. Choosing among several genres
-# ---------------------------------------------------------------------------
 
 
 def test_the_first_genre_that_maps_to_a_folder_is_chosen():
@@ -628,12 +607,7 @@ def test_a_word_that_maps_to_no_folder_is_passed_over_for_the_next(passed_over):
 
 
 def _bucket_named_by_no_alias() -> str:
-    """A bucket display the resolver answers with no bucket identifier.
-
-    The template holds at least one bucket no alias names, and the resolver's
-    last tier passes its display through, not off taxonomy, since routing
-    files it exactly. Read off the template so the fixture moves with it.
-    """
+    """A bucket display the resolver answers with no bucket identifier."""
     for bucket in TAXONOMY.buckets:
         answer = routing.suggest_tag(TAXONOMY, bucket.display)
         if (
@@ -711,9 +685,7 @@ def test_the_aliased_word_for_soul_or_hip_hop_resolves_to_the_folder_u118_gave_i
     assert band is not None and band.id in {b.id for b in TAXONOMY.energy.bands}
 
 
-# ---------------------------------------------------------------------------
 # C. When the catalogue is asked, and what the hit becomes
-# ---------------------------------------------------------------------------
 
 MISSED = (
     SourceAnswer(searchers.BEATPORT, "miss"),
@@ -906,9 +878,7 @@ def test_a_miss_and_a_missing_isrc_are_recorded_and_are_not_unread(answer):
     assert (out.source, out.source_genre) == ("", "")
 
 
-# ---------------------------------------------------------------------------
 # D. Through the engine, on a real file, with the shipped searcher
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="module")

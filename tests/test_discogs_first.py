@@ -102,9 +102,7 @@ def beatport_tag() -> str:
     return routing.suggest_tag(TAXONOMY, BUCKET_GENRE).tag
 
 
-# ---------------------------------------------------------------------------
 # A. The order
-# ---------------------------------------------------------------------------
 
 
 def test_the_default_walk_is_discogs_then_beatport():
@@ -298,9 +296,7 @@ def test_an_explicit_walk_naming_beatport_first_is_honoured():
     assert hit.ask_picture is None
 
 
-# ---------------------------------------------------------------------------
 # B. The picture's ask, which only a file missing one spends
-# ---------------------------------------------------------------------------
 
 
 def test_a_discogs_match_carries_a_picture_ask_and_spends_nothing_until_asked():
@@ -372,9 +368,7 @@ def test_a_record_shop_decline_still_ends_an_explicit_walk():
     assert not any(url.startswith(searchers.DISCOGS_API) for url in seen)
 
 
-# ---------------------------------------------------------------------------
 # C. Through tag_one: the cover arrives, and only where it is missing
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture(scope="module")
@@ -510,9 +504,7 @@ def test_tag_suggest_sends_beatport_nothing_after_a_discogs_match():
     assert beatport_asked(seen) == 0
 
 
-# ---------------------------------------------------------------------------
 # D. A rejected token waits for the record shops (round one's finding)
-# ---------------------------------------------------------------------------
 
 
 def test_a_token_refused_on_its_shape_still_lets_beatport_decide_and_lend_its_cover():

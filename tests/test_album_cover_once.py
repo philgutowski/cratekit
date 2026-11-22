@@ -57,12 +57,7 @@ class _Response:
 
 
 class Host:
-    """A fake image host: per address, its answers in order, the last repeated.
-
-    An answer is the bytes of a 200, an int status, or an exception the
-    transport raises. ``asked`` is every request that reached the host, which
-    is the count the survey measured.
-    """
+    """A fake image host: per address, its answers in order, the last repeated."""
 
     def __init__(self, answers: dict[str, list]) -> None:
         self.answers = {url: list(given) for url, given in answers.items()}
@@ -119,11 +114,7 @@ def album(folder: Path, silence: Path, names, prefix: str = "") -> list[Path]:
 
 
 def sweep(paths: list[Path], address_of, *, today: bool = False) -> list[tag.TagResult]:
-    """Tag each file as the worker does, one binder call per file.
-
-    ``today`` drops both memories before every file, which is what the code
-    did before this unit: a fresh fetch and a fresh encode for each one.
-    """
+    """Tag each file as the worker does, one binder call per file."""
     results = []
     for path in paths:
         if today:
@@ -151,20 +142,14 @@ def carried(path: Path) -> list[tuple]:
 
 
 def said(result: tag.TagResult) -> tuple[str, str]:
-    """The result and its sentence, with the one part no two runs share masked.
-
-    Pillow names the in memory buffer it could not read by its object address,
-    which differs on every call, before this unit and after it alike.
-    """
+    """The result and its sentence, with the one part no two runs share masked."""
     return result.art_fetch, re.sub(r" at 0x[0-9a-f]+", " at 0x", result.art_fetch_detail)
 
 
 TEN = [f"track{index:02d}" for index in range(10)]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # One request and one encode for an album
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_ten_files_naming_one_address_make_one_request_one_wait_and_one_encode(
@@ -235,9 +220,7 @@ def test_two_albums_in_one_folder_make_two_requests_and_two_encodes(
         assert carried(path)[0][-1] == (first if address[path] == ALBUM else second)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # A failure is never remembered
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -323,9 +306,7 @@ def test_two_addresses_serving_the_same_bytes_make_two_requests_and_one_encode(
     assert carried(paths[0]) == carried(paths[1])
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The two memories, each on its own terms
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_binder_hands_back_one_fetch_per_process_and_the_reset_drops_it(monkeypatch):

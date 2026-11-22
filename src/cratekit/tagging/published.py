@@ -472,18 +472,6 @@ def for_suggestions(declared: Taxonomy) -> PublishedGenre:
 
 
 __all__ = [
-    "ALBUM",
-    "ANSWERS",
-    "HEADERS",
-    "SOURCE",
-    "TRACK_BY_ISRC",
-    "UNREAD",
-    "Lookup",
-    "Published",
-    "choose",
-    "for_lookup",
-    "for_suggestions",
-    "for_taxonomy",
-    "genre_lookup",
-    "second_opinion",
+    "ALBUM", "ANSWERS", "HEADERS", "SOURCE", "TRACK_BY_ISRC", "UNREAD", "Lookup", "Published",
+    "choose", "for_lookup", "for_suggestions", "for_taxonomy", "genre_lookup", "second_opinion",
 ]

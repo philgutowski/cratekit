@@ -81,9 +81,7 @@ BRIEF_STYLES = (
 )
 
 
-# ---------------------------------------------------------------------------
 # Recorded answers, in the shapes Discogs' database search and release read serve
-# ---------------------------------------------------------------------------
 
 
 def results(*numbers: int, kind: str = "release") -> str:
@@ -184,9 +182,7 @@ def discogs_answer(hit):
     return one
 
 
-# ---------------------------------------------------------------------------
 # A. The walk: Discogs first since U282, Beatport when it gives no genre
-# ---------------------------------------------------------------------------
 
 
 def test_the_default_walk_is_discogs_then_beatport_and_names_no_scraped_shop():
@@ -357,9 +353,7 @@ def test_a_walk_names_known_sources_once():
         searchers.catalogue_searcher(TAXONOMY, walk=(searchers.BEATPORT, searchers.BEATPORT))
 
 
-# ---------------------------------------------------------------------------
 # B. What is not an answer: no token, a rejection, refusals, outages, reshapes
-# ---------------------------------------------------------------------------
 
 
 def test_no_token_is_not_asked_with_how_to_record_one_and_never_no_hit():
@@ -555,9 +549,7 @@ def test_a_walk_that_asked_nothing_is_a_decline_naming_what_it_passed_over():
     assert hit.genre is None and hit.unread == (searchers.DISCOGS,)
 
 
-# ---------------------------------------------------------------------------
 # C. The rate limit: one pacer, the remaining count, the ladder, the memory
-# ---------------------------------------------------------------------------
 
 
 class Reply:
@@ -570,11 +562,7 @@ class Reply:
 
 
 def over_the_wire(replies: dict, *, sent: list | None = None, naps: list[float] | None = None):
-    """The shipped asker over the shipped fetch, its getter answering by URL.
-
-    ``replies`` maps a URL prefix to a reply or to a list of replies served in
-    turn. ``sent`` records every (url, headers) pair the getter was handed.
-    """
+    """The shipped asker over the shipped fetch, its getter answering by URL."""
     queues = {key: list(value) if isinstance(value, list) else value for key, value in replies.items()}
     naps = naps if naps is not None else []
 
@@ -680,9 +668,7 @@ def test_the_shipped_fetch_carries_the_answer_headers_lowercased():
     assert dict(refused.headers) == {}
 
 
-# ---------------------------------------------------------------------------
 # D. The token goes in one place
-# ---------------------------------------------------------------------------
 
 
 def test_the_token_is_sent_in_the_authorization_header_and_the_agent_names_cratekit():
@@ -703,11 +689,7 @@ def test_the_token_is_sent_in_the_authorization_header_and_the_agent_names_crate
 
 
 def test_the_token_reaches_no_url_note_record_log_or_refusal(caplog, tmp_path, silence):
-    """Every path a Discogs answer takes to a person, scanned for the token.
-
-    A transport failure whose message names the token, as a client library's
-    refusal of an invalid header does, is scrubbed before it becomes a note.
-    """
+    """Every path a Discogs answer takes to a person, scanned for the token."""
     caplog.set_level(logging.DEBUG)
     sent: list = []
     seen_text: list[str] = []
@@ -754,9 +736,7 @@ def test_the_token_reaches_no_url_note_record_log_or_refusal(caplog, tmp_path, s
         assert SENT not in text, text
 
 
-# ---------------------------------------------------------------------------
 # E. The token's keychain read, and the worker's process wide asker
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -834,9 +814,7 @@ def test_for_taxonomy_hands_the_worker_asker_to_the_searcher(monkeypatch):
     assert said(hit) == [(searchers.DISCOGS, "miss"), (searchers.BEATPORT, "miss")]
 
 
-# ---------------------------------------------------------------------------
 # F. The taxonomy files every listed style, through the resolver
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("style", BRIEF_STYLES)
@@ -903,9 +881,7 @@ def test_the_general_catalogue_chooses_by_the_same_chooser(monkeypatch):
     assert calls == [(("Rock",), {"source": published.SOURCE, "named_only": True})]
 
 
-# ---------------------------------------------------------------------------
 # G. The reports: old records still summarise, a missing token is said
-# ---------------------------------------------------------------------------
 
 
 def _summarised(monkeypatch, reports: list[dict]) -> dict:
@@ -984,9 +960,7 @@ def test_a_discogs_blocked_on_every_search_is_named_like_any_shop():
     assert searchers.DISCOGS in blocked[0]["message"]
 
 
-# ---------------------------------------------------------------------------
 # H. Round one's fixes
-# ---------------------------------------------------------------------------
 
 
 BRACKETED = "(Not Just) Knee Deep (Part 1)"

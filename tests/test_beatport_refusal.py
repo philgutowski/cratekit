@@ -53,12 +53,7 @@ class _Response:
 
 
 def _over_the_wire(beatport, *, discogs=None, seen: list[str] | None = None):
-    """The shipped fetch over a getter answering Beatport and Discogs by URL.
-
-    ``beatport`` is one reply, or a list taken one per Beatport request.
-    ``discogs`` answers the search, and the one release it names, and is a
-    miss when not given.
-    """
+    """The shipped fetch over a getter answering Beatport and Discogs by URL."""
     replies = list(beatport) if isinstance(beatport, list) else None
     search = discogs if discogs is not None else _Response(200, results())
 
@@ -105,9 +100,7 @@ REFUSED = _Response(403, CHALLENGE_PAGE, CHALLENGE_HEADERS)
 MISSED = _Response(200, _beatport_page([]))
 
 
-# ---------------------------------------------------------------------------
 # A. Beatport's answer, read the way the fallbacks' is
-# ---------------------------------------------------------------------------
 
 
 def test_a_403_carrying_cloudflares_challenge_header_is_blocked_and_named():
@@ -257,17 +250,11 @@ def test_a_beatport_answer_with_results_still_matches():
     assert _beatport(hit).answer == "matched"
 
 
-# ---------------------------------------------------------------------------
 # B. Three refusals in a row stop the run asking, and nothing else does
-# ---------------------------------------------------------------------------
 
 
 def _sweep(replies, *, refusals, discogs=None, count: int | None = None):
-    """``count`` files searched as a worker searches them, one searcher per file.
-
-    One searcher per file is the worker's shape, and the reason the count is
-    handed in: a count kept by the searcher would start again at every file.
-    """
+    """``count`` files searched as a worker searches them, one searcher per file."""
     seen: list[str] = []
     fetch = _over_the_wire(list(replies), discogs=discogs, seen=seen)
     asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
@@ -473,9 +460,7 @@ def test_the_limit_is_three():
     assert searchers.REFUSALS_BEFORE_STOP == 3
 
 
-# ---------------------------------------------------------------------------
 # C. The run's count, found by the run
-# ---------------------------------------------------------------------------
 
 
 def test_one_run_name_is_one_count_and_another_name_a_fresh_one():
@@ -520,9 +505,7 @@ def test_the_binder_hands_the_run_count_to_the_searcher(monkeypatch):
     assert _beatport_requests(seen) == 3
 
 
-# ---------------------------------------------------------------------------
 # D. The general catalogue's gate is unchanged
-# ---------------------------------------------------------------------------
 
 
 def _never_asked(isrc: object) -> published.Published:

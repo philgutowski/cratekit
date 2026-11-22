@@ -180,15 +180,6 @@ def answered(
 
 
 __all__ = [
-    "KEY",
-    "LOCK_KEY",
-    "LOCK_POLL_S",
-    "LOCK_WAIT_S",
-    "VERSION",
-    "Standing",
-    "answered",
-    "read",
-    "refused",
-    "since",
-    "stamp",
+    "KEY", "LOCK_KEY", "LOCK_POLL_S", "LOCK_WAIT_S", "VERSION", "Standing", "answered", "read",
+    "refused", "since", "stamp",
 ]
