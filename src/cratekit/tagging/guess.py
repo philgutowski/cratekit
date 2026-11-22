@@ -1,21 +1,12 @@
 """Guess a genre for each staged file no catalogue tagged (U172).
 
-Files the catalogues had no hit for landed with no genre, so no tree placed
-them, though most sit beside tracks that say what they are.
-
-TWO SIGNALS, AS PHILLIP ANSWERED ON 2026-11-01, each a weighted vote: the
-artist's other tracks, in the library and the folder, :data:`ARTIST_WEIGHT`
-each, ``tag suggest``'s weight; and each account playlist of the pass holding
-the file, ONE voice of :data:`PLAYLIST_WEIGHT` shared out by its other members'
-genres, so a long playlist does not drown the artist's own tracks. A track by
-the same artist votes once, as the artist's. The votes are weighed by
-:func:`cratekit.tagging.suggest.weigh`, so only a declared genre is guessed.
-
-EVERY GUESS IS WRITTEN, whatever its band (2026-11-01); a tie is written as the
-tied genre the artist weighs most, then the first by name, and says ``split``.
-A file nothing votes for keeps no genre and is named. FILL IF EMPTY, and an
-unreadable genre is never blank. A library or pass that could not be read
-gives no votes and the plan records which.
+TWO SIGNALS (2026-11-01): the artist's other tracks, in the library and the
+folder, :data:`ARTIST_WEIGHT` each; and each account playlist of the pass that
+holds the file, ONE voice of :data:`PLAYLIST_WEIGHT` shared by its other
+members' genres, the artist's tracks voting once, as the artist's. They are
+weighed by :func:`cratekit.tagging.suggest.weigh`. EVERY GUESS IS WRITTEN,
+whatever its band, a tie as the genre the artist weighs most and marked
+``split``. Fill if empty; what could not be read gives no votes and is said.
 
 Layer: modules. It opens no database of its own; the verb hands it what it
 read.

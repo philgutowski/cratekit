@@ -1,25 +1,12 @@
 """``crate tag suggest``: offer a genre for a row with none, behind one gate (U114).
 
-THE ORDER IS ``tag rows``'S, for its reasons: the backup acknowledgment before
-the plan and the gate (R-733); the plan on a read handle closed before the
-gate, refusing a library mostly under no prefix rule first (R-372); the gate
-over the digested plan, AN EMPTY PLAN STILL ASKS; and only ``apply`` over a
-plan that writes opens the database to write, so a running rekordbox refuses
-BEFORE ANY FILE IS WRITTEN.
-
-THE FILE IS WRITTEN FIRST AND THE ROW SECOND: each row checked as the plan read
-it, each file written and read back, then the rows whose file read back written
-through :func:`cratekit.tagging.rows.apply_rows`, the guarded writer ``tag
-rows`` uses. A row write that fails after its file leaves what ``tag rows``
-repairs.
-
-WHAT IS WRITTEN IS CHOSEN ON THE COMMAND LINE AND COVERED BY THE DIGEST:
-``--band`` the weakest band written, ``--leave`` a row held out, ``--set`` a
-genre picked, which is how a split is written. The applying run takes the same
-flags and refuses as stale if the plan differs. A row left out is offered again
-next run. ``--catalogue`` asks the catalogues, paced, once per candidate, and
-keeps their answers a week so the applying run reads the same ones. The gate
-takes no inline answer (R34).
+THE ORDER IS ``tag rows``'S, so a running rekordbox refuses BEFORE ANY FILE IS
+WRITTEN. THE FILE IS WRITTEN FIRST AND THE ROW SECOND, the rows whose file read
+back going through :func:`cratekit.tagging.rows.apply_rows`; a row write that
+fails after its file leaves what ``tag rows`` repairs. ``--band``, ``--leave``
+and ``--set`` choose what is written and are covered by the digest, so the
+applying run takes the same flags. ``--catalogue`` asks the catalogues, paced,
+and keeps their answers a week so the applying run reads the same ones.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.
@@ -38,25 +25,16 @@ from cratekit.tagging.plan_verbs import counted, named, warning
 #: The explicit gate a write is asked behind.
 CONFIRM_GATE = "tag.suggest.confirm"
 
-#: The plan writes nothing.
+#: The warnings: nothing to write, what was written and read back, candidates
+#: left, rows whose file has a genre ``tag rows`` writes, files not read,
+#: candidates the catalogue could not be read for, and an identifier given to
+#: ``--leave`` or ``--set`` naming no candidate.
 NOTHING_TO_WRITE = "suggest-nothing-to-write"
-
-#: What the apply wrote and read back.
 GENRES_WRITTEN = "suggest-genre-written"
-
-#: Candidates offered and not written, with why.
 ROWS_LEFT = "suggest-left"
-
-#: Rows whose file carries a genre their row lacks, which ``tag rows`` writes.
 FILE_AHEAD = "suggest-file-has-genre"
-
-#: Rows whose file's genre could not be learned, so nothing was offered.
 FILES_NOT_READ = "suggest-file-not-read"
-
-#: Candidates the catalogue could not be read for.
 CATALOGUE_UNREAD = "suggest-catalogue-unread"
-
-#: An identifier given to ``--leave`` or ``--set`` names no candidate.
 UNMATCHED = "suggest-unmatched"
 
 #: What the majority refusal says cannot be done until a prefix rule exists.

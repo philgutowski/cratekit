@@ -1,32 +1,17 @@
 """Suggest a genre for a row with none, from the library and the catalogue (U114).
 
-Rows with no genre on the row or the file sit in INBOX, though most sit beside
-tracks that say what they are: the same artist's, the same folder's.
+THE CANDIDATES ARE ROWS WITH NO GENRE ON THE ROW AND NONE ON THE FILE; a file
+with one is left to ``tag rows`` and an unreadable one is never offered. THREE
+SIGNALS, each a weighted vote: the catalogue lookup ``tag folder`` makes, opt
+in, :data:`CATALOGUE_WEIGHT`; the artist's other tracks, :data:`ARTIST_WEIGHT`;
+the folder's, :data:`FOLDER_WEIGHT`; a neighbour votes once. ONLY A DECLARED
+GENRE IS SUGGESTED, :func:`suggestable`, and a tie is a ``split`` written only
+when a person picks.
 
-THE CANDIDATES ARE ROWS WITH NO GENRE ON THE ROW AND NONE ON THE FILE. A row
-whose file carries one is ``file-has-genre``, left to ``tag rows``; a row
-carrying one is counted and never offered; an unreadable file is counted under
-the census's names and never offered.
-
-THREE SIGNALS, strongest first, each a weighted vote: the catalogue lookup
-``tag folder`` makes, record shops then the general catalogue by ISRC, asked
-past a refusing Beatport once Discogs answered (U322) and again once on a miss,
-opt in since it is paced network work, :data:`CATALOGUE_WEIGHT`; the artist's
-other tracks, :data:`ARTIST_WEIGHT` each; the folder's, :data:`FOLDER_WEIGHT`
-each. A neighbour votes once, at its higher weight.
-
-ONLY A GENRE THE TAXONOMY DECLARES IS SUGGESTED, :func:`suggestable`; another
-neighbour word still counts toward the total, and an off taxonomy catalogue
-answer is evidence and no vote. A BAND says how far the votes agree,
-:func:`band_of`; a tie at the top is ``split``, written only when a person picks.
-
-THE CATALOGUE'S ANSWERS ARE KEPT for :data:`CATALOGUE_DAYS` days, so the
-applying run reads the answers the gate showed; an unread lookup is kept for
-the day only. A ROW ONE CATALOGUE READ IS NOT ONE NOBODY COULD READ (U322):
-each answer carries every catalogue's word, and the walk stops asking after
-:data:`STOP_AFTER_UNREAD` rows in a row no catalogue answered; a row some
-catalogue answered beside a refusal stays unread but ends a run of refusals.
-One refusing catalogue is passed over by the searcher's own count (U281).
+THE CATALOGUE'S ANSWERS ARE KEPT for :data:`CATALOGUE_DAYS` days, an unread one
+for the day. A ROW ONE CATALOGUE READ IS NOT ONE NOBODY COULD READ (U322): the
+walk stops after :data:`STOP_AFTER_UNREAD` rows in a row no catalogue answered,
+and one refusing catalogue is passed over by the searcher's count (U281).
 
 Layer: modules. It opens no database of its own and names no verb.
 """
@@ -82,14 +67,7 @@ ROW_HAS_GENRE = "row-has-genre"
 FILE_HAS_GENRE = "file-has-genre"
 
 OUTCOMES: tuple[str, ...] = (
-    WRITE,
-    HELD_OUT,
-    BELOW_BAND,
-    TIED,
-    NO_VOTES,
-    GENRE_UNKNOWN,
-    ROW_HAS_GENRE,
-    FILE_HAS_GENRE,
+    WRITE, HELD_OUT, BELOW_BAND, TIED, NO_VOTES, GENRE_UNKNOWN, ROW_HAS_GENRE, FILE_HAS_GENRE,
     *rows.UNREAD,
 )
 

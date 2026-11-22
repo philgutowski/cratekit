@@ -1,21 +1,12 @@
 """``crate tag backlog``: the needs genre backlog sorted by cause, writing nothing (U292).
 
-WHAT IT ANSWERS. Of the rows adoption files nowhere for want of a genre, which
-``tag rows`` writes from their file, which ``tag suggest`` would give a genre at
-the floor and from what evidence, which carry a word no folder takes, grouped
-by word with one question each, and which are left by hand and why. Then the
-campaign: the gated verbs in the order they settle it, with the rows each
-moves, and needs genre now and after.
-
-A PERSON READS IT AS CHECK ROWS, on doctor's diagnostic surface as ``report
-genres`` is read; the summary carries every row and every count.
-
-IT WRITES NOTHING, AND ASKS NOTHING: no gate, no session, no acknowledgment,
-and the database opened to read and closed before the envelope. With
-``--catalogue`` the answers are kept in ``tag suggest``'s own state entry for a
-week, so ``tag suggest --catalogue`` reads the same ones. A library most of
-whose rows are under no prefix rule refuses, as ``tag rows`` does, since every
-row would read as excluded.
+Which rows ``tag rows`` writes, which ``tag suggest`` would give a genre and on
+what evidence, which carry a word no folder takes, one question per word, and
+which are left by hand; then the campaign of gated verbs that settles them.
+A person reads it as check rows on doctor's diagnostic surface. IT WRITES AND
+ASKS NOTHING; ``--catalogue`` answers are kept in ``tag suggest``'s state entry
+so ``tag suggest --catalogue`` reads the same ones. A library mostly under no
+prefix rule refuses, as ``tag rows`` does.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.

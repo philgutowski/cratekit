@@ -1,20 +1,11 @@
 """``crate tag guess``: a genre for each file in a folder no catalogue tagged (U172).
 
-Over a folder ``tag folder`` has swept, each audio file still carrying no genre
-is given one guessed from the same artist's other tracks, in the library and
-the folder, and with ``--pass`` from the account playlist the pass downloaded
-it for, by :mod:`cratekit.tagging.guess`'s rules. The tail runs it right after
-``tag folder``, so a sync pass lands those tracks with a genre a tree places.
-
-IT WRITES WITHOUT ASKING, Phillip's answer of 2026-11-01: every guess is
-written, whatever its band, and a wrong one is put right by hand, so it
-declares no gate, as ``tag folder`` declares none. ``--report`` writes nothing
-and says what a run would write. IT NEVER CHANGES A GENRE A FILE CARRIES.
-
-BESIDE THE FOLDER it reads the library's rows on a read handle, and the pass's
-playlist jobs through :func:`cratekit.intake.account_playlists.split`. Either
-that cannot be read is warned about and gives no votes, and the guess goes on
-with the other signal rather than stopping the pass.
+Each audio file ``tag folder`` left with no genre is given one guessed from the
+artist's other tracks and, with ``--pass``, the account playlists that asked
+for it, by :mod:`cratekit.tagging.guess`'s rules. IT WRITES WITHOUT ASKING
+(2026-11-01), so it declares no gate, as ``tag folder`` declares none;
+``--report`` writes nothing. IT NEVER CHANGES A GENRE A FILE CARRIES. A library
+or pass that cannot be read is warned about and the guess goes on without it.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.
@@ -31,25 +22,15 @@ from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.tagging import guess, suggest
 from cratekit.tagging.plan_verbs import named, warning
 
-#: The files that carry no genre and that nothing voted for.
+#: The warnings: files nothing voted for, guesses written over a tie, files that
+#: would not take theirs, files not read, the library or the pass's playlists
+#: not read, and a word the taxonomy has no place of its own for (R-650).
 NO_VOTES_LEFT = "tag-guess-no-votes"
-
-#: The guesses written over a tie at the top.
 SPLIT_WRITTEN = "tag-guess-split"
-
-#: The files that would not take their guessed genre.
 FILES_UNWRITTEN = "tag-guess-unwritten"
-
-#: The files whose genre could not be read, so none was guessed.
 FILES_NOT_READ = "tag-guess-file-not-read"
-
-#: The library's rows could not be read, so the artist's library tracks gave no vote.
 LIBRARY_UNREAD = "tag-guess-library-unread"
-
-#: The pass's playlist jobs could not be read, so no playlist gave a vote.
 PASS_UNREAD = "tag-guess-pass-unread"
-
-#: A word on a file that the taxonomy has no place of its own for (R-650).
 OFF_TAXONOMY = "tag-guess-off-taxonomy"
 
 _ORIGIN = ("tagging", "guess_cli")

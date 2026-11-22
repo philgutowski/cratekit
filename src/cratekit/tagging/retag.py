@@ -1,26 +1,12 @@
 """Correct a genre that is already wrong (U40, Feature Inventory row 18).
 
-A SECOND VERB, NOT A FLAG: :func:`cratekit.tagging.tag.tag_folder` is fill if
-empty by construction, which is why a vendor's catch all survives for ever.
-Two policies over one field are two verbs: one fills, this one corrects.
-
-THE SELECTION IS THE TAXONOMY'S OWN,
-:meth:`cratekit.core.taxonomy.Taxonomy.is_too_coarse_as_source`, never a list
-written here (R19). A BLANK GENRE IS NOT SELECTED although the taxonomy calls
-it too coarse: it is ``tag.folder``'s, and one field under two policies loses a
-hand set value to whichever ran last. AN ANSWER THAT IS ITSELF TOO COARSE IS
-REFUSED, never laundered into a value this verb would not select again.
-
-A DECLINE IS A QUESTION, NOT A FAILURE. No answer, or one refused, goes into
-the GENRE review queue as ONE item per file with the declared buckets as its
-candidates; :func:`cratekit.core.review.offer` is idempotent, so a verdict
-survives and the question is asked once.
-
-THE DATABASE HALF: :func:`apply_library` registers the ``RETAG_GENRE`` policy
-before applying, since an unregistered operation skips every change and
-reports success. The shipped retag writes the file only (R-185, R-246), and
-:func:`apply_library`'s one caller is ``cratekit.tagging.rows``;
-:func:`plan_library` has none, since the row verb walks the rows instead.
+A SECOND VERB, NOT A FLAG: ``tag folder`` fills if empty, this one corrects.
+The selection is the taxonomy's own ``is_too_coarse_as_source``, never a list
+here (R19); A BLANK GENRE IS NOT SELECTED, being ``tag folder``'s, and AN ANSWER
+ITSELF TOO COARSE IS REFUSED. A decline is a question: ONE GENRE review item
+per file, offered once. :func:`apply_library` registers the ``RETAG_GENRE``
+policy, since an unregistered one skips every change; its one caller is
+``cratekit.tagging.rows``, and :func:`plan_library` has none (R-185, R-246).
 
 LAYER: modules.
 """

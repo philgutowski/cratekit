@@ -1,28 +1,12 @@
 """The needs genre backlog, sorted by cause, in one plan that writes nothing (U292).
 
-Every ``needs-genre`` row of adoption's census in exactly one cause, the verb
-that settles it, and what that verb would do to it today.
-
-EACH VERB'S OWN PLAN, NEVER A SECOND OPINION: a row lagging its file is counted
-from :func:`cratekit.tagging.rows.plan_rows` and a row with no genre from
-:func:`cratekit.tagging.suggest.plan_suggestions` at the floor, over the same
-handle, and a word's answers are planned by
-:func:`cratekit.core.taxonomy_word.alias` and
-:func:`cratekit.core.taxonomy_word.folder` on the active copy, so an answer
-offered is one those verbs take. WHAT AN ANSWER MOVES IS COUNTED BY THE ROW,
-since adoption files by the row: a folder files a row carrying that spelling,
-now or once ``tag rows`` writes it, and an alias's rows follow only where the
-library has a genre entry for its genre.
-
-THE CAUSES, in the order a row is tested, :data:`CAUSES`: ``file-unread``;
-``row-lags-file``, which ``tag rows`` writes; ``no-genre``, which ``tag
-suggest`` weighs; ``too-coarse``, which ``tag retag`` replaces; and
-``off-taxonomy``, grouped by word so a person answers once per word. A row
-whose file is not here is in no cause and is counted by why.
-
-THE FLOOR IS ``tag suggest``'S HIGH BAND, :data:`FLOOR`; nothing below it is
-proposed. NOTHING HERE WRITES: the plan is read on the caller's read handle and
-the copy's edits are never saved; only ``tag suggest``'s catalogue answers are
+Every ``needs-genre`` row of adoption's census in one of :data:`CAUSES`, the
+verb that settles it, and what that verb would do today. EACH VERB'S OWN PLAN,
+NEVER A SECOND OPINION: ``tag rows``' and ``tag suggest``'s plans over the same
+handle, and ``taxonomy alias``' and ``taxonomy folder``'s edits on the active
+copy, so an answer offered is one they take. WHAT AN ANSWER MOVES IS COUNTED BY
+THE ROW, since adoption files by the row. Nothing below :data:`FLOOR` is
+proposed. NOTHING HERE WRITES; only ``tag suggest``'s catalogue answers are
 kept, in its own state entry.
 
 Layer: modules. It opens no database of its own and names no verb.

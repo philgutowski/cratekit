@@ -1,26 +1,12 @@
 """``crate tag remap``: rewrite the genres an older mapping wrote.
 
-A VERB OF ITS OWN (R-799), not a mode of ``tag retag``: that verb selects a
-genre too coarse and asks a catalogue behind a job; this one selects by what a
-tagging job RECORDED, asks nobody, and resolves the recorded word again under
-the taxonomy as it stands. A gate asked in one mode only is one the registry
-cannot state.
-
-THE ORDER IS ``tag rows``'S: the plan by reading, the gate over its digest, AN
-EMPTY PLAN STILL ASKS, and only ``apply`` over a plan that writes touches a
-file. The second invocation rebuilds the plan, so a file that changed in
-between refuses ``decision-stale`` with nothing written.
-
-IT WRITES FILES AND OPENS NO DATABASE. A corrected file's row keeps the old
-genre until ``tag rows`` writes it, and a run that wrote names that verb, not a
-reload in rekordbox, which takes every tag field from the file.
-
-WHAT A PERSON READS. The gate carries the counts and word pairs. Every path
-says how many files were left and why, and a taxonomy with no table for the
-general catalogue is said, since a clean answer there would read as a library
-already corrected. A file that did not take its genre refuses, and the refusal
-still names the row verb for the files that did, since the next run plans none
-of them.
+A verb of its own (R-799): it selects by what a tagging job RECORDED, asks
+nobody, and resolves the recorded word again under the taxonomy as it stands.
+THE ORDER IS ``tag rows``'S, an empty plan still asking. IT WRITES FILES AND
+OPENS NO DATABASE, so a run that wrote names ``tag rows`` for the rows, and a
+refusal over a file that did not take still names it for the files that did.
+A taxonomy with no table for the general catalogue is said, since a clean
+answer there would read as a library already corrected.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.
@@ -39,25 +25,15 @@ from cratekit.tagging.plan_verbs import counted, named, warning
 #: The explicit gate a rewrite is asked behind.
 CONFIRM_GATE = "tag.remap.confirm"
 
-#: The plan writes nothing.
+#: The warnings: nothing to write, what was written and read back, files left,
+#: files not read, files outside the library's root, a taxonomy with no table
+#: for the general catalogue, and committed records that could not be parsed.
 NOTHING_TO_WRITE = "remap-nothing-to-write"
-
-#: What the apply wrote and read back, and the verb the rows follow by.
 GENRES_WRITTEN = "remap-genre-written"
-
-#: Files that do not carry what the taxonomy now gives their word, and were left.
 FILES_LEFT = "remap-left-alone"
-
-#: Files whose genre could not be learned.
 FILES_NOT_READ = "remap-file-not-read"
-
-#: Files a record names that are not under this library's root.
 FILES_OUTSIDE = "remap-outside-library"
-
-#: The active taxonomy declares no table for the general catalogue.
 NO_VOCABULARY = "remap-no-vocabulary"
-
-#: Committed tagging records that could not be parsed.
 RECORDS_UNREAD = "remap-records-unread"
 
 _ORIGIN = ("tagging", "remap_cli")

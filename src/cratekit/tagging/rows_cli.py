@@ -1,27 +1,16 @@
 """``crate tag rows``: write a row's genre from its file where the two disagree.
 
-A VERB OF ITS OWN (R-816), not a mode of ``tag retag``: that verb owns the file
-and asks a catalogue, this one owns the row, asks nobody and reads the whole
-collection, and a database gate asked in one mode only is one the registry
-cannot state.
+A verb of its own (R-816): ``tag retag`` owns the file and asks a catalogue;
+this owns the row, asks nobody and reads the whole collection.
 
-THE ORDER IS ``adopt move``'S: the backup acknowledgment before the plan and
-the gate (R-733); the plan on a read handle closed before the gate, refusing a
-library it cannot read first (R-372); the gate over the digested plan, AND AN
-EMPTY PLAN STILL ASKS, since every declared gate has to fire; and only
-``apply`` over a plan that writes opens the database to write, so that is where
-a running rekordbox refuses, and each row is checked to be as the plan read it.
-
-``--leave`` HOLDS A ROW OUT, for a genre set by hand in rekordbox. Held rows are
-in the plan and its digest, so the applying run names the same rows or refuses
-as stale. The second invocation rebuilds the plan, so a file that changed in
-between refuses ``decision-stale`` with nothing written. The gate takes no
-inline answer (R34).
-
-WHAT A PERSON READS. The default renderer prints nothing of a plan's totals, so
-the gate carries the counts and common word pairs as facts, and every path says
-how many differing rows were left and why, naming the act for a word with no
-lookup row.
+THE ORDER IS ``adopt move``'S: the backup acknowledgment first (R-733); the plan
+on a read handle closed before the gate, refusing a library it cannot read
+(R-372); the gate over the digest, AN EMPTY PLAN STILL ASKS; only ``apply``
+over a plan that writes opens the database to write, checking each row is as
+planned. ``--leave`` holds a row out, in the plan and its digest. The second
+invocation rebuilds the plan, so a changed file refuses ``decision-stale``. The
+gate takes no inline answer (R34). Every path says how many differing rows
+were left and why.
 
 Layer: modules. It names :mod:`cratekit.cli.output` and nothing else from the
 command-line layer, for the reason ``adopt.apply_cli`` gives.

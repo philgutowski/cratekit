@@ -1,26 +1,14 @@
 """Rewrite the genres an older mapping wrote from the general catalogue's words (R-799).
 
-The tagger writes a genre once, fill if empty, so a word filed by a mapping
-since changed stays on the file; the taxonomy now gives that catalogue a table
-of its own, and this module plans the rewrite of the files tagged before.
-
 THE SELECTION IS WHAT THE TAG JOBS RECORDED, NOT THE GENRE ON THE FILE, which
-cannot say whether a record shop or the general catalogue supplied it. Every
-committed record is read, and one whose source is the general catalogue names
-a file to look at. ONLY A FILE UNDER THIS LIBRARY'S ROOT IS OPENED; the queue
-is the installation's, so others are counted apart, and a file is followed only
-where it was tagged. The word is resolved again, alone, through
-:func:`cratekit.tagging.published.choose`, as the tagger asks.
-
-A FILE IS REWRITTEN ONLY WHILE IT CARRIES WHAT A RECORD SAYS WAS WRITTEN;
-anything else was put there since. Records carry no time, so two explaining it
-differently leave it listed as ambiguous. A REWRITE IS RECORDED as a tagging
-record of its own once the file reads back, one GENERATION past the record it
-replaced, and only the highest generation is in force, so a genre a person put
-back by hand is not planned again. ONE FILE IS ONE GROUP however its records
-spell its path. EVERY PATH LANDS IN ONE OUTCOME, zero filled.
-
-NOTHING HERE OPENS A DATABASE. The row's genre follows by the row verb.
+cannot say who supplied it. Only a file under this library's root is opened,
+followed only where it was tagged, and its word resolved again through
+:func:`cratekit.tagging.published.choose`. A FILE IS REWRITTEN ONLY WHILE IT
+CARRIES WHAT A RECORD SAYS WAS WRITTEN; two records explaining it differently
+leave it as ambiguous. A rewrite is recorded one GENERATION past the record it
+replaced and only the highest is in force, so a genre put back by hand is not
+planned again. One file is one group however its path is spelled; every path
+lands in one outcome. Nothing here opens a database.
 
 Layer: modules.
 """
@@ -54,13 +42,7 @@ FILE_UNREADABLE = "file-unreadable"
 OUTSIDE_LIBRARY = "outside-library"
 
 OUTCOMES: tuple[str, ...] = (
-    AGREE,
-    WRITE,
-    CHANGED_SINCE,
-    WORD_DECLINED,
-    AMBIGUOUS_RECORD,
-    FILE_MISSING,
-    FILE_UNREADABLE,
+    AGREE, WRITE, CHANGED_SINCE, WORD_DECLINED, AMBIGUOUS_RECORD, FILE_MISSING, FILE_UNREADABLE,
     OUTSIDE_LIBRARY,
 )
 

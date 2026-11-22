@@ -1,32 +1,13 @@
 """``crate tag retag``: confirm the selection, then run the correction.
 
-THE PLAN IS THE SELECTION, every file under the folder whose genre the taxonomy
-calls too coarse, and not what each will become: the lookup that answers that
-is the long running work, and running it before the gate would make the gate
-decorative. The digest is over that selection, so files dropped into the folder
-after an approval meet a stale decision; :func:`cratekit.tagging.retag.select`
-sorts, which keeps the digest stable.
-
-THE RESUME DIGESTS THE FROZEN PAYLOAD, NEVER A FRESH WALK (KTD8, R13). A
-corrected file is no longer selected, so a rebuilt plan digests differently and
-every respawn after the first partial run would refuse ``DecisionStale`` over
-approved work. The confirmed rows are frozen in the payload and both sides of
-the comparison are built from them, the rule
-:func:`cratekit.modules.outbound.shell.resume` states.
-
-THE GATE IS FOUND BY ITS DIGEST SOURCE, NOT BY POSITION, so a reordered tuple
-cannot silently answer the wrong question.
-
-THE RUN NAMES THE VERB THAT WRITES THE ROW. This verb writes the file half only
-(R-185, R-246), so the envelope carries :func:`library_row_warning`, naming
-``tag rows`` rather than a reload in rekordbox, which overwrites every tag
-field: unconditionally on queueing, and on a resume only when a file was
-corrected.
-
-AN EMPTY SELECTION STILL ASKS, AND QUEUES NOTHING (R12). Every declared gate has
-to fire, as :mod:`cratekit.adopt.apply_cli` also holds, and a job with no items
-would be driven straight to SUCCEEDED, a clean report over a folder nothing
-touched.
+THE PLAN IS THE SELECTION, the files whose genre is too coarse, never what each
+becomes: that lookup is the long work, and running it first would make the gate
+decorative. THE RESUME DIGESTS THE FROZEN PAYLOAD, NEVER A FRESH WALK (KTD8,
+R13), since a corrected file is no longer selected. The gate is found by its
+digest source, not its position. This verb writes the file half only (R-185,
+R-246), so a run names ``tag rows`` through :func:`library_row_warning`. AN
+EMPTY SELECTION STILL ASKS AND QUEUES NOTHING (R12): every declared gate fires,
+and a job with no items would report a clean success.
 
 Builders take an untyped ``entry`` so this file does not import the CLI registry
 (KTD23).
@@ -69,15 +50,9 @@ LIBRARY_ROW_STALE = "library-row-not-updated"
 def library_row_warning(folder: str) -> dict[str, str]:
     """What the person still has to do, because the row is not this verb's.
 
-    THE ACT IS NAMED, NOT THE DEFECT: ``tag rows``, which writes the genre from
-    the file and no other column, where a reload overwrites every tag field. IT
-    NAMES THE FOLDER, since a resume's envelope is read later beside other runs.
-
-    THE TENSE IS THE VERB'S, NOT THIS RUN'S, so one text serves queueing, before
-    any file is looked at, a resume that corrected files, and a failure that
-    corrected some. NOT A PENDING HUMAN ACTION: its verify verb would plan over
-    the whole collection behind an explicit gate, which is not that shape (R-567).
-    ``with_reload_step`` keeps its name from when the step was a reload.
+    THE ACT IS NAMED, ``tag rows``, and THE FOLDER, since a resume is read later.
+    The tense is the verb's, so one text serves queueing, a resume and a failure.
+    Not a pending human action, which no verify verb could prove (R-567).
     """
     return {
         "code": LIBRARY_ROW_STALE,
@@ -95,15 +70,10 @@ def library_row_warning(folder: str) -> dict[str, str]:
 
 
 def with_reload_step(error: CratekitError, folder: str) -> CratekitError:
-    """The same refusal, carrying the reload among the things left to do.
-
-    A HALF CORRECTED SWEEP leaves through its cause (R-225), so the warning a
-    successful envelope rides would never reach it, and its corrected files'
-    rows are stale all the same (R-185).
-
-    ONLY THE STEP IS APPENDED: ``origin``, ``inner``, ``detail``, ``scope``,
-    ``retryable`` and the remedy are carried by construction, and so is the
-    type, since the dispatcher reads ``JobBlocked`` as the blocked outcome (R-290).
+    """The same refusal, carrying the reload among the things left to do, for a
+    half corrected sweep that leaves through its cause (R-225, R-185). Only the
+    step is added: every other field and the type, which the dispatcher reads as
+    the blocked outcome (R-290), are carried by construction.
     """
     cause = error.cause
     reload_step = library_row_warning(folder)["message"]
@@ -121,10 +91,7 @@ def with_reload_step(error: CratekitError, folder: str) -> CratekitError:
 #: Every reason a selected file can go unwritten, zero filled in the report, for
 #: the rule :func:`cratekit.adopt.scan.categories` states.
 REASONS: tuple[str, ...] = (
-    retag.NO_GENRE,
-    retag.GENRE_SPECIFIC,
-    retag.NO_ANSWER,
-    retag.ANSWER_TOO_COARSE,
+    retag.NO_GENRE, retag.GENRE_SPECIFIC, retag.NO_ANSWER, retag.ANSWER_TOO_COARSE,
     retag.DECLINED_IN_REVIEW,
 )
 
@@ -146,13 +113,8 @@ def _plan_gate(ctx):
 
 
 def digest_for(folder: str, items: Sequence[Mapping[str, str]]) -> str:
-    """The identity of one plan: this folder, and these rows. Pure.
-
-    The first invocation digests the walk and the resume the frozen rows (KTD8).
-    THE FOLDER IS IN IT, so approving an empty sweep of one folder does not
-    approve another. Rows are rebuilt as plain dictionaries so a payload that
-    went through JSON digests as the plan it was frozen from.
-    """
+    """The identity of one plan, this folder and these rows: the walk's on the
+    first invocation, the frozen rows' on the resume (KTD8). Pure."""
     return digest_of(
         {
             "kind": "tag.retag",
@@ -187,13 +149,8 @@ def build(parser, entry) -> None:
 
 
 def retag_argv(job) -> list[str]:
-    """The command line that continues one queued retag.
-
-    IT CARRIES ``--run``, before the verb path since the root parser owns it: the
-    explicit gate is answered against a recorded run (R34), and the spawned child
-    would otherwise mint a new one and exit DECISION_REQUIRED for ever. A job
-    frozen by an older build has no gate run and resumes into its old refusal.
-    """
+    """The command line that continues one queued retag, carrying ``--run`` so
+    the spawned child answers the explicit gate against the recorded run (R34)."""
     payload = job.payload or {}
     folder = str(payload.get(FOLDER_KEY) or "")
     gate_run = payload.get(jobs.GATE_RUN_KEY)
@@ -202,11 +159,8 @@ def retag_argv(job) -> list[str]:
 
 
 def _summary(cfg: config.Config, job_id: str) -> dict:
-    """What this job's committed artifacts say happened to the folder.
-
-    FROM WHAT RAN, never from what was confirmed, and read back from disk rather
-    than counted in memory, so it stays true across a resume.
-    """
+    """What this job's committed artifacts say happened to the folder: what ran,
+    read back from disk so it stays true across a resume."""
     skipped = {reason: 0 for reason in REASONS}
     corrected = 0
     asked = 0
@@ -232,12 +186,8 @@ def _empty(reason: str, detail: str) -> tuple[dict, tuple[dict[str, str], ...]]:
 
 def retag_genres(ctx) -> Envelope:
     """Offer the selection, wait for the confirmation, then queue and run it.
-
-    THE UNNAMED FOLDER IS REFUSED FIRST, before the configuration: ``Path("")``
-    is the current directory, which this verb would rewrite. THE GATE COMES
-    BEFORE THE ZERO. THE FOLDER IS FROZEN ABSOLUTE, since the resume is a fresh
-    process, and the digest is over that same string.
-    """
+    An unnamed folder refuses first, since ``Path("")`` is the current directory;
+    the folder is frozen absolute for the resume."""
     named = str(ctx.args.folder or "")
     if not named:
         raise refuse(
@@ -297,14 +247,9 @@ def retag_genres(ctx) -> Envelope:
 
 
 def _resume(ctx, cfg: config.Config) -> Envelope:
-    """Answer the gate from the FROZEN plan, then drive the job's items.
-
-    IT WALKS NOTHING: the rows are in the payload and the items in the queue.
-    Abort is still answerable, in the ``job_state`` shape. Every other rule of
-    the resume is :func:`cratekit.tagging.shell.advance`'s, which raises when
-    the job closed carrying a cause (R-225), so the reload is named on both
-    endings when the committed artifacts say a file was corrected.
-    """
+    """Answer the gate from the FROZEN plan, walking nothing, then drive the
+    job's items through :func:`cratekit.tagging.shell.advance`, naming the reload
+    on either ending when a file was corrected."""
     with jobs.open_store() as store:
         queued = jobs.get(store, ctx.args.job)
         payload = queued.payload or {}
@@ -348,19 +293,12 @@ def _resume(ctx, cfg: config.Config) -> Envelope:
 def handle(job, item, cfg) -> jobs.Produced:
     """Correct ONE file's genre. The per item worker behind ``tag.retag``.
 
-    THE GENRE IS RE-READ AT DRIVE TIME; the frozen row is not trusted, since the
-    file may since have been corrected, cleared or deleted. A file that is gone
-    refuses ``source-missing``, whose remediation says nothing was read or
-    written, rather than reporting done. A BLANK GENRE IS ``tag.folder``'S under
-    fill if empty (``is_too_coarse_as_source("")`` is True, so the blank is
-    checked first), and a genre now specific is a person's curation, reported
-    and kept.
-
-    THE SEARCHER IS LOOKED UP ON THE MODULE AT CALL TIME (KTD11, R23) so a test
-    can hand in a fake; a spawned child always gets the live one (R-226). THE
-    CONFIGURATION IS THE FROZEN ONE (KTD9). THE REPORT CARRIES THE PREVIOUS VALUE
-    AS WELL AS THE WRITTEN ONE: it is the only record of which rows went stale
-    (R-185), and ``written`` is what the resume counts to name the reload.
+    THE GENRE IS RE-READ AT DRIVE TIME: a gone file refuses ``source-missing``,
+    a blank one is ``tag folder``'s (checked first, as the taxonomy calls blank
+    too coarse), and one now specific is kept. The searcher is looked up on the
+    module at call time so a test can hand in a fake (KTD11, R23); the
+    configuration is the frozen one (KTD9). The report keeps the previous value,
+    the only record of which rows went stale (R-185).
     """
     path = Path(item.item_id)
     if not path.is_file():
