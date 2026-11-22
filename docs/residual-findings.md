@@ -1442,3 +1442,98 @@ rekordbox does. Ledger only.
 **Measured cost.** None today: no such stop exists, and every exit code that exists is held by the test (each swapped code fails it). It is the seam shape of two lists that must agree.
 
 **Closes when:** `main` catches `tuple(STOPS)` and the test is parametrized over `STOPS` itself plus the invalid batch, so a new stop is caught and held without a second edit. Ledger only; it was found after the unit's two fix rounds were spent.
+
+---
+
+## R-1859. Nothing pins that each test gets a library root of its own
+
+**Found:** at the review of #932, U326, 2026-11-22.
+
+**The mechanism.** `_block_real_library_paths` in `tests/conftest.py` gives
+every test a fresh library root by `tmp_path_factory.mktemp`. U326's review
+drove a mutant that hands every test in a worker one shared library root (on
+the branch's then layout, a `tempfile.mkdtemp` directory, since reverted): it
+killed nothing across 45 files and 4,582 tests. A root made outside the base
+temp was killed (four tests, R-926's write root), so where the root sits is
+pinned and whether it is shared is not. True on `main` before U326 as well.
+
+**Measured cost.** Not driven past the mutant. A shared root lets one test's
+library files answer a later test's walk, which is the leak the fixture's own
+docstring says it prevents for `tmp_path`.
+
+**Closes when:** a test asserts two tests' `CRATEKIT_LIBRARY_ROOT` differ and
+each starts empty, in a file #869 (U312) owns. Ledger only.
+
+---
+
+## R-1860. Nothing pins the order of the source guards' walk, so a guard that came to depend on it would pass a reordered walk
+
+**Found:** at the review of #932, U326, 2026-11-22.
+
+**The mechanism.** U326 replaced `ast.walk` and `ast.iter_child_nodes` in
+`tests/_source_guards.py` with `_walk` and `_children`, exact equivalents in
+the same breadth first order, checked by identity at every position over
+3,951,477 nodes of 1,365 files from `src`, `tests` and the standard library.
+The review then drove a depth first `_breadth_first` and a `_children` that
+reverses its children: both killed nothing across the guard files and the
+two beat grid suites, because every consumer today reduces a walk to a set,
+`any` or `sorted`. A later guard that stops at the first match would depend
+on the order with nothing to say so.
+
+**Measured cost.** None today, by the review's mutants.
+
+**Closes when:** a test beside the guards (a file #869, U312, owns, since
+U326 added no tests) asserts `_walk` and `_children` agree with `ast.walk`
+and `ast.iter_child_nodes` node for node over a fixture tree with list,
+single and missing fields. Ledger only.
+
+---
+
+## R-1861. Nothing proves the Discogs detonator's teardown failure, which is the only failure it raises
+
+**Found:** at the mutation table of #932, U326, 2026-11-22.
+
+**The mechanism.** `_no_live_discogs` in `tests/conftest.py` (U283) records
+each address a test sends to the live Discogs API through the shipped getter,
+raises `ConnectionError`, and fails the test at teardown over what it
+recorded. The teardown failure is the whole guard: setup folds a transport
+failure into an unreachable answer and stores the token, so the raise alone
+fails nothing. U326's row R5 replaced `if reached:` with `if False:` and the
+full suite, 22,933 tests, killed nothing. Unchanged by U326.
+
+**Measured cost.** Not driven past the row. A test that reached the live API
+by mistake would pass with the token stored and a note, which is the outcome
+the guard's docstring says it exists to prevent.
+
+**Closes when:** a test in a file #869 (U312) owns drives a setup step with
+the shipped getter under the guard and asserts the test fails, in a pytester
+run as `tests/test_host_process_table.py` does for the process tripwire.
+Ledger only.
+
+---
+
+## R-1862. The two soft delete sweeps analyse every file twice, and the guard module's own pins refuse the memo that would share them
+
+**Found:** at the plan of #932, U326, 2026-11-22.
+
+**The mechanism.** `test_no_module_in_the_package_reads_the_soft_delete_marker_permissively`
+and `test_only_the_declared_modules_read_the_soft_delete_marker_at_all`, in
+`tests/test_rb_writer_guard.py`, each ask `tests/_source_guards.py` one
+question of the same 788 files, and both questions are functions of the text
+alone. A memo keyed on the text, or on a digest of it, would let the second
+sweep in a worker read the first one's answers. U326 drafted one and dropped
+it, because `tests/test_reserved_causes.py` pins the guard module's imports to
+`__future__`, `ast` and `re` (so no `hashlib`) and reports any use of a
+`source: str` parameter other than as the one argument of `ast.parse` (so no
+dictionary keyed on the text). Both pins exist so that no comment can reach a
+rule, and a memo keyed on the text lets none reach one, but widening them is a
+decision for the card that owns that file.
+
+**Measured cost.** On a four core Linux container on 2026-11-22, after U326's
+walk: 13.7 and 10.1 seconds for the two sweeps in one process. The second
+sweep would cost close to nothing in a worker that ran the first.
+
+**Closes when:** #869 (U312), which owns `tests/test_reserved_causes.py`,
+either admits a memo keyed on the text (a digest import, and a named exception
+in the raw text rule for a key that is never read as text) and adds it, or
+records that the pins stay and the cost is kept. Ledger only.
