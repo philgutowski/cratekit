@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 from cratekit.adopt import collection
-from cratekit.cli import cutover, doctor
+from cratekit.cli import cutover, doctor, doctor_state
 from cratekit.core import config, preflight, rb_writer, session, snapshot, taxonomy, tree_registry
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
@@ -843,12 +843,12 @@ def test_doctor_and_the_verb_read_one_set_of_cutover_trees(machine, monkeypatch)
     """
     assert DECLARED.catalog is not None
     expected = frozenset({TREE, DECLARED.intake.id})
-    _declared, may_cut_over, _reason = doctor._declared_trees(machine)
+    _declared, may_cut_over, _reason = doctor_state._declared_trees(machine)
     assert may_cut_over == tree_registry.cutover_trees(DECLARED) == expected
 
     sentinel = frozenset({DECLARED.catalog.id})
     monkeypatch.setattr(tree_registry, "cutover_trees", lambda declared: sentinel)
-    _declared, may_cut_over, _reason = doctor._declared_trees(machine)
+    _declared, may_cut_over, _reason = doctor_state._declared_trees(machine)
     assert may_cut_over is sentinel
     assert (
         cutover.derivation_source(DECLARED, DECLARED.catalog.id)

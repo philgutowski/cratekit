@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.cli import doctor, prompt, registry
+from cratekit.cli import doctor, doctor_model, prompt, registry
 from cratekit.cli import setup as setup_verb
 from cratekit.core import config, locations, processes, rb_writer, session, tags
 from cratekit.core.cause import CratekitError
@@ -322,7 +322,7 @@ def test_the_rule_setup_should_have_offered_turns_the_majority_into_a_plan(bench
 
 def _real_survey() -> doctor.Probes:
     """The green machine with the one seam under test left real."""
-    return doctor_machines.green(path_survey=doctor._survey_paths)
+    return doctor_machines.green(path_survey=doctor_model._survey_paths)
 
 
 def test_doctor_fails_paths_resolved_over_a_majority_off_a_copy(bench, silence, opened):
@@ -564,7 +564,7 @@ def test_setup_end_to_end_writes_the_rule_and_ends_on_a_doctor_that_reads_it(
         "Probes",
         lambda: doctor_machines.green(
             installed_app_version=lambda _cfg: RECORDED_APP_VERSION,
-            path_survey=doctor._survey_paths,
+            path_survey=doctor_model._survey_paths,
         ),
     )
 
@@ -589,7 +589,7 @@ def test_doctor_takes_no_copy_while_rekordbox_is_running(bench, silence, opened)
         for f in doctor.run(
             bench.cfg,
             probes=doctor_machines.green(
-                process_lister=lambda: ("rekordboxAgent",), path_survey=doctor._survey_paths
+                process_lister=lambda: ("rekordboxAgent",), path_survey=doctor_model._survey_paths
             ),
         ).findings
         if f.key == "library.paths_resolved"
@@ -608,7 +608,7 @@ def test_doctor_defers_to_the_volume_checks_before_reading_anything(bench, silen
         for f in doctor.run(
             bench.cfg,
             probes=doctor_machines.green(
-                identity_provider=lambda _path: "0000-0000", path_survey=doctor._survey_paths
+                identity_provider=lambda _path: "0000-0000", path_survey=doctor_model._survey_paths
             ),
         ).findings
         if f.key == "library.paths_resolved"

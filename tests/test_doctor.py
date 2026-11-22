@@ -28,24 +28,47 @@ import ast
 import errno
 import json
 import os
+import pathlib
 import subprocess
 import sys
 import tomllib
 from datetime import datetime, timedelta, timezone
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 
 import pytest
 
-from cratekit import cli
+from cratekit import acquire, cli
 from cratekit.acquire import adapter as adapter_contract
-from cratekit.cli import doctor, prompt, registry, render
+from cratekit.cli import (
+    doctor,
+    doctor_backup,
+    doctor_credentials,
+    doctor_library,
+    doctor_model,
+    doctor_state,
+    prompt,
+    registry,
+    render,
+)
 from cratekit.cli import jobs as jobs_cli
 from cratekit.cli import setup as setup_verb
 from cratekit.cli.doctor import Probes as RealProbes
 from cratekit.cli.verbs import login as login_verb
-from cratekit.core import backup_facts, binaries, config, jobs, profiles, secrets, session, taxonomy
+from cratekit.core import (
+    backup_facts,
+    binaries,
+    config,
+    jobs,
+    profiles,
+    rb_writer,
+    secrets,
+    session,
+    taxonomy,
+)
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
+from cratekit.deletion import trash
 from tests import doctor_machines
 from tests._hardware import filesystem_kind, hdiutil_available, read_only_volume
 from tests.test_active_taxonomy import shipped_without, write_active
@@ -315,7 +338,7 @@ def test_every_credential_check_the_registry_declares_has_a_group_and_a_remedy()
     assert declared <= set(doctor.CREDENTIALS_BY_CHECK)
     for key in doctor.CREDENTIALS_BY_CHECK:
         assert f"binary.{key}" not in doctor.CHECK_KEYS
-        assert isinstance(Remedy(str(doctor._CREDENTIAL_REMEDY[key])), Remedy)
+        assert isinstance(Remedy(str(doctor_credentials._CREDENTIAL_REMEDY[key])), Remedy)
 
 
 def test_every_binary_the_resolver_knows_about_is_probed():
@@ -1111,15 +1134,15 @@ def test_the_repositorys_own_installed_hook_passes_the_check(library):
     tightened until only its fixtures pass it is a guard that fires on the
     correct setup, and those get worked around rather than fixed (P7).
     """
-    root = doctor._checkout_root()
+    root = doctor_model._checkout_root()
     if root is None:  # pragma: no cover - an installed wheel has no checkout
         return
-    git_dir, unreadable, _remedy = doctor._git_dir(root)
+    git_dir, unreadable, _remedy = doctor_model._git_dir(root)
     assert unreadable is None, unreadable
     hook = git_dir / "hooks" / "pre-commit" if git_dir else None
     if hook is None or not hook.is_file():  # pragma: no cover - a clone with no hook
         return
-    assert doctor._hook_dispatch_problem(hook.read_text(), root) is None
+    assert doctor_state._hook_dispatch_problem(hook.read_text(), root) is None
 
 
 def test_a_worktree_finds_the_hook_in_the_common_git_directory(tmp_path):
@@ -1139,8 +1162,8 @@ def test_a_worktree_finds_the_hook_in_the_common_git_directory(tmp_path):
     worktree.mkdir()
     (worktree / ".git").write_text(f"gitdir: {per_tree}\n")
 
-    assert doctor._git_dir(worktree) == (common.resolve(), None, None)
-    assert doctor._git_dir(tmp_path / "main") == (common, None, None)
+    assert doctor_model._git_dir(worktree) == (common.resolve(), None, None)
+    assert doctor_model._git_dir(tmp_path / "main") == (common, None, None)
 
 
 #: The shape of this repository's own configuration that decides the answer: one
@@ -1315,7 +1338,7 @@ def _stage_config(stages: str) -> str:
 def test_the_hook_types_a_configuration_needs(tmp_path, text, expected):
     config_file = tmp_path / ".pre-commit-config.yaml"
     config_file.write_text(text)
-    assert doctor._configured_hook_types(config_file) == (expected, None, None)
+    assert doctor_state._configured_hook_types(config_file) == (expected, None, None)
 
 
 @pytest.mark.parametrize(
@@ -1330,17 +1353,17 @@ def test_a_configuration_this_cannot_understand_is_a_sentence(tmp_path, text, be
     """An unknown stage is not a stage that needs nothing."""
     config_file = tmp_path / ".pre-commit-config.yaml"
     config_file.write_text(text)
-    types, problem, _remedy = doctor._configured_hook_types(config_file)
+    types, problem, _remedy = doctor_state._configured_hook_types(config_file)
     assert types == ()
     assert problem is not None and because in problem
 
 
 def test_this_repositorys_own_configuration_needs_both_hook_types():
     """Pinned against the tree rather than a fixture authored beside the reader."""
-    root = doctor._checkout_root()
+    root = doctor_model._checkout_root()
     if root is None:  # pragma: no cover - an installed wheel has no checkout
         return
-    types, problem, _remedy = doctor._configured_hook_types(root / ".pre-commit-config.yaml")
+    types, problem, _remedy = doctor_state._configured_hook_types(root / ".pre-commit-config.yaml")
     assert problem is None, problem
     assert types == ("pre-commit", "commit-msg")
 
@@ -2632,7 +2655,7 @@ def test_the_identity_check_never_reports_green_over_an_identity_that_did_not_ma
 
     matched = {preflight.MountState.OK, preflight.MountState.LIBRARY_PATH_MISSING}
     for state in preflight.MountState:
-        verdict, remedy = doctor._IDENTITY_VERDICT[state]
+        verdict, remedy = doctor_library._IDENTITY_VERDICT[state]
         assert (verdict is doctor.Status.OK) == (state in matched), state
         assert (remedy is None) == (verdict is not doctor.Status.FAIL), state
 
@@ -2680,8 +2703,8 @@ def test_every_mount_outcome_has_a_sentence_of_its_own():
     """
     from cratekit.core import preflight
 
-    assert set(doctor._MOUNT_DETAIL) == set(preflight.MountState)
-    assert len({str(v) for v in doctor._MOUNT_DETAIL.values()}) == len(preflight.MountState)
+    assert set(doctor_library._MOUNT_DETAIL) == set(preflight.MountState)
+    assert len({str(v) for v in doctor_library._MOUNT_DETAIL.values()}) == len(preflight.MountState)
 
 
 def test_a_seam_default_is_a_plain_function_and_never_a_bound_method():
@@ -3840,7 +3863,6 @@ def test_the_two_probe_answers_that_made_the_false_red_are_really_different(tmp_
     This is the evidence the finding rested on, kept as a test so the seam above
     cannot drift away from what the module it stands in for actually does.
     """
-    from cratekit.deletion import trash
 
     volume = tmp_path / "volume"
     (volume / "Music").mkdir(parents=True)
@@ -3888,7 +3910,6 @@ def test_the_trash_check_cannot_pass_by_having_run(tmp_path, monkeypatch):
     default would make the directory it is asking about exist and then report the
     pass it had itself produced.
     """
-    from cratekit.deletion import trash
 
     seen: list[dict] = []
 
@@ -3896,7 +3917,7 @@ def test_the_trash_check_cannot_pass_by_having_run(tmp_path, monkeypatch):
         seen.append(dict(kwargs, path=path))
         return trash.TrashStatus(None, False, "not probed for real")
 
-    monkeypatch.setattr(doctor.trash, "probe", recording)
+    monkeypatch.setattr(trash, "probe", recording)
     volume = tmp_path / "volume"
     (volume / "Music").mkdir(parents=True)
 
@@ -4509,9 +4530,9 @@ def test_the_two_remote_tables_never_answer_for_the_same_type():
     type answering in both is one type with two answers, and which one wins is
     the order the branches happen to be written in.
     """
-    overlap = set(doctor._REMOTE_TRASH_POLICY) & doctor._NON_TRASHING_REMOTE_TYPES
+    overlap = set(doctor_backup._REMOTE_TRASH_POLICY) & doctor_backup._NON_TRASHING_REMOTE_TYPES
     assert not overlap, overlap
-    for kind, policy in doctor._REMOTE_TRASH_POLICY.items():
+    for kind, policy in doctor_backup._REMOTE_TRASH_POLICY.items():
         assert policy.option is None or policy.disabled in ("true", "false"), kind
         # A gate on an option that does not exist is a gate on nothing.
         assert policy.applies_when is None or policy.option is not None, kind
@@ -5463,7 +5484,7 @@ def test_a_git_marker_that_cannot_be_read_is_not_a_marker_that_names_nothing(
 
     marker.chmod(0o000)
     try:
-        pointed, unreadable, remedy = doctor._git_dir(root)
+        pointed, unreadable, remedy = doctor_model._git_dir(root)
         report = doctor.run(configured, probes=probes(checkout_root=lambda: root))
     finally:
         marker.chmod(0o644)
@@ -5490,14 +5511,14 @@ def test_a_git_marker_that_cannot_be_read_is_not_a_marker_that_names_nothing(
         doctor.run(configured, probes=probes(checkout_root=lambda: root)),
         "repo.commit_hook",
     )
-    assert doctor._git_dir(root) == (None, None, None)
+    assert doctor_model._git_dir(root) == (None, None, None)
 
     # AND A MARKER THAT IS PRESENT AND IS NOT TEXT. ``UnicodeDecodeError`` is a
     # ``ValueError`` rather than an ``OSError``, so it escaped the handler beside
     # it and left the whole check as one that did not complete. Its own leg
     # killed no test until this line, which is the same shape as the split above.
     marker.write_bytes(b"gitdir: \xff\xfe/somewhere\n")
-    pointed, not_text, not_text_remedy = doctor._git_dir(root)
+    pointed, not_text, not_text_remedy = doctor_model._git_dir(root)
     assert pointed is None
     assert not_text is not None and "not readable text" in not_text
     # The bytes were READ and then would not decode, so nothing was refused and
@@ -5529,7 +5550,7 @@ def test_a_commondir_that_cannot_be_read_is_reported_rather_than_swallowed(
 
     commondir.chmod(0o000)
     try:
-        pointed, unreadable, remedy = doctor._git_dir(worktree)
+        pointed, unreadable, remedy = doctor_model._git_dir(worktree)
         finding = find(
             doctor.run(configured, probes=probes(checkout_root=lambda: worktree)),
             "repo.commit_hook",
@@ -5565,7 +5586,7 @@ def test_a_commondir_that_is_present_and_is_not_text_is_reported_too(
     worktree.mkdir()
     (worktree / ".git").write_text(f"gitdir: {per_tree}\n")
 
-    pointed, unreadable, remedy = doctor._git_dir(worktree)
+    pointed, unreadable, remedy = doctor_model._git_dir(worktree)
     finding = find(
         doctor.run(configured, probes=probes(checkout_root=lambda: worktree)),
         "repo.commit_hook",
@@ -7054,7 +7075,7 @@ def test_the_declared_interpreter_bound_is_none_when_it_cannot_be_read(monkeypat
     monkeypatch.setattr(doctor.registry, "DISTRIBUTION", "cratekit-no-such-distribution")
     assert doctor._declared_python_bound() is None
 
-    monkeypatch.setattr(doctor.metadata, "metadata", lambda _name: {})
+    monkeypatch.setattr(importlib_metadata, "metadata", lambda _name: {})
     assert doctor._declared_python_bound() is None
 
     finding = find(
@@ -7083,18 +7104,18 @@ def test_the_binding_pin_problem_is_whatever_the_writers_own_assertion_says(monk
             )
         )
 
-    monkeypatch.setattr(doctor.rb_writer, "assert_binding_version", refuse)
-    assert doctor._binding_pin_problem(None) == "pyrekordbox 0.4.0 is not the pinned 0.3.0"
+    monkeypatch.setattr(rb_writer, "assert_binding_version", refuse)
+    assert doctor_model._binding_pin_problem(None) == "pyrekordbox 0.4.0 is not the pinned 0.3.0"
 
     def uninstalled(_cfg):
         raise ImportError("No module named 'pyrekordbox'")
 
-    monkeypatch.setattr(doctor.rb_writer, "assert_binding_version", uninstalled)
-    answer = doctor._binding_pin_problem(None)
+    monkeypatch.setattr(rb_writer, "assert_binding_version", uninstalled)
+    answer = doctor_model._binding_pin_problem(None)
     assert answer is not None and "could not be imported" in answer
 
-    monkeypatch.setattr(doctor.rb_writer, "assert_binding_version", lambda _cfg: None)
-    assert doctor._binding_pin_problem(None) is None
+    monkeypatch.setattr(rb_writer, "assert_binding_version", lambda _cfg: None)
+    assert doctor_model._binding_pin_problem(None) is None
 
 
 def test_the_rclone_dump_answers_none_for_every_way_it_can_fail(monkeypatch, tmp_path):
@@ -7107,42 +7128,42 @@ def test_the_rclone_dump_answers_none_for_every_way_it_can_fail(monkeypatch, tmp
     from types import SimpleNamespace
 
     # The binary is not there at all.
-    assert doctor._rclone_remotes(str(tmp_path / "no-such-rclone")) is None
+    assert doctor_model._rclone_remotes(str(tmp_path / "no-such-rclone")) is None
 
     def timed_out(*_a, **_k):
-        raise doctor.subprocess.TimeoutExpired(cmd="rclone", timeout=10)
+        raise subprocess.TimeoutExpired(cmd="rclone", timeout=10)
 
-    monkeypatch.setattr(doctor.subprocess, "run", timed_out)
-    assert doctor._rclone_remotes("rclone") is None
+    monkeypatch.setattr(subprocess, "run", timed_out)
+    assert doctor_model._rclone_remotes("rclone") is None
 
     monkeypatch.setattr(
-        doctor.subprocess, "run", lambda *_a, **_k: SimpleNamespace(returncode=1, stdout="")
+        subprocess, "run", lambda *_a, **_k: SimpleNamespace(returncode=1, stdout="")
     )
-    assert doctor._rclone_remotes("rclone") is None
+    assert doctor_model._rclone_remotes("rclone") is None
 
     monkeypatch.setattr(
-        doctor.subprocess,
+        subprocess,
         "run",
         lambda *_a, **_k: SimpleNamespace(returncode=0, stdout="not json at all"),
     )
-    assert doctor._rclone_remotes("rclone") is None
+    assert doctor_model._rclone_remotes("rclone") is None
 
     monkeypatch.setattr(
-        doctor.subprocess,
+        subprocess,
         "run",
         lambda *_a, **_k: SimpleNamespace(returncode=0, stdout="[1, 2]"),
     )
-    assert doctor._rclone_remotes("rclone") is None
+    assert doctor_model._rclone_remotes("rclone") is None
 
     # And the answer when it works, so none of the above is passing by accident.
     monkeypatch.setattr(
-        doctor.subprocess,
+        subprocess,
         "run",
         lambda *_a, **_k: SimpleNamespace(
             returncode=0, stdout='{"gdrive": {"type": "drive", "use_trash": "false"}}'
         ),
     )
-    assert doctor._rclone_remotes("rclone") == {
+    assert doctor_model._rclone_remotes("rclone") == {
         "gdrive": {"type": "drive", "use_trash": "false"}
     }
 
@@ -7172,7 +7193,7 @@ def test_a_registered_adapter_whose_tool_is_not_installed_says_so(configured, mo
     def uninstalled(_name):
         raise ImportError("No module named 'yt_dlp'")
 
-    monkeypatch.setattr(doctor.acquire, "load", uninstalled)
+    monkeypatch.setattr(acquire, "load", uninstalled)
     finding = find(doctor.run(configured, probes=probes()), "adapter.contract")
 
     assert finding.status is doctor.Status.FAIL
@@ -7211,12 +7232,12 @@ def test_a_hook_line_with_an_unbalanced_quote_falls_back_to_the_default_config()
     ``--config`` means anyway.
     """
     assert (
-        doctor._hook_config_name('exec pre-commit hook-impl --config="unbalanced')
-        == doctor._HOOK_CONFIG_DEFAULT
+        doctor_state._hook_config_name('exec pre-commit hook-impl --config="unbalanced')
+        == doctor_state._HOOK_CONFIG_DEFAULT
     )
     # And a quoted path WITH a space is read, which is why shlex is used at all.
     assert (
-        doctor._hook_config_name("exec pre-commit hook-impl --config='my config.yaml'")
+        doctor_state._hook_config_name("exec pre-commit hook-impl --config='my config.yaml'")
         == "my config.yaml"
     )
 
@@ -7394,7 +7415,7 @@ def test_a_hook_config_path_that_cannot_be_resolved_is_a_refusal_not_a_crash(tmp
     (root / "loop-b").symlink_to(root / "loop")
     body = "exec pre-commit hook-impl --hook-type=pre-commit --config=loop/config.yaml\n"
 
-    problem = doctor._hook_dispatch_problem(body, root)
+    problem = doctor_state._hook_dispatch_problem(body, root)
     assert problem is not None
     assert "cannot be resolved" in problem
 
@@ -8057,8 +8078,8 @@ def test_an_unmounted_volume_and_a_moved_volume_are_told_apart_on_a_real_volume(
 
     # The two sentences a user reads over the same configured root are different
     # sentences carrying different acts.
-    moved_detail = doctor._MOUNT_DETAIL[elsewhere.state]
-    absent_detail = doctor._MOUNT_DETAIL[unmounted.state]
+    moved_detail = doctor_library._MOUNT_DETAIL[elsewhere.state]
+    absent_detail = doctor_library._MOUNT_DETAIL[unmounted.state]
     assert moved_detail != absent_detail
     assert "Nothing needs plugging in" in moved_detail
     assert "Attach it" in absent_detail
@@ -8512,8 +8533,8 @@ def _distribution(tmp_path, direct_url, requires=()):
 )
 def test_the_install_origin_is_read_off_the_pep_610_record(tmp_path, monkeypatch, record, kind):
     dist = _distribution(tmp_path, record)
-    monkeypatch.setattr(doctor.metadata, "distribution", lambda name: dist)
-    origin = doctor._install_origin()
+    monkeypatch.setattr(importlib_metadata, "distribution", lambda name: dist)
+    origin = doctor_model._install_origin()
     assert origin.kind == kind
     if kind != "unknown":
         assert origin.version == "0.2.0"
@@ -8544,8 +8565,8 @@ def test_the_installed_extras_are_the_ones_whose_requirements_are_present(tmp_pa
             return dist
         raise metadata.PackageNotFoundError(name)
 
-    monkeypatch.setattr(doctor.metadata, "distribution", distribution)
-    assert doctor._install_origin().extras == ("analysis",), (
+    monkeypatch.setattr(importlib_metadata, "distribution", distribution)
+    assert doctor_model._install_origin().extras == ("analysis",), (
         "vocals is missing torch and all is an alias, so only analysis is kept"
     )
 
@@ -8558,24 +8579,24 @@ def test_the_release_read_parses_ls_remote_and_refuses_on_failure(monkeypatch):
         out = "abc\trefs/tags/v0.1.0\ndef\trefs/tags/v0.2.0\n"
         return subprocess.CompletedProcess(argv, 0, out, "")
 
-    monkeypatch.setattr(doctor.subprocess, "run", fake_run)
-    assert doctor._release_tags(_REPO_URL) == ("v0.1.0", "v0.2.0")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert doctor_model._release_tags(_REPO_URL) == ("v0.1.0", "v0.2.0")
     argv, kwargs = calls[0]
     assert argv[:3] == ["git", "ls-remote", "--tags"]
-    assert kwargs["timeout"] == doctor.RELEASE_READ_TIMEOUT
+    assert kwargs["timeout"] == doctor_model.RELEASE_READ_TIMEOUT
     assert kwargs["env"]["GIT_TERMINAL_PROMPT"] == "0"
 
     def refused(argv, **kwargs):
         return subprocess.CompletedProcess(argv, 128, "", "fatal: could not read Username")
 
-    monkeypatch.setattr(doctor.subprocess, "run", refused)
-    assert doctor._release_tags(_REPO_URL) is None
+    monkeypatch.setattr(subprocess, "run", refused)
+    assert doctor_model._release_tags(_REPO_URL) is None
 
     def timed_out(argv, **kwargs):
         raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
 
-    monkeypatch.setattr(doctor.subprocess, "run", timed_out)
-    assert doctor._release_tags(_REPO_URL) is None
+    monkeypatch.setattr(subprocess, "run", timed_out)
+    assert doctor_model._release_tags(_REPO_URL) is None
 
 
 def test_an_unparseable_installed_version_is_unknown_never_a_downgrade():
@@ -8595,7 +8616,7 @@ def _deadca7(tmp_path, *, pushed_at: datetime | None = None, home: bool = True):
     support = tmp_path / "deadca7"
     if not home:
         return support
-    backups = support / doctor.DEADCA7_BACKUPS
+    backups = support / doctor_backup.DEADCA7_BACKUPS
     backups.mkdir(parents=True)
     (backups / ".DS_Store").write_bytes(b"")
     if pushed_at is not None:
@@ -8666,7 +8687,7 @@ def test_a_backup_folder_that_cannot_be_read_is_said_as_unread_and_does_not_fail
     configured, tmp_path
 ):
     support = _deadca7(tmp_path)
-    (support / doctor.DEADCA7_BACKUPS / "gone").symlink_to(tmp_path / "nowhere")
+    (support / doctor_backup.DEADCA7_BACKUPS / "gone").symlink_to(tmp_path / "nowhere")
     finding = _push_check(configured, support)
     assert "cannot be said: its backup folder could not be read" in finding.detail
 
@@ -8684,9 +8705,9 @@ def _installed_places(tmp_path, *present: str) -> tuple[Path, ...]:
     shipped app keeps under Application Support.
     """
     places = {
-        "system": tmp_path / "Applications" / doctor.DEADCA7_BUNDLE,
-        "user": tmp_path / "home" / "Applications" / doctor.DEADCA7_BUNDLE,
-        "state": tmp_path / "home" / "Library" / "Application Support" / doctor.DEADCA7_STATE,
+        "system": tmp_path / "Applications" / doctor_model.DEADCA7_BUNDLE,
+        "user": tmp_path / "home" / "Applications" / doctor_model.DEADCA7_BUNDLE,
+        "state": tmp_path / "home" / "Library" / "Application Support" / doctor_model.DEADCA7_STATE,
     }
     for name in present:
         places[name].mkdir(parents=True)
@@ -8715,7 +8736,7 @@ def test_sitting_68s_mac_the_bundle_and_no_support_folder_reads_installed_with_n
     )
     assert str(places[0]) in finding.detail, "it did not name what it found"
     assert "unconfirmed until a push is read" in finding.detail
-    assert str(tmp_path / "deadca7" / doctor.DEADCA7_BACKUPS) in finding.detail
+    assert str(tmp_path / "deadca7" / doctor_backup.DEADCA7_BACKUPS) in finding.detail
 
 
 def test_the_bundle_in_the_accounts_own_applications_folder_reads_installed(configured, tmp_path):
@@ -8815,7 +8836,7 @@ def test_a_backup_folder_whose_stat_is_refused_is_unread_never_no_push(
     configured, tmp_path, monkeypatch
 ):
     support = _deadca7(tmp_path)
-    _refuse_stat_under(monkeypatch, support / doctor.DEADCA7_BACKUPS)
+    _refuse_stat_under(monkeypatch, support / doctor_backup.DEADCA7_BACKUPS)
     finding = _installed_check(configured, support, ())
     assert "cannot be said: its backup folder could not be read" in finding.detail
     assert "recorded no push" not in finding.detail
@@ -8855,8 +8876,8 @@ def test_a_probe_that_raises_beside_a_present_bundle_still_reads_installed(confi
 
 
 def test_the_installed_probe_names_both_bundles_and_the_shipped_state_folder(monkeypatch, tmp_path):
-    monkeypatch.setattr(doctor.Path, "home", classmethod(lambda cls: tmp_path))
-    assert doctor._deadca7_installed() == (
+    monkeypatch.setattr(pathlib.Path, "home", classmethod(lambda cls: tmp_path))
+    assert doctor_model._deadca7_installed() == (
         Path("/Applications/DEADCA7.app"),
         tmp_path / "Applications" / "DEADCA7.app",
         tmp_path / "Library" / "Application Support" / "deadcatalog",
@@ -8865,8 +8886,8 @@ def test_the_installed_probe_names_both_bundles_and_the_shipped_state_folder(mon
     def homeless(cls):
         raise RuntimeError("no home")
 
-    monkeypatch.setattr(doctor.Path, "home", classmethod(homeless))
-    assert doctor._deadca7_installed() == (Path("/Applications/DEADCA7.app"),)
+    monkeypatch.setattr(pathlib.Path, "home", classmethod(homeless))
+    assert doctor_model._deadca7_installed() == (Path("/Applications/DEADCA7.app"),)
 
 
 def test_a_real_probes_value_asks_the_installed_probe(configured, tmp_path, monkeypatch):
@@ -8874,8 +8895,8 @@ def test_a_real_probes_value_asks_the_installed_probe(configured, tmp_path, monk
     import dataclasses
 
     home = tmp_path / "home"
-    (home / "Library" / "Application Support" / doctor.DEADCA7_STATE).mkdir(parents=True)
-    monkeypatch.setattr(doctor.Path, "home", classmethod(lambda cls: home))
+    (home / "Library" / "Application Support" / doctor_model.DEADCA7_STATE).mkdir(parents=True)
+    monkeypatch.setattr(pathlib.Path, "home", classmethod(lambda cls: home))
     machine = dataclasses.replace(
         doctor_machines.green(),
         deadca7_home=lambda: home / "nowhere",
@@ -8888,7 +8909,7 @@ def test_a_real_probes_value_asks_the_installed_probe(configured, tmp_path, monk
 def test_an_install_place_reached_through_a_file_is_absent_not_unread(configured, tmp_path):
     """``Applications`` a file: the stat raises NotADirectoryError, which is not there."""
     (tmp_path / "Applications").write_bytes(b"")
-    places = (tmp_path / "Applications" / doctor.DEADCA7_BUNDLE,)
+    places = (tmp_path / "Applications" / doctor_model.DEADCA7_BUNDLE,)
     finding = _installed_check(configured, _deadca7(tmp_path, home=False), places)
     assert finding.detail == (
         "DEADCA7 is not installed here, so nothing else writes the library beside rekordbox"
@@ -8932,7 +8953,7 @@ def _refuse_stat_under(monkeypatch, under: Path) -> None:
             raise PermissionError(13, "Permission denied", str(path))
         return real(path, *args, **kwargs)
 
-    monkeypatch.setattr(doctor.os, "stat", refused)
+    monkeypatch.setattr(os, "stat", refused)
 
 
 def test_a_push_beside_a_backup_recorded_ahead_of_now_is_not_called_held(configured, tmp_path):
@@ -9063,12 +9084,12 @@ def test_a_library_has_scored_when_a_vocal_calibration_is_recorded(configured):
     """The shipped probe: the calibration a fit writes only from scored files."""
     from cratekit.write import metadata_cli
 
-    assert doctor._vocals_scored(None) is False
-    assert doctor._vocals_scored(configured) is False
+    assert doctor_model._vocals_scored(None) is False
+    assert doctor_model._vocals_scored(configured) is False
     path = config.state_path(metadata_cli.STATE_KEY_VOCAL_CALIBRATION, configured)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text('{"threshold": 12.0}', encoding="utf-8")
-    assert doctor._vocals_scored(configured) is True
+    assert doctor_model._vocals_scored(configured) is True
 
 
 def test_a_git_install_of_a_branch_head_names_no_tag_that_does_not_exist(monkeypatch):
@@ -9078,5 +9099,5 @@ def test_a_git_install_of_a_branch_head_names_no_tag_that_does_not_exist(monkeyp
 
     monkeypatch.setattr(vocals, "install", lambda: "the vocals module's own command")
     origin = _vcs("0.3.1.dev3+gabc1234", ("analysis",))
-    assert doctor.vocals_install_command(origin) == "the vocals module's own command"
-    assert "@v0.3.0" in doctor.vocals_install_command(_vcs("0.3.0", ("analysis",)))
+    assert doctor_state.vocals_install_command(origin) == "the vocals module's own command"
+    assert "@v0.3.0" in doctor_state.vocals_install_command(_vcs("0.3.0", ("analysis",)))
