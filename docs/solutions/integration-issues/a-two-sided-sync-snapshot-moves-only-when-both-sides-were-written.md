@@ -2,7 +2,7 @@
 title: "A two sided sync's snapshot moves only when both sides were written, or a skipped side undoes the other side's removal"
 date: 2026-10-10
 category: integration-issues
-module: src/cratekit/sync/pair_cli.py, src/cratekit/modules/outbound/pairs.py
+module: src/cratekit/sync/pair_cli.py, src/cratekit/sync/pair_write.py, src/cratekit/modules/outbound/pairs.py
 problem_type: integration_issue
 component: sync_pair
 severity: high
