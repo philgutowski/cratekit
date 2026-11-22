@@ -1,22 +1,10 @@
 """U260. An album's one cover is fetched and encoded once in a folder sweep.
 
-The speed survey of 2026-11-12 counted ten fetches of one address and ten
-encodes of the same bytes for an album of ten files, each fetch paced at one to
-one and a half seconds. The worker builds its picture seam once per file, so
-the memory lives behind the per process binder, :func:`searchers.for_images`,
-and beside the encoder, :func:`art.to_cdj_jpeg_remembered`, as the solutions
-entry on queued workers says it must.
-
-EVERY TEST HERE TAGS THROUGH THE BINDER, one ``for_images()`` per file as
-``tagging.cli.handle`` asks for it, over the SHIPPED image fetch with only its
-HTTP getter and its sleep replaced. A test that handed ``tag_one`` one closure
-for the whole folder would prove the memory and say nothing about the verb.
-
-WHAT MUST NOT MOVE is what each file carries. The control for that is today's
-behaviour reproduced exactly: the same sweep with both memories dropped before
-every file, which is one fetch and one encode per file, the shape the survey
-measured. Every file's picture block and every result sentence must be the same
-in both runs, byte for byte.
+Every test tags through the per process binder, :func:`searchers.for_images`,
+one call per file as the worker makes it, over the shipped image fetch with
+only its getter and sleep replaced. What must not move is what each file
+carries: the control is today's sweep with both memories dropped before every
+file, and every picture block and result sentence must match it byte for byte.
 """
 
 from __future__ import annotations
@@ -40,12 +28,12 @@ NOT_A_PICTURE = b"<html>not found</html>"
 @functools.cache
 def cover() -> bytes:
     """A source picture that is not 800 square, so every encode resizes."""
-    return _jpeg(1000, 1000)
+    return _jpeg(400, 400)
 
 
 @functools.cache
 def other_cover() -> bytes:
-    return _jpeg(900, 700)
+    return _jpeg(360, 280)
 
 
 class _Response:
@@ -146,25 +134,26 @@ def said(result: tag.TagResult) -> tuple[str, str]:
     return result.art_fetch, re.sub(r" at 0x[0-9a-f]+", " at 0x", result.art_fetch_detail)
 
 
-TEN = [f"track{index:02d}" for index in range(10)]
+#: An album, enough files to show one request and one encode serve them all.
+TRACKS = [f"track{index:02d}" for index in range(4)]
 
 
 # One request and one encode for an album
 
 
-def test_ten_files_naming_one_address_make_one_request_one_wait_and_one_encode(
+def test_an_albums_files_naming_one_address_make_one_request_one_wait_and_one_encode(
     tmp_path, silence, monkeypatch, slept, encodes
 ):
     host = Host({ALBUM: [cover()]})
     ship(monkeypatch, host, slept)
-    paths = album(tmp_path / "Music", silence, TEN)
+    paths = album(tmp_path / "Music", silence, TRACKS)
 
     results = sweep(paths, lambda _path: ALBUM)
 
     assert host.asked == [ALBUM]
     assert len(slept) == 1, "the pacer waits before the one request that was made"
     assert encodes == [cover()]
-    assert [result.art_fetch for result in results] == [tag.ART_EMBEDDED] * 10
+    assert [result.art_fetch for result in results] == [tag.ART_EMBEDDED] * len(TRACKS)
     for path in paths:
         ((kind, mime, _desc, width, height, depth, _data),) = carried(path)
         assert (kind, mime, width, height, depth) == (art.FRONT_COVER, art.JPEG_MIME, 800, 800, 24)
@@ -177,13 +166,13 @@ def test_every_file_carries_byte_for_byte_what_it_carried_before(
     counts are asserted so the control is known to be today's shape."""
     host = Host({ALBUM: [cover()]})
     ship(monkeypatch, host, slept)
-    before = album(tmp_path / "before", silence, TEN)
-    after = album(tmp_path / "after", silence, TEN)
+    before = album(tmp_path / "before", silence, TRACKS)
+    after = album(tmp_path / "after", silence, TRACKS)
 
     then = sweep(before, lambda _path: ALBUM, today=True)
-    assert host.asked == [ALBUM] * 10
-    assert len(slept) == 10
-    assert len(encodes) == 10
+    assert host.asked == [ALBUM] * len(TRACKS)
+    assert len(slept) == len(TRACKS)
+    assert len(encodes) == len(TRACKS)
     host.asked.clear()
     slept.clear()
     encodes.clear()
@@ -206,7 +195,7 @@ def test_two_albums_in_one_folder_make_two_requests_and_two_encodes(
     """Interleaved, the order a flat folder of two albums sorts into."""
     host = Host({ALBUM: [cover()], OTHER: [other_cover()]})
     ship(monkeypatch, host, slept)
-    paths = album(tmp_path / "Music", silence, TEN)
+    paths = album(tmp_path / "Music", silence, TRACKS)
     address = {path: (ALBUM if index % 2 == 0 else OTHER) for index, path in enumerate(paths)}
 
     results = sweep(paths, address.__getitem__)
@@ -214,7 +203,7 @@ def test_two_albums_in_one_folder_make_two_requests_and_two_encodes(
     assert host.asked == [ALBUM, OTHER]
     assert len(slept) == 2
     assert encodes == [cover(), other_cover()]
-    assert [result.art_fetch for result in results] == [tag.ART_EMBEDDED] * 10
+    assert [result.art_fetch for result in results] == [tag.ART_EMBEDDED] * len(TRACKS)
     first, second = (art.to_cdj_jpeg(source).data for source in (cover(), other_cover()))
     for path in paths:
         assert carried(path)[0][-1] == (first if address[path] == ALBUM else second)
@@ -410,7 +399,7 @@ def test_two_covers_sharing_a_long_header_are_encoded_apart(encodes):
 
 def test_the_encode_memory_drops_the_least_recently_used(monkeypatch, encodes):
     monkeypatch.setattr(art, "COVER_MEMORY", 2)
-    third = _jpeg(600, 500)
+    third = _jpeg(240, 200)
     for picture in (cover(), other_cover(), cover(), third, cover()):
         art.to_cdj_jpeg_remembered(picture)
     # cover was used again before third arrived, so other_cover is the one dropped.

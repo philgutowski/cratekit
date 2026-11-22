@@ -1,26 +1,10 @@
 """U245: the Cyanite trial puts what Cyanite hears in a track beside the folder it is filed in.
 
-WHAT THIS SUITE GUARDS, in the order a wrong answer would cost a person:
-
-* NOTHING IS SENT WITHOUT THE OPT IN. Audio leaves the machine and costs money,
-  so a run without ``send`` is a plan, and every refusal, no cap, a count over
-  the cap, no price, an output already there, no key, a rejected key, comes
-  before the first upload. The count and the estimate are said first.
-* THE KEY GOES IN ONE PLACE. The ``Authorization`` header of the requests to
-  the API, never the upload address, a URL, a body, a note, a row, a refusal
-  or a ``repr``.
-* NOTHING TEMPO SHAPED. No query asks for a tempo or a key, a reply's tempo is
-  never read, and no column of the table is tempo shaped.
-* THE TRIAL WRITES ITS OWN TABLE AND NOTHING ELSE. No tag writer runs, the
-  audio is byte for byte what it was, and the only new files are the table and
-  its summary.
-* THE FOLDERS ARE THE RESOLVER'S. Cyanite's words reach a folder through
-  ``searchers.choose_word`` and ``routing.folder_of``, a declared
-  ``[vocabulary.cyanite]`` table first.
-
-NOTHING HERE TOUCHES THE NETWORK OR A REAL KEY. Every answer is recorded JSON
-handed to the send seam, the shipped seam is detonated by ``conftest``, and the
-key is a fixture word.
+Guarded: nothing is sent without the opt in, a cap, a price and a key, and
+the count and estimate are said first; the key goes only in the API's
+Authorization header; nothing tempo shaped is asked, read or written; the
+trial writes its table and summary and nothing else; and Cyanite's words reach
+a folder only through the resolver. Nothing touches the network or a real key.
 """
 
 from __future__ import annotations

@@ -1,21 +1,11 @@
 """U244: a track Beatport misses gets its genre from the Discogs API, with a person's own token.
 
-WHAT THIS SUITE GUARDS, in the order a wrong answer would cost a library:
-
-* ABSENCE IS NEVER READ AS AN ANSWER. No token, a rejected token, a refusal, an
-  outage and a reshaped answer each say something other than MISS, so a folder
-  swept without Discogs is never recorded as tracks no catalogue carries.
-* A WRONG RELEASE IS WORSE THAN A MISS. A release is taken only when one of its
-  tracks, or its own title for a single, and an artist match the file.
-* THE TOKEN GOES IN ONE PLACE. The Authorization header, and nowhere a person or
-  a log can read it: no URL, note, record, log line or refusal.
-* THE GENRE IS THE RESOLVER'S. A style becomes a tag only through
-  ``routing.suggest_tag``, and only when it names a folder that is not the
-  fallback's.
-
-NOTHING HERE TOUCHES THE NETWORK OR A REAL TOKEN. Every answer is recorded JSON
-handed to the fetch seam, or to the shipped fetch through an injected getter,
-and the token is a fixture word.
+Guarded, in the order a wrong answer would cost a library: absence is never
+read as an answer (no token, a rejection, a refusal, an outage, a reshape);
+a wrong release is worse than a miss; the token goes only in the
+Authorization header; and a style becomes a tag only through the resolver,
+naming a folder that is not the fallback's. Nothing touches the network, and
+the token is a fixture word.
 """
 
 from __future__ import annotations

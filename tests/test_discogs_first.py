@@ -1,23 +1,11 @@
 """U282: a tag sweep asks Discogs first, and Beatport only when Discogs gives no genre.
 
-WHAT THIS SUITE GUARDS, the card's merge blockers first:
-
-* WITH NO DISCOGS TOKEN BEATPORT IS ASKED EXACTLY AS BEFORE, so a person who
-  never recorded one sees no change but the order of a record's answers.
-* A DISCOGS DECLINE GOES ON TO BEATPORT. An unmapped style, or one landing
-  only on the fallback bucket, writes nothing and leaves the question open,
-  so the walk asks the next catalogue; when that one cannot settle it either,
-  the file keeps Discogs' word, never a ``no-hit`` and never an outage.
-* A REFUSED OR UNREAD CATALOGUE IS NEVER A MISS, on the walk and on the
-  picture's ask alike.
-* THE COVER STILL ARRIVES. Discogs names no picture, so a file Discogs tagged
-  and missing one asks Beatport for its row's cover, and only such a file: a
-  file with a picture, ``tag suggest`` and ``tag retag`` send Beatport
-  nothing after a Discogs match.
-* A FILE ALREADY TAGGED IS NEVER RE-TAGGED.
-
-NOTHING HERE TOUCHES THE NETWORK. Every answer is a recorded page or payload
-handed to the fetch seam, and the token is a fixture word.
+Guarded: with no token Beatport is asked exactly as before; a Discogs decline
+goes on to Beatport, and beside a Beatport that cannot settle it keeps
+Discogs' word, never ``no-hit`` or an outage; a refused or unread catalogue is
+never a miss; a file Discogs tagged with no picture still gets Beatport's
+cover, and only such a file; a tagged file is never re-tagged. Nothing
+touches the network.
 """
 
 from __future__ import annotations

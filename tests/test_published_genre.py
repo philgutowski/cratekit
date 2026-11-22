@@ -1,27 +1,11 @@
 """R-796: a published genre by ISRC, from a general catalogue, after Beatport.
 
-WHAT THIS SUITE IS GUARDING. The tagger gained a source that knows music the
-record shops do not sell, and the ways that goes wrong are the ways the
-searchers went wrong before it, plus two of its own:
-
-* a catalogue that could not be read, or a file that could not be asked about,
-  reported as a track nobody carries. Six answers are told apart here, and only
-  one of them is allowed to mean absence;
-* a refusal answered rather than recorded. A block, a rate limit and the
-  catalogue's own quota error are driven below, each ends the question, and
-  after the first one nothing more is asked in the run;
-* an album level answer standing in for Beatport's. The general catalogue is
-  asked only when Beatport answered, and never over a usable answer;
-* a broad word written onto a file no folder holds. Only an answer that maps to
-  a folder is written.
-
-NOTHING HERE OPENS A SOCKET. Every answer is synthetic JSON in the shape
-measured from the catalogue on 2026-10-01, handed to the injected fetch seam.
-
-The taxonomy strings are read off ``default_taxonomy()`` wherever the taxonomy
-is what is under test. The catalogue's own words are typed, in one table, because
-they are a measurement of somebody else's vocabulary and not a value this
-repository declares.
+Guarded: an unread catalogue or an unaskable file is never absence (six
+answers, one meaning absence); a refusal is recorded, never answered, and
+ends the catalogue's part in the run; an album word never stands in for an
+unread Beatport or a usable answer; and only a word that maps to a folder is
+written. Answers are synthetic JSON in the shape measured on 2026-10-01; the
+catalogue's own words are typed, as a measurement of its vocabulary.
 """
 
 from __future__ import annotations

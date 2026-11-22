@@ -1,15 +1,10 @@
 """U281: Beatport's refusal is read as one, and a run stops asking a catalogue that refused it.
 
-Measured at sitting 97 on 2026-11-13: every Beatport lookup since 03:49Z that
-day answered HTTP 403 with ``Cf-Mitigated: challenge`` and Cloudflare's "Just a
-moment..." page, 190 of 190 across five runs, and each one was recorded
-``unreachable``, a paced request per file. These are the searcher's half of the
-card: the read of the refusal, the per run count that stops asking, and the two
-rules that must hold through both, that a refused file is never a miss and that
-a catalogue which answered is never stopped. The sweep's half, the worker's run
-scope and the warning's words, is in ``tests/test_tag_workers.py``.
-
-Every page here is a fake or a recorded shape. Nothing touches the network.
+Sitting 97 measured every Beatport lookup answering 403 with ``Cf-Mitigated:
+challenge``, each recorded ``unreachable``. This is the searcher's half: the
+read of the refusal, the run count that stops asking, a refused file never a
+miss, and a catalogue that answered never stopped. The sweep's half is in
+``tests/test_tag_workers.py``. Nothing touches the network.
 """
 
 from __future__ import annotations

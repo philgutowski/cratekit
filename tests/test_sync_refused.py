@@ -1,25 +1,11 @@
 """U284: a sync pass lands when every catalogue but Discogs refuses, and stops plainly when Discogs cannot help.
 
-Sitting 94's pass downloaded 25 tracks and failed 23 at its tag step as
-``catalogue-unreachable``: Beatport answered 403 on every lookup, as it had
-since sitting 93, and Discogs was not asked because no token was recorded. The
-staged batch then held every later pass and label go beside it. Phillip's
-answer of 2026-11-13, option 3: carry on only when a Discogs token is recorded.
-
-With a token, a file Discogs searched and could not tag while every other
-catalogue refused settles ``sources-unread``, never ``no-hit``, and the pass
-goes on to the guess, analysis, naming and the landing, naming each such file
-and the refusing catalogues with the date each began refusing. With no token
-the pass stops at its tag step, as before, and its refusal says which
-catalogues refused and since when, and that recording a Discogs token lets it
-carry on, rather than sending the person to their network. A file no
-catalogue could be read for, by a timeout, a failed name lookup or a 5xx,
-still fails its item, whose refusal puts the network step first, and stops
-the pass.
-
-Five sections: the record of when a catalogue began refusing, the run count
-that writes it, the searcher's refusal, the sweep's report, and the chain every
-landing verb runs. Every catalogue answer is a fake or a recorded shape.
+With a token, a file Discogs could not tag while every other catalogue
+refused settles ``sources-unread`` and the pass lands, naming the file and the
+refusing catalogues with the date each began (Phillip's answer of 2026-11-13).
+With none, the pass stops at its tag step saying who refused, since when, and
+that a token lets it carry on; a file no catalogue could be read for still
+fails with the network first. Every catalogue answer is a fake.
 """
 
 from __future__ import annotations

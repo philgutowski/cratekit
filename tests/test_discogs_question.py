@@ -1,30 +1,11 @@
 """U289: a tag sweep asks Discogs with the title read past its ``KEY - BPM`` head.
 
-Measured at sitting 100: twenty library files, their genres cleared and four
-of them stripped of title and artist, swept with ``tag folder``. Discogs was
-asked about nineteen and matched none, because the title tag the naming verb
-writes, ``03B - 83 - That's the Way of the World``, went into its structured
-``track`` field as written, and a file with no tags was asked by its whole
-stem with an empty artist. Asked again with the head off the title, and the
-untagged names split into artist and title, fifteen of twenty matched.
-
-WHAT THIS SUITE GUARDS, the card's merge blockers first:
-
-* A HEADED TITLE IS ASKED PAST ITS HEAD, and past the ``[MP3]`` marker the
-  naming verb writes after it, of Discogs and of the record shops' free text
-  query alike, so the sitting's matches are reproduced.
-* AN UNTAGGED FILE IS ASKED BY THE ARTIST AND TITLE ITS NAME READS TO, only
-  when the name reads to exactly one split; a name that does not is asked
-  with no artist, as before, and its record says so.
-* A TITLE WITH NO HEAD IS ASKED EXACTLY AS BEFORE, byte for byte, so a
-  freshly downloaded file sees no change.
-* THE MATCH IS UNCHANGED. Only the question changes: a release is still taken
-  only when the shared matcher reads one of its tracks as the file's own.
-
-THE FETCH BELOW ANSWERS LIKE A CATALOGUE A PERSON TYPES INTO. It returns a
-release only for the artist and title a person would type, never for a head,
-so a question carrying one misses as it did at the sitting. Nothing here
-touches the network, and the token is a fixture word.
+At sitting 100 Discogs matched none of nineteen files asked with the naming
+verb's head in the title, and fifteen of twenty without. Guarded: a headed
+title is asked past its head and marker, of every source; an untagged file is
+asked by the one split its name reads to, or with no artist; a title with no
+head is asked exactly as before; and the match is unchanged. The fetch answers
+only what a person would type. Nothing touches the network.
 """
 
 from __future__ import annotations
