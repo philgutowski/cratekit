@@ -44,8 +44,7 @@ def test_a_cancelled_job_another_source_and_another_library_name_nothing(world):
         jobs.cancel(store, cancelled)
     _queue(world.cfg, "pl-sweep", source_id="playlist-sweep")
     elsewhere = dataclasses.replace(
-        world.cfg,
-        library=dataclasses.replace(world.cfg.library, volume_id="another-library-volume"),
+        world.cfg, library=dataclasses.replace(world.cfg.library, volume_id="another-library-volume"),
     )
     _queue(elsewhere, "pl-elsewhere")
     assert mirror_downloads.queued_from(world.cfg) == {}

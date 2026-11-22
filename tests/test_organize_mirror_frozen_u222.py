@@ -213,8 +213,7 @@ def test_a_step_new_since_the_gate_and_one_gone_are_named():
         One("mirror:B", "mirror B onto the account"),
     ]
     assert mirror_frozen.moved(now, frozen) == [
-        "mirror A onto the account, in 'A Low'",
-        "mirror B onto the account, which the gate did not show",
+        "mirror A onto the account, in 'A Low'", "mirror B onto the account, which the gate did not show",
         "the sets step, which the gate showed and this run did not plan",
     ]
     assert mirror_frozen.moved(then, frozen) == ["the sets step, which the gate showed and this run did not plan"]
@@ -222,8 +221,7 @@ def test_a_step_new_since_the_gate_and_one_gone_are_named():
     # line the gate showed (review round one).
     refused = [One("mirror:A", "mirror A onto the account", digest="refused")]
     assert mirror_frozen.moved(refused, frozen) == [
-        "mirror A onto the account",
-        "the sets step, which the gate showed and this run did not plan",
+        "mirror A onto the account", "the sets step, which the gate showed and this run did not plan",
     ]
 
 
@@ -236,8 +234,7 @@ def test_a_label_step_that_moved_is_named_by_its_folder_line():
             return [self.key, "planned", digest_of(self.items)]
     then = One([{"label": "Ilian Tape", "folder": "Ilian Tape: Labels", "year playlists": ["2024"]}])
     frozen = mirror_frozen.Frozen(
-        library=None, matches={},
-        steps={then.key: mirror_frozen.Shown(**mirror_frozen._shown_json(then))},
+        library=None, matches={}, steps={then.key: mirror_frozen.Shown(**mirror_frozen._shown_json(then))},
     )
     now = One([{"label": "Ilian Tape", "folder": "Ilian Tape: Labels", "year playlists": ["2025"]}])
     assert mirror_frozen.moved([now], frozen) == ["sync the label Ilian Tape, in 'Ilian Tape: Labels'"]
@@ -265,8 +262,7 @@ def test_a_playlist_made_again_between_the_acts_reads_its_snapshot_now():
             },
         ),
         "Techno": ledger.MirrorFolder(
-            name="Techno",
-            playlists={"low": ledger.MirrorPlaylist(name="low", remote_id="p5", agreed=None)},
+            name="Techno", playlists={"low": ledger.MirrorPlaylist(name="low", remote_id="p5", agreed=None)},
         ),
     }
     frozen = mirror_frozen.Frozen(
@@ -319,8 +315,7 @@ def test_an_older_record_or_an_unreadable_snapshot_or_step_is_planned_afresh(wor
         {"version": 5}, {"version": 6}, {"placed": {"Favorites": {"Favorites 2026-10": "r1"}}},
         {"placed": {"Favorites": {"Favorites 2026-10": ["r1"]}}},
         {"placed": {"Favorites": {"Favorites 2026-10": {"r1": 7}}}},
-        {"agreed": {"INBOX": {INBOX_A: ["p1", "not a list"]}}},
-        {"agreed": {"INBOX": {INBOX_A: [7, None]}}},
+        {"agreed": {"INBOX": {INBOX_A: ["p1", "not a list"]}}}, {"agreed": {"INBOX": {INBOX_A: [7, None]}}},
         {"steps": {"mirror:INBOX": {"title": "t", "digest": 7, "lines": {}}}},
         {"steps": {"mirror:INBOX": {"title": "t", "digest": "d", "lines": {"x": None}}}},
         {"steps": {"mirror:INBOX": {"title": "t", "digest": "d"}}},

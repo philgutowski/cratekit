@@ -273,9 +273,7 @@ def test_every_track_a_refresh_takes_off_is_named_on_the_gate(world):
     world.account.playlists[world.playlist_id("Deep House Low")].append("r77")
     world.account.names["r77"] = ("Someone", "Added On The Phone")
     area = world.plan()
-    assert area.deletes == [
-        "1 track(s) off the mirrored playlist 'Deep House Low': Someone - Added On The Phone (r77)"
-    ]
+    assert area.deletes == ["1 track(s) off the mirrored playlist 'Deep House Low': Someone - Added On The Phone (r77)"]
     assert area.shown()["deletes"] == area.deletes
 
 

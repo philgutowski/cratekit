@@ -504,9 +504,7 @@ def test_a_folder_that_is_not_a_genre_folder_is_mirrored_one_way(installed, monk
             mirror.Source(name="All Favorites", rows=(mirror.Row(content_id="c1", isrc="ISRC00001"),)),
         ),
     )
-    monkeypatch.setattr(
-        account_mirror, "read_library", lambda _cfg, **_: account_mirror.Library(folders=(favorites,))
-    )
+    monkeypatch.setattr(account_mirror, "read_library", lambda _cfg, **_: account_mirror.Library(folders=(favorites,)))
     def run() -> None:
         area = Area(name="account")
         account_mirror.add_steps(installed, area, lambda: account, account_mirror.Run(run_id="r", record=True))
@@ -558,8 +556,7 @@ def _dated_adapter(cfg, members, *, hidden=0, declared=True, times=None):
 
 def test_the_adapter_lists_each_track_with_its_added_time_and_the_declared_count(installed):
     listing = _dated_adapter(
-        installed, ["a", "b", "a"],
-        times={"a": "2026-11-04T10:00:00+00:00", "b": "2026-11-04T11:00:00"},
+        installed, ["a", "b", "a"], times={"a": "2026-11-04T10:00:00+00:00", "b": "2026-11-04T11:00:00"},
     ).playlist_listing("p")
     assert listing.names == {"a": ("Artist a", "Title a"), "b": ("Artist b", "Title b")}
     # A TIME WITH NO ZONE IS UNKNOWN, never guessed.
@@ -586,8 +583,7 @@ def test_the_ledger_keeps_a_snapshot_apart_from_none_and_only_on_its_own_playlis
         installed,
         "Deep House",
         {
-            "Deep House Low": ("p1", {"r1", "r2"}, set()),
-            "Deep House Med": ("another", {"r3"}, set()),
+            "Deep House Low": ("p1", {"r1", "r2"}, set()), "Deep House Med": ("another", {"r3"}, set()),
         },
     )
     held = ledger.mirror_folders(installed)["Deep House"].playlists
@@ -700,8 +696,7 @@ def test_a_read_back_that_differs_from_the_plan_is_refused():
     change = mirror_edits.Change(
         content_id="1", track="r1", outcome=edits.MOVE, shown="a track", path="x",
         genre_was="Deep House", genre="Tech House", energy_was=2, energy=4,
-        leave=(("p-low", "Deep House", "Low"),), join=(("p-med", "Tech House", "Med"),),
-        tree=edits.GENRE,
+        leave=(("p-low", "Deep House", "Low"),), join=(("p-med", "Tech House", "Med"),), tree=edits.GENRE,
     )
     class Held:
         def __init__(self, rows):

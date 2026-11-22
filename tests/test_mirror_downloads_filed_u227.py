@@ -50,8 +50,7 @@ def _entry(cfg, content_id: str, genre: str, band: str, applied: str, digest: st
         cfg,
         adoption.AppliedEntry(
             entry_id=f"{DECLARED.tree.id}:{content_id}:{bucket}:{sub}", tree=DECLARED.tree.id,
-            content_id=content_id, bucket=bucket, sub=sub, actor="session", digest=digest,
-            applied=applied,
+            content_id=content_id, bucket=bucket, sub=sub, actor="session", digest=digest, applied=applied,
         ),
     )
 

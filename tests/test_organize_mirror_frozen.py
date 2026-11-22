@@ -36,6 +36,17 @@ def _frozen_path(cfg) -> str:
     return str(config.state_path("mirror_plans", cfg) / f"{RUN}.json")
 
 
+def _set_in_ledger(cfg, keys: tuple[str, ...], value) -> None:
+    """Set one value in the ledger's own file, as a hand or an older build left it."""
+    path = config.state_path("outbound_writes", cfg)
+    document = json.loads(path.read_text())
+    held = document
+    for key in keys[:-1]:
+        held = held[key]
+    held[keys[-1]] = value
+    path.write_text(json.dumps(document))
+
+
 def _shown(run: str = RUN) -> account_mirror.Run:
     """The run that shows the gate: it records and freezes."""
     return account_mirror.Run(run_id=run, record=True)
@@ -172,20 +183,14 @@ def test_a_miss_is_never_recorded_over_a_link(installed, monkeypatch):
 
 def test_a_malformed_miss_is_dropped_and_asked_again_rather_than_refusing(installed):
     ledger.record_mirror_misses(installed, {"c2": ("why", ("b",))})
-    path = config.state_path("outbound_writes", installed)
-    document = json.loads(path.read_text())
-    document["mirror_misses"]["c3"] = {"reason": "why", "under": "not a list"}
-    path.write_text(json.dumps(document))
+    _set_in_ledger(installed, ('mirror_misses', 'c3'), {"reason": "why", "under": "not a list"})
     assert set(ledger.mirror_misses(installed)) == {"c2"}
 
 
 def test_a_ledger_whose_misses_are_not_a_map_refuses(installed):
     from cratekit.core.cause import CratekitError
     ledger.record_mirror_misses(installed, {"c2": ("why", ("b",))})
-    path = config.state_path("outbound_writes", installed)
-    document = json.loads(path.read_text())
-    document["mirror_misses"] = ["c2"]
-    path.write_text(json.dumps(document))
+    _set_in_ledger(installed, ('mirror_misses',), ["c2"])
     with pytest.raises(CratekitError) as caught:
         ledger.mirror_misses(installed)
     assert caught.value.cause.reason == "outbound-ledger-unusable"
@@ -410,10 +415,7 @@ def test_a_coded_rows_miss_is_kept_whatever_its_file_does(installed, monkeypatch
 
 def test_a_link_with_no_account_track_does_not_hide_a_miss(installed):
     ledger.record_mirror_misses(installed, {"c7": ("why", ("a",))})
-    path = config.state_path("outbound_writes", installed)
-    document = json.loads(path.read_text())
-    document["mirror_links"]["c7"] = {"isrc": "X"}
-    path.write_text(json.dumps(document))
+    _set_in_ledger(installed, ('mirror_links', 'c7'), {"isrc": "X"})
     assert ledger.mirror_links(installed) == {}
     assert ledger.mirror_misses(installed) == {"c7": ("why", ("a",))}
 
@@ -421,10 +423,7 @@ def test_a_link_with_no_account_track_does_not_hide_a_miss(installed):
 def test_a_ledger_holding_a_link_and_a_miss_of_one_row_reads_the_link(installed):
     """A document an older build or a hand left in both maps: the miss gives way."""
     ledger.record_mirror_links(installed, {"c7": ("r7", "ISRC00007")})
-    path = config.state_path("outbound_writes", installed)
-    document = json.loads(path.read_text())
-    document["mirror_misses"]["c7"] = {"reason": "why", "under": ["a"]}
-    path.write_text(json.dumps(document))
+    _set_in_ledger(installed, ('mirror_misses', 'c7'), {"reason": "why", "under": ["a"]})
     assert ledger.mirror_misses(installed) == {}
 
 

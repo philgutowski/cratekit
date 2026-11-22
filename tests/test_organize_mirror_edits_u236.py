@@ -36,10 +36,7 @@ IN_NEW_MONTH = f"{NEW_MONTH}-14T10:00:00+00:00"
 
 def _placed(world) -> dict[str, frozenset[str]]:
     """Each placed title to its tracks; the membership times are pinned where they matter."""
-    return {
-        title: frozenset(tracks)
-        for title, tracks in ledger.mirror_folders(world.cfg)["Favorites"].placed.items()
-    }
+    return {title: frozenset(tracks) for title, tracks in ledger.mirror_folders(world.cfg)["Favorites"].placed.items()}
 
 
 def _by_hand(world, name: str, content_id: str) -> str:

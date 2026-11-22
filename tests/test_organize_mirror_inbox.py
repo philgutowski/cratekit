@@ -304,8 +304,7 @@ def test_an_inbox_that_cannot_be_read_is_listed_and_nothing_of_it_is_removed(wor
 
 def test_the_frozen_plan_carries_inbox_its_retirement_and_its_titles(installed):
     library = account_mirror.Library(
-        folders=(inbox((BATCHES[1], (3,)), present=(OLD, "Analyze")), folder("Techno", Low=(1,))),
-        inbox="",
+        folders=(inbox((BATCHES[1], (3,)), present=(OLD, "Analyze")), folder("Techno", Low=(1,))), inbox="",
     )
     mirror_frozen.freeze(installed, "2026-11-01T00:00:00Z-ab12", library, {})
     frozen, said = mirror_frozen.load(installed, "2026-11-01T00:00:00Z-ab12")
@@ -368,8 +367,7 @@ def batches(native_library):
     old_id = _node(cfg, OLD, under=root_id, folder=True)
     ids = {
         "dated": _node(
-            cfg, "2026-09-23 Tidal playlists", under=root_id, age=10, tracks=("t1", "t2"),
-            batch_folder=True,
+            cfg, "2026-09-23 Tidal playlists", under=root_id, age=10, tracks=("t1", "t2"), batch_folder=True,
         ),
         "suffix": _node(cfg, "2026-09-13T101010Z-1_inboxed", under=root_id, age=20, tracks=("t5",)),
         "label": _node(cfg, "2026-10-01 Defected", under=root_id, age=2, tracks=("t3", "t4")),
@@ -476,9 +474,7 @@ def test_the_label_plans_refs_leave_out_a_target_two_rows_name_two_tracks():
 def test_a_row_with_no_id_makes_no_claim_on_a_file_another_row_names():
     one = type("Row", (), {"ref": "101"})()
     blank = type("Row", (), {"ref": " "})()
-    assert label_filing._refs({"Kompakt": {2025: [(one, ["/a.flac"]), (blank, ["/a.flac"])]}}) == (
-        ("/a.flac", "101"),
-    )
+    assert label_filing._refs({"Kompakt": {2025: [(one, ["/a.flac"]), (blank, ["/a.flac"])]}}) == (("/a.flac", "101"),)
 
 
 def test_a_passs_dated_account_playlist_is_mirrored_beside_its_batch_under_its_dated_name(native_library):
@@ -509,6 +505,5 @@ def test_a_passs_dated_account_playlist_is_mirrored_beside_its_batch_under_its_d
     name, read = _inbox_folder(cfg)
     assert isinstance(read, mirror.Folder)
     assert {source.name: [one.content_id for one in source.rows] for source in read.playlists} == {
-        f"{name} 2026-10-27 Tidal playlists": ["t1"],
-        f"{name} Lisa_10_27_26 2026-10-27": ["t2", "t3"],
+        f"{name} 2026-10-27 Tidal playlists": ["t1"], f"{name} Lisa_10_27_26 2026-10-27": ["t2", "t3"],
     }
