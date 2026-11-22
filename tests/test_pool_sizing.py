@@ -87,7 +87,7 @@ def _plan(available: int, **arguments) -> pool.PoolPlan:
     return pool.plan_pool(**arguments, read_available=reader(available))
 
 
-# --- The plan's own scenarios -------------------------------------------------
+# The plan's own scenarios
 
 
 def test_two_gigabytes_against_a_one_gigabyte_worker_runs_in_process():
@@ -169,7 +169,7 @@ def test_the_core_count_does_not_change_the_computed_cap():
     assert made[0].workers == affordable_for(16 * GIB)
 
 
-# --- The edges, which is where a headroom factor and a hard ceiling disagree ---
+# The edges, which is where a headroom factor and a hard ceiling disagree
 
 
 @pytest.mark.parametrize("workers", [2, 3, 4])
@@ -236,7 +236,7 @@ def test_no_headroom_setting_ever_affords_more_than_the_reading_itself(percent):
     assert plan.workers * WORKER <= max(WORKER, available * percent // 100)
 
 
-# --- The headroom judgement, recorded as a measurement rather than as an opinion ---
+# The headroom judgement, recorded as a measurement rather than as an opinion
 
 
 @pytest.mark.parametrize(
@@ -329,7 +329,7 @@ def test_the_real_pressure_reading_answers_with_two_believable_numbers():
     assert 0 <= taken.used_percent <= 100
 
 
-# --- The tuning constants, pinned by what they DO -----------------------------
+# The tuning constants, pinned by what they DO
 # Each test puts a machine on each side of a number with literals, never reading the
 # constant; arms this platform never runs are driven through an argument.
 
@@ -521,7 +521,7 @@ def test_the_windows_pool_limit_is_the_interpreters_own_and_falls_back_to_sixty_
         assert pool.platform_worker_ceiling() == 61
 
 
-# --- Affording exactly one, and affording none, which are two different machines ---
+# Affording exactly one, and affording none, which are two different machines
 
 
 def test_a_machine_that_affords_exactly_one_worker_says_so():
@@ -544,7 +544,7 @@ def test_a_machine_that_affords_none_is_not_the_same_machine_and_does_not_say_it
     assert affords_one.explain() != affords_none.explain()
 
 
-# --- The other two bounds, and the refusals -----------------------------------
+# The other two bounds, and the refusals
 
 
 def test_the_item_count_bounds_the_pool_so_no_child_is_started_with_nothing_to_do():
@@ -643,7 +643,7 @@ def test_the_bound_phrase_table_has_no_duplicate_key():
     assert len(written) == len(pool.BOUND_PHRASES)
 
 
-# --- The plan carries the item count, which is what made the deadlock unseeable ---
+# The plan carries the item count, which is what made the deadlock unseeable
 
 
 def test_a_plan_carries_the_item_count_it_was_decided_for():
@@ -676,7 +676,7 @@ def test_a_pool_that_never_retires_a_child_is_one_generation():
     assert plan.generations == 1
 
 
-# --- The probe ----------------------------------------------------------------
+# The probe
 
 
 def test_the_probe_reports_what_it_measured_when_that_is_larger_than_the_floor():
@@ -734,7 +734,7 @@ def test_a_measured_worker_size_flows_into_the_plan_it_was_taken_for():
     assert plan.workers == affordable_for(16 * GIB, worker_bytes=2 * GIB)
 
 
-# --- Real processes. Only where nothing else can answer the question. ---------
+# Real processes. Only where nothing else can answer the question.
 
 #: Set by the initializer in whichever process does the work, as a loaded model would be.
 _LOADED: dict[str, str] = {}
@@ -991,7 +991,7 @@ def test_no_child_survives_a_generation_boundary_and_every_one_reloads_its_model
     assert {tag for _index, _pid, tag, _life in results} == {"reloaded"}
 
 
-# --- the deadlock, run where a hang cannot take the suite with it ------------
+# the deadlock, run where a hang cannot take the suite with it
 # The executor's own counter blocks forever, so a watchdog firing IS the failure.
 
 _REPRODUCTION = '''\
@@ -1117,7 +1117,7 @@ def test_a_child_that_dies_mid_generation_ends_the_run_rather_than_hanging(tmp_p
     )
 
 
-# --- the contract that used to depend on how much memory the machine had -----
+# the contract that used to depend on how much memory the machine had
 
 
 def _one_plan_in_process_and_one_not() -> tuple[pool.PoolPlan, pool.PoolPlan]:
@@ -1207,7 +1207,7 @@ def test_a_probe_that_gave_up_leaves_no_child_still_allocating():
     assert not left, f"a probe child outlived its probe, still allocating: {left}"
 
 
-# --- the ladder itself, one rung at a time -----------------------------------
+# the ladder itself, one rung at a time
 # The ORDER (terminate, then kill as backstop) and the BUDGET both bear load. The reaps
 # calibrate ``_RELEASE_SECONDS`` with a wide tolerance; the band then judges the budget in
 # exact arithmetic, since a same-run timed verdict flipped (0.81 failed 19 of 25 runs).
@@ -1304,7 +1304,7 @@ def test_a_real_loader_that_raises_lands_on_the_floor_without_printing_anything(
     )
 
 
-# --- A container, where the machine's reading is not this process's reading ---
+# A container, where the machine's reading is not this process's reading
 # psutil reads the host's counters, so a capped process is told the host's number.
 
 
@@ -1435,7 +1435,7 @@ def test_a_cgroup_path_that_is_a_directory_is_no_cap_rather_than_a_crash(
     assert pool.available_bytes(cgroup_root=tmp_path) == 7 * GIB
 
 
-# --- which cgroup is THIS process in --------------------------------------
+# which cgroup is THIS process in
 # A namespaced container sits at "/"; a systemd unit's cap is at its own slice path.
 
 
@@ -1547,9 +1547,10 @@ def test_a_climb_still_leaves_the_mounts_own_cap_readable(tmp_path):
     assert pool.cgroup_memory_headroom_bytes(root, self_cgroup=where) == 448 * MIB
 
 
-# --- the walk really staying inside the mount, rather than spelling it --------
-# ``Path.read_text`` follows symlinks, so a level must land inside the mount (residual:
-# "The cgroup mount point is read at an assumed location").
+# the walk really staying inside the mount, rather than spelling it
+# ``Path.read_text`` follows symlinks, so a level must land inside the mount; the
+# residual finding titled "The cgroup mount point
+# is read at an assumed location" records the mount point as assumed.
 
 
 def test_a_component_that_symlinks_out_of_the_mount_is_not_read(tmp_path):
@@ -1720,7 +1721,7 @@ def test_the_real_available_reading_is_a_believable_byte_count():
     assert isinstance(taken, int) and taken > 0
 
 
-# --- Structural guards, armed today -------------------------------------------
+# Structural guards, armed today
 
 
 def _attributes_read(source: str) -> set[str]:
@@ -1759,7 +1760,7 @@ def test_the_sizing_module_never_reads_a_core_count(spelling):
     assert spelling not in _names_used(POOL_SOURCE)
 
 
-# --- no module builds its own process pool -----------------------------------
+# no module builds its own process pool
 # Thread pools stay legal (P7); getattr, third party pools, fork and subprocess are out.
 
 _POOL_CONSTRUCTORS = frozenset({"ProcessPoolExecutor", "Pool"})
@@ -2123,7 +2124,7 @@ def test_the_sizing_module_would_fail_its_own_guard():
     assert process_pool_constructions(POOL_SOURCE) != []
 
 
-# --- no module fabricates a plan ---------------------------------------------
+# no module fabricates a plan
 
 
 def pool_plan_constructions(source: str, *, package: str | None = None) -> list[str]:
@@ -2231,7 +2232,7 @@ def test_the_plan_provenance_guard_bites_a_plan_somebody_typed(source):
     assert pool_plan_constructions(source) != []
 
 
-# --- the relative half, which was the guard's one false direction ------------
+# the relative half, which was the guard's one false direction
 # Relative shapes once matched by dotted tail; the file's package makes them exact.
 
 #: A package that has nothing to do with this one, which is the entire point.
@@ -2309,7 +2310,7 @@ def test_the_walk_credits_a_relative_import_only_to_the_package_that_owns_it(tmp
     assert sorted(offenders) == ["src/cratekit/core/sibling.py"]
 
 
-# --- The countdown against the unit that owes the first real pools ------------
+# The countdown against the unit that owes the first real pools
 
 
 #: Every seam that runs work on a plan; U241 added the stream beside ``map_workers``.

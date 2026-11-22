@@ -1418,6 +1418,13 @@ from cratekit.core.review_surfaces import (  # noqa: E402
     adjudicated_queues,
 )
 
+# Each keeps the module path it had here, so a pickle or a repr reads as before.
+for _moved in (ImportResult, Round, Hold, Surface, export_document, import_document, grouped,
+               record_round, rounds, find_hold, hold, holds, release_hold, return_hold, withhold,
+               adjudicated_queues):
+    _moved.__module__ = __name__
+del _moved
+
 __all__ = [
     "CONFLICT_ITEM_UNUSABLE",
     "CONFLICT_LOCAL_VERDICT_STANDS",

@@ -106,9 +106,7 @@ _FORWARD: Mapping[JobState, tuple[JobState, ...]] = MappingProxyType(
 )
 
 
-# ---------------------------------------------------------------------------
 # The records
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,9 +166,7 @@ class Produced:
     final: Path | None = None
 
 
-# ---------------------------------------------------------------------------
 # Storage
-# ---------------------------------------------------------------------------
 
 _SCHEMA = (
     "CREATE TABLE IF NOT EXISTS queue_schema (version INTEGER NOT NULL)",
@@ -275,9 +271,7 @@ def _initialize(store: JobStore) -> None:
         )
 
 
-# ---------------------------------------------------------------------------
 # Reading
-# ---------------------------------------------------------------------------
 
 
 def _cause_from_text(text: str | None) -> Cause | None:
@@ -450,9 +444,7 @@ def reported(store: JobStore, job: Job, extra: Mapping[str, Any] | None = None) 
     }
 
 
-# ---------------------------------------------------------------------------
 # Writing
-# ---------------------------------------------------------------------------
 
 
 def enqueue(
@@ -734,9 +726,7 @@ def cancel(store: JobStore, job_id: str, *, stage: str | None = None) -> Job:
     )
 
 
-# ---------------------------------------------------------------------------
 # Claiming, and the durability rule
-# ---------------------------------------------------------------------------
 
 
 def claim(store: JobStore, job_id: str, driver: str) -> Item | None:
@@ -816,9 +806,7 @@ def commit_artifact(staged: Path, final: Path) -> Path:
     return final
 
 
-# ---------------------------------------------------------------------------
 # Item reports: where one is staged, and where it lands (U57, U298)
-# ---------------------------------------------------------------------------
 #
 # A report is the only record of the items deliberately NOT written (R16). It
 # lives under the queue root, never the library. The configuration is a
@@ -971,9 +959,7 @@ def release_claims(store: JobStore, job_id: str, *, driver: str | None = None) -
         return int(conn.execute(query, params).rowcount or 0)
 
 
-# ---------------------------------------------------------------------------
 # The frozen configuration, and drift
-# ---------------------------------------------------------------------------
 
 
 def frozen_config(job: Job) -> config.Config:
@@ -1013,9 +999,7 @@ def drift(job: Job, current: config.Config) -> tuple[str, ...]:
     )
 
 
-# ---------------------------------------------------------------------------
 # One driver per job
-# ---------------------------------------------------------------------------
 
 
 def lock_path(job_id: str, *, root: Path | None = None) -> Path:
@@ -1101,9 +1085,7 @@ def reconcile(store: JobStore, job_id: str, *, root: Path | None = None) -> Job:
         return job
 
 
-# ---------------------------------------------------------------------------
 # Evidence
-# ---------------------------------------------------------------------------
 
 
 def evidence_or_raise(
@@ -1153,9 +1135,7 @@ def evidence_or_raise(
     )
 
 
-# ---------------------------------------------------------------------------
 # Detached execution (KTD26)
-# ---------------------------------------------------------------------------
 
 #: The payload key every verb freezes its GATE RUN under, so a resume carries it
 #: and the respawned child meets its explicit gate with the approval recorded
@@ -1210,9 +1190,7 @@ def spawn(
     return child.pid
 
 
-# ---------------------------------------------------------------------------
 # The shell a queued verb drives its job through (U298)
-# ---------------------------------------------------------------------------
 
 
 def advance(ctx, store: JobStore, job: Job, *, origin: Sequence[str], nothing_to_run: str):
@@ -1265,6 +1243,11 @@ from cratekit.core.jobs_drive import (  # noqa: E402
     drive,
     interruptible,
 )
+
+# Each keeps the module path it had here, so a pickle or a repr reads as before.
+for _moved in (Batching, Declined, DriveResult, Interrupt, Parked, decline_item, drive, interruptible):
+    _moved.__module__ = __name__
+del _moved
 
 __all__ = [
     "ENTRY_MODULE", "GATE_RUN_KEY", "QUEUE_FILENAME", "SCHEMA_VERSION", "TERMINAL_STATES",

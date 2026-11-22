@@ -111,9 +111,7 @@ class LibraryUnreadableError(Exception):
         )
 
 
-# ---------------------------------------------------------------------------
 # Platform seam 1: volume identity
-# ---------------------------------------------------------------------------
 
 IdentityProvider = Callable[[Path], "str | None"]
 MountEnumerator = Callable[[], Sequence[Path]]
@@ -225,9 +223,7 @@ def default_identity_provider() -> IdentityProvider:
     return null_volume_identity
 
 
-# ---------------------------------------------------------------------------
 # Platform seam 2: enumerating mounts
-# ---------------------------------------------------------------------------
 
 
 def local_mount_points() -> Sequence[Path]:
@@ -242,9 +238,7 @@ def local_mount_points() -> Sequence[Path]:
     return [Path(part.mountpoint) for part in psutil.disk_partitions(all=False)]
 
 
-# ---------------------------------------------------------------------------
 # The real mount test
-# ---------------------------------------------------------------------------
 
 
 def containing_mount(path: Path) -> Path:
@@ -620,9 +614,7 @@ def _describe(status: MountStatus) -> str:
     return status.state.value
 
 
-# ---------------------------------------------------------------------------
 # The readability sampler, kept as a SECOND and separate check
-# ---------------------------------------------------------------------------
 
 
 def assert_paths_readable(

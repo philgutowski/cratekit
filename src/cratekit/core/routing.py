@@ -119,9 +119,7 @@ class Suggestion:
         return self.decline is not None
 
 
-# ---------------------------------------------------------------------------
 # Entry point 1: routing. Total. Never raises. Always lands.
-# ---------------------------------------------------------------------------
 
 
 def resolve_bucket(taxonomy: Taxonomy, raw_genre: str | None) -> Resolution:
@@ -153,9 +151,7 @@ def resolve_bucket(taxonomy: Taxonomy, raw_genre: str | None) -> Resolution:
     return Resolution(taxonomy.fallback.bucket, Match.FALLBACK, None)
 
 
-# ---------------------------------------------------------------------------
 # Entry point 2: tagging. Allowed to decline.
-# ---------------------------------------------------------------------------
 
 
 def suggest_tag(
@@ -254,9 +250,7 @@ def _apply_suggest_rule(taxonomy, rule, lowered: str, bpm: float | None) -> Sugg
     return Suggestion(tag=rule.tag)
 
 
-# ---------------------------------------------------------------------------
 # Energy
-# ---------------------------------------------------------------------------
 
 
 def energy_sub(
@@ -477,9 +471,7 @@ def routes_with_vox(voxlevel: int | None, threshold: float | None) -> bool:
     return voxlevel >= threshold
 
 
-# ---------------------------------------------------------------------------
 # Tempo priors
-# ---------------------------------------------------------------------------
 
 
 def bpm_prior(taxonomy: Taxonomy, raw_genre: str | None) -> BpmPrior | None:
@@ -492,9 +484,7 @@ def bpm_prior(taxonomy: Taxonomy, raw_genre: str | None) -> BpmPrior | None:
     return taxonomy.bucket(resolve_bucket(taxonomy, raw_genre).bucket_id).bpm
 
 
-# ---------------------------------------------------------------------------
 # The family projection (a parallel vocabulary, not a merge)
-# ---------------------------------------------------------------------------
 
 
 def family_of(taxonomy: Taxonomy, raw_genre: str | None) -> str | None:
@@ -534,9 +524,7 @@ def genre_affinity(taxonomy: Taxonomy, anchor_genre: str | None, cand_genre: str
     return taxonomy.family.unrelated
 
 
-# ---------------------------------------------------------------------------
 # The acquisition gate (keyed on the SOURCE vocabulary, deliberately)
-# ---------------------------------------------------------------------------
 
 
 def gate_family(taxonomy: Taxonomy, source_genre: str | None) -> str | None:
@@ -592,9 +580,7 @@ def gate_decisions(
     ]
 
 
-# ---------------------------------------------------------------------------
 # The same gate, asked about KIND, over a general catalogue's vocabulary
-# ---------------------------------------------------------------------------
 
 
 def published_kind(taxonomy: Taxonomy, word: str | None) -> str | None:

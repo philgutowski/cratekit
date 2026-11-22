@@ -43,9 +43,7 @@ from cratekit.core.jobs import (
     transition,
 )
 
-# ---------------------------------------------------------------------------
 # Interruption
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -93,9 +91,7 @@ def interruptible(*, stage: str | None = None) -> Iterator[Interrupt]:
                 pass
 
 
-# ---------------------------------------------------------------------------
 # Driving
-# ---------------------------------------------------------------------------
 
 #: One item's work: it returns what it produced, and the engine makes that durable.
 Handler = Callable[[Job, Item], "Produced | None"]
