@@ -18,8 +18,6 @@ from typing import Any, Mapping
 
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
-from cratekit.modules.outbound import ledger
-from cratekit.modules.outbound.ledger import _later, _listed, _open, _refused, _rows
 
 #: The share of what a crate held at its LAST export it must still carry to be
 #: recognised under a new path: HALF, in integers. A crate that lost more is
@@ -515,3 +513,10 @@ def reserve_mirror_playlist(
         create,
         lambda remote_id: {"remote_id": remote_id, "refused": []},
     )
+
+
+# AT THE FOOT, AFTER EVERY DEFINITION: ``ledger`` re-exports this module's
+# names at its own foot, so whichever of the two is imported first finds the
+# other's names already bound.
+from cratekit.modules.outbound import ledger  # noqa: E402
+from cratekit.modules.outbound.ledger import _later, _listed, _open, _refused, _rows  # noqa: E402

@@ -13,8 +13,6 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 from cratekit.core import config
-from cratekit.modules.outbound import ledger
-from cratekit.modules.outbound.ledger import _listed, _open, _placements, _refused, _rows
 
 
 def _extend(entry: dict[str, Any], **values: Iterable[str]) -> None:
@@ -341,3 +339,10 @@ def settle_mirror_tracks(
             wrote = True
         if wrote:
             ledger._write(cfg, document)
+
+
+# AT THE FOOT, AFTER EVERY DEFINITION: ``ledger`` re-exports this module's
+# names at its own foot, so whichever of the two is imported first finds the
+# other's names already bound.
+from cratekit.modules.outbound import ledger  # noqa: E402
+from cratekit.modules.outbound.ledger import _listed, _open, _placements, _refused, _rows  # noqa: E402
