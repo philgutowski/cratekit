@@ -15,7 +15,7 @@ import pytest
 from cratekit.core import config
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
-from cratekit.modules.outbound import export, hearts, ledger, pairs
+from cratekit.modules.outbound import export, hearts, ledger, pairs, shell
 from cratekit.modules.outbound.hearts import REMOVE_FLAGS
 from tests import outbound_fakes
 from tests.outbound_fakes import FakeAccount, FakeColors
@@ -651,6 +651,18 @@ def test_a_pairs_record_whose_links_hold_empty_text_is_unusable(cfg):
     ))
     with pytest.raises(CratekitError, match="links that are not ids"):
         store.all()
+
+
+def test_an_unusable_config_is_refused_as_the_verb_that_met_it(monkeypatch):
+    """The outbound shell's config refusal names the one origin it was asked from."""
+    def broken():
+        raise config.ConfigMissing("no config")
+
+    monkeypatch.setattr(config, "load", broken)
+    with pytest.raises(CratekitError) as raised:
+        shell.load_config("playlist")
+    assert (raised.value.cause.reason, raised.value.cause.origin) == ("config-unusable", ("playlist",))
+
 
 def test_the_outbound_ledger_survives_a_rollback():
     entry = config.state_file("outbound_writes")

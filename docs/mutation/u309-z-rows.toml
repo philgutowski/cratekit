@@ -1,7 +1,7 @@
 name = "u309-z"
 pass_kind = "light"
 
-# Six rows of docs/mutation/u309.md measured again after the tests that
+# Seven rows of docs/mutation/u309.md measured again after the tests that
 # reach them landed: each read zero on the full suite at 111e4ac6, a guard the
 # split moved that no test reached on the base either.
 
@@ -71,3 +71,12 @@ surface = "user"
 tests = ["tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_organize_root.py", "tests/test_prune.py", "tests/test_label_heard.py", "tests/test_organize.py"]
 old = '        if self._call(doing, send, retries=0) is False:'
 new = '        if self._call(doing, send) is False:'
+
+[[rows]]
+id = "U13_shell_config_origin"
+description = "The outbound verbs' config refusal no longer names the verb that met it"
+file = "src/cratekit/modules/outbound/shell.py"
+surface = "user"
+tests = ["tests/test_outbound_workers.py", "tests/test_cli_contract.py", "tests/test_favorites_pink.py", "tests/test_shared_homes.py"]
+old = '    return output.load_config((origin,))'
+new = '    return output.load_config(())'
