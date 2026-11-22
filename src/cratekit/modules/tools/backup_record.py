@@ -162,7 +162,11 @@ def _glob(text: str) -> str:
 
 def _pattern(pattern: str) -> tuple[re.Pattern[str], re.Pattern[str] | None]:
     """A file matcher and, for ``dir/**``, a directory matcher, for one exclude:
-    anchored at the root by a leading slash, else matched at the path's end."""
+    anchored at the root by a leading slash, else matched at the path's end.
+
+    The directory matcher prunes the walk as rclone does, so a folder only the
+    system can read (``.Spotlight-V100``) does not refuse every quick run.
+    """
     if any(char in _UNTRANSLATED for char in pattern):
         raise WalkRefused(
             f"the exclude {pattern!r} uses a pattern this walk does not read the way rclone does"

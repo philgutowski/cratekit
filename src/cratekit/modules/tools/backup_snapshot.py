@@ -521,7 +521,8 @@ def plan_restore(
     """Decide a restore behind the gates; ``confirmed`` is a named decision, never
     a prompt. ``include_mirror`` adds the file half, a copy and never a sync, which
     would delete salvaged files. ``pull_share`` off withholds an outside share
-    unasked. Only the configuration check precedes the gates."""
+    unasked. Only the configuration check, which resolves no path, precedes the
+    gates: resolving a path against the wrong volume is already the damage."""
     _require_destinations(cfg)
     with _restore_gates(cfg, gates):
         return _plan_restore_inside_the_gates(
@@ -608,7 +609,9 @@ def _plan_restore_inside_the_gates(
             Command(label=RESTORE_DATABASE, argv=(rclone, "copy", f"{base}/{name}", into))
         )
     # THE SHARE COMES BACK LAST, WITH A COPY, AND ONLY FROM A LISTING, since the
-    # sidecars are already cleared when a missing mirror would fail. A landing
+    # sidecars are already cleared when a missing mirror would fail. A copy, never
+    # a sync: the share beside the database may hold analysis the mirror never
+    # saw. A landing
     # under the analysis watch is WITHHELD: the session around a live restore
     # refuses at its close on changed analysis files. Whose share: the
     # snapshot's marker, else this configuration's identity.
