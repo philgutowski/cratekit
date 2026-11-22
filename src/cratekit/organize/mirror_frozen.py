@@ -11,7 +11,9 @@ back only while the playlist keeps its remote identifier, since a snapshot
 settled between the acts would read the library's own edit as rekordbox's. Each
 step the gate showed is kept to name what moved. One file per run, named by an
 identifier checked against a plain pattern, pruned after :data:`KEPT_DAYS`.
-ABSENT IS NOT A REFUSAL: a missing or unreadable record is planned afresh.
+ABSENT IS NOT A REFUSAL: a missing or unreadable record is planned afresh and
+says so; a fresh plan's digest is still compared with the decision, so the worst
+it costs is the second pass this module exists to save.
 
 Layer: modules.
 """

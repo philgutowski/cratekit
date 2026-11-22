@@ -20,6 +20,7 @@ is a miss at its place; with no provider id either, its set is unread.
 THE WRITE is one session for every set, taken again on the write handle first:
 a membership the approved plan did not name is refused by name, any other
 change as stale, with nothing written; every playlist is read back from SQL.
+Nothing here touches INBOX, a content row, a beat grid or the account.
 
 Layer: modules.
 """
@@ -542,8 +543,9 @@ def assert_unchanged(approved: ParityPlan, now: ParityPlan) -> None:
 def write(db: Any, approved: ParityPlan) -> tuple[list[Wrote], bool]:
     """Make each planned playlist under INSPIRATION and add its members, pending on ``db``.
 
-    INSIDE A CALLER'S SESSION, which commits or rolls back. The folder is made
-    once, for the first set, when the plan read none.
+    INSIDE A CALLER'S SESSION, which commits or rolls back. Only the rows the
+    plan names are added, to the playlist of the set's name. The folder is
+    made once, for the first set, when the plan read none.
     """
     from cratekit.intake import set_playlist
 

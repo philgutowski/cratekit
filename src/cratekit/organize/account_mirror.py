@@ -6,13 +6,20 @@ registry records, never by name) as a root folder of its name holding one
 playlist per plain playlist, ``Deep House Low``; the Favorites folder, where
 ``All Favorites`` keeps its title; and INBOX (U150), one playlist per live batch
 directly under it, every other node there named with its reason (U214). A batch
-that leaves INBOX has its mirrored playlist removed, the one removal the product
-makes. Two nodes taking one account name refuse it: a name does not decide which
-is the mirror.
+that leaves INBOX has its mirrored playlist removed, the one mirrored playlist
+the product removes, and only when its title no longer sits directly under INBOX
+at all. A smart playlist and a folder inside a folder hold no membership a
+mirror could copy, and are not mirrored. Two nodes taking one account name
+refuse it: a name does not decide which is the mirror.
+
+EACH ROW'S OWN PROVIDER TRACK IS A LINK (U150): a label landing records the
+provider track it landed, and the matcher takes it before asking the provider.
 
 ONE STEP PER FOLDER, so a folder the account cannot decide refuses alone; a
-recorded folder the library no longer holds is listed and left. UNREAD IS NOT
-NONE: a library or ledger that cannot be read refuses the whole kind.
+recorded folder the library no longer holds is listed and left, since the
+product never removes a mirrored folder. UNREAD IS NOT NONE: a library or
+ledger that cannot be read refuses the whole kind. Every run says its request
+count and duration.
 
 AN EDIT MADE ON THE ACCOUNT IS HELD (U201, U204): :func:`read` reads every edited
 playlist three ways once per run for both areas (:class:`Shared`), so the

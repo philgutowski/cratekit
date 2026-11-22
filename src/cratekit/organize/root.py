@@ -4,9 +4,14 @@ PHILLIP'S RULE OF 2026-10-13: only a working custom playlist belongs at the
 account root. Three kinds are removed and no other, each named on the gate:
 LABEL DEBRIS (R-361) whose every track is in a downloaded playlist of its
 label's folder, AN EMPTY ROOT PLAYLIST no ledger claims, and A LEGACY YEAR
-FOLDER, ``<year> Custom Playlists``, once a later run reads it empty, its
-playlists having been moved into ``<year>``. Unread is not none, and organize
-never moves a folder.
+FOLDER, ``<year> Custom Playlists``, once a later run reads it empty, never
+by the apply that emptied it, since the plan that removes it is one taken over
+an empty folder; its playlists are moved into ``<year>`` first. Unread is not
+none, and organize never moves a folder.
+
+NOTHING IN A LABEL FOLDER, IN ``Mine``, OR IN ANY OTHER FOLDER A PERSON MADE IS
+TOUCHED. A label folder is read, never written; a folder of any other name is
+never read at all.
 
 THE CANDIDATES ARE THE FILING PLAN'S ``DEBRIS`` AND ``EMPTY`` ROWS, so a
 playlist is never both filed and removed. BEFORE EACH PLAYLIST REMOVAL THE

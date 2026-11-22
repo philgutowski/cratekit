@@ -15,7 +15,8 @@ under INBOX, never Old.
 ONE GUARDED SESSION FOR EVERY TRACK: the file's two tags first, each read back,
 then the row's genre where rekordbox already holds that name, then the tree
 memberships by the rule ``route resort`` writes by. A file whose tag did not
-take keeps its row. Nothing leaves the collection and no beat grid is written.
+take keeps its row. Nothing leaves the collection and no beat grid is written:
+the two tags are the only fields, and the writable field set refuses a tempo.
 An unfile cannot empty the row's genre, so the Genre column keeps its word until
 a reread. The snapshot then takes each edit (:func:`settle`), and the apply
 refuses ``decision-stale`` when the library moved since the gate.
@@ -189,7 +190,8 @@ class Change:
     missing: tuple[str, ...] = ()
     why: str = ""
     #: Which tree the edit is in (U204); a genre edit alone writes file tags.
-    tree: str = field(kw_only=True)
+    #: Spelled as ``edits.GENRE``'s value, since that module sits behind the toggle.
+    tree: str = "genre"
     #: A FAVOURITE's month, ``""`` for none, the month's playlist row or
     #: ``""`` when it is to be made, and whether the row takes Pink (U204).
     month: str = ""
