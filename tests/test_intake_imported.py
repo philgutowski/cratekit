@@ -144,6 +144,31 @@ def test_a_landing_followed_step_by_step_passes_the_cutover_precheck(
     assert "drag it into the INBOX folder" in pending["steps"][2]
     assert "Fresh Export" in pending["steps"][3]
     assert "crate intake imported --export" in pending["steps"][4]
+    # AN EXPORT TAKEN BEFORE THE IMPORT names none of the landed files: nothing changes.
+    code, result = _drive(["intake", "imported", "--export", str(export)])
+    assert code == int(ExitCode.PENDING_HUMAN), result
+    (item,) = result["data"]["items"]
+    assert item["action"] == imported_cli.NOT_IMPORTED
+    assert (item["count"], item["missing"]) == (2, 2)
+    assert len(item["missing_locations"]) == 2
+    assert result["pending_human_action"] == envelope["pending_human_action"]
+    assert intake_file.is_file()
+    (record,) = session.records(cfg)
+    assert record.state is session.SessionState.AWAITING_IMPORT
+    assert _refusal(cfg, export).cause.reason == "cutover-open-run"
+    # ONE LANDED TRACK MISSING from the export is a batch that did not import.
+    body = intake_file.read_bytes()
+    without_two = re.sub(rb"[ \t]*<TRACK [^>]*Two\.flac[^>]*>.*?</TRACK>\r?\n", b"", body, flags=re.S)
+    assert body.count(b"<TRACK ") - without_two.count(b"<TRACK ") == 1
+    assert b"One.flac" in without_two
+    partial = tmp_path / "partial.xml"
+    partial.write_bytes(without_two)
+    code, result = _drive(["intake", "imported", "--export", str(partial)])
+    assert code == int(ExitCode.PENDING_HUMAN), result
+    (item,) = result["data"]["items"]
+    assert (item["action"], item["missing"]) == (imported_cli.NOT_IMPORTED, 1)
+    assert "Two.flac" in item["missing_locations"][0]
+    assert intake_file.is_file()
     after = _export_after_import(tmp_path, intake_file)
     code, result = _drive(["intake", "imported", "--export", str(after)])
     assert code == int(ExitCode.OK), result
@@ -156,80 +181,24 @@ def test_a_landing_followed_step_by_step_passes_the_cutover_precheck(
     tree_registry.assert_cutover_ready(cfg, export=after)
 
 
-def test_a_verified_run_stays_open_with_its_placements_still_owed(cfg, silence, export, tmp_path):
-    """The run is NOT closed before a cutover, and the record says why it may wait."""
-    _land(cfg, silence, export)
-    after = _export_after_import(tmp_path, _intake_file(cfg))
-    _, result = _drive(["intake", "imported", "--export", str(after)])
-    (record,) = session.records(cfg)
-    assert result["data"]["items"][0]["closed"] is False
-    assert record.state is session.SessionState.OPEN
-    assert record.pending is None
-    assert session.owes_only_deferred_routing(record)
-    proof = record.detail[session.IMPORT_VERIFIED_KEY]
-    assert proof["evidence"] == "fresh export after-import.xml"
-    assert proof["artifact"] == str(_intake_file(cfg))
-    assert len(routing_pass.read(cfg).outstanding(record.session_id)) == 1
-
-
 # ── What is not proof ───────────────────────────────────────────────────────
 
 
-def test_an_export_taken_before_the_import_proves_nothing_and_changes_nothing(
-    cfg, silence, export
-):
-    """The export the batch was spliced into names none of the landed files."""
-    envelope = _land(cfg, silence, export, "One.flac", "Two.flac")
-    code, result = _drive(["intake", "imported", "--export", str(export)])
-    assert code == int(ExitCode.PENDING_HUMAN), result
-    (item,) = result["data"]["items"]
-    assert item["action"] == imported_cli.NOT_IMPORTED
-    assert (item["count"], item["missing"]) == (2, 2)
-    assert len(item["missing_locations"]) == 2
-    assert result["pending_human_action"] == envelope["pending_human_action"]
-    assert _intake_file(cfg).is_file()
-    (record,) = session.records(cfg)
-    assert record.state is session.SessionState.AWAITING_IMPORT
-    assert _refusal(cfg, export).cause.reason == "cutover-open-run"
-
-
-def test_a_partly_imported_batch_is_not_imported(cfg, silence, export, tmp_path):
-    """One landed track missing from the export is a batch that did not import."""
-    _land(cfg, silence, export, "One.flac", "Two.flac")
-    body = _intake_file(cfg).read_bytes()
-    without_two = re.sub(rb"[ \t]*<TRACK [^>]*Two\.flac[^>]*>.*?</TRACK>\r?\n", b"", body, flags=re.S)
-    assert body.count(b"<TRACK ") - without_two.count(b"<TRACK ") == 1
-    assert b"One.flac" in without_two
-    partial = tmp_path / "partial.xml"
-    partial.write_bytes(without_two)
-    code, result = _drive(["intake", "imported", "--export", str(partial)])
-    assert code == int(ExitCode.PENDING_HUMAN), result
-    (item,) = result["data"]["items"]
-    assert (item["action"], item["missing"]) == (imported_cli.NOT_IMPORTED, 1)
-    assert "Two.flac" in item["missing_locations"][0]
-    assert _intake_file(cfg).is_file()
-
-
 def test_the_intake_file_is_refused_as_its_own_proof(cfg, silence, export, tmp_path):
-    """It names every landed track whether or not anybody imported it."""
+    """What is not proof leaves the run waiting; a verified run then stays open, owing its
+    placements, and the record says why it may wait."""
     _land(cfg, silence, export)
     intake_file = _intake_file(cfg)
+    (record,) = session.records(cfg)
+    # THE INTAKE FILE names every landed track whether or not anybody imported it.
     code, by_name = _drive(["intake", "imported", "--export", str(intake_file)])
     assert by_name["cause"]["reason"] == "library-export-unusable", by_name
     assert code != int(ExitCode.OK)
-    # The same file reached by a name that is not an intake file's.
     link = tmp_path / "looks-fresh.xml"
     link.symlink_to(intake_file)
     code, by_link = _drive(["intake", "imported", "--export", str(link)])
     assert by_link["cause"]["reason"] == "library-export-unusable", by_link
     assert "waiting on" in by_link["cause"]["message"]
-    assert intake_file.is_file()
-    (record,) = session.records(cfg)
-    assert record.state is session.SessionState.AWAITING_IMPORT
-
-
-def test_a_stub_listing_is_refused_as_the_export(cfg, silence, export, tmp_path):
-    _land(cfg, silence, export)
     stub = tmp_path / "listing.xml"
     stub.write_bytes(
         b'<?xml version="1.0" encoding="UTF-8"?>\n<DJ_PLAYLISTS Version="1.0.0">\n'
@@ -239,7 +208,27 @@ def test_a_stub_listing_is_refused_as_the_export(cfg, silence, export, tmp_path)
     assert collection_xml.is_stub_listing(stub.read_bytes())
     _, result = _drive(["intake", "imported", "--export", str(stub)])
     assert result["cause"]["reason"] == "intake-export-is-stub", result
-    assert _intake_file(cfg).is_file()
+    # NO EXPORT NAMED is refused and says what to pass; an unknown run is refused.
+    _, result = _drive(["intake", "imported"])
+    assert result["cause"]["reason"] == "library-export-unusable", result
+    assert result["cause"]["detail"]["sessions"] == [record.session_id]
+    _, result = _drive(["intake", "imported", "--export", str(export), "--session", "no-such"])
+    assert result["cause"]["reason"] == "intake-list-unusable", result
+    assert intake_file.is_file()
+    (record,) = session.records(cfg)
+    assert record.state is session.SessionState.AWAITING_IMPORT
+    # VERIFIED, the run is NOT closed before a cutover.
+    after = _export_after_import(tmp_path, intake_file)
+    _, result = _drive(["intake", "imported", "--export", str(after)])
+    (record,) = session.records(cfg)
+    assert result["data"]["items"][0]["closed"] is False
+    assert record.state is session.SessionState.OPEN
+    assert record.pending is None
+    assert session.owes_only_deferred_routing(record)
+    proof = record.detail[session.IMPORT_VERIFIED_KEY]
+    assert proof["evidence"] == "fresh export after-import.xml"
+    assert proof["artifact"] == str(intake_file)
+    assert len(routing_pass.read(cfg).outstanding(record.session_id)) == 1
 
 
 def test_a_run_the_ledger_names_no_file_for_is_left_alone(cfg, silence, export, tmp_path):
@@ -271,23 +260,6 @@ def test_an_export_that_is_not_there_is_refused_even_with_nothing_waiting(cfg, t
     code, result = _drive(["intake", "imported", "--export", str(tmp_path / "typo.xml")])
     assert result["cause"]["reason"] == "library-export-unusable", result
     assert code != int(ExitCode.OK)
-
-
-def test_a_waiting_run_with_no_export_named_is_refused_and_says_what_to_pass(
-    cfg, silence, export
-):
-    _land(cfg, silence, export)
-    (record,) = session.records(cfg)
-    _, result = _drive(["intake", "imported"])
-    assert result["cause"]["reason"] == "library-export-unusable", result
-    assert result["cause"]["detail"]["sessions"] == [record.session_id]
-    assert _intake_file(cfg).is_file()
-
-
-def test_a_named_run_that_is_not_waiting_is_refused(cfg, silence, export):
-    _land(cfg, silence, export)
-    _, result = _drive(["intake", "imported", "--export", str(export), "--session", "no-such"])
-    assert result["cause"]["reason"] == "intake-list-unusable", result
 
 
 def test_two_waiting_runs_are_settled_independently(cfg, silence, export, tmp_path):
