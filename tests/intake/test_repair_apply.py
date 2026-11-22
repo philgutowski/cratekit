@@ -142,27 +142,82 @@ def _names(folder: Path) -> set[str]:
     return {path.name for path in folder.iterdir()}
 
 
-def test_an_accepted_proposal_renames_its_file(configured):
+def test_an_accepted_proposal_is_shown_asked_renamed_and_then_converges(configured):
     folder = _folder(configured)
     path = _audio(folder, LONG, b"fLaC the audio")
     assert _scan(folder)["items"][0]["proposed"] == SHORT
     _accept(configured, path)
+    # THE DECIDED READER READS ACCEPTED AS VERDICT AND OPTION TOGETHER.
+    with review.open_store(configured) as store:
+        decided = repair.decided(store)
+    assert [(a.path, a.proposed) for a in decided.accepted] == [(str(path.resolve()), SHORT)]
+    assert (decided.kept, decided.rejected, decided.still_open) == (0, 0, 0)
+    # WITHOUT THE FLAG an accepted proposal is not applied.
+    _scan(folder)
+    assert _names(folder) == {LONG}
 
+    # THE GATE REFUSES UNANSWERED, and an abort touches nothing.
+    code, out, _ = drive(["--output", "json", "repair", "paths", "--apply"])
+    assert code == int(ExitCode.DECISION_REQUIRED)
+    assert json.loads(out)["cause"]["detail"]["gate"] == "repair.paths.confirm"
+    assert json.loads(out)["cause"]["detail"]["shown"]["root"] is None
+    assert _names(folder) == {LONG}
+    code, envelope = _answer("abort")
+    assert code == int(ExitCode.OK)
+    assert envelope["data"]["totals"]["count"] == 1
+    assert _names(folder) == {LONG}
+
+    # THE GATE SHOWS EVERY ITEM THE DIGEST WAS TAKEN OVER (R-693): the items,
+    # the digest, the root and the totals, so a person confirms what they read.
+    code, out, _ = drive(["--output", "json", "repair", "paths", "--apply", "--root", str(folder)])
+    assert code == int(ExitCode.DECISION_REQUIRED), out
+    shown = json.loads(out)["cause"]["detail"]["shown"]
+    code, declined = _answer("abort", "--root", str(folder))
+    assert code == int(ExitCode.OK), declined
+    assert shown["items"] == declined["data"]["items"]
+    assert shown["items"][0]["from"] == LONG and shown["items"][0]["to"] == SHORT
+    assert shown["digest"] == declined["data"]["digest"]
+    assert shown["count"] == 1
+    totals = declined["data"]["totals"]
+    assert shown["renames"] == totals["count"] == 1
+    assert "totals" not in shown, "two lines both called count would read as a contradiction"
+    for name, value in totals.items():
+        if name != "count":
+            assert shown[name] == value, name
+    assert shown["root"] == str(folder)
+    assert _names(folder) == {LONG}
+
+    # APPLIED, the accepted proposal renames its file.
     code, envelope = _answer("apply")
-
     assert code == int(ExitCode.OK), envelope
     assert _names(folder) == {SHORT}
     assert (folder / SHORT).read_bytes() == b"fLaC the audio"
     totals = envelope["data"]["totals"]
     assert (totals["count"], totals["renamed"], totals["incomplete"]) == (1, 1, 0)
 
+    # A SECOND APPLY CONVERGES and claims only what it observed.
+    code, envelope = _answer("apply")
+    assert code == int(ExitCode.OK), envelope
+    assert _actions(envelope["data"]) == {LONG: "missing"}
+    assert "already carried out" in envelope["data"]["items"][0]["why"]
+    totals = envelope["data"]["totals"]
+    assert (totals["count"], totals["missing"], totals["renamed"]) == (0, 1, 0)
+    assert _names(folder) == {SHORT}
 
-def test_a_dark_row_under_a_proposal_name_refuses_the_repair(collected):
+
+def test_a_dark_row_under_a_proposal_name_refuses_the_repair_and_its_plan(collected):
     """R-500's guard, through this verb: a row no rule resolves, whose file is
     absent and whose name is one this pass would rename, refuses before any
-    rename, in name apply's words. The candidates are this verb's own (R-675)."""
+    rename, in name apply's words, and the plan's own read carries it, so the
+    abort answer sees it too. The candidates are this verb's own (R-675)."""
     folder, held = _one_accepted(collected)
     _record(collected, f"/mnt/volume/Music/{LONG}", identifier="10")
+
+    code, envelope = _answer("abort")
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "collection-row-unmapped"
+    assert _names(folder) == {LONG}
 
     code, envelope = _answer("apply")
 
@@ -171,19 +226,6 @@ def test_a_dark_row_under_a_proposal_name_refuses_the_repair(collected):
     assert envelope["cause"]["detail"]["could_name"] == [
         {"row": f"/mnt/volume/Music/{LONG}", "files": [str(held)]}
     ]
-    assert _names(folder) == {LONG}
-
-
-def test_a_dark_row_under_a_proposal_name_refuses_the_repair_plan_too(collected):
-    """The abort answer reads the plan, and the plan's own read carries the
-    guard, so a hole in the collection is seen before anyone is asked."""
-    folder, held = _one_accepted(collected)
-    _record(collected, f"/mnt/volume/Music/{LONG}", identifier="10")
-
-    code, envelope = _answer("abort")
-
-    assert code == int(ExitCode.PRECONDITION), envelope
-    assert envelope["cause"]["reason"] == "collection-row-unmapped"
     assert _names(folder) == {LONG}
 
 
@@ -286,40 +328,6 @@ def test_a_collision_refuses_that_file_and_names_it(configured):
     assert envelope["cause"]["retryable"] is True
     assert envelope["cause"]["detail"]["incomplete"][0]["from"] == LONG
     assert SHORT in envelope["cause"]["detail"]["incomplete"][0]["why"]
-
-
-def test_the_gate_refuses_unanswered_and_an_abort_touches_nothing(configured):
-    folder, path = _one_accepted(configured)
-
-    code, out, _ = drive(["--output", "json", "repair", "paths", "--apply"])
-    assert code == int(ExitCode.DECISION_REQUIRED)
-    assert json.loads(out)["cause"]["detail"]["gate"] == "repair.paths.confirm"
-    assert _names(folder) == {LONG}
-
-    code, envelope = _answer("abort")
-    assert code == int(ExitCode.OK)
-    assert envelope["data"]["totals"]["count"] == 1
-    assert _names(folder) == {LONG}
-
-
-def test_without_the_flag_an_accepted_proposal_is_not_applied(configured):
-    folder, path = _one_accepted(configured)
-    _scan(folder)
-    assert _names(folder) == {LONG}
-
-
-def test_a_second_apply_converges_and_claims_only_what_it_observed(configured):
-    folder, path = _one_accepted(configured)
-    assert _answer("apply")[0] == int(ExitCode.OK)
-
-    code, envelope = _answer("apply")
-
-    assert code == int(ExitCode.OK), envelope
-    assert _actions(envelope["data"]) == {LONG: "missing"}
-    assert "already carried out" in envelope["data"]["items"][0]["why"]
-    totals = envelope["data"]["totals"]
-    assert (totals["count"], totals["missing"], totals["renamed"]) == (0, 1, 0)
-    assert _names(folder) == {SHORT}
 
 
 def test_an_accepted_file_that_is_gone_says_no_file_carries_the_name(configured):
@@ -615,41 +623,3 @@ def test_the_decided_reader_pages_through_a_queue_larger_than_one_page(configure
         assert len(repair.decided(store).accepted) == count
 
 
-def test_the_decided_reader_reads_accepted_as_verdict_and_option_together(configured):
-    folder, path = _one_accepted(configured)
-    with review.open_store(configured) as store:
-        decided = repair.decided(store)
-    assert [(a.path, a.proposed) for a in decided.accepted] == [(str(path.resolve()), SHORT)]
-    assert (decided.kept, decided.rejected, decided.still_open) == (0, 0, 0)
-
-
-def test_the_gate_shows_every_item_the_digest_was_taken_over(configured):
-    """The gate carried the question and not one rename (R-693). Its ``shown``
-    now holds the declined run's items, the digest they were taken over, the
-    root and the totals, so a person confirms renames they have read."""
-    folder, path = _one_accepted(configured)
-
-    code, out, _ = drive(
-        ["--output", "json", "repair", "paths", "--apply", "--root", str(folder)]
-    )
-    assert code == int(ExitCode.DECISION_REQUIRED), out
-    shown = json.loads(out)["cause"]["detail"]["shown"]
-    code, declined = _answer("abort", "--root", str(folder))
-    assert code == int(ExitCode.OK), declined
-
-    assert shown["items"] == declined["data"]["items"]
-    assert shown["items"][0]["from"] == LONG and shown["items"][0]["to"] == SHORT
-    assert shown["digest"] == declined["data"]["digest"]
-    assert shown["count"] == 1
-    totals = declined["data"]["totals"]
-    assert shown["renames"] == totals["count"] == 1
-    assert "totals" not in shown, "two lines both called count would read as a contradiction"
-    for name, value in totals.items():
-        if name != "count":
-            assert shown[name] == value, name
-    assert shown["root"] == str(folder)
-    assert _names(folder) == {LONG}
-
-    code, out, _ = drive(["--output", "json", "repair", "paths", "--apply"])
-    assert code == int(ExitCode.DECISION_REQUIRED), out
-    assert json.loads(out)["cause"]["detail"]["shown"]["root"] is None
