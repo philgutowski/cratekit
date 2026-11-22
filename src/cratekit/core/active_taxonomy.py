@@ -1,25 +1,14 @@
-"""The library's ACTIVE taxonomy, read from the file doctor checks (R-685).
+"""The library's active taxonomy, the copy beside the database that doctor checks (R-685, S6).
 
-WHY THIS MODULE EXISTS. Setup copies the chosen template beside the database
-(S6), doctor reads that copy for ``taxonomy.active``, and a person is told the
-copy is theirs to edit. Until R-685 no verb read it: every verb called
-``taxonomy.default_taxonomy()``, which returns the SHIPPED template, so an edit
-to the active copy changed nothing any verb did, and a section the shipped
-template gained after setup, ``[long_tracks]`` on the tenth sitting's library,
-built a playlist the active declaration never asked for.
+Every verb routes by this copy, never by the shipped template, so a person's
+edit to it takes effect. It is not in ``core/taxonomy`` because that module
+reads no configuration value (KTD23, S3).
 
-It lives HERE rather than in ``core/taxonomy`` because that module reads no
-configuration value (KTD23, S3) and is tested against two taxonomies in one
-process on the strength of it. Resolving a library path needs a ``Config``, so
-the one read that does is a module of its own, and every verb reads through it.
-
-THE FALLBACK IS NARROW ON PURPOSE. The shipped template stands in only when the
-library is there to look at and holds no active copy, which is a library setup
-never finished, and doctor already reports that as a failure with its remedy.
-Every other way of not reading the copy refuses, because each of them is "could
-not look" rather than "not present": a library root that is absent is an
-unmounted volume, and falling back there would route a person's tracks by a
-declaration that is not theirs while their own sits on a disk nobody read.
+The shipped template stands in only when the library root is there and holds
+no copy, a setup never finished that doctor already reports. Every other
+failure to read refuses, because "could not look" is not "not present": an
+absent library root is an unmounted volume, and falling back there would route
+a person's tracks by a declaration that is not theirs.
 """
 
 from __future__ import annotations
@@ -36,10 +25,9 @@ _ORIGIN = ("core", "active_taxonomy")
 def read_text(cfg: config.Config) -> tuple[Path, str | None]:
     """The active copy's path and text, or None for the text when the library holds none.
 
-    ONE READ AND ONE REFUSAL LADDER for the loader and for the upgrade (U132),
-    which both read the copy and must refuse its absence, its disk and its
-    bytes the same way. None means the library root is a directory and no copy
-    is under it; every other way of not reading the copy refuses.
+    The one read for the loader and the upgrade (U132), so both refuse alike.
+    None means the library root is a directory with no copy under it; every
+    other failure refuses.
     """
     path = config.state_path("taxonomy_active", cfg)
     try:
@@ -71,10 +59,9 @@ def read_text(cfg: config.Config) -> tuple[Path, str | None]:
 def load(cfg: config.Config) -> taxonomy.Taxonomy:
     """The taxonomy this library declares, from its active copy on the volume.
 
-    The shipped template ``taxonomy.template`` names is the answer only when the
-    library root is a directory and no active copy exists under it. Raises a
-    refusal for an unmounted library, an active copy that could not be read,
-    and one that does not parse, with the remedy doctor gives for each.
+    Falls back to the shipped template ``taxonomy.template`` names only when the
+    library root holds no copy. Refuses an unmounted library and a copy that
+    cannot be read or parsed, with doctor's remedy for each.
     """
     path, text = read_text(cfg)
     if text is None:
@@ -96,10 +83,8 @@ def _shipped(name: str) -> taxonomy.Taxonomy:
     try:
         text = taxonomy.shipped_template_text(name)
     except (OSError, ValueError) as exc:
-        # A name configuration accepted and nothing ships under, or a packaged
-        # directory that could not be read. Doctor tells the two apart; here
-        # both mean there is no declaration to route by, and neither is repaired
-        # by guessing one.
+        # An unknown name or an unreadable package: no declaration to route by,
+        # and guessing one repairs nothing.
         raise refuse(
             "config-unusable",
             f"this library has no active taxonomy template and the shipped "
