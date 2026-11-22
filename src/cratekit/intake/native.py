@@ -17,9 +17,9 @@ playlist gets its own INBOX playlist (U113), and every new row joins
 :data:`ANALYZE` (U166). A row here is one this engine adds, unlike in
 ``cratekit.tagging.rows``.
 
-The plan is in ``native_plan``, the apply's steps in ``native_apply`` and the
-readers in ``native_read``, each reached through this module too; every name a
-test patches here stays looked up here. Opens no database of its own.
+The plan and the readers are in ``native_plan`` and the apply's steps in
+``native_apply``, each reached through this module too; every name a test
+patches here stays looked up here. Opens no database of its own.
 """
 
 from __future__ import annotations
@@ -729,7 +729,7 @@ def assert_names_still_free(db: Any, plan: NativePlan) -> None:
     ASKED BEFORE THE FIRST MOVE, so a refusal leaves the files in staging, and
     again before the first row, for whatever took a name in between.
     """
-    from cratekit.intake.native_read import inbox_held
+    from cratekit.intake.native_plan import inbox_held
 
     if not plan.playlists:
         return
@@ -1052,6 +1052,10 @@ def apply_rows(
         session_id = record.session_id
 
     unscored = {row.target for row in plan.vox_unscored()}
+
+    def targets(keep: Any) -> tuple[Path, ...]:
+        return tuple(row.target for row, content_id in added_ids if keep(row, content_id))
+
     return NativeLanded(
         tree_id=plan.tree_id,
         playlist=plan.playlist,
@@ -1067,25 +1071,17 @@ def apply_rows(
         content_link=plan.link.value if plan.link is not None else None,
         left=tuple(left),
         vox_written=vox_written,
-        vox_unscored=tuple(
-            row.target for row, _content_id in added_ids if row.target in unscored
-        ),
+        vox_unscored=targets(lambda row, _id: row.target in unscored),
         vox_blocked=plan.vox_blocked if added_ids else "",
         vox_missing=tuple(
             row.target for row, content_id in added_ids if row.vox and content_id not in voxed
         ),
         vox_unread=vox_unread,
         dyn_written=dyn_written,
-        dyn_variable=tuple(
-            row.target for row, _content_id in added_ids if row.drift_verdict == drift.VARIABLE
-        ),
-        dyn_unscored=tuple(
-            row.target for row, _content_id in added_ids if row.drift_verdict == drift.UNSCORED
-        ),
+        dyn_variable=targets(lambda row, _id: row.drift_verdict == drift.VARIABLE),
+        dyn_unscored=targets(lambda row, _id: row.drift_verdict == drift.UNSCORED),
         dyn_blocked=plan.dyn_blocked if added_ids else "",
-        dyn_missing=tuple(
-            row.target for row, content_id in added_ids if row.dyn and content_id not in dyned
-        ),
+        dyn_missing=targets(lambda row, content_id: row.dyn and content_id not in dyned),
         dyn_unread=dyn_unread,
         analyze_id=analyze_id,
         analyze_name=f"{plan.root_name} / {ANALYZE}" if analyze_id else "",
@@ -1210,7 +1206,7 @@ def _record_count(
 
 
 def __getattr__(name: str) -> Any:
-    """A name of the plan, the apply's steps or the readers, found on first use.
+    """A name of the plan, the readers or the apply's steps, found on first use.
 
     Each of them imports this module's types, so importing them here would be a cycle.
     """
@@ -1218,7 +1214,7 @@ def __getattr__(name: str) -> Any:
 
     # NEVER A DUNDER: the import system asks for ``__path__`` while a sibling
     # is still importing this module, and must be told there is none.
-    siblings = () if name.startswith("__") else ("native_plan", "native_apply", "native_read")
+    siblings = () if name.startswith("__") else ("native_plan", "native_apply")
     for sibling in siblings:
         module = import_module(f"cratekit.intake.{sibling}")
         if hasattr(module, name):

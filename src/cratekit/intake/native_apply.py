@@ -30,8 +30,14 @@ from cratekit.intake.native import (
     Word,
     logger,
 )
-from cratekit.intake.native_plan import _lookup_class, _Resolver, anchored_intake_root
-from cratekit.intake.native_read import analyze_playlist, content_ids_for, dyn_marked
+from cratekit.intake.native_plan import (
+    _lookup_class,
+    _Resolver,
+    analyze_playlist,
+    anchored_intake_root,
+    content_ids_for,
+    dyn_marked,
+)
 from cratekit.write import metadata_cli
 
 
