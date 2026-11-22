@@ -287,7 +287,7 @@ source = { table = "u118-a.json", id = "L2_declarer_bands" }
 description = "A bucket that does not split by energy may declare a split place"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "maintainer"
-moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_a_bucket_that_does_not_split_by_energy_cannot_declare_a_split_place, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal (does not split by energy) (U299)"
 tests = ["tests/test_taxonomy.py", "tests/test_adopt_split_place.py"]
 old = '        if bucket.split_from and not _band_names(bucket, energy):'
 new = '        if False:'

@@ -80,7 +80,7 @@ source = { table = "r797-a.json", id = "T1_version_states_a_former_place" }
 description = "_check_former_places: stop refusing a former place under schema version 1, so an older build is handed a file it loads while ignoring the declaration"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_a_former_place_under_schema_version_1_is_refused, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal (declares a former place under schema_version 1) (U299)"
 tests = ["tests/test_taxonomy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py", "tests/test_routing_parity.py"]
 old = '        if bucket.formerly and version < FORMER_PLACE_SCHEMA_VERSION:'
 new = '        if False:'
@@ -91,7 +91,7 @@ source = { table = "u118-a.json", id = "L5_one_place_one_bucket" }
 description = "One holder place split out by two buckets is accepted"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_one_band_split_out_by_two_buckets_is_refused, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal (already split out by) (U299)"
 tests = ["tests/test_taxonomy.py", "tests/test_adopt_split_place.py"]
 old = '            if key in claimed:'
 new = '            if False:'

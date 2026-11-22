@@ -68,7 +68,7 @@ source = { table = "r797-a.json", id = "T5_the_id_is_free_in_the_holding_bucket"
 description = "_check_former_places: accept a former place whose own identifier is a sub of the bucket that holds it, where it competes as well"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_a_former_place_whose_id_is_a_sub_of_the_bucket_that_holds_it_is_refused, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal (where a former place competes as well) (U299)"
 tests = ["tests/test_taxonomy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py", "tests/test_routing_parity.py"]
 old = '            if former.id in live_ids:'
 new = '            if False:'
@@ -79,7 +79,7 @@ source = { table = "u118-b.json", id = "A2_tag_collision" }
 description = "Two buckets listing one tagging only word load, the later winning"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "maintainer"
-moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_two_buckets_listing_one_tagging_only_word_is_refused, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal (is claimed by both) (U299)"
 tests = ["tests/test_taxonomy.py", "tests/test_routing_parity.py"]
 old = '            if claimer is not None and claimer != bucket.id:'
 new = '            if False:'
@@ -235,7 +235,7 @@ source = { table = "u88-b.json", id = "X4_truthiness_not_presence" }
 description = "_build_long_tracks: key on truthiness, so an empty [long_tracks] table reads as no section"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_a_half_declared_long_track_playlist_is_refused, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal ([long_tracks] display; [long_tracks] id; [long_tracks] must be a table) (U299)"
 tests = ["tests/test_taxonomy.py", "tests/test_routing_workers.py"]
 old = '    if "long_tracks" not in data:'
 new = '    if not data.get("long_tracks"):'
