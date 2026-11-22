@@ -20,8 +20,9 @@ from __future__ import annotations
 
 from typing import Any, Callable, Mapping
 
+from cratekit.cli import output
 from cratekit.core import config, jobs
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
+from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.modules.outbound import account
 from cratekit.modules.outbound.source import ExportAge, ResolvedPlaylist
@@ -63,23 +64,8 @@ def _whole(value: Any) -> bool:
 
 
 def load_config(origin: str) -> config.Config:
-    """The current configuration, or the refusal a person can act on.
-
-    ``cli.output.load_config`` (U298) gives the same cause, but this layer
-    cannot import it and this one takes the origin as one string.
-    """
-    try:
-        return config.load()
-    except config.ConfigError as exc:
-        raise CratekitError(
-            Cause(
-                reason="config-unusable",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                origin=(origin,),
-                detail={"kind": type(exc).__name__},
-            )
-        ) from exc
+    """The current configuration, or the refusal a person can act on, from one origin."""
+    return output.load_config((origin,))
 
 
 def reported(

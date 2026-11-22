@@ -44,8 +44,8 @@ KEBAB_LITERALS = {
         'not-listed',
         'retitled-since-built',
     ],
+    # 2026-11-22, U309: config-unusable left with load_config, which calls cli.output's.
     'modules/outbound/shell.py': [
-        'config-unusable',
         'favorites-pink-export-missing',
         'future-dated',
         'internal-error',
@@ -109,7 +109,8 @@ LITERAL_HOLDERS = {
     'modules/outbound/pairs.py': ['sync-pair-conflict', 'sync-pair-store-unusable'],
     'modules/outbound/prune.py': ['internal-error', 'outbound-remove-refused', 'unavailable-transient'],
     'modules/outbound/sets.py': ['export-set-ambiguous'],
-    'modules/outbound/shell.py': ['config-unusable', 'internal-error', 'outbound-account-unbound'],
+    # 2026-11-22, U309: config-unusable left with load_config, which calls cli.output's.
+    'modules/outbound/shell.py': ['internal-error', 'outbound-account-unbound'],
     'modules/outbound/source.py': [
         'export-playlist-ambiguous',
         'export-playlist-empty',
