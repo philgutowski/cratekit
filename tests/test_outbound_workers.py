@@ -18,7 +18,7 @@ import pytest
 
 from cratekit import cli
 from cratekit.cli import handlers, registry
-from cratekit.core import config, jobs, locations, tags
+from cratekit.core import config, jobs, locations, private_store, tags
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.export import cli as export_cli
@@ -68,9 +68,14 @@ _PARSERS: dict = {}
 @pytest.fixture(autouse=True)
 def _less_work(monkeypatch):
     """Neither durability nor the command tree's construction is under test here:
-    a temporary directory need not reach the disk, and one membership's tree is
-    built once rather than on every drive."""
+    a temporary directory need not reach the disk, so neither a file nor a store
+    syncs, and one membership's tree is built once rather than on every drive."""
     monkeypatch.setattr(os, "fsync", lambda _fd: None)
+    opened = private_store.PrivateStore.__init__
+    def unsynced(self, path):
+        opened(self, path)
+        self.conn.execute("PRAGMA synchronous=OFF")
+    monkeypatch.setattr(private_store.PrivateStore, "__init__", unsynced)
     build = cli.build_parser
     def built(*args, **kwargs):
         if args or kwargs:
@@ -944,10 +949,8 @@ def test_the_row_builders_use_the_configured_prefix_map(tmp_path, monkeypatch, s
     data["library"]["location_prefix_map"] = [{"from": str(old), "to": "{library.root}"}]
     cfg = config.from_dict(data)
     _tagged(silence, root / "Music" / "1.flac", "ZZX9A2600042")
-    exported = outbound_fakes.write_export(
-        root / "outbound",
-        locations={1: locations.location_url(old / "Music" / "1.flac")},
-    )
+    url = locations.location_url(old / "Music" / "1.flac")
+    exported = outbound_fakes.write_export(root / "outbound", locations={1: url})
     source.forget_libraries()
     library = source.read_library(exported)
     isrcs = [t.isrc for t in source.local_tracks(library, ("1", "2"), cfg=cfg)]
@@ -959,7 +962,8 @@ def test_the_row_builders_use_the_configured_prefix_map(tmp_path, monkeypatch, s
 def test_an_absent_library_root_refuses_rather_than_reading_every_row_untagged(installed, exported):
     """The review's finding: an unmounted volume is not a library of untagged files."""
     library = source.read_library(exported)
-    gone = replace(installed, library=replace(installed.library, root=installed.library.root / "unplugged"))
+    unplugged = replace(installed.library, root=installed.library.root / "unplugged")
+    gone = replace(installed, library=unplugged)
     for build in (source.local_tracks, source.heart_candidates):
         with pytest.raises(CratekitError) as raised:
             build(library, ("1",), cfg=gone)
