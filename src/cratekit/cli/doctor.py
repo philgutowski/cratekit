@@ -3,9 +3,11 @@
 Doctor answers named checks, each with a remedy token per failure, and
 ``cli/registry.py`` lets every verb declare the checks it depends on, so a
 missing binary or credential is found before a paid step rather than during it
-(R3). The check families live in ``doctor_model``, ``doctor_library``,
-``doctor_keys``, ``doctor_backup`` and ``doctor_state``; this hub keeps
-the table and the verbs.
+(R3). What a check answers with and is handed lives in ``doctor_model``, and
+the check families in ``doctor_library``, ``doctor_keys``, ``doctor_backup``
+and ``doctor_state``. This hub keeps the table, the verbs and the
+``taxonomy.active`` check, which stays here because the taxonomy reader
+allowlist in ``tests/test_active_taxonomy.py`` names this file.
 
 * Every check answers on every run, so a consumer can diff two reports.
 * The check order is part of the contract, the interpreter first since every

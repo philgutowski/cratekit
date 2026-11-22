@@ -651,10 +651,13 @@ def test_an_unsupported_interpreter_fails_and_an_unreadable_bound_does_not(libra
 def test_the_declared_bound_is_read_from_packaging_rather_than_repeated():
     """KTD19's bound is read from packaging, not copied into doctor."""
     declared = (REPO_ROOT / "pyproject.toml").read_text()
-    source = (SRC_ROOT / "cratekit" / "cli" / "doctor.py").read_text()
+    cli_dir = SRC_ROOT / "cratekit" / "cli"
+    sources = {path.name: path.read_text() for path in cli_dir.glob("doctor*.py")}
+    assert {"doctor.py", "doctor_library.py", "doctor_model.py"} <= set(sources)
     for bound in (">=3.12", "<3.14"):
         assert bound in declared
-        assert bound not in source
+        for name, source in sources.items():
+            assert bound not in source, name
 
 
 # ── the pins, the processes, the sessions ────────────────────────────────────
@@ -2361,8 +2364,10 @@ def test_no_mapping_in_this_unit_has_a_key_written_twice():
     A runtime check cannot see a key collapsed at parse time, so this counts
     the literal's elements against the runtime length.
     """
-    for name in ("doctor.py", "setup.py", "prompt.py", "render.py"):
-        source = (SRC_ROOT / "cratekit" / "cli" / name).read_text()
+    cli_dir = SRC_ROOT / "cratekit" / "cli"
+    doctors = sorted(path.name for path in cli_dir.glob("doctor*.py"))
+    for name in (*doctors, "setup.py", "prompt.py", "render.py"):
+        source = (cli_dir / name).read_text()
         for node in ast.walk(ast.parse(source)):
             if not isinstance(node, ast.Dict):
                 continue
