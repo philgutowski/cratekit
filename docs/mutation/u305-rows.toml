@@ -1,0 +1,49 @@
+name = "u305"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_recorded_recording_swapped"
+description = "Recorded.recording: fold the title as the artist and the artist as the title, so a list row and a held file disagree on their recording"
+file = "src/cratekit/acquire/match_identity.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_library_reads_remembered.py"]
+old = '''        return recording_token(self.artist, self.title)'''
+new = '''        return recording_token(self.title, self.artist)'''
+
+[[rows]]
+id = "M2_recorded_distinct_is_the_token"
+description = "Recorded.distinct: answer the folded token, so two titles of marks alone share one identity"
+file = "src/cratekit/acquire/match_identity.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_library_reads_remembered.py"]
+old = '''        return recording_identity(self.artist, self.title)'''
+new = '''        return recording_token(self.artist, self.title)'''
+
+[[rows]]
+id = "M3_recorded_version_key_unfolded"
+description = "Recorded.version_key: fold the version without dropping the no-op qualifiers, so Original Mix and nothing are two versions"
+file = "src/cratekit/acquire/match_identity.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_library_reads_remembered.py"]
+old = '''        return version_token(self.version)'''
+new = '''        return fold(self.version)'''
+
+[[rows]]
+id = "M4_index_library_not_reexported"
+description = "match: stop re-exporting index_library, so every caller of match.index_library and the intake suite's patch of it lose their target"
+file = "src/cratekit/acquire/match.py"
+surface = "maintainer"
+tests = ["tests/test_match_states.py", "tests/test_library_reads_remembered.py", "tests/intake/test_workers.py"]
+old = '''    index_library,
+'''
+new = ''''''
+
+[[rows]]
+id = "M5_wanted_not_reexported"
+description = "match: stop re-exporting Wanted, so the readers and every package building one through match lose it"
+file = "src/cratekit/acquire/match.py"
+surface = "maintainer"
+tests = ["tests/test_match_states.py", "tests/test_listdoc.py", "tests/test_isrc_screen.py"]
+old = '''    Wanted,
+'''
+new = ''''''

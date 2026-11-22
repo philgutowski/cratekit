@@ -121,19 +121,14 @@ def session_cookie(origin: Sequence[str]) -> str:
         return secrets.get(name)
     except secrets.CredentialMissing:
         raise _auth_failed(
-            "no Bandcamp session is recorded",
-            origin=origin,
-            remedy=Remedy.AUTHENTICATE_PROVIDER,
+            "no Bandcamp session is recorded", origin=origin, remedy=Remedy.AUTHENTICATE_PROVIDER,
         ) from None
     except secrets.CredentialError as exc:
         raise CratekitError(
             Cause(
-                reason="credential-missing",
-                message=str(exc),
-                remediation=Remediation(remedy=Remedy(str(exc.remedy))),
-                scope=Scope.RUN,
-                origin=tuple(origin),
-                detail={"credential": name},
+                reason="credential-missing", message=str(exc),
+                remediation=Remediation(remedy=Remedy(str(exc.remedy))), scope=Scope.RUN,
+                origin=tuple(origin), detail={"credential": name},
             )
         ) from None
 
@@ -150,10 +145,7 @@ def _unavailable(exc: bandcamp.BandcampError, origin: Sequence[str], **detail: A
     return refuse(
         "unavailable-transient",
         f"Bandcamp could not be read ({exc}); nothing was planned or fetched",
-        remedy=Remedy.RETRY_LATER,
-        retryable=True,
-        origin=origin,
-        detail=detail,
+        remedy=Remedy.RETRY_LATER, retryable=True, origin=origin, detail=detail,
     )
 
 
@@ -175,8 +167,7 @@ def _record_unusable(path: Path, what: str) -> CratekitError:
         f"the record of the Bandcamp purchases this library fetched, {path.name}, "
         f"could not be read ({what}); read as empty it would fetch every purchase "
         f"again, so nothing was planned",
-        steps=(f"repair or remove {path} and run it again",),
-        origin=ORIGIN,
+        steps=(f"repair or remove {path} and run it again",), origin=ORIGIN,
         detail={"path": str(path), "problem": what},
     )
 
@@ -248,11 +239,9 @@ class Planned:
     def to_json(self) -> dict[str, Any]:
         kept_back = {one.track for one in self.held}
         return {
-            **self.purchase.to_json(),
-            "label": self.label.name if self.label is not None else None,
+            **self.purchase.to_json(), "label": self.label.name if self.label is not None else None,
             "label_id": self.label.label_id if self.label is not None else None,
-            "disposition": str(self.disposition),
-            "held": [one.to_json() for one in self.held],
+            "disposition": str(self.disposition), "held": [one.to_json() for one in self.held],
             "stage": [
                 track.to_json() for track in self.purchase.tracks if track not in kept_back
             ]
@@ -277,8 +266,7 @@ def track_wanted(track: bandcamp.Track, purchase: bandcamp.Purchase, position: i
     try:
         return match.read_row(
             {"artist": artist, "title": title, "id": f"{purchase.item_id}:{position}"},
-            origin=SOURCE,
-            position=position,
+            origin=SOURCE, position=position,
         )
     except match.UnreadableList:
         return None
@@ -304,9 +292,7 @@ class Library:
                 "library-volume-unmounted",
                 f"this library's music folder {str(music)!r} is not there, so no "
                 f"purchase can be told from a release the library already holds",
-                remedy=Remedy.MOUNT_LIBRARY_VOLUME,
-                origin=origin,
-                detail={"music": str(music)},
+                remedy=Remedy.MOUNT_LIBRARY_VOLUME, origin=origin, detail={"music": str(music)},
             )
         self.index, self.suppresses, self.identify = match_cli.library_view(cfg)
 
@@ -338,12 +324,8 @@ def _sellers(named: Iterable[str] | None, held: labels.Registry) -> frozenset[st
 
 
 def plan(
-    purchases: Sequence[bandcamp.Purchase],
-    library: Library,
-    *,
-    sellers: frozenset[str],
-    record: Mapping[str, Any],
-    registered: labels.Registry | None = None,
+    purchases: Sequence[bandcamp.Purchase], library: Library, *, sellers: frozenset[str],
+    record: Mapping[str, Any], registered: labels.Registry | None = None,
 ) -> tuple[Planned, ...]:
     """Every purchase with its disposition and label, the cheapest question first."""
     from cratekit.label import registry as labels
@@ -503,10 +485,7 @@ def labels_of(planned: Sequence[Planned]) -> dict[str, str]:
 
 def _add_sellers(parser) -> None:
     parser.add_argument(
-        "--seller",
-        action="append",
-        default=None,
-        metavar="NAME",
+        "--seller", action="append", default=None, metavar="NAME",
         help=(
             "only this seller's purchases, by the account name in its address "
             "(NAME.bandcamp.com); repeat it for several"
@@ -546,8 +525,7 @@ def acquire_bandcamp(ctx) -> Envelope:
     to_fetch = [one for one in planned if one.disposition in TO_FETCH]
     checks = [
         _check(
-            str(disposition),
-            "info",
+            str(disposition), "info",
             f"{counts[str(disposition)]} purchase(s) {disposition}"
             + (
                 ": " + _named([one for one in planned if one.disposition is disposition])
@@ -563,8 +541,7 @@ def acquire_bandcamp(ctx) -> Envelope:
     staged_under = labels_of(planned)
     checks.append(
         _check(
-            "labels",
-            "info" if not unlabelled else "warn",
+            "labels", "info" if not unlabelled else "warn",
             (
                 "staged under their label: "
                 + "; ".join(f"{seller} as {name}" for seller, name in staged_under.items())
@@ -580,12 +557,8 @@ def acquire_bandcamp(ctx) -> Envelope:
         )
     )
     summary = {
-        "purchases": len(planned),
-        **counts,
-        "sellers": sorted(sellers),
-        "sellers_unmatched": unmatched,
-        "labels": staged_under,
-        "sellers_unregistered": unlabelled,
+        "purchases": len(planned), **counts, "sellers": sorted(sellers),
+        "sellers_unmatched": unmatched, "labels": staged_under, "sellers_unregistered": unlabelled,
         "fetch_next": fetch_command(sellers) if to_fetch else None,
         "rows": [one.to_json() for one in planned],
     }
@@ -603,18 +576,14 @@ def build_fetch(parser, entry) -> None:
     del entry
     _add_sellers(parser)
     parser.add_argument(
-        "--batch",
-        default=None,
-        metavar="NAME",
+        "--batch", default=None, metavar="NAME",
         help=(
             "the folder under download staging to stage into; "
             f"'{BATCH_PREFIX} <today's date>' when omitted"
         ),
     )
     parser.add_argument(
-        "--job",
-        default=None,
-        metavar="JOB_ID",
+        "--job", default=None, metavar="JOB_ID",
         help="continue the fetch already queued under this identifier",
     )
     parser.set_defaults(_handler=acquire_bandcamp_fetch)
@@ -693,8 +662,7 @@ def staging_batch(given: str | None) -> str:
             "intake-list-unusable",
             f"{name!r} is not a folder name a batch can be staged under, because it "
             f"is empty, starts with a dot, has space at either end or holds a slash",
-            steps=("pass --batch a plain folder name",),
-            origin=FETCH_ORIGIN,
+            steps=("pass --batch a plain folder name",), origin=FETCH_ORIGIN,
             detail={"batch": name},
         )
     return name
@@ -708,14 +676,11 @@ def acquire_bandcamp_fetch(ctx) -> Envelope:
             raise refuse(
                 "intake-list-unusable",
                 "--job was given an empty identifier, so it names no job to continue",
-                steps=("pass the identifier of the fetch already queued",),
-                origin=FETCH_ORIGIN,
+                steps=("pass the identifier of the fetch already queued",), origin=FETCH_ORIGIN,
             )
         with jobs.open_store() as store:
             job = jobs.reconcile(store, ctx.args.job)
-            acquire_cli.sweep_staging(
-                Path(jobs.frozen_config(job).paths.download_staging), store
-            )
+            acquire_cli.sweep_staging(Path(jobs.frozen_config(job).paths.download_staging), store)
             warnings: tuple[dict[str, str], ...] = ()
             if job.is_open():
                 _, warnings = ctx.run_job(store, job)
@@ -738,17 +703,13 @@ def acquire_bandcamp_fetch(ctx) -> Envelope:
     if not releases:
         return ctx.envelope(
             data={"job_id": "", "state": "nothing-new", "cause": None, "progress": {}},
-            outcome=Outcome.NO_OP,
-            warnings=warnings,
+            outcome=Outcome.NO_OP, warnings=warnings,
         )
     with jobs.open_store() as store:
         acquire_cli.sweep_staging(Path(cfg.paths.download_staging), store)
         job = jobs.enqueue(
-            store,
-            handler_key=ctx.entry.handler_key,
-            payload={BATCH: batch, RELEASES: releases},
-            cfg=cfg,
-            item_ids=tuple(releases),
+            store, handler_key=ctx.entry.handler_key, payload={BATCH: batch, RELEASES: releases},
+            cfg=cfg, item_ids=tuple(releases),
         )
         _LINKS[job.job_id] = {
             purchase.item_id: purchase.download_page
@@ -817,8 +778,7 @@ def file_holding(path: Path, library: Library, artist: str) -> tuple[str, tuple[
         return None
     try:
         wanted = match.read_row(
-            {"artist": str(read["artist"] or "").strip() or artist, "title": title},
-            origin=SOURCE,
+            {"artist": str(read["artist"] or "").strip() or artist, "title": title}, origin=SOURCE,
             position=1,
         )
     except match.UnreadableList:
@@ -840,10 +800,8 @@ def _encoding(cfg: config.Config, offers: Mapping[str, str], detail: dict[str, A
             f"{detail['artist']} - {detail['title']} is offered in no lossless format "
             f"(offered: {', '.join(offered) or 'nothing'}), and the strict lossless "
             f"policy refuses a lossy file, so nothing was downloaded",
-            remedy=decision.remedy or Remedy.RELAX_LOSSLESS_POLICY,
-            scope=Scope.ITEM,
-            origin=FETCH_ORIGIN,
-            detail={**detail, "offered": offered},
+            remedy=decision.remedy or Remedy.RELAX_LOSSLESS_POLICY, scope=Scope.ITEM,
+            origin=FETCH_ORIGIN, detail={**detail, "offered": offered},
         )
     if bandcamp.LOSSY_ENCODING not in offers:
         raise refuse(
@@ -851,9 +809,7 @@ def _encoding(cfg: config.Config, offers: Mapping[str, str], detail: dict[str, A
             f"{detail['artist']} - {detail['title']} is offered in no lossless "
             f"format and not as {bandcamp.LOSSY_ENCODING} "
             f"(offered: {', '.join(offered) or 'nothing'}), so nothing was downloaded",
-            scope=Scope.ITEM,
-            origin=FETCH_ORIGIN,
-            detail={**detail, "offered": offered},
+            scope=Scope.ITEM, origin=FETCH_ORIGIN, detail={**detail, "offered": offered},
         )
     return bandcamp.LOSSY_ENCODING, True
 
@@ -865,10 +821,7 @@ def _item_failure(exc: bandcamp.BandcampError, detail: dict[str, Any]) -> Cratek
         "unavailable-transient",
         f"{detail['artist']} - {detail['title']} could not be fetched ({exc}); it "
         f"stays queued",
-        remedy=Remedy.RETRY_LATER,
-        scope=Scope.ITEM,
-        retryable=True,
-        origin=FETCH_ORIGIN,
+        remedy=Remedy.RETRY_LATER, scope=Scope.ITEM, retryable=True, origin=FETCH_ORIGIN,
         detail=detail,
     )
 
@@ -901,20 +854,14 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
     said = dict(((job.payload or {}).get(RELEASES) or {}).get(item.item_id) or {})
     batch = str((job.payload or {}).get(BATCH) or "")
     detail: dict[str, Any] = {
-        "item_id": item.item_id,
-        "seller": str(said.get("seller") or ""),
-        "artist": str(said.get("artist") or ""),
-        "title": str(said.get("title") or ""),
+        "item_id": item.item_id, "seller": str(said.get("seller") or ""),
+        "artist": str(said.get("artist") or ""), "title": str(said.get("title") or ""),
     }
     label = str(said.get("label") or "").strip()
     if not landing.plain_name(batch):
         raise refuse(
-            "internal-error",
-            f"job {job.job_id} froze no batch folder a release can stage into",
-            remedy=Remedy.REPORT_DEFECT,
-            scope=Scope.ITEM,
-            origin=FETCH_ORIGIN,
-            detail=detail,
+            "internal-error", f"job {job.job_id} froze no batch folder a release can stage into",
+            remedy=Remedy.REPORT_DEFECT, scope=Scope.ITEM, origin=FETCH_ORIGIN, detail=detail,
         )
     if item.item_id in fetched(cfg):
         return jobs.Produced()
@@ -928,9 +875,7 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
             "unavailable-permanent",
             f"{detail['artist']} - {detail['title']} is no longer a purchase the "
             f"account can download, so nothing was fetched",
-            scope=Scope.ITEM,
-            origin=FETCH_ORIGIN,
-            detail=detail,
+            scope=Scope.ITEM, origin=FETCH_ORIGIN, detail=detail,
         )
     library = _library_for(job.job_id, cfg)
     client = transport()
@@ -951,10 +896,7 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
             "unavailable-transient",
             f"{detail['artist']} - {detail['title']} arrived with no audio file in it; "
             f"it stays queued",
-            remedy=Remedy.RETRY_LATER,
-            scope=Scope.ITEM,
-            retryable=True,
-            origin=FETCH_ORIGIN,
+            remedy=Remedy.RETRY_LATER, scope=Scope.ITEM, retryable=True, origin=FETCH_ORIGIN,
             detail=detail,
         )
     policy = AdapterSettings.from_config(cfg).lossless_policy
@@ -996,20 +938,14 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
         staged.append(final.name)
     _empty_holding(holding_dir, keep=refused.values())
     record_fetched(
-        cfg,
-        item.item_id,
+        cfg, item.item_id,
         {
             **{key: detail[key] for key in ("seller", "artist", "title")},
-            "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "job_id": job.job_id,
-            "batch": batch,
-            "encoding": encoding,
-            "staged": staged,
-            "held": held,
+            "at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "job_id": job.job_id,
+            "batch": batch, "encoding": encoding, "staged": staged, "held": held,
             "refused": sorted(refused),
             "kept": {name: str(path) for name, path in sorted(refused.items())},
-            "label": label or None,
-            "untagged": sorted(untagged),
+            "label": label or None, "untagged": sorted(untagged),
         },
     )
     if refused:
@@ -1025,14 +961,10 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
                 "compare each downloaded copy named with the file of the same name in "
                 "the batch folder, and move the one you want into the batch folder",
             ),
-            scope=Scope.ITEM,
-            origin=FETCH_ORIGIN,
+            scope=Scope.ITEM, origin=FETCH_ORIGIN,
             detail={
-                **detail,
-                "batch": str(target),
-                "refused": sorted(refused),
-                "kept": [str(path) for _name, path in sorted(refused.items())],
-                "staged": staged,
+                **detail, "batch": str(target), "refused": sorted(refused),
+                "kept": [str(path) for _name, path in sorted(refused.items())], "staged": staged,
             },
         )
     if untagged:

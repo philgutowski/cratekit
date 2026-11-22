@@ -130,17 +130,10 @@ class Purchase:
 
     def to_json(self) -> dict[str, Any]:
         return {
-            "item_id": self.item_id,
-            "seller": self.seller,
-            "artist": self.artist,
-            "title": self.title,
-            "item_type": self.item_type,
-            "purchased": self.purchased,
-            "item_url": self.item_url,
-            "hidden": self.hidden,
-            "preorder": self.preorder,
-            "downloadable": self.downloadable,
-            "tracks": [track.to_json() for track in self.tracks],
+            "item_id": self.item_id, "seller": self.seller, "artist": self.artist,
+            "title": self.title, "item_type": self.item_type, "purchased": self.purchased,
+            "item_url": self.item_url, "hidden": self.hidden, "preorder": self.preorder,
+            "downloadable": self.downloadable, "tracks": [track.to_json() for track in self.tracks],
         }
 
 
@@ -202,8 +195,7 @@ def _tracks(listed: object) -> tuple[Track, ...]:
         found.append(
             Track(
                 number=_number(entry.get("track_number")),
-                artist=str(entry.get("artist") or "").strip(),
-                title=title,
+                artist=str(entry.get("artist") or "").strip(), title=title,
             )
         )
     return tuple(found)
@@ -216,15 +208,11 @@ def _purchase(item: Mapping[str, Any], page: Mapping[str, Any], *, hidden: bool)
     tralbum = f"{item.get('tralbum_type') or ''}{item.get('tralbum_id') or ''}"
     item_url = str(item.get("item_url") or "")
     return Purchase(
-        item_id=str(item.get("item_id") or tralbum or sale),
-        seller=seller_of(item_url),
+        item_id=str(item.get("item_id") or tralbum or sale), seller=seller_of(item_url),
         artist=str(item.get("band_name") or "").strip(),
-        title=str(item.get("item_title") or "").strip(),
-        item_type=str(item.get("item_type") or ""),
-        purchased=str(item.get("purchased") or ""),
-        item_url=item_url,
-        tracks=_tracks(listed.get(tralbum) if isinstance(listed, Mapping) else None),
-        hidden=hidden,
+        title=str(item.get("item_title") or "").strip(), item_type=str(item.get("item_type") or ""),
+        purchased=str(item.get("purchased") or ""), item_url=item_url,
+        tracks=_tracks(listed.get(tralbum) if isinstance(listed, Mapping) else None), hidden=hidden,
         preorder=bool(item.get("is_preorder")),
         download_page=str(links.get(sale) or "") if isinstance(links, Mapping) else "",
     )
@@ -241,8 +229,7 @@ def _pages(
     for _ in range(MAX_PAGES):
         page = _json(
             transport.post_json(
-                BASE + path,
-                {"fan_id": fan_id, "older_than_token": token, "count": PAGE_SIZE},
+                BASE + path, {"fan_id": fan_id, "older_than_token": token, "count": PAGE_SIZE},
                 cookie=cookie,
             ),
             what,
@@ -293,9 +280,7 @@ def newest_first(purchases: Sequence[Purchase]) -> tuple[Purchase, ...]:
     return tuple(purchase for *_key, purchase in sorted(order, key=lambda row: row[:2]))
 
 
-def read_collection(
-    transport: Transport, cookie: str, *, now: float | None = None
-) -> Collection:
+def read_collection(transport: Transport, cookie: str, *, now: float | None = None) -> Collection:
     """Every purchase, hidden ones marked, newest first. A summary naming no fan is
     :class:`SessionRejected`, telling a logged out cookie from an empty account."""
     summary = _json(transport.get(BASE + SUMMARY_PATH, cookie=cookie), "the collection summary")
@@ -385,11 +370,8 @@ def _prepared(transport: Transport, cookie: str, link: str) -> str:
         return link
     stat = urlunsplit(
         (
-            parts.scheme,
-            parts.netloc,
-            parts.path.replace("/download/", "/statdownload/", 1),
-            f"{parts.query}&.vrs=1" if parts.query else ".vrs=1",
-            "",
+            parts.scheme, parts.netloc, parts.path.replace("/download/", "/statdownload/", 1),
+            f"{parts.query}&.vrs=1" if parts.query else ".vrs=1", "",
         )
     )
     response = transport.get(stat, cookie=cookie)
