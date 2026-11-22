@@ -386,7 +386,9 @@ def test_a_refusal_after_the_session_opens_abandons_it_and_removes_the_file(
     assert tree_registry.pending_intake_xml(cfg) == ()
 
 
-def test_a_placed_call_ends_awaiting_import_with_the_action_persisted(cfg, silence, export):
+def test_a_placed_call_ends_awaiting_import_with_the_action_persisted(
+    cfg, silence, export, monkeypatch
+):
     music = Path(cfg.library.root) / cfg.library.music_dir
     music.mkdir(parents=True, exist_ok=True)
     path = music / "One.flac"
@@ -418,6 +420,15 @@ def test_a_placed_call_ends_awaiting_import_with_the_action_persisted(cfg, silen
     assert export_step == "take a Fresh Export of the collection from rekordbox"
     assert verify.startswith("run crate intake imported --export with that Fresh Export")
     assert ingest.persisted_pending(cfg, placed) == record.pending
+    # A FAILED CALL over it leaves the file alone: an earlier run's steps still name it.
+    def refusing(*args, **kwargs):
+        raise refuse("internal-error", "the ledger could not be written")
+    monkeypatch.setattr(routing_pass, "record_intents", refusing)
+    with pytest.raises(CratekitError):
+        ingest.place_files([path], cfg=cfg, export=export, destination=destination)
+    assert destination.is_file()
+    states = sorted(str(record.state) for record in session.records(cfg))
+    assert states == ["abandoned", "awaiting-import"]
 
 
 # ── The brief's third scenario: route pending before a cutover ──────────────
@@ -602,6 +613,13 @@ def test_a_run_landed_before_the_fix_is_settled_too(cfg, silence, export, tmp_pa
     after = _export_after_import(tmp_path, _intake_file(cfg))
     record.state = session.SessionState.OPEN
     record.pending = None
+    # AN OPEN RUN HOLDING A CAPTURE is never taken for a landing.
+    record.snapshot_path = "/captures/one"
+    session.write_record(record, cfg)
+    code, result = _drive(["intake", "imported", "--export", str(after)])
+    assert (code, result["outcome"]) == (int(ExitCode.OK), "no_op")
+    assert session.read_record(record.session_id, cfg).to_json() == record.to_json()
+    record.snapshot_path = None
     session.write_record(record, cfg)
     assert _refusal(cfg, export).cause.reason == "cutover-open-run"
     code, not_yet = _drive(["intake", "imported", "--export", str(export)])
@@ -614,19 +632,6 @@ def test_a_run_landed_before_the_fix_is_settled_too(cfg, silence, export, tmp_pa
     assert (item["action"], item["retired_to"]) == (imported_cli.IMPORTED, None)
     assert session.owes_only_deferred_routing(session.read_record(record.session_id, cfg))
     assert _refusal(cfg, after).cause.reason == "cutover-xml-pending"
-
-
-def test_an_open_run_holding_a_capture_is_never_taken_for_a_landing(cfg, silence, export, tmp_path):
-    _land(cfg, silence, export)
-    (record,) = session.records(cfg)
-    after = _export_after_import(tmp_path, _intake_file(cfg))
-    record.state = session.SessionState.OPEN
-    record.pending = None
-    record.snapshot_path = "/captures/one"
-    session.write_record(record, cfg)
-    code, result = _drive(["intake", "imported", "--export", str(after)])
-    assert (code, result["outcome"]) == (int(ExitCode.OK), "no_op")
-    assert session.read_record(record.session_id, cfg).to_json() == record.to_json()
 
 
 def test_tracks_acknowledged_as_gone_are_not_proof_of_an_import(cfg, silence, export):
@@ -679,26 +684,6 @@ def test_a_refused_close_is_reported_and_tried_again_next_time(
     assert (item["action"], item["closed"]) == (imported_cli.RETIRED, True)
     assert session.read_record(record.session_id, cfg).state is session.SessionState.CLOSED
     assert _drive(["intake", "imported"])[1]["outcome"] == "no_op"
-
-
-def test_a_failed_call_leaves_an_earlier_runs_intake_file_alone(cfg, silence, export, monkeypatch):
-    """The write is an overwrite, and the file already there is one an earlier
-    run's steps still name."""
-    music = Path(cfg.library.root) / cfg.library.music_dir
-    music.mkdir(parents=True, exist_ok=True)
-    path = music / "One.flac"
-    shutil.copyfile(silence, path)
-    assert tags.write_tags(path, {"title": "One", "genre": "Deep House", "energylevel": 7})
-    destination = music / "One_inboxed.xml"
-    ingest.place_files([path], cfg=cfg, export=export, destination=destination)
-    def refusing(*args, **kwargs):
-        raise refuse("internal-error", "the ledger could not be written")
-    monkeypatch.setattr(routing_pass, "record_intents", refusing)
-    with pytest.raises(CratekitError):
-        ingest.place_files([path], cfg=cfg, export=export, destination=destination)
-    assert destination.is_file()
-    states = sorted(str(record.state) for record in session.records(cfg))
-    assert states == ["abandoned", "awaiting-import"]
 
 
 def test_a_failed_call_records_no_track_the_ledger_cannot_withdraw(
