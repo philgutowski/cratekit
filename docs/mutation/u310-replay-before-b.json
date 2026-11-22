@@ -1,0 +1,616 @@
+{
+  "name": "u310-replay-before-b",
+  "pass_kind": "replay",
+  "branch": "HEAD",
+  "head": "12b235f2",
+  "when": "2026-11-22 20:00 UTC",
+  "valid": true,
+  "invalid_reason": "in progress",
+  "baseline_collected": 22933,
+  "baseline_exit": 1,
+  "pytest_runs": 36,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 253,
+  "known_source": "/tmp/claude-0/sp/known-replay.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "measured",
+  "baseline_note": "the battery's verdict was not read: no battery verdict at `.cloud-battery/verdict.json`",
+  "subset_baselines": 19,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/adopt/approval.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/adopt/approval.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "5dbb4bcc2491fd86",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 22933,
+    "baseline_collected": 22933,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "u23-round-8-independent.X1_approval_type_check_never_fires",
+      "description": "R34: a blanket affirmative is no longer refused by type",
+      "file": "src/cratekit/adopt/approval.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "017579e426cc6ab9",
+      "subset": [
+        "tests/test_adoption.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 615,
+      "baseline_collected": 615,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adoption.py::test_no_blanket_affirmative_applies_a_plan[NoneTypeNone]",
+        "tests/test_adoption.py::test_no_blanket_affirmative_applies_a_plan[boolTrue]",
+        "tests/test_adoption.py::test_no_blanket_affirmative_applies_a_plan[dict{'approved':]",
+        "tests/test_adoption.py::test_no_blanket_affirmative_applies_a_plan[dict{'digest': ']",
+        "tests/test_adoption.py::test_no_blanket_affirmative_applies_a_plan[int1]",
+        "tests/test_adoption.py::test_no_blanket_affirmative_applies_a_plan[strapprove]",
+        "tests/test_adoption.py::test_no_blanket_affirmative_applies_a_plan[stryes]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not isinstance(approval, Approval):",
+      "new": "    if not isinstance(approval, object):",
+      "source": {
+        "table": "u23-round-8-independent.json",
+        "id": "X1_approval_type_check_never_fires"
+      }
+    },
+    {
+      "id": "u23-round-8-independent.X2_approval_option_unchecked",
+      "description": "A recorded answer that is not the approve option is accepted",
+      "file": "src/cratekit/adopt/approval.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3ca525e8c20f743a",
+      "subset": [
+        "tests/test_adoption.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 615,
+      "baseline_collected": 615,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adoption.py::test_a_recorded_answer_that_is_not_an_approval_applies_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if approval.option != APPROVE:",
+      "new": "    if approval.option is None:",
+      "source": {
+        "table": "u23-round-8-independent.json",
+        "id": "X2_approval_option_unchecked"
+      }
+    },
+    {
+      "id": "u23-round-8-independent.X3_approval_actor_unchecked",
+      "description": "An approval naming nobody is accepted at apply time",
+      "file": "src/cratekit/adopt/approval.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "297ab0508754a7a2",
+      "subset": [
+        "tests/test_adoption.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 615,
+      "baseline_collected": 615,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adoption.py::test_an_approval_with_no_actor_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not str(approval.actor).strip():",
+      "new": "    if approval.actor is None:",
+      "source": {
+        "table": "u23-round-8-independent.json",
+        "id": "X3_approval_actor_unchecked"
+      }
+    },
+    {
+      "id": "u23-round-8-independent.X4_approval_digest_unchecked",
+      "description": "An approval given for a different plan is accepted",
+      "file": "src/cratekit/adopt/approval.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7239aae759cfeee9",
+      "subset": [
+        "tests/test_adoption.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 615,
+      "baseline_collected": 615,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adoption.py::test_an_approval_for_a_different_plan_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if approval.digest != current:",
+      "new": "    if approval.digest is None:",
+      "source": {
+        "table": "u23-round-8-independent.json",
+        "id": "X4_approval_digest_unchecked"
+      }
+    },
+    {
+      "id": "u23-round-8-independent.X5_grant_accepts_a_blank_actor",
+      "description": "grant records an approval attributed to nobody",
+      "file": "src/cratekit/adopt/approval.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b0227d81db4c90bb",
+      "subset": [
+        "tests/test_adoption.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 615,
+      "baseline_collected": 615,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adoption.py::test_an_approval_with_no_actor_is_refused"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not str(actor).strip():",
+      "new": "    if actor is None:",
+      "source": {
+        "table": "u23-round-8-independent.json",
+        "id": "X5_grant_accepts_a_blank_actor"
+      }
+    },
+    {
+      "id": "u55-collection-reader.R1_read_only_open",
+      "description": "The reader asks for a WRITE intent open. The single most important row in this table.",
+      "file": "src/cratekit/adopt/collection.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c4b68061578946b4",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_collection.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 95,
+      "baseline_collected": 95,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_collection.py::test_the_reader_never_opens_the_database_for_writing",
+        "tests/test_adopt_collection.py::test_this_module_holds_no_write_path_at_all",
+        "tests/test_adopt_workers.py::test_the_apply_opens_its_own_handle_with_write_intent"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        require_closed=False,",
+      "new": "        require_closed=True,",
+      "source": {
+        "table": "u55-collection-reader.json",
+        "id": "R1_read_only_open"
+      }
+    },
+    {
+      "id": "u55-collection-reader.R3_soft_delete_marker",
+      "description": "R-186's exact defect: default the tombstone marker instead of reading it",
+      "file": "src/cratekit/adopt/collection.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c5e8fb0abaaf7316",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_collection.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 95,
+      "baseline_collected": 95,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_collection.py::test_a_row_that_cannot_report_the_marker_refuses_rather_than_defaulting"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            deleted=trees.soft_delete_marker(row),",
+      "new": "            deleted=bool(getattr(row, \"rb_local_deleted\", False)),",
+      "source": {
+        "table": "u55-collection-reader.json",
+        "id": "R3_soft_delete_marker"
+      }
+    },
+    {
+      "id": "u55-collection-reader.R4_genre_proxy",
+      "description": "Read the raw GenreID rather than the binding's own display proxy",
+      "file": "src/cratekit/adopt/collection.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b5b0f108a7c176ba",
+      "subset": [
+        "tests/test_adopt_apply_cli.py",
+        "tests/test_adopt_collection.py",
+        "tests/test_adopt_workers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 42,
+      "collected": 95,
+      "baseline_collected": 95,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_apply_cli.py::test_a_resume_reconciles_a_claim_a_dead_driver_left_behind",
+        "tests/test_adopt_apply_cli.py::test_an_approved_run_queues_one_job_carrying_the_tree_and_the_digest",
+        "tests/test_adopt_apply_cli.py::test_the_approval_gate_shows_every_entry_the_digest_was_taken_over",
+        "tests/test_adopt_apply_cli.py::test_the_census_classifies_against_the_taxonomy_its_caller_resolved",
+        "tests/test_adopt_apply_cli.py::test_the_census_is_the_library_and_every_row_of_it_is_carried",
+        "tests/test_adopt_apply_cli.py::test_the_resume_gate_shows_the_rebuilt_plan_it_asks_about",
+        "tests/test_adopt_apply_cli.py::test_the_resume_the_job_driver_spawns_can_actually_proceed",
+        "tests/test_adopt_collection.py::test_a_dangling_genre_reference_reads_as_no_genre",
+        "tests/test_adopt_collection.py::test_every_field_comes_off_the_row_it_belongs_to",
+        "tests/test_adopt_collection.py::test_the_reader_yields_the_rows_the_database_holds",
+        "tests/test_adopt_workers.py::test_a_collection_that_moved_after_approval_refuses_rather_than_applying",
+        "tests/test_adopt_workers.py::test_a_configured_volume_rewrite_reaches_the_census",
+        "tests/test_adopt_workers.py::test_a_drive_that_adds_nothing_still_names_an_undeclared_favorites_class",
+        "tests/test_adopt_workers.py::test_a_parked_adoption_leaves_blocked_and_non_zero",
+        "tests/test_adopt_workers.py::test_a_person_reading_the_gate_is_shown_the_whole_list",
+        "tests/test_adopt_workers.py::test_a_registry_naming_a_root_the_library_does_not_have_is_its_own_refusal",
+        "tests/test_adopt_workers.py::test_a_renamed_vocal_playlist_gains_no_second_one_beside_it",
+        "tests/test_adopt_workers.py::test_a_scan_queues_one_item_per_live_row_and_drives_them_all",
+        "tests/test_adopt_workers.py::test_a_second_approved_apply_adds_nothing_and_withholds_the_same",
+        "tests/test_adopt_workers.py::test_a_second_drive_adds_no_second_membership_row",
+        "tests/test_adopt_workers.py::test_a_track_in_the_planned_sub_under_another_name_is_withheld_not_doubled",
+        "tests/test_adopt_workers.py::test_a_track_moved_after_the_approval_is_a_stale_decision",
+        "tests/test_adopt_workers.py::test_a_track_tagged_after_the_approval_is_a_stale_decision",
+        "tests/test_adopt_workers.py::test_a_track_the_tree_write_could_not_place_is_never_marked_applied",
+        "tests/test_adopt_workers.py::test_an_apply_over_a_cut_over_library_writes_the_memberships",
+        "tests/test_adopt_workers.py::test_an_apply_whose_entries_failed_raises_rather_than_reporting_success",
+        "tests/test_adopt_workers.py::test_an_approved_apply_files_the_tagged_tracks_and_touches_nothing_else",
+        "tests/test_adopt_workers.py::test_an_approved_apply_leaves_a_withheld_track_where_it_sat",
+        "tests/test_adopt_workers.py::test_an_interrupted_job_exits_with_its_own_cause_and_not_ok[adopt.apply]",
+        "tests/test_adopt_workers.py::test_an_uncalibrated_library_files_no_vocal_sub_from_its_tags",
+        "tests/test_adopt_workers.py::test_an_uncut_library_marks_nothing_and_the_job_stays_resumable",
+        "tests/test_adopt_workers.py::test_an_untagged_membership_of_a_vocal_sub_is_never_removed",
+        "tests/test_adopt_workers.py::test_one_capture_per_apply_job_whatever_the_entry_count",
+        "tests/test_adopt_workers.py::test_the_apply_writes_no_tag_and_leaves_every_file_byte_identical",
+        "tests/test_adopt_workers.py::test_the_approval_is_refused_before_anything_is_written",
+        "tests/test_adopt_workers.py::test_the_approving_actor_travels_in_the_payload",
+        "tests/test_adopt_workers.py::test_the_gate_counts_the_withheld_by_kind_and_lists_every_one",
+        "tests/test_adopt_workers.py::test_the_gate_names_the_vocal_count_and_lists_every_membership",
+        "tests/test_adopt_workers.py::test_the_membership_write_is_derived_from_the_plan_and_not_from_the_run",
+        "tests/test_adopt_workers.py::test_the_membership_write_needs_locations_and_not_content_identifiers",
+        "tests/test_adopt_workers.py::test_the_plan_reads_the_tag_and_the_vocal_subs_off_the_census_database",
+        "tests/test_adopt_workers.py::test_the_plan_reads_the_tree_the_census_database_holds"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return str(getattr(row, \"GenreName\", \"\") or \"\")",
+      "new": "    return str(getattr(row, \"GenreID\", \"\") or \"\")",
+      "source": {
+        "table": "u55-collection-reader.json",
+        "id": "R4_genre_proxy"
+      }
+    },
+    {
+      "id": "r797-c.G1_the_threshold_is_fifty",
+      "description": "FOLDER_WORTH: 51, a realistic nearby value, so a genre at 50 is not named",
+      "file": "src/cratekit/adopt/genres.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "97ae400b7ef0eacd",
+      "subset": [
+        "tests/test_report_genres.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 8,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_report_genres.py::test_a_genre_at_49_is_counted_and_not_named_and_one_at_50_is_named",
+        "tests/test_report_genres.py::test_a_genre_filed_whole_in_its_sub_names_no_other_spelling",
+        "tests/test_report_genres.py::test_a_style_sub_nothing_routes_a_lowercase_spelling_to_is_still_its_genre",
+        "tests/test_report_genres.py::test_ae8_the_verb_names_the_genre_with_its_count_and_the_library_is_unchanged",
+        "tests/test_report_genres.py::test_another_spelling_of_a_source_string_is_counted_with_its_sub",
+        "tests/test_report_genres.py::test_the_boundary_is_the_same_on_both_sides_of_one_genre",
+        "tests/test_report_genres.py::test_the_summary_a_person_reads_in_help_states_the_threshold_the_code_uses",
+        "tests/test_report_genres.py::test_with_nothing_at_the_threshold_the_report_says_so_in_a_row"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "FOLDER_WORTH = 50",
+      "new": "FOLDER_WORTH = 51",
+      "source": {
+        "table": "r797-c.json",
+        "id": "G1_the_threshold_is_fifty"
+      }
+    },
+    {
+      "id": "r797-c.G2_at_the_threshold_is_named",
+      "description": "named: over the threshold and not at it",
+      "file": "src/cratekit/adopt/genres.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "0c987fbb903068c8",
+      "subset": [
+        "tests/test_report_genres.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_report_genres.py::test_a_genre_at_49_is_counted_and_not_named_and_one_at_50_is_named",
+        "tests/test_report_genres.py::test_a_genre_filed_whole_in_its_sub_names_no_other_spelling",
+        "tests/test_report_genres.py::test_a_style_sub_nothing_routes_a_lowercase_spelling_to_is_still_its_genre",
+        "tests/test_report_genres.py::test_another_spelling_of_a_source_string_is_counted_with_its_sub",
+        "tests/test_report_genres.py::test_the_boundary_is_the_same_on_both_sides_of_one_genre"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "genre.tracks >= self.threshold",
+      "new": "genre.tracks > self.threshold",
+      "source": {
+        "table": "r797-c.json",
+        "id": "G2_at_the_threshold_is_named"
+      }
+    },
+    {
+      "id": "r797-c.G3_a_removed_row_is_not_counted",
+      "description": "count: count a row rekordbox marked removed, so a folder is suggested for what a person deleted",
+      "file": "src/cratekit/adopt/genres.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1d2d7f9d051c1064",
+      "subset": [
+        "tests/test_report_genres.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_report_genres.py::test_a_removed_row_is_not_counted"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if row.deleted:\n            continue\n",
+      "new": "",
+      "source": {
+        "table": "r797-c.json",
+        "id": "G3_a_removed_row_is_not_counted"
+      }
+    },
+    {
+      "id": "r797-c.G4_no_genre_is_not_a_genre",
+      "description": "count: resolve an empty genre like any other, so the tagging backlog is counted as a genre or as having a folder",
+      "file": "src/cratekit/adopt/genres.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "97733f1fd3c167ba",
+      "subset": [
+        "tests/test_report_genres.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_report_genres.py::test_ae8_the_verb_names_the_genre_with_its_count_and_the_library_is_unchanged",
+        "tests/test_report_genres.py::test_every_live_track_is_counted_exactly_once",
+        "tests/test_report_genres.py::test_tracks_with_no_genre_are_counted_apart_and_never_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not value:",
+      "new": "        if False:",
+      "source": {
+        "table": "r797-c.json",
+        "id": "G4_no_genre_is_not_a_genre"
+      }
+    },
+    {
+      "id": "r797-c.G5_another_spelling_is_the_same_genre",
+      "description": "count: stop folding another spelling of a style sub's name onto the sub, the review's 45 and 10",
+      "file": "src/cratekit/adopt/genres.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "25eddbba7c34da1d",
+      "subset": [
+        "tests/test_report_genres.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 30,
+      "baseline_collected": 30,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_report_genres.py::test_a_style_sub_nothing_routes_a_lowercase_spelling_to_is_still_its_genre",
+        "tests/test_report_genres.py::test_another_spelling_of_a_source_string_is_counted_with_its_sub",
+        "tests/test_report_genres.py::test_another_spelling_of_a_style_subs_own_name_is_counted_with_it"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif value.casefold() in style_subs:",
+      "new": "        elif False:",
+      "source": {
+        "table": "r797-c.json",
+        "id": "G5_another_spelling_is_the_same_genre"
+      }
+    },
+    {
+      "id": "r758-b.M2_unnamed_genre_is_moved",
+      "description": "a track whose genre names no style is moved to the resolver's default",
+      "file": "src/cratekit/adopt/move.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8616fe55f55b0a14",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 112,
+      "baseline_collected": 112,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_genre_that_stopped_naming_the_style_is_a_stale_decision",
+        "tests/test_adopt_move.py::test_the_genre_decides_a_style_move_and_a_genre_naming_no_style_is_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return \"\" if entry.genre in by_source.map else LEFT_NO_STYLE",
+      "new": "    return \"\"",
+      "source": {
+        "table": "r758-b.json",
+        "id": "M2_unnamed_genre_is_moved"
+      }
+    },
+    {
+      "id": "r758-b.M3_renamed_playlist_is_moved_from",
+      "description": "a sub held through a renamed playlist only is planned for a move the writer cannot make",
+      "file": "src/cratekit/adopt/move.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a476f571c68a8733",
+      "subset": [
+        "tests/test_adopt_move.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 112,
+      "baseline_collected": 112,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_adopt_move.py::test_a_sub_held_under_another_name_only_is_left_and_listed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if unnamed:\n        return LEFT_UNNAMED\n",
+      "new": "",
+      "source": {
+        "table": "r758-b.json",
+        "id": "M3_renamed_playlist_is_moved_from"
+      }
+    }
+  ],
+  "dropped": [],
+  "mapped": []
+}
