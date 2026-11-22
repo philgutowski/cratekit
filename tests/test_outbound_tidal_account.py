@@ -296,10 +296,7 @@ def test_a_session_removed_after_an_open_is_refused_rather_than_reused(installed
 
 @pytest.mark.parametrize(
     ("failure", "reason"),
-    [
-        (HTTPFailure(401), "credential-missing"),
-        (ConnectionError("refused"), "unavailable-transient"),
-    ],
+    [(HTTPFailure(401), "credential-missing"), (ConnectionError("refused"), "unavailable-transient")],
     ids=["rejected", "unreachable"],
 )
 def test_a_login_that_fails_names_whether_to_log_in_again_or_wait(
@@ -323,10 +320,8 @@ def test_an_isrc_naming_one_track_is_the_match():
 
 def test_an_isrc_naming_two_tracks_is_no_match_rather_than_the_first():
     client = FakeClient(isrcs={"AA0000000001": ["101", "202"]}, tracks={"101"})
-    found = adapter(client).match_track(
-        identity="https://tidal.com/browse/track/101", isrc="AA0000000001"
-    )
-    assert found is None
+    url = "https://tidal.com/browse/track/101"
+    assert adapter(client).match_track(identity=url, isrc="AA0000000001") is None
 
 
 # ── R-356: several releases under one ISRC ──
@@ -348,8 +343,10 @@ def unreadable(track_id: str) -> Track:
     return Track(track_id, "", None, ())
 
 
-def match_row(found: tidal_account.TidalAccount, title: str, artist: str = "Nova Reef", **more):
-    return found.match_track(identity="7", isrc=CODE, title=title, artist=artist, **more)
+def match_row(
+    found: tidal_account.TidalAccount, title: str, artist: str = "Nova Reef", identity="7", **more
+):
+    return found.match_track(identity=identity, isrc=CODE, title=title, artist=artist, **more)
 
 
 def test_the_measured_cost_three_releases_of_one_isrc_resolve_to_the_rows_version():
@@ -366,17 +363,11 @@ def test_the_measured_cost_three_releases_of_one_isrc_resolve_to_the_rows_versio
 def test_a_code_asked_to_agree_lists_its_one_track_only_when_it_is_the_row():
     """R-879: a code read off a file's tag names its one track only when that track agrees."""
     found = adapter(releases(sun("101")))
-    assert found.match_track(
-        identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", agree=True
-    ) == "101"
-    assert found.match_track(
-        identity="8", isrc=CODE, title="Moon Path", artist="Nova Reef", agree=True
-    ) is None
+    assert match_row(found, "Sun Path", agree=True) == "101"
+    assert match_row(found, "Moon Path", identity="8", agree=True) is None
     assert "none of them agrees" in found.unmatched_reason("8")
     # Without it, one track is the match as it always was.
-    assert found.match_track(
-        identity="9", isrc=CODE, title="Moon Path", artist="Nova Reef"
-    ) == "101"
+    assert match_row(found, "Moon Path", identity="9") == "101"
 
 
 def test_a_row_with_no_version_agrees_with_an_original_mix_and_not_with_an_edit():
@@ -527,10 +518,8 @@ def test_the_names_are_never_sent_to_the_provider():
 
 def test_an_isrc_the_provider_lacks_falls_back_to_an_exact_track_reference():
     client = FakeClient(tracks={"303"})
-    found = adapter(client).match_track(
-        identity="https://listen.tidal.com/track/303", isrc="ZZ0000000009"
-    )
-    assert found == "303"
+    url = "https://listen.tidal.com/track/303"
+    assert adapter(client).match_track(identity=url, isrc="ZZ0000000009") == "303"
     assert client.isrc_asked == ["ZZ0000000009"], "a not found must not be retried"
 
 
@@ -555,14 +544,11 @@ def test_nothing_but_a_provider_track_url_is_a_reference(identity):
     assert tidal_account.track_reference(identity) is None
 
 
-def test_a_reference_to_a_track_the_provider_lacks_is_no_match():
+def test_a_reference_the_provider_lacks_or_redirects_is_no_match():
+    """A lookup that lands on a different identifier is a redirect, not the track."""
     client = FakeClient()
     assert adapter(client).match_track(identity="https://tidal.com/track/9") is None
     assert client.track_asked == ["9"]
-
-
-def test_a_reference_the_provider_answers_with_another_track_is_no_match():
-    """A lookup that lands on a different identifier is a redirect, not the track."""
     client = FakeClient(tracks={"9"})
     client.track = lambda track_id: Track("10")
     assert adapter(client).match_track(identity="https://tidal.com/track/9") is None

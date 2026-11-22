@@ -96,12 +96,8 @@ def cyclic() -> Looping:
 
 
 def inside_a_refusal(later: Callable[[], Exception]) -> Exception:
-    """``later``'s failure, raised while a rejected session's refusal is being handled.
-
-    The shape ``core.cause._chain`` refuses to read context over. The refusal is
-    raised from the 401 as the adapter's ``_call`` raises it, so the 401 is
-    reachable under it and only the walk's refusal limit keeps it out.
-    """
+    """``later``'s failure, raised while a refusal raised from a 401 is handled: the 401 is
+    reachable under it, and only the walk's refusal limit keeps it out."""
     rejected = client_failure(401, HTML)
     refusal = account.provider_failure(rejected, "heart the track 8")
     assert refusal.cause.reason == "credential-missing"

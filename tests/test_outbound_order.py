@@ -328,19 +328,15 @@ def test_a_move_whose_tag_never_comes_fresh_is_sent_a_bounded_number_of_times(in
     )
 
 
-def test_a_failure_other_than_a_stale_tag_is_never_sent_again(installed):
+def test_a_failure_other_than_a_stale_tag_is_never_sent_again(installed, monkeypatch):
     provider = Provider(["a", "b", "c"])
 
-    class Dropped(Movable):
-        def move_by_indices(self, indices, position: int) -> bool:
-            provider.moves.append((tuple(indices), position, self._etag))
-            raise TimeoutError("the connection dropped")
+    def dropped(self, indices, position: int) -> bool:
+        provider.moves.append((tuple(indices), position, self._etag))
+        raise TimeoutError("the connection dropped")
 
-    class DroppingClient(Client):
-        def playlist(self, playlist_id: str) -> Movable:
-            return Dropped(self.provider, playlist_id)
-
-    account = _adapter(installed, provider, client=DroppingClient)
+    monkeypatch.setattr(Movable, "move_by_indices", dropped)
+    account = _adapter(installed, provider)
     cause = _refused(lambda: account.order_tracks("mine", ("c", "a", "b")))
     assert cause.reason == "unavailable-transient"
     assert len(provider.moves) == 1
@@ -664,12 +660,8 @@ def test_a_recorder_that_cannot_record_has_no_further_move_sent(installed):
 
 
 def _one_move_in_then_added(installed, *, lag: int):
-    """A stopped order one move in, b, a, c, then x added, its next readings serving a, b, c, x.
-
-    The reading lags the stopped move and not the addition, so it holds every
-    track the write left in the order from before the move: what the check of
-    what the playlist holds cannot see.
-    """
+    """A stopped order one move in, b, a, c, then x added, its next readings serving a, b, c, x:
+    every track the write left, in the order from before the move."""
     provider = Provider(["b", "a", "c"])
     account = _adapter(installed, provider)
     assert account.add_tracks("mine", ("x",)) == ("x",)

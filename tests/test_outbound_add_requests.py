@@ -337,8 +337,7 @@ def test_a_refused_add_drops_the_hold_so_the_next_track_opens_afresh():
 
 
 def test_a_track_added_elsewhere_meanwhile_lands_once_and_is_read_back():
-    """The same track put on by another writer is refused 412, sent again on a fresh open,
-    skipped by the provider as a duplicate, and read back as held."""
+    """Refused 412, sent again on a fresh open, skipped as a duplicate, read back as held."""
     provider, remote = _added_once()
     provider.outside_add("pl0", "101")
     remote.add_to_playlist("pl0", "101")
@@ -448,8 +447,7 @@ def _three() -> tuple[Account, TidalAccount]:
 
 
 def test_a_write_between_the_open_and_the_tracks_read_never_puts_the_add_before_it():
-    """Drive A: another writer adds between the open and the tracks read. The add is
-    refused on the open's tag, sent again on a fresh open, and lands at the end."""
+    """Drive A: refused on the open's tag, sent again on a fresh open, lands at the end."""
     provider, remote = _three()
     provider.before_tracks.append(lambda: provider.outside_add("pl0", "7"))
     remote.add_to_playlist("pl0", "100")
@@ -459,8 +457,7 @@ def test_a_write_between_the_open_and_the_tracks_read_never_puts_the_add_before_
 
 
 def test_a_playlist_read_one_write_behind_writes_nothing():
-    """Drive B: every playlist read lags one write. The add carries the lagging read's
-    tag with its length, so it is refused twice and nothing is written."""
+    """Drive B: the add carries the lagging read's tag with its length, refused twice."""
     provider, remote = _three()
     provider.lag_open = True
     with pytest.raises(CratekitError):
@@ -479,8 +476,7 @@ def test_a_tracks_read_one_write_behind_never_reaches_the_add():
 
 
 def test_a_tracks_read_that_fails_after_the_open_holds_nothing():
-    """Drive H: the open succeeded and its read did not, so nothing is held, and the next
-    add after two more writes opens afresh and lands at the end."""
+    """Drive H: nothing is held, so the next add opens afresh and lands at the end."""
     provider = Account("pl0")
     provider.outside_add("pl0", "7")
     provider.tracks_fail.append(
@@ -497,8 +493,7 @@ def test_a_tracks_read_that_fails_after_the_open_holds_nothing():
 
 
 def test_an_open_that_fails_is_refused_on_its_own_retry_before_any_add_is_sent():
-    """The first open, nothing held, is made before the add's attempts: two tries of the
-    open, then the open's own refusal, no POST."""
+    """Nothing held: two tries of the open, then the open's own refusal, and no POST."""
     provider, remote = _added_once()
     remote.rename_playlist("pl0", "Renamed")
     provider.open_fail = [503, 503]
@@ -512,8 +507,7 @@ def test_an_open_that_fails_is_refused_on_its_own_retry_before_any_add_is_sent()
 
 
 def test_the_retrys_open_has_a_retry_of_its_own():
-    """Finding three: an add refused 412 whose fresh open meets one transient failure
-    still opens on the open's own retry and lands."""
+    """Finding three: a fresh open after a 412 meeting one failure retries and lands."""
     provider, remote = _added_once()
     provider.outside_add("pl0", "7")
     provider.open_fail_after_refusal = [503]
