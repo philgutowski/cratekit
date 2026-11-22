@@ -768,7 +768,7 @@ source = { table = "r154-a.json", id = "A7_read_normalization" }
 description = "Compare a marker's identity as spelled on the remote, so a marker written in another letter case names a foreign volume"
 file = "src/cratekit/modules/tools/backup_snapshot.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/modules/tools/backup_snapshot.py, was in src/cratekit/modules/tools/backup.py"
+moved = "U311 split the snapshot listing out of backup.py into backup_snapshot.py with this line unchanged, and folded test_the_identity_is_compared_case_blind_like_the_volume_gate into test_a_snapshot_marked_for_this_library_is_planned_and_compared_case_blind, whose second half lists the same upper case marker and asserts the same lower case recorded volume, so it is the same guard held by the same assertion"
 tests = ["tests/modules/test_tools.py"]
 old = '        preflight.normalize_identity(name[len(IDENTITY_MARKER_PREFIX):])'
 new = '        name[len(IDENTITY_MARKER_PREFIX):]'
