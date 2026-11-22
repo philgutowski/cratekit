@@ -1037,62 +1037,250 @@ tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/tes
 old = '            on_hold=None if on_hold is None else MappingProxyType(dict(on_hold)),'
 new = '            on_hold=None,'
 
-[[dropped]]
-id = "r356-b.B6_export_plan_drops_the_reason"
-description = "An unmatched export row never carries what the account said about it"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/export.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+[[rows]]
+id = 'r356-b.B6_export_plan_drops_the_reason'
+source = { table = 'r356-b.json', id = 'B6_export_plan_drops_the_reason' }
+description = 'An unmatched export row never carries what the account said about it'
+file = 'src/cratekit/modules/outbound/export.py'
+surface = 'user'
+moved = "the reason export.plan gives an unmatched row moved out of the Unmatched constructor's keyword arguments into a local reason the row is built from on the next line; the same account reason is dropped for the bare word"
+tests = ['tests/modules/test_outbound.py']
+old = '''
+            reason = account.unmatched_reason(track.identity) or "unmatched"
+'''
+new = '''
+            reason = "unmatched"
+'''
 
-[[dropped]]
-id = "u123.T2_read_back"
-description = "Trust the delete and never read the playlist back"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/tidal_account.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+[[rows]]
+id = 'u123.T2_read_back'
+source = { table = 'u123.json', id = 'T2_read_back' }
+description = 'Trust the delete and never read the playlist back'
+file = 'src/cratekit/modules/outbound/tidal_account.py'
+surface = 'user'
+moved = "the read back after a playlist's delete moved out of remove_playlist into _sent_and_read_back, shared with the kind playlist removal, and reads the playlist through _served, which answers None for an absent one; the same still served check is made never true"
+tests = ['tests/test_label_heard.py']
+old = '''
+        if self._served(doing, identifier) is not None:
+'''
+new = '''
+        if False:
+'''
 
-[[dropped]]
-id = "u204.P6_filed_no_month"
-description = "_decide_favorites: a track put in All Favorites that sits in a month is given a second month by its time"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/mirror_edits.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+[[rows]]
+id = 'u204.P6_filed_no_month'
+source = { table = 'u204.json', id = 'P6_filed_no_month' }
+description = '_decide_favorites: a track put in All Favorites that sits in a month is given a second month by its time'
+file = 'src/cratekit/modules/outbound/mirror_edits.py'
+surface = 'user'
+moved = 'the extra carried for a track put in All Favorites in _decide_favorites was folded from a multi line dict onto one line with its when read into a local first; the same filed flag is forced False'
+tests = ['tests/test_mirror_edits.py']
+old = '''
+            extra = {"when": next(when, ""), "filed": bool(now_m or there_m)}
+'''
+new = '''
+            extra = {"when": next(when, ""), "filed": False}
+'''
 
-[[dropped]]
-id = "u147-c.M17_playlist_made_twice"
-description = "ledger.reserve_mirror_playlist: a recorded playlist is not reused, so a resume makes a second"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/ledger.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+[[rows]]
+id = 'u147-c.M17_playlist_made_twice'
+source = { table = 'u147-c.json', id = 'M17_playlist_made_twice' }
+description = 'ledger.reserve_mirror_playlist: a recorded playlist is not reused, so a resume makes a second'
+file = 'src/cratekit/modules/outbound/ledger_reserve.py'
+surface = 'user'
+moved = 'the reuse of a recorded playlist moved from ledger.reserve_mirror_playlist into ledger_reserve._reserve, shared by reserve_mirror_playlist and the other playlist reserves, where the mirror entry arrives as a table and the key as a parameter; the same lookup and early return are deleted'
+tests = ['tests/test_organize_mirror.py']
+old = '''
+        held = table(document)
+        recorded = str((held.get(key) or {}).get("remote_id") or "")
+        if recorded:
+            return recorded, False
+'''
+new = '''
+        held = table(document)
+'''
 
-[[dropped]]
-id = "r1289.M17_mirror_listing_refusal"
-description = "mirror_downloads.plan (existing guard, sample): a playlist the provider cannot list names nothing for its tracks"
-reason = "unplaced: the text is gone in src/cratekit/organize/mirror_downloads.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+[[rows]]
+id = 'r1289.M17_mirror_listing_refusal'
+source = { table = 'r1289.json', id = 'M17_mirror_listing_refusal' }
+description = 'mirror_downloads.plan (existing guard, sample): a playlist the provider cannot list names nothing for its tracks'
+file = 'src/cratekit/organize/mirror_downloads.py'
+surface = 'user'
+moved = 'the not queued entry mirror_downloads.plan names for a playlist the provider cannot list is now built by the shared _not_queued helper instead of an inline dict; the same loop over its tracks is emptied'
+tests = ['tests/test_organize_mirror_edits_u204.py']
+old = '''
+                _not_queued(track, title, f"the provider could not list the playlist: {exc.cause.message}")
+                for track in sorted(set(tracks))
+'''
+new = '''
+                _not_queued(track, title, f"the provider could not list the playlist: {exc.cause.message}")
+                for track in ()
+'''
 
-[[dropped]]
-id = "u150.M8_refusal_kept"
+[[rows]]
+id = 'u150.M8_refusal_kept'
+source = { table = 'u150.json', id = 'M8_refusal_kept' }
 description = "mirror.apply: raise a playlist removal refused with nothing sent, so one unvouched playlist stops the folder's apply"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/mirror.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = 'src/cratekit/modules/outbound/mirror.py'
+surface = 'user'
+moved = 'the retire loop in mirror.apply now keeps a refused removal through the _kept helper it shares with the track removals, which raises any other refusal itself; the same keep and continue at the retire call site are replaced by a raise'
+tests = ['tests/test_organize_mirror_inbox.py']
+old = '''
+            _kept(exc, name, done)
+            continue
+        ledger.forget_mirror_playlist'''
+new = '''
+            raise
+        ledger.forget_mirror_playlist'''
 
-[[dropped]]
-id = "u255.C4_held_before_read_and_playlist_keeps_the_hold"
+[[rows]]
+id = 'u255.C4_held_before_read_and_playlist_keeps_the_hold'
+source = { table = 'u255.json', id = 'C4_held_before_read_and_playlist_keeps_the_hold' }
 description = "M4 with _playlist's drop removed too: a failed tracks read leaves the opened object held, and the next membership read reuses nothing that drops it, drive H of round one"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/tidal_account.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = 'src/cratekit/modules/outbound/tidal_account.py'
+surface = 'user'
+moved = "the span from _playlist's dropped hold to _membership's open is shorter now, with _listed moved out from between them and the _held docstring cut down; the same two edits are made, the drop in _playlist removed and the hold taken before the tracks read"
+tests = ['tests/test_outbound_add_requests.py']
+old = '''
+        self._opened.pop(playlist_id, None)
+        doing = f"open the playlist {playlist_id}"
+        found = self._call(doing, lambda: self._session.playlist(playlist_id))
+        if found is _ABSENT or found is None:
+            raise account.provider_failure(
+                LookupError(f"the provider has no playlist {playlist_id!r}"), doing
+            )
+        return found
 
-[[dropped]]
-id = "r572.L1_local_track_drop_album"
+    def _held(self, playlist_id: str) -> Any:
+        """The playlist's held object, opened through :meth:`_playlist` only if none is held.
+
+        ONE OPEN FOR A RUN OF ADDS (U255): an open is two GETs and the client's
+        add reads the playlist again after its POST, so opening per add cost
+        four requests a track. THE TAG AND THE POSITION COME FROM ONE ANSWER:
+        the client's add sends the object's tag and puts the track at its
+        length, both set by one read, which is why :meth:`_membership` reads the
+        tracks through a copy and holds nothing until that read succeeds. A
+        stale held tag is refused 412 with nothing changed (Sitting 62), and
+        :meth:`add_to_playlist` then opens afresh.
+        """
+        held = self._opened.get(playlist_id)
+        if held is None:
+            held = self._playlist(playlist_id)
+            self._opened[playlist_id] = held
+        return held
+
+    def _membership(self, playlist_id: str) -> list[str]:
+        if playlist_id not in self._members:
+            opened = self._playlist(playlist_id)
+'''
+new = '''
+        doing = f"open the playlist {playlist_id}"
+        found = self._call(doing, lambda: self._session.playlist(playlist_id))
+        if found is _ABSENT or found is None:
+            raise account.provider_failure(
+                LookupError(f"the provider has no playlist {playlist_id!r}"), doing
+            )
+        return found
+
+    def _held(self, playlist_id: str) -> Any:
+        """The playlist's held object, opened through :meth:`_playlist` only if none is held.
+
+        ONE OPEN FOR A RUN OF ADDS (U255): an open is two GETs and the client's
+        add reads the playlist again after its POST, so opening per add cost
+        four requests a track. THE TAG AND THE POSITION COME FROM ONE ANSWER:
+        the client's add sends the object's tag and puts the track at its
+        length, both set by one read, which is why :meth:`_membership` reads the
+        tracks through a copy and holds nothing until that read succeeds. A
+        stale held tag is refused 412 with nothing changed (Sitting 62), and
+        :meth:`add_to_playlist` then opens afresh.
+        """
+        held = self._opened.get(playlist_id)
+        if held is None:
+            held = self._playlist(playlist_id)
+            self._opened[playlist_id] = held
+        return held
+
+    def _membership(self, playlist_id: str) -> list[str]:
+        if playlist_id not in self._members:
+            opened = self._playlist(playlist_id)
+            self._opened[playlist_id] = opened
+'''
+
+[[rows]]
+id = 'r572.L1_local_track_drop_album'
+source = { table = 'r572.json', id = 'L1_local_track_drop_album' }
 description = "local_tracks stops carrying the file's album"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/source.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = 'src/cratekit/modules/outbound/source.py'
+surface = 'user'
+moved = 'local_tracks now builds each LocalTrack on one line from the shared _identified rows, with the other fields positional; the same album keyword is dropped'
+tests = ['tests/test_outbound_workers.py']
+old = '''
+        LocalTrack(track_id, entry.name, entry.artist, found.isrc, title, album=found.album)
+'''
+new = '''
+        LocalTrack(track_id, entry.name, entry.artist, found.isrc, title)
+'''
 
-[[dropped]]
-id = "r358.A4_false_answer"
-description = "Accept a False answer as a rename that landed"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/tidal_account.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+[[rows]]
+id = 'r358.A4_false_answer'
+source = { table = 'r358.json', id = 'A4_false_answer' }
+description = 'Accept a False answer as a rename that landed'
+file = 'src/cratekit/modules/outbound/tidal_account.py'
+surface = 'user'
+moved = 'the rename refusal in tidal_account is the same check with the provider_failure call rewrapped, its doing argument joined to the message line; the same False case is dropped'
+tests = ['tests/test_outbound_tidal_account.py']
+old = '''
+        if accepted is False or accepted is _ABSENT:
+            raise account.provider_failure(
+                RuntimeError("the provider did not accept the new playlist title"), doing
+'''
+new = '''
+        if accepted is _ABSENT:
+            raise account.provider_failure(
+                RuntimeError("the provider did not accept the new playlist title"), doing
+'''
 
-[[dropped]]
-id = "r850-a.E2_unmatched_count"
-description = "export.summary: count unmatched as the reason sentences, so a row the account said nothing about is not counted"
-reason = "unplaced: the text is gone in src/cratekit/export/cli.py and occurs once in src/cratekit/favorites/cli.py, but it stood in 2 places at c9192091, so the one left may be another guard's line and not this one moved. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+[[rows]]
+id = 'r850-a.E2_unmatched_count'
+source = { table = 'r850-a.json', id = 'E2_unmatched_count' }
+description = 'export.summary: count unmatched as the reason sentences, so a row the account said nothing about is not counted'
+file = 'src/cratekit/export/cli.py'
+surface = 'user'
+moved = "export.summary's counts were folded from a multi line dict onto one line in the same function, where the old line had a twin in favorites/cli.py; the same unmatched count is taken from the reasons"
+tests = ['tests/test_outbound_workers.py']
+old = '''
+        "counts": {"written": len(added), "already": len(already), "unmatched": len(unmatched)},
+'''
+new = '''
+        "counts": {"written": len(added), "already": len(already), "unmatched": len(reasons)},
+'''
 
-[[dropped]]
-id = "r850-a.E1_written_count"
+[[rows]]
+id = 'r850-a.E1_written_count'
+source = { table = 'r850-a.json', id = 'E1_written_count' }
 description = "export.summary: count written as the already list's length, so the answer's written count is the wrong list"
-reason = "unplaced: the text is gone in src/cratekit/export/cli.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+file = 'src/cratekit/export/cli.py'
+surface = 'user'
+moved = "export.summary's counts were folded from a multi line dict onto one line in the same function; the same written count is taken from the already list"
+tests = ['tests/test_outbound_tidal_account.py', 'tests/test_outbound_workers.py']
+old = '''
+        "counts": {"written": len(added), "already": len(already), "unmatched": len(unmatched)},
+'''
+new = '''
+        "counts": {"written": len(already), "already": len(already), "unmatched": len(unmatched)},
+'''
 
-[[dropped]]
-id = "u131.K6_adopt_not_made"
-description = "ledger.reserve_kind_folder: record an adopted folder as made here"
-reason = "unplaced: the text is gone in src/cratekit/modules/outbound/ledger.py and occurs once in 0 other files. Anchor it by hand, a row with this source, the new text and a moved reason, or map it to the row that covers it."
+[[rows]]
+id = 'u131.K6_adopt_not_made'
+source = { table = 'u131.json', id = 'K6_adopt_not_made' }
+description = 'ledger.reserve_kind_folder: record an adopted folder as made here'
+file = 'src/cratekit/modules/outbound/ledger_reserve.py'
+surface = 'user'
+moved = "reserve_kind_folder moved into ledger_reserve and records through _reserve_folder, which passes created False for an adopted folder to the kind's own keep lambda; that lambda's record is made to say created True, so an adopted kind folder is again recorded as made here and the answer is unchanged"
+tests = ['tests/test_playlist_kinds.py']
+old = '''
+            {kind: {"folder_id": folder_id, "created": created}}
+'''
+new = '''
+            {kind: {"folder_id": folder_id, "created": True}}
+'''
