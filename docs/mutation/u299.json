@@ -12,7 +12,7 @@
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 5,
   "known_failures": 252,
-  "known_source": "/tmp/claude-0/-home-user-cratekit/a68aef2e-e1ba-515e-9ac0-c546285fbb37/scratchpad/known-failures-replay.txt",
+  "known_source": "<scratchpad>/known-failures-replay.txt",
   "temp_place": "disk",
   "temp_on_disk": 0,
   "baseline_source": "measured",
