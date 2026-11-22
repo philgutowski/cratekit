@@ -1,14 +1,10 @@
 """R-1305. A rejected session whose answer body is not JSON still asks for a login.
 
-Found at round two of U220's review. The provider client decodes an error
-answer's body inside its own handler of the HTTP error, so a 401 or a 403 whose
-body is a gateway's page surfaces as a decode error with the HTTP error as its
-context, three links down, and no declared cause. Both readers of a rejected
-session walked the declared cause chain alone, so that person was told the
-provider was unavailable and to wait, for an outage that was not happening.
-
-Every failure here is raised by the installed client's own request handler
-(``tests.provider_answers``), not built by hand, so the chain is the client's.
+The provider client decodes an error answer's body inside its own handler of
+the HTTP error, so a 401 or 403 whose body is a gateway's page surfaces as a
+decode error with the HTTP error as its context, three links down, and no
+declared cause. Every failure here is raised by the installed client's own
+request handler (``tests.provider_answers``), so the chain is the client's.
 The two readers: ``account.provider_failure`` for a call after login, and
 ``provider_session.client_session`` for the login itself.
 """
@@ -20,13 +16,13 @@ from collections.abc import Callable
 import pytest
 
 from cratekit.acquire import provider_session
-from cratekit.core import config, secrets
+from cratekit.core import secrets
 from cratekit.core.cause import CratekitError, Scope
 from cratekit.core.exit_codes import Remedy
-from cratekit.modules.outbound import account, source
+from cratekit.modules.outbound import account
 from tests.provider_answers import HTML, JSON_BODY, client_failure
-from tests.test_config import valid_data
-from tests.test_outbound_tidal_account import STORED, FakeClient, adapter
+from tests.test_outbound_tidal_account import STORED, FakeClient, adapter, use_client
+from tests.test_outbound_tidal_account import installed as installed  # noqa: PLC0414 - fixture
 
 #: Answers that judge the session, each with a body the client can and cannot read.
 REJECTED = [
@@ -54,13 +50,11 @@ class AuthenticationError(Exception):
 class Looping(ValueError):
     """A failure whose links lead back to it, and that will not be walked forever.
 
-    A walk with no cycle guard does not raise, it spins, and a spinning test
-    hangs the suite and every mutation row after it. So each read of a link
-    through Python is counted, and past a bound far above any honest walk's
-    the read raises instead, once, so an unguarded walk fails in milliseconds
-    and the report that formats the failure can still read the chain. The
-    links themselves are the interpreter's own fields, set through the base
-    descriptors, so the chain is a real one.
+    A walk with no cycle guard spins, which would hang the suite and every
+    mutation row after it. So each read of a link is counted, and past a bound
+    far above any honest walk's the read raises, once, so an unguarded walk
+    fails in milliseconds. The links are the interpreter's own fields, set
+    through the base descriptors, so the chain is a real one.
     """
 
     #: Reads of a link past which the walk is taken not to end.
@@ -110,11 +104,9 @@ def cyclic() -> Looping:
 def inside_a_refusal(later: Callable[[], Exception]) -> Exception:
     """``later``'s failure, raised while a rejected session's refusal is being handled.
 
-    The shape ``core.cause._chain`` refuses to read context over: a handler
-    that caught a refusal and then met an unrelated failure. The refusal is
+    The shape ``core.cause._chain`` refuses to read context over. The refusal is
     raised from the 401 as the adapter's ``_call`` raises it, so the 401 is
-    reachable under it and only the walk's refusal limit keeps it out (round
-    one's review: raised bare, the limit could be removed with this green).
+    reachable under it and only the walk's refusal limit keeps it out.
     """
     rejected = client_failure(401, HTML)
     refusal = account.provider_failure(rejected, "heart the track 8")
@@ -136,63 +128,48 @@ def auth_error_as_context() -> Exception:
             return exc
 
 
-@pytest.fixture
-def installed(tmp_path, monkeypatch) -> config.Config:
-    root = tmp_path / "library"
-    (root / "Music").mkdir(parents=True)
-    (root / "db").mkdir(parents=True)
-    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
-    built = config.from_dict(valid_data(root, profile={"name": "full"}))
-    config.save(built)
-    config.reset_cache()
-    source.forget_libraries()
-    yield built
-    source.forget_libraries()
-
-
 def login_with(monkeypatch, failure: Exception) -> FakeClient:
-    client = FakeClient(login_raises=failure)
-    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    client = use_client(monkeypatch, FakeClient(login_raises=failure))
     secrets.set_json(secrets.Credential.PROVIDER_SESSION, dict(STORED))
     return client
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 0. The chain the client makes, measured, so the tests below test that one
-# ═══════════════════════════════════════════════════════════════════════════
+def heart_refused(status: int, body: bytes):
+    """The cause of a heart whose two attempts the provider answers ``status`` with ``body``."""
+    client = FakeClient()
+    client.user.favorites.fail = [client_failure(status, body), client_failure(status, body)]
+    with pytest.raises(CratekitError) as excinfo:
+        adapter(client).add_heart("8")
+    return excinfo.value.cause
+
+
+def reason_of(failure: BaseException) -> str:
+    return account.provider_failure(failure, "heart the track 8").cause.reason
+
+
+# ── 0. the chain the client makes, measured, so the tests below test that one ──
 
 
 def test_a_401_whose_body_is_not_json_carries_its_status_only_as_context():
     """If the client ever declares the cause, this test changes, and R-1305 with it."""
-    failure = client_failure(401, HTML)
-
     links = []
-    current: BaseException | None = failure
+    current: BaseException | None = client_failure(401, HTML)
     while current is not None:
         links.append(current)
         assert current.__cause__ is None
         current = current.__context__
-
     statuses = [getattr(getattr(one, "response", None), "status_code", None) for one in links]
     assert statuses[0] is None
     assert statuses[-1] == 401
     assert len(links) > 2
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 1. A call after login: account.provider_failure
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 1. a call after login: account.provider_failure ─────────────────────────
 
 
 @pytest.mark.parametrize(("status", "body"), REJECTED)
 def test_a_session_rejected_mid_sweep_asks_for_a_login_whatever_the_body(status, body):
-    client = FakeClient()
-    client.user.favorites.fail = [client_failure(status, body), client_failure(status, body)]
-
-    with pytest.raises(CratekitError) as excinfo:
-        adapter(client).add_heart("8")
-
-    cause = excinfo.value.cause
+    cause = heart_refused(status, body)
     assert cause.reason == "credential-missing"
     assert cause.remediation.remedy == Remedy.REAUTHENTICATE_PROVIDER
     assert cause.scope is Scope.ITEM
@@ -200,72 +177,45 @@ def test_a_session_rejected_mid_sweep_asks_for_a_login_whatever_the_body(status,
 
 @pytest.mark.parametrize(("status", "body"), UNAVAILABLE)
 def test_a_server_error_mid_sweep_is_still_a_wait_whatever_the_body(status, body):
-    client = FakeClient()
-    client.user.favorites.fail = [client_failure(status, body), client_failure(status, body)]
-
-    with pytest.raises(CratekitError) as excinfo:
-        adapter(client).add_heart("8")
-
-    cause = excinfo.value.cause
+    cause = heart_refused(status, body)
     assert cause.reason == "unavailable-transient"
     assert cause.remediation.remedy == Remedy.RETRY_LATER
 
 
 def test_a_rejection_whose_body_is_not_json_drops_the_held_account(installed, monkeypatch):
-    client = FakeClient()
-    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
-    secrets.set_json(secrets.Credential.PROVIDER_SESSION, dict(STORED))
+    login_with(monkeypatch, None)
     held = account.resolve(installed)
-
     account.provider_failure(client_failure(401, HTML), "heart the track 8")
-
     assert account.resolve(installed) is not held
 
 
 def test_a_server_error_whose_body_is_not_json_keeps_the_held_account(installed, monkeypatch):
-    client = FakeClient()
-    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
-    secrets.set_json(secrets.Credential.PROVIDER_SESSION, dict(STORED))
+    login_with(monkeypatch, None)
     held = account.resolve(installed)
-
     account.provider_failure(client_failure(503, HTML), "heart the track 8")
-
     assert account.resolve(installed) is held
 
 
 def test_a_cyclic_chain_after_login_ends_and_is_a_wait():
-    refusal = account.provider_failure(cyclic(), "heart the track 8")
-
-    assert refusal.cause.reason == "unavailable-transient"
+    assert reason_of(cyclic()) == "unavailable-transient"
 
 
 def test_an_outage_met_while_handling_a_rejected_session_is_a_wait_not_a_login():
     """A context link into a refusal the product raised is not followed."""
-    later = inside_a_refusal(lambda: client_failure(503, HTML))
-
-    assert account.provider_failure(later, "heart the track 9").cause.reason == (
-        "unavailable-transient"
-    )
+    assert reason_of(inside_a_refusal(lambda: client_failure(503, HTML))) == "unavailable-transient"
 
 
 def test_an_authentication_error_reached_only_as_context_is_not_a_rejected_session():
     """A status is the provider's word; a name reached only as context is a guess."""
-    assert account.provider_failure(auth_error_as_context(), "heart the track 8").cause.reason == (
-        "unavailable-transient"
-    )
+    assert reason_of(auth_error_as_context()) == "unavailable-transient"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 2. The login itself: provider_session.client_session
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 2. the login itself: provider_session.client_session ────────────────────
 
 
-@pytest.mark.parametrize(
-    ("status", "body"), [*REJECTED, pytest.param(400, HTML, id="400-html")]
-)
+@pytest.mark.parametrize(("status", "body"), [*REJECTED, pytest.param(400, HTML, id="400-html")])
 def test_a_login_rejected_whatever_the_body_asks_for_a_login(monkeypatch, status, body):
     login_with(monkeypatch, client_failure(status, body))
-
     with pytest.raises(provider_session.AdapterAuthFailed):
         provider_session.client_session()
 
@@ -273,49 +223,37 @@ def test_a_login_rejected_whatever_the_body_asks_for_a_login(monkeypatch, status
 @pytest.mark.parametrize(("status", "body"), UNAVAILABLE)
 def test_a_login_the_server_failed_whatever_the_body_is_a_wait(monkeypatch, status, body):
     login_with(monkeypatch, client_failure(status, body))
-
     with pytest.raises(provider_session.ProviderUnavailable):
         provider_session.client_session()
-
     assert secrets.get_json(secrets.Credential.PROVIDER_SESSION) == STORED
 
 
 def test_a_login_rejected_with_a_page_tells_the_person_to_log_in_again(installed, monkeypatch):
     """What a person reads: the account's refusal, not a wait."""
     login_with(monkeypatch, client_failure(401, HTML))
-
     with pytest.raises(CratekitError) as excinfo:
         account.resolve(installed)
-
-    cause = excinfo.value.cause
-    assert cause.reason == "credential-missing"
-    assert cause.remediation.remedy == Remedy.REAUTHENTICATE_PROVIDER
+    assert excinfo.value.cause.reason == "credential-missing"
+    assert excinfo.value.cause.remediation.remedy == Remedy.REAUTHENTICATE_PROVIDER
 
 
-def test_a_cyclic_chain_at_login_ends_and_is_a_wait(monkeypatch):
-    login_with(monkeypatch, cyclic())
-
+@pytest.mark.parametrize(
+    "failure",
+    [
+        pytest.param(cyclic, id="cyclic"),
+        pytest.param(lambda: inside_a_refusal(lambda: client_failure(503, HTML)), id="outage"),
+        pytest.param(auth_error_as_context, id="context"),
+    ],
+)
+def test_a_login_failure_that_is_no_rejection_is_a_wait(monkeypatch, failure):
+    """A cyclic chain, an outage met while a rejection was handled, and an authentication
+    error reached only as context: each a wait at login, as after it."""
+    login_with(monkeypatch, failure())
     with pytest.raises(provider_session.ProviderUnavailable):
         provider_session.client_session()
 
 
-def test_a_login_outage_met_while_handling_a_rejected_session_is_a_wait(monkeypatch):
-    login_with(monkeypatch, inside_a_refusal(lambda: client_failure(503, HTML)))
-
-    with pytest.raises(provider_session.ProviderUnavailable):
-        provider_session.client_session()
-
-
-def test_a_login_authentication_error_reached_only_as_context_is_a_wait(monkeypatch):
-    login_with(monkeypatch, auth_error_as_context())
-
-    with pytest.raises(provider_session.ProviderUnavailable):
-        provider_session.client_session()
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 3. The walk itself
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 3. the walk itself ──────────────────────────────────────────────────────
 
 
 def test_the_walk_reaches_every_link_once_with_the_declared_chain_first():
@@ -328,10 +266,7 @@ def test_the_walk_reaches_every_link_once_with_the_declared_chain_first():
     outer = ValueError("outer, the failure")
     outer.__cause__ = inner
     outer.__context__ = inner
-
-    walked = list(provider_session.failure_links(outer))
-
-    assert [(str(link), declared) for link, declared in walked] == [
+    assert [(str(link), declared) for link, declared in provider_session.failure_links(outer)] == [
         ("outer, the failure", True),
         ("inner, declared", True),
         ("handled, a context", False),
@@ -339,19 +274,15 @@ def test_the_walk_reaches_every_link_once_with_the_declared_chain_first():
     ]
 
 
-@pytest.mark.parametrize(("status", "body"), [pytest.param(401, HTML, id="401-html")])
 def test_a_rejection_whose_body_is_not_json_rewrapped_by_the_client_still_asks_for_a_login(
-    monkeypatch, status, body
+    monkeypatch,
 ):
     """The context to follow can hang off a declared cause, not only the failure itself."""
     try:
-        raise RuntimeError("the client's own error") from client_failure(status, body)
+        raise RuntimeError("the client's own error") from client_failure(401, HTML)
     except RuntimeError as exc:
         wrapped = exc
-
-    assert account.provider_failure(wrapped, "heart the track 8").cause.reason == (
-        "credential-missing"
-    )
+    assert reason_of(wrapped) == "credential-missing"
     login_with(monkeypatch, wrapped)
     with pytest.raises(provider_session.AdapterAuthFailed):
         provider_session.client_session()

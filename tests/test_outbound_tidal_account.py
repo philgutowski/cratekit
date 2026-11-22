@@ -1,17 +1,13 @@
 """U63: the provider account adapter behind the outbound seam, driven against fakes.
 
-Every scenario the unit's brief names is here, and none of them reaches the
-provider. The client is a fake injected at ``provider_session.CLIENT_FACTORY``,
-the one place a client is built, so the adapter under test is the shipped class
-over a stand in for the network. The live sweep and the live export belong to the
-attended sitting and are recorded in ``docs/cutover.md``, not claimed here.
+The client is a fake injected at ``provider_session.CLIENT_FACTORY``, the one
+place a client is built, so the adapter under test is the shipped class over a
+stand in for the network; nothing here reaches the provider.
 
-**ONE SUBSTITUTION BEYOND THE CLIENT, AND IT IS NAMED.** The end to end drives
-give the export's rows an ISRC through ``source.local_tracks`` and
-``source.heart_candidates``, because a rekordbox collection export carries none
-and the adapter matches nothing without one. That is the shipped build's real
-behaviour and it is a residual, not something this file hides: the drives with no
-ISRC are here too, and they match nothing.
+**ONE SUBSTITUTION BEYOND THE CLIENT.** Some end to end drives give the rows an
+ISRC through ``source.local_tracks`` and ``source.heart_candidates``, since a
+rekordbox collection export carries none; the drives with no ISRC are here too,
+and they match nothing.
 
 D1 applies. Nothing here names a real volume, a real person, or a real track.
 """
@@ -36,7 +32,8 @@ from tests._containers import synth_container
 from tests.cli_drive import approve_and_queue, drive, drive_human
 from tests.test_config import valid_data
 
-ADAPTER_SOURCE = Path(tidal_account.__file__)
+#: Every module the adapter is made of: the structural guards read them all.
+ADAPTER_SOURCES = sorted(Path(tidal_account.__file__).parent.glob("tidal_*.py"))
 
 STORED = {
     "token_type": "Bearer",
@@ -46,9 +43,7 @@ STORED = {
 }
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Fakes: a provider client that answers from memory and counts what it is asked
-# ═══════════════════════════════════════════════════════════════════════════
+# ── fakes: a provider client that answers from memory and counts what it is asked ──
 
 
 class ObjectNotFound(Exception):
@@ -72,15 +67,10 @@ class Artist:
 
 
 class Track:
-    """A provider track in the client's own shape: a name, a version field of its
-    own, a first artist and the list of every artist billed."""
+    """A provider track in the client's shape: name, version, first artist, every artist billed."""
 
     def __init__(
-        self,
-        track_id: str,
-        name: str = "",
-        version: str | None = None,
-        artists: tuple[str, ...] = (),
+        self, track_id: str, name: str = "", version: str | None = None, artists: tuple = ()
     ) -> None:
         self.id = int(track_id)
         self.name = name
@@ -92,11 +82,7 @@ class Track:
 
 
 def withdrawn(track: Track) -> Track:
-    """The track as the client hands out one the provider will not play.
-
-    The client reads ``version`` only inside ``if self.available``, so a
-    withdrawn extended mix arrives with no version and reads as the plain record.
-    """
+    """The track as the client hands out one the provider will not play: no version read."""
     track.available = False
     track.version = None
     return track
@@ -152,17 +138,12 @@ class Playlist:
 
 
 class ForeignPlaylist:
-    """A playlist the session does not own, which the client hands out unedited.
+    """A playlist the session does not own: the client hands it out with no ``edit``."""
 
-    The client returns a read only object for somebody else's playlist and an
-    editable one for the account's own, so the absence of ``edit`` is the shape
-    a rename meets rather than a raise.
-    """
-
-    def __init__(self, playlist_id: str, name: str = "") -> None:
+    def __init__(self, playlist_id: str, members: list[str] = (), name: str = "") -> None:
         self.id = playlist_id
         self.name = name
-        self.members: list[str] = []
+        self.members: list[str] = list(members)
 
     def tracks(self, limit: int | None = None, offset: int = 0) -> list[Track]:
         del limit, offset
@@ -203,8 +184,7 @@ class User:
         if self.create_fail is not None:
             raise self.create_fail
         playlist = Playlist(f"00000000-0000-4000-8000-{len(self.created):012d}")
-        # The queued refusals belong to this playlist alone, so a test that
-        # creates two cannot have the first one's leftovers reach the second.
+        # The queued refusals belong to this playlist alone.
         playlist.private_fail = self.private_fail[:]
         self.private_fail.clear()
         self._client.playlists[playlist.id] = playlist
@@ -240,14 +220,11 @@ class FakeClient:
         return True
 
     def get_tracks_by_isrc(self, isrc: str) -> list[Track]:
-        """``isrcs`` maps a code to identifiers, or to whole tracks when a test
-        needs the provider's own spelling of each release."""
+        """``isrcs`` maps a code to identifiers, or to whole tracks for the provider's spelling."""
         self.isrc_asked.append(isrc)
         if isrc not in self.isrcs:
             raise ObjectNotFound(isrc)
-        return [
-            one if isinstance(one, Track) else Track(one) for one in self.isrcs[isrc]
-        ]
+        return [one if isinstance(one, Track) else Track(one) for one in self.isrcs[isrc]]
 
     def track(self, track_id: str) -> Track:
         self.track_asked.append(track_id)
@@ -280,10 +257,15 @@ def adapter(client: FakeClient) -> tidal_account.TidalAccount:
 
 
 def another_catalogue(client: FakeClient) -> tidal_account.TidalAccount:
-    """An adapter over a catalogue that files the test's one ISRC differently
-    from the one before it in the same test (U206). A different catalogue, not
-    the same one asked again, so it shares no remembered ISRC answer."""
+    """An adapter sharing no remembered ISRC answer (U206), for a catalogue filed differently."""
     return tidal_account.TidalAccount(client, sleep=no_sleep, cache=isrc_cache.Cache(days=0))
+
+
+def refused(call):
+    """The cause ``call`` raises."""
+    with pytest.raises(CratekitError) as excinfo:
+        call()
+    return excinfo.value.cause
 
 
 @pytest.fixture
@@ -300,19 +282,13 @@ def installed(tmp_path, monkeypatch) -> config.Config:
     source.forget_libraries()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 1. The seam
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 1. the seam ─────────────────────────────────────────────────────────────
 
 
-def test_a_recorded_session_resolves_the_adapter_and_the_build_is_bound(
-    installed, monkeypatch
-):
+def test_a_recorded_session_resolves_the_adapter_and_the_build_is_bound(installed, monkeypatch):
     client = use_client(monkeypatch, FakeClient())
     record_session()
-
     found = account.resolve(installed)
-
     assert account.bound() is True
     assert isinstance(found, tidal_account.TidalAccount)
     assert all(callable(getattr(found, name)) for name in outbound_fakes.PROTOCOL_METHODS)
@@ -322,11 +298,9 @@ def test_a_recorded_session_resolves_the_adapter_and_the_build_is_bound(
 def test_one_process_logs_in_once_however_many_items_resolve(installed, monkeypatch):
     client = use_client(monkeypatch, FakeClient())
     record_session()
-
     first = account.resolve(installed)
     assert account.resolve(installed) is first
     assert client.logins == 1
-
     account.forget()
     assert account.resolve(installed) is not first
     assert client.logins == 2
@@ -336,26 +310,16 @@ def test_with_no_session_the_seam_refuses_the_credential_and_logs_nothing_in(
     installed, monkeypatch
 ):
     client = use_client(monkeypatch, FakeClient())
-
-    with pytest.raises(CratekitError) as excinfo:
-        account.resolve(installed)
-
-    assert excinfo.value.cause.reason == "credential-missing"
+    assert refused(lambda: account.resolve(installed)).reason == "credential-missing"
     assert client.logins == 0
 
 
-def test_a_session_removed_after_an_open_is_refused_rather_than_reused(
-    installed, monkeypatch
-):
+def test_a_session_removed_after_an_open_is_refused_rather_than_reused(installed, monkeypatch):
     use_client(monkeypatch, FakeClient())
     record_session()
     account.resolve(installed)
     monkeypatch.setattr(secrets, "exists", lambda name: False)
-
-    with pytest.raises(CratekitError) as excinfo:
-        account.resolve(installed)
-
-    assert excinfo.value.cause.reason == "credential-missing"
+    assert refused(lambda: account.resolve(installed)).reason == "credential-missing"
 
 
 @pytest.mark.parametrize(
@@ -371,18 +335,12 @@ def test_a_login_that_fails_names_whether_to_log_in_again_or_wait(
 ):
     use_client(monkeypatch, FakeClient(login_raises=failure))
     record_session()
-
-    with pytest.raises(CratekitError) as excinfo:
-        account.resolve(installed)
-
-    assert excinfo.value.cause.reason == reason
+    assert refused(lambda: account.resolve(installed)).reason == reason
     with pytest.raises(CratekitError):
         account.resolve(installed)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 2. Matching is exact or it is None
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 2. matching is exact or it is None ──────────────────────────────────────
 
 
 def test_an_isrc_naming_one_track_is_the_match():
@@ -392,16 +350,14 @@ def test_an_isrc_naming_one_track_is_the_match():
 
 
 def test_an_isrc_naming_two_tracks_is_no_match_rather_than_the_first():
-    client = FakeClient(
-        isrcs={"AA0000000001": ["101", "202"]}, tracks={"101"}
-    )
+    client = FakeClient(isrcs={"AA0000000001": ["101", "202"]}, tracks={"101"})
     found = adapter(client).match_track(
         identity="https://tidal.com/browse/track/101", isrc="AA0000000001"
     )
     assert found is None
 
 
-# ── R-356: several releases under one ISRC ─────────────────────────────────
+# ── R-356: several releases under one ISRC ──
 
 CODE = "AA0000000001"
 
@@ -410,20 +366,23 @@ def releases(*tracks: Track) -> FakeClient:
     return FakeClient(isrcs={CODE: list(tracks)})
 
 
-def match_row(found: tidal_account.TidalAccount, title: str, artist: str = "Nova Reef"):
-    return found.match_track(identity="7", isrc=CODE, title=title, artist=artist)
+def sun(track_id: str, version: str | None = None, *artists: str, name: str = "Sun Path") -> Track:
+    """A release named ``name``, billed to Nova Reef unless ``artists`` says otherwise."""
+    return Track(track_id, name, version, artists or ("Nova Reef",))
+
+
+def unreadable(track_id: str) -> Track:
+    return Track(track_id, "", None, ())
+
+
+def match_row(found: tidal_account.TidalAccount, title: str, artist: str = "Nova Reef", **more):
+    return found.match_track(identity="7", isrc=CODE, title=title, artist=artist, **more)
 
 
 def test_the_measured_cost_three_releases_of_one_isrc_resolve_to_the_rows_version():
-    """The fourth sitting's shape: a single, an EP cut and a compilation track.
-
-    Before R-356 every one of these rows came back unmatched, which was two of
-    four export rows and most of fifty favourites on a real library.
-    """
+    """The fourth sitting's shape: a single, an EP cut and a compilation track (R-356)."""
     client = releases(
-        Track("101", "Sun Path", "Radio Edit", ("Nova Reef",)),
-        Track("202", "Sun Path", "Extended Mix", ("Nova Reef",)),
-        Track("303", "Sun Path", "Ten Year Remaster", ("Nova Reef",)),
+        sun("101", "Radio Edit"), sun("202", "Extended Mix"), sun("303", "Ten Year Remaster")
     )
     found = adapter(client)
     assert match_row(found, "Sun Path (Extended Mix)") == "202"
@@ -432,10 +391,8 @@ def test_the_measured_cost_three_releases_of_one_isrc_resolve_to_the_rows_versio
 
 
 def test_a_code_asked_to_agree_lists_its_one_track_only_when_it_is_the_row():
-    """R-879: a code read off a library file's tag, which may be another
-    recording's, names its one provider track only when that track agrees."""
-    client = releases(Track("101", "Sun Path", None, ("Nova Reef",)))
-    found = adapter(client)
+    """R-879: a code read off a file's tag names its one track only when that track agrees."""
+    found = adapter(releases(sun("101")))
     assert found.match_track(
         identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", agree=True
     ) == "101"
@@ -444,32 +401,25 @@ def test_a_code_asked_to_agree_lists_its_one_track_only_when_it_is_the_row():
     ) is None
     assert "none of them agrees" in found.unmatched_reason("8")
     # Without it, one track is the match as it always was.
-    assert found.match_track(identity="9", isrc=CODE, title="Moon Path", artist="Nova Reef") == "101"
+    assert found.match_track(
+        identity="9", isrc=CODE, title="Moon Path", artist="Nova Reef"
+    ) == "101"
 
 
 def test_a_row_with_no_version_agrees_with_an_original_mix_and_not_with_an_edit():
-    client = releases(
-        Track("101", "Sun Path", "Original Mix", ("Nova Reef",)),
-        Track("202", "Sun Path", "Radio Edit", ("Nova Reef",)),
-    )
+    client = releases(sun("101", "Original Mix"), sun("202", "Radio Edit"))
     assert match_row(adapter(client), "Sun Path") == "101"
 
 
 def test_a_version_the_provider_spells_inside_the_title_is_read_the_same_way():
     client = releases(
-        Track("101", "Sun Path - Radio Edit", None, ("Nova Reef",)),
-        Track("202", "Sun Path (Extended Mix)", None, ("Nova Reef",)),
+        sun("101", name="Sun Path - Radio Edit"), sun("202", name="Sun Path (Extended Mix)")
     )
     assert match_row(adapter(client), "Sun Path (Radio Edit)") == "101"
 
 
 def test_releases_spelled_alike_stay_unmatched_and_the_reason_counts_them():
-    client = releases(
-        Track("101", "Sun Path", None, ("Nova Reef",)),
-        Track("202", "Sun Path", None, ("Nova Reef",)),
-        Track("303", "Sun Path", "Radio Edit", ("Nova Reef",)),
-    )
-    found = adapter(client)
+    found = adapter(releases(sun("101"), sun("202"), sun("303", "Radio Edit")))
     assert match_row(found, "Sun Path") is None
     reason = found.unmatched_reason("7")
     assert f"the ISRC {CODE} names 3 provider tracks" in reason
@@ -478,10 +428,7 @@ def test_releases_spelled_alike_stay_unmatched_and_the_reason_counts_them():
 
 
 def test_among_releases_spelled_alike_the_one_already_hearted_is_the_match():
-    client = releases(
-        Track("101", "Sun Path", None, ("Nova Reef",)),
-        Track("202", "Sun Path", None, ("Nova Reef",)),
-    )
+    client = releases(sun("101"), sun("202"))
     client.user.favorites.hearts = ["202"]
     found = adapter(client)
     assert match_row(found, "Sun Path") == "202"
@@ -489,10 +436,7 @@ def test_among_releases_spelled_alike_the_one_already_hearted_is_the_match():
 
 
 def test_two_hearted_releases_spelled_alike_are_still_no_match():
-    client = releases(
-        Track("101", "Sun Path", None, ("Nova Reef",)),
-        Track("202", "Sun Path", None, ("Nova Reef",)),
-    )
+    client = releases(sun("101"), sun("202"))
     client.user.favorites.hearts = ["101", "202"]
     found = adapter(client)
     assert match_row(found, "Sun Path") is None
@@ -501,21 +445,14 @@ def test_two_hearted_releases_spelled_alike_are_still_no_match():
 
 def test_a_heart_on_a_release_the_row_does_not_name_decides_nothing():
     """The hearted one is the radio edit, and the row is the plain record."""
-    client = releases(
-        Track("101", "Sun Path", None, ("Nova Reef",)),
-        Track("202", "Sun Path", None, ("Nova Reef",)),
-        Track("303", "Sun Path", "Radio Edit", ("Nova Reef",)),
-    )
+    client = releases(sun("101"), sun("202"), sun("303", "Radio Edit"))
     client.user.favorites.hearts = ["303"]
     assert match_row(adapter(client), "Sun Path") is None
 
 
 def test_no_release_agreeing_is_no_match_and_the_hearts_are_not_read():
     """An ISRC the provider filed on another record chooses nothing, hearted or not."""
-    client = releases(
-        Track("101", "Moon Road", None, ("Nova Reef",)),
-        Track("202", "Moon Road", "Dub", ("Nova Reef",)),
-    )
+    client = releases(sun("101", name="Moon Road"), sun("202", "Dub", name="Moon Road"))
     client.user.favorites.hearts = ["101"]
     found = adapter(client)
     assert match_row(found, "Sun Path") is None
@@ -524,19 +461,13 @@ def test_no_release_agreeing_is_no_match_and_the_hearts_are_not_read():
 
 
 def test_another_artist_under_the_same_title_does_not_agree():
-    client = releases(
-        Track("101", "Sun Path", None, ("Aurora Bloom",)),
-        Track("202", "Sun Path", None, ("Nova Reef",)),
-    )
+    client = releases(sun("101", None, "Aurora Bloom"), sun("202"))
     assert match_row(adapter(client), "Sun Path") == "202"
 
 
 def test_a_row_billing_two_artists_agrees_with_a_track_billing_the_same_two():
-    client = releases(
-        Track("101", "Sun Path", None, ("Nova Reef", "Mira Vale")),
-        Track("202", "Sun Path", "Radio Edit", ("Nova Reef", "Mira Vale")),
-    )
-    found = adapter(client)
+    pair = ("Nova Reef", "Mira Vale")
+    found = adapter(releases(sun("101", None, *pair), sun("202", "Radio Edit", *pair)))
     assert match_row(found, "Sun Path", artist="Nova Reef, Mira Vale") == "101"
     assert match_row(found, "Sun Path", artist="Nova Reef & Mira Vale") == "101"
     assert match_row(found, "Sun Path", artist="Nova Reef") == "101"
@@ -548,19 +479,13 @@ def test_a_row_billing_two_artists_agrees_with_a_track_billing_the_same_two():
 
 
 def test_a_remixer_the_provider_bills_and_the_row_does_not_is_still_agreement():
-    client = releases(
-        Track("101", "Sun Path", "Kai Tern Remix", ("Nova Reef", "Kai Tern")),
-        Track("202", "Sun Path", None, ("Nova Reef",)),
-    )
+    client = releases(sun("101", "Kai Tern Remix", "Nova Reef", "Kai Tern"), sun("202"))
     assert match_row(adapter(client), "Sun Path (Kai Tern Remix)") == "101"
 
 
 def test_a_track_the_provider_will_not_play_is_never_the_choice():
     """Its version was never read, so a withdrawn extended mix looks like the plain record."""
-    client = releases(
-        Track("101", "Sun Path", "Radio Edit", ("Nova Reef",)),
-        withdrawn(Track("202", "Sun Path", "Extended Mix", ("Nova Reef",))),
-    )
+    client = releases(sun("101", "Radio Edit"), withdrawn(sun("202", "Extended Mix")))
     found = adapter(client)
     assert match_row(found, "Sun Path") is None
     reason = found.unmatched_reason("7")
@@ -570,27 +495,17 @@ def test_a_track_the_provider_will_not_play_is_never_the_choice():
 
 
 def test_a_withdrawn_release_does_not_stop_the_one_that_plays_from_being_chosen():
-    client = releases(
-        Track("101", "Sun Path", None, ("Nova Reef",)),
-        withdrawn(Track("202", "Sun Path", None, ("Nova Reef",))),
-    )
-    assert match_row(adapter(client), "Sun Path") == "101"
+    assert match_row(adapter(releases(sun("101"), withdrawn(sun("202")))), "Sun Path") == "101"
 
 
 def test_a_provider_title_that_reads_two_ways_agrees_under_either_too():
     """The same recording must resolve whichever side spelled the version with a dash."""
-    client = releases(
-        Track("101", "Sun Path - Live", None, ("Nova Reef",)),
-        Track("202", "Sun Path", "Radio Edit", ("Nova Reef",)),
-    )
+    client = releases(sun("101", name="Sun Path - Live"), sun("202", "Radio Edit"))
     assert match_row(adapter(client), "Sun Path (Live)") == "101"
 
 
 def test_a_row_carrying_no_names_chooses_nothing_and_asks_the_hearts_nothing():
-    client = releases(
-        Track("101", "Sun Path", None, ("Nova Reef",)),
-        Track("202", "Sun Path", "Radio Edit", ("Nova Reef",)),
-    )
+    client = releases(sun("101"), sun("202", "Radio Edit"))
     client.user.favorites.hearts = ["101"]
     found = adapter(client)
     assert found.match_track(identity="7", isrc=CODE) is None
@@ -602,10 +517,7 @@ def test_a_row_carrying_no_names_chooses_nothing_and_asks_the_hearts_nothing():
 
 def test_a_release_that_cannot_be_read_stops_a_lone_agreeing_one_from_being_chosen():
     """One agreeing track beside one nobody could read is not known to be the only one."""
-    client = releases(
-        Track("101", "Sun Path", None, ("Nova Reef",)),
-        Track("202", "", None, ()),
-    )
+    client = releases(sun("101"), unreadable("202"))
     found = adapter(client)
     assert match_row(found, "Sun Path") is None
     assert "1 could not be read" in found.unmatched_reason("7")
@@ -614,23 +526,14 @@ def test_a_release_that_cannot_be_read_stops_a_lone_agreeing_one_from_being_chos
 
 
 def test_a_title_that_reads_two_ways_agrees_under_either_and_still_needs_one():
-    one = releases(
-        Track("101", "Sun Path", "Live", ("Nova Reef",)),
-        Track("202", "Sun Path", "Radio Edit", ("Nova Reef",)),
-    )
+    one = releases(sun("101", "Live"), sun("202", "Radio Edit"))
     assert match_row(adapter(one), "Sun Path - Live") == "101"
-    both = releases(
-        Track("101", "Sun Path", "Live", ("Nova Reef",)),
-        Track("202", "Sun Path - Live", None, ("Nova Reef",)),
-    )
+    both = releases(sun("101", "Live"), sun("202", name="Sun Path - Live"))
     assert match_row(another_catalogue(both), "Sun Path - Live") is None
 
 
 def test_a_reason_does_not_outlive_the_match_it_was_about():
-    client = releases(
-        Track("101", "Sun Path", None, ("Nova Reef",)),
-        Track("202", "Sun Path", None, ("Nova Reef",)),
-    )
+    client = releases(sun("101"), sun("202"))
     found = adapter(client)
     assert match_row(found, "Sun Path") is None
     assert found.unmatched_reason("7")
@@ -649,7 +552,7 @@ def test_a_row_the_provider_has_never_heard_of_carries_no_reason():
 
 def test_the_names_are_never_sent_to_the_provider():
     """They choose among what the ISRC named. A search on them would heart a cover."""
-    client = releases(Track("101", "Sun Path", None, ("Nova Reef",)))
+    client = releases(sun("101"))
     client.search = lambda *args, **kwargs: pytest.fail("the adapter searched")
     assert match_row(adapter(client), "Sun Path") == "101"
     assert client.isrc_asked == [CODE] and client.track_asked == []
@@ -721,80 +624,58 @@ def test_a_row_with_neither_an_isrc_nor_a_reference_asks_the_provider_nothing():
     assert client.isrc_asked == [] and client.track_asked == []
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 3. One paged read answers every heart question
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 3. one paged read answers every heart question ──────────────────────────
+# Under U65 a complete walk ends on the empty page after the last, so a corpus
+# this small is two requests; a cache miss would show a second (100, 0).
 
 
 def test_has_heart_answers_a_whole_sweep_from_one_paged_read():
-    hearts = [str(1000 + index) for index in range(250)]
-    client = FakeClient(hearts=hearts)
+    client = FakeClient(hearts=[str(1000 + index) for index in range(250)])
     remote = adapter(client)
-
     answers = [remote.has_heart(str(1000 + index)) for index in range(400)]
-
     assert answers == [index < 250 for index in range(400)]
-    # U65: the walk now ends on the empty page at offset 300, not on the short
-    # page at 200. One extra request for the whole sweep, and the point of the
-    # test is unchanged: 400 questions cost one walk.
     assert client.user.favorites.pages == [(100, 0), (100, 100), (100, 200), (100, 300)]
 
 
 def test_a_heart_already_held_makes_no_write_and_a_new_one_makes_exactly_one():
     client = FakeClient(hearts=["5"])
     remote = adapter(client)
-
     remote.add_heart("5")
     assert client.user.favorites.added == []
-
     remote.add_heart("6")
     remote.add_heart("6")
     assert client.user.favorites.added == ["6"]
     assert remote.has_heart("6") is True
-    # One complete walk and no second one. Under U65 a complete walk over a
-    # corpus this small is two requests, the page and the empty page that ends
-    # it; a cache miss would show a second (100, 0).
     assert client.user.favorites.pages == [(100, 0), (100, 100)]
 
 
 def test_a_member_already_on_the_playlist_makes_no_write():
     playlist = Playlist("00000000-0000-4000-8000-00000000000a", ["11", "12"])
-    client = FakeClient(playlists={playlist.id: playlist})
-    remote = adapter(client)
-
+    remote = adapter(FakeClient(playlists={playlist.id: playlist}))
     remote.add_to_playlist(playlist.id, "12")
     assert playlist.adds == []
-
     remote.add_to_playlist(playlist.id, "13")
     remote.add_to_playlist(playlist.id, "13")
     assert playlist.adds == [["13"]]
     assert remote.playlist_tracks(playlist.id) == ("11", "12", "13")
-    # One complete walk and no second one. Under U65 a complete walk over a
-    # corpus this small is two requests, the page and the empty page that ends
-    # it; a cache miss would show a second (100, 0).
     assert playlist.pages == [(100, 0), (100, 100)]
 
 
 def test_a_created_playlist_returns_the_identifier_the_provider_assigned():
     client = FakeClient()
     remote = adapter(client)
-
     created = remote.create_playlist("Crate")
-
     assert created == "00000000-0000-4000-8000-000000000001"
     assert client.user.created == ["Crate"]
     assert remote.playlist_tracks(created) == ()
 
 
-# ── visibility, R-834 ───────────────────────────────────────────────────────
+# ── visibility, R-834 ──
 
 
 def test_a_created_playlist_is_made_private_once():
     client = FakeClient()
-
-    created = adapter(client).create_playlist("Crate")
-
-    playlist = client.playlists[created]
+    playlist = client.playlists[adapter(client).create_playlist("Crate")]
     assert playlist.public is False
     assert playlist.privates == 1
 
@@ -802,24 +683,18 @@ def test_a_created_playlist_is_made_private_once():
 def test_a_private_step_refused_once_is_retried_once_and_lands():
     client = FakeClient()
     client.user.private_fail.append(TimeoutError("timed out"))
-
-    created = adapter(client).create_playlist("Crate")
-
-    playlist = client.playlists[created]
+    playlist = client.playlists[adapter(client).create_playlist("Crate")]
     assert playlist.privates == 2
     assert playlist.public is False
     assert client.user.created == ["Crate"]
 
 
 def test_a_private_step_refused_twice_still_hands_back_the_one_playlist():
-    """Raising here would leave the playlist unrecorded and the next item would
-    create another; the refusal costs the visibility instead (R-849)."""
+    """Raising would leave it unrecorded and the next item would create another (R-849)."""
     client = FakeClient()
     client.user.private_fail.extend([TimeoutError("one"), TimeoutError("two")])
     remote = adapter(client)
-
     created = remote.create_playlist("Crate")
-
     assert created == "00000000-0000-4000-8000-000000000001"
     assert client.user.created == ["Crate"]
     assert client.playlists[created].privates == 2
@@ -834,20 +709,21 @@ def test_a_created_playlist_the_client_offers_no_private_call_for_is_still_retur
         id = "00000000-0000-4000-8000-0000000000aa"
 
     client.user.create_playlist = lambda title, description: Bare()
-
     assert adapter(client).create_playlist("Crate") == Bare.id
 
 
-# ── the retitle, R-358 ──────────────────────────────────────────────────────
+# ── the retitle, R-358 ──
+
+
+def warmup(kind: type = Playlist, members: list[str] = (), name: str = "Warmup"):
+    """A playlist ``pl-1`` named ``name``, and a client serving it."""
+    playlist = kind("pl-1", members, name=name)
+    return playlist, FakeClient(playlists={"pl-1": playlist})
 
 
 def test_a_rename_retitles_the_playlist_and_leaves_its_membership_alone():
-    playlist = Playlist("pl-1", ["101", "102"], name="Warmup")
-    client = FakeClient(playlists={"pl-1": playlist})
-    remote = adapter(client)
-
-    remote.rename_playlist("pl-1", "DOWNLOADED Warmup")
-
+    playlist, client = warmup(members=["101", "102"])
+    adapter(client).rename_playlist("pl-1", "DOWNLOADED Warmup")
     assert playlist.name == "DOWNLOADED Warmup"
     assert playlist.edits == [("DOWNLOADED Warmup", None)]
     assert playlist.members == ["101", "102"]
@@ -856,159 +732,116 @@ def test_a_rename_retitles_the_playlist_and_leaves_its_membership_alone():
 
 def test_a_rename_the_client_answers_false_is_the_items_cause_not_a_quiet_return():
     """A mark reported as applied over a title that never changed is the whole defect."""
-    playlist = Playlist("pl-1", name="Warmup")
+    playlist, client = warmup()
     playlist.edit_answer = False
-    client = FakeClient(playlists={"pl-1": playlist})
-
-    with pytest.raises(CratekitError) as excinfo:
-        adapter(client).rename_playlist("pl-1", "DOWNLOADED Warmup")
-
+    cause = refused(lambda: adapter(client).rename_playlist("pl-1", "DOWNLOADED Warmup"))
     assert playlist.name == "Warmup"
-    assert excinfo.value.cause.scope is Scope.ITEM
-    assert excinfo.value.cause.reason == "unavailable-transient"
+    assert cause.scope is Scope.ITEM
+    assert cause.reason == "unavailable-transient"
 
 
 def test_a_playlist_the_account_cannot_edit_refuses_rather_than_reporting_a_rename():
-    """THE MESSAGE IS THE ASSERTION, because without the guard this still raises.
-
-    A missing editor called anyway is a ``TypeError`` inside ``_call``, which
-    ``provider_failure`` translates into the same slug at the same scope with the
-    same doing string. Only the sentence naming the editor separates a refusal
-    that diagnosed the playlist from one that tripped over it and was retried.
-    """
-    foreign = ForeignPlaylist("pl-1", name="Somebody Else")
-    client = FakeClient(playlists={"pl-1": foreign})
-
-    with pytest.raises(CratekitError) as excinfo:
-        adapter(client).rename_playlist("pl-1", "DOWNLOADED Somebody Else")
-
-    assert excinfo.value.cause.scope is Scope.ITEM
-    assert "cannot be retitled by this account" in excinfo.value.cause.message
+    """THE MESSAGE IS THE ASSERTION: a missing editor called anyway fails inside ``_call``
+    with the same slug, scope and doing string; only the sentence tells them apart."""
+    foreign, client = warmup(ForeignPlaylist, name="Somebody Else")
+    cause = refused(lambda: adapter(client).rename_playlist("pl-1", "DOWNLOADED Somebody Else"))
+    assert cause.scope is Scope.ITEM
+    assert "cannot be retitled by this account" in cause.message
     assert foreign.name == "Somebody Else"
 
 
 def test_a_playlist_deleted_between_the_open_and_the_edit_is_the_items_cause():
-    """The client answers an explicit not found rather than raising through, and
-    a rename that returned here would be a mark nothing carries."""
+    """The client answers an explicit not found; returning would be a mark nothing carries."""
 
     class Vanishing(Playlist):
         def edit(self, title=None, description=None):
             raise ObjectNotFound(self.id)
 
-    playlist = Vanishing("pl-1", name="Warmup")
-    client = FakeClient(playlists={"pl-1": playlist})
-
-    with pytest.raises(CratekitError) as excinfo:
-        adapter(client).rename_playlist("pl-1", "DOWNLOADED Warmup")
-
-    assert excinfo.value.cause.scope is Scope.ITEM
+    playlist, client = warmup(Vanishing)
+    cause = refused(lambda: adapter(client).rename_playlist("pl-1", "DOWNLOADED Warmup"))
+    assert cause.scope is Scope.ITEM
     assert playlist.name == "Warmup"
 
 
 @pytest.mark.parametrize("blank", ["", "   ", "\n"])
 def test_a_rename_with_no_title_is_refused_before_the_client_sees_it(blank):
-    """The client reads a falsy title as keep the current one and answers True,
-    so an empty title would be a write that changed nothing, reported as a
-    rename that succeeded."""
-    playlist = Playlist("pl-1", name="Warmup")
-    client = FakeClient(playlists={"pl-1": playlist})
-
-    with pytest.raises(CratekitError) as excinfo:
-        adapter(client).rename_playlist("pl-1", blank)
-
+    """The client reads a falsy title as keep the current one and answers True."""
+    playlist, client = warmup()
+    cause = refused(lambda: adapter(client).rename_playlist("pl-1", blank))
     assert playlist.edits == [], "the empty title reached the client"
     assert playlist.name == "Warmup"
-    assert excinfo.value.cause.reason == "internal-error"
-    assert excinfo.value.cause.scope is Scope.SOURCE
-    # The MESSAGE, not only the slug. A refusal that says the right thing about
-    # the wrong mechanism is the shape this file's other tests already watch for.
-    assert "reads a falsy title as keep the current one" in excinfo.value.cause.message
+    assert cause.reason == "internal-error"
+    assert cause.scope is Scope.SOURCE
+    # The MESSAGE, not only the slug.
+    assert "reads a falsy title as keep the current one" in cause.message
 
 
 def test_a_title_the_caller_padded_is_written_as_the_caller_asked():
     """The emptiness test strips. The write does not."""
-    playlist = Playlist("pl-1", name="Warmup")
-    client = FakeClient(playlists={"pl-1": playlist})
-
+    playlist, client = warmup()
     adapter(client).rename_playlist("pl-1", "DOWNLOADED Warmup ")
-
     assert playlist.name == "DOWNLOADED Warmup "
 
 
 def test_a_rename_of_a_playlist_the_provider_lacks_is_the_items_cause():
-    with pytest.raises(CratekitError) as excinfo:
-        adapter(FakeClient()).rename_playlist("pl-9", "DOWNLOADED Gone")
-
-    assert excinfo.value.cause.scope is Scope.ITEM
+    cause = refused(lambda: adapter(FakeClient()).rename_playlist("pl-9", "DOWNLOADED Gone"))
+    assert cause.scope is Scope.ITEM
 
 
 def test_a_rename_the_provider_refuses_once_is_retried_once_into_the_same_title():
     """Unlike a create, a retry asks for the state the first attempt asked for."""
-    playlist = Playlist("pl-1", name="Warmup")
+    playlist, client = warmup()
     playlist.edit_fail = [HTTPFailure(429)]
-    client = FakeClient(playlists={"pl-1": playlist})
-
     adapter(client).rename_playlist("pl-1", "DOWNLOADED Warmup")
-
     assert playlist.edits == [("DOWNLOADED Warmup", None), ("DOWNLOADED Warmup", None)]
     assert playlist.name == "DOWNLOADED Warmup"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 4. A provider failure is the item's cause, with one retry on a write
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 4. a provider failure is the item's cause, with one retry on a write ────
+
+
+def hearting(*failures: Exception) -> FakeClient:
+    """A client whose next hearts fail with ``failures``, in order."""
+    client = FakeClient()
+    client.user.favorites.fail = list(failures)
+    return client
 
 
 def test_a_write_the_provider_refuses_once_is_retried_once_and_lands():
-    client = FakeClient()
-    client.user.favorites.fail = [HTTPFailure(429)]
+    client = hearting(HTTPFailure(429))
     adapter(client).add_heart("8")
     assert client.user.favorites.added == ["8", "8"]
 
 
 def test_a_write_refused_twice_is_the_items_cause_and_is_not_tried_a_third_time():
-    client = FakeClient()
-    client.user.favorites.fail = [HTTPFailure(429), HTTPFailure(429), HTTPFailure(429)]
-
-    with pytest.raises(CratekitError) as excinfo:
-        adapter(client).add_heart("8")
-
+    client = hearting(HTTPFailure(429), HTTPFailure(429), HTTPFailure(429))
+    cause = refused(lambda: adapter(client).add_heart("8"))
     assert client.user.favorites.added == ["8", "8"]
-    assert excinfo.value.cause.reason == "unavailable-transient"
-    assert excinfo.value.cause.scope is Scope.ITEM
+    assert cause.reason == "unavailable-transient"
+    assert cause.scope is Scope.ITEM
 
 
 def test_a_rejected_session_mid_sweep_asks_for_a_login_at_item_scope():
-    client = FakeClient()
-    client.user.favorites.fail = [HTTPFailure(401), HTTPFailure(401)]
-
-    with pytest.raises(CratekitError) as excinfo:
-        adapter(client).add_heart("8")
-
-    assert excinfo.value.cause.reason == "credential-missing"
-    assert excinfo.value.cause.scope is Scope.ITEM
+    cause = refused(lambda: adapter(hearting(HTTPFailure(401), HTTPFailure(401))).add_heart("8"))
+    assert cause.reason == "credential-missing"
+    assert cause.scope is Scope.ITEM
 
 
 def test_a_rejection_the_client_rewraps_is_still_read_as_a_rejected_session():
-    client = FakeClient()
     try:
         raise HTTPFailure(401)
     except HTTPFailure as inner:
         wrapped = RuntimeError("the client's own error")
         wrapped.__cause__ = inner
-    client.user.favorites.fail = [wrapped, wrapped]
-
-    with pytest.raises(CratekitError) as excinfo:
-        adapter(client).add_heart("8")
-
-    assert excinfo.value.cause.reason == "credential-missing"
+    assert refused(lambda: adapter(hearting(wrapped, wrapped)).add_heart("8")).reason == (
+        "credential-missing"
+    )
 
 
 def test_a_heart_the_client_answers_false_is_not_recorded_as_held():
     client = FakeClient()
     client.user.favorites.add_track = lambda track_id: False
     remote = adapter(client)
-
     with pytest.raises(CratekitError):
         remote.add_heart("8")
     assert remote.has_heart("8") is False
@@ -1017,79 +850,55 @@ def test_a_heart_the_client_answers_false_is_not_recorded_as_held():
 def test_a_playlist_create_is_never_retried_into_a_second_playlist():
     client = FakeClient()
     client.user.create_fail = TimeoutError("timed out")
-
-    with pytest.raises(CratekitError) as excinfo:
-        adapter(client).create_playlist("Crate")
-
+    cause = refused(lambda: adapter(client).create_playlist("Crate"))
     assert client.user.created == ["Crate"]
-    assert excinfo.value.cause.reason == "unavailable-transient"
+    assert cause.reason == "unavailable-transient"
+
+
+def adding(suffix: str, add) -> tuple[Playlist, tidal_account.TidalAccount]:
+    """A playlist holding ``11`` whose client answers an add with ``add``."""
+    playlist = Playlist(f"00000000-0000-4000-8000-00000000000{suffix}", ["11"])
+    playlist.add = add
+    return playlist, adapter(FakeClient(playlists={playlist.id: playlist}))
 
 
 def test_an_add_the_client_answers_with_nothing_is_not_recorded_as_a_member():
     """The client skips a track it cannot find and raises nothing."""
-    playlist = Playlist("00000000-0000-4000-8000-00000000000b", ["11"])
-    playlist.add = lambda media_ids, allow_duplicates=False: []
-    client = FakeClient(playlists={playlist.id: playlist})
-    remote = adapter(client)
-
-    with pytest.raises(CratekitError) as excinfo:
-        remote.add_to_playlist(playlist.id, "14")
-
-    assert excinfo.value.cause.scope is Scope.ITEM
+    playlist, remote = adding("b", lambda media_ids, allow_duplicates=False: [])
+    assert refused(lambda: remote.add_to_playlist(playlist.id, "14")).scope is Scope.ITEM
     assert remote.playlist_tracks(playlist.id) == ("11",)
 
 
 def test_an_empty_answer_for_a_track_the_playlist_now_holds_is_not_a_failure():
-    playlist = Playlist("00000000-0000-4000-8000-00000000000c", ["11"])
-
     def add_elsewhere(media_ids, allow_duplicates=False):
-        del allow_duplicates
         playlist.members.extend(media_ids)
         return []
 
-    playlist.add = add_elsewhere
-    client = FakeClient(playlists={playlist.id: playlist})
-    remote = adapter(client)
-
+    playlist, remote = adding("c", add_elsewhere)
     remote.add_to_playlist(playlist.id, "15")
-
     assert remote.playlist_tracks(playlist.id) == ("11", "15")
 
 
 def test_an_add_to_a_playlist_deleted_mid_run_is_the_items_cause():
-    playlist = Playlist("00000000-0000-4000-8000-00000000000d", ["11"])
-
     def gone(media_ids, allow_duplicates=False):
         raise ObjectNotFound(playlist.id)
 
-    playlist.add = gone
-    client = FakeClient(playlists={playlist.id: playlist})
-    remote = adapter(client)
-
-    with pytest.raises(CratekitError) as excinfo:
-        remote.add_to_playlist(playlist.id, "16")
-
-    assert excinfo.value.cause.reason == "unavailable-transient"
+    playlist, remote = adding("d", gone)
+    cause = refused(lambda: remote.add_to_playlist(playlist.id, "16"))
+    assert cause.reason == "unavailable-transient"
     assert "16" not in remote.playlist_tracks(playlist.id)
 
 
 def test_a_bad_request_on_a_write_is_not_read_as_a_rejected_session():
-    client = FakeClient()
-    client.user.favorites.fail = [HTTPFailure(400), HTTPFailure(400)]
-
-    with pytest.raises(CratekitError) as excinfo:
-        adapter(client).add_heart("8")
-
-    assert excinfo.value.cause.reason == "unavailable-transient"
+    cause = refused(lambda: adapter(hearting(HTTPFailure(400), HTTPFailure(400))).add_heart("8"))
+    assert cause.reason == "unavailable-transient"
 
 
 def test_a_session_rejected_mid_run_drops_the_held_account(installed, monkeypatch):
     use_client(monkeypatch, FakeClient())
     record_session()
     held = account.resolve(installed)
-
     account.provider_failure(HTTPFailure(401), "heart a track")
-
     assert account.resolve(installed) is not held
 
 
@@ -1098,13 +907,10 @@ def test_a_build_whose_client_library_does_not_import_is_not_bound(monkeypatch):
 
     monkeypatch.setitem(sys.modules, "tidalapi", None)
     monkeypatch.delitem(sys.modules, account.ADAPTER_MODULE, raising=False)
-
     assert account.bound() is False
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 5. The real workers, end to end, against the fake client
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 5. the real workers, end to end, against the fake client ────────────────
 
 
 def isrc_for(row: str) -> str:
@@ -1132,21 +938,20 @@ def give_rows_an_isrc(monkeypatch) -> None:
     monkeypatch.setattr(source, "heart_candidates", candidates)
 
 
-def _resume(job_id: str) -> tuple[int, dict]:
+def _argv(job_id: str) -> list[str]:
     from cratekit.cli import jobs as cli_jobs
 
     with jobs.open_store() as store:
-        job = jobs.get(store, job_id)
-    return drive(cli_jobs.argv_for(job))
+        return cli_jobs.argv_for(jobs.get(store, job_id))
+
+
+def _resume(job_id: str) -> tuple[int, dict]:
+    return drive(_argv(job_id))
 
 
 def _resume_human(job_id: str) -> tuple[int, str]:
     """The same resume as :func:`_resume`, answered in the default output mode."""
-    from cratekit.cli import jobs as cli_jobs
-
-    with jobs.open_store() as store:
-        job = jobs.get(store, job_id)
-    return drive_human(cli_jobs.argv_for(job))
+    return drive_human(_argv(job_id))
 
 
 def export_verb(exported: Path) -> list[str]:
@@ -1157,59 +962,56 @@ def favorites_verb(exported: Path) -> list[str]:
     return ["sync", "favorites", "--export", str(exported)]
 
 
-def test_a_hearts_sweep_runs_to_done_and_the_ledger_records_every_heart(
-    installed, monkeypatch
-):
-    exported = outbound_fakes.write_export(
-        installed.library.root / "outbound", favorites=(1, 2, 3)
-    )
-    client = use_client(
-        monkeypatch,
-        FakeClient(
-            isrcs={isrc_for(str(row)): [str(500 + row)] for row in (1, 2, 3)},
-            hearts=["502"],
-        ),
-    )
+def queue(exported: Path, *, sweep: bool) -> str:
+    """The sweep or the export over ``exported``, approved and queued: its job."""
+    if sweep:
+        return approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")[1]
+    return approve_and_queue(export_verb(exported), "export.playlist.confirm")[1]
+
+
+def run_job(monkeypatch, client: FakeClient, exported: Path, *, sweep: bool):
+    """``client`` in, a session recorded, the job queued and resumed: code, answer, job."""
+    use_client(monkeypatch, client)
     record_session()
-    give_rows_an_isrc(monkeypatch)
-    _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
-
+    job_id = queue(exported, sweep=sweep)
     code, resumed = _resume(job_id)
+    return code, resumed, job_id
 
+
+def write_export(installed, **rows) -> Path:
+    return outbound_fakes.write_export(installed.library.root / "outbound", **rows)
+
+
+def numbered(base: int, rows=(1, 2, 3)) -> dict[str, list[str]]:
+    """Each row's ISRC naming the one provider track ``base`` plus the row."""
+    return {isrc_for(str(row)): [str(base + row)] for row in rows}
+
+
+def test_a_hearts_sweep_runs_to_done_and_the_ledger_records_every_heart(installed, monkeypatch):
+    exported = write_export(installed, favorites=(1, 2, 3))
+    client = FakeClient(isrcs=numbered(500), hearts=["502"])
+    give_rows_an_isrc(monkeypatch)
+    code, resumed, _job = run_job(monkeypatch, client, exported, sweep=True)
     assert code == int(ExitCode.OK), resumed
     assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED)
     assert client.user.favorites.added == ["501", "503"]
     assert ledger.recorded_hearts(installed) == frozenset({"501", "503"})
     assert client.logins == 1
-    # One complete walk and no second one. Under U65 a complete walk over a
-    # corpus this small is two requests, the page and the empty page that ends
-    # it; a cache miss would show a second (100, 0).
     assert client.user.favorites.pages == [(100, 0), (100, 100)]
 
 
-def test_a_playlist_export_runs_to_done_and_the_ledger_records_every_add(
-    installed, monkeypatch
-):
-    exported = outbound_fakes.write_export(installed.library.root / "outbound")
-    client = use_client(
-        monkeypatch,
-        FakeClient(isrcs={isrc_for(str(row)): [str(700 + row)] for row in (1, 2, 3)}),
-    )
-    record_session()
+def test_a_playlist_export_runs_to_done_and_the_ledger_records_every_add(installed, monkeypatch):
+    client = FakeClient(isrcs=numbered(700))
     give_rows_an_isrc(monkeypatch)
-    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
-
-    code, resumed = _resume(job_id)
-
+    code, resumed, job_id = run_job(monkeypatch, client, write_export(installed), sweep=False)
     assert code == int(ExitCode.OK), resumed
     assert client.user.created == [outbound_fakes.CRATE]
     (playlist,) = client.playlists.values()
-    # Items two and three find the first item's record, so neither creates and
-    # neither touches the visibility the first one set (R-834).
+    # Items two and three find the first item's record, so neither creates nor
+    # touches the visibility the first one set (R-834).
     assert playlist.privates == 1 and playlist.public is False
     assert playlist.members == ["701", "702", "703"]
-    # ONE ADD FOR THE JOB'S THREE TRACKS (U270): the driver hands the worker
-    # its items as one batch, and the batch goes in one request.
+    # ONE ADD FOR THE JOB'S THREE TRACKS (U270): the batch goes in one request.
     assert playlist.adds == [["701", "702", "703"]]
     assert ledger.playlist_remote_id(installed, outbound_fakes.CRATE) == playlist.id
     assert ledger.playlist_added(installed, outbound_fakes.CRATE) == frozenset(
@@ -1222,41 +1024,25 @@ def test_a_playlist_export_runs_to_done_and_the_ledger_records_every_add(
 def test_a_second_export_finds_its_playlist_and_neither_creates_nor_sets_visibility(
     installed, monkeypatch
 ):
-    """The check before write is the ledger's, and the private step is part of
-    the create behind it, so a run that finds the playlist recorded never asks."""
-    exported = outbound_fakes.write_export(installed.library.root / "outbound")
-    client = use_client(
-        monkeypatch,
-        FakeClient(isrcs={isrc_for(str(row)): [str(700 + row)] for row in (1, 2, 3)}),
-    )
-    record_session()
+    """The private step is part of the create behind the ledger's check before write."""
+    exported = write_export(installed)
+    client = FakeClient(isrcs=numbered(700))
     give_rows_an_isrc(monkeypatch)
-    _run, first = approve_and_queue(export_verb(exported), "export.playlist.confirm")
-    assert _resume(first)[0] == int(ExitCode.OK)
+    assert run_job(monkeypatch, client, exported, sweep=False)[0] == int(ExitCode.OK)
     (playlist,) = client.playlists.values()
     # Somebody made it public at the provider since; that is theirs to keep.
     playlist.public = True
     account.forget()
-
-    _run, second = approve_and_queue(export_verb(exported), "export.playlist.confirm")
-    code, resumed = _resume(second)
-
+    code, resumed = _resume(queue(exported, sweep=False))
     assert code == int(ExitCode.OK), resumed
     assert client.user.created == [outbound_fakes.CRATE]
     assert list(client.playlists) == [playlist.id]
     assert playlist.privates == 1 and playlist.public is True
 
 
-def test_a_provider_failure_on_one_heart_fails_that_item_and_no_other(
-    installed, monkeypatch
-):
-    exported = outbound_fakes.write_export(
-        installed.library.root / "outbound", favorites=(1, 2, 3)
-    )
-    client = use_client(
-        monkeypatch,
-        FakeClient(isrcs={isrc_for(str(row)): [str(500 + row)] for row in (1, 2, 3)}),
-    )
+def test_a_provider_failure_on_one_heart_fails_that_item_and_no_other(installed, monkeypatch):
+    exported = write_export(installed, favorites=(1, 2, 3))
+    client = FakeClient(isrcs=numbered(500))
     monkeypatch.setattr(tidal_account.time, "sleep", no_sleep)
     real_add = client.user.favorites.add_track
 
@@ -1266,12 +1052,8 @@ def test_a_provider_failure_on_one_heart_fails_that_item_and_no_other(
         return real_add(track_id)
 
     client.user.favorites.add_track = add_track
-    record_session()
     give_rows_an_isrc(monkeypatch)
-    _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
-
-    code, _resumed = _resume(job_id)
-
+    code, _resumed, job_id = run_job(monkeypatch, client, exported, sweep=True)
     assert code != int(ExitCode.OK)
     with jobs.open_store() as store:
         causes = {
@@ -1283,25 +1065,10 @@ def test_a_provider_failure_on_one_heart_fails_that_item_and_no_other(
 
 
 def test_a_row_whose_file_carries_no_isrc_matches_nothing(installed, monkeypatch):
-    """No substitution of the rows, and no file behind them.
-
-    Before R-355 closed this was every row, because nothing read an ISRC at all.
-    It is now the row whose location names no audio file, and the answer is still
-    an honest unmatched row with no call made to the provider.
-    """
-    exported = outbound_fakes.write_export(
-        installed.library.root / "outbound", favorites=(1, 2)
-    )
-    client = use_client(
-        monkeypatch,
-        FakeClient(isrcs={isrc_for(str(row)): [str(500 + row)] for row in (1, 2)},
-                   tracks={"1", "2"}),
-    )
-    record_session()
-    _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
-
-    code, resumed = _resume(job_id)
-
+    """No substitution and no file behind the rows: honest unmatched rows, no call (R-355)."""
+    exported = write_export(installed, favorites=(1, 2))
+    client = FakeClient(isrcs=numbered(500, (1, 2)), tracks={"1", "2"})
+    code, resumed, job_id = run_job(monkeypatch, client, exported, sweep=True)
     assert code == int(ExitCode.OK), resumed
     assert client.user.favorites.added == []
     assert client.isrc_asked == [] and client.track_asked == []
@@ -1309,41 +1076,32 @@ def test_a_row_whose_file_carries_no_isrc_matches_nothing(installed, monkeypatch
     assert [report["unmatched"] for report in reports] == [["1"], ["2"]]
 
 
-def _tagged_flac(installed, tmp_path, index: int, isrc: str) -> str:
+@pytest.fixture(scope="module")
+def silence(tmp_path_factory) -> bytes:
+    """One FLAC of silence, synthesized once for every drive that tags a file."""
+    return synth_container(tmp_path_factory.mktemp("silence"), ".flac").read_bytes()
+
+
+def _tagged_flac(installed, silence: bytes, index: int, isrc: str) -> str:
     """A real FLAC under the library root carrying ``isrc``, as an export location."""
-    tmp_path.mkdir(parents=True, exist_ok=True)
-    made = synth_container(tmp_path, ".flac")
     target = Path(installed.library.root) / "Music" / f"{index}.flac"
-    made.replace(target)
+    target.write_bytes(silence)
     assert tags.write_tags(target, {"isrc": isrc}) is True
     return locations.location_url(target)
 
 
-def test_a_sweep_matches_through_the_isrc_the_file_carries(
-    installed, monkeypatch, tmp_path
-):
-    """R-355 closed, driven with no substitution: the ISRC comes off the file.
-
-    Row 1's file carries a hyphenated ISRC and row 2's file carries none, so one
-    drive shows the read, the fold, and the untagged row staying unmatched.
-    """
-    exported = outbound_fakes.write_export(
-        installed.library.root / "outbound",
+def test_a_sweep_matches_through_the_isrc_the_file_carries(installed, monkeypatch, silence):
+    """R-355 closed, no substitution: row 1's file carries a hyphenated ISRC, row 2's none."""
+    exported = write_export(
+        installed,
         favorites=(1, 2),
         locations={
-            1: _tagged_flac(installed, tmp_path / "one", 1, "aa-000-00-00001"),
-            2: _tagged_flac(installed, tmp_path / "two", 2, ""),
+            1: _tagged_flac(installed, silence, 1, "aa-000-00-00001"),
+            2: _tagged_flac(installed, silence, 2, ""),
         },
     )
-    client = use_client(
-        monkeypatch,
-        FakeClient(isrcs={isrc_for("1"): ["501"], isrc_for("2"): ["502"]}),
-    )
-    record_session()
-    _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
-
-    code, resumed = _resume(job_id)
-
+    client = FakeClient(isrcs={isrc_for("1"): ["501"], isrc_for("2"): ["502"]})
+    code, resumed, job_id = run_job(monkeypatch, client, exported, sweep=True)
     assert code == int(ExitCode.OK), resumed
     assert client.isrc_asked == [isrc_for("1")]
     assert client.user.favorites.added == ["501"]
@@ -1351,7 +1109,7 @@ def test_a_sweep_matches_through_the_isrc_the_file_carries(
     assert [report["unmatched"] for report in reports] == [[], ["2"]]
 
 
-# ── R-356, driven with no substitution: the names come off the export ─────
+# ── R-356, driven with no substitution: the names come off the export ──
 
 
 def _alike(first: str, second: str, title: str, artist: str) -> list[Track]:
@@ -1359,16 +1117,13 @@ def _alike(first: str, second: str, title: str, artist: str) -> list[Track]:
     return [Track(first, title, None, (artist,)), Track(second, title, None, (artist,))]
 
 
-def _three_tagged(installed, tmp_path) -> dict[int, str]:
-    return {
-        row: _tagged_flac(installed, tmp_path / str(row), row, isrc_for(str(row)))
-        for row in (1, 2, 3)
-    }
+def _three_tagged(installed, silence: bytes) -> dict[int, str]:
+    return {row: _tagged_flac(installed, silence, row, isrc_for(str(row))) for row in (1, 2, 3)}
 
 
 def _releases_for_three_rows() -> dict[str, list]:
-    """Row 1 has an edit beside the plain record, row 2 has two spelled alike,
-    and row 3 has one release. The export spells each row ``08A - 124 - Track N``."""
+    """Row 1 has an edit beside the plain record, row 2 two spelled alike, row 3 one
+    release. The export spells each row ``08A - 124 - Track N``."""
     return {
         isrc_for("1"): [
             Track("501", "Track 1", "Radio Edit", ("Artist 1",)),
@@ -1398,27 +1153,20 @@ def test_the_release_title_is_the_display_title_with_the_naming_head_off(install
 
 
 def test_a_configuration_with_no_marker_text_still_strips_the_head(installed):
-    bare = replace(installed, naming=replace(installed.naming, lossy_marker=""))
     from cratekit.modules.reports.export import CollectionEntry
 
+    bare = replace(installed, naming=replace(installed.naming, lossy_marker=""))
     row = CollectionEntry(track_id="1", name="08A - 124 - Sun Path", artist="a", location="")
     assert source.release_title(row, template=source._template(bare)) == "Sun Path"
 
 
 def test_a_sweep_resolves_a_shared_isrc_by_the_rows_own_names_and_says_why_it_could_not(
-    installed, monkeypatch, tmp_path
+    installed, monkeypatch, silence
 ):
-    exported = outbound_fakes.write_export(
-        installed.library.root / "outbound",
-        favorites=(1, 2, 3),
-        locations=_three_tagged(installed, tmp_path),
-    )
-    client = use_client(monkeypatch, FakeClient(isrcs=_releases_for_three_rows()))
-    record_session()
-    _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
-
-    code, resumed = _resume(job_id)
-
+    placed = _three_tagged(installed, silence)
+    exported = write_export(installed, favorites=(1, 2, 3), locations=placed)
+    client = FakeClient(isrcs=_releases_for_three_rows())
+    code, resumed, job_id = run_job(monkeypatch, client, exported, sweep=True)
     assert code == int(ExitCode.OK), resumed
     assert client.user.favorites.added == ["511", "503"]
     outbound = resumed["data"]["progress"]["outbound"]
@@ -1427,26 +1175,15 @@ def test_a_sweep_resolves_a_shared_isrc_by_the_rows_own_names_and_says_why_it_co
     assert reason.startswith("Artist 2 - Track 2 (row 2): "), reason
     assert "names 2 provider tracks" in reason and "2 of them agree" in reason
     reports = artifacts.committed(installed, job_id)
-    assert [[one["row"] for one in report["reasons"]] for report in reports] == [
-        [],
-        ["2"],
-        [],
-    ]
+    assert [[one["row"] for one in report["reasons"]] for report in reports] == [[], ["2"], []]
 
 
 def test_an_export_resolves_a_shared_isrc_by_the_rows_own_names_and_says_why_it_could_not(
-    installed, monkeypatch, tmp_path
+    installed, monkeypatch, silence
 ):
-    exported = outbound_fakes.write_export(
-        installed.library.root / "outbound",
-        locations=_three_tagged(installed, tmp_path),
-    )
-    client = use_client(monkeypatch, FakeClient(isrcs=_releases_for_three_rows()))
-    record_session()
-    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
-
-    code, resumed = _resume(job_id)
-
+    exported = write_export(installed, locations=_three_tagged(installed, silence))
+    client = FakeClient(isrcs=_releases_for_three_rows())
+    code, resumed, job_id = run_job(monkeypatch, client, exported, sweep=False)
     assert code == int(ExitCode.OK), resumed
     (playlist,) = client.playlists.values()
     assert playlist.members == ["511", "503"]
@@ -1471,21 +1208,11 @@ def test_an_export_resolves_a_shared_isrc_by_the_rows_own_names_and_says_why_it_
 
 
 def test_a_release_the_account_already_hearts_is_the_one_an_export_adds(
-    installed, monkeypatch, tmp_path
+    installed, monkeypatch, silence
 ):
-    exported = outbound_fakes.write_export(
-        installed.library.root / "outbound",
-        crate=(2,),
-        locations=_three_tagged(installed, tmp_path),
-    )
-    client = use_client(
-        monkeypatch, FakeClient(isrcs=_releases_for_three_rows(), hearts=["512"])
-    )
-    record_session()
-    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
-
-    code, resumed = _resume(job_id)
-
+    exported = write_export(installed, crate=(2,), locations=_three_tagged(installed, silence))
+    client = FakeClient(isrcs=_releases_for_three_rows(), hearts=["512"])
+    code, resumed, _job = run_job(monkeypatch, client, exported, sweep=False)
     assert code == int(ExitCode.OK), resumed
     (playlist,) = client.playlists.values()
     assert playlist.members == ["512"]
@@ -1493,19 +1220,11 @@ def test_a_release_the_account_already_hearts_is_the_one_an_export_adds(
 
 
 def test_an_unmatched_row_with_nothing_said_about_it_adds_no_reason_to_the_envelope(
-    installed, monkeypatch, tmp_path
+    installed, monkeypatch, silence
 ):
-    exported = outbound_fakes.write_export(
-        installed.library.root / "outbound",
-        crate=(1, 3),
-        locations=_three_tagged(installed, tmp_path),
-    )
-    use_client(monkeypatch, FakeClient(isrcs={isrc_for("3"): ["503"]}))
-    record_session()
-    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
-
-    code, resumed = _resume(job_id)
-
+    exported = write_export(installed, crate=(1, 3), locations=_three_tagged(installed, silence))
+    client = FakeClient(isrcs={isrc_for("3"): ["503"]})
+    code, resumed, _job = run_job(monkeypatch, client, exported, sweep=False)
     assert code == int(ExitCode.OK), resumed
     outbound = resumed["data"]["progress"]["outbound"]
     assert outbound["unmatched"] == ["1"] and outbound["reasons"] == []
@@ -1514,18 +1233,16 @@ def test_an_unmatched_row_with_nothing_said_about_it_adds_no_reason_to_the_envel
     assert listed["identity"] == "1" and listed["reason"] == export_cli.NO_MATCH
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# 6. Structural guards over the adapter's own source
-# ═══════════════════════════════════════════════════════════════════════════
+# ── 6. structural guards over the adapter's own source ──────────────────────
 
 
-def _tree() -> ast.Module:
-    return ast.parse(ADAPTER_SOURCE.read_text(encoding="utf-8"))
+def _trees() -> list[ast.Module]:
+    return [ast.parse(path.read_text(encoding="utf-8")) for path in ADAPTER_SOURCES]
 
 
 def test_the_adapter_imports_nothing_vendored():
     imported: list[str] = []
-    for node in ast.walk(_tree()):
+    for node in (node for tree in _trees() for node in ast.walk(tree)):
         if isinstance(node, ast.Import):
             imported.extend(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
@@ -1537,7 +1254,8 @@ def test_the_adapter_imports_nothing_vendored():
 def test_the_adapter_pages_nothing_by_hand():
     calls = [
         (node.lineno, node.func.attr)
-        for node in ast.walk(_tree())
+        for tree in _trees()
+        for node in ast.walk(tree)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr in listing.GUARDED_METHODS
@@ -1547,8 +1265,7 @@ def test_the_adapter_pages_nothing_by_hand():
 
 #: The removals the adapter may name on the client, each in the one member it
 #: may name it in: R-836's by position, U123's playlist delete, and U143's root
-#: playlist delete and legacy folder removal. Anything else with a removal
-#: shape is a new write.
+#: playlist delete and legacy folder removal. Anything else is a new write.
 ADMITTED_REMOVALS = {
     "remove_tracks": "remove_by_indices",
     "remove_playlist": "delete",
@@ -1558,64 +1275,53 @@ ADMITTED_REMOVALS = {
 
 
 def test_the_adapter_names_each_remove_on_the_client_inside_its_one_member():
-    """The protocol declares two removals; a third named here would be a new write.
-
-    Narrowed on R-836 from "no removal at all" to exactly one client call,
-    ``remove_by_indices``, named only inside ``remove_tracks``, and on U123 to
-    that and ``delete``, named only inside ``remove_playlist``. A removal shape
-    anywhere else in the file, or a different one in either member, fails here.
-    """
+    """A removal shape anywhere else in the adapter's modules, or another in a member, fails."""
     shapes = ("remove", "delete", "unheart", "unlike", "clear")
     named: set[tuple[str, str]] = set()
     defined: list[str] = []
-    for function in ast.walk(_tree()):
-        if not isinstance(function, ast.FunctionDef):
-            continue
-        if any(shape in function.name.lower() for shape in shapes):
-            defined.append(function.name)
-    for node in ast.walk(_tree()):
-        if isinstance(node, ast.Attribute) and any(s in node.attr.lower() for s in shapes):
-            named.add((_enclosing(node), node.attr))
+    for tree in _trees():
+        defined += [
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and any(s in node.name.lower() for s in shapes)
+        ]
+        named |= {
+            (_enclosing(tree, node), node.attr)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Attribute) and any(s in node.attr.lower() for s in shapes)
+        }
     assert sorted(defined) == sorted(ADMITTED_REMOVALS), defined
     assert named == set(ADMITTED_REMOVALS.items()), sorted(named)
 
 
-def _enclosing(target: ast.AST) -> str:
-    """The name of the innermost function that holds ``target``, or ``""``."""
+def _enclosing(tree: ast.Module, target: ast.AST) -> str:
+    """The name of the innermost function in ``tree`` that holds ``target``, or ``""``."""
     found = ""
-    for function in ast.walk(_tree()):
-        if isinstance(function, ast.FunctionDef):
-            for node in ast.walk(function):
-                if node is target or (
-                    isinstance(node, ast.Attribute)
-                    and isinstance(target, ast.Attribute)
-                    and (node.lineno, node.col_offset, node.attr)
-                    == (target.lineno, target.col_offset, target.attr)
-                ):
-                    found = function.name
+    for function in ast.walk(tree):
+        if isinstance(function, ast.FunctionDef) and any(
+            node is target for node in ast.walk(function)
+        ):
+            found = function.name
     return found
 
 
 def test_the_client_library_still_offers_the_private_call_a_create_relies_on():
-    """``_make_private`` passes over a client with no such call rather than
-    orphan the playlist, so a rename upstream would turn R-834 off with a green
-    suite. This is the guard that turns it red instead."""
+    """``_make_private`` passes over a client with no such call rather than orphan the
+    playlist, so a rename upstream would turn R-834 off with a green suite."""
     import tidalapi.playlist
 
     assert callable(getattr(tidalapi.playlist.UserPlaylist, "set_playlist_private", None))
-    assert "set_playlist_private" in ADAPTER_SOURCE.read_text(encoding="utf-8")
+    assert any("set_playlist_private" in path.read_text("utf-8") for path in ADAPTER_SOURCES)
 
 
 def test_the_adapter_satisfies_the_protocol_it_is_handed_out_as():
-    declared = {
-        name for name in vars(RemoteAccount) if not name.startswith("_")
-    }
+    declared = {name for name in vars(RemoteAccount) if not name.startswith("_")}
     assert declared == outbound_fakes.PROTOCOL_METHODS
     for name in declared:
         assert callable(getattr(tidal_account.TidalAccount, name, None)), name
 
 
-# ── R-572: the file's album tag tells releases spelled alike apart ─────────
+# ── R-572: the file's album tag tells releases spelled alike apart ──
 
 
 class Album:
@@ -1630,42 +1336,30 @@ def on_album(track: Track, name: str) -> Track:
 
 
 def single_and_album_cut() -> FakeClient:
-    return releases(
-        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Sun Path"),
-        on_album(Track("202", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
-    )
+    return releases(on_album(sun("101"), "Sun Path"), on_album(sun("202"), "Tidal Lines"))
+
+
+def by_album(found: tidal_account.TidalAccount, album: str) -> str | None:
+    return match_row(found, "Sun Path", album=album)
 
 
 def test_releases_spelled_alike_resolve_to_the_one_the_files_album_names():
     found = adapter(single_and_album_cut())
-    chosen = found.match_track(
-        identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", album=" tidal LINES "
-    )
-    assert chosen == "202"
+    assert by_album(found, " tidal LINES ") == "202"
     assert found.unmatched_reason("7") == ""
 
 
 def test_a_file_album_naming_neither_release_stays_unmatched_and_says_so():
     found = adapter(single_and_album_cut())
-    chosen = found.match_track(
-        identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", album="Night Drives"
-    )
-    assert chosen is None
+    assert by_album(found, "Night Drives") is None
     reason = found.unmatched_reason("7")
     assert "hearts 0 of those" in reason
     assert "the file's album 'Night Drives' names 0 of them" in reason
 
 
 def test_a_file_album_matching_both_releases_stays_unmatched():
-    client = releases(
-        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Sun Path"),
-        on_album(Track("202", "Sun Path", None, ("Nova Reef",)), "Sun Path"),
-    )
-    found = adapter(client)
-    chosen = found.match_track(
-        identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", album="Sun Path"
-    )
-    assert chosen is None
+    found = adapter(releases(on_album(sun("101"), "Sun Path"), on_album(sun("202"), "Sun Path")))
+    assert by_album(found, "Sun Path") is None
     assert "the file's album 'Sun Path' names 2 of them" in found.unmatched_reason("7")
 
 
@@ -1679,132 +1373,101 @@ def test_a_file_with_no_album_tag_stays_unmatched_and_says_the_tag_is_missing():
 
 def test_an_unreadable_track_stops_the_album_from_choosing_the_lone_agreeing_one():
     """Rule 1 already refuses this shape; the album must not choose the same lone track."""
-    client = releases(
-        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
-        on_album(Track("202", "", None, ()), "Tidal Lines"),
-    )
+    client = releases(*(on_album(one, "Tidal Lines") for one in (sun("101"), unreadable("202"))))
     found = adapter(client)
-    chosen = found.match_track(
-        identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", album="Tidal Lines"
-    )
-    assert chosen is None
+    assert by_album(found, "Tidal Lines") is None
     reason = found.unmatched_reason("7")
     assert "1 could not be read" in reason
     assert "so none was chosen" in reason
     client.user.favorites.hearts = ["101"]
-    found = adapter(client)
-    assert (
-        found.match_track(
-            identity="7",
-            isrc=CODE,
-            title="Sun Path",
-            artist="Nova Reef",
-            album="Tidal Lines",
-        )
-        == "101"
-    ), "the heart rule still chooses among agreeing tracks"
+    assert by_album(adapter(client), "Tidal Lines") == "101", (
+        "the heart rule still chooses among agreeing tracks"
+    )
 
 
 def test_the_album_never_overrides_a_heart_or_breaks_a_tie_between_two():
     """Out of scope by the brief: how a hearted release breaks a tie is unchanged."""
     client = single_and_album_cut()
     client.user.favorites.hearts = ["101"]
-    found = adapter(client)
-    assert found.match_track(
-        identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", album="Tidal Lines"
-    ) == "101"
+    assert by_album(adapter(client), "Tidal Lines") == "101"
     client = single_and_album_cut()
     client.user.favorites.hearts = ["101", "202"]
     found = adapter(client)
-    assert found.match_track(
-        identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", album="Tidal Lines"
-    ) is None
+    assert by_album(found, "Tidal Lines") is None
     assert "hearts 2 of those, so none was chosen" in found.unmatched_reason("7")
 
 
 def test_the_album_chooses_only_among_releases_that_agree_with_the_row():
     """The radio edit sits on the album the file names, and the row is the plain record."""
     client = releases(
-        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Sun Path"),
-        on_album(Track("202", "Sun Path", None, ("Nova Reef",)), "Night Drives"),
-        on_album(Track("303", "Sun Path", "Radio Edit", ("Nova Reef",)), "Tidal Lines"),
+        on_album(sun("101"), "Sun Path"),
+        on_album(sun("202"), "Night Drives"),
+        on_album(sun("303", "Radio Edit"), "Tidal Lines"),
     )
-    found = adapter(client)
-    assert found.match_track(
-        identity="7", isrc=CODE, title="Sun Path", artist="Nova Reef", album="Tidal Lines"
-    ) is None
+    assert by_album(adapter(client), "Tidal Lines") is None
 
 
-def test_a_sweep_hearts_the_release_the_files_album_tag_names(
-    installed, monkeypatch, tmp_path
-):
+def test_a_sweep_hearts_the_release_the_files_album_tag_names(installed, monkeypatch, silence):
     """Driven end to end: the album comes off the file in the same read as the ISRC."""
-    placed = _three_tagged(installed, tmp_path)
+    placed = _three_tagged(installed, silence)
     two = Path(installed.library.root) / "Music" / "2.flac"
     assert tags.write_tags(two, {"album": "Track 2 (Deluxe)"}) is True
-    exported = outbound_fakes.write_export(
-        installed.library.root / "outbound", favorites=(1, 2, 3), locations=placed
-    )
+    exported = write_export(installed, favorites=(1, 2, 3), locations=placed)
     shapes = _releases_for_three_rows()
     single, cut = shapes[isrc_for("2")]
     on_album(single, "Track 2")
     on_album(cut, "Track 2 (Deluxe)")
-    client = use_client(monkeypatch, FakeClient(isrcs=shapes))
-    record_session()
-    _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
-
-    code, resumed = _resume(job_id)
-
+    client = FakeClient(isrcs=shapes)
+    code, resumed, _job = run_job(monkeypatch, client, exported, sweep=True)
     assert code == int(ExitCode.OK), resumed
     assert client.user.favorites.added == ["511", "512", "503"]
     assert resumed["data"]["progress"]["outbound"]["unmatched"] == []
 
 
-# ── R-1032: a listening copy takes one of several agreeing releases ────────
+# ── R-1032: a listening copy takes one of several agreeing releases ──
 
 
 def any_release(found: tidal_account.TidalAccount, album: str = "", title: str = "Sun Path"):
-    return found.match_track(
-        identity="7",
-        isrc=CODE,
-        title=title,
-        artist="Nova Reef",
-        album=album,
-        any_agreeing=True,
+    return match_row(found, title, album=album, any_agreeing=True)
+
+
+def three_on_albums() -> FakeClient:
+    return releases(
+        on_album(sun("101"), "Sun Path"),
+        on_album(sun("303"), "Tidal Lines"),
+        on_album(sun("202"), "Tidal Lines"),
     )
+
+
+def tie(*ids: str) -> list[Track]:
+    return [sun(one) for one in ids]
 
 
 def test_a_tie_with_any_agreeing_takes_the_lowest_identifier_whatever_the_listing_order():
     for listed in (("202", "101"), ("101", "202")):
-        found = another_catalogue(releases(*_alike(*listed, "Sun Path", "Nova Reef")))
+        found = another_catalogue(releases(*tie(*listed)))
         assert any_release(found) == "101", listed
         assert found.unmatched_reason("7") == ""
-    found = another_catalogue(releases(*_alike("100", "99", "Sun Path", "Nova Reef")))
+    found = another_catalogue(releases(*tie("100", "99")))
     assert any_release(found) == "99", "numeric order, not the order of the characters"
 
 
 def test_without_any_agreeing_the_same_tie_still_refuses_in_the_words_the_mirror_reads():
-    found = adapter(releases(*_alike("202", "101", "Sun Path", "Nova Reef")))
+    found = adapter(releases(*tie("202", "101")))
     assert match_row(found, "Sun Path") is None
     assert service.AGREEING_RELEASES in found.unmatched_reason("7")
 
 
 def test_a_file_album_naming_none_of_the_tied_releases_still_takes_one():
-    found = adapter(single_and_album_cut())
-    assert any_release(found, album="Night Drives") == "101"
+    assert any_release(adapter(single_and_album_cut()), album="Night Drives") == "101"
 
 
 def test_a_file_album_naming_two_of_three_takes_the_lower_of_those_two():
-    client = releases(
-        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Sun Path"),
-        on_album(Track("303", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
-        on_album(Track("202", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
-    )
-    assert any_release(adapter(client), album="Tidal Lines") == "202"
+    assert any_release(adapter(three_on_albums()), album="Tidal Lines") == "202"
 
 
 def test_two_hearted_releases_take_the_lower_hearted_one_never_an_unhearted_one():
-    client = releases(*_alike("101", "202", "Sun Path", "Nova Reef"), *_alike("303", "404", "Sun Path", "Nova Reef"))
+    client = releases(*tie("101", "202", "303", "404"))
     client.user.favorites.hearts = ["404", "202"]
     assert any_release(adapter(client)) == "202"
 
@@ -1817,43 +1480,28 @@ def test_a_lone_heart_and_a_lone_album_choose_as_they_always_did():
 
 
 def test_a_release_that_does_not_agree_is_never_taken():
-    client = releases(
-        Track("101", "Sun Path", "Radio Edit", ("Nova Reef",)),
-        Track("303", "Sun Path", None, ("Nova Reef",)),
-        Track("202", "Sun Path", None, ("Nova Reef",)),
-    )
-    assert any_release(adapter(client)) == "202"
-    client = releases(
-        Track("101", "Sun Path", "Radio Edit", ("Nova Reef",)),
-        Track("202", "Sun Path", "Extended Mix", ("Nova Reef",)),
-    )
-    found = another_catalogue(client)
+    assert any_release(adapter(releases(sun("101", "Radio Edit"), *tie("303", "202")))) == "202"
+    found = another_catalogue(releases(sun("101", "Radio Edit"), sun("202", "Extended Mix")))
     assert any_release(found) is None
     assert "none of them agrees" in found.unmatched_reason("7")
 
 
 def test_an_unreadable_release_beside_the_tie_still_refuses_with_any_agreeing():
-    client = releases(
-        *_alike("101", "202", "Sun Path", "Nova Reef"), Track("303", "", None, ())
-    )
-    found = adapter(client)
+    found = adapter(releases(*tie("101", "202"), unreadable("303")))
     assert any_release(found) is None
     reason = found.unmatched_reason("7")
     assert "1 could not be read" in reason and service.AGREEING_RELEASES in reason
 
 
 def test_a_row_with_no_title_to_judge_agreement_by_still_refuses_with_any_agreeing():
-    found = adapter(releases(*_alike("101", "202", "Sun Path", "Nova Reef")))
+    found = adapter(releases(*tie("101", "202")))
     assert any_release(found, title="") is None
     assert "no artist and title" in found.unmatched_reason("7")
 
 
 def test_a_file_with_no_album_tag_never_narrows_to_releases_with_no_album_name():
     """An empty tag is not a name: it must not pick out the release the provider left unnamed."""
-    client = releases(
-        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Sun Path"),
-        on_album(Track("202", "Sun Path", None, ("Nova Reef",)), ""),
-    )
+    client = releases(on_album(sun("101"), "Sun Path"), on_album(sun("202"), ""))
     assert any_release(adapter(client)) == "101"
 
 
@@ -1862,11 +1510,11 @@ def test_the_files_album_narrows_a_tie_under_the_products_own_fold():
     assert any_release(adapter(single_and_album_cut()), album=" tidal LINES ") == "202"
 
 
-# ── U208: the adapter says when ``any_agreeing`` broke a tie ───────────────
+# ── U208: the adapter says when ``any_agreeing`` broke a tie ──
 
 
 def test_a_tie_broken_by_any_agreeing_is_said_and_no_other_match_is():
-    found = adapter(releases(*_alike("202", "101", "Sun Path", "Nova Reef")))
+    found = adapter(releases(*tie("202", "101")))
     assert any_release(found) == "101"
     assert found.tie_broken("7") is True
     assert match_row(found, "Sun Path") is None, "without any_agreeing the tie refuses"
@@ -1874,7 +1522,7 @@ def test_a_tie_broken_by_any_agreeing_is_said_and_no_other_match_is():
 
 
 def test_a_lone_release_a_lone_heart_or_a_lone_album_is_never_a_broken_tie():
-    found = adapter(releases(Track("101", "Sun Path", None, ("Nova Reef",))))
+    found = adapter(releases(sun("101")))
     assert any_release(found) == "101" and found.tie_broken("7") is False
     client = single_and_album_cut()
     client.user.favorites.hearts = ["202"]
@@ -1886,31 +1534,25 @@ def test_a_lone_release_a_lone_heart_or_a_lone_album_is_never_a_broken_tie():
 
 
 def test_two_hearts_or_an_album_naming_two_is_a_broken_tie():
-    client = releases(*_alike("101", "202", "Sun Path", "Nova Reef"))
+    client = releases(*tie("101", "202"))
     client.user.favorites.hearts = ["202", "101"]
     found = adapter(client)
     assert any_release(found) == "101" and found.tie_broken("7") is True
-    client = releases(
-        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Sun Path"),
-        on_album(Track("303", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
-        on_album(Track("202", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
-    )
-    found = another_catalogue(client)
+    found = another_catalogue(three_on_albums())
     assert any_release(found, album="Tidal Lines") == "202" and found.tie_broken("7") is True
 
 
 def test_a_refused_tie_is_never_said_to_be_broken():
-    client = releases(*_alike("101", "202", "Sun Path", "Nova Reef"), Track("303", "", None, ()))
-    found = adapter(client)
+    found = adapter(releases(*tie("101", "202"), unreadable("303")))
     assert any_release(found) is None and found.tie_broken("7") is False
 
 
 def test_two_hearts_and_an_album_naming_one_of_them_is_a_broken_tie():
     """Without ``any_agreeing`` two hearts refuse whatever the album says, so this broke one."""
     client = releases(
-        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Sun Path"),
-        on_album(Track("202", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
-        on_album(Track("303", "Sun Path", None, ("Nova Reef",)), "Night Drives"),
+        on_album(sun("101"), "Sun Path"),
+        on_album(sun("202"), "Tidal Lines"),
+        on_album(sun("303"), "Night Drives"),
     )
     client.user.favorites.hearts = ["303", "202"]
     found = adapter(client)
