@@ -56119,3 +56119,80 @@ left (a playlist folder the landing made, a lookup row only it made and
 rekordbox does not prune, or another one measured at an attended sitting), and
 `landed_absences` reads it. Ledger only: the cost is a kept file, and it is
 counted on the gate.
+
+---
+
+## R-1851. A history list that keeps other tracks keeps the gap a removed track's TrackNo leaves, and what rekordbox does there is unmeasured
+
+**Found:** at the build of #925, R-1830, 2026-11-22.
+
+**The mechanism.** #925 renumbers the members after a removed track in every
+playlist `crate sync removed` takes it out of, as sitting 102 (A197) measured
+rekordbox 7.2.19 doing. A history list is a different table,
+`djmdSongHistory`, with its own `TrackNo`, and no sitting has removed a track
+from a history list that holds other plays: A185's history list held the
+removed track alone. So `rb_writer.CollectionRemoval` deletes the removed
+track's history row and leaves the numbers of the plays after it as they
+were, and the SQL confinement refuses any history row moving.
+
+**Measured cost.** Not driven against rekordbox. A gap is what the history
+list shows nothing for: rekordbox orders the list by `TrackNo`, so the order
+of the plays is unchanged. Whether rekordbox renumbers there, and whether it
+reads a gap as anything, is the measurement.
+
+**Closes when:** an attended sitting plays two real tracks and a throwaway on
+a deck so one history list holds all three, removes the throwaway with
+Remove from Collection, compares the copies, and the removal imitates what it
+finds. Ledger only: it closes at a sitting.
+
+---
+
+## R-1852. Where a playlist already holds two live rows on one TrackNo, the removal's renumbering can leave two survivors tied that were apart
+
+**Found:** at the review of #925, R-1830, round two, 2026-11-22.
+
+**The mechanism.** `rb_writer.renumbered_positions` lowers each surviving
+live row by the removed live rows strictly below it. That keeps distinct live
+numbers distinct, but an input that already ties two live rows is not
+distinct: with r1 at 1, the removed x and a survivor r2b both at 2, and r3 at
+3, removing x leaves r2b and r3 both at 2; and two removed rows tied at 3
+between survivors at 2 and 4 leave both survivors at 2. `sync pair` then
+reads the tied survivors in row id order, which is random.
+
+**Measured cost.** Not driven as a verb. Round two read two candidate
+producers and neither leaves a live tie: `add_memberships` appends past the
+highest number, and `playlist_pair` numbers the live rows one through N. What
+rekordbox does with a tie was not measured.
+
+**Closes when:** a producer of a live tie is found and the rule leaves such a
+playlist unrenumbered, or rekordbox is measured on one. Ledger only.
+
+---
+
+## R-1853. A playlist already holding a gap or a row marked removed is renumbered by a rule rekordbox was not measured on
+
+**Found:** at the build of #925, R-1830, 2026-11-22.
+
+**The mechanism.** Sitting 102 (A197) measured one shape: a playlist made by
+hand at `TrackNo` 1, 2 and 3, every row live, the middle track removed. #925
+applies the binding's rule, held to live rows (`rb_writer.renumbered_positions`),
+to every playlist the removal leaves: each surviving live row above a removed
+live row goes down by one per removed live row below it; a row marked
+`rb_local_deleted` 1 is neither counted nor moved (review round one's B1); and
+a gap an earlier removal left stays a gap (1, 2, 3, 5 with 2 removed reads 1,
+2, 4). Cratekit's own playlists hold both shapes: U288's removals before #925
+left gaps, and the INBOX rotation, `intake analyzed` and `sync pair` mark
+memberships in live playlists. Whether rekordbox closes every gap, or does
+anything with a marked row, was not measured. Nor was how far
+`localUpdateCount` moves for a renumbering, or whether the renumbered row's
+`updated_at` and `rb_local_usn` stayed byte for byte (the sitting's words are
+"otherwise unchanged", read here as every column but `TrackNo`).
+
+**Measured cost.** Not driven against rekordbox. Live numbers that were
+distinct stay distinct and in their order, so the order rekordbox shows is
+the order before, and the next append still goes past the highest position.
+
+**Closes when:** an attended sitting reads, on copies before and after a
+Remove from Collection, a playlist holding a gap below the removed track, and
+the renumbered row's every column, and the rule is kept or given what
+rekordbox does. Ledger only.
