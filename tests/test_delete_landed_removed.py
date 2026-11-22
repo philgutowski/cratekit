@@ -800,9 +800,9 @@ def test_one_row_two_landings_name_keeps_the_later_landings_count():
 
     for order in ((landed(5), landed(9)), (landed(9), landed(5))):
         found = deletion_library.landed_absences(
-            order, database_identity="db", present=(), playlist_held=lambda _one: True
+            order, database_identity="db", present=(), uuids={}, playlist_held=lambda _one: True
         )
-        assert {key: one.landed for key, one in found.items()} == {"7": 9}
+        assert {key: one.landed for key, one in found.absent.items()} == {"7": 9}
 
 
 # ---------------------------------------------------------------------------
@@ -891,3 +891,213 @@ def test_a_landed_row_removed_after_its_playlist_was_deleted_by_hand_is_offered_
     _trash(refused)
     assert not music.exists() and other.exists()
     assert _offered() == 0
+
+
+def _batch(cfg: config.Config, content_id: str) -> str:
+    (batch,) = _landing_record(cfg, content_id).detail[native.LANDED_ROWS_KEY]["playlists"]
+    return batch
+
+
+def _rolled_back() -> int:
+    code, refused = _review()
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    return int(_shown(refused).get("landings read as rolled back", 0))
+
+
+def test_the_landing_record_names_each_row_by_the_uuid_the_database_holds(
+    native_library, silence
+):
+    cfg, _root = native_library
+    _land(cfg, silence, "One", "Two")
+
+    landed = _landing_record(cfg, _row(cfg, "One")[0]).detail[native.LANDED_ROWS_KEY]
+
+    held = {str(key): uuid for key, uuid in _query(cfg, "SELECT ID, UUID FROM djmdContent")}
+    for entry in landed["rows"]:
+        uuid = entry[native.LANDED_UUID_KEY]
+        assert uuid and uuid == held[entry["content_id"]], entry
+    assert native.LANDED_UUID_KEY == deletion_library.LANDED_UUID_KEY
+
+
+def test_a_restore_to_before_the_landing_offers_nothing_and_the_screen_counts_it(
+    native_library, silence, monkeypatch, tmp_path
+):
+    """Every row and every playlist of the landing gone, the count past it: a rollback."""
+    cfg, _root = native_library
+    _land(cfg, silence, "Zero")
+    _deletion_on(cfg, monkeypatch, tmp_path)
+    _baseline(cfg)
+    before = Path(cfg.library.db_path).read_bytes()
+    _land(cfg, silence, "One", "Two", name="rolled back batch")
+    one, music = _row(cfg, "One")
+    two, other = _row(cfg, "Two")
+    landed_at = _landing_record(cfg, one).detail[native.LANDED_ROWS_KEY]["sequence"]
+    Path(cfg.library.db_path).write_bytes(before)
+    _sql(
+        cfg,
+        (
+            "UPDATE agentRegistry SET int_1 = ? WHERE registry_id = 'localUpdateCount'",
+            (landed_at + 50,),
+        ),
+    )
+
+    code, refused = _review()
+
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert _shown(refused)["offered"] == 0, _shown(refused)
+    assert _shown(refused)["landings read as rolled back"] == 1, _shown(refused)
+    assert not ({one, two} & set(_candidates(cfg)))
+    assert music.exists() and other.exists()
+    assert stores.list_tombstones(cfg) == ()
+
+
+def test_a_row_held_under_the_landed_id_but_another_uuid_proves_nothing(
+    native_library, silence, monkeypatch, tmp_path
+):
+    """A later import can draw a rolled back row's random id; only the id and UUID together prove it."""
+    cfg, _root = native_library
+    _land(cfg, silence, "One", "Two")
+    _deletion_on(cfg, monkeypatch, tmp_path)
+    _baseline(cfg)
+    gone, music = _row(cfg, "One")
+    two, _other = _row(cfg, "Two")
+    _sql(cfg, ("UPDATE djmdContent SET UUID = ? WHERE ID = ?", ("another-row", two)))
+    _delete_playlist_outright(cfg, _batch(cfg, gone))
+    _remove_outright(cfg, gone)
+
+    assert gone not in _candidates(cfg)
+    assert _rolled_back() == 1
+    assert music.exists()
+
+
+def test_a_landed_row_marked_soft_deleted_still_proves_its_landing(
+    native_library, silence, monkeypatch, tmp_path
+):
+    """Held means live or marked: a marked row of the landing is still the landing's own row."""
+    cfg, _root = native_library
+    _land(cfg, silence, "One", "Two")
+    _deletion_on(cfg, monkeypatch, tmp_path)
+    _baseline(cfg)
+    gone, _music = _row(cfg, "One")
+    marked, _other = _row(cfg, "Two")
+    _delete_playlist_outright(cfg, _batch(cfg, gone))
+    _mark_removed(cfg, marked)
+    _remove_outright(cfg, gone)
+
+    # The marked row is a candidate of its own (its Analyze membership keeps
+    # its file); the removal beside it is offered on the marked row's proof.
+    found = _candidates(cfg)
+    assert found[gone] == "deletable" and marked in found, found
+
+
+def test_a_playlist_the_rotation_soft_deleted_still_proves_a_landing_of_one_row(
+    native_library, silence, monkeypatch, tmp_path
+):
+    """As before this card: a marked playlist is held, so the lone landed row's removal is offered."""
+    cfg, _root = native_library
+    _land(cfg, silence, "One")
+    _deletion_on(cfg, monkeypatch, tmp_path)
+    _baseline(cfg)
+    gone, _music = _row(cfg, "One")
+    _sql(
+        cfg,
+        ("UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", (_batch(cfg, gone),)),
+    )
+    _remove_outright(cfg, gone)
+
+    assert _candidates(cfg) == {gone: "deletable"}
+    assert _rolled_back() == 0
+
+
+def test_every_row_gone_and_the_playlist_deleted_by_hand_is_kept_and_counted(
+    native_library, silence, monkeypatch, tmp_path
+):
+    """The price, said: nothing left tells this from a rollback, so the files stay and the screen counts it."""
+    cfg, _root = native_library
+    _land(cfg, silence, "One", "Two")
+    _deletion_on(cfg, monkeypatch, tmp_path)
+    _baseline(cfg)
+    one, music = _row(cfg, "One")
+    two, other = _row(cfg, "Two")
+    _delete_playlist_outright(cfg, _batch(cfg, one))
+    _remove_outright(cfg, one)
+    _remove_outright(cfg, two)
+
+    assert not ({one, two} & set(_candidates(cfg)))
+    assert _rolled_back() == 1
+    assert music.exists() and other.exists()
+
+
+def test_a_record_written_before_rows_named_their_uuid_keeps_the_playlist_proof_alone(
+    native_library, silence, monkeypatch, tmp_path
+):
+    """A record R-1037 wrote names no UUID: its playlist gone, it offers nothing, counted."""
+    cfg, _root = native_library
+    _land(cfg, silence, "One", "Two")
+    _deletion_on(cfg, monkeypatch, tmp_path)
+    _baseline(cfg)
+    gone, music = _row(cfg, "One")
+    batch = _batch(cfg, gone)
+
+    def older(landed: dict) -> None:
+        for entry in landed["rows"]:
+            entry.pop(native.LANDED_UUID_KEY)
+
+    _edit_landing(cfg, gone, older)
+    _delete_playlist_outright(cfg, batch)
+    _remove_outright(cfg, gone)
+
+    assert gone not in _candidates(cfg)
+    assert _rolled_back() == 1
+    assert music.exists()
+
+
+def test_a_landing_into_a_playlist_already_there_is_offered_while_another_row_remains(
+    native_library, silence, monkeypatch, tmp_path
+):
+    """R-1843's case with a second row: the row left under its UUID proves the landing."""
+    cfg, _root = native_library
+    _land(cfg, silence, "Zero", name="same batch")
+    _deletion_on(cfg, monkeypatch, tmp_path)
+    _baseline(cfg)
+    _land(cfg, silence, "One", "Two", name="same batch")
+    one, _music = _row(cfg, "One")
+    assert _landing_record(cfg, one).detail[native.LANDED_ROWS_KEY]["playlists"] == []
+    _remove_outright(cfg, one)
+
+    assert _candidates(cfg) == {one: "deletable"}
+
+
+def test_only_a_landing_that_names_an_absent_row_and_shows_no_proof_is_counted():
+    columns = {"ID": "7", "FolderPath": "/x/a.flac", "FileSize": 1, "ArtistName": "A", "Title": "T"}
+
+    def landed(*rows: tuple[str, str], playlists=()) -> dict:
+        return {
+            native.LANDED_ROWS_KEY: {
+                "database_identity": "db",
+                "sequence": 5,
+                "playlists": list(playlists),
+                "rows": [
+                    {"content_id": key, "columns": {**columns, "ID": key}, "uuid": uuid}
+                    for key, uuid in rows
+                ],
+            }
+        }
+
+    found = deletion_library.landed_absences(
+        [
+            landed(("1", "u1")),  # every row held: no question to ask
+            landed(("2", "u2"), ("3", "u3")),  # 3 held under its UUID: stands
+            landed(("4", "u4"), ("5", "u5")),  # 5 held under another UUID: rolled back
+            landed(("6", "u6"), playlists=["gone"]),  # its playlist gone: rolled back
+            landed(("8", "u8"), playlists=["here"]),  # its playlist held: stands
+            landed(("9", "")),  # no UUID, no playlist: rolled back
+        ],
+        database_identity="db",
+        present={"1", "3", "5"},
+        uuids={"1": "u1", "3": "u3", "5": "another"},
+        playlist_held=lambda one: one == "here",
+    )
+
+    assert sorted(found.absent) == ["2", "8"]
+    assert found.rolled_back == 3

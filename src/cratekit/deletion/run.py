@@ -38,8 +38,9 @@ prohibition never has to be reopened, by the session records of ``crate
 sync removed``, which deletes a row outright as rekordbox does (U288) and names
 each one it took out, since such a row carries no marker, and by the native
 landing's records of the rows it made, a landed row the database no longer
-holds, while every playlist that landing made is still there, being one
-rekordbox's Remove from Collection took out (R-1037). The database is opened, read, and closed.
+holds, while the database still shows that landing was not rolled back (one
+of its rows under its recorded UUID, or every playlist it made), being one
+rekordbox's Remove from Collection took out (R-1037, R-1844). The database is opened, read, and closed.
 That is also why there is no capture: a snapshot protects database rows, this
 run creates, edits and deletes none, and the thing that is actually at risk is
 files, which a database snapshot does not hold. What protects those is the
@@ -83,6 +84,7 @@ below the modules names a verb.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 from dataclasses import dataclass
@@ -141,6 +143,12 @@ class Plan:
     #: recomputed because ``apply`` re-checks each candidate through the same
     #: categoriser and has to hand it the same answer the review was made under.
     ambiguous: frozenset[str] = frozenset()
+    #: The landings this run read as rolled back (R-1844): each names a row the
+    #: database no longer holds, and the database holds neither one of its
+    #: rows under its recorded UUID nor every playlist it made, so none of its
+    #: rows is offered. Said on the gate's screen, because a refusal nobody
+    #: sees reads as a library with nothing removed.
+    rolled_back: int = 0
 
     @property
     def deletable(self) -> tuple[Candidate, ...]:
@@ -327,13 +335,18 @@ def plan(
     # AND A ROW A NATIVE LANDING MADE AND THE DATABASE NO LONGER HOLDS, which
     # is the row a person removed by hand in rekordbox (R-1037). One that a
     # recorded removal already names is that removal, at its own sequence.
-    absent = library.landed_absences(
+    # A landing is read as rolled back only when the database holds none of
+    # its own rows under their recorded UUIDs and not every playlist it made
+    # (R-1844), and the landings so read are counted for the gate's screen.
+    landings = library.landed_absences(
         [one.detail for one in records],
         database_identity=identity,
         present=held | {row.content_id for row in recorded},
+        uuids=seen.uuids,
         playlist_held=_playlists_held(db),
     )
-    seen = library.CollectionRead(active=seen.active, removed=seen.removed + recorded)
+    absent = landings.absent
+    seen = dataclasses.replace(seen, removed=seen.removed + recorded)
     highest = max((row.sequence for row in seen.removed), default=counter)
 
     mark, baselined = marks.baseline(
@@ -352,8 +365,8 @@ def plan(
         present=held,
         counter=counter,
     )
-    seen = library.CollectionRead(
-        active=seen.active,
+    seen = dataclasses.replace(
+        seen,
         removed=seen.removed
         + tuple(one.row(mark.absent[key]) for key, one in absent.items()),
     )
@@ -363,6 +376,7 @@ def plan(
             watermark=mark,
             baselined=True,
             baselined_over=len(seen.removed),
+            rolled_back=landings.rolled_back,
         )
 
     # STRICTLY GREATER, AND THIS IS THE ONLY PLACE THE RULE IS APPLIED. The
@@ -426,6 +440,7 @@ def plan(
         candidates=answered,
         references=references,
         ambiguous=ambiguous,
+        rolled_back=landings.rolled_back,
     )
 
 
