@@ -59,6 +59,21 @@ from cratekit.core.taxonomy_model import (
 )
 
 
+def _node(raw: Mapping[str, Any]) -> Node:
+    return Node(str(raw.get("id", "")), str(raw.get("display", "")))
+
+
+def _optional_table_node(data: Mapping[str, Any], key: str, problems: list[str]) -> Node | None:
+    """An optional folder section, keyed on presence; a value that is not a table is named."""
+    raw = data.get(key)
+    if raw is None:
+        return None
+    if not isinstance(raw, Mapping):
+        problems.append(f"[{key}] must be a table with an id and a display")
+        return None
+    return _node(raw)
+
+
 def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
     """Validate a parsed template and freeze it, raising every problem at once."""
     problems: list[str] = []
@@ -72,43 +87,25 @@ def build_taxonomy(data: Mapping[str, Any]) -> Taxonomy:
         raise TaxonomyError(problems)
 
     tree_raw = data.get("tree") or {}
-    intake_raw = data.get("intake") or {}
-    tree = Node(str(tree_raw.get("id", "")), str(tree_raw.get("display", "")))
-    intake = Node(str(intake_raw.get("id", "")), str(intake_raw.get("display", "")))
+    tree = _node(tree_raw)
+    intake = _node(data.get("intake") or {})
     tree_depth = int(tree_raw.get("depth", 0))
     # An optional section is declared or absent, never half declared, and is
     # validated as strictly as the mandatory trees. Keyed on presence, never
     # truthiness, since an empty table is falsy but still a declaration.
-    catalog_raw = data.get("catalog") if "catalog" in data else None
-    catalog = (
-        Node(str(catalog_raw.get("id", "")), str(catalog_raw.get("display", "")))
-        if catalog_raw is not None
-        else None
-    )
+    catalog = None if data.get("catalog") is None else _node(data["catalog"])
     long_tracks, long_problems = _build_long_tracks(data)
     problems += long_problems
-    # Keyed on presence; a value that is not a table is reported by name.
-    old_raw = data.get("intake_old") if "intake_old" in data else None
-    intake_old: Node | None = None
-    if old_raw is not None and not isinstance(old_raw, Mapping):
-        problems.append("[intake_old] must be a table with an id and a display")
-    elif old_raw is not None:
-        intake_old = Node(str(old_raw.get("id", "")), str(old_raw.get("display", "")))
+    intake_old = _optional_table_node(data, "intake_old", problems)
+    if intake_old is not None:
         # An Old sharing the intake flow's id or display declares one folder twice.
         if intake_old.id == intake.id or intake_old.display == intake.display:
             problems.append(
                 "[intake_old] must differ from [intake] in both id and display; "
                 "it declares a folder inside the intake flow, not the flow itself"
             )
-    # Keyed on presence (U121); a root folder, not inside the intake flow.
-    inspiration_raw = data.get("inspiration") if "inspiration" in data else None
-    inspiration: Node | None = None
-    if inspiration_raw is not None and not isinstance(inspiration_raw, Mapping):
-        problems.append("[inspiration] must be a table with an id and a display")
-    elif inspiration_raw is not None:
-        inspiration = Node(
-            str(inspiration_raw.get("id", "")), str(inspiration_raw.get("display", ""))
-        )
+    # U121: a root folder, not inside the intake flow.
+    inspiration = _optional_table_node(data, "inspiration", problems)
     declared_nodes = [(tree, "tree"), (intake, "intake")]
     if catalog is not None:
         declared_nodes.append((catalog, "catalog"))
