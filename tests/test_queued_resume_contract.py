@@ -27,7 +27,7 @@ from tests._containers import synth_container
 from tests.cli_drive import approve_and_queue as _approve_and_queue
 from tests.cli_drive import drive as _drive
 from tests.test_cli_contract import UNREACHABLE_GATES
-from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
+from tests.test_config import valid_data
 from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414 - fixture
 
 #: Every landed verb that queues work behind a gate only a person can answer,
@@ -98,6 +98,23 @@ def no_rekordbox(monkeypatch):
 def _silence(tmp_path_factory) -> Path:
     """One real audio container, synthesized once for the whole module."""
     return synth_container(tmp_path_factory.mktemp("silence"), ".flac")
+
+
+@pytest.fixture
+def installed(tmp_path, monkeypatch):
+    """A machine the real dispatcher can load, with every module switched on."""
+    root = tmp_path / "library"
+    (root / "Music").mkdir(parents=True)
+    (root / "db").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    data = valid_data(root)
+    data["profile"] = {"name": "full"}
+    resolved = config.from_dict(data)
+    config.save(resolved)
+    config.reset_cache()
+    monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
+    monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
+    return resolved
 
 
 @pytest.fixture
