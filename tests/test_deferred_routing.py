@@ -23,6 +23,7 @@ import unicodedata
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
+from typing import Iterator
 
 import pytest
 
@@ -961,19 +962,24 @@ def _is_invented(node: ast.expr | None, constants: frozenset[str]) -> bool:
     return False
 
 
+def _calls(source: str) -> Iterator[tuple[str, ast.Call]]:
+    """Every call in ``source`` with the name it is called by, attribute or bare."""
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call):
+            func = node.func
+            name = (
+                func.attr
+                if isinstance(func, ast.Attribute)
+                else (func.id if isinstance(func, ast.Name) else "")
+            )
+            yield name, node
+
+
 def _made_up_actors(source: str) -> list[str]:
     """Every ``acknowledge`` call whose actor is a value the caller invented (P7, R34)."""
-    tree = ast.parse(source)
-    constants = _module_string_constants(tree)
+    constants = _module_string_constants(ast.parse(source))
     found: list[str] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        name = (
-            node.func.attr
-            if isinstance(node.func, ast.Attribute)
-            else (node.func.id if isinstance(node.func, ast.Name) else "")
-        )
+    for name, node in _calls(source):
         if name != "acknowledge":
             continue
         for keyword in node.keywords:
@@ -1006,8 +1012,9 @@ def test_no_caller_acknowledges_a_track_with_an_actor_it_invented():
     for path in sorted(SRC_ROOT.rglob("*.py")):
         if "_vendor" in path.parts:
             continue
-        found = _made_up_actors(path.read_text())
-        if found:
+        source = path.read_text()
+        # A file that never spells the name holds no call of it.
+        if "acknowledge" in source and (found := _made_up_actors(source)):
             offenders[path.relative_to(SRC_ROOT).as_posix()] = found
     assert not offenders, (
         f"acknowledgments recorded against an actor the code made up: {offenders}. "
@@ -1019,17 +1026,11 @@ def test_no_caller_acknowledges_a_track_with_an_actor_it_invented():
 def test_the_intake_pipeline_records_its_routing_intents_at_the_decision():
     """P5's countdown, armed the moment the pipeline that owes it lands."""
     package = SRC_ROOT / "cratekit" / "intake"
-    called = False
-    for path in sorted(package.rglob("*.py")):
-        for node in ast.walk(ast.parse(path.read_text())):
-            if isinstance(node, ast.Call):
-                name = (
-                    node.func.attr
-                    if isinstance(node.func, ast.Attribute)
-                    else (node.func.id if isinstance(node.func, ast.Name) else "")
-                )
-                if name == "record_intents":
-                    called = True
+    called = any(
+        name == "record_intents"
+        for path in sorted(package.rglob("*.py"))
+        for name, _node in _calls(path.read_text())
+    )
     assert called, (
         "the intake pipeline never records a routing intent, so no run ever has "
         "anything deferred and the deferred-routing mechanism has no subject"
@@ -1646,23 +1647,13 @@ def test_the_routing_command_line_module_is_no_longer_owed_in_the_register():
 
 def test_the_routing_verbs_close_their_runs_through_the_gated_close():
     """P5's countdown for the close gate, armed when the surface that spends it lands."""
-    module = SRC_ROOT / "cratekit" / "write" / "routing_cli.py"
-    sources = (
-        [module]
-        if module.exists()
-        else sorted((SRC_ROOT / "cratekit" / "write" / "routing_cli").rglob("*.py"))
-    )
+    write = SRC_ROOT / "cratekit" / "write"
+    # The verbs' module and the export path it imports since U302.
+    sources = [write / "routing_cli.py", write / "routing_export.py"]
     bypassed: list[str] = []
     gated = False
     for path in sources:
-        for node in ast.walk(ast.parse(path.read_text())):
-            if not isinstance(node, ast.Call):
-                continue
-            name = (
-                node.func.attr
-                if isinstance(node.func, ast.Attribute)
-                else (node.func.id if isinstance(node.func, ast.Name) else "")
-            )
+        for name, node in _calls(path.read_text()):
             if name == "close_session":
                 bypassed.append(ast.unparse(node))
             if name == "close_run":
@@ -1680,14 +1671,7 @@ def test_the_intake_pipeline_closes_its_runs_through_the_gated_close():
     package = SRC_ROOT / "cratekit" / "intake"
     bypassed: list[str] = []
     for path in sorted(package.rglob("*.py")):
-        for node in ast.walk(ast.parse(path.read_text())):
-            if not isinstance(node, ast.Call):
-                continue
-            name = (
-                node.func.attr
-                if isinstance(node.func, ast.Attribute)
-                else (node.func.id if isinstance(node.func, ast.Name) else "")
-            )
+        for name, node in _calls(path.read_text()):
             if name == "close_session":
                 bypassed.append(f"{path.name}: {ast.unparse(node)}")
     assert not bypassed, (

@@ -158,11 +158,44 @@ def stocked(configured) -> config.Config:
     return configured
 
 
+#: The disposable database with the adopted root folder already made, by the
+#: base file it was made from, so the open that makes it runs once a process.
+_ADOPTED: dict[bytes, tuple[bytes, str]] = {}
+
+
+def _adopted_database(path: Path, cfg: config.Config) -> str:
+    """Build the disposable database with the tree's root folder, and say its identifier.
+
+    Made through the guarded writer once per process for each base file, then
+    copied, as the base itself is (U256). A build that leaves a sidecar beside
+    the file is not copied.
+    """
+    _build_disposable_database(path)
+    base = path.read_bytes()
+    if base in _ADOPTED:
+        adopted, root_id = _ADOPTED[base]
+        path.write_bytes(adopted)
+        return root_id
+    handle = rb_writer.open_db(path, unlock=False, cfg=cfg)
+    try:
+        folder = rb_writer.ensure_folder(handle, TREE_DISPLAY)
+        handle.session.commit()
+        root_id = str(folder.ID)
+    finally:
+        rb_writer.close_db(handle)
+    if not any(Path(f"{path}{suffix}").exists() for suffix in ("-wal", "-shm", "-journal")):
+        _ADOPTED[base] = (path.read_bytes(), root_id)
+    return root_id
+
+
 @pytest.fixture
 def native(stocked) -> str:
-    """A database with a real adopted root, and a registry that has cut over."""
+    """A database with a real adopted root, and a registry that has cut over.
+
+    The root is a REAL row, since every walk goes down from its identifier.
+    """
     path = Path(stocked.library.db_path)
-    _build_disposable_database(path)
+    root_id = _adopted_database(path, stocked)
     _record_locations(
         path,
         {
@@ -170,13 +203,6 @@ def native(stocked) -> str:
             "2": str(_intake_dir(stocked) / ARRIVED),
         },
     )
-    handle = rb_writer.open_db(path, unlock=False, cfg=stocked)
-    try:
-        folder = rb_writer.ensure_folder(handle, TREE_DISPLAY)
-        handle.session.commit()
-        root_id = str(folder.ID)
-    finally:
-        rb_writer.close_db(handle)
     tree_registry.write(
         stocked,
         tree_registry.Registry(
