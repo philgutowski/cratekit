@@ -176,7 +176,12 @@ def test_the_taxonomies_and_the_tables_dump_equal(stage, tmp_path):
             "remedies": list(exit_codes.Remedy),
             "bands": exit_codes.BANDS,
             "meanings": exit_codes.MEANINGS,
-            "state_files": config.STATE_FILES,
+            # Every field of every entry but ``why``, which is prose kept as data
+            # and never shown, so a refactor may shorten it.
+            "state_files": [
+                {k: v for k, v in plain(entry).items() if k != "why"}
+                for entry in config.STATE_FILES
+            ],
         },
     )
     told = []
