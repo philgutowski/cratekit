@@ -732,8 +732,7 @@ def _missing(report: _Pass, run_id: str, *, without_cancelled: bool = False) -> 
         raise _Done(MISSING)
     report.summary["staged"] = staged
     report.summary["land_name"] = land_name
-    # SAID ON THE STEP THAT DECIDED IT (U212), so a person reading the pass
-    # sees why fewer tracks were downloaded than the playlists asked for.
+    # Said here, so fewer downloads than asked for is explained (U212).
     held = (
         "staged already by a download not landed yet, not downloaded again; that "
         "download is landed on its own first, since this pass lands only its own (R-1499)"
@@ -764,17 +763,15 @@ def _staged_on(listed: _Listed) -> str:
 
 
 def _download_job(store: jobs.JobStore, listed: Path, cfg: config.Config) -> jobs.Job | None:
-    """The download job already queued over this list, newest first, or None.
+    """The newest download job already queued over this list, or None.
 
-    A pass continued with ``--pass-run`` lists the same tracks into the same
-    file, and queueing it again would download each of them twice. A cancelled
-    job is nobody's claim on the list and is passed over.
+    So a continued pass does not download twice; a cancelled job is passed over.
     """
     from cratekit.acquire import cli as acquire_cli  # noqa: PLC0415 - one module's key
 
     key = registry.entry(DOWNLOAD_VERB).handler_key
     wanted = str(listed.expanduser().absolute())
-    # ``list_jobs`` IS NEWEST FIRST already, so the first match is the newest.
+    # ``list_jobs`` is newest first.
     for job in jobs.list_jobs(store):
         if (
             job.handler_key == key
@@ -789,10 +786,8 @@ def _download_job(store: jobs.JobStore, listed: Path, cfg: config.Config) -> job
 def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
     """Download the list, skip what was refused for good, and return how many landed.
 
-    A pass whose every missing track is staged has no list (U212). Since
-    R-1499 the reading before this step refuses while the folder holds what
-    is not the pass's own, so the pass gets here with nothing to download
-    only when what is staged is its own.
+    A pass whose every missing track is already staged, as its own, has no list
+    (U212, R-1499).
     """
     from cratekit.acquire import cli as acquire_cli  # noqa: PLC0415 - one module's reading
 
@@ -821,12 +816,8 @@ def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
         with jobs.open_store() as store:
             job = jobs.get(store, job_id)
     job = tail.settle(report, DOWNLOAD, job)
-    # THE ONE READING OF A SETTLED DOWNLOAD (R-1115), shared with ``label sync
-    # --go``: SUCCEEDED, or FAILED only by tracks refused for good. A track the
-    # download declined is refused too (U169): since that unit a policy
-    # refusal settles the item as skipped and the job succeeds, so read alone
-    # the failed items would report a clean download over a track that never
-    # landed.
+    # The one reading of a settled download, shared with ``label sync``
+    # (R-1115); a declined track counts as refused (U169).
     with jobs.open_store() as store:
         read = acquire_cli.read_download(store, job)
     if not read.settled:
@@ -855,9 +846,7 @@ def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
             + (f"; {len(refused)} refused" if refused else "")
             + _staged_on(listed),
         )
-        # WHAT IS STAGED STILL LANDS (review round one, F1): a download that
-        # landed nothing ends the pass only when nothing was staged either,
-        # since the missing step already told the person the landing takes it.
+        # What is staged still lands, so this ends the pass only with nothing staged.
         if not listed.staged:
             raise _Done(DOWNLOAD)
         return 0
@@ -873,10 +862,7 @@ def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
 def _attended(ctx: Context, report: _Pass, stop: _Attend) -> Envelope:
     """The PENDING envelope a pass ends on when a step waits for a person.
 
-    It names what the person does, as commands, in order, through the chain's
-    one wording of a stop (:func:`cratekit.cli.tail.attended`), and nothing is
-    answered here: the gate's run is the step's own, and the acknowledgment is
-    minted by the session through its own verb.
+    Worded by :func:`cratekit.cli.tail.attended`; nothing is answered here.
     """
     resume = report.summary.get("pass_run")
     if stop.step == LAND:
@@ -888,8 +874,7 @@ def _attended(ctx: Context, report: _Pass, stop: _Attend) -> Envelope:
     said = tail.attended(report, stop, after=after)
     summary = "the pass " + said.summary
     if stop.step == LAND:
-        # WHAT THE DOWNLOAD DID, said first (review round two, finding 5): a
-        # pass that landed only what was staged downloaded nothing.
+        # What the download did, said first.
         if report.summary.get("downloaded") == 0:
             summary = (
                 "the pass downloaded nothing and is tagged, analysed and named over "
@@ -950,12 +935,7 @@ def _choose(ctx: Context, report: _Pass, choose: _Choose) -> Envelope:
 
 
 def _own_downloads(store: jobs.JobStore, name: str, cfg: config.Config) -> set[str]:
-    """Every download job of this library over the pass's own list, by its name.
-
-    The name a pass's list and its landing share, the reading ``cli.tail``
-    names a pass's download by, so a cancelled job over the list, whose
-    finished tracks are in the folder, is the pass's own as well.
-    """
+    """Every download job of this library over the pass's own list, cancelled ones included."""
     from cratekit.intake import beside as staged  # noqa: PLC0415 - one module's reading
 
     return {
@@ -970,14 +950,10 @@ def _alone(
 ) -> staged_reading.Settled:
     """Refuse the pass while the staging folder holds what is not its own (R-1499).
 
-    Read as R-1467 reads it for a label go, :func:`cratekit.intake.beside.beside`:
-    the pass's own is a track of its own download at its download name, or a
-    file its own tail left there (:func:`_keep`) while its pass has no landing
-    proof. Anything else would be landed with it under its pass, so the pass
-    stops at ``step``, before its download or before its tail, naming each
-    download and how it lands. A folder or a library root that cannot be read
-    stops it too. Returns what the folder then holds of other downloads, which
-    :func:`_arrived` compares the folder with once the tail has run.
+    Read through :func:`cratekit.intake.beside.beside`: the pass's own is its
+    download's tracks or what its tail left (:func:`_keep`). Anything else, or
+    an unreadable folder, stops it at ``step`` naming how each lands. Returns
+    the folder's state for :func:`_arrived`.
     """
     from cratekit.intake import beside as staged  # noqa: PLC0415 - one module's reading
 
@@ -1024,12 +1000,9 @@ def _land_command(staging: Path, name: str) -> str:
 def _own_unnamed(
     found: staged_reading.Beside, staging: Path, name: str, own: Collection[str]
 ) -> tuple[str, ...]:
-    """The way on when the files no download names may be the pass's own (review round one).
+    """The way on when unnamed files may be the pass's own, renamed with the record lost.
 
-    A pass whose tail renamed its tracks and whose record of them was lost, or
-    never kept by an older build, reads them as files no download names. Only
-    a person can tell, so the step says how to land them under the pass; only
-    for a pass with a download of its own (review round two, finding 8).
+    Only a person can tell; offered only for a pass with a download of its own.
     """
     if not (found.unnamed and own):
         return ()
@@ -1054,11 +1027,7 @@ def _unlistable(staging: Path, exc: OSError) -> CratekitError:
 def _arrived(
     cfg: config.Config, staging: Path, name: str, before: staged_reading.Settled
 ) -> CratekitError | None:
-    """The refusal for what arrived while the tail ran, or None (review round one).
-
-    :func:`cratekit.intake.beside.arrived`, read against what :func:`_alone`
-    saw as the tail started; a queue that cannot be read refuses too.
-    """
+    """The refusal for what arrived since :func:`_alone` read the folder, or None."""
     from cratekit.intake import beside as staged  # noqa: PLC0415 - one module's reading
 
     try:
@@ -1077,11 +1046,7 @@ def _arrived(
 
 
 def _planned_over(changed: CratekitError, stop: _Attend) -> CratekitError:
-    """The arrival refusal for a landing already planned over what arrived (round two).
-
-    The landing waits at its gate on its own run; that plan took what
-    arrived, so the step says not to answer it.
-    """
+    """The arrival refusal for a landing already planned, saying not to answer its gate."""
     run = (stop.cause.detail or {}).get("run_id")
     cause = changed.cause
     steps = (
@@ -1103,16 +1068,9 @@ def _keep(
 ) -> None:
     """Keep what the folder holds as the pass's tail stops, under its pass (R-1499).
 
-    The tail's ``name apply`` renames every track before the landing's gate,
-    so the pass continued finds its tracks under names no download recorded;
-    :func:`cratekit.intake.beside.keep` keeps them by name, size and
-    modification time, which is what lets it read them as its own and nothing
-    put there since. One that cannot be kept is a warning, and the pass
-    continued then refuses beside its own renamed tracks.
-
-    NOT WHEN ANYTHING ARRIVED WHILE THE TAIL RAN (review round one): what
-    arrived may have been renamed with the pass's own, so a record kept then
-    would read it as the pass's own; the warning says the record was not kept.
+    ``name apply`` renames the tracks, so they are kept by name, size and
+    modification time for a continued pass. Not kept when anything arrived
+    meanwhile, since it may have been renamed too; a lost record is a warning.
     """
     from cratekit.intake import beside as staged  # noqa: PLC0415 - one module's reading
 
@@ -1185,12 +1143,7 @@ def _ended(report: _Pass, stop: _Stop) -> CratekitError:
 
 
 def _with_warnings(report: _Pass) -> dict[str, Any]:
-    """The pass's record with its warnings, which a refusal has no other place for.
-
-    A refusal carries no warnings of its own, so a tail record the pass could
-    not keep (R-1499) would otherwise be said nowhere when the tail stopped on
-    a failed step (review round one).
-    """
+    """The pass's record with its warnings, since a refusal has no other place for them."""
     data = report.data()
     if report.warnings:
         data["warnings"] = list(report.warnings)
@@ -1199,9 +1152,7 @@ def _with_warnings(report: _Pass) -> dict[str, Any]:
 
 def sync_land(ctx: Context) -> Envelope:
     """Take one sync pass to its landing gate. See the module docstring."""
-    # ONE PASS STAGES AT A TIME (U293), held for the whole of the pass, so the
-    # night pass, a label go and a pass by hand never download together. The
-    # night pass runs this verb in its own process and already holds it.
+    # One pass stages at a time, for the whole pass (U293).
     with staging_lock.held("crate sync land", run_id=ctx.run.run_id):
         return _sync_land(ctx)
 
@@ -1213,8 +1164,7 @@ def _sync_land(ctx: Context) -> Envelope:
     try:
         preflight(report, cfg)
     except CratekitError as exc:
-        # A REFUSAL HERE NAMES THE WAY BACK (U183): the pass it would continue,
-        # or a new one.
+        # Names the way back (U183).
         again = _continue_command(taken) if taken else "crate sync land"
         raise tail.with_steps(exc, f"then run it again: {again}") from None
     _vocals(ctx, report, cfg)
@@ -1225,8 +1175,7 @@ def _sync_land(ctx: Context) -> Envelope:
             report.check(SYNC, "info", f"continuing the pass queued under run {run_id}")
         else:
             run_id = _sync(report, cfg)
-            # A PASS SYNC ALL STARTED, or the run it named over nothing new with
-            # no earlier pass open, takes the account's queued downloads (U227).
+            # A fresh pass takes the account's queued downloads (U227).
             fresh = str(report.summary.get("sync_run") or "")
             if fresh and run_id in (None, fresh) and _take_mirror_downloads(report, cfg, fresh):
                 run_id = fresh
@@ -1239,30 +1188,22 @@ def _sync_land(ctx: Context) -> Envelope:
         without = _intake(report, run_id, cfg)
         listed = _missing(report, run_id, without_cancelled=without)
         staging = cfg.paths.download_staging.expanduser().absolute()
-        # THE FOLDER HOLDS ONLY THE PASS'S OWN (R-1499), read before the
-        # download, so nothing is downloaded into a folder the pass cannot
-        # land, and again before the tail, over what arrived meanwhile.
+        # The folder must hold only the pass's own, before the download and the tail (R-1499).
         name = listed.land_name
         _alone(report, cfg, staging, name, DOWNLOAD)
         report.summary["downloaded"] = _download(report, listed, cfg)
         before = _alone(report, cfg, staging, name, TAG)
         try:
             folder = tail.through_name(report, staging, cfg, name)
-            # NOTHING ARRIVED WHILE THE TAIL RAN (review round one): a download
-            # another process finished meanwhile was renamed with the pass's
-            # own, and the landing would take it under the pass.
+            # Nothing may have arrived while the tail ran.
             changed = _arrived(cfg, staging, name, before)
             if changed is not None:
-                # NOT CONTINUED (review round two, D2): the pass continued
-                # refuses beside the tracks its tail renamed, since no record
-                # was kept; the way on is the landing by hand the steps name.
+                # Not continued, since no record was kept; the steps name the landing.
                 raise _Stop(LAND, changed, continues=False)
             try:
                 tail.land(report, folder, ["--pass", name])
             except _Attend as stop:
-                # READ ONCE MORE AFTER THE PLAN (review round two, finding 1):
-                # an arrival between the check above and the landing's own
-                # listing is in the plan, so the plan is refused, not handed on.
+                # Read again after the plan, since a late arrival is in it.
                 changed = _arrived(cfg, staging, name, before)
                 if changed is None:
                     raise

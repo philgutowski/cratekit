@@ -1334,31 +1334,23 @@ ENTRIES: tuple[Entry, ...] = (
         summary="make an identified set or a typed tracklist a private playlist on the " "streaming account; adds, never removes",
         module="cratekit.export.set_cli", builder="build_set", handler_key="export.set",
         feature_rows=(36,), module_id="export", emits=frozenset({"plan"}), output_schema="plan/1",
-        #: One surface, the account: a playlist is created private and tracks
-        #: are added. What was written is recorded in this product's own
-        #: outbound ledger, which is not a declared surface. NOT destructive,
-        #: on ``export.playlist``'s precedent: every write adds to the account.
-        #: A provider candidate accepted in review is READ, never offered.
-        #: ``--rename JOB`` (U140) retitles one playlist this product made to
-        #: the name the person already gave its INSPIRATION playlist, and
-        #: refreezes that name on the set's job, which is this product's own
-        #: state. Still not destructive: no track or playlist is taken away,
-        #: and a playlist the archive marked is refused rather than retitled.
+        #: The account only, and not destructive, as ``export.playlist``: a
+        #: private playlist is created and filled. ``--rename`` (U140) retitles
+        #: one this product made to its INSPIRATION name and takes nothing away.
         writes=frozenset({"remote"}),
-        # library.mounted: the no-name backfill opens the rekordbox database
-        # over INSPIRATION (U129), and the rename reads it for the live name.
+        # The library: the backfill and the rename read the database (U129).
         doctor_checks=("library.mounted", "credential.provider"),
         gates=(
             GateSpec(
                 name="export.set.confirm", options=("apply", "abort"),
                 prompt="Make this set a private playlist on the streaming account?",
-                # EXPLICIT, as every other write to the account is (R34).
+                # Explicit, as every account write is (R34).
                 explicit=True, digest_source="plan",
             ),
             GateSpec(
                 name="export.set.rename", options=("apply", "abort"),
                 prompt="Rename this set's playlist on the streaming account to its " "INSPIRATION playlist's name, and record the new name?",
-                # EXPLICIT, as every other write to the account is (R34).
+                # Explicit, as every account write is (R34).
                 explicit=True, digest_source="plan",
             ),
         ),
@@ -1368,20 +1360,17 @@ ENTRIES: tuple[Entry, ...] = (
         summary="file a downloaded set's playlist in Downloaded Sets <year> on the " "streaming account, and record it as taken",
         module="cratekit.export.set_cli", builder="build_archive", handler_key="export.archive",
         feature_rows=(36,), module_id="export", emits=frozenset({"plan"}), output_schema="plan/1",
-        #: One surface, the account: the year's Downloaded Sets folder is
-        #: created (U142) and the set playlist is put in it. No title changes
-        #: since U242: the set is held as taken in ``sync mark``'s record,
-        #: which ``sync unmark`` lets go. ``destructive`` is kept: the move
-        #: changes where a person finds a playlist they can see.
+        #: The account only: the playlist moves into the year's folder (U142),
+        #: held as taken in ``sync mark``'s record (U242). Destructive: the
+        #: move changes where a person finds it.
         writes=frozenset({"remote"}), destructive=True,
-        # library.mounted: the no-name backfill opens the rekordbox database
-        # when it looks up intake proofs under the library (U129).
+        # The library: the backfill reads the database (U129).
         doctor_checks=("library.mounted", "credential.provider"),
         gates=(
             GateSpec(
                 name="export.archive.confirm", options=("apply", "abort"),
                 prompt="File this set playlist in Downloaded Sets for its year on the " "streaming account?",
-                # EXPLICIT, as label.mark's is, for the same reason (R34).
+                # Explicit, as ``label.mark``'s is (R34).
                 explicit=True, digest_source="plan",
             ),
         ),
@@ -1391,41 +1380,21 @@ ENTRIES: tuple[Entry, ...] = (
         module="cratekit.setbuilder.cli", builder="build", handler_key="setbuild",
         feature_rows=(29,), source_scripts=("dj-set-builder",), module_id="setbuilder",
         emits=frozenset({"plan"}), output_schema="plan/1",
-        # U43 LANDED IT. ``cratekit.setbuilder.cli`` ships the shell over the
-        # engine U35 landed, so the marker is gone and the conformance properties
-        # drive this entry rather than skipping it. It declares no write surface
-        # and that is load bearing: ``writes={"files"}`` would make it
-        # destructive by the invariant above. It DOES keep its index cache, the
-        # library scoped state file ``setbuilder_index_cache``, and that is not
-        # in ``writes`` on the ruling ``analyze.calibrate`` records above:
-        # the vocabulary is the library's own material, files, database and
-        # XML, and a cache is none of those (R-188).
+        # Landed (U43). Its index cache is library state, not ``writes``, as
+        # for ``analyze.calibrate`` (R-188), so the verb is not destructive.
     ),
     Entry(
         name="master",
         summary="master a recorded set to a consistent loudness without touching the source",
         module="cratekit.master.cli", builder="build", handler_key="master", feature_rows=(30,),
         module_id="mastering",
-        # U105. The source system's ``master_set.sh`` is this verb's
-        # predecessor, and until it was named here no test could notice that
-        # the predecessor joined split recordings and took a target this verb
-        # did not (R-193).
+        # Named so parity sees what the predecessor did (U105, R-193).
         source_scripts=("master_set.sh",), argv_builder="master_argv", long_running=True,
         emits=frozenset({"job_state"}), output_schema="job_state/1", writes=frozenset({"files"}),
         destructive=True, doctor_checks=("binary.ffmpeg",),
-        # U44 LANDED IT. ``cratekit.master.cli`` ships the shell over the engine
-        # U35 landed, so the marker is gone and the conformance properties drive
-        # this entry rather than skipping it.
-        #
-        # THE FLAGS BELOW ARE WHAT THE MARKER WAS HIDING. ``writes={"files"}``
-        # makes the verb destructive by the invariant above, and it declares NO
-        # gate: the run writes a new file, archives the original with a verified
-        # digest, and refuses rather than replacing a master somebody kept, so
-        # there is no decision for a person to make. ``--overwrite`` is the one
-        # path where something is lost, and the flag is itself the explicit act,
-        # which is why no gate sits behind it. ``long_running`` binds
-        # ``master_argv``, and that builder carries no ``--run`` precisely
-        # because there is no gate whose decision would need a run to name.
+        # Landed (U44). No gate: it writes a new file and archives the original,
+        # and ``--overwrite`` is itself the explicit act. So ``master_argv``
+        # carries no ``--run``.
     ),
     Entry(
         name="backup.run",
@@ -1434,43 +1403,20 @@ ENTRIES: tuple[Entry, ...] = (
         feature_rows=(31,), source_scripts=("backup.sh",), module_id="backup",
         argv_builder="backup_argv", long_running=True, emits=frozenset({"job_state"}),
         output_schema="job_state/1", doctor_checks=("library.mounted", "binary.rclone"),
-        # U45 LANDED IT. ``cratekit.backup.cli`` ships the shell over the engine
-        # U35 landed, so the marker is gone and the conformance properties drive
-        # this entry rather than skipping it.
-        #
-        # WHY THE MARKER OUTLIVED THE UNIT IT NAMED. U35 landed the ENGINE and no
-        # shell, and this entry went on naming a closed issue, so the board showed
-        # nothing owed while row 31 sat uncovered. That is the same shape the
-        # acquisition rows sat in until U42, and it is why ``planned_in`` is
-        # reconciled against ``tests/_pending.PENDING`` rather than trusted.
-        #
-        # IT DECLARES NO GATE, and that is argued in the shell's own docstring
-        # rather than here: the run adds a mirror and a dated archive, replaces
-        # nothing a person kept, and writes no database row, so ``writes`` stays
-        # empty and the verb is not destructive. ``long_running`` binds
-        # ``backup_argv``, and that builder carries no ``--run`` precisely because
-        # there is no gate whose decision would need a run to name.
+        # Landed (U45). No gate and no write surface, argued in the shell's
+        # docstring: it only adds a mirror and an archive. So no ``--run``.
     ),
     Entry(
         name="skills.install", summary="install the operator skills that ship with the package",
         module="cratekit.skills.cli", builder="build", handler_key="skills.install",
         feature_rows=(33,), module_id="skills", emits=frozenset({"diagnostic"}),
         output_schema="diagnostic/1",
-        # U28 LANDED IT. ``cratekit.skills.cli`` ships the verb and
-        # ``cratekit/skills/assets/`` ships the twelve skills it installs, so the
-        # marker is gone and the conformance properties drive this entry rather
-        # than skipping it. THE BRIEF'S FILES LINE NAMED ``src/cratekit/cli/skills.py``
-        # AND THIS ENTRY WON, as it did for the restore verbs one unit earlier: a
-        # module path declared here is the one the dispatcher imports, so a unit
-        # that lands the brief's spelling instead lands a module nothing loads.
+        # Landed (U28). The module path here is the one the dispatcher imports.
     ),
     # ── The rest of the review surface (U11) ────────────────────────────────
     #
-    # Appended here rather than beside their two siblings above so that a branch
-    # landing beside this one conflicts TEXTUALLY rather than auto-merging into a
-    # tuple whose contents nobody re-read. The four verbs are what the plan's
-    # approach names beyond list and resolve: addressing one item, revoking a
-    # verdict, and the file for anyone who genuinely wants one.
+    # Appended rather than beside their siblings, so a concurrent branch
+    # conflicts textually instead of auto merging unread.
     Entry(
         name="review.show",
         summary="show one review item whole: its payload, its candidates, its verdict",
@@ -1495,12 +1441,8 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     # ── Deferred routing (U19) ──────────────────────────────────────────────
     #
-    # APPENDED HERE RATHER THAN BESIDE ITS THREE SIBLINGS, deliberately. Several
-    # units land against this table at once, and a middle insertion is the shape
-    # a merge resolves silently: two entries appended to different halves of one
-    # tuple auto-merge, and the only thing that catches a name collision is the
-    # import-time check below plus the conformance suite's length assertion.
-    # An append conflicts textually, which is a conflict somebody reads.
+    # Appended rather than beside its siblings, for the reason above. Every
+    # later block is appended the same way.
     Entry(
         name="route.pending",
         summary="place tracks whose routing was decided before the library held a row for them",
@@ -1511,9 +1453,6 @@ ENTRIES: tuple[Entry, ...] = (
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
     ),
     # ── Landing (U72) ───────────────────────────────────────────────────────
-    #
-    # Appended rather than beside its intake siblings, for the reason the block
-    # above gives.
     Entry(
         name="intake.land",
         summary="move a folder of acquired files into the library and write one intake file",
@@ -1566,9 +1505,6 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     # ── The deferred mark (U82) ─────────────────────────────────────────────
-    #
-    # Appended rather than beside its sync siblings, for the reason the
-    # deferred routing block above gives.
     Entry(
         name="sync.mark",
         summary="record the account playlists a landed sync pass finished as taken",
@@ -1595,8 +1531,6 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     # ── The mark, undone (R-838) ────────────────────────────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives.
     Entry(
         name="sync.unmark",
         summary="let go what a sync pass took, and put back any title its mark wrote",
@@ -1621,8 +1555,6 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     # ── The DOWNLOADED prefix, retired (U242) ───────────────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives.
     Entry(
         name="sync.taken",
         summary="record every account playlist already taken, the prefixed and the " "marked, in Cratekit's own record",
@@ -1664,8 +1596,6 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     # ── The import proof (R-501) ────────────────────────────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives.
     Entry(
         name="intake.imported",
         summary="prove an intake file imported, retire it, and settle its run",
@@ -1684,8 +1614,6 @@ ENTRIES: tuple[Entry, ...] = (
         writes=frozenset({"xml", "files"}), destructive=True, doctor_checks=("library.mounted",),
     ),
     # ── The export, without rekordbox's menus (R-745) ───────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives.
     Entry(
         name="export.collection",
         summary="write a collection export from a copy of the database, with rekordbox closed",
@@ -1708,8 +1636,6 @@ ENTRIES: tuple[Entry, ...] = (
         doctor_checks=("library.mounted", "rekordbox.closed", "library.paths_resolved"),
     ),
     # ── The folder suggestion (R-797) ───────────────────────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives.
     Entry(
         name="report.genres",
         summary="name every genre holding 50 or more tracks with no top level " "folder of its own; creates nothing",
@@ -1729,8 +1655,6 @@ ENTRIES: tuple[Entry, ...] = (
         taxonomy_terms=("genre_energy",), doctor_checks=("library.mounted", "rekordbox.pins"),
     ),
     # ── A row's genre from its file (R-816) ─────────────────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives.
     Entry(
         name="tag.rows",
         summary="write each library row's genre from its file where the two " "disagree, the genre and nothing else; writes no file",
@@ -1770,8 +1694,6 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     # ── The genres an older mapping wrote, corrected on the file (R-799) ────
-    #
-    # Appended, for the reason the deferred routing block above gives.
     Entry(
         name="tag.remap",
         summary="rewrite the genre on files a tag job filed by a mapping the " "taxonomy has since changed, from what the job recorded; writes no row",
@@ -1800,8 +1722,6 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     # ── A genre for a row with none (U114) ──────────────────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives.
     Entry(
         name="tag.suggest",
         summary="suggest a genre for each row with none on the row or the file, " "from its artist, its folder and optionally the catalogues; writes file and row",
@@ -1830,8 +1750,6 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     # ── The needs genre backlog (U292) ──────────────────────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives.
     Entry(
         name="tag.backlog",
         summary="sort every row adoption leaves under needs genre by cause, with " "each verb that settles it and one question per genre word no folder " "takes; writes nothing",
@@ -2288,8 +2206,6 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     # ── A playlist pair, kept one list on both sides (U130) ─────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives.
     Entry(
         name="sync.pair",
         summary="keep one of your account playlists and one rekordbox playlist the " "same list, each side merged against the last sync",
@@ -2323,8 +2239,6 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     # ── The custom playlist twins' backfill (U149) ──────────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives.
     Entry(
         name="sync.twins",
         summary="give every downloaded custom playlist on the account its permanent " "twin in rekordbox's Custom Playlists <year> folder, paired to stay one list",
@@ -2349,8 +2263,6 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     # ── A twin's held tracks, let go at the author's choice (U221) ──────────
-    #
-    # Appended, for the reason the deferred routing block above gives.
     Entry(
         name="sync.release",
         summary="let a custom playlist twin's held tracks be queued at the next " "crate sync pair, one twin by its account playlist or every twin",
@@ -2373,8 +2285,6 @@ ENTRIES: tuple[Entry, ...] = (
         ),
     ),
     # ── A genre for the files every catalogue missed (U172) ─────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives.
     Entry(
         name="tag.guess",
         summary="give each file in a folder with no genre one guessed from its " "artist's other tracks and the playlist it came from; writes files",
@@ -2395,8 +2305,6 @@ ENTRIES: tuple[Entry, ...] = (
         doctor_checks=("library.mounted",),
     ),
     # ── Tracks taken off a downloaded playlist (U287) ───────────────────────
-    #
-    # Appended, for the reason the deferred routing block above gives.
     Entry(
         name="sync.removed",
         summary="list each downloaded track you took off its playlist on the streaming " "account, and take the offered ones out of the rekordbox collection behind a gate",

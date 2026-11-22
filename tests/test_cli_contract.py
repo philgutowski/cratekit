@@ -1,27 +1,11 @@
 """U5: the verb conformance suite.
 
-Coverage checking proves a verb EXISTS. This proves it CONFORMS. The difference
-is the whole deliverable of this unit: the suite iterates the registry rather
-than naming verbs, so a verb added without structured output, without a place in
-the exit-code vocabulary, or with a prompt in it fails the build by OMISSION
-instead of by somebody noticing in review.
-
-The file is in five parts, and each part answers a specific failure in the
-source system:
-
-1. **The exit-code vocabulary.** Three unrelated schemes there give one integer
-   three meanings with opposite remediations, and the only named constant lives
-   in a consumer rather than in any producer.
-2. **The structured cause.** Every non-success result carries one, with a
-   remediation, and it survives the boundaries between where it happened and
-   where it becomes a status.
-3. **The envelope.** Versioned, with human rendering kept out of it, and a lock
-   file so a schema change without a version bump fails here.
-4. **Gates and standard input.** Three layers of proof that no verb reads
-   standard input, because the source system's non-interactive contract is
-   claimed in a docstring and false in three places.
-5. **Parity.** Every Feature Inventory row and every source entry point is
-   either claimed by a verb or written down in CUT.md with a reason.
+Coverage proves a verb exists; this proves it conforms. The suite iterates the
+registry rather than naming verbs, so a verb added without structured output,
+without a place in the exit code vocabulary, or with a prompt in it fails by
+omission. Five parts: the exit code vocabulary, the structured cause, the
+envelope and its schema lock, gates and standard input, and parity with the
+Feature Inventory and the source entry points.
 """
 
 from __future__ import annotations
@@ -70,11 +54,10 @@ SCHEMA_DIR = Path(__file__).resolve().parent / "schemas"
 
 
 def package_sources() -> list[tuple[Path, str]]:
-    """Every module we AUTHOR, vendored third-party code excluded.
+    """Every module we author, vendored third party code excluded.
 
-    The vendored downloader is not ours to restyle and does read standard input;
-    holding it to a contract written after it was published would only produce a
-    suppression comment somebody later reads as permission.
+    The vendored downloader is not ours to restyle, and holding it to this contract
+    would only produce a suppression comment later read as permission.
     """
     return [
         (path, path.read_text())
@@ -100,12 +83,9 @@ def library(tmp_path, monkeypatch):
 def configured(library, monkeypatch):
     """A machine that has been set up, so a verb reaches its own logic.
 
-    The disposable database is the R-13 substitute: a supplied
-    ``CRATEKIT_TEST_DB`` snapshot wins, otherwise a synthetic file is built.
-    The battery runs either way. Volume identity and the two-process refusal
-    are satisfied here because ``delete.review`` asserts both before it can
-    return OK, and a fixture that claims to be set up must be a machine the
-    destructive session will actually admit.
+    The disposable database is the R-13 substitute: a supplied ``CRATEKIT_TEST_DB``
+    wins, else a synthetic file is built. Volume identity and the two process
+    refusal are satisfied, since ``delete.review`` asserts both before it returns OK.
     """
     from cratekit.core import preflight, rb_writer
     from tests.test_rb_writer_db import _build_disposable_database
@@ -146,18 +126,11 @@ def configured(library, monkeypatch):
     monkeypatch.setattr(preflight, "local_mount_points", lambda: ())
     monkeypatch.setattr(rb_writer, "rekordbox_running", lambda: False)
     monkeypatch.setattr(rb_writer, "rekordbox_agent_running", lambda: False)
-    # A PERSON IS SITTING HERE, asserted rather than inherited, and U49 is what
-    # made it necessary. ``session.ack`` is the first landed verb that reaches
-    # ``core.session.record_acknowledgment``, which refuses when no controlling
-    # terminal opens, and conformance 3 drives every gated verb THROUGH its gate
-    # to OK. Whether ``os.ctermid()`` opens under pytest depends on how the suite
-    # was launched, so leaving it unpatched makes this file pass or fail on a
-    # property of the machine rather than of the product. The patch lives here
-    # and not in ``tests/conftest.py`` on purpose: here it is visible as a
-    # property of the conformance drive, there it would silently cover every
-    # future terminal-gated verb. The REFUSING direction is driven in
-    # tests/test_session_cli.py, where it is the thing under test rather than a
-    # precondition.
+    # A person is sitting here, asserted rather than inherited (U49): gated verbs
+    # are driven through their gate, and ``record_acknowledgment`` refuses with no
+    # controlling terminal, which otherwise depends on how pytest was launched.
+    # Patched here, not in conftest, so it covers only this drive; the refusing
+    # direction is tested in tests/test_session_cli.py.
     from cratekit.core import session as core_session
 
     monkeypatch.setattr(core_session, "has_controlling_terminal", lambda: True)
@@ -168,10 +141,8 @@ def configured(library, monkeypatch):
 def _trap_standard_input(monkeypatch):
     """Make any read of standard input an immediate, named failure.
 
-    Both halves matter. Trapping ``input`` alone misses a direct
-    ``sys.stdin.readline()``, and the source system reads ``sys.stdin.isatty()``
-    directly at three sites, so an input-only trap would have declared that code
-    non-interactive.
+    Both ``input`` and ``sys.stdin`` are trapped, since a direct ``sys.stdin`` read
+    would slip past an ``input`` only trap.
     """
 
     class Trapped:
@@ -198,11 +169,7 @@ def drive(argv: list[str]) -> tuple[int, str, str]:
 
 
 def test_every_code_has_a_meaning_and_a_remediation_token():
-    """Derived by ITERATING the enum, never by listing members.
-
-    A test that enumerates is a test that misses the next addition, and the next
-    addition is exactly the code nobody has thought about yet.
-    """
+    """Iterates the enum rather than listing members, so a new code is covered."""
     for code in ExitCode:
         meaning = meaning_of(code)
         assert meaning.summary, f"{code.name} has no summary"
@@ -242,13 +209,10 @@ def test_the_bands_do_not_overlap_and_leave_growth_room():
 
 
 def test_status_two_belongs_to_the_argument_parser_and_to_nothing_else():
-    """The durable half of the KTD25 fix.
+    """Status 2 belongs to argparse alone (KTD25).
 
-    The source system's collision is real and reachable: one component means
-    "rekordbox is open" by 2, another means "another run holds the lock", and
-    argparse means "you mistyped". Argparse will keep producing 2 whatever we
-    decide, so the only fix that cannot come back is for 2 to have exactly one
-    owner and for that owner not to be us.
+    The source gave 2 three meanings; argparse will keep producing 2 for a mistyped
+    command, so the only fix that holds is that we never use it.
     """
     assert not meaning_of(ExitCode.USAGE).verb_producible
     producible = {int(c) for c in ExitCode if meaning_of(c).verb_producible}
@@ -262,12 +226,8 @@ def test_status_two_belongs_to_the_argument_parser_and_to_nothing_else():
 def _modules_declaring_their_own_remedy() -> dict[str, type]:
     """Every module in the package that declares a ``Remedy`` of its own.
 
-    DERIVED by walking the package, not listed. The version of this test that
-    named ``config`` alone was already false when it was written: four more
-    modules declared their own Remedy afterwards, none of them a subset, and the
-    suite stayed green over sixteen tokens the canonical enum had never heard
-    of. That is seam decision P3 exactly, and this is the shape that prevents it
-    recurring.
+    Derived by walking the package rather than listed, so a module that adds its own
+    Remedy later is caught (P3).
     """
     import importlib
     import pkgutil
@@ -294,13 +254,8 @@ def _modules_declaring_their_own_remedy() -> dict[str, type]:
 
 
 def test_every_module_declaring_its_own_remedies_stays_inside_one_vocabulary():
-    """Several modules declared remediation tokens before this vocabulary existed.
-
-    They stay a SUBSET rather than becoming a second scheme. Two vocabularies for
-    one idea is the drift that produced five genre resolvers, and it starts
-    exactly like this: one module needing a token before the module that owns
-    them was written.
-    """
+    """Module local remediation tokens stay a subset of the canonical vocabulary,
+        rather than becoming a second scheme for one idea."""
     modules = _modules_declaring_their_own_remedy()
     assert modules, "no module-local Remedy was found; the walk is broken, not the tree"
 
@@ -317,13 +272,10 @@ def test_every_module_declaring_its_own_remedies_stays_inside_one_vocabulary():
 
 
 def test_every_module_local_remedy_renders_to_something_a_user_can_act_on():
-    """The consequence the subset rule exists to prevent, asserted directly.
+    """Every module local token renders to a real remedy.
 
-    A token the canonical enum does not carry falls through ``render`` to the
-    exit code's generic summary, so a refusal that means "store this credential"
-    reads as "an unexpected failure". That is silent, it is user facing, and it
-    is exactly the collapse KTD25 names. Derived over every module-local token,
-    not over a sample.
+    A token the canonical enum lacks falls through ``render`` to the code's generic
+    summary, so "store this credential" would read as "an unexpected failure".
     """
     generic = {str(meaning_of(code).summary) for code in ExitCode}
     for module_name, declared in _modules_declaring_their_own_remedy().items():
@@ -370,20 +322,11 @@ def test_every_remediation_token_renders_to_something_a_user_can_act_on():
 def test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_performs(
     remedy, forbidden
 ):
-    """U97, closing R-411, over BOTH tokens that send a person to get a session.
+    """U97, R-411: both provider session tokens name three acts, not a dead end login.
 
-    ``AUTHENTICATE_PROVIDER`` was the single command ``crate login``, which
-    records a value somebody already holds and refuses without one, so a first
-    run person who followed the product's own remedy reached a second refusal.
-    ``REAUTHENTICATE_PROVIDER`` said "log in again", the same dead end reached
-    from the other direction and the likelier one, since every session minted
-    before 2026-09-01 is a device flow session the adapter now refuses.
-
-    Asserted against literal text rather than against ``render.remedy_text``,
-    which is the token's own renderer: comparing a renderer to itself is X
-    equals X and would pass over the exact wording this closes. Each act is
-    pinned separately, because the erase is the one a reader drops and the one
-    R4's promise depends on.
+    Asserted against literal text rather than ``render.remedy_text``, since comparing
+    a renderer to itself proves nothing. Each act is pinned separately, because the
+    erase is the one a reader drops and the one R4's promise depends on.
     """
     line = render.remediation_line(
         Cause(
@@ -403,13 +346,10 @@ def test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_perf
 
 
 def test_the_document_the_provider_session_remedy_names_ships_and_carries_the_command():
-    """A remedy that points at a document is only as good as the document.
+    """The document the provider session remedy names ships and carries the command.
 
-    A renamed file, or a section that stops carrying the recording command,
-    leaves a first run person at a dead end with nothing red. The pointer is
-    worded as the PROJECT'S document and not as a local path on purpose:
-    ``docs/`` is in no wheel, measured by building one, so an installed person
-    told to open a path would find nothing there.
+    The pointer names the project's document, not a local path, because ``docs/`` is
+    in no wheel and an installed person would find nothing there.
     """
     adapters = REPO_ROOT / "docs" / "adapters.md"
     assert adapters.is_file(), "the remedy points at a document this repository does not ship"
@@ -418,17 +358,10 @@ def test_the_document_the_provider_session_remedy_names_ships_and_carries_the_co
 
 # ── S4: every refusal the guarded writer raises has a code and a remedy ──────
 
-#: The refusal conditions the guarded rekordbox writer raises, taken from U7's
-#: surface map. U5 ships before U7 precisely so that U7 CONSUMES this vocabulary
-#: instead of inventing codes, and a refusal with no code is the defect KTD25
-#: exists to prevent. The two-process refusal is a separate exception type in the
-#: source and is asserted alongside them.
-#:
-#: DELIBERATELY NOT COUNTED IN PROSE. It was written as "the eleven refusal
-#: conditions" and stopped being eleven the first time one was split in two,
-#: which is what a count in a comment always does. The list is walked by the test
-#: below and reconciled against what the writer actually raises, so its size is
-#: derived in both directions and never asserted here.
+#: The refusal conditions the guarded rekordbox writer raises, from U7's surface
+#: map, so U7 consumes this vocabulary rather than inventing codes. The two
+#: process refusal is a separate exception type, asserted alongside. The list is
+#: reconciled against the writer by the test below, so it is never counted here.
 WRITER_REFUSALS: dict[str, str] = {
     "pyrekordbox pin drift": "pyrekordbox-pin-drift",
     "database schema version drift": "db-schema-pin-drift",
@@ -438,11 +371,8 @@ WRITER_REFUSALS: dict[str, str] = {
     "database open failure": "database-open-failed",
     "canary read failure": "canary-read-failed",
     "cloud sync canary tripped": "cloud-sync-active",
-    # Split off the line above. "Sync is on" and "we cannot tell whether sync is
-    # on" were one slug, so two conditions with opposite answers arrived as one
-    # exit code, which is the collision this whole reservation list exists to
-    # prevent. Reserved separately here because the reservation list is the
-    # contract; the writer consumes it.
+    # "Sync is on" and "we cannot tell whether sync is on" have opposite answers,
+    # so each is reserved separately.
     "cloud sync state unreadable": "cloud-sync-unreadable",
     "additive whitelist violation": "whitelist-violation",
     "missing tag-category template": "mytag-category-template-missing",
@@ -463,12 +393,8 @@ def test_every_guarded_writer_refusal_has_a_reserved_code(condition, slug):
 
 
 def test_the_two_process_refusal_and_the_lock_contention_are_different_codes():
-    """The exact collision KTD25 names, asserted as fixed.
-
-    Both are code 2 in the source, and their remediations are opposites: quitting
-    an application fixes one and is precisely the wrong move for the other, which
-    has no command at all and can only be waited out.
-    """
+    """The two process refusal and lock contention differ, since their remedies are
+        opposite: quit an application, or wait (KTD25)."""
     assert REASONS["rekordbox-running"] is ExitCode.REKORDBOX_OPEN
     assert REASONS["write-lock-held"] is ExitCode.LIBRARY_BUSY
     assert REASONS["session-lock-held"] is ExitCode.LIBRARY_BUSY
@@ -482,17 +408,11 @@ def test_an_unrecorded_application_pin_refuses_rather_than_adopting_what_is_inst
 
 
 def test_an_unreadable_cloud_state_and_an_active_one_are_different_failures():
-    """The second collision of the same shape as the two-process one above.
+    """An unreadable cloud state and an active one are different failures.
 
-    They shared a slug, so a caller could not tell "Cloud Library Sync is on"
-    from "the file that records it could not be read". The answers are not
-    variations of each other: one is switched off in another application, and the
-    other cannot be, because nothing has established there is anything to switch.
-    The fix for "we cannot tell" is a PERSON deciding whether to proceed, which
-    is what the decision code already means, so no code was invented for it (S4).
-
-    The remedy tokens are read from the codes rather than asserted as literals,
-    so this stays true if a code's class remedy is ever revised.
+    One is switched off in another application; the other needs a person to decide
+    whether to proceed, which the decision code already means (S4). Remedy tokens
+    are read from the codes, so this holds if a class remedy is revised.
     """
     unreadable, active = REASONS["cloud-sync-unreadable"], REASONS["cloud-sync-active"]
     assert unreadable is not active
@@ -500,33 +420,24 @@ def test_an_unreadable_cloud_state_and_an_active_one_are_different_failures():
     assert meaning_of(unreadable).remedy is Remedy.ANSWER_DECISION
     assert meaning_of(active).remedy is Remedy.DISABLE_CLOUD_SYNC
 
-    # "Answer the decision" is only true advice if the run is still there to
-    # answer. The command-line layer decides that by code, so picking this code
-    # is what makes the refusal resumable rather than merely described as such.
+    # Answering the decision needs the run still there, and the command line layer
+    # decides that by code, so this code makes the refusal resumable.
     assert unreadable in gates.GATE_CODES
     assert active not in gates.GATE_CODES
 
 
 def test_the_unreadable_cloud_state_is_not_the_undeclared_gate_reason():
-    """Two slugs on one code, kept apart because they mean opposite things.
-
-    ``decision-unknown-gate`` means a decision named a gate the verb does not
-    declare, which is a defect. This one means a declared gate was reached with
-    nothing recorded against it, which is the system working. Folding the second
-    into the first would report a normal refusal as a bug in the product.
-    """
+    """The unreadable cloud state is not ``decision-unknown-gate``, which is a
+        defect, while a declared gate with nothing recorded is the system working."""
     assert REASONS["cloud-sync-unreadable"] is REASONS["decision-unknown-gate"]
     assert "cloud-sync-unreadable" != "decision-unknown-gate"
 
 
 def test_the_reason_registry_has_no_duplicate_key():
-    """A duplicate key in a dict literal is silent: the later one simply wins.
+    """No duplicate key in the reason registry literal.
 
-    Every test over this mapping iterates the RUNTIME dict, so a slug shadowed at
-    parse time is invisible to all of them, and the shadowed entry's exit code
-    becomes whatever the survivor says. This repository has shipped that defect
-    once with the whole suite green. Counting the literal's keys against the
-    runtime length is the only check that can see it.
+    A later duplicate silently wins and every runtime test misses it, so the
+    literal's keys are counted against the runtime length.
     """
     import inspect
 
@@ -575,12 +486,8 @@ def test_every_reason_maps_into_the_vocabulary_and_every_refusal_is_reachable():
 
 
 def test_a_cause_round_trips_through_json_with_its_chain_intact():
-    """Boundary 3 is a process boundary, so this is not a convenience.
-
-    The job engine re-invokes the CLI as a subprocess (KTD26). A cause that
-    cannot survive JSON cannot cross that hop, and the engine is back to deriving
-    status from an exit code, which is the collapse KTD25 is about.
-    """
+    """A cause survives JSON, since the job engine re-invokes the CLI as a
+        subprocess (KTD26) and would otherwise fall back to exit codes."""
     inner = Cause(
         reason="unavailable-transient",
         message="the provider timed out",
@@ -650,11 +557,8 @@ def test_the_five_structured_surfaces_r32_names_are_all_declared():
 
 
 def test_the_match_surface_reserves_three_states_from_its_first_version():
-    """R11's needs-review state has no representation in the source at all.
-
-    Two CSV files, owned and missing. Adding the third state later would break
-    every consumer keyed on the shape; reserving it now costs an empty array.
-    """
+    """The match surface reserves R11's needs review state from its first version,
+        since adding it later would break every consumer keyed on the shape."""
     document = output.schema_document("match")
     assert set(document["required"]) == {"matched", "needs_review", "missing"}
 
@@ -690,24 +594,16 @@ def test_every_previous_major_is_still_present_in_the_lock(name):
 
 @pytest.mark.parametrize("name", sorted(output.schema_names()))
 def test_the_committed_golden_validates_against_the_current_schema(name):
-    """Catches a backward-incompatible change even when somebody DID bump.
-
-    A bump records that the shape changed. It does not record whether last
-    version's envelope still parses, and that is the question a consumer has.
-    """
+    """The golden still validates, since a version bump does not say whether last
+        version's envelope parses."""
     major = output.current_schema(name).split("/")[1]
     golden = json.loads((SCHEMA_DIR / "golden" / f"{name}.v{major}.json").read_text())
     assert output.envelope_problems(golden) == []
 
 
 def test_the_declared_envelope_keys_are_exactly_what_is_serialized():
-    """Derived from a real envelope, so the declared list cannot fall behind it.
-
-    The conformance suite requires every key in ``ENVELOPE_KEYS`` of every verb.
-    If that list and the serializer could disagree, a key could be added to the
-    output and required of nobody, which is the same hole as a hand-kept list
-    anywhere else.
-    """
+    """Derived from a real envelope, so the declared keys every verb must carry
+        cannot fall behind the serializer."""
     document = output.build(
         verb="profile.show",
         run_id="r",
@@ -719,13 +615,10 @@ def test_the_declared_envelope_keys_are_exactly_what_is_serialized():
 
 
 def test_exactly_two_verbs_are_interactive_and_one_file_holds_the_stdin_exemption():
-    """The exemption is a list of two verbs and ONE file, checked against each other.
+    """The stdin exemption is two verbs and one file, checked against each other.
 
-    An interactive verb is exempt from the no-standard-input assertion, so the
-    number of them is the size of the hole. Asserting it here means a third one
-    cannot be added quietly, and the module they are allowed to read through is
-    the same single path the static guard allows. U107 added the second verb,
-    the guided label sync, and added no file: it asks through ``cli/prompt.py``.
+    The count of interactive verbs is the size of the hole, so a third cannot be
+    added quietly, and both read only through the one allowed path (U107).
     """
     interactive = [entry for entry in registry.entries() if entry.interactive]
     assert [entry.name for entry in interactive] == ["setup", "label.sync"]
@@ -733,11 +626,8 @@ def test_exactly_two_verbs_are_interactive_and_one_file_holds_the_stdin_exemptio
 
 
 def test_the_envelope_never_carries_its_own_human_rendering():
-    """The direct correction of the source system's plan preview.
-
-    That file stores the rendered gate text inside the JSON, so machine and human
-    output are one artifact and every wording change is a schema change.
-    """
+    """Human rendering stays out of the JSON, or every wording change becomes a
+        schema change."""
     for name in output.schema_names():
         assert "render" not in output.schema_document(name)["required"]
     assert set(output.ENVELOPE_KEYS) & {"render", "text", "message"} == set()
@@ -805,14 +695,10 @@ def test_two_runs_starting_in_the_same_second_get_different_identifiers():
 
 
 def test_two_thousand_identifiers_minted_inside_one_second_are_all_distinct():
-    """U235: every id a busy second mints is its own, at one frozen instant.
+    """U235: two thousand ids minted at one frozen instant are all distinct.
 
-    A sync land pass mints a dozen or more run and job identifiers inside one
-    second, and at the tail's old sixteen bits two of them met about once in
-    4,700 runs of one test: the earlier pass's run read as the new one's, or a
-    second job refused at enqueue as a duplicate key (R-22). Two thousand at one
-    instant collide with near certainty at sixteen bits, about one time in eight
-    at twenty four, and about once in 10^13 at sixty four.
+    A sync pass mints many run and job ids in one second, and a sixteen bit tail
+    collided (R-22); sixty four bits make a collision about one in 10^13.
     """
     instant = datetime(2026, 11, 7, 16, 48, 26, tzinfo=timezone.utc)
     minted = [output.new_run_id(instant) for _ in range(2000)]
@@ -823,10 +709,8 @@ def test_two_thousand_identifiers_minted_inside_one_second_are_all_distinct():
 def test_a_run_identifier_carries_sixty_four_bits_of_random_tail():
     """The tail is sixteen hex characters, the width ``snapshot.new_stamp`` carries.
 
-    Written as a LITERAL sixteen rather than as ``len(secrets.token_hex(n))``,
-    since an expected value computed from the thing under test passes at every
-    width. The stamp before it keeps its colons, so an identifier already on
-    disk reads, sorts and names a file as a new one does.
+    A literal sixteen, since an expected value computed from the code under test
+    passes at every width. The stamp keeps its colons, so ids on disk still read.
     """
     instant = datetime(2026, 11, 7, 16, 48, 26, tzinfo=timezone.utc)
     minted = output.new_run_id(instant)
@@ -837,19 +721,15 @@ def test_a_run_identifier_carries_sixty_four_bits_of_random_tail():
 # Part 4: gates, and no verb reads standard input (R33)
 # ═══════════════════════════════════════════════════════════════════════════
 
-#: The only file allowed to touch standard input, ever. It does not exist yet;
-#: the setup wizard lands with U27, and its registry entry is the one marked
-#: interactive. Naming the path here rather than a directory means the exemption
-#: cannot spread by somebody adding a second file next to the first.
+#: The only file allowed to touch standard input. Naming a path rather than a
+#: directory keeps the exemption from spreading to a neighbouring file.
 INTERACTIVE_ALLOWLIST = frozenset({"cratekit/cli/prompt.py"})
 
 
 def standard_input_reads(source: str) -> list[str]:
     """Every construct that could read standard input, as an AST walk.
 
-    A string search would miss ``sys.stdin`` reached through an alias and would
-    fire on the word appearing in a comment, which is the shape that gets a guard
-    muted.
+    A string search would miss an aliased ``sys.stdin`` and fire on a comment.
     """
     found: list[str] = []
     for node in ast.walk(ast.parse(source)):
@@ -919,10 +799,9 @@ def test_an_unanswered_gate_exits_with_the_documented_code_and_leaves_the_run_re
 
 
 def test_the_profile_gate_shows_the_delta_the_digest_was_taken_over(configured):
-    """The gate carried the question and not one module (R-693). Its ``shown``
-    now holds the declined run's items, each module turning on or off, the
-    digest they were taken over, the profile and the totals, in the json
-    envelope and on the screen a person answers from."""
+    """The profile gate shows the delta its digest covers (R-693): the declined
+        run's items, each module toggled, the digest, the profile and the totals, in
+        the json envelope and on screen."""
     code, out, _ = drive(["--output", "json", "profile", "set", "slim"])
     assert code == int(ExitCode.DECISION_REQUIRED)
     shown = json.loads(out)["cause"]["detail"]["shown"]
@@ -1010,9 +889,8 @@ def test_a_decision_answered_against_a_plan_that_has_since_moved_is_stale(config
     run_id = json.loads(out)["run_id"]
     drive(["run", "decide", run_id, "profile.set.apply", "apply"])
 
-    # The world moves between the offer and the resume: one module is switched
-    # off by hand, so the membership delta the decision was made against is no
-    # longer the delta that would be applied.
+    # The world moves between offer and resume: one module is switched off by hand,
+    # so the delta the decision was made against is no longer the one applied.
     document = config.load().to_toml_dict()
     document["modules"] = {"analysis": False}
     config.save(config.from_dict(document))
@@ -1024,16 +902,10 @@ def test_a_decision_answered_against_a_plan_that_has_since_moved_is_stale(config
 
 
 def test_a_gate_marked_explicit_refuses_an_inline_answer(configured):
-    """R34: no blanket affirmative, and no answer smuggled into the same command.
+    """R34: an explicit gate refuses an answer given in the same command.
 
-    The resolver is driven directly, because the rule is a property of the
-    RESOLVER rather than of any verb that happens to declare an explicit gate.
-    An earlier version of this docstring justified that differently, saying the
-    gate belonged to a verb that had not landed and that asserting the rule here
-    made it true before the first explicit gate arrived with U8. Both clauses
-    are now false and one always was: ``write.cloudsync.unreadable`` is explicit
-    and sits on a landed entry, and U49 landed ``session.ack`` itself. The test
-    is unchanged because its reason never depended on either.
+    The resolver is driven directly, because the rule belongs to the resolver rather
+    than to any verb that declares an explicit gate.
     """
     spec = registry.GateSpec(
         name="session.ack.backup",
@@ -1053,15 +925,10 @@ def test_a_gate_marked_explicit_refuses_an_inline_answer(configured):
 
 
 def test_the_unreadable_cloud_sync_override_is_a_DECLARED_GATE():
-    """The override used to be a Python keyword argument and nothing else.
+    """The unreadable cloud sync override is a declared gate a user can answer.
 
-    It sat on three functions inside the guarded writer, reachable from no
-    command a user can type, so the only way past a canary that could not read
-    the state was to edit the source. A refusal with an escape nobody can reach
-    is a refusal with no escape.
-
-    Looked up BY NAME through the registry rather than constructed here, because
-    a spec built in the test proves the test can build a spec.
+    A refusal whose only escape is editing the source has no escape. Looked up by
+    name through the registry, since a spec built in the test proves nothing.
     """
     owner, spec = registry.gate("write.cloudsync.unreadable")
     assert spec.explicit, (
@@ -1074,14 +941,9 @@ def test_the_unreadable_cloud_sync_override_is_a_DECLARED_GATE():
 
 
 def test_every_verb_that_writes_the_database_declares_the_cloud_sync_decision():
-    """Derived by walking the registry, never by listing verbs (P3).
-
-    Every verb declaring a database write surface opens the database with write
-    intent and therefore reaches the writer's unreadable-cloud refusal. A verb
-    that reaches it without declaring the decision leaves a user with a refusal
-    and no way to answer it, and a hand-written list of the verbs that qualify is
-    a list that misses the next one somebody adds.
-    """
+    """Every verb declaring a database write surface declares the cloud sync
+        decision, derived from the registry (P3), or its user gets a refusal with no
+        way to answer it."""
     missing = sorted(
         entry.name
         for entry in registry.ENTRIES
@@ -1092,9 +954,8 @@ def test_every_verb_that_writes_the_database_declares_the_cloud_sync_decision():
         f"verbs that write the database and declare no cloud-sync decision: {missing}"
     )
 
-    # And the reverse, which is the direction that rots: a verb declaring the
-    # decision without writing the database would be asking a person to answer a
-    # question its work can never raise.
+    # And the reverse: a verb declaring the decision without writing the database
+    # asks a question its work can never raise.
     spurious = sorted(
         entry.name
         for entry in registry.ENTRIES
@@ -1105,13 +966,10 @@ def test_every_verb_that_writes_the_database_declares_the_cloud_sync_decision():
 
 
 def test_the_core_writer_never_learns_the_gates_name_or_any_flag_string():
-    """D2 from the other side: the foundation names no verb and no gate.
+    """D2: the core writer names no verb, gate or flag.
 
-    The override crosses into the guarded writer as a BOOLEAN. What produced that
-    boolean, what it is called, and what a user typed to answer it all belong to
-    the command-line layer, which is the only layer allowed to render a token
-    into text. A core module that knows the gate's name has re-acquired the
-    command vocabulary the layering rule removes from it.
+    The override crosses into the writer as a boolean; naming and rendering it
+    belongs to the command line layer alone.
     """
     source = (SRC_ROOT / "cratekit" / "core" / "rb_writer.py").read_text()
     for leaked in ("write.cloudsync.unreadable", "--decision", "crate "):
@@ -1119,11 +977,8 @@ def test_the_core_writer_never_learns_the_gates_name_or_any_flag_string():
 
 
 def test_no_environment_variable_or_config_key_can_answer_a_gate(configured, monkeypatch):
-    """There is deliberately no fourth decision source.
-
-    A blanket answer satisfies every gate at once, which is what R34 forbids and
-    what "the user pressed yes to something" already means in practice.
-    """
+    """No environment variable or config key answers a gate, since a blanket
+        answer satisfies every gate at once, which R34 forbids."""
     for variable in ("CRATEKIT_YES", "CRATEKIT_DECISION", "CRATEKIT_ASSUME_YES"):
         monkeypatch.setenv(variable, "1")
     code, _, _ = drive(["profile", "set", "slim"])
@@ -1202,11 +1057,8 @@ def test_a_run_record_belongs_to_the_verb_that_created_it(configured):
 
 
 def test_help_succeeds_with_every_heavy_extra_absent(configured, monkeypatch):
-    """The plan's first scenario for this unit.
-
-    Blocking the extras at the import system rather than uninstalling them is
-    what makes it a test rather than an environment.
-    """
+    """Help succeeds with every heavy extra absent, blocked at the import system so
+        this is a test rather than an environment."""
     blocked = {module for entry in registry.entries() for module in entry.extras_modules}
     assert blocked, "no entry declares an extras-backed dependency"
 
@@ -1217,9 +1069,8 @@ def test_help_succeeds_with_every_heavy_extra_absent(configured, monkeypatch):
             return None
 
     monkeypatch.setattr(sys, "meta_path", [Blocker(), *sys.meta_path])
-    # argparse's own --help action writes to the real standard output rather
-    # than to anything the dispatcher was handed, so the redirect is what makes
-    # this assert on the text a user would actually see.
+    # argparse's --help writes to the real stdout, so the redirect captures what a
+    # user would see.
     printed = io.StringIO()
     with contextlib.redirect_stdout(printed):
         code, _, _ = drive(["--help"])
@@ -1244,9 +1095,8 @@ def test_a_module_with_missing_extras_becomes_a_stub_that_names_the_install_comm
     )
     parser = cli.build_parser([entry], membership=profiles.resolve("full"))
 
-    # The stub is still LISTED, with its summary and what it needs. A verb that
-    # vanishes from help on a slim install leaves the user with no way to find
-    # out it exists, which is a worse failure than one that says how to enable it.
+    # The stub is still listed with what it needs, so a slim install can find out
+    # the verb exists.
     help_text = io.StringIO()
     with contextlib.redirect_stdout(help_text), pytest.raises(SystemExit):
         parser.parse_args(["analyze", "--help"])
@@ -1261,11 +1111,8 @@ def test_a_module_with_missing_extras_becomes_a_stub_that_names_the_install_comm
 
 
 def test_a_defect_in_our_own_module_does_not_masquerade_as_a_missing_extra():
-    """The other branch, and the reason the stub is gated on the extras names.
-
-    A bare ``except ImportError`` sends a user to install a package that would
-    not have helped, and hides the real defect behind a false one they cannot fix.
-    """
+    """A defect in our own module raises as itself, not as a missing extra, which
+        would send a user to install a package that cannot help."""
     entry = registry.Entry(
         name="analyze.broken",
         summary="a verb with a defect of our own",
@@ -1276,10 +1123,9 @@ def test_a_defect_in_our_own_module_does_not_masquerade_as_a_missing_extra():
         extras="analysis",
         extras_modules=("a_third_party_analysis_library",),
     )
-    # SINCE U248 THE DEFECT RAISES WHEN ITS VERB IS CHOSEN, not while the
-    # parser is built, so one broken module no longer stops every command. It
-    # still raises as itself, never as the stub, and the eager parser still
-    # raises it at construction as every parser did before.
+    # Since U248 the defect raises when its verb is chosen, not while the parser is
+    # built, so one broken module stops no other command; the eager parser still
+    # raises it at construction.
     parser = cli.build_parser([entry], membership=profiles.resolve("full"))
     with pytest.raises(ImportError) as raised:
         parser.parse_args(["analyze", "broken"])
@@ -1344,14 +1190,9 @@ def test_the_registry_is_the_source_of_the_verb_names_the_layering_guard_reads()
 
 
 def test_a_planned_verb_whose_module_has_landed_must_lose_its_marker():
-    """The countdown, in the same shape as the pending register.
-
-    A declared-but-absent verb is how parity stays checkable before the units
-    that implement it exist. The marker has to expire on its own, or it becomes a
-    comment nobody re-reads. Walked rather than parametrized so an empty set,
-    which is the state after the last planned verb lands, is still a valid
-    derived population (P3) rather than a collection error.
-    """
+    """A planned verb whose module has landed must lose its ``planned_in`` marker,
+        so the marker expires on its own. Walked rather than parametrized, so an empty
+        set is a valid population (P3) rather than a collection error."""
     import importlib.util
 
     leftover = []
@@ -1371,38 +1212,19 @@ def test_a_planned_verb_whose_module_has_landed_must_lose_its_marker():
     assert not leftover, leftover
 
 
-#: The planned verbs whose module ``tests/_pending.PENDING`` also owes, written
-#: out for the reason ``EXPECTED_PENDING`` is: a change to either register must be
-#: made in a second place a reviewer reads. Empty since U27 landed
-#: ``cratekit.session.restore_cli``, the last one.
+#: Planned verbs whose module ``tests/_pending.PENDING`` also owes, written out
+#: so a change to either register is made in a second place a reviewer reads.
+#: Empty since U27.
 EXPECTED_COMPARED: frozenset[str] = frozenset()
 
 
 def test_a_planned_verb_and_the_pending_register_name_the_same_unit():
-    """Two registers hold "who lands this module" and neither read the other.
+    """``Entry.planned_in`` and ``tests/_pending.PENDING`` name the same unit.
 
-    ``registry.Entry.planned_in`` and ``tests/_pending.PENDING`` both answer that
-    question, for the same modules, and they drifted: the two ``restore.*`` verbs
-    carried ``planned_in="U32"`` while the register had already moved
-    ``cratekit.session.restore_cli`` to U27 precisely because U32 could not land
-    it. Nothing compared them. ``board.py`` reads the register and never reads
-    ``planned_in``, and the countdown above only asks whether the module EXISTS,
-    never who owes it, so the marker stayed pointing at a unit that was closing.
-    An obligation attributed to a closed unit is owned by nobody, which is the
-    exact failure the register entry's own text says it was written to prevent.
-
-    Asked over the intersection rather than over either register whole: a planned
-    verb whose module nothing in the register mentions is a separate question, and
-    the register legitimately holds keys that are not verb modules at all.
-
-    THE ANTI-VACUITY GUARD MEASURES THE SET THAT IS ACTUALLY COMPARED, and the
-    first version of it did not. It rebuilt the intersection in a second
-    comprehension and asked its question of that, which is a re-derivation of the
-    predicate rather than a measurement of the comparison. Found by mutation:
-    neutering the filter on the comparison alone killed NOTHING, because the guard
-    went on building a populated list of its own and stayed green over a
-    comparison that now compared nothing. One list is built once and both
-    statements read it.
+    Both say who lands a module and they drifted, leaving an obligation on a closed
+    unit, owned by nobody. Compared over the intersection, since the register also
+    holds keys that are not verb modules. The anti vacuity guard reads the same list
+    the comparison reads, so it cannot pass over a comparison of nothing.
     """
     from tests import _pending  # noqa: PLC0415
 
@@ -1411,18 +1233,10 @@ def test_a_planned_verb_and_the_pending_register_name_the_same_unit():
         for entry in registry.entries()
         if not entry.landed and entry.module in _pending.PENDING
     ]
-    # First, WHAT is compared, written out rather than derived, because the whole
-    # point of this guard is that a change to either register has to be made in a
-    # second place a reviewer reads. It is EMPTY, and that is a true state rather
-    # than a hole: U27 landed ``cratekit.session.restore_cli``, which was the last
-    # planned verb module the register owed, so there is nothing left to compare.
-    #
-    # IT IS STILL FALSIFIABLE IN BOTH DIRECTIONS, which is what an anti-vacuity
-    # guard is for. A unit that declares a verb and registers its module here
-    # fires this assertion on the day it lands, and whoever does that restores the
-    # comparison by naming it. Emptying the register side never reaches this file
-    # at all: ``_pending.requires`` raises at import for a key that is gone, which
-    # is a collection error rather than a green run.
+    # What is compared, written out so a change to either register is made here
+    # too. Empty since U27, and still falsifiable both ways: a unit registering a
+    # planned verb's module fires this, and emptying the register raises at import
+    # in ``_pending.requires``.
     assert {entry.name for entry in compared} == EXPECTED_COMPARED, (
         f"the set of planned verbs the register also owes has moved; it is now "
         f"{sorted(entry.name for entry in compared)} and this file says it is "
@@ -1448,30 +1262,13 @@ LANDED = [e for e in ALL_ENTRIES if e.landed]
 
 
 def test_a_handler_key_resolves_without_importing_the_module():
-    """KTD26: the engine validates a queued job's handler BEFORE spawning.
+    """KTD26: a handler key resolves without importing its module.
 
-    Validating by import would pull the feature module into the supervisor's own
-    process, which is exactly what the lazy-import scheme exists to prevent.
-
-    MEASURED IN A CLEAN INTERPRETER, and this is the third shape of this test.
-    It named ``acquire.download`` as its single subject until U42, chosen because
-    its module did not exist, so ``not in sys.modules`` held for a reason that had
-    nothing to do with the property; the day the module landed, an earlier drive
-    in the same session imported it and the assertion failed on a lookup that had
-    imported nothing.
-
-    It was then restated in-process as a DIFFERENCE across every landed verb, and
-    a mutation table proved that version empty. Inserting a real
-    ``importlib.import_module`` into ``by_handler_key`` killed ZERO tests, subset
-    and promoted full suite alike, because by the time the suite reaches this
-    file the feature modules are already in ``sys.modules`` and importing a
-    cached module adds nothing to measure. A difference is only a measurement
-    where the thing could have differed.
-
-    So the property is measured where it is actually claimed: a fresh interpreter
-    that has imported the registry and NOTHING else, the state the supervisor is
-    genuinely in when it validates a queued job's handler. One subprocess covers
-    every landed verb, so no hand-picked subject remains to expire.
+    Importing would pull the feature module into the supervisor's own process.
+    Measured in a fresh interpreter that has imported only the registry, the state
+    the supervisor is in, because in this process the feature modules are already
+    imported and an in-process delta measures nothing. One subprocess covers every
+    landed verb.
     """
     result = _import_probe.run_probe(
         """
@@ -1529,18 +1326,12 @@ def _written(path: Path, text: str) -> Path:
 
 
 def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
-    """Enough POSITIONAL arguments to drive one verb, per verb this unit ships.
+    """Enough positional arguments to drive one verb.
 
-    Decisions are kept separate below rather than mixed in here, because they are
-    flags on the ROOT parser: a gate answer belongs to the invocation, not to the
-    subcommand, so that one command can answer gates raised anywhere in it.
-
-    Every caller runs under the ``configured`` fixture, which is what lets the
-    file-taking verbs be handed a path inside the configured library rather than
-    a literal one this repository would then be shipping (R1).
-
-    ``monkeypatch`` is handed to a LAZY sample that must bind a seam for the
-    drive and have teardown restore it (U129's intake.set sample).
+    Decisions are kept apart, since they are root parser flags belonging to the
+    invocation. File verbs get a path under the ``configured`` library rather than a
+    literal the repository would ship (R1). ``monkeypatch`` serves a lazy sample
+    that binds a seam for the drive (U129).
     """
     library = config.load().library.root
     sample = {
@@ -1548,260 +1339,144 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         "profile.set": ["slim"],
         "run.show": ["no-such-run"],
         "run.decide": ["no-such-run", "profile.set.apply", "apply"],
-        # U170. LAZY, since a retirement with nothing old asks nothing: one
-        # run left open at its gate for a month is the plan the confirm asks
-        # over. The rest is driven in tests/test_run_retire.py.
+        # U170. Lazy: a run left open at its gate for a month gives the confirm a plan.
+        # The rest is driven in tests/test_run_retire.py.
         "run.retire": _run_retire_over_one_old_gate,
-        # U10. The three per-job verbs are driven against an identifier that is
-        # deliberately absent: every one of them must refuse with a code from the
-        # vocabulary rather than with a traceback, and an empty queue is the state
-        # a fresh install is actually in.
+        # U10. An absent identifier, so each verb refuses from the vocabulary rather
+        # than tracing back; an empty queue is a fresh install's state.
         "job.list": [],
         "job.show": ["no-such-job"],
         "job.resume": ["no-such-job"],
         "job.cancel": ["no-such-job"],
-        # U11. Same shape as the job verbs above: an identifier that is
-        # deliberately absent, so each verb must refuse with a code from the
-        # vocabulary rather than with a traceback, and an empty queue is the
-        # state a fresh install is genuinely in. The two file verbs take a path
-        # under the CONFIGURED library rather than a literal, because a literal
-        # here would be a real path on somebody's machine (R1).
+        # U11. Absent identifiers, as the job verbs above; the file verbs take a path
+        # under the configured library (R1).
         "review.list": [],
         "review.show": ["no-such-item"],
         "review.resolve": ["no-such-item", "--verdict", "accepted"],
         "review.clear": ["no-such-item"],
         "review.export": [str(library / "review-export.json")],
         "review.import": [str(library / "no-such-export.json")],
-        # U36. Driven with no argument at all, which is the whole point: this
-        # verb is read only and answers on a library where nothing has cut over,
-        # which is every library until the first cutover and which is also the
-        # only shape this fixture can build. It opens the rekordbox database
-        # only when a tree is actually database-native, so it exits OK here with
-        # no database on the machine.
+        # U36. No argument: read only, it answers on a library nothing has cut over,
+        # and opens the database only for a database native tree, so it exits OK.
         "converge": [],
-        # U24. A plain listing with no arguments, which is the state a fresh
-        # install is genuinely in: no version has been deleted, so no version is
-        # suppressed, and the verb must still emit a well-formed review set and
-        # exit OK rather than treating an empty store as a failure. Revoking is
-        # driven from the deletion suite, where a real tombstone exists to lift.
+        # U24. A plain listing: an empty store is not a failure, so it exits OK.
+        # Revoking is driven from the deletion suite.
         "tombstone.list": [],
-        # U24. No positional argument: the confirm gate is the only input, and
-        # the first run on this fixture baselines an empty removal set rather
-        # than presenting history. The drive here is the refuse-at-the-gate
-        # half; the two-act OK path is conformance 3.
+        # U24. The confirm gate is the only input; this drive refuses at the gate and
+        # conformance 3 drives the two act OK path.
         "delete.review": [],
-        # U16. Same convention as the two file verbs above and for the same
-        # reason: a path under the CONFIGURED library rather than a literal, and
-        # one that is deliberately absent, so the verb must refuse with a code
-        # from the vocabulary rather than with a traceback. The happy path over a
-        # real list and a real library is driven in tests/test_match_states.py,
-        # which is where the fixtures for it live.
+        # U16. An absent path under the configured library, refused from the
+        # vocabulary. The happy path is in tests/test_match_states.py.
         "match.run": [str(library / "no-such-list.txt")],
-        # U42. Download takes a list under the CONFIGURED library, for the R1
-        # reason every file verb here gives, and it is deliberately absent. It
-        # still exits OK, and the difference from match.run beside it is the
-        # point: this verb QUEUES, and queueing freezes the path without reading
-        # it, so an absent list is refused by the worker that reads it rather
-        # than by the shell that files it. Audit takes no positional at all: an
-        # empty music directory is the state this fixture is genuinely in, and
-        # the verb must still emit a well-formed review set and exit OK rather
-        # than treating nothing to report as a failure.
+        # U42. Download queues and freezes an absent list without reading it, so it
+        # exits OK and the worker refuses later. Audit takes no positional and reports
+        # an empty music directory as OK.
         "acquire.download": [str(library / "no-such-list.txt")],
         "acquire.audit": [],
-        # U80. A list under the CONFIGURED library that is absent, so the verb
-        # refuses from the vocabulary before a library walk or a search, and no
-        # contract run can ever reach the shipped searcher's subprocess.
+        # U80. An absent list, refused before any walk or search, so no contract run
+        # reaches the searcher's subprocess.
         "acquire.fallback": [str(library / "no-such-list.txt")],
-        # U81. The same absent list, refused from the vocabulary before any
-        # library walk, queue or download.
+        # U81. The same absent list, refused before any walk, queue or download.
         "acquire.fallback-fetch": [str(library / "no-such-list.txt")],
-        # U176. No session is recorded in the isolated keychain, so both refuse
-        # as auth-failed before the transport seam is looked up, and no
-        # contract run can reach Bandcamp.
+        # U176. No session in the isolated keychain, so both refuse auth-failed and
+        # no contract run reaches Bandcamp.
         "acquire.bandcamp": [],
         "acquire.bandcamp-fetch": [],
-        # U23. The census takes no positional argument at all: a taxonomy
-        # declares exactly one routing tree by stable identifier, so a flag
-        # naming one would be a second opinion about a value the template
-        # already holds (R19). It queues rather than scanning, which is
-        # conformance 5's property, and queueing needs no database, which is
-        # what lets the half of adoption that is ready land while its
-        # destructive sibling waits.
-        # U49. Neither session verb takes a positional argument, and neither may
-        # take a flag that names the actor or asserts the answer: R34 forbids
-        # both, so the default input is the recorded gate decision. U184's
-        # ``session ack --as session`` names a rule and not an actor, takes no
-        # other value, and is driven in tests/test_session_ack_by_session.py;
-        # the default drive here is unchanged and still asks. Both are
-        # driven on a fixture whose library has no backup fact file and no lock,
-        # which is the state of every install before its first backup, and both
-        # must still ask their question rather than treating an empty world as a
-        # reason not to. WHICH MODE THIS MEASURES: the drives below reach these
-        # verbs through the derived populations, and the explicit gates mean
-        # ``_sample_decisions``'s inline answer is refused rather than accepted,
-        # so conformance 1 and 2 see the REFUSAL and conformance 3 is the only
-        # property here that reaches the acting half. The two-act OK path and
-        # every refusal shape live in tests/test_session_cli.py.
+        # U23. The census takes no positional, since the taxonomy declares the
+        # routing tree (R19), and it queues without needing a database.
+        # U49. Neither session verb takes a positional or an actor flag (R34), so the
+        # input is the recorded gate decision; ``session ack --as session`` (U184) is
+        # driven in tests/test_session_ack_by_session.py. The inline answer is refused
+        # at their explicit gates, so only conformance 3 reaches the acting half; the
+        # rest lives in tests/test_session_cli.py.
         "session.ack": [],
         "session.release": [],
         "adopt.scan": [],
-        # U27. The apply takes no positional argument either, and for the same
-        # R19 reason: the tree comes off the declared taxonomy. It asks its
-        # explicit approval gate against the digest of the plan it rebuilt, which
-        # on this fixture is the EMPTY plan, because no unit in this build lands
-        # the collection reader that would give the census rows. An empty plan is
-        # still a plan a person can abort, so the gate fires, and the two-act OK
-        # path is conformance 3. Queueing needs no database and opens no
-        # destructive session, which is what lets the verb exit OK on a machine
-        # that has never acknowledged a backup.
+        # U27. No positional (R19). Its explicit gate is asked over the empty plan this
+        # fixture yields, still abortable; queueing opens no destructive session.
         "adopt.apply": [],
-        # R-758. No argument, as its sibling takes none. It reads the backup
-        # acknowledgment BEFORE it asks its gate (R-733), so it is the one verb
-        # here that needs the acknowledgment this fixture records to reach its
-        # own logic at all. The tree on this fixture has not cut over, so the
-        # plan is the empty one over a tree nobody read, which still asks.
+        # R-758. No argument. It reads the backup acknowledgment before its gate
+        # (R-733), so it needs the one this fixture records; the plan is empty.
         "adopt.move": [],
-        # U119. LAZY, for the rotation's reason: the engine refuses a tree on
-        # the bridge and a library with no source playlist by name before the
-        # gate, so the sample cuts the routing tree over and makes the one
-        # playlist the class mirrors. The tree holds no genre folder on this
-        # fixture, so the plan is empty, the explicit gate is still asked over
-        # it, and the verb ends NO_OP writing nothing. The writing path is
-        # driven in tests/test_genre_favorites.py.
+        # U119. Lazy: the engine refuses a bridge tree and a missing source playlist
+        # before the gate, so the sample cuts the tree over and makes the playlist.
+        # The plan is empty and the verb ends NO_OP; writing is in
+        # tests/test_genre_favorites.py.
         "favorites.refresh": _routing_tree_cut_over_with_a_source,
-        # U120. LAZY, for the refresh's reason: the engine refuses a library
-        # with no live source playlist by name before the gate, so the sample
-        # makes the one playlist every favourite is in. No hearts job on this
-        # fixture, so the plan is empty, the explicit gate is still asked over
-        # it, the account is never listed, and the verb ends NO_OP writing
-        # nothing. The placing path is driven in tests/test_favorites_backfill.py.
+        # U120. Lazy: the sample makes the source playlist the engine requires. No
+        # hearts job, so the plan is empty and the verb ends NO_OP; placing is in
+        # tests/test_favorites_backfill.py.
         "favorites.backfill": _a_source_playlist,
-        # U145. LAZY, for the backfill's reason: the engine refuses a library
-        # with no live source playlist before anything else. No quarter
-        # playlist sits beside it, so the plan is empty and, by the brief, the
-        # verb asks nothing and ends NO_OP; UNREACHABLE_GATES says why its gate
-        # is not asked here. The split is driven in tests/test_favorites_split.py.
+        # U145. Lazy, as the backfill. No quarter playlist, so the verb asks nothing
+        # and ends NO_OP (see UNREACHABLE_GATES); tests/test_favorites_split.py.
         "favorites.split": _a_source_playlist,
-        # U180. LAZY, for the split's reason: the engine refuses a library
-        # with no live source playlist, and one at the playlist root, before
-        # anything else. The sample makes the source in a folder of its own,
-        # alone, which is a folder already in order, so by the brief the verb
-        # asks nothing and ends NO_OP; UNREACHABLE_GATES says why its gate is
-        # not asked here. The order is driven in tests/test_favorites_order.py.
+        # U180. Lazy: the source sits alone in its own folder, already in order, so the
+        # verb asks nothing and ends NO_OP (see UNREACHABLE_GATES);
+        # tests/test_favorites_order.py.
         "favorites.order": _a_source_playlist_in_a_folder,
-        # U61. The composer takes the favourites source's export, the same
-        # document ``sync.favorites`` is driven with below, so its confirm gate
-        # is reachable and conformance 3 can drive it. The registry on this
-        # fixture is empty, so the labels source refuses for itself and the
-        # pass still reaches OK once favourites is confirmed. The composition
-        # itself is driven in tests/test_sync_all.py.
+        # U61. The favourites export, so the confirm gate is reachable; the empty
+        # label registry refuses for itself. tests/test_sync_all.py.
         "sync.all": [
             "--export",
             str(outbound_fakes.write_export(library / "outbound")),
         ],
-        # U152. The driver takes no argument. U181. LAZY, through fakes bound
-        # with ``monkeypatch``: a vocal model that cannot score, so the pass's
-        # own gate is asked before any step on every machine, and a pass that
-        # queued nothing new, so once the gate is answered the driver ends
-        # NO_OP. Unbound, its first step refuses for want of a provider
-        # session. The chain is driven in tests/test_sync_land.py.
+        # U152, U181. No argument. Lazy fakes make the pass ask its gate first and
+        # then queue nothing, ending NO_OP. tests/test_sync_land.py.
         "sync.land": _a_pass_with_no_vocal_model_and_nothing_new,
-        # U293. The night pass takes no argument and answers nothing: on this
-        # fixture the pass it runs ends with its own first refusal, which the
-        # night carries with its record. The night is driven in
-        # tests/test_sync_night.py.
+        # U293. No argument: the pass it runs ends on its own first refusal, which the
+        # night records. tests/test_sync_night.py.
         "sync.night": [],
-        # U295. The schedule's verbs take no argument, and on every machine
-        # they refuse ``schedule-platform-unsupported`` here before launchd is
-        # reached: tests/conftest.py reads the platform as Linux and stands the
-        # launchctl seam in with a refusal. The three are driven as a Mac, over
-        # a launchd standing in, in tests/test_schedule.py.
+        # U295. No argument; conftest reads the platform as Linux, so each refuses
+        # ``schedule-platform-unsupported`` before launchd. tests/test_schedule.py.
         "schedule.install": [],
         "schedule.show": [],
         "schedule.remove": [],
-        # U179. The driver takes no argument: on this fixture its plan step
-        # refuses for want of a Bandcamp session, and the driver ends with that
-        # step's own refusal. The chain is driven in tests/test_sync_bandcamp.py.
+        # U179. No argument: the plan step refuses for want of a Bandcamp session.
+        # tests/test_sync_bandcamp.py.
         "sync.bandcamp": [],
-        # U20. Inbox, unplaced and pending take no positional argument: an empty
-        # intake folder and an empty ledger are the state a fresh install is
-        # genuinely in, and each verb must still emit a well-formed plan and
-        # exit OK. Resort and rebuild are long-running, so they queue and
-        # report a job. Rebuild carries a typed actor because an empty one is
-        # the product answering for the user. No tree flag, because a library that
-        # has never flipped a tree has nothing native and the verb still
-        # queues.
+        # U20. Inbox, unplaced and pending take no positional and exit OK on an empty
+        # intake. Resort and rebuild queue; rebuild carries a typed actor, since an
+        # empty one is the product answering for the user.
         "route.inbox": [],
         "route.unplaced": [],
         "route.resort": [],
         "route.pending": [],
         "rebuild": ["--actor", "a-person"],
-        # U27. The wizard and the two reports take no positional argument at all:
-        # every answer the wizard needs is already recorded by the ``configured``
-        # fixture, so a drive here resolves each one from the file and reaches no
-        # prompt, which is the property that makes the ONE interactive verb
-        # scriptable rather than a hole in the non-interactive contract.
+        # U27. No positional: the wizard resolves every answer from the file the
+        # fixture recorded and reaches no prompt, which keeps it scriptable.
         "setup": [],
         "doctor": [],
         "status": [],
-        # Named without a source on purpose. The value is never a command-line
-        # argument, so the drive exercises the refusal that names both ways of
-        # supplying one rather than a success that would have had to put a
-        # credential in the process listing.
+        # No source given: a credential is never an argument, so this drives the
+        # refusal naming both ways to supply one.
         "login": ["provider-session"],
-        # U37. Identify is driven against a missing recording so it must refuse
-        # with a vocabulary code before any paid call (no recognition keys on
-        # a fresh install). Playlist freezes a source string and never fetches.
-        # Set (U129) declares an account gate that fires from the name flags
-        # before recognition, so its sample is LAZY: a local recording plus the
-        # three name flags reach the gate, and recognition or account fakes are
-        # bound through monkeypatch only so the resume after the gate can
-        # finish. File and tag take a path under the configured library.
-        # Repair and name.apply take no positional: an empty library is the
-        # state a fresh install is in.
+        # U37. Identify refuses a missing recording before any paid call. Playlist
+        # freezes a source string. Set (U129) is lazy: a local recording and three
+        # name flags reach its account gate, with fakes bound so the resume finishes.
+        # File and tag take a path under the library; repair and name.apply take none.
         "intake.set": _intake_set_reaching_account_gate,
         "intake.identify": [str(library / "no-such-set.mp3")],
         "intake.playlist": ["https://example.invalid/playlist"],
-        # U69. The job verbs' convention: an identifier deliberately absent,
-        # so the verb must refuse from the vocabulary rather than trace back.
+        # U69. An absent identifier, refused from the vocabulary.
         "intake.missing": ["--job", "no-such-job"],
-        # U121. LAZY, for the rotation's reason: the verb refuses a bridge tree
-        # by name before it reads the job, so the sample cuts the intake tree
-        # over and queues one finished set job whose page names the DJ, the set
-        # and the day it went up. Its one track is missing from the fixture's
-        # empty library, so the plan holds no member, the explicit gate is
-        # still asked over it, and the verb ends NO_OP writing nothing, as the
-        # rotation's empty plan does. The writing path is driven in
-        # tests/test_set_inspiration_playlist.py.
+        # U121. Lazy: the sample cuts the intake tree over and queues one finished set
+        # job whose track is missing, so the plan is empty and the verb ends NO_OP.
+        # Writing is in tests/test_set_inspiration_playlist.py.
         "intake.inspiration": _finished_set_job_on_a_native_tree,
-        # R-770. A FILE THAT IS THERE, since the verb declares a gate now and
-        # conformance 3 holds a gated verb to ending OK. On the conformance
-        # fixture the intake tree is on the xml bridge and no export is named,
-        # so the verb shows its plan, writes nothing and asks nothing. LAZY,
-        # because it puts a file under the library.
+        # R-770. A real file, lazy, since the verb declares a gate and must end OK. On
+        # the xml bridge with no export named it shows its plan and asks nothing.
         "intake.file": lambda: [str(_a_file_in_the_library())],
-        # U154. The report plans every batch under the music folder against a
-        # read only copy and asks nothing, and the fixture's music folder holds
-        # no batch folder, so the plan is empty and the verb ends OK. The gate
-        # is asked only by a plan that moves a batch, see UNREACHABLE_GATES.
+        # U154. No batch folder, so the plan is empty and the verb ends OK; the gate is
+        # asked only by a plan that moves a batch (see UNREACHABLE_GATES).
         "intake.shelve": ["--report", "--all"],
-        # U72. A folder under the CONFIGURED library that holds no audio, so
-        # the verb refuses from the vocabulary before its gate is reached.
+        # U72. A folder with no audio, refused before the gate.
         "intake.land": [str(library / "Music"), "--export", str(library / "no-such.xml")],
-        # R-501. An export that is not there, which the verb refuses from the
-        # vocabulary whether or not any run is waiting on one.
+        # R-501. An absent export, refused from the vocabulary.
         "intake.imported": ["--export", str(library / "no-such.xml")],
-        # U82. A real export document under the CONFIGURED library, named as an
-        # intake file of a pass this fixture never ran. No playlist job spells
-        # that name, so the plan is empty, the explicit gate is still asked,
-        # and the verb ends NO_OP without listing the account or asking for a
-        # credential this fixture does not have. The
-        # marking path is driven in tests/test_sync_mark.py.
-        #
-        # LAZY SINCE R-235, the first sample here that another sample's drive
-        # can see. Every value in this mapping is built on every call, whichever
-        # verb is being driven, and this one leaves an intake file under the
-        # library, which is exactly what the cutover precheck refuses over.
+        # U82. A real export named as an intake file of a pass never run, so the plan
+        # is empty, the gate is still asked, and the verb ends NO_OP with no account
+        # call. tests/test_sync_mark.py. Lazy (R-235), since the file it leaves under
+        # the library would trip the cutover precheck for other verbs.
         "sync.mark": lambda: [
             "--xml",
             str(
@@ -1810,126 +1485,67 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
                 )
             ),
         ],
-        # R-838. A pass the mark record holds nothing for, so the plan is
-        # empty, the explicit gate is still asked, and the verb ends NO_OP
-        # without listing the account or asking for a credential. The
-        # unmarking path is driven in tests/test_sync_unmark.py.
+        # R-838. A pass with no mark record, so the plan is empty and the verb ends
+        # NO_OP. tests/test_sync_unmark.py.
         "sync.unmark": ["--pass", "no-such-pass_synced"],
         "tag.folder": [str(library / "Music")],
-        # U40. Same convention as tag.folder: a folder under the CONFIGURED
-        # library. It is empty here, so the selection is empty and the confirm
-        # gate is asked against the digest of a plan with nothing in it, which is
-        # still a plan a person can abort. This verb opens no database on any
-        # path, which is why it declares no database write surface and no cloud
-        # sync decision: the entry claimed db_metadata until R-246 narrowed it to
-        # files, after the row relink that has no caller in src.
+        # U40. An empty folder, so the confirm gate is asked over an empty plan. It
+        # opens no database, so it declares files only and no cloud sync decision
+        # (R-246).
         "tag.retag": [str(library / "Music")],
-        # U43. The anchor is a path under the CONFIGURED library, for the R1
-        # reason every file verb above gives, and it is deliberately absent, so
-        # the verb must refuse with a code from the vocabulary rather than with a
-        # traceback. An absent anchor and an empty index are the same state here
-        # and the same refusal: this fixture's library holds no audio at all, so
-        # nothing could be indexed even if the file were there. The OK path over
-        # a library that does hold the anchor is driven in
-        # tests/test_setbuilder_cli.py, where the audio fixtures live.
+        # U43. An absent anchor, refused from the vocabulary; the fixture holds no
+        # audio to index. The OK path is in tests/test_setbuilder_cli.py.
         "setbuild": [str(library / "Music" / "no-such-anchor.aiff")],
-        # U44. A recording under the CONFIGURED library, for the R1 reason every
-        # file verb above gives, and deliberately absent. Unlike setbuild beside
-        # it, this one exits OK rather than refusing, and the difference is the
-        # point: the verb QUEUES, and queueing freezes the path without reading
-        # it. A stat in the handler would refuse here on a fixture that has no
-        # ffmpeg either, on a machine where the work would have run fine once
-        # claimed. The cost, that a mistyped path is reported queued rather than
-        # refused, is filed as a residual. The refusal over an absent recording
-        # is driven in tests/test_master_cli.py, on the work path where a person
-        # meets it.
+        # U44. An absent recording, yet OK: the verb queues and freezes the path
+        # without reading it, so it cannot refuse for want of ffmpeg on a fixture.
+        # The refusal is in tests/test_master_cli.py.
         "master": [str(library / "Music" / "no-such-recording.wav")],
-        # U45. No positional argument at all: the whole plan comes off the
-        # configured destinations, so a flag naming one would be a second opinion
-        # about a value the wizard already recorded. It exits OK on this fixture,
-        # which has no rclone binary and no backup remote, and that is the point
-        # rather than an accident: the verb QUEUES, and queueing resolves no
-        # binary, reads no process table and stats no volume. A plan built in this
-        # handler would refuse here on a machine where the work would have run
-        # fine once claimed, and the entry's two doctor checks are what tell a
-        # person about rclone and the volume before they type the verb. The
-        # refusals over a missing rclone and over a failed transfer are driven in
-        # tests/test_backup_cli.py, on the work path where a person meets them.
+        # U45. No positional: the plan comes off the configured destinations. It
+        # queues without resolving rclone or the volume, so it exits OK here; doctor
+        # reports those, and tests/test_backup_cli.py drives the refusals.
         "backup.run": [],
         "name.apply": [],
-        # U102. Driven with the flag, because that is the path the confirm gate
-        # is on and conformance 3 holds the verb to reaching every gate it
-        # declares. The review queue is empty here, so the gate is asked against
-        # the digest of a plan with nothing in it, which is still a plan a person
-        # can abort, and the collection is never read. Without the flag the verb
-        # scans and offers and asks nothing, which tests/intake/test_repair.py
-        # and tests/intake/test_repair_apply.py drive.
+        # U102. With the flag, the path the confirm gate is on, asked over an empty
+        # review queue. Without it the verb scans and asks nothing, as
+        # tests/intake/test_repair.py and test_repair_apply.py drive.
         "repair.paths": ["--apply"],
-        # U25. Folder verbs take a path under the configured library. Calibrate
-        # and validate accept no folder, which is the state with no labelled
-        # set yet. Run and restamp queue, so they must still emit a job_state
-        # envelope over an empty folder rather than a traceback.
+        # U25. Folder verbs take a path under the library; calibrate and validate take
+        # none. Run and restamp queue, so they still emit a job_state envelope.
         "analyze.run": [str(library / "Music")],
         "analyze.calibrate": [],
         "analyze.validate": [],
         "analyze.restamp": [str(library / "Music")],
         "analyze.vocals": [str(library / "Music")],
         "metadata.mytags-vocals": [],
-        # U26. Registry list is the empty-install state. Import of a name that
-        # is not registered must refuse with a vocabulary code. Harvest of an
-        # unreachable playlist must refuse rather than invent labels.
-        #
-        # U52 CHANGED WHAT THE SWEEP DOES ON THIS FIXTURE, and the comment is
-        # updated rather than the assertion. It used to queue an increment here.
-        # Its job items are now the registered favourite labels, and this fixture
-        # registers none, so it refuses ``label-registry-empty`` rather than
-        # filing a job with nothing to claim, which ``jobs.drive`` would later
-        # transition straight to SUCCEEDED over work nothing did. That is still a
-        # code from the vocabulary and still not USAGE, which is all this
-        # conformance asks. The queueing path over a registry that holds labels,
-        # and the refusal over one that does not, are both driven in
-        # tests/test_label_workers.py, where a registry can be populated.
-        #
-        # U109 CHANGED IT AGAIN. ``sync labels`` queues nothing now, whatever
-        # the registry holds, and refuses ``verb-retired`` naming ``crate label
-        # sync`` before it reads anything. Still a vocabulary code and still
-        # not USAGE. Driven in tests/test_label_workers.py section 1.
+        # U26. Registry list is the empty install state. An unregistered import and an
+        # unreachable harvest refuse from the vocabulary. ``sync labels`` is retired
+        # (U109) and refuses ``verb-retired`` before reading anything; see
+        # tests/test_label_workers.py.
         "label.registry": [],
         "sync.labels": [],
         "label.import": ["no-such-label"],
         "label.harvest": ["https://example.invalid/playlist"],
-        # U75. No argument is required: over a configured machine with an
-        # empty review queue the verb reports nothing accepted and stops
-        # before the catalogue is resolved.
+        # U75. No argument: an empty review queue accepts nothing and stops before the
+        # catalogue is resolved.
         "label.approved": [],
         # R-798. No argument lists what the genre gate holds.
         "label.held": [],
-        # R-815. No argument judges every pending label release, and over an
-        # empty review queue that is nothing: the verb queues no job and says
-        # which zero it is, before any provider is resolved.
+        # R-815. No argument: an empty review queue queues no job and says which zero,
+        # before any provider is resolved.
         "label.judge": [],
-        # R-840. No argument repairs every open label release whose artist
-        # reads an address, and over an empty review queue that is none: the
-        # verb says so before any provider is resolved.
+        # R-840. No argument: an empty review queue repairs none, before any provider.
         "label.artists": [],
-        # U108. ``--go`` is the scriptable path to the verb's one gate, which
-        # asks nothing at a terminal and reaches no provider before the gate:
-        # over a configured machine with no saved answer the summary is empty,
-        # the gate is still asked, and a yes downloads nothing.
+        # U108. ``--go`` is the scriptable path to the one gate; with no saved answer
+        # the summary is empty, the gate is asked, and a yes downloads nothing.
         "label.sync": ["--go"],
-        # R-835. A label nobody follows is a plan of nothing, still gated, and
-        # the verb ends NO_OP before any provider or credential is asked for.
-        # The building path is driven in tests/test_label_playlists.py.
+        # R-835. A label nobody follows is a plan of nothing, still gated, ending NO_OP
+        # before any provider. tests/test_label_playlists.py.
         "label.playlists": ["no-such-label"],
-        # R-836. The same for the prune: a label nobody follows is a plan of
-        # nothing, still gated. The removing path is in tests/test_prune.py.
+        # R-836. The same for the prune. tests/test_prune.py.
         "label.prune": ["no-such-label"],
-        # U123. The same for the heard merge: a label nobody follows is a plan
-        # of nothing, still gated. The merging path is in
-        # tests/test_label_heard.py.
+        # U123. The same for the heard merge. tests/test_label_heard.py.
         "label.heard": ["no-such-label", "2023", "2026-10-09"],
-        # R-835. The same, with the landed batch's intake file the mark needs
-        # as its proof, LAZY for the reason ``sync.mark``'s sample gives.
+        # R-835. The same, with the intake file the mark needs, lazy as ``sync.mark``.
         "label.mark": lambda: [
             "no-such-label",
             "--xml",
@@ -1939,68 +1555,42 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
                 )
             ),
         ],
-        # R-837. An empty list document is a set of nothing: no row is searched
-        # for and the account is resolved only on first use, so the verb reaches
-        # its gate with no credential and ends NO_OP with nothing to write. LAZY,
-        # since the file is written under the configured library. The writing
-        # path is driven in tests/test_export_set.py.
+        # R-837. An empty list document searches nothing and resolves the account only
+        # on first use, so the gate is reached and the verb ends NO_OP. Lazy, since it
+        # writes under the library. tests/test_export_set.py.
         "export.set": lambda: [
             str(_written(library / "set-lists" / "empty-set.list.json", '{"list": 1, "tracks": []}'))
         ],
-        # R-837. A set never made is an archive of nothing, still gated, with
-        # the landed intake file the archive needs as its proof.
+        # R-837. A set never made archives nothing, still gated, with its intake file.
         "export.archive": lambda: [
             "no-such-set",
             "--xml",
             str(_written(library / "set-landed" / "no-such-set_inboxed.xml", "<DJ_PLAYLISTS/>")),
         ],
-        # U27. The four report verbs each take a collection export, and each is
-        # handed a path under the CONFIGURED library that is deliberately absent,
-        # for the same reason the file verbs above are: a literal here would be a
-        # real path on somebody's machine (R1), and an absent one makes every one
-        # of them refuse with a code from the vocabulary rather than with a
-        # traceback. There is no configured export location to default to, so an
-        # absent file is the state every fresh install is genuinely in. The happy
-        # path over a real export is driven in tests/modules/test_reports.py,
-        # which is where the export fixtures live.
+        # U27. The four report verbs get an absent export under the configured library
+        # (R1) and refuse from the vocabulary. tests/modules/test_reports.py.
         "audit.coverage": [str(library / "no-such-export.xml")],
         "audit.duplicates": [str(library / "no-such-export.xml")],
         "report.library": [str(library / "no-such-export.xml")],
         "report.intake-aging": [str(library / "no-such-export.xml")],
-        # U27. Both restore verbs are driven with no positional argument at all,
-        # and the omission is the state a fresh install is genuinely in rather
-        # than a convenience. The listing answers over an empty session log. The
-        # run means "the newest session whose capture is spendable", of which
-        # there are none here, so it asks its explicit confirmation gate against
-        # the digest of an offer with no halves in it and then reports that there
-        # was nothing to restore. That path opens NO destructive session, which is
-        # what lets the verb exit OK on a machine that has never acknowledged a
-        # backup: the session is opened only by the code that touches the volume.
+        # U27. No positional: the listing answers over an empty session log, and the
+        # run asks its explicit gate over an empty offer and restores nothing. It opens
+        # no destructive session, so it exits OK without a backup acknowledgment.
         "restore.list": [],
         "restore.run": [],
-        # U96. The recovery names a target and accepts the replacement, and in
-        # this sandbox it REFUSES, which is the behaviour under test rather than
-        # a shortfall of the drive: the configured library is present, and the
-        # engine refuses a bare-metal recovery whenever the recorded volume can
-        # be read. It declares no gate, so nothing requires it to exit OK here,
-        # and the machine on which it does is one whose library is gone.
+        # U96. It refuses here, which is the behaviour under test: the engine refuses a
+        # bare metal recovery while the recorded volume reads. It declares no gate, so
+        # nothing requires OK.
         "restore.bare-metal": [
             "--target",
             str(library / "replacement"),
             "--accept-replacement",
         ],
-        # U33. Export takes the playlist identifier and queues after its
-        # own confirm gate. Favourites sync takes no positional: the
-        # confirm is the remote half, separate from any local colour write.
-        #
-        # U51 GAVE BOTH A REAL EXPORT, and unlike the report verbs above it is
-        # NOT an absent path. The difference is what each verb has to reach.
-        # A report refuses on an unreadable export and that refusal is the whole
-        # behaviour under test here. These two decide their JOB ITEMS from the
-        # document, so an absent one refuses before the confirm gate is reached,
-        # and assertion 3 exists to prove the gate IS reached. The document is
-        # written under the configured library, so no literal path from anybody's
-        # machine enters the repository (R1).
+        # U33, U51. Export takes the playlist identifier and queues after its confirm
+        # gate; favourites sync takes no positional. Both get a real export, unlike the
+        # report verbs, because they decide their job items from it and an absent one
+        # would refuse before the gate assertion 3 must reach. Written under the
+        # library (R1).
         "export.playlist": [
             "crate-export",
             "--export",
@@ -2010,145 +1600,91 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
             "--export",
             str(outbound_fakes.write_export(library / "outbound")),
         ],
-        # R-836. A playlist never exported has nothing recorded to take off:
-        # the plan is empty, still gated, and no account is resolved, so the
-        # verb reaches its gate with no credential and ends NO_OP. The removing
-        # path is driven in tests/test_prune.py.
+        # R-836. A playlist never exported has nothing to take off: empty plan, still
+        # gated, no account, NO_OP. tests/test_prune.py.
         "export.prune": [
             "crate-export",
             "--export",
             str(outbound_fakes.write_export(library / "outbound")),
         ],
-        # U28. Driven with an explicit target under the configured library rather
-        # than with no argument at all, and the difference matters: the default
-        # target is the agent skills directory under the REAL home directory of
-        # whoever runs the suite, so a bare drive would write twelve directories
-        # into a person's actual configuration while claiming to be a test. The
-        # flag exists so the destination is always somebody's choice.
+        # U28. An explicit target under the library, since the default is the real
+        # home's agent skills directory and a bare drive would write into it.
         "skills.install": ["--into", str(library / "agent-skills")],
-        # R-235. The cutover is driven over a library the precheck PASSES, with
-        # exactly one root for the routing tree, because conformance 3 holds the
-        # verb to reaching its approval and to ending OK once it is given, and
-        # an unready library refuses before the question. The revert is driven
-        # over a tree already recorded native, since a tree on the bridge has
-        # nothing to revert and is answered without the question. Both are LAZY:
-        # each changes the library's own state, and built eagerly they would
-        # change it under every other verb's drive.
+        # R-235. The cutover is driven over a library the precheck passes, so it
+        # reaches its approval and ends OK; the revert over a tree already native. Both
+        # are lazy, since each changes library state other drives would see.
         "tree.cutover": lambda: _ready_to_cut_over(),
         "tree.revert": lambda: _already_cut_over(),
-        # R-745. A NEW NAME PER DRIVE, because the verb never replaces a file
-        # and a conformance that drives it twice would otherwise be asserting
-        # about the refusal the second time round.
+        # R-745. A new name per drive, since the verb never replaces a file and a
+        # second drive would otherwise test the refusal.
         "export.collection": lambda: [
             str(library / "exports" / f"collection-{uuid.uuid4().hex}.xml")
         ],
-        # R-797. No argument: the threshold is the author's number and the
-        # database is the configured one.
+        # R-797. No argument: the author's threshold and the configured database.
         "report.genres": [],
-        # The residual on stale row genres. No argument: it reads the whole
-        # collection of the configured database.
+        # Stale row genres. No argument: it reads the configured collection.
         "tag.rows": [],
-        # R-923. No argument, and a CALLABLE because the fixture's seeded rows
-        # lack rekordbox's defaults, so the verb would plan a write and the
-        # write would meet the pin the fixture never records. Made whole, the
-        # plan is empty, the explicit gate still asks, and the apply is a no op,
-        # the shape tag.rows has on this fixture.
+        # R-923. A callable: the seeded rows lack rekordbox's defaults, so they are
+        # made whole first, the plan is empty, the gate asks, and the apply is a no op.
         "repair.rows": lambda: _rows_whole(),
-        # A32. The one row and the value, and a CALLABLE because the fixture's
-        # rows carry no ContentLink at all: every row is given the value and
-        # made whole, so the plan over the first writes nothing, the explicit
-        # gate still asks, and the apply is a no op, the shape repair.rows has
-        # on this fixture, which records no pin for a write to meet.
+        # A32. A callable: every row is given the ContentLink value first, so the plan
+        # writes nothing, the gate asks, and the apply is a no op.
         "repair.link": lambda: _link_rows(),
-        # U132. A CALLABLE, because the fixture's library holds no taxonomy
-        # copy and the verb refuses one it cannot read: the shipped template
-        # without its genre Favorites class is written as the copy, so the
-        # plan adds it, the explicit gate asks, and the apply writes.
+        # U132. A callable: the shipped template without its genre Favorites class is
+        # written as the taxonomy copy, so the plan adds it, the gate asks, and it writes.
         "taxonomy.upgrade": lambda: _taxonomy_behind(),
-        # U194. CALLABLES, for the upgrade's reason: the fixture's library holds
-        # no taxonomy copy, so the shipped template is written as the copy and
-        # a word it passes through is answered. No audio file carries it on
-        # this fixture, so the alias plans the copy's one edit, the folder its
-        # one bucket, the explicit gate asks, and the apply writes the copy.
-        # The files are driven in tests/test_taxonomy_word.py.
+        # U194. Callables, as the upgrade: the template is written as the copy and a
+        # word it passes through is answered, so the gate asks and the apply writes the
+        # copy. tests/test_taxonomy_word.py.
         "taxonomy.alias": lambda: _shipped_copy(["Latin Electronic", "Afro House"]),
         "taxonomy.folder": lambda: _shipped_copy(["Latin Electronic"]),
-        # R-799. No argument: it reads every tagging record this installation
-        # committed, which on the fixture's machine is none.
+        # R-799. No argument: it reads every tagging record, none on this fixture.
         "tag.remap": [],
-        # U114. No argument: it reads the whole collection of the configured
-        # database, where no row lacks a genre on a file it can read, so the
-        # plan is empty, the explicit gate still asks and the apply is a no op.
+        # U114. No argument: no row lacks a genre, so the plan is empty, the gate asks
+        # and the apply is a no op.
         "tag.suggest": [],
-        # U292. No argument: it reads the whole collection of the configured
-        # database and writes nothing; every cause is driven in
+        # U292. No argument: it reads the collection and writes nothing;
         # tests/test_tag_backlog.py.
         "tag.backlog": [],
-        # U294. An empty backlog: the plan writes nothing, the explicit gate is
-        # still asked over it, and the verb ends NO_OP. It reads the backup
-        # acknowledgment first, see ACKNOWLEDGED_BEFORE_THE_GATE. The campaign
-        # is driven in tests/test_tag_campaign.py.
+        # U294. An empty backlog: the gate is asked and the verb ends NO_OP. It reads
+        # the acknowledgment first (ACKNOWLEDGED_BEFORE_THE_GATE).
+        # tests/test_tag_campaign.py.
         "tag.campaign": [],
-        # U172. The configured library's root, a folder with no audio in it on
-        # this fixture, so the guess reads nothing, writes nothing and ends
-        # NO_OP. Every guess is driven in tests/test_tag_guess.py.
+        # U172. The library root holds no audio, so the guess ends NO_OP;
+        # tests/test_tag_guess.py.
         "tag.guess": [str(library)],
-        # U111. No argument, and a CALLABLE because the drive needs a state the
-        # fixture does not build: the rotation refuses an intake tree on the
-        # xml bridge, naming ``tree cutover``, so on this fixture it would never
-        # reach its gate. Rather than exempt the gate, the intake tree is
-        # recorded database native here, anchored to a root folder the
-        # fixture's database is given, and the verb plans INBOX as empty and
-        # still asks. The bridge refusal is driven in tests/test_inbox_rotate.py.
+        # U111. A callable: the rotation refuses a bridge intake tree, so the tree is
+        # recorded database native here and INBOX plans empty and still asks.
+        # tests/test_inbox_rotate.py.
         "inbox.rotate": _intake_cut_over,
-        # U134. LAZY, for the rotation's reason: the refill refuses a bridge
-        # tree by name, so the sample cuts the intake tree over and runs one
-        # account playlist job of a pass. No INBOX playlist answers it on the
-        # fixture, so the plan writes nothing, the explicit gate is still
-        # asked over it, and the verb ends NO_OP. The writing path is driven
-        # in tests/test_inbox_refill.py.
+        # U134. Lazy: the intake tree is cut over and one account playlist pass run; no
+        # INBOX playlist answers it, so the verb ends NO_OP. tests/test_inbox_refill.py.
         "inbox.refill": _finished_account_playlist_pass_on_a_native_tree,
-        # U166. LAZY, for the rotation's reason: the clear refuses a bridge
-        # tree by name, so the sample cuts the intake tree over. INBOX holds
-        # no Analyze playlist on the fixture, so the plan clears nothing, the
-        # explicit gate is still asked over it, and the verb ends NO_OP. The
-        # writing path is driven in tests/test_inbox_analyzed.py.
+        # U166. Lazy: the intake tree is cut over; no Analyze playlist, so the verb
+        # ends NO_OP. tests/test_inbox_analyzed.py.
         "inbox.analyzed": _intake_cut_over,
-        # U167. No argument: the check reads INBOX / Analyze, or every row
-        # rekordbox has not analysed, off a copy of whatever database the
-        # fixture holds, and answers or refuses with a code from the
-        # vocabulary. The verdicts are driven in tests/test_analyze_check.py.
+        # U167. No argument: the check reads a copy of the fixture's database and
+        # answers or refuses from the vocabulary. tests/test_analyze_check.py.
         "analyze.check": [],
-        # U112. No argument. Its database area reads the backup acknowledgment
-        # first, see ACKNOWLEDGED_BEFORE_THE_GATE; on this fixture every step
-        # either plans nothing or refuses on its own, and both areas still ask.
+        # U112. No argument. Its database area reads the acknowledgment first; every
+        # step plans nothing or refuses, and both areas still ask.
         "organize": [],
-        # U130. No argument and no pair marked: the plan is empty, both explicit
-        # gates are still asked over it, the account is never listed, the
-        # database is read only for the playlists U198 discovers, of which the
-        # fixture holds none, and the verb ends NO_OP. It reads the backup
-        # acknowledgment first, see ACKNOWLEDGED_BEFORE_THE_GATE. The syncing
-        # path is driven in tests/test_sync_pair.py.
+        # U130. No pair marked: the plan is empty, both gates ask, and the verb ends
+        # NO_OP. It reads the acknowledgment first. tests/test_sync_pair.py.
         "sync.pair": [],
-        # U149. An account holding no year folder, through fakes bound with
-        # ``monkeypatch``: the backfill plans nothing, asks nothing and ends
-        # NO_OP; UNREACHABLE_GATES says why its gate is not asked here. It
-        # reads the backup acknowledgment first, see
-        # ACKNOWLEDGED_BEFORE_THE_GATE. The backfill is driven in
+        # U149. An account with no year folder: the backfill asks nothing and ends
+        # NO_OP (see UNREACHABLE_GATES); it reads the acknowledgment first.
         # tests/test_sync_twins.py.
         "sync.twins": _an_account_with_no_year_folder,
-        # U221. One twin holding one track, seeded in the pairs document, so
-        # the explicit gate is asked and approving it empties that hold, which
-        # writes this product's own state and no database. The verb is driven
-        # in tests/test_sync_twins_hold.py.
+        # U221. One twin holding one track, so the gate is asked and approving it
+        # empties that hold, writing no database. tests/test_sync_twins_hold.py.
         "sync.release": _a_twin_holding_one_track,
-        # U242. An account with no playlist on it, so each plan is empty, the
-        # explicit gate is still asked, and approving it writes nothing. Both
-        # verbs are driven in tests/test_u242_taken.py.
+        # U242. An account with no playlist: empty plans, gate asked, nothing written.
+        # tests/test_u242_taken.py.
         "sync.taken": _an_account_with_no_year_folder,
         "sync.strip": _an_account_with_no_year_folder,
-        # U287. Nothing downloaded, so the account is never asked and the plan
-        # is empty; the verb is driven in tests/test_sync_removed.py.
+        # U287. Nothing downloaded, so the account is never asked;
+        # tests/test_sync_removed.py.
         "sync.removed": _an_account_with_no_year_folder,
     }[entry.name]
     if not callable(sample):
@@ -2175,14 +1711,11 @@ def _run_retire_over_one_old_gate() -> list[str]:
 
 
 def _intake_set_reaching_account_gate(monkeypatch) -> list[str]:
-    """A named local recording, so the account gate fires before recognition.
+    """A named local recording, so U129's account gate fires before recognition.
 
-    U129 asks ``intake.set.account.confirm`` over the playlist name from the
-    three name flags, before the recognition preflight, so the first drive
-    reaches the gate with no identify keys. After the gate is answered,
-    conformance still has to finish the verb: the recognition and account
-    fakes below are set through ``monkeypatch`` so teardown restores the real
-    seams. The writing path is driven in tests/test_u129_set_account_playlist.py.
+    The recognition and account fakes are set through ``monkeypatch``, so the resume
+    can finish and teardown restores the real seams.
+    tests/test_u129_set_account_playlist.py drives the writing path.
     """
     from cratekit.core import secrets
     from cratekit.intake import acrcloud
@@ -2234,13 +1767,8 @@ def _intake_set_reaching_account_gate(monkeypatch) -> list[str]:
 
 
 def test_intake_set_sample_leaves_account_and_catalogue_seams_real(configured, monkeypatch):
-    """The intake.set sample must not leak fakes into later tests on this worker.
-
-    An earlier shape replaced ``account.resolve`` and ``catalogue.resolve`` for
-    good. ``account.forget`` clears only the opened handle, so every later test
-    on the same xdist worker silently got the fake. The sample now sets both
-    through ``monkeypatch``; a nested context restores them when it closes.
-    """
+    """The intake.set sample leaks no fake into later tests on this worker, since
+        ``account.forget`` clears only the opened handle."""
     from cratekit.label import catalogue
     from cratekit.modules.outbound import account
 
@@ -2441,11 +1969,9 @@ def _routing_tree_cut_over_with_a_source() -> list[str]:
     try:
         held = [row for row in handle.get_playlist(Name=source) if not rb_writer.is_folder(row)]
         playlist = held[0] if held else handle.create_playlist(source)
-        # ONE TRACK, since an emptied source refuses by name before the gate:
-        # a refresh over it would empty every Favorites. The fixture's first
-        # content row, which sits in no genre folder, so the plan still holds
-        # no folder and writes nothing.
-        # A LIST, since the binding's query object is truthy with no rows in it.
+        # One track, since an emptied source refuses before the gate; the first row
+        # sits in no genre folder, so the plan still writes nothing. A list, since the
+        # binding's query object is truthy with no rows.
         if not list(handle.get_playlist_songs(PlaylistID=str(playlist.ID))):
             handle.add_to_playlist(playlist, "1")
         handle.session.commit()
@@ -2488,11 +2014,8 @@ def _routing_tree() -> tuple[str, str]:
 
 
 def _a_file_in_the_library() -> Path:
-    """One file with an audio suffix under the configured library, made on demand.
-
-    Empty, which is enough: ``intake file`` with no export on a bridge tree
-    reads its tags for the plan and an empty container carries none.
-    """
+    """One empty file with an audio suffix under the configured library, which
+        ``intake file`` reads for tags and finds none."""
     path = Path(config.load().library.root) / "Music" / "conformance-single.flac"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.touch()
@@ -2608,12 +2131,8 @@ def test_conformance_2_exit_codes_are_from_the_vocabulary_and_never_status_two(
 
 
 def test_conformance_2_only_the_entry_point_may_end_the_process():
-    """One boundary converts a cause into a status. Everything else returns.
-
-    ``SystemExit`` is a ``BaseException``, so an ``except Exception`` upstream
-    does not catch it, which is how an argument-parsing failure inside one
-    component of the source system surfaces as the orchestrator's exit 2.
-    """
+    """Only the entry point ends the process; one boundary converts a cause into a
+        status, since ``SystemExit`` escapes an ``except Exception`` upstream."""
     offenders: list[str] = []
     for path, source in package_sources():
         relative = path.relative_to(SRC_ROOT).as_posix()
@@ -2641,18 +2160,9 @@ def test_conformance_2_no_module_builds_an_exit_code_from_a_bare_integer():
     assert not offenders, f"ExitCode built from a literal: {offenders}"
 
 
-#: Gates that CANNOT be reached in a test environment, each with the reason.
-#:
-#: This map exists because the honest alternative is worse in both directions. A
-#: rule requiring every declared gate to fire would fail every correct verb
-#: declaring the cloud-sync decision, and a rule requiring none would let a verb
-#: ship with a gate its handler no longer reaches. So the exemption is NAMED,
-#: per gate, with what makes it unreachable, and everything not in here must
-#: fire.
-#:
-#: An entry here is a claim that can expire. If a listed gate is ever reached,
-#: the assertion below fails and says to delete the entry, because a gate that
-#: fires is a gate the suite can hold a verb to.
+#: Gates that cannot be reached in a test environment, each with the reason.
+#: Everything not named here must fire. If a listed gate is ever reached, the
+#: assertion below fails and says to delete the entry.
 UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
     {
         "sync.removed.confirm": (
@@ -2770,13 +2280,8 @@ UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
 
 
 def _assert_gate_reach(entry: registry.Entry, reached: list[str]) -> None:
-    """Every gate the entry declares fired, except the ones named unreachable.
-
-    The half that a returned list nobody compared cannot provide. A declaration
-    is a promise to the person reading the registry that this verb asks this
-    question, and the only thing that can hold a handler to it is a drive that
-    counts what actually fired.
-    """
+    """Every gate the entry declares fired, except the ones named unreachable,
+        since only a drive that counts what fired holds a handler to its declaration."""
     declared = {spec.name for spec in entry.gates}
     exempt = declared & set(UNREACHABLE_GATES)
     expected = declared - exempt
@@ -2799,13 +2304,11 @@ def _assert_gate_reach(entry: registry.Entry, reached: list[str]) -> None:
     )
 
 
-#: Verbs that read the backup acknowledgment BEFORE they ask their gate (R-733),
-#: so a machine that never acknowledged one refuses them ahead of the gate
-#: conformance 3 holds them to reaching. NAMED RATHER THAN GIVEN TO EVERY VERB
-#: THROUGH THE FIXTURE: the other gated verbs reach their gates on a machine
-#: with no acknowledgment, and that is a property worth keeping under test.
-#: That each of these refuses without one is driven in its own suite, which
-#: the guard below holds this table to.
+#: Verbs that read the backup acknowledgment before their gate (R-733), so the
+#: fixture records one for them. Named rather than given to every verb, because
+#: the other gated verbs reaching their gates without one is worth keeping under
+#: test. Each one's refusal without it is driven in its own suite, held by the
+#: guard below.
 ACKNOWLEDGED_BEFORE_THE_GATE = {
     "inbox.analyzed": (
         "tests/test_inbox_analyzed.py::"
@@ -2889,8 +2392,8 @@ def _acknowledge_where_the_verb_reads_it_first(entry: registry.Entry, cfg) -> No
 
 
 def test_every_verb_acknowledged_for_conformance_is_refused_without_one_elsewhere():
-    """The table is an exemption from one machine state, so each entry names
-    the test that drives the verb in that state, and the test has to exist."""
+    """Each acknowledged verb names the test that drives it without an
+        acknowledgment, and that test exists."""
     root = Path(__file__).resolve().parent.parent
     for name, node_id in ACKNOWLEDGED_BEFORE_THE_GATE.items():
         assert registry.entry(name).landed, name
@@ -2905,31 +2408,17 @@ def test_every_verb_acknowledged_for_conformance_is_refused_without_one_elsewher
 def _conformance_3(entry: registry.Entry, positional: list[str]) -> list[str]:
     """Drive one gated verb to OK the way R34 says it is reached, and say how.
 
-    Returns the gates it actually refused at, in the order it refused at them,
-    having first asserted that the set of them is exactly what the entry declares
-    minus :data:`UNREACHABLE_GATES`.
-
-    THAT EQUALITY IS THE POINT, and an earlier version of this function dropped
-    it. Returning the reached list and leaving the caller to ignore it made a
-    verb that declares two gates and reaches neither pass, and made a verb whose
-    handler stopped reaching a declared gate pass. A destructive database verb
-    could have shipped with its concurrent-writer decision unreachable and the
-    suite would have been green, because no other assertion anywhere holds a
-    handler to the gates its entry declares.
-
-    The narrowing that replaced it was real but far too wide: it covered every
-    gate when the justification covered one. A gate that cannot be provoked is
-    named in the map above with the reason, and every other declared gate must
-    fire.
+    Returns the gates it refused at, in order, having asserted that their set is
+    exactly what the entry declares minus :data:`UNREACHABLE_GATES`. That equality
+    is the point, since nothing else holds a handler to the gates its entry declares.
     """
     declared = {spec.name: spec for spec in entry.gates}
     answered: list[str] = []
     reached: list[str] = []
     run_id: str | None = None
 
-    # One drive per gate, plus the one that succeeds. A verb that refuses more
-    # often than it has gates is refusing at something it did not declare, and
-    # falling out of the loop rather than spinning is what makes that visible.
+    # One drive per gate plus the one that succeeds; refusing more often than it has
+    # gates means an undeclared refusal, which falling out of the loop makes visible.
     for _ in range(len(declared) + 1):
         resume = ["--run", run_id] if run_id is not None else []
         argv = ["--output", "json", *answered, *resume, *entry.path, *positional]
@@ -2940,11 +2429,8 @@ def _conformance_3(entry: registry.Entry, positional: list[str]) -> list[str]:
         assert code == int(ExitCode.DECISION_REQUIRED), err or out
 
         envelope = json.loads(out)
-        # The gate and its options ride on the CAUSE, not on
-        # ``pending_human_action``: that field means a person must act OUTSIDE
-        # the tool, and the envelope asserts it implies status PENDING_HUMAN in
-        # both directions. A decision is answerable in the tool, so putting it
-        # there would make the two fields contradict each other.
+        # The gate rides on the cause, not on ``pending_human_action``, which means a
+        # person must act outside the tool and implies PENDING_HUMAN.
         detail = envelope["cause"]["detail"]
         assert detail["gate"] in declared, (
             f"{entry.name} refused at {detail['gate']!r}, which it does not "
@@ -2958,18 +2444,13 @@ def _conformance_3(entry: registry.Entry, positional: list[str]) -> list[str]:
         reached.append(spec.name)
 
         if not spec.explicit:
-            # ONE ACT. An ordinary gate is answerable in the invocation that
-            # discovered it, and the flags accumulate rather than replacing each
-            # other so a second gate further in is reached with the first still
-            # answered.
+            # One act: an ordinary gate is answerable inline, and flags accumulate so a
+            # later gate is reached with the first still answered.
             answered += ["-d", f"{spec.name}={spec.options[0]}"]
             continue
 
-        # TWO ACTS (R34). The inline answer is refused AGAIN, because an
-        # explicit gate is satisfiable only by a deliberate, separate act
-        # recorded with its actor. Asserting OK here instead, which is what this
-        # function did for four waves, asserts that an explicit gate must NOT be
-        # honoured, and every verb declaring one was unlandable by construction.
+        # Two acts (R34): the inline answer is refused again, since an explicit gate is
+        # satisfied only by a separate act recorded with its actor.
         run_id = envelope["run_id"]
         inline = ["-d", f"{spec.name}={spec.options[0]}"]
         code, _, _ = drive([*answered, *inline, "--run", run_id, *entry.path, *positional])
@@ -2999,21 +2480,11 @@ def _conformance_3(entry: registry.Entry, positional: list[str]) -> list[str]:
 
 @pytest.mark.parametrize("entry", LANDED, ids=lambda e: e.name)
 def test_conformance_3_every_gate_refuses_and_then_the_verb_proceeds(entry, configured, monkeypatch):
-    """Assertion 3, rewritten: a gate refuses, and OK comes only after R34's acts.
+    """Assertion 3: a gate refuses, and OK comes only after R34's acts.
 
-    WHAT WAS WRONG. The previous version drove every gate the same way: refuse,
-    then hand the answer back on ``-d`` in a fresh invocation, then assert OK.
-    For an ordinary gate that is the contract. For an EXPLICIT one it is the
-    opposite of the contract. ``Gates.require`` refuses an inline answer whenever
-    nothing is recorded against the run, and ``cli.run`` mints a new run whenever
-    ``--run`` is absent, so an explicitly gated verb refuses the second drive too,
-    every time, by design. Asserting OK there asserted that R34 must be violated.
-
-    Nothing caught it because no landed entry declares an explicit gate. Fifteen
-    declare one and all fifteen are planned, so the branch was never driven, and
-    four units in one wave independently concluded their verb "cannot land" and
-    parked the obligation somewhere else. The test below drives the branch against
-    a synthetic entry so it is proved before the first real one arrives.
+    An ordinary gate is answered inline; an explicit gate refuses an inline answer
+    on a fresh run, so it takes the two acts. The explicit branch is also driven
+    against a synthetic entry in the test below.
     """
     if not entry.gates:
         return
@@ -3024,10 +2495,8 @@ def test_conformance_3_every_gate_refuses_and_then_the_verb_proceeds(entry, conf
 def _swap_in(monkeypatch, promoted: registry.Entry) -> None:
     """Put a modified entry in front of the dispatcher, everywhere it is looked up.
 
-    ``_BY_NAME`` is patched alongside ``ENTRIES`` because ``run decide`` resolves
-    the owning entry BY NAME to find the gate it is answering, so a swap that
-    reached only the parser would leave the second act looking at the unmodified
-    spec and quietly prove nothing.
+    ``_BY_NAME`` is patched too, since ``run decide`` resolves the owning entry by
+    name, and a swap reaching only the parser would prove nothing.
     """
     monkeypatch.setattr(
         registry,
@@ -3040,18 +2509,11 @@ def _swap_in(monkeypatch, promoted: registry.Entry) -> None:
 
 
 def test_conformance_3_admits_an_explicitly_gated_verb(configured, monkeypatch):
-    """The branch above, driven, before any landed verb declares an explicit gate.
+    """Assertion 3 admits an explicitly gated verb.
 
-    Fifteen planned entries declare one and none has landed, so assertion 3's
-    explicit half would otherwise ship untested and be discovered by the unit
-    that lands the first one. That is precisely how the defect it replaces
-    survived four waves.
-
-    The synthetic entry is the REAL ``profile.set`` with its one gate promoted to
-    explicit, rather than a verb invented here. A verb invented for the test
-    proves the test can invent a verb; promoting a real one means the dispatcher,
-    the run record, ``run decide`` and the resume path are all the shipped ones,
-    and the single difference is the flag under examination.
+    The entry is the real ``profile.set`` with its gate promoted to explicit, so the
+    dispatcher, run record, ``run decide`` and resume are all shipped code and the
+    flag is the only difference.
     """
     base = registry.entry("profile.set")
     promoted = replace(base, gates=(replace(base.gates[0], explicit=True),))
@@ -3065,9 +2527,8 @@ def test_conformance_3_admits_an_explicitly_gated_verb(configured, monkeypatch):
     )
 
 
-#: A second gate to hang on a one-gate verb, so the two-gate shape is driven
-#: rather than assumed. Explicit, because that is the shape four registry entries
-#: carry: their own confirmation plus the shared cloud-sync decision.
+#: A second gate for a one gate verb, explicit, as entries with their own
+#: confirmation plus the shared cloud sync decision carry.
 _SECOND_GATE = registry.GateSpec(
     name="profile.set.second",
     options=("go", "abort"),
@@ -3089,28 +2550,13 @@ def _require_every_gate(ctx):
 def test_conformance_3_admits_a_verb_carrying_two_gates(
     explicit_first, configured, monkeypatch
 ):
-    """The OTHER half of what assertion 3 could not express, driven both ways.
+    """Assertion 3 admits a verb carrying two gates, in both orderings.
 
-    The previous version drove once per DECLARED gate and answered only that one
-    gate, on a fresh run every time. A verb with two gates therefore refused on
-    whichever gate the current drive had not answered, so it exited
-    DECISION_REQUIRED for both iterations and could never pass, with no explicit
-    flag involved at all. Four registry entries carry two gates, ``restore.run``,
-    ``name.apply``, ``route.inbox`` and ``adopt.apply``, and every one of them was
-    unlandable for this reason on top of the R34 one.
-
-    ``_conformance_3`` answers gates CUMULATIVELY instead, which is what makes one
-    loop cover both shapes: an ordinary gate accumulates a flag and the next drive
-    reaches past it, an explicit one takes its two acts and the run carries the
-    answer forward under ``--run``. Both orderings are driven because they are not
-    the same path. Plain-then-explicit has to carry an inline answer across the
-    switch to a resumed run, and explicit-then-explicit has to record two separate
-    decisions against one run without the first being re-asked.
-
-    The handler is the one piece that cannot be borrowed, because no landed verb
-    declares two gates and a verb that declares them without reaching them proves
-    nothing. Everything else on the path is shipped: the parser, the dispatcher,
-    the run record, ``run decide``, and the resume.
+    ``_conformance_3`` answers gates cumulatively: an ordinary gate accumulates a
+    flag, an explicit one takes its two acts and the run carries the answer under
+    ``--run``. Plain then explicit carries an inline answer into a resumed run;
+    explicit then explicit records two decisions on one run without re asking the
+    first. Only the handler is synthetic; the rest of the path is shipped.
     """
     base = registry.entry("profile.set")
     first = replace(base.gates[0], explicit=explicit_first)
@@ -3125,19 +2571,8 @@ def test_conformance_3_admits_a_verb_carrying_two_gates(
 
 
 def test_the_csv_writer_guard_bites_and_stays_quiet_on_correct_code():
-    """P7's own instruction: run a guard against correct code before shipping it.
-
-    THE HALF THAT WAS SKIPPED. This assertion was armed over every adjudicating
-    verb through conformance 4, and its self-test checked ``import csv`` and
-    ``from csv import DictWriter`` and never the aliased import. A reviewer
-    switched the whole guard off with one keyword, ``import csv as spreadsheet``,
-    so "run it against correct code" had been done and "run it against the
-    evasion" had not. Every import shape the language offers is checked here now,
-    in both directions.
-
-    The shapes that look like it and are not, an unrelated attribute of the same
-    name and a READ, are still left alone.
-    """
+    """The csv writer guard fires on every import shape, aliased ones included,
+        and stays quiet on an unrelated attribute of that name and on a read (P7)."""
     assert constructs_a_csv_writer("import csv\ncsv.writer(handle)\n")
     assert constructs_a_csv_writer("from csv import DictWriter\nDictWriter(handle, [])\n")
     assert constructs_a_csv_writer("import csv as spreadsheet\nspreadsheet.writer(handle)\n"), (
@@ -3157,27 +2592,14 @@ def test_the_csv_writer_guard_bites_and_stays_quiet_on_correct_code():
     "entry", [e for e in ALL_ENTRIES if e.adjudicates], ids=lambda e: e.name
 )
 def test_conformance_4_adjudication_goes_through_the_review_queue(entry, configured):
-    """Assertion 4, armed now that the review queue has landed (U11).
+    """Assertion 4 (U11): adjudication goes through the review queue.
 
-    WHAT IS DRIVEN, STATED PLAINLY, in the same shape assertion 6 uses for the
-    destructive verbs. What is driven is the shared surface every adjudicating
-    verb goes through, once per declared adjudicating verb and UNDER THAT VERB'S
-    OWN handler key: an item is offered, it is addressable by that key alone, a
-    real command line resolves it, and a third independent open of the store sees
-    the verdict. That is behaviour rather than an existence check.
-
-    IT IS NOT A DRIVE OF THE VERB. This was written when no adjudicating verb had
-    landed. They have all landed since, and none is invoked here: the item is
-    offered by this test, so a verb that decides without offering anything to
-    the queue passes. The residual finding "Conformance 4 and 6 drive the shared
-    surface and not the landed verbs" records that gap.
-
-    The static half is what bites afterwards, with no edit to this file: the
-    moment a verb's module exists, its own source is walked for a comma separated
-    writer. The previous version of this test asserted ``hasattr(review,
-    "list_items")``, which its own docstring already claimed was an assertion
-    against the store; an attribute lookup would have passed with every call site
-    deleted.
+    Per declared adjudicating verb, under its own handler key, an offered item is
+    addressable by that key, a real command line resolves it, and an independent
+    store open sees the verdict. This drives the shared surface, not the verb, a gap
+    recorded as the residual "Conformance 4 and 6 drive the shared surface and not
+    the landed verbs". The static half walks each landed verb's source for a comma
+    separated writer.
     """
     import importlib
 
@@ -3214,9 +2636,8 @@ def test_conformance_4_adjudication_goes_through_the_review_queue(entry, configu
         assert settled.verdict is review.Verdict.ACCEPTED
         assert review.count_unresolved(store) == 0
 
-    # The replacement must not be the thing it replaces. Derived by WALKING the
-    # declared review directory rather than by naming the database, so a second
-    # file added beside it is covered on the day it appears (P3).
+    # The replacement must not be what it replaces; the review directory is walked,
+    # so a second file beside the database is covered (P3).
     for current, _directories, files in os.walk(config.state_path("review_queue", configured)):
         for name in files:
             assert not name.endswith(".csv"), (
@@ -3249,10 +2670,8 @@ def test_conformance_5_long_work_is_queued_rather_than_run_inline(entry):
 def _state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
     """Size and modification time of every file under each root.
 
-    "Zero writes" is asserted against the FILESYSTEM rather than assumed from
-    reading the code, because the whole class of defect this guards is a refusal
-    that already wrote something before it decided to refuse. A fingerprint taken
-    either side of the call is the only thing that can see that.
+    Zero writes is measured on the filesystem, since the defect guarded is a refusal
+    that already wrote before it refused.
     """
     found: dict[str, tuple[int, int]] = {}
     for root in roots:
@@ -3276,28 +2695,13 @@ def _state_fingerprint(*roots) -> dict[str, tuple[int, int]]:
 def test_conformance_6_destructive_verbs_refuse_without_the_session_gates(
     entry, configured, tmp_path
 ):
-    """Assertion 6, now that the write session has landed (U8, and the residual
-    finding "Four conformance assertions are written in full and gated on units
-    that have not landed").
+    """Assertion 6 (U8): destructive verbs refuse without the session gates.
 
-    Three refusals, three distinct codes, zero writes each time: a lock held
-    elsewhere is 20, a missing backup acknowledgment is 32, and a volume whose
-    recorded identity does not match is 22. Per KTD24 the trigger is
-    ``destructive``, not ``writes``, so a verb that trashes files while writing
-    no database row is still covered.
-
-    WHAT IS DRIVEN, STATED PLAINLY. What is driven is the shared gate every
-    destructive verb must pass through, once per declared destructive verb and
-    under that verb's own name. That is behaviour rather than an existence check.
-
-    IT IS NOT A DRIVE OF THE VERB. This was written when every one of these
-    entries carried a ``planned_in`` marker. Most have landed since, and none is
-    invoked here through the dispatcher, so a verb that writes before it enters
-    its session passes. ``tests/test_write_session.py`` drives the same three
-    refusals through the backup restore, and ``tests/test_adopt_apply_cli.py``
-    through ``apply_outstanding``, both below the dispatcher. The residual
-    finding "Conformance 4 and 6 drive the shared surface and not the landed
-    verbs" records that gap.
+    Three refusals, three codes, zero writes each: a lock held elsewhere is 20, a
+    missing backup acknowledgment 32, a mismatched volume 22. The trigger is
+    ``destructive``, not ``writes`` (KTD24). This drives the shared gate under each
+    verb's name, not the verb through the dispatcher, a gap recorded as the residual
+    "Conformance 4 and 6 drive the shared surface and not the landed verbs".
     """
     import importlib
 
@@ -3323,19 +2727,16 @@ def test_conformance_6_destructive_verbs_refuse_without_the_session_gates(
         )
         return excinfo.value.cause.code
 
-    # 1. A volume whose recorded identity does not match. Checked FIRST because
-    #    it is the one refusal that must happen before any path is resolved.
+    # 1. A mismatched volume, first, since it must refuse before any path resolves.
     wrong_volume = refuse_with(
         identity_provider=lambda _path: "0000-0000", mount_enumerator=lambda: ()
     )
 
-    # 2. No backup acknowledgment. The volume now matches, and nothing has been
-    #    recorded, which is the state of every library before a person answers.
+    # 2. No backup acknowledgment: the volume matches and nothing is recorded.
     no_acknowledgment = refuse_with(identity_provider=matching)
 
-    # 3. The lock held elsewhere. The acknowledgment is minted first so this
-    #    refusal is reached, and the lock is taken on a separate handle so it
-    #    looks exactly like another process holding it.
+    # 3. The lock held elsewhere: the acknowledgment is minted first, and the lock
+    #    is taken on a separate handle, as another process would hold it.
     session.record_acknowledgment(configured, terminal=lambda: True)
     lock = session.lock_path(configured)
     lock.parent.mkdir(parents=True, exist_ok=True)
@@ -3381,12 +2782,8 @@ TAXONOMY_DISPLAY_NAMES = frozenset(
 
 @pytest.mark.parametrize("entry", ALL_ENTRIES, ids=lambda e: e.name)
 def test_conformance_7_taxonomy_terms_are_stable_identifiers(entry):
-    """R19: a verb resolves the declared taxonomy, never a display name.
-
-    A display name is simultaneously code, config, a persisted key, XML bytes,
-    and a folder in the user's library. Keying anything on it means a rename
-    orphans history in five places at once.
-    """
+    """R19: a verb resolves the declared taxonomy, never a display name, since a
+        display name is a persisted key in five places and a rename orphans them."""
     for term in entry.taxonomy_terms:
         assert term in TAXONOMY_IDS, (
             f"{entry.name} names {term!r}, which is not a stable taxonomy id in "
@@ -3409,12 +2806,8 @@ def test_conformance_7_no_verb_module_hardcodes_a_taxonomy_display_name():
 
 @pytest.mark.parametrize("entry", ALL_ENTRIES, ids=lambda e: e.name)
 def test_conformance_8_anything_that_writes_declares_a_doctor_precondition(entry):
-    """R3's gap, closed as a rule.
-
-    In the source system the health checks have exactly one caller, an HTML
-    template. No verb consults them, so nothing is ever a precondition to
-    anything.
-    """
+    """R3: anything that writes declares a doctor precondition, so health checks
+        gate the work rather than only feeding a report."""
     if entry.writes:
         assert entry.doctor_checks, (
             f"{entry.name} writes {sorted(entry.writes)} and declares no health "
@@ -3423,13 +2816,10 @@ def test_conformance_8_anything_that_writes_declares_a_doctor_precondition(entry
 
 
 def test_conformance_8_every_declared_check_key_exists_in_the_doctor_registry(configured):
-    """ARMED by U27, and the static half is all this one is.
+    """Every declared check key exists in the doctor registry (U27).
 
-    A verb may not declare a precondition nobody wrote, or it satisfies assertion
-    8 above with a non-empty tuple while depending on nothing at all. That is a
-    table lookup and it is honest about being one; the behaviour is asserted by
-    the test below, which is a different property and was not one until the
-    review said so.
+    A table lookup, so a precondition nobody wrote cannot satisfy assertion 8; the
+    behaviour is the test below.
     """
     import importlib
 
@@ -3440,44 +2830,15 @@ def test_conformance_8_every_declared_check_key_exists_in_the_doctor_registry(co
 
 
 def test_conformance_8_every_declared_precondition_can_pass_and_can_refuse(configured):
-    """The behaviour half, written so a doctor that does no work cannot pass it.
+    """Every declared precondition passes on a healthy machine and refuses on a
+        broken one.
 
-    WHAT THIS REPLACED WAS A TAUTOLOGY. ``CHECK_KEYS`` is derived from ``CHECKS``,
-    ``run`` is one finding per check, and every check returns its own key, so
-    "every declared key comes back with an answer" is identically the existence
-    check on the line above it, computed the expensive way. A stub doctor
-    emitting one empty ``Finding`` per key satisfied both halves while observing
-    nothing at all, and the same property was already asserted in
-    ``tests/test_doctor.py``.
-
-    So the assertion is now a COMPARISON BETWEEN TWO RUNS over the same
-    configuration, on two machines that differ only in their seams:
-
-    * on a machine where nothing is broken, no declared precondition refuses, or
-      the check fires on a correct install and gets worked around (P7);
-    * on a machine where each of those preconditions IS broken, every one of them
-      refuses. That is this module's own sentence, "a check that cannot fail is
-      not a check", applied to the exact set of keys some verb has declared it
-      depends on.
-
-    Neither half can be satisfied by a constant. A check that always answers OK
-    fails the second, one that always refuses fails the first, and one that
-    answers with an empty finding fails the shape assertion under both.
-
-    TWO LIMITS, RECORDED RATHER THAN HIDDEN, because both are the kind of thing a
-    later reader would otherwise discover as a surprise:
-
-    * It covers the keys some verb DECLARES, which is 9 of the doctor's 23. The
-      other 14 are asserted one at a time in ``tests/test_doctor.py``, and
-      nothing here forces a new check to be reachable or refusable until a verb
-      depends on it.
-    * ``machines.hostile()`` is ``machines.green()`` with seams overridden, so it
-      breaks the machine and not the configuration. A future precondition whose
-      correct answer on that machine is INFO rather than FAIL, a check about
-      something no seam describes, will fail this test. THE FIX IS TO EXTEND
-      ``hostile()`` so that precondition is genuinely broken there, not to relax
-      the assertion: "this check cannot refuse" is the finding, and softening the
-      guard is how it stops being one.
+    Two runs over one configuration, differing only in seams. On a healthy machine
+    none refuses, or the check gets worked around (P7); on ``machines.hostile()``
+    every one refuses, since a check that cannot fail is not a check. No constant
+    answer passes both. It covers only keys some verb declares; the rest are in
+    ``tests/test_doctor.py``. If a new precondition cannot fail on ``hostile()``,
+    extend ``hostile()`` rather than relaxing this.
     """
     import importlib
 
@@ -3485,12 +2846,8 @@ def test_conformance_8_every_declared_precondition_can_pass_and_can_refuse(confi
     declared = {key for entry in registry.entries() for key in entry.doctor_checks}
     assert declared, "no verb declares a precondition; the walk is broken, not the tree"
 
-    # The shared fixture is a machine that has been SET UP, which is deliberately
-    # not the same as one that is healthy: it records no rekordbox pin, because
-    # a pin is never adopted on a user's behalf (S2). The healthy run needs one,
-    # so it is added here rather than in the fixture, where it would quietly make
-    # every other conformance drive assert against a state a fresh install is not
-    # in.
+    # The fixture is set up, not healthy: it records no rekordbox pin, since a pin
+    # is never adopted for a user (S2). The healthy run adds one here only.
     document = dict(configured.to_toml_dict())
     document["rekordbox"] = {
         "pinned_app_version": machines.INSTALLED_APP_VERSION,
@@ -3507,10 +2864,7 @@ def test_conformance_8_every_declared_precondition_can_pass_and_can_refuse(confi
 def _precondition_problems(declared, healthy, broken) -> list[str]:
     """Every way two reports fail to show a precondition that did work.
 
-    A function rather than a loop inside the assertion so the guard itself can be
-    driven against the evasion it exists to reject, which is the half of a guard
-    that keeps getting skipped: running it against correct code proves it does
-    not fire, and proves nothing about what it catches.
+    A function, so the guard can be driven against the evasion it rejects.
     """
     from cratekit.cli.doctor import Status
 
@@ -3545,13 +2899,7 @@ def _precondition_problems(declared, healthy, broken) -> list[str]:
 
 
 def test_conformance_8_rejects_a_doctor_that_answers_without_working():
-    """The evasion, run against the guard.
-
-    A doctor emitting one empty ``Finding`` per key satisfied the assertion this
-    replaced: the keys all came back, the report had the right length, and
-    nothing had been observed. Three stubs here, one per way of answering without
-    working, and the guard has to reject all three.
-    """
+    """The guard rejects three stub doctors that answer every key without working."""
     from cratekit.cli.doctor import Finding, Status
 
     declared = {key for entry in registry.entries() for key in entry.doctor_checks}
@@ -3616,23 +2964,15 @@ def test_every_feature_row_maps_to_a_verb_at_its_stated_disposition():
 
 
 def test_every_source_entry_point_is_either_mapped_or_written_down_as_cut():
-    """Widened past the Feature Inventory on purpose.
-
-    Four live console scripts have no inventory row at all, so a check keyed on
-    the inventory alone would pass while four real workflows vanished.
-    """
+    """Every source entry point is mapped or written down as cut, wider than the
+        inventory, since some live console scripts have no inventory row."""
     fixture = Path(__file__).resolve().parent / "fixtures" / "dj_tools_scripts.txt"
     scripts = [
         line.strip()
         for line in fixture.read_text().splitlines()
         if line.strip() and not line.startswith("#")
     ]
-    # 37 since U105, which transcribed ``master_set.sh``, the mastering
-    # verb's predecessor, into the second block (R-193). 36 since 2026-09-18.
-    # It was 33, and 33 was wrong: three console scripts
-    # in the source system's table were never transcribed, so this count pinned
-    # an incomplete list and made the omission look deliberate. The pin still
-    # earns its place, because a list that shrinks is the failure it catches.
+    # 37 since U105 (R-193). The pin catches a list that shrinks.
     assert len(scripts) == 37, "the transcribed entry-point list changed size"
 
     mapped = {name for entry in registry.entries() for name in entry.source_scripts}
@@ -3645,12 +2985,8 @@ def test_every_source_entry_point_is_either_mapped_or_written_down_as_cut():
 
 
 def test_every_declared_module_toggle_is_used_by_at_least_one_verb():
-    """The reverse direction, which is the one that rots.
-
-    A toggle nobody reads is a switch in the user's config that does nothing, and
-    it looks identical to a toggle whose verbs have not landed yet until you
-    check.
-    """
+    """Every declared toggle gates some verb, since a toggle nobody reads is a
+        config switch that does nothing."""
     used = {entry.module_id for entry in registry.entries()} - {None}
     unused = sorted(set(profiles.MODULES) - used - registry.DEFERRED_MODULES)
     assert not unused, (
@@ -3687,11 +3023,8 @@ def slim_verb_paths():
 
 
 def test_every_live_toggle_is_driven_by_the_toggle_test_below():
-    """The parametrisation below is derived, so this is what stops it shrinking.
-
-    A toggle that is neither deferred nor waiting on a planned verb must gate a
-    landed one, or the round trip below silently stops covering it.
-    """
+    """Every live toggle gates a landed verb, which stops the derived
+        parametrisation below silently shrinking."""
     waiting = {entry.module_id for entry in registry.entries() if not entry.landed}
     live = set(profiles.MODULES) - registry.DEFERRED_MODULES - waiting
     assert live <= set(_TOGGLES_WITH_LANDED_VERBS), sorted(
@@ -3701,17 +3034,12 @@ def test_every_live_toggle_is_driven_by_the_toggle_test_below():
 
 @pytest.mark.parametrize("module", _TOGGLES_WITH_LANDED_VERBS)
 def test_a_module_toggle_alone_switches_its_landed_verbs_on_and_off(module, slim_verb_paths):
-    """R-4's closing condition, driven rather than declared.
+    """R-4: a module toggle alone switches its landed verbs on and off.
 
-    Nine toggles were added by U5 before any verb stood behind them. Each one is
-    exercised here through the real resolver and the real parser, in both
-    directions an explicit toggle can move: added to slim, and subtracted from
-    full. A gated verb that stays reachable with its module off is a Module row
-    shipping as core, which is exactly what R5 forbids.
-
-    It sees only verbs that already name a module. A verb declared core by
-    mistake carries no ``module_id`` and never enters this set; the Feature
-    Inventory parity check above is what holds that direction.
+    Driven through the real resolver and parser, added to slim and subtracted from
+    full; a gated verb reachable with its module off is a Module row shipping as
+    core (R5). A verb wrongly declared core carries no ``module_id``, so the
+    inventory parity check holds that direction.
     """
     verbs = [entry.path for entry in registry.landed_entries() if entry.module_id == module]
     added = _verb_paths(cli.build_parser(membership=profiles.resolve("slim", {module: True})))
@@ -3725,50 +3053,14 @@ def test_a_module_toggle_alone_switches_its_landed_verbs_on_and_off(module, slim
 
 
 def test_a_verb_carrying_a_resume_argv_builder_declares_that_it_queues():
-    """THE DIRECTION THAT REMOVES ANOTHER FILE'S COVERAGE, found 2026-08-26.
+    """A verb carrying a resume argv builder declares ``long_running``.
 
-    ``tests/test_queued_resume_contract.py`` derives its guarded set from
-    ``long_running`` AND ``argv_builder``, which is what makes every guard there
-    cover a verb nobody thought to list. It also means dropping ``long_running``
-    from an entry silently removes that verb from all of them: that suite goes
-    green with three fewer tests and nothing says so. A U40 mutation removing
-    exactly that flag killed nothing and only shrank the collected count.
-
-    IT LIVES HERE RATHER THAN BESIDE THE GUARDS IT PROTECTS, and the reason is
-    NOT the one this docstring first gave. The first version claimed this file's
-    parametrisations key on ``landed`` so the collected count would be unmoved and
-    the death countable. That was wrong and the third mutation round measured it
-    wrong: ``test_conformance_5_long_work_is_queued_rather_than_run_inline`` at
-    ``:1913`` parametrises over exactly this flag, so removing it still drops a
-    case and the count still moves, from 532 to 531.
-
-    THE HONEST STATEMENT IS THAT NO CLEAN MEASUREMENT EXISTS for a registry flag
-    a parametrisation keys on. Wherever the guard lives, removing the flag removes
-    parametrised cases somewhere, and ``mutate.py`` will report drift rather than a
-    zero, which is correct of it and cannot be designed around. What moving the
-    guard here actually bought is smaller and real: the drift went from three
-    cases to one, and the row now NAMES this test among its kills instead of
-    reporting nothing at all. It belongs here regardless, because it is a registry
-    invariant and that is what this file holds.
-
-    ``Entry.__post_init__`` already refuses the other direction, a long-running
-    verb with no builder. This is the implication that has no home there, because
-    the type cannot argue about intent: an ``argv_builder`` exists for exactly one
-    purpose, turning a frozen payload back into a command line for the child the
-    job driver spawns, so a verb declaring one and not declaring ``long_running``
-    is either mislabelled or carrying a builder nothing will ever call.
-
-    Measured over the registry on 2026-08-26: 21 entries declare ``long_running``
-    and every one declares a builder, so the implication holds in the tree today
-    and this is what stops it drifting.
-
-    Measured again on 2026-09-10 by U60: 20, because ``delete.review`` stopped
-    declaring BOTH halves in one commit. The floor below now sits exactly on the
-    count, so the next verb to stop queueing has to move it on purpose.
-
-    Measured again on 2026-09-10 by U61: 19, because ``sync.all`` stopped
-    declaring both halves in one commit. It composes other verbs' queueing paths
-    and queues nothing under its own key, so it has nothing to resume.
+    ``tests/test_queued_resume_contract.py`` derives its population from both flags,
+    so dropping ``long_running`` would silently remove a verb from every guard there.
+    A builder exists only to turn a frozen payload back into a command line for the
+    job driver's child, so a builder without ``long_running`` is mislabelled or dead.
+    ``Entry.__post_init__`` refuses the other direction. The floor sits on the
+    measured count (U61), so the next verb to stop queueing moves it on purpose.
     """
     carriers = [entry for entry in registry.ENTRIES if entry.argv_builder]
     assert len(carriers) >= 19, (
@@ -3785,9 +3077,8 @@ def test_a_verb_carrying_a_resume_argv_builder_declares_that_it_queues():
     )
 
 
-#: Long-running entries whose shell legitimately files no job under its own key,
-#: with the reason. Not a list of verbs that are allowed to lie: a verb goes here
-#: only when queueing is not what it DOES, as opposed to what it has not done yet.
+#: Long running entries whose shell legitimately files no job under its own key,
+#: with the reason: queueing is not what they do, rather than not done yet.
 QUEUES_BY_ROLE_NOT_BY_ENQUEUE: Mapping[str, str] = MappingProxyType(
     {
         "job.resume": (
@@ -3812,20 +3103,13 @@ def _enqueue_calls(tree: ast.AST) -> int:
 
 
 def test_a_verb_declaring_the_queueing_contract_has_a_shell_that_queues():
-    """R-149's class, the direction no other guard here can see. U60, 2026-09-10.
+    """R-149, U60: a verb declaring the queueing contract has a shell that queues.
 
-    ``long_running`` plus an ``argv_builder`` says a job driver re-invokes this
-    verb as a subprocess. Every guard in ``tests/test_queued_resume_contract.py``
-    and ``tests/test_handlers.py`` trusts that sentence and derives its population
-    from it, so an entry that declares it over a shell doing the work inline puts
-    a verb into every one of those populations with nothing behind it: a builder
-    nothing calls, and an unbound handler key that tells a person the work is
-    queued when it is not. ``delete.review`` sat in that state from U24 until U60.
-
-    PARSED RATHER THAN SEARCHED, for the reason
-    ``tests/test_handlers.py::_drive_calls`` gives: prose that names ``enqueue``
-    is not a call to it. A call anywhere in the verb's module is the bar, not a
-    call on the handler's own path, because several shells enqueue from a helper.
+    Other suites derive their populations from ``long_running`` plus a builder, so
+    an inline shell declaring them would sit in all of them with nothing behind it,
+    telling a person work is queued when it is not. Parsed rather than searched,
+    since prose naming ``enqueue`` is no call; a call anywhere in the module counts,
+    because several shells enqueue from a helper.
     """
     queued = [e for e in registry.ENTRIES if e.landed and e.long_running]
     assert queued, "no landed verb queues, so this guard derives nothing"
@@ -3867,13 +3151,8 @@ def test_library_adoption_is_available_in_every_profile():
 def test_a_scripted_run_with_no_terminal_reaches_a_gate_and_exits_with_its_code(
     configured, tmp_path
 ):
-    """The verification the plan asks for, as a real process with no standard input.
-
-    A detached job in the source system gets its standard input bound to the null
-    device, the prompt raises at end of file, and the code turns that into
-    "abort": the run does not hang, but it also cannot be told to retry. Here the
-    same conditions produce a documented code and a resumable run.
-    """
+    """A scripted run with no standard input reaches a gate, exits with a documented
+        code and leaves a resumable run, rather than aborting at end of file."""
     env = dict(os.environ)
     env["PYTHONPATH"] = str(SRC_ROOT)
     result = subprocess.run(
@@ -3892,11 +3171,10 @@ def test_a_scripted_run_with_no_terminal_reaches_a_gate_and_exits_with_its_code(
 
 
 def test_an_unconfigured_machine_refuses_with_a_precondition_and_a_remedy():
-    """Not an internal error. A machine that has never been set up is a state.
+    """An unconfigured machine is a state, not an internal error.
 
-    U2 models five configuration failures with five remediation tokens; the
-    dispatcher converts them rather than each verb doing it, so a verb that
-    merely reads config still refuses correctly.
+    The dispatcher converts U2's configuration failures, so a verb that merely
+    reads config still refuses correctly.
     """
     code, out, _ = drive(["--output", "json", "profile", "show"])
     assert code == int(ExitCode.PRECONDITION)
@@ -3922,7 +3200,7 @@ def test_a_verb_that_raises_something_unexpected_becomes_an_internal_cause(
 def test_a_verb_that_exits_the_process_directly_is_converted_rather_than_obeyed(
     configured, monkeypatch
 ):
-    """The live leak in the source, closed. ``SystemExit`` is a ``BaseException``."""
+    """A direct ``SystemExit``, a ``BaseException``, is converted rather than obeyed."""
 
     def exits(ctx):
         raise SystemExit(2)
@@ -3952,13 +3230,10 @@ def _context_spec(*, explicit: bool) -> registry.GateSpec:
 
 
 def test_a_gate_refusal_carries_what_the_verb_consulted(configured):
-    """U49: the question arrives with the facts it was asked over.
+    """U49: a gate refusal carries the facts the verb consulted.
 
-    A gate's prompt is fixed at declaration and cannot name a backup age or a
-    lock holder, so a verb that has to put one in front of a person carries it
-    on the refusal. Driven through the real resolver against a real
-    ``GateSpec``, because a hand built ``DecisionRequired`` would prove this
-    file can build one.
+    A gate's prompt is fixed at declaration, so a backup age or lock holder rides on
+    the refusal. Driven through the real resolver and a real ``GateSpec``.
     """
     state = gates.RunState(run_id="r", verb="probe", created="now")
     resolver = gates.Gates(state=state)
@@ -3972,14 +3247,8 @@ def test_a_gate_refusal_carries_what_the_verb_consulted(configured):
 
 
 def test_a_gate_refusal_with_no_context_carries_no_shown_key_at_all(configured):
-    """ABSENT AND EMPTY STAY DIFFERENT, and this is the row that holds them apart.
-
-    Every gate in the product predates the context argument and passes nothing.
-    A default that materialised an empty ``shown`` would make "this verb shows
-    nothing here" indistinguishable from "this verb looked and found nothing",
-    which is the collapse ``backup_facts`` refuses one layer down, and it would
-    turn an optional carry into a field every refusal now claims to answer.
-    """
+    """A gate refusal with no context carries no ``shown`` key at all, so "shows
+        nothing" stays distinct from "looked and found nothing"."""
     state = gates.RunState(run_id="r", verb="probe", created="now")
     with pytest.raises(gates.DecisionRequired) as raised:
         gates.Gates(state=state).require(_context_spec(explicit=False))
@@ -3989,13 +3258,8 @@ def test_a_gate_refusal_with_no_context_carries_no_shown_key_at_all(configured):
 
 
 def test_the_explicit_inline_refusal_carries_the_context_too(configured):
-    """BOTH RAISE SITES, or what a person sees depends on whether they typed a flag.
-
-    ``require`` refuses twice: once because nothing answered the gate, and once
-    because an explicit gate was answered inline, which R34 forbids. That second
-    refusal is the one a person hits when they try to shortcut the acknowledgment,
-    so it is exactly the refusal that has to name what they were about to assert.
-    """
+    """The explicit inline refusal carries the context too, since it is the one a
+        person meets when trying to shortcut the acknowledgment (R34)."""
     spec = _context_spec(explicit=True)
     state = gates.RunState(run_id="r", verb="probe", created="now")
     resolver = gates.Gates(state=state, supplied={spec.name: "proceed"})
@@ -4005,14 +3269,8 @@ def test_the_explicit_inline_refusal_carries_the_context_too(configured):
 
 
 def test_human_mode_renders_what_the_verb_showed_and_is_unchanged_without_it(configured):
-    """The carried context reaches a PERSON, not only a JSON consumer.
-
-    ``render_gate`` reads a fixed set of keys off the cause, so a context that
-    stopped at the envelope would satisfy ``--output json`` and leave somebody
-    at a terminal answering a bare question. The second half of this test is the
-    control: a refusal carrying nothing prints exactly what it printed before
-    the context existed, which is what makes this addition additive.
-    """
+    """Human mode renders what the verb showed, so a terminal user is not left with
+        a bare question; a refusal carrying nothing prints as it did before."""
     spec = _context_spec(explicit=False)
     carried = render.render_gate(
         gates.DecisionRequired(
@@ -4049,19 +3307,8 @@ def _reaches_only_the_first_gate(ctx):
 def test_conformance_3_fails_a_verb_that_declares_a_gate_and_never_asks_it(
     configured, monkeypatch
 ):
-    """THE NEGATIVE CONTROL THE PREVIOUS VERSION DID NOT HAVE.
-
-    ``_conformance_3`` returned the gates it reached and every caller threw the
-    value away, so nothing compared reached against declared. Both shapes below
-    passed against unmutated product source, and neither is exotic: the second is
-    one refactor away, where a writer's check moves behind a path the verb no
-    longer takes. A destructive database verb would then ship with its
-    concurrent-writer decision unreachable and every assertion in this file
-    green, because no other test in the suite holds a handler to the gates its
-    registry entry declares.
-
-    Driven rather than argued, in both shapes, and both are asserted to FAIL now.
-    """
+    """Assertion 3 fails a verb that declares a gate and never asks it, in both
+        shapes, since nothing else holds a handler to its declared gates."""
     base = registry.entry("profile.set")
     promoted = replace(base, gates=(base.gates[0], _SECOND_GATE))
     _swap_in(monkeypatch, promoted)
@@ -4080,17 +3327,10 @@ def test_conformance_3_fails_a_verb_that_declares_a_gate_and_never_asks_it(
 def test_the_unreachable_exemption_covers_one_named_gate_and_expires_on_its_own(
     configured, monkeypatch
 ):
-    """The exemption is per gate WITH a reason, not a hole the whole rule falls in.
+    """The exemption covers one named gate with a reason, and expires on its own.
 
-    Both directions are driven. A verb declaring the exempt gate and not reaching
-    it passes, which is the case the narrowing exists for and the case a
-    universal rule would have refused. A verb declaring a gate that is NOT exempt
-    and not reaching it fails, which is what the universal exemption gave away.
-
-    And the entry expires. If the exempt gate is ever reached, the assertion says
-    to delete it, because a gate that can fire is a gate the suite can hold every
-    verb to. That is the countdown shape this repository already uses for a
-    pending module, applied to a pending environment.
+    A verb not reaching an exempt gate passes; one not reaching any other gate
+    fails. Reaching an exempt gate says to delete the exemption.
     """
     base = registry.entry("profile.set")
     with_exempt = replace(
@@ -4113,16 +3353,9 @@ def test_the_unreachable_exemption_covers_one_named_gate_and_expires_on_its_own(
         _conformance_3(with_exempt, ["slim"])
 
 
-#: EXACT MEMBERSHIP, because the three checks below are each satisfiable by a
-#: plausible-looking addition. `registry.gate` only asks that SOME entry among
-#: sixty-three declares the name, and the reason check is a length test rather
-#: than a truth test, so a gate a landed verb declares and does not reach can be
-#: exempted with one entry and an eighty-one character sentence. Verified: it
-#: passed silently with all three guards green.
-#:
-#: Adding a gate here is now a red suite, which is the point. It is the same
-#: shape `EXPECTED_PENDING` uses: the duplication IS the mechanism, because the
-#: second place is a line a reviewer reads in a diff.
+#: Exact membership, because ``registry.gate`` only asks that some entry declares
+#: the name and the reason check is a length test. Adding a gate is a red suite,
+#: as with ``EXPECTED_PENDING``: the second place is a line a reviewer reads.
 EXPECTED_UNREACHABLE_GATES = frozenset(
     {
         "write.cloudsync.unreadable",
@@ -4142,61 +3375,11 @@ EXPECTED_UNREACHABLE_GATES = frozenset(
 
 
 def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
-    """Twelve gates are exempt. A thirteenth one is a decision, not a diff.
+    """The exempt gates are exactly the intended set; another is a decision.
 
-    The sixth, ``intake.shelve.native``, joined with U154, decided there: the
-    verb asks only over a plan that moves a batch, approving one writes a path
-    on the collection, which the unpinned conformance fixture refuses, and the
-    sample is the report, which asks nothing by design. Its own suite,
-    tests/test_intake_shelve.py, drives the gate's two acts and the write.
-
-    The second, ``intake.land.native``, joined with R-746: one verb, two media,
-    one drive per fixture, and the conformance fixture's intake tree is on the
-    bridge. Its own suite holds the verb to reaching it on a native tree. The
-    third, ``intake.file.native``, joined with R-770 for the same reason: it
-    is the second verb that writes the intake tree, on the same two media.
-    The fourth, ``export.set.rename``, joined with U140, decided there: one
-    verb, two paths, and the rename's path names a succeeded set job the
-    conformance fixture's queue does not hold. Its own suite,
-    tests/test_export_set_rename.py, drives the gate's two acts. The fifth,
-    ``favorites.split.approve``, joined with U145, decided there and recorded
-    as a residual: the verb asks only over a library holding a quarter, and
-    approving one writes, which the unpinned conformance fixture refuses, while
-    a library with no quarter asks nothing by the brief. Its own suite,
-    tests/test_favorites_split.py, drives the gate's two acts and the write.
-    The seventh, ``label.playlists.crawl``, joined with U191: it is asked only
-    by a full build of a followed label whose listing is over the call
-    threshold, and the conformance sample follows no label. Its own suite,
-    tests/test_label_playlists_releases.py, drives its two acts, a decline and
-    a stale answer. The eighth, ``sync.twins.approve``, joined with U149 on
-    favorites.split.approve's reason: it is asked only over an account with a
-    downloaded custom playlist lacking its twin, and approving one writes,
-    which the unpinned fixture refuses. Its own suite, tests/test_sync_twins.py,
-    drives the gate's two acts and the write. The ninth,
-    ``favorites.order.approve``, joined with U180 on favorites.split.approve's
-    reason: it is asked only over a Favorites folder out of order, and
-    approving one writes, which the unpinned fixture refuses, while a folder
-    in order asks nothing by the brief. Its own suite,
-    tests/test_favorites_order.py, drives the gate's two acts and the write.
-    The tenth, ``rebuild.accept``, joined with U219: it is asked only by a
-    rebuild naming a tree no rebuild can reproduce that a restore marked, and
-    the conformance fixture has no native tree. tests/test_resort_scope.py
-    drives the gate's two acts over a restore the real detection marked. The
-    eleventh, ``sync.removed.confirm``, joined with U288: it is asked only by
-    a plan that offers a row, which needs a pass landed into a native intake
-    tree and read again with a track taken off, and the conformance fixture
-    downloaded nothing. tests/test_sync_removed.py drives the gate's two acts,
-    the removal and its refusals. The twelfth, ``sync.removed.retire``, joined
-    with U320: it is asked only by ``--retire`` over a playlist the account no
-    longer lists whose id answered not found, and the sample passes no flag.
-    tests/test_sync_removed_gone.py drives its two acts, the retirement and
-    its abort.
-
-    Note what this pin does NOT prove, so nobody reads more into a green run than
-    is there: the map is still a named exemption, not a drive of the unreadable
-    state. Landed verbs that declare `write.cloudsync.unreadable` now go through
-    assertion 3, and the exemption is what lets them reach OK without firing
-    that gate. Its self-expiry is still proved by the synthetic tests above.
+    Each gate's reason is in ``UNREACHABLE_GATES`` and each is driven in its own
+    suite. This pins a named exemption and does not drive the unreadable cloud
+    state; its self expiry is proved by the synthetic tests above.
     """
     assert set(UNREACHABLE_GATES) == EXPECTED_UNREACHABLE_GATES, (
         f"the exemption set is {sorted(UNREACHABLE_GATES)} and this file "

@@ -431,9 +431,7 @@ def tail_step(
     envelope = required(chain, step, [*words, foreground.QUEUE_ONLY, str(folder)])
     job_id = str((envelope.get("data") or {}).get("job_id") or "")
     if envelope.get("outcome") == str(Outcome.NO_OP) or not job_id:
-        # NOTHING TO QUEUE over a folder the download just landed tracks into is
-        # not a step done. The tail has not run on those files, so the landing
-        # is not planned.
+        # Nothing to queue is not a step done, so the landing is not planned.
         raise Stop(
             step,
             refuse(
@@ -466,13 +464,9 @@ def _tagging(section: Any) -> Mapping[str, Any]:
 def refused_files(chain: Chain, envelope: Mapping[str, Any] | None) -> None:
     """Name the files the tag step left with no genre because the catalogues refused (U284).
 
-    PHILLIP'S OPTION 3 ON #790. With a Discogs token recorded, a file Discogs
-    searched and could not tag while every other catalogue refused this client
-    is settled askable by ``tag folder``, so the pass goes on to the guess,
-    analysis, naming and the landing. What it owes the person is the list: the
-    pass's summary and a row of its own name each such file and the refusing
-    catalogues with the date each began refusing, read off the tag step's own
-    report, so the two say one thing.
+    Such a file is settled askable and the pass goes on, so the summary and a
+    row of its own name each file and the refusing catalogues, read off the
+    tag step's report.
     """
     data = (envelope or {}).get("data")
     progress = data.get("progress") if isinstance(data, Mapping) else None
@@ -494,10 +488,8 @@ def refused_files(chain: Chain, envelope: Mapping[str, Any] | None) -> None:
 def refused_stop(error: CratekitError, envelope: Mapping[str, Any] | None) -> CratekitError:
     """The tag step's stop, saying who refused, since when, and the token (U284).
 
-    The chain ends on the job's own refusal, read off the queue, which counts
-    the files and says nothing of why. When every catalogue asked refused, the
-    tag verb's own refusal carries the words under ``tagging``, and they are
-    added here, so a pass and a label go stop saying it as the sweep does.
+    The job's refusal says nothing of why, so the tag verb's own words under
+    ``tagging`` are added when every catalogue refused.
     """
     raw = (envelope or {}).get("cause")
     detail = raw.get("detail") if isinstance(raw, Mapping) else None
@@ -523,9 +515,8 @@ def refused_stop(error: CratekitError, envelope: Mapping[str, Any] | None) -> Cr
 def vocals_unavailable() -> str | None:
     """Why the vocal model cannot score in this process, or None (U181).
 
-    The vocals module's one test, imported where it is asked. Read before the
-    tail runs, since ``analyze run``'s worker binds the shipped loader in this
-    process and a bound loader reads as able.
+    Asked before the tail runs, since ``analyze run``'s worker binds the
+    loader in this process and a bound loader reads as able.
     """
     from cratekit.analysis import vocals  # noqa: PLC0415 - a feature module, asked once
 
@@ -535,8 +526,7 @@ def vocals_unavailable() -> str | None:
 def vocals_on(cfg: config.Config) -> bool:
     """Whether this profile switches on the vocals module, ``analyze vocals`` with it.
 
-    A profile with the module off has no vocals verb to run, and is a person
-    who chose not to score vocals, so nothing here asks the model for them.
+    With the module off, nothing here asks the model for scores.
     """
     membership = profiles.resolve(cfg.profile.name, dict(cfg.modules.explicit))
     return registry.entry(VOCALS_VERB).available_to(membership)
@@ -545,17 +535,10 @@ def vocals_on(cfg: config.Config) -> bool:
 def rescore(chain: Chain, folder: Path, cfg: config.Config, *, unable: str | None) -> None:
     """Score every staged file carrying the head and no voxlevel, as part of the analyze step.
 
-    ``analyze run`` skips a name carrying the head, which is its resume marker
-    (R-277), so a file it finalized while the vocal model could not load is
-    never scored again by it: sitting 51's second run reported 19 of 19 done in
-    a fraction of a second over files with no score. ``crate analyze vocals
-    --unscored`` queues exactly those files and its worker scores them, and it
-    is driven here through its ``--job`` command like every other step's job.
-
-    ``unable`` is :func:`vocals_unavailable`, asked before the tail began. When
-    the model cannot score here nothing is queued, and the row says so: the
-    worker would refuse, and the verb that runs the chain decides whether a
-    pass goes on without vocal scores, before it starts.
+    ``analyze run`` skips a name carrying the head (R-277), so such a file is
+    never scored again by it; ``analyze vocals --unscored`` queues exactly
+    those. ``unable`` is :func:`vocals_unavailable`; when set nothing is
+    queued and the row says so.
     """
     if not vocals_on(cfg):
         chain.summary["vocal_rescore"] = "off"
@@ -613,13 +596,9 @@ def guess_argv(folder: Path, pass_name: str | None = None) -> list[str]:
 def guess(chain: Chain, folder: Path, pass_name: str | None = None) -> None:
     """``tag guess`` over the ABSOLUTE staging folder, right after ``tag folder`` (U172).
 
-    Every file the catalogues left with no genre is given one guessed from its
-    artist's other tracks and, when ``pass_name`` names the pass, the playlist
-    it came from, so the landing places it in a tree rather than leaving it in
-    INBOX for a hand tag. The verb writes every guess and asks nothing, so a
-    refusal of its is a step that did not succeed and ends the chain, as any
-    other step's does; what it could not read it says in a warning, which the
-    chain carries.
+    Each file with no genre gets one guessed from its artist's other tracks
+    and, with ``pass_name``, its playlist, so the landing files it in a tree.
+    A refusal ends the chain as any step's does.
     """
     envelope = required(chain, GUESS, guess_argv(folder, pass_name))
     totals = (envelope.get("data") or {}).get("totals") or {}
@@ -655,10 +634,8 @@ def name_argv(folder: Path) -> list[str]:
 def name(chain: Chain, folder: Path, cfg: config.Config | None = None) -> None:
     """``name apply`` over the ABSOLUTE staging folder, its confirm answered inline.
 
-    The confirm is not explicit, so answering it on the command line is the act
-    a person running the tail makes; the plan it answers is the verb's own. A
-    refusal over a second copy of one recording names the passes that
-    downloaded it (U212); ``cfg`` keeps that reading to this library's jobs.
+    A refusal over a second copy of one recording names the passes that
+    downloaded it (U212); ``cfg`` keeps that to this library's jobs.
     """
     try:
         envelope = required(chain, NAME, name_argv(folder))
@@ -671,10 +648,9 @@ def name(chain: Chain, folder: Path, cfg: config.Config | None = None) -> None:
 def second_copies(stop: Stop, cfg: config.Config | None) -> Stop:
     """The name step's stop, with a step per second copy naming who downloaded it (U212).
 
-    ONLY A ``rename-incomplete`` WHOSE OUTSTANDING FILES CARRY AN ISRC, which
-    ``name apply`` puts on a file held back by one carrying the same ISRC.
-    Anything else, and a queue that cannot be read, is the stop unchanged: the
-    refusal is already true, and this only adds who downloaded the recording.
+    Only a ``rename-incomplete`` whose outstanding files carry an ISRC, which
+    the naming verb may not trace since it sits below the download verb.
+    Anything else, or an unreadable queue, leaves the stop unchanged.
     """
     cause = stop.error.cause
     if cause.reason != RENAME_INCOMPLETE:
@@ -698,10 +674,8 @@ def second_copies(stop: Stop, cfg: config.Config | None) -> Stop:
 def _downloaded_by(isrc: str, held: str, cfg: config.Config | None) -> str:
     """One step: the passes whose download jobs acquired ``isrc``, earliest first.
 
-    A JOB COUNTS ONLY FOR AN ITEM IT FINISHED, read off the queue, so a job
-    that froze the track and never acquired it is not named as its source.
-    The pass is the name of the list the job downloaded, the name a sync
-    pass's list and its landing share.
+    A job counts only for an item it finished. The pass is the name of the
+    list the job downloaded.
     """
     from cratekit.acquire import cli as acquire_cli  # noqa: PLC0415 - one module's keys
     from cratekit.acquire import listdoc  # noqa: PLC0415 - the list's own suffix
@@ -709,7 +683,7 @@ def _downloaded_by(isrc: str, held: str, cfg: config.Config | None) -> str:
     key = registry.entry(DOWNLOAD_VERB).handler_key
     passes: list[str] = []
     with jobs.open_store() as store:
-        # ``list_jobs`` IS NEWEST FIRST, so reversed is earliest first.
+        # ``list_jobs`` is newest first, so reversed is earliest first.
         for job in reversed(jobs.list_jobs(store)):
             if job.handler_key != key:
                 continue
@@ -748,11 +722,9 @@ def _downloaded_by(isrc: str, held: str, cfg: config.Config | None) -> str:
 def land(chain: Chain, folder: Path, landing: Sequence[str] = ()) -> None:
     """Plan the landing through ``intake land`` itself, which stops for a person.
 
-    The verb reads the backup acknowledgment and asks its explicit gate on its
-    own run, so the two ways it stops are both a person's to answer. Returns
-    only by :class:`Done`, when it planned nothing, which on the native medium
-    is an empty folder. ``landing`` is the arguments after the folder: the
-    pass, and a manifest when the verb that downloaded wrote one.
+    It reads the backup acknowledgment and asks its explicit gate on its own
+    run. Returns only by :class:`Done`, when it planned nothing. ``landing``
+    is the arguments after the folder.
     """
     argv = ["intake", "land", str(folder), *landing]
     code, envelope = chain.call(LAND, argv)
@@ -769,10 +741,8 @@ def land(chain: Chain, folder: Path, landing: Sequence[str] = ()) -> None:
 def lift_plan_warnings(chain: Chain, cause: Cause) -> None:
     """The warnings the landing's gate screen carries, onto the chain's own (U181).
 
-    A stop at the gate is a refusal, and a refusal's envelope has no warnings
-    channel, so a warning the plan carries would reach a person only as a fact
-    on the screen. ``intake land`` puts them under ``warnings`` beside the
-    facts, and they are carried here the way :meth:`Chain.call` carries a
+    A refusal's envelope has no warnings channel, so ``intake land`` puts them
+    in ``shown`` and they are carried here as :meth:`Chain.call` carries a
     child's.
     """
     shown = (cause.detail or {}).get("shown")
@@ -790,14 +760,10 @@ def lift_plan_warnings(chain: Chain, cause: Cause) -> None:
 def rehearse(chain: Chain, folder: Path, landing: Sequence[str] = ()) -> None:
     """Rehearse the landing on a copy through ``intake land --rehearse`` itself (U162, U179).
 
-    The same folder and the same arguments the landing is then planned with,
-    so the rehearsal's record is the one the live gate names, equal or not. A
-    rehearsal asks no gate and writes nothing live, but it reads the backup
-    acknowledgment the way the landing does, so a missing one stops for a
-    person here as it would there. Any other refusal ends the chain before the
-    landing is planned: a landing whose rehearsal failed is not one to ask.
-    Returns once the rehearsal applied on its copy, or by :class:`Done` when it
-    had nothing to rehearse.
+    The same arguments the landing then takes, so the live gate names this
+    rehearsal. A missing acknowledgment stops for a person; any other refusal
+    ends the chain, since a failed rehearsal is no landing to ask. Ends by
+    :class:`Done` when there was nothing to rehearse.
     """
     argv = ["intake", "land", str(folder), *landing, REHEARSE_FLAG]
     code, envelope = chain.call(REHEARSE, argv)
@@ -824,15 +790,12 @@ def through_name(
 ) -> Path:
     """The tail in its order over ``folder``, ending with ``name apply``; the absolute folder.
 
-    Every step either succeeds or ends the chain, so a caller that goes on to
-    land knows the tail ran on every file. ``folder`` must be absolute, and is
-    made so here rather than trusted. ``pass_name`` is the pass whose playlists
-    vote in the genre guess (U172), None for a folder no pass downloaded.
+    Every step succeeds or ends the chain. ``folder`` is made absolute here.
+    ``pass_name`` is the pass whose playlists vote in the genre guess (U172).
     """
     folder = folder.expanduser().absolute()
     chain.summary["staging"] = str(folder)
-    # ASKED BEFORE THE FIRST STEP (U181): ``analyze run``'s worker binds the
-    # shipped loader in this process, and a bound loader reads as able.
+    # Asked before the first step (U181), see :func:`vocals_unavailable`.
     unable = vocals_unavailable()
     for step, verb, words in TAIL:
         tail_step(chain, step, verb, words, folder, cfg)
@@ -853,13 +816,8 @@ def run(
 ) -> None:
     """The tail in its order over ``folder``, then the landing planned and stopped.
 
-    Never returns: it ends in :class:`Attend` at the landing's gate or the
-    acknowledgment, :class:`Done` when the landing planned nothing, or
-    :class:`Stop` at the first step that did not succeed. ``folder`` must be
-    absolute, and is made so here rather than trusted. ``pass_name`` is the
-    sync pass whose account playlists vote in the genre guess (U172), and None
-    for a batch no account playlist asked for, a label go's above all, whose
-    landing still names a pass of its own (review round 2).
+    Never returns: it ends in :class:`Attend`, :class:`Done` or :class:`Stop`.
+    ``pass_name`` is None for a batch no account playlist asked for (U172).
     """
     folder = through_name(chain, folder, cfg, pass_name)
     land(chain, folder, landing)
@@ -882,14 +840,9 @@ class Attended:
 def attended(chain: Chain, stop: Attend, *, after: Sequence[str]) -> Attended:
     """The steps a person takes at ``stop``, in order, with ``after`` following them.
 
-    Nothing is answered here: the gate's run is the step's own, and the
-    acknowledgment is minted by the session through its own verb. Records the
-    stop on the chain's summary and its check.
+    Nothing is answered here. Records the stop on the chain's summary and check.
     """
-    # SHELL QUOTED (U179), since a batch folder and a batch name hold spaces,
-    # ``Bandcamp 2026-11-01`` and ``2026-11-01 Bandcamp PULS``, and a command a
-    # person or the session pastes must be the argument list the step was run
-    # with. A command of plain words reads exactly as it did.
+    # Shell quoted (U179), since batch folders and names hold spaces.
     command = shlex.join(stop.argv)
     detail = stop.cause.detail or {}
     if stop.cause.reason == GATE_STOP:
@@ -908,8 +861,7 @@ def attended(chain: Chain, stop: Attend, *, after: Sequence[str]) -> Attended:
         summary = f"waits on {gate} under run {run_id}, at its {stop.step} step"
         kind = "external_step"
     elif stop.cause.reason != ACK_STOP:
-        # A STALE ANSWER, or any other gate code: the step's own run holds the
-        # question, and the step's own remediation says how it is answered again.
+        # Any other gate code: the step's own remediation says how to answer.
         remedy = stop.cause.remediation.remedy
         words = render.remedy_text(remedy) if remedy is not None else None
         steps = (
@@ -925,8 +877,8 @@ def attended(chain: Chain, stop: Attend, *, after: Sequence[str]) -> Attended:
     else:
         remedy = stop.cause.remediation.remedy
         words = render.remedy_text(remedy) if remedy is not None else None
-        # A REHEARSAL READS THE ACKNOWLEDGMENT TOO (U162), and asks no gate, so
-        # a stop there names the rehearsal again and then the landing it is for.
+        # A rehearsal reads the acknowledgment too (U162), so a stop there
+        # names the rehearsal again, then the landing.
         again = (
             (
                 f"then rehearse the landing again: crate {command}",
