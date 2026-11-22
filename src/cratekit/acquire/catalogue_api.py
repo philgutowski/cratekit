@@ -606,22 +606,7 @@ def unreadable(exc: secrets.CredentialError) -> CratekitError:
 
 
 __all__ = [
-    "API_ROOT",
-    "CREDENTIALS",
-    "INCLUDE",
-    "ISRC_BATCH",
-    "LOGIN_STEPS",
-    "TOKEN_URL",
-    "Album",
-    "AppCatalogue",
-    "AppCredentialsRejected",
-    "Artist",
-    "CatalogueError",
-    "CatalogueNotFound",
-    "CatalogueRateLimited",
-    "CatalogueUnavailable",
-    "Track",
-    "rejected",
-    "track_of",
-    "unreadable",
+    "API_ROOT", "CREDENTIALS", "INCLUDE", "ISRC_BATCH", "LOGIN_STEPS", "TOKEN_URL", "Album",
+    "AppCatalogue", "AppCredentialsRejected", "Artist", "CatalogueError", "CatalogueNotFound",
+    "CatalogueRateLimited", "CatalogueUnavailable", "Track", "rejected", "track_of", "unreadable",
 ]

@@ -49,11 +49,6 @@ ADAPTERS: Mapping[str, str] = {
 }
 
 
-def adapter_names() -> tuple[str, ...]:
-    """Every registered adapter name, in declaration order."""
-    return tuple(ADAPTERS)
-
-
 def alternatives_to(name: str) -> tuple[str, ...]:
     """The replacement paths available when ``name`` is the one that broke.
 
@@ -93,4 +88,4 @@ def build(name: str, settings: AdapterSettings, **kwargs: object):
     return load(name)(settings, **kwargs)
 
 
-__all__ = ["ADAPTERS", "adapter_names", "alternatives_to", "build", "load"]
+__all__ = ["ADAPTERS", "alternatives_to", "build", "load"]

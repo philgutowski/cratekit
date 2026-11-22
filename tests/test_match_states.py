@@ -30,7 +30,7 @@ from pathlib import Path
 import pytest
 
 from cratekit import cli
-from cratekit.acquire import match, match_cli
+from cratekit.acquire import match, match_cli, match_identity, match_library
 from cratekit.cli import output, registry
 from cratekit.core import config, naming, review, tags
 from cratekit.core.cause import CratekitError
@@ -44,7 +44,10 @@ from tests._containers import synth_container, tagged_container
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
-MATCH_SOURCE = SRC_ROOT / "cratekit" / "acquire" / "match.py"
+MATCH_SOURCES = tuple(
+    SRC_ROOT / "cratekit" / "acquire" / f"{name}.py"
+    for name in ("match", "match_identity", "match_list", "match_library")
+)
 MATCH_CLI_SOURCE = SRC_ROOT / "cratekit" / "acquire" / "match_cli.py"
 RESIDUALS_DOC = REPO_ROOT / "docs" / "residual-findings.md"
 
@@ -343,7 +346,7 @@ def test_a_group_whose_first_word_is_the_abbreviation_ft_stays_a_credit(tmp_path
 
     spelled = "Sun Path (Ft Worth Edit)"
     assert match.split_title(spelled) == ("Sun Path", "")
-    assert match._is_a_credit("Ft Worth Edit") and tombstone._is_a_credit("Ft Worth Edit")
+    assert match_identity._is_a_credit("Ft Worth Edit") and tombstone._is_a_credit("Ft Worth Edit")
     (found,) = resolve([u262_wanted(spelled)], u262_plain_record(tmp_path)).matches
     assert (found.state, found.why) == (match.MatchState.MATCHED, match.Why.EXACT)
 
@@ -402,13 +405,13 @@ def test_the_matcher_and_the_tombstone_agree_on_what_a_credit_is(group):
     """
     from cratekit.core import tombstone
 
-    assert match._is_a_credit(group) == tombstone._is_a_credit(group)
+    assert match_identity._is_a_credit(group) == tombstone._is_a_credit(group)
 
 
 def test_the_matcher_and_the_tombstone_share_one_credit_vocabulary():
     from cratekit.core import tombstone
 
-    assert match._CREDIT_MARKERS == tombstone._CREDIT_MARKERS
+    assert match_identity._CREDIT_MARKERS == tombstone._CREDIT_MARKERS
 
 
 def test_a_defect_title_keeps_the_tombstone_identity_its_spelling_always_had():
@@ -2704,10 +2707,9 @@ def test_the_match_engine_never_reaches_a_rekordbox_export():
     cannot reach an export reader at all, in any import shape, at any depth, and
     that it does not name an export as text either.
     """
-    assert reaches_an_export_reader(MATCH_SOURCE.read_text()) == set()
-    assert reaches_an_export_reader(MATCH_CLI_SOURCE.read_text()) == set()
-    assert names_an_export_in_text(MATCH_SOURCE.read_text()) == []
-    assert names_an_export_in_text(MATCH_CLI_SOURCE.read_text()) == []
+    for source in (*MATCH_SOURCES, MATCH_CLI_SOURCE):
+        assert reaches_an_export_reader(source.read_text()) == set(), source.name
+        assert names_an_export_in_text(source.read_text()) == [], source.name
 
 
 def test_the_transitive_walk_actually_walks():
@@ -3457,7 +3459,7 @@ def test_the_payload_carries_exactly_the_fields_the_declared_surface_requires():
     assert str(match.MatchState.SUPPRESSED) not in declared
 
 
-@pytest.mark.parametrize("source", [MATCH_SOURCE, MATCH_CLI_SOURCE], ids=lambda p: p.name)
+@pytest.mark.parametrize("source", [*MATCH_SOURCES, MATCH_CLI_SOURCE], ids=lambda p: p.name)
 def test_no_set_or_mapping_literal_in_this_unit_has_a_duplicate_element(source):
     """The shape a green suite cannot see, hunted by parsing rather than running.
 
@@ -6135,8 +6137,8 @@ def test_the_version_vocabulary_is_u24s_element_for_element():
     assert match.VERSION_WORDS == U24_VERSION_WORDS
     assert set(VOCABULARY_GAP) < match.VERSION_WORDS
     # DERIVED, so a word cannot be added to one and forgotten in the other.
-    assert match._DASH_VERSIONS == match.VERSION_WORDS | match._DASH_VERSION_HEADS
-    assert match._DASH_VERSIONS - match.VERSION_WORDS == {"rerecorded"}
+    assert match_identity._DASH_VERSIONS == match.VERSION_WORDS | match_identity._DASH_VERSION_HEADS
+    assert match_identity._DASH_VERSIONS - match.VERSION_WORDS == {"rerecorded"}
 
 
 @pytest.mark.parametrize("word", VOCABULARY_GAP)
@@ -6336,7 +6338,7 @@ _BY_NUMBER = re.compile(r"\bR" + "-" + r"[0-9]+")
 #: The files this unit owns. Other units cite their own residuals by number and
 #: that is their business; what this guard is about is the three files whose
 #: citations were measured to be pointing at six colliding numbers.
-UNIT_FILES = (MATCH_SOURCE, MATCH_CLI_SOURCE, Path(__file__).resolve())
+UNIT_FILES = (*MATCH_SOURCES, MATCH_CLI_SOURCE, Path(__file__).resolve())
 
 
 def test_every_residual_this_unit_cites_is_a_heading_that_exists():
@@ -6589,6 +6591,7 @@ def test_each_name_is_sorted_once_for_the_index_and_each_row_once_a_call(monkeyp
         return real(token)
 
     monkeypatch.setattr(match, "_sorted_words", counted)
+    monkeypatch.setattr(match_library, "_sorted_words", counted)
     index, rows = _u265_library(11)
     recordings = len(index.by_recording)
     for wanted in rows:
@@ -6864,7 +6867,7 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
     where a dropped hit makes room for a sixth and rows the lookup leads."""
     from rapidfuzz import fuzz
 
-    listed = match._SPELLED_OUT
+    listed = match_library._SPELLED_OUT
 
     def spelled(name):
         return "".join(listed.get(word, word) for word in name.split())
@@ -7232,13 +7235,13 @@ def test_a_lookup_hit_discovery_ranked_past_the_five_still_leads(cfg, music, tmp
 
 
 def test_the_word_list_is_the_curated_one():
-    assert dict(SPELLINGS) == dict(match._SPELLED_OUT)
+    assert dict(SPELLINGS) == dict(match_library._SPELLED_OUT)
 
 
 def test_the_word_list_maps_no_word_to_itself_and_only_folded_words():
     """A key is one folded word, so the lookup can find it after :func:`fold`;
     a value is what the key stands for, folded, and never the key itself."""
-    for word, spelled in match._SPELLED_OUT.items():
+    for word, spelled in match_library._SPELLED_OUT.items():
         assert word == match.fold(word) and " " not in word, word
         assert spelled == match.fold(spelled) and spelled != word, word
 
@@ -7258,7 +7261,7 @@ def test_the_title_test_only_adds_agreement_and_only_for_a_spelled_out_equal_pai
     still agrees, a pair holding no listed word agrees exactly as before, and
     every pair that newly agrees is one string with the spaces gone once each
     listed word is spelled out."""
-    listed = match._SPELLED_OUT
+    listed = match_library._SPELLED_OUT
 
     def spelled(name: str) -> str:
         return "".join(listed.get(word, word) for word in name.split())

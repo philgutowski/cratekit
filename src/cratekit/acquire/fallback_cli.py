@@ -645,21 +645,7 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
 
 
 __all__ = [
-    "FETCH_ORIGIN",
-    "LIST",
-    "ORIGIN",
-    "ROWS",
-    "STEM_LIMIT",
-    "accepted_rows",
-    "acquire_fallback",
-    "acquire_fallback_fetch",
-    "build",
-    "build_fetch",
-    "fetch_argv",
-    "fetch_stem",
-    "fetcher",
-    "handle_fetch",
-    "missing_rows",
-    "provider_routed",
-    "searcher",
+    "FETCH_ORIGIN", "LIST", "ORIGIN", "ROWS", "STEM_LIMIT", "accepted_rows", "acquire_fallback",
+    "acquire_fallback_fetch", "build", "build_fetch", "fetch_argv", "fetch_stem", "fetcher",
+    "handle_fetch", "missing_rows", "provider_routed", "searcher",
 ]

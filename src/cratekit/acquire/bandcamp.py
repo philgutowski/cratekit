@@ -105,14 +105,6 @@ class BandcampUnavailable(BandcampError):
     """Bandcamp did not answer, or answered in a shape this client cannot read."""
 
 
-class FormatUnavailable(BandcampError):
-    """The release offers no download in the format asked for."""
-
-    def __init__(self, message: str, *, offered: Sequence[str]) -> None:
-        super().__init__(message)
-        self.offered = tuple(offered)
-
-
 @dataclass(frozen=True, slots=True)
 class Response:
     """What one request answered: the status, the body as text, the headers."""
@@ -637,31 +629,9 @@ class CurlTransport:
 
 
 __all__ = [
-    "AUDIO_SUFFIXES",
-    "BASE",
-    "BandcampError",
-    "BandcampUnavailable",
-    "Collection",
-    "CurlTransport",
-    "FormatUnavailable",
-    "HIDDEN_PATH",
-    "ITEMS_PATH",
-    "LOSSLESS_ENCODING",
-    "LOSSLESS_ENCODINGS",
-    "LOSSY_ENCODING",
-    "PAGE_SIZE",
-    "Purchase",
-    "Response",
-    "SUMMARY_PATH",
-    "SessionRejected",
-    "Track",
-    "TRUSTED_HOSTS",
-    "Transport",
-    "download_offers",
-    "fetch",
-    "newest_first",
-    "read_collection",
-    "seller_of",
-    "trusted",
-    "unpack",
+    "AUDIO_SUFFIXES", "BASE", "BandcampError", "BandcampUnavailable", "Collection", "CurlTransport",
+    "HIDDEN_PATH", "ITEMS_PATH", "LOSSLESS_ENCODING", "LOSSLESS_ENCODINGS",
+    "LOSSY_ENCODING", "PAGE_SIZE", "Purchase", "Response", "SUMMARY_PATH", "SessionRejected",
+    "Track", "TRUSTED_HOSTS", "Transport", "download_offers", "fetch", "newest_first",
+    "read_collection", "seller_of", "trusted", "unpack",
 ]

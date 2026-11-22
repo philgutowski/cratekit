@@ -26,7 +26,7 @@ import pytest
 
 from cratekit import acquire
 from cratekit.acquire import cli as acquire_cli
-from cratekit.acquire import match
+from cratekit.acquire import match, match_library
 from cratekit.core import config, naming, tags
 from cratekit.intake import cli as intake_cli
 from tests._containers import synth_container
@@ -241,7 +241,7 @@ def test_a_file_rewritten_to_the_same_size_inside_the_window_is_read_again(
     music = tmp_path / "Music"
     path = _tagged(template_flac, music / "A - B.flac", "A", "B", old=False)
     held = path.stat()
-    real = match._stamp_of
+    real = match_library._stamp_of
 
     def still(where: Path):
         stamp = real(where)
@@ -249,7 +249,7 @@ def test_a_file_rewritten_to_the_same_size_inside_the_window_is_read_again(
             return stamp
         return stamp[:2] + (held.st_ctime_ns, held.st_ino, held.st_dev)
 
-    monkeypatch.setattr(match, "_stamp_of", still)
+    monkeypatch.setattr(match_library, "_stamp_of", still)
     opens = Opens(monkeypatch)
 
     assert _titles(match.index_library(music)) == {"B"}
@@ -294,7 +294,7 @@ def test_a_file_swapped_in_under_the_same_name_size_and_times_is_read_again_on_i
     _backdate(other, ns=when)
     held = path.stat()
     assert other.stat().st_size == held.st_size
-    real = match._stamp_of
+    real = match_library._stamp_of
 
     def still(where: Path):
         stamp = real(where)
@@ -302,7 +302,7 @@ def test_a_file_swapped_in_under_the_same_name_size_and_times_is_read_again_on_i
             return stamp
         return stamp[:2] + (held.st_ctime_ns,) + stamp[3:]
 
-    monkeypatch.setattr(match, "_stamp_of", still)
+    monkeypatch.setattr(match_library, "_stamp_of", still)
     assert _titles(match.index_library(music)) == {"B"}
     os.replace(other, path)
     assert path.stat().st_ino != held.st_ino
@@ -319,7 +319,7 @@ def test_a_file_on_another_device_under_the_same_name_and_stamp_is_read_again(
     path = _tagged(template_flac, music / "A - B.flac", "A", "B")
     held = path.stat()
     device = [held.st_dev]
-    real = match._stamp_of
+    real = match_library._stamp_of
 
     def still(where: Path):
         stamp = real(where)
@@ -327,7 +327,7 @@ def test_a_file_on_another_device_under_the_same_name_and_stamp_is_read_again(
             return stamp
         return (held.st_size, held.st_mtime_ns, held.st_ctime_ns, held.st_ino, device[0])
 
-    monkeypatch.setattr(match, "_stamp_of", still)
+    monkeypatch.setattr(match_library, "_stamp_of", still)
     opens = Opens(monkeypatch)
     match.index_library(music)
     match.index_library(music)
@@ -342,7 +342,7 @@ def test_a_file_with_a_new_size_is_read_again(tmp_path, monkeypatch, template_fl
     music = tmp_path / "Music"
     path = _tagged(template_flac, music / "A - B.flac", "A", "B")
     held = path.stat()
-    real = match._stamp_of
+    real = match_library._stamp_of
 
     def still(where: Path):
         stamp = real(where)
@@ -350,7 +350,7 @@ def test_a_file_with_a_new_size_is_read_again(tmp_path, monkeypatch, template_fl
             return stamp
         return (stamp[0], held.st_mtime_ns, held.st_ctime_ns, held.st_ino, held.st_dev)
 
-    monkeypatch.setattr(match, "_stamp_of", still)
+    monkeypatch.setattr(match_library, "_stamp_of", still)
     assert _titles(match.index_library(music)) == {"B"}
     assert tags.write_tags(path, {"title": "C", "album": "G" * 20000})
     assert path.stat().st_size != held.st_size
@@ -365,7 +365,7 @@ def test_a_file_with_a_new_modification_time_is_read_again(
     path = _tagged(template_flac, music / "A - B.flac", "A", "B")
     held = path.stat()
     when = held.st_mtime_ns
-    real = match._stamp_of
+    real = match_library._stamp_of
 
     def still(where: Path):
         stamp = real(where)
@@ -373,7 +373,7 @@ def test_a_file_with_a_new_modification_time_is_read_again(
             return stamp
         return stamp[:2] + (held.st_ctime_ns, held.st_ino, held.st_dev)
 
-    monkeypatch.setattr(match, "_stamp_of", still)
+    monkeypatch.setattr(match_library, "_stamp_of", still)
     assert _titles(match.index_library(music)) == {"B"}
     assert tags.write_tags(path, {"title": "C"})
     _backdate(path, ns=when + 1_000_000_000)
@@ -472,11 +472,11 @@ def test_a_read_that_is_not_whole_forgets_what_an_earlier_whole_read_left(
     because the file was seen changing in between."""
     music = tmp_path / "Music"
     path = _tagged(template_flac, music / "A - B.flac", "A", "B")
-    first = match._stamp_of(path)
+    first = match_library._stamp_of(path)
     assert first is not None
     other = (first[0] + 1,) + first[1:]
     stamps = iter([first, other, first])
-    monkeypatch.setattr(match, "_stamp_of", lambda _where: next(stamps))
+    monkeypatch.setattr(match_library, "_stamp_of", lambda _where: next(stamps))
     reads = iter([("First", True), ("Half", False), ("Restored", True)])
 
     def noting(_path, _fields):
@@ -540,7 +540,7 @@ def test_a_file_that_cannot_be_stated_is_read_as_before_and_never_remembered(
 ):
     music = tmp_path / "Music"
     path = _tagged(template_flac, music / "A - B.flac", "A", "B")
-    monkeypatch.setattr(match, "_stamp_of", lambda _where: None)
+    monkeypatch.setattr(match_library, "_stamp_of", lambda _where: None)
     opens = Opens(monkeypatch)
 
     assert _titles(match.index_library(music)) == {"B"}
@@ -553,16 +553,16 @@ def test_the_stamp_is_the_files_stat_and_none_for_a_file_that_is_gone(tmp_path):
     path = tmp_path / "one.flac"
     path.write_bytes(b"x" * 7)
     seen = path.stat()
-    assert match._stamp_of(path) == (
+    assert match_library._stamp_of(path) == (
         seen.st_size, seen.st_mtime_ns, seen.st_ctime_ns, seen.st_ino, seen.st_dev,
     )
     path.unlink()
-    assert match._stamp_of(path) is None
+    assert match_library._stamp_of(path) is None
 
 
 def _held_clock(monkeypatch, at: int) -> list[int]:
     clock = [at]
-    monkeypatch.setattr(match, "_now_ns", lambda: clock[0])
+    monkeypatch.setattr(match_library, "_now_ns", lambda: clock[0])
     return clock
 
 

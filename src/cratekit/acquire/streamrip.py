@@ -203,11 +203,6 @@ class StreamripAdapter(BaseAdapter):
 
 
 __all__ = [
-    "CREDENTIAL_FILENAME",
-    "DISTRIBUTION",
-    "LOSSLESS_TIER_FLOOR",
-    "QUALITY_TIERS",
-    "StreamripAdapter",
-    "offer_from_tier",
-    "quality_tier",
+    "CREDENTIAL_FILENAME", "DISTRIBUTION", "LOSSLESS_TIER_FLOOR", "QUALITY_TIERS",
+    "StreamripAdapter", "offer_from_tier", "quality_tier",
 ]

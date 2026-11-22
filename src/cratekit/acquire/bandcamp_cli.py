@@ -86,7 +86,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from cratekit.acquire import bandcamp, match, match_cli
 from cratekit.acquire import cli as acquire_cli
@@ -96,7 +96,9 @@ from cratekit.core import config, jobs, secrets, tags
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.intake import landing
-from cratekit.label import registry as labels
+
+if TYPE_CHECKING:
+    from cratekit.label import registry as labels
 
 #: The plan verb's origin on every refusal it raises.
 ORIGIN = ("acquire.bandcamp",)
@@ -426,6 +428,8 @@ def registry(origin: Sequence[str]) -> labels.Registry:
     purchase stage untagged, the clean report over state the verb could not
     read, so the store's own refusal, ``label-intent-unusable``, stands.
     """
+    from cratekit.label import registry as labels
+
     del origin
     return labels.RegistryStore().load()
 
@@ -464,6 +468,8 @@ def plan(
     The label is the registry's answer for the seller, asked of every row so
     the plan names it whatever the row's disposition.
     """
+    from cratekit.label import registry as labels
+
     known = registered if registered is not None else labels.empty()
     planned: list[Planned] = []
     for purchase in purchases:
@@ -542,6 +548,8 @@ def _seller_warnings(
 ) -> tuple[dict[str, str], ...]:
     if not unmatched:
         return ()
+    from cratekit.label import registry as labels
+
     known = held if held is not None else labels.empty()
     # A FOLLOWED LABEL WITH NO ACCOUNT is said as that, since the person named
     # the label and the cure is to give it one, not to spell the account.
@@ -589,6 +597,8 @@ def _registration_warnings(
     sellers: Sequence[str], held: labels.Registry
 ) -> tuple[dict[str, str], ...]:
     """One warning per unregistered seller, naming how to register it, or why two labels tie."""
+    from cratekit.label import registry as labels
+
     warned: list[dict[str, str]] = []
     for seller in sellers:
         tied = held.claimants(seller)
@@ -1243,45 +1253,11 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
 
 
 __all__ = [
-    "BATCH",
-    "BATCH_PREFIX",
-    "LABEL_UNWRITTEN",
-    "LAND_BY_LABEL",
-    "LAND_FLAG",
-    "SELLER_UNREGISTERED",
-    "Disposition",
-    "FETCH_ORIGIN",
-    "Held",
-    "LOGIN_STEP",
-    "Library",
-    "ORIGIN",
-    "Planned",
-    "RECORD_VERSION",
-    "RELEASES",
-    "SOURCE",
-    "TO_FETCH",
-    "acquire_bandcamp",
-    "acquire_bandcamp_fetch",
-    "build",
-    "build_fetch",
-    "collection",
-    "fetch_argv",
-    "fetch_command",
-    "fetched",
-    "file_holding",
-    "forget",
-    "frozen_release",
-    "handle_fetch",
-    "holding",
-    "land_command",
-    "labels_of",
-    "plan",
-    "record_fetched",
-    "register_command",
-    "registry",
-    "session_cookie",
-    "staging_batch",
-    "track_wanted",
-    "transport",
-    "unregistered",
+    "BATCH", "BATCH_PREFIX", "LABEL_UNWRITTEN", "LAND_BY_LABEL", "LAND_FLAG", "SELLER_UNREGISTERED",
+    "Disposition", "FETCH_ORIGIN", "Held", "LOGIN_STEP", "Library", "ORIGIN", "Planned",
+    "RECORD_VERSION", "RELEASES", "SOURCE", "TO_FETCH", "acquire_bandcamp",
+    "acquire_bandcamp_fetch", "build", "build_fetch", "collection", "fetch_argv", "fetch_command",
+    "fetched", "file_holding", "forget", "frozen_release", "handle_fetch", "holding",
+    "land_command", "labels_of", "plan", "record_fetched", "register_command", "registry",
+    "session_cookie", "staging_batch", "track_wanted", "transport", "unregistered",
 ]
