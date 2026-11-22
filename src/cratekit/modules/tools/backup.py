@@ -8,12 +8,14 @@ confirmed gone; an outside analysis share rides that portion. Analysis files are
 handed to rclone, never opened or authored. The age is published per portion,
 the process probe is a seam and never an environment variable, the plan is data
 so a dry run is the run neutralized, and a restore is a named decision behind
-the destructive session gates. The database plan, the run's report and the
-restore plan live in sibling ``backup_*`` modules and are re-exported here.
+the destructive session gates. The database snapshot's capture and restore
+plans live in ``backup_snapshot`` and the census proof in ``backup_proof``, both
+re-exported here.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -35,6 +37,7 @@ from cratekit.core.processes import (
     running_process_names,
 )
 from cratekit.modules.tools import backup_record
+from cratekit.modules.tools.backup_proof import EMPTIED_FLAG, _history, _unproven  # noqa: F401
 
 #: Volume clutter no backup should carry: platform metadata and resource forks.
 VOLUME_EXCLUDES: tuple[str, ...] = (
@@ -105,8 +108,6 @@ IDENTITY_MARKER_PREFIX = "library-volume."
 #: Dated archive folders a prune keeps; every folder since the last completed
 #: mirror counts as one slot, so a retry never purges an attempt's overwrites.
 DEFAULT_ARCHIVE_KEEP = 1
-#: The one way past the content proof.
-EMPTIED_FLAG = "--library-emptied"
 #: Mirrors a root holding none of the library's files deleting nothing: rclone
 #: fails instead, counting a move into ``--backup-dir`` as a delete.
 MOVE_NOTHING = ("--max-delete", "0")
@@ -251,9 +252,7 @@ class PortionPlan:
 
     @property
     def will_run(self) -> bool:
-        if self.refusal is not None:
-            return False
-        return bool(self.commands) or self.kind in _NOTHING_TO_SEND
+        return self.refusal is None and (bool(self.commands) or self.kind in _NOTHING_TO_SEND)
 
 
 #: The kinds that complete with no command, because nothing changed.
@@ -343,26 +342,17 @@ def _require_destinations(cfg: config.Config) -> None:
     if not (cfg.backup.remote or "").strip():
         raise BackupRefused(
             Refusal.REMOTE_NOT_CONFIGURED,
-            "no backup remote is configured. Cratekit ships no destination: the "
-            "remote names an account that belongs to the user, so it is captured "
-            "at setup and never defaulted.",
+            "no backup remote is configured. Cratekit ships no destination: the remote names an "
+            "account that belongs to the user, so it is captured at setup and never defaulted.",
         )
-    missing = [
-        name
-        for name, value in (
-            ("backup.dest", cfg.backup.dest),
-            ("backup.archive_root", cfg.backup.archive_root),
-            ("backup.db_dest_root", cfg.backup.db_dest_root),
-        )
-        if not (value or "").strip()
-    ]
+    keys = ("dest", "archive_root", "db_dest_root")
+    missing = [f"backup.{key}" for key in keys if not (getattr(cfg.backup, key) or "").strip()]
     if missing:
         raise BackupRefused(
             Refusal.DESTINATION_NOT_CONFIGURED,
-            f"these backup destinations are not configured: {', '.join(missing)}. "
-            f"The mirror, the dated archive, and the database snapshots are three "
-            f"distinct places on purpose, so one of them being unset is not "
-            f"something to guess at.",
+            f"these backup destinations are not configured: {', '.join(missing)}. The mirror, the "
+            f"dated archive, and the database snapshots are three distinct places on purpose, so "
+            f"one of them being unset is not something to guess at.",
         )
 
 
@@ -487,24 +477,18 @@ def plan_backup(
     wanted = tuple(p for p in backup_facts.Portion if only is None or p is only)
 
     if rclone is None:
-        detail = (
-            "rclone was not found. Every portion needs it: it is the one program "
-            "that talks to the remote."
+        why = (
+            "rclone was not found. Every portion needs it: it is the one program that talks "
+            "to the remote."
         )
-        return BackupPlan(
-            stamp=stamp, archive_keep=archive_keep,
-            portions=tuple(
-                PortionPlan(portion=p, refusal=Refusal.RCLONE_MISSING, detail=detail)
-                for p in wanted
-            ),
-        )
+        refused = (PortionPlan(p, refusal=Refusal.RCLONE_MISSING, detail=why) for p in wanted)
+        return BackupPlan(stamp=stamp, archive_keep=archive_keep, portions=tuple(refused))
 
     if backup_facts.Portion.FILES in wanted:
         asked = "a full check was asked for" if check or full else _full_reason(cfg, now=moment)
         portions.append(
             _plan_files(
-                cfg, rclone=rclone, stamp=stamp, archive_keep=archive_keep, full=full,
-                asked=asked,
+                cfg, rclone=rclone, stamp=stamp, archive_keep=archive_keep, full=full, asked=asked,
                 emptied=emptied,
                 identity_provider=identity_provider,
                 mount_enumerator=mount_enumerator,
@@ -622,10 +606,8 @@ def _plan_files(
     except OSError:
         root_dev = -1
     try:
-        before = backup_record.walk(
-            root, excludes,
-            hash_paths=[rel for rel, entry in trusted.items() if entry.sha256 is not None],
-        )
+        hashed = [rel for rel, entry in trusted.items() if entry.sha256 is not None]
+        before = backup_record.walk(root, excludes, hash_paths=hashed)
     except backup_record.WalkRefused as exc:
         before = None
         why = why or f"the library could not be walked: {exc}"
@@ -651,9 +633,8 @@ def _plan_files(
     move_nothing = held == 0 and not emptied
     if new_library:
         why = (
-            "the library holds no file outside its state folder and no "
-            "backup of it is on record, so it runs as a new library's "
-            "first backup, which deletes nothing from the mirror"
+            "the library holds no file outside its state folder and no backup of it is on record, "
+            "so it runs as a new library's first backup, which deletes nothing from the mirror"
         )
     if not why and before is not None:
         found = backup_record.difference(trusted, before.entries, self_written=_self_written(cfg))
@@ -726,90 +707,6 @@ def _not_the_recorded_volume(
     return ""
 
 
-def _history(cfg: config.Config) -> tuple[int | None, str] | None:
-    """How many of the library's files the last completed backup held (None if
-    unreadable), and which record says so, or None when none says a backup was
-    kept: the census alone if there is one, then the record, then the fact."""
-    census = backup_record.read_census(cfg)
-    if census is not None:
-        return census.files, "the last completed backup"
-    manifest, _ = backup_record.read_manifest()
-    if (
-        manifest is not None
-        and manifest.library_root == str(cfg.library.root)
-        and manifest.dest == str(cfg.backup.dest)
-    ):
-        return (
-            backup_record.count_held(manifest.entries, cfg.library.state_dirname),
-            "the record of the last completed backup",
-        )
-    try:
-        fact = backup_facts.read_facts(cfg).get(backup_facts.Portion.FILES)
-    except backup_facts.BackupFactsUnreadable:
-        return None, "the library's own record of its backups"
-    if fact is not None:
-        return None, "the library's own record of its backups"
-    return None
-
-
-def _unproven(
-    cfg: config.Config, *, anything: bool, held: int, emptied: bool
-) -> tuple[str, bool]:
-    """Why what the root holds does not prove it is the library, or an empty
-    string, and whether it is a new library's first backup. ``emptied`` passes
-    only where the root still carries the library's own files fact, which an
-    emptied library keeps and a lost volume's mount point does not."""
-    root = cfg.library.root
-    remedy = (
-        f"Mount the library's volume and back up again; if the library was "
-        f"emptied on purpose, back it up with {EMPTIED_FLAG}"
-    )
-    if emptied:
-        try:
-            carried = backup_facts.read_facts(cfg).get(backup_facts.Portion.FILES)
-        except backup_facts.BackupFactsUnreadable:
-            carried = None
-        if carried is not None:
-            return "", False
-        return (
-            f"the backup was asked with {EMPTIED_FLAG} and the library root "
-            f"{root} does not carry the library's own record of a completed "
-            f"files backup, which a library emptied by its owner keeps in its "
-            f"state folder and the folder an unmounted volume leaves does not, "
-            f"so nothing was sent or archived. Mount the library's volume and "
-            f"back up again; a library emptied before its first completed "
-            f"backup needs no flag"
-        ), False
-    history = _history(cfg)
-    if not anything:
-        held_before = ""
-        if history is not None and history[0]:
-            held_before = f", where {history[1]} held {history[0]} files"
-        return (
-            f"the library root {root} holds no file at all, not even the "
-            f"library's own state folder{held_before}, which is what an "
-            f"unmounted volume leaves, so nothing was sent or archived. {remedy}"
-        ), False
-    if history is None:
-        return "", held == 0
-    had, said = history
-    if held == 0 and had != 0:
-        counted = "files" if had is None else f"{had} files"
-        return (
-            f"the library root {root} holds no file outside the library's own "
-            f"state folder, and {said} held {counted}, so nothing was sent or "
-            f"archived. {remedy}"
-        ), False
-    if had and held * backup_record.LIBRARY_FLOOR < had:
-        return (
-            f"the library root {root} holds {held} files outside the library's "
-            f"own state folder, under a tenth of the {had} {said} held, so it is "
-            f"not proven to be the library and nothing was sent or archived. "
-            f"{remedy}"
-        ), False
-    return "", False
-
-
 def _quick_commands(
     cfg: config.Config, *, rclone: str, stamp: str, archive_keep: int,
     found: backup_record.Difference,
@@ -851,23 +748,17 @@ def _quick_commands(
     if found.removed:
         # A path already gone from the remote is no error to rclone, so a
         # retried run archives what is left and nothing else.
-        commands.append(
-            Command(
-                label=QUICK_ARCHIVE,
-                argv=(rclone, "move", dest, archive, *listed, *MIRROR_STATS_ARGS),
-                feed=backup_record.paths_list(found.removed),
-            )
-        )
+        moved = (rclone, "move", dest, archive, *listed, *MIRROR_STATS_ARGS)
+        feed = backup_record.paths_list(found.removed)
+        commands.append(Command(label=QUICK_ARCHIVE, argv=moved, feed=feed))
     if archive_keep >= 0:
         commands.append(_prune_listing(cfg, rclone))
     return tuple(commands)
 
 
 def _prune_listing(cfg: config.Config, rclone: str) -> Command:
-    return Command(
-        label=PRUNE_ARCHIVE,
-        argv=(rclone, "lsf", f"{cfg.backup.archive_root}/", "--dirs-only"),
-    )
+    listing = (rclone, "lsf", f"{cfg.backup.archive_root}/", "--dirs-only")
+    return Command(label=PRUNE_ARCHIVE, argv=listing)
 
 
 def _full_commands(
@@ -910,9 +801,8 @@ def _rotation_detail(archive_keep: int) -> str:
     if archive_keep == 0:
         return "keeping no dated archive folder"
     return (
-        f"keeping the newest {archive_keep} dated archive folder(s), and "
-        f"counting every folder written since the last completed mirror as "
-        f"one of them"
+        f"keeping the newest {archive_keep} dated archive folder(s), and counting every folder "
+        f"written since the last completed mirror as one of them"
     )
 
 
@@ -930,6 +820,187 @@ def subprocess_runner(command: Command) -> CommandResult:
         stderr=completed.stderr or "",
         elapsed=time.monotonic() - started,
     )
+
+
+def comparison_mode(command: Command) -> str:
+    """Which listing one mirror command used, read off the command as run."""
+    return COMPARISON_FAST if FAST_LIST in command.argv else COMPARISON_FULL
+
+
+def _parsed(line: str) -> object:
+    try:
+        return json.loads(line)
+    except ValueError:
+        return None
+
+
+def _logged(stderr: str) -> list[dict]:
+    """The JSON objects one command logged, skipping every line that is not one."""
+    return [entry for entry in map(_parsed, stderr.splitlines()) if isinstance(entry, dict)]
+
+
+def _count(stats: Mapping[str, object], key: str) -> int | float | None:
+    """One total, or None when rclone gave no number; a bool is refused, being
+    an ``int`` to ``isinstance``."""
+    value = stats.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value
+
+
+def comparison_report(command: Command, result: CommandResult) -> dict[str, object]:
+    """What one mirror's comparison did: the mode, the time, and the counts.
+
+    A count that could not be read is None, never zero. ``checked`` is rclone's
+    count of files found on both sides; ``seconds`` is the whole command, and
+    ``transfer_seconds`` rclone's own total. The last totals logged are read.
+    """
+    stats: Mapping[str, object] = {}
+    for entry in _logged(result.stderr):
+        found = entry.get("stats")
+        if isinstance(found, dict):
+            stats = found
+    return {
+        "mode": comparison_mode(command),
+        "seconds": result.elapsed,
+        "checked": _count(stats, "checks"),
+        "sent": _count(stats, "transfers"),
+        "sent_bytes": _count(stats, "bytes"),
+        "transfer_seconds": _count(stats, "transferTime"),
+        # rclone's own names and counting; how many files went to the archive
+        # is not derived from them.
+        "renames": _count(stats, "renames"),
+        "deletes": _count(stats, "deletes"),
+    }
+
+
+def _said(stderr: str) -> str:
+    """What a failed command said, line by line: a logged object as its message,
+    the totals dropped, and a plain line kept as written."""
+    lines: list[str] = []
+    for line in stderr.splitlines():
+        entry = _parsed(line)
+        if not isinstance(entry, dict):
+            lines.append(line)
+        elif "stats" not in entry:
+            lines.append(str(entry.get("msg", "")))
+    said = "\n".join(piece.strip() for piece in lines if piece.strip())
+    return said or stderr.strip()
+
+
+def _summary(
+    entry: PortionPlan, comparison: Mapping[str, object] | None, seconds: float, *,
+    token: str = "",
+) -> dict[str, object]:
+    """What a fact records about the run that completed it; ``record`` is the
+    token a later quick run or skip trusts the record by."""
+    out: dict[str, object] = {"seconds": round(seconds, 1)}
+    if token:
+        out[RECORD_TOKEN] = token
+    if entry.why:
+        out["why"] = entry.why
+    if entry.changes is not None:
+        out.update(entry.changes)
+    if comparison is not None:
+        for name in ("sent", "archived", "checked"):
+            if comparison.get(name) is not None:
+                out[name] = comparison[name]
+    return out
+
+
+def quick_report(ran: Sequence[tuple[Command, CommandResult]]) -> dict[str, object]:
+    """What a quick run's commands did, summed from each command's totals:
+    ``sent`` by the copies, ``archived`` by the move and the copies' archive,
+    ``checked`` the paths a copy found current. A total any command did not
+    give makes its sum None, never zero."""
+
+    def total(labels: frozenset[str], key: str) -> int | float | None:
+        found = [comparison_report(c, r)[key] for c, r in ran if c.label in labels]
+        if not found:
+            return 0
+        if any(value is None for value in found):
+            return None
+        return sum(found)  # type: ignore[arg-type]
+
+    sending = frozenset({QUICK_SEND, QUICK_RESEND})
+    elapsed = [result.elapsed for _, result in ran]
+    return {
+        "mode": COMPARISON_QUICK,
+        "seconds": None if any(e is None for e in elapsed) else sum(elapsed),  # type: ignore[arg-type]
+        "sent": total(sending, "sent"),
+        "sent_bytes": total(sending, "sent_bytes"),
+        "checked": total(sending, "checked"),
+        # rclone counts each move into the archive as a rename.
+        "archived": total(QUICK_LABELS, "renames"),
+    }
+
+
+PAYLOAD_VERSION = 1
+
+
+def _listed(command: Command) -> dict[str, int]:
+    """How many paths a command read on standard input, never the paths."""
+    if command.feed is None:
+        return {}
+    return {"paths": len(backup_record.paths_from(command.feed))}
+
+
+def _kind_fields(kind: str, why: str, changes: Mapping[str, int] | None) -> dict:
+    return {
+        "kind": kind or None, "why": why or None,
+        "changes": dict(changes) if changes is not None else None,
+    }
+
+
+def plan_payload(plan: BackupPlan) -> dict:
+    """A plan as plain data. Human rendering stays with the CLI."""
+    return {
+        "payload_version": PAYLOAD_VERSION, "stamp": plan.stamp,
+        "portions": [
+            {
+                "portion": entry.portion.value, "will_run": entry.will_run,
+                "refusal": entry.refusal.value if entry.refusal else None, "detail": entry.detail,
+                "commands": [
+                    {"label": c.label, "argv": list(c.argv), **_listed(c)}
+                    for c in entry.commands
+                ],
+                "warnings": [dict(warning) for warning in entry.warnings],
+                **_kind_fields(entry.kind, entry.why, entry.changes),
+            }
+            for entry in plan.portions
+        ],
+    }
+
+
+def outcome_payload(outcome: BackupOutcome) -> dict:
+    """Render the outcome; nothing here interprets a return code. Fields that
+    join leave ``PAYLOAD_VERSION`` as it is: it is bumped only when a field is
+    removed or changes meaning."""
+    return {
+        "payload_version": PAYLOAD_VERSION, "stamp": outcome.stamp, "ok": outcome.ok,
+        "dry_run": outcome.dry_run,
+        "portions": [
+            {
+                "portion": entry.portion.value, "ran": entry.ran,
+                "refusal": entry.refusal.value if entry.refusal else None, "detail": entry.detail,
+                "warnings": [dict(warning) for warning in entry.warnings],
+                "comparison": dict(entry.comparison) if entry.comparison is not None else None,
+                # STRICT: both come from the same runner calls, and a mismatch
+                # would pair a return code with the wrong argv.
+                "commands": [
+                    {
+                        "label": command.label,
+                        "argv": list(command.argv),
+                        "returncode": result.returncode, **_listed(command),
+                    }
+                    for command, result in zip(entry.commands, entry.results, strict=True)
+                ],
+                **_kind_fields(entry.kind, entry.why, entry.changes),
+                "seconds": entry.seconds,
+            }
+            for entry in outcome.portions
+        ],
+    }
 
 
 def dry_run_argv(command: Command) -> tuple[str, ...]:
@@ -956,12 +1027,10 @@ def run_backup(
 
     for entry in plan.portions:
         if entry.refusal is not None:
-            outcomes.append(
-                PortionOutcome(
-                    portion=entry.portion, ran=False, refusal=entry.refusal,
-                    detail=entry.detail, warnings=entry.warnings,
-                )
-            )
+            outcomes.append(PortionOutcome(
+                portion=entry.portion, ran=False, refusal=entry.refusal,
+                detail=entry.detail, warnings=entry.warnings,
+            ))
             continue
 
         started = time.monotonic()
@@ -978,17 +1047,15 @@ def run_backup(
                     _strike_token(cfg)
             # An unreadable fact file raises out of here, before anything is sent.
             except OSError as exc:
-                outcomes.append(
-                    PortionOutcome(
-                        portion=entry.portion, ran=False,
-                        detail=(
-                            f"{entry.portion.value} portion failed before sending "
-                            f"anything: the record of the last backup could not be "
-                            f"removed ahead of the transfer: {exc}"
-                        ),
-                        warnings=entry.warnings, **planned,
-                    )
-                )
+                outcomes.append(PortionOutcome(
+                    portion=entry.portion, ran=False,
+                    detail=(
+                        f"{entry.portion.value} portion failed before sending "
+                        f"anything: the record of the last backup could not be "
+                        f"removed ahead of the transfer: {exc}"
+                    ),
+                    warnings=entry.warnings, **planned,
+                ))
                 continue
 
         results: list[CommandResult] = []
@@ -1012,8 +1079,7 @@ def run_backup(
                 # call with the purge suppressed.
                 pruned, warning = _prune_archive(
                     cfg, command,
-                    runner=recorded,
-                    keep=plan.archive_keep,
+                    runner=recorded, keep=plan.archive_keep,
                     purge=not dry_run,
                 )
                 results += pruned
@@ -1034,9 +1100,7 @@ def run_backup(
                     if command.label == QUICK_ARCHIVE else (),
                 )
                 if stale:
-                    failed = CommandResult(
-                        returncode=1, stderr=f"nothing was archived: {stale}"
-                    )
+                    failed = CommandResult(returncode=1, stderr=f"nothing was archived: {stale}")
                     break
             elif command.label == MIRROR:
                 # The same question of the full sync: the root must still be the
@@ -1062,15 +1126,12 @@ def run_backup(
                 marker_failed = True
                 # NOT A FAILURE: the whole database set has copied. What is lost
                 # is said: the snapshot is unmarked and pulled only by name.
-                warnings.append(
-                    _warning(
-                        SNAPSHOT_IDENTITY_NOT_WRITTEN,
-                        f"the database was copied and the marker saying which "
-                        f"library it was taken from could not be written "
-                        f"(exit {result.returncode}). A restore will pull this "
-                        f"snapshot only when its stamp is named",
-                    )
-                )
+                warnings.append(_warning(
+                    SNAPSHOT_IDENTITY_NOT_WRITTEN,
+                    f"the database was copied and the marker saying which library it was taken "
+                    f"from could not be written (exit {result.returncode}). A restore will "
+                    f"pull this snapshot only when its stamp is named",
+                ))
                 continue
             if result.returncode != 0:
                 failed = result
@@ -1087,22 +1148,19 @@ def run_backup(
                 and MOVE_NOTHING[0].lstrip("-") in failed.stderr
             ):
                 said += (
-                    f". The library holds none of its files outside its state "
-                    f"folder, so this mirror was told to delete nothing from "
-                    f"the remote, and the remote holds files it would have "
-                    f"moved into the archive. "
-                    f"Mount the library's volume and back up again; if the "
-                    f"library was emptied on purpose, back it up with {EMPTIED_FLAG}"
+                    f". The library holds none of its files outside its state folder, so this "
+                    f"mirror was told to delete nothing from the remote, and the remote holds "
+                    f"files it would have moved into the archive. Mount the library's volume and "
+                    f"back up again; if the library was emptied on purpose, back it up with "
+                    f"{EMPTIED_FLAG}"
                 )
-            outcomes.append(
-                PortionOutcome(
-                    portion=entry.portion, ran=False,
-                    detail=f"{entry.portion.value} portion failed: {said}",
-                    results=tuple(results), warnings=tuple(warnings),
-                    commands=tuple(executed), comparison=comparison,
-                    seconds=time.monotonic() - started, **planned,
-                )
-            )
+            outcomes.append(PortionOutcome(
+                portion=entry.portion, ran=False,
+                detail=f"{entry.portion.value} portion failed: {said}",
+                results=tuple(results), warnings=tuple(warnings),
+                commands=tuple(executed), comparison=comparison,
+                seconds=time.monotonic() - started, **planned,
+            ))
             continue
 
         if publish and entry.commands:
@@ -1119,15 +1177,12 @@ def run_backup(
             try:
                 backup_record.write_census(cfg, entry.held, at=moment)
             except OSError as exc:
-                warnings.append(
-                    _warning(
-                        BACKUP_RECORD_NOT_KEPT,
-                        f"the files portion completed and the count of the "
-                        f"library's files the next backup is checked against "
-                        f"was not kept: {exc}. The next backup proves the "
-                        f"library against the older count, or the record",
-                    )
-                )
+                warnings.append(_warning(
+                    BACKUP_RECORD_NOT_KEPT,
+                    f"the files portion completed and the count of the library's files the "
+                    f"next backup is checked against was not kept: {exc}. The next backup "
+                    f"proves the library against the older count, or the record",
+                ))
         seconds = time.monotonic() - started + _walk_seconds(entry)
         if publish:
             backup_facts.record(
@@ -1146,13 +1201,11 @@ def run_backup(
                 kind=entry.kind or None,
                 summary=_summary(entry, comparison, seconds, token=token),
             )
-        outcomes.append(
-            PortionOutcome(
-                portion=entry.portion, ran=True, results=tuple(results),
-                warnings=tuple(warnings), commands=tuple(executed), comparison=comparison,
-                seconds=seconds, **planned,
-            )
-        )
+        outcomes.append(PortionOutcome(
+            portion=entry.portion, ran=True, results=tuple(results),
+            warnings=tuple(warnings), commands=tuple(executed), comparison=comparison,
+            seconds=seconds, **planned,
+        ))
 
     # ``dry_run`` and not ``not publish``: a real run asked to publish nothing
     # still copied the library.
@@ -1215,9 +1268,8 @@ def _settle_record(
         why = str(exc)
     return _warning(
         BACKUP_RECORD_NOT_KEPT,
-        f"the {entry.portion.value} portion completed and the record the next "
-        f"run compares against was not kept: {why}. The next backup of it "
-        f"is a full one",
+        f"the {entry.portion.value} portion completed and the record the next run compares against "
+        f"was not kept: {why}. The next backup of it is a full one",
     ), ""
 
 
@@ -1274,14 +1326,12 @@ def _prune_archive(
     slots = keep - 1 if held else keep
     unremoved = 0
     for stale in settled[: max(0, len(settled) - slots)]:
-        purged = runner(
-            Command(
-                label=PRUNE_ARCHIVE_FOLDER,
-                # The same rclone the listing used, from its own argv, so the
-                # one that deletes is never a second resolution.
-                argv=(listing.argv[0], "purge", f"{cfg.backup.archive_root}/{stale}"),
-            )
-        )
+        purged = runner(Command(
+            label=PRUNE_ARCHIVE_FOLDER,
+            # The same rclone the listing used, from its own argv, so the
+            # one that deletes is never a second resolution.
+            argv=(listing.argv[0], "purge", f"{cfg.backup.archive_root}/{stale}"),
+        ))
         out.append(purged)
         if purged.returncode != 0:
             unremoved += 1
@@ -1290,9 +1340,8 @@ def _prune_archive(
             "code": ARCHIVE_PURGE_FAILED,
             "message": (
                 f"the archive rotation did not finish: {unremoved} dated folder(s) "
-                f"under {cfg.backup.archive_root}/ could not be removed and will "
-                f"use remote space until a later run removes them. The backup "
-                f"itself completed"
+                f"under {cfg.backup.archive_root}/ could not be removed and will use remote space "
+                f"until a later run removes them. The backup itself completed"
             ),
         }
     return out, None
@@ -1330,55 +1379,36 @@ def _ran(results: tuple[CommandResult, ...], plan: RestorePlan) -> tuple[Command
         if result.returncode != 0:
             raise BackupRefused(
                 Refusal.RESTORE_TRANSFER_FAILED,
-                f"the transfer {command.label!r} exited {result.returncode} and the "
-                f"restore did not complete. The live companion files beside "
-                f"{plan.database_target.name} were cleared before it began and have "
-                f"not been put back, so run the restore again once the remote is "
-                f"reachable rather than opening the library first.",
+                f"the transfer {command.label!r} exited {result.returncode} and the restore did "
+                f"not complete. The live companion files beside {plan.database_target.name} were "
+                f"cleared before it began and have not been put back, so run the restore again "
+                f"once the remote is reachable rather than opening the library first.",
             )
     return results
 
 
-# The database plan, the run's report and the restore plan, re-exported. They are
-# imported last because they read this module's names: import this module,
-# never one of them first.
-from cratekit.modules.tools.backup_database import (  # noqa: E402, F401
-    _outside_share,
-    _plan_database,
-    absent_analysis_share,
-    share_destination,
-    snapshot_identity_warning,
-)
-from cratekit.modules.tools.backup_report import (  # noqa: E402, F401
-    PAYLOAD_VERSION,
-    _count,
-    _kind_fields,
-    _listed,
-    _logged,
-    _parsed,
-    _said,
-    _summary,
-    comparison_mode,
-    comparison_report,
-    outcome_payload,
-    plan_payload,
-    quick_report,
-)
-from cratekit.modules.tools.backup_restore import (  # noqa: E402, F401
+# The snapshot plans, re-exported. Imported last because that module reads this
+# one's names: import this module, never that one first.
+from cratekit.modules.tools.backup_snapshot import (  # noqa: E402, F401
     NEWEST_WALK,
     ResolvedSnapshot,
     RestorePlan,
     ShareRestore,
     _not_this_librarys,
+    _outside_share,
+    _plan_database,
     _plan_restore_inside_the_gates,
     _snapshot_names,
+    absent_analysis_share,
     database_target_for,
     latest_snapshot,
     plan_restore,
     resolve_snapshot,
+    share_destination,
     share_is_held,
     snapshot_filenames,
     snapshot_identities,
+    snapshot_identity_warning,
 )
 
 __all__ = [
