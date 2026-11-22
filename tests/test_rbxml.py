@@ -249,6 +249,18 @@ def test_insert_root_playlist_and_idempotent_replace():
     assert re.search(rb"\r\n    </NODE>\r\n  </PLAYLISTS>", second), "ROOT closed wrong"
 
 
+def test_an_intake_playlist_replaced_leaves_its_folders_count_alone():
+    """The count moves with a new child only, so a second landing of one name
+    keeps INBOX's Count at one, which rekordbox reads as the child count."""
+    content = bytearray(_fresh_xml())
+    assert rbxml.insert_intake_playlist(content, "2026-11-22 batch", [7]) is None
+    assert b'<NODE Name="INBOX" Type="0" Count="1">' in content
+    assert rbxml.insert_intake_playlist(content, "2026-11-22 batch", [8, 9]) is None
+    assert bytes(content).count(b'Name="2026-11-22 batch"') == 1
+    assert b'<NODE Name="INBOX" Type="0" Count="1">' in content, "a replace bumped the count"
+    assert _no_bare_lf(bytes(content))
+
+
 def test_a_writer_refuses_to_replace_a_node_of_the_other_type():
     """The data loss guard, on the three writers that replace or delete by name.
 
