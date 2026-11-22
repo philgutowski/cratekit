@@ -387,6 +387,73 @@ def test_check_against_a_revision_refuses_a_removed_heading_and_a_changed_entry(
     assert _check(board, monkeypatch, ledger, "HEAD") == 1
     assert "headings at HEAD are gone now: R-4" in capsys.readouterr().out
     assert _check(board, monkeypatch, ledger, None, unchanged=True) == 2
+    # A retitle is a heading removed, as the old grep of removed lines read it.
+    archive.write_text(archive.read_text().replace("R-4 retired", "## R-4. Finding 4"))
+    archive.write_text(archive.read_text().replace("## R-3. Finding 3", "## R-3. Other"))
+    assert _check(board, monkeypatch, ledger, "HEAD") == 1
+    assert "headings at HEAD are retitled now: R-3" in capsys.readouterr().out
+
+
+def test_check_against_a_revision_without_the_ledger_is_refused_not_read_as_empty(
+    tmp_path, monkeypatch, capsys, board
+):
+    root = tmp_path / "repo"
+    run = _seed(root)
+    run("git", "rm", "-q", "-r", "docs")
+    _commit(run, "no docs")
+    ledger = root / "docs" / "residual-findings.md"
+    ledger.parent.mkdir(exist_ok=True)
+    ledger.write_text(_long_ledger())
+    assert _check(board, monkeypatch, ledger, "HEAD") == 1
+    assert "cannot read the ledger at HEAD" in capsys.readouterr().out
+
+
+def test_check_refuses_a_file_over_the_limit_and_archives_that_overlap(
+    tmp_path, monkeypatch, capsys, board
+):
+    monkeypatch.setattr(board, "LEDGER_LIMIT", 40)
+    ledger = tmp_path / "docs" / "residual-findings.md"
+    ledger.parent.mkdir()
+    ledger.write_text(_long_ledger())
+    board.archive_ledger(ledger)
+    monkeypatch.setattr(board, "LEDGER_LIMIT", 12)
+    assert _check(board, monkeypatch, ledger) == 1
+    assert "lines, over 12" in capsys.readouterr().out
+    monkeypatch.setattr(board, "LEDGER_LIMIT", 40)
+    for path in board.ledger_files(ledger)[:-1]:
+        path.unlink()
+    (ledger.parent / "ledger" / "R-0001-R-0005.md").write_text("## R-1. A\n\n## R-5. B\n")
+    (ledger.parent / "ledger" / "R-0003-R-0007.md").write_text("## R-3. C\n\n## R-7. D\n")
+    assert _check(board, monkeypatch, ledger) == 1
+    assert "R-0003-R-0007.md is out of number order or overlaps" in capsys.readouterr().out
+
+
+def test_the_working_file_archives_at_one_line_over_the_limit_and_not_at_it(
+    tmp_path, monkeypatch, board
+):
+    monkeypatch.setattr(board, "LEDGER_LIMIT", 40)
+    ledger = tmp_path / "docs" / "residual-findings.md"
+    ledger.parent.mkdir()
+    ledger.write_text(_long_ledger())
+    board.archive_ledger(ledger)
+    assert len(board.ledger_entries(ledger.read_text())) > 1
+    lines = ledger.read_text().count("\n")
+    monkeypatch.setattr(board, "LEDGER_LIMIT", lines)
+    assert board.archive_ledger(ledger) == []
+    monkeypatch.setattr(board, "LEDGER_LIMIT", lines - 1)
+    assert board.archive_ledger(ledger) != []
+
+
+def test_an_entry_runs_from_its_heading_to_the_next_separator_and_no_further(board):
+    """Typed values, never the reader's own reading of another text (L4 of u314)."""
+    text = "# P\n\n## R-1. A\n\nx\n\n---\n\n## R-2. B\n\ny\n---\n## R-3. C\n"
+    assert board.ledger_entries(text) == [
+        (1, "## R-1. A\n\nx"), (2, "## R-2. B\n\ny"), (3, "## R-3. C"),
+    ]
+
+
+def test_the_shipped_ledger_holds_every_heading_once_in_files_within_the_limit(board):
+    assert board.ledger_problems() == []
 
 
 def _restart_text() -> str:

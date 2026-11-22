@@ -112,7 +112,7 @@ Convention: command flags are written without their leading double hyphen (for e
 | C089 | CLAUDE.md, Standing constraints, L159 | Any other stale `cloud/` branch is listed for Phillip's next local session. | M310, M312, S014 | METHOD, Sharing the board, decided by Phillip on 2026-11-04 |
 | C090 | CLAUDE.md, Standing constraints, L160 | Other builders share the board, decided by Phillip on 2026-11-04. | M297 | CLAUDE.md, Standing constraints |
 | C091 | CLAUDE.md, Standing constraints, L160-161 | Never take a card or touch a branch held on `grok/`. | M298, M299, S098, S099 | CLAUDE.md, Standing constraints |
-| C092 | CLAUDE.md, Standing constraints, L161-162 | One Claude project builds and the other files cards and keeps the decisions page. | C010, M234, M300 | CLAUDE.md, Standing constraints |
+| C092 | CLAUDE.md, Standing constraints, L161-162 | One Claude project builds and the other files cards and keeps the decisions page. | C010, M234, M300 | CLAUDE.md, How a session runs; METHOD, Sharing the board |
 | C093 | CLAUDE.md, Standing constraints, L164-165 | No em dashes, en dashes, or double hyphens in any prose, code comment, commit message, or issue body. | M196, S043 | CLAUDE.md, Standing constraints |
 | C094 | CLAUDE.md, Standing constraints, L165-166 | Do not swap a dash for a colon; favor commas, and keep colons for a genuine list or definition. | M197 | CLAUDE.md, Standing constraints |
 | C095 | CLAUDE.md, Standing constraints, L167 | Every doc is kept up to date, decided by Phillip on 2026-11-07. | M329, M331 | CLAUDE.md, Standing constraints |

@@ -290,7 +290,7 @@ issue after the push.
   an amendment to an archived entry is made in its archive file. Verify a
   merge with:
 
-      .venv/bin/python scripts/board.py residuals --check --against origin/main   # no heading duplicated or removed
+      .venv/bin/python scripts/board.py residuals --check --against origin/main   # no heading duplicated, removed or retitled
 
 - **Use git's merge algorithm only.** `diff3 -m` silently breaks a merge of
   `tests/_pending.py`.

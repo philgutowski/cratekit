@@ -10,7 +10,8 @@ and its archives in `docs/ledger/`, gives each file here the next number in name
 order, appends it to `docs/residual-findings.md`, archives that file's oldest
 entries if it is now over 5000 lines, and deletes the file. So two units built in parallel each file their residuals,
 merge in either order, and the number is taken by whoever lands first, never
-by whoever filed first. The ledger's numbered entries never move.
+by whoever filed first. A numbered entry's number and text never change;
+only the oldest move, whole, into an archive file.
 
 Name the file for the unit that files it, `u124-a-short-slug.md`, so two units
 never add the same path. The form:

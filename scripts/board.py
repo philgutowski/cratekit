@@ -1052,6 +1052,10 @@ def ledger_problems(
     missing = [f"R-{n}" for n in sorted(set(before) - set(now))]
     if missing:
         problems.append(f"headings at {against} are gone now: {', '.join(missing)}")
+    retitled = [f"R-{n}" for n in sorted(before) if n in now
+                and now[n].split("\n", 1)[0] != before[n].split("\n", 1)[0]]
+    if retitled:
+        problems.append(f"headings at {against} are retitled now: {', '.join(retitled)}")
     changed = [f"R-{n}" for n in sorted(before) if n in now and now[n] != before[n]]
     if unchanged and changed:
         problems.append(f"entries that differ from {against}: {', '.join(changed)}")
