@@ -115,7 +115,11 @@ def test_no_shipped_caller_of_the_detector_names_a_key_method():
     named: list[str] = []
     seen = 0
     for path in sorted(package.rglob("*.py")):
-        for line, keywords in _detector_uses(ast.parse(path.read_text(encoding="utf-8"))):
+        text = path.read_text(encoding="utf-8")
+        # Only a file naming the detector can call it, so the rest skip the parse.
+        if "analyse_file" not in text and "key_profile" not in text:
+            continue
+        for line, keywords in _detector_uses(ast.parse(text)):
             seen += 1
             if path.name == "detect.py" and path.parent.name == "analysis":
                 continue
