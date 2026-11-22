@@ -34,10 +34,6 @@ from cratekit.sync.pair_model import (
 )
 from cratekit.write import playlist_pair
 
-# ---------------------------------------------------------------------------
-# The write
-# ---------------------------------------------------------------------------
-
 
 @dataclass
 class Done:
@@ -104,7 +100,7 @@ def _record(
     rekordbox_after: Sequence[playlist_pair.Row] | None,
     account_after: Sequence[str] | None,
 ) -> bool:
-    """Record both snapshots when the whole pair was written, else the links alone; whether it moved.
+    """Record both snapshots when the whole pair was written, else the links; whether it moved.
 
     A track held twice is recorded with both rows, so a later sync can tell
     a removed copy from a track taken out and put back.
@@ -166,7 +162,7 @@ def _let_go_passed(account_id: str, synced: str) -> None:
 def _made(
     cfg: config.Config, one: PairPlan, *, resumed: bool = False
 ) -> tuple[PairPlan, bool]:
-    """Make a discovered playlist's account side in its root folder and pair it; whether this made it (U198).
+    """Make a discovered playlist's account side in its root folder, pair it; whether it made it (U198).
 
     Folder and playlist are reserved in the pairs document under its lock
     before they are created, so an unwritable document refuses before
@@ -606,10 +602,9 @@ def _write_account(
             # The run's steps unreadable or gone, the carried record still says the moves went.
             moving = steps.carried(STEP_MOVING)
         if isinstance(moving, Mapping):
-            # U231. AN EARLIER COMMAND BEGAN SENDING THESE MOVES, and how many
-            # landed is not known: sent again, a move lands on whatever now stands
-            # at its position. So none is sent; the order is read after the other
-            # pairs, and pending if it has not landed.
+            # U231. AN EARLIER COMMAND BEGAN SENDING THESE MOVES, how many landed
+            # unknown, and sent again a move lands on whatever stands at its position.
+            # So none is sent; the order is read after the other pairs.
             end = moving.get(pair_stopped.TARGET)
             began = placeholders.parse_hearted(moving.get(pair_stopped.AT))
             done.settle = Settle(
@@ -689,13 +684,12 @@ def _write_account(
             )
             else None
         )
-        # R-1411. AND HELD TO THE ORDER THE PLAN AGREED ON: a reading in the
-        # order from before the stopped moves passes the check of what it holds,
-        # and moves sent by position from it scramble the playlist. THE PLAN'S
-        # READING, NOT THE CHECK'S LISTING, which a continue reads for what it
-        # holds and not its order. Passed only when set, so a stand in adapter
-        # that does not take it is asked as before. R-1418: only when the plan
-        # read the account, since an empty reading agrees on no order.
+        # R-1411. AND HELD TO THE ORDER THE PLAN AGREED ON, THE PLAN'S READING,
+        # not the check's listing: a reading in the order from before the stopped
+        # moves passes the check of what it holds, and moves sent from it scramble
+        # the playlist. Passed only when set, so a stand in adapter is asked as
+        # before; R-1418, only when the plan read the account, as an empty
+        # reading agrees on no order.
         agreed = (
             {"agreed": tuple(one.account_before)}
             if one.finishing_order and one.account_before

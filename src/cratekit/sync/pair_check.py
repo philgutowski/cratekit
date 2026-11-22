@@ -36,10 +36,6 @@ from cratekit.sync.pair_screen import Plan, Unpaired
 from cratekit.sync.pair_write import PairSteps, _made_here
 from cratekit.write import playlist_pair
 
-# ---------------------------------------------------------------------------
-# The plan held across the gates (U209)
-# ---------------------------------------------------------------------------
-
 #: The kind a held plan is filed under.
 HELD_KIND = "sync.pair"
 
