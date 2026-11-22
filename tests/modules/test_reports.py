@@ -2632,6 +2632,15 @@ def test_the_guard_literals_have_no_element_written_twice(name):
 #: branch added to it.
 RESIDUAL_FINDINGS_NAME = "docs/residual-findings.md"
 
+#: Its archives by number range (U314), which define findings as it does.
+RESIDUAL_ARCHIVES_NAME = "docs/ledger/"
+
+
+def _residual_document_text() -> str:
+    """The residual document as one text, its archives first, in number order."""
+    archives = sorted((REPO_ROOT / RESIDUAL_ARCHIVES_NAME).glob("*.md"))
+    return "".join(path.read_text() for path in [*archives, REPO_ROOT / RESIDUAL_FINDINGS_NAME])
+
 #: The files this unit is KNOWN to write. A FLOOR rather than the list, because a
 #: hand kept list is the defect this guard exists to answer, one level in: the
 #: previous version named nine files while the branch changed seventeen, and eight
@@ -2736,7 +2745,10 @@ def _covered_files(written: tuple[str, ...], *, expected: tuple[str, ...]) -> tu
     assert missing == [], f"the derivation stopped covering files this unit writes: {missing}"
     unnamed = sorted(set(CITED_FLOOR) - set(written))
     assert unnamed == [], f"both derivations stopped covering named files: {unnamed}"
-    return tuple(one for one in written if one != RESIDUAL_FINDINGS_NAME)
+    return tuple(
+        one for one in written
+        if one != RESIDUAL_FINDINGS_NAME and not one.startswith(RESIDUAL_ARCHIVES_NAME)
+    )
 
 
 def _citing_files() -> tuple[str, ...]:
@@ -2821,7 +2833,7 @@ def _residual_numbers_by_title(text: str | None = None) -> dict[str, str]:
     """What the residual document calls each finding TODAY."""
     found: dict[str, list[str]] = {}
     if text is None:
-        text = (REPO_ROOT / RESIDUAL_FINDINGS_NAME).read_text()
+        text = _residual_document_text()
     for number, title in _DOCUMENT_HEADING.findall(text):
         found.setdefault(title, []).append(number)
     doubled = sorted(one for one, numbers in found.items() if len(numbers) > 1)
@@ -2952,7 +2964,7 @@ def test_the_ban_list_is_the_residuals_this_unit_filed_and_nothing_else():
 def test_a_residual_the_document_renames_or_drops_is_refused_and_never_dropped():
     """A title that stops resolving goes RED rather than banning a smaller set."""
     filed = _residual_titles_this_unit_filed()
-    text = (REPO_ROOT / RESIDUAL_FINDINGS_NAME).read_text()
+    text = _residual_document_text()
     renamed = 0
     for number, title in _DOCUMENT_HEADING.findall(text):
         if title not in UNIT_RESIDUAL_TITLES:
@@ -2970,7 +2982,7 @@ def test_a_residual_the_document_renames_or_drops_is_refused_and_never_dropped()
 def test_a_renumber_moves_every_address_and_the_ban_list_follows_it():
     """Every address moved, applied to the document and driven."""
     filed = _residual_titles_this_unit_filed()
-    text = (REPO_ROOT / RESIDUAL_FINDINGS_NAME).read_text()
+    text = _residual_document_text()
     shifted = _DOCUMENT_HEADING.sub(lambda one: f"## R-{int(one[1]) + 100}. {one[2]}", text)
     assert shifted != text, "the renumber moved nothing, so this proves nothing"
     before = _banned_addresses(UNIT_RESIDUAL_TITLES, filed=filed)
