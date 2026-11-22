@@ -231,10 +231,10 @@ def _your_line(one: dict[str, Any]) -> str:
     )
 
 
-def _with_steps(cause: Cause) -> str:
-    """A refusal's message with its remediation's steps after it."""
+def _with_steps(said: str, cause: Cause) -> str:
+    """What a refusal says, with its remediation's steps after it."""
     steps = cause.remediation.steps
-    return cause.message + ("; " + "; ".join(steps) if steps else "")
+    return said + ("; " + "; ".join(steps) if steps else "")
 
 
 def _row(key: str, title: str, status: str, detail: str, remedy: str | None) -> dict[str, Any]:
@@ -248,7 +248,7 @@ def check(area: Area, step: Step) -> dict[str, Any]:
     remedy = None
     if step.cause is not None:
         remedy = str(step.cause.remediation.remedy)
-        detail = _with_steps(step.cause)
+        detail = _with_steps(step.detail, step.cause)
     if step.failed is not None:
         status = "fail"
         detail = f"failed on apply: {step.failed.message}"
@@ -264,7 +264,7 @@ def area_check(area: Area) -> dict[str, Any]:
     """The area's own row: its refusal, or what the author made, listed."""
     key = f"organize.{area.name}"
     if area.cause is not None:
-        detail = f"not planned: {_with_steps(area.cause)}"
+        detail = f"not planned: {_with_steps(area.cause.message, area.cause)}"
         return _row(key, area.name, "fail", detail, str(area.cause.remediation.remedy))
     facts = "; ".join(
         f"{name}: {value}" for name, value in area.facts.items() if isinstance(value, (str, int))
