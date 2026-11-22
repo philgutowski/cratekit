@@ -191,14 +191,9 @@ def _read(obj: Any) -> tuple[str, list[list[str]]]:
         pass
     tree = ast.parse(textwrap.dedent(inspect.getsource(obj)))
     node = tree.body[0]
-    body = getattr(node, "body", None)
-    if (
-        body
-        and isinstance(body[0], ast.Expr)
-        and isinstance(body[0].value, ast.Constant)
-        and isinstance(body[0].value.value, str)
-    ):
-        del body[0]
+    defines = isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    if defines and ast.get_docstring(node, clean=False) is not None:
+        del node.body[0]
     paths: list[list[str]] = []
     _collect(tree, paths)
     parsed = (ast.unparse(tree), paths)
@@ -238,13 +233,11 @@ def _stable_value(value: Any) -> Any:
     if isinstance(value, (tuple, list)):
         return ["sequence", [_stable_value(item) for item in value]]
     if isinstance(value, Mapping):
-        return [
-            "mapping",
-            sorted(
-                [json.dumps(_stable_value(key), sort_keys=True), _stable_value(item)]
-                for key, item in value.items()
-            ),
+        pairs = [
+            [json.dumps(_stable_value(key), sort_keys=True), _stable_value(v)]
+            for key, v in value.items()
         ]
+        return ["mapping", sorted(pairs)]
     shown = repr(value)
     if " at 0x" in shown or " object at " in shown:
         return ["opaque", type(value).__module__, type(value).__qualname__]
