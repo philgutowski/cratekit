@@ -162,13 +162,19 @@ PASS_KEY = "pass"
 
 #: The session record field naming every row a landing made (R-1037): the
 #: database by its identity, the update count the landing's commit left, the
-#: playlists it made, and each row's :data:`LANDED_COLUMNS` as the
-#: database holds them after the commit. rekordbox 7.2 deletes a row a person
+#: playlists it made, and each row's :data:`LANDED_COLUMNS` and its UUID
+#: (:data:`LANDED_UUID_KEY`) as the database holds them after the commit. rekordbox 7.2 deletes a row a person
 #: removes OUTRIGHT (A178, A185), so the deletion pass reads a landed row the
 #: database no longer holds as that removal, and this record is the only place
 #: the row's file and identity are written down. Read by ``deletion.library``,
 #: which spells it again (``tests/test_delete_landed_removed.py``).
 LANDED_ROWS_KEY = "collection_landed"
+#: The field each landed row's UUID is kept under, beside its columns (R-1844):
+#: the row's identity, a fresh ``uuid4`` this landing wrote under a random id,
+#: so no database from before the landing holds the pair and a row still held
+#: under it proves the landing was not rolled back, whatever became of the
+#: playlists it made. Spelled again in ``deletion.library``.
+LANDED_UUID_KEY = "uuid"
 #: The columns a landed row is named by: the ones a recorded removal keeps
 #: (``rb_writer.RECORDED_COLUMNS``), spelled here so this package reaches no
 #: further into the core.
@@ -2747,8 +2753,11 @@ def _landed_rows(
     update count is the one the commit left. The playlists are the ones the
     rows joined that this landing MADE, every id in ``joined`` that was not a
     playlist row ``before`` it wrote: a removal in rekordbox leaves them (A178,
-    A185), and no database from before the landing holds one, so they are what
-    tells a removal from a rollback, whatever put the database back.
+    A185), and no database from before the landing holds one. Each row's UUID
+    is kept beside its columns (R-1844), since a person deleting the playlist
+    in rekordbox deletes its row outright (A200) and the rows the landing made
+    are then what tells a removal from a rollback, whatever put the database
+    back.
 
     A READ THAT FAILS RECORDS NOTHING and says so: the landing has committed,
     so refusing here would report a landing that happened as failed, and a
@@ -2767,6 +2776,7 @@ def _landed_rows(
                 {
                     "content_id": str(content_id),
                     "columns": {name: _plain(getattr(content, name, None)) for name in LANDED_COLUMNS},
+                    LANDED_UUID_KEY: str(getattr(content, "UUID", None) or ""),
                 }
             )
         sequence = int(db.get_local_usn())

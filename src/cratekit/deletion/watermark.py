@@ -33,7 +33,8 @@ absent is its sequence, kept here, beside the position it is compared against,
 so a later run reads the same number and neither offers it twice nor skips it.
 A row seen live again is forgotten, so a second removal after a restore is
 numbered afresh. A landing rolled back is told from a removal before a row is
-numbered, by the playlists the landing made (``library.landed_absences``).
+numbered, by one of its rows held under its recorded UUID or every playlist it
+made (``library.landed_absences``, R-1844).
 
 **THE READ AND THE WRITE ARE ONE LOCKED CYCLE.** ``atomic_write_bytes`` makes the
 rename atomic and does nothing for the cycle around it. Two passes finishing at
