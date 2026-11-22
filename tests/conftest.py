@@ -66,7 +66,9 @@ from __future__ import annotations
 import gc
 import importlib
 import importlib.util
+import tempfile
 import traceback
+from pathlib import Path
 
 import pytest
 
@@ -94,8 +96,32 @@ def _module_if_present(dotted: str):
     return importlib.import_module(dotted)
 
 
+@pytest.fixture(scope="session")
+def _isolation_base(tmp_path_factory) -> Path:
+    """The one directory, inside the run's base temp, that holds every isolation root.
+
+    U326. Each test's state root and library root used to be made by
+    ``tmp_path_factory.mktemp``, which finds the next free number by listing
+    the whole base temp, so every test paid two listings that grew with every
+    test the worker had run, and pytest's own ``tmp_path`` paid a third over
+    their entries. Measured at 2,919 tests in one process the two cost about
+    0.65 ms a test between them, and more as the directory grew. Here each root
+    is a ``tempfile.mkdtemp`` in this one directory, which lists nothing, and
+    the base temp holds only the tests' own directories.
+
+    Inside the base temp still, so R-926's write root covers every root made
+    here, and per worker, since each worker has a base temp of its own.
+    """
+    return tmp_path_factory.mktemp("isolation", numbered=False)
+
+
+def _fresh_root(base: Path, prefix: str) -> Path:
+    """A new, empty directory of this test's own under ``base``, named by ``prefix``."""
+    return Path(tempfile.mkdtemp(prefix=prefix, dir=base))
+
+
 @pytest.fixture(autouse=True)
-def _isolate_state_roots(tmp_path_factory):
+def _isolate_state_roots(tmp_path_factory, _isolation_base):
     """Redirect installation-scoped state to a temp tree for every test.
 
     HOME and the XDG variables are the inputs platformdirs uses on every platform
@@ -106,7 +132,7 @@ def _isolate_state_roots(tmp_path_factory):
     The CRATEKIT_* overrides are set alongside them belt-and-braces, so an
     explicit override path is exercised as well as the derived one.
     """
-    root = tmp_path_factory.mktemp("state_roots")
+    root = _fresh_root(_isolation_base, "state_roots")
     with _own_patch() as monkeypatch:
         home = root / "home"
         home.mkdir()
@@ -428,7 +454,7 @@ def _forget_library_reads():
 
 
 @pytest.fixture(autouse=True)
-def _block_real_library_paths(request, tmp_path_factory):
+def _block_real_library_paths(request, _isolation_base):
     """Point the library root at a temp directory and disarm the mount check.
 
     Two separate concerns, one fixture, because they are the same risk:
@@ -449,7 +475,7 @@ def _block_real_library_paths(request, tmp_path_factory):
     directory sitting in its input, and the resulting failure points at the test
     rather than at the fixture that caused it.
     """
-    library = tmp_path_factory.mktemp("library")
+    library = _fresh_root(_isolation_base, "library")
     with _own_patch() as monkeypatch:
         monkeypatch.setenv("CRATEKIT_LIBRARY_ROOT", str(library))
 
