@@ -211,7 +211,6 @@ def test_delete_review_trashes_a_removed_file_beside_streaming_rows(
         ],
     )
     _insert_active(db_path, [("3", "/v4/catalog/tracks/22222222/"), ("4", "soundcloud:tracks:33")])
-
     code, out, err = _drive(["--output", "json", "delete", "review"])
     assert code == int(ExitCode.DECISION_REQUIRED), err or out
     refused = json.loads(out)
@@ -254,7 +253,6 @@ def test_delete_review_still_refuses_an_unmapped_local_row_beside_streaming_rows
         ],
     )
     _insert_active(db_path, [("3", "/A Retired Drive/Music/x.flac")])
-
     code, out, err = _drive(["--output", "json", "delete", "review"])
     assert code != int(ExitCode.OK)
     refused = json.loads(out)

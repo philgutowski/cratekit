@@ -126,7 +126,6 @@ def test_a_credited_deletion_is_two_records_and_a_plain_one_is_one(cfg):
         one for one in stores.list_tombstones(cfg) if one.kind == tombstone.KIND_VERSION_UNCREDITED
     )
     assert companion.payload[stores.CREDITED_ID_FIELD] == written.suppression_id
-
     stores.record_tombstone(cfg, row("Salt Road", content_id="9002"), actor="deletion")
     assert [kind for kind, _title in live(cfg)].count("version-uncredited") == 1
 
@@ -171,7 +170,6 @@ def test_lifting_a_credited_tombstone_lifts_its_companion(cfg):
         cfg, row("Sun Path (feat. Mira) (Nightwave Remix)"), actor="deletion"
     )
     lifted = run.revoke(cfg, written.suppression_id, actor="a-person")
-
     assert lifted.suppression_id == written.suppression_id and lifted.revoked
     assert live(cfg) == []
     assert sorted(
@@ -193,13 +191,11 @@ def test_a_companion_two_deletions_share_outlives_the_first_lift_and_not_the_sec
         cfg, row("Sun Path (feat. Zed) (Nightwave Remix)", content_id="9002"), actor="deletion"
     )
     assert [kind for kind, _title in live(cfg)] == ["version", "version", "version-uncredited"]
-
     run.revoke(cfg, first.suppression_id, actor="a-person")
     assert live(cfg) == [
         ("version", "sun path (feat. zed) (nightwave remix)"),
         ("version-uncredited", "sun path (nightwave remix)"),
     ]
-
     run.revoke(cfg, second.suppression_id, actor="a-person")
     assert live(cfg) == []
 
@@ -316,7 +312,6 @@ def test_a_companion_already_lifted_keeps_the_lift_it_was_given(cfg):
     assert sorted(
         (one.kind, one.revoked_by) for one in stores.list_tombstones(cfg, include_revoked=True)
     ) == [("version", "the-second-person"), ("version-uncredited", "the-first-person")]
-
     store = review.DecisionStore(tombstone.STORE_KEY, cfg)
     plain = stores.record_tombstone(cfg, row("Salt Road", content_id="9003"), actor="deletion")
     lifted = store.revoke(
