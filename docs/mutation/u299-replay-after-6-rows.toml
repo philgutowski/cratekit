@@ -129,7 +129,7 @@ source = { table = "u88-b.json", id = "X3_node_unvalidated" }
 description = "build_taxonomy: the long track id and display are never validated"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_a_half_declared_long_track_playlist_is_refused, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal ([long_tracks] display; [long_tracks] id; [long_tracks] must be a table) (U299)"
 tests = ["tests/test_taxonomy.py", "tests/test_routing_workers.py"]
 old = '''
     if long_tracks is not None:
@@ -262,7 +262,7 @@ source = { table = "r797-a.json", id = "T4_a_live_name_is_not_a_former_place" }
 description = "_check_former_places: accept a former place carrying the name of a playlist its folder still holds, so a move would remove tracks from a playlist that is theirs"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_a_former_place_carrying_the_name_of_a_live_sub_is_refused, test_a_former_place_named_for_a_band_of_an_energy_bucket_is_refused, test_a_former_place_named_for_a_sub_class_is_refused, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal (still holds a sub named) (U299)"
 tests = ["tests/test_taxonomy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py", "tests/test_routing_parity.py"]
 old = '            if former.display in live_displays:'
 new = '            if False:'

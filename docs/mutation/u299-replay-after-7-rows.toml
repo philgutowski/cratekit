@@ -102,7 +102,7 @@ source = { table = "u118-a.json", id = "L1_split_version" }
 description = "A split place under schema_version 1 or 2 is no longer refused"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_a_split_place_under_an_older_schema_version_is_refused, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal (declares a split place under schema_version {version}) (U299)"
 tests = ["tests/test_taxonomy.py", "tests/test_adopt_split_place.py", "tests/test_vocabulary.py"]
 old = '        if bucket.split_from and version < SPLIT_PLACE_SCHEMA_VERSION:'
 new = '        if False:'
@@ -263,7 +263,7 @@ source = { table = "r797-a.json", id = "T6_one_playlist_is_left_by_one_bucket" }
 description = "_check_former_places: accept one playlist as the former place of two buckets"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_a_former_place_declared_twice_in_one_bucket_is_refused, test_one_playlist_cannot_be_the_former_place_of_two_buckets, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal (already the former place of; duplicate former place id) (U299)"
 tests = ["tests/test_taxonomy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py", "tests/test_routing_parity.py"]
 old = '                if other is not None:'
 new = '                if False:'
@@ -274,7 +274,7 @@ source = { table = "u119.json", id = "T3_version_gate" }
 description = "_build_sub_classes: a playlist signal under version 3 loads"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_a_playlist_signal_under_schema_version_three_is_refused_by_name, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal (schema_version = 4) (U299)"
 tests = ["tests/test_taxonomy.py"]
 old = '            if version < PLAYLIST_SIGNAL_SCHEMA_VERSION:'
 new = '            if version < 1:'

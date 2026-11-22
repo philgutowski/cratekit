@@ -93,7 +93,7 @@ source = { table = "u118-a.json", id = "L3_not_a_place" }
 description = "A split place naming no band or former place of its holder is accepted"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_a_former_place_in_the_wrong_shape_is_a_problem_and_not_a_crash, test_a_former_place_short_of_a_field_is_refused, test_a_former_place_whose_id_is_a_sub_of_the_bucket_that_holds_it_is_refused, test_a_former_place_whose_own_id_is_a_band_is_refused, test_a_split_place_naming_a_band_the_holder_does_not_file_into_is_refused, test_a_split_place_of_another_buckets_former_place_is_refused, test_a_split_place_out_of_a_bucket_with_no_bands_is_refused, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal (already a sub of this bucket; formerly; formerly must be an array of tables; is not a band; is not a band or a former place; where a former place competes as well) (U299)"
 tests = ["tests/test_taxonomy.py", "tests/test_adopt_split_place.py"]
 old = '            if place.sub not in bands:'
 new = '            if False:'
@@ -260,7 +260,7 @@ source = { table = "u121.json", id = "S23_declared_node" }
 description = "build_taxonomy: the inspiration node is not validated with the declared nodes"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_a_half_declared_inspiration_folder_is_refused_as_strictly_as_a_mandatory_one, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal ([inspiration] display; [inspiration] id; [inspiration] must be a table) (U299)"
 tests = ["tests/test_taxonomy.py", "tests/test_set_inspiration_playlist.py"]
 old = '        declared_nodes.append((inspiration, "inspiration"))'
 new = '        pass'

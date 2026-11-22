@@ -118,7 +118,7 @@ source = { table = "u119.json", id = "T2_playlist_without_name" }
 description = "_build_sub_classes: a playlist signal with no signal_playlist loads"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_a_playlist_signal_names_its_playlist_and_is_derived_and_additive, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal (derived and additive; signal_playlist) (U299)"
 tests = ["tests/test_taxonomy.py"]
 old = '''
             if not signal_playlist:

@@ -149,7 +149,7 @@ source = { table = "u88-b.json", id = "X1_bound_below_one" }
 description = "_build_long_tracks: accept a zero bound"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_a_long_track_bound_that_is_not_whole_positive_seconds_is_refused, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal ([long_tracks] over_seconds) (U299)"
 tests = ["tests/test_taxonomy.py", "tests/test_routing_workers.py"]
 old = 'or seconds < 1:'
 new = 'or seconds < 0:'
@@ -268,7 +268,7 @@ source = { table = "r797-a.json", id = "T2_shape_is_checked_before_a_row_is_read
 description = "_build_buckets: drop the shape check on formerly, so one pair of brackets in a hand edit raises out of the loader"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "user"
-moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_a_former_place_in_the_wrong_shape_is_a_problem_and_not_a_crash, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal (formerly must be an array of tables) (U299)"
 tests = ["tests/test_taxonomy.py", "tests/test_adopt_former_place.py", "tests/test_adopt_placements.py", "tests/test_routing_parity.py"]
 old = '''
         if not isinstance(formerly_raw, list) or not all(
@@ -282,7 +282,7 @@ source = { table = "u118-a.json", id = "L6_unique_id" }
 description = "A split place id shared with a former or split place is accepted"
 file = "src/cratekit/core/taxonomy_build.py"
 surface = "maintainer"
-moved = "the same text, now in src/cratekit/core/taxonomy_build.py, was in src/cratekit/core/taxonomy.py"
+moved = "the same guard, moved from core/taxonomy.py to core/taxonomy_build.py by U299's split; the tests that killed it, test_a_split_place_id_shared_with_a_former_place_is_refused, are now cases of test_a_template_breaking_a_rule_is_refused_by_name in the same file, each making the same template change and asserting the same refusal (already a former or split place) (U299)"
 tests = ["tests/test_taxonomy.py", "tests/test_adopt_split_place.py"]
 old = '            if place.id in seen:'
 new = '            if False:'
