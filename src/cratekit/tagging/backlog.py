@@ -111,7 +111,14 @@ NEIGHBOURS = "neighbours"
 
 @dataclass(frozen=True, slots=True)
 class Row:
-    """One ``needs-genre`` row, its cause, and what the campaign does about it."""
+    """One ``needs-genre`` row, its cause, and what the campaign does about it.
+
+    ``row_word`` and ``file_word`` are the two genres as read. ``word`` is the
+    one the cause is about: the file's on ``row-lags-file``, the off taxonomy or
+    too coarse word, and empty otherwise. ``verb`` settles the row, ``reason``
+    says why a row is left. ``asked`` is what the catalogue said about a row
+    with no genre, when the run asked it.
+    """
 
     content_id: str
     path: str

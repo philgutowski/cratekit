@@ -55,7 +55,11 @@ UNDECLARED = "a genre word nothing declares"
 
 
 def _tag_with_no_bucket() -> str:
-    """A source string a declared rule answers with a TAG and no bucket."""
+    """A source string a declared rule answers with a TAG and no bucket.
+
+    Read off the rules, the only place that shape lives. It is the one answer
+    neither declined nor off taxonomy that still maps to no folder.
+    """
     for rule in TAXONOMY.suggest:
         if rule.tag and not rule.bucket and rule.all_of:
             word = " ".join(rule.all_of)
@@ -69,7 +73,13 @@ TAG_ONLY = _tag_with_no_bucket()
 
 
 def _with_no_vocabulary() -> Taxonomy:
-    """The shipped template as a copy written before R-799 holds it."""
+    """The shipped template as a copy written before R-799 holds it.
+
+    No table of the general catalogue's own, so its words resolve by the
+    buckets' aliases, as every active copy does until it takes the edit. Section
+    B drives the chooser's tests on this path, since a declared table answers
+    before any of them is reached.
+    """
     source = resources.files("cratekit") / "templates" / "taxonomy.default.toml"
     raw = tomllib.loads(source.read_text(encoding="utf-8"))
     del raw["vocabulary"]
@@ -125,7 +135,11 @@ RATE_LIMITED = Fetched(note="rate limited, 3 attempts spent without an answer", 
 
 
 def deezer_fetch(track, album=None, seen: list[str] | None = None):
-    """A fetch seam answering the two URLs the lookup asks, and nothing else."""
+    """A fetch seam answering the two URLs the lookup asks, and nothing else.
+
+    Any other request, or an album no test supplied, fails the test, so "the
+    album was never asked" holds by construction.
+    """
 
     def fetch(url: str) -> Fetched:
         if seen is not None:
@@ -591,7 +605,12 @@ def test_a_word_that_maps_to_no_folder_is_passed_over_for_the_next(passed_over):
 
 
 def _bucket_named_by_no_alias() -> str:
-    """A bucket display the resolver answers with no bucket identifier."""
+    """A bucket display the resolver answers with no bucket identifier.
+
+    The resolver's last tier passes such a display through rather than off
+    taxonomy, since routing files it exactly. Read off the template so the
+    fixture moves with it.
+    """
     for bucket in TAXONOMY.buckets:
         answer = routing.suggest_tag(TAXONOMY, bucket.display)
         if (

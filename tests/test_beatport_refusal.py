@@ -48,7 +48,12 @@ class _Response:
 
 
 def _over_the_wire(beatport, *, discogs=None, seen: list[str] | None = None):
-    """The shipped fetch over a getter answering Beatport and Discogs by URL."""
+    """The shipped fetch over a getter answering Beatport and Discogs by URL.
+
+    ``beatport`` is one reply, or a list taken one per Beatport request.
+    ``discogs`` answers the search and the one release it names, and is a miss
+    when not given.
+    """
     replies = list(beatport) if isinstance(beatport, list) else None
     search = discogs if discogs is not None else _Response(200, results())
 
@@ -247,7 +252,11 @@ def test_a_beatport_answer_with_results_still_matches():
 
 
 def _sweep(replies, *, refusals, discogs=None, count: int | None = None):
-    """``count`` files searched as a worker searches them, one searcher per file."""
+    """``count`` files searched as a worker searches them, one searcher per file.
+
+    That is why the count is handed in: a count kept by the searcher would
+    start again at every file.
+    """
     seen: list[str] = []
     fetch = _over_the_wire(list(replies), discogs=discogs, seen=seen)
     asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)

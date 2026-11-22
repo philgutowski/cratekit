@@ -568,7 +568,11 @@ def _fake_detect_bound() -> bool:
 
 
 def _settings(cfg: config.Config) -> ahead.Settings | None:
-    """What a head is measured under right now, or None under a test's detector."""
+    """What a head is measured under right now, or None under a test's detector.
+
+    Read per call, as the binding below reads it per item. A test's own
+    detector is measured under whatever the test chose, compared only with itself.
+    """
     if _fake_detect_bound():
         return None
     return ahead.Settings.of(energy.load_calibration(cfg), cfg)

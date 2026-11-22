@@ -71,7 +71,12 @@ UNREADABLE = object()
 
 @dataclass(frozen=True)
 class Track:
-    """One row to seed and the file it names."""
+    """One row to seed and the file it names.
+
+    ``file`` is the genre the file carries, an empty string for a readable file
+    with no genre, :data:`ABSENT` for no file, or :data:`UNREADABLE` for bytes
+    no tag library opens. ``recorded`` overrides the location the row records.
+    """
 
     content_id: str
     row: str

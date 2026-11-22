@@ -33,7 +33,11 @@ SPECIFIC = "Deep House"
 
 @pytest.fixture(scope="module")
 def silence(tmp_path_factory) -> Path:
-    """One real FLAC container, synthesized once and copied per file."""
+    """One real FLAC container, synthesized once and copied per file.
+
+    Real because the write under test goes through ``core.tags.write_genre``,
+    and a stub would prove the branch and nothing about the write.
+    """
     return synth_container(tmp_path_factory.mktemp("silence"), ".flac")
 
 
@@ -55,7 +59,11 @@ def place(folder: Path, silence: Path, name: str, genre: str | None = None) -> P
 
 
 def answering(table: dict[str, SearchHit | None]):
-    """A searcher that answers by TITLE and records what it was asked."""
+    """A searcher that answers by TITLE and records what it was asked.
+
+    Two tests assert the searcher was asked exactly once per file, and a
+    searcher with no memory cannot tell "asked and declined" from "never asked".
+    """
     asked: list[tuple[str, str]] = []
 
     def searcher(artist: str, title: str) -> SearchHit | None:
@@ -72,7 +80,11 @@ def answering(table: dict[str, SearchHit | None]):
 
 
 def test_the_walk_takes_audio_files_and_leaves_everything_else(folder, silence):
-    """A job item per entry here, so a stray file is a queued item that fails."""
+    """A job item per entry here, so a stray file is a queued item that fails.
+
+    The extension set is read off ``core.naming.AUDIO_EXTS`` rather than typed,
+    so a format added there widens this walk on the same edit.
+    """
     place(folder, silence, "track")
     (folder / "cover.jpg").write_bytes(b"not audio")
     (folder / "notes.txt").write_text("nor this", encoding="utf-8")
@@ -83,7 +95,11 @@ def test_the_walk_takes_audio_files_and_leaves_everything_else(folder, silence):
 
 
 def test_the_walk_recurses_and_comes_back_sorted(folder, silence):
-    """Sorted, so an enqueue and a later walk agree about ORDER as well as set."""
+    """Sorted, so an enqueue and a later walk agree about ORDER as well as set.
+
+    An item's artifact is named from its ordinal, so an unsorted walk would file
+    the same file's report under two names when one folder is queued twice.
+    """
     place(folder, silence, "b")
     place(folder, silence, "nested/a")
     place(folder, silence, "c")
@@ -97,7 +113,11 @@ def test_the_walk_recurses_and_comes_back_sorted(folder, silence):
 
 
 def test_a_root_that_is_not_a_directory_is_empty_rather_than_an_error(tmp_path):
-    """The first caller is a shell asking whether it has anything to queue."""
+    """The first caller is a shell asking whether it has anything to queue.
+
+    "Nothing to do" lets the shell report its own no-op rather than meet a
+    traceback over a mistyped path.
+    """
     assert tag.audio_files(tmp_path / "absent") == ()
 
     a_file = tmp_path / "single.flac"
@@ -114,7 +134,13 @@ def test_the_walk_is_case_insensitive_about_the_extension(folder, silence):
 
 
 def test_the_walk_does_not_descend_into_the_acquisition_staging_tree(folder, silence):
-    """R-289's reproduction. The staging tree is a dotfile and this walk recursed."""
+    """R-289's reproduction. The staging tree is a dotfile and this walk recursed.
+
+    ``acquire`` stages a download under ``.cratekit-acquire-staging/<job>/<ordinal>``,
+    safe only while every folder walk that queues skips it, or a killed attempt's
+    partial download is queued. The constant is imported rather than typed, so a
+    rename of the staging directory moves this test with it.
+    """
     place(folder, silence, "keep")
     staged = folder / acquire_cli.ACQUIRE_STAGING_DIRNAME / "job-1" / "0" / "partial"
     place(staged.parent, silence, staged.name)
@@ -123,7 +149,12 @@ def test_the_walk_does_not_descend_into_the_acquisition_staging_tree(folder, sil
 
 
 def test_the_walk_skips_the_appledouble_sidecar_beside_a_real_track(folder, silence):
-    """The sidecar ``_audio_in`` names as its own reason to skip."""
+    """The sidecar ``_audio_in`` names as its own reason to skip.
+
+    macOS writes ``._track.flac`` beside every file on an exFAT volume, a DJ
+    stick, with the audio suffix. It is not a track, and the tag write cannot
+    read it.
+    """
     place(folder, silence, "track")
     place(folder, silence, "._track")
 
@@ -131,7 +162,13 @@ def test_the_walk_skips_the_appledouble_sidecar_beside_a_real_track(folder, sile
 
 
 def test_a_title_that_opens_with_dots_is_walked_and_so_is_the_album_holding_it(folder, silence):
-    """The counterexample that decided the shape of the guard, driven."""
+    """The counterexample that decided the shape of the guard, driven.
+
+    A leading dot is reserved on no filesystem this product runs on, and real
+    libraries hold ``...And Justice For All`` and ``...Ready For It.flac``. A
+    guard skipping every dot name would report a clean folder over files it
+    declined to see, worse than the defect the guard is for.
+    """
     place(folder, silence, "...Ready For It")
     place(folder, silence, "Metallica/...And Justice For All/01 Blackened")
 
@@ -142,14 +179,23 @@ def test_a_title_that_opens_with_dots_is_walked_and_so_is_the_album_holding_it(f
 
 
 def test_the_skip_does_not_stop_the_walk_recursing(folder, silence):
-    """The guard is about two names, not about depth, and the two are separable."""
+    """The guard is about two names, not about depth, and the two are separable.
+
+    A guard that skipped every nested file would pass the tests above for the
+    wrong reason, and a folder of per release sub directories needs recursion.
+    """
     place(folder, silence, "nested/deeper/a")
 
     assert [found.name for found in tag.audio_files(folder)] == ["a.flac"]
 
 
 def test_a_root_that_is_itself_a_staging_tree_is_still_walked(folder, silence):
-    """Named deliberately, so it is walked. The names are matched RELATIVE to root."""
+    """Named deliberately, so it is walked. The names are matched RELATIVE to root.
+
+    Only a staging tree the walk descended into on its own is skipped. Matching
+    the absolute path would empty the walk for anyone whose library sits under
+    one of these names.
+    """
     named = folder / acquire_cli.ACQUIRE_STAGING_DIRNAME / "job-1" / "0"
     named.mkdir(parents=True)
     place(named, silence, "1")
@@ -158,7 +204,12 @@ def test_a_root_that_is_itself_a_staging_tree_is_still_walked(folder, silence):
 
 
 def test_the_skipped_dirnames_are_the_two_constants_that_own_them():
-    """The hand copy, pinned. An unpinned copy survives the rename it should follow."""
+    """The hand copy, pinned. An unpinned copy survives the rename it should follow.
+
+    ``tag`` cannot import either shell, which sit on top of the engines (KTD23),
+    so the names are duplicated. Set equality makes a THIRD staging tree added
+    to a shell and not here fail rather than be walked into.
+    """
     assert tag.SKIPPED_DIRNAMES == {
         acquire_cli.ACQUIRE_STAGING_DIRNAME,
         master_cli.MASTER_STAGING_DIRNAME,
@@ -168,6 +219,10 @@ def test_the_skipped_dirnames_are_the_two_constants_that_own_them():
 def test_the_master_staging_tree_is_skipped_too(folder, silence):
     """The same shape one file over, and it lands under the LIBRARY rather than
     under the download root.
+
+    ``master.cli.staging_dir`` stages its encode under ``final.parent``, in the
+    music library, so a tagging sweep of the library would walk into a killed
+    ffmpeg run's partial encode.
     """
     place(folder, silence, "track")
     staged = folder / master_cli.MASTER_STAGING_DIRNAME / "job-1" / "0"
@@ -193,7 +248,12 @@ def test_a_file_with_no_genre_gets_the_answer_written_onto_it(folder, silence):
 
 
 def test_a_file_that_already_carries_a_genre_is_skipped_and_never_overwritten(folder, silence):
-    """Fill if empty is the whole policy of this verb."""
+    """Fill if empty is the whole policy of this verb.
+
+    The value on the file is somebody's curation until ``crate tag retag`` calls
+    it too coarse. The file carries a picture too (U85), since a file with a
+    genre and NO picture is searched for its art.
+    """
     path = place(folder, silence, "track", SPECIFIC)
     plant(path, _jpeg(320, 200), dims=(320, 200, 24))
     searcher = answering({"track": SearchHit(genre="Techno")})
@@ -217,7 +277,12 @@ def test_a_searcher_that_declines_leaves_the_file_alone_and_says_no_hit(folder, 
 
 
 def test_a_catalogue_answer_the_taxonomy_could_not_map_is_its_own_reason(folder, silence):
-    """``unmapped-genre`` is not a kind of ``no-hit``, and the difference is the user's."""
+    """``unmapped-genre`` is not a kind of ``no-hit``, and the difference is the user's.
+
+    Only a missing alias in their own taxonomy is theirs to fix, so the two must
+    differ. The raw string rides along, since a reason alone says a gap exists
+    and not which one.
+    """
     path = place(folder, silence, "track")
     hit = SearchHit(genre=None, source="beatport", source_genre="Hardvapour")
 
@@ -230,7 +295,12 @@ def test_a_catalogue_answer_the_taxonomy_could_not_map_is_its_own_reason(folder,
 
 
 def test_a_word_the_taxonomy_does_not_know_is_written_and_reported(folder, silence):
-    """R-650. A write, and a write the report can tell from a clean one."""
+    """R-650. A write, and a write the report can tell from a clean one.
+
+    The file is tagged, since refusing would stop a new genre ever entering the
+    library, so ``skipped`` is None and the word is on disk. The result also says
+    the word came from the catalogue rather than the declared table.
+    """
     path = place(folder, silence, "track")
     hit = SearchHit(genre="gqom", source="beatport", source_genre="gqom", off_taxonomy=True)
 
@@ -254,7 +324,12 @@ def test_a_tag_the_declared_table_produced_is_not_off_taxonomy(folder, silence):
 
 
 def test_a_file_this_engine_did_not_tag_is_never_off_taxonomy(folder, silence):
-    """The flag qualifies a write, so no skip may carry it."""
+    """The flag qualifies a write, so no skip may carry it.
+
+    The third case matters: a file that already has a genre is still SEARCHED
+    for its art, so it holds a flagged hit, and reading it would report a word
+    this run did not write.
+    """
     tagged = place(folder, silence, "tagged")
     assert tags.write_genre(tagged, SPECIFIC)
     flagged = SearchHit(genre="gqom", source="beatport", source_genre="gqom", off_taxonomy=True)
@@ -278,7 +353,11 @@ def test_a_file_this_engine_did_not_tag_is_never_off_taxonomy(folder, silence):
 
 
 def test_a_hit_with_no_genre_and_no_source_genre_is_a_plain_miss(folder, silence):
-    """The two reasons are separated by the SOURCE GENRE and by nothing else."""
+    """The two reasons are separated by the SOURCE GENRE and by nothing else.
+
+    A hit naming the catalogue it asked and carrying no string is a catalogue
+    that answered with nothing, not a word that could not be mapped.
+    """
     path = place(folder, silence, "track")
     hit = SearchHit(genre=None, source="bandcamp", source_genre="")
 
@@ -334,7 +413,11 @@ def test_the_written_result_carries_which_catalogue_answered(folder, silence):
 
 
 def test_the_title_tag_is_used_and_the_stem_is_the_fallback(folder, silence):
-    """What the searcher is asked is the file's own metadata first."""
+    """What the searcher is asked is the file's own metadata first.
+
+    The filename may already be a naming pass's rewrite, and asking with it
+    would search for the product's own output.
+    """
     tagged = place(folder, silence, "renamed")
     assert tags.write_tags(tagged, {"title": "Real Title", "artist": "Real Artist"})
     bare = place(folder, silence, "no-tags")
@@ -347,7 +430,12 @@ def test_the_title_tag_is_used_and_the_stem_is_the_fallback(folder, silence):
 
 
 def test_a_searcher_that_refuses_propagates_rather_than_becoming_a_skip(folder, silence):
-    """A refusal is the searcher saying it learned nothing, and it must not land as a skip."""
+    """A refusal is the searcher saying it learned nothing, and it must not land as a skip.
+
+    A skip is a claim about the catalogues. An item done having read none is a
+    clean report over unreadable state, and makes a whole job look finished
+    after a network outage.
+    """
     path = place(folder, silence, "track")
 
     def refusing(artist: str, title: str):
@@ -365,7 +453,11 @@ def test_a_searcher_that_refuses_propagates_rather_than_becoming_a_skip(folder, 
 
 
 def test_the_folder_pass_produces_exactly_what_the_per_file_calls_produce(folder, silence):
-    """The one property that keeps the sweep and the queued worker in agreement."""
+    """The one property that keeps the sweep and the queued worker in agreement.
+
+    If they diverged, a folder would get one answer from the verb and another
+    from the job driver, and nothing would report the difference.
+    """
     place(folder, silence, "written")
     place(folder, silence, "curated", SPECIFIC)
     place(folder, silence, "declined")
@@ -410,7 +502,12 @@ def test_a_folder_that_is_not_there_tags_nothing_rather_than_raising(tmp_path):
 
 
 def test_one_candidate_at_a_time_is_the_same_pass_as_the_whole_folder(folder, silence):
-    """The extraction's own proof, stated where a reader will look for it."""
+    """The extraction's own proof, stated where a reader will look for it.
+
+    ``tests/test_genre_retag.py`` covers every branch through ``retag_folder``.
+    This is the assertion it cannot make: that the two entry points are the same
+    work.
+    """
     place(folder, silence, "coarse", CATCH_ALL)
     place(folder, silence, "also-coarse", CATCH_ALL)
     place(folder, silence, "specific", SPECIFIC)
@@ -430,7 +527,11 @@ def test_one_candidate_at_a_time_is_the_same_pass_as_the_whole_folder(folder, si
 
 
 def test_a_candidate_whose_answer_is_itself_too_coarse_is_refused_per_candidate(folder, silence):
-    """Driven through the per candidate entry point, because the worker is what runs it."""
+    """Driven through the per candidate entry point, because the worker is what runs it.
+
+    Writing a catch all launders it into a value this verb would never select
+    again, since selecting is what "too coarse" means.
+    """
     place(folder, silence, "coarse", CATCH_ALL)
     (candidate,) = retag.select(folder, declared=TAXONOMY).candidates
 
@@ -447,7 +548,11 @@ def test_a_candidate_whose_answer_is_itself_too_coarse_is_refused_per_candidate(
 
 
 def test_the_queue_index_is_the_folder_passs_and_the_workers_one_function(folder, silence):
-    """One reader for "what has already been decided", used by both entry points."""
+    """One reader for "what has already been decided", used by both entry points.
+
+    Two readers would be two ideas of which queue and kind hold this pass's
+    answers, and the one that drifted would re-ask a settled question.
+    """
     assert retag.decided_index(None) == {}
 
 
@@ -478,7 +583,12 @@ def _png(width: int = 320, height: int = 200) -> bytes:
 
 
 def plant(path: Path, data: bytes, *, dims=(0, 0, 0), mime="image/jpeg", kind=3, desc=""):
-    """Add one FLAC picture block, by default in the vendored downloader's shape."""
+    """Add one FLAC picture block, by default in the vendored downloader's shape.
+
+    ``_vendor/downloader/metadata.py`` sets type, data and mime and never a
+    width, height or depth, so mutagen writes zeroes. ``dims`` fills them for a
+    block that is meant to be sound.
+    """
     from mutagen.flac import FLAC, Picture
 
     handle = FLAC(path)
@@ -698,7 +808,10 @@ def _noise_jpeg(width: int, height: int) -> bytes:
 
 
 def test_a_picture_too_large_for_the_cap_at_native_size_is_shrunk_not_left_blank(folder, silence):
-    """The review's finding: refusing it would leave the block blank for good."""
+    """The review's finding: refusing it would leave the block blank for good.
+
+    It is shrunk to fit inside the art edge, keeping its shape, never enlarged.
+    """
     data = _noise_jpeg(1400, 1000)
     with pytest.raises(art.ArtError):
         art.to_cdj_jpeg(data, size=None)
@@ -740,7 +853,12 @@ def test_a_picture_inside_the_box_that_cannot_fit_is_an_error_and_is_never_enlar
     ids=["not-an-image", "truncated-jpeg"],
 )
 def test_an_undecodable_image_in_a_filled_block_is_an_error_not_ok(folder, silence, data):
-    """The mutation table's zero row: every corrupt image above sat in a ZEROED block."""
+    """The mutation table's zero row: every corrupt image above sat in a ZEROED block.
+
+    A filled block over bytes that do not decode renders blank all the same.
+    The truncated JPEG opens cleanly and fails only on a full decode, so the
+    check decodes rather than reading a header.
+    """
     path = place(folder, silence, "track")
     plant(path, data, dims=(320, 200, 24))
 
@@ -775,7 +893,11 @@ ART_URL = "https://geo-media.example/image_size/1400x1400/cover.jpg"
 
 
 def fetching(answer: bytes | None = None, *, raises: Exception | None = None):
-    """An image fetch that answers ``answer`` and records every URL it was asked."""
+    """An image fetch that answers ``answer`` and records every URL it was asked.
+
+    Defaults to a real 1000 square JPEG, not 800, so a write that skipped the
+    CDJ re-encode would show in the embedded block's size.
+    """
     asked: list[str] = []
 
     def fetch_image(url: str) -> bytes | None:

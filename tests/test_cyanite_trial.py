@@ -50,7 +50,11 @@ NEVER_READ = {"bpm": 124.0, "bpmPrediction": {"value": 124.0}, "key": "aMinor",
 
 
 class Recorded:
-    """A recorded Cyanite: answers each request from the documented flow."""
+    """A recorded Cyanite: answers each request from the documented flow.
+
+    ``events`` is shared with the run's ``say`` so what was said and what was
+    sent are one ordered list.
+    """
 
     def __init__(self, events=None, *, said=None, processing=1, preflight=None,
                  create_errors=None, upload_status=200, never_start=False,

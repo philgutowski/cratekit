@@ -45,7 +45,11 @@ REFUSED = sorted(
 
 
 def _source_genre_for(*, sub: bool) -> str:
-    """A vendor genre string the taxonomy resolves, to a sub or to a bucket."""
+    """A vendor genre string the taxonomy resolves, to a sub or to a bucket.
+
+    Asking the resolver which way it lands keeps the fixture honest when the
+    template moves a genre between the two levels.
+    """
     for bucket in TAXONOMY.buckets:
         entries = bucket.subs if sub else (bucket,)
         for entry in entries:
@@ -58,7 +62,12 @@ def _source_genre_for(*, sub: bool) -> str:
 
 
 def _source_genre_aliasing_to_the_fallback() -> str:
-    """A vendor string the template aliases onto the fallback bucket's display."""
+    """A vendor string the template aliases onto the fallback bucket's display.
+
+    Read out of the alias table, the only place that fact lives, so the fixture
+    cannot outlive the template. It guards AE5, where writing the resolver's own
+    answer would launder a catch-all onto a file.
+    """
     fallback = TAXONOMY.fallback.bucket
     for key, (bucket_id, _sub_id) in TAXONOMY._tagging_alias.items():  # noqa: SLF001
         if bucket_id != fallback:
@@ -78,7 +87,11 @@ TITLE = "Sunrise Mood"
 
 
 class _Response:
-    """The attributes this module reads off an HTTP response, and no more."""
+    """The attributes this module reads off an HTTP response, and no more.
+
+    The module's whole contract with a getter is these fields: ``text`` for a
+    page and ``content`` for a picture.
+    """
 
     def __init__(self, status_code: int, text: str = "", *, content: bytes = b"") -> None:
         self.status_code = status_code
@@ -275,7 +288,11 @@ def test_a_bandcamp_listing_genre_costs_one_fetch_and_its_picture_is_the_origina
 
 
 def test_a_bandcamp_listing_with_no_genre_spends_a_second_fetch_on_the_track_page():
-    """Bandcamp's genre often lives on the track page rather than in the listing."""
+    """Bandcamp's genre often lives on the track page rather than in the listing.
+
+    Each touch is paced, so the schedule grows by one wait rather than the
+    second fetch slipping past the pacer.
+    """
     naps: list[float] = []
     seen: list[str] = []
     hit = _hit(
@@ -406,7 +423,13 @@ def test_a_genre_resolves_to_what_is_written_and_flags_only_the_unknown(word, wr
 
 
 def test_an_unknown_source_genre_a_taxonomy_calls_too_coarse_is_a_plain_decline():
-    """One file gets ONE disposition, and a decline outranks the flag."""
+    """One file gets ONE disposition, and a decline outranks the flag.
+
+    No shipped template string reaches the last tier and is also too coarse, so
+    the producer is a different taxonomy, which a person editing the template
+    can make. The hit stays the decline, with no flag about a word it will not
+    write.
+    """
     template = (
         Path(__file__).parent / "taxonomies" / "second.toml"
     ).read_text(encoding="utf-8")
@@ -575,7 +598,13 @@ def test_a_beatport_hit_carries_its_release_picture_resized_to_the_source_edge()
 
 
 def test_the_picture_comes_off_the_same_row_as_the_genre_and_never_another():
-    """The hazard the brief names: a cover from a different row is the wrong cover."""
+    """The hazard the brief names: a cover from a different row is the wrong cover.
+
+    The first row is an exact title with a picture and NO genre, not a candidate,
+    so it must not lend its picture. The second wins with both fields its own.
+    The third loses on title and is scanned LAST, so a picture read off the
+    loop's final row shows here.
+    """
     genreless = _with_art(_beatport_track(ARTIST, TITLE, ""), OTHER_ART)
     winner = _with_art(_beatport_track(ARTIST, TITLE, BUCKET_GENRE), BEATPORT_ART)
     loser = _with_art(_beatport_track(ARTIST, f"{TITLE} Reprise Dub", SUB_GENRE), OTHER_ART)

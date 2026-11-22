@@ -45,7 +45,12 @@ def _typed(value: str) -> str:
 
 
 def typed_fetch(seen: list[str] | None = None, *, beatport: str | None = None):
-    """A fetch answering Discogs as a catalogue a person types into."""
+    """A fetch answering Discogs as a catalogue a person types into.
+
+    The search answers a release only when its ``artist`` and ``track`` are one
+    of :data:`CATALOGUE`'s as typed. Beatport, if asked, answers an empty page
+    unless ``beatport`` is given.
+    """
     by_question = {(_typed(artist), _typed(title)): number for artist, title, number, _ in CATALOGUE}
     pages = {
         f"{searchers.DISCOGS_RELEASE}{number}": release(

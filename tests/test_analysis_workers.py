@@ -977,7 +977,11 @@ def test_a_decode_that_fails_is_reported_as_inactive_and_never_as_zero(monkeypat
 
 
 def sparse(path: Path, size: int) -> Path:
-    """A file that IS ``size`` bytes long and occupies almost none of them."""
+    """A file that IS ``size`` bytes long and occupies almost none of them.
+
+    ``truncate`` sets the length without writing, so the shipped cap is driven
+    at its real value without writing a quarter of a gigabyte to disk.
+    """
     with path.open("wb") as handle:
         handle.truncate(size)
     assert path.stat().st_size == size, "the filesystem did not take the sparse length"
@@ -1061,7 +1065,11 @@ def test_a_file_exactly_at_the_cap_is_still_decoded(tmp_path, monkeypatch):
 def test_a_size_that_cannot_be_read_is_not_oversize_and_the_decode_path_reports(
     tmp_path, monkeypatch
 ):
-    """A stat failure is the decode path's to report, not this guard's."""
+    """A stat failure is the decode path's to report, not this guard's.
+
+    Two reporters of one failure turn a missing file into a size refusal, which
+    names the wrong remedy.
+    """
     gone = tmp_path / "gone.flac"
     assert vocals.is_oversize(gone) is False
     assert vocals.is_oversize(None) is False, "an absent path is not a size"
@@ -2111,7 +2119,11 @@ def test_a_recursive_restamp_runs_every_nested_item_to_done_and_writes_the_right
 def test_two_nested_folders_holding_the_same_filename_are_two_items(
     cfg, folder, silence, monkeypatch
 ):
-    """``job_items`` is keyed ``(job_id, item_id)``, so bare names would collide."""
+    """``job_items`` is keyed ``(job_id, item_id)``, so bare names would collide.
+
+    A real library holds one track name in more than one genre folder, and
+    under bare names the second insert raises.
+    """
     energy.save_calibration(cfg, calibration_over(count=20))
     nest(folder, silence, "house/track.flac", energylevel=7)
     nest(folder, silence, "techno/track.flac", energylevel=7)

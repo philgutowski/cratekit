@@ -533,7 +533,11 @@ class Reply:
 
 
 def over_the_wire(replies: dict, *, sent: list | None = None, naps: list[float] | None = None):
-    """The shipped asker over the shipped fetch, its getter answering by URL."""
+    """The shipped asker over the shipped fetch, its getter answering by URL.
+
+    ``replies`` maps a URL prefix to a reply or to a list served in turn.
+    ``sent`` records every (url, headers) pair the getter was handed.
+    """
     queues = {key: list(value) if isinstance(value, list) else value for key, value in replies.items()}
     naps = naps if naps is not None else []
 
@@ -660,7 +664,11 @@ def test_the_token_is_sent_in_the_authorization_header_and_the_agent_names_crate
 
 
 def test_the_token_reaches_no_url_note_record_log_or_refusal(caplog, tmp_path, silence):
-    """Every path a Discogs answer takes to a person, scanned for the token."""
+    """Every path a Discogs answer takes to a person, scanned for the token.
+
+    A transport failure whose message names the token, as a client library's
+    refusal of an invalid header does, is scrubbed before it becomes a note.
+    """
     caplog.set_level(logging.DEBUG)
     sent: list = []
     seen_text: list[str] = []

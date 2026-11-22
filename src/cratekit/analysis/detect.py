@@ -238,7 +238,10 @@ def measure_tempo(samples: Any, rate: int, *, floor: int, ceiling: int) -> float
 def measure_tempo_and_drift(
     samples: Any, rate: int, *, floor: int, ceiling: int
 ) -> tuple[float | None, float | None]:
-    """The tempo, and how far it moves over the track, from ONE tempogram (U157)."""
+    """The tempo, and how far it moves over the track, from ONE tempogram (U157).
+
+    The drift is None when the tempo is, or the track holds too little pulse.
+    """
     envelope, tempogram = _onset_and_tempogram(samples, rate)
     tempo = tempo_from_autocorrelation(
         tempogram.mean(axis=1), rate=rate, hop=TEMPO_HOP, floor=floor, ceiling=ceiling

@@ -109,7 +109,11 @@ def identity_of(path: str) -> tuple[int, int, int, int] | None:
 
 
 def measure(path: str) -> tuple[tuple[int, int, int, int] | None, dict[str, Any]]:
-    """What a worker runs: the file's identity BEFORE the read, then the head."""
+    """What a worker runs: the file's identity BEFORE the read, then the head.
+
+    Before, so a file replaced mid read does not carry the replacement's
+    identity beside the original's head.
+    """
     found = identity_of(path)
     return found, light.analyse(path)
 

@@ -61,7 +61,10 @@ def _in_item_order(paths: Iterable[Path]) -> list[Path]:
 
 
 def _reports(directory: Path) -> tuple[tuple[dict[str, Any], ...], int]:
-    """One job directory's reports in item order, and how many could not be read."""
+    """One job directory's reports in item order, and how many could not be read.
+
+    Both readers below use this one loop, so they agree on what is a report.
+    """
     found: list[dict[str, Any]] = []
     unread = 0
     for path in _in_item_order(directory.glob("*.json")):

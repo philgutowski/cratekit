@@ -148,7 +148,16 @@ def _written(plan: rows.RowsPlan, written: rows.Written) -> dict[str, str]:
 
 
 def read_plan(cfg: config.Config, declared, leave: list[str]) -> rows.RowsPlan:
-    """The plan over the library as it stands, through a handle opened to read."""
+    """The plan over the library as it stands, through a handle opened to read.
+
+    ``require_closed`` is left False, as the collection reader leaves it, so the
+    plan can be read with rekordbox open. The handle is closed before this returns.
+
+    A library it cannot read refuses before any file is opened (R-372). The path
+    survey is :func:`cratekit.write.metadata_cli.resolution_totals`, so the
+    refusal matches the vocal tag verb's and doctor's ``library.paths_resolved``,
+    and it reads no tag, so a drive renamed with no prefix rule opens no file.
+    """
     with plan_verbs.reading(cfg, _BLOCKED) as db:
         return rows.plan_rows(cfg, db, declared, leave=leave)
 

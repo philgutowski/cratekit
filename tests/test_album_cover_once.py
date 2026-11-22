@@ -45,7 +45,11 @@ class _Response:
 
 
 class Host:
-    """A fake image host: per address, its answers in order, the last repeated."""
+    """A fake image host: per address, its answers in order, the last repeated.
+
+    An answer is the bytes of a 200, an int status, or an exception the
+    transport raises. ``asked`` is every request that reached the host.
+    """
 
     def __init__(self, answers: dict[str, list]) -> None:
         self.answers = {url: list(given) for url, given in answers.items()}
@@ -102,7 +106,11 @@ def album(folder: Path, silence: Path, names, prefix: str = "") -> list[Path]:
 
 
 def sweep(paths: list[Path], address_of, *, today: bool = False) -> list[tag.TagResult]:
-    """Tag each file as the worker does, one binder call per file."""
+    """Tag each file as the worker does, one binder call per file.
+
+    ``today`` drops both memories before every file, a fresh fetch and a fresh
+    encode for each one, the baseline the shared cover is measured against.
+    """
     results = []
     for path in paths:
         if today:
@@ -130,7 +138,10 @@ def carried(path: Path) -> list[tuple]:
 
 
 def said(result: tag.TagResult) -> tuple[str, str]:
-    """The result and its sentence, with the one part no two runs share masked."""
+    """The result and its sentence, with the one part no two runs share masked.
+
+    Pillow names an unreadable in memory buffer by its address, new each call.
+    """
     return result.art_fetch, re.sub(r" at 0x[0-9a-f]+", " at 0x", result.art_fetch_detail)
 
 

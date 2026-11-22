@@ -323,7 +323,11 @@ def staging(tmp_path) -> Path:
 
 
 def bind(monkeypatch, *, token: str | None, beatport=CHALLENGE, search=None, by_title=None):
-    """Bind the worker's searcher to the shipped one over recorded answers."""
+    """Bind the worker's searcher to the shipped one over recorded answers.
+
+    A searcher per call carrying the run count the worker hands in, as the
+    shipped binder builds one. ``by_title`` answers Beatport per title.
+    """
 
     def fetch(url: str) -> searchers.Fetched:
         if url.startswith(searchers.BEATPORT_SEARCH):
@@ -476,7 +480,12 @@ def test_a_sweep_stopped_by_an_outage_carries_no_refusal_stop(
 
 
 class Rest(Tail):
-    """The tail with its tag step REAL and every later step standing in."""
+    """The tail with its tag step REAL and every later step standing in.
+
+    ``tag folder`` runs through the real dispatcher, its worker and the shipped
+    searcher over recorded answers. The analysis, naming and landing stand in as
+    :class:`tests.test_sync_land.Tail` has them: real jobs, and the landing's gate.
+    """
 
     def __call__(self, argv: list[str]):
         if argv[:2] == ["tag", "folder"]:

@@ -45,7 +45,11 @@ def _clean_registry():
 
 @pytest.fixture(scope="module")
 def silence(tmp_path_factory) -> Path:
-    """One real FLAC container, synthesized once and copied per file."""
+    """One real FLAC container, synthesized once and copied per file.
+
+    Real because the write under test goes through ``core.tags.write_genre``,
+    and a stub would prove nothing about the write.
+    """
     return synth_container(tmp_path_factory.mktemp("silence"), ".flac")
 
 
@@ -66,7 +70,11 @@ def place(folder: Path, silence: Path, name: str, genre: str | None) -> Path:
 
 
 def answering(table: dict[str, str]):
-    """A searcher that answers by TITLE, and records what it was asked."""
+    """A searcher that answers by TITLE, and records what it was asked.
+
+    Two tests assert the searcher was not asked at all, and a searcher with no
+    memory cannot tell "asked and declined" from "never asked".
+    """
     asked: list[tuple[str, str]] = []
 
     def searcher(artist: str, title: str):
@@ -100,7 +108,13 @@ def test_a_declared_catch_all_is_selected_and_a_specific_genre_is_not(folder, si
 
 
 def test_a_file_with_no_genre_is_passed_over_rather_than_selected(folder, silence):
-    """THE PREDICATE SAYS BLANK IS TOO COARSE AND THE SELECTION STILL REFUSES IT."""
+    """THE PREDICATE SAYS BLANK IS TOO COARSE AND THE SELECTION STILL REFUSES IT.
+
+    ``is_too_coarse_as_source("")`` is True, so selecting on it alone would put
+    this verb and ``tag.folder`` on one state under two ownership policies: fill
+    if empty there, OWNED here. Both answers are asserted, because the decision
+    is that they differ.
+    """
     blank = place(folder, silence, "blank", None)
     assert TAXONOMY.is_too_coarse_as_source(""), (
         "the shipped template stopped declaring the empty string too coarse, so "
@@ -119,7 +133,12 @@ def test_a_folder_that_is_not_there_selects_nothing_rather_than_raising(tmp_path
 
 def test_a_padded_catch_all_reaches_the_selection_already_trimmed(folder, silence):
     """WHY THIS PASS DOES NO TRIMMING OF ITS OWN, pinned where somebody would add
-    one back."""
+    one back.
+
+    `tags.read_tag` trims every value it returns, so a strip here is dead code.
+    The candidate's `current` is shown and stored, so it must be trimmed, but by
+    the reader alone: trimming twice is two opinions that agree until one moves.
+    """
     path = place(folder, silence, "padded", f"  {CATCH_ALL} ")
     assert tags.read_genre_from_file(path) == CATCH_ALL, (
         "core.tags stopped trimming, so this pass is now reading padded values "
@@ -156,7 +175,12 @@ def test_the_selection_is_sorted_so_one_unchanged_folder_digests_the_same_twice(
 def test_a_catch_all_gets_a_specific_answer_and_the_taxonomy_recognises_it(
     folder, silence, store
 ):
-    """The plan's first scenario, through the real tag writer."""
+    """The plan's first scenario, through the real tag writer.
+
+    The last assertion is what makes the write worth anything: routing looks a
+    genre up as a bucket display name, so an answer the taxonomy cannot
+    recognise corrects the tag and leaves the track where it was.
+    """
     path = place(folder, silence, "track", CATCH_ALL)
     tags.write_tags(path, {"title": "Track One", "artist": "An Artist"})
 
@@ -223,7 +247,12 @@ def test_a_second_run_offers_one_item_rather_than_a_second(folder, silence, stor
 def test_a_resolved_verdict_is_used_and_the_searcher_is_never_asked_again(
     folder, silence, store
 ):
-    """The plan's fourth scenario, second half, and the ORDERING inside it."""
+    """The plan's fourth scenario, second half, and the ORDERING inside it.
+
+    Asking the searcher before reading the verdict would spend a lookup per run
+    on an answered question and let a fresh answer overwrite it. Only the
+    assertion that the searcher was not asked separates the two orders.
+    """
     path = place(folder, silence, "track", CATCH_ALL)
     retag.retag_folder(folder, searcher=answering({}), declared=TAXONOMY, store=store)
     item = review.list_items(store, queue=str(review.Queue.GENRE)).items[0]
@@ -259,7 +288,12 @@ def test_a_rejected_verdict_leaves_the_file_alone_and_asks_nobody(folder, silenc
 
 def test_a_rejected_items_chosen_option_is_not_an_answer(folder, silence, store):
     """``accepted_genre`` reads the VERDICT, not just the option, and this is the
-    drive that separates the two."""
+    drive that separates the two.
+
+    A REJECTED item can carry a chosen option, so a reader that skipped the
+    verdict would turn every rejection into an acceptance. The pass level test
+    cannot see it, because ``retag_folder`` checks ``suppressed`` first.
+    """
     path = place(folder, silence, "track", CATCH_ALL)
     option = review.Option(option_id="deep", summary=SPECIFIC, detail={"genre": SPECIFIC})
     offered = review.offer(
@@ -280,7 +314,13 @@ def test_a_rejected_items_chosen_option_is_not_an_answer(folder, silence, store)
 
 
 def test_a_review_item_is_addressed_by_the_file_path_under_that_exact_name(tmp_path):
-    """THE KEY NAME IS PINNED, and no same-run test can pin it."""
+    """THE KEY NAME IS PINNED, and no same-run test can pin it.
+
+    ``review.item_id_for`` hashes this mapping, so renaming the key changes
+    every item id. Within one run both halves rename together, but across
+    builds every answered question is asked again under a new id. R-182 covers
+    the VALUE moving; this pins the NAME.
+    """
     path = tmp_path / "track.flac"
     assert retag.identity_for(path) == {"path": str(path)}
 
@@ -300,7 +340,14 @@ def test_the_offered_candidates_are_the_declared_buckets_and_never_a_catch_all()
 
 
 def test_the_correction_verb_cannot_write_a_genre_off_the_declared_taxonomy():
-    """R-650's shape looked for one verb over, which is METHOD's fifth pattern."""
+    """R-650's shape looked for one verb over, which is METHOD's fifth pattern.
+
+    ``tag folder`` can write a genre the declared table has never heard of.
+    This verb cannot: every candidate is a declared bucket's display, and
+    ``review.resolve`` refuses an answer not offered. Driven through the
+    resolver: each offered genre goes back through ``suggest_tag`` and none
+    reaches the last tier, so a bucket whose display nothing resolves fails.
+    """
     offered = [
         (option.detail or {}).get("genre") or option.summary
         for option in retag.options_for(TAXONOMY)
@@ -344,7 +391,12 @@ def test_an_accepted_answer_that_is_itself_a_catch_all_is_still_refused(
 def test_a_file_settled_against_every_candidate_is_not_counted_as_an_open_question(
     folder, silence, store
 ):
-    """A REJECTED item carries an item id, because the item is what settled it."""
+    """A REJECTED item carries an item id, because the item is what settled it.
+
+    So "has an id and was not written" counts a decision as a question and
+    reports work a person already did. The assertion on the written half stops
+    it passing against a pass that reports nothing.
+    """
     settled = place(folder, silence, "settled", CATCH_ALL)
     open_one = place(folder, silence, "open", CATCH_ALL)
     retag.retag_folder(folder, searcher=answering({}), declared=TAXONOMY, store=store)
@@ -379,7 +431,13 @@ def test_every_result_carries_a_reason_or_a_written_genre_and_never_both():
 
 
 def test_the_item_id_this_pass_computes_is_the_one_the_queue_stores(folder, silence, store):
-    """TWO COMPUTATIONS OF ONE FACT, held to agreeing."""
+    """TWO COMPUTATIONS OF ONE FACT, held to agreeing.
+
+    ``retag_folder`` derives an id from ``review.item_id_for`` to look a verdict
+    up, and ``review.offer`` derives it again to insert. If their normalization
+    diverged, the pass would re-ask a settled question for ever, with each half
+    green on its own.
+    """
     path = place(folder, silence, "track", CATCH_ALL)
     retag.retag_folder(folder, searcher=answering({}), declared=TAXONOMY, store=store)
 
@@ -445,7 +503,12 @@ def test_the_plan_digest_changes_when_the_selection_changes(folder, silence):
 def test_the_shell_digests_the_selection_and_the_folder_rather_than_a_constant(
     folder, silence, tmp_path
 ):
-    """THE PROPERTY THAT WAS UNREACHABLE UNTIL THE PLAN CAME OUT OF THE HANDLER."""
+    """THE PROPERTY THAT WAS UNREACHABLE UNTIL THE PLAN CAME OUT OF THE HANDLER.
+
+    Both halves are decisions: the rows, so approving forty files is not
+    approving a hundred and forty, and the folder, so a decision over one empty
+    folder does not satisfy the gate for another.
+    """
     from cratekit.tagging import retag_cli
 
     empty_one = tmp_path / "EmptyOne"
@@ -518,7 +581,13 @@ def test_a_written_file_is_relinked_to_the_existing_genre_row(tmp_path):
 
 
 def test_a_soft_deleted_genre_is_invisible_through_the_shipped_reader(tmp_path):
-    """U59's first scenario, driven at the reader every shipped verb reaches."""
+    """U59's first scenario, driven at the reader every shipped verb reaches.
+
+    tests/test_metadata_policy.py proves ``resolve_genre_id``; this proves the
+    path, ``crate tag retag`` into ``plan_library`` into ``plan_genre_retag``.
+    The one row for this genre is retired, so the answer is a per-row
+    ``genre-unknown`` skip, never a ``GenreID`` pointed at a tombstone.
+    """
     path = tmp_path / "track.flac"
     rows = [trees.ContentRow(content_id="1", recorded=str(path), deleted=False)]
     mapped = {"1": Row("1", GenreID=None)}
@@ -541,7 +610,11 @@ def test_a_soft_deleted_genre_is_invisible_through_the_shipped_reader(tmp_path):
 
 
 def test_a_live_namesake_behind_a_tombstone_is_still_found_through_the_reader(tmp_path):
-    """The control, and without it the row above is satisfied by refusing everything."""
+    """The control, and without it the row above is satisfied by refusing everything.
+
+    The first ACTIVE row wins, not the first row. The tombstone is listed FIRST,
+    because that order is what separates a reader stopping at the first row.
+    """
     path = tmp_path / "track.flac"
     rows = [trees.ContentRow(content_id="1", recorded=str(path), deleted=False)]
     mapped = {"1": Row("1", GenreID=None)}
@@ -562,7 +635,12 @@ def test_a_live_namesake_behind_a_tombstone_is_still_found_through_the_reader(tm
 
 
 def test_an_unreadable_marker_stops_the_run_rather_than_skipping_one_row(tmp_path):
-    """The refusal reaches a person through the shipped path, not just the unit."""
+    """The refusal reaches a person through the shipped path, not just the unit.
+
+    A binding that stops exposing the column is not a per-row problem: as
+    ``genre-unknown`` it would be thousands of skips blaming a sound taxonomy.
+    Driven through ``plan_library``, where a caller catching it would lose it.
+    """
     path = tmp_path / "track.flac"
     rows = [trees.ContentRow(content_id="1", recorded=str(path), deleted=False)]
     mapped = {"1": Row("1", GenreID=None)}
@@ -583,7 +661,12 @@ def test_an_unreadable_marker_stops_the_run_rather_than_skipping_one_row(tmp_pat
 
 
 def test_the_plan_is_built_from_what_was_written_and_never_from_the_selection(tmp_path):
-    """The reporting half of the first-caller defect the corpus records."""
+    """The reporting half of the first-caller defect the corpus records.
+
+    A plan built from the selection would name a row for a file whose write was
+    refused, and the database would disagree with the file in the direction
+    nobody checks.
+    """
     path = tmp_path / "track.flac"
     refused = retag.RetagOutcome(
         results=(
@@ -710,7 +793,14 @@ def test_two_live_rows_on_one_location_are_surfaced_rather_than_written_to_both(
 def test_two_written_files_resolving_to_one_row_are_both_surfaced_and_neither_wins(
     tmp_path,
 ):
-    """The mirror of the ambiguous case, and the one a dictionary hides."""
+    """The mirror of the ambiguous case, and the one a dictionary hides.
+
+    Keying on the content id would let the last file decide the row while the
+    report named both as written. Two names differing only in a composed accent
+    are two files to ``rglob`` and one location to
+    ``locations.norm_for_compare``, which folds to NFC. The function touches no
+    filesystem, so the collision is handed in directly.
+    """
     import unicodedata
 
     name = "café.flac"
@@ -780,7 +870,13 @@ def test_the_apply_refuses_a_field_the_retag_policy_does_not_own(tmp_path):
 def test_an_unregistered_operation_writes_nothing_and_the_apply_is_what_prevents_it(
     tmp_path,
 ):
-    """THE FIRST-CALLER HOLE, DRIVEN IN BOTH DIRECTIONS."""
+    """THE FIRST-CALLER HOLE, DRIVEN IN BOTH DIRECTIONS.
+
+    ``metadata_decision`` answers SKIP_UNOWNED for an unregistered operation, so
+    applying a plan without enabling writes nothing and reports a clean run. The
+    second half shows ``apply_library`` turns it into a write; alone it would
+    pass with ``enable`` deleted, since the registry is process wide.
+    """
     path = tmp_path / "track.flac"
     rows = [trees.ContentRow(content_id="1", recorded=str(path), deleted=False)]
     db = FakeLookup([Row("7", Name=SPECIFIC, rb_local_deleted=0)])
@@ -846,7 +942,12 @@ def test_the_resume_argv_carries_the_folder_the_job_and_the_gate_run():
 
 
 def test_an_empty_folder_argument_refuses_rather_than_sweeping_the_working_directory():
-    """THE BRANCH THIS SUITE DID NOT DRIVE UNTIL A POPULATION PIN REPORTED IT."""
+    """THE BRANCH THIS SUITE DID NOT DRIVE UNTIL A POPULATION PIN REPORTED IT.
+
+    The parser accepts an empty string, so a person reaches this branch, and
+    ``cause.refuse`` raises ``UnknownReason`` for an undeclared slug, so the
+    branch must refuse with a declared one.
+    """
     from cratekit.core.exit_codes import ExitCode
     from cratekit.tagging import retag_cli
 
@@ -869,7 +970,13 @@ def test_an_empty_folder_argument_refuses_rather_than_sweeping_the_working_direc
 
 def test_the_handler_finds_its_gate_by_digest_source_and_not_by_position():
     """Indexing ``gates[0]`` would silently answer the wrong question the day the
-    tuple is reordered."""
+    tuple is reordered.
+
+    The neighbour is supplied by hand: the entry holds one gate since R-246, and
+    reversing a one-tuple proves nothing. It is the registry's own shared spec,
+    which carries no ``digest_source``, the key the search uses, and is the one
+    a database writing verb would bring.
+    """
     from cratekit.cli import registry
     from cratekit.tagging import retag_cli
 
@@ -916,7 +1023,13 @@ def test_the_handler_refuses_when_its_entry_declares_no_plan_gate():
 def test_the_frozen_rows_digest_the_same_after_the_folder_has_moved_under_them(
     folder, silence
 ):
-    """KTD8 and R13, asserted on the function rather than through the dispatcher."""
+    """KTD8 and R13, asserted on the function rather than through the dispatcher.
+
+    ``plan_for`` walks the folder, so its digest moves as files are corrected
+    and every resume after a partial run would meet ``DecisionStale``. The
+    frozen rows digest the same after the folder moves. The third digest stops
+    a ``digest_for`` that ignored its rows from satisfying the first two.
+    """
     from cratekit.tagging import retag_cli
 
     place(folder, silence, "one", CATCH_ALL)
@@ -939,7 +1052,11 @@ def test_the_frozen_rows_digest_the_same_after_the_folder_has_moved_under_them(
 
 
 def test_the_frozen_rows_survive_the_json_the_payload_is_stored_as(folder, silence):
-    """The payload is JSON on disk, and the digest is compared across that trip."""
+    """The payload is JSON on disk, and the digest is compared across that trip.
+
+    The resume digests rows ``core.jobs`` has serialized, so a digest over
+    anything that does not survive the trip refuses a decision nobody changed.
+    """
     import json
 
     from cratekit.tagging import retag_cli
@@ -955,7 +1072,12 @@ def test_the_frozen_rows_survive_the_json_the_payload_is_stored_as(folder, silen
 def test_two_different_empty_folders_digest_differently_through_the_pure_function(
     tmp_path,
 ):
-    """The property the split had to carry down with it, stated where it now lives."""
+    """The property the split had to carry down with it, stated where it now lives.
+
+    Approving a sweep of one empty folder is not approving another. The test
+    above asserts it through ``plan_for``, which walks; this asserts it on the
+    function the resume calls, which cannot walk and could lose the folder.
+    """
     from cratekit.tagging import retag_cli
 
     assert retag_cli.digest_for(str(tmp_path / "EmptyOne"), []) != retag_cli.digest_for(
@@ -967,7 +1089,13 @@ def test_two_different_empty_folders_digest_differently_through_the_pure_functio
 
 
 def refusing_on(monkeypatch, *names: str) -> None:
-    """The one genre writer, answering False for the files named."""
+    """The one genre writer, answering False for the files named.
+
+    False rather than a raise, as ``tags.write_genre`` answers for a locked or
+    read only file. Patched after the fixtures are placed, since ``place`` tags
+    through the same writer, and patched at all because root ignores a read only
+    mode and the immutable flag is Linux's alone and privileged (R-1103).
+    """
     real = tags.write_genre
 
     def writer(path: Path, genre: str) -> bool:
@@ -981,7 +1109,12 @@ def refusing_on(monkeypatch, *names: str) -> None:
 def test_a_file_that_will_not_take_its_answer_is_reported_unwritten_and_the_rest_corrected(
     folder, silence, store, monkeypatch
 ):
-    """The brief's first scenario, at the pass."""
+    """The brief's first scenario, at the pass.
+
+    The file is read back off disk as well: a pass reporting the answer it
+    meant to write is the defect, so an outcome agreeing with itself proves
+    nothing.
+    """
     paths = {name: place(folder, silence, name, CATCH_ALL) for name in ("a", "b", "c")}
     refusing_on(monkeypatch, "b")
     searcher = answering({name: SPECIFIC for name in "abc"})
@@ -1003,7 +1136,11 @@ def test_a_file_that_will_not_take_its_answer_is_reported_unwritten_and_the_rest
 
 
 def test_an_unwritten_file_never_reaches_the_library_plan(folder, silence, monkeypatch):
-    """``plan_library`` plans from what was written, and an unwritten file is not."""
+    """``plan_library`` plans from what was written, and an unwritten file is not.
+
+    Its row keeps the genre its file still carries, so planning it would move
+    the database ahead of the file in the direction nobody checks.
+    """
     place(folder, silence, "a", CATCH_ALL)
     refusing_on(monkeypatch, "a")
 
@@ -1018,7 +1155,11 @@ def test_an_unwritten_file_never_reaches_the_library_plan(folder, silence, monke
 def test_an_accepted_verdict_a_file_will_not_take_is_unwritten_and_kept_for_the_next_run(
     folder, silence, store, monkeypatch
 ):
-    """A person's answer is not spent on a write that did not land."""
+    """A person's answer is not spent on a write that did not land.
+
+    The verdict stays resolved, so the next run reads it again rather than
+    asking, and writes it once the file will take it.
+    """
     path = place(folder, silence, "track", CATCH_ALL)
     retag.retag_folder(folder, searcher=answering({}), declared=TAXONOMY, store=store)
     item = review.list_items(store, queue=str(review.Queue.GENRE)).items[0]

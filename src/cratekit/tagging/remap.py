@@ -77,7 +77,15 @@ class Recorded:
 
 @dataclass(frozen=True, slots=True)
 class Item:
-    """One file under the library that does not agree, or could not be read."""
+    """One file under the library that does not agree, or could not be read.
+
+    ``word`` is the general catalogue's word a record carries for the file and
+    ``recorded`` the genre that record says was written. ``current`` is what
+    the file carries now, empty when blank or not read. ``wanted`` is the genre
+    the taxonomy gives the word now, empty when it gives none. ``action`` is
+    :data:`WRITE` or :data:`LEAVE`, and ``reason`` is the outcome a left file
+    was counted under, empty on a write.
+    """
 
     path: str
     word: str

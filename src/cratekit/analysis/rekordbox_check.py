@@ -331,7 +331,10 @@ _CHUNK = 500
 
 
 def _content_rows(db: Any, content_ids: Sequence[str]) -> dict[str, Any]:
-    """The collection rows named, by content ID, read a chunk of IDs to a statement (U259)."""
+    """The collection rows named, by content ID, read a chunk of IDs to a statement (U259).
+
+    A row the collection lacks is absent, which the caller reads as ``None``.
+    """
     from pyrekordbox.db6 import tables
 
     found: dict[str, Any] = {}

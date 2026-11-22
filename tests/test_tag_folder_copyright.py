@@ -76,7 +76,12 @@ def downloaded(
     label: str | None = None,
     genre: str | None = None,
 ) -> Path:
-    """One FLAC file as the vendored downloader leaves it, with a picture."""
+    """One FLAC file as the vendored downloader leaves it, with a picture.
+
+    The copyright line is written under the downloader's own key, ``COPYRIGHT``
+    through mutagen, never Cratekit's writer, so what is read is what a real
+    download carries rather than what this unit's own table writes.
+    """
     from mutagen.flac import FLAC
 
     path = folder / f"{name}.flac"
