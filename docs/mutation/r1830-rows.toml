@@ -210,3 +210,13 @@ surface = "user"
 tests = ["tests/test_sync_removed.py"]
 old = '''    if unreadable:'''
 new = '''    if False:'''
+
+[[rows]]
+id = "M24_composite_for_m12"
+description = "What M12 does hold: _live's None branch is reached only past the NULL refusal, so the composite drops that refusal, the guard M12's branch stands behind"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+pairs_with = "M12_unreadable_marker_reads_live"
+tests = ["tests/test_sync_removed.py"]
+old = '''    if unreadable:'''
+new = '''    if False:'''
