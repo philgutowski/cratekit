@@ -702,7 +702,7 @@ source = { table = "u135.json", id = "A8_job_key_not_stamped" }
 description = "A set landing's batch playlist record carries no job key"
 file = "src/cratekit/intake/native.py"
 surface = "user"
-tests = ["tests/test_u135_set_inbox_join.py::test_a_set_landed_once_keeps_one_inbox_playlist_named_for_the_set"]
+tests = ["tests/test_u135_set_inbox_join.py"]
 old = '''
         if plan.set_job_id:
             kept[INBOX_JOB_KEY] = plan.set_job_id
