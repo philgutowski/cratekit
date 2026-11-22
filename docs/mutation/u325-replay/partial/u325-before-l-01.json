@@ -1,0 +1,251 @@
+{
+  "name": "u325-before-l-01",
+  "pass_kind": "replay",
+  "branch": "HEAD",
+  "head": "539638eb",
+  "when": "2026-11-22 19:20 UTC",
+  "valid": true,
+  "invalid_reason": "in progress",
+  "baseline_collected": 22663,
+  "baseline_exit": 1,
+  "pytest_runs": 12,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 251,
+  "known_source": ".cloud-battery/baseline.txt",
+  "temp_place": "disk",
+  "temp_on_disk": 0,
+  "baseline_source": "read",
+  "baseline_note": "read from the battery's verdict, `.cloud-battery/verdict.json`, written by `cloud_battery.py compare` at 2026-11-22 19:20 UTC for commit `539638ebe629`: the same commit on a clean tree, the same machine, checkout and interpreter, and the same known failures file",
+  "subset_baselines": 4,
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/intake/land_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/intake/land_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "0f9fcd4ebf849887",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 22663,
+    "baseline_collected": 22663,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "u188.M5_repeat_kept",
+      "description": "_mapped_back: keep a repeated pair instead of dropping it, so the refusal names the folder pair twice on a drive that never moved",
+      "file": "src/cratekit/intake/land_cli.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "3f6c05fc71f73cdc",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22663,
+      "baseline_collected": 22663,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "    return tuple(\n        dict.fromkeys(\n            (\n                (str(area.staging), str(planned.folder)),\n                (str(scratch_target), str(target)),\n                stored,\n            )\n        )\n    )",
+      "new": "    return (\n        (str(area.staging), str(planned.folder)),\n        (str(scratch_target), str(target)),\n        stored,\n    )",
+      "source": {
+        "table": "u188.json",
+        "id": "M5_repeat_kept"
+      }
+    },
+    {
+      "id": "r154-c.C1_digest_the_word",
+      "description": "Digest a constant where the resolved stamp goes, which is R-153 itself: a backup landing between the two acts leaves the digest where it was",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ddc9bb6eacc6ca09",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_backup_landing_between_the_two_acts_moves_the_digest",
+        "tests/test_restore_cli.py::test_what_is_offered_is_what_is_pulled"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"snapshot\": snapshot.stamp,",
+      "new": "                \"snapshot\": \"newest\",",
+      "source": {
+        "table": "r154-c.json",
+        "id": "C1_digest_the_word"
+      }
+    },
+    {
+      "id": "r154-c.C2_expected_volume_outside_the_digest",
+      "description": "Leave the stated volume out of the offer, so an answer given without the flag is honoured against a run carrying it",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "942d3b43d6064dcf",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_digest_moves_when_the_expected_volume_is_stated",
+        "tests/test_restore_cli.py::test_the_replaced_drive_flag_reaches_the_engine_and_the_digest"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"expected_volume\": snapshot_volume,",
+      "new": "                \"expected_volume\": None,",
+      "source": {
+        "table": "r154-c.json",
+        "id": "C2_expected_volume_outside_the_digest"
+      }
+    },
+    {
+      "id": "r154-c.C3_hand_down_the_flag",
+      "description": "Hand the engine the flag instead of the stamp that was offered, so it resolves the newest snapshot again after the approval",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7fd8db2d9f9065f3",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_backup_landing_after_the_approval_does_not_change_what_is_pulled"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        snapshot=pulling.stamp if pulling is not None else None,",
+      "new": "        snapshot=ctx.args.snapshot,",
+      "source": {
+        "table": "r154-c.json",
+        "id": "C3_hand_down_the_flag"
+      }
+    },
+    {
+      "id": "r154-c.C4_pull_flags_dropped",
+      "description": "Never refuse a flag about the pull typed without the pull, so it is dropped in silence ahead of a capture rollback",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "692c3f5938164377",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for[flags0]",
+        "tests/test_restore_cli.py::test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for[flags1]",
+        "tests/test_restore_cli.py::test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for[flags2]",
+        "tests/test_restore_cli.py::test_a_flag_about_the_pull_is_refused_when_no_pull_was_asked_for[flags3]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    _refuse_pull_flags_without_the_pull(ctx.args)\n    requested = ctx.args.session_id",
+      "new": "    requested = ctx.args.session_id",
+      "source": {
+        "table": "r154-c.json",
+        "id": "C4_pull_flags_dropped"
+      }
+    },
+    {
+      "id": "r154-c.C5_stated_volume_stops_at_the_verb",
+      "description": "Show and digest the stated volume and never pass it to the engine, so the replaced drive restore is approved and then refused under the gates",
+      "file": "src/cratekit/session/restore_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fed29622194abb84",
+      "subset": [
+        "tests/test_restore_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 98,
+      "baseline_collected": 98,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_restore_cli.py::test_the_replaced_drive_flag_reaches_the_engine_and_the_digest"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        snapshot_volume=ctx.args.snapshot_volume,\n        accept_unrecorded=pulling.named if pulling is not None else None,",
+      "new": "        snapshot_volume=None,\n        accept_unrecorded=pulling.named if pulling is not None else None,",
+      "source": {
+        "table": "r154-c.json",
+        "id": "C5_stated_volume_stops_at_the_verb"
+      }
+    }
+  ],
+  "dropped": [],
+  "mapped": []
+}
