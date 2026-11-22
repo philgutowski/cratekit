@@ -371,7 +371,7 @@ def test_no_analyze_playlist_still_asks_and_a_batch_named_analyze_is_refused(nat
     assert sorted(p.name for p in staged) == ["Alpha.flac"]
 
 
-def test_with_no_acknowledgment_then_on_the_bridge_the_verb_refuses_before_the_gate(machine):
+def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(machine):
     code, refused = drive(VERB)
     assert code not in (int(ExitCode.OK), int(ExitCode.DECISION_REQUIRED)), refused
     assert refused["cause"]["reason"] == "backup-acknowledgment-missing", refused

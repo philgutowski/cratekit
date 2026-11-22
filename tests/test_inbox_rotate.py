@@ -684,9 +684,7 @@ def test_an_old_folder_declared_wrongly_is_a_taxonomy_problem_and_not_a_tracebac
     assert DECLARED.intake_old == taxonomy.Node("inbox_old", "Old")
 
 
-def test_the_name_a_landing_gives_is_the_rotations_shape_and_no_acknowledgment_refuses(
-    machine, monkeypatch
-):
+def test_the_name_a_landing_gives_is_the_rotations_shape(machine, monkeypatch):
     """One owner of the shape: what ``readable`` names, ``is_default_shape`` knows."""
     from cratekit.intake import batch_name
     monkeypatch.setattr(batch_name, "today", lambda: TODAY)
@@ -696,7 +694,9 @@ def test_the_name_a_landing_gives_is_the_rotations_shape_and_no_acknowledgment_r
     assert batch_name.is_default_shape("2026-10-03 Tidal playlists 2")
     for name in ("listen later", "2026-10-03", "2026-10-03T101010Z-1_inboxed", "3_9_26 phil"):
         assert not batch_name.is_default_shape(name), name
-    # With no acknowledgment the verb refuses before the gate, on a cut over tree.
+
+
+def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(machine):
     _cut_over_intake(machine)
     code, envelope = drive(VERB)
     assert code == int(ExitCode.ACK_REQUIRED), envelope
