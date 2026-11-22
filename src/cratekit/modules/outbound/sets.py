@@ -1,41 +1,26 @@
 """A set's tracklist as a private playlist on the account, and its archive (R-837).
 
-The source system keeps a set on the account one way: the identified set, or a
-tracklist somebody typed, becomes one private playlist, and once the set has
-been downloaded that playlist is filed in a root folder named for the year the
-set was processed, so the account's root does not fill with sets. This module
-is both steps, each planned and then applied, against the account seam.
+A set becomes one private playlist; once downloaded, the archive files it in a
+root folder for the year it was processed, so the account's root does not fill
+with sets. Both steps are planned, then applied, against the account seam.
 
-THE ARCHIVE CHANGES NO TITLE (U242). The source system also prefixed the set
-``DOWNLOADED ``; that prefix is retired, decided by Phillip on 2026-11-11, and
-an archived set is held as taken in Cratekit's own record instead, which is
-what ``crate organize``'s INSPIRATION step reads a set by.
+THE ARCHIVE CHANGES NO TITLE (U242): the ``DOWNLOADED `` prefix is retired
+(2026-11-11) and an archived set is held as taken in Cratekit's own record,
+which ``crate organize``'s INSPIRATION step reads.
 
-THE SET'S FOLDER IS ``Downloaded Sets <year>`` (U142), the folder the author
-keeps every downloaded set in, and never the plain ``<year>`` folder a marked
-custom playlist is filed in. The two are recorded under two keys of the
-ledger's folder map, each the folder's own name, so neither step reuses the
-other's folder.
+THE SET'S FOLDER IS ``Downloaded Sets <year>`` (U142), never the plain
+``<year>`` folder a marked custom playlist is filed in; each is recorded under
+its own name, so neither step reuses the other's folder.
 
-ADD ONLY, BECAUSE THE PROTOCOL IS. A playlist is created, tracks are added, a
-folder is created and a playlist is put in one. The archive's mark is a taken
-entry in ``sync mark``'s record, which ``sync unmark`` lets go. The one
-retitle follows the library (U140): a set whose INSPIRATION playlist a
-person renamed has its account playlist renamed to match, and the ledger's key
-and the job's frozen name move with it, so a backfill finds it and makes no
-twin.
+ADD ONLY, BECAUSE THE PROTOCOL IS, but for one retitle that follows the library
+(U140): a set whose INSPIRATION playlist a person renamed has its account
+playlist, ledger key and frozen job name renamed to match, so a backfill makes
+no twin.
 
-THE PLAN READS AND WRITES NOTHING. Each tracklist row arrives already decided,
-matched to one provider track or left out with its reason, and the plan
-compares the matched tracks with the playlist recorded for the set's name and
-what that playlist now holds. A second run onto the same set plans nothing.
-
-THE ARCHIVE PUTS THE PLAYLIST IN ITS FOLDER FIRST AND THEN READS ITS TITLE
-THERE. The account seam reads a title only through a folder's listing, so the
-recheck before the mark, ``sync/marks.py``'s rule, is made on the listing of
-the folder the playlist was just put in. A move changes where a playlist sits
-and nothing it holds, so a playlist moved and then found retitled by a person
-has lost nothing, and is left with its title.
+THE PLAN READS AND WRITES NOTHING, so a second run onto the same set plans
+nothing. THE ARCHIVE MOVES FIRST AND THEN READS THE TITLE in the folder, since
+the seam reads a title only through a folder's listing (``sync/marks.py``'s
+recheck); a playlist found retitled after the move has lost nothing.
 
 Layer: modules.
 """
@@ -71,7 +56,7 @@ MARK = "mark"
 ALREADY_MARKED = "already-marked"
 RETITLED = "retitled-since-built"
 #: The folder's listing did not show the playlist just put in it, so there is
-#: no title to recheck, and a rename without one is not made.
+#: no title to recheck.
 NOT_LISTED = "not-listed"
 
 
@@ -88,8 +73,7 @@ class SetRow:
     artist: str
     title: str
     remote_id: str = ""
-    #: How the row was matched, ``ref``, ``isrc``, ``library-isrc``, ``accepted``
-    #: or ``search``.
+    #: How it was matched: ``ref``, ``isrc``, ``library-isrc``, ``accepted`` or ``search``.
     how: str = ""
     #: Why it was not, in words for a person. Empty for a matched row.
     reason: str = ""
@@ -123,9 +107,8 @@ class SetPlan:
 
     @property
     def writes(self) -> bool:
-        # A SET WITH NOTHING MATCHED IS NOT MADE. An empty private playlist
-        # under the set's name is not the set, and recorded it would be reused
-        # by every later run as though it were.
+        # A SET WITH NOTHING MATCHED IS NOT MADE: an empty playlist recorded
+        # under its name would be reused by every later run as the set.
         return bool(self.add)
 
     def identity(self) -> dict[str, Any]:
@@ -159,19 +142,16 @@ def plan_set(
 ) -> SetPlan:
     """Decide the set's playlist against the ledger and the account.
 
-    A TRACK RECORDED AS ADDED AND NO LONGER ON THE PLAYLIST was taken off by a
-    person and is not put back, on ``folders.plan``'s rule, and neither is one
-    the provider refused before. A track named by two rows of the set is asked
-    for once.
+    A track recorded as added and no longer on the playlist was taken off by a
+    person and is not put back, nor one the provider refused before; a track
+    two rows name is asked for once.
     """
     wanted = tuple(dict.fromkeys(row.remote_id for row in rows if row.matched))
     recorded = ledger.set_playlist(cfg, name)
     if recorded is None:
         return SetPlan(name=name, year=year, action=CREATE, rows=tuple(rows), add=wanted)
     asked = recorded.added | recorded.refused
-    # THE PLAYLIST IS READ EVERY TIME, one paged read, so a track a person took
-    # off is said as taken off rather than shown as on the playlist from what
-    # the record says was written.
+    # READ EVERY TIME, so a track a person took off is said as taken off.
     held = set(account.playlist_tracks(recorded.remote_id))
     return SetPlan(
         name=name,
@@ -182,9 +162,7 @@ def plan_set(
         add=tuple(one for one in wanted if one not in asked and one not in held),
         refused=frozenset(one for one in wanted if one in recorded.refused and one not in held),
         on_playlist=frozenset(one for one in wanted if one in held),
-        taken_off=frozenset(
-            one for one in wanted if one in recorded.added and one not in held
-        ),
+        taken_off=frozenset(one for one in wanted if one in recorded.added and one not in held),
     )
 
 
@@ -193,9 +171,8 @@ def apply_set(
 ) -> SetApplied:
     """Make the playlist if none is recorded and add the planned tracks, into ``done``.
 
-    ``done`` is the caller's, so a raise part way leaves in it what was written
-    before the raise, for the refusal to name. Each chunk is recorded as it
-    lands, so a run started again plans only what is left.
+    ``done`` is the caller's, so a raise part way leaves in it what was
+    written; each chunk is recorded as it lands, so a rerun plans the rest.
     """
     remote_id, made = ledger.reserve_set_playlist(
         cfg, planned.name, planned.year, lambda: account.create_playlist(planned.name)
@@ -212,9 +189,6 @@ def apply_set(
     return done
 
 
-# ── the archive ─────────────────────────────────────────────────────────────
-
-
 @dataclass(frozen=True, slots=True)
 class ArchivePlan:
     """The set's folder for its year and the one set playlist the archive files in it."""
@@ -225,8 +199,7 @@ class ArchivePlan:
     folder_id: str = ""
     #: A recorded folder the account no longer lists, so its record is replaced.
     stale_folder: str = ""
-    #: The playlist's title in the folder, when it is in the folder already.
-    #: ``None`` while it is not, since the seam reads a title only there.
+    #: The playlist's title in the folder, ``None`` while it is not in it.
     title: str | None = None
     #: Whether Cratekit's record already holds the playlist as taken (U242).
     taken: bool = False
@@ -246,11 +219,7 @@ class ArchivePlan:
 
     @property
     def left(self) -> str:
-        """Why the set is not marked, or ``""`` when it is.
-
-        TAKEN ALREADY, by the record or by a legacy prefix still on its title,
-        or retitled by a person since it was made, whose title is theirs.
-        """
+        """Why the set is not marked: taken already, by the record or a legacy prefix, or retitled."""
         if self.taken:
             return ALREADY_MARKED
         if self.title is None or self.title == self.playlist.name:
@@ -259,12 +228,7 @@ class ArchivePlan:
 
     @property
     def writes(self) -> bool:
-        """Whether the account changes. A folder made is always a move into it.
-
-        AN ADOPTION ALONE IS NO WRITE (U142). A set a person already put in the
-        folder and prefixed is done, and every reader of this says so on the
-        gate; the folder is adopted by its name again when a set next moves in.
-        """
+        """Whether the account changes; an adoption alone is no write (U142)."""
         return self.move or self.mark
 
     def identity(self) -> dict[str, Any]:
@@ -289,8 +253,8 @@ class ArchiveApplied:
     folder_created: bool = False
     moved: bool = False
     marked: bool = False
-    #: Why the title was left after all, set when the recheck in the folder
-    #: found it already marked or retitled.
+    #: Why the title was left after all, when the recheck in the folder found
+    #: it already marked or retitled.
     left: str = ""
 
 
@@ -314,11 +278,9 @@ def plan_archive(
 ) -> ArchivePlan:
     """Decide the set's folder for ``year`` and the playlist's place and title in it.
 
-    THE FOLDER IS FOUND BY ITS NAME, ``Downloaded Sets <year>``, on the rule the
-    year folder had (U142): the ledger's record under that name reused while the
-    account still lists it, one root folder of that name adopted, two refused,
-    none created once on apply. The plain ``<year>`` folder is the filing's and
-    is never read here.
+    The folder is found by its name (U142): the ledger's record reused while
+    the account lists it, one root folder of the name adopted, two refused,
+    none created on apply.
     """
     name = folder_name(year)
     recorded = ledger.set_folder(cfg, name)
@@ -354,8 +316,8 @@ def apply_archive(
 ) -> ArchiveApplied:
     """Make or reuse the folder, put the playlist in it, then mark it if still due.
 
-    ``record`` is handed the title the set carries in the folder and holds the
-    set as taken, raising if it cannot keep it. NO TITLE CHANGES (U242).
+    ``record`` holds the set as taken by the title it carries in the folder,
+    raising if it cannot. No title changes (U242).
     """
     playlist = planned.playlist
     folder_id, made = ledger.reserve_set_folder(
@@ -372,12 +334,11 @@ def apply_archive(
     if not planned.mark:
         done.left = planned.left
         return done
-    # THE RECHECK, ON THE FOLDER IT NOW SITS IN. A title that is no longer the
-    # one it was built under is somebody's, and a prefixed one is already taken.
+    # THE RECHECK, ON THE FOLDER IT NOW SITS IN: a title other than the one it
+    # was built under is somebody's, and a prefixed one is already taken.
     now = account.folder_playlists(folder_id).get(playlist.remote_id)
     if now is None:
-        # NOT A RETITLE. A listing that does not show the playlist yet says
-        # nothing about its title, so nothing is renamed and nobody is blamed.
+        # NOT A RETITLE: a listing without it says nothing about its title.
         done.left = NOT_LISTED
         return done
     if now != playlist.name:
@@ -388,17 +349,13 @@ def apply_archive(
     return done
 
 
-# ── the rename that follows the library (U140) ──────────────────────────────
-
-
 @dataclass(frozen=True, slots=True)
 class RenamePlan:
-    """A set's account playlist renamed to the name its INSPIRATION playlist carries.
+    """A set's account playlist renamed to the name its INSPIRATION playlist carries (U140).
 
-    Three writes, each one skipped when it already holds: the title on the
-    account, the ledger's key, and the name frozen on the set's job. ``name``
-    is the key the playlist is recorded under now, which is ``to`` once an
-    earlier run moved it, so a run that stopped part way plans only the rest.
+    Three writes, each skipped when it already holds: the account title, the
+    ledger's key, the name frozen on the job. ``playlist.name`` is the key it
+    is recorded under now, ``to`` once an earlier run moved it.
     """
 
     job_id: str
@@ -407,15 +364,13 @@ class RenamePlan:
     to: str
     #: The name frozen on the job, ``""`` for a job queued before the freeze.
     frozen: str
-    #: The INSPIRATION playlist's name as the library carries it, which is
-    #: what the job freezes: a frozen name names the INSPIRATION playlist too,
-    #: and ``to`` is only its account spelling (a slash becomes a dash).
+    #: The INSPIRATION playlist's name as the library carries it, which the job
+    #: freezes; ``to`` is its account spelling (a slash becomes a dash).
     live: str = ""
     #: The INSPIRATION playlist's row, whose name ``to`` is.
     inspiration_id: str = ""
-    #: A second playlist recorded for the set under another of its names than
-    #: ``playlist``'s: a twin, which a rename would leave on the account with
-    #: its tracks and nothing recording it.
+    #: A second playlist recorded for the set under another of its names: a
+    #: twin a rename would leave on the account with nothing recording it.
     twin: ledger.SetPlaylist | None = None
 
     @property
@@ -465,20 +420,16 @@ def plan_rename(
 ) -> RenamePlan | None:
     """The rename, or ``None`` when no account playlist is recorded for the set.
 
-    ``names`` are the names the set's account playlist may be recorded under,
-    in the order a person would expect: frozen on the job, then recorded by the
-    set's landings (R-1017), then the posted day's form, then the queued day's.
-    A record under ``to`` is a rename an earlier run made, AND IT IS TAKEN ONLY
-    ALONE: one under ``to`` beside another playlist under one of ``names``, or
-    two different playlists under two of ``names``, is a twin a backfill made,
-    and the plan names it in ``twin`` rather than choose. Reads the ledger only; the
-    title on the account is set by identifier, so no read of it stands
-    between the plan and the write.
+    ``names`` are the names the playlist may be recorded under, in the order a
+    person expects (frozen, the landings' R-1017, the posted day's, the queued
+    day's). A record under ``to`` is an earlier run's rename, TAKEN ONLY ALONE:
+    beside another playlist under ``names``, or two playlists under two of
+    them, it is a twin, named in ``twin`` rather than chosen. Reads the ledger
+    only.
     """
     recorded_to = ledger.set_playlist(cfg, to) if to else None
-    # EVERY NAME IS READ, not the first that holds one (R-1017): two playlists
-    # under two of the set's older names are a twin as surely as one under
-    # ``to``, and renaming the first would leave the second unrecorded.
+    # EVERY NAME IS READ (R-1017), since two playlists under two older names
+    # are a twin as surely as one under ``to``.
     older: list[ledger.SetPlaylist] = []
     for name in names:
         if not name or name == to:
@@ -511,20 +462,16 @@ def apply_rename(
 ) -> RenameApplied:
     """Retitle on the account, then move the ledger key, then refreeze the job, into ``done``.
 
-    THE ACCOUNT FIRST, because it is the one write a person sees. A rename by
-    identifier asked twice asks for one title, so a run that failed after it
-    renames again and moves on. The key moves once the title is there, and
-    the job last, since its old name is how a rerun finds the record if the
-    move never landed. ``refreeze`` is handed the INSPIRATION playlist's own
-    name and raises if the job cannot take it.
+    The account first, the write a person sees, and a rename by identifier
+    asked twice asks for one title; the job last, since its old name is how a
+    rerun finds the record. ``refreeze`` takes the library's own name and
+    raises if the job cannot take it.
     """
     playlist = planned.playlist
     if planned.rename:
         account.rename_playlist(playlist.remote_id, planned.to)
         done.renamed = True
-        done.rekeyed = ledger.rename_set_playlist(
-            cfg, playlist.name, planned.to, playlist.remote_id
-        )
+        done.rekeyed = ledger.rename_set_playlist(cfg, playlist.name, planned.to, playlist.remote_id)
     if planned.refreeze:
         refreeze(planned.live or planned.to)
         done.refrozen = True
@@ -532,27 +479,8 @@ def apply_rename(
 
 
 __all__ = [
-    "ADOPT",
-    "ALREADY_MARKED",
-    "ArchiveApplied",
-    "ArchivePlan",
-    "CHUNK",
-    "CREATE",
-    "FOLDER_PREFIX",
-    "MARK",
-    "NOT_LISTED",
-    "RETITLED",
-    "REUSE",
-    "RenameApplied",
-    "RenamePlan",
-    "SetApplied",
-    "SetPlan",
-    "SetRow",
-    "apply_archive",
-    "apply_rename",
-    "apply_set",
-    "folder_name",
-    "plan_archive",
-    "plan_rename",
-    "plan_set",
+    "ADOPT", "ALREADY_MARKED", "ArchiveApplied", "ArchivePlan", "CHUNK", "CREATE",
+    "FOLDER_PREFIX", "MARK", "NOT_LISTED", "RETITLED", "REUSE", "RenameApplied", "RenamePlan",
+    "SetApplied", "SetPlan", "SetRow", "apply_archive", "apply_rename", "apply_set",
+    "folder_name", "plan_archive", "plan_rename", "plan_set",
 ]

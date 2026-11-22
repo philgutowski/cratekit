@@ -1,42 +1,27 @@
 """Taking tracks off a playlist this product made on the account (R-836).
 
-The account protocol's one removal, ``remove_tracks``, planned and applied. Two
-kinds of playlist can lose a track here and no others:
+The account protocol's one removal, ``remove_tracks``, planned and applied,
+from two kinds of playlist only: a label year playlist ``label playlists``
+CREATED, for a release the genre gate now holds, the catalogue no longer
+confirms, or a track ``crate delete review`` removed (U243); and a playlist
+``export playlist`` made, for a track no longer in its library playlist.
 
-* a label year playlist ``label playlists`` CREATED, for a release the genre
-  gate now holds or the label's catalogue no longer confirms, or for a track
-  the library removed through ``crate delete review`` (U243);
-* a playlist ``export playlist`` made, for a track no longer in the library
-  playlist it was exported from.
+ITS OWN VERBS (R-836), since both builders promise on their gates never to take
+anything away, and a removal folded into the export job would change its digest
+and its resume.
 
-TWO VERBS AND NOT A STEP OF THE TWO BUILDERS, decided on R-836. ``label
-playlists`` and ``export playlist`` both say on their gates that they never
-take anything away, and ``export playlist`` is a queued job whose items are the
-tracks it adds, so a removal folded into it would change its digest and its
-resume. As its own verb a removal is a named act a person asks for, behind its
-own explicit gate, and one label's prune can be run alone at a sitting.
+ONLY WHAT THE LEDGER SAYS THE PRODUCT PUT THERE, from a playlist
+``ledger.product_made`` vouches for, so a person's track or a playlist adopted
+by its name is left and said. A track held more than once is left too, since
+this product never adds a member twice.
 
-ONLY WHAT THE LEDGER SAYS THE PRODUCT PUT THERE. A track is planned only when
-the outbound ledger records it as added by this product, so a track a person
-put on the playlist by hand is never taken off, and only from a playlist
-``ledger.product_made`` vouches for. A year playlist adopted by its name under
-the label's folder was made by the source system or a person, and is said and
-left alone. A track the playlist holds more than once is left alone too: this
-product never adds a member twice, so a second copy is a person's, and the
-removal takes every copy.
+ABSENCE IS NEVER THE EVIDENCE. A label year track leaves only when a release the
+read REACHED says so (held, credited to another label, or under a tombstone,
+U243), since an empty or short read looks exactly like a catalogue that moved.
 
-ABSENCE IS NEVER THE EVIDENCE. A label year track leaves only when a release
-the read REACHED says so: one the genre gate holds, or one the verifier
-credits to another label, or a tombstone stands over a track of a release the
-read reached (U243), which is a person's own recorded act and not an absence. A track no release in the read carries stays,
-however the read came out, since an empty or short read looks exactly like a
-label whose catalogue moved on.
-
-THE PLAN READS AND WRITES NOTHING. The apply takes tracks off in chunks and
-records each chunk as it lands, moving it from ``added`` to ``pruned``, so a
-refusal part way resumes without taking anything off twice and a second run
-plans nothing. Nothing here removes a playlist, a folder or a heart: a year
-playlist the plan takes every track off is said on the gate and kept.
+THE PLAN READS AND WRITES NOTHING. The apply records each chunk as it lands, so
+a refusal part way resumes without taking anything off twice. Nothing here
+removes a playlist, a folder or a heart: one the plan empties is said and kept.
 
 Layer: modules.
 """
@@ -73,9 +58,7 @@ class Taken:
     title: str = ""
 
     def said(self) -> str:
-        artist = self.artist or "unknown artist"
-        title = self.title or f"track {self.remote_id}"
-        return f"{artist} - {title}"
+        return f"{self.artist or 'unknown artist'} - {self.title or f'track {self.remote_id}'}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,20 +70,16 @@ class PlaylistPrune:
     name: str
     remote_id: str
     take: tuple[Taken, ...] = ()
-    #: Tracks that should leave and are already off the playlist, recorded
-    #: as taken off with no call to the provider. A removal that landed
-    #: before a failure part way, or a person's own, ends here.
+    #: Tracks that should leave and are already off it, recorded with no call
+    #: to take them off: a removal before a failure, or a person's own.
     settle: tuple[str, ...] = ()
-    #: Tracks that should leave and are on the playlist more than once, left
-    #: alone since the second copy is a person's.
+    #: Tracks that should leave and are on it more than once: a person's copy.
     twice: tuple[str, ...] = ()
-    #: Why the playlist is left alone, when it is. A playlist left alone
-    #: takes nothing off however many tracks it would otherwise lose.
+    #: Why the playlist is left alone, when it is, taking nothing off.
     why: str = ""
     #: How many tracks would leave a playlist left alone, for the sentence.
     would: int = 0
-    #: True when every track on the playlist is taken off, so the playlist is
-    #: left empty. Said, never acted on: the playlist itself stays (U243).
+    #: Every track on it is taken off: said, never acted on (U243).
     empties: bool = False
 
     @property
@@ -129,12 +108,7 @@ class Plan:
             "kind": self.kind,
             "subject": self.subject,
             "playlists": [
-                [
-                    one.key,
-                    one.remote_id,
-                    sorted(taken.remote_id for taken in one.take),
-                    sorted(one.settle),
-                ]
+                [one.key, one.remote_id, sorted(taken.remote_id for taken in one.take), sorted(one.settle)]
                 for one in self.playlists
                 if one.writes
             ],
@@ -171,9 +145,9 @@ def _step(
 ) -> PlaylistPrune | None:
     """One playlist's step from the tracks that should leave it, read against it.
 
-    A track on the playlist once is taken off, one on it more than once is
-    left alone, and one no longer on it is settled. None when there is
-    nothing to say. A playlist that could not be read is left alone, said.
+    On it once is taken off, more than once left alone, no longer on it
+    settled; None when there is nothing to say. One that could not be read is
+    left alone, said.
     """
     wanted = sorted(set(leaving))
     if not wanted:
@@ -184,13 +158,8 @@ def _step(
     except CratekitError as exc:
         if exc.cause.reason != "unavailable-transient":
             raise
-        return PlaylistPrune(
-            key=key,
-            name=name,
-            remote_id=remote_id,
-            why=f"the playlist could not be read, so nothing is taken off it: {exc.cause.message}",
-            would=len(wanted),
-        )
+        why = f"the playlist could not be read, so nothing is taken off it: {exc.cause.message}"
+        return PlaylistPrune(key, name, remote_id, why=why, would=len(wanted))
     copies = Counter(order)
     asked = set(wanted)
     take = tuple(
@@ -199,15 +168,14 @@ def _step(
         if one in asked and copies[one] == 1
     )
     return PlaylistPrune(
-        key=key,
-        name=name,
-        remote_id=remote_id,
+        key,
+        name,
+        remote_id,
         take=take,
         settle=tuple(one for one in wanted if one not in names and copies[one] == 0),
         twice=tuple(one for one in wanted if copies[one] > 1),
-        # EMPTIED is read off the playlist as it is: every member it holds is
-        # one this plan takes off. A playlist holding nothing to begin with is
-        # not one the plan empties.
+        # EMPTIED is read off the playlist as it is, so one holding nothing to
+        # begin with is not one the plan empties.
         empties=bool(take) and set(order) <= {one.remote_id for one in take},
     )
 
@@ -222,27 +190,16 @@ def plan_label(
 ) -> Plan:
     """What leaves each year playlist this product created for one label.
 
-    ``held`` is the release identifiers the genre gate holds in force for the
-    label, read from the review database, which is local. ``tracks_of`` reads
-    a release's tracks for a held or mismatched release the catalogue read
-    did not, and is asked only while a recorded track is still unexplained.
+    ``held`` is the releases the genre gate holds for the label; ``tracks_of``
+    reads a held or mismatched release's tracks the catalogue did not, asked
+    only while a recorded track is still unexplained.
 
-    A TRACK LEAVES A YEAR WHEN THE LEDGER RECORDS IT AS ADDED there, no kept
-    release of that year or of no year carries it, and a release the read
-    reached says it should go:
-
-    * a release the gate holds carries it;
-    * a release the verifier credits to another label carries it. Judged
-      only when every confirmed release's tracks were read, since a release
-      the provider no longer has could be the one that keeps it.
-
-    A track on a held release and a kept one stays, since the kept release
-    asked for it. A track on no release the read reached stays, said.
-
-    A TRACK THE LIBRARY REMOVED LEAVES WHATEVER RELEASE KEEPS IT (U243):
-    ``catalogue.tombstoned``, a track of a release the read reached with a
-    tombstone standing over its artist and title. The kept release asks for
-    the track, and the person who removed it from the library asked louder.
+    A TRACK LEAVES A YEAR the ledger records it as added to when no kept
+    release of that year or of no year carries it and a release the read
+    reached says it should go: one the gate holds, or one the verifier credits
+    to another label, judged only when every confirmed release was read. A
+    tombstoned track (U243) leaves whatever keeps it, the person's removal
+    asking louder than the kept release.
     """
     if len(catalogue.by_release) + catalogue.gone != catalogue.releases:
         raise _incomplete(
@@ -270,7 +227,7 @@ def plan_label(
         return kept.get(year, set()) | undated
 
     # ON NO RELEASE THE READ REACHED is judged against every kept release of
-    # any year, so a release the provider re-dated is not read as unreached.
+    # any year, so a re-dated release is not read as unreached.
     anywhere = undated.union(*kept.values())
     unexplained = {
         one
@@ -303,8 +260,7 @@ def plan_label(
     steps: list[PlaylistPrune] = []
     for year in sorted(shape.years):
         recorded = shape.years[year]
-        # ``on_other`` holds only what was read while ``judged``, so the one
-        # guard on a release credited elsewhere is where it is read, above.
+        # ``on_other`` holds only what was read while ``judged``.
         leaving = [
             one
             for one in sorted(recorded.added)
@@ -322,12 +278,7 @@ def plan_label(
                 else "the record of this playlist predates the one that says whether "
                 "this product made it, so nothing is taken off it"
             )
-            steps.append(
-                PlaylistPrune(
-                    key=year, name=name, remote_id=recorded.remote_id, why=why,
-                    would=len(leaving),
-                )
-            )
+            steps.append(PlaylistPrune(year, name, recorded.remote_id, why=why, would=len(leaving)))
             continue
         step = _step(account, year, name, recorded.remote_id, leaving)
         if step is not None and (step.take or step.settle or step.twice or step.why):
@@ -348,22 +299,14 @@ def plan_export(
 ) -> Plan:
     """What leaves the remote playlist one library playlist was exported to.
 
-    ``crate`` is the library playlist's rows now, ``wanted`` the remote
-    identifiers they match now, and ``unmatched`` how many matched none. A
-    track the ledger records as added leaves on one of two readings:
-
-    * BY ITS ROW, for a track this build wrote: the library row it was matched
-      from is no longer in the playlist, and no row now matches it. A match
-      that drifted to another remote track says nothing about it.
-    * BY MATCH ALONE, for a track written before the row was kept: no row
-      matches it now. Absence of a match is weak evidence, so this reading
-      leaves the playlist alone when any row matched nothing, or when any row
-      matches a track the playlist was never written with, which is what a
-      drifted match or a row added since the last export looks like.
-
-    A playlist whose export is older than the one it was last written from,
-    ``older`` being that date, is left alone whatever the reading: every row
-    added since would read as gone.
+    ``crate`` is the library playlist's rows now, ``wanted`` the remote tracks
+    they match now, ``unmatched`` how many matched none. A recorded track
+    leaves BY ITS ROW when the row it was written from left and no row matches
+    it, or, written before rows were kept, BY MATCH ALONE when no row matches
+    it, which is weak evidence: then a row matching nothing, or matching a
+    track never written, leaves the playlist alone. So does an export ``older``
+    than the one it was last written from, since every row added since would
+    read as gone.
     """
     record = ledger.exported_playlist(cfg, playlist_key)
     if record is None:
@@ -403,18 +346,11 @@ def plan_export(
             f"first, then prune"
         )
     if why or account is None:
-        step: PlaylistPrune | None = PlaylistPrune(
-            key=playlist_key,
-            name=name,
-            remote_id=record.remote_id,
-            why=why or "no account was opened to read the playlist",
-            would=len(leaving),
-        )
+        why = why or "no account was opened to read the playlist"
+        step = PlaylistPrune(playlist_key, name, record.remote_id, why=why, would=len(leaving))
     else:
         step = _step(account, playlist_key, name, record.remote_id, leaving)
-    if step is None:
-        return Plan(kind=EXPORTED, subject=playlist_key)
-    return Plan(kind=EXPORTED, subject=playlist_key, playlists=(step,))
+    return Plan(kind=EXPORTED, subject=playlist_key, playlists=(step,) if step is not None else ())
 
 
 def _not_made(remote_id: str) -> CratekitError:
@@ -429,30 +365,21 @@ def _not_made(remote_id: str) -> CratekitError:
     )
 
 
-def _record(cfg: config.Config, planned: Plan, step: PlaylistPrune, taken: Iterable[str]) -> None:
-    if planned.kind == LABEL:
-        ledger.record_label_pruned(cfg, planned.subject, step.key, taken)
-    else:
-        ledger.record_playlist_pruned(cfg, step.key, taken)
-
-
 def apply(cfg: config.Config, account: RemoteAccount, planned: Plan, done: Pruned) -> Pruned:
     """Take the planned tracks off, recording each chunk as it lands, into ``done``.
 
     ``done`` is the caller's, so a raise part way leaves in it what was taken
-    off before the raise, for the refusal to name. The ledger is asked again
-    before each playlist, since the plan was read in another invocation.
+    off. The ledger is asked again before each playlist, since the plan was
+    read in another invocation.
     """
     for step in planned.playlists:
         if not step.writes:
             continue
         if not ledger.product_made(cfg, step.remote_id):
             raise _not_made(step.remote_id)
-        # A SETTLED TRACK GOES THROUGH THE REMOVAL TOO, with nothing at its
-        # position to take, so the adapter's full read vouches that it is off.
-        # The listing leaves out a track the account cannot play, and recorded
-        # on the plan's word alone such a track would be called gone while it
-        # is still on the playlist.
+        # A SETTLED TRACK GOES THROUGH THE REMOVAL TOO, so the adapter's full
+        # read vouches that it is off: the listing leaves out a track the
+        # account cannot play, which the plan's word alone would call gone.
         settling = set(step.settle)
         ids = [taken.remote_id for taken in step.take] + list(step.settle)
         for start in range(0, len(ids), CHUNK):
@@ -469,7 +396,10 @@ def apply(cfg: config.Config, account: RemoteAccount, planned: Plan, done: Prune
                     origin=_ORIGIN,
                     detail={"playlist_id": step.remote_id, "unsaid": unsaid},
                 )
-            _record(cfg, planned, step, chunk)
+            if planned.kind == LABEL:
+                ledger.record_label_pruned(cfg, planned.subject, step.key, chunk)
+            else:
+                ledger.record_playlist_pruned(cfg, step.key, chunk)
             for one in chunk:
                 held = done.settled if one in settling else done.taken
                 held.setdefault(step.remote_id, []).append(one)
@@ -481,12 +411,12 @@ def payload(
 ) -> dict[str, Any]:
     """The ``plan/1`` payload the gate is asked over: one item per track taken off.
 
-    ``digest`` is the CLI layer's digest function, handed in so this module
-    imports nothing from that layer.
+    ``digest`` is the CLI layer's, handed in so this module imports nothing from it.
     """
     identity = planned.identity() if planned is not None else {"kind": kind, "subject": subject}
+    steps = planned.playlists if planned is not None else ()
     items: list[dict[str, Any]] = []
-    for step in planned.playlists if planned is not None else ():
+    for step in steps:
         where = {"playlist": step.remote_id, "key": step.key, "name": step.name}
         if step.why:
             items.append(
@@ -501,30 +431,14 @@ def payload(
                 }
             )
             continue
+        track = {"kind": "track", **where}
         items.extend(
-            {
-                "id": taken.remote_id,
-                "kind": "track",
-                **where,
-                "action": "take-off",
-                "artist": taken.artist,
-                "title": taken.title,
-            }
+            {"id": taken.remote_id, **track, "action": "take-off", "artist": taken.artist, "title": taken.title}
             for taken in step.take
         )
-        items.extend(
-            {"id": one, "kind": "track", **where, "action": "already-off"} for one in step.settle
-        )
-        items.extend(
-            {
-                "id": one,
-                "kind": "track",
-                **where,
-                "action": "left-alone",
-                "why": "on the playlist more than once, and a second copy is a person's",
-            }
-            for one in step.twice
-        )
+        items.extend({"id": one, **track, "action": "already-off"} for one in step.settle)
+        twice = "on the playlist more than once, and a second copy is a person's"
+        items.extend({"id": one, **track, "action": "left-alone", "why": twice} for one in step.twice)
     return {
         "digest": digest(identity),
         "items": items,
@@ -532,13 +446,8 @@ def payload(
             "count": len(items),
             "take_off": sum(1 for item in items if item["action"] == "take-off"),
             "writes": bool(planned is not None and planned.writes),
-            # SAID AND NOT A WRITE, so outside the digest: the playlists the
-            # plan leaves empty, which stay on the account.
-            "emptied": [
-                step.name
-                for step in (planned.playlists if planned is not None else ())
-                if step.empties and not step.why
-            ],
+            # SAID AND NOT A WRITE, so outside the digest.
+            "emptied": [step.name for step in steps if step.empties and not step.why],
         },
         "chunk": None,
     }
@@ -588,9 +497,9 @@ def failed_part_way(
 ) -> CratekitError:
     """The failure, with what was already taken off named in it.
 
-    ``label playlists``' rule: a refusal the account raised keeps its reason
-    and remedy, and anything else is this build's own defect and says so. What
-    was taken off is recorded already, so a run started again plans the rest.
+    A refusal the account raised keeps its reason and remedy, and anything
+    else is this build's own defect and says so. What was taken off is
+    recorded already, so a run started again plans the rest.
     """
     wrote = (
         f"before this failed {done.count} track(s) were taken off and recorded"
@@ -600,8 +509,8 @@ def failed_part_way(
     detail = {"taken": {remote: list(ids) for remote, ids in done.taken.items()}}
     if isinstance(exc, CratekitError):
         cause = exc.cause
-        # A READ BACK THAT DIFFERED says to look by hand before anything runs
-        # again, and "run it again" beside that would undo the advice.
+        # A READ BACK THAT DIFFERED says to look by hand first, which "run it
+        # again" beside it would undo.
         differed = cause.detail.get("problem") == "read-back-differs"
         return refuse(
             cause.reason,
@@ -648,8 +557,8 @@ def settle(
 ) -> Any:
     """Apply an approved prune and report it, or report the plan alone.
 
-    The tail ``export prune`` and ``label prune`` both end on. ``again`` is
-    the command a person runs after a failure part way, in the verb's own name.
+    The tail ``export prune`` and ``label prune`` share; ``again`` is the
+    command a person runs after a failure part way.
     """
     if option != "apply" or not planned.writes:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
@@ -662,20 +571,7 @@ def settle(
 
 
 __all__ = [
-    "CHUNK",
-    "EXPORTED",
-    "LABEL",
-    "Plan",
-    "PlaylistPrune",
-    "Pruned",
-    "Taken",
-    "apply",
-    "failed_part_way",
-    "finished",
-    "settle",
-    "payload",
-    "plan_export",
-    "plan_label",
-    "report",
+    "CHUNK", "EXPORTED", "LABEL", "Plan", "PlaylistPrune", "Pruned", "Taken", "apply",
+    "failed_part_way", "finished", "settle", "payload", "plan_export", "plan_label", "report",
     "shown",
 ]

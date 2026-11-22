@@ -3,13 +3,7 @@
 # ever removed, by hand or with: scripts/refactor_measure.py prune modules.outbound
 # A line whose copy is gone fails nothing. To see where a window stands:
 # scripts/refactor_measure.py duplicates --where DIGEST
-040f4010eaddea38
-040f4010eaddea38
 06aa16572b8e8c0f
 06aa16572b8e8c0f
 46a9ed7252f3bcee
 46a9ed7252f3bcee
-68e6b402c0b8a0e4
-68e6b402c0b8a0e4
-7f246c181124c828
-7f246c181124c828
