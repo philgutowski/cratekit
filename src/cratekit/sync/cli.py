@@ -1,48 +1,28 @@
 """``crate sync all``: compose each enabled source's own increment, in one pass.
 
-A COMPOSER, NOT A QUEUE OF ITS OWN (U61). Until U61 this verb queued one job
-per enabled source under its own handler key, ``sync.all``, with no items and
-no worker behind that key, so the verb that replaces ``dj-sync`` filed work the
-product never ran and reported success over it. Now it calls each source's own
-queueing path, under that source's own handler key, and the workers that
-already run ``sync favorites`` and ``intake playlist`` run what it queues.
-Nothing is ever queued under ``sync.all``, so there is nothing to resume and the
-entry declares no ``argv_builder``.
+A COMPOSER, NOT A QUEUE OF ITS OWN (U61). It calls each source's own queueing
+path under that source's handler key, so existing workers run the jobs.
+Nothing is queued under ``sync.all``, so the entry declares no
+``argv_builder``.
 
-LABELS ARE NOT SWEPT HERE (U109). The labels source is GUIDED: its spec names
-``crate label sync`` as the verb that takes it, so it is never planned, no
-provider is called for it and nothing is queued for it, whatever the profile
-enables. The pass's report names that verb instead, so a routine sync can never
-start a label download and a person is still told where label releases went.
+LABELS ARE NOT SWEPT HERE (U109). A guided source is never planned, called or
+queued; the report names its verb instead.
 
-THE ORDER IS PLAN, ASK, QUEUE. Every composed source is planned first, which is
-where a source's own precondition refuses: a missing export, a missing
-credential. Then the one question favourites needs is asked. Only then is
-anything queued. A refusal at the gate has therefore queued nothing, and
-answering it and running again cannot queue a source twice.
+THE ORDER IS PLAN, ASK, QUEUE. Sources are planned first, where their own
+preconditions refuse, then favourites' one question is asked, then anything is
+queued, so a refusal at the gate has queued nothing and a rerun cannot queue
+twice.
 
-ONE INTAKE RUN (R29). Every job carries ``ctx.run.run_id`` as its intake run,
-which is the value each source's own verb uses when run alone, so the workers of
-one pass write one intake file.
+ONE INTAKE RUN (R29). Every job carries ``ctx.run.run_id``, so one pass writes
+one intake file. One source may file several jobs (U64), so a plan carries a
+list and a refusal part way keeps the filed ones named.
 
-ONE SOURCE MAY FILE SEVERAL JOBS (U64). Favourites queues one job for each half.
-Playlists queue one ``intake.playlist`` job per account playlist that is new, so
-a plan carries the jobs it filed as a list, and a refusal part way through keeps
-the ones already filed named in the report.
+THE PASS NAMES ITS NEXT STEP (U73), a ``sync.next`` check naming ``crate
+intake missing --run RUN_ID`` when it queued an intake job.
 
-THE PASS NAMES ITS NEXT STEP (U73). A pass that queued an intake job ends with
-one ``sync.next`` check naming ``crate intake missing --run RUN_ID``, which
-writes every missing track of the pass as one list, so the pass downloads and
-lands as one batch.
-
-A READ NEEDS NO CONSENT A WRITE DOES (U74). Favourites has two halves. The
-outbound half hearts local favourites on the account and waits on the one
-question. The inbound half lists the account's hearts into the library, and it
-is queued under ``intake.playlist`` with the shared run whatever that question's
-answer, and whether or not the outbound half's own export was found, since an
-abort or a missing export used to drop the read along with the write. It runs
-only when the favourites module is enabled, and never beside an open job that
-is already listing the hearts.
+A READ NEEDS NO CONSENT A WRITE DOES (U74). Favourites' inbound half (listing
+the account's hearts) is queued whatever the question's answer and whether or
+not the export was found, but never beside an open job already listing them.
 
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23), and each source's module is imported only when
@@ -61,24 +41,20 @@ from cratekit.core.cause import Cause, CratekitError, Outcome
 from cratekit.sync import sources
 
 if TYPE_CHECKING:
-    # A NAME FOR THE ANNOTATION ONLY, so the label package is still imported
-    # when the profile enables a source that reads it and not before.
+    # A NAME FOR THE ANNOTATION ONLY, so the label package is imported lazily.
     from cratekit.label.catalogue import HeartsShortfall
 
-#: The gate this verb declares. Looked up on ``ctx.entry.gates`` by this name,
-#: since the registry that declares it is above this layer.
+#: The gate this verb declares, looked up by name since the registry is above this layer.
 CONFIRM = "sync.all.favorites.confirm"
 
-#: The verb whose resume runs a favourites job, and the gate that resume asks.
-#: ``Gates.hand_off`` answers the second on a run owned by the first.
+#: The verb whose resume runs a favourites job, and the gate it asks (via ``Gates.hand_off``).
 FAVORITES_VERB = "sync.favorites"
 FAVORITES_CONFIRM = "sync.favorites.confirm"
 
 #: Why a source was not queued, when the reason is not a refusal's own slug.
 NOT_BUILT = "not-built"
 DECLINED = "declined"
-#: The source listed and found nothing new to queue. Not a refusal, and not a
-#: clean sweep either: the check says what each playlist was excluded for.
+#: Listed and found nothing new; the check says why each playlist was excluded.
 NOTHING_NEW = "nothing-new"
 
 
@@ -90,9 +66,8 @@ def _load() -> config.Config:
 def build_all(parser, entry) -> None:
     """Declare the surface. The two flags are the favourites source's inputs.
 
-    ``--favorites-playlist`` defaults to None, which ``resolve_sweep`` reads as
-    the outbound module's default playlist, so building the verb imports no
-    toggleable package (U304).
+    ``--favorites-playlist`` defaults to None (the outbound default), so
+    building the verb imports no toggleable package (U304).
     """
     del entry
     parser.add_argument(
@@ -114,11 +89,9 @@ def build_all(parser, entry) -> None:
     parser.set_defaults(_handler=all_sources)
 
 
-#: How a planned source is queued once the pass may proceed. It appends each job
-#: to the list it is handed AS IT IS FILED, so a refusal part way through leaves
-#: the filed ones visible to the caller. A forward reference, because
-#: ``tests/test_config.py`` refuses any module-level binding that reaches into
-#: ``config`` and cannot tell an annotation from a snapshot.
+#: How a planned source is queued, appending each job AS IT IS FILED. String
+#: references, since ``tests/test_config.py`` refuses a module level binding
+#: that reaches into ``config``.
 Queue = Callable[[Any, "config.Config", str, "list[jobs.Job]"], None]
 
 
@@ -126,8 +99,7 @@ Queue = Callable[[Any, "config.Config", str, "list[jobs.Job]"], None]
 class _Inbound:
     """A source's read only half (U74), queued whatever its write half's answer.
 
-    Its own refusal, its own reason and its own jobs, so a refused or declined
-    write half says nothing about it and it says nothing about the write half.
+    Its refusal, reason and jobs are its own, independent of the write half.
     """
 
     handler_key: str
@@ -140,8 +112,7 @@ class _Inbound:
     hearts: int | None = None
     #: The open jobs already listing the hearts, when that is why none was queued.
     open_jobs: tuple[str, ...] = ()
-    #: The count the provider declared and did not serve, when the listing came
-    #: back short of it (R-504). None for a listing that reached its count.
+    #: What the provider declared and did not serve (R-504), or None.
     shortfall: HeartsShortfall | None = None
 
     def block(self) -> dict[str, Any]:
@@ -169,12 +140,10 @@ class _Plan:
     detail: dict[str, Any] | None = None
     #: Rebuilds ``detail`` from what was filed, once queueing is over.
     describe: Callable[[list[jobs.Job]], dict[str, Any]] | None = None
-    #: The question this source needs answered before it may queue, asked after
-    #: every source is planned so the refusal can say what the pass would do.
+    #: The question this source needs answered, asked after every source is planned.
     ask: Callable[[list[_Plan], tuple[sources.SourceSpec, ...]], None] | None = None
-    #: Words the source's check carries whatever its status, read off its block.
-    #: The check detail is what the default human output prints for this verb,
-    #: so a fact only the json block states is a fact a person never reads.
+    #: Words the source's check carries whatever its status, since the human
+    #: output prints only check details.
     note: Callable[[dict[str, Any]], str | None] | None = None
     #: The source's read only half, when its spec declares one.
     inbound: _Inbound | None = None
@@ -188,10 +157,8 @@ def _filed(plan: _Plan) -> list[jobs.Job]:
 def _hearts_jobs(store, cfg: config.Config, *, handler_key: str) -> tuple[jobs.Job, ...]:
     """Every job listing the account's hearts for THIS library, however it was queued.
 
-    ``crate intake playlist favorites`` run by hand carries the same key and the
-    same ``source_id``, and lists the same hearts, so an open one of its jobs is
-    one this pass must not queue beside. The library, because the queue is
-    installation scoped.
+    A hand run ``crate intake playlist favorites`` carries the same key and
+    ``source_id``; the library filter is because the queue is installation scoped.
     """
     from cratekit.intake import cli as intake_cli
 
@@ -207,10 +174,8 @@ def _hearts_jobs(store, cfg: config.Config, *, handler_key: str) -> tuple[jobs.J
 def _plan_inbound(spec: sources.SourceSpec, cfg: config.Config) -> _Inbound:
     """List the account's hearts as ``crate intake playlist favorites`` lists them.
 
-    NEVER RAISES A REFUSAL. A catalogue that cannot be resolved or a listing
-    that cannot be read is recorded against this half, so the write half and the
-    other sources still run. The listing is taken here, at plan time, as the
-    playlists source takes its own, and the queueing waits for the pass.
+    NEVER RAISES A REFUSAL; a failure is recorded against this half so the rest
+    still runs. Listed at plan time, queued with the pass.
     """
     from cratekit.intake import cli as intake_cli
     from cratekit.label import catalogue
@@ -261,11 +226,8 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
     from cratekit.modules.outbound import shell, source
 
     plan = _Plan(spec=spec)
-    # LOADED ONCE, for both halves (R-227). A configuration that cannot be read
-    # raises here and reaches ``_plan`` as this source's refusal, and that drops
-    # nothing, because the read half needs the same configuration and has not
-    # been planned yet. Two loads would be two reads of a file somebody may be
-    # editing, and two answers about one pass.
+    # LOADED ONCE, for both halves (R-227), so one pass has one answer. Raising
+    # here drops nothing, since the read half is not planned yet.
     cfg = _load()
     if spec.inbound_key is not None:
         plan.inbound = _plan_inbound(spec, cfg)
@@ -276,22 +238,14 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
             cfg=cfg,
         )
     except CratekitError as exc:
-        # THE WRITE HALF'S OWN PRECONDITION, recorded here rather than raised to
-        # ``_plan``, which would build a fresh plan and drop the read half with
-        # it. A missing export, or a colour read that cannot finish (R-228), is
-        # no reason not to list the hearts.
+        # THE WRITE HALF'S OWN PRECONDITION, recorded rather than raised, since
+        # ``_plan`` would build a fresh plan and drop the read half.
         plan.refused, plan.not_queued = exc.cause, exc.cause.reason
         return plan
     # THE FAVOURITES VERB'S STANDING WARNING TRAVELS WITH THE COMPOSITION
-    # (R-424). This function builds the plan itself rather than calling
-    # ``favorites_cli.sync_favorites``, so a sentence added to that verb's own
-    # queueing branch would be absent here, which is the pass most people run.
-    # ``_envelope`` below extends only the plans that filed, so a declined or
-    # refused favourites source says nothing about a write it never reached.
-    #
-    # THE EXPORT'S AGE TRAVELS THE SAME WAY AND FOR THE SAME REASON (R-227). It
-    # is read once here and goes to both places a person reads: the question
-    # below, and the warnings of the pass that queued.
+    # (R-424), since this builds the plan itself; only plans that filed carry
+    # it. THE EXPORT'S AGE is read once and goes to the question and the
+    # warnings alike (R-227).
     age = source.export_age(exported, limit_days=cfg.outbound.export_stale_days)
     plan.warnings = (
         *shell.queue_warnings(resolved, noun="favourite", age=age),
@@ -300,8 +254,7 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
 
     def ask(plans: list[_Plan], guided: tuple[sources.SourceSpec, ...]) -> None:
         gate = next(g for g in ctx.entry.gates if g.name == CONFIRM)
-        # THE TRACKS THE SWEEP'S DIGEST COVERS ARE SHOWN (R-693), the way the
-        # favourites verb's own gate shows them, beside what would queue.
+        # THE TRACKS THE SWEEP'S DIGEST COVERS ARE SHOWN (R-693).
         option = ctx.gate.require(
             gate,
             plan={
@@ -343,9 +296,8 @@ def _plan_favorites(spec: sources.SourceSpec, ctx) -> _Plan:
 def _plan_playlists(spec: sources.SourceSpec, ctx) -> _Plan:
     """List the account and decide every playlist. Queueing waits for the pass.
 
-    THE CATALOGUE IS LOOKED UP ON ITS MODULE AT CALL TIME, as ``intake playlist``
-    looks it up, so a missing credential refuses this source before anything is
-    listed and the other sources still run.
+    THE CATALOGUE IS LOOKED UP AT CALL TIME, so a missing credential refuses
+    only this source.
     """
     from cratekit.label import catalogue
     from cratekit.sync import playlists
@@ -353,22 +305,18 @@ def _plan_playlists(spec: sources.SourceSpec, ctx) -> _Plan:
     cfg = _load()
     handler_key = str(spec.handler_key)
     found = catalogue.resolve(cfg)
-    # THE YEAR PLAYLISTS ``label playlists`` BUILT ARE NEVER INTAKE (R-835).
-    # Read before the listing, so an unreadable ledger refuses this source
-    # rather than letting a label's whole catalogue be swept as missing.
+    # THE YEAR PLAYLISTS ``label playlists`` BUILT ARE NEVER INTAKE (R-835),
+    # read first so an unreadable ledger refuses this source.
     from cratekit.modules.outbound import ledger
 
     label_built = ledger.label_playlist_ids(cfg)
-    # NOR ARE THE SET PLAYLISTS ``export set`` MADE (R-837), whose tracks are
-    # fetched from the set's own tracklist.
+    # NOR ARE THE SET PLAYLISTS ``export set`` MADE (R-837).
     set_built = ledger.set_playlist_ids(cfg)
-    # NOR ARE THE PLAYLISTS ``sync pair`` KEEPS (U130), whose missing tracks
-    # that verb queues itself.
+    # NOR ARE THE PLAYLISTS ``sync pair`` KEEPS (U130).
     from cratekit.modules.outbound import pairs
 
     paired = pairs.paired_ids(cfg)
-    # NOR ARE THE PLAYLISTS ``crate organize`` MIRRORS (U147), each a copy of a
-    # rekordbox playlist the library already holds.
+    # NOR ARE THE PLAYLISTS ``crate organize`` MIRRORS (U147).
     mirrored = ledger.mirror_playlist_ids(cfg)
     with jobs.open_store() as store:
         sweep = playlists.plan(
@@ -397,11 +345,8 @@ def _plan_playlists(spec: sources.SourceSpec, ctx) -> _Plan:
                 ),
             }
         )
-    # EACH UNREAD TRACK OF A QUEUED PLAYLIST IS NAMED (R-1289): the playlist's
-    # other tracks are queued, and it is recorded once its job succeeds, so
-    # the pass says no later sync offers it rather than promising one does. A
-    # playlist with no track left to queue is unreadable, said above, and is
-    # offered again.
+    # EACH UNREAD TRACK OF A QUEUED PLAYLIST IS NAMED (R-1289), since the
+    # playlist is recorded once its job succeeds and is not offered again.
     left = {
         identity: tracks for identity, tracks in sweep.unread.items() if identity in sweep.ready
     }
@@ -425,8 +370,7 @@ def _plan_playlists(spec: sources.SourceSpec, ctx) -> _Plan:
             }
         )
     if sweep.short:
-        # A SHORT LISTING IS SAID PER PLAYLIST (R-515), never passed off as
-        # the playlist: the provider counts tracks it will not serve.
+        # A SHORT LISTING IS SAID PER PLAYLIST (R-515).
         names = sweep.names()
         warnings.append(
             {
@@ -459,9 +403,7 @@ def _plan_playlists(spec: sources.SourceSpec, ctx) -> _Plan:
     return plan
 
 
-#: One planner per source that has a worker. ``tests/test_sync_all.py`` pins
-#: these keys to the sources ``cratekit.sync.sources`` declares a handler for,
-#: so a source given a worker there without a planner here fails the suite.
+#: One planner per source with a worker, pinned to ``sources`` by ``tests/test_sync_all.py``.
 PLANNERS: dict[str, Callable[[sources.SourceSpec, Any], _Plan]] = {
     "favorites": _plan_favorites,
     "playlists": _plan_playlists,
@@ -481,9 +423,7 @@ def _guided_step(spec: sources.SourceSpec) -> str:
 def _guided_check(spec: sources.SourceSpec) -> dict[str, Any]:
     """The one row naming the verb that takes a guided source instead (U109).
 
-    A check and not only a summary field, for the reason ``_next_step`` gives:
-    the default human output prints the checks and nothing else, and a person
-    running a routine sync has to be told where label releases went.
+    A check, since the default human output prints only checks.
     """
     return {
         "key": f"sync.{spec.source_id}",
@@ -504,8 +444,7 @@ def _plan(spec: sources.SourceSpec, ctx) -> _Plan:
         return PLANNERS[spec.source_id](spec, ctx)
     except CratekitError as exc:
         # A SOURCE'S OWN PRECONDITION, reported for that source rather than
-        # ending the pass. ``dj-sync`` ran every source in one pass, and a
-        # missing export is no reason not to sweep the account's playlists.
+        # ending the pass.
         return _Plan(spec=spec, refused=exc.cause, not_queued=exc.cause.reason)
 
 
@@ -514,10 +453,8 @@ def _awaiting(
 ) -> dict[str, Any]:
     """What a person is shown at the gate: nothing queued yet, and why not.
 
-    ``inbound`` says what each read only half will do WHATEVER the answer, so a
-    person deciding the write knows whether the hearts are being listed.
-    ``guided`` names the verb each guided source is left to (U109), since the
-    gate is where every pass with favourites enabled stops first.
+    ``inbound`` says what each read only half does WHATEVER the answer;
+    ``guided`` names each guided source's verb (U109).
     """
     return {
         "queued": [],
@@ -613,8 +550,7 @@ def _inbound_check(plan: _Plan, inbound: _Inbound) -> dict[str, Any]:
         )
     elif inbound.refused is not None:
         check["status"] = "fail"
-        # LISTED AND THEN REFUSED AT THE QUEUE is a different fault from a
-        # listing that never happened, and sends a person somewhere else.
+        # LISTED AND THEN REFUSED AT THE QUEUE is a different fault from no listing.
         said = (
             "the account's hearts were not listed"
             if inbound.hearts is None
@@ -634,10 +570,8 @@ def _inbound_check(plan: _Plan, inbound: _Inbound) -> dict[str, Any]:
         check["detail"] = "not queued: the account lists no hearts"
     short = inbound.shortfall
     if short is not None:
-        # A SHORT LISTING FAILS THE CHECK WHATEVER WAS QUEUED (R-504). The job
-        # resolves the rows that came back as if they were the account, and the
-        # withheld hearts are in no report it makes, so this row is the one
-        # place a person is told the listing is not the account.
+        # A SHORT LISTING FAILS THE CHECK WHATEVER WAS QUEUED (R-504), the one
+        # place a person learns the listing is not the whole account.
         check["status"] = "fail"
         if inbound.not_queued == playlists.Excluded.EMPTY:
             check["detail"] = "not queued: the provider served none of the account's hearts"
@@ -667,9 +601,7 @@ def _report(
         "not_queued": {
             p.spec.source_id: p.not_queued for p in plans if p.not_queued is not None
         },
-        # A GUIDED SOURCE IS NOT A SOURCE THAT FAILED TO QUEUE, so it is named
-        # here rather than in ``not_queued``, whose every entry is a reason this
-        # pass did not do something it would otherwise have done.
+        # A GUIDED SOURCE IS NOT A SOURCE THAT FAILED TO QUEUE, so not ``not_queued``.
         "guided": _guided(guided),
     }
     for plan in plans:
@@ -695,10 +627,8 @@ def _report(
 def _next_step(plans: list[_Plan], run_id: str) -> dict[str, Any] | None:
     """The one command that turns this pass's intake jobs into one list (U73).
 
-    Named only when the pass filed an intake job, because a run with none has
-    nothing ``intake missing --run`` could list and the verb refuses it. A check
-    row and not only a summary field, since the default human output prints the
-    checks and nothing else.
+    Named only when an intake job was filed, since ``intake missing --run``
+    refuses a run with none. A check row, since the human output prints only checks.
     """
     from cratekit.intake import cli as intake_cli
 
@@ -727,9 +657,7 @@ def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
     membership = profiles.resolve(cfg.profile.name, cfg.modules.explicit)
     run_id = ctx.run.run_id
     enabled = sources.enabled_specs(membership)
-    # A GUIDED SOURCE IS NEVER PLANNED (U109). Planning is where a source lists
-    # its provider and refuses on its own preconditions, so a guided source kept
-    # out of here is one this pass cannot call a provider for or queue.
+    # A GUIDED SOURCE IS NEVER PLANNED (U109), so no provider is called for it.
     plans = [_plan(spec, ctx) for spec in enabled if spec.guided_by is None]
     guided = tuple(spec for spec in enabled if spec.guided_by is not None)
 
@@ -748,11 +676,8 @@ def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
     if ready:
         with jobs.open_store() as store:
             for half, queue, filed in ready:
-                # EACH ENQUEUE IS ITS OWN TRANSACTION, so a source that refuses
-                # here leaves the sources before it queued. Recorded against that
-                # source rather than raised, or the refusal would carry no word
-                # of the jobs already filed and the natural recovery, running
-                # the pass again, would queue each of them a second time.
+                # EACH ENQUEUE IS ITS OWN TRANSACTION. A refusal is recorded, not
+                # raised, so filed jobs are named and a rerun does not duplicate them.
                 try:
                     queue(store, cfg, run_id, filed)
                 except CratekitError as exc:
@@ -767,15 +692,11 @@ def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
         if cause is not None
     ]
     if not queued_any and refused:
-        # NOTHING QUEUED AND A SOURCE REFUSED. Not a no-op: a person who ran a
-        # sync and got nothing because of something they can fix is told so
-        # with that source's own remedy, and the whole pass rides the detail.
+        # NOTHING QUEUED AND A SOURCE REFUSED. Not a no-op: the first source's
+        # remedy is raised, with the whole pass in the detail.
         first = refused[0]
-        # THE GUIDED LINE RIDES THE REFUSAL AS A LAST STEP (U109). A refusal
-        # envelope carries no check rows, so the row that names the guided verb
-        # would otherwise reach a person only inside the JSON detail. Appended,
-        # so the first step, the one the remediation line falls back to, is
-        # still the refusing source's own fix.
+        # THE GUIDED LINE RIDES THE REFUSAL AS A LAST STEP (U109), since a
+        # refusal carries no check rows; last, so the first step stays the fix.
         remediation = dataclasses.replace(
             first.remediation,
             steps=(*first.remediation.steps, *(_guided_step(spec) for spec in guided)),
@@ -808,8 +729,7 @@ def compose(ctx) -> tuple[dict[str, Any], Outcome, tuple[dict[str, str], ...]]:
                     ),
                 }
             )
-    # THE HONEST ZERO. Nothing refused and nothing queued is the slim profile's
-    # every run, or a declined confirmation, and it is a no-op rather than an ok.
+    # THE HONEST ZERO. Nothing refused and nothing queued is a no-op, not an ok.
     outcome = Outcome.OK if queued_any else Outcome.NO_OP
     return data, outcome, tuple(warnings)
 
