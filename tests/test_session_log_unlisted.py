@@ -1,18 +1,13 @@
 """R-1255: a session log that is there and cannot be listed is unread, never empty.
 
-``session.scan_log`` used to glob the log, and a glob over a directory the
-account cannot list yields nothing rather than raising, so the scan answered
-no record and no unreadable one. Every gate that reads the log through the
-scan then admitted the write the log may refuse, and every report was clean
-over a log nobody read. U214 asked the listing itself in the rotation's
-classifier only; this file holds the scan and each consumer to it.
+A glob over a directory the account cannot list yields nothing rather than
+raising, so a scan that globbed answered no record, every gate admitted the
+write the log may refuse and every report read clean. This file holds the scan
+and each consumer to it.
 
 THE CONTAINER RUNS AS ROOT, which no file mode bars, so each test refuses the
-two OS calls that list a directory (``os.listdir``, and ``os.scandir`` that a
-glob uses) for the one path, as an account the log is closed to is refused.
-Each case keeps its readable twin beside it, so the plain answer is pinned too.
-
-D1 applies. Nothing here names a real account, a real person or a real track.
+two OS calls that list a directory for the one path. Each case keeps its
+readable twin beside it. D1 applies.
 """
 
 from __future__ import annotations
@@ -71,9 +66,7 @@ def _unverified(cfg) -> Path:
     return Path(session.log_dir(cfg))
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The scan
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_log_that_cannot_be_listed_is_returned_as_the_one_unread_entry(cfg, monkeypatch):
@@ -89,12 +82,8 @@ def test_a_log_that_cannot_be_listed_is_returned_as_the_one_unread_entry(cfg, mo
 
 
 def test_the_reporting_reader_refuses_a_log_it_cannot_list(cfg, monkeypatch):
-    """Review round one: restore list, restore run and session release read this.
-
-    Skipping a damaged record leaves the others reported; a log nobody could
-    list leaves none, and an empty answer told a person their session was never
-    recorded. One damaged record is still skipped, which the twin pins.
-    """
+    """Restore list, restore run and session release read this. A damaged record
+    is skipped, which the twin pins; a log nobody could list leaves none."""
     log = _unverified(cfg)
     (log / "2026-10-21-dead.json").write_text("{not json")
     assert [record.session_id for record in session.records(cfg)] == ["s-1"]
@@ -125,26 +114,17 @@ def test_a_listed_log_is_read_and_names_nothing_unlisted(cfg):
     )
 
 
-def test_a_log_that_is_not_there_is_no_record_at_all(cfg):
-    log = Path(session.log_dir(cfg))
-    assert not log.exists()
-
+def test_a_log_that_is_not_there_is_no_record_and_a_file_in_its_place_is_unread(
+    cfg, monkeypatch, tmp_path
+):
+    assert not Path(session.log_dir(cfg)).exists()
     assert session.scan_log(cfg) == ((), ())
-
-
-def test_a_log_path_that_is_a_file_is_there_and_unread(cfg, monkeypatch, tmp_path):
     held = tmp_path / "log-is-a-file"
     held.write_text("not a directory")
     monkeypatch.setattr(session, "log_dir", lambda _cfg: held)
-
     assert session.scan_log(cfg) == ((), (held,))
-
-
-def test_a_log_under_a_file_is_not_there(cfg, monkeypatch, tmp_path):
-    parent = tmp_path / "state-is-a-file"
-    parent.write_text("not a directory")
-    monkeypatch.setattr(session, "log_dir", lambda _cfg: parent / "session_log")
-
+    # A log under a file is not there.
+    monkeypatch.setattr(session, "log_dir", lambda _cfg: held / "session_log")
     assert session.scan_log(cfg) == ((), ())
 
 
@@ -159,9 +139,7 @@ def test_the_clause_names_the_listing_and_not_an_entry(cfg, monkeypatch):
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. Every gate refuses, rather than admitting the write the log may refuse
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_unresolved_session_gate_refuses_over_a_log_it_cannot_list(cfg, monkeypatch):
@@ -248,9 +226,7 @@ def test_an_unreadable_record_keeps_its_own_refusal(cfg):
         assert caught.value.cause.detail["unlisted"] is False
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The reports say so, rather than reading clean
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_rotation_reads_the_listing_from_the_scan(cfg, monkeypatch):
@@ -287,24 +263,21 @@ def _rotation_plan(**overrides) -> rotate.RotationPlan:
     return rotate.RotationPlan(**fields)
 
 
-def test_the_rotation_warns_on_a_log_it_could_not_list():
-    (warning,) = rotate_cli.records_warnings(
-        _rotation_plan(unreadable_records=1, log_unlisted=True)
-    )
+@pytest.mark.parametrize(
+    ("given", "said"),
+    [
+        ({"unreadable_records": 1, "log_unlisted": True}, "the session log could not be listed"),
+        ({"unreadable_records": 2}, "2 session record(s) could not be read"),
+    ],
+)
+def test_the_rotation_warns_on_a_log_it_could_not_list_or_records_it_could_not_read(given, said):
+    (warning,) = rotate_cli.records_warnings(_rotation_plan(**given))
 
     assert warning["code"] == rotate_cli.RECORDS_UNREADABLE
-    assert warning["message"] == (
-        "the session log could not be listed, so a batch a record in it names was "
-        "aged from its playlist's creation date"
-    )
-
-
-def test_the_rotation_warns_on_records_it_could_not_read_as_it_did():
-    (warning,) = rotate_cli.records_warnings(_rotation_plan(unreadable_records=2))
-
-    assert warning["message"] == (
-        "2 session record(s) could not be read, so a batch one of them names was "
-        "aged from its playlist's creation date"
+    names = "a record in it names" if "log_unlisted" in given else "one of them names"
+    assert (
+        warning["message"]
+        == f"{said}, so a batch {names} was aged from its playlist's creation date"
     )
     assert rotate_cli.records_warnings(_rotation_plan()) == []
 
@@ -315,27 +288,21 @@ def _refill_plan(**overrides) -> refill.RefillPlan:
     return refill.RefillPlan(**fields)
 
 
-def test_the_refill_warns_on_a_log_it_could_not_list():
+def _refill_warning(**given) -> str:
     (warning,) = [
         one
-        for one in refill_cli.warnings_of(_refill_plan(unreadable=1, log_unlisted=True))
+        for one in refill_cli.warnings_of(_refill_plan(**given))
         if one["code"] == refill_cli.RECORDS_UNREADABLE
     ]
+    return warning["message"]
 
-    assert warning["message"] == (
+
+def test_the_refill_warns_on_a_log_it_could_not_list_or_records_it_could_not_read():
+    assert _refill_warning(unreadable=1, log_unlisted=True) == (
         "the session log could not be listed, so no account playlist without a "
         "readable landing record was found by its name"
     )
-
-
-def test_the_refill_warns_on_records_it_could_not_read_as_it_did():
-    (warning,) = [
-        one
-        for one in refill_cli.warnings_of(_refill_plan(unreadable=3))
-        if one["code"] == refill_cli.RECORDS_UNREADABLE
-    ]
-
-    assert warning["message"].startswith("3 session record(s) could not be read, so no ")
+    assert _refill_warning(unreadable=3).startswith("3 session record(s) could not be read, so no ")
 
 
 def test_the_check_refuses_an_unknown_landing_naming_the_listing(cfg, monkeypatch):
@@ -352,14 +319,11 @@ def test_the_check_refuses_an_unknown_landing_naming_the_listing(cfg, monkeypatc
     assert caught.value.cause.detail["log_unlisted"] is True
 
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 5. The verbs that read the log to report it refuse rather than answer none
-# ═══════════════════════════════════════════════════════════════════════════
+# 4. The verbs that read the log to report it refuse rather than answer none
 
 
 def test_restore_list_refuses_a_log_it_cannot_list_rather_than_list_nothing(cfg, monkeypatch):
-    """Review round one: exit 0 with no item and no warning, over a recorded session."""
+    """It exited 0 with no item and no warning, over a recorded session."""
     record, _captured = completed_session(cfg)
     code, listing = drive(["restore", "list"])
     assert code == int(ExitCode.OK), listing
@@ -376,7 +340,7 @@ def test_restore_list_refuses_a_log_it_cannot_list_rather_than_list_nothing(cfg,
 
 
 def test_restore_run_refuses_naming_the_listing_not_an_unrecorded_session(cfg, monkeypatch):
-    """Review round one: it said no session was recorded under an id that was."""
+    """It said no session was recorded under an id that was."""
     record, _captured = completed_session(cfg)
     _refuse_listing(monkeypatch, Path(session.log_dir(cfg)))
 
@@ -388,7 +352,7 @@ def test_restore_run_refuses_naming_the_listing_not_an_unrecorded_session(cfg, m
 
 
 def test_the_native_landing_lookups_refuse_a_log_they_cannot_list(cfg, monkeypatch):
-    """Review round two: both answered no landing, and sync mark sent a person to land again."""
+    """Both answered no landing, and sync mark sent a person to land again."""
     _record(cfg, session.SessionState.CLOSED, detail={native.PASS_KEY: "2026-10-20 sync"})
     assert native.landed_passes(cfg) == ("2026-10-20 sync",)
     assert native.landings_of_pass(cfg, "2026-10-20 sync") == ("s-1",)
@@ -401,4 +365,3 @@ def test_the_native_landing_lookups_refuse_a_log_they_cannot_list(cfg, monkeypat
         with pytest.raises(CratekitError) as refused:
             lookup()
         assert "cannot be listed by this account" in refused.value.cause.message
-
