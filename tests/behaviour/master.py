@@ -116,3 +116,21 @@ def test_mastering_refuses_over_an_existing_master(stage, configured, monkeypatc
     assert replaced.code == OK, replaced.stderr
     _write_commands(seen, tmp_path / "encoder-commands.txt")
     assert final.read_bytes() != b"a master somebody kept"
+
+
+def test_mastering_refuses_outside_its_loudness_range_and_without_its_probe(
+    stage, configured, monkeypatch, tmp_path
+):
+    """A target loudness ffmpeg would refuse, and the probe named at a program that is not there."""
+    source = _recording(configured.library.root)
+    stage.json("master", source, "--lufs=-3")
+    stage.crate("master", source, "--lufs=-3")
+    queued = stage.json("master", source)
+    assert queued.code == OK, queued.stdout
+    job_id = queued.envelope["data"]["job_id"]
+
+    monkeypatch.setenv("CRATEKIT_BIN_FFPROBE", str(configured.library.root / "no-ffprobe"))
+    refused = stage.json("master", source, "--job", job_id)
+    assert refused.code != OK, refused.stdout
+    stage.crate("master", source, "--job", job_id)
+    assert not mastering.output_path(source).exists()

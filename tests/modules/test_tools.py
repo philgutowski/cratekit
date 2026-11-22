@@ -1034,7 +1034,9 @@ def test_the_agent_alone_refuses_and_an_unrelated_process_named_rekordbox_does_n
 
 def test_the_backup_source_reads_no_environment_and_spells_no_remote():
     """The source system's probe could be faked by the environment, and it spelled destinations."""
-    source = (SRC_ROOT / "cratekit" / "modules" / "tools" / "backup.py").read_text()
+    tools = SRC_ROOT / "cratekit" / "modules" / "tools"
+    # Every file the backup engine is split across, so a move cannot leave the check.
+    source = "\n".join(path.read_text() for path in sorted(tools.glob("backup*.py")))
     tree = ast.parse(source)
     reads = [
         ast.unparse(node)
@@ -1823,8 +1825,8 @@ def test_restore_is_a_named_decision_and_never_a_prompt(cfg, tmp_path, rclone):
 
 def test_no_module_in_this_unit_reads_standard_input():
     """The structural half of R33: a prompt cannot appear where none is written."""
-    for name in ("backup.py", "mastering.py", "setbuilder.py"):
-        source = (SRC_ROOT / "cratekit" / "modules" / "tools" / name).read_text()
+    for path in sorted((SRC_ROOT / "cratekit" / "modules" / "tools").glob("*.py")):
+        name, source = path.name, path.read_text()
         for node in ast.walk(ast.parse(source)):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
                 assert node.func.id != "input", f"{name} prompts on standard input"

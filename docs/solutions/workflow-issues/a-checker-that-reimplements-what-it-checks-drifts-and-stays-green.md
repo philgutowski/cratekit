@@ -44,7 +44,7 @@ repository forbids pull requests by contract, so the commit is the citation and
 there is no PR number to give.
 
 Among the rules U28 added to `tests/test_skills_lint.py` was rule (g), applied at
-`tests/test_skills_lint.py:336`, one line per fenced command in every shipped
+`tests/test_skills_lint.py:275`, one line per fenced command in every shipped
 `SKILL.md`. Its job is one sentence. A `crate` invocation printed in a skill must
 be a command a person can actually type.
 
@@ -85,7 +85,7 @@ Zero and eight over the same twelve files, same parser, same rule name. The old
 number is the one `test_real_skills_pass_lint` reported on every run, which is
 why the suite was green while eight shipped commands were broken.
 
-The fix deleted the walker. `_verb_problems` at `tests/test_skills_lint.py:155`
+The fix deleted the walker. `_verb_problems` at `tests/test_skills_lint.py:126`
 now strips a prompt marker, truncates at a shell operator, tokenises with
 `shlex`, and hands the result to `parse_args` on a parser built from the registry,
 trapping `SystemExit`. It caught a ninth defect immediately, in the correction
@@ -151,7 +151,7 @@ is, because the fixture and the walker are two expressions of one model. Two
 implementations can only be compared by running both.
 
 **Replace the fixture table with a real instance of the target, small and
-synthetic but real.** `_fixture_parser` at `tests/test_skills_lint.py:379` is a
+synthetic but real.** `_fixture_parser` at `tests/test_skills_lint.py:306` is a
 tiny `argparse.ArgumentParser` rather than a dictionary, and its docstring states
 the property that matters: "It is a real `argparse.ArgumentParser` rather than a
 table, so the fixtures exercise the same code path the real tree does." The
@@ -164,8 +164,8 @@ prose, so a prompt marker is stripped, everything from a shell operator onward i
 dropped as belonging to another program, and quoting is resolved by `shlex`
 rather than by `split()`. Second, deciding which of the target's verdicts count:
 here exit 0 is `--help` and `--version`, which are real answers rather than
-failures, at `tests/test_skills_lint.py:207`. Third, handling the target's state.
-`real_parser` at `:116` builds a FRESH parser per call, and its docstring says
+failures, at `tests/test_skills_lint.py:162`. Third, handling the target's state.
+`real_parser` at `:76` builds a FRESH parser per call, and its docstring says
 why: "`parse_args` mutates the namespace it builds and argparse keeps state on
 the parser for a failed parse. A shared instance made one skill's bad command
 affect the next skill's verdict, which is the shape of a test that passes or
@@ -367,8 +367,9 @@ P3 is "audit by walking, not by enumerating". This learning is neither, it is th
 judgment axis described in Guidance, and it is closest to P4 and P2.
 
 AND THE SAME SHAPE SURVIVED ONE LEVEL DOWN, IN THE CORRECTION ITSELF.
-`test_a_command_missing_a_required_positional_fails` at
-`tests/test_skills_lint.py:613` is named for the defect the walker could not see,
+`test_a_command_missing_a_required_positional_fails`, now the case
+`missing required value` of `test_a_command_that_does_not_parse_is_reported`,
+is named for the defect the walker could not see,
 and its docstring says "argparse wants an argument the skill never mentions". Its
 fixture parser declares its only positional as `value` with `nargs="*"`, which
 argparse treats as optional, so the command it drives fails for a different
@@ -411,7 +412,10 @@ it.
   failures. Exit 0 from `--help` is not a passing command in every checker's
   sense, and here it is.
 - **The real thing carries state across calls.** Build a fresh instance per
-  input, or accept a suite whose result depends on ordering.
+  input, or accept a suite whose result depends on ordering. The one exception
+  here is speed over the real tree: `test_real_skills_pass_lint` reuses one
+  parser and builds a fresh one after any line it rejects (`_ParserUntilRejected`,
+  U311), since a parse that exits is what leaves argparse's state behind.
 - **The real thing has a configuration dimension.** Choose it deliberately, say
   why in the docstring, and check the other configurations as their own test
   rather than as a side effect.
@@ -504,7 +508,7 @@ function that could ever have noticed one. The docstring above it, at `:169`,
 argues carefully and correctly for the greedy path consumption, and never
 mentions positionals either, because the model did not contain them.
 
-THE AFTER, at `tests/test_skills_lint.py:189` through `:211`. The whole verdict is
+THE AFTER, at `tests/test_skills_lint.py:143` through `:166`. The whole verdict is
 the target's:
 
 ```python
@@ -587,7 +591,7 @@ def _lint(root: Path, scripts: set[str], **kwargs):
     kwargs.setdefault("verbs", _FIXTURE_VERBS)
 ```
 
-After, at `tests/test_skills_lint.py:402`, with `_fixture_parser` at `:379`:
+After, at `tests/test_skills_lint.py:324`, with `_fixture_parser` at `:306`:
 
 ```python
 def _lint(root: Path, scripts: set[str], **kwargs):
@@ -601,7 +605,7 @@ real parser would not recognise.
 THE SIBLING APPLICATION, in the same commit, from a different finding. Two skills
 described a profile disabled verb as refusing with an explanation when it is in
 fact absent from the parser. The correction was not only to the prose. The
-behaviour was pinned against the parser, `tests/test_skills_lint.py:672`, and the
+behaviour was pinned against the parser, `tests/test_skills_lint.py:561`, and the
 docstring names the property:
 
 ```python

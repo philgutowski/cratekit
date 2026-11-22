@@ -74,3 +74,14 @@ def test_the_set_builder_refuses_an_anchor_it_cannot_place(stage, configured, pl
     assert stage.json("setbuild", "--named", "Nobody - Absent").code == REFUSED
     outside = stage.json("setbuild", Path(configured.library.root).parent / "elsewhere.flac")
     assert outside.code == REFUSED, outside.stdout
+
+
+def test_the_set_builder_refuses_a_key_or_tempo_beside_an_owned_anchor(stage, configured, place):
+    """``--key`` and ``--bpm`` belong to an unowned anchor, never beside a path or a name."""
+    anchor = _stock(place)
+    beside_path = stage.json("setbuild", anchor, "--key", "08A")
+    assert beside_path.code != OK, beside_path.stdout
+    stage.crate("setbuild", anchor, "--key", "08A")
+    beside_name = stage.json("setbuild", "--named", "Alder - Anchor Work", "--bpm", "124")
+    assert beside_name.code != OK, beside_name.stdout
+    stage.crate("setbuild", "--named", "Alder - Anchor Work", "--bpm", "124")
