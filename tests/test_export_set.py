@@ -27,6 +27,7 @@ from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, UnreadableCatalogue, catalogue_factory
 from tests.test_intake_missing_search import Hit
 from tests.test_label_workers import installed as installed  # noqa: PLC0414 - fixture
+from tests.test_outbound_workers import _asked
 from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 from tests.test_outbound_workers import bind as bind_account
 
@@ -68,8 +69,7 @@ def _tracklist(cfg, rows=ROWS, name: str = f"{NAME}.txt") -> Path:
 
 def _two_acts(argv: list[str], gate: str, option: str = "apply") -> tuple[int, dict]:
     """R34's two acts on an explicit gate, then the run that carries them out."""
-    code, refused = drive(argv)
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    refused = _asked(argv)
     assert refused["cause"]["detail"]["gate"] == gate
     run_id = refused["run_id"]
     code, decided = drive(["run", "decide", run_id, gate, option, "--actor", "a-person"])
@@ -149,8 +149,7 @@ def test_a_tracklist_name_keeps_the_digest_that_tells_two_recordings_apart():
 
 def test_five_rows_with_one_unmatched_plan_four_and_name_the_fifth(account):
     cfg, _fake, held = account
-    code, refused = drive(["export", "set", str(_tracklist(cfg))])
-    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    _asked(["export", "set", str(_tracklist(cfg))])
     assert held.created == [] and held.added == []
     done = _built(_tracklist(cfg), "abort")
     assert done["outcome"] == "no_op" and held.created == []
@@ -203,8 +202,7 @@ def test_a_row_added_to_the_tracklist_later_is_added_to_the_same_playlist(accoun
 
 def test_a_set_with_nothing_matched_makes_no_empty_playlist(account):
     cfg, _fake, held = account
-    path = _tracklist(cfg, rows=(("Nobody", "Nothing"),), name="empty.txt")
-    done = _built(path)
+    done = _built(_tracklist(cfg, rows=(("Nobody", "Nothing"),), name="empty.txt"))
     assert done["outcome"] == "no_op" and held.created == []
     assert ledger.set_playlist(cfg, "empty") is None
 
@@ -377,6 +375,13 @@ def _held(
     return tagged_container(tmp_path, target, **fields)
 
 
+def _isrc_asked(album: str = "") -> dict:
+    """What the account is asked for ``SEVEN`` by its held file's ISRC."""
+    artist, title = SEVEN
+    asked = {"identity": "set-row-1", "isrc": "QZABC2600007", "title": title, "artist": artist}
+    return {**asked, "album": album}
+
+
 def _filler(count: int, start: int = 0) -> list[Hit]:
     """Hits that resemble nothing the row says, to fill a page."""
     return [Hit(f"fill-{n}", "Other Act", f"Unrelated {n}") for n in range(start, start + count)]
@@ -391,13 +396,7 @@ def test_a_row_the_library_holds_is_listed_by_its_files_isrc_with_no_search(
     row = _seventh(cfg, "held.txt")
     assert (row["id"], row["how"], row["action"]) == ("tid-by-file", "library-isrc", "add")
     # Twice, once at the gate's refusal and once on the run that carries it out.
-    asked = {
-        "identity": "set-row-1",
-        "isrc": "QZABC2600007",
-        "title": "Title Seven",
-        "artist": "Artist Seven",
-        "album": "",
-    }
+    asked = _isrc_asked()
     assert held.matches == [asked, asked]
     assert held.agreeing == ["set-row-1", "set-row-1"], "a file's tag was trusted alone"
     assert fake.searched_for == []
@@ -412,13 +411,7 @@ def test_a_held_files_album_tag_is_handed_to_the_account_with_its_isrc(
     held.catalog["set-row-1"] = "tid-by-file"
     row = _seventh(cfg, "held-album.txt")
     assert (row["id"], row["how"], row["action"]) == ("tid-by-file", "library-isrc", "add")
-    asked = {
-        "identity": "set-row-1",
-        "isrc": "QZABC2600007",
-        "title": "Title Seven",
-        "artist": "Artist Seven",
-        "album": "Tidal Lines",
-    }
+    asked = _isrc_asked(album="Tidal Lines")
     assert held.matches == [asked, asked]
     assert fake.searched_for == []
 
@@ -741,8 +734,7 @@ def test_a_set_put_in_its_folder_by_hand_writes_nothing_and_its_gate_says_so(acc
     # A SET MARKED BY HAND BEFORE U242, its old prefix still on it.
     held.titles[recorded.remote_id] = f"DOWNLOADED {NAME}"
     argv = ["export", "archive", NAME, "--xml", str(_landed(cfg))]
-    code, asked = drive(argv)
-    assert code == int(ExitCode.DECISION_REQUIRED), asked
+    asked = _asked(argv)
     shown = asked["cause"]["detail"]["shown"]
     assert "recorded folder" not in shown
     assert shown["nothing to write"] == "the playlist is already in its folder and held as taken"
@@ -752,8 +744,7 @@ def test_a_set_put_in_its_folder_by_hand_writes_nothing_and_its_gate_says_so(acc
     assert len(held.folders_created) == made_by_hand
     assert ledger.set_folder(cfg, folder_name) == "gone-from-the-account"
     held.titles[recorded.remote_id] = "My Own Title"
-    code, asked = drive(argv)
-    assert code == int(ExitCode.DECISION_REQUIRED), asked
+    asked = _asked(argv)
     assert "as a person set it" in asked["cause"]["detail"]["shown"]["nothing to write"]
 
 
