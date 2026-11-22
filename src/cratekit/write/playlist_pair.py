@@ -1,30 +1,22 @@
 """The rekordbox side of a playlist pair: read one playlist in order, and write it.
 
-U130. ``sync pair`` keeps one of the author's account playlists and one
-rekordbox playlist the same list. This module is everything that pair needs from
-the database: one plain playlist read with its live memberships in track order,
-the facts of the rows it holds, the rows the library holds by ISRC, and the one
-write, which adds memberships, takes memberships out and numbers the live
-memberships in the merged order.
+U130. ``sync pair`` keeps one account playlist and one rekordbox playlist the
+same list. This module reads one plain playlist with its live memberships in
+track order, the rows it holds and the rows the library holds by ISRC, and
+makes the one write: memberships added, taken out, and numbered in order.
 
-**MEMBERSHIPS ONLY. NO ROW OF THE COLLECTION IS MADE, CHANGED OR REMOVED.** An
-addition names a content row the library already holds, a removal is
-``rb_writer.remove_memberships``'s soft delete of a membership, and an order is
-a ``TrackNo`` on a live membership. A track taken off the playlist is still in
-the collection and in every other playlist that holds it.
+**MEMBERSHIPS ONLY. NO ROW OF THE COLLECTION IS MADE, CHANGED OR REMOVED.** A
+removal is ``rb_writer.remove_memberships``'s soft delete, and a track taken off
+the playlist stays in the collection and every other playlist.
 
 **THE ORDER IS ONE THROUGH N OVER THE LIVE MEMBERSHIPS.** A removed membership
-keeps the number it had, which ``rb_writer.remove_memberships`` says on purpose,
-and the binding numbers a new membership from the count of every row, removed
-ones included, so a number one past the live ones is never one a live row
-holds. What rekordbox makes of a live number a removed row also carries was not
-observed on a real library and is the attended sitting's to read.
+keeps its number, and the binding numbers a new one from the count of every
+row, so a number one past the live ones is never one a live row holds. What
+rekordbox makes of a live number a removed row also carries is unobserved.
 
-**THE SESSION SPINE IS CALLED, NOT REBUILT**, as every database membership
-writer calls it: the gates with a record kept, a capture verified before
-anything is written, the analysis watch over the roots named, the commit
-witness, and the guarded commit admitting the membership table for the
-removals. The playlist is read again on the write handle first, and one whose
+**THE SESSION SPINE IS CALLED, NOT REBUILT**, as by every database membership
+writer, the guarded commit admitting the membership table for the removals.
+The playlist is read again on the write handle first, and one whose
 memberships moved since the plan was approved refuses with nothing written.
 
 Layer: write.
@@ -110,13 +102,7 @@ def _node(db: Any, playlist_id: str) -> tuple[str, str, str, int, bool] | None:
     ).fetchone()
     if found is None:
         return None
-    return (
-        _text(found[0]),
-        _text(found[1]),
-        _text(found[2]),
-        int(found[3] or 0),
-        bool(found[4]),
-    )
+    return _text(found[0]), _text(found[1]), _text(found[2]), int(found[3] or 0), bool(found[4])
 
 
 def read_playlist(db: Any, playlist_id: str) -> Playlist | None:
@@ -140,12 +126,8 @@ def read_playlist(db: Any, playlist_id: str) -> Playlist | None:
         parent = above[2]
     rows = members(db, node_id) if attribute == PLAIN_PLAYLIST and not removed else ()
     return Playlist(
-        playlist_id=node_id,
-        name=name,
-        attribute=attribute,
-        removed=removed,
-        ancestors=tuple(ancestors),
-        rows=rows,
+        playlist_id=node_id, name=name, attribute=attribute, removed=removed,
+        ancestors=tuple(ancestors), rows=rows,
     )
 
 
@@ -171,27 +153,17 @@ def members(db: Any, playlist_id: str) -> tuple[Row, ...]:
         ),
         {"id": str(playlist_id)},
     ).fetchall()
-    return tuple(
-        Row(
-            row_id=_text(one[0]),
-            content_id=_text(one[1]),
-            title=_text(one[2]),
-            artist=_text(one[3]),
-            isrc=_text(one[4]),
-            path=_text(one[5]),
-        )
-        for one in found
-    )
+    # The columns are the row's fields, in order.
+    return tuple(Row(*map(_text, one)) for one in found)
 
 
 @dataclass(frozen=True, slots=True)
 class Stamp:
     """One membership row of a playlist, live or removed, and its two moments (U202).
 
-    ``created`` is when the row was made, which for a live row is when the
-    track was put in the playlist; ``updated`` is when it last changed, which
-    for a row marked removed is when it was taken out, if nothing touched it
-    since. Each is an aware moment, or None when the row carries none.
+    ``created``: when the track was put in the playlist. ``updated``: when the
+    row last changed, for a removed row when it was taken out if nothing
+    touched it since. Each is an aware moment, or None when the row has none.
     """
 
     row_id: str
@@ -232,9 +204,8 @@ def stamps(db: Any, playlist_id: str) -> dict[str, Stamp]:
 def content(db: Any, content_ids: Iterable[str]) -> dict[str, Row]:
     """The live content rows among ``content_ids``, by id, with their facts.
 
-    A row the library removed is left out, so a link to a track that has since
-    left the collection is a link to nothing rather than a membership added to
-    a row nobody can see.
+    A removed row is left out, so a link to a track that left the collection is
+    a link to nothing, not a membership on a row nobody can see.
     """
     from sqlalchemy import bindparam, text
 
@@ -246,15 +217,9 @@ def content(db: Any, content_ids: Iterable[str]) -> dict[str, Row]:
         f"FROM {rb_writer.CONTENT_TABLE} c LEFT JOIN djmdArtist a ON a.ID = c.ArtistID "
         f"WHERE c.ID IN :ids AND COALESCE(c.{rb_writer.SOFT_DELETE_COLUMN}, 0) = 0"
     ).bindparams(bindparam("ids", expanding=True))
+    # The columns are the row's fields after its membership id, in order.
     return {
-        _text(one[0]): Row(
-            row_id="",
-            content_id=_text(one[0]),
-            title=_text(one[1]),
-            artist=_text(one[2]),
-            isrc=_text(one[3]),
-            path=_text(one[4]),
-        )
+        _text(one[0]): Row("", *map(_text, one))
         for one in db.session.execute(statement, {"ids": wanted}).fetchall()
     }
 
@@ -357,12 +322,7 @@ def renumber(db: Any, playlist_id: str, order: Sequence[str]) -> int:
 
 
 def _record_pair_commit(
-    record: session.SessionRecord,
-    source: str,
-    *,
-    added: int,
-    changed: int,
-    cfg: config.Config,
+    record: session.SessionRecord, source: str, *, added: int, changed: int, cfg: config.Config
 ) -> None:
     """Record a commit on the session under the pair's own source, when one landed."""
     if added <= 0 and changed <= 0:
@@ -440,19 +400,13 @@ def apply(
                     record, source, added=len(added), changed=len(removed) + moved, cfg=cfg
                 )
             raise
-        _record_pair_commit(
-            record, source, added=len(added), changed=len(removed) + moved, cfg=cfg
-        )
+        _record_pair_commit(record, source, added=len(added), changed=len(removed) + moved, cfg=cfg)
         if added or removed or moved:
             convergence.record_fingerprint(cfg, db)
         session_id = record.session_id
     return Written(
-        playlist_id=change.playlist_id,
-        added=len(added),
-        removed=len(removed),
-        renumbered=moved,
-        session_id=session_id,
-        read_back=members(db, change.playlist_id),
+        playlist_id=change.playlist_id, added=len(added), removed=len(removed),
+        renumbered=moved, session_id=session_id, read_back=members(db, change.playlist_id),
     )
 
 
