@@ -957,6 +957,33 @@ def _without(tables: dict[str, list[tuple]], cfg: config.Config, gone: set[str])
     return kept
 
 
+def _closed_up(tables: dict[str, list[tuple]], cfg: config.Config, before: dict[str, list[tuple]], gone: set[str]) -> dict:
+    """``tables`` with each playlist a removed membership left numbered one through N again (R-1830).
+
+    An expectation written apart from the writer's rule: on a fixture whose
+    playlists are each numbered one through N with no gap, which this asserts,
+    rekordbox's renumbering (A197, sitting 102) leaves every playlist a removed
+    track left numbered one through N over the members it keeps, in their
+    order, and every other column of every row as it was.
+    """
+    columns = _columns_of(cfg, "djmdSongPlaylist")
+    pid, cid, number = (columns.index(name) for name in ("PlaylistID", "ContentID", "TrackNo"))
+    by_playlist: dict[str, list[tuple]] = {}
+    for row in before["djmdSongPlaylist"]:
+        by_playlist.setdefault(str(row[pid]), []).append(row)
+    for rows in by_playlist.values():
+        assert sorted(int(row[number]) for row in rows) == list(range(1, len(rows) + 1)), rows
+    touched = {key for key, rows in by_playlist.items() if any(str(row[cid]) in gone for row in rows)}
+    kept = []
+    for key, rows in by_playlist.items():
+        survivors = sorted((row for row in rows if str(row[cid]) not in gone), key=lambda row: int(row[number]))
+        for place, row in enumerate(survivors, start=1):
+            if key in touched:
+                row = (*row[:number], place, *row[number + 1 :])
+            kept.append(row)
+    return {**tables, "djmdSongPlaylist": sorted(kept, key=repr)}
+
+
 def _counter(cfg: config.Config) -> int:
     ((value,),) = _query(cfg, "SELECT int_1 FROM agentRegistry WHERE registry_id = 'localUpdateCount'")
     return int(value)
@@ -1005,10 +1032,16 @@ def test_apply_takes_out_exactly_the_offered_rows_and_every_row_naming_them(
     shown = refused["cause"]["detail"]["shown"]
     assert any("New1" in line and str(music) in line for line in shown["offered"]), shown
     assert acted["data"]["totals"]["removed"] == 1
+    # New1 sat second of five on two pass playlists and fourth of five on
+    # INBOX / Analyze: three, three and one members after it are renumbered.
+    assert shown["memberships renumbered"] == 7, shown
+    assert acted["data"]["totals"]["memberships renumbered"] == 7
     after = _every_table(cfg)
-    expected = _without(before, cfg, {offered})
+    expected = _closed_up(_without(before, cfg, {offered}), cfg, before, {offered})
     # Read from SQL, table by table: the offered row and every row naming it
-    # are gone, and nothing else moved but the update count.
+    # are gone, the members after it in each playlist it left are numbered
+    # down with no other column moved (R-1830), and nothing else moved but
+    # the update count.
     registry_at = _columns_of(cfg, "agentRegistry").index("registry_id")
     for name in sorted(set(expected) | set(after)):
         if name == "agentRegistry":
