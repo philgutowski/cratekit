@@ -5,10 +5,10 @@
   "head": "fd8173d3",
   "when": "2026-11-22 18:45 UTC",
   "valid": true,
-  "invalid_reason": "in progress",
+  "invalid_reason": "",
   "baseline_collected": 22933,
   "baseline_exit": 1,
-  "pytest_runs": 190,
+  "pytest_runs": 212,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 251,
@@ -5828,6 +5828,748 @@
       "source": {
         "table": "u169.json",
         "id": "R6_filter_unnamed"
+      }
+    },
+    {
+      "id": "u27-round-8-independent.E7_readonly_sentence_is_permission",
+      "description": "Give a read only volume the permission-grant sentence, the defect round 8 closed one layer up",
+      "file": "src/cratekit/cli/render.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "524490fa56cd2fe4",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "zero",
+      "deaths": 0,
+      "collected": 22933,
+      "baseline_collected": 22933,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [],
+      "promoted": true,
+      "subset_deaths": 0,
+      "note": "confirmed on the full suite",
+      "runs": 2,
+      "head_verified": true,
+      "old": "        cause_module.AccessKind.READ_ONLY: (\n            \"The volume holding it is mounted read only, so it refuses every writer on \"\n            \"this machine and no permission grant can change that. Remount it read write, \"\n            \"release the medium's write protection, or write somewhere else\"\n        ),",
+      "new": "        cause_module.AccessKind.READ_ONLY: (\n            \"The operating system refused this account, which is a permission to grant \"\n            \"rather than a defect in this program. Grant this interpreter access to the \"\n            \"path, or choose one it can already reach\"\n        ),",
+      "source": {
+        "table": "u27-round-8-independent.json",
+        "id": "E7_readonly_sentence_is_permission"
+      }
+    },
+    {
+      "id": "u49-author.V1_the_terminal_screen_stops_showing_it",
+      "description": "Remove the shown branch from render_gate, so the carried facts reach JSON and never reach a person",
+      "file": "src/cratekit/cli/render.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b46be78cf3df1cb3",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_deletion.py",
+        "tests/test_doctor.py",
+        "tests/test_reserved_causes.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 1970,
+      "baseline_collected": 1970,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cli_contract.py::test_human_mode_renders_what_the_verb_showed_and_is_unchanged_without_it",
+        "tests/test_cli_contract.py::test_the_profile_gate_shows_the_delta_the_digest_was_taken_over",
+        "tests/test_deletion.py::test_delete_review_prints_the_baseline_to_a_person_not_only_to_json"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    shown = detail.get(\"shown\")\n    if isinstance(shown, Mapping) and shown:\n        lines.append(\"\")\n        lines += _shown_lines(shown)",
+      "new": "",
+      "source": {
+        "table": "u49-author.json",
+        "id": "V1_the_terminal_screen_stops_showing_it"
+      }
+    },
+    {
+      "id": "u97-a.A1_bare_verb_returns",
+      "description": "_COMMANDS: offer the bare crate login again, the exact defect R-411 measured, which shadows the advice entirely",
+      "file": "src/cratekit/cli/render.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a399e8fe04c871c3",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_doctor.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 1588,
+      "baseline_collected": 1588,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cli_contract.py::test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_performs[authenticate-provider-  fix: crate login]",
+        "tests/test_doctor.py::test_a_missing_provider_session_is_offered_the_procedure_and_not_the_bare_verb",
+        "tests/test_label_tidal_catalogue.py::test_the_label_paths_refusal_carries_the_token_that_renders_the_procedure"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    Remedy.AUTHENTICATE_PROVIDER: None,",
+      "new": "    Remedy.AUTHENTICATE_PROVIDER: \"crate login\",",
+      "source": {
+        "table": "u97-a.json",
+        "id": "A1_bare_verb_returns"
+      }
+    },
+    {
+      "id": "u97-a.A2_rejected_session_says_log_in_again",
+      "description": "_ADVICE: put REAUTHENTICATE_PROVIDER back to log in again, the same instruction nothing performs on the likelier path",
+      "file": "src/cratekit/cli/render.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8ae774995beaa758",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_doctor.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1588,
+      "baseline_collected": 1588,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cli_contract.py::test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_performs[reauthenticate-provider-  fix: the provider rejected the stored credential; log in again]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        \"the provider rejected the stored session and crate login cannot mint another, it \"\n        \"only records one; \" + _PROVIDER_SESSION_PROCEDURE",
+      "new": "        \"the provider rejected the stored credential; log in again\"",
+      "source": {
+        "table": "u97-a.json",
+        "id": "A2_rejected_session_says_log_in_again"
+      }
+    },
+    {
+      "id": "u97-a.A3_procedure_drops_the_erase",
+      "description": "_PROVIDER_SESSION_PROCEDURE: name mint and record and not the erase, which is what leaves a plaintext token on disk",
+      "file": "src/cratekit/cli/render.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "41ce6faa1e724b97",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_doctor.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 1588,
+      "baseline_collected": 1588,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cli_contract.py::test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_performs[authenticate-provider-  fix: crate login]",
+        "tests/test_cli_contract.py::test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_performs[reauthenticate-provider-  fix: the provider rejected the stored credential; log in again]",
+        "tests/test_doctor.py::test_a_missing_provider_session_is_offered_the_procedure_and_not_the_bare_verb"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    \"crate login provider-session --from-file, then erase the plaintext file, which \"\n    \"docs/adapters.md in the project's repository sets out step by step\"",
+      "new": "    \"crate login provider-session --from-file, which \"\n    \"docs/adapters.md in the project's repository sets out step by step\"",
+      "source": {
+        "table": "u97-a.json",
+        "id": "A3_procedure_drops_the_erase"
+      }
+    },
+    {
+      "id": "u97-a.A4_procedure_drops_the_flag",
+      "description": "_PROVIDER_SESSION_PROCEDURE: name the subcommand without --from-file, so the person is told to run a verb that refuses with no source",
+      "file": "src/cratekit/cli/render.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8378ba70ae11091f",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_doctor.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 1588,
+      "baseline_collected": 1588,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cli_contract.py::test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_performs[authenticate-provider-  fix: crate login]",
+        "tests/test_cli_contract.py::test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_performs[reauthenticate-provider-  fix: the provider rejected the stored credential; log in again]",
+        "tests/test_doctor.py::test_a_missing_provider_session_is_offered_the_procedure_and_not_the_bare_verb",
+        "tests/test_label_tidal_catalogue.py::test_the_label_paths_refusal_carries_the_token_that_renders_the_procedure"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    \"crate login provider-session --from-file, then erase the plaintext file, which \"",
+      "new": "    \"crate login provider-session, then erase the plaintext file, which \"",
+      "source": {
+        "table": "u97-a.json",
+        "id": "A4_procedure_drops_the_flag"
+      }
+    },
+    {
+      "id": "u97-a.A5_procedure_drops_the_document",
+      "description": "_PROVIDER_SESSION_PROCEDURE: drop the pointer at the document that carries the minting command itself",
+      "file": "src/cratekit/cli/render.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "de0abe9f6771eb03",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_doctor.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 1588,
+      "baseline_collected": 1588,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cli_contract.py::test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_performs[authenticate-provider-  fix: crate login]",
+        "tests/test_cli_contract.py::test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_performs[reauthenticate-provider-  fix: the provider rejected the stored credential; log in again]",
+        "tests/test_doctor.py::test_a_missing_provider_session_is_offered_the_procedure_and_not_the_bare_verb",
+        "tests/test_label_tidal_catalogue.py::test_the_label_paths_refusal_carries_the_token_that_renders_the_procedure"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    \"crate login provider-session --from-file, then erase the plaintext file, which \"\n    \"docs/adapters.md in the project's repository sets out step by step\"",
+      "new": "    \"crate login provider-session --from-file, then erase the plaintext file\"",
+      "source": {
+        "table": "u97-a.json",
+        "id": "A5_procedure_drops_the_document"
+      }
+    },
+    {
+      "id": "u97-a.A6_remedy_text_drops_the_advice",
+      "description": "remedy_text: read the command table alone, the existing fallback this unit now depends on, so every advice only token renders nothing",
+      "file": "src/cratekit/cli/render.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e86178862cec9b28",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_doctor.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 9,
+      "collected": 1588,
+      "baseline_collected": 1588,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cli_contract.py::test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_performs[authenticate-provider-  fix: crate login]",
+        "tests/test_cli_contract.py::test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_performs[reauthenticate-provider-  fix: the provider rejected the stored credential; log in again]",
+        "tests/test_cli_contract.py::test_every_module_local_remedy_renders_to_something_a_user_can_act_on",
+        "tests/test_doctor.py::test_a_missing_provider_session_is_offered_the_procedure_and_not_the_bare_verb",
+        "tests/test_doctor.py::test_a_module_enabled_without_its_credential_is_reported_with_the_fix",
+        "tests/test_doctor.py::test_an_unreadable_credential_index_is_reported_as_unread_not_as_unrecorded",
+        "tests/test_doctor.py::test_the_grant_path_access_advice_claims_neither_act_over_the_other",
+        "tests/test_doctor.py::test_the_human_rendering_shows_the_checks_rather_than_only_a_status",
+        "tests/test_label_tidal_catalogue.py::test_the_label_paths_refusal_carries_the_token_that_renders_the_procedure"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return _COMMANDS.get(remedy) or _ADVICE.get(remedy)",
+      "new": "    return _COMMANDS.get(remedy)",
+      "source": {
+        "table": "u97-a.json",
+        "id": "A6_remedy_text_drops_the_advice"
+      }
+    },
+    {
+      "id": "u97-b.B2_check_table_prints_no_fix",
+      "description": "render_checks: print the check row and swallow its fix line, so the human report names every failure and no remedy",
+      "file": "src/cratekit/cli/render.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ef05db361a8d9940",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_doctor.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1588,
+      "baseline_collected": 1588,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_missing_provider_session_is_offered_the_procedure_and_not_the_bare_verb",
+        "tests/test_doctor.py::test_the_human_rendering_shows_the_checks_rather_than_only_a_status"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if words:\n            lines.append(f\"         fix: {words}\")",
+      "new": "        if False:\n            lines.append(f\"         fix: {words}\")",
+      "source": {
+        "table": "u97-b.json",
+        "id": "B2_check_table_prints_no_fix"
+      }
+    },
+    {
+      "id": "u97-c.C2_remediation_line_drops_the_token_branch",
+      "description": "composite for B5: drop the remedy branch altogether, so every cause with a token falls to its first step or the exit code's generic summary. Shows what the renderer holds when the precedence between the two holds nothing",
+      "file": "src/cratekit/cli/render.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3dbac6a943327ae9",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_doctor.py",
+        "tests/test_label_tidal_catalogue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 1588,
+      "baseline_collected": 1588,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cli_contract.py::test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_performs[authenticate-provider-  fix: crate login]",
+        "tests/test_cli_contract.py::test_a_provider_session_remedy_names_three_acts_and_not_a_login_nothing_performs[reauthenticate-provider-  fix: the provider rejected the stored credential; log in again]",
+        "tests/test_cli_contract.py::test_every_module_local_remedy_renders_to_something_a_user_can_act_on",
+        "tests/test_label_tidal_catalogue.py::test_the_label_paths_refusal_carries_the_token_that_renders_the_procedure"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    remedy = cause.remediation.remedy\n    if remedy is not None:\n        words = remedy_text(remedy)\n        if words:\n            return f\"  fix: {words}\"",
+      "new": "    remedy = cause.remediation.remedy\n    if False:\n        words = remedy_text(remedy)\n        if words:\n            return f\"  fix: {words}\"",
+      "source": {
+        "table": "u97-c.json",
+        "id": "C2_remediation_line_drops_the_token_branch"
+      }
+    },
+    {
+      "id": "u132.V5_nothing",
+      "description": "A plan that writes nothing still asks the gate",
+      "file": "src/cratekit/cli/verbs/taxonomy.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6eee828fdc808693",
+      "subset": [
+        "tests/test_taxonomy_upgrade.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 57,
+      "baseline_collected": 57,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy_upgrade.py::test_a_second_run_plans_nothing_and_asks_nothing",
+        "tests/test_taxonomy_upgrade.py::test_what_is_held_is_said_and_written_around"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not found.writes:\n",
+      "new": "    if False:\n",
+      "source": {
+        "table": "u132.json",
+        "id": "V5_nothing"
+      }
+    },
+    {
+      "id": "u132.V6_backup_name",
+      "description": "A backup takes the name an earlier backup holds",
+      "file": "src/cratekit/cli/verbs/taxonomy.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7b43d46366689ec2",
+      "subset": [
+        "tests/test_taxonomy_upgrade.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 57,
+      "baseline_collected": 57,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy_upgrade.py::test_a_backup_never_takes_an_earlier_backups_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    while candidate.exists():\n",
+      "new": "    while False:\n",
+      "source": {
+        "table": "u132.json",
+        "id": "V6_backup_name"
+      }
+    },
+    {
+      "id": "u133-a.P12_verb_warning",
+      "description": "The verb drops the keyword rule warning",
+      "file": "src/cratekit/cli/verbs/taxonomy.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c11626d7f9b6c14f",
+      "subset": [
+        "tests/test_taxonomy_upgrade.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 57,
+      "baseline_collected": 57,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy_upgrade.py::test_the_upgrade_that_adds_jazz_says_the_copys_keyword_rule_is_left"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    ] + [{\"code\": KEYWORD_RULE, \"message\": sentence} for sentence in found.keywords]\n",
+      "new": "    ]\n",
+      "source": {
+        "table": "u133-a.json",
+        "id": "P12_verb_warning"
+      }
+    },
+    {
+      "id": "u194.W24_write_copy_bytes_stale",
+      "description": "write_copy: drop the byte check after the second plan, so an edit made since is written over",
+      "file": "src/cratekit/cli/verbs/taxonomy.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "66b147b38e6d2ba3",
+      "subset": [
+        "tests/test_taxonomy_word.py",
+        "tests/test_taxonomy_upgrade.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 128,
+      "baseline_collected": 128,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy_upgrade.py::test_an_edit_after_the_second_plan_is_refused_as_stale"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if as_read(raw) != before:",
+      "new": "    if False:",
+      "source": {
+        "table": "u194.json",
+        "id": "W24_write_copy_bytes_stale"
+      }
+    },
+    {
+      "id": "u194.W25_write_copy_read_back",
+      "description": "write_copy: drop the read back, so a copy that does not load is left as every verb's declaration",
+      "file": "src/cratekit/cli/verbs/taxonomy.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7830d886143c9147",
+      "subset": [
+        "tests/test_taxonomy_word.py",
+        "tests/test_taxonomy_upgrade.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 128,
+      "baseline_collected": 128,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy_upgrade.py::test_a_copy_that_does_not_read_back_is_replaced_by_the_one_it_replaced",
+        "tests/test_taxonomy_upgrade.py::test_a_restore_that_fails_says_so_and_names_the_backup"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    problem = _read_back(cfg, path, written)\n    if problem is not None:",
+      "new": "    problem = _read_back(cfg, path, written)\n    if False:",
+      "source": {
+        "table": "u194.json",
+        "id": "W25_write_copy_read_back"
+      }
+    },
+    {
+      "id": "r1184.M17_verb_takes_step",
+      "description": "taxonomy alias verb: ignore the refusal's own step, so the bare folder and own name refusals say leave the word",
+      "file": "src/cratekit/cli/verbs/taxonomy_word.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "04501833c1153e2c",
+      "subset": [
+        "tests/test_taxonomy_word.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy_word.py::test_a_file_carrying_a_folders_own_name_is_never_retagged",
+        "tests/test_taxonomy_word.py::test_a_folders_own_name_its_folder_cannot_take_is_refused_with_its_step",
+        "tests/test_taxonomy_word.py::test_the_bare_folder_refusal_names_the_folder_verb_as_its_step"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if exc.step:\n",
+      "new": "    if False:\n",
+      "source": {
+        "table": "r1184.json",
+        "id": "M17_verb_takes_step"
+      }
+    },
+    {
+      "id": "r1184.M18_verb_nothing_to_do",
+      "description": "taxonomy alias verb: the no change sentence for an own name claims a tagging alias",
+      "file": "src/cratekit/cli/verbs/taxonomy_word.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7c86743a25fc9ff7",
+      "subset": [
+        "tests/test_taxonomy_word.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy_word.py::test_a_folders_own_name_in_another_case_is_retagged_to_the_exact_name"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                        if edit.own_name\n",
+      "new": "                        if False\n",
+      "source": {
+        "table": "r1184.json",
+        "id": "M18_verb_nothing_to_do"
+      }
+    },
+    {
+      "id": "u194.W18_carrying_several_genres",
+      "description": "carrying: plan a write for a file carrying the word beside another genre",
+      "file": "src/cratekit/cli/verbs/taxonomy_word.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "eceddf3f5c8ba821",
+      "subset": [
+        "tests/test_taxonomy_word.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy_word.py::test_a_file_with_two_genres_is_left_and_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        current = _JOINED.join(values)\n        if len(values) == 1:",
+      "new": "        current = _JOINED.join(values)\n        if True:",
+      "source": {
+        "table": "u194.json",
+        "id": "W18_carrying_several_genres"
+      }
+    },
+    {
+      "id": "u194.W19_carrying_unread",
+      "description": "carrying: read a file whose genre could not be read as one carrying no genre",
+      "file": "src/cratekit/cli/verbs/taxonomy_word.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1ce88dea2ca666eb",
+      "subset": [
+        "tests/test_taxonomy_word.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy_word.py::test_a_file_whose_genre_cannot_be_read_is_named_and_never_called_clean",
+        "tests/test_taxonomy_word.py::test_nothing_to_do_does_not_claim_a_file_it_could_not_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if values is None:\n            items.append(FileItem(path=path, relative=relative, change=UNREAD))\n            continue",
+      "new": "        if values is None:\n            continue",
+      "source": {
+        "table": "u194.json",
+        "id": "W19_carrying_unread"
+      }
+    },
+    {
+      "id": "u194.W22_unwritten_refusal",
+      "description": "alias verb: leave a file the writer could not write out of the refusal, so the run reports success",
+      "file": "src/cratekit/cli/verbs/taxonomy_word.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d7659b0d45659ace",
+      "subset": [
+        "tests/test_taxonomy_word.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy_word.py::test_a_file_that_will_not_take_the_genre_is_named_and_the_rerun_finishes"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if done.moved or done.failed or done.wrong:",
+      "new": "    if done.moved or done.wrong:",
+      "source": {
+        "table": "u194.json",
+        "id": "W22_unwritten_refusal"
+      }
+    },
+    {
+      "id": "u194.W23_root_missing",
+      "description": "_root: drop the refusal of a folder that is not there, so the walk plans nothing and reads clean",
+      "file": "src/cratekit/cli/verbs/taxonomy_word.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "784b6edefe9a53f5",
+      "subset": [
+        "tests/test_taxonomy_word.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 71,
+      "baseline_collected": 71,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_taxonomy_word.py::test_a_folder_that_is_not_there_is_refused_with_nothing_written"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not root.is_dir():\n        raise refuse(\n            \"source-missing\",\n            f\"{root} is not a folder, so there are no files to retag; nothing was written\",",
+      "new": "    if False:\n        raise refuse(\n            \"source-missing\",\n            f\"{root} is not a folder, so there are no files to retag; nothing was written\",",
+      "source": {
+        "table": "u194.json",
+        "id": "W23_root_missing"
       }
     }
   ],
