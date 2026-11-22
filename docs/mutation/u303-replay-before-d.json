@@ -8,7 +8,7 @@
   "invalid_reason": "in progress",
   "baseline_collected": 22933,
   "baseline_exit": 1,
-  "pytest_runs": 109,
+  "pytest_runs": 149,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 251,
@@ -2998,6 +2998,1515 @@
       "source": {
         "table": "u295.json",
         "id": "S4_run_at_load"
+      }
+    },
+    {
+      "id": "u295.S5_read_words_after_night",
+      "description": "read_agent: accept words after sync night, so show reads clean over an agent given an answer",
+      "file": "src/cratekit/cli/schedule.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8b534a34f3aa9c8f",
+      "subset": [
+        "tests/test_schedule.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1093,
+      "baseline_collected": 1093,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_schedule.py::test_show_fails_over_an_agent_that_reads_another_installation_or_more_words[an answer]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_that_reads_another_installation_or_more_words[an empty word]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        and program[1:] == NIGHT_ARGV\n",
+      "new": "        and program[1:3] == NIGHT_ARGV\n",
+      "source": {
+        "table": "u295.json",
+        "id": "S5_read_words_after_night"
+      }
+    },
+    {
+      "id": "u295.S6_daemons_directory",
+      "description": "launch_agents_dir: the plist goes beside the system's daemons instead of the person's agents",
+      "file": "src/cratekit/cli/schedule.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9c8d1691c74e88c7",
+      "subset": [
+        "tests/test_schedule.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1093,
+      "baseline_collected": 1093,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_schedule.py::test_the_default_directory_is_the_persons_own_launch_agents",
+        "tests/test_schedule.py::test_the_module_names_no_system_domain_and_no_system_directory"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return Path.home() / \"Library\" / \"LaunchAgents\"",
+      "new": "    return Path.home() / \"Library\" / \"LaunchDaemons\"",
+      "source": {
+        "table": "u295.json",
+        "id": "S6_daemons_directory"
+      }
+    },
+    {
+      "id": "u295.S7_user_domain",
+      "description": "_domain: load into user/<uid> instead of the person's GUI login",
+      "file": "src/cratekit/cli/schedule.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4f6114f18cb289b3",
+      "subset": [
+        "tests/test_schedule.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 63,
+      "collected": 1093,
+      "baseline_collected": 1093,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_schedule.py::test_a_binary_the_install_finds_on_its_path_alone_is_on_the_agents_path",
+        "tests/test_schedule.py::test_a_bootout_launchd_ignores_is_said_in_words_a_person_reads",
+        "tests/test_schedule.py::test_a_bootout_refused_over_an_agent_then_absent_boots_out_nothing",
+        "tests/test_schedule.py::test_a_bootstrap_launchd_does_not_then_hold_is_refused_and_leaves_nothing",
+        "tests/test_schedule.py::test_a_bootstrap_that_fails_is_refused_in_its_words_and_leaves_nothing",
+        "tests/test_schedule.py::test_a_failed_load_launchd_may_still_hold_keeps_its_plist",
+        "tests/test_schedule.py::test_a_failed_replace_says_the_earlier_schedule_is_gone_too",
+        "tests/test_schedule.py::test_a_night_in_progress_is_never_booted_out[install]",
+        "tests/test_schedule.py::test_a_night_in_progress_is_never_booted_out[remove]",
+        "tests/test_schedule.py::test_a_plist_left_without_launchd_holding_it_is_replaced",
+        "tests/test_schedule.py::test_a_relative_override_is_carried_absolute",
+        "tests/test_schedule.py::test_a_remove_launchd_does_not_confirm_keeps_the_plist[bootout fails]",
+        "tests/test_schedule.py::test_a_remove_launchd_does_not_confirm_keeps_the_plist[print unreadable]",
+        "tests/test_schedule.py::test_a_remove_launchd_does_not_confirm_keeps_the_plist[stuck]",
+        "tests/test_schedule.py::test_a_replace_whose_write_fails_says_the_earlier_schedule_is_off",
+        "tests/test_schedule.py::test_an_agent_launchd_will_not_let_go_of_is_not_replaced",
+        "tests/test_schedule.py::test_an_installation_found_through_xdg_alone_is_the_one_the_agent_reads",
+        "tests/test_schedule.py::test_at_sets_the_time[00:00-at1]",
+        "tests/test_schedule.py::test_at_sets_the_time[23:59-at2]",
+        "tests/test_schedule.py::test_at_sets_the_time[4:05-at0]",
+        "tests/test_schedule.py::test_install_and_show_agree_on_the_environment_shape",
+        "tests/test_schedule.py::test_install_twice_replaces_the_agent_and_never_duplicates_it",
+        "tests/test_schedule.py::test_install_writes_one_agent_that_runs_the_night_alone_and_loads_it",
+        "tests/test_schedule.py::test_install_writes_only_the_plist_and_the_logs_directory",
+        "tests/test_schedule.py::test_remove_boots_out_an_agent_whose_plist_is_gone",
+        "tests/test_schedule.py::test_remove_boots_the_agent_out_and_deletes_its_plist",
+        "tests/test_schedule.py::test_remove_deletes_a_plist_launchd_does_not_hold",
+        "tests/test_schedule.py::test_remove_over_nothing_installed_is_a_no_op",
+        "tests/test_schedule.py::test_show_carries_the_last_nights_line",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_edited_to_be_anything_but_the_nights[a program key]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_edited_to_be_anything_but_the_nights[a raised limit]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_edited_to_be_anything_but_the_nights[another program]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_edited_to_be_anything_but_the_nights[every hour]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_edited_to_be_anything_but_the_nights[hour 99]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_edited_to_be_anything_but_the_nights[no calendar]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_edited_to_be_anything_but_the_nights[one weekday]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_edited_to_be_anything_but_the_nights[run at load]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_edited_to_be_anything_but_the_nights[split log]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_edited_to_be_anything_but_the_nights[two times]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_launchd_holds_with_no_plist",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_that_reads_another_installation_or_more_words[a true hour]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_that_reads_another_installation_or_more_words[an answer]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_that_reads_another_installation_or_more_words[an empty word]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_that_reads_another_installation_or_more_words[log outside its state]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_that_reads_another_installation_or_more_words[minute 99]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_that_reads_another_installation_or_more_words[no config]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_that_reads_another_installation_or_more_words[no path]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_that_reads_another_installation_or_more_words[no state]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_that_reads_another_installation_or_more_words[relative log]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_that_reads_another_installation_or_more_words[relative state]",
+        "tests/test_schedule.py::test_show_fails_over_an_agent_whose_crate_is_gone",
+        "tests/test_schedule.py::test_show_never_prints_a_value_this_build_would_not_carry",
+        "tests/test_schedule.py::test_show_over_nothing_installed",
+        "tests/test_schedule.py::test_show_reads_an_installed_agent_launchd_does_not_hold",
+        "tests/test_schedule.py::test_show_reads_an_installed_loaded_agent",
+        "tests/test_schedule.py::test_show_reads_the_night_line_from_the_state_the_agent_carries",
+        "tests/test_schedule.py::test_show_says_a_night_record_it_cannot_read",
+        "tests/test_schedule.py::test_show_says_a_plist_it_cannot_read_never_reads_it_as_absent",
+        "tests/test_schedule.py::test_show_says_an_agent_that_runs_anything_but_the_night",
+        "tests/test_schedule.py::test_show_says_an_agent_with_a_key_the_template_does_not_hold",
+        "tests/test_schedule.py::test_show_writes_nothing_and_asks_launchd_only_to_print",
+        "tests/test_schedule.py::test_the_agent_carries_a_fixed_path_the_resolved_directories_and_nothing_else",
+        "tests/test_schedule.py::test_the_agent_names_an_absolute_crate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return f\"gui/{uid()}\"",
+      "new": "    return f\"user/{uid()}\"",
+      "source": {
+        "table": "u295.json",
+        "id": "S7_user_domain"
+      }
+    },
+    {
+      "id": "u295.S8_unknown_read_absent",
+      "description": "loaded: any print failure reads as not loaded, absence read as evidence of absence",
+      "file": "src/cratekit/cli/schedule.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f111c592a36a0830",
+      "subset": [
+        "tests/test_schedule.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 1093,
+      "baseline_collected": 1093,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_schedule.py::test_a_remove_launchd_does_not_confirm_keeps_the_plist[print unreadable]",
+        "tests/test_schedule.py::test_show_never_reads_launchd_it_cannot_read_as_not_loaded"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if answer.code == NOT_LOADED_CODE:\n",
+      "new": "    if True:\n",
+      "source": {
+        "table": "u295.json",
+        "id": "S8_unknown_read_absent"
+      }
+    },
+    {
+      "id": "u295.S9_skip_bootout_on_unknown",
+      "description": "_boot_out: skip the bootout when launchd cannot be read",
+      "file": "src/cratekit/cli/schedule.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "455d972541de8f65",
+      "subset": [
+        "tests/test_schedule.py",
+        "tests/test_cli_contract.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1093,
+      "baseline_collected": 1093,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_schedule.py::test_a_remove_launchd_does_not_confirm_keeps_the_plist[print unreadable]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if state == NOT_LOADED:\n        return False\n    out = launchctl(",
+      "new": "    if state != LOADED:\n        return False\n    out = launchctl(",
+      "source": {
+        "table": "u295.json",
+        "id": "S9_skip_bootout_on_unknown"
+      }
+    },
+    {
+      "id": "u179-z.S4_to_fetch_counts_held",
+      "description": "_plan: count only new purchases, so a plan holding only part owned releases reads as nothing new",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "95c84765defd7017",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_a_plan_holding_only_part_owned_releases_still_fetches_the_rest"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    to_fetch = int(summary.get(\"new\") or 0) + int(summary.get(\"held\") or 0)",
+      "new": "    to_fetch = int(summary.get(\"new\") or 0)",
+      "source": {
+        "table": "u179-z.json",
+        "id": "S4_to_fetch_counts_held"
+      }
+    },
+    {
+      "id": "u179-z.S9_refusals_need_permanence",
+      "description": "_fetched: read a fetch failed by a retryable item as settled too, so a transient failure lands the rest",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "be2575e0786a48c4",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_a_fetch_failed_by_a_transient_answer_ends_the_verb_and_lands_nothing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    settled_with_refusals = job.state is jobs.JobState.FAILED and len(permanent) == len(failed)",
+      "new": "    settled_with_refusals = job.state is jobs.JobState.FAILED",
+      "source": {
+        "table": "u179-z.json",
+        "id": "S9_refusals_need_permanence"
+      }
+    },
+    {
+      "id": "u179.D1_fetched_once",
+      "description": "_fetched: count every done item as staged, so a release two fetches held is named twice",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6ff6faeae9ddedd7",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_two_fetches_left_open_in_the_batch_are_both_driven_on_oldest_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    staged = [item for item in done if item.item_id not in seen]",
+      "new": "    staged = list(done)",
+      "source": {
+        "table": "u179.json",
+        "id": "D1_fetched_once"
+      }
+    },
+    {
+      "id": "u179.D2_refused_once",
+      "description": "_fetched: name a release each time a fetch refuses it, the second round's same shape one list over",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "196360666a7fe58a",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_a_release_refused_by_two_fetches_is_named_once"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if item.item_id not in taken and item.item_id not in already",
+      "new": "        if item.item_id not in taken",
+      "source": {
+        "table": "u179.json",
+        "id": "D2_refused_once"
+      }
+    },
+    {
+      "id": "u179.S10_open_fetch_stops",
+      "description": "_fetched: drop the stop on a fetch that did not settle, so a parked fetch goes on to the tail",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "49f34bd1b46bff86",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_a_fetch_failed_by_a_transient_answer_ends_the_verb_and_lands_nothing",
+        "tests/test_sync_bandcamp.py::test_a_fetch_parked_by_the_session_ends_blocked_and_the_next_run_drives_it_on"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if job.state is not jobs.JobState.SUCCEEDED and not settled_with_refusals:\n        raise tail.Stop(FETCH, tail.job_error(report, job))",
+      "new": "    if False:\n        raise tail.Stop(FETCH, tail.job_error(report, job))",
+      "source": {
+        "table": "u179.json",
+        "id": "S10_open_fetch_stops"
+      }
+    },
+    {
+      "id": "u179.S13_nothing_staged_ends",
+      "description": "sync_bandcamp: drop the empty folder end, so the tail is run over a folder holding nothing",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d5c403e59ca63186",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_a_release_refused_by_two_fetches_is_named_once",
+        "tests/test_sync_bandcamp.py::test_a_release_refused_for_good_is_recorded_and_nothing_is_landed_over_none",
+        "tests/test_sync_bandcamp.py::test_a_second_run_after_a_landing_finds_nothing_new_and_lands_nothing",
+        "tests/test_sync_bandcamp.py::test_nothing_new_ends_with_no_fetch_no_tail_and_no_landing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not files:\n            report.check(",
+      "new": "        if False:\n            report.check(",
+      "source": {
+        "table": "u179.json",
+        "id": "S13_nothing_staged_ends"
+      }
+    },
+    {
+      "id": "u179.S14_relist_after_name",
+      "description": "sync_bandcamp: read the tags of the files as staged before name apply renamed them",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "dd21c749ce62638f",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_the_tags_are_read_from_the_files_the_name_step_renamed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        folder = tail.through_name(report, folder, cfg)\n        files = _staged(folder)",
+      "new": "        folder = tail.through_name(report, folder, cfg)",
+      "source": {
+        "table": "u179.json",
+        "id": "S14_relist_after_name"
+      }
+    },
+    {
+      "id": "u179.S15_unread_apart",
+      "description": "_read_tags: count a file whose tags could not be read as a file with no genre",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ac99f194b1523658",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_a_file_whose_tags_cannot_be_read_is_unread_not_ungenred_and_names_no_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            report.summary[\"tags_unread\"].append(path.name)",
+      "new": "            report.summary[\"no_genre\"].append(path.name)",
+      "source": {
+        "table": "u179.json",
+        "id": "S15_unread_apart"
+      }
+    },
+    {
+      "id": "u179.S16_no_genre_named",
+      "description": "_read_tags: never name a file with no genre",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e684a867f31c503f",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_files_left_without_a_genre_are_named_in_the_report"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if not (read.get(\"genre\") or \"\").strip():",
+      "new": "        if False:",
+      "source": {
+        "table": "u179.json",
+        "id": "S16_no_genre_named"
+      }
+    },
+    {
+      "id": "u179.S17_label_flag_needs_a_label",
+      "description": "_landing: pass --label-from-tags whether or not any file carries a label tag",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "05056566eab1bec5",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_a_seller_no_label_names_lands_unlabelled_and_is_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if any(read.labels):",
+      "new": "    if True:",
+      "source": {
+        "table": "u179.json",
+        "id": "S17_label_flag_needs_a_label"
+      }
+    },
+    {
+      "id": "u179.S1_fetch_only_when_planned",
+      "description": "sync_bandcamp: fetch whatever the plan said, so a plan with nothing new still queues a fetch",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2d78f1eafd1c60f4",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_a_second_run_after_a_landing_finds_nothing_new_and_lands_nothing",
+        "tests/test_sync_bandcamp.py::test_nothing_new_ends_with_no_fetch_no_tail_and_no_landing",
+        "tests/test_sync_bandcamp.py::test_the_same_batch_again_takes_the_staged_files_on_and_fetches_nothing_twice"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if planned:\n            _fetch(report, cfg, batch, sellers)",
+      "new": "        if True:\n            _fetch(report, cfg, batch, sellers)",
+      "source": {
+        "table": "u179.json",
+        "id": "S1_fetch_only_when_planned"
+      }
+    },
+    {
+      "id": "u179.S2_owned_recorded",
+      "description": "_plan: never record an owned purchase, so the report names nothing held as owned",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8f404191706bb842",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_a_labels_new_release_and_its_owned_one_reach_the_gate_named_for_the_label",
+        "tests/test_sync_bandcamp.py::test_nothing_new_ends_with_no_fetch_no_tail_and_no_landing",
+        "tests/test_sync_bandcamp.py::test_the_labels_release_reaches_the_same_gate_with_rekordbox_open_on_the_host",
+        "tests/test_sync_bandcamp_native.py::test_one_new_puls_release_and_one_owned_land_one_batch_filed_under_its_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if row.get(\"disposition\") == OWNED:",
+      "new": "        if row.get(\"disposition\") == \"none\":",
+      "source": {
+        "table": "u179.json",
+        "id": "S2_owned_recorded"
+      }
+    },
+    {
+      "id": "u179.S3_held_recorded",
+      "description": "_plan: never record a purchase with tracks held back, so those owned tracks go unnamed",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8e20ba210357b2e1",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_a_labels_new_release_and_its_owned_one_reach_the_gate_named_for_the_label",
+        "tests/test_sync_bandcamp.py::test_a_plan_holding_only_part_owned_releases_still_fetches_the_rest",
+        "tests/test_sync_bandcamp.py::test_the_labels_release_reaches_the_same_gate_with_rekordbox_open_on_the_host"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        elif row.get(\"disposition\") == HELD:",
+      "new": "        elif row.get(\"disposition\") == \"none\":",
+      "source": {
+        "table": "u179.json",
+        "id": "S3_held_recorded"
+      }
+    },
+    {
+      "id": "u179.S5_open_fetch_elsewhere",
+      "description": "_open_fetch: drop the other batch test, so an open fetch into another batch is driven into this one",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "54b0e8283094ae5e",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_an_open_fetch_into_another_batch_is_named_and_nothing_is_fetched"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if _batch_of(job) != batch:\n            raise _Elsewhere(job, _batch_of(job))",
+      "new": "        if False:\n            raise _Elsewhere(job, _batch_of(job))",
+      "source": {
+        "table": "u179.json",
+        "id": "S5_open_fetch_elsewhere"
+      }
+    },
+    {
+      "id": "u179.S6_open_fetches_all",
+      "description": "_open_fetch: drive only the newest open fetch, the round one residual",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5b7a37db97ffbfd1",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_two_fetches_left_open_in_the_batch_are_both_driven_on_oldest_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return list(reversed(held))",
+      "new": "    return held[:1]",
+      "source": {
+        "table": "u179.json",
+        "id": "S6_open_fetches_all"
+      }
+    },
+    {
+      "id": "u179.S7_open_fetch_order",
+      "description": "_open_fetch: drive the open fetches newest first rather than oldest first",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8605675e022cc240",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_two_fetches_left_open_in_the_batch_are_both_driven_on_oldest_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return list(reversed(held))",
+      "new": "    return list(held)",
+      "source": {
+        "table": "u179.json",
+        "id": "S7_open_fetch_order"
+      }
+    },
+    {
+      "id": "u179.S8_refusals_settle",
+      "description": "_fetched: never read a fetch failed only by refusals as settled, so one lossy release ends the verb",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a6b84f2c7d9e5b84",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_a_release_refused_by_two_fetches_is_named_once",
+        "tests/test_sync_bandcamp.py::test_a_release_refused_for_good_is_recorded_and_nothing_is_landed_over_none"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    settled_with_refusals = job.state is jobs.JobState.FAILED and len(permanent) == len(failed)",
+      "new": "    settled_with_refusals = False",
+      "source": {
+        "table": "u179.json",
+        "id": "S8_refusals_settle"
+      }
+    },
+    {
+      "id": "u179.T1_rehearsal_runs",
+      "description": "sync_bandcamp: skip the rehearsal, so the landing is planned with none behind it",
+      "file": "src/cratekit/cli/sync_bandcamp.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2b871794c44a012b",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_a_failed_rehearsal_plans_no_live_landing",
+        "tests/test_sync_bandcamp.py::test_a_labels_new_release_and_its_owned_one_reach_the_gate_named_for_the_label",
+        "tests/test_sync_bandcamp.py::test_a_rehearsal_that_needs_the_acknowledgment_names_the_rehearsal_then_the_landing",
+        "tests/test_sync_bandcamp.py::test_the_labels_release_reaches_the_same_gate_with_rekordbox_open_on_the_host",
+        "tests/test_sync_bandcamp_native.py::test_one_new_puls_release_and_one_owned_land_one_batch_filed_under_its_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        tail.rehearse(report, folder, landing)",
+      "new": "        pass",
+      "source": {
+        "table": "u179.json",
+        "id": "T1_rehearsal_runs"
+      }
+    },
+    {
+      "id": "u172-b.C3_left_miscounted",
+      "description": "guess: count the files left as the candidates written rather than the files still without a genre",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "7986765dd3dc9416",
+      "subset": [
+        "tests/test_tag_guess.py",
+        "tests/test_sync_land.py",
+        "tests/test_label_sync_go.py",
+        "tests/test_sync_bandcamp.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 333,
+      "baseline_collected": 333,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_tag_guess.py::test_the_files_left_are_the_files_still_without_a_genre"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    left = count - after - unread",
+      "new": "    left = count - before - written - unread",
+      "source": {
+        "table": "u172-b.json",
+        "id": "C3_left_miscounted"
+      }
+    },
+    {
+      "id": "u172.C1_tail_skips_guess",
+      "description": "through_name: never run the guess after tag folder",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "264c4d273ebba564",
+      "subset": [
+        "tests/test_tag_guess.py",
+        "tests/test_sync_land.py",
+        "tests/test_label_sync_go.py",
+        "tests/test_sync_bandcamp.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 5,
+      "collected": 333,
+      "baseline_collected": 333,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_a_go_over_two_answered_releases_runs_the_tail_in_order_and_stops_at_the_landing_gate",
+        "tests/test_sync_bandcamp.py::test_a_labels_new_release_and_its_owned_one_reach_the_gate_named_for_the_label",
+        "tests/test_sync_bandcamp.py::test_the_labels_release_reaches_the_same_gate_with_rekordbox_open_on_the_host",
+        "tests/test_sync_bandcamp.py::test_the_tail_runs_on_the_absolute_batch_folder",
+        "tests/test_sync_land.py::test_the_pass_runs_every_step_in_its_order_and_the_tail_on_the_absolute_staging_path"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if step == TAG:\n            guess(chain, folder, pass_name)",
+      "new": "        if False:\n            guess(chain, folder, pass_name)",
+      "source": {
+        "table": "u172.json",
+        "id": "C1_tail_skips_guess"
+      }
+    },
+    {
+      "id": "u172.C2_guess_without_pass",
+      "description": "guess_argv: never name the pass, so no playlist votes in a pass",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ddd4d75052285ad9",
+      "subset": [
+        "tests/test_tag_guess.py",
+        "tests/test_sync_land.py",
+        "tests/test_label_sync_go.py",
+        "tests/test_sync_bandcamp.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 333,
+      "baseline_collected": 333,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land.py::test_the_pass_runs_every_step_in_its_order_and_the_tail_on_the_absolute_staging_path",
+        "tests/test_tag_guess.py::test_the_guess_is_named_with_a_pass_only_when_one_is_given"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "*([PASS_FLAG, pass_name] if pass_name else [])",
+      "new": "*([])",
+      "source": {
+        "table": "u172.json",
+        "id": "C2_guess_without_pass"
+      }
+    },
+    {
+      "id": "u179.T2_rehearsal_ack_attends",
+      "description": "rehearse: a missing acknowledgment at the rehearsal ends the verb as a failure, not for a person",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "04ee1be4ecd628c7",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_land.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 214,
+      "baseline_collected": 214,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_a_rehearsal_that_needs_the_acknowledgment_names_the_rehearsal_then_the_landing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if cause.reason == ACK_STOP or cause.code in gates.GATE_CODES:\n            raise Attend(REHEARSE, argv, cause)",
+      "new": "        if cause.code in gates.GATE_CODES:\n            raise Attend(REHEARSE, argv, cause)",
+      "source": {
+        "table": "u179.json",
+        "id": "T2_rehearsal_ack_attends"
+      }
+    },
+    {
+      "id": "u179.T3_rehearsal_stop_wording",
+      "description": "attended: word a rehearsal's acknowledgment stop as a landing's, naming no rehearsal",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "43e966e5479a68b9",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_land.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 214,
+      "baseline_collected": 214,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_a_rehearsal_that_needs_the_acknowledgment_names_the_rehearsal_then_the_landing"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if stop.step == REHEARSE\n            else (f\"then plan the landing again: crate {command}\",)",
+      "new": "            if False\n            else (f\"then plan the landing again: crate {command}\",)",
+      "source": {
+        "table": "u179.json",
+        "id": "T3_rehearsal_stop_wording"
+      }
+    },
+    {
+      "id": "u179.T4_commands_quoted",
+      "description": "attended: join the step's command with plain spaces, so a batch folder with a space cannot be pasted",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d6753c551e50ad38",
+      "subset": [
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py",
+        "tests/test_sync_land.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 215,
+      "baseline_collected": 215,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_bandcamp.py::test_a_failed_rehearsal_plans_no_live_landing",
+        "tests/test_sync_bandcamp.py::test_a_rehearsal_that_needs_the_acknowledgment_names_the_rehearsal_then_the_landing",
+        "tests/test_sync_bandcamp_native.py::test_one_new_puls_release_and_one_owned_land_one_batch_filed_under_its_label"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    command = shlex.join(stop.argv)",
+      "new": "    command = \" \".join(stop.argv)",
+      "source": {
+        "table": "u179.json",
+        "id": "T4_commands_quoted"
+      }
+    },
+    {
+      "id": "u181.T1_rescore_ignores_unable",
+      "description": "tail.rescore: queue the rescore although the model cannot score here",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "777fd91faa5d3d29",
+      "subset": [
+        "tests/test_vocals_cli.py",
+        "tests/test_sync_land.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 215,
+      "baseline_collected": 215,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_a_go_over_two_answered_releases_runs_the_tail_in_order_and_stops_at_the_landing_gate",
+        "tests/test_sync_land.py::test_the_answered_gate_takes_the_pass_on_and_the_summary_says_vocals_were_skipped",
+        "tests/test_sync_land.py::test_the_tail_asks_the_vocal_model_before_analyze_run_binds_its_loader",
+        "tests/test_vocals_cli.py::test_the_tails_rescore_asks_nothing_of_a_model_that_cannot_score"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if unable is not None:\n        chain.summary[\"vocal_rescore\"] = \"skipped\"",
+      "new": "    if False:\n        chain.summary[\"vocal_rescore\"] = \"skipped\"",
+      "source": {
+        "table": "u181.json",
+        "id": "T1_rescore_ignores_unable"
+      }
+    },
+    {
+      "id": "u181.T2_rescore_ignores_profile",
+      "description": "tail.rescore: run the vocals verb on a profile with the vocals module off",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c17ef8689efbdb49",
+      "subset": [
+        "tests/test_sync_land.py",
+        "tests/test_label_sync_go.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 30,
+      "collected": 215,
+      "baseline_collected": 215,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land.py::test_a_cancelled_download_over_the_same_list_is_not_reused",
+        "tests/test_sync_land.py::test_a_continued_pass_drives_the_download_it_queued_and_queues_no_second",
+        "tests/test_sync_land.py::test_a_continued_pass_never_drives_a_cancelled_job_and_lists_the_rest",
+        "tests/test_sync_land.py::test_a_continued_pass_over_an_open_intake_job_drives_it_first",
+        "tests/test_sync_land.py::test_a_continued_pass_refused_while_rekordbox_runs_names_the_way_back",
+        "tests/test_sync_land.py::test_a_continued_pass_retries_a_download_that_failed_transiently",
+        "tests/test_sync_land.py::test_a_fresh_pass_never_reuses_another_lists_download_job",
+        "tests/test_sync_land.py::test_a_gate_any_earlier_step_stops_at_is_the_steps_own_not_the_passes",
+        "tests/test_sync_land.py::test_a_landing_that_needs_the_backup_acknowledgment_stops_without_minting_one",
+        "tests/test_sync_land.py::test_a_name_apply_refusal_ends_the_pass_before_the_landing",
+        "tests/test_sync_land.py::test_a_pass_continued_by_its_land_run_id_reaches_the_same_jobs_as_by_its_pass_id",
+        "tests/test_sync_land.py::test_a_pass_queued_by_hand_and_never_driven_is_the_one_this_verb_takes",
+        "tests/test_sync_land.py::test_a_profile_with_the_vocals_module_off_is_not_asked",
+        "tests/test_sync_land.py::test_a_refused_id_names_the_land_run_recorded_beside_each_pass",
+        "tests/test_sync_land.py::test_a_run_interrupted_after_sync_all_continues_by_its_own_id",
+        "tests/test_sync_land.py::test_a_run_record_that_is_not_an_object_leaves_the_refusal_whole",
+        "tests/test_sync_land.py::test_a_stale_answer_from_a_step_is_the_steps_own_and_never_resumes_this_run",
+        "tests/test_sync_land.py::test_a_stale_job_over_another_folder_or_library_is_left_alone",
+        "tests/test_sync_land.py::test_a_stale_queued_analyze_job_is_replaced_not_resumed",
+        "tests/test_sync_land.py::test_a_warning_the_landing_plan_carries_rides_the_passes_own_warnings",
+        "tests/test_sync_land.py::test_an_earlier_pass_left_open_beside_a_new_one_is_named_with_its_way_on",
+        "tests/test_sync_land.py::test_each_tail_step_queues_only_and_drives_its_job_through_one_job_command",
+        "tests/test_sync_land.py::test_one_lossy_refusal_among_eight_downloads_lands_seven_and_reports_one",
+        "tests/test_sync_land.py::test_the_acknowledgment_stop_names_the_gate_the_replanned_landing_will_ask",
+        "tests/test_sync_land.py::test_the_continue_command_a_failed_step_prints_works_when_pasted",
+        "tests/test_sync_land.py::test_the_continue_command_a_pending_stop_prints_works_when_pasted",
+        "tests/test_sync_land.py::test_the_default_output_prints_each_step_and_what_the_session_does_next",
+        "tests/test_sync_land.py::test_the_newest_download_over_the_list_is_the_one_the_pass_reads",
+        "tests/test_sync_land.py::test_the_pass_runs_every_step_in_its_order_and_the_tail_on_the_absolute_staging_path",
+        "tests/test_sync_land.py::test_the_stop_at_the_landing_gate_names_the_session_commands_and_the_visit"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not vocals_on(cfg):\n        chain.summary[\"vocal_rescore\"] = \"off\"",
+      "new": "    if False:\n        chain.summary[\"vocal_rescore\"] = \"off\"",
+      "source": {
+        "table": "u181.json",
+        "id": "T2_rescore_ignores_profile"
+      }
+    },
+    {
+      "id": "u181.T3_rescore_keeps_stale",
+      "description": "tail.rescore: leave a stale vocals job over the folder open",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cfb9b787528aa4ae",
+      "subset": [
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_vocals_cli.py::test_the_tails_rescore_replaces_a_stale_vocals_job_over_the_folder"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        replace_stale(chain, ANALYZE, VOCALS_VERB, folder, cfg)",
+      "new": "        pass",
+      "source": {
+        "table": "u181.json",
+        "id": "T3_rescore_keeps_stale"
+      }
+    },
+    {
+      "id": "u181.T4_rescore_failure_ignored",
+      "description": "tail.rescore: a vocals job that did not succeed is reported scored and the chain goes on",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6a75db20d03570b2",
+      "subset": [
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_vocals_cli.py::test_a_rescore_job_that_does_not_succeed_ends_the_chain_at_the_analyze_step"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if job.state is not jobs.JobState.SUCCEEDED:\n        raise Stop(ANALYZE, job_error(chain, job))\n    chain.summary[\"vocal_rescore\"] = count",
+      "new": "    chain.summary[\"vocal_rescore\"] = count",
+      "source": {
+        "table": "u181.json",
+        "id": "T4_rescore_failure_ignored"
+      }
+    },
+    {
+      "id": "u181.T5_rescore_never_run",
+      "description": "tail.run: the analyze step never rescores",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9a0d518d04695d6d",
+      "subset": [
+        "tests/test_sync_land.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 181,
+      "baseline_collected": 181,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land.py::test_a_profile_with_the_vocals_module_off_is_not_asked",
+        "tests/test_sync_land.py::test_the_analyze_step_rescores_after_analyze_run_and_before_the_restamp",
+        "tests/test_sync_land.py::test_the_answered_gate_takes_the_pass_on_and_the_summary_says_vocals_were_skipped",
+        "tests/test_sync_land.py::test_the_tail_asks_the_vocal_model_before_analyze_run_binds_its_loader"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if step == ANALYZE:\n            rescore(chain, folder, cfg, unable=unable)",
+      "new": "        if False:\n            rescore(chain, folder, cfg, unable=unable)",
+      "source": {
+        "table": "u181.json",
+        "id": "T5_rescore_never_run"
+      }
+    },
+    {
+      "id": "u181.T6_plan_warnings_not_lifted",
+      "description": "tail.land: the landing gate screen's warnings are not lifted onto the chain",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1cbfdf7aaf0d0c15",
+      "subset": [
+        "tests/test_sync_land.py",
+        "tests/test_label_sync_go.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 181,
+      "baseline_collected": 181,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land.py::test_a_warning_the_landing_plan_carries_rides_the_passes_own_warnings"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        lift_plan_warnings(chain, cause)",
+      "new": "        pass",
+      "source": {
+        "table": "u181.json",
+        "id": "T6_plan_warnings_not_lifted"
+      }
+    },
+    {
+      "id": "u190.T1_run_folder_absolute",
+      "description": "run: trust the folder handed in as absolute",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "34df03246a250437",
+      "subset": [
+        "tests/test_label_sync_go.py",
+        "tests/test_sync_land.py",
+        "tests/test_label_sync.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 275,
+      "baseline_collected": 275,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_the_chain_runs_on_the_absolute_folder_whatever_it_is_handed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    folder = folder.expanduser().absolute()\n    chain.summary[\"staging\"] = str(folder)",
+      "new": "    chain.summary[\"staging\"] = str(folder)",
+      "source": {
+        "table": "u190.json",
+        "id": "T1_run_folder_absolute"
+      }
+    },
+    {
+      "id": "u190.T3_stale_matches_folder",
+      "description": "replace_stale: cancel open tail jobs over any folder, so another folder's work is lost",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "4eb830272d95bf55",
+      "subset": [
+        "tests/test_label_sync_go.py",
+        "tests/test_sync_land.py",
+        "tests/test_label_sync.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 275,
+      "baseline_collected": 275,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land.py::test_a_stale_job_over_another_folder_or_library_is_left_alone"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            and str((job.payload or {}).get(\"folder\") or \"\") == str(folder)",
+      "new": "            and True",
+      "source": {
+        "table": "u190.json",
+        "id": "T3_stale_matches_folder"
+      }
+    },
+    {
+      "id": "u190.T4_name_answers_inline",
+      "description": "name_argv: leave name apply's confirm unanswered, so the chain stops at a gate a person running the tail answers on the command line",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "68c1f9d2ad9e5c69",
+      "subset": [
+        "tests/test_label_sync_go.py",
+        "tests/test_sync_land.py",
+        "tests/test_label_sync.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 275,
+      "baseline_collected": 275,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_name_apply_has_its_confirm_answered_inline_over_the_absolute_staging_folder",
+        "tests/test_sync_land.py::test_the_pass_runs_every_step_in_its_order_and_the_tail_on_the_absolute_staging_path"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return [\"-d\", f\"{NAME_GATE}={NAME_OPTION}\", \"name\", \"apply\", \"--root\", str(folder)]",
+      "new": "    return [\"name\", \"apply\", \"--root\", str(folder)]",
+      "source": {
+        "table": "u190.json",
+        "id": "T4_name_answers_inline"
+      }
+    },
+    {
+      "id": "u190.T6_chain_namespace",
+      "description": "Chain.check: key every check sync.land whatever the chain, so the go's checks read as a sync pass's",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cf628d84708a4e79",
+      "subset": [
+        "tests/test_label_sync_go.py",
+        "tests/test_sync_land.py",
+        "tests/test_label_sync.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 275,
+      "baseline_collected": 275,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_label_sync_go.py::test_a_failing_analyze_run_stops_the_go_and_plans_no_landing",
+        "tests/test_label_sync_go.py::test_a_go_over_two_answered_releases_runs_the_tail_in_order_and_stops_at_the_landing_gate",
+        "tests/test_label_sync_go.py::test_a_landing_that_planned_nothing_ends_the_go_with_its_own_outcome"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                \"key\": f\"{self.namespace}.{step}\",",
+      "new": "                \"key\": f\"sync.land.{step}\",",
+      "source": {
+        "table": "u190.json",
+        "id": "T6_chain_namespace"
+      }
+    },
+    {
+      "id": "u212.T1_reason_guard",
+      "description": "tail.second_copies: read any refusal's outstanding files, not only rename-incomplete's",
+      "file": "src/cratekit/cli/tail.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "011324ce9733a044",
+      "subset": [
+        "tests/test_analysis_workers.py",
+        "tests/test_cli_contract.py",
+        "tests/test_crate_sync_skill.py",
+        "tests/test_drift.py",
+        "tests/test_label_sync_go.py",
+        "tests/test_sync_bandcamp.py",
+        "tests/test_sync_bandcamp_native.py",
+        "tests/test_sync_land.py",
+        "tests/test_sync_land_staged.py",
+        "tests/test_tag_guess.py",
+        "tests/test_vocals_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1607,
+      "baseline_collected": 1607,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land_staged.py::test_a_stop_that_is_not_rename_incomplete_or_cannot_read_the_queue_is_unchanged"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if cause.reason != RENAME_INCOMPLETE:\n        return stop",
+      "new": "",
+      "source": {
+        "table": "u212.json",
+        "id": "T1_reason_guard"
       }
     }
   ],
