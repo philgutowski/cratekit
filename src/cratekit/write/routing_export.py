@@ -1,15 +1,10 @@
 """The export path of ``route inbox`` and ``route unplaced`` (U86, U91).
 
 A tree that has not cut over is routed into a new file beside a fresh
-collection export, never into the database. The verb handlers stay in
-:mod:`cratekit.write.routing_cli`, which imports this module and holds the
-apply gate; the route here asks that gate through the module at call time.
-
-ONE READ PER VERB (R-685): a verb passes the declaration it checked the
-bridge with, so its plan, write and pending action share one declaration; a
-caller that passes none has it read here.
-
-Layer: write.
+collection export, never into the database. The apply gate stays in
+:mod:`cratekit.write.routing_cli` and is asked through that module at call
+time. ONE READ PER VERB (R-685): a verb passes the declaration it checked the
+bridge with, so its plan, write and pending action share one. Layer: write.
 """
 
 from __future__ import annotations
@@ -180,8 +175,7 @@ ROUTING_TREE_UNIMPORTABLE = (
 )
 
 #: The warning an export sweep gives for the nested membership it wrote into
-#: a file no import can land it from (R-694), in place of a pending import
-#: whose own check could never answer.
+#: a file no import can land it from (R-694), in place of a pending import.
 ROUTING_NOT_LANDABLE = "routing-not-landable"
 
 

@@ -38,8 +38,7 @@ ROOT_INDENT = 4
 INDENT_STEP = 2
 
 #: Levels below the playlist root the indentation encodes: a root child, a
-#: folder inside it, and a sub-playlist inside that. A deeper declared tree is
-#: refused by name (see :func:`assert_bridge_can_serve`).
+#: folder, a sub-playlist. A deeper tree is refused by name.
 TREE_DEPTH = 3
 
 #: The intake tree's depth, PINNED HERE and never read from the taxonomy (KTD14).
@@ -183,13 +182,10 @@ def node_close(indent: int) -> str:
 class Tree:
     """The tree a byte write targets, and whether anything governs it.
 
-    ``display`` is the name the document carries and the locates match; ``id`` is
-    the taxonomy's stable identifier the registry is keyed on, never a display
-    name (R19), so renaming a folder in rekordbox changes one and not the other.
-
-    Both governance fields are present or both absent, or the guard would pass
-    by default. ``Tree(display=...)`` is an UNGOVERNED playlist, which bypasses
-    the guard: most playlists are somebody's own and governed by nothing.
+    ``display`` is the name the document carries; ``id`` is the taxonomy's
+    stable identifier the registry is keyed on (R19). Both governance fields
+    are present or both absent, or the guard would pass by default.
+    ``Tree(display=...)`` is an UNGOVERNED playlist, which bypasses the guard.
     """
 
     display: str
@@ -708,13 +704,9 @@ def dedupe_track_ids(
 #: Byte writers that target no tree and take no ``tree`` argument; a test
 #: derives every byte writer from this module and asserts this set plus the
 #: guarded ones covers it EXACTLY (P3). None writes membership INSIDE A TREE:
-#:
-#: * the rating patch writes one collection attribute;
-#: * the attribute patcher replaces a value in a tag the caller located, a
-#:   collection attribute or a recount while ASSEMBLING a new document;
-#: * the root playlist writer emits a DIRECT child of the playlist root, where
-#:   no record could govern it (P7). It still checks the type, so a root
-#:   playlist named after a tree refuses instead of replacing it.
+#: the rating patch and the attribute patcher write a value in a located tag,
+#: and the root playlist writer emits a DIRECT child of the playlist root, where
+#: no record could govern it (P7), still refusing a tree's name by type.
 UNGOVERNED_WRITERS = frozenset(
     {"apply_rating_changes", "patch_attribute", "insert_root_playlist"}
 )
@@ -734,10 +726,8 @@ class SpliceResult:
     warning: str | None = None
 
 
-#: Attribute names that carry a beat grid, compared lowercase so case cannot
-#: reach the grid. Held here as well as in the source scan, which reads string
-#: constants and cannot see a name arriving as an argument. R17 is absolute both
-#: ways: this package never creates a grid, nor destroys rekordbox's.
+#: Attribute names that carry a beat grid, compared lowercase. Held here as well
+#: as in the source scan, which cannot see a name arriving as an argument (R17).
 _GRID_ATTRIBUTES = frozenset({"averagebpm", "bpm", "inizio", "metro", "battito"})
 
 
@@ -748,10 +738,7 @@ def patch_attribute(
 
     Bounded by the tag, never a fixed window, which could reach the next
     element. Strings go through the one escaper; numbers are written as digits.
-
-    A tempo bearing attribute is REFUSED: a track's average tempo seeds
-    rekordbox's analysis on import, and a range bounding a whole tempo element
-    reaches its attributes. Both are grid writes, and a grid is rekordbox's (R17).
+    A tempo bearing attribute is REFUSED: a grid is rekordbox's (R17).
     """
     if name.lower() in _GRID_ATTRIBUTES:
         raise ValueError(
@@ -786,10 +773,8 @@ def splice_into_subplaylist(
     batch. With ``create_missing`` an absent sub is created as the folder's last
     child.
 
-    A FOLDER's ``Count`` is advisory, since rekordbox recounts children on import,
-    and this splice leaves it alone because a golden pins its bytes; the writers
-    adding or removing a child keep it accurate. A PLAYLIST's ``Entries`` is
-    always patched, because rekordbox trusts it over the children it sees.
+    A FOLDER's ``Count`` is advisory and left alone here; a PLAYLIST's
+    ``Entries`` is always patched, because rekordbox trusts it over its children.
 
     A failure writes NOTHING: a partial splice into this format is a corrupt file.
     """
@@ -863,8 +848,7 @@ def remove_tracks_from_subplaylist(
     """Delete track key lines from a sub-playlist and decrement its entry count.
 
     Returns how many were removed and a warning or None. The count moves by what
-    was removed, not what was asked for. No close indent: removal re-bounds the
-    node from the bytes it finds, so that knob would do nothing.
+    was removed, not what was asked for.
     """
     _refuse_wrong_medium(tree)
     if not track_ids:
@@ -1073,16 +1057,13 @@ def insert_empty_subplaylist(
 ) -> SpliceResult:
     """Insert an EMPTY sub-playlist as the last child of a folder inside a tree.
 
-    rekordbox has no import path that creates an empty playlist, and
-    :func:`splice_into_subplaylist` returns early with no keys, so a routing sub
-    no track has reached yet is made here. Idempotent: a folder already holding
-    the sub is left byte identical. The indent derives from the folder's depth;
-    ``close_indent`` overrides it for a document at another shape.
+    No import path creates an empty playlist, so a routing sub no track has
+    reached yet is made here. Idempotent. The indent derives from the folder's
+    depth; ``close_indent`` overrides it for a document at another shape.
     """
     _refuse_wrong_medium(tree)
-    # A DIRECT child of the tree, never a body wide search: the caller loops over
-    # the tree's direct folders by name, and a body search finds a namesake
-    # nested in an earlier sibling first, so the write would land elsewhere.
+    # A DIRECT child of the tree, never a body wide search, which finds a
+    # namesake nested in an earlier sibling first.
     parent = _tree_node(content, tree)
     if isinstance(parent, str):
         return SpliceResult(warning=parent)
@@ -1116,22 +1097,14 @@ def insert_catalog_folder(
 ) -> str | None:
     """Insert a whole populated folder into a tree, creating the tree when absent.
 
-    The one writer that emits a subtree: a label's releases, a playlist per year.
-
-    * **A new folder goes in FIRST, not last**, unlike every other insert: the
-      caller orders playlists newest first, and a golden pins the layout.
-    * **An existing folder of that name is MERGED INTO** (R-129). A held
-      playlist gains only the ids it lacks; a missing one goes before the first
-      held playlist whose name sorts below its own, newest first for years. So a
-      second identical write changes no byte.
-    * **Two siblings of one name refuse** at each level written: the tree, the
-      folder and each playlist. See ``_sole_child``.
-    * **The tree's own node is created when missing**, as the root's first child,
-      because a catalog tree is created by its first write, not by setup.
-
-    Names compare through ``_folded``; ids are deduplicated within each playlist
-    and against its members. Returns a warning or None. A failure writes nothing:
-    every edit is made on a copy that replaces the document only at the end.
+    A new folder goes in FIRST, unlike every other insert, since the caller
+    orders newest first. An existing folder of that name is MERGED INTO
+    (R-129): a held playlist gains only the ids it lacks and a missing one goes
+    before the first held playlist whose name sorts below its own, so a second
+    identical write changes no byte. Two siblings of one name refuse at each
+    level written. The tree's own node is created when missing, as the root's
+    first child. Returns a warning or None; a failure writes nothing, since
+    every edit is made on a copy.
     """
     _refuse_wrong_medium(tree)
     work = bytearray(content)

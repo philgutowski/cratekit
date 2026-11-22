@@ -271,9 +271,8 @@ def plan_destinations(
     """Resolve every declared placement into the two names the writer targets.
 
     Resolve through the node map, refuse an ambiguous pair, key the plan on the
-    display names, which is safe only after :func:`assert_addressable`. The
-    destinations come back beside the plan so the writer records where each
-    landed without re-resolving by name.
+    display names. The destinations come back beside the plan so the writer
+    records where each landed without re-resolving by name.
     """
     destinations = resolve_destinations(declared, placements, standing, record)
     assert_addressable(tree_id, destinations, standing)
@@ -440,9 +439,8 @@ def check(
 ) -> ConvergenceReport:
     """Report, for one governed tree, how the declaration and the database differ.
 
-    READ ONLY, so it runs against a library that is refusing every write. It
-    resolves destinations exactly as the rebuild does and refuses an
-    unaddressable tree for the same reason.
+    READ ONLY, so it runs against a library that is refusing every write; it
+    resolves destinations exactly as the rebuild does.
     """
     root_id = tree_registry.anchored_root(tree_id, registry, root_exists=root_exists)
     rules = trees.prefix_rules(cfg, prefix_map)

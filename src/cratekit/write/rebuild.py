@@ -76,8 +76,7 @@ VOCAL_DIMENSION = "vocal"
 VOCAL_NOT_COMPARED = "vocal-dimension-not-compared"
 
 #: The envelope warning code a resort carries when it left a membership where it
-#: was (R-312). The engine adds and never removes, so a track whose genre or band
-#: changed sits in its new sub and its old one until a person takes it out.
+#: was (R-312), since the engine adds and never removes.
 LEFT_BEHIND = "membership-left-behind"
 
 #: How many leftovers one warning names before it counts the rest. A back
@@ -131,10 +130,8 @@ def library_truth(
 ) -> Iterator[Truth]:
     """Every taggable file under ``root``, in a stable order, with its readings.
 
-    The suffix set comes from the tag module's own table, so a container it
-    learns is never silently absent from a rebuild (P3). Sorted, so two runs
-    over an unchanged library produce byte-identical plans. A generator: a
-    caller needing two passes materializes it.
+    The suffix set comes from the tag module's own table (P3). Sorted, so two
+    runs produce byte-identical plans. A generator.
 
     AN ABSENT MUSIC DIRECTORY REFUSES RATHER THAN YIELDING NOTHING, which the
     check would read as zero differences and CONVERGED.
@@ -168,15 +165,11 @@ def derive_from_taxonomy(
 ) -> tuple[tuple[DeclaredPlacement, ...], tuple[str, ...]]:
     """Route every file through the declared rules. Returns placements and gaps.
 
-    The rules are :mod:`cratekit.core.routing`'s, called rather than restated,
-    so a rebuild and the routing pass cannot disagree on where a track goes.
-
-    AN ADDITIVE SUB-PLAYLIST THIS DERIVATION HAS NO SIGNAL FOR IS A REFUSAL (P4):
-    skipping it would write a tree missing a whole dimension that the check
-    never compares, and report it converged.
-
-    A LIBRARY WITH NO VOCAL CALIBRATION IS A GAP, NOT A REFUSAL: the threshold
-    is passed in (D7), and with None the dimension is named as not compared.
+    The rules are :mod:`cratekit.core.routing`'s, called rather than restated.
+    AN ADDITIVE SUB-PLAYLIST THIS DERIVATION HAS NO SIGNAL FOR IS A REFUSAL (P4),
+    or the check would never compare it. A LIBRARY WITH NO VOCAL CALIBRATION IS
+    A GAP, NOT A REFUSAL: the threshold is passed in (D7), and with None the
+    dimension is named as not compared.
     """
     # THE VOCAL CLASSES ONLY (U119). A playlist derived class comes from the
     # database through the genre favorites engine, added by callers with a handle.
@@ -336,9 +329,8 @@ def left_behind_warnings(
     return () if message is None else ({"code": LEFT_BEHIND, "message": message},)
 
 
-#: One derivation per source a tree may cut over on. Its key set is asserted to
-#: be exactly ``tree_registry.REBUILDABLE``: a rebuildable source with no
-#: derivation fails at the moment the rebuild is needed.
+#: One derivation per source a tree may cut over on; its key set is asserted to
+#: be exactly ``tree_registry.REBUILDABLE``.
 DERIVATIONS: Mapping[tree_registry.DerivationSource, Callable[..., Any]] = MappingProxyType(
     {tree_registry.DerivationSource.TAXONOMY: derive_from_taxonomy}
 )
@@ -536,11 +528,9 @@ class RebuildReport:
     after: ConvergenceReport
     membership: trees.MembershipReport | None = None
     cleared: bool = False
-    #: Whether the restore-reconciliation marker for this tree was also closed.
-    #: True: one was open and is closed on the check's evidence. False: none was
-    #: open. None: not asked, because the ``reconcile`` module is absent from
-    #: this build, or because the rebuild did not converge (``cleared`` False).
-    #: See :func:`close_restore_marker`.
+    #: Whether the restore-reconciliation marker for this tree was also closed:
+    #: True closed, False none open, None not asked (the module is absent, or
+    #: the rebuild did not converge). See :func:`close_restore_marker`.
     restore_marker_closed: bool | None = None
 
     @property
@@ -949,12 +939,10 @@ def _record_landed(
 ) -> None:
     """Record the node each destination landed in, after the commit and never before.
 
-    From the destination's own resolved node first, and from the freshly read
-    tree only where it had none, exactly one candidate or nothing. A recorded
-    destination the taxonomy no longer declares is carried forward (a template
-    edit is reversible, and the identifier is what stops a rename doubling the
-    tree); a declared one that resolved to no node is dropped as dangling, as
-    is an undeclared one whose node a declared destination now holds.
+    From the destination's own resolved node first, else the freshly read tree,
+    exactly one candidate or nothing. A recorded destination the taxonomy no
+    longer declares is carried forward, since a template edit is reversible,
+    unless a declared destination now holds its node.
     """
     by_display = by_display_pair(read_tree(tree.db, root_id))
     recorded: list[convergence.DestinationNode] = []
@@ -1028,23 +1016,18 @@ def rebuild_tree(
     """Write back everything the declaration places in this tree and the database lacks.
 
     THE ORDER IS THE UNIT: refuse an unrebuildable tree, derive, check, write,
-    record where it landed, check again, and only then clear the flag. The
-    node record comes after the commit (a recorded identifier for an
-    uncommitted row is a dangling pointer); the flag is cleared last and only
-    on the second check's evidence.
+    record where it landed (after the commit, never before), check again, and
+    only then clear the flag, on the second check's evidence.
 
     ``approved`` is a resort's frozen plan (U219): the before check must add
-    exactly those rows or nothing is written (:func:`assert_as_approved`).
-    The placements are derived here from the source the registry records and
-    are never a parameter; ``truth`` supplies tag READINGS only. ``rows`` is
-    materialized once, since a cursor reads empty to its second walker.
+    exactly those rows or nothing is written. The placements are derived from
+    the source the registry records, never a parameter; ``truth`` supplies tag
+    READINGS only. ``rows`` is materialized once, since it may be a cursor.
 
-    The session is the membership writer's to open. It is handed
-    ``Purpose.REBUILD`` (sheds this tree's convergence flag and the out-of-band
-    restore refusal; the detection still runs) and ``Intent.RECOVERY`` (sheds
-    the unresolved-session and restore-reconciliation latches whole). The
-    surplus is put back before anything is written, by
-    ``session.assert_no_unresolved_session`` and :func:`assert_no_latched_restore`.
+    The membership writer opens the session with ``Purpose.REBUILD`` and
+    ``Intent.RECOVERY``, which shed more latches than a rebuild answers; the
+    surplus is put back first, by ``session.assert_no_unresolved_session`` and
+    :func:`assert_no_latched_restore`.
     """
     source = registry.derivation_source(tree_id)
     tree_registry.assert_rebuildable(tree_id, source)
@@ -1064,9 +1047,7 @@ def rebuild_tree(
         truth=truth,
     )
     # THE GENRE FAVORITES ARE READ OFF THE TREE AS IT STANDS for the before
-    # check, and again off the tree the first write leaves for the second write
-    # and the after check (U119): a favourite whose tag moved it is in its new
-    # folder only once the first write has moved it.
+    # check, and again off the tree the first write leaves (U119).
     placements, not_compared = tree.favorites(derived, not_compared)
     before = tree.compare(placements, not_compared)
 
@@ -1107,9 +1088,7 @@ def rebuild_governed_tree(
     second tree leaves the first one's item done.
 
     No configuration is loaded: the job's frozen one is passed in (KTD9).
-    ``vocal_threshold`` is required (D7, R-276), never defaulted. The rows come from
-    :func:`cratekit.write.routing_pass.content_rows`, which refuses a row that
-    cannot report its soft-delete marker.
+    ``vocal_threshold`` is required (D7, R-276), never defaulted.
     """
     with _opened(cfg) as (entries, declared, handle, rows, root_exists):
         return rebuild_tree(
@@ -1120,10 +1099,8 @@ def rebuild_governed_tree(
             declared=declared,
             rows=rows,
             root_exists=root_exists,
-            # THE LIBRARY ROOT, never the music directory: the watch walks for
-            # ANLZ files by name, which rekordbox keeps under its own directory,
-            # and a watch over an empty set reports a clean session whatever
-            # happened to the grids (R17), with the share beside it (R-14).
+            # THE LIBRARY ROOT, never the music directory, since rekordbox keeps the
+            # ANLZ files under its own directory (R17, R-14).
             analysis_roots=analysis_store.watch_roots(cfg),
             vocal_threshold=vocal_threshold,
             workflow=workflow,

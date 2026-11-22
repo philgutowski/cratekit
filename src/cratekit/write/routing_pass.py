@@ -498,9 +498,7 @@ def content_rows(db: Any) -> Iterator[trees.ContentRow]:
     """Every collection row, as the three columns the matcher compares.
 
     A GENERATOR, consumed once by :func:`index_rows`; a re-reader must materialize
-    it. A row with no path drops out later, in the module that owns paths.
-
-    THE SOFT-DELETE MARKER IS READ, NEVER DEFAULTED, AND A ROW THAT CANNOT REPORT
+    it. THE SOFT-DELETE MARKER IS READ, NEVER DEFAULTED, AND A ROW THAT CANNOT REPORT
     IT REFUSES, through :func:`cratekit.write.trees.soft_delete_marker` (U24).
     """
     for row in db.get_content():
@@ -730,8 +728,7 @@ def assert_destinations_are_not_renamed(
     only where the recorded node map cannot name the rename.
 
     NARROW ON PURPOSE (P7): only when the destination folder is not under the root
-    AND the track already sits there in a folder the taxonomy declares no bucket
-    for. A track placed into a second, new bucket is untouched.
+    AND the track already sits in a folder the taxonomy declares no bucket for.
     """
     children = {str(row.Name) for row in db.get_playlist(ParentID=str(root_id))}
     for item in group:
@@ -914,10 +911,8 @@ def route(
     THE ORDER IS THE UNIT: resolve, commit, prove, mark. A crash before the mark
     leaves the intent outstanding and a re-run is free.
 
-    READ-ONLY UNTIL THE LIBRARY IS READY, answered from rows before any session.
-    The session is :func:`cratekit.write.trees.write_tree_membership`'s, one tree
-    at a time in sorted order (R29), so a refusal on the second leaves the first
-    committed and marked.
+    READ-ONLY UNTIL THE LIBRARY IS READY. The session is the membership
+    writer's, one tree at a time in sorted order (R29).
 
     ``rows`` is walked EXACTLY ONCE, here. Plans are rewritten through the recorded
     node map before any find-or-create, so a rename converges. It places what it

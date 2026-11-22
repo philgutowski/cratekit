@@ -71,9 +71,8 @@ class TrackRow:
     """One active collection row, as the fields the document spells.
 
     THERE IS NO TEMPO FIELD: an ignored field is one edit from being written.
-    ``rating`` is the export byte, already folded from stars. ``location`` is
-    what the database recorded; :func:`render` resolves it to where the file is
-    mounted.
+    ``rating`` is the export byte. ``location`` is what the database recorded;
+    :func:`render` resolves it to where the file is mounted.
     """
 
     track_id: str
@@ -234,8 +233,7 @@ def _date_added(row: Any) -> str:
 def refuse_unusable_id(kind: str, identifier: str) -> None:
     """Refuse an identifier the membership reader could not read back.
 
-    THE READERS MATCH DIGITS AND NOTHING ELSE: another spelling reads its
-    playlist as empty and its row is skipped, so the file would open and be
+    THE READERS MATCH DIGITS AND NOTHING ELSE, or the file would open and be
     wrong. rekordbox assigns digits, so this refuses somebody else's database.
     """
     if identifier.isascii() and identifier.isdigit():
@@ -330,10 +328,8 @@ def read_tracks(db: Any) -> tuple[tuple[TrackRow, ...], tuple[str, ...]]:
 def read_nodes(db: Any) -> tuple[NodeRow, ...]:
     """Every active playlist row, each playlist with its members in stored order.
 
-    THE MEMBERSHIP TABLE IS READ ONCE and grouped, not walked once per
-    playlist. A tombstoned membership is omitted like a tombstoned playlist;
-    whether a member names a live row is the emitter's question, since it holds
-    the collection.
+    THE MEMBERSHIP TABLE IS READ ONCE and grouped. A tombstoned membership is
+    omitted; whether a member names a live row is the emitter's question.
     """
     members: dict[str, list[tuple[int, str, str]]] = {}
     for song in db.get_playlist_songs():
@@ -442,7 +438,6 @@ def mounted_location(
 
     THE ONE DECODE AND RESOLVE STEP, ``trees.located``, so the file and
     ``library.paths_resolved`` count the same rows as under no rule.
-
     ONLY A ROW A RULE PLACED IS REWRITTEN, AND ONLY WHEN THE PLACE READS BACK AS
     ITSELF through the same root and rules; everything else is handed back byte
     for byte, since swapping in the current root unasked would invent a fact.
@@ -649,9 +644,7 @@ def render(
 ) -> Document:
     """The whole document, and the counts it was written from.
 
-    ``root`` AND ``prefix_map`` ARE REQUIRED: a default writes every location
-    under a drive nothing mounts and says nothing (R-773). No rule is an empty map.
-
+    ``root`` AND ``prefix_map`` ARE REQUIRED (R-773); no rule is an empty map.
     THE DECLARED COUNTS ARE COUNTED FROM WHAT WAS WRITTEN, since the strict
     reader refuses a file whose declared count differs from its rows. A SMART
     PLAYLIST, whose members the database does not hold, and A NODE NOTHING

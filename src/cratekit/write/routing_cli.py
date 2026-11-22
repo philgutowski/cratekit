@@ -53,8 +53,7 @@ INBOX_WORKFLOW = "route-inbox"
 RESORT_WORKFLOW = "route-resort"
 
 #: Where a resort's job freezes the adds its gate showed and a person approved
-#: (U219), and the database file that answer was pinned to (U161). Spelled
-#: once, since the enqueue writes them and the resume and the worker read them.
+#: (U219), and the database file that answer was pinned to (U161).
 RESORT_ADDS_KEY = "adds"
 RESORT_DATABASE_KEY = "database"
 RESORT_FACTS_KEY = "facts"
@@ -66,10 +65,9 @@ RESORT_PLAN = "plan"
 #: alone because the taxonomy does not derive it (U219).
 TREE_NOT_DERIVED = "tree-not-derived"
 
-#: Where each resorted tree's report is committed, under the queue root beside
-#: the job's lock and log (R-312). ONE REPORT PER ITEM, MADE DURABLE BY THE
-#: DRIVER before the item flips to done, so what the engine measured survives a
-#: killed process and reaches a resume that ends in a refusal.
+#: Where each resorted tree's report is committed (R-312). ONE REPORT PER ITEM,
+#: MADE DURABLE BY THE DRIVER before the item flips to done, so it survives a
+#: killed process.
 RESORT_ARTIFACTS = jobs.Artifacts(final="resort-artifacts", staging="resort-staging")
 
 

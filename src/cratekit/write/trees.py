@@ -307,11 +307,9 @@ def add_to_root_playlist(
 ) -> tuple[int, str | None]:
     """Add tracks to a root playlist, creating it, and never remove one.
 
-    Returns how many tracks the playlist gained and a warning or None.
-    :func:`cratekit.write.rbxml.insert_root_playlist` REPLACES the playlist, so
-    the members it holds are written back ahead of the new ones. Nothing new is
-    nothing written, so a rerun leaves the bytes alone. No tree: the playlist
-    root is not one.
+    Returns how many tracks the playlist gained and a warning or None. The
+    writer REPLACES the playlist, so its members are written back ahead of the
+    new ones. Nothing new is nothing written. No tree: the root is not one.
     """
     existing = root_playlist_members(content, name)
     if isinstance(existing, str):
@@ -395,10 +393,8 @@ def add_vox_playlists(
     """Give every folder in a tree the vocal sub-playlist, and report which gained one.
 
     rekordbox's import cannot create an empty playlist and a splice needs one
-    to exist, so vocal routing has somewhere to write only because this ran.
-    Idempotent: a folder already holding it is left byte-identical. Both names
-    come from the declared taxonomy, the library's active template (R-685).
-    Every warning is carried out in the report.
+    to exist. Idempotent. Both names come from the declared taxonomy (R-685),
+    and every warning is carried out in the report.
     """
     sub_display = declared.sub_class(sub_class_id).display
     target = _governed_or_named(tree, registry, declared.tree, what="the vocal sweep")
@@ -541,11 +537,9 @@ def insert_record_labels_tree(
     """Write one catalogued source's whole subtree into a copy of an export.
 
     Never in place: the export is a file the user still has to import. The
-    catalog tree is CREATED when the document has none, the one place a tree
-    comes into existence here, and a taxonomy that declares none refuses by
-    name. A source whose folder is already held is merged into, by
-    :func:`rbxml.insert_catalog_folder`'s rule, and two folders of its name
-    refuse (R-129).
+    catalog tree is CREATED when the document has none, and a taxonomy that
+    declares none refuses by name. A held folder is merged into, by
+    :func:`rbxml.insert_catalog_folder`'s rule (R-129).
     """
     return insert_record_labels_trees(
         xml_path, {label: buckets}, out_path, declared=declared, registry=registry, tree=tree
@@ -851,17 +845,14 @@ def write_tree_membership(
     """Write membership for a database-native tree, for rows that already exist.
 
     :func:`cratekit.core.tree_registry.anchored_root` refuses a tree on the
-    bridge, a record naming no root, and a root this library lacks (a restored
-    pre-cutover database). Names match the XML-era names, so a cutover adopts
-    rather than duplicates. No content row, tempo or analysis column is written.
-    ``analysis_roots`` may not be empty, and the session is this function's own
-    (R29), so no outside gates factory can name no roots.
+    bridge, a record naming no root, and a root this library lacks. Names match
+    the XML-era names, so a cutover adopts rather than duplicates. No content
+    row, tempo or analysis column is written. ``analysis_roots`` may not be
+    empty, and the session is this function's own (R29).
 
-    ``purpose`` lifts only the convergence latches whose remedy is a rebuild
-    (:class:`cratekit.core.convergence.Purpose`); ``intent`` is that declaration
-    for ``assert_gates``, where U32's latch would refuse the rebuild it names as
-    its remedy. ``RECOVERY`` also lifts the unresolved-session latch, so the
-    rebuild asserts that one itself (:func:`cratekit.write.rebuild.rebuild_tree`).
+    ``purpose`` lifts only the convergence latches whose remedy is a rebuild;
+    ``intent`` is that declaration for ``assert_gates``. ``RECOVERY`` also lifts
+    the unresolved-session latch, which the rebuild asserts itself.
     """
     watched = _watched(analysis_roots)
     root_id = _writable_root(cfg, db, tree_id, registry, root_exists, purpose)
@@ -869,9 +860,8 @@ def write_tree_membership(
     # ONE walk of the library, before the loop, since rows may be a cursor.
     index = index_active_rows(rows, root=cfg.library.root, prefix_map=resolved_map)
 
-    # The record is opened inside the gates and before the capture (R-12), so
-    # no capture goes unnamed by a record: one record per tree, the granularity
-    # a person restores at, and R29's one source per run with the tree the source.
+    # The record is opened inside the gates and before the capture (R-12):
+    # one record per tree, the granularity a person restores at (R29).
     with session.assert_gates(
         cfg, workflow=workflow, analysis_roots=watched, intent=intent, keep=session.Keep.RECORD
     ) as gates, rb_writer.commit_witness(db) as witness:
@@ -891,14 +881,9 @@ def write_tree_membership(
         # failed state write below cannot close the record looking empty.
         _record_membership_commit(record, tree_id, run.added, cfg)
 
-        # THE FINGERPRINT IS TAKEN AT THE CLOSE, AFTER THE COMMIT. It is what
-        # lets the next run tell a database recovered out of band from one this
-        # product changed itself, and taking it before the commit would record a
-        # database this session then moved, so the next run would read its own
-        # write as somebody else's restore. It sits outside the try above because
-        # by here the commit has landed and there is nothing pending to roll
-        # back; a failure now is a state write that failed, not a database write
-        # that half happened.
+        # THE FINGERPRINT IS TAKEN AT THE CLOSE, AFTER THE COMMIT, or the next run
+        # would read this session's own write as an out of band restore. Outside
+        # the try, since the commit has landed and nothing is pending.
         convergence.record_fingerprint(cfg, db)
 
     return MembershipReport(
@@ -1142,10 +1127,9 @@ def move_tree_membership(
 
     Held to everything :func:`write_tree_membership` holds. Two commits in one
     session, the additions first, so a failure between them leaves a track in
-    both playlists and never in neither, and a resume finishes the rest. The
-    fingerprint is taken after each commit that landed. No ``workflow``,
-    ``purpose`` or ``intent``: a recovery declaration would lift two latches in
-    front of the only writer that removes.
+    both playlists and never in neither. No ``workflow``, ``purpose`` or
+    ``intent``: a recovery declaration would lift latches in front of the only
+    writer that removes.
     """
     watched = _watched(analysis_roots)
     root_id = _writable_root(cfg, db, tree_id, registry, root_exists, convergence.Purpose.ROUTINE)

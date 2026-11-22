@@ -1,10 +1,7 @@
 """What a governed tree holds and what the declaration puts in it, as values (U36, U119).
 
-The two records the rebuild compares, and the walk that reads one, live here so
-the genre favorites engine and the rebuild can both import them without
-importing each other. The rebuild re-exports every name.
-
-Layer: write.
+Here so the genre favorites engine and the rebuild can both import them without
+importing each other; the rebuild re-exports every name. Layer: write.
 """
 
 from __future__ import annotations
@@ -55,12 +52,10 @@ class TreeNode:
 def read_tree(db: Any, root_id: str) -> tuple[TreeNode, ...]:
     """Every playlist two levels under the adopted root, with its membership.
 
-    Down from the adopted root by identifier, never by name, which would find a
-    namesake anywhere in the library. Two levels, the depth the taxonomy
-    declares. The folder list is materialized before the inner queries run,
-    since iterating one query while issuing others on the session misreads.
-    A membership marked removed is not held (R-758), or a moved track would
-    still read as sitting there and the move be planned for ever.
+    Down from the adopted root by identifier, never by name. The folder list is
+    materialized before the inner queries run, since iterating one query while
+    issuing others on the session misreads. A membership marked removed is not
+    held (R-758).
     """
     out: list[TreeNode] = []
     folders = list(db.get_playlist(ParentID=str(root_id)))
