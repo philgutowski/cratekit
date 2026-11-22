@@ -1,55 +1,20 @@
-"""Feature Inventory row 30: mastering a live set recording.
+"""Mastering a live set recording, one at a time (Feature Inventory row 30).
 
-One recording at a time, touching no core surface. It reads a source file, writes
-a new lossless FLAC beside it, and never modifies or deletes the source. That
-last clause is R18 and it is the reason this module is worth porting carefully:
-the input is a recording of a performance that happened once, so a mistake here
-is not recoverable from anywhere.
+It reads a source, writes a new lossless FLAC beside it, and never modifies or
+deletes the source (R18): a recording of a performance happened once and is not
+recoverable from anywhere.
 
-WHAT IT ACTUALLY DOES, and why in that order.
+The run, in order: archive the source and verify the copy by content hash;
+correct level drift with a long smoothing window (a short one flattens the music
+itself); measure, then normalize with one linear gain offset under a true peak
+ceiling (a one pass normalization compresses); encode FLAC at the source's own
+bit depth (24 bits on a 16 bit source only makes the file larger than the WAV).
 
-1. **Archive the source and verify the copy** before touching anything. Verified
-   by content hash rather than by a byte comparison utility, so the check is the
-   same on every platform and does not depend on an external tool.
-2. **Drift correction.** A live set is recorded with somebody's hand on the
-   master knob, so the level steps up and down across the recording. A long
-   smoothing window pulls those slow steps flat while leaving the short-term
-   musical dynamics alone. A short window would flatten the music itself.
-3. **Measure, then normalize linearly.** Two passes: the first measures the
-   corrected signal, the second applies a single gain offset with a true-peak
-   ceiling. Linear mode matters. A one-pass normalization compresses to reach the
-   target, which changes how the set sounds; a measured linear offset only moves
-   it.
-4. **Encode FLAC at the source's own bit depth.** Sixteen-bit sources are
-   dithered back to sixteen; deeper sources stay at twenty-four. Forcing
-   twenty-four on a sixteen-bit recording produces a file LARGER than the source
-   WAV, which defeats the point of the conversion, and adds no information.
-
-FIVE THINGS THIS PORT CHANGES.
-
-* **The binaries are resolved, not assumed.** The source shell script tests
-  ``command -v ffmpeg``, so it works in a login shell and fails inside an
-  application launched from a graphical file manager, where none of the usual
-  install directories are on PATH.
-* **The loudness report is parsed as JSON.** The source greps for a key across
-  the whole of ffmpeg's stderr and takes the last hit, so a value from the
-  measurement block can be read as a value from the apply block, silently.
-* **An existing output is not overwritten.** The source passes ``-y``
-  unconditionally, so a second run at a different target loudness replaces a
-  master the user may already have kept.
-* **An existing archive entry is verified, not trusted.** The source skips the
-  copy when a file of that name is already in the archive. Two different
-  recordings called ``REC001.WAV``, which is exactly what a recorder produces,
-  therefore leave the second one unarchived while reporting that it is safe.
-* **Settings are validated at construction.** A drift window outside the filter's
-  accepted range makes ffmpeg fail several minutes into a long encode, naming its
-  own filter rather than the option the user typed.
-
-WHY THE EXECUTION IS A SEAM. Every subprocess goes through an injected runner, so
-the decisions above (which filter chain, which encoder arguments, which output
-name, whether to refuse) are all testable without encoding audio, and the one
-test that does encode audio exercises the same code path rather than a parallel
-one.
+Binaries are resolved rather than assumed on PATH, the loudness report is parsed
+as JSON, an existing output or archive entry is never overwritten or trusted by
+name, and settings are validated at construction rather than minutes into an
+encode. Every subprocess goes through an injected runner, so each decision is
+testable without encoding audio.
 """
 
 from __future__ import annotations
@@ -67,14 +32,12 @@ from pathlib import Path
 
 from cratekit.core import binaries
 
-#: Containers this module will accept as a source. Deliberately narrow: these are
-#: what a DJ recorder writes, and the two-pass measurement assumes a single
-#: continuous audio stream.
+#: Containers accepted as a source: what a DJ recorder writes, one continuous
+#: audio stream, which the two pass measurement assumes.
 SOURCE_SUFFIXES: tuple[str, ...] = (".wav", ".aiff", ".aif", ".flac")
 
-#: Where a verified copy of each source is kept, relative to the source's own
-#: directory. Beside the recording rather than in a state root: it is the user's
-#: own audio, not Cratekit's bookkeeping, and it must survive uninstalling this.
+#: Where a verified copy of each source is kept, beside the recording: it is the
+#: user's own audio and must survive uninstalling Cratekit.
 ARCHIVE_DIRNAME = "_originals"
 
 OUTPUT_SUFFIX = "_mastered.flac"
@@ -83,27 +46,20 @@ OUTPUT_SUFFIX = "_mastered.flac"
 #: outside this and refuses an even value.
 DRIFT_WINDOW_RANGE = (3, 301)
 
-#: The integrated loudness targets loudnorm accepts, LUFS. ffmpeg refuses a
-#: value outside this, and it refuses at the first measure pass rather than at
-#: the command line, so a mistyped ``--lufs`` would otherwise surface as an
-#: encoder failure naming the filter. U105 added the check: before it the target
-#: was a constant nobody could reach, so there was nothing to validate.
+#: The integrated loudness targets loudnorm accepts, LUFS. ffmpeg refuses
+#: outside this only at the first measure pass, naming the filter.
 LUFS_RANGE = (-70.0, -5.0)
 
-#: What a joined recording is called, after the first part's stem. The source
-#: system's ``master_set.sh`` names a joined set ``<first>_set`` for the same
-#: reason: the master of a joined set must not take the name the first part's
-#: own master would have, or mastering part one alone and then the whole set
-#: meets ``output-exists`` against a file that holds something else.
+#: What a joined recording is called, after the first part's stem, so its master
+#: never takes the name the first part's own master would have.
 JOINED_SUFFIX = "_set"
 
 
 class Refusal(StrEnum):
     """Why a mastering run will not proceed, as a structured cause (KTD25).
 
-    Every member is a distinct diagnosis with a distinct fix, and none of them
-    carries the text a user types: the CLI renders a member into a sentence and
-    reserves an exit code for it (D2, S4).
+    Each member is a distinct diagnosis; the CLI renders it into a sentence and
+    reserves an exit code for it.
     """
 
     SOURCE_MISSING = "source-missing"
@@ -127,24 +83,16 @@ class MasteringRefused(Exception):
 
 @dataclass(frozen=True, slots=True)
 class Settings:
-    """Loudness targets and the drift window, validated at construction.
+    """Loudness targets and the drift window, validated at construction."""
 
-    Validated here rather than at the ffmpeg call because the alternative is a
-    filter error arriving minutes into an encode, naming ``dynaudnorm`` rather
-    than the option the user typed.
-    """
-
-    #: Integrated loudness target, LUFS. -14 suits general playback; a louder
-    #: target suits streaming platforms that normalize upward.
+    #: Integrated loudness target, LUFS.
     target_lufs: float = -14.0
-    #: True-peak ceiling, dBTP. Below zero on purpose: inter-sample peaks in a
-    #: lossy transcode of this file can exceed the sample peak.
+    #: True peak ceiling, dBTP. Below zero because inter-sample peaks in a lossy
+    #: transcode of this file can exceed the sample peak.
     true_peak_db: float = -1.0
     #: Loudness range target, LU. Part of what keeps the normalization linear.
     loudness_range: float = 11.0
-    #: Drift smoothing window, in frames. Odd, within DRIFT_WINDOW_RANGE. Lower
-    #: flattens drift harder and costs dynamics; higher preserves dynamics and
-    #: may leave drift behind.
+    #: Drift smoothing window, in frames. Odd, within DRIFT_WINDOW_RANGE.
     drift_window: int = 63
     #: Analysis frame length, milliseconds.
     frame_ms: int = 500
@@ -153,8 +101,7 @@ class Settings:
         low, high = DRIFT_WINDOW_RANGE
         if not low <= self.drift_window <= high:
             raise ValueError(
-                f"drift_window must be between {low} and {high}, found "
-                f"{self.drift_window}"
+                f"drift_window must be between {low} and {high}, found {self.drift_window}"
             )
         if self.drift_window % 2 == 0:
             raise ValueError(
@@ -168,9 +115,7 @@ class Settings:
                 f"positive, found {self.true_peak_db}"
             )
         low_lufs, high_lufs = LUFS_RANGE
-        # WRITTEN AS A NEGATED RANGE so a NaN fails it: every comparison with
-        # NaN is false, so ``x < low or x > high`` would admit one and hand
-        # loudnorm a target of ``nan``.
+        # A negated range so a NaN fails it: ``x < low or x > high`` admits NaN.
         if not low_lufs <= self.target_lufs <= high_lufs:
             raise ValueError(
                 f"target_lufs must be between {low_lufs:g} and {high_lufs:g} "
@@ -199,10 +144,7 @@ class SourceProbe:
     sample_rate: int
     sample_fmt: str
     size_bytes: int
-    #: Read for the join, which stream copies and therefore needs every part to
-    #: carry the same audio layout. A mono part joined to a stereo one, or a
-    #: 24-bit PCM part to a 32-bit one (both ``s32`` as a sample format), is
-    #: copied across unconverted and plays as noise or at the wrong speed.
+    #: Read for the join, a stream copy, which needs every part in one layout.
     channels: int | None = None
     codec: str = ""
 
@@ -223,9 +165,8 @@ class Report:
     source_bytes: int
     output_bytes: int
     bit_depth: str
-    #: The parts a joined run was built from, in the order they were joined, and
-    #: the verified archive copy of each. Both empty for a single recording,
-    #: whose one source and one archive are the two fields above.
+    #: A joined run's parts in join order and each one's archive copy; both
+    #: empty for a single recording.
     parts: tuple[Path, ...] = ()
     archives: tuple[Path, ...] = ()
 
@@ -243,8 +184,7 @@ class Command:
 
     label: str
     argv: tuple[str, ...]
-    #: True when the caller needs the process's stderr, which is where ffmpeg
-    #: prints its loudness JSON.
+    #: True when the caller needs stderr, where ffmpeg prints its loudness JSON.
     capture: bool = True
 
 
@@ -259,13 +199,7 @@ Runner = Callable[[Command], CommandResult]
 
 
 def subprocess_runner(command: Command) -> CommandResult:
-    """Run one command with the fallback directories on PATH.
-
-    ``binaries.subprocess_env`` is what makes a child process able to resolve its
-    own children, and it strips opted-in credentials from the environment: ffmpeg
-    has no use for a Cratekit credential and a process listing is a place they
-    leak from.
-    """
+    """Run one command with the fallback directories on PATH and credentials stripped."""
     completed = subprocess.run(
         list(command.argv),
         capture_output=True,
@@ -280,9 +214,7 @@ def subprocess_runner(command: Command) -> CommandResult:
     )
 
 
-# ---------------------------------------------------------------------------
 # Pure decisions
-# ---------------------------------------------------------------------------
 
 
 def output_path(source: Path, *, output_dir: Path | None = None) -> Path:
@@ -292,11 +224,7 @@ def output_path(source: Path, *, output_dir: Path | None = None) -> Path:
 
 
 def joined_name(parts: Sequence[Path]) -> str:
-    """The file name a joined recording is written under, before it is mastered.
-
-    The first part's stem and container, because the join is a stream copy and
-    the joined file is therefore in the first part's container.
-    """
+    """The joined recording's file name: the first part's stem and container."""
     first = parts[0]
     return f"{first.stem}{JOINED_SUFFIX}{first.suffix}"
 
@@ -304,11 +232,8 @@ def joined_name(parts: Sequence[Path]) -> str:
 def planned_output(parts: Sequence[Path | str], *, output_dir: Path | None = None) -> Path:
     """Where the master of these parts lands. The one name builder for both shapes.
 
-    One part is exactly :func:`output_path`. Several are named for the joined
-    recording and land beside the FIRST part unless told otherwise, which is
-    where the person's recording already is. The shell checks the destination
-    with this before staging the encode, so the check and the encode cannot
-    disagree about which file they mean.
+    Several parts are named for the joined recording, beside the first part. The
+    shell checks the destination with this, so check and encode cannot disagree.
     """
     paths = [Path(p) for p in parts]
     if len(paths) == 1:
@@ -317,17 +242,12 @@ def planned_output(parts: Sequence[Path | str], *, output_dir: Path | None = Non
 
 
 def drift_filter(settings: Settings) -> str:
-    """The level-drift correction stage.
+    """The level drift correction stage.
 
-    ``p`` and ``m`` bound how far the filter may push any one frame, so a quiet
-    passage is not dragged up to match a loud one. ``s=0.0`` disables the
-    filter's own extra smoothing, because the window above is already the
-    smoothing and stacking a second one is how musical dynamics disappear.
+    ``p`` and ``m`` bound how far one frame may be pushed; ``s=0.0`` disables a
+    second smoothing on top of the window, which would flatten the dynamics.
     """
-    return (
-        f"dynaudnorm=f={settings.frame_ms}:g={settings.drift_window}"
-        f":p=0.95:m=10.0:s=0.0"
-    )
+    return f"dynaudnorm=f={settings.frame_ms}:g={settings.drift_window}:p=0.95:m=10.0:s=0.0"
 
 
 def measure_filter(settings: Settings) -> str:
@@ -341,10 +261,8 @@ def measure_filter(settings: Settings) -> str:
 def apply_filter(settings: Settings, measured: Loudness) -> str:
     """Pass two: apply the measured offset linearly, with the peak ceiling.
 
-    Every measured value is fed back in. Omitting one silently drops the filter
-    out of linear mode into its dynamic mode, which compresses to hit the target
-    instead of moving the whole set, and the output is quieter-sounding and
-    flatter with nothing reported.
+    Every measured value is required: omitting one drops loudnorm silently into
+    its dynamic mode, which compresses the set instead of moving it.
     """
     missing = [
         name
@@ -379,82 +297,65 @@ def apply_filter(settings: Settings, measured: Loudness) -> str:
 def encoder_args(probe: SourceProbe) -> tuple[tuple[str, ...], str, str]:
     """``(encoder argv fragment, extra filter, human bit depth)`` for the source.
 
-    A sixteen-bit source is dithered back to sixteen. The dither is not optional:
-    the filter chain runs in floating point, so truncating to sixteen bits
-    without it adds correlated quantization distortion, which is audible on the
-    quiet passages a DJ set has plenty of.
+    A 16 bit source is dithered back to 16: the chain runs in floating point, and
+    truncating without dither adds audible distortion on quiet passages.
     """
+    flac = ("-c:a", "flac", "-compression_level", "8")
     if probe.is_16_bit:
-        return (
-            ("-c:a", "flac", "-compression_level", "8"),
-            "aresample=out_sample_fmt=s16:dither_method=triangular_hp",
-            "16-bit, dithered",
-        )
-    return (
-        ("-c:a", "flac", "-compression_level", "8", "-sample_fmt", "s32",
-         "-bits_per_raw_sample", "24"),
-        "",
-        "24-bit",
-    )
+        return flac, "aresample=out_sample_fmt=s16:dither_method=triangular_hp", "16-bit, dithered"
+    return (*flac, "-sample_fmt", "s32", "-bits_per_raw_sample", "24"), "", "24-bit"
 
 
 _JSON_BLOCK = re.compile(r"\{[^{}]*\}")
 
 
-def parse_loudness(stderr_text: str) -> Loudness:
-    """Read ffmpeg's loudnorm report out of stderr.
+def _last_report(stderr_text: str, marker: str) -> dict | None:
+    """The last JSON object in ffmpeg's stderr carrying ``marker``.
 
-    The LAST JSON object is taken because ffmpeg prints its block after the
-    encode, and a two-pass run can put more than one in a single stream. Parsing
-    it as JSON rather than grepping for each key is the fix for a real ambiguity:
-    a key-by-key grep across the whole stream can pair a value from the
-    measurement block with a value from the apply block, and the resulting
-    "measurement" describes no signal that ever existed.
+    The last, because ffmpeg prints its block after the encode. Parsed as JSON
+    rather than grepped per key, which could pair values from two blocks.
     """
-    blocks = _JSON_BLOCK.findall(stderr_text or "")
-    for raw in reversed(blocks):
+    for raw in reversed(_JSON_BLOCK.findall(stderr_text or "")):
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
             continue
-        if not isinstance(data, dict) or "input_i" not in data:
-            continue
-        return Loudness(
-            integrated_lufs=_as_float(data.get("input_i")),
-            loudness_range=_as_float(data.get("input_lra")),
-            true_peak_db=_as_float(data.get("input_tp")),
-            threshold=_as_float(data.get("input_thresh")),
-            target_offset=_as_float(data.get("target_offset")),
-        )
-    return Loudness()
+        if isinstance(data, dict) and marker in data:
+            return data
+    return None
+
+
+def parse_loudness(stderr_text: str) -> Loudness:
+    """Read the INPUT half of ffmpeg's loudnorm report out of stderr."""
+    data = _last_report(stderr_text, "input_i")
+    if data is None:
+        return Loudness()
+    return Loudness(
+        integrated_lufs=_as_float(data.get("input_i")),
+        loudness_range=_as_float(data.get("input_lra")),
+        true_peak_db=_as_float(data.get("input_tp")),
+        threshold=_as_float(data.get("input_thresh")),
+        target_offset=_as_float(data.get("target_offset")),
+    )
 
 
 def parse_output_loudness(stderr_text: str) -> Loudness:
-    """The same report read from its OUTPUT half, for the after-figures."""
-    blocks = _JSON_BLOCK.findall(stderr_text or "")
-    for raw in reversed(blocks):
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(data, dict) or "output_i" not in data:
-            continue
-        return Loudness(
-            integrated_lufs=_as_float(data.get("output_i")),
-            loudness_range=_as_float(data.get("output_lra")),
-            true_peak_db=_as_float(data.get("output_tp")),
-        )
-    return Loudness()
+    """The same report read from its OUTPUT half, for the after figures."""
+    data = _last_report(stderr_text, "output_i")
+    if data is None:
+        return Loudness()
+    return Loudness(
+        integrated_lufs=_as_float(data.get("output_i")),
+        loudness_range=_as_float(data.get("output_lra")),
+        true_peak_db=_as_float(data.get("output_tp")),
+    )
 
 
 def _as_float(value: object) -> float | None:
     """A finite float, or None. Non-finite is UNKNOWN, not a value.
 
-    loudnorm reports ``-inf`` for a silent signal, and Python parses that
-    happily. Carrying it forward would put negative infinity into the apply
-    stage's own options, where ffmpeg either rejects it or normalizes against a
-    measurement that describes no signal. None makes the apply stage refuse with
-    a sentence naming what is missing.
+    loudnorm reports ``-inf`` for silence; None makes the apply stage refuse with
+    a sentence naming what is missing instead of passing infinity to ffmpeg.
     """
     try:
         parsed = float(str(value))
@@ -463,9 +364,7 @@ def _as_float(value: object) -> float | None:
     return parsed if parsed == parsed and abs(parsed) != float("inf") else None
 
 
-# ---------------------------------------------------------------------------
 # The archive: copy first, verify, never trust a name
-# ---------------------------------------------------------------------------
 
 
 def digest(path: Path, *, chunk: int = 1 << 20) -> str:
@@ -483,11 +382,8 @@ def digest(path: Path, *, chunk: int = 1 << 20) -> str:
 def archive_source(source: Path, archive_dir: Path) -> Path:
     """Copy the source into the archive and prove the copy is identical.
 
-    An entry already present under the same name is VERIFIED rather than assumed.
-    Recorders name their files by counter, so two different sets called
-    ``REC001.WAV`` is the normal case, not the exotic one, and the source
-    system's "archive exists, skipping" leaves the second recording unarchived
-    while reporting that it is safe.
+    An entry already there under the same name is verified, not assumed:
+    recorders name files by counter, so two sets called ``REC001.WAV`` is normal.
     """
     archive_dir.mkdir(parents=True, exist_ok=True)
     destination = archive_dir / source.name
@@ -506,8 +402,7 @@ def archive_source(source: Path, archive_dir: Path) -> Path:
 
     shutil.copy2(source, destination)
     if digest(destination) != source_digest:
-        # Verify before proceeding, not after: the whole reason the archive is
-        # taken first is so the rest of the run has something to fall back on.
+        # Verified before proceeding: the rest of the run falls back on this copy.
         destination.unlink(missing_ok=True)
         raise MasteringRefused(
             Refusal.ARCHIVE_VERIFY_FAILED,
@@ -518,9 +413,41 @@ def archive_source(source: Path, archive_dir: Path) -> Path:
     return destination
 
 
-# ---------------------------------------------------------------------------
 # The run
-# ---------------------------------------------------------------------------
+
+
+def _check_source(path: Path) -> None:
+    """Refuse a recording that is not there or is in a container this does not read."""
+    if not path.is_file():
+        raise MasteringRefused(Refusal.SOURCE_MISSING, f"no such recording: {path}", path=path)
+    if path.suffix.lower() not in SOURCE_SUFFIXES:
+        raise MasteringRefused(
+            Refusal.SOURCE_UNSUPPORTED,
+            f"{path.suffix!r} is not a container this reads; supported: "
+            f"{', '.join(SOURCE_SUFFIXES)}",
+            path=path,
+        )
+
+
+def output_exists_detail(target: Path) -> str:
+    """The sentence an ``output-exists`` refusal carries, here and in the shell."""
+    return (
+        f"{target} already exists. Replacing it silently would discard a "
+        f"master that may already have been kept, and the settings that "
+        f"produced it are not recorded anywhere."
+    )
+
+
+def _output_exists(target: Path) -> MasteringRefused:
+    return MasteringRefused(Refusal.OUTPUT_EXISTS, output_exists_detail(target), path=target)
+
+
+def _resolve(*names: str, path: Path | None = None) -> list[str]:
+    """Each binary's absolute path, in order, or ``encoder-missing``."""
+    try:
+        return [binaries.resolve(name) for name in names]
+    except binaries.BinaryNotFound as exc:
+        raise MasteringRefused(Refusal.ENCODER_MISSING, str(exc), path=path) from exc
 
 
 def probe_source(source: Path, *, runner: Runner, ffprobe: str) -> SourceProbe:
@@ -541,11 +468,7 @@ def probe_source(source: Path, *, runner: Runner, ffprobe: str) -> SourceProbe:
             f"{result.stderr.strip()[-400:]}",
             path=source,
         )
-    values = dict(
-        line.split("=", 1)
-        for line in result.stdout.splitlines()
-        if "=" in line
-    )
+    values = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
     try:
         rate = int(values["sample_rate"])
     except (KeyError, ValueError) as exc:
@@ -581,44 +504,17 @@ def master(
 ) -> Report:
     """Master one recording. The source is opened read-only and never modified.
 
-    The order is load-bearing and is asserted by the tests: refuse, archive,
-    then process. Archiving after the first ffmpeg stage would mean a crash
-    between them leaves the user with a half-written intermediate and no verified
-    copy, which is the one state this whole module exists to make impossible.
-
-    ``workspace`` is where the intermediate drift-corrected file is written. It
-    defaults to the OUTPUT directory rather than the system temp directory,
-    because a set recording is measured in gigabytes and a small temp filesystem
-    is a failure that arrives at the end of a long stage.
+    The order is load-bearing: refuse, archive, then process, so a crash never
+    leaves an intermediate without a verified copy. ``workspace`` holds the drift
+    corrected intermediate and defaults to the output directory, since a set is
+    gigabytes and a small temp filesystem fails at the end of a long stage.
     """
     source = Path(source)
-    if not source.is_file():
-        raise MasteringRefused(
-            Refusal.SOURCE_MISSING, f"no such recording: {source}", path=source
-        )
-    if source.suffix.lower() not in SOURCE_SUFFIXES:
-        raise MasteringRefused(
-            Refusal.SOURCE_UNSUPPORTED,
-            f"{source.suffix!r} is not a container this reads; supported: "
-            f"{', '.join(SOURCE_SUFFIXES)}",
-            path=source,
-        )
-
+    _check_source(source)
     target = output_path(source, output_dir=output_dir)
     if target.exists() and not overwrite:
-        raise MasteringRefused(
-            Refusal.OUTPUT_EXISTS,
-            f"{target} already exists. Replacing it silently would discard a "
-            f"master that may already have been kept, and the settings that "
-            f"produced it are not recorded anywhere.",
-            path=target,
-        )
-
-    try:
-        ffmpeg = binaries.resolve("ffmpeg")
-        ffprobe = binaries.resolve("ffprobe")
-    except binaries.BinaryNotFound as exc:
-        raise MasteringRefused(Refusal.ENCODER_MISSING, str(exc), path=source) from exc
+        raise _output_exists(target)
+    ffmpeg, ffprobe = _resolve("ffmpeg", "ffprobe", path=source)
 
     archived_to = None
     if archive:
@@ -641,16 +537,13 @@ def master(
                 argv=(
                     ffmpeg, "-v", "error", "-y", "-i", str(source),
                     "-af", drift_filter(settings),
-                    # RF64 when needed, for the reason ``concatenate`` gives. A
-                    # 24-bit intermediate of a four hour set at 48 kHz passes
+                    # RF64 when needed: a 24 bit intermediate of a long set passes
                     # 4 GiB, and a wrapped header truncates the master silently.
                     "-c:a", "pcm_s24le", "-rf64", "auto", str(intermediate),
                 ),
             ),
         )
-        measured = _measure(
-            intermediate, ffmpeg=ffmpeg, settings=settings, runner=runner
-        )
+        measured = _measure(intermediate, ffmpeg=ffmpeg, settings=settings, runner=runner)
         encoder, extra_filter, depth = encoder_args(probe)
         chain = apply_filter(settings, measured)
         if extra_filter:
@@ -667,9 +560,7 @@ def master(
             ),
         )
     finally:
-        # The intermediate is Cratekit's, not the user's. Leaving a
-        # multi-gigabyte scratch WAV beside the recording after a failure is how
-        # a volume fills up between one run and the next.
+        # The intermediate is Cratekit's: left after a failure it fills the volume.
         intermediate.unlink(missing_ok=True)
 
     _wrote_or_refuse(target, "normalize-and-encode")
@@ -685,19 +576,9 @@ def master(
     )
 
 
-def _measure(
-    path: Path, *, ffmpeg: str, settings: Settings, runner: Runner
-) -> Loudness:
-    result = _run_or_refuse(
-        runner,
-        Command(
-            label="measure",
-            argv=(
-                ffmpeg, "-hide_banner", "-nostats", "-i", str(path),
-                "-af", measure_filter(settings), "-f", "null", "-",
-            ),
-        ),
-    )
+def _measure(path: Path, *, ffmpeg: str, settings: Settings, runner: Runner) -> Loudness:
+    argv = (ffmpeg, "-hide_banner", "-nostats", "-i", str(path), "-af", measure_filter(settings))
+    result = _run_or_refuse(runner, Command(label="measure", argv=(*argv, "-f", "null", "-")))
     return parse_loudness(result.stderr)
 
 
@@ -714,29 +595,9 @@ def _run_or_refuse(runner: Runner, command: Command) -> CommandResult:
 def _wrote_or_refuse(target: Path, label: str) -> None:
     """A zero exit status is a CLAIM about the output, so check the output.
 
-    U44 DROVE THIS RATHER THAN ARGUING IT. An encoder that exits 0 and writes
-    nothing left ``master`` returning a Report whose ``output`` named a file that
-    was not there, whose ``output_bytes`` was 0 because the construction below
-    falls back to zero when the target is missing, and whose ``size_reduction``
-    was therefore 1.0. The shell rendered that as a success: a master that saved
-    one hundred percent of the source's bytes. Two of METHOD's named user facing
-    costs at once, told something false and shown a clean report over state the
-    tool could not read.
-
-    THE READING IS HERE RATHER THAN IN THE CALLER, which is the placement the
-    corpus entry on first callers argues for: the caller that found it is one
-    caller, and the checking path covers every future one. It is the same shape
-    as ``run_restore``'s unread return codes, one module over in this package,
-    and the same fix.
-
-    REACHABLE, AND NAMED. ``core.binaries`` reads ``CRATEKIT_BIN_FFMPEG`` before
-    PATH, so the program that answers these commands is a value the user sets.
-    ``override_problem`` rejects one that is not executable and cannot reject one
-    that runs and does nothing useful, which is the state a wrapper script, a
-    stub, or a build missing the flac encoder is in.
-
-    An empty file is treated as no file. A zero-byte FLAC is not a master, and
-    reporting a saving of exactly 1.0 over one is the same false claim.
+    The encoder is whatever ``CRATEKIT_BIN_FFMPEG`` or PATH names, and a stub or
+    a build without FLAC can exit 0 and write nothing, which would otherwise be
+    reported as a master saving every byte. An empty file counts as no file.
     """
     if not target.exists() or target.stat().st_size == 0:
         raise MasteringRefused(
@@ -757,10 +618,8 @@ def concatenate(
 ) -> Path:
     """Join a recording a device split across several files into one source.
 
-    Stream copy, not a re-encode: the parts came off one continuous recording and
-    re-encoding them before mastering would introduce a generation loss for no
-    reason. The list file is written next to the DESTINATION rather than in the
-    system temp directory, for the same size reason the intermediate is.
+    A stream copy, not a re-encode, so there is no generation loss. The list file
+    is written beside the destination, for the size reason the intermediate is.
     """
     ordered = [Path(p) for p in parts]
     missing = [p for p in ordered if not p.is_file()]
@@ -772,23 +631,16 @@ def concatenate(
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     listing = destination.parent / f".{destination.stem}.cratekit-parts.txt"
-    # ffmpeg's concat demuxer reads single-quoted paths and unescapes a doubled
-    # quote. A path containing an apostrophe is ordinary in track titles, and
-    # writing it raw silently truncates the entry.
+    # The concat demuxer reads single quoted paths and unescapes a doubled quote;
+    # an apostrophe written raw silently truncates the entry.
     listing.write_text(
         "".join(f"file '{str(p.resolve()).replace(chr(39), chr(39) * 2)}'\n" for p in ordered),
         encoding="utf-8",
     )
-    try:
-        ffmpeg = binaries.resolve("ffmpeg")
-    except binaries.BinaryNotFound as exc:
-        raise MasteringRefused(Refusal.ENCODER_MISSING, str(exc)) from exc
-    # A JOINED WAV IS WRITTEN AS RF64 WHEN IT NEEDS TO BE. A plain WAV header
-    # holds its length in 32 bits, and a split recording is split precisely
-    # because it is long, so the join is the file most likely to pass 4 GiB.
-    # Without this ffmpeg writes a header whose length has wrapped, and the next
-    # stage reads only that many bytes: a master of part of the set, reported as
-    # the whole of it. Found by this unit's review, 2026-09-20.
+    (ffmpeg,) = _resolve("ffmpeg")
+    # A joined WAV is written as RF64 when it needs to be: a split recording is
+    # long, and a plain header's 32 bit length wraps past 4 GiB, so the next
+    # stage would master only part of the set and report it as the whole.
     container = ("-rf64", "auto") if destination.suffix.lower() == ".wav" else ()
     try:
         _run_or_refuse(
@@ -803,12 +655,6 @@ def concatenate(
         )
     finally:
         listing.unlink(missing_ok=True)
-    # THE SAME SHAPE ONE FUNCTION OVER, found by sweeping for it rather than by
-    # anybody reporting it (METHOD's fifth pattern). This branch also read a zero
-    # exit status as proof that the join happened and returned a path it never
-    # looked at, so a caller would go on to master a file that is not there. It
-    # has no caller in ``src`` today, which is what kept it quiet, and that is
-    # exactly the condition the first-caller rule says not to trust.
     _wrote_or_refuse(destination, "join")
     return destination
 
@@ -824,33 +670,13 @@ def master_parts(
 ) -> Report:
     """Master a recording a player split into several files, as one set.
 
-    ONE PART IS :func:`master` AND NOTHING ELSE, so a single recording takes
-    exactly the path it took before a join existed.
-
-    THE PARTS ARE JOINED IN THE ORDER GIVEN, NEVER SORTED. Only the person knows
-    the order: a recorder's counter rolls over, and a name sort puts
-    ``REC10`` before ``REC2``. The shell prints the order back before anything
-    runs, so a wrong order is seen rather than mastered.
-
-    THE ORDER OF THE STEPS IS THE ONE :func:`master` STATES, widened: refuse,
-    archive, then process. Every refusal that can be decided by reading comes
-    before the first write, including the probe of every part, because a stream
-    copy across parts at different sample rates does not fail. It writes a file
-    whose header claims one rate over samples taken at another, and the master of
-    that file plays part of the set at the wrong speed with nothing reported.
-    ffmpeg's concat demuxer does not resample, so this refuses instead of
-    inventing a conversion the person did not ask for.
-
-    EVERY PART IS ARCHIVED, each into the ``_originals`` beside it, which is the
-    rule :func:`master` applies to its one source. The joined file is this
-    module's own intermediate, so it is not archived and it does not survive the
-    run.
-
-    THE JOINED FILE IS WRITTEN INTO A PRIVATE DIRECTORY under the workspace,
-    created fresh and removed afterwards. It has to carry the name the master is
-    derived from, and writing ``REC001_set.wav`` straight into the person's
-    folder with ffmpeg's ``-y`` would replace a file of theirs that happened to
-    have that name.
+    One part is :func:`master` and nothing else. Parts are joined in the order
+    given, never sorted: only the person knows it, and ``REC10`` sorts before
+    ``REC2``. Every refusal decidable by reading comes before the first write,
+    including a probe of every part, because a stream copy across different audio
+    layouts does not fail, it plays at the wrong speed. Every part is archived
+    beside itself; the joined file is written into a fresh private directory, so
+    ffmpeg's ``-y`` cannot replace a file of the person's, and removed after.
     """
     paths = [Path(p) for p in parts]
     if not paths:
@@ -866,17 +692,7 @@ def master_parts(
         )
 
     for path in paths:
-        if not path.is_file():
-            raise MasteringRefused(
-                Refusal.SOURCE_MISSING, f"no such recording: {path}", path=path
-            )
-        if path.suffix.lower() not in SOURCE_SUFFIXES:
-            raise MasteringRefused(
-                Refusal.SOURCE_UNSUPPORTED,
-                f"{path.suffix!r} is not a container this reads; supported: "
-                f"{', '.join(SOURCE_SUFFIXES)}",
-                path=path,
-            )
+        _check_source(path)
     seen: dict[Path, Path] = {}
     for path in paths:
         key = path.resolve()
@@ -900,25 +716,11 @@ def master_parts(
 
     target = planned_output(paths, output_dir=output_dir)
     if target.exists() and not overwrite:
-        raise MasteringRefused(
-            Refusal.OUTPUT_EXISTS,
-            f"{target} already exists. Replacing it silently would discard a "
-            f"master that may already have been kept, and the settings that "
-            f"produced it are not recorded anywhere.",
-            path=target,
-        )
-
-    try:
-        binaries.resolve("ffmpeg")
-        ffprobe = binaries.resolve("ffprobe")
-    except binaries.BinaryNotFound as exc:
-        raise MasteringRefused(Refusal.ENCODER_MISSING, str(exc), path=paths[0]) from exc
+        raise _output_exists(target)
+    _, ffprobe = _resolve("ffmpeg", "ffprobe", path=paths[0])
 
     probes = [probe_source(p, runner=runner, ffprobe=ffprobe) for p in paths]
-    # EVERY FIELD THE STREAM COPY DEPENDS ON, not only the rate. The review of
-    # this unit found the first version compared rate and sample format alone,
-    # which admits a mono part beside a stereo one and a 24-bit part beside a
-    # 32-bit one, both copied across unconverted.
+    # Every field the stream copy depends on, not only the rate.
     shapes = {(p.sample_rate, p.sample_fmt, p.channels, p.codec) for p in probes}
     if len(shapes) > 1:
         described = "; ".join(
@@ -953,47 +755,35 @@ def master_parts(
             workspace=join_dir,
         )
     finally:
-        # The joined file is as large as the whole set and is this module's, not
-        # the person's, for the reason the drift intermediate is removed.
         shutil.rmtree(join_dir, ignore_errors=True)
     return replace(
-        report,
-        source=paths[0],
-        archived_to=archives[0],
-        parts=tuple(paths),
-        archives=archives,
+        report, source=paths[0], archived_to=archives[0], parts=tuple(paths), archives=archives
     )
 
 
-# ---------------------------------------------------------------------------
 # Structured output (R32)
-# ---------------------------------------------------------------------------
 
 PAYLOAD_VERSION = 1
 
 
-def as_payload(report: Report) -> dict:
-    """The report as plain data. Human rendering stays with the CLI.
+def _loudness_payload(loudness: Loudness) -> dict:
+    return {
+        "integrated_lufs": loudness.integrated_lufs,
+        "loudness_range": loudness.loudness_range,
+        "true_peak_db": loudness.true_peak_db,
+    }
 
-    ``parts`` and ``archives`` appear only for a joined run, so a single
-    recording's payload is the one it was before a join existed.
-    """
+
+def as_payload(report: Report) -> dict:
+    """The report as plain data; ``parts`` and ``archives`` only for a joined run."""
     payload = {
         "payload_version": PAYLOAD_VERSION,
         "source": str(report.source),
         "output": str(report.output),
         "archived_to": str(report.archived_to) if report.archived_to else None,
         "bit_depth": report.bit_depth,
-        "before": {
-            "integrated_lufs": report.before.integrated_lufs,
-            "loudness_range": report.before.loudness_range,
-            "true_peak_db": report.before.true_peak_db,
-        },
-        "after": {
-            "integrated_lufs": report.after.integrated_lufs,
-            "loudness_range": report.after.loudness_range,
-            "true_peak_db": report.after.true_peak_db,
-        },
+        "before": _loudness_payload(report.before),
+        "after": _loudness_payload(report.after),
         "source_bytes": report.source_bytes,
         "output_bytes": report.output_bytes,
         "size_reduction": round(report.size_reduction, 6),
@@ -1005,37 +795,11 @@ def as_payload(report: Report) -> dict:
 
 
 __all__ = [
-    "ARCHIVE_DIRNAME",
-    "DEFAULT_SETTINGS",
-    "DRIFT_WINDOW_RANGE",
-    "JOINED_SUFFIX",
-    "LUFS_RANGE",
-    "OUTPUT_SUFFIX",
-    "PAYLOAD_VERSION",
-    "SOURCE_SUFFIXES",
-    "Command",
-    "CommandResult",
-    "Loudness",
-    "MasteringRefused",
-    "Refusal",
-    "Report",
-    "Settings",
-    "SourceProbe",
-    "apply_filter",
-    "archive_source",
-    "as_payload",
-    "concatenate",
-    "digest",
-    "drift_filter",
-    "encoder_args",
-    "joined_name",
-    "master",
-    "master_parts",
-    "measure_filter",
-    "output_path",
-    "parse_loudness",
-    "parse_output_loudness",
-    "planned_output",
-    "probe_source",
-    "subprocess_runner",
+    "ARCHIVE_DIRNAME", "DEFAULT_SETTINGS", "DRIFT_WINDOW_RANGE", "JOINED_SUFFIX", "LUFS_RANGE",
+    "OUTPUT_SUFFIX", "PAYLOAD_VERSION", "SOURCE_SUFFIXES", "Command", "CommandResult",
+    "Loudness", "MasteringRefused", "Refusal", "Report", "Settings", "SourceProbe",
+    "apply_filter", "archive_source", "as_payload", "concatenate", "digest", "drift_filter",
+    "encoder_args", "joined_name", "master", "master_parts", "measure_filter",
+    "output_exists_detail", "output_path", "parse_loudness", "parse_output_loudness",
+    "planned_output", "probe_source", "subprocess_runner",
 ]
