@@ -49,4 +49,4 @@ U300 met three shapes of it on one split:
   module as well, and keep them imported on it.
 - After the split, check every attribute anything reads off the module still
   exists, and run a mutation row per lookup that reverts it to the part's own
-  name: U300's table is the template (`docs/mutation/u300.md`).
+  name: U300's table is the template (`docs/mutation/u300-rows.toml`).

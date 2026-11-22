@@ -68,7 +68,6 @@ from cratekit.core.rb_copies import (
 )
 from cratekit.core.rb_copies import _copy_file_set as _copy_file_set
 from cratekit.core.rb_copies import _copy_tables as _copy_tables
-from cratekit.core.rb_copies import _not_a_library as _not_a_library
 from cratekit.core.rb_copies import copy_file_set as copy_file_set
 from cratekit.core.rb_copies import disposable_copy as disposable_copy
 from cratekit.core.rb_copies import read_only_copy as read_only_copy
@@ -752,6 +751,30 @@ def done_reading(db: Any, shared: SharedRead | None) -> None:
         close_db(db)
     else:
         shared.release(db)
+
+
+def _not_a_library(source: Path, copied: Path) -> RekordboxUnavailable | None:
+    """The refusal for a copy that is empty or holds no canary table, else None (the canary's own)."""
+    size = copied.stat().st_size
+    if size:
+        tables = _copy_tables(copied)
+        if tables is None or tables.intersection(CANARY_TABLES):
+            return None
+        what = f"is {size} bytes and holds none of the tables a rekordbox library keeps"
+    else:
+        what = "is empty, 0 bytes"
+    return _unavailable(
+        "library-database-not-rekordbox",
+        f"the file configured as the rekordbox database, {source}, {what}, so it "
+        f"is not a rekordbox library; read off a copy, the file itself was not opened",
+        remedy=Remedy.RUN_SETUP,
+        steps=(
+            "run setup again with --db-path naming the master.db rekordbox itself "
+            "opens; a search for master.db can find more than one file, and the "
+            "one to give is the one that is not empty",
+        ),
+        detail={"path": str(source), "size": size, "tables_read": list(CANARY_TABLES)},
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -54,15 +54,6 @@ old = "        refusal = None if copied.stat().st_size else _writer()._not_a_lib
 new = "        refusal = None if copied.stat().st_size else _not_a_library(Path(source), copied)"
 
 [[rows]]
-id = "S6_copy_tables_local"
-description = "_not_a_library lists the copy's tables with the part's own _copy_tables"
-file = "src/cratekit/core/rb_copies.py"
-surface = "maintainer"
-tests = ["tests/test_rb_writer_db.py", "tests/test_rb_snapshot.py", "tests/test_snapshot.py"]
-old = "        tables = _writer()._copy_tables(copied)"
-new = "        tables = _copy_tables(copied)"
-
-[[rows]]
 id = "S7_disposable_copy_local"
 description = "read_only_copy takes its copy with the part's own disposable_copy"
 file = "src/cratekit/core/rb_copies.py"

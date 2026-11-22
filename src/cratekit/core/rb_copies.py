@@ -18,10 +18,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Mapping
 
 from cratekit.core import config
-from cratekit.core.exit_codes import Remedy
 
 if TYPE_CHECKING:
-    from cratekit.core.rb_writer import RekordboxUnavailable
+    pass
 
 
 #: The writer's own logger, so a record reads as it did before the split.
@@ -184,30 +183,6 @@ def _copy_tables(copied: Path) -> set[str] | None:
         return None
     finally:
         _writer().close_db(db)
-
-
-def _not_a_library(source: Path, copied: Path) -> RekordboxUnavailable | None:
-    """The refusal for a copy that is empty or holds no canary table, else None (the canary's own)."""
-    size = copied.stat().st_size
-    if size:
-        tables = _writer()._copy_tables(copied)
-        if tables is None or tables.intersection(CANARY_TABLES):
-            return None
-        what = f"is {size} bytes and holds none of the tables a rekordbox library keeps"
-    else:
-        what = "is empty, 0 bytes"
-    return _writer()._unavailable(
-        "library-database-not-rekordbox",
-        f"the file configured as the rekordbox database, {source}, {what}, so it "
-        f"is not a rekordbox library; read off a copy, the file itself was not opened",
-        remedy=Remedy.RUN_SETUP,
-        steps=(
-            "run setup again with --db-path naming the master.db rekordbox itself "
-            "opens; a search for master.db can find more than one file, and the "
-            "one to give is the one that is not empty",
-        ),
-        detail={"path": str(source), "size": size, "tables_read": list(CANARY_TABLES)},
-    )
 
 
 def recorded_db_drives(db: Any) -> tuple[str | None, str | None]:

@@ -381,7 +381,7 @@ KEBAB_LITERALS = {
     # 2026-11-21, U293: the night pass's line joined.
     'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held', 'provider-night-budget', 'utf-8'],  # 2026-11-12, U278
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
-    'core/rb_copies.py': ['canary-read-failed', 'library-database-not-rekordbox'],
+    'core/rb_copies.py': ['canary-read-failed'],
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/rb_nodes.py': ['mytag-category-template-missing', 'utf-8', 'whitelist-violation'],
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
@@ -400,6 +400,7 @@ KEBAB_LITERALS = {
         'db-schema-pin-drift',
         'internal-error',
         'library-database-missing',
+        'library-database-not-rekordbox',
         'library-directory-missing',
         'mytag-category-template-missing',
         'pyrekordbox-pin-drift',
@@ -716,7 +717,7 @@ LITERAL_HOLDERS = {
     # 2026-11-21, U293: the night pass's line joined.
     'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held', 'provider-night-budget'],  # 2026-11-12, U278
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
-    'core/rb_copies.py': ['canary-read-failed', 'library-database-not-rekordbox'],
+    'core/rb_copies.py': ['canary-read-failed'],
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
     'core/rb_nodes.py': ['mytag-category-template-missing', 'whitelist-violation'],
     # 2026-11-22, U300: the split of rb_writer, session and restore moved it.
@@ -733,6 +734,7 @@ LITERAL_HOLDERS = {
         'db-schema-pin-drift',
         'internal-error',
         'library-database-missing',
+        'library-database-not-rekordbox',
         'library-directory-missing',
         'mytag-category-template-missing',
         'pyrekordbox-pin-drift',
