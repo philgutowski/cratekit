@@ -1,46 +1,22 @@
 """The container-correct tag writer, proved per container against real audio.
 
-The claim under test is the strongest one this repository makes about user data:
-a tag write changes the tags and changes nothing else. Not "should not", not
-"was not observed to". The proof has four independent layers, because the failure
-this guards against does not look like a failure. A corrupted AIFF is still a
-file, still the right size, still in the right folder. It just does not decode
-any more, and nothing said so at the time.
+A tag write changes the tags and nothing else, proved in four layers because a
+corrupted AIFF is still a file of the right size that just no longer decodes:
 
-The four layers, and why one of them is not enough:
+1. the decoded sample stream hashes identically before and after (ffmpeg);
+2. the container still parses as itself, with a sane duration;
+3. the magic bytes are untouched: an AIFF opens ``FORM``, a WAV ``RIFF``;
+4. a second opinion without ffmpeg: FLAC's STREAMINFO MD5, and the chunk
+   containers' audio payload hashed straight out of the file.
 
-1. **The decoded audio stream hashes identically.** ffmpeg decodes the file to
-   raw samples before and after the write and the two hashes must match. Hashing
-   the FILE would be useless, because the file legitimately changes: that is the
-   tag. Hashing the SAMPLES is the actual property.
-2. **The container still parses as itself, with a sane duration.** A corrupted
-   AIFF fails here before the hash is even reached, which turns an opaque hash
-   mismatch into an obvious structural failure.
-3. **The magic bytes are untouched.** The direct regression test for the actual
-   incident: after a write, an AIFF still opens with ``FORM`` and a WAV with
-   ``RIFF``, never ``ID3``. This is the assertion that would have caught it.
-4. **The container's own embedded checksum.** FLAC carries an MD5 of its
-   decoded audio in STREAMINFO, and for the chunk containers the audio payload
-   chunk is hashed straight out of the file with no decoder involved. Both are
-   second opinions that do not go through ffmpeg, so a bug in the ffmpeg
-   invocation cannot make layer 1 vacuously pass.
-
-Fixtures are SYNTHESIZED, one second of silence per container. Never sampled
-from a real library: a test that needs the user's music is a test that only runs
-on one machine.
-
-ON ffmpeg BEING REQUIRED RATHER THAN OPTIONAL. The source suite skipped this
-whole module when ffmpeg was absent. Cratekit's rule is that a skip is a
-countdown registered in ``tests/_pending.py``, not something a test file decides
-for itself, and an external binary does not fit that register. So a missing
-ffmpeg FAILS here with a message naming the fix. The workflow installs it as an
-explicit step, and the alternative is the one outcome the register exists to
-prevent: the proof that audio is never damaged, silently not running.
+Fixtures are synthesized silence, never a real library. A missing ffmpeg fails
+rather than skips: a skipped audio-safety proof reads as a passing one.
 """
 
 from __future__ import annotations
 
 import hashlib
+import shutil
 import struct
 import subprocess
 from pathlib import Path
@@ -63,13 +39,10 @@ from cratekit.core.tags import (
 )
 from tests._containers import require_ffmpeg, synth_container
 
-# Every container the writer claims to handle. All six, not the four the plan's
-# scenario names: dropping .m4a drops the only test that MP4 never receives an
-# ID3 tag, and dropping .ogg drops the generic Vorbis branch entirely.
+# Every container the writer claims, .m4a and .ogg included.
 CONTAINERS = [".flac", ".aiff", ".wav", ".mp3", ".m4a", ".ogg"]
 
-# Every writable field at once. Writing one field at a time would never catch a
-# writer that clobbers a previously written frame.
+# Every writable field at once, so a writer clobbering an earlier frame is caught.
 ALL_FIELDS = {
     "title": "01A - 124 - Probe Title",
     "artist": "Probe Artist",
@@ -91,12 +64,33 @@ ALL_FIELDS = {
 }
 
 
-# MOVED TO tests/_containers.py, and re-bound here rather than deleted so the
-# call sites below read as they always did. Another suite needs a real container
-# too, and it used to reach in and take this private name, which imported this
-# whole module as a side effect of an unrelated run.
+# Moved to tests/_containers.py; re-bound here for the suites that import them.
 _require_ffmpeg = require_ffmpeg
 _synth = synth_container
+
+
+@pytest.fixture(scope="module")
+def _pristine(tmp_path_factory):
+    """Each container synthesized once per module; every test writes on its own copy."""
+    made: dict[str, Path] = {}
+
+    def get(suffix: str) -> Path:
+        if suffix not in made:
+            made[suffix] = _synth(tmp_path_factory.mktemp("pristine"), suffix)
+        return made[suffix]
+
+    return get
+
+
+@pytest.fixture
+def container(tmp_path, _pristine):
+    """A fresh real container in this test's own directory."""
+    def make(suffix: str) -> Path:
+        path = tmp_path / f"probe{suffix}"
+        shutil.copyfile(_pristine(suffix), path)
+        return path
+
+    return make
 
 
 def _decoded_md5(path: Path) -> str:
@@ -111,11 +105,9 @@ def _decoded_md5(path: Path) -> str:
 def _payload_chunk_digest(path: Path) -> str | None:
     """Hash the audio payload chunk of a RIFF or FORM container, with no decoder.
 
-    A decoder-free second opinion aimed squarely at the corruption class: it can
-    only produce a digest if the chunk table still parses AND the payload is
-    where the table says it is. A bare ID3 stream written at offset 0 shifts
-    everything, so this returns None or a different digest, whichever comes
-    first. Returns None for containers that are not chunk-based.
+    A digest only if the chunk table parses and the payload is where it says,
+    so a bare ID3 stream at offset 0 gives None or a different digest. None for
+    a container that is not chunk based.
     """
     data = path.read_bytes()
     if data[:4] == b"RIFF":
@@ -137,17 +129,14 @@ def _payload_chunk_digest(path: Path) -> str | None:
     return None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The audio-safety proof, per container
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("suffix", CONTAINERS)
-def test_a_tag_write_leaves_the_decoded_audio_unchanged(tmp_path, suffix):
-    """The plan's scenario, run over every container rather than the named four."""
+def test_a_tag_write_leaves_the_decoded_audio_unchanged(container, suffix):
     import mutagen
 
-    path = _synth(tmp_path, suffix)
+    path = container(suffix)
     before_stream = _decoded_md5(path)
     before_payload = _payload_chunk_digest(path)
     before_bytes = path.read_bytes()
@@ -165,17 +154,10 @@ def test_a_tag_write_leaves_the_decoded_audio_unchanged(tmp_path, suffix):
 
 
 @pytest.mark.parametrize("suffix", CONTAINERS)
-def test_every_field_survives_the_round_trip(tmp_path, suffix):
-    """Writer and reader closed against each other, in every container.
-
-    Reading back through the production readers rather than through mutagen
-    directly is the point. A reader that looked up its own keys would agree with
-    a writer that used different ones, and the field would be silently absent in
-    exactly one container.
-    """
-    path = _synth(tmp_path, suffix)
+def test_every_field_survives_the_round_trip(container, suffix):
+    """Writer and reader closed against each other through the production readers."""
+    path = container(suffix)
     assert write_tags(path, ALL_FIELDS) is True
-
     assert read_energy_from_file(path) == 7
     assert read_genre_from_file(path) == "Test Genre"
     assert read_vox_from_file(path) == 55
@@ -184,71 +166,44 @@ def test_every_field_survives_the_round_trip(tmp_path, suffix):
         assert read_tag(path, field) == str(value), f"{field} lost in {suffix}"
 
 
-def test_aiff_never_receives_a_bare_id3_stream(tmp_path):
-    """The incident, as a single assertion.
-
-    An AIFF opens with ``FORM`` and its chunk table is byte-offset addressed from
-    there. A bare ID3 writer puts an ID3 block at offset 0 and shifts everything,
-    so the first bytes become ``ID3``, the FORM header moves, and the chunk sizes
-    describe a layout that no longer exists. Stripping the tag afterwards does
-    not recover the audio, because the offsets are gone.
-    """
-    path = _synth(tmp_path, ".aiff")
+@pytest.mark.parametrize("suffix,magic", [(".aiff", b"FORM"), (".wav", b"RIFF")])
+def test_a_chunk_container_never_receives_a_bare_id3_stream(container, suffix, magic):
+    """The incident: an ID3 block at offset 0 shifts a byte-addressed chunk table for good."""
+    path = container(suffix)
     assert write_tags(path, ALL_FIELDS) is True
-    assert path.read_bytes()[:4] == b"FORM"
+    assert path.read_bytes()[:4] == magic
 
 
-def test_wav_never_receives_a_bare_id3_stream(tmp_path):
-    path = _synth(tmp_path, ".wav")
-    assert write_tags(path, ALL_FIELDS) is True
-    assert path.read_bytes()[:4] == b"RIFF"
-
-
-def test_a_real_mp3_does_receive_a_bare_id3_stream(tmp_path):
-    """The positive control, without which the two tests above pass vacuously.
-
-    A writer that never wrote ID3 anywhere would satisfy both. ``.mp3`` is the
-    one container whose ID3 genuinely is a stream prefix, so it must still get
-    one.
-    """
-    path = _synth(tmp_path, ".mp3")
+def test_a_real_mp3_does_receive_a_bare_id3_stream(container):
+    """The positive control: a writer that never wrote ID3 would pass the test above."""
+    path = container(".mp3")
     assert write_genre(path, "Test Genre") is True
     assert read_genre_from_file(path) == "Test Genre"
     assert path.read_bytes()[:3] == b"ID3"
 
 
-def test_mp4_never_receives_an_id3_header(tmp_path):
-    """Same rule, different format. An ID3 header before the moov atom breaks it."""
-    path = _synth(tmp_path, ".m4a")
+def test_mp4_never_receives_an_id3_header(container):
+    """An ID3 header before the moov atom breaks it."""
+    path = container(".m4a")
     assert write_tags(path, ALL_FIELDS) is True
     assert path.read_bytes()[:3] != b"ID3"
     assert path.read_bytes()[4:8] == b"ftyp"
 
 
-def test_the_flac_embedded_audio_checksum_is_unchanged(tmp_path):
+def test_the_flac_embedded_audio_checksum_is_unchanged(container):
     """FLAC's own opinion, which does not go through ffmpeg at all."""
     from mutagen.flac import FLAC
-
-    path = _synth(tmp_path, ".flac")
+    path = container(".flac")
     before = FLAC(path).info.md5_signature
     assert write_tags(path, ALL_FIELDS) is True
     assert FLAC(path).info.md5_signature == before
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R17: there is no path from this module to a tempo frame
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_round_trip_probe_covers_every_declared_field():
-    """``ALL_FIELDS`` says "every writable field", so it must be checked against
-    the table rather than trusted.
-
-    It is hand-written on purpose: each field needs a value of the right SHAPE,
-    which cannot be derived. What can be derived is its COVERAGE, and without
-    this the next field added to the table would round-trip in no container and
-    the suite would stay green, which is the state this file was already in.
-    """
+    """``ALL_FIELDS`` is hand written for shape, so its coverage is checked against the table."""
     missing = set(FIELDS) - set(ALL_FIELDS)
     assert not missing, (
         f"fields declared in FIELDS but never round-tripped: {sorted(missing)}. "
@@ -266,26 +221,16 @@ def test_tempo_is_not_a_writable_field():
     assert not any("bpm" in spec.mp4.lower() for spec in FIELDS.values())
 
 
-def test_writing_a_tempo_field_raises_rather_than_returning_false(tmp_path):
-    """It raises so a caller cannot treat it as an ordinary per-file failure.
-
-    Returning False would put "this file was locked" and "you tried to write a
-    beat grid" in the same bucket, and the second one is a bug in the caller that
-    must be fixed rather than logged.
-    """
-    path = _synth(tmp_path, ".flac")
+def test_writing_a_tempo_field_raises_rather_than_returning_false(container):
+    """A raise, so a beat grid write is never filed as an ordinary per-file failure."""
+    path = container(".flac")
     with pytest.raises(ValueError, match="unknown tag fields"):
         write_tags(path, {"bpm": 124})
 
 
 def test_the_writable_field_set_is_a_module_constant_not_configuration():
-    """R19 makes taxonomy configurable. R17 makes this one table not.
-
-    A user-definable field set would reopen the beat-grid hole through the
-    config file, which is a longer road to the same wrong grid. Two structural
-    assertions rather than a prose one: the table is a literal in the module
-    body, and the module imports no configuration to build it from.
-    """
+    """R17: a configurable field set would reopen the beat grid hole, so the table
+    is a literal in the module body and the module imports no configuration."""
     import ast
 
     import cratekit.core.tags as tags
@@ -316,9 +261,7 @@ def test_the_writable_field_set_is_a_module_constant_not_configuration():
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Dispatch, refusal, and the reader/writer agreement that S5 exists to force
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize(
@@ -331,38 +274,26 @@ def test_the_writable_field_set_is_a_module_constant_not_configuration():
     ],
 )
 def test_each_container_is_classified_once(suffix, dialect):
-    """One classification, consulted by both the reader and the writer.
-
-    This is the seam decision made testable: reader and writer cannot disagree
-    about where a field lives, because they ask the same function.
-    """
+    """One classification, consulted by both the reader and the writer."""
     assert dialect_of(suffix) is dialect
 
 
 def test_an_unknown_container_is_refused_rather_than_guessed():
-    """The ported writer treated anything unrecognized as a bare ID3 stream.
-
-    That is the corruption path aimed at whichever container nobody had thought
-    about yet. Refusing costs a failed write; guessing costs a file.
-    """
+    """Refusing costs a failed write; guessing a bare ID3 stream costs a file."""
     with pytest.raises(UnsupportedContainer):
         dialect_of(".wma")
 
 
 def test_reading_an_unknown_container_returns_none_rather_than_raising(tmp_path):
-    """Deliberately asymmetric with the writer, because the risks are asymmetric.
-
-    Reading cannot damage anything, and a sweep across a directory holding one
-    stray file should report no tags rather than abort the run.
-    """
+    """Asymmetric with the writer: a read damages nothing, so a stray file reads as no tags."""
     stray = tmp_path / "notes.txt"
     stray.write_text("not audio")
     assert read_tag(stray, "genre") is None
 
 
-def test_a_none_value_is_skipped_not_written_as_empty(tmp_path):
+def test_a_none_value_is_skipped_not_written_as_empty(container):
     """Callers pass everything they might have detected, including what they did not."""
-    path = _synth(tmp_path, ".flac")
+    path = container(".flac")
     assert write_tags(path, {"energylevel": None, "genre": "Test Genre"}) is True
     assert read_energy_from_file(path) is None
     assert read_genre_from_file(path) == "Test Genre"
@@ -380,27 +311,18 @@ def test_reading_an_unwritable_field_name_raises():
 
 
 def test_reading_a_file_that_is_not_there_returns_none(tmp_path):
-    """The degrade the mount precondition exists to make safe.
-
-    Correct for one damaged file and catastrophic for a whole library at once,
-    which is why this answer is only acceptable downstream of the volume check.
-    """
+    """Safe only downstream of the mount precondition."""
     assert read_genre_from_file(tmp_path / "gone.flac") is None
 
 
 @pytest.mark.parametrize("suffix", CONTAINERS)
-def test_one_open_reads_every_field_the_way_the_one_field_reader_does(tmp_path, suffix):
-    """The one open reader. The index reads four fields per file, and four opens over
-    9868 files is the cost the one open reader removes. It has to answer exactly
-    what ``read_tag`` answers, field by field, absent fields included, or the
-    index would read a different file than every other caller does."""
-    path = _synth(tmp_path, suffix)
+def test_one_open_reads_every_field_the_way_the_one_field_reader_does(container, suffix):
+    """The index's one open reader answers what ``read_tag`` does, absent fields included."""
+    path = container(suffix)
     assert write_tags(path, {"artist": "Probe Artist", "title": "01A - 124 - Probe Title",
                              "isrc": "ZZ0000000001"})
     fields = ("artist", "title", "initialkey", "isrc")
-
-    # AGAINST THE VALUES WRITTEN, not against read_tag, which is now one field
-    # of the reader under test and would make the comparison X equals X.
+    # Against the values written: read_tag is now one field of the reader under test.
     assert read_tags(path, fields) == {
         "artist": "Probe Artist",
         "title": "01A - 124 - Probe Title",
@@ -420,19 +342,14 @@ def test_one_open_over_a_missing_file_answers_every_field_absent(tmp_path):
 
 
 @pytest.mark.parametrize("suffix", [".aiff", ".mp3"])
-def test_an_isrc_another_tagger_wrote_is_read_from_the_standard_frame(tmp_path, suffix):
-    """R-355. The round trip above cannot pin the frame, since it reads back through
-    the same table it wrote with. A file tagged elsewhere carries ``TSRC``, which is
-    the frame the ID3 standard names, and that is what the outbound source reads.
-    """
+def test_an_isrc_another_tagger_wrote_is_read_from_the_standard_frame(container, suffix):
+    """R-355: the round trip cannot pin the frame; another tagger writes ``TSRC``."""
     import mutagen
     import mutagen.id3 as id3
-
-    path = _synth(tmp_path, suffix)
+    path = container(suffix)
     handle = mutagen.File(path)
     if handle.tags is None:
         handle.add_tags()
     handle.tags.add(id3.TSRC(encoding=3, text=["ZZX9A2600042"]))
     handle.save()
-
     assert read_tag(path, "isrc") == "ZZX9A2600042"

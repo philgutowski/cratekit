@@ -1,25 +1,16 @@
 """U241: the pool's third seam, results read one position at a time.
 
-``stream_workers`` exists so a job engine that settles one item, makes it
-durable and only then asks for the next can still have its measuring done
-ahead of it. What is driven here, on real spawned children wherever a child is
-the claim:
-
-1. a plan of one worker is the loop it replaced, in this process, on demand;
-2. a wider plan gives the results ``map_workers`` gives, whatever order they
-   are read in, and each position is read once on both paths;
-3. what the work raised reaches the reader of that position and nobody else;
-4. a worker that died is ``StreamBroken``, which is about the pool and not
-   the item;
-5. the terminal's interrupt does not kill a worker, a close does not wait for
-   work nobody will read, and a parent killed outright does not leave its
-   workers behind.
-
-Every plan here is planned, from an injected reading, never built by hand.
+On real spawned children wherever a child is the claim: a plan of one is the
+loop it replaced; a wider plan answers what ``map_workers`` answers, in any
+read order, each position once; a raise reaches only its position's reader; a
+dead worker is ``StreamBroken``; an interrupt kills no worker, a close waits
+for no unread work, and a killed parent leaves no workers. Every plan is
+planned from an injected reading, never built by hand.
 """
 
 from __future__ import annotations
 
+import functools
 import multiprocessing
 import os
 import signal
@@ -123,8 +114,7 @@ def _alive(pid: int) -> bool:
     except PermissionError:
         return True
     try:
-        # A child of this process that has exited and not been reaped still
-        # answers a signal; its status line says what it really is.
+        # An unreaped child still answers a signal; its status line says it is a zombie.
         return " Z " not in Path(f"/proc/{pid}/stat").read_text()
     except OSError:
         return True
@@ -139,9 +129,7 @@ def _wait_until(test, seconds: float) -> bool:
     return test()
 
 
-# ---------------------------------------------------------------------------
 # A plan of one is the loop it replaced
-# ---------------------------------------------------------------------------
 
 
 def test_a_plan_of_one_runs_each_item_here_when_it_is_asked_for():
@@ -167,15 +155,22 @@ def test_nothing_is_spawned_before_the_first_result_is_asked_for():
         stream.close()
 
 
-# ---------------------------------------------------------------------------
 # A wider plan gives what map_workers gives
-# ---------------------------------------------------------------------------
+
+
+ITEMS = [3, 1, 4, 1, 5, 9]
+
+
+@functools.cache
+def _mapped() -> list[int]:
+    """What ``map_workers`` answers over ``ITEMS``, spawned once for both read orders."""
+    return pool.map_workers(wide(len(ITEMS)), _square, ITEMS)
 
 
 @pytest.mark.parametrize("order", [[0, 1, 2, 3, 4, 5], [5, 3, 1, 0, 2, 4]], ids=["in-order", "any-order"])
 def test_a_pooled_stream_answers_what_map_workers_answers(order):
-    items = [3, 1, 4, 1, 5, 9]
-    expected = pool.map_workers(wide(len(items)), _square, items)
+    items = ITEMS
+    expected = _mapped()
     assert expected == [9, 1, 16, 1, 25, 81]
     with pool.stream_workers(wide(len(items)), _square, items) as stream:
         assert len(stream) == len(items)
@@ -254,21 +249,7 @@ def test_an_unsendable_function_is_refused_at_construction_on_both_paths(plan_fo
         )
 
 
-# ---------------------------------------------------------------------------
 # A pool that died, an interrupt, a close, and a parent that is gone
-# ---------------------------------------------------------------------------
-
-
-def test_a_worker_that_dies_is_a_broken_stream_and_not_an_item_failure():
-    stream = pool.stream_workers(wide(4), _die_on_one, range(4))
-    try:
-        with pytest.raises(pool.StreamBroken):
-            for position in range(4):
-                stream.result(position)
-        assert stream.closed, "a broken stream stays open for reads it cannot answer"
-    finally:
-        stream.close()
-    assert _wait_until(lambda: multiprocessing.active_children() == [], 20)
 
 
 def _dies_starting(tag: str) -> None:
@@ -276,18 +257,21 @@ def _dies_starting(tag: str) -> None:
     os._exit(71)
 
 
-def test_workers_that_die_starting_are_one_broken_stream_and_not_a_pool_per_item():
-    """The break is seen while the work is handed out, and it closes the stream once."""
-    stream = pool.stream_workers(
-        wide(6), _square, range(6), initializer=_dies_starting, initargs=("x",)
-    )
+@pytest.mark.parametrize(
+    "items,work,options",
+    [(4, _die_on_one, {}), (6, _square, {"initializer": _dies_starting, "initargs": ("x",)})],
+    ids=["dies-on-an-item", "dies-starting"],
+)
+def test_a_worker_that_dies_is_one_broken_stream_and_not_an_item_failure(items, work, options):
+    """Seen while the work is handed out, it closes the stream once, not a pool per item."""
+    stream = pool.stream_workers(wide(items), work, range(items), **options)
     try:
         with pytest.raises(pool.StreamBroken):
-            for position in range(6):
+            for position in range(items):
                 stream.result(position)
-        assert stream.closed
+        assert stream.closed, "a broken stream stays open for reads it cannot answer"
         with pytest.raises(ValueError, match="closed"):
-            stream.result(5)
+            stream.result(items - 1)
     finally:
         stream.close()
     assert _wait_until(lambda: multiprocessing.active_children() == [], 20)
@@ -299,8 +283,7 @@ def test_the_terminals_interrupt_does_not_kill_a_stream_worker():
         try:
             results = [stream.result(position) for position in range(2)]
         except KeyboardInterrupt:
-            # A worker that took the interrupt hands it back as its item's
-            # result, which would stop this suite rather than fail this test.
+            # Handed back as the item's result, it would stop the suite, not fail here.
             pytest.fail("the interrupt killed a worker and came back as the reader's own")
     assert [index for index, _pid in results] == [0, 1]
     assert os.getpid() not in {pid for _index, pid in results}
@@ -310,8 +293,7 @@ def test_a_close_ends_the_workers_without_waiting_for_work_nobody_will_read(tmp_
     monkeypatch.setenv("CRATEKIT_STREAM_PIDS", str(tmp_path))
     stream = pool.stream_workers(wide(4), _pid_then_sleep, range(4))
     try:
-        # Start the generation without waiting on a result: the children sleep
-        # for two minutes, which is the work nobody will read.
+        # Start the generation unread: two minutes of sleep nobody will read.
         stream._start(0, 4)
         assert _wait_until(lambda: len(list(tmp_path.glob("*.pid"))) == 2, 60), (
             "the two workers never started their items"
@@ -393,18 +375,25 @@ def test_workers_leave_when_their_parent_is_killed_outright(tmp_path):
                 pass
 
 
-# ---------------------------------------------------------------------------
 # The plan says which gate refused it, and under what ceiling
-# ---------------------------------------------------------------------------
+
+
+def _plan(*, items=8, ceiling=None, read_available=_roomy, read_pressure=_calm, **options):
+    """A plan of 1 GiB workers over an injected reading."""
+    if ceiling is not None:
+        options["ceiling"] = ceiling
+    return pool.plan_pool(
+        worker_bytes=options.pop("worker_bytes", GIB),
+        items=items,
+        read_available=read_available,
+        read_pressure=read_pressure,
+        **options,
+    )
 
 
 def test_a_plan_refused_by_swap_names_the_gate_the_reading_and_the_limit():
-    plan = pool.plan_pool(
-        worker_bytes=GIB,
-        items=8,
-        ceiling=6,
-        read_available=_roomy,
-        read_pressure=lambda: pool.Pressure(swap_used_bytes=12 * GIB, used_percent=40.0),
+    plan = _plan(
+        ceiling=6, read_pressure=lambda: pool.Pressure(swap_used_bytes=12 * GIB, used_percent=40.0)
     )
     assert plan.in_process and plan.bound is pool.Bound.MEMORY_PRESSURE
     assert plan.ceiling == 6
@@ -418,13 +407,7 @@ def test_a_plan_refused_by_swap_names_the_gate_the_reading_and_the_limit():
 
 
 def test_a_plan_refused_by_the_used_percent_names_that_gate():
-    plan = pool.plan_pool(
-        worker_bytes=GIB,
-        items=8,
-        ceiling=6,
-        read_available=_roomy,
-        read_pressure=lambda: pool.Pressure(swap_used_bytes=0, used_percent=91.4),
-    )
+    plan = _plan(ceiling=6, read_pressure=lambda: pool.Pressure(swap_used_bytes=0, used_percent=91.4))
     assert [reading.gate for reading in plan.refused_by] == [pool.PressureGate.USED_PERCENT]
     assert plan.account() == (
         "memory is 91 percent in use, at or over the 85 percent gate, so no pool "
@@ -433,12 +416,7 @@ def test_a_plan_refused_by_the_used_percent_names_that_gate():
 
 
 def test_a_plan_refused_by_both_gates_names_both_swap_first():
-    plan = pool.plan_pool(
-        worker_bytes=GIB,
-        items=8,
-        read_available=_roomy,
-        read_pressure=lambda: pool.Pressure(swap_used_bytes=2 * GIB, used_percent=85.0),
-    )
+    plan = _plan(read_pressure=lambda: pool.Pressure(swap_used_bytes=2 * GIB, used_percent=85.0))
     assert [reading.gate for reading in plan.refused_by] == [
         pool.PressureGate.SWAP,
         pool.PressureGate.USED_PERCENT,
@@ -448,12 +426,8 @@ def test_a_plan_refused_by_both_gates_names_both_swap_first():
 
 
 def test_a_reading_just_under_both_gates_refuses_nothing():
-    plan = pool.plan_pool(
-        worker_bytes=GIB,
-        items=8,
-        ceiling=3,
-        read_available=_roomy,
-        read_pressure=lambda: pool.Pressure(swap_used_bytes=GIB - 1, used_percent=84.9),
+    plan = _plan(
+        ceiling=3, read_pressure=lambda: pool.Pressure(swap_used_bytes=GIB - 1, used_percent=84.9)
     )
     assert plan.refused_by == ()
     assert plan.workers == 3 and plan.bound is pool.Bound.CEILING
@@ -461,15 +435,14 @@ def test_a_reading_just_under_both_gates_refuses_nothing():
 
 
 def test_a_plan_bound_by_memory_says_what_the_reading_afforded():
-    plan = pool.plan_pool(
+    plan = _plan(
         worker_bytes=600 * 1024**2,
         items=40,
         ceiling=9,
         headroom_percent=50,
         read_available=lambda: 6 * GIB,
-        read_pressure=_calm,
     )
-    # (6 GiB less the 2 GiB reserve) at 50 percent is 2 GiB, three workers of 600 MiB.
+    # (6 GiB less the 2 GiB reserve) at half is three workers of 600 MiB.
     assert plan.workers == 3 and plan.bound is pool.Bound.AVAILABLE_MEMORY
     assert plan.account() == (
         "6.0 GB available affords 3 at 600 MB a worker after the reserve and the "
@@ -478,14 +451,10 @@ def test_a_plan_bound_by_memory_says_what_the_reading_afforded():
 
 
 def test_a_plan_memory_cannot_afford_says_so_and_a_plan_by_items_says_that():
-    none = pool.plan_pool(
-        worker_bytes=GIB, items=4, ceiling=4, read_available=_tight, read_pressure=_calm
-    )
+    none = _plan(items=4, ceiling=4, read_available=_tight)
     assert none.bound is pool.Bound.INSUFFICIENT_MEMORY
     assert none.account().startswith("2.0 GB available does not afford one worker at 1.0 GB")
-    few = pool.plan_pool(
-        worker_bytes=1, items=2, ceiling=8, read_available=_roomy, read_pressure=_calm
-    )
+    few = _plan(worker_bytes=1, items=2, ceiling=8)
     assert few.bound is pool.Bound.WORK_ITEMS
     assert few.account() == "2 item(s) to run, under a ceiling of 8"
 
