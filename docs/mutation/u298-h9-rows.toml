@@ -1,0 +1,19 @@
+name = "u298-h9"
+pass_kind = "light"
+
+# H9 of u298 measured again alone. In u298 its subset held tests/test_config.py,
+# a test of which leaves its temporary directory busy once a lock another
+# process holds reads as had, so pytest's own cleanup raised and the row read
+# as an error, twice. The lock is held by the job driver and the shared homes,
+# so this subset is those two files.
+
+[[rows]]
+id = "H9_lock_now_held_elsewhere"
+description = "lock_now: a lock another process holds reads as had"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_shared_homes.py", "tests/test_jobs.py"]
+old = '''        except BlockingIOError:
+            return handle, False'''
+new = '''        except BlockingIOError:
+            return handle, True'''
