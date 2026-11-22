@@ -214,17 +214,6 @@ old = '                problems += _mount_path_problem(key, identity)'
 new = '                pass'
 
 [[rows]]
-id = "r926.P1_config_path_leaves_root"
-source = { table = "r926.json", id = "P1_config_path_leaves_root" }
-description = "The brief's path resolution mutant: config_path answers a folder outside every temporary root, as a missed redirect would"
-file = "src/cratekit/core/state_files.py"
-surface = "user"
-moved = "the same text, now in src/cratekit/core/state_files.py, was in src/cratekit/core/config.py"
-tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
-old = '    return state_path("config")'
-new = '    return Path(os.sep, "cratekit-r926-mutant", "config.toml")'
-
-[[rows]]
 id = "u272.C2_full_flush_error_swallowed"
 source = { table = "u272.json", id = "C2_full_flush_error_swallowed" }
 description = "_flush_descriptor: fall back to the plain sync on every error of the full flush, an I/O error included"
@@ -329,3 +318,14 @@ new = '''
 
 
 def _filed_now'''
+
+[[rows]]
+id = "r926.P1_config_path_leaves_root"
+source = { table = "r926.json", id = "P1_config_path_leaves_root" }
+description = "The brief's path resolution mutant: config_path answers a folder outside every temporary root, as a missed redirect would"
+file = "src/cratekit/core/state_files.py"
+surface = "user"
+moved = "the same text, now in src/cratekit/core/state_files.py, was in src/cratekit/core/config.py"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '    return state_path("config")'
+new = '    return Path(os.sep, "cratekit-r926-mutant", "config.toml")'
