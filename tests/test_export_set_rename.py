@@ -13,7 +13,7 @@ from cratekit.cli import registry
 from cratekit.core import jobs, session
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
-from cratekit.export import set_cli, set_rename
+from cratekit.export import set_cli
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import set_playlist
 from cratekit.modules.outbound import ledger
@@ -25,6 +25,14 @@ from tests.test_u129_set_account_playlist import account as account  # noqa: PLC
 from tests.test_u129_set_account_playlist import cfg as cfg  # noqa: PLC0414
 from tests.test_u129_set_account_playlist import installed as installed  # noqa: PLC0414
 from tests.test_u129_set_account_playlist import recognised as recognised  # noqa: PLC0414
+
+try:
+    from cratekit.export import set_rename
+except ImportError:
+    # Before U309 the rename lived in ``set_cli``; the behaviour comparison
+    # runs the scenarios that borrow this file against such a base.
+    set_rename = set_cli
+
 
 RENAME = set_cli.RENAME_GATE
 #: The name the set was landed and exported under, the queued day's form.

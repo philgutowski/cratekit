@@ -6,6 +6,8 @@ from __future__ import annotations
 import ast
 import functools
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -626,3 +628,13 @@ def test_the_outbound_ledger_survives_a_rollback():
     entry = config.state_file("outbound_writes")
     assert entry.snapshot is config.SnapshotRole.SURVIVES_ROLLBACK
     assert entry.root is config.StateRoot.LIBRARY
+
+
+@pytest.mark.parametrize("first", ["ledger", "ledger_reserve", "ledger_settle"])
+def test_each_part_of_the_ledger_imports_first_in_a_fresh_interpreter(first):
+    """The ledger re-exports its two parts, so each must import with nothing loaded before it."""
+    done = subprocess.run(
+        [sys.executable, "-c", f"import cratekit.modules.outbound.{first}"],
+        capture_output=True, text=True, check=False,
+    )
+    assert done.returncode == 0, done.stderr
