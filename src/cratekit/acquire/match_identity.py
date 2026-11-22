@@ -36,9 +36,7 @@ class MatchState(StrEnum):
 
 #: The three states the ``match`` payload carries, in order. Consumers derive keys here.
 PAYLOAD_STATES: tuple[MatchState, ...] = (
-    MatchState.MATCHED,
-    MatchState.NEEDS_REVIEW,
-    MatchState.MISSING,
+    MatchState.MATCHED, MatchState.NEEDS_REVIEW, MatchState.MISSING,
 )
 
 
@@ -109,8 +107,7 @@ KEY_QUESTIONS: frozenset[Why] = frozenset({Why.KEY_RELATIVE, Why.KEY_DIFFERS})
 #: Every other why that is a question, and what it is about. No default: a why
 #: missing here is not a question, and a shape would make it answerable.
 _QUESTION_SHAPES: Mapping[Why, str] = {
-    Why.VERSION_DIFFERS: ASKS_ABOUT_VERSION,
-    Why.TITLE_APPROXIMATE: ASKS_ABOUT_RECORDING,
+    Why.VERSION_DIFFERS: ASKS_ABOUT_VERSION, Why.TITLE_APPROXIMATE: ASKS_ABOUT_RECORDING,
     Why.READING_AMBIGUOUS: ASKS_ABOUT_READING,
 }
 
@@ -138,9 +135,7 @@ def question_shape(why: Why) -> str:
             f"{why} is not a question, so it has no review item identity; "
             f"giving it one would file a result in the queue under an "
             f"identifier somebody could answer",
-            remedy=Remedy.REPORT_DEFECT,
-            scope=Scope.ITEM,
-            origin=("acquire.match",),
+            remedy=Remedy.REPORT_DEFECT, scope=Scope.ITEM, origin=("acquire.match",),
             detail={"why": str(why)},
         )
     return shape
@@ -293,33 +288,10 @@ def split_version(title: str) -> tuple[str, str]:
 #: residual titled "One vocabulary lives in two files until the domain module merges".
 VERSION_WORDS: frozenset[str] = frozenset(
     {
-        "acapella",
-        "acoustic",
-        "alternate",
-        "bootleg",
-        "club",
-        "cut",
-        "demo",
-        "dub",
-        "edit",
-        "extended",
-        "flip",
-        "instrumental",
-        "interlude",
-        "live",
-        "mashup",
-        "mix",
-        "original",
-        "radio",
-        "remaster",
-        "remastered",
-        "remix",
-        "reprise",
-        "rework",
-        "session",
-        "unplugged",
-        "version",
-        "vip",
+        "acapella", "acoustic", "alternate", "bootleg", "club", "cut", "demo", "dub", "edit",
+        "extended", "flip", "instrumental", "interlude", "live", "mashup", "mix", "original",
+        "radio", "remaster", "remastered", "remix", "reprise", "rework", "session", "unplugged",
+        "version", "vip",
     }
 )
 
@@ -652,9 +624,7 @@ def every_question_identity(
     a question under any shape, so the retiring side asks about all. One per shape,
     not per why, so the shared key shape is not counted twice.
     """
-    return tuple(
-        _identity_asking(artist, title, version, key, asks) for asks in QUESTION_SHAPES
-    )
+    return tuple(_identity_asking(artist, title, version, key, asks) for asks in QUESTION_SHAPES)
 
 
 #: Hex characters of the digest every generated identifier carries (``match_id``,

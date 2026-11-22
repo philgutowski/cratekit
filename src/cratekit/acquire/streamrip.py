@@ -29,11 +29,7 @@ DISTRIBUTION = "streamrip"
 
 #: Cratekit's quality vocabulary to this tool's numeric tiers, pushed on every call
 #: because the tool's own default is lossy (KTD20).
-QUALITY_TIERS: dict[str, int] = {
-    "lossy": 1,
-    "lossless": 2,
-    "hi_res": 3,
-}
+QUALITY_TIERS: dict[str, int] = {"lossy": 1, "lossless": 2, "hi_res": 3}
 
 #: Tiers at or above this are lossless; a threshold so newer higher tiers still pass.
 LOSSLESS_TIER_FLOOR = 2
@@ -120,9 +116,7 @@ class _StreamripSource:
         return offer_from_tier(int(metadata.get("quality", 0)))
 
     def fetch(self, request: TrackRequest, destination: Path) -> Path:
-        landed = self._client.download(
-            request.key, quality=self._tier, folder=str(destination)
-        )
+        landed = self._client.download(request.key, quality=self._tier, folder=str(destination))
         return Path(landed)
 
 

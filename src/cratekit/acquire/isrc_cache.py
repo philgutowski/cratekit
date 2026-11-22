@@ -122,14 +122,11 @@ def _kept(track: Any) -> dict[str, Any]:
     available = getattr(track, "available", None)
     found_isrc = match.row_isrc(track)
     return {
-        "id": str(getattr(track, "id", "") or ""),
-        "title": _text(getattr(track, "title", None)),
+        "id": str(getattr(track, "id", "") or ""), "title": _text(getattr(track, "title", None)),
         "name": _text(getattr(track, "name", None)),
-        "version": _text(getattr(track, "version", None)),
-        "artist": _name_of(lead),
+        "version": _text(getattr(track, "version", None)), "artist": _name_of(lead),
         "artists": [_name_of(entry) or "" for entry in getattr(track, "artists", None) or ()],
-        "album": _name_of(album),
-        "available": available if isinstance(available, bool) else None,
+        "album": _name_of(album), "available": available if isinstance(available, bool) else None,
         "isrc": str(found_isrc) if found_isrc else None,
     }
 
@@ -164,15 +161,9 @@ def _remembered(kept: Any) -> Remembered:
     if available is not None and not isinstance(available, bool):
         raise ValueError("a remembered track's availability is not a flag")
     return Remembered(
-        id=identifier,
-        title=kept.get("title"),
-        name=kept.get("name"),
-        version=kept.get("version"),
-        artist=None if lead is None else Named(lead),
-        artists=tuple(Named(one) for one in artists),
-        album=None if album is None else Named(album),
-        available=available,
-        isrc=kept.get("isrc"),
+        id=identifier, title=kept.get("title"), name=kept.get("name"), version=kept.get("version"),
+        artist=None if lead is None else Named(lead), artists=tuple(Named(one) for one in artists),
+        album=None if album is None else Named(album), available=available, isrc=kept.get("isrc"),
     )
 
 

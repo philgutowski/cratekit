@@ -70,8 +70,7 @@ class Wanted(Recorded):
     def folded_row(self) -> dict[str, str]:
         """The three fields the exact test compares, so one line in two lists is one question."""
         return {
-            "artist": fold(self.artist),
-            "title": title_identity(self.title),
+            "artist": fold(self.artist), "title": title_identity(self.title),
             "version": self.version_key,
         }
 
@@ -105,10 +104,7 @@ class Wanted(Recorded):
         if self.other_reading is None:
             return (self,)
         title, version = self.other_reading
-        return (
-            self,
-            replace(self, title=title, version=version, other_reading=None),
-        )
+        return (self, replace(self, title=title, version=version, other_reading=None))
 
     @property
     def addresses(self) -> tuple[str, ...]:
@@ -333,18 +329,14 @@ def _line(line: str, *, raw: str, number: int) -> Wanted:
     artist, separator, title = line.partition(_DASH)
     if not separator or not artist.strip() or not title.strip():
         raise UnreadableList(
-            f"line {number} is not an 'Artist - Title' line: {raw.strip()!r}",
-            line=number,
+            f"line {number} is not an 'Artist - Title' line: {raw.strip()!r}", line=number,
         )
-    return _from_row(
-        {"artist": artist, "title": title}, origin=TEXT, position=number
-    )
+    return _from_row({"artist": artist, "title": title}, origin=TEXT, position=number)
 
 
 #: Origin to the reader that speaks it, so a new source is one entry plus one reader.
 READERS: Mapping[str, Callable[[Iterable[object]], tuple[Wanted, ...]]] = {
-    TIDAL: read_tidal_tracks,
-    SPOTIFY: read_spotify_items,
+    TIDAL: read_tidal_tracks, SPOTIFY: read_spotify_items,
 }
 
 

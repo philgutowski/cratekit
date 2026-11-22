@@ -323,9 +323,7 @@ def _read_fresh(path: Path, template: naming.NameTemplate) -> tuple[Owned, bool]
 
 
 def index_library(
-    root: Path,
-    *,
-    template: naming.NameTemplate | None = None,
+    root: Path, *, template: naming.NameTemplate | None = None,
     reader: Callable[[Path, naming.NameTemplate], Owned] = _read_from_disk,
 ) -> LibraryIndex:
     """Walk the library's music tree and index what it holds.
@@ -339,9 +337,7 @@ def index_library(
 
 
 def index_paths(
-    paths: Iterable[Path],
-    *,
-    template: naming.NameTemplate | None = None,
+    paths: Iterable[Path], *, template: naming.NameTemplate | None = None,
     reader: Callable[[Path, naming.NameTemplate], Owned] = _read_from_disk,
 ) -> LibraryIndex:
     """Index exactly the files named, the way :func:`index_library` indexes a tree,

@@ -43,8 +43,7 @@ LIST_KEYS = frozenset({"list", "origin", "tracks"})
 #: The word a settled row is counted under by the verbs that list what a
 #: resolve left missing. A missing row has no entry; each verb decides.
 SETTLED_WORDS = {
-    match.MatchState.MATCHED: "owned",
-    match.MatchState.NEEDS_REVIEW: "offered",
+    match.MatchState.MATCHED: "owned", match.MatchState.NEEDS_REVIEW: "offered",
     match.MatchState.SUPPRESSED: "suppressed",
 }
 
@@ -100,12 +99,8 @@ _LIST_STEPS: tuple[str, ...] = (
 def _refuse(message: str, *steps: str, **detail: Any) -> CratekitError:
     """One refusal slug for every unreadable list; what differs rides on the steps."""
     return refuse(
-        "intake-list-unusable",
-        message,
-        steps=(*steps, *_LIST_STEPS),
-        scope=Scope.RUN,
-        origin=("acquire.match",),
-        detail=detail,
+        "intake-list-unusable", message, steps=(*steps, *_LIST_STEPS), scope=Scope.RUN,
+        origin=("acquire.match",), detail=detail,
     )
 
 
@@ -144,8 +139,7 @@ def _document_tracks(document: Mapping[str, Any]) -> tuple[match.Wanted, ...]:
             f"this list document is format {version} and this build reads "
             f"{LIST_VERSION}; reading it anyway would report a clean match over "
             f"tracks it could not see",
-            declared=version,
-            expected=LIST_VERSION,
+            declared=version, expected=LIST_VERSION,
         )
     origin = document.get("origin", match.TEXT)
     if not isinstance(origin, str) or (origin not in match.READERS and origin != match.TEXT):
@@ -165,8 +159,7 @@ def _document_tracks(document: Mapping[str, Any]) -> tuple[match.Wanted, ...]:
         for position, row in enumerate(rows, start=1):
             if not isinstance(row, str):
                 raise _refuse(
-                    f"track {position} of a text list is not a line of text",
-                    position=position,
+                    f"track {position} of a text list is not a line of text", position=position,
                 )
         # Row by row, so one array entry is one track. An empty array is allowed
         # here: a document declaring zero tracks has said something.
@@ -177,8 +170,7 @@ def _document_tracks(document: Mapping[str, Any]) -> tuple[match.Wanted, ...]:
     for position, row in enumerate(rows, start=1):
         if not isinstance(row, Mapping):
             raise _refuse(
-                f"track {position} of a {origin} list is not a track record",
-                position=position,
+                f"track {position} of a {origin} list is not a track record", position=position,
             )
     # Each row is recognized too; a mapping alone is not a track record.
     try:
@@ -300,9 +292,7 @@ def touches_the_queue(found: match.TrackMatch) -> bool:
     return found.state is match.MatchState.NEEDS_REVIEW or owned_by_a_rule(found)
 
 
-def retire_questions(
-    items: review.ReviewStore, found: match.TrackMatch
-) -> tuple[review.Item, ...]:
+def retire_questions(items: review.ReviewStore, found: match.TrackMatch) -> tuple[review.Item, ...]:
     """Supersede every open question about a row resolution now owns.
 
     Every question shape is asked about, since the retiring side has no why. A
@@ -319,12 +309,8 @@ def retire_questions(
 
 
 def adjudicate(
-    items: review.ReviewStore,
-    result: match.MatchResult,
-    *,
-    handler_key: str,
-    suppresses: Callable[[str, Mapping[str, Any]], bool],
-    suppression_id: Callable[..., str],
+    items: review.ReviewStore, result: match.MatchResult, *, handler_key: str,
+    suppresses: Callable[[str, Mapping[str, Any]], bool], suppression_id: Callable[..., str],
 ) -> match.MatchResult:
     """Turn the needs-review state into queue items, and read back the answers.
 
@@ -357,19 +343,12 @@ def adjudicate(
             held = review.clear(items, held.item_id, actor=handler_key)
         if held is None or not held.resolved:
             held = review.offer(
-                items,
-                queue=QUEUE,
-                kind=match.QUESTION_KIND,
-                identity=identity,
-                payload=found.to_json(),
-                options=_options(found),
-                handler_key=handler_key,
+                items, queue=QUEUE, kind=match.QUESTION_KIND, identity=identity,
+                payload=found.to_json(), options=_options(found), handler_key=handler_key,
             )
         # Only a person's verdict is an answer; anything else reads as None and
         # leaves the track a question.
-        titles = {
-            one.option_id: (one.detail or {}).get("title") for one in held.options
-        }
+        titles = {one.option_id: (one.detail or {}).get("title") for one in held.options}
         accepted = (
             None
             if held.verdict not in review.PERSON_VERDICTS
@@ -406,17 +385,12 @@ def adjudicate(
 def build(parser: argparse.ArgumentParser, entry: Any) -> None:
     """Declare the command line. ``entry`` is untyped (KTD23): naming it would be
     an upward import from the modules layer to the CLI layer."""
-    parser.add_argument(
-        "list",
-        help="a tracklist of 'Artist - Title' lines, or a list document",
-    )
+    parser.add_argument("list", help="a tracklist of 'Artist - Title' lines, or a list document")
     parser.set_defaults(_handler=match_list)
 
 
 def _warnings(
-    result: match.MatchResult,
-    *,
-    suppresses: Callable[[str, Mapping[str, Any]], bool],
+    result: match.MatchResult, *, suppresses: Callable[[str, Mapping[str, Any]], bool],
     identify: Callable[..., str],
 ) -> tuple[dict[str, str], ...]:
     """What the three arrays cannot say, on the warning channel (R36). Every
@@ -430,9 +404,7 @@ def _warnings(
                     f"{track.wanted.artist} / {track.wanted.title} is suppressed by "
                     f"a tombstone and was not counted missing"
                 ),
-                "suppression": track.suppression_id or "",
-                "match": track.match_id,
-                "item": "",
+                "suppression": track.suppression_id or "", "match": track.match_id, "item": "",
                 "remedy": "",
             }
         )
@@ -466,9 +438,7 @@ def _warnings(
                         f"resolved to {state} rather than being suppressed; "
                         f"acquisition must skip it whatever this row says"
                     ),
-                    "suppression": standing,
-                    "match": track.match_id,
-                    "item": track.item_id or "",
+                    "suppression": standing, "match": track.match_id, "item": track.item_id or "",
                     "remedy": "",
                 }
             )
@@ -478,9 +448,7 @@ def _warnings(
     for track in result.matches:
         for candidate in track.candidates:
             offered = match.Wanted(
-                artist=candidate.artist,
-                title=candidate.title,
-                version=candidate.version,
+                artist=candidate.artist, title=candidate.title, version=candidate.version,
             )
             standing = match.standing_tombstone(
                 offered, suppresses=suppresses, suppression_id=identify
@@ -497,9 +465,7 @@ def _warnings(
                         f"an answer, and a tombstone stands over that file; the "
                         f"disk is the truth and the tombstone is stale"
                     ),
-                    "suppression": standing,
-                    "match": track.match_id,
-                    "item": track.item_id or "",
+                    "suppression": standing, "match": track.match_id, "item": track.item_id or "",
                     "remedy": "",
                 }
             )
@@ -520,9 +486,7 @@ def _warnings(
                     f"item stays resolved, so it is not in the open queue and "
                     f"cannot be resolved again"
                 ),
-                "suppression": "",
-                "match": track.match_id,
-                "item": track.item_id or "",
+                "suppression": "", "match": track.match_id, "item": track.item_id or "",
                 "remedy": CLEAR_VERB,
             }
         )
@@ -545,9 +509,7 @@ def _warnings(
                     f"question rather than counted owned, and the run was not "
                     f"blocked on it"
                 ),
-                "suppression": "",
-                "match": track.match_id,
-                "item": track.item_id or "",
+                "suppression": "", "match": track.match_id, "item": track.item_id or "",
                 "remedy": REVIEW_VERB,
             }
         )
@@ -565,9 +527,7 @@ def _warnings(
                     f"any answer here answers only what was, and this row "
                     f"resolved to {track.state}"
                 ),
-                "suppression": "",
-                "match": track.match_id,
-                "item": track.item_id or "",
+                "suppression": "", "match": track.match_id, "item": track.item_id or "",
                 "remedy": "",
             }
         )
@@ -629,8 +589,7 @@ def _pending(result: match.MatchResult, *, run_id: str) -> PendingHumanAction | 
             f"over that string decides it; they are answered the same way"
         )
     return PendingHumanAction(
-        kind="review",
-        id=output.new_pending_id(run_id),
+        kind="review", id=output.new_pending_id(run_id),
         summary=(
             f"{len(questions)} tracks resolved to a version this library does "
             f"not hold under that name, and need a person"
@@ -648,8 +607,7 @@ def _pending(result: match.MatchResult, *, run_id: str) -> PendingHumanAction | 
                 else ""
             )
         ),
-        verify_verb=REVIEW_VERB if answerable else CLEAR_VERB,
-        steps=tuple(steps),
+        verify_verb=REVIEW_VERB if answerable else CLEAR_VERB, steps=tuple(steps),
     )
 
 
@@ -681,11 +639,7 @@ class ListResolved:
 
 
 def resolve_list(
-    cfg: config.Config,
-    wanted: Sequence[match.Wanted],
-    *,
-    handler_key: str,
-    run_id: str,
+    cfg: config.Config, wanted: Sequence[match.Wanted], *, handler_key: str, run_id: str,
 ) -> ListResolved:
     """Resolve ``wanted`` against the library and offer what needs a person.
 
@@ -693,20 +647,13 @@ def resolve_list(
     disagree about what the library holds.
     """
     index, suppresses, identify = library_view(cfg)
-    result = match.resolve_all(
-        wanted, index, suppresses=suppresses, suppression_id=identify
-    )
+    result = match.resolve_all(wanted, index, suppresses=suppresses, suppression_id=identify)
     with review.open_store(cfg) as items:
         result = adjudicate(
-            items,
-            result,
-            handler_key=handler_key,
-            suppresses=suppresses,
-            suppression_id=identify,
+            items, result, handler_key=handler_key, suppresses=suppresses, suppression_id=identify,
         )
     return ListResolved(
-        result=result,
-        pending=_pending(result, run_id=run_id),
+        result=result, pending=_pending(result, run_id=run_id),
         warnings=_warnings(result, suppresses=suppresses, identify=identify),
     )
 
@@ -715,15 +662,12 @@ def match_list(ctx: Any) -> Envelope:
     """The handler. Not called ``run``, which is the dispatcher's name."""
     cfg = _load()
     wanted = read_list(Path(ctx.args.list))
-    resolved = resolve_list(
-        cfg, wanted, handler_key=ctx.entry.handler_key, run_id=ctx.run.run_id
-    )
+    resolved = resolve_list(cfg, wanted, handler_key=ctx.entry.handler_key, run_id=ctx.run.run_id)
     pending = resolved.pending
     return ctx.envelope(
         data=resolved.result.payload(),
         outcome=Outcome.PENDING if pending is not None else Outcome.OK,
-        code=ExitCode.PENDING_HUMAN if pending is not None else ExitCode.OK,
-        pending=pending,
+        code=ExitCode.PENDING_HUMAN if pending is not None else ExitCode.OK, pending=pending,
         warnings=resolved.warnings,
     )
 

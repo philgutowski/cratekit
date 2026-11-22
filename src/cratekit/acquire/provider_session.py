@@ -45,8 +45,7 @@ class Codec:
 
 
 JSON = Codec(
-    name="json",
-    dumps=lambda payload: json.dumps(payload, sort_keys=True).encode("utf-8"),
+    name="json", dumps=lambda payload: json.dumps(payload, sort_keys=True).encode("utf-8"),
     loads=json.loads,
 )
 
@@ -153,11 +152,8 @@ def _to_auth_failure(exc: secrets.CredentialError) -> AdapterAuthFailed | Adapte
 
 @contextmanager
 def materialised_session(
-    name: str = secrets.Credential.PROVIDER_SESSION,
-    *,
-    filename: str = "session.json",
-    codec: Codec = JSON,
-    unstored: Callable[[BaseException], None] | None = None,
+    name: str = secrets.Credential.PROVIDER_SESSION, *, filename: str = "session.json",
+    codec: Codec = JSON, unstored: Callable[[BaseException], None] | None = None,
 ) -> Iterator[SessionScope]:
     """Yield a private, short-lived file holding the stored provider session.
 
@@ -232,9 +228,7 @@ def _epoch(value: Any) -> Any:
 
 
 def client_session(
-    name: str = secrets.Credential.PROVIDER_SESSION,
-    *,
-    gate: provider_gate.Gate | None = None,
+    name: str = secrets.Credential.PROVIDER_SESSION, *, gate: provider_gate.Gate | None = None,
 ) -> Any:
     """An authenticated provider client, built from the stored session.
 
@@ -425,9 +419,7 @@ def _watch(session: HeldSession) -> None:
     transport.request = watched
 
 
-def session_for(
-    cfg: Any = None, name: str = secrets.Credential.PROVIDER_SESSION
-) -> HeldSession:
+def session_for(cfg: Any = None, name: str = secrets.Credential.PROVIDER_SESSION) -> HeldSession:
     """The process's logged in session, opened once and reused (U261).
 
     A reuse asks the gate and reads the keychain once, reusing the client only while
@@ -489,9 +481,7 @@ def _canonical(payload: Any) -> str | None:
         return None
 
 
-def write_back(
-    name: str, path: Path, *, codec: Codec = JSON, stored: dict | None = None
-) -> bool:
+def write_back(name: str, path: Path, *, codec: Codec = JSON, stored: dict | None = None) -> bool:
     """Return a refreshed session to the keychain, or leave it alone; True when written.
 
     An unreadable file keeps the last good credential, and an unchanged one is not

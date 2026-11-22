@@ -73,9 +73,7 @@ def build(parser, entry) -> None:
         help="the list of tracks to acquire; omit it with --job, which froze it",
     )
     parser.add_argument(
-        "--job",
-        default=None,
-        metavar="JOB_ID",
+        "--job", default=None, metavar="JOB_ID",
         help="continue the acquisition already queued under this identifier",
     )
     parser.set_defaults(_handler=acquire_download)
@@ -119,11 +117,7 @@ _INVOCATION_REASONS: dict[InvocationOutcome, str] = {
 
 def _unusable(message: str, *steps: str, **detail: Any) -> CratekitError:
     return refuse(
-        "intake-list-unusable",
-        message,
-        steps=steps,
-        scope=Scope.RUN,
-        origin=("acquire.cli",),
+        "intake-list-unusable", message, steps=steps, scope=Scope.RUN, origin=("acquire.cli",),
         detail=detail,
     )
 
@@ -165,8 +159,7 @@ def frozen_tracks(wanted: tuple[match.Wanted, ...]) -> dict[str, dict[str, str |
     frozen: dict[str, dict[str, str | None]] = {}
     for track in wanted:
         frozen.setdefault(
-            track.ref,
-            {"artist": track.artist, "title": track.title, "isrc": track.isrc},
+            track.ref, {"artist": track.artist, "title": track.title, "isrc": track.isrc},
         )
     return frozen
 
@@ -195,10 +188,8 @@ def _same_list_or_refuse(named: str | None, job, handler_key: str) -> None:
         f"job {job.job_id} acquires the list it froze, {frozen}, and this command "
         f"names {given}, so driving the job would not acquire the list named here",
         f"drop the list and run it with --job {job.job_id} alone",
-        "or queue the other list as a job of its own by naming it without --job",
-        job_id=job.job_id,
-        frozen=frozen,
-        named=str(given),
+        "or queue the other list as a job of its own by naming it without --job", job_id=job.job_id,
+        frozen=frozen, named=str(given),
     )
 
 
@@ -242,11 +233,7 @@ def acquire_download(ctx) -> Envelope:
 
 
 def queue_list(
-    store: jobs.JobStore,
-    cfg: config.Config,
-    given: Path,
-    *,
-    handler_key: str,
+    store: jobs.JobStore, cfg: config.Config, given: Path, *, handler_key: str,
     extra: dict[str, Any] | None = None,
 ) -> jobs.Job | None:
     """Read a list, freeze it, and queue one item per track, or None for no tracks.
@@ -261,10 +248,8 @@ def queue_list(
     if not tracks:
         return None
     return jobs.enqueue(
-        store,
-        handler_key=handler_key,
-        payload={**(extra or {}), LIST: str(listed), TRACKS: tracks},
-        cfg=cfg,
+        store, handler_key=handler_key,
+        payload={**(extra or {}), LIST: str(listed), TRACKS: tracks}, cfg=cfg,
         item_ids=tuple(tracks),
     )
 
@@ -287,9 +272,7 @@ def drive_queued(ctx, store: jobs.JobStore, job_id: str) -> tuple[jobs.Job, tupl
                 f"would report every track acquired over a list nothing "
                 f"read. It was queued by a build that did not record "
                 f"what its items were",
-                remedy=Remedy.REPORT_DEFECT,
-                origin=("acquire.cli",),
-                detail={"job_id": job.job_id},
+                remedy=Remedy.REPORT_DEFECT, origin=("acquire.cli",), detail={"job_id": job.job_id},
             )
         _, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
@@ -369,9 +352,7 @@ def request_for(item: jobs.Item, payload: dict[str, Any]) -> TrackRequest:
     """The item as a request: its identifier, and what the list said about it."""
     said = dict((payload.get(TRACKS) or {}).get(item.item_id) or {})
     return TrackRequest(
-        key=item.item_id,
-        artist=str(said.get("artist") or ""),
-        title=str(said.get("title") or ""),
+        key=item.item_id, artist=str(said.get("artist") or ""), title=str(said.get("title") or ""),
         isrc=str(said.get("isrc") or ""),
     )
 
@@ -393,14 +374,10 @@ def _refused_invocation(run: download.DownloadRun, request: TrackRequest) -> Cra
     return refuse(
         _INVOCATION_REASONS[invocation.outcome],
         f"{invocation.adapter} could not acquire {request.key}: {invocation.detail}{where}",
-        remedy=_remedy(invocation.remedy, Remedy.SWITCH_ADAPTER),
-        scope=Scope.SOURCE,
-        retryable=invocation.outcome is InvocationOutcome.AUTH_FAILED,
-        origin=("acquire.cli",),
+        remedy=_remedy(invocation.remedy, Remedy.SWITCH_ADAPTER), scope=Scope.SOURCE,
+        retryable=invocation.outcome is InvocationOutcome.AUTH_FAILED, origin=("acquire.cli",),
         detail={
-            "adapter": invocation.adapter,
-            "key": request.key,
-            "outcome": str(invocation.outcome),
+            "adapter": invocation.adapter, "key": request.key, "outcome": str(invocation.outcome),
             "alternatives": list(invocation.alternatives),
         },
     )
@@ -434,22 +411,13 @@ def checked_landing(path: Path, key: str, *, policy: LosslessPolicy) -> Path:
         return vendored.landed_file(True, path, key, policy=policy)
     except LosslessRefused as exc:
         raise refuse(
-            "lossy-refused",
-            str(exc),
-            remedy=_remedy(exc.remedy, Remedy.RELAX_LOSSLESS_POLICY),
-            scope=Scope.ITEM,
-            origin=("acquire.cli",),
-            detail={"key": key, "path": str(path)},
+            "lossy-refused", str(exc), remedy=_remedy(exc.remedy, Remedy.RELAX_LOSSLESS_POLICY),
+            scope=Scope.ITEM, origin=("acquire.cli",), detail={"key": key, "path": str(path)},
         ) from exc
     except RuntimeError as exc:
         raise refuse(
-            "unavailable-transient",
-            str(exc),
-            remedy=Remedy.RETRY_LATER,
-            scope=Scope.ITEM,
-            retryable=True,
-            origin=("acquire.cli",),
-            detail={"key": key, "path": str(path)},
+            "unavailable-transient", str(exc), remedy=Remedy.RETRY_LATER, scope=Scope.ITEM,
+            retryable=True, origin=("acquire.cli",), detail={"key": key, "path": str(path)},
         ) from exc
 
 
@@ -761,12 +729,7 @@ def _item(path: Path, root: Path, kind: str) -> dict[str, Any]:
     except ValueError:
         # Unreachable through ``findings``; handled so a report never raises.
         where = path.name
-    return {
-        "id": where,
-        "queue": AUDIT_QUEUE,
-        "kind": kind,
-        "suffix": path.suffix.lower(),
-    }
+    return {"id": where, "queue": AUDIT_QUEUE, "kind": kind, "suffix": path.suffix.lower()}
 
 
 def acquire_audit(ctx) -> Envelope:

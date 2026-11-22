@@ -105,14 +105,9 @@ class ListingTruncated(RuntimeError):
 
 
 def fetch_with_retry(
-    fetch_page: Callable[[int, int], Any],
-    *,
-    limit: int,
-    offset: int,
-    max_retries: int = DEFAULT_MAX_RETRIES,
-    base_delay: float = DEFAULT_BASE_DELAY_S,
-    max_delay: float = DEFAULT_MAX_DELAY_S,
-    sleep: Callable[[float], None] = time.sleep,
+    fetch_page: Callable[[int, int], Any], *, limit: int, offset: int,
+    max_retries: int = DEFAULT_MAX_RETRIES, base_delay: float = DEFAULT_BASE_DELAY_S,
+    max_delay: float = DEFAULT_MAX_DELAY_S, sleep: Callable[[float], None] = time.sleep,
 ) -> Any:
     """One page, retried on any transient failure with capped backoff, then re-raised.
 
@@ -227,16 +222,9 @@ def _declared(response: Any) -> int | None:
 
 
 def paginate_cursor(
-    fetch_page: Callable[[int, str | None], Any],
-    *,
-    page_size: int,
-    stop: StopRule,
-    max_pages: int,
-    parse: Callable[[Any], Any],
-    shape: str | None = None,
-    key: Callable[[Any], Any] | None = None,
-    keep: Callable[[Any], bool] | None = None,
-    **retry: Any,
+    fetch_page: Callable[[int, str | None], Any], *, page_size: int, stop: StopRule, max_pages: int,
+    parse: Callable[[Any], Any], shape: str | None = None, key: Callable[[Any], Any] | None = None,
+    keep: Callable[[Any], bool] | None = None, **retry: Any,
 ) -> list[Any]:
     """Every item across every server page of an endpoint that pages by cursor.
 
@@ -566,12 +554,10 @@ def account_folders(session: Any, **kwargs: Any) -> list[Any]:
     kwargs.setdefault("key", lambda folder: str(getattr(folder, "id", "")))
     fetch = _folder_endpoint(
         _client_part(session, "request", walk=FOLDER_WALK),
-        _client_part(session, "config", "api_v2_location", walk=FOLDER_WALK),
-        "root",
+        _client_part(session, "config", "api_v2_location", walk=FOLDER_WALK), "root",
     )
     return paginate_cursor(
-        fetch,
-        keep=_item_type("FOLDER"),
+        fetch, keep=_item_type("FOLDER"),
         parse=_client_part(session, "parse_folder", walk=FOLDER_WALK),
         **_shape("account_folders", **kwargs),
     )
@@ -612,8 +598,7 @@ def folder_folders(folder: Any, **kwargs: Any) -> list[Any]:
         str(_client_part(folder, "id", walk=FOLDER_WALK)),
     )
     return paginate_cursor(
-        fetch,
-        keep=_item_type("FOLDER"),
+        fetch, keep=_item_type("FOLDER"),
         parse=_client_part(folder, "session", "parse_folder", walk=FOLDER_WALK),
         **_shape("folder_folders", **kwargs),
     )
@@ -763,12 +748,9 @@ def judge_window(paged: Sequence[str], unpaged: Sequence[str], declared: Any) ->
 #: Every listing shape as name to wrapper. The test suite's guard reads it, so a new
 #: wrapper arms the guard for its methods (P3).
 WRAPPERS: dict[str, Callable[..., list[Any]]] = {
-    "playlist_tracks": playlist_tracks,
-    "favorite_tracks": favorite_tracks,
-    "account_playlists": account_playlists,
-    "artist_releases": artist_releases,
-    "account_folders": account_folders,
-    "folder_playlists": folder_playlists,
+    "playlist_tracks": playlist_tracks, "favorite_tracks": favorite_tracks,
+    "account_playlists": account_playlists, "artist_releases": artist_releases,
+    "account_folders": account_folders, "folder_playlists": folder_playlists,
     "folder_folders": folder_folders,
 }
 
@@ -776,10 +758,7 @@ WRAPPERS: dict[str, Callable[..., list[Any]]] = {
 #: violation only with pagination arguments, being an ordinary name here too (P7).
 GUARDED_METHODS = frozenset(
     {
-        "tracks",
-        "playlist_and_favorite_playlists",
-        "get_albums",
-        "get_ep_singles",
+        "tracks", "playlist_and_favorite_playlists", "get_albums", "get_ep_singles",
         "playlist_folders",
     }
 )

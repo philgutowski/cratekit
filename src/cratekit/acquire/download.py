@@ -77,30 +77,14 @@ BLOCKED_STATUSES = frozenset({403})
 #: Phrases for a bot wall or a refused client, checked before the rate-limit phrases,
 #: since a wall often explains itself as a rate limit.
 BLOCK_MARKERS = (
-    "forbidden",
-    "access denied",
-    "captcha",
-    "are you a robot",
-    "are you human",
-    "unusual traffic",
-    "automated traffic",
-    "bot detect",
-    "bot protection",
-    "cloudflare",
-    "attention required",
-    "temporarily banned",
-    "account suspended",
-    "ip banned",
+    "forbidden", "access denied", "captcha", "are you a robot", "are you human", "unusual traffic",
+    "automated traffic", "bot detect", "bot protection", "cloudflare", "attention required",
+    "temporarily banned", "account suspended", "ip banned",
 )
 
 #: Phrases that mean "too fast" and nothing worse.
 RATE_LIMIT_MARKERS = (
-    "too many requests",
-    "rate limit",
-    "rate-limit",
-    "ratelimit",
-    "slow down",
-    "throttled",
+    "too many requests", "rate limit", "rate-limit", "ratelimit", "slow down", "throttled",
     "throttling",
 )
 
@@ -120,10 +104,7 @@ _RETRY_IN_TEXT = re.compile(
 
 #: Attribute chains a client may expose a status through; the first present wins.
 _STATUS_PATHS: tuple[tuple[str, ...], ...] = (
-    ("response", "status_code"),
-    ("response", "status"),
-    ("status_code",),
-    ("status",),
+    ("response", "status_code"), ("response", "status"), ("status_code",), ("status",),
 )
 
 
@@ -297,12 +278,7 @@ BLOCK_REMEDIATION_STEPS = (
 
 
 def blocked_cause(
-    *,
-    adapter: str,
-    key: str,
-    signal: ProviderSignal,
-    detail: str,
-    attempts: int,
+    *, adapter: str, key: str, signal: ProviderSignal, detail: str, attempts: int,
     retry_hint_s: float | None = None,
 ) -> Cause:
     """The structured reason a run stopped, in the shape a job engine parks on.
@@ -318,15 +294,10 @@ def blocked_cause(
             f"Stopped after {attempts} attempt(s) without retrying, because retrying "
             f"into a block is what turns it into a lockout"
         ),
-        remediation=Remediation(steps=BLOCK_REMEDIATION_STEPS),
-        scope=Scope.RUN,
-        retryable=False,
+        remediation=Remediation(steps=BLOCK_REMEDIATION_STEPS), scope=Scope.RUN, retryable=False,
         origin=("acquire.download",),
         detail={
-            "adapter": adapter,
-            "key": key,
-            "signal": str(signal),
-            "attempts": attempts,
+            "adapter": adapter, "key": key, "signal": str(signal), "attempts": attempts,
             "retry_hint_s": retry_hint_s,
         },
     )
@@ -504,11 +475,8 @@ def _acquire_with_retries(run: _Run, request: TrackRequest) -> TrackResult | Non
             _stop_with_park(
                 run,
                 blocked_cause(
-                    adapter=run.adapter,
-                    key=request.key,
-                    signal=probe.signal,
-                    detail=result.detail or str(probe.signal),
-                    attempts=attempt + 1,
+                    adapter=run.adapter, key=request.key, signal=probe.signal,
+                    detail=result.detail or str(probe.signal), attempts=attempt + 1,
                     retry_hint_s=probe.retry_hint,
                 ),
             )
@@ -520,16 +488,13 @@ def _acquire_with_retries(run: _Run, request: TrackRequest) -> TrackResult | Non
                 _stop_with_park(
                     run,
                     blocked_cause(
-                        adapter=run.adapter,
-                        key=request.key,
-                        signal=probe.signal,
+                        adapter=run.adapter, key=request.key, signal=probe.signal,
                         detail=(
                             f"the provider asked for {hint:g}s, beyond this run's "
                             f"{run.pacing.retry_hint_ceiling_s:g}s ceiling, which is a "
                             f"refusal wearing a wait"
                         ),
-                        attempts=attempt + 1,
-                        retry_hint_s=hint,
+                        attempts=attempt + 1, retry_hint_s=hint,
                     ),
                 )
                 return None
@@ -554,8 +519,7 @@ def _soften(result: TrackResult) -> TrackResult:
     if result.outcome is not TrackOutcome.UNAVAILABLE_PERMANENT:
         return result
     return TrackResult(
-        key=result.key,
-        outcome=TrackOutcome.UNAVAILABLE_TRANSIENT,
+        key=result.key, outcome=TrackOutcome.UNAVAILABLE_TRANSIENT,
         detail=(
             f"{result.detail} (reported permanent, but the invocation failed before "
             f"it finished, so it stays re-queueable)"
@@ -565,17 +529,10 @@ def _soften(result: TrackResult) -> TrackResult:
 
 
 def acquire_concurrently(
-    *,
-    adapter: str,
-    source: TrackSource,
-    requests: Iterable[TrackRequest],
-    settings: AdapterSettings,
-    pacing: Pacing | None = None,
-    alternatives: Sequence[str] = (),
-    sleep: Callable[[float], None] = time.sleep,
-    rng: random.Random | None = None,
-    executor: Executor | None = None,
-    clock: Callable[[], datetime] | None = None,
+    *, adapter: str, source: TrackSource, requests: Iterable[TrackRequest],
+    settings: AdapterSettings, pacing: Pacing | None = None, alternatives: Sequence[str] = (),
+    sleep: Callable[[float], None] = time.sleep, rng: random.Random | None = None,
+    executor: Executor | None = None, clock: Callable[[], datetime] | None = None,
 ) -> DownloadRun:
     """Acquire every request under a bounded, paced, signal-aware pool.
 
@@ -588,11 +545,7 @@ def acquire_concurrently(
     resolved = pacing or Pacing.from_settings(settings)
 
     run = _Run(
-        adapter=adapter,
-        source=source,
-        settings=settings,
-        pacing=resolved,
-        sleep=sleep,
+        adapter=adapter, source=source, settings=settings, pacing=resolved, sleep=sleep,
         rng=rng if rng is not None else random.Random(),
         clock=clock or (lambda: datetime.now(timezone.utc)),
         gate=threading.Semaphore(settings.concurrency),
@@ -601,9 +554,7 @@ def acquire_concurrently(
     try:
         source.authenticate()
     except (AdapterAuthFailed, AdapterBroken) as exc:
-        return DownloadRun(
-            invocation=_failed(adapter, exc, requested, alternatives),
-        )
+        return DownloadRun(invocation=_failed(adapter, exc, requested, alternatives))
 
     slots: list[TrackResult | None] = [None] * len(ordered)
 
@@ -640,23 +591,15 @@ def acquire_concurrently(
 
     return DownloadRun(
         invocation=InvocationResult(
-            adapter=adapter,
-            outcome=outcome,
-            results=tuple(landed),
-            requested=requested,
-            detail=detail,
-            remedy=remedy,
-            alternatives=tuple(alternatives),
+            adapter=adapter, outcome=outcome, results=tuple(landed), requested=requested,
+            detail=detail, remedy=remedy, alternatives=tuple(alternatives),
         ),
-        parked=run.parked,
-        schedule=tuple(run.slept),
+        parked=run.parked, schedule=tuple(run.slept),
     )
 
 
 def _failed(
-    adapter: str,
-    exc: AdapterAuthFailed | AdapterBroken,
-    requested: Sequence[str],
+    adapter: str, exc: AdapterAuthFailed | AdapterBroken, requested: Sequence[str],
     alternatives: Sequence[str],
 ) -> InvocationResult:
     """Shape an adapter-level failure exactly as the sequential loop does."""
@@ -666,12 +609,8 @@ def _failed(
         else InvocationOutcome.ADAPTER_BROKEN
     )
     return InvocationResult(
-        adapter=adapter,
-        outcome=outcome,
-        requested=tuple(requested),
-        detail=str(exc),
-        remedy=exc.remedy,
-        alternatives=tuple(alternatives),
+        adapter=adapter, outcome=outcome, requested=tuple(requested), detail=str(exc),
+        remedy=exc.remedy, alternatives=tuple(alternatives),
     )
 
 
@@ -688,12 +627,8 @@ def acquire_paced(adapter: BaseAdapter, requests: Iterable[TrackRequest], **opti
         with adapter._session_scope() as scope:
             source = adapter._injected if adapter._injected is not None else adapter._source(scope)
             return acquire_concurrently(
-                adapter=adapter.name,
-                source=source,
-                requests=ordered,
-                settings=adapter.settings,
-                alternatives=alternatives,
-                **options,
+                adapter=adapter.name, source=source, requests=ordered, settings=adapter.settings,
+                alternatives=alternatives, **options,
             )
     except (AdapterAuthFailed, AdapterBroken) as exc:
         return DownloadRun(

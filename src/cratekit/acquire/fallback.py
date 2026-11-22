@@ -104,9 +104,7 @@ def _hit(platform: str, line: str) -> Hit | None:
         return None
     duration = said.get("duration")
     return Hit(
-        platform=platform,
-        url=url,
-        title=str(said.get("title") or ""),
+        platform=platform, url=url, title=str(said.get("title") or ""),
         uploader=str(said.get("uploader") or said.get("channel") or ""),
         duration=(
             int(duration)
@@ -123,10 +121,7 @@ class YtDlpSearcher:
     """The shipped searcher: ``yt-dlp`` in flat playlist mode, nothing downloaded."""
 
     def __init__(
-        self,
-        binary: str,
-        *,
-        run: Callable[..., Any] = subprocess.run,
+        self, binary: str, *, run: Callable[..., Any] = subprocess.run,
         timeout: float = TIMEOUT_SECONDS,
     ) -> None:
         self.binary = binary
@@ -149,12 +144,8 @@ class YtDlpSearcher:
         argv = self.argv(platform, query, limit)
         try:
             done = self._run(
-                argv,
-                capture_output=True,
-                text=True,
-                timeout=self._timeout,
-                env=binaries.subprocess_env(),
-                check=False,
+                argv, capture_output=True, text=True, timeout=self._timeout,
+                env=binaries.subprocess_env(), check=False,
             )
         except subprocess.TimeoutExpired as exc:
             raise FallbackUnavailable(
@@ -215,10 +206,7 @@ class YtDlpFetcher:
     """The shipped fetcher: ``yt-dlp`` extracting the audio as MP3 into one directory."""
 
     def __init__(
-        self,
-        binary: str,
-        *,
-        run: Callable[..., Any] = subprocess.run,
+        self, binary: str, *, run: Callable[..., Any] = subprocess.run,
         timeout: float = FETCH_TIMEOUT_SECONDS,
     ) -> None:
         self.binary = binary
@@ -250,12 +238,8 @@ class YtDlpFetcher:
         argv = self.argv(url, directory)
         try:
             done = self._run(
-                argv,
-                capture_output=True,
-                text=True,
-                timeout=self._timeout,
-                env=binaries.subprocess_env(),
-                check=False,
+                argv, capture_output=True, text=True, timeout=self._timeout,
+                env=binaries.subprocess_env(), check=False,
             )
         except subprocess.TimeoutExpired as exc:
             raise FallbackUnavailable(
@@ -378,12 +362,8 @@ class Proposal:
 
     def to_json(self) -> dict[str, Any]:
         return {
-            "artist": self.wanted.artist,
-            "title": self.wanted.listed,
-            "state": self.state,
-            "reason": self.reason,
-            "item_id": self.item_id,
-            "candidates": self.offered,
+            "artist": self.wanted.artist, "title": self.wanted.listed, "state": self.state,
+            "reason": self.reason, "item_id": self.item_id, "candidates": self.offered,
             "url": self.url,
         }
 
@@ -434,35 +414,23 @@ def settled(items: review.ReviewStore, wanted: match.Wanted) -> Proposal | None:
     option = next((one for one in held.options if one.option_id == chosen), None)
     if option is None:
         return Proposal(
-            wanted,
-            STALLED,
-            f"accepted in review without naming which of its {count} candidates",
-            item_id=held.item_id,
-            offered=count,
+            wanted, STALLED, f"accepted in review without naming which of its {count} candidates",
+            item_id=held.item_id, offered=count,
         )
     return Proposal(
-        wanted,
-        ACCEPTED,
-        f"accepted in review as {option.summary}",
-        item_id=held.item_id,
-        offered=count,
-        url=option.option_id,
+        wanted, ACCEPTED, f"accepted in review as {option.summary}", item_id=held.item_id,
+        offered=count, url=option.option_id,
     )
 
 
 def propose(
-    items: review.ReviewStore,
-    wanted: match.Wanted,
-    answer: Answer,
-    *,
-    handler_key: str,
+    items: review.ReviewStore, wanted: match.Wanted, answer: Answer, *, handler_key: str,
 ) -> Proposal:
     """Offer every ranked candidate on one item, or say there are none. Never pick."""
     on_screen = ranked(wanted, answer)
     if not on_screen:
         return Proposal(
-            wanted,
-            NO_CANDIDATES,
+            wanted, NO_CANDIDATES,
             "SoundCloud and YouTube returned nothing for it"
             + (
                 f"; {answer.unreadable} line(s) of their answers could not be read"
@@ -471,40 +439,26 @@ def propose(
             ),
         )
     held = review.offer(
-        items,
-        queue=QUEUE,
-        kind=KIND,
-        identity=identity(wanted),
+        items, queue=QUEUE, kind=KIND, identity=identity(wanted),
         payload={
             "wanted": {
-                "artist": wanted.artist,
-                "title": wanted.listed,
-                "version": wanted.version,
+                "artist": wanted.artist, "title": wanted.listed, "version": wanted.version,
             },
-            "query": query(wanted),
-            "unreadable": answer.unreadable,
+            "query": query(wanted), "unreadable": answer.unreadable,
             "candidates": [
                 {
-                    "url": one.hit.url,
-                    "platform": one.hit.platform,
-                    "uploader": one.hit.uploader,
-                    "title": one.hit.title,
-                    "duration": one.hit.duration,
-                    "score": one.score,
+                    "url": one.hit.url, "platform": one.hit.platform, "uploader": one.hit.uploader,
+                    "title": one.hit.title, "duration": one.hit.duration, "score": one.score,
                 }
                 for one in on_screen
             ],
         },
         options=[
             review.Option(
-                option_id=one.hit.url,
-                summary=_summary(one),
+                option_id=one.hit.url, summary=_summary(one),
                 detail={
-                    "platform": one.hit.platform,
-                    "uploader": one.hit.uploader,
-                    "title": one.hit.title,
-                    "duration": one.hit.duration,
-                    "score": one.score,
+                    "platform": one.hit.platform, "uploader": one.hit.uploader,
+                    "title": one.hit.title, "duration": one.hit.duration, "score": one.score,
                 },
             )
             for one in on_screen
@@ -512,12 +466,10 @@ def propose(
         handler_key=handler_key,
     )
     return Proposal(
-        wanted,
-        OFFERED,
+        wanted, OFFERED,
         f"{len(on_screen)} second source candidate(s) offered for review; none is "
         f"picked from a score",
-        item_id=held.item_id,
-        offered=len(on_screen),
+        item_id=held.item_id, offered=len(on_screen),
     )
 
 

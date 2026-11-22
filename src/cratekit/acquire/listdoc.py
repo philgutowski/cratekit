@@ -108,8 +108,7 @@ def _reads_back(title: str, version: str, wanted: match.Wanted) -> bool:
     """
     try:
         again = match.read_row(
-            {"title": title, "version": version, "artist": wanted.artist},
-            origin=match.TIDAL,
+            {"title": title, "version": version, "artist": wanted.artist}, origin=match.TIDAL,
             position=1,
         )
     except match.UnreadableList:
@@ -141,18 +140,12 @@ def _row_of_wanted(wanted: match.Wanted) -> Row:
         (wanted.title, wanted.version),
     )
     return Row(
-        ref=ref,
-        artist=wanted.artist,
-        title=title,
-        version=version,
-        isrc=wanted.isrc,
+        ref=ref, artist=wanted.artist, title=title, version=version, isrc=wanted.isrc,
         key=wanted.key,
     )
 
 
-def rows_of(
-    source: Iterable[match.Wanted] | Mapping[str, Mapping[str, Any]],
-) -> tuple[Row, ...]:
+def rows_of(source: Iterable[match.Wanted] | Mapping[str, Mapping[str, Any]]) -> tuple[Row, ...]:
     """Rows from read ``Wanted`` tracks, or from a frozen mapping.
 
     A mapping is :func:`cratekit.acquire.cli.frozen_tracks`'s output and lost the
@@ -162,10 +155,8 @@ def rows_of(
     if isinstance(source, Mapping):
         return tuple(
             Row(
-                ref=str(ref),
-                artist=str(fields.get("artist") or ""),
-                title=str(fields.get("title") or ""),
-                isrc=fields.get("isrc") or None,
+                ref=str(ref), artist=str(fields.get("artist") or ""),
+                title=str(fields.get("title") or ""), isrc=fields.get("isrc") or None,
             )
             for ref, fields in source.items()
         )
@@ -194,8 +185,7 @@ def _checked(track: dict[str, Any], position: int) -> None:
         match.read_row(track, origin=match.TIDAL, position=position)
     except match.UnreadableList as exc:
         raise ListDocRefused(
-            f"row {position} would make the whole list unreadable: {exc}",
-            position=position,
+            f"row {position} would make the whole list unreadable: {exc}", position=position,
         ) from exc
 
 
@@ -244,8 +234,7 @@ def text_line(row: Row) -> str:
     line = _line(row)
     try:
         wanted = match.read_row(
-            {"artist": row.artist, "title": row.title, "version": row.version},
-            origin=match.TIDAL,
+            {"artist": row.artist, "title": row.title, "version": row.version}, origin=match.TIDAL,
             position=1,
         )
         again = match.read_text_rows([line])
@@ -303,9 +292,7 @@ def _checked_name(name: str) -> str:
     return name
 
 
-def _provenance_for(
-    provenance: Provenance | Mapping[str, Provenance], ref: str
-) -> Provenance:
+def _provenance_for(provenance: Provenance | Mapping[str, Provenance], ref: str) -> Provenance:
     found = provenance if isinstance(provenance, Provenance) else provenance.get(ref)
     if found is None:
         raise ListDocRefused(f"no provenance was given for listed id {ref!r}")
@@ -315,9 +302,7 @@ def _provenance_for(
 
 
 def manifest(
-    list_name: str,
-    body: Mapping[str, Any],
-    provenance: Provenance | Mapping[str, Provenance],
+    list_name: str, body: Mapping[str, Any], provenance: Provenance | Mapping[str, Provenance],
 ) -> dict[str, Any]:
     """The provenance sidecar for a list document, one entry per listed id."""
     entries: dict[str, dict[str, Any]] = {}
@@ -350,19 +335,13 @@ def _unchanged(path: Path, payload: bytes) -> bool:
     except OSError as exc:
         raise ListDocRefused(f"{path} exists and could not be read: {exc.strerror}") from exc
     if present != payload:
-        raise ListDocRefused(
-            f"{path} already exists and holds something else; it is left as it is"
-        )
+        raise ListDocRefused(f"{path} already exists and holds something else; it is left as it is")
     return True
 
 
 def write(
-    directory: Path,
-    name: str,
-    rows: Iterable[Row],
-    provenance: Provenance | Mapping[str, Provenance],
-    *,
-    handed_on: Iterable[HandedOn] = (),
+    directory: Path, name: str, rows: Iterable[Row],
+    provenance: Provenance | Mapping[str, Provenance], *, handed_on: Iterable[HandedOn] = (),
 ) -> Written:
     """Write ``<name>.list.json`` and its manifest into ``directory``, or nothing.
 
@@ -424,8 +403,7 @@ def _manifest_row(ref: str, entry: object) -> ManifestRow:
     if year is not None and (isinstance(year, bool) or not isinstance(year, int)):
         raise ListDocRefused(f"manifest entry {ref!r} carries a year that is not a number")
     track: dict[str, Any] = {
-        "id": ref,
-        "artist": _text_or_none(entry, "artist", ref) or "",
+        "id": ref, "artist": _text_or_none(entry, "artist", ref) or "",
         "title": _text_or_none(entry, "title", ref) or "",
         "version": _text_or_none(entry, "version", ref) or "",
     }

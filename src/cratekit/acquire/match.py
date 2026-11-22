@@ -182,12 +182,8 @@ class Candidate:
 
     def to_json(self) -> dict[str, Any]:
         return {
-            "id": self.candidate_id,
-            "artist": self.artist,
-            "title": self.title,
-            "version": self.version,
-            "key": self.key,
-            "difference": str(self.difference),
+            "id": self.candidate_id, "artist": self.artist, "title": self.title,
+            "version": self.version, "key": self.key, "difference": str(self.difference),
             "paths": list(self.paths),
         }
 
@@ -218,13 +214,8 @@ class Acquisition:
 
     def to_json(self) -> dict[str, Any]:
         return {
-            "id": self.option_id,
-            "how": self.how,
-            "query": self.query,
-            "artist": self.artist,
-            "title": self.title,
-            "version": self.version,
-            "isrc": self.isrc,
+            "id": self.option_id, "how": self.how, "query": self.query, "artist": self.artist,
+            "title": self.title, "version": self.version, "isrc": self.isrc,
         }
 
 
@@ -234,13 +225,8 @@ def acquisition_options(wanted: Wanted) -> tuple[Acquisition, ...]:
     if wanted.isrc:
         built.append(
             Acquisition(
-                option_id=f"aq_{_digest(BY_ISRC, wanted.isrc)}",
-                how=BY_ISRC,
-                query=wanted.isrc,
-                artist=wanted.artist,
-                title=wanted.title,
-                version=wanted.version,
-                isrc=wanted.isrc,
+                option_id=f"aq_{_digest(BY_ISRC, wanted.isrc)}", how=BY_ISRC, query=wanted.isrc,
+                artist=wanted.artist, title=wanted.title, version=wanted.version, isrc=wanted.isrc,
             )
         )
     built.append(
@@ -416,9 +402,7 @@ def _same_recording(wanted: Wanted, held: Owned, token: str) -> bool:
     return fold(wanted.artist) in held.members or _carries(held, token)
 
 
-def _approximate(
-    wanted: Wanted, index: LibraryIndex, *, limit: int | None
-) -> tuple[Owned, ...]:
+def _approximate(wanted: Wanted, index: LibraryIndex, *, limit: int | None) -> tuple[Owned, ...]:
     """Recordings that merely resemble the wanted one. Discovery, never identity.
 
     Scored on the folded recording token, so artist and title both count, by
@@ -516,11 +500,8 @@ def _resembling(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
 
 
 def standing_tombstone(
-    wanted: Wanted,
-    *,
-    suppresses: Callable[[str, Mapping[str, Any]], bool],
-    suppression_id: Callable[[str, Mapping[str, Any]], str],
-    companions: bool = True,
+    wanted: Wanted, *, suppresses: Callable[[str, Mapping[str, Any]], bool],
+    suppression_id: Callable[[str, Mapping[str, Any]], str], companions: bool = True,
 ) -> str | None:
     """The identifier of the tombstone standing over this version, or None.
 
@@ -551,9 +532,7 @@ def _held_exactly(wanted: Wanted, index: LibraryIndex) -> bool:
     )
 
 
-def _other_reading_the_library_holds(
-    wanted: Wanted, index: LibraryIndex
-) -> Wanted | None:
+def _other_reading_the_library_holds(wanted: Wanted, index: LibraryIndex) -> Wanted | None:
     """The reading :func:`split_title` declined that the library holds exactly.
 
     The bar is the highest there is, because a near hit says nothing about
@@ -568,10 +547,7 @@ def _other_reading_the_library_holds(
 
 
 def resolve_one(
-    wanted: Wanted,
-    index: LibraryIndex,
-    *,
-    suppresses: Callable[[str, Mapping[str, Any]], bool],
+    wanted: Wanted, index: LibraryIndex, *, suppresses: Callable[[str, Mapping[str, Any]], bool],
     suppression_id: Callable[[str, Mapping[str, Any]], str],
 ) -> TrackMatch:
     """Resolve one wanted track against the library and the tombstones.
@@ -607,9 +583,7 @@ def resolve_one(
         disagreements = {key_disagreement(wanted.key, held.key) for held in exact}
         if disagreements == {None}:
             return TrackMatch(
-                wanted=wanted,
-                state=MatchState.MATCHED,
-                why=agreed,
+                wanted=wanted, state=MatchState.MATCHED, why=agreed,
                 paths=tuple(str(held.path) for held in exact),
             )
         return TrackMatch(
@@ -631,9 +605,7 @@ def resolve_one(
     if doubtful:
         # The ISRC agrees and the title does not, see above. Asked, not assumed.
         return TrackMatch(
-            wanted=wanted,
-            state=MatchState.NEEDS_REVIEW,
-            why=Why.TITLE_APPROXIMATE,
+            wanted=wanted, state=MatchState.NEEDS_REVIEW, why=Why.TITLE_APPROXIMATE,
             candidates=_candidates_for(wanted, doubtful),
         )
 
@@ -674,10 +646,7 @@ def resolve_one(
     )
     if standing is not None:
         return TrackMatch(
-            wanted=wanted,
-            state=MatchState.SUPPRESSED,
-            why=Why.TOMBSTONED,
-            suppression_id=standing,
+            wanted=wanted, state=MatchState.SUPPRESSED, why=Why.TOMBSTONED, suppression_id=standing,
         )
 
     return TrackMatch(
@@ -689,9 +658,7 @@ def resolve_one(
 
 
 def resolve_all(
-    wanted: Sequence[Wanted],
-    index: LibraryIndex,
-    *,
+    wanted: Sequence[Wanted], index: LibraryIndex, *,
     suppresses: Callable[[str, Mapping[str, Any]], bool],
     suppression_id: Callable[[str, Mapping[str, Any]], str],
 ) -> MatchResult:
@@ -734,13 +701,8 @@ def current_option(found: TrackMatch, option: str, title: object) -> str:
 
 
 def apply_verdict(
-    found: TrackMatch,
-    *,
-    accepted: bool | None,
-    option: str | None,
-    offered: Sequence[str],
-    item_id: str,
-    suppresses: Callable[[str, Mapping[str, Any]], bool],
+    found: TrackMatch, *, accepted: bool | None, option: str | None, offered: Sequence[str],
+    item_id: str, suppresses: Callable[[str, Mapping[str, Any]], bool],
     suppression_id: Callable[[str, Mapping[str, Any]], str],
 ) -> TrackMatch:
     """Fold a recorded decision into a track that would otherwise need review.
@@ -756,13 +718,8 @@ def apply_verdict(
     """
     if accepted is None:
         return TrackMatch(
-            wanted=found.wanted,
-            state=found.state,
-            why=found.why,
-            candidates=found.candidates,
-            paths=found.paths,
-            item_id=item_id,
-            withheld=found.withheld,
+            wanted=found.wanted, state=found.state, why=found.why, candidates=found.candidates,
+            paths=found.paths, item_id=item_id, withheld=found.withheld,
         )
     if not accepted:
         standing = standing_tombstone(
@@ -770,12 +727,8 @@ def apply_verdict(
         )
         if standing is not None:
             return TrackMatch(
-                wanted=found.wanted,
-                state=MatchState.SUPPRESSED,
-                why=Why.TOMBSTONED,
-                candidates=found.candidates,
-                item_id=item_id,
-                suppression_id=standing,
+                wanted=found.wanted, state=MatchState.SUPPRESSED, why=Why.TOMBSTONED,
+                candidates=found.candidates, item_id=item_id, suppression_id=standing,
                 withheld=found.withheld,
             )
         return TrackMatch(
@@ -803,20 +756,13 @@ def apply_verdict(
         unresolved = Why.CANDIDATE_GONE
     if not chosen:
         return TrackMatch(
-            wanted=found.wanted,
-            state=MatchState.NEEDS_REVIEW,
-            why=unresolved,
-            candidates=found.candidates,
-            item_id=item_id,
-            withheld=found.withheld,
+            wanted=found.wanted, state=MatchState.NEEDS_REVIEW, why=unresolved,
+            candidates=found.candidates, item_id=item_id, withheld=found.withheld,
         )
     return TrackMatch(
-        wanted=found.wanted,
-        state=MatchState.MATCHED,
-        why=Why.VERDICT_ACCEPTED,
+        wanted=found.wanted, state=MatchState.MATCHED, why=Why.VERDICT_ACCEPTED,
         candidates=tuple(chosen),
-        paths=tuple(path for candidate in chosen for path in candidate.paths),
-        item_id=item_id,
+        paths=tuple(path for candidate in chosen for path in candidate.paths), item_id=item_id,
         withheld=found.withheld,
     )
 

@@ -54,10 +54,7 @@ def _named(proposals: list[fallback.Proposal]) -> str:
 
 
 def _outage(
-    exc: Exception,
-    wanted: match.Wanted,
-    offered: list[fallback.Proposal],
-    subject: dict[str, Any],
+    exc: Exception, wanted: match.Wanted, offered: list[fallback.Proposal], subject: dict[str, Any],
 ) -> CratekitError:
     return refuse(
         "unavailable-transient",
@@ -77,10 +74,8 @@ def _outage(
         scope=Scope.RUN,
         origin=ORIGIN,
         detail={
-            "artist": wanted.artist,
-            "title": wanted.listed,
-            "offered": [one.to_json() for one in offered],
-            **subject,
+            "artist": wanted.artist, "title": wanted.listed,
+            "offered": [one.to_json() for one in offered], **subject,
         },
     )
 
@@ -98,8 +93,7 @@ def missing_rows(
             "library-volume-unmounted",
             f"this library's music folder {str(music)!r} is not there, so no row of "
             f"the list can be told from a track the library already holds",
-            remedy=Remedy.MOUNT_LIBRARY_VOLUME,
-            origin=ORIGIN,
+            remedy=Remedy.MOUNT_LIBRARY_VOLUME, origin=ORIGIN,
             detail={"music": str(music), **subject},
         )
     index, suppresses, identify = match_cli.library_view(cfg)
@@ -107,10 +101,7 @@ def missing_rows(
     if any(match_cli.touches_the_queue(one) for one in resolved.matches):
         with review.open_store(cfg) as items:
             resolved = match_cli.adjudicate(
-                items,
-                resolved,
-                handler_key=ctx.entry.handler_key,
-                suppresses=suppresses,
+                items, resolved, handler_key=ctx.entry.handler_key, suppresses=suppresses,
                 suppression_id=identify,
             )
     counts = {"owned": 0, "offered": 0, "suppressed": 0, "missing": 0}
@@ -140,8 +131,7 @@ def provider_routed(items: review.ReviewStore, one: match.Wanted) -> bool:
         return True
     on_provider = candidates.settled(items, one)
     return on_provider is not None and on_provider.state in (
-        candidates.WAITING,
-        candidates.ACCEPTED,
+        candidates.WAITING, candidates.ACCEPTED,
     )
 
 
@@ -172,8 +162,7 @@ def acquire_fallback(ctx) -> Envelope:
                         found = searcher()
                     except binaries.BinaryNotFound as exc:
                         raise binary_refusal.yt_dlp_missing(
-                            exc,
-                            subject,
+                            exc, subject,
                             said="A second source search runs it, so no row was searched "
                             "and nothing was offered.",
                             origin=ORIGIN,
@@ -227,15 +216,13 @@ def acquire_fallback(ctx) -> Envelope:
         _check("offered", "ok" if offered_now else "info", said),
         _check("owned", "info", f"{counts['owned']} already in the library, not searched"),
         _check(
-            "version",
-            "info",
+            "version", "info",
             f"{counts['offered']} held in another version, offered for review and not "
             f"searched; see: crate review list",
         ),
         _check("suppressed", "info", f"{counts['suppressed']} deleted on purpose, not searched"),
         _check(
-            "provider",
-            "info",
+            "provider", "info",
             f"{len(routed)} missing track(s) carry the provider's own id or "
             f"have a provider candidate waiting or accepted in review, and are not "
             f"searched elsewhere"
@@ -246,14 +233,12 @@ def acquire_fallback(ctx) -> Envelope:
             ),
         ),
         _check(
-            "waiting",
-            "info",
+            "waiting", "info",
             f"{len(waiting)} missing track(s) are waiting in review with second source "
             f"candidates; answer them with crate review resolve",
         ),
         _check(
-            "accepted",
-            "info",
+            "accepted", "info",
             f"{len(accepted)} second source candidate(s) accepted in review; download "
             f"them into staging with: {fetch_command}"
             + (
@@ -274,19 +259,12 @@ def acquire_fallback(ctx) -> Envelope:
         ),
     ]
     summary = {
-        **subject,
-        "missing": counts["missing"],
-        "owned": counts["owned"],
-        "offered": counts["offered"],
-        "suppressed": counts["suppressed"],
-        "provider_routed": len(routed),
-        "fallback_offered": len(offered_now),
-        "waiting": len(waiting),
-        "accepted": len(accepted),
-        "unfound": len(unfound),
+        **subject, "missing": counts["missing"], "owned": counts["owned"],
+        "offered": counts["offered"], "suppressed": counts["suppressed"],
+        "provider_routed": len(routed), "fallback_offered": len(offered_now),
+        "waiting": len(waiting), "accepted": len(accepted), "unfound": len(unfound),
         "review_next": review_command if waiting else None,
-        "fetch_next": fetch_command if accepted else None,
-        "again": again,
+        "fetch_next": fetch_command if accepted else None, "again": again,
         "rows": [one.to_json() for one in proposals],
     }
     return ctx.envelope(
@@ -325,9 +303,7 @@ def build_fetch(parser, entry) -> None:
         ),
     )
     parser.add_argument(
-        "--job",
-        default=None,
-        metavar="JOB_ID",
+        "--job", default=None, metavar="JOB_ID",
         help="continue the download already queued under this identifier",
     )
     parser.set_defaults(_handler=acquire_fallback_fetch)
@@ -409,9 +385,7 @@ def _exists(final: Path, detail: dict[str, Any]) -> CratekitError:
         f"{final} already exists, so {detail['artist']} - {detail['title']} was not "
         f"put in its place; move or delete the existing file and resume, or leave "
         f"it and treat this item as done",
-        origin=FETCH_ORIGIN,
-        scope=Scope.ITEM,
-        detail={"path": str(final), **detail},
+        origin=FETCH_ORIGIN, scope=Scope.ITEM, detail={"path": str(final), **detail},
     )
 
 
@@ -478,8 +452,7 @@ def handle_fetch(job, item, cfg) -> jobs.Produced:
         # Parked, not failed: a missing program fails every later item alike.
         raise jobs.Parked(
             binary_refusal.yt_dlp_missing(
-                exc,
-                detail,
+                exc, detail,
                 said="A second source download runs it, so the job is parked with this "
                 "item not downloaded.",
                 origin=FETCH_ORIGIN,

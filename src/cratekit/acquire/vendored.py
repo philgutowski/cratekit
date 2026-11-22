@@ -42,9 +42,7 @@ from cratekit.core import binaries, config, provider_gate
 #: Cratekit's quality vocabulary to the client's enum VALUE. Pushed every run,
 #: because the tool's factory default is lossy.
 QUALITY_BY_POLICY: dict[str, str] = {
-    "lossless": "LOSSLESS",
-    "hi_res": "HI_RES_LOSSLESS",
-    "lossy": "HIGH",
+    "lossless": "LOSSLESS", "hi_res": "HI_RES_LOSSLESS", "lossy": "HIGH",
 }
 
 #: The file name the wrapped tool expects its session in.
@@ -104,10 +102,7 @@ def tool_settings(
 
 
 def apply_settings(
-    target: Any,
-    settings: AdapterSettings,
-    *,
-    resolve: Callable[[str], str] = binaries.resolve,
+    target: Any, settings: AdapterSettings, *, resolve: Callable[[str], str] = binaries.resolve,
 ) -> None:
     """Push this run's settings onto the tool's in-memory configuration, then check.
 
@@ -196,12 +191,7 @@ class _VendoredSource:
     """
 
     def __init__(
-        self,
-        settings: AdapterSettings,
-        token_path: Path,
-        *,
-        session: Any = None,
-        tool: Any = None,
+        self, settings: AdapterSettings, token_path: Path, *, session: Any = None, tool: Any = None,
         downloader: Any = None,
     ) -> None:
         self._settings = settings
@@ -290,8 +280,7 @@ class _VendoredSource:
         refusal = login_mode(tidal.data, had_stored_session=tidal.token_from_storage)
         if refusal is not None:
             raise AdapterAuthFailed(
-                f"{refusal}. To fix it, {REAUTHORISE_HINT}.",
-                remedy=Remedy.REAUTHENTICATE_PROVIDER,
+                f"{refusal}. To fix it, {REAUTHORISE_HINT}.", remedy=Remedy.REAUTHENTICATE_PROVIDER,
             )
 
         try:
@@ -357,8 +346,7 @@ class _VendoredSource:
         observe_session(downloader, tool_log)
         try:
             ok, landed = downloader.item(
-                file_template=STAGING_TEMPLATE,
-                media_id=str(request.key),
+                file_template=STAGING_TEMPLATE, media_id=str(request.key),
                 media_type=MediaType.TRACK,
             )
         except Exception as exc:
@@ -453,11 +441,7 @@ def codec_of(path: Path) -> tuple[str, bool | None]:
 
 
 def landed_file(
-    ok: bool,
-    landed: object,
-    key: str,
-    *,
-    policy: LosslessPolicy = LosslessPolicy.STRICT,
+    ok: bool, landed: object, key: str, *, policy: LosslessPolicy = LosslessPolicy.STRICT,
     probe: Callable[[Path], tuple[str, bool | None]] = codec_of,
     cause: BaseException | str | None = None,
 ) -> Path:

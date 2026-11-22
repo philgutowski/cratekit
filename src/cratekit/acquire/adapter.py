@@ -310,8 +310,7 @@ class IncompleteHandling(AdapterError):
 
 
 def dispatch(
-    result: InvocationResult,
-    handlers: Mapping[TrackOutcome, Callable[[TrackResult], object]],
+    result: InvocationResult, handlers: Mapping[TrackOutcome, Callable[[TrackResult], object]],
 ) -> list[object]:
     """Route every per-track result to its handler, refusing partial coverage.
 
@@ -430,11 +429,8 @@ def decide_lossless(policy: LosslessPolicy, *, source_is_lossless: bool) -> Poli
         return PolicyDecision(permitted=True, marker_required=False, source_is_lossless=True)
     if policy is LosslessPolicy.STRICT:
         return PolicyDecision(
-            permitted=False,
-            marker_required=False,
-            source_is_lossless=False,
-            remedy=Remedy.RELAX_LOSSLESS_POLICY,
-            detail=_LOSSY_DETAIL,
+            permitted=False, marker_required=False, source_is_lossless=False,
+            remedy=Remedy.RELAX_LOSSLESS_POLICY, detail=_LOSSY_DETAIL,
         )
     return PolicyDecision(
         permitted=True, marker_required=True, source_is_lossless=False, detail=_LOSSY_DETAIL
@@ -475,11 +471,9 @@ class AdapterSettings:
         acquisition = cfg.acquisition  # type: ignore[attr-defined]
         paths = cfg.paths  # type: ignore[attr-defined]
         return cls(
-            download_staging=Path(paths.download_staging),
-            quality=acquisition.quality,
+            download_staging=Path(paths.download_staging), quality=acquisition.quality,
             lossless_policy=LosslessPolicy(acquisition.lossless_policy),
-            pacing_delay_s=acquisition.pacing_delay_s,
-            concurrency=acquisition.concurrency,
+            pacing_delay_s=acquisition.pacing_delay_s, concurrency=acquisition.concurrency,
             gate=GateSettings.from_config(cfg),
         )
 
@@ -489,9 +483,7 @@ class AdapterSettings:
 _MISSING = object()
 
 
-def verify_applied(
-    applied: Mapping[str, object], expected: Mapping[str, object]
-) -> list[str]:
+def verify_applied(applied: Mapping[str, object], expected: Mapping[str, object]) -> list[str]:
     """Report every pushed setting the wrapped tool did not take (P3)."""
     problems: list[str] = []
     for key, want in expected.items():
@@ -535,12 +527,8 @@ class TrackSource(Protocol):
 
 
 def acquire_with_source(
-    *,
-    adapter: str,
-    source: TrackSource,
-    requests: Iterable[TrackRequest],
-    settings: AdapterSettings,
-    alternatives: Sequence[str] = (),
+    *, adapter: str, source: TrackSource, requests: Iterable[TrackRequest],
+    settings: AdapterSettings, alternatives: Sequence[str] = (),
     sleep: Callable[[float], None] = time.sleep,
 ) -> InvocationResult:
     """Run one acquisition against a source, producing a contract-shaped result.
@@ -558,21 +546,13 @@ def acquire_with_source(
         source.authenticate()
     except AdapterAuthFailed as exc:
         return InvocationResult(
-            adapter=adapter,
-            outcome=InvocationOutcome.AUTH_FAILED,
-            requested=requested,
-            detail=str(exc),
-            remedy=exc.remedy,
-            alternatives=tuple(alternatives),
+            adapter=adapter, outcome=InvocationOutcome.AUTH_FAILED, requested=requested,
+            detail=str(exc), remedy=exc.remedy, alternatives=tuple(alternatives),
         )
     except AdapterBroken as exc:
         return InvocationResult(
-            adapter=adapter,
-            outcome=InvocationOutcome.ADAPTER_BROKEN,
-            requested=requested,
-            detail=str(exc),
-            remedy=exc.remedy,
-            alternatives=tuple(alternatives),
+            adapter=adapter, outcome=InvocationOutcome.ADAPTER_BROKEN, requested=requested,
+            detail=str(exc), remedy=exc.remedy, alternatives=tuple(alternatives),
         )
 
     results: list[TrackResult] = []
@@ -586,31 +566,20 @@ def acquire_with_source(
         except AdapterAuthFailed as exc:
             # Mid-run session death: keep what landed, queue the rest (AE9).
             return InvocationResult(
-                adapter=adapter,
-                outcome=InvocationOutcome.AUTH_FAILED,
-                results=tuple(results),
-                requested=requested,
-                detail=str(exc),
-                remedy=exc.remedy,
+                adapter=adapter, outcome=InvocationOutcome.AUTH_FAILED, results=tuple(results),
+                requested=requested, detail=str(exc), remedy=exc.remedy,
                 alternatives=tuple(alternatives),
             )
         except AdapterBroken as exc:
             return InvocationResult(
-                adapter=adapter,
-                outcome=InvocationOutcome.ADAPTER_BROKEN,
-                results=tuple(results),
-                requested=requested,
-                detail=str(exc),
-                remedy=exc.remedy,
+                adapter=adapter, outcome=InvocationOutcome.ADAPTER_BROKEN, results=tuple(results),
+                requested=requested, detail=str(exc), remedy=exc.remedy,
                 alternatives=tuple(alternatives),
             )
         results.append(outcome)
 
     return InvocationResult(
-        adapter=adapter,
-        outcome=InvocationOutcome.OK,
-        results=tuple(results),
-        requested=requested,
+        adapter=adapter, outcome=InvocationOutcome.OK, results=tuple(results), requested=requested,
         alternatives=tuple(alternatives),
     )
 
@@ -637,9 +606,7 @@ def acquire_one(
     decision = decide_lossless(settings.lossless_policy, source_is_lossless=offer.lossless)
     if not decision.permitted:
         return TrackResult(
-            key=request.key,
-            outcome=TrackOutcome.REFUSED_BY_POLICY,
-            detail=decision.detail,
+            key=request.key, outcome=TrackOutcome.REFUSED_BY_POLICY, detail=decision.detail,
             remedy=decision.remedy,
         )
 
@@ -660,10 +627,7 @@ def acquire_one(
         return _unavailable(request, exc)
 
     return TrackResult(
-        key=request.key,
-        outcome=TrackOutcome.ACQUIRED,
-        path=Path(path),
-        lossless=offer.lossless,
+        key=request.key, outcome=TrackOutcome.ACQUIRED, path=Path(path), lossless=offer.lossless,
         requires_lossy_marker=decision.marker_required,
     )
 
@@ -672,9 +636,7 @@ def _unavailable(request: TrackRequest, exc: BaseException) -> TrackResult:
     """Turn a per-track exception into a classified result; only transients retry."""
     classification = classify_unavailable(exc)
     return TrackResult(
-        key=request.key,
-        outcome=classification,
-        detail=str(exc),
+        key=request.key, outcome=classification, detail=str(exc),
         remedy=(
             Remedy.RETRY_LATER
             if classification is TrackOutcome.UNAVAILABLE_TRANSIENT
@@ -734,10 +696,7 @@ class BaseAdapter:
         return alternatives_to(self.name)
 
     def acquire(
-        self,
-        requests: Iterable[TrackRequest],
-        *,
-        sleep: Callable[[float], None] = time.sleep,
+        self, requests: Iterable[TrackRequest], *, sleep: Callable[[float], None] = time.sleep,
     ) -> InvocationResult:
         """Run one acquisition, with the credential live only for its duration.
 
@@ -750,30 +709,20 @@ class BaseAdapter:
             with self._session_scope() as scope:
                 source = self._injected if self._injected is not None else self._source(scope)
                 return acquire_with_source(
-                    adapter=self.name,
-                    source=source,
-                    requests=ordered,
-                    settings=self.settings,
-                    alternatives=self._alternatives(),
-                    sleep=sleep,
+                    adapter=self.name, source=source, requests=ordered, settings=self.settings,
+                    alternatives=self._alternatives(), sleep=sleep,
                 )
         except AdapterAuthFailed as exc:
             return InvocationResult(
-                adapter=self.name,
-                outcome=InvocationOutcome.AUTH_FAILED,
-                requested=tuple(request.key for request in ordered),
-                detail=str(exc),
-                remedy=exc.remedy,
-                alternatives=self._alternatives(),
+                adapter=self.name, outcome=InvocationOutcome.AUTH_FAILED,
+                requested=tuple(request.key for request in ordered), detail=str(exc),
+                remedy=exc.remedy, alternatives=self._alternatives(),
             )
         except AdapterBroken as exc:
             return InvocationResult(
-                adapter=self.name,
-                outcome=InvocationOutcome.ADAPTER_BROKEN,
-                requested=tuple(request.key for request in ordered),
-                detail=str(exc),
-                remedy=exc.remedy,
-                alternatives=self._alternatives(),
+                adapter=self.name, outcome=InvocationOutcome.ADAPTER_BROKEN,
+                requested=tuple(request.key for request in ordered), detail=str(exc),
+                remedy=exc.remedy, alternatives=self._alternatives(),
             )
 
 

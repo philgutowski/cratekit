@@ -161,9 +161,7 @@ def _included(body: Mapping[str, Any]) -> dict[tuple[str, str], Mapping[str, Any
 
 
 def _related(
-    resource: Mapping[str, Any],
-    name: str,
-    included: Mapping[tuple[str, str], Mapping[str, Any]],
+    resource: Mapping[str, Any], name: str, included: Mapping[tuple[str, str], Mapping[str, Any]],
 ) -> list[Mapping[str, Any]]:
     """The included resources one relationship names, in order. One not included
     is skipped rather than invented, so the track reads as unreadable."""
@@ -214,14 +212,10 @@ def track_of(
         for found in _related(resource, "albums", included)
     ]
     return Track(
-        id=str(resource.get("id") or "").strip(),
-        name=title,
-        title=title,
+        id=str(resource.get("id") or "").strip(), name=title, title=title,
         version=_text(attributes.get("version")) or None,
-        isrc=_text(attributes.get("isrc")) or None,
-        artists=artists,
-        artist=artists[0] if artists else None,
-        album=albums[0] if albums else None,
+        isrc=_text(attributes.get("isrc")) or None, artists=artists,
+        artist=artists[0] if artists else None, album=albums[0] if albums else None,
         available=_available(attributes),
     )
 
@@ -234,12 +228,7 @@ class AppCatalogue:
     """
 
     def __init__(
-        self,
-        client_id: str,
-        client_key: str,
-        country_code: str,
-        *,
-        transport: Any,
+        self, client_id: str, client_key: str, country_code: str, *, transport: Any,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self.request_session = transport
@@ -288,11 +277,8 @@ class AppCatalogue:
         if self._token is not None and now < self._expires_at:
             return self._token
         response = self._send(
-            "POST",
-            TOKEN_URL,
-            data={"grant_type": "client_credentials"},
-            auth=(self._client_id, self._client_key),
-            headers={"Accept": "application/json"},
+            "POST", TOKEN_URL, data={"grant_type": "client_credentials"},
+            auth=(self._client_id, self._client_key), headers={"Accept": "application/json"},
         )
         status = getattr(response, "status_code", None)
         if status in TOKEN_REJECTED_STATUSES:
@@ -307,8 +293,7 @@ class AppCatalogue:
             )
         if status != 200:
             raise CatalogueUnavailable(
-                f"the provider's token service answered {_status(int(status or 0))}",
-                status=status,
+                f"the provider's token service answered {_status(int(status or 0))}", status=status,
             )
         body = self._json(response, "token service")
         token = _text(body.get("access_token"))
@@ -467,8 +452,7 @@ def rejected(exc: AppCredentialsRejected, doing: str) -> CratekitError:
             "check the app on the provider's developer platform",
             f"record its identifier and key again: {LOGIN_STEPS}",
         ),
-        scope=Scope.RUN,
-        origin=("acquire", "catalogue_api"),
+        scope=Scope.RUN, origin=("acquire", "catalogue_api"),
         detail={"credential": str(CREDENTIALS[0]), "status": exc.status},
     )
 
