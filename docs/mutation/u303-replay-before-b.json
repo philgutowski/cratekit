@@ -1,18 +1,18 @@
 {
   "name": "u303-replay-before-b",
   "pass_kind": "replay",
-  "branch": "HEAD",
+  "branch": "cloud/860-replay-b",
   "head": "fd8173d3",
-  "when": "2026-11-22 18:45 UTC",
+  "when": "2026-11-22 21:38 UTC",
   "valid": true,
   "invalid_reason": "in progress",
   "baseline_collected": 22933,
   "baseline_exit": 1,
-  "pytest_runs": 90,
+  "pytest_runs": 109,
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 251,
-  "known_source": "/tmp/claude-0/-home-user-cratekit/ce20fa78-0ba8-5393-bea1-e47f9b749a43/scratchpad/known-replay.txt",
+  "known_source": "../known-replay.txt",
   "temp_place": "disk",
   "temp_on_disk": 0,
   "baseline_source": "measured",
@@ -2026,6 +2026,683 @@
       "source": {
         "table": "u170.json",
         "id": "G5_no_abort_retired"
+      }
+    },
+    {
+      "id": "u170.G6_missing_verb_branch",
+      "description": "old_gate: drop the missing verb reason, so the fallback reason speaks for it",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c93fdd1d561788d2",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_a_gate_whose_verb_is_gone_is_old_and_kept"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if owner is None:\n        kept: str | None = f\"{state.verb} is not a verb in this build\"\n    elif spec is None:",
+      "new": "    if owner is None and False:\n        kept: str | None = f\"{state.verb} is not a verb in this build\"\n    elif spec is None:",
+      "source": {
+        "table": "u170.json",
+        "id": "G6_missing_verb_branch"
+      }
+    },
+    {
+      "id": "u170.G8_malformed_stamp",
+      "description": "_instant: a malformed created stamp raises instead of reading as unknown",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "eb94f61ece1c4d23",
+      "subset": [
+        "tests/test_run_retire.py",
+        "tests/test_doctor.py",
+        "tests/test_cli_contract.py",
+        "tests/test_config.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1704,
+      "baseline_collected": 1704,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_run_retire.py::test_a_hand_edited_start_stamp_is_aged_by_the_records_last_write"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except (TypeError, ValueError):\n        return None\n    return moment if",
+      "new": "    except TypeError:\n        return None\n    return moment if",
+      "source": {
+        "table": "u170.json",
+        "id": "G8_malformed_stamp"
+      }
+    },
+    {
+      "id": "u183.M16_record_written_only_when_set",
+      "description": "RunState.to_json: write related_runs always, so every record moves",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "35588494e7909efb",
+      "subset": [
+        "tests/test_sync_land.py",
+        "tests/test_gate_pins.py",
+        "tests/test_run_decide_continue.py",
+        "tests/test_run_retire.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 127,
+      "baseline_collected": 127,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land.py::test_a_land_run_that_recorded_no_pass_is_refused_and_says_why",
+        "tests/test_sync_land.py::test_a_record_with_no_related_runs_is_the_record_it_was_and_one_with_them_round_trips"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if self.related_runs:\n            record[\"related_runs\"]",
+      "new": "        if True:\n            record[\"related_runs\"]",
+      "source": {
+        "table": "u183.json",
+        "id": "M16_record_written_only_when_set"
+      }
+    },
+    {
+      "id": "u183.M17_record_read_back",
+      "description": "RunState.from_json: read related_runs as empty, so a saved pass is lost on load",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "84ac3143c9b0535e",
+      "subset": [
+        "tests/test_sync_land.py",
+        "tests/test_gate_pins.py",
+        "tests/test_run_decide_continue.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 86,
+      "baseline_collected": 86,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land.py::test_a_continued_pass_refused_while_rekordbox_runs_names_the_way_back",
+        "tests/test_sync_land.py::test_a_land_run_whose_pass_no_intake_job_carries_is_refused_not_continued",
+        "tests/test_sync_land.py::test_a_pass_continued_by_its_land_run_id_reaches_the_same_jobs_as_by_its_pass_id",
+        "tests/test_sync_land.py::test_a_record_with_no_related_runs_is_the_record_it_was_and_one_with_them_round_trips",
+        "tests/test_sync_land.py::test_a_refused_id_names_the_land_run_recorded_beside_each_pass",
+        "tests/test_sync_land.py::test_a_run_interrupted_after_sync_all_continues_by_its_own_id",
+        "tests/test_sync_land.py::test_a_run_record_that_is_not_an_object_leaves_the_refusal_whole"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                {str(role): str(run) for role, run in data[\"related_runs\"].items()}\n                if isinstance(data.get(\"related_runs\"), dict)",
+      "new": "                {}\n                if isinstance(data.get(\"related_runs\"), dict)",
+      "source": {
+        "table": "u183.json",
+        "id": "M17_record_read_back"
+      }
+    },
+    {
+      "id": "u183.M18_load_refuses_non_object",
+      "description": "gates.load: drop the refusal of a record that is not a JSON object",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1813a82ad756f2fa",
+      "subset": [
+        "tests/test_sync_land.py",
+        "tests/test_run_retire.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 112,
+      "baseline_collected": 112,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_land.py::test_a_run_record_that_is_not_an_object_is_the_gates_own_refusal"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not isinstance(raw, dict):\n        raise CratekitError(",
+      "new": "    if False:\n        raise CratekitError(",
+      "source": {
+        "table": "u183.json",
+        "id": "M18_load_refuses_non_object"
+      }
+    },
+    {
+      "id": "u186.S10_scope_every_verb",
+      "description": "writes_the_database: answer True for every declared verb, so a gated verb writing no database warns",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "903960364f9be6f4",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_a_verb_that_writes_no_database_is_outside_the_warning",
+        "tests/test_gate_siblings.py::test_a_verb_writing_no_database_says_nothing_of_its_own_siblings"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return bool(owner.writes & DB_WRITE_SURFACES)",
+      "new": "    return True",
+      "source": {
+        "table": "u186.json",
+        "id": "S10_scope_every_verb"
+      }
+    },
+    {
+      "id": "u186.S1_window_wider",
+      "description": "SIBLING_WINDOW: twelve hours widened to a day, so an answer thirteen hours old is named",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "61256ace576e2912",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_an_answer_thirteen_hours_ago_is_history_and_says_nothing",
+        "tests/test_gate_siblings.py::test_decide_says_nothing_over_a_sibling_answered_thirteen_hours_ago"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "SIBLING_WINDOW = timedelta(hours=12)",
+      "new": "SIBLING_WINDOW = timedelta(hours=24)",
+      "source": {
+        "table": "u186.json",
+        "id": "S1_window_wider"
+      }
+    },
+    {
+      "id": "u186.S2_window_narrower",
+      "description": "SIBLING_WINDOW: twelve hours halved, so an answer eleven hours fifty old is silent",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "efb2b3e234014101",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_an_answer_just_inside_twelve_hours_is_still_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "SIBLING_WINDOW = timedelta(hours=12)",
+      "new": "SIBLING_WINDOW = timedelta(hours=6)",
+      "source": {
+        "table": "u186.json",
+        "id": "S2_window_narrower"
+      }
+    },
+    {
+      "id": "u186.S3_exclude_self",
+      "description": "siblings: drop the asking run's exclusion, so a run continued to its gate names itself",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9129e079b0f7cb8e",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 19,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_a_record_missing_a_field_is_named_unreadable_at_the_gate_and_in_doctor",
+        "tests/test_gate_siblings.py::test_a_record_that_cannot_be_read_is_said_rather_than_read_as_no_run",
+        "tests/test_gate_siblings.py::test_a_run_never_warns_about_itself",
+        "tests/test_gate_siblings.py::test_a_run_of_another_verb_is_never_named",
+        "tests/test_gate_siblings.py::test_a_sibling_whose_gate_is_open_is_named_as_open",
+        "tests/test_gate_siblings.py::test_an_answer_just_inside_twelve_hours_is_still_named",
+        "tests/test_gate_siblings.py::test_an_answer_ten_minutes_ago_is_named_with_its_actor_option_and_time",
+        "tests/test_gate_siblings.py::test_an_answer_thirteen_hours_ago_is_history_and_says_nothing",
+        "tests/test_gate_siblings.py::test_an_answer_with_no_recorded_time_is_named_as_unrecorded",
+        "tests/test_gate_siblings.py::test_decide_continue_carries_the_warning_on_the_verbs_own_envelope",
+        "tests/test_gate_siblings.py::test_decide_continue_says_a_sibling_once_when_the_verb_stops_at_its_gate_again",
+        "tests/test_gate_siblings.py::test_decide_repeats_over_a_sibling_that_answered_then_stopped_at_another_gate",
+        "tests/test_gate_siblings.py::test_decide_repeats_the_warning_over_a_sibling_answered_apply_on_the_same_plan",
+        "tests/test_gate_siblings.py::test_decide_says_nothing_over_a_sibling_answered_thirteen_hours_ago",
+        "tests/test_gate_siblings.py::test_decide_says_nothing_when_the_sibling_aborted",
+        "tests/test_gate_siblings.py::test_decide_says_nothing_when_the_sibling_answered_another_gate",
+        "tests/test_gate_siblings.py::test_decide_says_nothing_when_the_sibling_answered_another_plan",
+        "tests/test_gate_siblings.py::test_one_warning_per_other_run",
+        "tests/test_gate_siblings.py::test_with_no_other_run_the_gate_says_nothing_of_one"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if path.stem == exclude:\n            continue\n        try:\n            state = load(path.stem)",
+      "new": "        try:\n            state = load(path.stem)",
+      "source": {
+        "table": "u186.json",
+        "id": "S3_exclude_self"
+      }
+    },
+    {
+      "id": "u186.S4_other_verb",
+      "description": "siblings: drop the verb filter, so a run of another verb is named",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "2986fdedfa689422",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_a_run_of_another_verb_is_never_named"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if state.verb != verb:\n            continue",
+      "new": "",
+      "source": {
+        "table": "u186.json",
+        "id": "S4_other_verb"
+      }
+    },
+    {
+      "id": "u186.S5_unreadable_dropped",
+      "description": "siblings: skip a record that cannot be read rather than counting it, so the gap reads as no sibling",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "3bc5e69a8237e4cb",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_a_record_missing_a_field_is_named_unreadable_at_the_gate_and_in_doctor",
+        "tests/test_gate_siblings.py::test_a_record_that_cannot_be_read_is_said_rather_than_read_as_no_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        except Exception:  # noqa: BLE001 - an unread record is said, never skipped\n            unreadable.append(path.stem)\n            continue",
+      "new": "        except Exception:  # noqa: BLE001 - an unread record is said, never skipped\n            continue",
+      "source": {
+        "table": "u186.json",
+        "id": "S5_unreadable_dropped"
+      }
+    },
+    {
+      "id": "u186.S6_unrecorded_time_old",
+      "description": "siblings: an answer whose time cannot be read counts as old rather than recent",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8412384b825a1e17",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_an_answer_with_no_recorded_time_is_named_as_unrecorded"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            if when is None or moment - when <= within:",
+      "new": "            if when is not None and moment - when <= within:",
+      "source": {
+        "table": "u186.json",
+        "id": "S6_unrecorded_time_old"
+      }
+    },
+    {
+      "id": "u186.S7_open_drops_answers",
+      "description": "siblings: a run with an open gate keeps no answers, the shape the first review round drove",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "6bf4de3a52b3a725",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_decide_repeats_over_a_sibling_that_answered_then_stopped_at_another_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    run_id=state.run_id, verb=verb, gate=state.open_gate, at=since, answers=answers",
+      "new": "                    run_id=state.run_id, verb=verb, gate=state.open_gate, at=since, answers=()",
+      "source": {
+        "table": "u186.json",
+        "id": "S7_open_drops_answers"
+      }
+    },
+    {
+      "id": "u186.S8_open_read_as_answered",
+      "description": "siblings: an open gate is reported as an answered run, so the message never says open",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "e35a88744a0a2275",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_a_sibling_whose_gate_is_open_is_named_as_open",
+        "tests/test_gate_siblings.py::test_decide_repeats_over_a_sibling_that_answered_then_stopped_at_another_gate",
+        "tests/test_gate_siblings.py::test_one_warning_per_other_run",
+        "tests/test_gate_siblings.py::test_the_warning_prints_on_the_screen_a_person_reads"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if state.open_gate is not None:\n            since = idle_since(state, path)",
+      "new": "        if False:\n            since = idle_since(state, path)",
+      "source": {
+        "table": "u186.json",
+        "id": "S8_open_read_as_answered"
+      }
+    },
+    {
+      "id": "u186.S9_unreadable_unsaid",
+      "description": "sibling_warnings: say nothing of the records that could not be read",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "a294e5bb5e6dd6c8",
+      "subset": [
+        "tests/test_gate_siblings.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 34,
+      "baseline_collected": 34,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_gate_siblings.py::test_a_record_missing_a_field_is_named_unreadable_at_the_gate_and_in_doctor",
+        "tests/test_gate_siblings.py::test_a_record_that_cannot_be_read_is_said_rather_than_read_as_no_run"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if unreadable:\n        records_word = \"record\" if len(unreadable) == 1 else \"records\"\n        said.append(",
+      "new": "    if False:\n        records_word = \"record\" if len(unreadable) == 1 else \"records\"\n        said.append(",
+      "source": {
+        "table": "u186.json",
+        "id": "S9_unreadable_unsaid"
+      }
+    },
+    {
+      "id": "u211.D3_kept_set_is_narrow",
+      "description": "KEPT_RUN_REASONS: rekordbox-running keeps its run as well",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f69ed17613189ab5",
+      "subset": [
+        "tests/test_reserved_causes.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 229,
+      "baseline_collected": 229,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_reserved_causes.py::test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "KEPT_RUN_REASONS: tuple[str, ...] = (processes.UNCONFIRMED,)",
+      "new": "KEPT_RUN_REASONS: tuple[str, ...] = (processes.UNCONFIRMED, \"rekordbox-running\")",
+      "source": {
+        "table": "u211.json",
+        "id": "D3_kept_set_is_narrow"
+      }
+    },
+    {
+      "id": "u49-author.G1_an_explicit_gate_takes_an_inline_answer_again",
+      "description": "Restore the recorded-is-None qualifier this unit removed, so a flag can overturn a recorded abort and mint the acknowledgment",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "30bda299b1026f29",
+      "subset": [
+        "tests/test_session_cli.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 37,
+      "baseline_collected": 37,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_session_cli.py::test_an_inline_answer_cannot_overturn_a_recorded_abort"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if inline is not None and spec.explicit:",
+      "new": "        if inline is not None and spec.explicit and recorded is None:",
+      "source": {
+        "table": "u49-author.json",
+        "id": "G1_an_explicit_gate_takes_an_inline_answer_again"
+      }
+    },
+    {
+      "id": "u49-author.G2_the_second_raise_site_drops_the_context",
+      "description": "Carry the context at the no-answer refusal only, so what a person sees depends on whether they typed a flag",
+      "file": "src/cratekit/cli/gates.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "90d592c64a8092cf",
+      "subset": [
+        "tests/test_cli_contract.py",
+        "tests/test_deletion.py",
+        "tests/test_doctor.py",
+        "tests/test_restore_cli.py",
+        "tests/test_write_session.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 1987,
+      "baseline_collected": 1987,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_cli_contract.py::test_the_explicit_inline_refusal_carries_the_context_too"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            self.state.open_gate = spec.name\n            raise DecisionRequired(spec, self.state.run_id, context)\n\n        chosen = inline if inline is not None else (recorded.option if recorded else None)",
+      "new": "            self.state.open_gate = spec.name\n            raise DecisionRequired(spec, self.state.run_id)\n\n        chosen = inline if inline is not None else (recorded.option if recorded else None)",
+      "source": {
+        "table": "u49-author.json",
+        "id": "G2_the_second_raise_site_drops_the_context"
+      }
+    },
+    {
+      "id": "u270.H1_batch_size_floor",
+      "description": "batching_of: accept a batch form of size zero",
+      "file": "src/cratekit/cli/handlers.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "5aa72b35311c341e",
+      "subset": [
+        "tests/test_handlers.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 32,
+      "baseline_collected": 32,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_handlers.py::test_a_batch_form_that_is_not_a_callable_and_a_size_refuses[size-zero]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "isinstance(size, bool) or size < 1:",
+      "new": "isinstance(size, bool) or size < 0:",
+      "source": {
+        "table": "u270.json",
+        "id": "H1_batch_size_floor"
       }
     }
   ],
