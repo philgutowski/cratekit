@@ -1083,6 +1083,25 @@ def test_a_bucket_folder_that_does_not_exist_yet_is_not_mistaken_for_a_rename(
     assert _memberships(db, "2") == 2
 
 
+def test_two_playlists_of_the_destinations_name_leave_its_node_unrecorded(
+    cfg, gates_pass, db, adopted_root, declared
+):
+    """The node map never binds a destination to whichever of two namesakes came first."""
+    bucket_id, sub_id = _destination(declared)
+    folder_display, sub_display = routing_pass.destination(declared, bucket_id, sub_id)
+    folder = db.create_playlist_folder(folder_display, parent=adopted_root)
+    db.create_playlist(sub_display, parent=folder)
+    db.create_playlist(sub_display, parent=folder)
+    db.session.commit()
+    routing_pass.record_intents(cfg, [_intent(cfg, declared, PLAIN)])
+
+    report = _route(cfg, db, adopted_root, declared)
+
+    assert report.memberships[0].added == 1
+    record = convergence.read(cfg).tree(TREE_ID)
+    assert record is None or record.node(bucket_id, sub_id) is None
+
+
 _CONCURRENT_WRITER = '''
 import sys
 from pathlib import Path

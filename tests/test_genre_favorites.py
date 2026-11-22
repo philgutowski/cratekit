@@ -885,6 +885,37 @@ def test_a_removal_that_fails_after_the_additions_landed_says_what_landed(
     assert {c.tree: (c.created, c.updated) for c in record.change.trees} == {TREE: (1, 0)}
 
 
+def test_a_removal_commit_that_lands_and_then_raises_is_recorded_with_its_count(
+    cfg, gates_pass, db, monkeypatch
+):
+    """An exception out of the removals' commit is not proof nothing was taken out."""
+    tree = Tree(cfg, db)
+    tree.playlist(DEEP, "Med", "1", "2")
+    favorites = tree.playlist(DEEP, FAVORITES.display, "2")
+    tree.source("1")
+    plan = _plan(cfg, db, tree)
+    real_remove, real_commit = rb_writer.remove_memberships, db.commit
+    removing: list[bool] = []
+
+    def remove(*args, **kwargs):
+        removing.append(True)
+        return real_remove(*args, **kwargs)
+
+    def lands_then_fails(*args, **kwargs):
+        real_commit(*args, **kwargs)
+        if removing:
+            raise OSError("the playlist file could not be saved")
+
+    monkeypatch.setattr(rb_writer, "remove_memberships", remove)
+    monkeypatch.setattr(db, "commit", lands_then_fails)
+    with pytest.raises(genre_favorites.RefreshInterrupted):
+        _apply(cfg, db, tree, plan)
+
+    assert _members(db, favorites.ID) == {"1"}, "the fixture did not land the removal"
+    (record,) = [r for r in session.records(cfg) if r.workflow == genre_favorites.WORKFLOW]
+    assert {c.tree: (c.created, c.updated) for c in record.change.trees} == {TREE: (1, 1)}
+
+
 def test_the_verb_reports_an_interrupted_refresh_with_the_additions_that_committed(
     cfg, gates_pass, db, monkeypatch
 ):

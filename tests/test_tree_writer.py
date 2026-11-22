@@ -1003,6 +1003,34 @@ def test_a_commit_that_lands_and_then_raises_is_still_recorded_as_committed(
     assert record.change.trees == (session.TreeChange(tree=TREE_ID, created=1, updated=0),)
 
 
+def test_a_moves_removal_commit_that_lands_and_then_raises_is_still_recorded(
+    cfg, gates_pass, db, adopted_root, monkeypatch
+):
+    """A move's removal that landed before its commit raised is work a restore must see."""
+    _write(cfg, db, plan=_one(cfg), root_id=str(adopted_root.ID))
+    real_commit = db.commit
+    commits: list[bool] = []
+
+    def lands_then_fails_second(*args, **kwargs):
+        real_commit(*args, **kwargs)
+        commits.append(True)
+        if len(commits) == 2:
+            raise OSError("the playlist file could not be saved")
+
+    monkeypatch.setattr(db, "commit", lands_then_fails_second)
+    with pytest.raises(OSError, match="playlist file"):
+        trees.move_tree_membership(
+            cfg, db, tree_id=TREE_ID,
+            registry=_registry(tree_registry.Mode.DATABASE, root_id=str(adopted_root.ID)),
+            moves=[trees.MembershipMove("1", (OTHER_FOLDER, SUB_DISPLAY), ((FOLDER_DISPLAY, SUB_DISPLAY),))],
+            root_exists=lambda _root: True, analysis_roots=[Path(cfg.library.root) / "Music"],
+        )
+
+    assert len(commits) == 2, "the fixture did not reach the removal commit"
+    (moved,) = [r for r in session.records(cfg) if r.workflow == trees.MOVE_WORKFLOW]
+    assert moved.change.trees == (session.TreeChange(tree=TREE_ID, created=1, updated=1),)
+
+
 def test_the_commit_witness_leaves_the_handle_as_it_found_it(cfg, gates_pass, db, adopted_root):
     """The listener is removed on the way out, on a handle that outlives the write."""
     with rb_writer.commit_witness(db) as witness:
