@@ -1265,32 +1265,11 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
-    # ── Deletion: one surface, TWO MODULES, and the split is the decision ────
+    # ── Deletion: one surface, two modules ──────────────────────────────────
     #
-    # The two verbs named one module and moved together, and the pair was
-    # re-pointed away from U24 on the argument that neither could land. Half of
-    # that argument was wrong. ``tombstone.list`` declares no gate, writes
-    # nothing, is not destructive, and emits a review set, so conformance 3's
-    # loop over its gates never executes a single iteration for it: nothing about
-    # R-13's wall touches it, and R36 asks for tombstones to be LISTABLE and
-    # revocable, which is a sentence the engine alone cannot satisfy because a
-    # person cannot reach the engine.
-    #
-    # ``delete.review`` lands here. The 2026-08-02 note said it could not,
-    # blaming the explicit gate. That wall is down. The remaining wall was a
-    # missing database on the conformance fixture. The fixture now substitutes
-    # a disposable database, so the verb can exit OK after R34's two acts.
-    #
-    # Splitting the module is what let ``tombstone.list`` land first. This half
-    # stayed until the fixture existed.
-    #
-    # INLINE, NOT QUEUED, decided by U60. This entry used to declare
-    # ``long_running`` with ``argv_builder="delete_argv"``, which is the queueing
-    # contract, over a shell that plans, asks and trashes in the invocation that
-    # was typed and never enqueued anything (R-149). The drop is the direction
-    # taken: the gate is explicit and its digest is the plan, so the person who
-    # confirmed a set of files watches them go rather than receiving a job id,
-    # and a detached child would rebuild a plan nobody digested.
+    # Two modules so ``tombstone.list``, which writes nothing, did not wait on
+    # the destructive verb (R36). ``delete.review`` runs inline, not queued
+    # (U60, R-149): the person who confirmed the plan watches the files go.
     Entry(
         name="delete.review",
         summary="review tracks removed from the collection and trash the confirmed files",
@@ -1298,12 +1277,8 @@ ENTRIES: tuple[Entry, ...] = (
         feature_rows=(37,), module_id="deletion", emits=frozenset({"review_set"}),
         output_schema="review_set/1", adjudicates=True, destructive=True,
         writes=frozenset({"files"}),
-        # ``library.trash`` is declared HERE and by nothing else, because
-        # this is the only verb that moves a file to the Trash (R35). It is
-        # a precondition rather than a note: the deletion pass calls
-        # ``trash.assert_usable`` immediately before every move, so a volume
-        # with no usable Trash refuses AFTER the review, after the confirm
-        # gate, and against a plan already digested.
+        # ``library.trash`` only here, the one verb that trashes a file (R35);
+        # a precondition, since the pass would otherwise refuse after the confirm.
         doctor_checks=(
             "library.mounted", "library.identity", "library.trash", "rekordbox.closed",
             "library.paths_resolved",
@@ -1342,9 +1317,8 @@ ENTRIES: tuple[Entry, ...] = (
         summary="take the tracks no longer in a library playlist off the remote " "playlist it was exported to",
         module="cratekit.export.prune_cli", builder="build_prune", handler_key="export.prune",
         feature_rows=(36,), module_id="export", emits=frozenset({"plan"}), output_schema="plan/1",
-        #: One surface, the account, and the one write is ``remove_tracks`` on
-        #: the remote playlist ``export.playlist`` made, which the outbound
-        #: ledger records. ``destructive`` on ``label.prune``'s reason.
+        #: The account only: ``remove_tracks`` on a playlist ``export.playlist``
+        #: made. Destructive, for ``label.prune``'s reason.
         writes=frozenset({"remote"}), destructive=True, doctor_checks=("credential.provider",),
         gates=(
             GateSpec(

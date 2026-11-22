@@ -216,9 +216,9 @@ class Done(Exception):
 class Chain:
     """Every step's check, every child's warning, and the facts a person reads.
 
-    ``namespace`` keys every check and is the boundary each child's cause has
-    appended to its trail, ``title`` names the verb in its progress lines; ``steps`` is the whole order the verb runs, so its
-    progress lines count the verb's own steps and not only the tail's.
+    ``namespace`` keys every check and is appended to each child's cause
+    trail; ``title`` names the verb in progress lines; ``steps`` is the verb's
+    whole order, which its progress lines count.
     """
 
     progress: Callable[[str], None] | None
@@ -230,8 +230,7 @@ class Chain:
     again: str
     checks: list[dict[str, Any]] = dataclasses.field(default_factory=list)
     warnings: list[dict[str, str]] = dataclasses.field(default_factory=list)
-    #: Each step's last ``--job`` envelope, by step, so a step can read what its
-    #: own verb reported about the job it drove (U284).
+    #: Each step's last ``--job`` envelope, by step (U284).
     settled: dict[str, dict[str, Any]] = dataclasses.field(default_factory=dict)
     summary: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
@@ -258,8 +257,7 @@ class Chain:
     def note(self, name: str, status: str, detail: str) -> None:
         """A row of its own, ``<namespace>.<name>``, that is not a step's (U181).
 
-        For what a step does beside its verb, the vocal rescore after ``analyze
-        run`` above all, so each step's own row stays the one row its key names.
+        For what a step does beside its verb, such as the vocal rescore.
         """
         self.checks.append(
             {
@@ -279,11 +277,7 @@ class Chain:
             )
 
     def call(self, step: str, argv: Sequence[str]) -> Child:
-        """Run one step's verb, keeping its command and its warnings.
-
-        Through the module's :func:`dispatch`, read at call time, so the one
-        seam stands in for every chain.
-        """
+        """Run one step's verb through :func:`dispatch`, keeping its command and warnings."""
         self.say(step, "crate " + " ".join(argv))
         self.summary["commands"].append(["crate", *argv])
         code, envelope = dispatch(list(argv))
@@ -333,10 +327,8 @@ def succeeded(code: int, envelope: dict[str, Any]) -> bool:
 def required(chain: Chain, step: str, argv: Sequence[str]) -> dict[str, Any]:
     """Run a step whose refusal ends the chain, and return its envelope.
 
-    A STEP'S GATE IS NOT THE VERB'S GATE. Raised as the verb's own refusal, a
-    gate's code would mark its run resumable over a question it does not
-    declare, so a gate any step stops at ends the chain for a person, naming
-    the step's own run and command.
+    A step's gate is not the verb's, so it ends the chain for a person, naming
+    the step's own run, rather than marking the verb's run resumable.
     """
     code, envelope = chain.call(step, argv)
     if not succeeded(code, envelope):
@@ -356,9 +348,8 @@ def argv_for(job: jobs.Job) -> list[str]:
 def settle(chain: Chain, step: str, job: jobs.Job) -> jobs.Job:
     """Drive one job through its own ``--job`` command, then read it off the queue.
 
-    A job that ended failed or blocked answers with a refusal, which is the
-    job's own; the caller reads the state and decides. What it never does is
-    read the command's exit as the job's state, since the queue is the truth.
+    The caller reads the state and decides; the command's exit is never read
+    as the job's state, since the queue is the truth.
     """
     if not job.is_open():
         return job
@@ -368,10 +359,7 @@ def settle(chain: Chain, step: str, job: jobs.Job) -> jobs.Job:
     with jobs.open_store() as store:
         settled = jobs.get(store, job.job_id)
     if settled.is_open() and settled.state is not jobs.JobState.BLOCKED:
-        # STILL QUEUED OR RUNNING: the command never drove it, a live driver
-        # elsewhere holding it above all. The command's own refusal says why,
-        # where the job row, which records no cause yet, says nothing. A gate
-        # it stopped at is the command's own, as in ``required``.
+        # Still open: the command never drove it, so its own refusal says why.
         cause = cause_of(chain, step, argv, code, envelope)
         if cause.code in gates.GATE_CODES:
             raise Attend(step, argv, cause)
@@ -391,9 +379,7 @@ def with_steps(error: CratekitError, *steps: str) -> CratekitError:
 def job_error(chain: Chain, job: jobs.Job) -> CratekitError:
     """A settled job's own refusal, through the engine's one reading of a state.
 
-    ``raise_for_state`` is what every shell ends on, so a parked job arrives as
-    the blocked type and a cancelled one as the cancelled type, and the chain
-    ends the way the step would have ended alone.
+    Through ``raise_for_state``, so the chain ends as the step would alone.
     """
     try:
         jobs.raise_for_state(job)
@@ -428,8 +414,7 @@ def replace_stale(chain: Chain, step: str, verb: str, folder: Path, cfg: config.
             and str((job.payload or {}).get("folder") or "") == str(folder)
         ]
         for job in stale:
-            # A LIVE DRIVER IS NOT STALE. Its refusal names the holder, and the
-            # chain ends rather than run a second sweep over the same files.
+            # A live driver is not stale; its refusal ends the chain.
             jobs.assert_free(job.job_id)
             jobs.cancel(store, job.job_id)
             chain.summary["replaced"].append({"step": step, "job_id": job.job_id})
@@ -442,9 +427,7 @@ def tail_step(
         replace_stale(chain, step, verb, folder, cfg)
     except CratekitError as exc:
         raise Stop(step, rebuilt(exc, exc.cause.at(chain.namespace))) from exc
-    # ``--queue-only`` (U192): run by hand these verbs drive what they queue,
-    # and the chain drives it itself below, through the ``--job`` command, so
-    # each step reads as two commands and no job is driven twice.
+    # ``--queue-only`` (U192), since the chain drives the job itself below.
     envelope = required(chain, step, [*words, foreground.QUEUE_ONLY, str(folder)])
     job_id = str((envelope.get("data") or {}).get("job_id") or "")
     if envelope.get("outcome") == str(Outcome.NO_OP) or not job_id:
