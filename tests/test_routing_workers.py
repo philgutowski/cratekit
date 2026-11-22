@@ -310,16 +310,18 @@ def _queued_jobs() -> tuple[jobs.Job, ...]:
         return jobs.list_jobs(store)
 
 
-def _membership(cfg: config.Config, root_id: str) -> set[str]:
-    """Every content identifier the governed tree holds, read back from the file."""
+def _tree_nodes(cfg: config.Config, root_id: str) -> tuple[rebuild.TreeNode, ...]:
+    """Every node under the governed root, read back from the file."""
     handle = rb_writer.open_db(Path(cfg.library.db_path), cfg=cfg)
     try:
-        held: set[str] = set()
-        for node in rebuild.read_tree(handle, root_id):
-            held |= set(node.content_ids)
-        return held
+        return tuple(rebuild.read_tree(handle, root_id))
     finally:
         rb_writer.close_db(handle)
+
+
+def _membership(cfg: config.Config, root_id: str) -> set[str]:
+    """Every content identifier the governed tree holds."""
+    return {cid for node in _tree_nodes(cfg, root_id) for cid in node.content_ids}
 
 
 #: The native library plain and encrypted, as a real one is (R-239); a test takes it by ``request``.
@@ -1454,14 +1456,6 @@ def _export_track(
     return lines
 
 
-def _routing_folder(name: str, subs: tuple[str, ...]) -> list[str]:
-    return [
-        f'        <NODE Type="0" Name="{name}" Count="{len(subs)}">',
-        *(f'          <NODE Name="{sub}" Type="1" KeyType="0" Entries="0"/>' for sub in subs),
-        "        </NODE>",
-    ]
-
-
 def _write_export(
     cfg: config.Config,
     folder: Path,
@@ -1476,8 +1470,9 @@ def _write_export(
     analyzed: tuple[str, ...] = ("11",),
     lengths: dict[str, str] | None = None,
     root_extra: tuple[str, ...] = (),
+    held: dict[tuple[str, str], tuple[str, ...]] | None = None,
 ) -> Path:
-    """A fresh export: a collection, an INBOX batch, and the routing tree."""
+    """A fresh export: a collection, an INBOX batch, and the routing tree holding ``held``."""
     inbox = tuple(tracks) if inbox is None else inbox
     ratings = ratings or {}
     lengths = lengths or {}
@@ -1515,7 +1510,7 @@ def _write_export(
             *batch,
             "      </NODE>",
             f'      <NODE Type="0" Name="{declared.tree.display}" Count="{len(folders)}">',
-            *(line for name, held in folders for line in _routing_folder(name, held)),
+            *(line for name, subs in folders for line in _placed_folder(name, subs, held or {})),
             "      </NODE>",
             *root_extra,
         ],
@@ -2332,16 +2327,8 @@ def _vox_display() -> str:
 
 
 def _vox_nodes(cfg: config.Config, root_id: str) -> list[rebuild.TreeNode]:
-    """Every vocal sub-playlist under the governed root, read back from the file."""
-    handle = rb_writer.open_db(Path(cfg.library.db_path), cfg=cfg)
-    try:
-        return [
-            node
-            for node in rebuild.read_tree(handle, root_id)
-            if node.playlist_display == _vox_display()
-        ]
-    finally:
-        rb_writer.close_db(handle)
+    """Every vocal sub-playlist under the governed root."""
+    return [node for node in _tree_nodes(cfg, root_id) if node.playlist_display == _vox_display()]
 
 
 def _vox_members(cfg: config.Config, root_id: str) -> set[str]:
@@ -2665,15 +2652,8 @@ def _blocked_inbox() -> dict:
 
 def _filed_under(cfg: config.Config, root_id: str, content_id: str) -> set[str]:
     """Every ``folder/playlist`` under the governed root holding this row."""
-    handle = rb_writer.open_db(Path(cfg.library.db_path), cfg=cfg)
-    try:
-        return {
-            f"{node.folder_display}/{node.playlist_display}"
-            for node in rebuild.read_tree(handle, root_id)
-            if content_id in node.content_ids
-        }
-    finally:
-        rb_writer.close_db(handle)
+    nodes = _tree_nodes(cfg, root_id)
+    return {f"{n.folder_display}/{n.playlist_display}" for n in nodes if content_id in n.content_ids}
 
 
 def test_the_database_inbox_gate_shows_each_files_destination(acknowledged, native):
@@ -2934,36 +2914,11 @@ def _unplaced_export(
     root_extra: tuple[str, ...] = (),
 ) -> Path:
     """A fresh export whose routing tree holds ``held`` and nothing else (U91)."""
-    held = held or {}
     if folders is None:
         folders = (("Deep House", ("Low", "Med")), ("Tech House", ("Low", "Med")))
-    music = Path(cfg.library.root) / "Music"
-    rows: list[str] = []
-    for tid, (name, *_rest) in EXPORT_TRACKS.items():
-        path = music / name
-        if tid != missing_file:
-            path.write_bytes(b"")
-        rows += _export_track(tid, locations.location_url(path), analyzed=tid == "11")
-    declared = taxonomy.default_taxonomy()
-    document = _xml_doc(
-        collection=[f'  <COLLECTION Entries="{len(EXPORT_TRACKS)}">', *rows, "  </COLLECTION>"],
-        root_children=[
-            f'      <NODE Type="0" Name="{declared.intake.display}" Count="1">',
-            '        <NODE Name="2026-09-19 batch" Type="1" KeyType="0" '
-            f'Entries="{len(intake)}">',
-            *(f'          <TRACK Key="{key}"/>' for key in intake),
-            "        </NODE>",
-            "      </NODE>",
-            f'      <NODE Type="0" Name="{declared.tree.display}" Count="{len(folders)}">',
-            *(line for name, subs in folders for line in _placed_folder(name, subs, held)),
-            "      </NODE>",
-            *root_extra,
-        ],
+    return _write_export(
+        cfg, folder, inbox=intake, folders=folders, held=held, missing_file=missing_file, root_extra=root_extra
     )
-    folder.mkdir(parents=True, exist_ok=True)
-    export = folder / "library_FRESH.xml"
-    export.write_bytes(document)
-    return export
 
 
 def _placed(export: Path) -> Path:
