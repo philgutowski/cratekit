@@ -102,9 +102,7 @@ def test_a_full_batch_is_one_add_and_one_record_of_every_track(cfg):
 
     assert account.chunks == [("pl-1", ("t1", "t2", "t3"))]
     assert report.added == ("t1", "t2", "t3")
-    assert report.outcomes == tuple(
-        (f"row-{one}", one, export.ADDED) for one in ("t1", "t2", "t3")
-    )
+    assert report.outcomes == tuple((f"row-{one}", one, export.ADDED) for one in ("t1", "t2", "t3"))
     record = _recorded(cfg)[KEY]
     assert record["added"] == ["t1", "t2", "t3"]
     assert record["rows"] == {"row-t1": "t1", "row-t2": "t2", "row-t3": "t3"}
@@ -451,9 +449,7 @@ def test_a_job_of_two_hundred_and_fifty_tracks_makes_fifteen_requests(cfg, monke
     this at 503 requests, over the gate's ceiling of 500 for one command."""
     provider = Account("pl0")
     remote = _adapter(provider)
-    monkeypatch.setattr(
-        remote, "match_track", lambda **asked: str(1000 + int(asked["identity"]))
-    )
+    monkeypatch.setattr(remote, "match_track", lambda **asked: str(1000 + int(asked["identity"])))
     _bind(monkeypatch, remote)
     ledger.reserve_playlist(cfg, outbound_fakes.CRATE, lambda: "pl0")
     job_id = _queue(_crate(cfg, 250))
@@ -520,9 +516,7 @@ def test_one_refused_read_after_a_landed_add_through_the_driver_finishes_the_job
     once and nothing told failed."""
     provider = FailsTheReadAfterAdding("pl0", refusals=1)
     remote = _adapter(provider)
-    monkeypatch.setattr(
-        remote, "match_track", lambda **asked: str(1000 + int(asked["identity"]))
-    )
+    monkeypatch.setattr(remote, "match_track", lambda **asked: str(1000 + int(asked["identity"])))
     _bind(monkeypatch, remote)
     ledger.reserve_playlist(cfg, outbound_fakes.CRATE, lambda: "pl0")
     job_id = _queue(_crate(cfg, 100))

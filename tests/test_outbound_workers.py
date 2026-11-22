@@ -205,9 +205,7 @@ def test_a_name_that_is_a_folder_refuses_rather_than_resolving(installed):
 
 
 def test_an_empty_playlist_refuses_distinguishably_from_an_absent_one(installed):
-    path = outbound_fakes.write_export(
-        installed.library.root / "outbound", favorites=()
-    )
+    path = outbound_fakes.write_export(installed.library.root / "outbound", favorites=())
     code, refused = drive(favorites_verb(path))
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "export-playlist-empty"
@@ -270,9 +268,7 @@ def test_a_repeated_track_id_becomes_one_item(installed):
     """``job_items`` is keyed on (job_id, item_id), so a repeat would be an
     IntegrityError reaching a person as ``internal-error`` over a document the
     reader accepted."""
-    path = outbound_fakes.write_export(
-        installed.library.root / "outbound", crate=(1, 2, 1)
-    )
+    path = outbound_fakes.write_export(installed.library.root / "outbound", crate=(1, 2, 1))
     resolved = source.resolve(source.read_library(path), outbound_fakes.CRATE)
     assert resolved.track_ids == ("1", "2")
     assert resolved.repeated == ("1",)
@@ -280,19 +276,27 @@ def test_a_repeated_track_id_becomes_one_item(installed):
 
 def test_a_queued_export_holds_one_item_per_track(queue):
     job_id = queue(fake(1, 2, 3))
-    with jobs.open_store() as store:
-        assert [item.item_id for item in jobs.items(store, job_id)] == ["1", "2", "3"]
+    assert [item.item_id for item in _items(job_id)] == ["1", "2", "3"]
 
 
 # 3. The export worker runs
+
+
+def _items(job_id: str) -> list:
+    with jobs.open_store() as store:
+        return list(jobs.items(store, job_id))
+
+
+def _job(job_id: str):
+    with jobs.open_store() as store:
+        return jobs.get(store, job_id)
 
 
 def _resume(job_id: str) -> tuple[int, dict]:
     """Drive the resume the job engine would spawn, in THIS process."""
     from cratekit.cli import jobs as cli_jobs
 
-    with jobs.open_store() as store:
-        job = jobs.get(store, job_id)
+    job = _job(job_id)
     return drive(cli_jobs.argv_for(job))
 
 
@@ -337,11 +341,7 @@ def test_a_second_export_of_the_same_playlist_adds_nothing_and_creates_nothing(q
     assert account.created == [outbound_fakes.CRATE]
     assert account.playlist_tracks("pl-1") == ("tid-1", "tid-2", "tid-3")
     assert resumed["data"]["progress"]["outbound"]["added"] == []
-    assert sorted(resumed["data"]["progress"]["outbound"]["already"]) == [
-        "tid-1",
-        "tid-2",
-        "tid-3",
-    ]
+    assert sorted(resumed["data"]["progress"]["outbound"]["already"]) == ["tid-1", "tid-2", "tid-3"]
 
 
 def test_the_envelope_names_the_tracks_the_provider_could_not_match(queue):
@@ -360,8 +360,7 @@ def _resume_human(job_id: str) -> tuple[int, str]:
     """The same resume as :func:`_resume`, answered in the default output mode."""
     from cratekit.cli import jobs as cli_jobs
 
-    with jobs.open_store() as store:
-        job = jobs.get(store, job_id)
+    job = _job(job_id)
     return drive_human(cli_jobs.argv_for(job))
 
 
@@ -396,9 +395,7 @@ def test_an_export_with_an_unmatched_track_counts_and_names_it_on_both_renderers
     code, said = _resume_human(job_id)
     assert code == int(ExitCode.OK), said
     assert "  tracks: 2 written, 0 already there or written before, 1 unmatched" in said
-    assert (
-        f"    unmatched: Artist 2 - 08A - 124 - Track 2: {export_cli.NO_MATCH}" in said
-    ), said
+    assert (f"    unmatched: Artist 2 - 08A - 124 - Track 2: {export_cli.NO_MATCH}" in said), said
     assert f"warning [{export_cli.UNMATCHED_WARNING}]" in said
 
 
@@ -480,8 +477,7 @@ def test_a_failed_item_leaves_the_job_resumable_and_the_resume_redoes_only_it(qu
 
     code, resumed = _resume(job_id)
     assert code != int(ExitCode.OK), resumed
-    with jobs.open_store() as store:
-        states = {item.item_id: str(item.state) for item in jobs.items(store, job_id)}
+    states = {item.item_id: str(item.state) for item in _items(job_id)}
     assert states["1"] == str(jobs.ItemState.DONE)
     assert states["2"] == str(jobs.ItemState.FAILED)
     assert states["3"] == str(jobs.ItemState.DONE)
@@ -493,8 +489,7 @@ def test_a_failed_item_leaves_the_job_resumable_and_the_resume_redoes_only_it(qu
     # under test is the driver's, not the spawner's.
     account.fail_on = frozenset()
     assert _retried(job_id)[0] == int(ExitCode.OK)
-    with jobs.open_store() as store:
-        after = {item.item_id: str(item.state) for item in jobs.items(store, job_id)}
+    after = {item.item_id: str(item.state) for item in _items(job_id)}
     assert after["2"] == str(jobs.ItemState.DONE)
     # The two that already succeeded were not written a second time.
     assert account.added.count(("pl-1", "tid-1")) == 1
@@ -514,8 +509,7 @@ def test_a_track_the_provider_would_not_add_fails_its_item_alone_and_is_never_re
     job_id = queue(account)
 
     assert _resume(job_id)[0] != int(ExitCode.OK)
-    with jobs.open_store() as store:
-        held = jobs.items(store, job_id)
+    held = _items(job_id)
     states = {item.item_id: str(item.state) for item in held}
     cause = {item.item_id: item.cause for item in held}["2"]
     assert states == {
@@ -526,9 +520,7 @@ def test_a_track_the_provider_would_not_add_fails_its_item_alone_and_is_never_re
     assert cause is not None and cause.reason == "unavailable-transient"
     assert "the provider added nothing for the track 'tid-2'" in cause.message
     written = json.loads(config.state_path("outbound_writes", installed).read_text())
-    assert [record["added"] for record in written["playlists"].values()] == [
-        ["tid-1", "tid-3"]
-    ]
+    assert [record["added"] for record in written["playlists"].values()] == [["tid-1", "tid-3"]]
     assert "sending" not in next(iter(written["playlists"].values()))
     assert account.playlists["pl-1"] == ["tid-1", "tid-3"]
 
@@ -540,8 +532,7 @@ def test_a_refused_request_fails_every_item_it_carried_and_the_resume_adds_each_
     job_id = queue(account)
 
     assert _resume(job_id)[0] != int(ExitCode.OK)
-    with jobs.open_store() as store:
-        states = {item.item_id: str(item.state) for item in jobs.items(store, job_id)}
+    states = {item.item_id: str(item.state) for item in _items(job_id)}
     assert set(states.values()) == {str(jobs.ItemState.FAILED)}
     assert account.added == []
 
@@ -567,9 +558,7 @@ def test_the_resume_of_a_half_failed_export_does_not_exit_ok(queue):
     # item's own cause, which is not retryable (R-380).
     assert resumed["cause"]["reason"] == "internal-error"
     assert resumed["cause"]["retryable"] is False
-    assert resumed["data"] is None or resumed["data"].get("state") != str(
-        jobs.JobState.SUCCEEDED
-    )
+    assert resumed["data"] is None or resumed["data"].get("state") != str(jobs.JobState.SUCCEEDED)
 
 
 # 4. The favourites sweep runs, add only
@@ -810,8 +799,7 @@ def test_the_resumed_sweep_says_the_same_thing_where_the_hearting_actually_happe
     job_id = sweep(fake(1, 2))
     from cratekit.cli import jobs as cli_jobs
 
-    with jobs.open_store() as store:
-        argv = cli_jobs.argv_for(jobs.get(store, job_id))
+    argv = cli_jobs.argv_for(_job(job_id))
 
     code, text = _human(argv)
 
@@ -938,13 +926,8 @@ def test_a_job_driven_with_no_adapter_fails_rather_than_reporting_success(queue)
     # provider seam's own cause rides on the ITEMS. Asserted at both altitudes,
     # because a person reads the first and a maintainer needs the second.
     assert resumed["cause"]["reason"] == "no-evidence"
-    with jobs.open_store() as store:
-        assert jobs.get(store, job_id).state is jobs.JobState.FAILED
-        reasons = {
-            item.cause.reason
-            for item in jobs.items(store, job_id)
-            if item.cause is not None
-        }
+    assert _job(job_id).state is jobs.JobState.FAILED
+    reasons = {item.cause.reason for item in _items(job_id) if item.cause is not None}
     assert reasons <= {"credential-missing", "outbound-account-unbound"}
     assert reasons
 
@@ -974,8 +957,7 @@ def test_a_relative_export_argument_still_resumes(exported, monkeypatch, tmp_pat
     monkeypatch.chdir(exported.parent)
     relative = ["export", "playlist", outbound_fakes.CRATE, "--export", exported.name]
     job_id = queue(verb=relative)
-    with jobs.open_store() as store:
-        assert Path(jobs.get(store, job_id).payload["export"]).is_absolute()
+    assert Path(_job(job_id).payload["export"]).is_absolute()
     assert _resume(job_id)[0] == int(ExitCode.OK)
 
 
@@ -1035,12 +1017,7 @@ def test_an_item_whose_track_left_the_export_refuses_rather_than_writing_nothing
 
     code, resumed = _resume(job_id)
     assert code != int(ExitCode.OK), resumed
-    with jobs.open_store() as store:
-        failed = [
-            item
-            for item in jobs.items(store, job_id)
-            if item.state is jobs.ItemState.FAILED
-        ]
+    failed = [item for item in _items(job_id) if item.state is jobs.ItemState.FAILED]
     assert {item.item_id for item in failed} == {"2", "3"}
     assert all(
         item.cause is not None and item.cause.reason == "outbound-item-absent"
@@ -1059,12 +1036,7 @@ def test_a_ledger_that_cannot_be_read_stops_the_write_rather_than_duplicating(in
     code, resumed = _resume(job_id)
     assert code != int(ExitCode.OK), resumed
     assert account.created == []
-    with jobs.open_store() as store:
-        causes = {
-            item.cause.reason
-            for item in jobs.items(store, job_id)
-            if item.cause is not None
-        }
+    causes = {item.cause.reason for item in _items(job_id) if item.cause is not None}
     assert causes == {"outbound-ledger-unusable"}
 
 
@@ -1171,9 +1143,7 @@ def test_the_row_builders_use_the_configured_prefix_map(tmp_path, monkeypatch):
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
     data = valid_data(root)
     old = tmp_path / "renamed-drive"
-    data["library"]["location_prefix_map"] = [
-        {"from": str(old), "to": "{library.root}"}
-    ]
+    data["library"]["location_prefix_map"] = [{"from": str(old), "to": "{library.root}"}]
     cfg = config.from_dict(data)
     _tagged(tmp_path / "synth", root / "Music" / "1.flac", "ZZX9A2600042")
     exported = outbound_fakes.write_export(
@@ -1187,9 +1157,7 @@ def test_the_row_builders_use_the_configured_prefix_map(tmp_path, monkeypatch):
         "ZZX9A2600042",
         "",
     ]
-    assert [c.isrc for c in source.heart_candidates(library, ("1",), cfg=cfg)] == [
-        "ZZX9A2600042"
-    ]
+    assert [c.isrc for c in source.heart_candidates(library, ("1",), cfg=cfg)] == ["ZZX9A2600042"]
     source.forget_libraries()
 
 
@@ -1221,8 +1189,7 @@ def test_a_dangling_track_is_named_in_the_queued_envelope(installed, monkeypatch
     job_id = queue(verb=export_verb(path))
     code, shown = drive(["job", "show", job_id])
     assert code == int(ExitCode.OK), shown
-    with jobs.open_store() as store:
-        assert [item.item_id for item in jobs.items(store, job_id)] == ["1", "2"]
+    assert [item.item_id for item in _items(job_id)] == ["1", "2"]
 
 
 def test_the_queued_envelope_names_a_missing_and_a_repeated_track(
@@ -1252,9 +1219,7 @@ def test_a_ledger_that_cannot_be_written_creates_no_remote_playlist_at_all(monke
     job_id = queue(account)
 
     def unwritable(cfg):
-        raise ledger._unusable(
-            Path("outbound_writes.lock"), "the state directory is not writable"
-        )
+        raise ledger._unusable(Path("outbound_writes.lock"), "the state directory is not writable")
 
     monkeypatch.setattr(ledger, "_locked", unwritable)
     code, resumed = _resume(job_id)
@@ -1287,8 +1252,7 @@ def test_a_job_with_no_items_refuses_rather_than_reporting_a_clean_success(queue
     code, resumed = _resume(job_id)
     assert code != int(ExitCode.OK), resumed
     assert resumed["cause"]["reason"] == "internal-error"
-    with jobs.open_store() as store:
-        assert jobs.get(store, job_id).state is not jobs.JobState.SUCCEEDED
+    assert _job(job_id).state is not jobs.JobState.SUCCEEDED
 
 
 def test_a_confirm_does_not_authorise_a_different_track_set_at_the_same_path(
@@ -1471,8 +1435,7 @@ def test_the_queueing_envelope_warns_that_the_export_is_old(
     assert len(stale) == 1, queued["warnings"]
     assert written.astimezone().date().isoformat() in stale[0]["message"]
     assert "30 days" in stale[0]["message"]
-    with jobs.open_store() as store:
-        assert jobs.items(store, queued["data"]["job_id"]), "a stale export refuses nothing"
+    assert _items(queued["data"]["job_id"]), "a stale export refuses nothing"
 
 
 @BOTH_VERBS
@@ -1518,12 +1481,8 @@ def test_old_means_past_the_limit_and_not_at_it(tmp_path):
     document.write_text("<x/>")
     os.utime(document, (_WRITTEN.timestamp(), _WRITTEN.timestamp()))
     at = source.export_age(document, limit_days=7, now=_WRITTEN + timedelta(days=7))
-    past = source.export_age(
-        document, limit_days=7, now=_WRITTEN + timedelta(days=7, seconds=1)
-    )
-    late = source.export_age(
-        document, limit_days=7, now=_WRITTEN + timedelta(days=7, hours=23)
-    )
+    past = source.export_age(document, limit_days=7, now=_WRITTEN + timedelta(days=7, seconds=1))
+    late = source.export_age(document, limit_days=7, now=_WRITTEN + timedelta(days=7, hours=23))
     assert (at.stale, at.age_days) == (False, 7)
     assert (past.stale, past.age_days) == (True, 7)
     assert (late.stale, late.age_days) == (True, 7)
@@ -1586,9 +1545,7 @@ def test_the_sentence_does_not_say_seven_is_past_seven(tmp_path):
     document = tmp_path / "collection.xml"
     document.write_text("<x/>")
     os.utime(document, (_WRITTEN.timestamp(), _WRITTEN.timestamp()))
-    age = source.export_age(
-        document, limit_days=7, now=_WRITTEN + timedelta(days=7, hours=5)
-    )
+    age = source.export_age(document, limit_days=7, now=_WRITTEN + timedelta(days=7, hours=5))
     (warning,) = shell_module.age_warnings(age)
     assert "7 days 5 hours ago" in warning["message"]
     assert shell_module.shown_export(age)["export"]["age"] == "7 days 5 hours"
@@ -1602,9 +1559,7 @@ def test_a_limit_too_large_for_a_duration_does_not_crash_the_question(tmp_path):
     document = tmp_path / "collection.xml"
     document.write_text("<x/>")
     os.utime(document, (_WRITTEN.timestamp(), _WRITTEN.timestamp()))
-    age = source.export_age(
-        document, limit_days=10_000_000_000, now=_WRITTEN + timedelta(days=30)
-    )
+    age = source.export_age(document, limit_days=10_000_000_000, now=_WRITTEN + timedelta(days=30))
     assert age.stale is False
 
 
@@ -1712,12 +1667,7 @@ def test_a_crate_dragged_into_a_folder_updates_its_remote_playlist(installed, qu
     assert resumed["data"]["progress"]["outbound"]["added"] == ["tid-4"]
     reports = artifacts.committed(installed, job_id)
     # ONE MOVE PER JOB, reported by the item that made it and by no other.
-    assert [report["adopted_from"] for report in reports] == [
-        outbound_fakes.CRATE,
-        "",
-        "",
-        "",
-    ]
+    assert [report["adopted_from"] for report in reports] == [outbound_fakes.CRATE, "", "", ""]
     assert {report["remote_id"] for report in reports} == {"pl-1"}
     recorded = _ledger_playlists(installed)
     assert list(recorded) == [_MOVED]
@@ -1794,10 +1744,7 @@ def test_new_playlist_declines_the_adoption_and_creates(installed, queue):
     moved = _moved_into_a_folder(installed)
     verb = [*export_verb(moved, _MOVED), "--new-playlist"]
 
-    assert _shown_playlist(verb) == {
-        "action": export_cli.ACTION_CREATE,
-        "remote_id": None,
-    }
+    assert _shown_playlist(verb) == {"action": export_cli.ACTION_CREATE, "remote_id": None}
     job_id = queue(verb=verb)
     assert _resume(job_id)[0] == int(ExitCode.OK)
 
@@ -1829,9 +1776,7 @@ def test_a_confirmed_adoption_does_not_authorise_a_create(installed, queue):
 def test_an_export_that_adopts_nothing_digests_as_it_always_did():
     """A job frozen before the key existed must still resume (``DecisionStale``)."""
     plain = export_cli.confirm_digest("crate", "/x/collection.xml", ["1", "2"])
-    assert export_cli.confirm_digest(
-        "crate", "/x/collection.xml", ["1", "2"], adopts=""
-    ) == plain
+    assert export_cli.confirm_digest("crate", "/x/collection.xml", ["1", "2"], adopts="") == plain
     assert export_cli.confirm_digest(
         "crate", "/x/collection.xml", ["1", "2"], adopts="old"
     ) != plain
@@ -1857,11 +1802,7 @@ def test_two_orphaned_records_that_could_each_be_it_adopt_neither(installed, que
     code, _resumed = _resume(job_id)
     assert code == int(ExitCode.OK)
     assert account.created == [outbound_fakes.CRATE, "Second", "Third"]
-    assert sorted(_ledger_playlists(installed)) == [
-        "Second",
-        "Third",
-        outbound_fakes.CRATE,
-    ]
+    assert sorted(_ledger_playlists(installed)) == ["Second", "Third", outbound_fakes.CRATE]
 
 
 def test_two_crates_offered_one_orphan_do_not_both_get_it(installed, queue):
@@ -1892,8 +1833,7 @@ def test_a_half_driven_job_resumed_after_its_crate_moved_creates_nothing(install
     account = _exported_once(queue, 1, 2)
     account.catalog.update(catalog(3))
     old_job = queue()
-    with jobs.open_store() as store:
-        assert jobs.get(store, old_job).payload[export_cli.REMOTE] == "pl-1"
+    assert _job(old_job).payload[export_cli.REMOTE] == "pl-1"
 
     moved = _moved_into_a_folder(installed)
     new_job = queue(verb=export_verb(moved, _MOVED))
@@ -1950,8 +1890,7 @@ def test_the_resume_gate_shows_the_frozen_tracks_the_digest_covers(exported, que
     playlist, the export path and the frozen adoption in front of them, read
     off the payload and never off the export document."""
     job_id = queue(fake(1, 2, 3))
-    with jobs.open_store() as store:
-        payload = jobs.get(store, job_id).payload
+    payload = _job(job_id).payload
 
     refused = _asked([*export_verb(exported), "--job", job_id])
     detail = refused["cause"]["detail"]
@@ -1974,8 +1913,7 @@ def test_the_resume_gate_shows_the_frozen_tracks_the_digest_covers(exported, que
         filing=shown[export_cli.FILING],
     )
     assert shell_module.EXPORT not in shown, "the resume reads nothing off the export document"
-    with jobs.open_store() as store:
-        assert jobs.get(store, job_id).state is jobs.JobState.QUEUED
+    assert _job(job_id).state is jobs.JobState.QUEUED
 
 
 def test_the_export_gate_shows_the_tracks_the_digest_covers_beside_the_age(
@@ -2045,9 +1983,7 @@ def test_the_files_album_is_read_beside_its_isrc_in_one_read(installed, tmp_path
     assert tags.write_tags(tagged, {"album": "  Tidal Lines "}) is True
     bare = _tagged(tmp_path / "b", root / "Music" / "b.flac", "ZZX9A2600043")
 
-    found = source.file_identity(
-        _entry(locations.location_url(tagged)), root=root, prefix_map=[]
-    )
+    found = source.file_identity(_entry(locations.location_url(tagged)), root=root, prefix_map=[])
     assert found == source.FileIdentity(isrc="ZZX9A2600042", album="Tidal Lines")
     assert source.file_identity(
         _entry(locations.location_url(bare)), root=root, prefix_map=[]
