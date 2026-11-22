@@ -3396,3 +3396,23 @@ def test_every_unreachable_gate_is_real_and_carries_a_reason():
             f"{name} is exempted from assertion 3 with a reason too thin to "
             f"judge; say what makes it unprovokable and what would change that"
         )
+
+
+def test_the_reports_shell_reads_each_engine_from_its_own_module_on_first_use():
+    """The reports module is toggleable, so the shell imports no engine at load
+    (U303) and resolves each one, under its old attribute name, on first read."""
+    import importlib
+
+    from cratekit.cli import reports as reports_cli
+
+    for attribute, module in (
+        ("aging", "aging"),
+        ("coverage", "coverage"),
+        ("duplicates", "duplicates"),
+        ("export", "export"),
+        ("library_report", "library"),
+    ):
+        expected = importlib.import_module(f"cratekit.modules.reports.{module}")
+        assert getattr(reports_cli, attribute) is expected, attribute
+    with pytest.raises(AttributeError):
+        reports_cli.no_such_engine  # noqa: B018
