@@ -188,6 +188,18 @@ def test_a_remote_that_cannot_serve_the_history_refuses_baseline_and_compare(
     assert battery.cmd_compare(None) == 1
 
 
+def test_a_red_ruff_or_scan_refuses_baseline_and_compare_before_the_suite(
+    tmp_path, monkeypatch, places
+):
+    state = _point(monkeypatch, tmp_path)
+    monkeypatch.setattr(battery, "static_checks", lambda: False)
+    _refuse_runs(monkeypatch, "measure_suite")
+    assert battery.cmd_baseline(None) == 1
+    assert not (state / "baseline.txt").exists()
+    _baseline_file(tmp_path, monkeypatch)
+    assert battery.cmd_compare(None) == 1
+
+
 def test_a_complete_clone_runs_no_fetch(origin, tmp_path, monkeypatch):
     """Every git call is recorded: a fetch failing on a complete clone still returns None."""
     clone = _clone(origin[0], tmp_path / "clone", shallow=False)
