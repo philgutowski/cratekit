@@ -49,34 +49,6 @@ old = '    if len(set(named.values())) > 1:'
 new = '    if len(set(named.values())) > 3:'
 
 [[rows]]
-id = "r926.G2_checks_the_shipped_tool"
-source = { table = "r926.json", id = "G2_checks_the_shipped_tool" }
-description = "The guard runs in a process without pytest too, so the shipped tool refuses every configuration save"
-file = "src/cratekit/core/config.py"
-surface = "user"
-tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
-old = '''
-    if "pytest" not in sys.modules:
-        return
-    root = _TEST_WRITE_ROOT'''
-new = '''
-    if False:
-        return
-    root = _TEST_WRITE_ROOT'''
-
-[[rows]]
-id = "u254.C3_append_test_root"
-source = { table = "u254.json", id = "C3_append_test_root" }
-description = "append_durable_bytes: drop the test root refusal"
-file = "src/cratekit/core/config.py"
-surface = "maintainer"
-tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_config_test_root.py", "tests/test_config.py", "tests/test_adoption.py"]
-old = '''
-    _refuse_write_outside_test_root(path, system_temporary=True)
-    fd = os.open(path, os.O_WRONLY | os.O_APPEND)'''
-new = '    fd = os.open(path, os.O_WRONLY | os.O_APPEND)'
-
-[[rows]]
 id = "r740-a.N4_stem_before_title"
 source = { table = "r740-a.json", id = "N4_stem_before_title" }
 description = "normalize_spec: read the stem head before the title head"
@@ -330,3 +302,31 @@ new = '''
     if False:
         said, step = own_name_answer(declared, word, own)
         raise'''
+
+[[rows]]
+id = "r926.G2_checks_the_shipped_tool"
+source = { table = "r926.json", id = "G2_checks_the_shipped_tool" }
+description = "The guard runs in a process without pytest too, so the shipped tool refuses every configuration save"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config_test_root.py", "tests/test_config.py", "tests/test_config_update.py", "tests/test_config_migration.py"]
+old = '''
+    if "pytest" not in sys.modules:
+        return
+    root = _TEST_WRITE_ROOT'''
+new = '''
+    if False:
+        return
+    root = _TEST_WRITE_ROOT'''
+
+[[rows]]
+id = "u254.C3_append_test_root"
+source = { table = "u254.json", id = "C3_append_test_root" }
+description = "append_durable_bytes: drop the test root refusal"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_config_test_root.py", "tests/test_config.py", "tests/test_adoption.py"]
+old = '''
+    _refuse_write_outside_test_root(path, system_temporary=True)
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND)'''
+new = '    fd = os.open(path, os.O_WRONLY | os.O_APPEND)'

@@ -240,20 +240,6 @@ new = '''
         return None'''
 
 [[rows]]
-id = "r926.G10_no_temporary_allowance"
-source = { table = "r926.json", id = "G10_no_temporary_allowance" }
-description = "The primitives lose the system temporary allowance, the strict rule the review round measured at 101 refusals"
-file = "src/cratekit/core/config.py"
-surface = "maintainer"
-tests = ["tests/test_config_test_root.py", "tests/test_provider_gate.py"]
-old = '''
-    if system_temporary:
-        allowed.append('''
-new = '''
-    if False:
-        allowed.append('''
-
-[[rows]]
 id = "u233.C2_schema_gains_a_key"
 source = { table = "u233.json", id = "C2_schema_gains_a_key" }
 description = "config: LabelsConfig gains a key a person can set, which the guide's settings table has no row for"
@@ -367,3 +353,17 @@ surface = "user"
 tests = ["tests/test_taxonomy_word.py"]
 old = '    if declared.tagging_alias(spelled.lower()) == (target.id, None):'
 new = '    if False:'
+
+[[rows]]
+id = "r926.G10_no_temporary_allowance"
+source = { table = "r926.json", id = "G10_no_temporary_allowance" }
+description = "The primitives lose the system temporary allowance, the strict rule the review round measured at 101 refusals"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py", "tests/test_provider_gate.py"]
+old = '''
+    if system_temporary:
+        allowed.append('''
+new = '''
+    if False:
+        allowed.append('''
