@@ -172,7 +172,6 @@ def test_every_refusal_and_failure_leaves_the_batch_and_its_rows_as_they_were(
     from cratekit.core import analysis_store
     from cratekit.core.cause import CratekitError
     from cratekit.intake import landing
-
     cfg, _root = native_library
     before = _land_three(cfg, silence)
 
@@ -303,15 +302,18 @@ def test_every_refusal_and_failure_leaves_the_batch_and_its_rows_as_they_were(
     assert not target.exists()
 
 
-def test_a_plan_of_nothing_refuses_before_a_gate_is_asked(native_library):
+def test_a_plan_of_nothing_and_every_command_line_refusal_refuse_before_a_gate(native_library):
     cfg, _root = native_library
     (_music(cfg) / "rekordbox_djoid").mkdir()
-
     code, envelope = drive(_shelve("--all"))
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert "rekordbox_djoid" in envelope["cause"]["message"]
     assert _records(cfg, shelve.WORKFLOW) == []
+    # THE COMMAND LINE REFUSALS name the flag.
+    for args in ([], ["--all", BATCH], ["--as", "X", "--all"], ["--as", "X", "a", "b"], ["--as", " ", "a"]):
+        code, envelope = drive(_shelve(*args))
+        assert code == int(ExitCode.PRECONDITION), (args, envelope)
+        assert envelope["cause"]["remediation"]["remedy"] == "fix-command-line", (args, envelope)
 
 
 def test_two_batches_filing_to_one_name_get_two_and_a_taken_target_is_passed_over(
@@ -326,9 +328,7 @@ def test_two_batches_filing_to_one_name_get_two_and_a_taken_target_is_passed_ove
     assert code == int(ExitCode.OK), acted
     _as_landed_before_u164(cfg, second)
     (_processed(cfg) / "2026" / FILED).mkdir(parents=True)
-
     code, envelope = drive(_shelve("--report", "--all"))
-
     assert code == int(ExitCode.OK), envelope
     targets = {item["batch"]: item["to"] for item in envelope["data"]["items"]}
     # In listing order: a space sorts before an underscore, so the second
@@ -337,19 +337,6 @@ def test_two_batches_filing_to_one_name_get_two_and_a_taken_target_is_passed_ove
         second: str(_processed(cfg) / "2026" / f"{FILED} 2"),
         BATCH: str(_processed(cfg) / "2026" / f"{FILED} 3"),
     }
-
-
-def test_the_command_line_refusals_name_the_flag(native_library):
-    for args in (
-        [],
-        ["--all", BATCH],
-        ["--as", "X", "--all"],
-        ["--as", "X", "a", "b"],
-        ["--as", " ", "a"],
-    ):
-        code, envelope = drive(_shelve(*args))
-        assert code == int(ExitCode.PRECONDITION), (args, envelope)
-        assert envelope["cause"]["remediation"]["remedy"] == "fix-command-line", (args, envelope)
 
 
 def test_apply_moves_the_folder_rewrites_the_paths_keeps_the_rest_and_the_name_stays_taken(
@@ -369,7 +356,6 @@ def test_apply_moves_the_folder_rewrites_the_paths_keeps_the_rest_and_the_name_s
 
     # A BATCH NAMED TWICE is planned once.
     code, acted, refused = _two_acts_of(_shelve(BATCH, BATCH), GATE)
-
     assert code == int(ExitCode.OK), acted
     assert acted["data"]["totals"]["batches"] == 1
     assert not (_processed(cfg) / "2026" / f"{FILED} 2").exists()
@@ -377,20 +363,17 @@ def test_apply_moves_the_folder_rewrites_the_paths_keeps_the_rest_and_the_name_s
     target = _processed(cfg) / "2026" / FILED
     assert sorted(p.name for p in target.iterdir()) == list(FILES)
     assert not (_music(cfg) / BATCH).exists()
-
     after = _rows(cfg)
     assert [row[0] for row in after] == [row[0] for row in before]
     for was, now in zip(before, after):
         assert now[1] == str(target / was[2]), "the path did not follow the folder"
         assert now[2:] == was[2:], "a column the shelve does not own changed"
         assert (target / now[2]).exists()
-
     (item,) = acted["data"]["items"]
     assert item["action"] == shelve_cli.SHELVED
     assert item["to"] == str(target)
     assert [row["to"] for row in item["rows"]] == [str(target / f) for f in FILES]
     assert acted["data"]["totals"]["shelved"] == 1 and acted["data"]["totals"]["rows"] == 3
-
     (record,) = _records(cfg, shelve.WORKFLOW)
     assert record.state is session.SessionState.CLOSED
     assert record.detail[shelve.SHELVED_KEY] == [{"batch": BATCH, "to": str(target), "rows": 3}]
@@ -428,12 +411,10 @@ def test_a_run_identifier_named_batch_files_as_downloads_or_as_the_subject_given
     """A batch named for a run, as ``default_name`` spells one, at either width."""
     cfg, _root = native_library
     _land_three(cfg, silence, name=run_named)
-
     code, envelope = drive(_shelve("--report", run_named))
     assert code == int(ExitCode.OK), envelope
     (item,) = envelope["data"]["items"]
     assert item["to"] == str(_processed(cfg) / "2026" / "09_23_26 Downloads")
-
     code, envelope = drive(_shelve("--report", "--as", "Bandcamp", run_named))
     assert code == int(ExitCode.OK), envelope
     (item,) = envelope["data"]["items"]
@@ -450,9 +431,7 @@ def test_a_library_whose_drive_was_renamed_stores_and_confines_under_the_base_dr
     before = _land_three(cfg, silence)
     base, current = str(Path(cfg.library.root).parent / "elsewhere"), str(cfg.library.root)
     monkeypatch.setattr(rb_writer, "recorded_db_drives", lambda db: (base, current))
-
     code, acted, _ = _two_acts_of(_shelve(BATCH), GATE)
-
     assert code == int(ExitCode.OK), acted
     target = _processed(cfg) / "2026" / FILED
     assert sorted(p.name for p in target.iterdir()) == list(FILES)
@@ -481,18 +460,14 @@ def test_a_row_under_the_target_refuses_the_commit_and_the_free_target_rule_pass
             root, name, planned, stored_dirs=frozenset(), spell=spell
         ),
     )
-
     code, acted, _ = _two_acts_of(_shelve(BATCH), GATE)
-
     assert code == int(ExitCode.REFUSED_BY_POLICY), acted
     assert "did not plan" in acted["cause"]["message"]
     assert acted["cause"]["detail"]["renamed_back"] == [str(_music(cfg) / BATCH)]
     assert (_music(cfg) / BATCH).is_dir() and _rows(cfg) == before
     assert not ghost.exists()
-
     monkeypatch.setattr(shelve, "_free_target", real)
     code, acted, _ = _two_acts_of(_shelve(BATCH), GATE)
-
     assert code == int(ExitCode.OK), acted
     (item,) = acted["data"]["items"]
     assert item["to"] == str(_processed(cfg) / "2026" / f"{FILED} 2")
@@ -512,7 +487,6 @@ def test_the_read_back_refuses_a_row_that_did_not_take_or_lost_a_column(
 ):
     from cratekit.core import analysis_store
     from cratekit.core.cause import CratekitError
-
     cfg, _root = native_library
     _land_three(cfg, silence)
     real = shelve._select_rows

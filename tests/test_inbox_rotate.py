@@ -296,13 +296,10 @@ def test_the_forty_and_the_hundred_move_the_one_hundred_twenty_goes_no_track_mov
     assert shown["Lisa picks"]["kind"] == "folder"
     # A dated name with no batch folder is somebody's playlist.
     assert shown["2026-01-01 my list"]["action"] == rotate_cli.LEAVE
-
     content_before = _content(cfg)
     others_before = _memberships(cfg, outside=(ids["120"],))
     genre_before = _live_members(cfg, genre)
-
     code, acted, refused = _two_acts(VERB)
-
     assert code == int(ExitCode.OK), acted
     assert refused["cause"]["detail"]["shown"]["digest"] == acted["data"]["digest"]
     actions = _by_action(acted)
@@ -333,7 +330,6 @@ def test_the_forty_and_the_hundred_move_the_one_hundred_twenty_goes_no_track_mov
     assert _content(cfg) == content_before
     assert _memberships(cfg, outside=(ids["120"],)) == others_before
     assert _live_members(cfg, genre) == genre_before
-
     totals = acted["data"]["totals"]
     assert (totals["moved"], totals["removed"], totals["memberships removed"]) == (2, 1, 2)
     assert totals["old created"] is False
@@ -348,7 +344,6 @@ def test_the_forty_and_the_hundred_move_the_one_hundred_twenty_goes_no_track_mov
     assert code == int(ExitCode.OK), acted
     assert _by_action(acted)["remove"] == ["2026-06-25T101010Z-1_inboxed"]
     assert int(_node_row(cfg, ids["100"])[2]) == 1
-
     code, acted, _ = _two_acts(VERB)
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "no_op"
@@ -362,7 +357,6 @@ def test_old_is_created_once_a_second_run_plans_nothing_and_still_asks_and_old_i
     cfg, root_id = native_library
     first = _stale_set(cfg, root_id)
     assert _olds(cfg, root_id) == []
-
     code, acted, _ = _two_acts(VERB)
     assert code == int(ExitCode.OK), acted
     assert acted["data"]["totals"]["old created"] is True
@@ -420,7 +414,6 @@ def test_an_empty_inbox_still_asks_then_no_old_declared_or_two_olds_are_refused_
     from dataclasses import replace
 
     from cratekit.core import active_taxonomy
-
     cfg, root_id = native_library
     code, acted, refused = _two_acts(VERB)
     assert code == int(ExitCode.OK), acted
@@ -450,9 +443,7 @@ def test_an_inbox_changed_after_the_approval_is_refused_and_nothing_is_written(n
     drive(["run", "decide", run_id, GATE, "approve", "--actor", "a-person"])
     _node(cfg, "2026-08-19 Set", under=root_id, age=45, tracks=("t2",), batch_folder=True)
     nodes = _nodes(cfg)
-
     code, envelope = drive(["--run", run_id, *VERB])
-
     assert code == int(ExitCode.DECISION_STALE), envelope
     assert _nodes(cfg) == nodes
 
@@ -696,7 +687,6 @@ def test_only_the_rotation_asks_its_commit_to_admit_a_removed_playlist():
     }
     assert set(rotate.REMOVALS) == {rb_writer.PLAYLIST_TABLE, rb_writer.MEMBERSHIP_TABLE}
     from cratekit.favorites import split
-
     assert set(split.REMOVALS) == {rb_writer.PLAYLIST_TABLE, rb_writer.MEMBERSHIP_TABLE}
 
 
@@ -721,7 +711,6 @@ def test_an_old_folder_declared_wrongly_is_a_taxonomy_problem_and_not_a_tracebac
     declared, expected
 ):
     import tomllib
-
     data = tomllib.loads(_template_with(""))
     data["intake_old"] = declared
     with pytest.raises(taxonomy.TaxonomyError) as raised:
@@ -731,7 +720,6 @@ def test_an_old_folder_declared_wrongly_is_a_taxonomy_problem_and_not_a_tracebac
 
 def test_a_template_without_the_section_declares_no_old_folder():
     import tomllib
-
     assert taxonomy.build_taxonomy(tomllib.loads(_template_with(""))).intake_old is None
     assert DECLARED.intake_old == taxonomy.Node("inbox_old", "Old")
 
@@ -739,7 +727,6 @@ def test_a_template_without_the_section_declares_no_old_folder():
 def test_the_name_a_landing_gives_is_the_shape_the_rotation_recognises(machine, monkeypatch):
     """One owner of the shape: what ``readable`` names, ``is_default_shape`` knows."""
     from cratekit.intake import batch_name
-
     monkeypatch.setattr(batch_name, "today", lambda: TODAY)
     for words in (batch_name.PLAYLISTS, batch_name.DOWNLOADS, "Sudbeat"):
         name = batch_name.free(machine, f"{batch_name.today().isoformat()} {words}")
@@ -756,7 +743,6 @@ def test_a_batch_created_late_in_the_evening_is_aged_from_its_local_day(
     cfg, root_id = native_library
     monkeypatch.setenv("TZ", "America/New_York")
     import time
-
     time.tzset()
     try:
         batch = _node(cfg, "2026-10-02 Set", under=root_id, batch_folder=True)

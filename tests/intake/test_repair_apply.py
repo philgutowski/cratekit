@@ -125,6 +125,12 @@ def _answer(option: str, *extra: str) -> tuple[int, dict]:
     return code, json.loads(out)
 
 
+def _scan_accept(cfg, folder: Path, *paths: Path) -> None:
+    _scan(folder)
+    for path in paths:
+        _accept(cfg, path)
+
+
 def _one_accepted(cfg, body: bytes = b"fLaC") -> tuple[Path, Path]:
     """One file named LONG, scanned, its proposal accepted. Answers (folder, file)."""
     folder = _folder(cfg)
@@ -212,15 +218,11 @@ def test_a_dark_row_under_a_proposal_name_refuses_the_repair_and_its_plan(collec
     abort answer sees it too. The candidates are this verb's own (R-675)."""
     folder, held = _one_accepted(collected)
     _record(collected, f"/mnt/volume/Music/{LONG}", identifier="10")
-
     code, envelope = _answer("abort")
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "collection-row-unmapped"
     assert _names(folder) == {LONG}
-
     code, envelope = _answer("apply")
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "collection-row-unmapped"
     assert envelope["cause"]["detail"]["could_name"] == [
@@ -238,9 +240,7 @@ def test_a_dark_row_recorded_after_the_gate_refuses_the_repair_before_any_rename
     folder, held = _one_accepted(collected)
     reads = iter([(), (f"/mnt/volume/Music/{LONG}",)])
     monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: next(reads))
-
     code, envelope = _answer("apply")
-
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "collection-row-unmapped"
     assert envelope["cause"]["detail"]["could_name"] == [
@@ -252,9 +252,7 @@ def test_a_dark_row_recorded_after_the_gate_refuses_the_repair_before_any_rename
 def test_a_dark_row_under_another_name_lets_the_repair_run(collected):
     folder, held = _one_accepted(collected)
     _record(collected, "/mnt/volume/Music/elsewhere.flac", identifier="10")
-
     code, envelope = _answer("apply")
-
     assert code == int(ExitCode.OK), envelope
     assert _names(folder) == {SHORT}
 
@@ -263,13 +261,9 @@ def test_a_proposal_for_a_referenced_file_refuses_and_its_sibling_is_renamed(col
     folder = _folder(collected)
     held = _audio(folder, LONG)
     free = _audio(folder, OTHER_LONG)
-    _scan(folder)
-    _accept(collected, held)
-    _accept(collected, free)
+    _scan_accept(collected, folder, held, free)
     _record(collected, str(held), identifier="10")
-
     code, envelope = _answer("apply")
-
     assert _names(folder) == {LONG, OTHER_SHORT}
     assert _actions(envelope["data"]) == {LONG: "referenced", OTHER_LONG: "rename"}
     assert code == int(ExitCode.PRECONDITION)
@@ -294,9 +288,7 @@ def test_an_open_or_rejected_or_kept_proposal_is_untouched(configured):
     _decide(configured, kept, Verdict.ACCEPTED, repair.KEEP)
     _decide(configured, no_option, Verdict.ACCEPTED, None)
     before = _names(folder)
-
     code, envelope = _answer("apply")
-
     assert code == int(ExitCode.OK), envelope
     assert _names(folder) == before
     assert envelope["data"]["items"] == []
@@ -309,14 +301,10 @@ def test_a_collision_refuses_that_file_and_names_it(configured):
     folder = _folder(configured)
     path = _audio(folder, LONG, b"fLaC mine")
     free = _audio(folder, OTHER_LONG)
-    _scan(folder)
-    _accept(configured, path)
-    _accept(configured, free)
+    _scan_accept(configured, folder, path, free)
     # Somebody else's file takes the proposed name after the scan.
     _audio(folder, SHORT, b"fLaC theirs")
-
     code, envelope = _answer("apply")
-
     assert (folder / LONG).read_bytes() == b"fLaC mine"
     assert (folder / SHORT).read_bytes() == b"fLaC theirs"
     assert (folder / OTHER_SHORT).is_file()
@@ -333,9 +321,7 @@ def test_a_collision_refuses_that_file_and_names_it(configured):
 def test_an_accepted_file_that_is_gone_says_no_file_carries_the_name(configured):
     folder, path = _one_accepted(configured)
     path.unlink()
-
     code, envelope = _answer("apply")
-
     assert code == int(ExitCode.OK), envelope
     assert _actions(envelope["data"]) == {LONG: "missing"}
     assert "none carries the proposed name" in envelope["data"]["items"][0]["why"]
@@ -347,9 +333,7 @@ def test_a_proposal_that_asked_for_no_change_is_listed_with_its_reason(configure
     folder, path = _one_accepted(configured)
     # What a proposal that failed to fit looks like: its own name, and why.
     _rewrite_payload(configured, path, proposed=LONG, error="the path is over budget")
-
     code, envelope = _answer("apply")
-
     assert code == int(ExitCode.OK), envelope
     assert _actions(envelope["data"]) == {LONG: "unchanged"}
     assert envelope["data"]["items"][0]["why"] == "the path is over budget"
@@ -366,9 +350,7 @@ def test_a_linked_file_is_never_renamed_through_its_link(configured, tmp_path):
     link.symlink_to(real)
     _scan(folder)
     _accept(configured, link)
-
     code, envelope = _answer("apply")
-
     assert real.read_bytes() == b"fLaC real"
     assert _names(elsewhere) == {"track01.flac"}
     assert _names(folder) == {LONG}
@@ -388,7 +370,6 @@ def test_an_interrupt_between_the_claim_and_the_rename_leaves_no_stub(
     monkeypatch.setattr(Path, "rename", interrupted)
     with pytest.raises(KeyboardInterrupt):
         _answer("apply")
-
     assert _names(folder) == {LONG}
     assert path.read_bytes() == b"fLaC mine"
 
@@ -401,7 +382,6 @@ def test_a_refused_rename_is_named_and_leaves_no_stub(configured, monkeypatch):
 
     monkeypatch.setattr(Path, "rename", refused)
     code, envelope = _answer("apply")
-
     assert _names(folder) == {LONG}
     assert code == int(ExitCode.PRECONDITION)
     assert "Permission denied" in envelope["cause"]["detail"]["incomplete"][0]["why"]
@@ -413,15 +393,11 @@ def test_two_accepted_proposals_for_one_name_rename_neither(configured):
     folder = _folder(configured)
     first = _audio(folder, LONG, b"fLaC one")
     second = _audio(folder, OTHER_LONG, b"fLaC two")
-    _scan(folder)
-    _accept(configured, first)
-    _accept(configured, second)
+    _scan_accept(configured, folder, first, second)
     # The scan cannot propose one name for two files in one folder, so the
     # second proposal is pointed at the first one's name in the store.
     _rewrite_proposed(configured, second, SHORT)
-
     code, envelope = _answer("apply")
-
     assert code == int(ExitCode.PRECONDITION)
     assert _actions(envelope["data"]) == {LONG: "collides", OTHER_LONG: "collides"}
     assert first.read_bytes() == b"fLaC one" and second.read_bytes() == b"fLaC two"
@@ -433,9 +409,7 @@ def test_a_row_that_appears_after_the_gate_holds_the_file(configured, monkeypatc
     folder, path = _one_accepted(configured)
     reads = iter([(), (str(path),)])
     monkeypatch.setattr(naming_cli, "_recorded", lambda cfg: next(reads))
-
     code, envelope = _answer("apply")
-
     assert _names(folder) == {LONG}
     assert code == int(ExitCode.PRECONDITION)
     assert _actions(envelope["data"]) == {LONG: "rename"}
@@ -447,9 +421,7 @@ def test_an_unreadable_collection_refuses_and_renames_nothing(configured, monkey
     folder, path = _one_accepted(configured)
     # No database was ever built under this library, so the read fails for real.
     monkeypatch.setattr(naming_cli, "_recorded", _REAL_RECORDED)
-
     code, envelope = _answer("apply")
-
     assert code != int(ExitCode.OK)
     assert envelope["cause"]["reason"] == "collection-unreadable"
     assert _names(folder) == {LONG}
@@ -487,9 +459,7 @@ def test_a_proposed_name_that_is_not_a_same_suffix_filename_is_never_applied(
 ):
     folder, path = _one_accepted(configured)
     _rewrite_proposed(configured, path, proposed)
-
     code, envelope = _answer("apply")
-
     assert _names(folder) == {LONG}
     assert not (folder.parent / "escaped.flac").exists()
     assert _actions(envelope["data"]) == {LONG: "unusable"}
@@ -502,9 +472,7 @@ def test_an_item_with_no_stored_path_is_held_and_never_guessed_at(configured):
     # How an item that arrived by import reads: the identity column is empty.
     with review.open_store(configured) as store, store.immediate() as conn:
         conn.execute("UPDATE review_items SET identity = NULL")
-
     code, envelope = _answer("apply")
-
     assert _names(folder) == {LONG}
     assert [item["action"] for item in envelope["data"]["items"]] == ["unusable"]
     assert code == int(ExitCode.PRECONDITION)
@@ -528,9 +496,7 @@ def _after_the_gate(monkeypatch, act) -> None:
 def test_a_name_taken_after_the_gate_is_never_overwritten(configured, monkeypatch):
     folder, path = _one_accepted(configured, b"fLaC mine")
     _after_the_gate(monkeypatch, lambda: _audio(folder, SHORT, b"fLaC theirs"))
-
     code, envelope = _answer("apply")
-
     assert (folder / SHORT).read_bytes() == b"fLaC theirs"
     assert (folder / LONG).read_bytes() == b"fLaC mine"
     assert code == int(ExitCode.PRECONDITION)
@@ -543,9 +509,7 @@ def test_a_file_deleted_after_the_gate_is_named_and_not_called_renamed(
 ):
     folder, path = _one_accepted(configured)
     _after_the_gate(monkeypatch, path.unlink)
-
     code, envelope = _answer("apply")
-
     assert code == int(ExitCode.PRECONDITION)
     assert "no longer there" in envelope["cause"]["detail"]["incomplete"][0]["why"]
     assert envelope["data"]["totals"]["renamed"] == 0
@@ -560,55 +524,29 @@ def test_a_name_the_filesystem_refuses_to_claim_is_named(configured, monkeypatch
 
     monkeypatch.setattr(naming_cli.naming, "claim_target", refused)
     code, envelope = _answer("apply")
-
     assert _names(folder) == {LONG}
     assert code == int(ExitCode.PRECONDITION)
     assert "File name too long" in envelope["cause"]["detail"]["incomplete"][0]["why"]
 
 
-def test_a_root_limits_the_apply_and_counts_what_it_left_out(configured):
+def test_a_root_limits_the_apply_in_any_case_and_a_shared_prefix_is_not_the_folder(configured):
     inside = _folder(configured)
+    sibling = inside.parent / (inside.name + "s")
     outside = Path(configured.library.root) / "Music" / "other"
+    sibling.mkdir()
     outside.mkdir()
-    near = _audio(inside, LONG)
-    far = _audio(outside, OTHER_LONG)
+    near, twin, far = _audio(inside, LONG), _audio(sibling, LONG), _audio(outside, OTHER_LONG)
     _scan(inside)
-    _scan(outside)
-    _accept(configured, near)
-    _accept(configured, far)
-
-    code, envelope = _answer("apply", "--root", str(inside))
-
+    _scan(sibling)
+    _scan_accept(configured, outside, near, twin, far)
+    # The root typed in another case still names the folder.
+    shouted = inside.parent / inside.name.upper()
+    code, envelope = _answer("apply", "--root", str(shouted))
     assert code == int(ExitCode.OK), envelope
     assert _names(inside) == {SHORT}
-    assert _names(outside) == {OTHER_LONG}
-    assert envelope["data"]["totals"]["outside_root"] == 1
-
-
-def test_a_root_typed_in_another_case_still_names_the_folder(configured):
-    folder, path = _one_accepted(configured)
-    shouted = folder.parent / folder.name.upper()
-
-    code, envelope = _answer("apply", "--root", str(shouted))
-
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["data"]["totals"]["outside_root"] == 0
-    assert _names(folder) == {SHORT}
-
-
-def test_a_root_that_only_shares_a_prefix_is_not_the_folder(configured):
-    folder = _folder(configured)
-    sibling = folder.parent / (folder.name + "s")
-    sibling.mkdir()
-    path = _audio(sibling, LONG)
-    _scan(sibling)
-    _accept(configured, path)
-
-    code, envelope = _answer("apply", "--root", str(folder))
-
-    assert code == int(ExitCode.OK), envelope
-    assert envelope["data"]["totals"]["outside_root"] == 1
     assert _names(sibling) == {LONG}
+    assert _names(outside) == {OTHER_LONG}
+    assert envelope["data"]["totals"]["outside_root"] == 2
 
 
 def test_the_decided_reader_pages_through_a_queue_larger_than_one_page(configured):
