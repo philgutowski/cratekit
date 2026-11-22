@@ -51,20 +51,6 @@ old = '_RCLONE_REMOTE_NAME = re.compile(r"^[\w.+@][\w.+@ -]*(?<! )$")'
 new = '_RCLONE_REMOTE_NAME = re.compile(r"^[\w.+@-][\w.+@ -]*(?<! )$")'
 
 [[rows]]
-id = "r926.G12_message_drops_path"
-source = { table = "r926.json", id = "G12_message_drops_path" }
-description = "The no root refusal stops naming the path it refused"
-file = "src/cratekit/core/config.py"
-surface = "maintainer"
-tests = ["tests/test_config_test_root.py"]
-old = '''
-            f"refused to write {path}: this process is "
-            f"running under pytest and no test root is registered, so the "'''
-new = '''
-            f"refused to write the file: this process is "
-            f"running under pytest and no test root is registered, so the "'''
-
-[[rows]]
 id = "u254.C1_append_unsynced"
 source = { table = "u254.json", id = "C1_append_unsynced" }
 description = "append_durable_bytes: return without syncing the appended record"
@@ -334,3 +320,17 @@ old = '''
 new = '''
         if False:
             raise Refused(OWN_NAME, said, step=step)'''
+
+[[rows]]
+id = "r926.G12_message_drops_path"
+source = { table = "r926.json", id = "G12_message_drops_path" }
+description = "The no root refusal stops naming the path it refused"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_config_test_root.py"]
+old = '''
+            f"refused to write {path}: this process is "
+            f"running under pytest and no test root is registered, so the "'''
+new = '''
+            f"refused to write the file: this process is "
+            f"running under pytest and no test root is registered, so the "'''
