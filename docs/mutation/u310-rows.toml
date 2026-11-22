@@ -80,7 +80,7 @@ id = "G2_gate_digest_is_the_plan"
 description = "review: the gate digests a constant, so a confirmation of another plan is honoured"
 file = "src/cratekit/deletion/cli.py"
 surface = "user"
-tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py", "tests/behaviour/deletion.py"]
 old = '''        option = ctx.gate.require(spec, digest=_plan_digest(found), context=_shown(found))'''
 new = '''        option = ctx.gate.require(spec, digest="constant", context=_shown(found))'''
 
@@ -89,7 +89,7 @@ id = "G3_recorded_reject_honoured"
 description = "review: the gate accepts every offered item, a recorded reject included"
 file = "src/cratekit/deletion/cli.py"
 surface = "user"
-tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py"]
+tests = ["tests/test_deletion.py", "tests/test_deletion_streaming.py", "tests/test_uncredited_tombstone.py", "tests/behaviour/deletion.py"]
 old = '''                if item.verdict is None:'''
 new = '''                if True:'''
 
