@@ -33,7 +33,7 @@ _ORIGIN = ("favorites", "colour")
 
 
 def pink_colour_id(db: Any) -> str:
-    """The ColourID whose name is Pink inside an already open library, soft deleted rows skipped, or a refusal."""
+    """The live ColourID named Pink inside an already open library, or a refusal."""
     for row in db.get_color(Commnt=PINK_COLOUR_NAME):
         if trees.soft_delete_marker(row):
             continue

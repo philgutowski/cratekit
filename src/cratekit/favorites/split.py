@@ -476,7 +476,7 @@ def addition_violations(
                 f"named {name!r} under {parent!r}"
             )
     for key in sorted(set(before.playlists) & set(after.playlists)):
-        changed = spine.changed(before.playlist_columns, before.playlists[key], after.playlists[key])
+        changed = spine.changed(p_cols, before.playlists[key], after.playlists[key])
         allowed = (
             _BOOKKEEPING
             if key in wanted or str(before.playlists[key][parent_at]) in beside
@@ -588,12 +588,9 @@ def apply(
     """Add every member to its month in one commit, then retire the emptied quarters in a second.
 
     THE PLAN IS TAKEN AGAIN ON THIS HANDLE FIRST and a digest that moved
-    refuses, the approved one having been read on a handle since closed. THE
-    SESSION SPINE IS CALLED, NOT REBUILT, as the genre Favorites refresh calls
-    it for its own two commits, the second admitting the playlist and the
-    membership tables alone. EACH COMMIT IS CONFINED FROM SQL BEFORE IT LANDS,
-    and no quarter is retired until every member it holds reads back live in
-    its month.
+    refuses. EACH COMMIT IS CONFINED FROM SQL BEFORE IT LANDS, the second
+    admitting the playlist and membership tables alone, and no quarter is
+    retired until every member it holds reads back live in its month.
     """
     watched = spine.watched(analysis_roots)
     planned = spine.fresh(

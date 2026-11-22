@@ -144,11 +144,9 @@ def filed(db: Any, home: Home) -> frozenset[str]:
 def members_marked_removed(db: Any, playlist_id: str) -> frozenset[str]:
     """The content ids whose membership in a playlist rekordbox marked REMOVED.
 
-    A READER, NAMED SO IT READS AS ONE: no function under ``favorites/`` opens
-    with ``remove``. For All Favorites a removed membership is the author
-    un-hearting a track in the library, which the backfill never puts back.
-    THE LANDING DOES NOT READ IT (U146): a heart the pass still found on the
-    account joins again.
+    A READER, NAMED SO: no function under ``favorites/`` opens with ``remove``.
+    For All Favorites it is the author un-hearting a track, which the backfill
+    never puts back; the landing does not read it (U146).
     """
     return frozenset(
         str(song.ContentID)
@@ -396,7 +394,7 @@ def _shown_at(row: Any) -> tuple[int, str, str]:
 
 
 def children(db: Any, folder_id: str) -> list[Any]:
-    """Every live child of a folder, of any kind, in the order rekordbox shows them, none soft deleted."""
+    """Every live child of a folder, of any kind, in the order rekordbox shows them."""
     rows = [
         row
         for row in db.get_playlist(ParentID=str(folder_id))
@@ -465,11 +463,9 @@ def _seat_new(db: Any, made: Any, folder_id: str, source_id: str) -> tuple[str, 
 def month_row(db: Any, name: str, parent: Any, *, source_id: str) -> tuple[Any, bool]:
     """The month's playlist under the folder, found live by name, else made in its slot.
 
-    PUBLIC so the split and a landing agree on which row a month is. NOT
-    :func:`rb_writer.ensure_playlist`, which reads no soft delete marker and
+    NOT :func:`rb_writer.ensure_playlist`, which reads no soft delete marker and
     takes no root (R-758). MADE IN ITS NEWEST FIRST SLOT under a folder (U180),
-    ``source_id`` reading first; at the playlist root, which is every
-    playlist's, at the end.
+    at the end at the playlist root, which is every playlist's.
     """
     parent_id = "" if parent is None else str(parent.ID)
     for row in _live_plain(list(db.get_playlist(Name=name))):
@@ -496,13 +492,10 @@ def place(
 ) -> Placed:
     """Add each ``(content id, month name)`` to the source and to its month, and colour ``to_colour`` Pink.
 
-    A PAIR WITH NO MONTH JOINS THE SOURCE ALONE, its month the backfill's to
-    read. ON THE CALLER'S HANDLE AND INSIDE THE CALLER'S COMMIT, so a landing is
-    one all or nothing write; the source and folder are read again by
-    identifier, since the plan was read on another handle. The memberships go
-    through :func:`rb_writer.add_memberships`, which owns "only when absent",
-    and the colour through :func:`colour.write_pink`, which owns "only when
-    unset"; with no ``pink`` nothing is coloured.
+    A PAIR WITH NO MONTH JOINS THE SOURCE ALONE. ON THE CALLER'S HANDLE AND
+    INSIDE THE CALLER'S COMMIT, the source and folder read again by identifier.
+    :func:`rb_writer.add_memberships` owns "only when absent" and
+    :func:`colour.write_pink` "only when unset"; with no ``pink`` none is coloured.
     """
     source = _live_row(db, home.source_id, f"the playlist {home.source_name!r}")
     parent = None

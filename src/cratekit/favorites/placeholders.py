@@ -70,7 +70,7 @@ def parse_hearted(said: object) -> datetime | None:
 
 
 def is_filing(name: str) -> bool:
-    """Whether a playlist beside All Favorites files a heart by date: a month, Undated, a quarter (U146)."""
+    """Whether a playlist beside All Favorites files by date: a month, Undated, a quarter (U146)."""
     text = str(name or "")
     return (
         text == UNDATED

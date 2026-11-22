@@ -278,13 +278,10 @@ def confirm_digest(
 def sync_favorites_argv(job) -> list[str]:
     """The command line that continues one queued favourites increment.
 
-    TWO RUNS, NOT ONE: ``--run-id`` carries the INTAKE run shared with the other
-    sources in a sync, ``--run`` the GATE run the confirm was recorded against,
-    which ``cli._run_state_for`` reads; without it every respawn met the confirm
-    gate with nothing recorded. ``--export`` AND ``--favorites-playlist`` ARE
-    REBUILT FROM THE PAYLOAD, the playlist as the resolved key, so the resumed
-    child computes the same confirm digest. A job frozen with no gate run
-    resumes without the flag.
+    TWO RUNS: ``--run-id`` is the INTAKE run a sync shares, ``--run`` the GATE
+    run the confirm was recorded against, which the resumed child must load.
+    ``--export`` AND ``--favorites-playlist`` ARE REBUILT FROM THE PAYLOAD, so
+    the child computes the same confirm digest.
     """
     payload = job.payload or {}
     argv = ["sync", "favorites", "--job", job.job_id]

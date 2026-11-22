@@ -86,10 +86,8 @@ def run(
 ) -> Envelope:
     """Plan, ask, write and read back, through ``engine``'s payload, facts and read back.
 
-    ``idle`` is the note of a plan with nothing to write and ``done`` the totals
-    and the note of a write. Without ``gate_first`` a plan with nothing to write
-    opens no gate; with it the gate is asked first, as the backfill and the
-    refresh ask it.
+    ``idle`` notes a plan with nothing to write, which opens no gate unless
+    ``gate_first`` asks the gate first; ``done`` gives a write's totals and note.
     """
     spec = declared_gate(ctx.entry, gate)
     # BEFORE THE PLAN IS BUILT AND BEFORE THE GATE (R-733).

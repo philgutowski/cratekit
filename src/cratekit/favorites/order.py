@@ -179,19 +179,11 @@ def order_violations(
 ) -> list[str]:
     """Every difference between two readings that the planned order does not explain.
 
-    ``seated`` maps each row the write moves to the ``Seq`` it takes. Empty
-    means the order was confined, AND that it was made.
-
-    PURE, as :func:`rb_writer.node_change_violations` is, so every branch is
-    reachable with literal readings. What it explains, and nothing more:
-
-    * no content row differs, is added or disappears;
-    * no membership row differs, is added or disappears;
-    * no playlist row is added or disappears;
-    * a seated row is live under the folder at its planned ``Seq``, ASKED
-      WHETHER IT CHANGED OR NOT, so a planned move that never happened is
-      refused here, and it changed its position and bookkeeping only;
-    * every other playlist row is exactly as it was.
+    ``seated`` maps each row the write moves to the ``Seq`` it takes. PURE. No
+    content, membership or playlist row is added, removed or changed but a
+    seated row, which is live under the folder at its planned ``Seq``, ASKED
+    WHETHER IT CHANGED OR NOT so a move that never happened is refused, and
+    changed its position and bookkeeping only.
     """
     violations: list[str] = []
     planned = {str(key): int(value) for key, value in seated.items()}
@@ -300,9 +292,7 @@ def apply(
     """Seat every child of the folder in the approved order, in one commit, and read it back.
 
     THE PLAN IS TAKEN AGAIN ON THIS HANDLE FIRST and a digest that moved
-    refuses, the approved one having been read on a handle since closed. The
-    session spine is called as the split calls it, and the commit is confined
-    from SQL by :func:`assert_order_confined` before it lands.
+    refuses; the commit is confined from SQL by :func:`assert_order_confined`.
     """
     watched = spine.watched(analysis_roots)
     planned = spine.fresh(

@@ -86,7 +86,7 @@ def hearts_jobs(cfg: config.Config) -> tuple[jobs.Job, ...]:
 
 
 def reported(cfg: config.Config) -> tuple[list[account_playlists.HeartRow], tuple[str, ...]]:
-    """Every row the library's hearts jobs reported, in any state, oldest job first, and the jobs unread.
+    """Every row the library's hearts jobs reported, any state, oldest job first, and jobs unread.
 
     A JOB WHOSE REPORTS CANNOT BE READ IS SKIPPED AND NAMED rather than refusing:
     the store holds every job ever queued, one queued before U57 has no items,
@@ -200,7 +200,7 @@ def source_members(db: Any, home: placement.Home) -> tuple[tuple[str, str], ...]
 
 
 def _member_order(content_ids: Iterable[str]) -> list[str]:
-    """A stable order over content ids: a numeric one by its value, anything else after, by its text."""
+    """A stable order over content ids: numeric ones by value, anything else after, by its text."""
     return sorted(
         content_ids, key=lambda c: (0, int(c), "") if str(c).isdigit() else (1, 0, str(c))
     )
@@ -277,11 +277,9 @@ def owned_in_library(
 ) -> tuple[OwnedHeart, ...]:
     """A pass's owned hearts with the row each one's report file is, for the landing (U146).
 
-    THE REPORT'S OWN FILES, the first one an active row holds (U128): a file two
-    active rows claim answers nothing, and the next is tried. A ROW WHOSE JOB
-    FROZE NO DATE KEY IS LEFT TO THE BACKFILL, which can date it from the
-    account, since Undated is a placement nothing undoes. One heart per row,
-    the first mention winning.
+    THE REPORT'S OWN FILES, the first one an active row holds alone (U128). A
+    ROW WHOSE JOB FROZE NO DATE KEY IS LEFT TO THE BACKFILL, which can date it
+    from the account, since Undated is for good. The first mention wins.
     """
     known = [row for row in rows if row.known and row.paths]
     paths = [Path(said) for row in known for said in row.paths]
@@ -553,9 +551,7 @@ def apply(
 ) -> Backfilled:
     """Place the approved hearts in one guarded commit, then read them back.
 
-    THE PLAN IS TAKEN AGAIN ON THIS HANDLE FIRST and a digest that moved
-    refuses, the approved one having been read on a handle since closed. THE
-    SESSION SPINE IS CALLED, NOT REBUILT, as every membership writer calls it.
+    THE PLAN IS TAKEN AGAIN ON THIS HANDLE FIRST and a digest that moved refuses.
     """
     watched = spine.watched(analysis_roots)
     planned = spine.fresh(
