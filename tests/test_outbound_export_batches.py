@@ -91,9 +91,7 @@ def _transient() -> CratekitError:
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The writer, on the fake account
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_full_batch_is_one_add_and_one_record_of_every_track(cfg):
@@ -273,9 +271,7 @@ def test_a_person_who_took_a_track_off_between_batches_is_not_overwritten(cfg):
     assert report.already == ("t1", "t2")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # The writer, on the real provider client over the counting transport
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 class FailsTheReadAfterAdding(Account):
@@ -420,9 +416,7 @@ def test_a_person_who_edited_the_playlist_between_two_batches_keeps_their_edit(c
     assert "7" not in _recorded(cfg)[KEY]["added"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Through the driver
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _crate(cfg, tracks: int) -> Path:

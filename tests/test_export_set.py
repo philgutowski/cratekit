@@ -101,9 +101,7 @@ def _tracks(done: dict) -> list[dict]:
     return [item for item in done["data"]["items"] if item["kind"] == "track"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The declaration
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_both_verbs_write_only_the_account_behind_an_explicit_gate():
@@ -132,9 +130,7 @@ def test_a_tracklist_name_keeps_the_digest_that_tells_two_recordings_apart():
     assert set_cli.set_name(" Live / Boiler Room ") == "Live - Boiler Room"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The set playlist
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_five_rows_with_one_unmatched_plan_four_and_name_the_fifth(account):
@@ -365,9 +361,7 @@ def test_a_candidate_accepted_in_review_is_used_and_not_searched_for_again(accou
     assert ("Artist Five", "Title Five") not in fake.searched_for
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2b. R-879: a set the library holds, and a search that fills its page
-# ═══════════════════════════════════════════════════════════════════════════
 
 SEVEN = ("Artist Seven", "Title Seven")
 
@@ -706,9 +700,7 @@ def test_an_empty_page_after_full_ones_ends_the_listing_and_a_full_last_page_nev
     assert two.hits == 100 and two.full and candidates.sole_exact(two) is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The archive
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_archive_takes_records_and_files_it_in_a_year_folder_made_once(account):
@@ -908,9 +900,7 @@ def test_sync_unmark_takes_the_archive_mark_off_again(account):
     assert mark_record.MarkRecord(cfg).taken_ids() == frozenset()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. Add only, by the suite's own scan
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.parametrize("source", (Path(sets.__file__), Path(set_cli.__file__)))

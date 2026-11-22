@@ -53,9 +53,7 @@ EXPORT_KEY = "export.playlist"
 FAVORITES_KEY = "sync.favorites"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # Fixtures
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
@@ -103,18 +101,11 @@ def favorites_verb(exported: Path, playlist: str | None = None) -> list[str]:
     return verb
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 1. The binding itself
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_both_verbs_report_a_bound_worker_rather_than_a_reason_they_have_none():
-    """``crate job show``'s worker field, at the source it is derived from.
-
-    Asked through ``handlers`` rather than through the verb, because the field is
-    answered WITHOUT importing the feature module (KTD26) and driving the verb
-    would import it and prove nothing about that property.
-    """
+    """``crate job show``'s worker field, at the source it is derived from."""
     for key in (EXPORT_KEY, FAVORITES_KEY):
         assert handlers.is_known(key), key
         assert handlers.unbound_reason(key) is None, key
@@ -143,9 +134,7 @@ def test_job_show_reports_the_bound_worker_for_a_queued_export(
     assert shown["data"]["progress"]["worker_reason"] is None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 2. The zero item rule: neither verb can queue empty work
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _queue_is_empty() -> bool:
@@ -182,12 +171,7 @@ def test_an_export_naming_a_playlist_the_document_lacks_queues_nothing(
 
 
 def test_a_name_that_is_a_folder_refuses_rather_than_resolving(installed):
-    """The live library's ``Favorites`` shape, which is why the default is its child.
-
-    A folder holds nodes rather than tracks, so it never reaches
-    ``LibraryView.playlists``. Driven because a default naming a folder would
-    have refused on every real run while every fixture stayed green.
-    """
+    """The live library's ``Favorites`` shape, which is why the default is its child."""
     path = outbound_fakes.write_export(
         installed.library.root / "outbound",
         extra_children=outbound_fakes.folder_only("Favorites"),
@@ -210,13 +194,7 @@ def test_an_empty_playlist_refuses_distinguishably_from_an_absent_one(installed)
 
 
 def _two_playlists_called(name: str) -> list[str]:
-    """The same display name in two folders, which is a real per-year tree shape.
-
-    A top-level playlist of that name would NOT be ambiguous: the resolver
-    matches a full display path first, and a top-level playlist's path IS its
-    name. The ambiguity only exists between two nested nodes, which is why the
-    fixture nests both.
-    """
+    """The same display name in two folders, which is a real per-year tree shape."""
     return [
         *outbound_fakes.nested_playlist("Crates", name, [1]),
         *outbound_fakes.nested_playlist("Archive", name, [2]),
@@ -286,19 +264,11 @@ def test_a_queued_export_holds_one_item_per_track(installed, exported, monkeypat
         assert [item.item_id for item in jobs.items(store, job_id)] == ["1", "2", "3"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 3. The export worker runs
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _resume(job_id: str) -> tuple[int, dict]:
-    """Drive the resume the job engine would spawn, in THIS process.
-
-    ``argv_for`` is the real builder and the argv is the real one, which is what
-    makes this a drive of the shipped resume rather than of a list. The only
-    thing not reproduced is the detachment, and it cannot be: a spawned child is
-    a fresh process and inherits no substituted provider.
-    """
+    """Drive the resume the job engine would spawn, in THIS process."""
     from cratekit.cli import jobs as cli_jobs
 
     with jobs.open_store() as store:
@@ -315,12 +285,7 @@ def _drive_job(job_id: str, exported: Path) -> tuple[int, dict]:
 def test_an_export_runs_pending_to_done_and_its_artifact_reads_back(
     installed, exported, monkeypatch
 ):
-    """The whole point of the unit, driven through the real resume path.
-
-    The artifact is READ BACK AND CHECKED FOR SHAPE rather than for existence: a
-    file that exists and says nothing is exactly what a handler that reported
-    success over work it never did would leave behind.
-    """
+    """The whole point of the unit, driven through the real resume path."""
     account = outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3))
     bind(monkeypatch, account)
     _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
@@ -367,12 +332,7 @@ def test_a_second_export_of_the_same_playlist_adds_nothing_and_creates_nothing(
 def test_the_envelope_names_the_tracks_the_provider_could_not_match(
     installed, exported, monkeypatch
 ):
-    """Without this a person sees three of three items done and is told nothing.
-
-    ``export.apply``'s docstring promises unmatched tracks are reported and never
-    dropped silently, and until the envelope carried them that promise held only
-    for whoever opened the JSON under the queue root.
-    """
+    """Without this a person sees three of three items done and is told nothing."""
     del installed
     bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(2)))
     _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
@@ -401,12 +361,7 @@ def _codes(envelope: dict) -> list[str]:
 def test_an_export_with_an_unmatched_track_counts_and_names_it_on_both_renderers(
     installed, exported, monkeypatch
 ):
-    """R-850, driven. A live export of eight answered ``ok`` and ``8 of 8 settled``.
-
-    The second drive is of a job that already finished, which reports without
-    running anything, so the person's answer and the envelope are two readings of
-    the same artifacts rather than of two runs.
-    """
+    """R-850, driven. A live export of eight answered ``ok`` and ``8 of 8 settled``."""
     del installed
     account = outbound_fakes.FakeAccount(catalog=catalog(1, 3))
     bind(monkeypatch, account)
@@ -484,11 +439,7 @@ def test_a_resumed_export_counts_across_both_runs_and_each_item_once(
 ):
     """The first run's one add request fails, so tracks 1 and 3 settle only in
     the second, and track 2, unmatched, is redone with them (U270: a batch's
-    request carries every matched track, and a refused request adds none).
-
-    Counted per committed artifact, so each item is in the answer the second
-    run gives, and is in it once.
-    """
+    request carries every matched track, and a refused request adds none)."""
     del installed
     account = outbound_fakes.FakeAccount(
         catalog=catalog(1, 3), fail_on={"tid-3"}, transient=True
@@ -533,13 +484,7 @@ def _match_fails_for(account, identity: str, *, transient: bool = True) -> None:
 def test_a_failed_item_leaves_the_job_resumable_and_the_resume_redoes_only_it(
     installed, exported, monkeypatch
 ):
-    """The engine's resume guarantee, through the binding rather than beside it.
-
-    The failure is TRANSIENT and one track's own, met while its batch is
-    planned (U270), so the other two are written in the batch's one request.
-    A resume is only offered, and since R-390 only performed, over a failure
-    the item itself recorded as retryable.
-    """
+    """The engine's resume guarantee, through the binding rather than beside it."""
     del installed
     account = outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3), fail_on={"armed"})
     _match_fails_for(account, "2")
@@ -633,13 +578,7 @@ def test_a_refused_request_fails_every_item_it_carried_and_the_resume_adds_each_
 def test_the_resume_of_a_half_failed_export_does_not_exit_ok(
     installed, exported, monkeypatch
 ):
-    """R-225, pinned where the branch was written rather than inherited.
-
-    ``master/cli.py``'s resume branch reported a half failed job through a normal
-    envelope and exited OK when this was written, so a person whose export wrote
-    nothing was told it finished. Copying that branch is what this asserts did
-    not happen. Every shell calls ``jobs.raise_for_state`` now.
-    """
+    """R-225, pinned where the branch was written rather than inherited."""
     del installed
     account = outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3), fail_on={"armed"})
     # ONE TRACK'S OWN DEFECT, met while its batch is planned (U270), so the
@@ -661,9 +600,7 @@ def test_the_resume_of_a_half_failed_export_does_not_exit_ok(
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4. The favourites sweep runs, add only
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_favourites_sweep_runs_to_done_and_hearts_every_matched_row(
@@ -698,15 +635,7 @@ def test_a_provider_that_already_hearts_a_row_is_reported_rather_than_written(
 def test_a_second_sweep_writes_nothing_because_the_ledger_remembers(
     installed, exported, monkeypatch
 ):
-    """The ledger short circuit, reached without asking the provider at all.
-
-    THE SECOND SWEEP GETS A FRESH ACCOUNT, and that is what makes this a test of
-    the LEDGER rather than of the provider. Reusing the first account leaves its
-    ``hearts`` set populated, so ``account.has_heart`` alone would report every
-    row as already and the assertion would pass with the ledger check deleted.
-    Measured that way: the guard killed zero tests. A new account that hearts
-    nothing can only be kept from writing by the recorded ledger.
-    """
+    """The ledger short circuit, reached without asking the provider at all."""
     del installed
     first_account = outbound_fakes.FakeAccount(catalog=catalog(1, 2))
     bind(monkeypatch, first_account)
@@ -746,12 +675,7 @@ def _three_favourites(installed) -> Path:
 def test_a_sweep_with_an_unmatched_favourite_counts_and_names_it_on_both_renderers(
     installed, monkeypatch
 ):
-    """R-856, driven. The sweep answered ``ok`` and ``3 of 3 settled`` and nothing else.
-
-    The standing warning stays first, since it is true of every pass, and the
-    unmatched one follows it. The second drive reports a finished job, so the
-    two answers are two readings of the same artifacts.
-    """
+    """R-856, driven. The sweep answered ``ok`` and ``3 of 3 settled`` and nothing else."""
     exported = _three_favourites(installed)
     account = outbound_fakes.FakeAccount(catalog=catalog(1, 3))
     bind(monkeypatch, account)
@@ -829,11 +753,7 @@ def test_a_favourite_whose_isrc_names_several_tracks_is_listed_with_that_reason(
 
 
 def test_a_report_written_before_the_listing_still_names_its_unmatched_rows():
-    """An artifact from an earlier build carries ``reasons`` and no listing.
-
-    A row the account gave a reason for keeps its name and reason; a row it
-    said nothing about is listed by identity rather than dropped from the count.
-    """
+    """An artifact from an earlier build carries ``reasons`` and no listing."""
     report = {
         "unmatched": ["4", "5"],
         "reasons": [{"row": "4", "artist": "A", "title": "T", "reason": "names 2"}],
@@ -859,12 +779,7 @@ def test_the_sweep_warning_counts_only_whole_numbers():
 def test_the_sweep_reaches_nothing_outside_the_add_only_protocol(
     installed, exported, monkeypatch
 ):
-    """An absence proves nothing; this raises on any attribute outside the protocol.
-
-    The add-only promise (R36) rests on ``RemoteAccount`` declaring no remove, so
-    the assertion worth making is that no code path in the shell or the engine
-    can even NAME one, rather than that a particular run did not.
-    """
+    """An absence proves nothing; this raises on any attribute outside the protocol."""
     del installed
     bind(monkeypatch, outbound_fakes.StrictAccount(catalog=catalog(1, 2)))
     _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
@@ -874,11 +789,7 @@ def test_the_sweep_reaches_nothing_outside_the_add_only_protocol(
 def test_no_colour_writer_reaches_the_engine_from_a_queued_sweep(
     installed, exported, monkeypatch
 ):
-    """``colors=None``, asserted at the engine boundary rather than in prose.
-
-    Colouring a library row is a write to the live rekordbox database and belongs
-    behind the guarded write session, so a queued sweep must not carry one.
-    """
+    """``colors=None``, asserted at the engine boundary rather than in prose."""
     del installed
     seen: list[object] = []
     real = favorites_cli.hearts.heart_back
@@ -908,32 +819,18 @@ def test_the_resume_of_a_half_failed_sweep_does_not_exit_ok(
     assert resumed["cause"] is not None
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 4b. R-424: the verb says only what it does, in the output a person gets
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def _human(argv: list[str]) -> tuple[int, str]:
-    """One invocation in the DEFAULT output mode, returned as text.
-
-    ``tests.cli_drive.drive`` always passes ``--output json``, which is why the
-    whole of this file stayed green over a report that never mentioned the local
-    write it was not doing. These rows go through the dispatcher the way a person
-    does. Recorded in
-    ``docs/solutions/workflow-issues/a-json-only-driver-cannot-see-a-blank-human-renderer.md``.
-    """
+    """One invocation in the DEFAULT output mode, returned as text."""
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(argv, stdout=out, stderr=err)
     return code, out.getvalue() or err.getvalue()
 
 
 def _answer_the_confirm(verb: list[str], gate: str) -> str:
-    """R34's first two acts, without the third. Returns the gate run.
-
-    ``approve_and_queue`` does all three and returns a job id, which is the right
-    helper when the queueing pass is json. It is the wrong one here: the drive
-    under test IS the queueing pass, and it has to be the human one.
-    """
+    """R34's first two acts, without the third. Returns the gate run."""
     code, refused = drive(verb)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     detail = refused["cause"]["detail"]
@@ -947,13 +844,7 @@ def _answer_the_confirm(verb: list[str], gate: str) -> str:
 
 
 def _says_no_local_write(text: str) -> bool:
-    """The warning as the renderer prints it, on its own line.
-
-    THE WHOLE LINE AND NOT A SUBSTRING OF THE MESSAGE. A dump of the json
-    envelope as text would contain the sentence inside a quoted value and would
-    satisfy a substring match while telling a person nothing, which is the shape
-    the human-renderer learning warns about.
-    """
+    """The warning as the renderer prints it, on its own line."""
     code = favorites_cli.LOCAL_WRITE_WARNING["code"]
     message = favorites_cli.LOCAL_WRITE_WARNING["message"]
     return f"warning [{code}]: {message}" in text.splitlines()
@@ -962,12 +853,7 @@ def _says_no_local_write(text: str) -> bool:
 def test_queueing_a_sweep_tells_a_person_in_the_default_output_that_nothing_local_is_written(
     installed, exported, monkeypatch
 ):
-    """R-424's cost, driven on the surface that carried it.
-
-    The verb declared four local write surfaces it never reached, the guide
-    promised a colour, a Favorite tag and a playlist membership, and the pass
-    itself said nothing either way. This is the pass a person types.
-    """
+    """R-424's cost, driven on the surface that carried it."""
     del installed
     bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2)))
     run_id = _answer_the_confirm(favorites_verb(exported), "sync.favorites.confirm")
@@ -981,11 +867,7 @@ def test_queueing_a_sweep_tells_a_person_in_the_default_output_that_nothing_loca
 def test_the_resumed_sweep_says_the_same_thing_where_the_hearting_actually_happens(
     installed, exported, monkeypatch
 ):
-    """The queueing pass writes nothing at all; the resume is the run.
-
-    A correction that appeared only at queue time would be on the invocation
-    whose report nobody reads for what happened.
-    """
+    """The queueing pass writes nothing at all; the resume is the run."""
     del installed
     bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2)))
     _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
@@ -1001,12 +883,7 @@ def test_the_resumed_sweep_says_the_same_thing_where_the_hearting_actually_happe
 
 
 def test_an_item_report_carries_no_empty_colored_list(installed, exported, monkeypatch):
-    """R-424's other half: an empty list reads as a write that found nothing.
-
-    Asserted on the COMMITTED artifact rather than on the worker's return value,
-    because the artifact is what survives a kill and what ``crate job`` reads
-    back, so a key dropped from one and kept in the other is two answers.
-    """
+    """R-424's other half: an empty list reads as a write that found nothing."""
     bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2)))
     _run, job_id = approve_and_queue(favorites_verb(exported), "sync.favorites.confirm")
     assert _resume(job_id)[0] == int(ExitCode.OK)
@@ -1020,14 +897,7 @@ def test_an_item_report_carries_no_empty_colored_list(installed, exported, monke
 
 
 def test_the_verb_declares_the_remote_account_and_no_local_surface():
-    """The declaration R-424 is about, read off the shipped registry.
-
-    Each surface is named rather than compared as a set alone, because a set
-    comparison that fails says only that two sets differ and this assertion is
-    about WHICH ones were claimed. ``db_tree`` and ``db_metadata`` stood for the
-    colour, the tag and the playlist membership; ``xml`` and ``files`` for a
-    document and a file the sweep never writes.
-    """
+    """The declaration R-424 is about, read off the shipped registry."""
     entry = registry.entry("sync.favorites")
     assert entry.writes == frozenset({"remote"}), sorted(entry.writes)
     assert not entry.writes & registry.DB_WRITE_SURFACES
@@ -1035,12 +905,7 @@ def test_the_verb_declares_the_remote_account_and_no_local_surface():
 
 
 def test_the_verb_asks_no_question_its_work_cannot_raise():
-    """The cloud-sync decision goes with the database surfaces.
-
-    It is the decision a person answers when the guarded writer cannot read
-    rekordbox's Cloud Library Sync state. This verb never opens the database, so
-    the question could not arise and an answer to it authorised nothing.
-    """
+    """The cloud-sync decision goes with the database surfaces."""
     entry = registry.entry("sync.favorites")
     assert [spec.name for spec in entry.gates] == ["sync.favorites.confirm"]
 
@@ -1048,12 +913,7 @@ def test_the_verb_asks_no_question_its_work_cannot_raise():
 def test_doctor_asks_neither_rekordbox_question_for_a_sweep_that_reads_an_export(
     monkeypatch,
 ):
-    """Derived from this entry alone, the way ``route.unplaced`` pinned the same shape.
-
-    ``requires_check`` walks every entry a profile switches on, so over the real
-    registry another verb would answer for this one and the assertion would say
-    nothing about favourites.
-    """
+    """Derived from this entry alone, the way ``route.unplaced`` pinned the same shape."""
     from cratekit.cli import doctor
     from cratekit.core import profiles
 
@@ -1068,13 +928,7 @@ def test_doctor_asks_neither_rekordbox_question_for_a_sweep_that_reads_an_export
 def test_a_sweep_runs_with_rekordbox_open_and_never_opens_the_database(
     installed, exported, monkeypatch
 ):
-    """Why dropping both checks is safe, driven rather than argued.
-
-    The verb reads a collection export through this project's own reader. Both
-    rekordbox and its agent are reported running, which is the state doctor used
-    to refuse this verb in, and the sweep still hearts both rows. Nothing opens
-    the library database: ``rb_writer.open_db`` raises if anything reaches for it.
-    """
+    """Why dropping both checks is safe, driven rather than argued."""
     del installed
     from cratekit.core import rb_writer
 
@@ -1094,9 +948,7 @@ def test_a_sweep_runs_with_rekordbox_open_and_never_opens_the_database(
     assert sorted(account.hearted) == ["tid-1", "tid-2"]
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 5. The provider seam, and what a person is told before they confirm
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_with_no_credential_the_seam_refuses_with_the_credential_cause(installed):
@@ -1133,11 +985,7 @@ def test_with_a_credential_stored_and_no_adapter_the_seam_refuses_unbound(
 def test_the_queued_envelope_warns_only_when_no_provider_adapter_is_bound(
     installed, exported, monkeypatch, adapter_imports
 ):
-    """Told at the moment it is still actionable, not after the job has failed.
-
-    Since U63 a shipped build is bound, so the warning is gone there, and a build
-    whose adapter does not import still carries it.
-    """
+    """Told at the moment it is still actionable, not after the job has failed."""
     del installed
     if not adapter_imports:
         unimportable_adapter(monkeypatch)
@@ -1166,12 +1014,7 @@ def test_the_queued_envelope_warns_only_when_no_provider_adapter_is_bound(
 def test_a_job_driven_with_no_adapter_fails_rather_than_reporting_success(
     installed, exported
 ):
-    """What this build actually delivers on a machine with nothing bound.
-
-    Before this unit the job stayed pending for ever and said nothing. It now
-    ends with a named cause, which is a smaller thing than a working export and
-    is the honest one.
-    """
+    """What this build actually delivers on a machine with nothing bound."""
     del installed
     _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
     code, resumed = _resume(job_id)
@@ -1191,21 +1034,13 @@ def test_a_job_driven_with_no_adapter_fails_rather_than_reporting_success(
     assert reasons
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 6. The confirm digest, and the frozen configuration
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_confirm_recorded_against_one_document_does_not_authorise_another(
     installed, monkeypatch
 ):
-    """The reason the digest grew to cover the export path.
-
-    Before this, ``export.playlist``'s digest was built from the playlist name
-    alone, so an approval of ``crate-export`` in one collection authorised a
-    write built from a different collection with a different track set, to
-    somebody's streaming account.
-    """
+    """The reason the digest grew to cover the export path."""
     bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
     first = outbound_fakes.write_export(installed.library.root / "one")
     second = outbound_fakes.write_export(installed.library.root / "two", crate=(1,))
@@ -1236,15 +1071,7 @@ def test_a_confirm_recorded_against_one_document_does_not_authorise_another(
 def test_a_relative_export_argument_still_resumes(
     installed, exported, monkeypatch, tmp_path
 ):
-    """The other half of the digest decision, and the one that would strand a job.
-
-    The resumed child rebuilds ``--export`` from the frozen ABSOLUTE path. If the
-    digest were taken over what the person typed, a relative argument would
-    produce a different digest on every respawn and the confirmed job could never
-    advance, which is the defect
-    ``an-explicit-gate-makes-a-queued-job-undriveable-without-the-run-id``
-    records in another shape.
-    """
+    """The other half of the digest decision, and the one that would strand a job."""
     del installed
     bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
     monkeypatch.chdir(exported.parent)
@@ -1266,16 +1093,7 @@ def test_a_relative_export_argument_still_resumes(
 def test_the_handler_runs_against_the_frozen_configuration_not_the_current_one(
     installed, exported, monkeypatch, verb, gate, module, worker
 ):
-    """KTD9, asserted on a key NO environment variable overrides.
-
-    ``tests/conftest.py`` sets ``CRATEKIT_LIBRARY_ROOT`` for the whole suite and
-    ``jobs.frozen_config`` rebuilds through ``config.from_dict``, which reapplies
-    environment overrides, so moving the library root between enqueue and drive
-    proves nothing: the frozen copy and the live one would agree.
-    ``reports.intake_stale_days`` has no override, which is what makes the two
-    copies genuinely able to differ. Recorded in
-    ``docs/solutions/workflow-issues/a-frozen-config-is-frozen-against-the-file-not-against-an-env-override.md``.
-    """
+    """KTD9, asserted on a key NO environment variable overrides."""
     del installed
     bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
     invocation = export_verb(exported) if verb == "export" else favorites_verb(exported)
@@ -1309,20 +1127,13 @@ def test_the_handler_runs_against_the_frozen_configuration_not_the_current_one(
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 7. First-caller failure paths through the engines
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_an_item_whose_track_left_the_export_refuses_rather_than_writing_nothing(
     installed, exported, monkeypatch
 ):
-    """A regenerated document under a queued job, driven.
-
-    Reported as a refusal rather than skipped, because an item that reports done
-    having written nothing is the clean-report-over-unreadable-state cost METHOD
-    names, and the person's remedy is a fresh export rather than another resume.
-    """
+    """A regenerated document under a queued job, driven."""
     del installed
     bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
     _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
@@ -1347,12 +1158,7 @@ def test_an_item_whose_track_left_the_export_refuses_rather_than_writing_nothing
 def test_a_ledger_that_cannot_be_read_stops_the_write_rather_than_duplicating(
     installed, exported, monkeypatch
 ):
-    """The engine's own refusal, reached through the binding for the first time.
-
-    ``ledger._load`` refuses rather than treating an unreadable ledger as empty,
-    because an empty reading would create a second remote playlist for a crate
-    the account already has. Nothing in ``src`` had ever driven that path.
-    """
+    """The engine's own refusal, reached through the binding for the first time."""
     account = outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3))
     bind(monkeypatch, account)
     _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
@@ -1372,9 +1178,7 @@ def test_a_ledger_that_cannot_be_read_stops_the_write_rather_than_duplicating(
     assert causes == {"outbound-ledger-unusable"}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 8. The derivation's own properties
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_export_document_is_parsed_once_per_process(installed, monkeypatch):
@@ -1513,26 +1317,15 @@ def test_an_absent_library_root_refuses_rather_than_reading_every_row_untagged(
 
 
 def test_the_default_favourites_playlist_is_the_one_the_fixture_carries():
-    """A default that drifted from the live library's shape is the whole point.
-
-    The first draft of this unit defaulted to ``Favorites``, which is a FOLDER in
-    the live library, so every real run would have refused while the suite stayed
-    green on a fixture that named a playlist directly.
-    """
+    """A default that drifted from the live library's shape is the whole point."""
     assert source.DEFAULT_FAVORITES_PLAYLIST == outbound_fakes.FAVORITES
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # 9. What the review found a green suite could not see
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_a_dangling_track_is_named_in_the_queued_envelope(installed, monkeypatch):
-    """The derivation collected it and nothing drove the reporting of it.
-
-    ``source.resolve`` returning ``dangling`` was tested; the warning built from
-    it was not, so the branch could have been deleted with the suite green.
-    """
+    """The derivation collected it and nothing drove the reporting of it."""
     bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2)))
     path = outbound_fakes.write_export(
         installed.library.root / "outbound", crate=(1, 2, 99), tracks=2
@@ -1583,15 +1376,7 @@ def test_the_queued_envelope_names_a_missing_and_a_repeated_track(
 def test_a_ledger_that_cannot_be_written_creates_no_remote_playlist_at_all(
     installed, exported, monkeypatch
 ):
-    """The duplicate playlist defect, driven, in the direction that produced it.
-
-    An UNREADABLE ledger refuses before anything is created and was already
-    covered. An UNWRITABLE one is the case that duplicated: the old ordering read
-    the recorded id without a lock, created a remote playlist, and only then
-    failed trying to record it, so every item after it created another one. One
-    three track export made three remote playlists. The lock now precedes the
-    create, so the account is untouched.
-    """
+    """The duplicate playlist defect, driven, in the direction that produced it."""
     del installed
     account = outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3))
     bind(monkeypatch, account)
@@ -1614,13 +1399,7 @@ def test_a_ledger_that_cannot_be_written_creates_no_remote_playlist_at_all(
 def test_a_cancelled_job_does_not_report_a_clean_resume(
     installed, exported, monkeypatch
 ):
-    """R-225 taken to the state that actually reaches a person: an interrupt.
-
-    A run stopped with a signal is CANCELLED, not FAILED, and it carries the
-    cause ``jobs.cancel`` builds. A guard reading FAILED alone reported an
-    interrupted export through a normal envelope and exited OK, over a job with
-    items still pending and tracks already on the remote playlist.
-    """
+    """R-225 taken to the state that actually reaches a person: an interrupt."""
     del installed
     bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
     _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
@@ -1637,12 +1416,7 @@ def test_a_cancelled_job_does_not_report_a_clean_resume(
 def test_a_job_with_no_items_refuses_rather_than_reporting_a_clean_success(
     installed, exported, monkeypatch
 ):
-    """The zero item rule on the DRIVE side, for a job neither verb can queue now.
-
-    A job frozen by a build before this one carries no items, and ``core.jobs``
-    reports attempting nothing as SUCCEEDED by design. Driving one would tell a
-    person their export finished when nothing was ever queued to run.
-    """
+    """The zero item rule on the DRIVE side, for a job neither verb can queue now."""
     del installed
     bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
     _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
@@ -1659,14 +1433,7 @@ def test_a_job_with_no_items_refuses_rather_than_reporting_a_clean_success(
 def test_a_confirm_does_not_authorise_a_different_track_set_at_the_same_path(
     installed, monkeypatch
 ):
-    """The case the two-path test could not reach, and the one a person hits.
-
-    An operator confirms an export, re-exports the collection from rekordbox over
-    the same working path because that is what a working path is for, and runs
-    the approved invocation. The digest used to name the path and the playlist,
-    both unchanged, so a different set of tracks was written to their streaming
-    account under a decision that never described it.
-    """
+    """The case the two-path test could not reach, and the one a person hits."""
     bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
     path = outbound_fakes.write_export(installed.library.root / "outbound", crate=(1,))
     code, refused = drive(export_verb(path))
@@ -1709,11 +1476,7 @@ def test_job_show_reports_the_bound_worker_for_a_queued_sweep(
 def test_a_failed_favourite_leaves_the_sweep_resumable(
     installed, exported, monkeypatch
 ):
-    """The plan named it for both verbs and only the export verb had it.
-
-    A transient failure, as the export test's is, since R-390 re-arms nothing
-    the item recorded as permanent.
-    """
+    """The plan named it for both verbs and only the export verb had it."""
     del installed
     account = outbound_fakes.FakeAccount(
         catalog=catalog(1, 2), fail_on={"tid-2"}, transient=True
@@ -1806,9 +1569,7 @@ def test_aborting_the_confirmation_queues_nothing(installed, exported):
     assert _queue_is_empty()
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-227. The export is a file somebody made by hand, and it can be old
-# ═══════════════════════════════════════════════════════════════════════════
 
 #: A fixed instant, so an age is a subtraction rather than a race with the clock.
 _WRITTEN = datetime(2026, 8, 1, 12, 0, 0, tzinfo=timezone.utc)
@@ -1827,24 +1588,14 @@ def _invocation(verb: str, exported: Path) -> list[str]:
 
 
 def _written_days_ago(exported: Path, days: float) -> datetime:
-    """Set the export's modification time, and return the instant it now carries.
-
-    THE RETURNED INSTANT IS READ BACK OFF THE FILE rather than computed here, so
-    a filesystem that rounds a timestamp cannot make the expected date disagree
-    with the one the product reads.
-    """
+    """Set the export's modification time, and return the instant it now carries."""
     moment = datetime.now(timezone.utc).timestamp() - days * 86_400
     os.utime(exported, (moment, moment))
     return datetime.fromtimestamp(exported.stat().st_mtime, tz=timezone.utc)
 
 
 def _local(moment: datetime) -> str:
-    """The instant as the product shows it: this machine's zone, to the second.
-
-    LOCAL BECAUSE A PERSON COMPARES IT WITH THEIR MEMORY AND WITH FINDER. An
-    evening export west of Greenwich is the next day in UTC, which is a day off
-    on the one fact this surface exists to show.
-    """
+    """The instant as the product shows it: this machine's zone, to the second."""
     return moment.astimezone().replace(microsecond=0).isoformat()
 
 
@@ -1858,11 +1609,7 @@ def _configure_stale_days(days: int) -> None:
 def test_a_month_old_export_is_called_old_in_the_plan_the_gate_shows(
     installed, exported, verb, gate
 ):
-    """R-227's cost, reproduced. The person deciding is told the file's date.
-
-    Before this, a month old export met the gate with no ``shown`` at all, so
-    the question arrived with nothing about the document it was asked over.
-    """
+    """R-227's cost, reproduced. The person deciding is told the file's date."""
     del installed
     written = _written_days_ago(exported, 30)
     code, refused = drive(_invocation(verb, exported))
@@ -1918,11 +1665,7 @@ def test_the_queueing_envelope_warns_that_the_export_is_old(
 def test_a_fresh_export_shows_its_date_and_warns_of_nothing(
     installed, exported, monkeypatch, verb, gate
 ):
-    """The date is shown EVERY time, the warning only past the limit.
-
-    A plan that named the date only when it was old would make a missing line
-    mean "fresh", which is absence read as evidence.
-    """
+    """The date is shown EVERY time, the warning only past the limit."""
     del installed
     bind(monkeypatch, outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3)))
     _written_days_ago(exported, 2)
@@ -1959,11 +1702,7 @@ def test_the_limit_is_the_configured_one_in_both_directions(
 
 
 def test_old_means_past_the_limit_and_not_at_it(tmp_path):
-    """Seven days exactly is not past seven days, and one second more is.
-
-    Compared as DURATIONS. Floored whole days would read seven days and twenty
-    three hours as seven, and call it fresh for a day longer than the key says.
-    """
+    """Seven days exactly is not past seven days, and one second more is."""
     document = tmp_path / "collection.xml"
     document.write_text("<x/>")
     os.utime(document, (_WRITTEN.timestamp(), _WRITTEN.timestamp()))
@@ -2010,12 +1749,7 @@ def test_a_date_well_in_the_future_is_not_the_freshest_export_there_could_be(tmp
 
 
 def test_the_date_is_the_persons_own_and_not_greenwichs(tmp_path):
-    """Nine in the evening in New York is one in the morning, tomorrow, in UTC.
-
-    THE ZONE IS SET HERE, because read off the machine this is a guard that
-    holds only at some hours of the day and on some machines, and a CI runner in
-    UTC would agree with the defect for ever.
-    """
+    """Nine in the evening in New York is one in the morning, tomorrow, in UTC."""
     document = tmp_path / "collection.xml"
     document.write_text("<x/>")
     written = datetime(2026, 8, 2, 1, 0, 0, tzinfo=timezone.utc)
@@ -2102,9 +1836,7 @@ def test_an_age_that_cannot_be_read_is_unknown_rather_than_fresh(tmp_path):
     assert shown["freshness"] == "unknown"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-229. A crate rekordbox shows under a new path keeps its remote playlist
-# ═══════════════════════════════════════════════════════════════════════════
 
 _GATE = "export.playlist.confirm"
 _FOLDER = "Sets"
@@ -2112,11 +1844,7 @@ _MOVED = f"{_FOLDER}/{outbound_fakes.CRATE}"
 
 
 def _reorganised(installed, **kwargs) -> Path:
-    """Write the export again as rekordbox would after a reorganisation.
-
-    THE SAME PATH ON DISK, because a person exports over the file they exported
-    last time, so the memoized parse has to be dropped as a new process would.
-    """
+    """Write the export again as rekordbox would after a reorganisation."""
     path = outbound_fakes.write_export(installed.library.root / "outbound", **kwargs)
     source.forget_libraries()
     return path
@@ -2430,9 +2158,7 @@ def test_new_playlist_does_not_hide_a_record_the_crate_already_has(
     assert shown == {"action": export_cli.ACTION_UPDATE, "remote_id": "pl-1"}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
 # R-693: the queued resume's gate shows the frozen plan it asks about
-# ═══════════════════════════════════════════════════════════════════════════
 
 
 def test_the_resume_gate_shows_the_frozen_tracks_the_digest_covers(
