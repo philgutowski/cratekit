@@ -94,7 +94,7 @@ def cfg(library):
 
 
 @pytest.fixture
-def rclone_on_path(tmp_path, monkeypatch):
+def rclone(tmp_path, monkeypatch):
     """A stub rclone that resolves through the binaries override."""
     fake = tmp_path / "bin" / "rclone"
     fake.parent.mkdir(parents=True, exist_ok=True)
@@ -121,9 +121,7 @@ class Recorder:
             else 1 if command.label in self.fail_labels
             else 0
         )
-        return backup.CommandResult(
-            returncode=rc, stdout=self.stdout_for.get(command.label, "")
-        )
+        return backup.CommandResult(returncode=rc, stdout=self.stdout_for.get(command.label, ""))
 
     def labels(self):
         return [c.label for c in self.commands]
@@ -135,6 +133,31 @@ def snapshot_listing(cfg, *sidecar_suffixes, extra=()):
     names = [database, *extra]
     names.extend(database + suffix for suffix in sidecar_suffixes)
     return "".join(name + "\n" for name in names)
+
+
+def _restore(cfg, **kwargs):
+    """``plan_restore`` confirmed, with nothing running and the gates seam open."""
+    defaults = {"confirmed": True, "process_lister": no_processes, "gates": open_gates}
+    return backup.plan_restore(cfg, **{**defaults, **kwargs})
+
+
+def _record(cfg, portion: str, completed_at, destination):
+    """One completed portion on record, through ``backup_facts.record``."""
+    portion = getattr(backup_facts.Portion, portion)
+    return backup_facts.record(cfg, portion, completed_at=completed_at, destination=destination)
+
+
+def _scratch(cfg, tmp_path):
+    """A scratch restore target whose database folder exists."""
+    target = tmp_path / "scratch"
+    backup.database_target_for(cfg, target).parent.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def _listing(cfg, *sidecar_suffixes, extra=(), **kwargs):
+    """A ``Recorder`` whose snapshot listing holds the database and the named sidecars."""
+    listed = snapshot_listing(cfg, *sidecar_suffixes, extra=extra)
+    return Recorder(stdout_for={backup.LIST_SNAPSHOT_CONTENTS: listed}, **kwargs)
 
 
 def no_processes():
@@ -245,11 +268,7 @@ def test_the_destructive_verb_is_wired_to_the_destructive_session_gates():
         or (isinstance(node, ast.Import) and any(a.name == "cratekit.core.session" for a in node.names))
         for node in ast.walk(tree)
     )
-    assert imports_session, (
-        "cratekit.core.session has landed, so the restore path must bind to the "
-        "library lock, the backup acknowledgment, and the volume identity "
-        "assertion before it clears a sidecar or replaces a database (KTD24, R38)"
-    )
+    assert imports_session, "cratekit.core.session has landed"
     assert any(
         isinstance(node, ast.Attribute) and node.attr.startswith("assert_")
         for node in ast.walk(tree)
@@ -317,9 +336,7 @@ def snapshot_index():
 
 def test_the_set_builder_produces_a_sequence_from_a_snapshot_index(snapshot_index):
     """The plan's first scenario, asserted on all three of its clauses."""
-    plan = setbuilder.build_set(
-        "Alder - Anchor Work", snapshot_index, taxonomy=default_taxonomy()
-    )
+    plan = setbuilder.build_set("Alder - Anchor Work", snapshot_index, taxonomy=default_taxonomy())
 
     assert plan.anchor.owned is True
     assert plan.anchor.key == "8A"
@@ -1094,7 +1111,7 @@ def test_the_mastering_payload_carries_a_version(tmp_path):
 
 
 @pytest.fixture
-def library_with_database(cfg):
+def db_file(cfg):
     """A library whose configured database path actually holds a file."""
     database = config.state_path("rekordbox_db", cfg)
     database.parent.mkdir(parents=True, exist_ok=True)
@@ -1109,18 +1126,14 @@ SETTLED_ARCHIVES = "".join(f"2026-0{month}-01T000000Z/\n" for month in (1, 2, 3,
 
 
 @pytest.fixture
-def a_completed_mirror(cfg):
+def mirrored(cfg):
     """A completed mirror to this destination on record, so folders can be settled."""
     when = datetime(2026, 6, 1, tzinfo=timezone.utc)
-    backup_facts.record(
-        cfg, backup_facts.Portion.FILES, completed_at=when, destination=str(cfg.backup.dest)
-    )
+    _record(cfg, "FILES", when, str(cfg.backup.dest))
     return when
 
 
-def test_backup_with_rekordbox_running_skips_the_database_and_says_why(
-    cfg, library_with_database, rclone_on_path
-):
+def test_backup_with_rekordbox_running_skips_the_database_and_says_why(cfg, db_file, rclone):
     """The plan's third scenario."""
     plan = backup.plan_backup(cfg, process_lister=rekordbox_running)
 
@@ -1133,15 +1146,13 @@ def test_backup_with_rekordbox_running_skips_the_database_and_says_why(
     assert plan.portion(backup_facts.Portion.FILES).will_run is True
 
 
-def test_the_background_agent_alone_is_enough_to_refuse(cfg, library_with_database, rclone_on_path):
+def test_the_background_agent_alone_is_enough_to_refuse(cfg, db_file, rclone):
     """The fact the source system's original check missed."""
     plan = backup.plan_backup(cfg, process_lister=lambda: ("rekordboxAgent",))
     assert plan.portion(backup_facts.Portion.DATABASE).refusal is backup.Refusal.REKORDBOX_RUNNING
 
 
-def test_an_unrelated_process_whose_name_contains_rekordbox_does_not_refuse(
-    cfg, library_with_database, rclone_on_path
-):
+def test_an_unrelated_process_whose_name_contains_rekordbox_does_not_refuse(cfg, db_file, rclone):
     """P7: a guard that refuses correct situations is one people learn to bypass."""
     plan = backup.plan_backup(cfg, process_lister=lambda: ("rekordbox-notes-editor",))
     assert plan.portion(backup_facts.Portion.DATABASE).will_run is True
@@ -1160,7 +1171,7 @@ def test_the_process_probe_cannot_be_switched_off_by_the_environment():
     assert reads == [], f"the backup module reads the environment: {reads}"
 
 
-def test_the_database_fileset_never_rides_the_file_mirror(cfg, library_with_database, rclone_on_path):
+def test_the_database_fileset_never_rides_the_file_mirror(cfg, db_file, rclone):
     """A live mirror of an open database captures a torn copy."""
     plan = backup.plan_backup(cfg, process_lister=no_processes)
     mirror = plan.portion(backup_facts.Portion.FILES).commands[0]
@@ -1179,9 +1190,7 @@ def test_the_database_fileset_is_derived_from_the_state_inventory(cfg):
     assert names[1:] == [base + s.suffix for s in config.SQLITE_SIDECARS]
 
 
-def test_the_mirror_moves_overwritten_files_into_a_dated_archive_first(
-    cfg, library_with_database, rclone_on_path
-):
+def test_the_mirror_moves_overwritten_files_into_a_dated_archive_first(cfg, db_file, rclone):
     """Without it, a sync propagates local deletions to the only other copy."""
     plan = backup.plan_backup(cfg, process_lister=no_processes)
     mirror = plan.portion(backup_facts.Portion.FILES).commands[0]
@@ -1200,9 +1209,7 @@ def test_the_dated_stamp_sorts_as_text_in_chronological_order():
     assert autumn_first < autumn_second
 
 
-def test_every_destination_in_every_command_traces_back_to_configuration(
-    cfg, library_with_database, rclone_on_path
-):
+def test_every_destination_in_every_command_traces_back_to_configuration(cfg, db_file, rclone):
     """R1, and this unit's own requirement: the source hardcodes four of these."""
     configured = (cfg.backup.dest, cfg.backup.archive_root, cfg.backup.db_dest_root)
     plan = backup.plan_backup(cfg, process_lister=no_processes)
@@ -1237,7 +1244,7 @@ def test_the_backup_source_contains_no_remote_literal():
     assert not offenders, f"remote literals survive in the source: {offenders}"
 
 
-def test_an_unconfigured_remote_refuses_before_anything_runs(library, rclone_on_path):
+def test_an_unconfigured_remote_refuses_before_anything_runs(library, rclone):
     """No remote means no portion could run, so it is one refusal, not two."""
     unconfigured = config.from_dict(
         {
@@ -1257,7 +1264,7 @@ def test_an_unconfigured_remote_refuses_before_anything_runs(library, rclone_on_
 
 
 def test_a_missing_rclone_refuses_every_portion_with_one_named_cause(
-    cfg, library_with_database, monkeypatch, tmp_path
+    cfg, db_file, monkeypatch, tmp_path
 ):
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))
     monkeypatch.delenv("CRATEKIT_BIN_RCLONE", raising=False)
@@ -1267,9 +1274,7 @@ def test_a_missing_rclone_refuses_every_portion_with_one_named_cause(
     assert all(p.commands == () for p in plan.portions)
 
 
-def test_the_dry_run_and_the_real_run_come_from_one_plan(
-    cfg, library_with_database, rclone_on_path
-):
+def test_the_dry_run_and_the_real_run_come_from_one_plan(cfg, db_file, rclone):
     """The preview cannot describe a run different from the one that follows it."""
     plan = backup.plan_backup(cfg, process_lister=no_processes)
     preview = Recorder()
@@ -1285,7 +1290,7 @@ def test_the_dry_run_and_the_real_run_come_from_one_plan(
             assert issued.argv == command.argv
 
 
-def test_a_dry_run_publishes_no_backup_age(cfg, library_with_database, rclone_on_path):
+def test_a_dry_run_publishes_no_backup_age(cfg, db_file, rclone):
     """A preview that recorded an age would report a library protected by a run that copied not one
     byte.
     """
@@ -1294,18 +1299,14 @@ def test_a_dry_run_publishes_no_backup_age(cfg, library_with_database, rclone_on
     assert backup.backup_facts.read_facts(cfg) == {}
 
 
-def test_a_dry_run_never_purges(
-    cfg, library_with_database, rclone_on_path, a_completed_mirror
-):
+def test_a_dry_run_never_purges(cfg, db_file, rclone, mirrored):
     recorder = Recorder(stdout_for={backup.PRUNE_ARCHIVE: SETTLED_ARCHIVES})
     plan = backup.plan_backup(cfg, process_lister=no_processes)
     backup.run_backup(cfg, plan, runner=recorder, dry_run=True)
     assert backup.PRUNE_ARCHIVE_FOLDER not in recorder.labels()
 
 
-def test_the_prune_keeps_the_newest_and_removes_the_rest(
-    cfg, library_with_database, rclone_on_path, a_completed_mirror
-):
+def test_the_prune_keeps_the_newest_and_removes_the_rest(cfg, db_file, rclone, mirrored):
     recorder = Recorder(
         stdout_for={backup.PRUNE_ARCHIVE: "2026-01-01T000000Z/\n2026-02-01T000000Z/\n2026-03-01T000000Z/\n"}
     )
@@ -1318,7 +1319,7 @@ def test_the_prune_keeps_the_newest_and_removes_the_rest(
 
 
 def test_the_retention_the_plan_declared_is_the_retention_the_run_applies(
-    cfg, library_with_database, rclone_on_path, a_completed_mirror
+    cfg, db_file, rclone, mirrored
 ):
     """One decision, made once."""
     recorder = Recorder(stdout_for={backup.PRUNE_ARCHIVE: SETTLED_ARCHIVES})
@@ -1328,16 +1329,14 @@ def test_the_retention_the_plan_declared_is_the_retention_the_run_applies(
     assert len([c for c in recorder.commands if c.label == backup.PRUNE_ARCHIVE_FOLDER]) == 1
 
 
-def test_a_negative_retention_never_prunes_at_all(cfg, library_with_database, rclone_on_path):
+def test_a_negative_retention_never_prunes_at_all(cfg, db_file, rclone):
     """For a user with room who would rather keep every run's rollback."""
     plan = backup.plan_backup(cfg, process_lister=no_processes, archive_keep=-1)
     labels = [c.label for c in plan.portion(backup_facts.Portion.FILES).commands]
     assert backup.PRUNE_ARCHIVE not in labels
 
 
-def test_the_prune_runs_only_after_the_mirror_succeeded(
-    cfg, library_with_database, rclone_on_path
-):
+def test_the_prune_runs_only_after_the_mirror_succeeded(cfg, db_file, rclone):
     """Each dated folder holds one run's rollback."""
     recorder = Recorder(fail_labels={backup.MIRROR})
     plan = backup.plan_backup(cfg, process_lister=no_processes)
@@ -1354,7 +1353,7 @@ def _files_outcome(outcome):
 
 
 def test_a_failed_listing_reports_the_rotation_and_leaves_the_backup_successful(
-    cfg, library_with_database, rclone_on_path
+    cfg, db_file, rclone
 ):
     """The drive the finding behind this unit recorded as never performed."""
     recorder = Recorder(fail_labels={backup.PRUNE_ARCHIVE})
@@ -1368,15 +1367,10 @@ def test_a_failed_listing_reports_the_rotation_and_leaves_the_backup_successful(
 
     assert [w["code"] for w in files.warnings] == [backup.ARCHIVE_LISTING_FAILED]
     assert "accumulate" in files.warnings[0]["message"]
-    assert backup.PRUNE_ARCHIVE_FOLDER not in recorder.labels(), (
-        "a failed listing purged something, which is how a prune removes the "
-        "only archive there is"
-    )
+    assert backup.PRUNE_ARCHIVE_FOLDER not in recorder.labels(), "a failed listing purged something"
 
 
-def test_a_failed_purge_reports_how_many_folders_survived_it(
-    cfg, library_with_database, rclone_on_path, a_completed_mirror
-):
+def test_a_failed_purge_reports_how_many_folders_survived_it(cfg, db_file, rclone, mirrored):
     """The second condition, which has a different fix from the first."""
     recorder = Recorder(
         stdout_for={
@@ -1391,15 +1385,10 @@ def test_a_failed_purge_reports_how_many_folders_survived_it(
     assert files.ran is True
     assert [w["code"] for w in files.warnings] == [backup.ARCHIVE_PURGE_FAILED]
     assert "2 dated folder(s)" in files.warnings[0]["message"], files.warnings
-    assert files.results[0].returncode == 0, (
-        "the listing is reported as having failed, so the two conditions are "
-        "not being told apart"
-    )
+    assert files.results[0].returncode == 0, "the listing is reported as having failed"
 
 
-def test_a_prune_that_completed_warns_about_nothing(
-    cfg, library_with_database, rclone_on_path, a_completed_mirror
-):
+def test_a_prune_that_completed_warns_about_nothing(cfg, db_file, rclone, mirrored):
     """The companion to the two above, and not an assertion of absence."""
     recorder = Recorder(
         stdout_for={
@@ -1414,9 +1403,7 @@ def test_a_prune_that_completed_warns_about_nothing(
     assert all(w == () for w in (p.warnings for p in outcome.portions))
 
 
-def test_the_portion_with_no_prune_command_carries_no_warning(
-    cfg, library_with_database, rclone_on_path
-):
+def test_the_portion_with_no_prune_command_carries_no_warning(cfg, db_file, rclone):
     """The database portion never prunes, so it has nothing to report."""
     recorder = Recorder(fail_labels={backup.PRUNE_ARCHIVE})
     plan = backup.plan_backup(cfg, process_lister=no_processes)
@@ -1428,9 +1415,7 @@ def test_the_portion_with_no_prune_command_carries_no_warning(
     assert database.warnings == ()
 
 
-def test_a_rehearsal_reports_a_failed_listing_and_still_purges_nothing(
-    cfg, library_with_database, rclone_on_path
-):
+def test_a_rehearsal_reports_a_failed_listing_and_still_purges_nothing(cfg, db_file, rclone):
     """The branch this replaced ran the listing and read nothing."""
     recorder = Recorder(fail_labels={backup.PRUNE_ARCHIVE})
     plan = backup.plan_backup(cfg, process_lister=no_processes)
@@ -1443,7 +1428,7 @@ def test_a_rehearsal_reports_a_failed_listing_and_still_purges_nothing(
 
 
 def test_a_rehearsal_whose_listing_succeeded_warns_about_nothing_and_purges_nothing(
-    cfg, library_with_database, rclone_on_path, a_completed_mirror
+    cfg, db_file, rclone, mirrored
 ):
     """What the fold must not have changed."""
     recorder = Recorder(stdout_for={backup.PRUNE_ARCHIVE: SETTLED_ARCHIVES})
@@ -1454,16 +1439,14 @@ def test_a_rehearsal_whose_listing_succeeded_warns_about_nothing_and_purges_noth
     assert backup.PRUNE_ARCHIVE_FOLDER not in recorder.labels()
 
 
-def test_a_failed_portion_publishes_no_age(cfg, library_with_database, rclone_on_path):
+def test_a_failed_portion_publishes_no_age(cfg, db_file, rclone):
     plan = backup.plan_backup(cfg, process_lister=no_processes)
     backup.run_backup(cfg, plan, runner=Recorder(fail_labels={backup.MIRROR}))
     facts = backup_facts.read_facts(cfg)
     assert backup_facts.Portion.FILES not in facts
 
 
-def test_no_provider_specific_flag_is_baked_into_the_commands(
-    cfg, library_with_database, rclone_on_path
-):
+def test_no_provider_specific_flag_is_baked_into_the_commands(cfg, db_file, rclone):
     """The remote is configuration, so a one-provider flag belongs in rclone's own configuration
     rather than in a command this builds for every provider.
     """
@@ -1473,28 +1456,22 @@ def test_no_provider_specific_flag_is_baked_into_the_commands(
             assert not any(arg.startswith("--drive-") for arg in command.argv)
 
 
-def test_the_settings_directories_ride_the_database_portion(
-    cfg, library_with_database, rclone_on_path, tmp_path
-):
+def test_the_settings_directories_ride_the_database_portion(cfg, db_file, rclone, tmp_path):
     """They hold the pointer to where the database lives."""
     settings = tmp_path / "settings"
     settings.mkdir()
-    plan = backup.plan_backup(
-        cfg, process_lister=no_processes, settings_dirs=(settings,)
-    )
+    plan = backup.plan_backup(cfg, process_lister=no_processes, settings_dirs=(settings,))
     labels = [c.label for c in plan.portion(backup_facts.Portion.DATABASE).commands]
     assert backup.SNAPSHOT_SETTINGS in labels
 
 
 def test_the_settings_directories_are_skipped_when_rekordbox_is_running(
-    cfg, library_with_database, rclone_on_path, tmp_path
+    cfg, db_file, rclone, tmp_path
 ):
     """They share the database's gate because a live application is writing them."""
     settings = tmp_path / "settings"
     settings.mkdir()
-    plan = backup.plan_backup(
-        cfg, process_lister=rekordbox_running, settings_dirs=(settings,)
-    )
+    plan = backup.plan_backup(cfg, process_lister=rekordbox_running, settings_dirs=(settings,))
     assert plan.portion(backup_facts.Portion.DATABASE).commands == ()
 
 
@@ -1557,9 +1534,7 @@ def _stamp(days: float) -> str:
     return backup.stamp_for(ROTATION_DAY + timedelta(days=days))
 
 
-def test_a_retried_mirror_does_not_purge_the_archive_its_failed_attempt_wrote(
-    cfg, library_with_database, rclone_on_path
-):
+def test_a_retried_mirror_does_not_purge_the_archive_its_failed_attempt_wrote(cfg, db_file, rclone):
     """The retried portion's closing condition, driven against a remote that remembers."""
     remote = ArchiveRemote()
     _mirror_at(cfg, remote, ROTATION_DAY)
@@ -1581,9 +1556,7 @@ def test_a_retried_mirror_does_not_purge_the_archive_its_failed_attempt_wrote(
     assert remote.purged == [settled]
 
 
-def test_the_run_after_a_retried_one_rotates_every_attempt_out_together(
-    cfg, library_with_database, rclone_on_path
-):
+def test_the_run_after_a_retried_one_rotates_every_attempt_out_together(cfg, db_file, rclone):
     """Held is not kept for ever. One run is one slot, and the slot rotates."""
     remote = ArchiveRemote()
     _mirror_at(cfg, remote, ROTATION_DAY)
@@ -1596,9 +1569,7 @@ def test_the_run_after_a_retried_one_rotates_every_attempt_out_together(
     assert remote.folders == {_stamp(2)}
 
 
-def test_a_remote_with_no_completed_mirror_on_record_is_never_purged(
-    cfg, library_with_database, rclone_on_path
-):
+def test_a_remote_with_no_completed_mirror_on_record_is_never_purged(cfg, db_file, rclone):
     """No record is not a record of nothing (METHOD's first pattern)."""
     remote = ArchiveRemote("2026-08-01T000000Z", "2026-08-02T000000Z", fail_mirror=True)
     _mirror_at(cfg, remote, ROTATION_DAY)
@@ -1610,67 +1581,39 @@ def test_a_remote_with_no_completed_mirror_on_record_is_never_purged(
     assert remote.folders == {_stamp(1)}
 
 
-def test_a_completed_mirror_to_another_destination_settles_nothing_here(
-    cfg, library_with_database, rclone_on_path
-):
+def test_a_completed_mirror_to_another_destination_settles_nothing_here(cfg, db_file, rclone):
     """The record names a destination, and a floor taken from another remote's run says nothing
     about which folders on this one are finished.
     """
-    backup_facts.record(
-        cfg,
-        backup_facts.Portion.FILES,
-        completed_at=ROTATION_DAY,
-        destination="elsewhere:mirror",
-    )
+    _record(cfg, "FILES", ROTATION_DAY, "elsewhere:mirror")
     remote = ArchiveRemote("2026-08-01T000000Z", "2026-08-02T000000Z")
     _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=1))
     assert remote.purged == []
 
 
-def test_a_run_that_overwrote_nothing_still_keeps_the_newest_settled_archive(
-    cfg, library_with_database, rclone_on_path
-):
+def test_a_run_that_overwrote_nothing_still_keeps_the_newest_settled_archive(cfg, db_file, rclone):
     """rclone writes no dated folder for a run that replaced nothing, so nothing is held and the
     keep applies to the settled folders exactly as it did.
     """
     remote = ArchiveRemote("2026-08-01T000000Z", "2026-08-02T000000Z", overwrites=False)
-    backup_facts.record(
-        cfg,
-        backup_facts.Portion.FILES,
-        completed_at=ROTATION_DAY,
-        destination=str(cfg.backup.dest),
-    )
+    _record(cfg, "FILES", ROTATION_DAY, str(cfg.backup.dest))
     _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=1))
     assert remote.folders == {"2026-08-02T000000Z"}
 
 
-def test_the_folder_the_last_completed_run_wrote_is_settled_not_held(
-    cfg, library_with_database, rclone_on_path
-):
+def test_the_folder_the_last_completed_run_wrote_is_settled_not_held(cfg, db_file, rclone):
     """THE BOUNDARY. The last completed run's own folder carries the stamp of the instant on record,
     so the comparison has to be strict: at or before the floor is settled.
     """
     remote = ArchiveRemote(_stamp(0), overwrites=False)
-    backup_facts.record(
-        cfg,
-        backup_facts.Portion.FILES,
-        completed_at=ROTATION_DAY,
-        destination=str(cfg.backup.dest),
-    )
+    _record(cfg, "FILES", ROTATION_DAY, str(cfg.backup.dest))
     _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=1), keep=0)
     assert remote.folders == set()
 
 
-def test_a_wider_keep_counts_the_held_run_as_one_of_its_slots(
-    cfg, library_with_database, rclone_on_path
-):
+def test_a_wider_keep_counts_the_held_run_as_one_of_its_slots(cfg, db_file, rclone):
     remote = ArchiveRemote("2026-08-01T000000Z", "2026-08-02T000000Z", "2026-08-03T000000Z")
-    backup_facts.record(
-        cfg,
-        backup_facts.Portion.FILES,
-        completed_at=ROTATION_DAY,
-        destination=str(cfg.backup.dest),
-    )
+    _record(cfg, "FILES", ROTATION_DAY, str(cfg.backup.dest))
     remote.fail_mirror = True
     _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=1))
     remote.fail_mirror = False
@@ -1678,17 +1621,12 @@ def test_a_wider_keep_counts_the_held_run_as_one_of_its_slots(
     assert remote.folders == {"2026-08-03T000000Z", _stamp(1), _stamp(2)}
 
 
-def test_a_keep_of_zero_is_still_a_keep_of_zero(cfg, library_with_database, rclone_on_path):
+def test_a_keep_of_zero_is_still_a_keep_of_zero(cfg, db_file, rclone):
     """Asking to keep no archive is a choice, and holding a run's folders against it would be this
     rule overruling the person who made it.
     """
     remote = ArchiveRemote("2026-08-01T000000Z")
-    backup_facts.record(
-        cfg,
-        backup_facts.Portion.FILES,
-        completed_at=ROTATION_DAY,
-        destination=str(cfg.backup.dest),
-    )
+    _record(cfg, "FILES", ROTATION_DAY, str(cfg.backup.dest))
     _mirror_at(cfg, remote, ROTATION_DAY + timedelta(days=1), keep=0)
     assert remote.folders == set()
 
@@ -1701,18 +1639,14 @@ def test_a_keep_of_zero_is_still_a_keep_of_zero(cfg, library_with_database, rclo
         (1, "last completed mirror", "keeping no"),
     ],
 )
-def test_the_plan_describes_the_rotation_the_run_applies(
-    cfg, library_with_database, rclone_on_path, keep, said, unsaid
-):
+def test_the_plan_describes_the_rotation_the_run_applies(cfg, db_file, rclone, keep, said, unsaid):
     """The preview and the run are one decision."""
     plan = backup.plan_backup(cfg, process_lister=no_processes, archive_keep=keep)
     detail = plan.portion(backup_facts.Portion.FILES).detail
     assert said in detail and unsaid not in detail, detail
 
 
-def test_a_record_that_cannot_be_read_purges_nothing(
-    cfg, library_with_database, rclone_on_path
-):
+def test_a_record_that_cannot_be_read_purges_nothing(cfg, db_file, rclone):
     """Unreadable is not absent, and it is not a floor either."""
     backup_facts.path_for(cfg).parent.mkdir(parents=True, exist_ok=True)
     backup_facts.path_for(cfg).write_text("{ not json")
@@ -1722,9 +1656,7 @@ def test_a_record_that_cannot_be_read_purges_nothing(
     assert remote.purged == []
 
 
-def test_a_rehearsal_does_not_read_the_record_to_list_a_rotation(
-    cfg, library_with_database, rclone_on_path
-):
+def test_a_rehearsal_does_not_read_the_record_to_list_a_rotation(cfg, db_file, rclone):
     """A rehearsal purges nothing, so it needs no floor, and reading the record for one would fail a
     preview over a file the preview never touches.
     """
@@ -1742,7 +1674,7 @@ def test_a_rehearsal_does_not_read_the_record_to_list_a_rotation(
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_backup_age_is_readable_from_library_scoped_state(cfg, library_with_database, rclone_on_path):
+def test_backup_age_is_readable_from_library_scoped_state(cfg, db_file, rclone):
     """The plan's fourth scenario."""
     plan = backup.plan_backup(cfg, process_lister=no_processes)
     now = datetime(2026, 8, 1, 12, tzinfo=UTC)
@@ -1775,9 +1707,7 @@ def test_the_core_reader_does_not_import_the_backup_module(cfg):
     )
 
 
-def test_a_refused_portion_leaves_its_previous_age_untouched(
-    cfg, library_with_database, rclone_on_path
-):
+def test_a_refused_portion_leaves_its_previous_age_untouched(cfg, db_file, rclone):
     """The number R15 needs is exactly this one."""
     first = datetime(2026, 7, 1, 9, tzinfo=UTC)
     backup.run_backup(
@@ -1808,12 +1738,7 @@ def test_the_reported_age_covers_every_declared_portion(cfg):
 def test_never_recorded_is_a_different_answer_from_very_old(cfg):
     """They have different fixes, so collapsing them costs the caller the choice."""
     now = datetime(2026, 8, 1, tzinfo=UTC)
-    backup_facts.record(
-        cfg,
-        backup_facts.Portion.FILES,
-        completed_at=now - timedelta(days=400),
-        destination="remote:mirror",
-    )
+    _record(cfg, "FILES", now - timedelta(days=400), "remote:mirror")
     by_portion = {a.portion: a for a in backup_facts.ages(cfg, now=now)}
     assert by_portion[backup_facts.Portion.FILES].state is backup_facts.AgeState.KNOWN
     assert by_portion[backup_facts.Portion.FILES].age == timedelta(days=400)
@@ -1826,12 +1751,7 @@ def test_never_recorded_is_a_different_answer_from_very_old(cfg):
 def test_a_future_timestamp_is_named_rather_than_read_as_the_freshest_possible(cfg):
     """A naive age comparison treats a negative age as the freshest value."""
     now = datetime(2026, 8, 1, tzinfo=UTC)
-    backup_facts.record(
-        cfg,
-        backup_facts.Portion.FILES,
-        completed_at=now + timedelta(days=2),
-        destination="remote:mirror",
-    )
+    _record(cfg, "FILES", now + timedelta(days=2), "remote:mirror")
     by_portion = {a.portion: a for a in backup_facts.ages(cfg, now=now)}
     entry = by_portion[backup_facts.Portion.FILES]
     assert entry.state is backup_facts.AgeState.RECORDED_IN_THE_FUTURE
@@ -1841,12 +1761,7 @@ def test_a_future_timestamp_is_named_rather_than_read_as_the_freshest_possible(c
 def test_a_small_clock_difference_between_machines_is_tolerated(cfg):
     """Two installations of one library will not agree on the second."""
     now = datetime(2026, 8, 1, tzinfo=UTC)
-    backup_facts.record(
-        cfg,
-        backup_facts.Portion.FILES,
-        completed_at=now + timedelta(minutes=5),
-        destination="remote:mirror",
-    )
+    _record(cfg, "FILES", now + timedelta(minutes=5), "remote:mirror")
     by_portion = {a.portion: a for a in backup_facts.ages(cfg, now=now)}
     assert by_portion[backup_facts.Portion.FILES].state is backup_facts.AgeState.KNOWN
 
@@ -1856,16 +1771,10 @@ def test_the_quoted_age_is_none_unless_every_portion_has_a_usable_one(cfg):
     fully protected.
     """
     now = datetime(2026, 8, 1, tzinfo=UTC)
-    backup_facts.record(
-        cfg, backup_facts.Portion.FILES, completed_at=now - timedelta(days=1),
-        destination="remote:mirror",
-    )
+    _record(cfg, "FILES", now - timedelta(days=1), "remote:mirror")
     assert backup_facts.oldest_usable_age(cfg, now=now) is None
 
-    backup_facts.record(
-        cfg, backup_facts.Portion.DATABASE, completed_at=now - timedelta(days=9),
-        destination="remote:database-snapshots",
-    )
+    _record(cfg, "DATABASE", now - timedelta(days=9), "remote:database-snapshots")
     assert backup_facts.oldest_usable_age(cfg, now=now) == timedelta(days=9)
 
 
@@ -1882,9 +1791,7 @@ def test_an_unreadable_fact_file_is_not_reported_as_no_backup(cfg):
 def test_a_fact_file_from_a_newer_build_refuses_rather_than_guessing(cfg):
     path = backup_facts.path_for(cfg)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps({"schema_version": backup_facts.SCHEMA_VERSION + 1, "portions": {}})
-    )
+    path.write_text(json.dumps({"schema_version": backup_facts.SCHEMA_VERSION + 1, "portions": {}}))
     with pytest.raises(backup_facts.BackupFactsUnreadable) as excinfo:
         backup_facts.read_facts(cfg)
     assert excinfo.value.remedy is backup_facts.Remedy.UPGRADE_CRATEKIT
@@ -1893,12 +1800,7 @@ def test_a_fact_file_from_a_newer_build_refuses_rather_than_guessing(cfg):
 def test_a_naive_timestamp_is_refused_where_it_is_produced(cfg):
     """The failure lands on the code that made the value, not on a user weeks on."""
     with pytest.raises(ValueError, match="time zone"):
-        backup_facts.record(
-            cfg,
-            backup_facts.Portion.FILES,
-            completed_at=datetime(2026, 8, 1, 12),
-            destination="remote:mirror",
-        )
+        _record(cfg, "FILES", datetime(2026, 8, 1, 12), "remote:mirror")
 
 
 def test_the_fact_file_is_written_owner_only_under_any_umask(cfg, monkeypatch):
@@ -1910,12 +1812,7 @@ def test_the_fact_file_is_written_owner_only_under_any_umask(cfg, monkeypatch):
 
     old = os.umask(0)
     try:
-        path = backup_facts.record(
-            cfg,
-            backup_facts.Portion.FILES,
-            completed_at=datetime(2026, 8, 1, tzinfo=UTC),
-            destination="remote:mirror",
-        )
+        path = _record(cfg, "FILES", datetime(2026, 8, 1, tzinfo=UTC), "remote:mirror")
         assert stat.S_IMODE(path.stat().st_mode) == config.PRIVATE_FILE_MODE
         assert stat.S_IMODE(path.parent.stat().st_mode) == config.PRIVATE_DIR_MODE
     finally:
@@ -1927,7 +1824,7 @@ def test_the_fact_file_is_written_owner_only_under_any_umask(cfg, monkeypatch):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_restore_removes_stale_sidecars_before_copying(cfg, tmp_path, rclone_on_path):
+def test_restore_removes_stale_sidecars_before_copying(cfg, tmp_path, rclone):
     """The plan's fifth scenario, asserted on the ORDER rather than the outcome."""
     target = tmp_path / "scratch"
     database = backup.database_target_for(cfg, target)
@@ -1948,13 +1845,7 @@ def test_restore_removes_stale_sidecars_before_copying(cfg, tmp_path, rclone_on_
             return backup.CommandResult(returncode=0, stdout=snapshot_listing(cfg))
         return backup.CommandResult(returncode=0)
 
-    plan = backup.plan_restore(
-        cfg,
-        target=target,
-        confirmed=True,
-        snapshot="2026-08-01T000000Z",
-        runner=runner,
-        process_lister=no_processes, gates=open_gates)
+    plan = _restore(cfg, target=target, snapshot="2026-08-01T000000Z", runner=runner)
     assert set(plan.clears) == set(stale)
 
     backup.run_restore(plan, cfg, runner=runner, gates=open_gates)
@@ -1967,7 +1858,7 @@ def test_restore_removes_stale_sidecars_before_copying(cfg, tmp_path, rclone_on_
         assert present == [False, False]
 
 
-def test_a_rehearsed_restore_does_not_clear_the_live_sidecars(cfg, tmp_path, rclone_on_path):
+def test_a_rehearsed_restore_does_not_clear_the_live_sidecars(cfg, tmp_path, rclone):
     """Clearing is itself destructive, so a preview must not do it."""
     target = tmp_path / "scratch"
     database = backup.database_target_for(cfg, target)
@@ -1979,12 +1870,8 @@ def test_a_rehearsed_restore_does_not_clear_the_live_sidecars(cfg, tmp_path, rcl
         path.write_bytes(b"live log")
         sidecars.append(path)
 
-    recorder = Recorder(
-        stdout_for={backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg)}
-    )
-    plan = backup.plan_restore(
-        cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
-        runner=recorder, process_lister=no_processes, gates=open_gates)
+    recorder = _listing(cfg)
+    plan = _restore(cfg, target=target, snapshot="2026-08-01T000000Z", runner=recorder)
     backup.run_restore(plan, cfg, runner=recorder, dry_run=True, gates=open_gates)
 
     assert all(p.exists() for p in sidecars), "a rehearsal deleted the live sidecars"
@@ -1992,23 +1879,12 @@ def test_a_rehearsed_restore_does_not_clear_the_live_sidecars(cfg, tmp_path, rcl
     assert issued and all(c.argv[-1] == "--dry-run" for c in issued)
 
 
-def test_restore_writes_back_the_log_and_never_the_shared_memory_index(
-    cfg, tmp_path, rclone_on_path
-):
+def test_restore_writes_back_the_log_and_never_the_shared_memory_index(cfg, tmp_path, rclone):
     """The source system's asymmetry, carried across as a declaration."""
-    target = tmp_path / "scratch"
-    backup.database_target_for(cfg, target).parent.mkdir(parents=True, exist_ok=True)
-    plan = backup.plan_restore(
-        cfg,
-        target=target,
-        confirmed=True,
-        snapshot="2026-08-01T000000Z",
-        runner=Recorder(
-            stdout_for={
-                backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg, "-wal", "-shm"),
-            }
-        ),
-        process_lister=no_processes, gates=open_gates)
+    target = _scratch(cfg, tmp_path)
+    plan = _restore(
+        cfg, target=target, snapshot="2026-08-01T000000Z", runner=_listing(cfg, "-wal", "-shm"),
+    )
     sources = [c.argv[c.argv.index("copy") + 1] for c in plan.commands]
     restored = {s.suffix for s in config.SQLITE_SIDECARS if s.restored}
     for suffix in (s.suffix for s in config.SQLITE_SIDECARS):
@@ -2018,13 +1894,12 @@ def test_restore_writes_back_the_log_and_never_the_shared_memory_index(
         )
 
 
-def test_the_file_half_of_a_restore_copies_and_never_syncs(cfg, tmp_path, rclone_on_path):
+def test_the_file_half_of_a_restore_copies_and_never_syncs(cfg, tmp_path, rclone):
     """A sync makes the target MATCH the remote, which means deleting."""
-    target = tmp_path / "scratch"
-    backup.database_target_for(cfg, target).parent.mkdir(parents=True, exist_ok=True)
-    plan = backup.plan_restore(
-        cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
-        include_mirror=True, runner=Recorder(), process_lister=no_processes, gates=open_gates)
+    target = _scratch(cfg, tmp_path)
+    plan = _restore(
+        cfg, target=target, snapshot="2026-08-01T000000Z", include_mirror=True, runner=Recorder(),
+    )
     mirror = [c for c in plan.commands if c.label == backup.RESTORE_MIRROR]
     assert len(mirror) == 1
     assert "copy" in mirror[0].argv and "sync" not in mirror[0].argv
@@ -2032,21 +1907,15 @@ def test_the_file_half_of_a_restore_copies_and_never_syncs(cfg, tmp_path, rclone
     assert plan.commands[0].label == backup.RESTORE_MIRROR
 
 
-def test_the_file_half_is_off_by_default(cfg, tmp_path, rclone_on_path):
+def test_the_file_half_is_off_by_default(cfg, tmp_path, rclone):
     """The two halves cost very differently and are wanted at different times."""
-    target = tmp_path / "scratch"
-    backup.database_target_for(cfg, target).parent.mkdir(parents=True, exist_ok=True)
-    plan = backup.plan_restore(
-        cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
-        runner=Recorder(
-            stdout_for={backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg)}
-        ),
-        process_lister=no_processes, gates=open_gates)
+    target = _scratch(cfg, tmp_path)
+    plan = _restore(cfg, target=target, snapshot="2026-08-01T000000Z", runner=_listing(cfg))
     assert backup.RESTORE_MIRROR not in [c.label for c in plan.commands]
 
 
 def test_a_restore_from_a_snapshot_holding_only_the_database_skips_the_absent_sidecar(
-    cfg, tmp_path, rclone_on_path
+    cfg, tmp_path, rclone
 ):
     """The residual
     "A restore from a snapshot taken with rekordbox closed always reports failure".
@@ -2056,15 +1925,10 @@ def test_a_restore_from_a_snapshot_holding_only_the_database_skips_the_absent_si
     ``plan_restore`` used to copy the log unconditionally, rclone exited 3, and
     the person was told the restore failed after the database had already landed.
     """
-    target = tmp_path / "scratch"
-    backup.database_target_for(cfg, target).parent.mkdir(parents=True, exist_ok=True)
+    target = _scratch(cfg, tmp_path)
     database = backup.database_target_for(cfg, target).name
-    recorder = Recorder(
-        stdout_for={backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg)}
-    )
-    plan = backup.plan_restore(
-        cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
-        runner=recorder, process_lister=no_processes, gates=open_gates)
+    recorder = _listing(cfg)
+    plan = _restore(cfg, target=target, snapshot="2026-08-01T000000Z", runner=recorder)
     sources = [c.argv[c.argv.index("copy") + 1] for c in plan.commands]
     assert any(source.endswith(database) for source in sources)
     assert not any(source.endswith(database + "-wal") for source in sources)
@@ -2073,21 +1937,12 @@ def test_a_restore_from_a_snapshot_holding_only_the_database_skips_the_absent_si
     assert results and all(result.returncode == 0 for result in results)
 
 
-def test_a_restore_from_a_snapshot_holding_the_log_copies_it(
-    cfg, tmp_path, rclone_on_path
-):
+def test_a_restore_from_a_snapshot_holding_the_log_copies_it(cfg, tmp_path, rclone):
     """The other shape: a snapshot taken while the database still had a log."""
-    target = tmp_path / "scratch"
-    backup.database_target_for(cfg, target).parent.mkdir(parents=True, exist_ok=True)
+    target = _scratch(cfg, tmp_path)
     database = backup.database_target_for(cfg, target).name
-    recorder = Recorder(
-        stdout_for={
-            backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg, "-wal"),
-        }
-    )
-    plan = backup.plan_restore(
-        cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
-        runner=recorder, process_lister=no_processes, gates=open_gates)
+    recorder = _listing(cfg, "-wal")
+    plan = _restore(cfg, target=target, snapshot="2026-08-01T000000Z", runner=recorder)
     sources = [c.argv[c.argv.index("copy") + 1] for c in plan.commands]
     assert any(source.endswith(database) for source in sources)
     assert any(source.endswith(database + "-wal") for source in sources)
@@ -2096,27 +1951,17 @@ def test_a_restore_from_a_snapshot_holding_the_log_copies_it(
     assert results and all(result.returncode == 0 for result in results)
 
 
-def test_a_failed_database_copy_still_refuses_when_the_sidecar_is_absent(
-    cfg, tmp_path, rclone_on_path
-):
+def test_a_failed_database_copy_still_refuses_when_the_sidecar_is_absent(cfg, tmp_path, rclone):
     """Skipping an absent sidecar does not swallow a failed database transfer."""
-    target = tmp_path / "scratch"
-    backup.database_target_for(cfg, target).parent.mkdir(parents=True, exist_ok=True)
-    recorder = Recorder(
-        stdout_for={backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg)},
-        fail_labels={backup.RESTORE_DATABASE},
-    )
-    plan = backup.plan_restore(
-        cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
-        runner=recorder, process_lister=no_processes, gates=open_gates)
+    target = _scratch(cfg, tmp_path)
+    recorder = _listing(cfg, fail_labels={backup.RESTORE_DATABASE})
+    plan = _restore(cfg, target=target, snapshot="2026-08-01T000000Z", runner=recorder)
     with pytest.raises(backup.BackupRefused) as excinfo:
         backup.run_restore(plan, cfg, runner=recorder, gates=open_gates)
     assert excinfo.value.refusal is backup.Refusal.RESTORE_TRANSFER_FAILED
 
 
-def test_a_snapshot_that_cannot_be_listed_refuses_before_clearing(
-    cfg, tmp_path, rclone_on_path
-):
+def test_a_snapshot_that_cannot_be_listed_refuses_before_clearing(cfg, tmp_path, rclone):
     """A failed listing is not an empty snapshot."""
     target = tmp_path / "scratch"
     database = backup.database_target_for(cfg, target)
@@ -2125,33 +1970,24 @@ def test_a_snapshot_that_cannot_be_listed_refuses_before_clearing(
     wal.write_bytes(b"live log")
     recorder = Recorder(fail_labels={backup.LIST_SNAPSHOT_CONTENTS})
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
-            runner=recorder, process_lister=no_processes, gates=open_gates)
+        _restore(cfg, target=target, snapshot="2026-08-01T000000Z", runner=recorder)
     assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LISTING_FAILED
     assert wal.exists() and wal.read_bytes() == b"live log"
     assert backup.RESTORE_DATABASE not in recorder.labels()
 
 
-def test_the_snapshot_listing_is_of_the_database_folder(
-    cfg, tmp_path, rclone_on_path
-):
+def test_the_snapshot_listing_is_of_the_database_folder(cfg, tmp_path, rclone):
     """Listing the snapshot root would see dated folder names, never the log."""
-    target = tmp_path / "scratch"
-    backup.database_target_for(cfg, target).parent.mkdir(parents=True, exist_ok=True)
-    recorder = Recorder(
-        stdout_for={backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg, "-wal")}
-    )
-    backup.plan_restore(
-        cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
-        runner=recorder, process_lister=no_processes, gates=open_gates)
+    target = _scratch(cfg, tmp_path)
+    recorder = _listing(cfg, "-wal")
+    _restore(cfg, target=target, snapshot="2026-08-01T000000Z", runner=recorder)
     listed = [c for c in recorder.commands if c.label == backup.LIST_SNAPSHOT_CONTENTS]
     assert len(listed) == 1
     assert listed[0].argv[-2].endswith("/2026-08-01T000000Z/db/")
     assert "--files-only" in listed[0].argv
 
 
-def test_the_sidecars_are_cleared_before_the_mirror_too(cfg, tmp_path, rclone_on_path):
+def test_the_sidecars_are_cleared_before_the_mirror_too(cfg, tmp_path, rclone):
     """The invariant at its strongest: no stale log ever sits beside a database that has started to
     change.
     """
@@ -2174,20 +2010,18 @@ def test_the_sidecars_are_cleared_before_the_mirror_too(cfg, tmp_path, rclone_on
             return backup.CommandResult(returncode=0, stdout=snapshot_listing(cfg))
         return backup.CommandResult(returncode=0)
 
-    plan = backup.plan_restore(
-        cfg, target=target, confirmed=True, snapshot="2026-08-01T000000Z",
-        include_mirror=True, runner=runner, process_lister=no_processes, gates=open_gates)
+    plan = _restore(
+        cfg, target=target, snapshot="2026-08-01T000000Z", include_mirror=True, runner=runner,
+    )
     backup.run_restore(plan, cfg, runner=runner, gates=open_gates)
     assert observed[0][0] == backup.RESTORE_MIRROR
     assert all(present is False for _, present in observed)
 
 
-def test_restore_is_a_named_decision_and_never_a_prompt(cfg, tmp_path, rclone_on_path):
+def test_restore_is_a_named_decision_and_never_a_prompt(cfg, tmp_path, rclone):
     """R33. The source blocks on standard input before overwriting a library."""
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path, confirmed=False, runner=Recorder(),
-            process_lister=no_processes, gates=open_gates)
+        _restore(cfg, target=tmp_path, confirmed=False, runner=Recorder())
     assert excinfo.value.refusal is backup.Refusal.RESTORE_NOT_CONFIRMED
 
 
@@ -2202,14 +2036,12 @@ def test_no_module_in_this_unit_reads_standard_input():
                 assert node.attr not in {"stdin"}, f"{name} reads standard input"
 
 
-def test_restore_refuses_while_rekordbox_holds_the_database(cfg, tmp_path, rclone_on_path):
+def test_restore_refuses_while_rekordbox_holds_the_database(cfg, tmp_path, rclone):
     """Replacing the file a live application holds open leaves the application and the disk
     describing two different libraries.
     """
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path, confirmed=True, runner=Recorder(),
-            process_lister=rekordbox_running, gates=open_gates)
+        _restore(cfg, target=tmp_path, runner=Recorder(), process_lister=rekordbox_running)
     assert excinfo.value.refusal is backup.Refusal.REKORDBOX_RUNNING
 
 
@@ -2220,15 +2052,13 @@ def test_the_restore_target_is_derived_from_the_configured_database_path(cfg, tm
     assert backup.database_target_for(cfg, target) == target / relative
 
 
-def test_a_restore_with_no_snapshot_available_refuses_by_name(cfg, tmp_path, rclone_on_path):
+def test_a_restore_with_no_snapshot_available_refuses_by_name(cfg, tmp_path, rclone):
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path, confirmed=True, runner=Recorder(),
-            process_lister=no_processes, gates=open_gates)
+        _restore(cfg, target=tmp_path, runner=Recorder())
     assert excinfo.value.refusal is backup.Refusal.NO_SNAPSHOT_AVAILABLE
 
 
-def test_the_latest_snapshot_is_the_newest_by_sortable_stamp(cfg, tmp_path, rclone_on_path):
+def test_the_latest_snapshot_is_the_newest_by_sortable_stamp(cfg, tmp_path, rclone):
     recorder = Recorder(
         stdout_for={
             backup.LIST_SNAPSHOTS: "2026-01-01T000000Z/\n2026-03-01T000000Z/\n2026-02-01T000000Z/\n"
@@ -2237,18 +2067,16 @@ def test_the_latest_snapshot_is_the_newest_by_sortable_stamp(cfg, tmp_path, rclo
     assert backup.latest_snapshot(cfg, runner=recorder) == "2026-03-01T000000Z"
 
 
-def test_an_absent_restore_target_refuses_rather_than_creating_one(cfg, tmp_path, rclone_on_path):
+def test_an_absent_restore_target_refuses_rather_than_creating_one(cfg, tmp_path, rclone):
     """Creating the target would silently restore a library into a directory the user never mounted,
     on the boot disk.
     """
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path / "not-mounted", confirmed=True, runner=Recorder(),
-            process_lister=no_processes, gates=open_gates)
+        _restore(cfg, target=tmp_path / "not-mounted", runner=Recorder())
     assert excinfo.value.refusal is backup.Refusal.RESTORE_TARGET_ABSENT
 
 
-def test_the_backup_payload_carries_a_version(cfg, library_with_database, rclone_on_path):
+def test_the_backup_payload_carries_a_version(cfg, db_file, rclone):
     plan = backup.plan_backup(cfg, process_lister=no_processes)
     payload = backup.plan_payload(plan)
     assert payload["payload_version"] == backup.PAYLOAD_VERSION
@@ -2301,14 +2129,12 @@ def marked(cfg, identity=None, *, snapshots=None):
     ],
 )
 def test_a_snapshot_value_that_is_not_a_stamp_is_refused_before_the_remote_is_asked(
-    cfg, tmp_path, rclone_on_path, typed
+    cfg, tmp_path, rclone, typed
 ):
     """The ledger's measured cost, reproduced: the first value is its own."""
     recorder = marked(cfg)
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path, confirmed=True, snapshot=typed,
-            runner=recorder, process_lister=no_processes, gates=open_gates)
+        _restore(cfg, target=tmp_path, snapshot=typed, runner=recorder)
     assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_NAME_INVALID
     assert recorder.commands == [], (
         f"the remote was asked {recorder.labels()} about a value that is not a stamp"
@@ -2326,31 +2152,23 @@ def test_every_stamp_the_backup_writes_passes_the_shape_the_restore_demands():
     assert backup.is_stamp(backup.STAMP_EXAMPLE), "the refusal shows a stamp it would refuse"
 
 
-def test_a_snapshot_marked_for_another_library_is_refused(cfg, tmp_path, rclone_on_path):
+def test_a_snapshot_marked_for_another_library_is_refused(cfg, tmp_path, rclone):
     """The half the shape check cannot close: a well formed stamp, someone else's."""
     recorder = marked(cfg, "0000-AAAA")
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
-            runner=recorder, process_lister=no_processes, gates=open_gates)
+        _restore(cfg, target=tmp_path, snapshot=STAMP, runner=recorder)
     assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
     assert "0000-aaaa" in excinfo.value.detail, excinfo.value.detail
     assert not any(c.label in backup.TRANSFERRING_LABELS for c in recorder.commands)
 
 
-def test_a_snapshot_marked_for_this_library_is_planned_and_says_so(
-    cfg, tmp_path, rclone_on_path
-):
-    plan = backup.plan_restore(
-        cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
-        runner=marked(cfg), process_lister=no_processes, gates=open_gates)
+def test_a_snapshot_marked_for_this_library_is_planned_and_says_so(cfg, tmp_path, rclone):
+    plan = _restore(cfg, target=tmp_path, snapshot=STAMP, runner=marked(cfg))
     assert plan.snapshot == STAMP
     assert plan.recorded_volume == "f1e2-d3c4"
 
 
-def test_the_identity_is_compared_case_blind_like_the_volume_gate(
-    cfg, tmp_path, rclone_on_path
-):
+def test_the_identity_is_compared_case_blind_like_the_volume_gate(cfg, tmp_path, rclone):
     """``diskutil`` prints uppercase and the adapters report lowercase."""
     recorder = Recorder(
         stdout_for={
@@ -2358,13 +2176,11 @@ def test_the_identity_is_compared_case_blind_like_the_volume_gate(
             backup.LIST_SNAPSHOT_IDENTITY: "library-volume.F1E2-d3c4\n",
         }
     )
-    plan = backup.plan_restore(
-        cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
-        runner=recorder, process_lister=no_processes, gates=open_gates)
+    plan = _restore(cfg, target=tmp_path, snapshot=STAMP, runner=recorder)
     assert plan.recorded_volume == "f1e2-d3c4"
 
 
-def test_a_snapshot_carrying_two_identities_is_refused(cfg, tmp_path, rclone_on_path):
+def test_a_snapshot_carrying_two_identities_is_refused(cfg, tmp_path, rclone):
     """Two libraries backing up in one second share one dated folder."""
     recorder = Recorder(
         stdout_for={
@@ -2375,15 +2191,11 @@ def test_a_snapshot_carrying_two_identities_is_refused(cfg, tmp_path, rclone_on_
         }
     )
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
-            runner=recorder, process_lister=no_processes, gates=open_gates)
+        _restore(cfg, target=tmp_path, snapshot=STAMP, runner=recorder)
     assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
 
 
-def test_a_marker_with_no_identity_after_its_prefix_is_not_read_as_unmarked(
-    cfg, tmp_path, rclone_on_path
-):
+def test_a_marker_with_no_identity_after_its_prefix_is_not_read_as_unmarked(cfg, tmp_path, rclone):
     recorder = Recorder(
         stdout_for={
             backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg),
@@ -2391,24 +2203,15 @@ def test_a_marker_with_no_identity_after_its_prefix_is_not_read_as_unmarked(
         }
     )
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
-            runner=recorder, process_lister=no_processes, gates=open_gates)
+        _restore(cfg, target=tmp_path, snapshot=STAMP, runner=recorder)
     assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
 
 
-def test_an_identity_listing_that_fails_is_not_read_as_an_unmarked_snapshot(
-    cfg, tmp_path, rclone_on_path
-):
+def test_an_identity_listing_that_fails_is_not_read_as_an_unmarked_snapshot(cfg, tmp_path, rclone):
     """Absence read as evidence of absence, the first pattern."""
-    recorder = Recorder(
-        stdout_for={backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg)},
-        fail_labels={backup.LIST_SNAPSHOT_IDENTITY},
-    )
+    recorder = _listing(cfg, fail_labels={backup.LIST_SNAPSHOT_IDENTITY})
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
-            runner=recorder, process_lister=no_processes, gates=open_gates)
+        _restore(cfg, target=tmp_path, snapshot=STAMP, runner=recorder)
     assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LISTING_FAILED
     assert not any(c.label in backup.TRANSFERRING_LABELS for c in recorder.commands)
 
@@ -2417,16 +2220,14 @@ def test_an_identity_listing_that_fails_is_not_read_as_an_unmarked_snapshot(
     "failing", [backup.LIST_SNAPSHOT_IDENTITY, backup.LIST_SNAPSHOT_CONTENTS]
 )
 def test_a_named_snapshot_whose_listing_fails_sends_the_person_to_the_remote(
-    cfg, tmp_path, rclone_on_path, failing
+    cfg, tmp_path, rclone, failing
 ):
     """The snapshot exists; the remote or its credential is what failed."""
     from cratekit.cli import exit_codes
 
     recorder = Recorder(fail_labels={failing})
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
-            runner=recorder, process_lister=no_processes, gates=open_gates)
+        _restore(cfg, target=tmp_path, snapshot=STAMP, runner=recorder)
     assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LISTING_FAILED
     assert str(excinfo.value.refusal) == "snapshot-listing-failed"
     assert f"the snapshot {STAMP}" in excinfo.value.detail
@@ -2438,14 +2239,12 @@ def test_a_named_snapshot_whose_listing_fails_sends_the_person_to_the_remote(
     assert not any("take a backup" in step for step in steps)
 
 
-def test_no_snapshot_at_all_still_says_to_take_a_backup(cfg, tmp_path, rclone_on_path):
+def test_no_snapshot_at_all_still_says_to_take_a_backup(cfg, tmp_path, rclone):
     """Absence keeps its own slug, and its step is still the right act."""
     from cratekit.cli import exit_codes
 
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path, confirmed=True, runner=Recorder(),
-            process_lister=no_processes, gates=open_gates)
+        _restore(cfg, target=tmp_path, runner=Recorder())
     assert excinfo.value.refusal is backup.Refusal.NO_SNAPSHOT_AVAILABLE
     assert "no dated database snapshot was found" in excinfo.value.detail
     steps = exit_codes.remediation_for(str(excinfo.value.refusal)).steps
@@ -2461,14 +2260,12 @@ def test_no_snapshot_at_all_still_says_to_take_a_backup(cfg, tmp_path, rclone_on
     ],
 )
 def test_a_folder_rclone_says_is_absent_is_not_a_listing_failure(
-    cfg, tmp_path, rclone_on_path, absent, named, phrase
+    cfg, tmp_path, rclone, absent, named, phrase
 ):
     """Directory not found is an absence, so the remote is not what to check."""
     recorder = Recorder(absent_labels={absent})
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path, confirmed=True, snapshot=named,
-            runner=recorder, process_lister=no_processes, gates=open_gates)
+        _restore(cfg, target=tmp_path, snapshot=named, runner=recorder)
     assert excinfo.value.refusal is backup.Refusal.NO_SNAPSHOT_AVAILABLE
     assert phrase in excinfo.value.detail
     if named is not None:
@@ -2480,65 +2277,54 @@ def test_a_folder_rclone_says_is_absent_is_not_a_listing_failure(
         assert any("--snapshot" in step and "check the stamp" in step for step in steps)
 
 
-def test_an_unmarked_snapshot_is_pulled_only_when_a_person_named_it(
-    cfg, tmp_path, rclone_on_path
-):
+def test_an_unmarked_snapshot_is_pulled_only_when_a_person_named_it(cfg, tmp_path, rclone):
     """Every snapshot taken before the marker existed is unmarked."""
     unmarked = {
         backup.LIST_SNAPSHOTS: STAMP + "/\n",
         backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg),
     }
-    named = backup.plan_restore(
-        cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
-        runner=Recorder(stdout_for=unmarked), process_lister=no_processes, gates=open_gates)
+    named = _restore(cfg, target=tmp_path, snapshot=STAMP, runner=Recorder(stdout_for=unmarked))
     assert named.snapshot == STAMP
     assert named.recorded_volume is None
 
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path, confirmed=True,
-            runner=Recorder(stdout_for=unmarked), process_lister=no_processes,
-            gates=open_gates)
+        _restore(cfg, target=tmp_path, runner=Recorder(stdout_for=unmarked))
     assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_IDENTITY_UNRECORDED
     assert STAMP in excinfo.value.detail
 
 
-def test_a_resolved_stamp_handed_down_is_not_mistaken_for_one_a_person_named(
-    cfg, tmp_path, rclone_on_path
-):
+def test_a_resolved_stamp_handed_down_is_not_mistaken_for_one_a_person_named(cfg, tmp_path, rclone):
     """The verb resolves the newest stamp for its offer and passes it on."""
     unmarked = {backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg)}
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path, confirmed=True, snapshot=STAMP, accept_unrecorded=False,
-            runner=Recorder(stdout_for=unmarked), process_lister=no_processes,
-            gates=open_gates)
+        _restore(
+            cfg, target=tmp_path, snapshot=STAMP, accept_unrecorded=False,
+            runner=Recorder(stdout_for=unmarked),
+        )
     assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_IDENTITY_UNRECORDED
 
 
-def test_a_replaced_drive_restores_the_old_volumes_snapshot_by_naming_it(
-    cfg, tmp_path, rclone_on_path
-):
+def test_a_replaced_drive_restores_the_old_volumes_snapshot_by_naming_it(cfg, tmp_path, rclone):
     """A dead drive is the reason to pull a mirror, and its replacement is a new volume."""
-    plan = backup.plan_restore(
-        cfg, target=tmp_path, confirmed=True, snapshot=STAMP, snapshot_volume="0000-AAAA",
-        runner=marked(cfg, "0000-aaaa"), process_lister=no_processes, gates=open_gates)
+    plan = _restore(
+        cfg, target=tmp_path, snapshot=STAMP, snapshot_volume="0000-AAAA",
+        runner=marked(cfg, "0000-aaaa"),
+    )
     assert plan.recorded_volume == "0000-aaaa"
 
     for recorder in (
         marked(cfg),
         marked(cfg, "9999-BBBB"),
-        Recorder(stdout_for={backup.LIST_SNAPSHOT_CONTENTS: snapshot_listing(cfg)}),
+        _listing(cfg),
     ):
         with pytest.raises(backup.BackupRefused) as excinfo:
-            backup.plan_restore(
-                cfg, target=tmp_path, confirmed=True, snapshot=STAMP,
-                snapshot_volume="0000-AAAA", runner=recorder,
-                process_lister=no_processes, gates=open_gates)
+            _restore(
+                cfg, target=tmp_path, snapshot=STAMP, snapshot_volume="0000-AAAA", runner=recorder,
+            )
         assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
 
 
-def test_the_newest_snapshot_ignores_folders_that_are_not_stamps(cfg, rclone_on_path):
+def test_the_newest_snapshot_ignores_folders_that_are_not_stamps(cfg, rclone):
     """The same shape one function over. A stray folder sorts after every stamp."""
     recorder = Recorder(
         stdout_for={
@@ -2549,7 +2335,7 @@ def test_the_newest_snapshot_ignores_folders_that_are_not_stamps(cfg, rclone_on_
 
 
 def test_the_capture_marks_the_snapshot_after_the_database_and_never_before_it(
-    cfg, library_with_database, rclone_on_path
+    cfg, db_file, rclone
 ):
     """The marker says "this folder holds this library's database"."""
     plan = backup.plan_backup(
@@ -2575,9 +2361,7 @@ def test_the_capture_marks_the_snapshot_after_the_database_and_never_before_it(
     assert backup.SNAPSHOT_IDENTITY not in failing.labels()
 
 
-def test_what_the_capture_writes_is_what_the_restore_reads(
-    cfg, library_with_database, tmp_path, rclone_on_path
-):
+def test_what_the_capture_writes_is_what_the_restore_reads(cfg, db_file, tmp_path, rclone):
     """One round trip through both ends, so the two cannot drift apart."""
     plan = backup.plan_backup(
         cfg, now=datetime(2026, 8, 1, tzinfo=timezone.utc),
@@ -2591,22 +2375,18 @@ def test_what_the_capture_writes_is_what_the_restore_reads(
             backup.LIST_SNAPSHOT_IDENTITY: written + "\n",
         }
     )
-    restored = backup.plan_restore(
-        cfg, target=tmp_path, confirmed=True, snapshot=plan.stamp,
-        runner=recorder, process_lister=no_processes, gates=open_gates)
+    restored = _restore(cfg, target=tmp_path, snapshot=plan.stamp, runner=recorder)
     assert restored.recorded_volume == "f1e2-d3c4"
 
 
 @pytest.mark.parametrize("identity", [None, "has/slash", "has space", "..", ".hidden"])
 def test_an_identity_that_cannot_be_a_filename_writes_no_marker_and_says_so(
-    cfg, library_with_database, rclone_on_path, identity
+    cfg, db_file, rclone, identity
 ):
     """No marker is better than a marker that names a path, and silence is worse than both."""
     import dataclasses
 
-    bare = dataclasses.replace(
-        cfg, library=dataclasses.replace(cfg.library, volume_id=identity)
-    )
+    bare = dataclasses.replace(cfg, library=dataclasses.replace(cfg.library, volume_id=identity))
     plan = backup.plan_backup(bare, process_lister=no_processes, settings_dirs=())
     database = next(p for p in plan.portions if p.portion is backup_facts.Portion.DATABASE)
     assert backup.SNAPSHOT_IDENTITY not in [c.label for c in database.commands]
@@ -2633,9 +2413,7 @@ class RemoteOf:
             return backup.CommandResult(0, "".join(f"{name}/\n" for name in self.holds))
         if command.label == backup.LIST_SNAPSHOT_IDENTITY:
             name = command.argv[2].rstrip("/").rsplit("/", 1)[-1]
-            return backup.CommandResult(
-                0, "".join(f"{marker_for(i)}\n" for i in self.holds[name])
-            )
+            return backup.CommandResult(0, "".join(f"{marker_for(i)}\n" for i in self.holds[name]))
         if command.label == backup.LIST_SNAPSHOT_CONTENTS:
             return backup.CommandResult(0, snapshot_listing(self.cfg))
         return backup.CommandResult(0)
@@ -2648,32 +2426,23 @@ class RemoteOf:
         ]
 
 
-def test_a_snapshot_the_source_system_wrote_is_still_a_name_and_still_pulled(
-    cfg, tmp_path, rclone_on_path
-):
+def test_a_snapshot_the_source_system_wrote_is_still_a_name_and_still_pulled(cfg, tmp_path, rclone):
     """The source system spells its dated folder with an underscore, in local time."""
     assert backup.is_snapshot_name(LEGACY)
     assert not backup.is_stamp(LEGACY), "the narrow check is what a backup WRITES"
     assert not backup.is_snapshot_name("2026-08-01_1234567")
     assert not backup.is_snapshot_name("2026-02-30_123456")
 
-    plan = backup.plan_restore(
-        cfg, target=tmp_path, confirmed=True, snapshot=LEGACY,
-        runner=RemoteOf(cfg, {LEGACY: ()}), process_lister=no_processes, gates=open_gates)
+    plan = _restore(cfg, target=tmp_path, snapshot=LEGACY, runner=RemoteOf(cfg, {LEGACY: ()}))
     assert plan.snapshot == LEGACY
 
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path, confirmed=True,
-            runner=RemoteOf(cfg, {LEGACY: ()}), process_lister=no_processes,
-            gates=open_gates)
+        _restore(cfg, target=tmp_path, runner=RemoteOf(cfg, {LEGACY: ()}))
     assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_IDENTITY_UNRECORDED
     assert LEGACY in excinfo.value.detail
 
 
-def test_the_default_takes_the_newest_snapshot_that_is_this_librarys(
-    cfg, tmp_path, rclone_on_path
-):
+def test_the_default_takes_the_newest_snapshot_that_is_this_librarys(cfg, tmp_path, rclone):
     """Ownership selects. It does not veto the newest and stop."""
     remote = RemoteOf(
         cfg,
@@ -2684,9 +2453,7 @@ def test_the_default_takes_the_newest_snapshot_that_is_this_librarys(
             "2026-08-04T000000Z": (),
         },
     )
-    plan = backup.plan_restore(
-        cfg, target=tmp_path, confirmed=True, runner=remote,
-        process_lister=no_processes, gates=open_gates)
+    plan = _restore(cfg, target=tmp_path, runner=remote)
     assert plan.snapshot == "2026-08-02T000000Z"
     assert remote.asked_about()[:3] == [
         "2026-08-04T000000Z", "2026-08-03T000000Z", "2026-08-02T000000Z",
@@ -2694,9 +2461,7 @@ def test_the_default_takes_the_newest_snapshot_that_is_this_librarys(
     assert "2026-08-01T000000Z" not in remote.asked_about()
 
 
-def test_the_default_walk_is_bounded_and_the_refusal_says_how_far_it_looked(
-    cfg, tmp_path, rclone_on_path
-):
+def test_the_default_walk_is_bounded_and_the_refusal_says_how_far_it_looked(cfg, tmp_path, rclone):
     own_but_old = {"2026-01-01T000000Z": ("F1E2-D3C4",)}
     foreign = {
         f"2026-08-{day:02d}T000000Z": ("0000-AAAA",)
@@ -2704,18 +2469,14 @@ def test_the_default_walk_is_bounded_and_the_refusal_says_how_far_it_looked(
     }
     remote = RemoteOf(cfg, {**own_but_old, **foreign})
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path, confirmed=True, runner=remote,
-            process_lister=no_processes, gates=open_gates)
+        _restore(cfg, target=tmp_path, runner=remote)
     assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
     assert len(remote.asked_about()) == backup.NEWEST_WALK
     assert f"{backup.NEWEST_WALK} newest" in excinfo.value.detail
     assert "0000-aaaa" in excinfo.value.detail
 
 
-def test_the_replaced_drive_identity_selects_the_newest_of_the_old_volumes(
-    cfg, tmp_path, rclone_on_path
-):
+def test_the_replaced_drive_identity_selects_the_newest_of_the_old_volumes(cfg, tmp_path, rclone):
     remote = RemoteOf(
         cfg,
         {
@@ -2724,16 +2485,12 @@ def test_the_replaced_drive_identity_selects_the_newest_of_the_old_volumes(
             "2026-08-03T000000Z": ("F1E2-D3C4",),
         },
     )
-    plan = backup.plan_restore(
-        cfg, target=tmp_path, confirmed=True, snapshot_volume="0000-aaaa",
-        runner=remote, process_lister=no_processes, gates=open_gates)
+    plan = _restore(cfg, target=tmp_path, snapshot_volume="0000-aaaa", runner=remote)
     assert (plan.snapshot, plan.recorded_volume) == ("2026-08-02T000000Z", "0000-aaaa")
 
 
 @pytest.mark.parametrize("stated", ["", "   "])
-def test_an_empty_expected_identity_never_matches_an_empty_marker(
-    cfg, tmp_path, rclone_on_path, stated
-):
+def test_an_empty_expected_identity_never_matches_an_empty_marker(cfg, tmp_path, rclone, stated):
     """A marker with nothing after its prefix reads back as the empty string."""
     recorder = Recorder(
         stdout_for={
@@ -2742,40 +2499,30 @@ def test_an_empty_expected_identity_never_matches_an_empty_marker(
         }
     )
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path, confirmed=True, snapshot=STAMP, snapshot_volume=stated,
-            runner=recorder, process_lister=no_processes, gates=open_gates)
+        _restore(cfg, target=tmp_path, snapshot=STAMP, snapshot_volume=stated, runner=recorder)
     assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
 
 
-def test_two_markers_are_refused_without_offering_an_identity_to_pass(
-    cfg, tmp_path, rclone_on_path
-):
+def test_two_markers_are_refused_without_offering_an_identity_to_pass(cfg, tmp_path, rclone):
     """The reserved step says to pass the volume the refusal names."""
     remote = RemoteOf(cfg, {STAMP: ("F1E2-D3C4", "0000-AAAA")})
     for stated in (None, "0000-AAAA", "F1E2-D3C4"):
         with pytest.raises(backup.BackupRefused) as excinfo:
-            backup.plan_restore(
-                cfg, target=tmp_path, confirmed=True, snapshot=STAMP, snapshot_volume=stated,
-                runner=remote, process_lister=no_processes, gates=open_gates)
+            _restore(cfg, target=tmp_path, snapshot=STAMP, snapshot_volume=stated, runner=remote)
         assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LIBRARY_MISMATCH
         assert "No expected volume can vouch" in excinfo.value.detail
 
 
-def test_a_snapshot_root_that_cannot_be_listed_is_not_reported_as_empty(
-    cfg, tmp_path, rclone_on_path
-):
+def test_a_snapshot_root_that_cannot_be_listed_is_not_reported_as_empty(cfg, tmp_path, rclone):
     remote = RemoteOf(cfg, {STAMP: ("F1E2-D3C4",)}, fail={backup.LIST_SNAPSHOTS})
     with pytest.raises(backup.BackupRefused) as excinfo:
-        backup.plan_restore(
-            cfg, target=tmp_path, confirmed=True, runner=remote,
-            process_lister=no_processes, gates=open_gates)
+        _restore(cfg, target=tmp_path, runner=remote)
     assert excinfo.value.refusal is backup.Refusal.SNAPSHOT_LISTING_FAILED
     assert "could not be listed" in excinfo.value.detail
 
 
 def test_a_marker_that_cannot_be_written_warns_and_does_not_fail_the_backup(
-    cfg, library_with_database, tmp_path, rclone_on_path
+    cfg, db_file, tmp_path, rclone
 ):
     """By the time the marker is tried, the database set has already copied."""
     settings = tmp_path / "rekordbox-settings"

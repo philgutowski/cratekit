@@ -162,9 +162,7 @@ def test_a_driver_killed_inside_the_real_handler_resumes_redoing_exactly_that_it
     assert all(state == jobs.ItemState.DONE for state in _states(db, job.job_id).values())
 
 
-def test_the_partial_encode_a_kill_leaves_behind_is_in_staging_not_at_the_destination(
-    queued
-):
+def test_the_partial_encode_a_kill_leaves_behind_is_in_staging_not_at_the_destination(queued):
     """The reason the handler stages at all."""
     job, db, root, sources = queued
     stall = "three"

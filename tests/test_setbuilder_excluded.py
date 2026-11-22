@@ -58,10 +58,7 @@ def test_a_staging_copy_never_takes_the_library_files_place(tmp_path):
     state = root / ".cratekit"
 
     before = setbuilder.build_index(root, template=TEMPLATE, reader=same_work)
-    assert [t.path for t in before] == [str(staged)], (
-        "the fixture no longer reproduces the defect: the staging copy must sort "
-        "ahead of the library's own file for this test to mean anything"
-    )
+    assert [t.path for t in before] == [str(staged)], "the fixture no longer reproduces the defect"
 
     index = setbuilder.build_index(root, template=TEMPLATE, reader=same_work, exclude=(state,))
     assert [t.path for t in index] == [str(real)]

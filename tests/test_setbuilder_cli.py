@@ -608,9 +608,7 @@ def test_the_verb_produces_a_compatible_sequence_over_a_real_library(configured,
     assert "Anchor Work" not in titles
 
 
-def test_a_library_holding_only_the_anchor_is_an_empty_plan_and_not_a_failure(
-    configured, place
-):
+def test_a_library_holding_only_the_anchor_is_an_empty_plan_and_not_a_failure(configured, place):
     """Empty is an answer. The verb must not read "nothing mixes" as a fault."""
     anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
     code, document = envelope_of(["setbuild", str(anchor)])
@@ -875,9 +873,7 @@ def test_what_plays_after_a_track_is_asked_by_name(configured, place):
     place("Alder", "Anchor Work (Extended Mix)", "08A", 124, energy=6)
     place("Cedar", "Neighbour Up", "09A", 125, energy=8)
 
-    code, document = envelope_of(
-        ["setbuild", "--named", "Alder - Anchor Work", "--role", "after"]
-    )
+    code, document = envelope_of(["setbuild", "--named", "Alder - Anchor Work", "--role", "after"])
 
     assert code == int(ExitCode.OK)
     assert document["data"]["totals"]["anchor"]["display"] == "Alder - Anchor Work"
@@ -887,9 +883,7 @@ def test_what_plays_after_a_track_is_asked_by_name(configured, place):
     assert document["data"] == by_path["data"]
 
 
-def test_an_ambiguous_name_refuses_through_the_dispatcher_and_lists_the_paths(
-    configured, place
-):
+def test_an_ambiguous_name_refuses_through_the_dispatcher_and_lists_the_paths(configured, place):
     original = place("Alder", "Anchor Work", "08A", 124, energy=6)
     extended = place("Alder", "Anchor Work (Extended Mix)", "08A", 124, energy=6)
 

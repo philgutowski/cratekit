@@ -491,9 +491,7 @@ def test_the_encode_lands_in_staging_and_is_committed_rather_than_written_in_pla
     assert str(mastering.output_path(source)) not in seen, "the encode aimed at the destination"
 
 
-def test_a_partial_file_left_in_staging_does_not_refuse_the_next_attempt(
-    configured, monkeypatch
-):
+def test_a_partial_file_left_in_staging_does_not_refuse_the_next_attempt(configured, monkeypatch):
     """The failure that made a killed master job permanently unresumable."""
     source = _recording(configured.library.root)
     job_id = _queued(source)
@@ -580,9 +578,7 @@ def test_an_existing_master_is_refused_before_the_engine_runs(configured, monkey
     assert final.read_bytes() == b"a master somebody kept"
 
 
-def test_overwrite_reaches_the_handler_and_replaces_the_previous_master(
-    configured, monkeypatch
-):
+def test_overwrite_reaches_the_handler_and_replaces_the_previous_master(configured, monkeypatch):
     source = _recording(configured.library.root)
     final = mastering.output_path(source)
     final.write_bytes(b"the previous master")
@@ -702,9 +698,7 @@ def test_a_relative_recording_masters_the_same_file_when_the_resume_runs_elsewhe
     assert Path(item.artifact).is_file()
 
 
-def test_nothing_is_created_beside_a_destination_for_a_recording_that_is_not_there(
-    configured
-):
+def test_nothing_is_created_beside_a_destination_for_a_recording_that_is_not_there(configured):
     """``source-missing`` promises nothing was read and nothing was written."""
     source = configured.library.root / "Sets" / "nope.wav"
     job_id = _queued(source)
@@ -947,9 +941,7 @@ def test_a_missing_part_refuses_as_missing(tmp_path):
     assert _refused(first, tmp_path / "REC002.wav").reason == "source-missing"
 
 
-def test_a_queued_split_recording_lands_as_one_master_through_the_resume(
-    configured, monkeypatch
-):
+def test_a_queued_split_recording_lands_as_one_master_through_the_resume(configured, monkeypatch):
     """The whole path a person travels: queue two parts, resume, one master."""
     root = configured.library.root
     first = _recording(root, "REC001.wav")
@@ -969,9 +961,7 @@ def test_a_queued_split_recording_lands_as_one_master_through_the_resume(
     assert all("I=-12.0:" in c.argv[c.argv.index("-af") + 1] for c in loudnorm)
 
 
-def test_an_existing_joined_master_is_refused_on_the_real_destination(
-    configured, monkeypatch
-):
+def test_an_existing_joined_master_is_refused_on_the_real_destination(configured, monkeypatch):
     """The pre-check before staging names the JOINED master, not part one's."""
     root = configured.library.root
     first = _recording(root, "REC001.wav")

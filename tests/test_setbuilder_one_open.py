@@ -147,9 +147,7 @@ def test_the_values_read_are_the_values_written(tmp_path, probes):
     }
 
 
-def test_an_undecodable_field_reads_none_and_its_neighbours_still_read(
-    tmp_path, probes, opens
-):
+def test_an_undecodable_field_reads_none_and_its_neighbours_still_read(tmp_path, probes, opens):
     """An MP4 freeform atom whose bytes are not text: that field alone reads None."""
     from mutagen.mp4 import MP4, MP4FreeForm
 
@@ -237,9 +235,7 @@ def _mixed_library(probes, root: Path) -> list[Path]:
     return made
 
 
-def test_the_index_is_what_the_seven_open_reader_built_one_open_a_file(
-    tmp_path, probes, opens
-):
+def test_the_index_is_what_the_seven_open_reader_built_one_open_a_file(tmp_path, probes, opens):
     """A cold walk over mixed containers: one open a file, the same index and cache."""
     root = tmp_path / "lib"
     made = _mixed_library(probes, root)
