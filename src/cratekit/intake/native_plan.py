@@ -1,6 +1,6 @@
-"""The plan half of a native landing: one row per file, planned against the open database.
+"""The plan of a native landing: one row per file, planned against the open database.
 
-Imported through :mod:`cratekit.intake.native`, which re-exports every name here.
+Every name here is reached through :mod:`cratekit.intake.native` as well.
 """
 
 from __future__ import annotations
@@ -35,13 +35,13 @@ from cratekit.intake.native import (
     PlaylistPlan,
     RowPlan,
     Word,
-    _holding,
-    analyze_playlist,
 )
+from cratekit.intake.native_read import _holding, analyze_playlist
 from cratekit.write import metadata, metadata_cli, routing_pass, row_link, trees
 
 if TYPE_CHECKING:
     from cratekit.intake.account_playlists import Left
+
 
 def _property(db: Any) -> Any:
     from pyrekordbox.db6 import tables
@@ -52,13 +52,9 @@ def _property(db: Any) -> Any:
 def choose_device(db: Any) -> tuple[str, str]:
     """The device whose ``MasterDBID`` is the library's own, as (device id, master id).
 
-    ASSERTED, NEVER TRUSTED. ``add_content`` stamps the first device the query
-    returns, and the author's library holds two, one per machine that has ever
-    opened it. A row stamped with the other machine's device is a plausible way
-    to get an invisible or cloud confused row, so the device is chosen here by
-    the one rule that identifies the library, and the row is restamped when the
-    binding chose differently. Several matches take the lowest identifier, so
-    the answer is a function of the database and not of query order.
+    ASSERTED, NEVER TRUSTED: ``add_content`` stamps the first device the query
+    returns, and a library holds one per machine that opened it. Several
+    matches take the lowest identifier, so query order cannot decide.
     """
     from pyrekordbox.db6 import tables
 
@@ -85,14 +81,10 @@ def choose_device(db: Any) -> tuple[str, str]:
 def stored_folder_path(path: Path, *, base_drive: str | None, current_drive: str | None) -> str:
     """The ``FolderPath`` rekordbox's own rows would carry for a mounted ``path``.
 
-    UNDER THE BASE DRIVE, NOT THE MOUNTED ONE. ``djmdProperty`` records where
-    the database was made and where it is now, and rekordbox remaps the first
-    to the second at runtime, so a row stored under the mounted path on a
-    renamed volume is the odd one out. When the two differ and the path is
-    under the current drive, the prefix is swapped; a library whose drive has
-    never moved, and a path outside the drive, are stored as they are. NFC,
-    because rekordbox stores NFC and the filesystem may hand back NFD, and one
-    byte of difference is a second row for one file (KTD27).
+    UNDER THE BASE DRIVE, NOT THE MOUNTED ONE: rekordbox remaps the drive the
+    database was made on at runtime, so a path under the current drive takes
+    the base drive's prefix. NFC, as rekordbox stores, since one byte of
+    difference is a second row for one file (KTD27).
     """
     text = locations.norm_for_compare(str(path))
     if base_drive and current_drive and base_drive != current_drive:
@@ -105,13 +97,9 @@ def stored_folder_path(path: Path, *, base_drive: str | None, current_drive: str
 def file_type_of(path: Path) -> int | None:
     """The binding's file type for ``path``'s suffix, or None when it has none.
 
-    The binding's own lookup raises the wrong exception class on a suffix it
-    does not know, and it does so after the duplicate check, so it is asked
-    here at plan time. None rather than a refusal, because the answer is one
-    file's and the batch still lands: the file is planned as
-    :data:`UNSUPPORTED` and stays in staging, the way an occupied target does.
-    The xml landing takes every suffix ``AUDIO_EXTS`` names, since a Location
-    is text, so a file this medium cannot name is not lost to the library.
+    Asked at plan time, since the binding raises the wrong exception class on
+    an unknown suffix. None rather than a refusal: the file is planned as
+    :data:`UNSUPPORTED` and stays in staging, and the batch still lands.
     """
     from pyrekordbox.db6.tables import FileType
 
@@ -123,12 +111,8 @@ def file_type_of(path: Path) -> int | None:
 def anchored_intake_root(db: Any, tree_id: str, registry: tree_registry.Registry) -> str:
     """The intake tree's adopted root, or the refusal that names ``tree cutover``.
 
-    THROUGH THE SHARED ASSERTION, which refuses a tree still on the bridge, a
-    native record naming no root, and a root this library does not have. The
-    first is rephrased in this verb's words with the verb that fixes it,
-    because the shared refusal is written for a writer that arrived at the
-    wrong medium by mistake and this one arrives there because the person has
-    not cut the intake tree over yet.
+    THROUGH THE SHARED ASSERTION. A tree still on the bridge is rephrased with
+    the verb that fixes it, since here it means the person has not cut over yet.
     """
     try:
         return tree_registry.anchored_root(
@@ -178,40 +162,21 @@ def plan_rows(
 ) -> NativePlan:
     """Plan one row per file and one playlist, against the open database.
 
-    ``hearts`` are the targets the pass's hearts job asked for, each with its
-    month (U120, U145), and ``favorites_source`` the playlist every favourite is
-    in. With both, the plan carries where each heart goes, resolved on this
-    same handle; a home that cannot be resolved is a plan that SKIPS the
-    placement and says why, never a refusal of the landing. ``owned_hearts``
-    are the pass's hearts on rows the collection already holds (U146), the
-    ones All Favorites lacks placed in the same commit.
+    ``files`` pairs where each file is now with where the landing puts it: the
+    row is planned for the target, the title read off the source. The caller
+    plans the account playlists (``split``, U113), their ``unplanned_left``
+    (U128), ``set_plan`` (U121), ``labels`` (U156) and ``twins`` (U149) on
+    this handle; each is digested, less what this plan leaves in staging.
+    ``hearts`` and ``owned_hearts`` (U120, U146) are placed under
+    ``favorites_source``; a home that cannot be resolved SKIPS the placement
+    and says why, never refusing the landing.
 
-    ``files`` pairs where each file is now with where the landing will put it.
-    The row is planned for the target, since that is the path rekordbox will
-    open, and the title is read off the source, since the tags do not move.
-
-    ``split`` is a landing's account playlists (U113), named by the caller
-    against :func:`inbox_held` on this same handle, each holding targets of
-    ``files``. They are part of the plan and of its digest, and so are
-    ``unplanned_left``, the left rows of the account playlists the caller found
-    holding nothing (U128). ``set_plan`` is the
-    set's permanent playlist (U121), planned by the caller on this same handle
-    over the same targets, and part of the digest the same way. So is
-    ``labels``, the label filing (U156), less any file this plan leaves in
-    staging, each of which it names as filed nowhere. So are ``twins``, the
-    custom playlist twins (U149) the caller planned on this handle, less any
-    whose account playlist this plan does not write.
-
-    A FILE THE COLLECTION HOLDS IS PRESENT, NOT ADDED TWICE. The target is
-    matched against every active row the way the membership writers match,
-    through one index of the collection resolved on this machine, so a row
-    stored under the base drive and a row stored under the mounted path both
-    count. Two active rows on one path count as present too: adding a third
-    is not the answer to a duplicate.
+    A FILE THE COLLECTION HOLDS IS PRESENT, NOT ADDED TWICE, matched through
+    one index resolved on this machine; two active rows on one path count as
+    present too, since a third is not the answer to a duplicate.
     """
-    # THE QUEUE'S NAME IS RESERVED (U166). A batch playlist of that name would
-    # be found as the queue and written into, and recorded as a batch the
-    # rotation then moves into Old with every row still waiting in it.
+    # THE QUEUE'S NAME IS RESERVED (U166): a batch of it would be rotated into
+    # Old with every row still waiting in it.
     if batch == ANALYZE:
         raise refuse(
             "intake-list-unusable",
@@ -235,11 +200,8 @@ def plan_rows(
     rows: list[RowPlan] = []
     for (source, target), match in zip(files, matches):
         if match.outcome is trees.MatchOutcome.UNRESOLVED:
-            # NOT ABSENT, UNASKED (R-770). The matcher could not put the target
-            # under the library root or a prefix rule, so it never looked for a
-            # row, and planning an add over that is planning a second row for a
-            # file the collection may hold. Every reader that resolves against
-            # the root would drop the row it made, too.
+            # NOT ABSENT, UNASKED (R-770): the matcher never looked for a row,
+            # so an add here could be a second row for a file already held.
             raise refuse(
                 "intake-list-unusable",
                 f"{target} resolves nowhere under the library at "
@@ -279,16 +241,12 @@ def plan_rows(
                 why=why,
             )
         )
-    # ONLY WHEN A ROW IS ADDED, and before anything is shown (U126). A
-    # landing whose files the collection already holds writes memberships
-    # alone, and a library with no value to give does not refuse it.
+    # ONLY WHEN A ROW IS ADDED (U126): a landing of memberships alone needs no value.
     link = (
         row_link.library_link(db) if any(row.action == ADD for row in rows) else None
-    )
+    )  # fmt: skip
     if link is not None:
-        rows = [
-            replace(row, content_link=link.value) if row.action == ADD else row for row in rows
-        ]
+        rows = [replace(row, content_link=link.value) if row.action == ADD else row for row in rows]
     rows, vox_cut, vox_blocked = _vox_plan(cfg, db, rows)
     rows, drift_cut, dyn_blocked = _dyn_plan(cfg, db, rows)
     rows = _words_plan(db, rows)
@@ -314,9 +272,7 @@ def plan_rows(
         playlists=kept,
         unplanned_left=(*unplanned_left, *dropped),
         pass_name=pass_name,
-        favorites=_favorites_plan(
-            db, hearts, rows, source=favorites_source, owned=owned_hearts
-        ),
+        favorites=_favorites_plan(db, hearts, rows, source=favorites_source, owned=owned_hearts),
         set_playlist=set_plan,
         labels=labels,
         batch_playlist_id=batch_playlist_id,
@@ -340,21 +296,12 @@ def _vox_plan(
 ) -> tuple[list[RowPlan], float | None, str]:
     """Each row to be added with its file's score and whether it is given the vox My Tag (U127).
 
-    R-841'S DECISION: THE TAG OWNS THE VOCAL SUB, so a landing writes it from
-    the same score and the same cut the routing passes read, and the tag a
-    person filters by agrees with ``voxlevel`` from the moment the row exists.
-    The cut is :func:`cratekit.write.metadata_cli.load_vocal_threshold`'s and
-    the comparison is :func:`cratekit.write.metadata_cli.vocal_tag_values`',
-    so a score exactly at the cut is tagged, as the vocals verb tags it.
+    THE TAG OWNS THE VOCAL SUB (R-841), so it is written from the cut and the
+    comparison the vocals verb uses, :mod:`cratekit.write.metadata_cli`'s.
+    Only on a row this landing adds; a held row is the repair's (A37).
 
-    ONLY A ROW THIS LANDING ADDS. A row the collection already held is the
-    repair's (A37), and a landing never removes a tag.
-
-    NEVER A GUESS. No calibration recorded, or no My Tag category for the
-    writer to copy, plans no tag on any row and says why in ``vox_blocked``.
-    A file whose score cannot be read is planned with no score and no tag,
-    and the landing names it. Read off the source, since the tags do not move.
-    Answers the rows, the cut and the reason, in that order.
+    NEVER A GUESS: no calibration or no My Tag category plans no tag and says
+    why; an unreadable score is no tag, named. Answers rows, cut and reason.
     """
     if not any(row.action == ADD for row in rows):
         return rows, None, ""
@@ -362,9 +309,8 @@ def _vox_plan(
         cut = metadata_cli.load_vocal_threshold(cfg)
     except CratekitError as exc:
         # AN UNREADABLE CALIBRATION BLOCKS THE TAG, NOT THE LANDING. The
-        # routing passes refuse over it, and so does the vocals verb, which is
-        # where the person repairs it; a batch held in staging over a tag the
-        # landing can say it did not write would cost the whole intake.
+        # vocals verb is where it is repaired; holding the batch over it
+        # would cost the whole intake.
         return rows, None, VOX_UNREADABLE.format(why=exc.cause.message)
     if cut is None:
         return rows, None, VOX_UNCALIBRATED
@@ -393,17 +339,10 @@ def _dyn_plan(
 ) -> tuple[list[RowPlan], float | None, str]:
     """Each row to be added with its file's drift, its verdict and whether it is tagged dyn (U157).
 
-    THE SCORE AGAINST THE CUT CONFIGURED NOW, ``analysis.drift_cut``, through
-    :func:`cratekit.core.drift.reading`, as the vox tag reads a score against
-    the landing's cut, so a changed cut moves the plan and its digest. A file
-    with too little pulse to judge reads unknown and is treated as steady; a
-    file analysed before U157 carries no reading, reads unscored, and gets no
-    tag; neither is a guess.
-
-    ONLY A ROW THIS LANDING ADDS, and additive, as the vox tag is planned.
-    The writer's own question is asked only when a row reads variable, since
-    a landing with no variable row writes nothing a missing category could
-    refuse. Answers the rows, the cut and the reason none is tagged.
+    AGAINST THE CUT CONFIGURED NOW, ``analysis.drift_cut``, so a changed cut
+    moves the digest. Too little pulse reads steady; no reading reads unscored
+    and gets no tag. Only on a row this landing adds, and the category is
+    asked only when a row reads variable. Answers rows, cut and reason.
     """
     if not any(row.action == ADD for row in rows):
         return rows, None, ""
@@ -427,18 +366,9 @@ def _dyn_plan(
 def _words_plan(db: Any, rows: list[RowPlan]) -> list[RowPlan]:
     """Each row to be added with its artist, album and genre words and its year (U163).
 
-    R-921'S ANSWER: THE LANDING WRITES WHAT RELOAD TAGS WROTE, so a landed row
-    reads whole in rekordbox before anyone opens it and the visit is Analyze
-    Tracks alone. Read off the source, since the tags do not move. Each word is
-    resolved to the first active lookup row of its exact name, or planned as a
-    mint, and the screen and the digest say which per row.
-
-    NEVER THE KEY. ``KeyID`` is rekordbox's analysis and stays empty, as
-    :data:`cratekit.core.rb_writer.CONTENT_ROW_EMPTY_COLUMNS` holds it, and the
-    padded key the title head carries is Cratekit's own answer.
-
-    ONLY A ROW THIS LANDING ADDS, as the vox tag is planned. A row the
-    collection already held is ``crate tag rows``' to repair.
+    THE LANDING WRITES WHAT RELOAD TAGS WROTE (R-921), so the visit is Analyze
+    Tracks alone. Never ``KeyID``, which is rekordbox's analysis. Only on a row
+    this landing adds; a held row is ``crate tag rows``' to repair.
     """
     if not any(row.action == ADD for row in rows):
         return rows
@@ -466,10 +396,8 @@ def _words_plan(db: Any, rows: list[RowPlan]) -> list[RowPlan]:
 def _word(value: str | None) -> str:
     """A tag's first value as a lookup row's name, empty for a tag that holds only space.
 
-    THE FIRST VALUE IN EVERY CONTAINER. The ID3 reader answers a multi-value
-    frame as its values joined on NUL, where Vorbis and MP4 answer the first,
-    and a NUL joined name is a lookup row no other row will ever share and a
-    genre adoption files under nothing.
+    THE FIRST VALUE IN EVERY CONTAINER: ID3 joins a multi-value frame on NUL,
+    and a NUL joined name is a lookup row no other row will ever share.
     """
     first = (value or "").split("\x00")[0]
     if not first.strip():
@@ -480,9 +408,8 @@ def _word(value: str | None) -> str:
 def year_of(date: str | None) -> int | None:
     """The year a date tag opens with, as rekordbox's ``ReleaseYear`` holds it, else None (U163).
 
-    The first four characters, when they are digits naming a year after zero,
-    which covers the bare year, the ISO date and the ISO timestamp every
-    tagger writes. Anything else is no year rather than a guess.
+    The first four characters when they are digits naming a year after zero;
+    anything else is no year rather than a guess.
     """
     head = (date or "").strip()[:4]
     if len(head) != 4 or not head.isdigit() or int(head) == 0:
@@ -565,8 +492,7 @@ def _active_album_id(db: Any, name: str, album_artist: Word | None) -> str:
     return "" if found is None else str(found)
 
 
-#: The ``SearchStr`` conventions :func:`search_convention` answers (U163): the
-#: row's own name, the empty string, or NULL.
+#: The ``SearchStr`` conventions :func:`search_convention` answers (U163), or NULL.
 SEARCH_NAME = "name"
 SEARCH_EMPTY = ""
 
@@ -574,12 +500,9 @@ SEARCH_EMPTY = ""
 def search_convention(db: Any, table: str) -> str | None:
     """What most active rows of ``table`` store in ``SearchStr``: their name, empty, or NULL (U163).
 
-    UNMEASURED IN REKORDBOX, SO THE LIBRARY IS ASKED. What Reload Tags stores
-    there was never read off a copy (the ideation's open question), and the
-    library's own rows are the nearest witness, so a mint follows the
-    majority of them, tombstones counted with the rest since they were stored
-    by the same hand. A row storing anything else is not counted. A tie or a
-    table with no counted row answers NULL, the binding's own default.
+    UNMEASURED IN REKORDBOX, SO THE LIBRARY IS ASKED: a mint follows the
+    majority of its rows, tombstones included. A tie or no counted row
+    answers NULL, the binding's own default.
     """
     from collections import Counter
 
@@ -608,10 +531,9 @@ def _favorites_plan(
 ) -> FavoritesPlan | None:
     """Where the landing's hearts go, or None when it places none (U120, U146).
 
-    AN OWNED HEART JOINS WHEN ALL FAVORITES DOES NOT HOLD IT LIVE (U146), so a
-    heart a person took out of All Favorites by hand and still hearts on the
-    account joins again: the author's rule of 2026-10-14 is that dropping a
-    favourite takes both hand steps. A heart it holds already is no write.
+    AN OWNED HEART JOINS WHEN ALL FAVORITES DOES NOT HOLD IT LIVE (U146): one
+    taken out by hand and still hearted joins again, since dropping a
+    favourite takes both hand steps.
     """
     writable = {str(row.target) for row in rows if row.action != UNSUPPORTED}
     kept = tuple(item for item in hearts if str(item.target) in writable)
@@ -621,9 +543,7 @@ def _favorites_plan(
         home = placement.resolve_home(db, source)
     except CratekitError as exc:
         # THE ONE REFUSAL A LANDING ABSORBS: no source, or two. Anything else
-        # the home's reading raised is the landing's refusal as it would be
-        # any writer's, since a skipped placement over an unreadable table
-        # would downgrade a fail closed check to a note.
+        # refuses, or a fail closed check would become a note.
         if exc.cause.reason != placement.SOURCE_MISSING:
             raise
         return FavoritesPlan(
@@ -644,9 +564,8 @@ def _favorites_plan(
         joining.append(one)
     if not kept and not joining:
         return None
-    # THE COLOUR, READ ON THIS HANDLE (U153): the Pink row by name, absorbed
-    # into a skip when the table has none, and each owned heart's colour now,
-    # so only a row with none takes Pink and a row a person coloured is held.
+    # THE COLOUR, READ NOW (U153): only a row with none takes Pink, and a row
+    # a person coloured is held.
     pink, colour_skipped = placement.read_pink(db)
     to_colour: tuple[str, ...] = ()
     held: tuple[colour_mod.Held, ...] = ()
@@ -673,11 +592,9 @@ def _supported_only(
 ) -> tuple[tuple[PlaylistPlan, ...], tuple[tuple[str, Left], ...]]:
     """The account playlists over only the targets a row can be written for, and what was dropped.
 
-    A file planned ``UNSUPPORTED`` stays in staging and no playlist can hold it,
-    so it is not counted on the screen as one of a playlist's but listed as
-    left. A playlist holding nothing else, new or owned, is not planned, and
-    every left row it had is answered beside the kept ones by its name, so the
-    landing still names it.
+    An ``UNSUPPORTED`` file stays in staging, so it is listed as left. A
+    playlist holding nothing else is not planned, and its left rows are
+    answered by its name, so the landing still names it.
     """
     unsupported = {str(row.target) for row in rows if row.action == UNSUPPORTED}
     kept: list[PlaylistPlan] = []
@@ -704,8 +621,8 @@ def _supported_only(
             dropped.extend((one.name, row) for row in left)
     return tuple(kept), tuple(dropped)
 
+
 def with_filing(plan: NativePlan, predicted: Sequence[Any]) -> NativePlan:
     """``plan`` with where adoption would file its rows, digested again (U165)."""
     filed = replace(plan, filing=tuple(predicted))
     return replace(filed, digest=digest_of(native.identity(filed)))
-
