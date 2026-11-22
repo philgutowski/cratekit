@@ -1700,27 +1700,21 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     # ── The INBOX rotation (U111) ───────────────────────────────────────────
     #
-    # Appended, for the reason the deferred routing block above gives. The
-    # report it grows out of is ``report.intake-aging``, which only reads.
     Entry(
         name="inbox.rotate",
         summary="move stale INBOX batches into INBOX / Old and remove expired ones " "from Old, never a track",
         module="cratekit.intake.rotate_cli", builder="build", handler_key="inbox.rotate",
-        # Row 20 is the aging report's, and this is the half of the source
-        # system's rotation that report left to a person.
+        # The half of the source's rotation the aging report left to a person.
         feature_rows=(20,), source_scripts=("dj-inbox-rotation",), emits=frozenset({"plan"}),
         output_schema="plan/1",
-        #: The database tree and nothing else. A playlist node under the
-        #: intake root is moved or soft deleted with its own memberships, and
-        #: no content row, no file and no other playlist's membership changes.
+        #: The tree only: intake playlist nodes moved or soft deleted.
         writes=frozenset({"db_tree"}), destructive=True, taxonomy_terms=("inbox", "inbox_old"),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
         gates=(
             GateSpec(
                 name="inbox.rotate.approve", options=("approve", "abort"),
                 prompt="Move these batches into Old and remove these from it, " "keeping every track?",
-                #: EXPLICIT (R34). A removal takes a playlist out of the
-                #: library, so no blanket affirmative satisfies it.
+                #: Explicit (R34): a removal takes a playlist out of the library.
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
@@ -1728,25 +1722,21 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     # ── The INBOX refill (U134) ─────────────────────────────────────────────
     #
-    # Appended, for the reason the deferred routing block above gives. The
-    # rebuild of an account playlist's INBOX mirror from the pass that made it,
-    # for a playlist emptied after it landed.
+    # Rebuilds an emptied INBOX mirror of an account playlist.
     Entry(
         name="inbox.refill",
         summary="refill each INBOX playlist a pass mirrored from the author's account, " "every track the library owns in the account's order, memberships only",
         module="cratekit.intake.refill_cli", builder="build", handler_key="inbox.refill",
-        # NO FEATURE ROW. The source system never mirrored an account playlist.
+        # No feature row: the source never mirrored an account playlist.
         emits=frozenset({"plan"}), output_schema="plan/1",
-        #: The database tree and nothing else: memberships of playlists already
-        #: under the intake root. No content row, no playlist row, no file.
+        #: The tree only: memberships of playlists under the intake root.
         writes=frozenset({"db_tree"}), taxonomy_terms=("inbox",),
         doctor_checks=("library.mounted", "rekordbox.closed", "rekordbox.pins"),
         gates=(
             GateSpec(
                 name="inbox.refill.approve", options=("apply", "abort"),
                 prompt="Add these tracks to their INBOX playlists?",
-                #: EXPLICIT (R34). A write outside the intake flow, answered by
-                #: a recorded act, as the set playlist's backfill is.
+                #: Explicit (R34): a write outside the intake flow.
                 explicit=True, digest_source="plan",
             ),
             CLOUD_SYNC_UNREADABLE_GATE,
