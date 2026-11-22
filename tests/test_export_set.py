@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import ast
 import json
+import shutil
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from cratekit.acquire import match
 from cratekit.cli import registry
+from cratekit.core import review, tags
 from cratekit.core.exit_codes import ExitCode
 from cratekit.export import set_archive, set_cli, set_common, set_match, set_rename
 from cratekit.intake import candidates
@@ -22,7 +26,7 @@ from cratekit.modules.outbound import ledger, sets
 from cratekit.sync import mark_record
 from cratekit.sync import playlists as sync_playlists
 from tests import outbound_fakes
-from tests._containers import tagged_container
+from tests._containers import synth_container
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, UnreadableCatalogue, catalogue_factory
 from tests.test_intake_missing_search import Hit
@@ -43,6 +47,7 @@ ROWS = (
     ("Artist Four", "Title Four"),
     ("Artist Five", "Title Five"),
 )
+FIVE = ROWS[4]
 SEARCHES = {
     (artist, title): [Hit(f"tid-{index}", artist, title)]
     for index, (artist, title) in enumerate(ROWS[:4], start=1)
@@ -59,12 +64,15 @@ def account(installed, monkeypatch):
     return installed, fake, held
 
 
-def _tracklist(cfg, rows=ROWS, name: str = f"{NAME}.txt") -> Path:
+def _listed(cfg, name: str, text: str) -> Path:
     folder = cfg.library.root.parent / "lists"
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / name
-    path.write_text("".join(f"{a} - {t}\n" for a, t in rows), encoding="utf-8")
-    return path
+    (folder / name).write_text(text, encoding="utf-8")
+    return folder / name
+
+
+def _tracklist(cfg, rows=ROWS, name: str = f"{NAME}.txt") -> Path:
+    return _listed(cfg, name, "".join(f"{a} - {t}\n" for a, t in rows))
 
 
 def _two_acts(argv: list[str], gate: str, option: str = "apply") -> tuple[int, dict]:
@@ -115,8 +123,18 @@ def _tracks(done: dict) -> list[dict]:
     return [item for item in done["data"]["items"] if item["kind"] == "track"]
 
 
-# 1. The declaration
+def _accepted(cfg, line: str, hits, option: str) -> None:
+    """A person accepts ``option`` in review for the tracklist row ``line``."""
+    (wanted,) = match.read_text_lines(f"{line}\n")
+    answer = candidates.read_answer(wanted, tuple(hits))
+    with review.open_store(cfg) as items:
+        offered = candidates.propose(items, wanted, answer, handler_key="intake.missing")
+    argv = ["review", "resolve", offered.item_id, "--verdict", "accepted", "--option", option]
+    code, resolved = drive(argv)
+    assert code == int(ExitCode.OK), resolved
 
+
+# 1. The declaration
 
 def test_both_verbs_write_only_the_account_behind_an_explicit_gate():
     for name, gate in (("export.set", BUILD), ("export.archive", ARCHIVE)):
@@ -146,13 +164,10 @@ def test_a_tracklist_name_keeps_the_digest_that_tells_two_recordings_apart():
 
 # 2. The set playlist
 
-
 def test_five_rows_with_one_unmatched_plan_four_and_name_the_fifth(account):
     cfg, _fake, held = account
-    _asked(["export", "set", str(_tracklist(cfg))])
-    assert held.created == [] and held.added == []
     done = _built(_tracklist(cfg), "abort")
-    assert done["outcome"] == "no_op" and held.created == []
+    assert done["outcome"] == "no_op" and held.created == [] and held.added == []
     rows = _tracks(done)
     assert [row["action"] for row in rows] == ["add"] * 4 + ["unmatched"]
     fifth = rows[4]
@@ -193,7 +208,7 @@ def test_a_second_run_onto_the_same_set_plans_nothing(account):
 def test_a_row_added_to_the_tracklist_later_is_added_to_the_same_playlist(account):
     cfg, fake, held = account
     _built(_tracklist(cfg))
-    fake.searches[("Artist Five", "Title Five")] = [Hit("tid-5", "Artist Five", "Title Five")]
+    fake.searches[FIVE] = [Hit("tid-5", *FIVE)]
     _built(_tracklist(cfg))
     assert held.created == [NAME]
     (playlist,) = held.playlists
@@ -219,18 +234,13 @@ def test_a_search_the_provider_cannot_answer_refuses_before_the_gate(installed, 
 
 def test_two_exact_candidates_are_not_chosen_between(account):
     cfg, fake, held = account
-    fake.searches[("Artist Five", "Title Five")] = [
-        Hit("tid-5a", "Artist Five", "Title Five"),
-        Hit("tid-5b", "Artist Five", "Title Five"),
-    ]
+    fake.searches[FIVE] = [Hit("tid-5a", *FIVE), Hit("tid-5b", *FIVE)]
     done = _built(_tracklist(cfg), "abort")
     fifth = _tracks(done)[4]
     assert fifth["action"] == "unmatched" and "several match it exactly" in fifth["why"]
 
 
 def test_the_sweep_never_reads_a_set_playlist_as_intake(account, monkeypatch):
-    from types import SimpleNamespace
-
     from cratekit.sync import cli as sync_cli
     cfg, _fake, _held = account
     _built(_tracklist(cfg))
@@ -238,22 +248,17 @@ def test_the_sweep_never_reads_a_set_playlist_as_intake(account, monkeypatch):
     assert len(built) == 1
     (playlist_id,) = built
     listed = AccountPlaylist(playlist_id=playlist_id, name=NAME, tracks=4)
-    assert (
-        sync_playlists.exclusion(listed, recorded=set(), in_flight=set(), set_built=built)
-        is sync_playlists.Excluded.SET_PLAYLIST
-    )
+    excluded = sync_playlists.exclusion(listed, recorded=set(), in_flight=set(), set_built=built)
+    assert excluded is sync_playlists.Excluded.SET_PLAYLIST
     handed: list[frozenset[str]] = []
-
     class Stop(Exception):
         pass
-
     def plan(
         store, cfg_, found, *, handler_key, label_built=frozenset(), set_built=frozenset(),
         paired=frozenset(), mirrored=frozenset(),
     ):
         handed.append(set_built)
         raise Stop
-
     monkeypatch.setattr(sync_playlists, "plan", plan)
     with pytest.raises(Stop):
         sync_cli._plan_playlists(SimpleNamespace(handler_key="intake.playlist"), None)
@@ -261,11 +266,7 @@ def test_the_sweep_never_reads_a_set_playlist_as_intake(account, monkeypatch):
 
 
 def _document(cfg, name: str, origin: str, rows: list[dict]) -> Path:
-    folder = cfg.library.root.parent / "lists"
-    folder.mkdir(parents=True, exist_ok=True)
-    path = folder / name
-    path.write_text(json.dumps({"list": 1, "origin": origin, "tracks": rows}), encoding="utf-8")
-    return path
+    return _listed(cfg, name, json.dumps({"list": 1, "origin": origin, "tracks": rows}))
 
 
 def test_a_tidal_list_documents_own_identifiers_are_used_without_a_search(account):
@@ -316,7 +317,7 @@ def test_a_track_already_on_the_playlist_and_never_recorded_is_not_asked_for(acc
     # A person added the fifth row's track by hand, and the provider's search
     # now names it: it is on the playlist and this library never wrote it.
     held.playlists[playlist].append("tid-5")
-    fake.searches[("Artist Five", "Title Five")] = [Hit("tid-5", "Artist Five", "Title Five")]
+    fake.searches[FIVE] = [Hit("tid-5", *FIVE)]
     held.chunks.clear()
     done = _built(_tracklist(cfg))
     assert done["outcome"] == "no_op" and held.chunks == []
@@ -334,27 +335,14 @@ def test_a_row_carrying_an_isrc_is_matched_through_the_accounts_own_match(accoun
 
 
 def test_a_candidate_accepted_in_review_is_used_and_not_searched_for_again(account):
-    from cratekit.acquire import match
-    from cratekit.core import review
-    from cratekit.intake import candidates
     cfg, fake, _held = account
-    fake.searches[("Artist Five", "Title Five")] = [
-        Hit("tid-5a", "Artist Five", "Title Five"),
-        Hit("tid-5b", "Artist Five", "Title Five"),
-    ]
-    (wanted,) = match.read_text_lines("Artist Five - Title Five\n")
-    answer = candidates.read_answer(wanted, tuple(fake.searches[("Artist Five", "Title Five")]))
-    with review.open_store(cfg) as items:
-        offered = candidates.propose(items, wanted, answer, handler_key="intake.missing")
-    code, resolved = drive(
-        ["review", "resolve", offered.item_id, "--verdict", "accepted", "--option", "tid-5b"]
-    )
-    assert code == int(ExitCode.OK), resolved
+    fake.searches[FIVE] = [Hit("tid-5a", *FIVE), Hit("tid-5b", *FIVE)]
+    _accepted(cfg, "Artist Five - Title Five", fake.searches[FIVE], "tid-5b")
     fake.searched_for.clear()
     done = _built(_tracklist(cfg), "abort")
     fifth = _tracks(done)[4]
     assert (fifth["id"], fifth["how"], fifth["action"]) == ("tid-5b", "accepted", "add")
-    assert ("Artist Five", "Title Five") not in fake.searched_for
+    assert FIVE not in fake.searched_for
 
 
 # 2b. R-879: a set the library holds, and a search that fills its page
@@ -362,24 +350,31 @@ def test_a_candidate_accepted_in_review_is_used_and_not_searched_for_again(accou
 SEVEN = ("Artist Seven", "Title Seven")
 
 
-def _held(
-    tmp_path, cfg, isrc: str = "", name: str = "Title Seven", album: str = ""
-) -> Path:
+@pytest.fixture(scope="module")
+def silence(tmp_path_factory) -> Path:
+    """One real FLAC, encoded once and copied per file, because ffmpeg is slow."""
+    return synth_container(tmp_path_factory.mktemp("synth"), ".flac")
+
+
+def _tagged(silence: Path, target: Path, **fields: str) -> Path:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(silence, target)
+    assert tags.write_tags(target, fields)
+    return target
+
+
+def _held(silence, cfg, isrc: str = "", name: str = "Title Seven", album: str = "") -> Path:
     """A real file the library holds for ``SEVEN``, carrying ``isrc`` and ``album`` when given."""
-    fields = {"artist": SEVEN[0], "title": f"04A - 126 - {name}"}
-    if isrc:
-        fields["isrc"] = isrc
-    if album:
-        fields["album"] = album
+    fields = {"artist": SEVEN[0], "title": f"04A - 126 - {name}", "isrc": isrc, "album": album}
     target = cfg.library.root / cfg.library.music_dir / f"04A - 126 - {SEVEN[0]} - {name}.flac"
-    return tagged_container(tmp_path, target, **fields)
+    return _tagged(silence, target, **{key: value for key, value in fields.items() if value})
 
 
 def _isrc_asked(album: str = "") -> dict:
     """What the account is asked for ``SEVEN`` by its held file's ISRC."""
     artist, title = SEVEN
-    asked = {"identity": "set-row-1", "isrc": "QZABC2600007", "title": title, "artist": artist}
-    return {**asked, "album": album}
+    return {"identity": "set-row-1", "isrc": "QZABC2600007", "title": title, "artist": artist,
+            "album": album}
 
 
 def _filler(count: int, start: int = 0) -> list[Hit]:
@@ -387,11 +382,9 @@ def _filler(count: int, start: int = 0) -> list[Hit]:
     return [Hit(f"fill-{n}", "Other Act", f"Unrelated {n}") for n in range(start, start + count)]
 
 
-def test_a_row_the_library_holds_is_listed_by_its_files_isrc_with_no_search(
-    account, tmp_path
-):
+def test_a_row_the_library_holds_is_listed_by_its_files_isrc_with_no_search(account, silence):
     cfg, fake, held = account
-    _held(tmp_path, cfg, isrc="QZABC2600007")
+    _held(silence, cfg, isrc="QZABC2600007")
     held.catalog["set-row-1"] = "tid-by-file"
     row = _seventh(cfg, "held.txt")
     assert (row["id"], row["how"], row["action"]) == ("tid-by-file", "library-isrc", "add")
@@ -402,12 +395,10 @@ def test_a_row_the_library_holds_is_listed_by_its_files_isrc_with_no_search(
     assert fake.searched_for == []
 
 
-def test_a_held_files_album_tag_is_handed_to_the_account_with_its_isrc(
-    account, tmp_path
-):
+def test_a_held_files_album_tag_is_handed_to_the_account_with_its_isrc(account, silence):
     """R-572. The set path reads the album beside the ISRC the way file_identity does."""
     cfg, fake, held = account
-    _held(tmp_path, cfg, isrc="QZABC2600007", album="  Tidal Lines ")
+    _held(silence, cfg, isrc="QZABC2600007", album="  Tidal Lines ")
     held.catalog["set-row-1"] = "tid-by-file"
     row = _seventh(cfg, "held-album.txt")
     assert (row["id"], row["how"], row["action"]) == ("tid-by-file", "library-isrc", "add")
@@ -416,31 +407,20 @@ def test_a_held_files_album_tag_is_handed_to_the_account_with_its_isrc(
     assert fake.searched_for == []
 
 
-def test_a_persons_answer_in_review_wins_over_the_librarys_file(account, tmp_path):
-    from cratekit.acquire import match
-    from cratekit.core import review
+def test_a_persons_answer_in_review_wins_over_the_librarys_file(account, silence):
     cfg, fake, held = account
-    _held(tmp_path, cfg, isrc="QZABC2600007")
+    _held(silence, cfg, isrc="QZABC2600007")
     held.catalog["set-row-1"] = "tid-by-file"
     fake.searches[SEVEN] = [Hit("tid-7a", *SEVEN), Hit("tid-7b", *SEVEN)]
-    (wanted,) = match.read_text_lines("Artist Seven - Title Seven\n")
-    answer = candidates.read_answer(wanted, tuple(fake.searches[SEVEN]))
-    with review.open_store(cfg) as items:
-        offered = candidates.propose(items, wanted, answer, handler_key="intake.missing")
-    code, resolved = drive(
-        ["review", "resolve", offered.item_id, "--verdict", "accepted", "--option", "tid-7b"]
-    )
-    assert code == int(ExitCode.OK), resolved
+    _accepted(cfg, "Artist Seven - Title Seven", fake.searches[SEVEN], "tid-7b")
     row = _seventh(cfg, "held.txt")
     assert (row["id"], row["how"]) == ("tid-7b", "accepted")
     assert held.matches == []
 
 
-def test_a_held_file_whose_isrc_the_account_cannot_name_is_searched_and_said(
-    account, tmp_path
-):
+def test_a_held_file_whose_isrc_the_account_cannot_name_is_searched_and_said(account, silence):
     cfg, fake, held = account
-    _held(tmp_path, cfg, isrc="QZABC2600007")
+    _held(silence, cfg, isrc="QZABC2600007")
     row = _seventh(cfg, "held.txt")
     assert row["action"] == "unmatched"
     assert row["why"].startswith(
@@ -449,15 +429,12 @@ def test_a_held_file_whose_isrc_the_account_cannot_name_is_searched_and_said(
     assert fake.searched_for == [SEVEN, SEVEN]
 
 
-def test_held_copies_carrying_different_isrcs_ask_the_account_nothing(account, tmp_path):
+def test_held_copies_carrying_different_isrcs_ask_the_account_nothing(account, silence):
     cfg, fake, held = account
-    _held(tmp_path, cfg, isrc="QZABC2600007")
+    _held(silence, cfg, isrc="QZABC2600007")
     music = cfg.library.root / cfg.library.music_dir
-    tagged_container(
-        tmp_path,
-        music / "copy" / f"04A - 126 - {SEVEN[0]} - {SEVEN[1]}.flac",
-        artist=SEVEN[0], title=f"04A - 126 - {SEVEN[1]}", isrc="QZABC2600009",
-    )
+    copy = music / "copy" / f"04A - 126 - {SEVEN[0]} - {SEVEN[1]}.flac"
+    _tagged(silence, copy, artist=SEVEN[0], title=f"04A - 126 - {SEVEN[1]}", isrc="QZABC2600009")
     row = _seventh(cfg, "held.txt")
     assert held.matches == []
     assert row["why"].startswith(
@@ -465,38 +442,36 @@ def test_held_copies_carrying_different_isrcs_ask_the_account_nothing(account, t
     )
 
 
-def test_another_versions_isrc_is_not_the_rows(account, tmp_path):
+def test_another_versions_isrc_is_not_the_rows(account, silence):
     cfg, _fake, held = account
-    _held(tmp_path, cfg, isrc="QZABC2600007")
-    _held(tmp_path, cfg, isrc="QZABC2600010", name="Title Seven (Extended Mix)")
+    _held(silence, cfg, isrc="QZABC2600007")
+    _held(silence, cfg, isrc="QZABC2600010", name="Title Seven (Extended Mix)")
     held.catalog["set-row-1"] = "tid-by-file"
     row = _seventh(cfg, "held.txt")
     assert (row["id"], row["how"]) == ("tid-by-file", "library-isrc")
     assert {one["isrc"] for one in held.matches} == {"QZABC2600007"}
 
 
-def test_a_row_held_only_at_another_version_is_not_said_to_be_held(account, tmp_path):
+@pytest.mark.parametrize(
+    "isrc, name",
+    [("QZABC2600010", "Title Seven (Extended Mix)"), ("QZABC2600008", "Another Title")],
+    ids=["held-only-at-another-version", "not-held"],
+)
+def test_a_row_the_library_does_not_hold_asks_the_account_nothing(account, silence, isrc, name):
+    """A file of another version, or another title, is not the row's."""
     cfg, _fake, held = account
-    _held(tmp_path, cfg, isrc="QZABC2600010", name="Title Seven (Extended Mix)")
+    _held(silence, cfg, isrc=isrc, name=name)
     row = _seventh(cfg, "held.txt")
     assert held.matches == []
     assert row["why"] == "the provider's search returned nothing for it"
 
 
-def test_a_held_file_with_no_isrc_is_searched_and_says_so(account, tmp_path):
+def test_a_held_file_with_no_isrc_is_searched_and_says_so(account, silence):
     cfg, fake, held = account
-    _held(tmp_path, cfg)
+    _held(silence, cfg)
     row = _seventh(cfg, "held.txt")
     assert row["why"].startswith("the library holds it and its file carries no ISRC; ")
     assert held.matches == [] and fake.searched_for == [SEVEN, SEVEN]
-
-
-def test_a_row_the_library_does_not_hold_asks_the_account_nothing(account, tmp_path):
-    cfg, _fake, held = account
-    _held(tmp_path, cfg, isrc="QZABC2600008", name="Another Title")
-    row = _seventh(cfg, "held.txt")
-    assert held.matches == []
-    assert row["why"] == "the provider's search returned nothing for it"
 
 
 def test_an_absent_music_folder_is_said_and_never_read_as_holding_nothing(account):
@@ -539,7 +514,8 @@ def test_the_same_exact_track_served_again_on_the_next_page_is_one(account):
 
 def test_no_exact_match_on_any_page_leaves_it_out_as_none(account):
     cfg, fake, _held_account = account
-    fake.searches[SEVEN] = [*_filler(50), *_filler(5, start=50), Hit("tid-near", SEVEN[0], "Title Sevens")]
+    near = Hit("tid-near", SEVEN[0], "Title Sevens")
+    fake.searches[SEVEN] = [*_filler(50), *_filler(5, start=50), near]
     row = _seventh(cfg, "paged.txt")
     assert row["action"] == "unmatched"
     assert row["why"].startswith(
@@ -550,16 +526,12 @@ def test_no_exact_match_on_any_page_leaves_it_out_as_none(account):
 def test_the_page_bound_reached_leaves_it_out_and_says_so(account):
     cfg, fake, _held_account = account
     pages = candidates.SEARCH_PAGES
-    fake.searches[SEVEN] = [
-        Hit("tid-7", *SEVEN),
-        *_filler(pages * catalogue.TRACK_SEARCH_PAGE + 20 - 1),
-    ]
+    page = catalogue.TRACK_SEARCH_PAGE
+    fake.searches[SEVEN] = [Hit("tid-7", *SEVEN), *_filler(pages * page + 20 - 1)]
     row = _seventh(cfg, "paged.txt")
     assert row["action"] == "unmatched"
     assert "the page bound was reached with one exact match" in row["why"]
-    assert [offset for *_row, offset in fake.pages_asked] == [
-        n * catalogue.TRACK_SEARCH_PAGE for n in range(pages)
-    ] * 2
+    assert [offset for *_row, offset in fake.pages_asked] == [n * page for n in range(pages)] * 2
 
 
 def test_the_walk_never_asks_past_the_providers_ceiling_of_300():
@@ -572,7 +544,6 @@ def test_the_walk_never_asks_past_the_providers_ceiling_of_300():
 
 def test_a_title_read_two_ways_on_a_full_page_says_so_and_not_the_bound(account):
     cfg, fake, _held_account = account
-    from cratekit.acquire import match
     row = ("Artist Seven", "Sun Path - Live")
     (wanted,) = match.read_text_lines("Artist Seven - Sun Path - Live\n")
     assert wanted.other_reading is not None, "the fixture's title no longer reads two ways"
@@ -593,14 +564,11 @@ def test_an_exact_match_with_no_identifier_is_not_said_to_resemble_nothing(accou
 
 def _walk(line: str, hits: list) -> tuple[candidates.Answer, list[int]]:
     """``search_pages`` over ``hits`` served a page at a time, and the offsets asked."""
-    from cratekit.acquire import match
     (wanted,) = match.read_text_lines(f"{line}\n")
     asked: list[int] = []
-
     def search(offset: int):
         asked.append(offset)
         return hits[offset : offset + catalogue.TRACK_SEARCH_PAGE]
-
     return candidates.search_pages(search, wanted), asked
 
 
@@ -626,7 +594,6 @@ def test_a_title_that_reads_two_ways_reads_no_second_page():
 def test_an_unreadable_row_on_a_full_page_reads_no_second_page():
     class Unreadable:
         id = "tid-x"
-
     hits = [Hit("tid-7", *SEVEN), Unreadable(), *_filler(60)]
     answer, asked = _walk("Artist Seven - Title Seven", hits)
     assert answer.unreadable == 1
@@ -640,7 +607,6 @@ def test_an_exact_match_with_no_identifier_on_a_full_page_reads_no_second_page()
 
 
 def test_an_empty_page_after_full_ones_ends_the_listing_and_a_full_last_page_never_lists():
-    from cratekit.acquire import match
     hits = [Hit("tid-7", *SEVEN), *_filler(2 * catalogue.TRACK_SEARCH_PAGE - 1)]
     answer, asked = _walk("Artist Seven - Title Seven", hits)
     assert asked == [0, 50, 100], "the third page, empty, is the end of the listing"
@@ -651,7 +617,6 @@ def test_an_empty_page_after_full_ones_ends_the_listing_and_a_full_last_page_nev
 
 
 # 3. The archive
-
 
 def test_the_archive_takes_records_and_files_it_in_a_year_folder_made_once(account):
     cfg, _fake, held = account
@@ -787,10 +752,8 @@ def test_a_playlist_the_folder_does_not_list_yet_is_not_renamed_or_blamed(accoun
     _built(_tracklist(cfg))
     lagging = {"on": True}
     listed = held.folder_playlists
-
     def folder_playlists(folder_id):
         return {} if lagging["on"] else listed(folder_id)
-
     monkeypatch.setattr(held, "folder_playlists", folder_playlists)
     done = _archived(_landed(cfg))
     assert held.moves and held.renamed == []
@@ -824,10 +787,8 @@ def test_sync_unmark_takes_the_archive_mark_off_again(account):
     cfg, fake, held = account
     _built(_tracklist(cfg))
     _archived(_landed(cfg))
-    fake.account = [
-        AccountPlaylist(playlist_id=pid, name=title, tracks=None)
-        for pid, title in held.titles.items()
-    ]
+    listed = held.titles.items()
+    fake.account = [AccountPlaylist(playlist_id=p, name=t, tracks=None) for p, t in listed]
     held.renamed.clear()
     code, done = _two_acts(["sync", "unmark", "--pass", "set-batch"], "sync.unmark.confirm")
     assert code == int(ExitCode.OK), done
@@ -836,7 +797,6 @@ def test_sync_unmark_takes_the_archive_mark_off_again(account):
 
 
 # 4. Add only, by the suite's own scan
-
 
 @pytest.mark.parametrize(
     "source",
@@ -848,8 +808,5 @@ def test_no_removal_shape_appears_in_the_set_path(source):
         for node in ast.walk(ast.parse(source.read_text(encoding="utf-8")))
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
     }
-    assert not {
-        name
-        for name in called
-        if any(word in name for word in ("remove", "delete", "unheart", "clear"))
-    }
+    words = ("remove", "delete", "unheart", "clear")
+    assert not {name for name in called if any(word in name for word in words)}

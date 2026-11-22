@@ -1,10 +1,8 @@
-"""U270. Exporting a crate to the account adds its tracks a hundred to a request.
+"""U270. Exporting a crate adds its tracks a hundred to a request, each recorded once named.
 
-One job item per track, a batch of them in one add request, each track recorded
-only once the provider's answer names it (Phillip, 2026-11-13). On the fake
-account and the real client over U255's counting transport: the ledger never
-records a track the playlist does not hold, a resume adds nothing twice, and a
-person's edit is never overwritten. The request count is the assertion.
+On the fake account and the real client over U255's counting transport: the
+ledger never records a track the playlist does not hold, a resume adds nothing
+twice, a person's edit is never overwritten. The request count is the assertion.
 """
 
 from __future__ import annotations
@@ -70,17 +68,11 @@ class LandsThenFails(outbound_fakes.FakeAccount):
 
 
 def _transient() -> CratekitError:
-    return refuse(
-        "unavailable-transient",
-        "the read after the add was refused",
-        remedy=Remedy.RETRY_LATER,
-        retryable=True,
-        origin=("test",),
-    )
+    return refuse("unavailable-transient", "the read after the add was refused",
+                  remedy=Remedy.RETRY_LATER, retryable=True, origin=("test",))
 
 
 # The writer, on the fake account
-
 
 def test_a_full_batch_is_one_add_and_one_record_of_every_track(cfg):
     account = _reserved(cfg)
@@ -100,11 +92,8 @@ def test_a_batch_answered_in_part_records_only_what_the_answer_names(cfg):
     report = export.apply(cfg, account, _plan(*_rows("t1", "t2", "t3")))
     assert report.added == ("t1", "t3")
     assert report.refused == ("t2",)
-    assert dict((row, said) for row, _track, said in report.outcomes) == {
-        "row-t1": export.ADDED,
-        "row-t2": export.REFUSED,
-        "row-t3": export.ADDED,
-    }
+    said = {row: said for row, _track, said in report.outcomes}
+    assert said == {"row-t1": export.ADDED, "row-t2": export.REFUSED, "row-t3": export.ADDED}
     record = _recorded(cfg)[KEY]
     assert record["added"] == ["t1", "t3"]
     assert "row-t2" not in record["rows"]
@@ -116,9 +105,7 @@ def test_two_rows_matched_to_one_track_send_it_once_and_record_both_rows(cfg):
     report = export.apply(cfg, account, _plan(("a", "t1"), ("b", "t1"), ("c", "t2")))
     assert account.chunks == [("pl-1", ("t1", "t2"))]
     assert report.outcomes == (
-        ("a", "t1", export.ADDED),
-        ("b", "t1", export.ALREADY),
-        ("c", "t2", export.ADDED),
+        ("a", "t1", export.ADDED), ("b", "t1", export.ALREADY), ("c", "t2", export.ADDED)
     )
     assert _recorded(cfg)[KEY]["rows"] == {"a": "t1", "b": "t1", "c": "t2"}
 
@@ -215,7 +202,6 @@ def test_a_person_who_took_a_track_off_between_batches_is_not_overwritten(cfg):
 
 
 # The writer, on the real provider client over the counting transport
-
 
 class FailsTheReadAfterAdding(Account):
     """The provider takes the add and then refuses every playlist read for a
@@ -327,13 +313,12 @@ def test_a_person_who_edited_the_playlist_between_two_batches_keeps_their_edit(c
     report = export.apply(cfg, remote, _plan(*_rows("100", "101", "102", "103")))
     assert provider.items["pl0"] == ["100", "101", "7", "102", "103"]
     assert report.added == ("102", "103")
-    assert [status for _form in provider.adds for status in [_form[2]]] == ['"1"', '"3"']
+    assert [tag for _uuid, _form, tag in provider.adds] == ['"1"', '"3"']
     assert provider.posts("pl0") == 2
     assert "7" not in _recorded(cfg)[KEY]["added"]
 
 
 # Through the driver
-
 
 def _crate(cfg, tracks: int) -> Path:
     return outbound_fakes.write_export(
@@ -342,20 +327,28 @@ def _crate(cfg, tracks: int) -> Path:
 
 
 def _queue(exported: Path) -> str:
-    _run, job_id = approve_and_queue(
-        ["export", "playlist", outbound_fakes.CRATE, "--export", str(exported)],
-        "export.playlist.confirm",
-    )
-    return job_id
+    verb = ["export", "playlist", outbound_fakes.CRATE, "--export", str(exported)]
+    return approve_and_queue(verb, "export.playlist.confirm")[1]
+
+
+def _client(cfg, monkeypatch, provider):
+    """The real client over ``provider``, bound, matching row N to 1000 + N, its playlist held."""
+    remote = _adapter(provider)
+    monkeypatch.setattr(remote, "match_track", lambda **asked: str(1000 + int(asked["identity"])))
+    bind(monkeypatch, remote)
+    ledger.reserve_playlist(cfg, outbound_fakes.CRATE, lambda: "pl0")
+    return remote
+
+
+def _item_states(job_id: str) -> set[str]:
+    with jobs.open_store() as store:
+        return {str(item.state) for item in jobs.items(store, job_id)}
 
 
 def test_a_job_of_two_hundred_and_fifty_tracks_makes_fifteen_requests(cfg, monkeypatch):
     """Three batches, one add request each, under the gate's 500 (U255 made 503)."""
     provider = Account("pl0")
-    remote = _adapter(provider)
-    monkeypatch.setattr(remote, "match_track", lambda **asked: str(1000 + int(asked["identity"])))
-    bind(monkeypatch, remote)
-    ledger.reserve_playlist(cfg, outbound_fakes.CRATE, lambda: "pl0")
+    _client(cfg, monkeypatch, provider)
     job_id = _queue(_crate(cfg, 250))
     code, resumed = _resume(job_id)
     assert code == int(ExitCode.OK), resumed
@@ -370,8 +363,7 @@ def test_a_job_of_two_hundred_and_fifty_tracks_makes_fifteen_requests(cfg, monke
     outbound = resumed["data"]["progress"]["outbound"]
     assert outbound["counts"] == {"written": 250, "already": 0, "unmatched": 0}
     assert _recorded(cfg)[outbound_fakes.CRATE]["added"] == wanted
-    with jobs.open_store() as store:
-        assert {str(item.state) for item in jobs.items(store, job_id)} == {"done"}
+    assert _item_states(job_id) == {"done"}
     reports = artifacts.committed(cfg, job_id)
     assert len(reports) == 250
     assert all(len(report["added"]) == 1 for report in reports)
@@ -388,31 +380,22 @@ def test_a_park_between_the_request_and_the_record_blocks_and_the_resume_adds_no
     assert code != int(ExitCode.OK)
     with jobs.open_store() as store:
         assert jobs.get(store, job_id).state is jobs.JobState.BLOCKED
-        assert {str(item.state) for item in jobs.items(store, job_id)} == {"pending"}
+    assert _item_states(job_id) == {"pending"}
     assert _recorded(cfg)[outbound_fakes.CRATE]["added"] == []
     code, resumed = _resume(job_id)
     assert code == int(ExitCode.OK), resumed
     assert account.playlists["pl-1"] == ["tid-1", "tid-2", "tid-3"]
     assert [one for _pl, one in account.added] == ["tid-1", "tid-2", "tid-3"]
     assert _recorded(cfg)[outbound_fakes.CRATE]["added"] == []
-    assert resumed["data"]["progress"]["outbound"]["counts"] == {
-        "written": 0,
-        "already": 3,
-        "unmatched": 0,
-    }
-    with jobs.open_store() as store:
-        assert {str(item.state) for item in jobs.items(store, job_id)} == {"done"}
+    counts = resumed["data"]["progress"]["outbound"]["counts"]
+    assert counts == {"written": 0, "already": 3, "unmatched": 0}
+    assert _item_states(job_id) == {"done"}
 
 
-def test_one_refused_read_after_a_landed_add_through_the_driver_finishes_the_job(
-    cfg, monkeypatch
-):
+def test_one_refused_read_after_a_landed_add_through_the_driver_finishes_the_job(cfg, monkeypatch):
     """Through the driver, a refused read after the add still finishes the job."""
     provider = FailsTheReadAfterAdding("pl0", refusals=1)
-    remote = _adapter(provider)
-    monkeypatch.setattr(remote, "match_track", lambda **asked: str(1000 + int(asked["identity"])))
-    bind(monkeypatch, remote)
-    ledger.reserve_playlist(cfg, outbound_fakes.CRATE, lambda: "pl0")
+    _client(cfg, monkeypatch, provider)
     job_id = _queue(_crate(cfg, 100))
     code, resumed = _resume(job_id)
     assert code == int(ExitCode.OK), resumed
@@ -423,22 +406,17 @@ def test_one_refused_read_after_a_landed_add_through_the_driver_finishes_the_job
     assert resumed["data"]["progress"]["outbound"]["counts"]["written"] == 100
 
 
-def test_a_stop_asked_while_a_batch_is_planned_writes_none_of_it(cfg, monkeypatch):
+def test_a_stop_asked_while_a_batch_is_planned_writes_none_of_it(cfg):
     """A stop while a batch is matched sends nothing, so the batch is released whole."""
     from cratekit.export import cli as export_cli
     account = outbound_fakes.FakeAccount(catalog=dict(_catalog(3)))
     exported = _crate(cfg, 3)
-    payload = {
-        export_cli.PLAYLIST: outbound_fakes.CRATE,
-        export_cli.NAME: outbound_fakes.CRATE,
-        export_cli.EXPORT: str(exported),
-    }
+    crate = outbound_fakes.CRATE
+    payload = {export_cli.PLAYLIST: crate, export_cli.NAME: crate, export_cli.EXPORT: str(exported)}
     asked: list[int] = []
-
     def stop() -> bool:
         asked.append(len(account.matches))
         return len(account.matches) == 2
-
     answered = export_cli.run_export_items(payload, ["1", "2", "3"], cfg, account, stop)
     assert answered is None
     assert asked == [0, 1, 2]
