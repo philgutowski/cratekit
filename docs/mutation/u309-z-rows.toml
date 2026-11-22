@@ -2,8 +2,10 @@ name = "u309-z"
 pass_kind = "light"
 
 # Eleven rows of docs/mutation/u309.md measured again after the tests that
-# reach them landed: each read zero on the full suite at 111e4ac6, a guard the
-# split moved that no test reached on the base either.
+# reach them landed: each read zero on the full suite at 111e4ac6. U1 to U13
+# guard code the split moved, which no test reached on the base either; U14 to
+# U17 guard the backfills' shared loop the split wrote.
+# U13's subset adds tests/modules/test_outbound.py, where its test landed.
 
 [[rows]]
 id = "U1_settle_found_refusal"
@@ -77,7 +79,7 @@ id = "U13_shell_config_origin"
 description = "The outbound verbs' config refusal no longer names the verb that met it"
 file = "src/cratekit/modules/outbound/shell.py"
 surface = "user"
-tests = ["tests/test_outbound_workers.py", "tests/test_cli_contract.py", "tests/test_favorites_pink.py", "tests/test_shared_homes.py"]
+tests = ["tests/modules/test_outbound.py", "tests/test_outbound_workers.py", "tests/test_cli_contract.py", "tests/test_favorites_pink.py", "tests/test_shared_homes.py"]
 old = '    return output.load_config((origin,))'
 new = '    return output.load_config(())'
 
