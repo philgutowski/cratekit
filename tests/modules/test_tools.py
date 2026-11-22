@@ -918,6 +918,8 @@ def test_the_loudness_report_is_parsed_as_json_not_grepped():
     assert measured.true_peak_db == -1.5
     assert measured.target_offset == 0.2
     assert mastering.parse_output_loudness(stderr).integrated_lufs == -14.0
+    # A later block without the marker is some other filter's, never the report.
+    assert mastering.parse_loudness(stderr + '{"frames" : "12"}\n').integrated_lufs == -14.2
 
 
 def test_a_silent_signal_reports_unknown_rather_than_negative_infinity():
