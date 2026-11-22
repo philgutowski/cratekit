@@ -213,6 +213,21 @@ def _approved(option: str = "approve") -> tuple[int, dict, dict]:
     return code, done, refused
 
 
+def _approved_ok(option: str = "approve") -> dict:
+    code, done, _refused = _approved(option)
+    assert code == int(ExitCode.OK), done
+    return done
+
+
+def _inspiration_playlist(cfg: config.Config, name: str, folder_id: str) -> None:
+    handle = rb_writer.open_db(rb_writer.live_db_path(cfg), cfg=cfg)
+    try:
+        handle.create_playlist(name, parent=handle.get_playlist(ID=folder_id))
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+
+
 #: Fifteen the library holds, and three it does not whose titles share no word
 #: with any held, so the engine answers missing rather than asking a question.
 TITLES = (
@@ -307,13 +322,7 @@ def test_a_set_already_under_inspiration_is_skipped_and_its_tracks_never_read(
     machine, account, silence
 ):
     _owned(machine, silence, "Cut 01")
-    folder_id = cutover_fixtures.add_folder(machine, FOLDER)
-    handle = rb_writer.open_db(rb_writer.live_db_path(machine), cfg=machine)
-    try:
-        handle.create_playlist(GOATS, parent=handle.get_playlist(ID=folder_id))
-        handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
+    _inspiration_playlist(machine, GOATS, cutover_fixtures.add_folder(machine, FOLDER))
     done_id = account.add_set(f"DOWNLOADED {GOATS}", ("Cut 01",))
     step = _step(_report())
     assert step["state"] == "nothing"
@@ -331,8 +340,7 @@ def test_a_set_with_no_match_is_reported_and_no_empty_playlist_is_written(
     empty = _by_set(step)[GOATS]
     assert empty["action"] == inspiration.EMPTY and empty["tracks"] == 0
     assert len(empty["misses"]) == 2 and "nothing is written" in empty["reason"]
-    code, done, _refused = _approved()
-    assert code == int(ExitCode.OK), done
+    _approved_ok()
     assert set(_playlists_under(machine, _inspiration_id(machine))) == {FEMME}
 
 
@@ -343,20 +351,28 @@ def test_a_step_whose_every_set_has_no_match_plans_nothing_and_writes_nothing(ma
     assert _query(machine, "SELECT ID FROM djmdPlaylist WHERE Name = ?", GOATS) == []
 
 
-def test_the_name_written_is_the_account_name_without_its_prefix(machine, account, silence):
+@pytest.mark.parametrize(
+    ("listed", "written"),
+    [
+        (f"DOWNLOADED {FEMME}", FEMME),
+        ("DOWNLOADED 5_28_26 A b2b B / Night 10-18", "5_28_26 A b2b B - Night 10-18"),
+    ],
+)
+def test_the_name_written_is_the_account_name_without_its_prefix(
+    machine, account, silence, listed, written
+):
+    """Spelled by the set playlist rule, a slash written as a dash."""
     _owned(machine, silence, "Cut 01")
-    account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01",))
-    code, done, _refused = _approved()
-    assert code == int(ExitCode.OK), done
-    assert set(_playlists_under(machine, _inspiration_id(machine))) == {FEMME}
-    assert _query(machine, "SELECT ID FROM djmdPlaylist WHERE Name = ?", f"DOWNLOADED {FEMME}") == []
+    account.add_set(listed, ("Cut 01",))
+    _approved_ok()
+    assert set(_playlists_under(machine, _inspiration_id(machine))) == {written}
+    assert _query(machine, "SELECT ID FROM djmdPlaylist WHERE Name = ?", listed) == []
 
 
 def test_a_second_run_plans_nothing(machine, account, silence):
     _owned(machine, silence, "Cut 01")
     account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01", "Cut 02"))
-    code, done, _refused = _approved()
-    assert code == int(ExitCode.OK), done
+    _approved_ok()
     read = list(account.found.playlists_asked_for)
     step = _step(_report())
     assert step["state"] == "nothing"
@@ -391,12 +407,7 @@ def test_a_set_given_its_inspiration_playlist_since_the_plan_is_stale(machine, a
     declared = active_taxonomy.load(machine)
     approved = _plan(machine, declared, account)
     assert approved.folder_id == folder_id and len(approved.creates) == 1
-    handle = rb_writer.open_db(rb_writer.live_db_path(machine), cfg=machine)
-    try:
-        handle.create_playlist(FEMME, parent=handle.get_playlist(ID=folder_id))
-        handle.session.commit()
-    finally:
-        rb_writer.close_db(handle)
+    _inspiration_playlist(machine, FEMME, folder_id)
     with pytest.raises(CratekitError) as refused:
         inspiration.apply(machine, declared, approved)
     assert refused.value.cause.reason == "decision-stale"
@@ -454,16 +465,6 @@ def test_a_convergence_latch_refuses_the_write_before_anything_is_written(
     assert asked == [DECLARED.inspiration.id]
     assert _query(machine, "SELECT ID FROM djmdPlaylist WHERE Name = ?", FEMME) == []
     assert not [r for r in session.records(machine) if r.workflow == inspiration.WORKFLOW]
-
-
-def test_a_slash_in_the_account_name_is_written_as_a_dash(machine, account, silence):
-    _owned(machine, silence, "Cut 01")
-    account.add_set("DOWNLOADED 5_28_26 A b2b B / Night 10-18", ("Cut 01",))
-    code, done, _refused = _approved()
-    assert code == int(ExitCode.OK), done
-    assert set(_playlists_under(machine, _inspiration_id(machine))) == {
-        "5_28_26 A b2b B - Night 10-18"
-    }
 
 
 # What is not a set, and what cannot be read
@@ -637,8 +638,7 @@ def test_a_track_with_no_title_is_named_and_the_sets_other_tracks_are_written(
     assert planned["misses"] == [_unread_line(3, "Probe", "no title", "title", f"{playlist_id}-3") ]
     assert step["counts"]["tracks matched"] == 2 and step["counts"]["tracks missed"] == 1
     assert not [w for w in envelope["warnings"] if w["code"] == "organize-inspiration-unread"]
-    code, done, _refused = _approved()
-    assert code == int(ExitCode.OK), done
+    done = _approved_ok()
     under = _playlists_under(machine, _inspiration_id(machine))
     assert _members(machine, under[FEMME]) == [rows["Cut 01"], rows["Cut 02"]]
     assert _step(done)["applied"]["read back"] == {FEMME: 2}
@@ -656,8 +656,7 @@ def test_a_track_with_no_artist_is_named_and_the_sets_other_tracks_are_written(
     assert planned["misses"] == [
         _unread_line(2, "no artist", "Cut 03", "artist", f"{playlist_id}-2")
     ]
-    code, done, _refused = _approved()
-    assert code == int(ExitCode.OK), done
+    _approved_ok()
     under = _playlists_under(machine, _inspiration_id(machine))
     assert _members(machine, under[FEMME]) == [rows["Cut 01"], rows["Cut 02"]]
 
@@ -699,8 +698,7 @@ def test_a_readable_track_with_no_provider_id_is_matched_as_before(machine, acco
     planned = _by_set(_step(_report()))[FEMME]
     assert planned["action"] == inspiration.CREATE and planned["tracks"] == 2
     assert planned["misses"] == []
-    code, done, _refused = _approved()
-    assert code == int(ExitCode.OK), done
+    _approved_ok()
     under = _playlists_under(machine, _inspiration_id(machine))
     assert _members(machine, under[FEMME]) == [rows["Cut 01"], rows["Cut 02"]]
 
