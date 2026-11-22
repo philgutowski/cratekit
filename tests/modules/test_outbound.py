@@ -1,10 +1,4 @@
-"""U33: outbound service writes share one add-only discipline.
-
-The brief's five scenarios: an export reports unmatched tracks behind its own
-confirmation; a re-export updates rather than duplicating; hearts sync never
-removes a heart or a colour under any flag; a deletion run triggers no outbound
-call; an interrupted write re-runs without duplicating. Deletion never reaches
-this package (R36).
+"""U33: outbound service writes share one add-only discipline, and deletion never reaches them.
 """
 
 from __future__ import annotations
@@ -23,6 +17,7 @@ from cratekit.modules.outbound import export, hearts, ledger
 from cratekit.modules.outbound.hearts import REMOVE_FLAGS
 from tests import outbound_fakes
 from tests.outbound_fakes import FakeAccount, FakeColors
+from tests.test_outbound_workers import _less_work as _less_work  # noqa: PLC0414
 
 SRC_ROOT = Path(__file__).resolve().parent.parent.parent / "src" / "cratekit"
 OUTBOUND_ROOT = SRC_ROOT / "modules" / "outbound"
@@ -88,7 +83,6 @@ def _match(account, **track) -> export.Plan:
 
 # ── 1. Unmatched tracks are reported; export has its own confirmation ──────
 
-
 def test_playlist_export_reports_unmatched_tracks_rather_than_dropping_them(cfg):
     account = FakeAccount(catalog={"owned": "tid-1"})
     report = export.apply(cfg, account, _plan(account, "crate-one", "owned", "missing"))
@@ -124,13 +118,9 @@ def test_the_export_plan_hands_the_account_the_files_album_tag():
 def test_an_unmatched_export_row_carries_what_the_account_said_about_it():
     account = FakeAccount()
     account.reasons["several"] = "the ISRC X names 3 provider tracks"
-    planned = export.plan(
-        [
-            export.LocalTrack(identity="several", title="08A - 124 - Sun Path"),
-            export.LocalTrack(identity="unknown", title="08A - 124 - Moon Road"),
-        ],
-        playlist_key="crate-one", name="Crate One", account=account,
-    )
+    rows = [export.LocalTrack(identity="several", title="08A - 124 - Sun Path"),
+            export.LocalTrack(identity="unknown", title="08A - 124 - Moon Road")]
+    planned = export.plan(rows, playlist_key="crate-one", name="Crate One", account=account)
     assert [(row.identity, row.title, row.reason) for row in planned.unmatched] == [
         ("several", "08A - 124 - Sun Path", "the ISRC X names 3 provider tracks"),
         ("unknown", "08A - 124 - Moon Road", "unmatched"),
@@ -164,7 +154,6 @@ def test_a_heart_back_hands_the_account_the_names_and_reports_its_reasons(cfg):
 def test_playlist_export_requires_its_own_confirmation(cfg, tmp_path, verb, gate):
     """Each verb meets its own explicit gate, the export handed a real document (U51)."""
     from tests.test_cli_contract import drive
-
     assert cfg.profile.name == "full"
     config.save(cfg)
     config.reset_cache()
@@ -176,7 +165,6 @@ def test_playlist_export_requires_its_own_confirmation(cfg, tmp_path, verb, gate
 
 
 # ── 2. Re-export updates rather than creating a duplicate ──────────────────
-
 
 def test_reexporting_the_same_playlist_updates_rather_than_creating_a_duplicate(cfg):
     """A job frozen before R-229 carries no confirmed remote and is looked up by key."""
@@ -191,7 +179,6 @@ def test_reexporting_the_same_playlist_updates_rather_than_creating_a_duplicate(
 
 
 # ── 2b. R-229. A crate under a new path is recognised, and the record moves ─
-
 
 def _write_ledger(cfg, playlists: dict) -> None:
     path = config.state_path("outbound_writes", cfg)
@@ -388,9 +375,7 @@ def test_two_candidates_are_both_named_and_neither_is_adopted(cfg):
 def test_an_adopted_record_moves_and_no_playlist_is_created(cfg):
     account = FakeAccount(catalog={"a": "tid-a", "b": "tid-b"})
     first = export.apply(cfg, account, _plan(account, "Old", "a"))
-
     moved = export.apply(cfg, account, _plan(account, "New", "a", "b", adopts="Old"))
-
     assert account.created == ["Old"]
     assert (moved.remote_id, moved.created, moved.adopted_from) == (first.remote_id, False, "Old")
     assert (moved.added, moved.already) == (("tid-b",), ("tid-a",))
@@ -457,11 +442,8 @@ def test_a_job_confirmed_before_its_record_moved_goes_on_writing_to_it(cfg):
     export.apply(
         cfg, account, _plan(account, "Deep/House", "c", adopts="House", contents=["a", "c"])
     )
-
-    late = export.apply(
-        cfg, account, _plan(account, "House", "b", expected="pl-1", contents=["a", "b"])
-    )
-
+    planned = _plan(account, "House", "b", expected="pl-1", contents=["a", "b"])
+    late = export.apply(cfg, account, planned)
     assert account.created == ["House"]
     assert (late.remote_id, late.added) == ("pl-1", ("tid-b",))
     recorded = _read_ledger(cfg)
@@ -486,11 +468,7 @@ def test_the_recorded_contents_are_replaced_and_not_grown(cfg):
     for pair in (("1", "2"), ("3", "4"), ("5", "6")):
         export.apply(cfg, account, _plan(account, "Current", *pair))
     assert _read_ledger(cfg)["Current"]["tracks"] == ["5", "6"]
-
-    found = ledger.recognise(
-        cfg, "Peak", name="Peak", track_ids=("5", "6"), live={"Peak": ("5", "6")}
-    )
-    assert found.adopts == "Current"
+    assert _recognise(cfg, "Peak", name="Peak", tracks=("5", "6")).adopts == "Current"
 
 
 def test_the_whole_crate_is_recorded_by_the_first_item_even_unmatched_rows(cfg):
@@ -505,9 +483,7 @@ def test_a_legacy_record_gains_its_contents_on_the_next_export_under_its_key(cfg
     account = FakeAccount(catalog={"a": "tid-a", "b": "tid-b"})
     account.playlists["pl-9"] = ["tid-a", "tid-b"]
     _write_ledger(cfg, {"Crate": {"remote_id": "pl-9", "added": ["tid-a", "tid-b"]}})
-
     report = export.apply(cfg, account, _plan(account, "Crate", "a", "b"))
-
     assert report.added == ()
     assert _read_ledger(cfg)["Crate"]["tracks"] == ["a", "b"]
     assert _read_ledger(cfg)["Crate"]["added"] == ["tid-a", "tid-b"]
@@ -528,23 +504,15 @@ def test_a_settled_crate_reads_the_ledger_once_and_writes_nothing(cfg, monkeypat
 
 # ── 3. Hearts sync never removes a heart or a colour ───────────────────────
 
-
 def test_hearts_sync_never_removes_a_heart_or_a_color_under_any_flag(cfg):
     account = FakeAccount(catalog={"row-1": "tid-1", "row-2": "tid-2"})
     account.hearts.add("tid-keep")
     colors = FakeColors()
     colors.pink.add("already-pink")
     flags = {name: True for name in REMOVE_FLAGS}
-    report = hearts.heart_back(
-        cfg,
-        account,
-        [
-            hearts.HeartCandidate(row_id="row-1", remote_id="tid-1"),
-            hearts.HeartCandidate(row_id="already-pink", remote_id="tid-keep"),
-        ],
-        colors=colors,
-        flags=flags,
-    )
+    candidates = [hearts.HeartCandidate(row_id="row-1", remote_id="tid-1"),
+                  hearts.HeartCandidate(row_id="already-pink", remote_id="tid-keep")]
+    report = hearts.heart_back(cfg, account, candidates, colors=colors, flags=flags)
     assert {"tid-keep", "tid-1"} <= account.hearts
     assert "already-pink" in colors.pink
     assert (account.removed, colors.cleared) == ([], [])
@@ -553,16 +521,13 @@ def test_hearts_sync_never_removes_a_heart_or_a_color_under_any_flag(cfg):
 
 
 def test_a_favourite_un_hearted_on_the_account_is_hearted_again_and_nothing_is_removed(cfg):
-    """U146's R6, the outbound half: a heart taken back on the account while All
-    Favorites still holds the track is hearted again, since no ledger holds it."""
+    """U146's R6: a heart taken back while All Favorites holds the track is hearted again."""
     account = FakeAccount(catalog={"row-owned": "tid-owned"})
     account.hearts.add("tid-other")
     assert "tid-owned" not in account.hearts, "taken back on the account"
-
     report = hearts.heart_back(
         cfg, account, [hearts.HeartCandidate(row_id="row-owned", remote_id="tid-owned")]
     )
-
     assert report.hearted == ("tid-owned",)
     assert account.hearts == {"tid-owned", "tid-other"}
     assert account.removed == []
@@ -583,9 +548,7 @@ ADMITTED_REMOVE_NAMES = frozenset({*PROTOCOL_REMOVALS, "remove_requested"})
 
 
 def test_the_one_remove_the_outbound_package_defines_is_the_protocols_own():
-    """The exact name scan misses a plural, so this reads every function whose name
-    opens with ``remove`` or names a delete, and admits only the protocol's members,
-    in the two files that declare and implement them, and the flag reader."""
+    """Every ``remove`` or delete shaped name is a protocol member, where declared, or the flag reader."""
     shaped = [
         (where, name)
         for root in WRITERS
@@ -602,7 +565,6 @@ def test_the_one_remove_the_outbound_package_defines_is_the_protocols_own():
 
 # ── 4. A deletion run triggers no outbound call ────────────────────────────
 
-
 def test_a_deletion_run_triggers_no_outbound_call():
     imported = set()
     for _where, tree in _trees(SRC_ROOT / "deletion"):
@@ -612,15 +574,11 @@ def test_a_deletion_run_triggers_no_outbound_call():
             elif isinstance(node, ast.ImportFrom) and node.module:
                 imported.add(node.module)
     writers = ("cratekit.modules.outbound", "cratekit.export", "cratekit.favorites")
-    banned = {
-        name for name in imported
-        if any(name == one or name.startswith(one + ".") for one in writers)
-    }
+    banned = {n for n in imported if any(n == w or n.startswith(w + ".") for w in writers)}
     assert not banned, sorted(banned)
 
 
 # ── 5. An interrupted write is re-runnable without duplicating remote state ─
-
 
 def test_an_interrupted_outbound_write_is_rerunnable_without_duplicating(cfg):
     # THE SECOND WRITE IS THE ADD (U270): the create, then one request for
@@ -637,16 +595,13 @@ def test_an_interrupted_outbound_write_is_rerunnable_without_duplicating(cfg):
     assert (report.remote_id, report.created) == (remote_id, False)
     assert account.created == ["Crate One"]
     assert account.playlist_tracks(remote_id) == ("tid-a", "tid-b")
-    assert account.added.count((remote_id, "tid-a")) == 1
-    assert account.added.count((remote_id, "tid-b")) == 1
+    for tid in ("tid-a", "tid-b"):
+        assert account.added.count((remote_id, tid)) == 1, tid
 
 
 def test_an_interrupted_heart_is_rerunnable_without_duplicating(cfg):
     account = FakeAccount(fail_after=1)
-    first = [
-        hearts.HeartCandidate(row_id="r1", remote_id="tid-1"),
-        hearts.HeartCandidate(row_id="r2", remote_id="tid-2"),
-    ]
+    first = [hearts.HeartCandidate(row_id=f"r{n}", remote_id=f"tid-{n}") for n in (1, 2)]
     with pytest.raises(RuntimeError, match="interrupted"):
         hearts.heart_back(cfg, account, first)
     assert account.hearted == ["tid-1"]
@@ -657,7 +612,6 @@ def test_an_interrupted_heart_is_rerunnable_without_duplicating(cfg):
 
 
 # ── The ledger ──────────────────────────────────────────────────────────────
-
 
 def test_an_unreadable_outbound_ledger_refuses_rather_than_going_empty(cfg):
     path = config.state_path("outbound_writes", cfg)
