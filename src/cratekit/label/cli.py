@@ -12,7 +12,7 @@ worker the sweep and the import share.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Container, Sequence
+from collections.abc import Callable, Container
 from pathlib import Path
 from typing import Any
 
@@ -648,8 +648,7 @@ def import_label(ctx) -> Envelope:
     # The configuration is read before the registry, which reads on a machine
     # never set up, so a fresh install is refused for its configuration first.
     _load()
-    held = labels.RegistryStore().load()
-    entry = held.resolve(ctx.args.name)
+    entry = labels.RegistryStore().load().resolve(ctx.args.name)
     if entry is None:
         raise _refused(
             "label-unknown",
@@ -706,7 +705,14 @@ def _listed(
     found: catalogue.Catalogue, reference: str, *, current: bool
 ) -> tuple[list, catalogue.ListingShortfall | None, str]:
     """The two listings' one body and one boundary, see :func:`playlist_listing_or_refuse`."""
-    try:
+    with catalogue.translated(lambda exc: _refused(
+        "label-playlist-unreadable",
+        f"the playlist {reference!r} could not be listed by the provider "
+        f"({exc}); harvest needs a reachable provider playlist and will not "
+        f"invent labels",
+        "pass a playlist this account can read, then retry",
+        detail={"playlist": reference, "kind": type(exc).__name__},
+    )):
         playlist = found.playlist_for(reference)
         rows = harvest.playlist_tracks(playlist)
         declared = getattr(playlist, "num_tracks", None)
@@ -721,17 +727,6 @@ def _listed(
             if window == listing.WINDOW_UNPAGED:
                 rows = unpaged
         return rows, catalogue.ListingShortfall.of(rows, declared), window
-    except CratekitError:
-        raise
-    except Exception as exc:
-        raise _refused(
-            "label-playlist-unreadable",
-            f"the playlist {reference!r} could not be listed by the provider "
-            f"({exc}); harvest needs a reachable provider playlist and will not "
-            f"invent labels",
-            "pass a playlist this account can read, then retry",
-            detail={"playlist": reference, "kind": type(exc).__name__},
-        ) from exc
 
 
 #: The warning code a harvest carries when its playlist listed short (R-515).
@@ -765,19 +760,16 @@ def favourite_tracks_or_refuse(
     typed, for the detail.
     """
     try:
-        return list(found.favourite_tracks()), None
-    except catalogue.HeartsShortfall as short:
-        return list(short.rows), short
-    except CratekitError:
-        raise
-    except Exception as exc:
-        raise _refused(
+        with catalogue.translated(lambda exc: _refused(
             "label-playlist-unreadable",
             f"the account's favourites could not be listed by the provider "
             f"({exc}); a partial listing would miss hearts, so none is used",
             "retry once the provider can list this account's favourites",
             detail={"playlist": reference, "kind": type(exc).__name__},
-        ) from exc
+        ), passing=(CratekitError, catalogue.HeartsShortfall)):
+            return list(found.favourite_tracks()), None
+    except catalogue.HeartsShortfall as short:
+        return list(short.rows), short
 
 
 def _label_verifier(
@@ -795,27 +787,23 @@ def _label_verifier(
     confirmed: list[str] = []
 
     def check(name: str) -> dict:
-        try:
+        with catalogue.translated(lambda exc: _refused(
+            "label-playlist-unreadable",
+            f"the provider stopped answering while harvest was confirming "
+            f"the label names read off {reference!r} ({exc}); the "
+            f"{len(confirmed)} it had already confirmed are offered in the "
+            f"review queue and are waiting there, and the rest of the "
+            f"playlist was never verified",
+            "retry this harvest when the provider is answering; the "
+            "labels already offered will not be queued twice",
+            "or read what is waiting with: crate review list",
+            detail={
+                "playlist": reference,
+                "kind": type(exc).__name__,
+                "offered": list(confirmed),
+            },
+        )):
             verdict = found.check_label(name)
-        except CratekitError:
-            raise
-        except Exception as exc:
-            raise _refused(
-                "label-playlist-unreadable",
-                f"the provider stopped answering while harvest was confirming "
-                f"the label names read off {reference!r} ({exc}); the "
-                f"{len(confirmed)} it had already confirmed are offered in the "
-                f"review queue and are waiting there, and the rest of the "
-                f"playlist was never verified",
-                "retry this harvest when the provider is answering; the "
-                "labels already offered will not be queued twice",
-                "or read what is waiting with: crate review list",
-                detail={
-                    "playlist": reference,
-                    "kind": type(exc).__name__,
-                    "offered": list(confirmed),
-                },
-            ) from exc
         if str(verdict.get("verdict") or "") == "confirmed":
             confirmed.append(name)
         return verdict
@@ -843,37 +831,26 @@ def harvest_playlist(ctx) -> Envelope:
 
     ``unresolved`` is this playlist's own failure to resolve, not the queue's
     backlog: the names a catalogue refused plus the tracks with no copyright
-    string at all, which ``from_tracks`` never sees.
+    string at all, which ``from_tracks`` counts as it goes.
     """
     cfg = _load()
     # Resolved before the playlist is touched, so an unbound build never lists.
     found = catalogue.resolve(cfg)
     reference = str(ctx.args.playlist)
     tracks, short = playlist_listing_or_refuse(found, reference)
-    # One extractor, run once per track, counting the nameless as it goes.
-    nameless = 0
-
-    def extract(track) -> Sequence[str]:
-        nonlocal nameless
-        names = harvest.labels_from_copyright(track)
-        if not names:
-            nameless += 1
-        return names
-
     with review.open_store(cfg) as store:
         report = harvest.from_tracks(
             tracks,
             store=store,
             # Wrapped, never the bare seam method: every provider call is bounded.
             verify=_label_verifier(found, reference),
-            extract=extract,
         )
     # A short playlist is said on the warnings channel, never refused (R-515).
     return ctx.envelope(
         data={
             "queue": str(review.Queue.LABEL_RELEASE),
             "items": [_offered(item) for item in report.offered],
-            "unresolved": len(report.dropped) + nameless,
+            "unresolved": len(report.dropped) + report.nameless,
         },
         warnings=(harvest_withheld_warning(short, reference),) if short is not None else (),
         # An empty playlist is a success that found nothing.

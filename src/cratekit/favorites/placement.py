@@ -77,14 +77,19 @@ def _live_plain(rows: Iterable[Any]) -> list[Any]:
     ]
 
 
+def _sits_under(row: Any, parent_id: str) -> bool:
+    """Whether ``row`` sits directly under ``parent_id``, any root sentinel reading as the root."""
+    held = str(getattr(row, "ParentID", "") or "")
+    if parent_id in rb_writer.ROOT_PARENT_SENTINELS:
+        return held in rb_writer.ROOT_PARENT_SENTINELS
+    return held == parent_id
+
+
 def _under(db: Any, parent_id: str) -> dict[str, str]:
     """Every live plain playlist directly under ``parent_id``, by name, first of a name wins."""
     found: dict[str, str] = {}
-    at_root = parent_id in rb_writer.ROOT_PARENT_SENTINELS
     for row in _live_plain(list(db.get_playlist())):
-        held = str(getattr(row, "ParentID", "") or "")
-        here = held in rb_writer.ROOT_PARENT_SENTINELS if at_root else held == parent_id
-        if here:
+        if _sits_under(row, parent_id):
             found.setdefault(str(row.Name), str(row.ID))
     return found
 
@@ -204,9 +209,8 @@ class PlacementPlan:
         """Every row the write colours Pink, the placed hearts first, then the recolours."""
         if not self.pink:
             return ()
-        rows = [one.content_id for one in self.placements if one.into_colour]
-        rows.extend(one.content_id for one in self.recolour)
-        return tuple(rows)
+        placed = (one.content_id for one in self.placements if one.into_colour)
+        return (*placed, *(one.content_id for one in self.recolour))
 
     @property
     def colours(self) -> int:
@@ -469,10 +473,7 @@ def month_row(db: Any, name: str, parent: Any, *, source_id: str) -> tuple[Any, 
     """
     parent_id = "" if parent is None else str(parent.ID)
     for row in _live_plain(list(db.get_playlist(Name=name))):
-        held = str(getattr(row, "ParentID", "") or "")
-        if parent is None and held in rb_writer.ROOT_PARENT_SENTINELS:
-            return row, False
-        if parent is not None and held == parent_id:
+        if _sits_under(row, parent_id):
             return row, False
     made = db.create_playlist(name, parent=parent)
     if parent is not None:

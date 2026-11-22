@@ -35,9 +35,8 @@ _ORIGIN = ("favorites", "colour")
 def pink_colour_id(db: Any) -> str:
     """The live ColourID named Pink inside an already open library, or a refusal."""
     for row in db.get_color(Commnt=PINK_COLOUR_NAME):
-        if trees.soft_delete_marker(row):
-            continue
-        return str(row.ID)
+        if not trees.soft_delete_marker(row):
+            return str(row.ID)
     raise refuse(
         PINK_COLOUR_MISSING,
         "the library's colour table has no live row named Pink, so this sweep "
@@ -76,21 +75,17 @@ def find_row(db: Any, content_id: str) -> Any | None:
     identity map made a large backfill quadratic.
     """
     wanted = str(content_id)
-    session = getattr(db, "session", None)
-    if session is not None:
-        for row in getattr(session, "new", ()):
-            table = getattr(getattr(row, "__table__", None), "name", "")
-            if table == rb_writer.CONTENT_TABLE and str(getattr(row, "ID", "")) == wanted:
-                return row
+    for row in getattr(getattr(db, "session", None), "new", ()):
+        table = getattr(getattr(row, "__table__", None), "name", "")
+        if table == rb_writer.CONTENT_TABLE and str(getattr(row, "ID", "")) == wanted:
+            return row
     return db.get_content(ID=wanted)
 
 
 def colour_name(db: Any, colour_id: str) -> str:
     """The display name of a colour row, or its identifier when the table lacks it."""
     row = db.get_color(ID=str(colour_id))
-    if row is None:
-        return str(colour_id)
-    return str(getattr(row, "Commnt", "") or colour_id)
+    return str(colour_id) if row is None else str(getattr(row, "Commnt", "") or colour_id)
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,13 +133,8 @@ def sort_rows(db: Any, pink: str, content_ids: Iterable[str]) -> Sorted:
         elif str(current) == pink:
             already.append(key)
         else:
-            held.append(
-                Held(
-                    content_id=key,
-                    title=str(getattr(row, "Title", "") or ""),
-                    colour=colour_name(db, str(current)),
-                )
-            )
+            title = str(getattr(row, "Title", "") or "")
+            held.append(Held(key, title, colour_name(db, str(current))))
     return Sorted(to_colour=tuple(to_colour), held=tuple(held), already=tuple(already))
 
 

@@ -30,30 +30,22 @@ def store_registry(entries: dict[str, str]) -> None:
     """Write the intent document as a pre-R-381 build left it, id to name."""
     path = config.state_path("label_intent")
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "version": labels.REGISTRY_VERSION,
-        "labels": {
-            label_id: {
-                "label_id": label_id,
-                "name": name,
-                "match": None,
-                "seed_artists": [],
-                "track_limit": None,
-            }
-            for label_id, name in entries.items()
-        },
-    }
+    held = {label_id: {"label_id": label_id, "name": name, "match": None, "seed_artists": [],
+                       "track_limit": None} for label_id, name in entries.items()}
+    payload = {"version": labels.REGISTRY_VERSION, "labels": held}
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def store_marks(cfg, years: dict[str, str]) -> None:
     path = config.state_path("label_watermarks", cfg)
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "version": marks.MARKS_VERSION,
-        "labels": {key: {"last_pulled": year} for key, year in years.items()},
-    }
+    payload = {"version": marks.MARKS_VERSION,
+               "labels": {key: {"last_pulled": year} for key, year in years.items()}}
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def intent_bytes() -> bytes:
+    return config.state_path("label_intent").read_bytes()
 
 
 def stored_registry() -> dict:
@@ -68,16 +60,11 @@ def stored_marks(cfg) -> dict[str, str]:
 @pytest.mark.parametrize(
     ("name", "expected"),
     [
-        ("Sueño", "sueno"),
-        ("Voll Schön", "voll-schoen"),
-        ("Harbour Lights", "harbour-lights"),
+        ("Sueño", "sueno"), ("Voll Schön", "voll-schoen"), ("Harbour Lights", "harbour-lights"),
         (unicodedata.normalize("NFD", "Sueño"), "sueno"),
         (unicodedata.normalize("NFD", "Voll Schön"), "voll-schoen"),
-        ("Straße", "strasse"),
-        ("ÄÖÜ Records", "aeoeue-records"),
-        ("Café del Mar", "cafe-del-mar"),
-        ("Life and Death", "life-and-death"),
-        ("Kompakt", "kompakt"),
+        ("Straße", "strasse"), ("ÄÖÜ Records", "aeoeue-records"), ("Café del Mar", "cafe-del-mar"),
+        ("Life and Death", "life-and-death"), ("Kompakt", "kompakt"),
     ],
 )
 def test_a_slug_transliterates_before_it_folds(name, expected):
@@ -92,9 +79,8 @@ def test_a_name_empty_after_transliteration_still_refuses(name):
 
 
 def test_a_stored_fold_only_identifier_migrates_on_load(cfg):
-    store_registry(
-        {"sue-o": "Sueño", "voll-sch-n": "Voll Schön", "harbour-lights": "Harbour Lights"}
-    )
+    store_registry({"sue-o": "Sueño", "voll-sch-n": "Voll Schön",
+                    "harbour-lights": "Harbour Lights"})
     held = labels.RegistryStore().load()
     assert list(held.labels) == ["sueno", "voll-schoen", "harbour-lights"]
     assert held.by_id("sueno").name == "Sueño"
@@ -104,9 +90,9 @@ def test_a_stored_fold_only_identifier_migrates_on_load(cfg):
     assert written["labels"]["voll-schoen"]["label_id"] == "voll-schoen"
     assert written["renamed"] == {"sue-o": "sueno", "voll-sch-n": "voll-schoen"}
     assert written["version"] == 1
-    before = config.state_path("label_intent").read_bytes()
+    before = intent_bytes()
     labels.RegistryStore().load()
-    assert config.state_path("label_intent").read_bytes() == before
+    assert intent_bytes() == before
 
 
 def test_a_migrated_label_keeps_its_watermark(cfg):
@@ -135,13 +121,11 @@ def test_a_year_already_held_under_the_new_identifier_is_not_overwritten(cfg):
 def test_a_collision_leaves_the_old_identifier(cfg):
     store_registry({"sue-o": "Sueño", "sueno": "Sueno"})
     store_marks(cfg, {"sue-o": "2024", "sueno": "2020"})
-    before = config.state_path("label_intent").read_bytes()
+    before = intent_bytes()
     held = labels.RegistryStore().load()
-    assert {key: entry.name for key, entry in held.labels.items()} == {
-        "sue-o": "Sueño",
-        "sueno": "Sueno",
-    }
-    assert config.state_path("label_intent").read_bytes() == before
+    names = {key: entry.name for key, entry in held.labels.items()}
+    assert names == {"sue-o": "Sueño", "sueno": "Sueno"}
+    assert intent_bytes() == before
     assert marks.read(cfg, "sue-o") == "2024"
     assert marks.read(cfg, "sueno") == "2020"
 
@@ -158,20 +142,15 @@ def test_re_adding_a_collided_label_updates_it_and_not_its_neighbour(cfg):
 
 @pytest.mark.parametrize(
     "entries",
-    [
-        # Renamed since it was created, so the identifier is not the fold of
-        # the name it carries now.
-        {"sue-o": "Sueño Recordings"},
-        # Carried over under an identifier the source system chose.
-        {"sueno-music": "Sueño"},
-    ],
+    # Renamed since it was created; carried over under an identifier the source chose.
+    [{"sue-o": "Sueño Recordings"}, {"sueno-music": "Sueño"}],
 )
 def test_an_identifier_the_old_fold_did_not_produce_is_left_alone(cfg, entries):
     store_registry(entries)
-    before = config.state_path("label_intent").read_bytes()
+    before = intent_bytes()
     held = labels.RegistryStore().load()
     assert list(held.labels) == list(entries)
-    assert config.state_path("label_intent").read_bytes() == before
+    assert intent_bytes() == before
 
 
 def test_re_adding_a_migrated_label_does_not_file_it_twice(cfg):
@@ -212,10 +191,8 @@ def test_a_renamed_entry_under_the_old_fold_is_not_taken_by_its_old_name(cfg):
     label_id = labels.RegistryStore().add("Sueño")
     assert label_id == "sueno"
     held = labels.RegistryStore().load()
-    assert {key: entry.name for key, entry in held.labels.items()} == {
-        "sue-o": "Sueño Recordings",
-        "sueno": "Sueño",
-    }
+    names = {key: entry.name for key, entry in held.labels.items()}
+    assert names == {"sue-o": "Sueño Recordings", "sueno": "Sueño"}
 
 
 def test_a_stored_move_whose_old_identifier_is_held_is_not_followed(cfg):

@@ -34,6 +34,7 @@ from cratekit.label.catalogue import (
     Unread,
     artist_name,
     missing_listing,
+    translated,
 )
 from cratekit.sync import run
 
@@ -248,17 +249,6 @@ def _lookup_failure(message: str, exc: BaseException) -> run.LookupFailure:
     return run.LookupFailure(message)
 
 
-@contextmanager
-def _translated(fail: Callable[[Exception], Exception]) -> Iterator[None]:
-    """A provider failure raised as ``fail`` makes it; a ``CratekitError`` passes through."""
-    try:
-        yield
-    except CratekitError:
-        raise
-    except Exception as exc:
-        raise fail(exc) from exc
-
-
 def _linked(exc: BaseException, attribute: str) -> Iterator[BaseException]:
     """``exc`` and every error one link attribute leads to, once each, since links can loop."""
     seen: set[int] = set()
@@ -283,7 +273,7 @@ def _crawl_or_refuse(
     ``CratekitError`` passes through unchanged, since an expired session names an
     act the person can take.
     """
-    with _translated(lambda exc: _lookup_failure(
+    with translated(lambda exc: _lookup_failure(
         f"the catalogue object for {entry.name!r} could not be examined "
         f"({type(exc).__name__}: {exc}), so its releases were never read; "
         f"that is not an empty catalogue",
@@ -297,7 +287,7 @@ def _crawl_or_refuse(
             f"never read; that is not an empty catalogue"
         )
     skipped: list[str] = []
-    with _translated(lambda exc: _lookup_failure(
+    with translated(lambda exc: _lookup_failure(
         f"the catalogue listing for {entry.name!r} could not be read "
         f"({type(exc).__name__}: {exc}); that is not an empty catalogue",
         exc,
@@ -569,21 +559,20 @@ def list_for_label(
         examined += 1
         identity = str(getattr(release, "id", "") or "")
         reached.add(identity)
-        removed = tombstoned(release)
-        standing = gate.standing(identity) if gate is not None else None
-        still_held = standing is not None and standing.state == review.HOLD_HELD
-        if removed:
+        if tombstoned(release):
             suppressed.append(_candidate(entry, release))
             # Deleted on purpose outranks held, so its hold goes.
-            if still_held:
+            was = gate.standing(identity) if gate is not None else None
+            if was is not None and was.state == review.HOLD_HELD:
                 stale.append(identity)
             continue
+        standing = gate.standing(identity) if gate is not None else None
         if identity in offered_ids:
             held += 1
             held_releases.append(release)
             # In the queue and still held, which a process dying between two writes or a
             # moved queue can leave: the queue is the truth, so its hold goes.
-            if still_held:
+            if standing is not None and standing.state == review.HOLD_HELD:
                 stale.append(identity)
             continue
         if standing is not None and standing.state == review.HOLD_RETURNED:
@@ -631,7 +620,9 @@ def list_for_label(
         order = _canary_order(held_releases, claimed, dropped)
         chosen = order[0]
         lined = line_reading(chosen, claimed) != LINE_ABSENT
-        if _answered_by_name(dropped):
+        # The ordinary verifier for every drop a mismatch, and for a release with no
+        # line when there is no forced read to hand.
+        if _answered_by_name(dropped) or (reread is None and not lined):
             answered = label_verify.verify_release(claimed, chosen, search=verify)
             basis = READ_LINE if lined else READ_PROVIDER
         elif reread is not None:
@@ -653,9 +644,6 @@ def list_for_label(
                 said = f"read in place of release {first}, which the provider no longer has"
                 notes = str(answered.get("notes") or "")
                 answered["notes"] = f"{notes}; {said}" if notes else said
-        elif not lined:
-            answered = label_verify.verify_release(claimed, chosen, search=verify)
-            basis = READ_PROVIDER
         else:
             answered = {"verdict": "unconfirmed", "notes": "no provider read"}
             basis = READ_NONE
@@ -737,7 +725,7 @@ def _guarded(read: Callable[[str, Any], Mapping[str, Any]]) -> Callable[[str, An
     """
 
     def verified(claimed: str, release: Any) -> Mapping[str, Any]:
-        with _translated(lambda exc: _lookup_failure(
+        with translated(lambda exc: _lookup_failure(
             f"the catalogue could not confirm who is credited on a "
             f"release ({type(exc).__name__}: {exc}); the releases "
             f"this sweep listed were never verified, and an "
@@ -823,7 +811,7 @@ class LabelSource:
         if artist is not None:
             return artist
         if self.catalogue is not None:
-            with _translated(lambda exc: _lookup_failure(
+            with translated(lambda exc: _lookup_failure(
                 f"the catalogue could not resolve an artist for the label "
                 f"{entry.name!r} ({type(exc).__name__}: {exc}); its releases "
                 f"were never listed",

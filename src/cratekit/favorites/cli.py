@@ -312,13 +312,12 @@ def sync_favorites(ctx) -> Envelope:
     if option == "abort":
         # THE DECLARED SHAPE, ``job_state/1``; see ``shell.declined``.
         return ctx.envelope(data=shell.declined(), outcome=Outcome.NO_OP)
-    run_id = getattr(ctx.args, "run_id", None) or ctx.run.run_id
     with jobs.open_store() as store:
         job = queue_sweep(
             store,
             cfg,
             handler_key=ctx.entry.handler_key,
-            run_id=run_id,
+            run_id=getattr(ctx.args, "run_id", None) or ctx.run.run_id,
             gate_run=ctx.run.run_id,
             exported=exported,
             resolved=resolved,

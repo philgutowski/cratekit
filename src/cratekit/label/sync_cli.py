@@ -577,13 +577,12 @@ def _question_for(
         store, queue=QUEUE, run_id=tools.run_id, group=entry.label_id, name=entry.name,
         beyond=listing.beyond,
     )
-    question = Question(
+    return _Listed(listing=listing, question=Question(
         entry.label_id, entry.name, tools.run_id, timestamp(), tuple(releases),
         beyond=listing.beyond,
         beyond_unchecked=listing.beyond_unchecked,
         unread=len(listing.unread), withheld=withheld, unjudged=unjudged,
-    )
-    return _Listed(question=question, listing=listing)
+    ))
 
 
 def _save_pending(cfg: config.Config, question: Question) -> None:
@@ -639,8 +638,7 @@ def _take(store: review.ReviewStore, one: Offered, run_id: str) -> bool:
     not taken, and False says so; an accepted one is already what was asked.
     """
     if one.item_id is None:
-        payload = dict(one.payload)
-        candidate = run.Candidate(identity=one.identity, recency=one.year, payload=payload)
+        candidate = run.Candidate(one.identity, one.year, dict(one.payload))
         item = sweep.offer_release(store, candidate, run_id=run_id)
     else:
         item = review.find(store, one.item_id)
@@ -739,15 +737,11 @@ def record_answer(
         # SETTLED BY THE ID EACH RELEASE FILES UNDER, so a release a sweep filed
         # while the question waited is settled too; ``supersede`` passes over an
         # id nothing filed and one already decided.
-        review.supersede(
-            store,
-            [
-                one.item_id or genre_gate.release_item_id(one.identity)
-                for one in question.releases
-                if one.identity not in taken_ids
-            ],
-            rule=ANSWERED_RULE,
-        )
+        superseded = [
+            one.item_id or genre_gate.release_item_id(one.identity)
+            for one in question.releases if one.identity not in taken_ids
+        ]
+        review.supersede(store, superseded, rule=ANSWERED_RULE)
         removed = labels.RegistryStore().remove(entry.label_id) if answer == STOP else False
         now = timestamp()
         asked = set(asked_releases(document, entry.label_id)) | set(question.identities())
@@ -994,14 +988,11 @@ def _sweep_check(
     if calls > left:
         # THE MOMENT THE WINDOW HOLDS AT MOST ``line - calls``; an estimate past
         # the whole line never fits, and says so.
-        frees = (
-            provider_gate.iso(standing.frees_at(provider_gate.ACCOUNT, line - calls + 1))
-            if standing is not None and calls <= line
-            else None
-        )
+        at = line - calls + 1
         wait = (
-            f"or wait until {frees}, when the hour holds it"
-            if frees is not None
+            f"or wait until {provider_gate.iso(standing.frees_at(provider_gate.ACCOUNT, at))}, "
+            "when the hour holds it"
+            if standing is not None and calls <= line
             else "or raise the hour's budget for one run with crate --calls-per-hour N "
             "before the verb"
         )
@@ -1058,11 +1049,10 @@ def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
                 _save_pending(cfg, question)
                 checks.extend(_listing_checks(entry, listed))
             seen.append({"label_id": entry.label_id, "state": "asked"})
-            how = (
+            checks.extend(_question_checks(question, how=(
                 f"answer with: crate label sync --answer all --label "
                 f"{entry.label_id}, or pick with --release, or not-now, or stop"
-            )
-            checks.extend(_question_checks(question, how=how))
+            )))
             return review_common.ended(ctx, checks, _summary(question=question, labels_seen=seen))
     data = {"checks": checks, "summary": _summary(labels_seen=seen)}
     if not nothing:
@@ -1130,11 +1120,10 @@ def _answer(ctx, cfg: config.Config) -> Envelope:
             cfg, store, entry, str(ctx.args.answer), list(ctx.args.releases or ()),
             run_id=ctx.run.run_id,
         )
-    checks = [
+    return review_common.ended(ctx, [
         _answer_check(answered),
         _check("next", "info", "the next question: crate label sync --next"),
-    ]
-    return ctx.envelope(data={"checks": checks, "summary": _summary(answered=[answered])})
+    ], _summary(answered=[answered]))
 
 
 def _question_text(question: Question) -> str:
@@ -1243,10 +1232,8 @@ def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
             answered.append(result)
             seen.append({"label_id": entry.label_id, "state": "answered"})
             checks.append(_answer_check(result))
-    went = (
-        f"; stopped at {stopped_at}, run label sync again to go on"
-        if stopped_at
-        else "; every label is answered"
+    went = f"; stopped at {stopped_at}, run label sync again to go on" if stopped_at else (
+        "; every label is answered"
     )
     checks.append(_check("run", "info", f"{len(answered)} label(s) answered{went}"))
     data = {

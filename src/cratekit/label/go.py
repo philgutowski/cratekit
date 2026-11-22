@@ -157,11 +157,9 @@ def held_by_goes(store: jobs.JobStore) -> Held:
         again = resumable(job, left)
         if again:
             resume.append((job, left))
-        for item in items:
-            if item.state is jobs.ItemState.DONE or (
-                again and item.state is not jobs.ItemState.SKIPPED
-            ):
-                tracks.add(item.item_id)
+        tracks.update(item.item_id for item in items if item.state is jobs.ItemState.DONE or (
+            again and item.state is not jobs.ItemState.SKIPPED
+        ))
     return Held(resume=tuple(resume), tracks=frozenset(tracks))
 
 
@@ -238,19 +236,16 @@ class Summary:
         labels counted not now and stop, and the jobs a go would resume; never a
         job's progress, which moves while a decision waits.
         """
-        items: list[dict[str, Any]] = [one.to_json() for one in self.taken]
-        items.extend({"resume": job_id, "tracks_left": left} for job_id, left in self.open_jobs)
+        resume = [{"resume": job_id, "tracks_left": left} for job_id, left in self.open_jobs]
         return {
-            "digest": digest_of(
-                {
-                    "kind": GATE,
-                    "releases": [[one.label_id, one.identity] for one in self.taken],
-                    "not_now": list(self.not_now),
-                    "stopped": list(self.stopped),
-                    "resume": [job_id for job_id, _left in self.open_jobs],
-                }
-            ),
-            "items": items,
+            "digest": digest_of({
+                "kind": GATE,
+                "releases": [[one.label_id, one.identity] for one in self.taken],
+                "not_now": list(self.not_now),
+                "stopped": list(self.stopped),
+                "resume": [job_id for job_id, _left in self.open_jobs],
+            }),
+            "items": [*(one.to_json() for one in self.taken), *resume],
         }
 
     def facts(self) -> dict[str, Any]:
@@ -605,11 +600,11 @@ def go(
             f"review and were not downloaded: "
             + ", ".join(f"{one.label_name} {one.identity}" for one in withdrawn),
         ))
-    manifest = list_path = None
+    paths = (None, None) if listing is None else (
+        listing.written.manifest_path, listing.written.list_path
+    )
+    manifest, list_path = (str(one) if one is not None else None for one in paths)
     if listing is not None:
-        manifest = str(listing.written.manifest_path)
-        if listing.written.list_path is not None:
-            list_path = str(listing.written.list_path)
         checks.append(_check(
             "listed", "ok" if listing.listed else "info",
             f"{listing.listed} missing track(s) from {listing.passed} answered "
@@ -650,8 +645,6 @@ def go(
                 cfg, store, queued, read, nothing, staging, manifest, run_id, checks
             )
         refused = list(read.refused)
-    if listing is None or listing.written.manifest_path is None:
-        manifest = None
     report["go"] = _report(
         summary, queued.job_id if queued is not None else None, refused, landed, land,
         list_path=list_path, manifest=manifest, withdrawn=[one.identity for one in withdrawn],
@@ -681,13 +674,12 @@ def _resume(
     """
     warnings: list[dict[str, str]] = []
     landed: list[str] = []
-    resumed: list[str] = []
+    resumed = [job_id for job_id, _left in summary.open_jobs]
     refused: list[dict[str, Any]] = []
     lands: list[dict[str, str] | None] = []
     with jobs.open_store() as store:
         for job_id, _left in summary.open_jobs:
-            job = jobs.get(store, job_id)
-            if not job.is_open():
+            if not jobs.get(store, job_id).is_open():
                 # STOPPED BY A SIGNAL OR ENDED HALF FAILED: re-armed, with
                 # every downloaded track left done.
                 jobs.retry(store, job_id)
@@ -695,7 +687,6 @@ def _resume(
                 ctx, store, job_id, f"resumed.{job_id}",
                 f"resumed the earlier download {job_id}", checks, warnings,
             )
-            resumed.append(job_id)
             refused.extend(read.refused)
             payload = dict(job.payload or {})
             manifest = dict(payload.get(ORIGIN_KEY) or {}).get("manifest")
@@ -742,9 +733,7 @@ def _own(ctx) -> str | None:
         return None
     with jobs.open_store() as store:
         job = own_job(store, ctx.run.run_id)
-    if job is None or job.state is jobs.JobState.CANCELLED:
-        return None
-    return job.job_id
+    return None if job is None or job.state is jobs.JobState.CANCELLED else job.job_id
 
 
 def _beside(store: jobs.JobStore, job: jobs.Job) -> list[jobs.Job]:
@@ -894,13 +883,10 @@ def _carried(error: CratekitError, store: jobs.JobStore, job: jobs.Job) -> Crate
     if job.state is jobs.JobState.BLOCKED or (
         job.state is jobs.JobState.FAILED and resumable(job, left)
     ):
-        steps = (
-            *cause.remediation.steps,
-            f"once the download can go on, take it to its landing with the decision "
+        return review_common.extended(
+            error, f"once the download can go on, take it to its landing with the decision "
             f"already given: {continue_command(run)}",
         )
-        remediation = dataclasses.replace(cause.remediation, steps=steps)
-        return rebuilt(error, dataclasses.replace(cause, remediation=remediation))
     return error
 
 
@@ -954,8 +940,9 @@ def _carry_on(
             cfg, store, job, read, nothing, staging, manifest, run_of, checks, own_tail=True
         )
     _waiting(summary, checks)
-    refused = list(read.refused)
-    report["go"] = _report(summary, job_id, refused, landed, land, also=also, manifest=manifest)
+    report["go"] = _report(
+        summary, job_id, list(read.refused), landed, land, also=also, manifest=manifest
+    )
     return _ended(ctx, checks, report, warnings=tuple(warnings))
 
 

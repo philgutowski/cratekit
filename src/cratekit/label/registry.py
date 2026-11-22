@@ -32,13 +32,12 @@ _TRANSLITERATE = str.maketrans(
 
 
 def _fold(text: str) -> str:
-    """The fold alone, every run outside ``[a-z0-9]`` to one hyphen."""
+    """The fold alone, every run outside ``[a-z0-9]`` to one hyphen.
+
+    Of a name as typed, it is the identifier that name got before R-381, asked only
+    to recognise an entry written under it.
+    """
     return _SLUG.sub("-", text.lower()).strip("-")
-
-
-def _legacy_slug(name: str) -> str:
-    """The identifier a name got before R-381, kept only to recognise an entry written under it."""
-    return _fold(name)
 
 
 def slug(name: str) -> str:
@@ -413,7 +412,7 @@ def _migrated_id(entry: LabelEntry) -> str | None:
         new = slug(entry.name)
     except CratekitError:
         return None
-    if new == entry.label_id or entry.label_id != _legacy_slug(entry.name):
+    if new == entry.label_id or entry.label_id != _fold(entry.name):
         return None
     return new
 
@@ -605,7 +604,7 @@ class RegistryStore:
         def mutate(current: dict[str, LabelEntry]) -> None:
             # An entry the migration left under its old identifier is this label, not
             # the one holding the new slug.
-            legacy = current.get(_legacy_slug(name))
+            legacy = current.get(_fold(name))
             label_id = (
                 legacy.label_id
                 if legacy is not None and _name_key(legacy.name) == _name_key(name)

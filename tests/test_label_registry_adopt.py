@@ -21,10 +21,17 @@ def offer(cfg: config.Config, *names: str) -> dict[str, str]:
     """Harvest ``names`` into the review queue; the item identifier per name."""
     tracks = [SimpleNamespace(copyright=f"(P) 2024 {name}") for name in names]
     with review.open_store(cfg) as store:
-        report = harvest.from_tracks(
-            tracks, store=store, verify=lambda name: {"verdict": "confirmed"}
-        )
-    return {str(item.payload["name"]): item.item_id for item in report.offered}
+        report = harvest.from_tracks(tracks, store=store, verify=lambda name: {"verdict": "confirmed"})
+    return {str(item.payload["name"]): item_id for item in report.offered}
+
+
+def harvested(cfg: config.Config, name: str, **fields) -> str:
+    """Offer one harvested-label item for ``name`` straight to the queue; its identifier."""
+    item = dict(queue=review.Queue.LABEL_RELEASE, kind=harvest.KIND, identity={"name": name},
+                payload={"name": name, "source": "harvest"}, handler_key=harvest.HANDLER_KEY)
+    item.update(fields)
+    with review.open_store(cfg) as store:
+        return review.offer(store, **item).item_id
 
 
 def answer(item_id: str, verdict: str = "accepted") -> None:
@@ -71,12 +78,9 @@ def test_an_adopt_that_adds_nothing_does_not_rewrite_the_registry(installed):
     """A rewrite of equal entries is not harmless: ``recognize`` drops what it cannot read."""
     path = config.state_path("label_intent")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        '{"version": 1, "labels": {'
-        '"kompakt": {"label_id": "kompakt", "name": "Kompakt"}, '
-        '"unread": "a record this build cannot read"}}\n',
-        encoding="utf-8",
-    )
+    path.write_text('{"version": 1, "labels": {'
+                    '"kompakt": {"label_id": "kompakt", "name": "Kompakt"}, '
+                    '"unread": "a record this build cannot read"}}\n', encoding="utf-8")
     before = intent_bytes()
     ids = offer(installed, "Kompakt")
     answer(ids["Kompakt"])
@@ -107,26 +111,14 @@ def test_nothing_accepted_writes_nothing_and_says_what_is_waiting(installed):
 
 
 @pytest.mark.parametrize(
-    "offered",
-    [
-        pytest.param("KOMPAKT", id="case"),
-        pytest.param("  Kompakt", id="padding"),
-    ],
+    "offered", [pytest.param("KOMPAKT", id="case"), pytest.param("  Kompakt", id="padding")]
 )
 def test_a_label_held_under_a_folded_name_is_reported_not_duplicated(installed, offered):
     code, _ = drive(["label", "registry", "add", "Kompakt"])
     assert code == int(ExitCode.OK)
     before = intent_bytes()
-    with review.open_store(installed) as store:
-        item = review.offer(
-            store,
-            queue=review.Queue.LABEL_RELEASE,
-            kind=harvest.KIND,
-            identity={"name": offered},
-            payload={"name": offered, "source": "harvest"},
-            handler_key=harvest.HANDLER_KEY,
-        )
-    answer(item.item_id)
+    item_id = harvested(installed, offered)
+    answer(item_id)
     envelope = adopt()
     assert envelope["data"]["summary"]["added"] == []
     assert envelope["data"]["summary"]["present"] == ["kompakt"]
@@ -137,11 +129,9 @@ def test_a_label_held_under_a_folded_name_is_reported_not_duplicated(installed, 
 def test_a_carried_over_accented_label_is_not_filed_twice(installed):
     """R-381: ``Sueño`` carried over under the source system's ``sueno``."""
     store = labels.RegistryStore()
-    store.update(
-        lambda current: current.update(
-            {"sueno": labels.LabelEntry(label_id="sueno", name="Sueño")}
-        )
-    )
+    store.update(lambda current: current.update(
+        {"sueno": labels.LabelEntry(label_id="sueno", name="Sueño")}
+    ))
     before = intent_bytes()
     decomposed = unicodedata.normalize("NFD", "Sueño")
     ids = offer(installed, decomposed)
@@ -158,17 +148,9 @@ def test_a_carried_over_accented_label_is_not_filed_twice(installed):
 
 def test_two_spellings_accepted_in_one_run_add_the_label_once(installed):
     ids = offer(installed, "Drumcode")
-    with review.open_store(installed) as store:
-        loud = review.offer(
-            store,
-            queue=review.Queue.LABEL_RELEASE,
-            kind=harvest.KIND,
-            identity={"name": "DRUMCODE"},
-            payload={"name": "DRUMCODE", "source": "harvest"},
-            handler_key=harvest.HANDLER_KEY,
-        )
+    loud_id = harvested(installed, "DRUMCODE")
     answer(ids["Drumcode"])
-    answer(loud.item_id)
+    answer(loud_id)
     summary = adopt()["data"]["summary"]
     assert summary["added"] == ["drumcode"]
     assert summary["present"] == ["drumcode"]
@@ -177,41 +159,25 @@ def test_two_spellings_accepted_in_one_run_add_the_label_once(installed):
 
 def test_a_name_with_no_identifier_fails_alone_and_the_rest_land(installed):
     ids = offer(installed, "Innervisions")
-    with review.open_store(installed) as store:
-        bare = review.offer(
-            store,
-            queue=review.Queue.LABEL_RELEASE,
-            kind=harvest.KIND,
-            identity={"name": "---"},
-            payload={"name": "---", "source": "harvest"},
-            handler_key=harvest.HANDLER_KEY,
-        )
+    bare_id = harvested(installed, "---")
     answer(ids["Innervisions"])
-    answer(bare.item_id)
+    answer(bare_id)
     envelope = adopt()
     assert envelope["data"]["summary"]["added"] == ["innervisions"]
     assert envelope["data"]["summary"]["refused"] == ["---"]
     # Not present: a script reading the summary must not be told the registry holds it.
     assert envelope["data"]["summary"]["present"] == []
     failing = [check for check in envelope["data"]["checks"] if check["status"] == "fail"]
-    assert [check["key"] for check in failing] == [f"adopt.{bare.item_id}"]
+    assert [check["key"] for check in failing] == [f"adopt.{bare_id}"]
     assert listed() == {"innervisions": "Innervisions"}
 
 
 def test_an_accepted_item_naming_no_label_is_reported_not_skipped(installed):
     """``review import`` can land an item with no identity and an empty payload."""
-    with review.open_store(installed) as store:
-        item = review.offer(
-            store,
-            queue=review.Queue.LABEL_RELEASE,
-            kind=harvest.KIND,
-            identity={"name": " "},
-            payload={"source": "harvest"},
-            handler_key=harvest.HANDLER_KEY,
-        )
-    answer(item.item_id)
+    item_id = harvested(installed, " ", payload={"source": "harvest"})
+    answer(item_id)
     envelope = adopt()
-    assert envelope["data"]["summary"]["nameless"] == [item.item_id]
+    assert envelope["data"]["summary"]["nameless"] == [item_id]
     (check,) = envelope["data"]["checks"]
     assert check["status"] == "fail"
     assert intent_bytes() is None
@@ -219,16 +185,10 @@ def test_an_accepted_item_naming_no_label_is_reported_not_skipped(installed):
 
 def test_a_label_release_on_the_same_queue_is_not_adopted(installed):
     """The queue is shared with the sweep's releases. Only harvested labels count."""
-    with review.open_store(installed) as store:
-        release = review.offer(
-            store,
-            queue=review.Queue.LABEL_RELEASE,
-            kind="label-release",
-            identity={"release_id": "1", "name": "A Release Title"},
-            payload={"name": "A Release Title", "title": "A Release Title"},
-            handler_key="sync.labels",
-        )
-    answer(release.item_id)
+    answer(harvested(installed, "A Release Title", kind="label-release",
+                     identity={"release_id": "1", "name": "A Release Title"},
+                     payload={"name": "A Release Title", "title": "A Release Title"},
+                     handler_key="sync.labels"))
     envelope = adopt()
     assert envelope["data"]["summary"]["added"] == []
     assert intent_bytes() is None
@@ -256,7 +216,5 @@ def test_a_person_reading_the_default_output_sees_what_was_added(installed):
     code = cli.run(["label", "registry", "adopt"], stdout=out, stderr=err)
     assert code == int(ExitCode.OK), err.getvalue()
     lines = out.getvalue().splitlines()
-    assert any(
-        line.strip().endswith("Hotflush Recordings: added as hotflush-recordings")
-        for line in lines
-    ), out.getvalue()
+    added = "Hotflush Recordings: added as hotflush-recordings"
+    assert any(line.strip().endswith(added) for line in lines), out.getvalue()

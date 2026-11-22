@@ -188,10 +188,9 @@ def summary(cfg: config.Config, job_id: str) -> dict[str, Any]:
                 counted["asked"] += 1
             if report.get("answer") in published.UNREAD:
                 counted["unread"] += 1
-    by_name = sorted(
+    return {**totals, "labels": sorted(
         rows.values(), key=lambda row: str(row["label_name"] or row["label_id"]).casefold()
-    )
-    return {**totals, "labels": by_name}
+    )}
 
 
 def _warnings(counted: Mapping[str, Any]) -> tuple[dict[str, str], ...]:
@@ -487,7 +486,6 @@ def _judge_one(job, item_id: str, cfg: config.Config) -> dict[str, Any]:
         tools.declared = active_taxonomy.load(cfg)
     if tools.followed is None:
         tools.followed = labels.RegistryStore().load()
-    declared = tools.declared
     with review.open_store(cfg) as store:
         found = review.find(store, item_id)
         standing = review.find_hold(store, queue=queue, item_id=item_id)
@@ -507,7 +505,7 @@ def _judge_one(job, item_id: str, cfg: config.Config) -> dict[str, Any]:
                 item_id, RETURNED, subject,
                 reason="a person returned it to review, so it was not judged again",
             )
-        judged, asked = _judged(job, cfg, declared, kind, found, subject)
+        judged, asked = _judged(job, cfg, tools.declared, kind, found, subject)
         if not judged.held:
             _stamp(store, found, judged, run_id)
             # In review and still held, which an earlier build can leave: the

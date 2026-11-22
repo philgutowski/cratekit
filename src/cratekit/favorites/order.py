@@ -14,12 +14,11 @@ Layer: modules.
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-from cratekit.cli.output import digest_of
 from cratekit.core import config, convergence, rb_writer, session
 from cratekit.core.cause import Remedy, refuse
 from cratekit.favorites import placeholders, placement, spine
@@ -27,10 +26,6 @@ from cratekit.write import trees
 
 #: The session workflow the order is recorded under, and its plan's kind.
 WORKFLOW = "favorites-order"
-
-#: What a seated row may change on its own playlist row: its position and the
-#: bookkeeping stamped beside it. Nothing else changes on any row.
-_SEATED_COLUMNS = frozenset({"Seq", "updated_at", "usn", "rb_local_usn"})
 
 #: A child's place in the rule, by the first element of its rank.
 KINDS = {
@@ -126,8 +121,7 @@ def plan(db: Any, *, source: str) -> OrderPlan:
         )
         for n, (row, slot) in enumerate(zip(ranked, placement.slots(ranked)), start=1)
     )
-    planned = OrderPlan(home=home, children=children)
-    return replace(planned, digest=digest_of(planned.identity()))
+    return spine.digested(OrderPlan(home=home, children=children))
 
 
 def payload(planned: OrderPlan) -> dict[str, Any]:
@@ -200,7 +194,7 @@ def order_violations(
         touches="an order",
         made=(),
         written=unseated,
-        allowed=lambda key: _SEATED_COLUMNS if key in planned else frozenset(),
+        moves=lambda key: key in planned,
         explains="the planned order does not explain",
     )
     for key in sorted(set(before.memberships) ^ set(after.memberships)):
@@ -212,22 +206,6 @@ def order_violations(
                 f"changes no membership"
             )
     return violations
-
-
-def assert_order_confined(
-    db: Any,
-    before: rb_writer.NodeTables,
-    *,
-    folder_id: str,
-    seated: Mapping[str, int],
-) -> None:
-    """Refuse, before the commit, an order that reached anything it did not plan, read from SQL."""
-    spine.confined(
-        db,
-        lambda after: order_violations(before, after, folder_id=folder_id, seated=seated),
-        "the order reached rows it did not plan, or did not make a move it planned",
-        _ORIGIN,
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,7 +252,7 @@ def apply(
     """Seat every child of the folder in the approved order, in one commit, and read it back.
 
     THE PLAN IS TAKEN AGAIN ON THIS HANDLE FIRST and a digest that moved
-    refuses; the commit is confined from SQL by :func:`assert_order_confined`.
+    refuses; the commit is confined from SQL by :func:`order_violations`.
     """
     watched, planned = spine.prepared(
         cfg, db, analysis_roots, lambda: plan(db, source=source), approved,
@@ -291,8 +269,12 @@ def apply(
             before = rb_writer.node_tables(db)
             rows = [db.get_playlist(ID=one.row) for one in planned.children]
             moved = placement.seat(db, rows, when=datetime.now())
-            assert_order_confined(
-                db, before, folder_id=folder_id, seated={one.row: one.slot for one in planned.moves}
+            seated = {one.row: one.slot for one in planned.moves}
+            spine.confined(
+                db,
+                lambda after: order_violations(before, after, folder_id=folder_id, seated=seated),
+                "the order reached rows it did not plan, or did not make a move it planned",
+                _ORIGIN,
             )
             if moved:
                 rb_writer.commit_guarded(db)
@@ -326,7 +308,6 @@ __all__ = [
     "Ordered",
     "WORKFLOW",
     "apply",
-    "assert_order_confined",
     "assert_read_back",
     "facts",
     "order_violations",

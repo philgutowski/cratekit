@@ -256,20 +256,18 @@ def _walk(cfg, store: review.ReviewStore, subjects: list[_Subject], done: _Run) 
             # Opened on the first release that needs it, so a queue with no
             # address in it spends no login.
             found = catalogue.resolve(cfg)
-        failed = _repair_one(store, found, subject, done)
-        failed_in_a_row = failed_in_a_row + 1 if failed else 0
+        failed_in_a_row = failed_in_a_row + 1 if _repair_one(store, found, subject, done) else 0
         if failed_in_a_row >= catalogue.READS_FAILED_IN_A_ROW:
             # THE RUN STOPS before a read it already knows is wasted.
             break
     if done.counts[UNREAD]:
         # AFTER THE WALK, so an outage over the last releases refuses too.
-        stopped_early = failed_in_a_row >= catalogue.READS_FAILED_IN_A_ROW
         raise refuse(
             "unavailable-transient",
             (
                 f"the provider failed {catalogue.READS_FAILED_IN_A_ROW} release "
                 f"reads in a row, so the run stopped reading"
-                if stopped_early
+                if failed_in_a_row >= catalogue.READS_FAILED_IN_A_ROW
                 else f"the provider could not answer about "
                 f"{done.counts[UNREAD]} of the {done.asked} release(s) it was "
                 f"asked for"

@@ -1,4 +1,5 @@
-"""What the label review verbs share: a check line, a payload's text, a refusal extended.
+"""What the label review verbs share: a check line, a payload's text, a refusal extended,
+and the envelope over the checks and a summary.
 
 Layer: modules.
 """
@@ -52,20 +53,17 @@ def quoted(names: Iterable[str]) -> str:
 
 
 def extended(error: CratekitError, step: str, **detail: Any) -> CratekitError:
-    """The same refusal with one more step and more detail.
+    """The same refusal with one more step and any more detail.
 
     Extended and never rebuilt by hand, so its trail, its remedy and its type
     come through unchanged.
     """
     cause = error.cause
-    return rebuilt(
-        error,
-        replace(
-            cause,
-            remediation=replace(cause.remediation, steps=(*cause.remediation.steps, step)),
-            detail={**cause.detail, **detail},
-        ),
-    )
+    steps = (*cause.remediation.steps, step)
+    return rebuilt(error, replace(
+        cause, remediation=replace(cause.remediation, steps=steps),
+        detail={**cause.detail, **detail} if detail else cause.detail,
+    ))
 
 
 __all__ = ["check", "ended", "extended", "named", "quoted", "text", "wanted"]

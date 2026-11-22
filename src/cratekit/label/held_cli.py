@@ -184,8 +184,7 @@ def _held_line(one: review.Hold, unfollowed: frozenset[str]) -> dict[str, Any]:
 
 
 def _listed(ctx) -> Envelope:
-    cfg = label_cli._load()
-    with review.open_store(cfg) as store:
+    with review.open_store(label_cli._load()) as store:
         held = review.holds(store, queue=str(Queue.LABEL_RELEASE))
         sweeps = _sweep_rows(store)
     unfollowed = _unfollowed(held)
@@ -239,12 +238,11 @@ def _found(store: review.ReviewStore, wanted: list[str]) -> dict[str, review.Hol
     EVERY NAME IS RESOLVED BEFORE ANYTHING IS FILED, so one mistyped
     identifier refuses the run with nothing changed.
     """
-    queue = str(Queue.LABEL_RELEASE)
     found: dict[str, review.Hold | review.Item | None] = {}
     for release_id in dict.fromkeys(wanted):
         item_id = genre_gate.release_item_id(release_id)
         found[release_id] = review.find_hold(
-            store, queue=queue, item_id=item_id
+            store, queue=str(Queue.LABEL_RELEASE), item_id=item_id
         ) or review.find(store, item_id)
     unknown = [release_id for release_id, one in found.items() if one is None]
     if unknown:
@@ -317,10 +315,9 @@ def _returned(ctx) -> Envelope:
             "would report a release filed that never was",
             steps=("pass a release identifier from: crate label held",),
         )
-    cfg = label_cli._load()
     checks: list[dict[str, Any]] = []
     summary: dict[str, list[str]] = {"returned": [], "marked": [], "already_returned": []}
-    with review.open_store(cfg) as store:
+    with review.open_store(label_cli._load()) as store:
         for release_id, one in _found(store, wanted).items():
             joins, said = _return_one(store, release_id, one)
             summary[joins].append(release_id)

@@ -35,6 +35,8 @@ class HarvestDrop:
 class HarvestReport:
     offered: tuple[review.Item, ...]
     dropped: tuple[HarvestDrop, ...]
+    #: How many tracks the extractor read no name off, so none was asked about.
+    nameless: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,12 +114,18 @@ def from_tracks(
     extract: Callable[[Any], Sequence[str]] = labels_from_copyright,
     handler_key: str = HANDLER_KEY,
 ) -> HarvestReport:
-    """Offer verified labels. Does not add them to the registry and writes no audio."""
+    """Offer verified labels. Does not add them to the registry and writes no audio.
+
+    The extractor is run once per track, counting the tracks it names nothing on.
+    """
     seen: set[str] = set()
     offered: list[review.Item] = []
     dropped: list[HarvestDrop] = []
+    nameless = 0
     for track in tracks:
-        for name in extract(track):
+        names = extract(track)
+        nameless += not names
+        for name in names:
             key = name.casefold()
             if key in seen:
                 continue
@@ -137,4 +145,4 @@ def from_tracks(
                     handler_key=handler_key,
                 )
             )
-    return HarvestReport(offered=tuple(offered), dropped=tuple(dropped))
+    return HarvestReport(offered=tuple(offered), dropped=tuple(dropped), nameless=nameless)

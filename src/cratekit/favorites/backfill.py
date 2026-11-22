@@ -23,7 +23,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Sequence
 
 from cratekit.acquire import match, match_cli
-from cratekit.cli.output import digest_of
 from cratekit.core import config, convergence, jobs, rb_writer, session
 from cratekit.core.cause import CratekitError
 from cratekit.favorites import colour, placeholders, placement, spine
@@ -66,12 +65,12 @@ class OwnedHeart:
         return placeholders.month_label(self.hearted)
 
     @classmethod
-    def of(
-        cls, row: account_playlists.HeartRow, path: Path, content_id: str, *, known: bool = True
-    ) -> OwnedHeart:
+    def of(cls, row: account_playlists.HeartRow, path: Path, content_id: str) -> OwnedHeart:
         """The heart a job's row reports, on the library row its file is."""
         dated_by = "job" if row.hearted is not None else "none"
-        return cls(row.ref, path, content_id, row.title, row.job_id, row.hearted, dated_by, known)
+        return cls(
+            row.ref, path, content_id, row.title, row.job_id, row.hearted, dated_by, row.known
+        )
 
 
 def hearts_jobs(cfg: config.Config) -> tuple[jobs.Job, ...]:
@@ -175,12 +174,9 @@ def listed(cfg: config.Config) -> Listing:
     dates: dict[str, datetime | None] = {}
     for track in tracks:
         ref = str(getattr(track, "id", "") or "")
-        if not ref:
-            # A ROW WITH NO IDENTIFIER IS NO HEART'S EVIDENCE.
-            continue
-        when = placeholders.parse_hearted(intake_cli.hearted_on(track))
-        if dates.get(ref) is None:
-            dates[ref] = when
+        # A ROW WITH NO IDENTIFIER IS NO HEART'S EVIDENCE.
+        if ref and dates.get(ref) is None:
+            dates[ref] = placeholders.parse_hearted(intake_cli.hearted_on(track))
     return Listing(dates=dates, short=short, whole=whole)
 
 
@@ -190,13 +186,10 @@ def source_members(db: Any, home: placement.Home) -> tuple[tuple[str, str], ...]
     THE ROWS THE BACKFILL COLOURS WITHOUT A JOB (U153): a member of All
     Favorites is a favourite whatever put it there.
     """
-    found: list[tuple[str, str]] = []
-    for content_id in _member_order(placement.members(db, home.source_id)):
-        row = db.get_content(ID=content_id)
-        if row is None:
-            continue
-        found.append((content_id, str(getattr(row, "Title", "") or "")))
-    return tuple(found)
+    ordered = _member_order(placement.members(db, home.source_id))
+    rows = ((cid, db.get_content(ID=cid)) for cid in ordered)
+    titled = ((cid, getattr(row, "Title", "")) for cid, row in rows if row is not None)
+    return tuple((cid, str(title or "")) for cid, title in titled)
 
 
 def _member_order(content_ids: Iterable[str]) -> list[str]:
@@ -232,7 +225,7 @@ def gather(cfg: config.Config, db: Any, *, home: placement.Home) -> BackfillPlan
         if content_id in in_source and content_id in filed:
             already += 1
             continue
-        heart = OwnedHeart.of(row, path, content_id, known=row.known)
+        heart = OwnedHeart.of(row, path, content_id)
         if content_id in removed:
             taken.append(replace(heart, dated_by=REMOVED_IN_REKORDBOX))
             continue
@@ -254,11 +247,9 @@ def gather(cfg: config.Config, db: Any, *, home: placement.Home) -> BackfillPlan
             continue
         # THE JOB'S DATE FIRST, AND ITS "NO DATE" TOO: only a row frozen with no
         # key at all, before U120, is dated from the listing.
-        if not heart.known:
-            when = listing.dates.get(heart.ref)
-            if when is not None:
-                heart = replace(heart, hearted=when, dated_by="account")
-                asked += 1
+        if not heart.known and (when := listing.dates.get(heart.ref)) is not None:
+            heart = replace(heart, hearted=when, dated_by="account")
+            asked += 1
         hearts.append(heart)
     return replace(
         left,
@@ -286,18 +277,14 @@ def owned_in_library(
     if not paths:
         return ()
     by_path = native.single_rows_for(db, cfg, paths)
-    found: list[OwnedHeart] = []
-    seen: set[str] = set()
+    found: dict[str, OwnedHeart] = {}
     for row in known:
         for said in row.paths:
             content_id = by_path.get(str(Path(said)))
-            if content_id is None:
-                continue
-            if content_id not in seen:
-                seen.add(content_id)
-                found.append(OwnedHeart.of(row, Path(said), content_id))
-            break
-    return tuple(found)
+            if content_id is not None:
+                found.setdefault(content_id, OwnedHeart.of(row, Path(said), content_id))
+                break
+    return tuple(found.values())
 
 
 @dataclass(frozen=True, slots=True)
@@ -372,8 +359,7 @@ def _planned(db: Any, home: placement.Home, gathered: BackfillPlan) -> BackfillP
     """``gathered``'s hearts and recolours planned against ``home`` on this handle, and digested."""
     hearts = [(one.content_id, one.hearted, one.title) for one in gathered.hearts]
     placements = placement.plan_placements(db, home, hearts, recolour=gathered.recolour)
-    planned = replace(gathered, placements=placements)
-    return replace(planned, digest=digest_of(planned.identity()))
+    return spine.digested(replace(gathered, placements=placements))
 
 
 def replan(db: Any, approved: BackfillPlan, *, source: str) -> BackfillPlan:
@@ -431,22 +417,21 @@ def payload(planned: BackfillPlan, cfg: config.Config) -> dict[str, Any]:
 def facts(planned: BackfillPlan) -> dict[str, Any]:
     """The facts beside the items on the gate screen, one line per fact."""
     home = planned.placements.home
-    where = f"{home.source_name!r} (row {home.source_id})"
-    if home.folder_name:
-        where += f" under {home.folder_name!r}"
     facts: dict[str, Any] = {
-        "into": where,
+        "into": f"{home.source_name!r} (row {home.source_id})"
+        + (f" under {home.folder_name!r}" if home.folder_name else ""),
         "hearts to place": len(planned.hearts),
         "by month": [f"{month}: {count}" for month, count in planned.by_month.items()],
         "memberships to add": planned.placements.adds,
         "month playlists to create": list(planned.placements.creates),
-        "rows to colour Pink": planned.placements.colours,
+        "rows to colour Pink": (
+            f"none, {skipped}" if (skipped := planned.placements.colour_skipped)
+            else planned.placements.colours
+        ),
         "undated": planned.undated,
         "dates asked of the account": planned.asked,
         "already placed": planned.already,
     }
-    if planned.placements.colour_skipped:
-        facts["rows to colour Pink"] = f"none, {planned.placements.colour_skipped}"
     if planned.placements.held:
         facts["colour held"] = [one.said() for one in planned.placements.held]
     if planned.held_back:
@@ -508,17 +493,14 @@ def _read_back(db: Any, placed: placement.Placed, planned: BackfillPlan) -> tupl
     disagreement and not a silence.
     """
     problems: list[str] = []
-    wanted_source = {one.content_id for one in planned.placements.placements}
-    missing = sorted(wanted_source - placement.members(db, placed.source_id))
-    if missing:
-        problems.append(f"{placed.source_name!r} lacks {len(missing)} row(s): {', '.join(missing)}")
-    rows = dict(planned.placements.home.present)
-    rows.update({name: row for name, row, _count in placed.months})
-    for name in sorted({one.month for one in planned.placements.placements}):
-        wanted = {one.content_id for one in planned.placements.placements if one.month == name}
-        row = rows.get(name)
-        held = placement.members(db, row) if row else frozenset()
-        gone = sorted(wanted - held)
+    every = planned.placements.placements
+    rows = {**planned.placements.home.present, **{name: row for name, row, _n in placed.months}}
+    checks = [(placed.source_name, placed.source_id, {one.content_id for one in every})]
+    for name in sorted({one.month for one in every}):
+        wanted = {one.content_id for one in every if one.month == name}
+        checks.append((name, rows.get(name), wanted))
+    for name, row, wanted in checks:
+        gone = sorted(wanted - (placement.members(db, row) if row else frozenset()))
         if gone:
             problems.append(f"{name!r} lacks {len(gone)} row(s): {', '.join(gone)}")
     # AND EVERY ROW THE PLAN COLOURS READS PINK (U153).

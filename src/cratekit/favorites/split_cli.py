@@ -37,12 +37,6 @@ def build(parser, entry) -> None:
 planned, written = spine.handles(split)
 
 
-def _members(said: tuple[split.Member, ...]) -> str:
-    return "; ".join(
-        f"{one.title or 'row ' + one.content_id} (from {', '.join(one.quarters)})" for one in said
-    )
-
-
 def _notes(plan: split.SplitPlan) -> list[dict[str, str]]:
     """What a person reads about the plan beside its counts, whatever the answer."""
     return spine.notes(
@@ -51,14 +45,14 @@ def _notes(plan: split.SplitPlan) -> list[dict[str, str]]:
             UNDATED,
             f"{len(plan.undated)} member(s) carry no date on any hearts job and the "
             f"account dates them nowhere, so they go to {placeholders.UNDATED!r} "
-            f"and stay there: " + _members(plan.undated),
+            f"and stay there: " + "; ".join(one.said() for one in plan.undated),
         ),
         (
             plan.taken_back,
             TAKEN_BACK,
             f"{len(plan.taken_back)} member(s) the author took out of "
             f"{plan.home.source_name!r} by hand go to no month, and their quarter "
-            f"is retired all the same: " + _members(plan.taken_back),
+            f"is retired all the same: " + "; ".join(one.said() for one in plan.taken_back),
         ),
         (
             plan.withheld,

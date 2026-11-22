@@ -23,7 +23,6 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from cratekit.acquire import match, match_cli
-from cratekit.cli.output import digest_of
 from cratekit.core import config, convergence, rb_writer, session
 from cratekit.core.cause import refuse
 from cratekit.favorites import backfill, placeholders, placement, spine
@@ -37,11 +36,6 @@ WORKFLOW = "favorites-split"
 #: The tables the retirement's commit admits a soft delete in: the quarter's
 #: own row and its own memberships, the INBOX rotation's pair.
 REMOVALS: tuple[str, ...] = (rb_writer.PLAYLIST_TABLE, rb_writer.MEMBERSHIP_TABLE)
-
-#: What an existing playlist row may change while the split adds beside it:
-#: the binding's position and bookkeeping, the columns a sibling of a moved
-#: node may change in :func:`rb_writer.node_change_violations`.
-_BOOKKEEPING = frozenset({"Seq", "updated_at", "usn", "rb_local_usn"})
 
 #: Where a member's date came from.
 BY_JOB = "job"
@@ -290,7 +284,7 @@ def _planned(
         name: placement.members(db, home.present[name]) if name in home.present else frozenset()
         for name in months
     }
-    planned = SplitPlan(
+    return spine.digested(SplitPlan(
         home=home,
         quarters=tuple(held_quarters),
         members=members,
@@ -300,8 +294,7 @@ def _planned(
         listed=dating.listed,
         withheld=dating.withheld,
         unreadable=dating.unreadable,
-    )
-    return replace(planned, digest=digest_of(planned.identity()))
+    ))
 
 
 def plan(cfg: config.Config, db: Any, *, source: str) -> SplitPlan:
@@ -442,11 +435,8 @@ def addition_violations(
         touches="the split",
         made=created,
         written=made,
-        allowed=lambda key: (
-            _BOOKKEEPING
-            if key in wanted or str(before.playlists[key][parent_at]) in beside
-            else frozenset()
-        ),
+        # A PLANNED MONTH OR A SIBLING OF A MADE ONE MAY MOVE, as a binding's insert moves it.
+        moves=lambda key: key in wanted or str(before.playlists[key][parent_at]) in beside,
         explains="the split's additions do not explain",
     )
     owner_at, content_at, m_marker = trees.membership_positions(before)
@@ -467,22 +457,6 @@ def addition_violations(
                 f"playlist {owner!r}, which the plan did not name"
             )
     return violations
-
-
-def assert_additions_confined(
-    db: Any,
-    before: rb_writer.NodeTables,
-    *,
-    planned: Mapping[str, Iterable[str]],
-    created: Mapping[str, tuple[str, str]],
-) -> None:
-    """Refuse, before the commit, an addition the plan did not name, read from SQL."""
-    spine.confined(
-        db,
-        lambda after: addition_violations(before, after, planned=planned, created=created),
-        "the split's additions reached rows the plan did not name",
-        _ORIGIN,
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -560,7 +534,7 @@ def apply(
     )
     home = planned.home
     written: list[tuple[str, str, int]] = []
-    created: list[str] = []
+    made: dict[str, tuple[str, str]] = {}
     rows: dict[str, str] = {}
     retired: list[str] = []
     with session.assert_gates(
@@ -586,22 +560,21 @@ def apply(
                     )
             parent_id = str(parent.ID) if parent is not None else ""
             before = rb_writer.node_tables(db)
-            made: dict[str, tuple[str, str]] = {}
             for name, ids in planned.months.items():
                 row, fresh = placement.month_row(db, name, parent, source_id=home.source_id)
                 rows[name] = str(row.ID)
                 if fresh:
                     db.session.flush()
                     made[str(row.ID)] = (name, parent_id or str(row.ParentID))
-                    created.append(name)
                 count = len(rb_writer.add_memberships(db, row, ids))
                 added += count
                 written.append((name, str(row.ID), count))
-            assert_additions_confined(
+            by_row = {rows[name]: ids for name, ids in planned.months.items()}
+            spine.confined(
                 db,
-                before,
-                planned={rows[name]: ids for name, ids in planned.months.items()},
-                created=made,
+                lambda after: addition_violations(before, after, planned=by_row, created=made),
+                "the split's additions reached rows the plan did not name",
+                _ORIGIN,
             )
             if added or made:
                 rb_writer.commit_guarded(db)
@@ -632,7 +605,7 @@ def apply(
         convergence.record_fingerprint(cfg, db)
         return Split(
             months=tuple(written),
-            created=tuple(created),
+            created=tuple(name for name, _parent in made.values()),
             retired=tuple(retired),
             session_id=record.session_id,
             disagreements=_read_back(db, planned, rows),
@@ -662,7 +635,6 @@ __all__ = [
     "WORKFLOW",
     "addition_violations",
     "apply",
-    "assert_additions_confined",
     "assert_read_back",
     "date_members",
     "facts",

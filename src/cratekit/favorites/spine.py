@@ -12,10 +12,11 @@ Layer: modules.
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
-from cratekit.cli.output import Envelope, declared_gate
+from cratekit.cli.output import Envelope, declared_gate, digest_of
 from cratekit.core import analysis_store, config, convergence, rb_writer, session, tree_registry
 from cratekit.core.cause import Outcome, refuse
 from cratekit.write import trees
@@ -23,6 +24,10 @@ from cratekit.write import trees
 #: The key every favourites commit is recorded under on the session, as rows
 #: created and rows changed. Not a tree id: the Favorites folder is nobody's tree.
 RECORD_KEY = "favorites"
+
+#: What a playlist row a writer moves may change: its position and the
+#: bookkeeping stamped beside it, as :func:`rb_writer.node_change_violations` admits.
+BOOKKEEPING = frozenset({"Seq", "updated_at", "usn", "rb_local_usn"})
 
 
 @contextmanager
@@ -162,7 +167,7 @@ def change(created: int, updated: int) -> session.ChangeSummary:
 
 @contextmanager
 def witnessed(db: Any, landed: Callable[[], None]) -> Iterator[None]:
-    """A commit witnessed and recorded: anything raised rolls back, and one that landed is recorded."""
+    """A commit witnessed: a raise rolls back, and a commit that landed is recorded either way."""
     with rb_writer.commit_witness(db) as witness:
         try:
             yield
@@ -199,6 +204,11 @@ def confined(
         )
 
 
+def digested(planned: Any) -> Any:
+    """``planned`` with the digest of its identity, the one thing its gate approves."""
+    return replace(planned, digest=digest_of(planned.identity()))
+
+
 def shown(planned: Any, items: list[dict[str, Any]], totals: dict[str, Any]) -> dict[str, Any]:
     """A plan as its gate shows it: its digest, one item per line of the screen, and the totals."""
     return {"digest": planned.digest, "items": items, "totals": totals, "chunk": None}
@@ -211,18 +221,21 @@ def drift(
     touches: str,
     made: Iterable[str],
     written: list[str],
-    allowed: Callable[[str], frozenset[str]],
+    moves: Callable[[str], bool],
     explains: str,
 ) -> list[str]:
-    """What two readings differ in that a playlist writer's plan does not explain, memberships aside.
+    """What two readings differ in that a playlist writer's plan does not explain, bar memberships.
 
     No content row changes and no playlist row disappears; a playlist row is
     added only when ``made``; ``written`` is the caller's own reading of the rows
-    it wrote, put next; an existing row changes only the columns ``allowed`` it.
+    it wrote, put next; an existing row changes only its :data:`BOOKKEEPING`, and
+    only when it ``moves``.
     """
     violations: list[str] = []
     if before.content != after.content:
-        violations.append(f"a {rb_writer.CONTENT_TABLE} row changed, and {touches} touches no track")
+        violations.append(
+            f"a {rb_writer.CONTENT_TABLE} row changed, and {touches} touches no track"
+        )
     for key in sorted(set(before.playlists) - set(after.playlists)):
         violations.append(f"the {rb_writer.PLAYLIST_TABLE} row {key!r} disappeared")
     for key in sorted(set(after.playlists) - set(before.playlists) - set(made)):
@@ -230,10 +243,11 @@ def drift(
     violations.extend(written)
     for key in sorted(set(before.playlists) & set(after.playlists)):
         moved = changed(before.playlist_columns, before.playlists[key], after.playlists[key])
-        if moved - allowed(key):
+        moved -= BOOKKEEPING if moves(key) else frozenset()
+        if moved:
             violations.append(
                 f"the {rb_writer.PLAYLIST_TABLE} row {key!r} changed "
-                f"{sorted(moved - allowed(key))}, which {explains}"
+                f"{sorted(moved)}, which {explains}"
             )
     return violations
 

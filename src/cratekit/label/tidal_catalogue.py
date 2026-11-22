@@ -51,6 +51,7 @@ from cratekit.label.catalogue import (
     artist_name,
     missing_listing,
     playlist_id,
+    translated,
 )
 
 #: How many search hits one name lookup reads; exact names rank first.
@@ -207,9 +208,8 @@ class _Member:
 
 def _results(found: Any, key: str) -> list[Any]:
     """One model's hits out of a search answer, whatever container it came in."""
-    if isinstance(found, Mapping):
-        return list(found.get(key) or [])
-    return list(getattr(found, key, None) or [])
+    held = found.get(key) if isinstance(found, Mapping) else getattr(found, key, None)
+    return list(held or [])
 
 
 def _copyright_label(release: Any) -> str:
@@ -420,10 +420,9 @@ class TidalCatalogue:
                 )
             )
             return []
-        skipped: list[str] = []
-        rows = listing.artist_releases(target, methods=(method,), skipped=skipped, sleep=_pause)
-        missing.extend(missing_listing(target, name) for name in skipped)
-        if skipped:
+        before = len(missing)
+        rows = _listed_now(target, method, missing)
+        if len(missing) > before:
             return rows
         if identity:
             kept.keep_listed(identity, method, rows)
@@ -565,15 +564,11 @@ class TidalCatalogue:
     def playlist_for(self, reference: str) -> Any:
         """The provider playlist a URL, a share link, or an identifier names."""
         identifier = playlist_id(reference)
-        try:
+        # The gate's park, a ``CratekitError``, passes through unchanged (R-705).
+        with translated(lambda exc: PlaylistUnresolvable(
+            f"the provider could not resolve the playlist {identifier!r} ({exc})"
+        )):
             playlist = self._session.playlist(identifier)
-        except CratekitError:
-            # The gate's park passes through unchanged (R-705).
-            raise
-        except Exception as exc:
-            raise PlaylistUnresolvable(
-                f"the provider could not resolve the playlist {identifier!r} ({exc})"
-            ) from exc
         if playlist is None:
             raise PlaylistUnresolvable(
                 f"the provider returned nothing for the playlist {identifier!r}"

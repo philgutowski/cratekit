@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import importlib
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import urlsplit
@@ -151,6 +152,24 @@ class ReleaseUnresolvable(LookupError):
 RELEASE_GONE = "gone"
 
 
+@contextmanager
+def translated(
+    fail: Callable[[Exception], Exception], passing: tuple[type[Exception], ...] = (CratekitError,)
+) -> Iterator[None]:
+    """A provider failure at a caller's boundary, raised as ``fail`` makes it from the cause.
+
+    The broad catch is deliberate, since the provider's own exception types are
+    the installed client's. ``passing`` goes through unchanged, a ``CratekitError``
+    by default, so an adapter's own refusal or the gate's park keeps the act it names.
+    """
+    try:
+        yield
+    except passing:
+        raise
+    except Exception as exc:
+        raise fail(exc) from exc
+
+
 def artist_name(release: Any) -> str:
     """The name of a release's artist, never a provider object's repr (R-379).
 
@@ -158,10 +177,9 @@ def artist_name(release: Any) -> str:
     none is the empty string. One reader for the sweep and the repair (R-840).
     """
     artist = getattr(release, "artist", None)
-    if artist is None:
-        return ""
     if isinstance(artist, str):
         return artist
+    # None has no name, and so is the empty string too.
     name = getattr(artist, "name", None)
     return name if isinstance(name, str) else ""
 
@@ -299,9 +317,7 @@ class ListingShortfall(_Shortfall):
         if isinstance(declared, bool) or not isinstance(declared, int) or declared <= 0:
             return None
         listed = len(tuple(rows))
-        if listed >= declared:
-            return None
-        return cls(declared=declared, listed=listed)
+        return cls(declared=declared, listed=listed) if listed < declared else None
 
 
 #: What :meth:`Catalogue.release_tracks` answers: the rows, the year, and the
@@ -404,14 +420,17 @@ _REMEDIES = {
 }
 
 
+def _refused(reason: str, message: str, **kwargs: Any) -> CratekitError:
+    return refuse(reason, message, origin=("label", "catalogue"), **kwargs)
+
+
 def _unbound(exc: BaseException) -> Exception:
-    return refuse(
+    return _refused(
         "label-catalogue-unbound",
         "a provider session is stored and the catalogue adapter that would use "
         f"it to list a label or a playlist does not import in this build ({exc}), "
         "so the queued work cannot be carried out. Nothing was offered for review",
         steps=("reinstall the product so its core dependencies are present, then retry",),
-        origin=("label", "catalogue"),
     )
 
 
@@ -428,12 +447,11 @@ def resolve(cfg: config.Config) -> Catalogue:
     the pacing gate (R-705).
     """
     if not secrets.exists(str(secrets.Credential.PROVIDER_SESSION)):
-        raise refuse(
+        raise _refused(
             "credential-missing",
             "no streaming provider session is stored, so there is no catalogue "
             "to read this label or this playlist from",
             remedy=Remedy.AUTHENTICATE_PROVIDER,
-            origin=("label", "catalogue"),
             detail={"credential": str(secrets.Credential.PROVIDER_SESSION)},
         )
     try:
@@ -443,20 +461,18 @@ def resolve(cfg: config.Config) -> Catalogue:
     try:
         return tidal_catalogue.open_catalogue(cfg)
     except ProviderUnavailable as exc:
-        raise refuse(
+        raise _refused(
             "unavailable-transient",
             f"the streaming provider could not be reached to open the catalogue "
             f"({exc}); the stored session was not judged and is kept",
             remedy=Remedy.RETRY_LATER,
-            origin=("label", "catalogue"),
         ) from exc
     except (AdapterAuthFailed, AdapterBroken) as exc:
-        raise refuse(
+        raise _refused(
             "credential-missing",
             f"the stored streaming provider session could not be used to open "
             f"the catalogue ({exc})",
             remedy=_REMEDIES.get(exc.remedy.value, Remedy.REAUTHENTICATE_PROVIDER),
-            origin=("label", "catalogue"),
             detail={"credential": str(secrets.Credential.PROVIDER_SESSION)},
         ) from exc
 
@@ -482,4 +498,5 @@ __all__ = [
     "missing_listing",
     "playlist_id",
     "resolve",
+    "translated",
 ]
